@@ -465,11 +465,25 @@ run_warm_incremental() {
     fail "$label incremental compile (exit=$rc; see $dir/$label.2.err)"
     return
   fi
-  if ! grep -q '^warm: re-deriving b main$' "$dir/$label.2.err"; then
-    fail "$label cone line (want 'warm: re-deriving b main'; see $dir/$label.2.err)"
-    return
+  # The cone names RESOLVED PATHS, because a path is what a module's identity
+  # IS (pin f58dfc10 — `lists` and `lib/lists` were two identities for one
+  # file until the tree scan keyed the path). Rendering names here would mean
+  # a path->name lookup, which is the re-derivation the same landing deleted.
+  # The assertion is unchanged in substance and re-derived by hand before it
+  # was re-banked (Law 11): b is the edited module, main its importer, and the
+  # `$` anchor still proves a stayed CACHED — an unchanged dep must not appear.
+  # A failure here does NOT return: the divergence check below reads the same
+  # two artifacts and does not depend on this one. It used to return, and that
+  # is how a REAL incremental bug rode a pin — the cone line went red on a
+  # rendering change, the leg stopped, and "incremental == cold" never ran to
+  # report that the warm path had dropped every cached module. A leg that
+  # halts at its first failure hides the rest of its own coverage; only a
+  # genuine precondition (no artifact to read) earns an early return.
+  if ! grep -q '^warm: re-deriving b\.mn main\.mn$' "$dir/$label.2.err"; then
+    fail "$label cone line (want 'warm: re-deriving b.mn main.mn'; see $dir/$label.2.err)"
+  else
+    pass "$label cone named (b main re-derived, a cached)"
   fi
-  pass "$label cone named (b main re-derived, a cached)"
   cp "$wdir/a.mn" "$wdir/b.mn" "$wdir/main.mn" "$refdir/"
   wt_run --dir "$refdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
     > "$dir/$label.ref.wat" 2> "$dir/$label.ref.err"
@@ -940,11 +954,28 @@ run_census() {
         xargs -0 -n 1 -P "${FRONTIER_POOL:-$(nproc)}" bash -c '
           source "$CENSUS_ROOT/tools/wt-env.sh" >/dev/null 2>&1
           q="${1%%:*}"; ln="${1##*:}"
-          wt_run --dir "$CENSUS_ROOT" "$CENSUS_ART" query "$DOC" "census $q" > "$CENSUS_DIR/census-$ln-$$.out" 2>/dev/null' census-child
+          # The child KEEPS its stderr and RECORDS a nonzero exit. Discarding
+          # both meant a query that died — under the pool, all N of these are
+          # wheel-scale — was indistinguishable from a shape that is genuinely
+          # missing, and the judge below then blamed the shape. A diagnostic
+          # whose NAME can lie is the class this gate exists to catch.
+          wt_run --dir "$CENSUS_ROOT" "$CENSUS_ART" query "$DOC" "census $q" \
+            > "$CENSUS_DIR/census-$ln-$$.out" 2> "$CENSUS_DIR/census-$ln-$$.err" \
+            || printf "%s\n" "$?" > "$CENSUS_DIR/census-$ln-$$.rc"' census-child
   for spec in '|>:10' '<|:11' '><:12' '~>:13' 'anonymous:14' '<~:15' 'eta:24' 'effectful-lambda:25' 'iteration:26' 'wildcard-zero:27' 'failure-mask:28' 'print-in-report:31' 'wildcard-fabricates:32' 'underscore-retain:33' 'flag-as-int:34' 'parallel-arrays:35' 'parallel-arrays:37' 'vtable-record:36' 'env-frame:38' 'default-param:39' 'record-pattern:40' 'record-pattern-open:40' 'declared-row-hof:41'; do
     q="${spec%%:*}"; line="${spec##*:}"
     if ! cat "$dir"/census-"$line"*.out 2>/dev/null | grep -q "mn-census-verbs:$line"; then
-      ok=0; fail "census '$q' misses its own site (line $line; see $dir/census-$line.out)"
+      ok=0
+      # Which of the two failures is it? A recorded exit means the INSTRUMENT
+      # died and the shape was never judged; only a clean run that answered
+      # without its own site convicts the shape. The paths named are the ones
+      # that exist — the files carry the writer's pid, and the old message
+      # pointed at an unsuffixed name nothing ever wrote.
+      if compgen -G "$dir/census-$line-*.rc" > /dev/null; then
+        fail "census '$q' QUERY DIED (exit $(cat "$dir"/census-"$line"*.rc | tr '\n' ' ')) — shape never judged; see $dir/census-$line-*.err"
+      else
+        fail "census '$q' misses its own site (line $line; see $dir/census-$line-*.out)"
+      fi
     fi
   done
   [ "$ok" = 1 ] && pass "structural census: all twenty-two shapes count their own site (|> <| >< ~> <~ anonymous eta effectful-lambda iteration wildcard-zero failure-mask print-in-report wildcard-fabricates underscore-retain flag-as-int parallel-arrays-both-faces vtable-record env-frame default-param record-pattern record-pattern-open declared-row-hof)"
@@ -1837,7 +1868,7 @@ for i in "${!compilers[@]}"; do
   # to /mentl-home (the space verb's own mount convention).
   pkill -f "tcplisten=127.0.0.1:${sess_port}" 2>/dev/null
   sleep 1
-  (cd "$sessdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" -S "tcplisten=127.0.0.1:${sess_port}" "$compiler" session >"$dir/session.log" 2>&1) &
+  (cd "$sessdir" && "$WT_CLI" run "${WT_CLI_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" -S "tcplisten=127.0.0.1:${sess_port}" "$compiler" session >"$dir/session.log" 2>&1) &
   sess_pid=$!
   : > "$dir/session-resident.txt"
   for _ in $(seq 1 60); do
@@ -1880,7 +1911,7 @@ for i in "${!compilers[@]}"; do
     fail "space no-listener refusal (see $dir/space-refuse.out)"
   fi
   space_port=7379
-  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." -S "tcplisten=127.0.0.1:${space_port}" "$compiler" space >"$dir/space-serve.log" 2>&1 &
+  "$WT_CLI" run "${WT_CLI_FLAGS[@]}" --dir "$ROOT::." -S "tcplisten=127.0.0.1:${space_port}" "$compiler" space >"$dir/space-serve.log" 2>&1 &
   space_pid=$!
   space_hdr=""
   for _ in $(seq 1 20); do
@@ -2426,6 +2457,15 @@ for i in "${!compilers[@]}"; do
   # boot answered unknown-verb).
   wy_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" why "$wdoc" gain 2>/dev/null)
   printf '%s' "$wy_out" | grep -q 'let gain' || { w_ok=0; fail "why verb (got: $wy_out)"; }
+  # AT THE DEVELOPER'S COORDINATES. `gain` is line 8 of a 24-line fixture,
+  # so a weave coordinate is unmistakable here — born RED 2026-09-06, when
+  # this answered `at 2729:1-2729:15` because show_reason rendered the raw
+  # span from the one-namespace concatenation. Every felt surface goes
+  # through that renderer (LSP hover, the cursor view's Why line, the type
+  # facet's Reason), and the refs facet three lines away had been answering
+  # local coordinates the whole time. §0's intent-is-walkable property is
+  # only true if the chain walks somewhere a developer can open.
+  printf '%s' "$wy_out" | grep -q 'mn-where-badges:8' || { w_ok=0; fail "why coordinates are the developer's (got: $wy_out)"; }
   # The capability-at-tee badge (§11 6.3's felt face): the install line
   # names the handler and the effect set its arms absorb, from the
   # graph's own facts. Born RED 2026-08-08 (the boot lacked the facet).

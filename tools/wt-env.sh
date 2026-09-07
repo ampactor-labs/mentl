@@ -27,11 +27,68 @@
 # once at source time so both run (validated 2026-07-23: wheel self-compile
 # byte-identical and battery 113/113 through BOTH binaries —
 # Hβ.ops.wasmtime-runner-migration step 1).
-WT="${WASMTIME_BIN:-$HOME/.wasmtime/bin/wasmtime}"
-if "$WT" run -W shared-memory=y /nonexistent.wasm 2>&1 | grep -q "unknown -W"; then
-  WT_RUN_FLAGS=(-W threads=y -W tail-call=y -S threads=y)
+# THE EMBEDDED RUNNER IS THE DEFAULT ENGINE, because the CLI is a DEAD END:
+# measured 2026-09-06, the same spawning module answers exit 60 through
+# wasmtime 36's CLI and `Error: the -Sthreads flag is no longer supported`
+# through 47's. The CLI cannot execute Mentl's own output past 36, so the LTS
+# pin was never a stability preference — it was a CEILING, and every release
+# above it was unreachable while the CLI ran the gates. tools/runner registers
+# wasi.thread-spawn itself and creates the shared memory, so it needs no flag
+# to do what the CLI removed.
+#
+# The fallback is NAMED, never silent (a silent fallback is the betrayal, at
+# the exact moment it is cheapest): with no runner built, this says so on
+# stderr and uses the CLI, where the flag probe below still has to run.
+#
+# NOT YET ON THE RUNNER, and the split is deliberate: `mentl space` and
+# `mentl session` LISTEN, and wasmtime-wasi 47's p1 adapter does not implement
+# sockets at all (sock_accept returns Notsock), while 47's CLI refuses
+# --tcplisten outright. Those two verbs stay on 36 until the runner owns the
+# p1 socket surface the way it already owns thread-spawn
+# (`Hβ.ops.runner-owns-the-p1-socket`). No gate listens, so the board is
+# unaffected — which is why this half could move first.
+#
+# One capability the runner drops: `-D coredump=` is parsed and ignored, so a
+# trapped m3 leg writes no coredump for the autopsy. Named here rather than
+# discovered at the next trap; it rides the same peer.
+# WT_CLI / WT_CLI_FLAGS are ALWAYS the wasmtime CLI, computed whether or not
+# the runner is in use, because two verbs still need it: `space` and `session`
+# LISTEN, and the runner consumes `-S tcplisten=` and DROPS it. Pointing them
+# at $WT would have started a server that silently never listens — the exact
+# silent-fallback shape this file's own fallback notice exists to avoid, and a
+# regression the engine swap would otherwise have introduced in the same edit
+# that fixed a different one. The listening verbs name WT_CLI explicitly, so
+# the split is visible at the call site rather than implied here.
+_wt_cli="${WASMTIME_BIN:-$HOME/.wasmtime/bin/wasmtime}"
+# The probe reads the CLI's OWN WORDS, never a pipeline's exit status. This
+# file is SOURCED, so it inherits the caller's shell options, and the former
+# `… 2>&1 | grep -q` form asked a question whose answer changed with them:
+# wasmtime exits nonzero on the probe either way, so under `set -o pipefail`
+# (which tools/verify.sh sets, and an interactive source does not) the pipeline
+# reported failure though grep had MATCHED — the probe then added the very flag
+# 36 LTS rejects and every run under that gate trapped with "unknown -W option:
+# shared-memory". It was invisible on 43, which wants the flag regardless, so
+# the wrong branch and the right behaviour coincided there: the defect could
+# only fire on the version this repo pins. Captured string + `case` has no exit
+# status to inherit, so the verdict is the same from every caller.
+WT_SHM_PROBE="$("$_wt_cli" run -W shared-memory=y /nonexistent.wasm 2>&1 || true)"
+case "$WT_SHM_PROBE" in
+  *"unknown -W"*) WT_CLI_FLAGS=(-W threads=y -W tail-call=y -S threads=y) ;;
+  *)              WT_CLI_FLAGS=(-W threads=y -W shared-memory=y -W tail-call=y -S threads=y) ;;
+esac
+WT_CLI="$_wt_cli"
+
+_wt_runner="${MENTL_RUNNER:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/runner/target/release/mentl-runner}"
+if [ -z "${WASMTIME_BIN:-}" ] && [ -x "$_wt_runner" ]; then
+  WT="$_wt_runner"
+  WT_RUN_FLAGS=(-W threads=y -W tail-call=y)
+  WT_ENGINE="runner"
 else
-  WT_RUN_FLAGS=(-W threads=y -W shared-memory=y -W tail-call=y -S threads=y)
+  [ -z "${WASMTIME_BIN:-}" ] && [ -n "${MENTL_RUNNER_NOTICE:-1}" ] && \
+    echo "wt-env: no runner at $_wt_runner — falling back to the wasmtime CLI (capped at 36; build with: cargo build --release --manifest-path tools/runner/Cargo.toml)" >&2
+  WT_ENGINE="cli"
+WT="$_wt_cli"
+  WT_RUN_FLAGS=("${WT_CLI_FLAGS[@]}")
 fi
 # MENTL_WT_EXTRA — extra runner flags, word-split, appended to every wt_run and
 # every shim invocation. It exists for ONE thing the canonical flags cannot

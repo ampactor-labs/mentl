@@ -133,37 +133,53 @@ fn driver_collect_dag(ref entry_module) with Memory + Alloc + Filesystem + Inter
 // The absence is what the comment below already claimed in prose — the walk
 // does not report, the per-module check does — so the row now proves it and a
 // future report here is a refusal rather than a surprise.
-fn driver_collect_visit(ref module_name, own collected, own visited) with Memory + Alloc + Filesystem + Intern + GraphRead + !Diagnostic = if set_contains(visited, module_name) {
-  (collected, visited)
-} else {
-  let visited2 = set_insert(visited, module_name)
+// A MODULE'S IDENTITY IS WHAT IT RESOLVES TO, NEVER THE SPELLING THAT
+// REACHED IT. The visited set keyed the NAME and resolved on the next
+// line, so `lists` and `lib/lists` — one file, two spellings — each
+// passed the check and collected the same source twice; every
+// declaration in it then collided with itself. Resolution moves ABOVE
+// the check and the set keys the path, so a second edge to a module
+// already walked is the no-op that drawing an existing edge is.
+fn driver_collect_visit(ref module_name, own collected, own visited) with Memory + Alloc + Filesystem + Intern + GraphRead + !Diagnostic = {
   let path = driver_module_path(module_name)
-  if !fs_exists(path) {
-    // Module source missing — treat as terminal (no further deps).
-    // Driver's per-module check will surface E_MissingModule when
-    // it tries to process this name.
-    match collected {
-      (buf, count) => {
-        let extended = list_extend_to(buf, count + 1)
-        let written = list_set(extended, count, (module_name, path, None, []))
-        ((written, count + 1), visited2)
-      },
-    }
+  if set_contains(visited, path) {
+    (collected, visited)
   } else {
-    let source = fs_read_file(path)
-    let imports = driver_extract_imports(source)
-    // Visit dependencies first, then add self (post-order).
-    match driver_collect_visit_list(imports, collected, visited2) {
-      (after_deps_collected, after_deps_visited) => match after_deps_collected {
+    let visited2 = set_insert(visited, path)
+    if !fs_exists(path) {
+      // Module source missing — treat as terminal (no further deps).
+      // Driver's per-module check will surface E_MissingModule when
+      // it tries to process this name.
+      match collected {
         (buf, count) => {
           let extended = list_extend_to(buf, count + 1)
-          let written = list_set(extended, count, (module_name, path, Some(source), imports))
-          ((written, count + 1), after_deps_visited)
+          let written = list_set(extended, count, (module_name, path, None, []))
+          ((written, count + 1), visited2)
         },
-      },
+      }
+    } else {
+      let source = fs_read_file(path)
+      let imports = driver_extract_imports(source)
+      // Visit dependencies first, then add self (post-order).
+      match driver_collect_visit_list(imports, collected, visited2) {
+        (after_deps_collected, after_deps_visited) => match after_deps_collected {
+          (buf, count) => {
+            let extended = list_extend_to(buf, count + 1)
+            let written = list_set(extended, count, (module_name, path, Some(source), imports))
+            ((written, count + 1), after_deps_visited)
+          },
+        },
+      }
     }
   }
 }
+
+// What the walk resolved about one module, carried whole: the spelling that
+// reached it (for the human in a diagnostic), the path that IS its identity,
+// the source already read, and the import edges already lexed. Naming the
+// quad gives the layer partition a pin it can state and the four projections
+// below a subject.
+type ModuleEntry = (String, String, Option(String), [String])
 
 // The DAG element's four projections — one home each, so a consumer reads the
 // field instead of destructuring a positional quad at nine sites.
@@ -220,14 +236,19 @@ fn driver_extract_imports(ref source) with Memory + Alloc + Intern + GraphRead =
 // now runs its branch as a direct call instead of a spawned task, and a task's
 // body row never reached its spawner. The allocation was always performed —
 // the thread boundary was hiding it from the row.
-fn driver_check_module(ref module_name) with Memory + Alloc + ImageAlloc + Filesystem + WASI + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + InferCtx + Intern + Cast + Mutate + BranchEnv + Consume + WasiThreads = {
-  let path = driver_module_path(module_name)
-  if !fs_exists(path) {
-    report(EMissingModule(module_name, path, span_zero()))
-  } else {
-    fs_read_file(path) |> infer_program_converged
+// The ENTRY is the argument, not a name to re-resolve. The walk already
+// probed the path, already read the source, and already recorded absence as
+// None — so this read is three deletions: the second driver_module_path (up
+// to five fs_exists probes per module), the second fs_read_file, and the
+// fs_exists test the ADT already answers. That is the same re-derivation
+// this file's header names for every OTHER consumer of the walk; the
+// per-module check was the last one still following a name.
+fn driver_check_module(ref entry) with Memory + Alloc + ImageAlloc + Filesystem + WASI + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + InferCtx + Intern + Cast + Mutate + BranchEnv + Consume + WasiThreads = match module_source_of(entry) {
+  None => report(EMissingModule(module_name_of(entry), module_path_of(entry), span_zero())),
+  Some(source) => {
+    source |> infer_program_converged
     ()
-  }
+  },
 }
 
 // A module's exports live in env_handler because the judgment put
@@ -581,13 +602,25 @@ fn warm_program() with Memory + Alloc = list_index(warm_asts, 0) |> map((pr) => 
 // the downstream closure, and the reassembly order are all projections
 // of this single read (the pairs walk, the deps walk, and the order walk
 // were three passes over the same files — the eight-interrogations cut).
+// The scan's identity is the module's PATH, the same key the DAG walk, the
+// dep edges and the layer partition use. It has to be: the triple's deps are
+// matched against it to build the downstream closure, so a spelling here
+// against paths there would drop an importer out of the cone and leave a
+// stale judgment standing after its dep was edited.
 fn driver_tree_scan(ref entry_module) with Memory + Alloc + Filesystem + Intern + GraphRead = {
   let modules = driver_canonical_order(driver_collect_dag(entry_module))
-  let names = map(module_name_of, modules)
+  let paths = map(module_path_of, modules)
   map(
     (entry) => match module_source_of(entry) {
-      Some(text) => (module_name_of(entry), str_hash(text), filter((d) => contains_module(names, d), module_imports_of(entry))),
-      None => (module_name_of(entry), 0, []),
+      Some(text) => (
+        module_path_of(entry),
+        str_hash(text),
+        filter(
+          (dep_path) => contains_module(paths, dep_path),
+          map(driver_module_path, module_imports_of(entry))
+        )
+      ),
+      None => (module_path_of(entry), 0, []),
     },
     modules
   )
@@ -679,9 +712,17 @@ fn driver_warm_persist(ref entry_module, ref asts, ref pairs) with Memory + Allo
 // Attribute each weave statement to its module by the range map's line
 // spans — the split runs once at persist and its buckets ARE the
 // incremental cursor's reuse units.
+// The bucket is keyed by the module's PATH, the same identity the tree scan
+// and the manifest use — these pairs are read back by assoc_stmts on the warm
+// path, and a name key here against a path key there silently returns EMPTY
+// for every cached module: the incremental compile then emits the cone alone
+// and drops the whole restored program (measured — 2933 bytes against the
+// cold compile's 37644, the frontier's warm-inc divergence leg). The range
+// tuple carries name AND path; range_of_module keeps matching the NAME,
+// because that one is addressed by what a user typed.
 fn split_weave_by_module(ref ast, ref ranges) with Memory + Alloc = map(
   (r) => match r {
-    (m, _, start, nlines) => (m, filter(
+    (_m, p, start, nlines) => (p, filter(
       (stmt) => match stmt {
         N(_, sp, _) => match sp {
           Span(sl, _, _, _) => sl >= start && sl < start + nlines,
@@ -811,9 +852,13 @@ fn names_join(ref xs) with Memory + Alloc =
 // keeps its statement bucket for the reassembly.
 // ImageAlloc: the same deletion as driver_check_module above — the branch's
 // allocation stopped hiding behind a thread boundary.
+// The cone's elements ARE paths (driver_tree_scan's identity), so the read
+// is the read — the driver_module_path call that stood here re-resolved a
+// name the scan had already resolved, and against a path it would not have
+// resolved at all.
 fn rederive_cone(ref cone) with Memory + Alloc + ImageAlloc + WASI + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + LookupTy + Verify + InferCtx + Intern + Cast + BranchEnv + Consume + WasiThreads + DiagRegister = map(
   (m) => {
-    let ast = infer_program_converged(fs_read_file(driver_module_path(m)))
+    let ast = infer_program_converged(fs_read_file(m))
     (m, ast)
   },
   cone
@@ -821,8 +866,12 @@ fn rederive_cone(ref cone) with Memory + Alloc + ImageAlloc + WASI + Filesystem 
 
 fn driver_check_entry(ref entry_module) with Memory + Alloc + ImageAlloc + Filesystem + WASI + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + InferCtx + Intern + Cast + Mutate + BranchEnv + Consume + WasiThreads = {
   // Check the deps DAG (every module the entry imports) — not the entry.
+  // "Not the entry" is an IDENTITY question, so it is asked of the path: the
+  // entry reached by one spelling and collected under its resolved path is
+  // the same module, and a spelling-compare here would judge it twice.
+  let entry_path = driver_module_path(entry_module)
   entry_module |> driver_collect_dag_with_deps |> filter((m_with_deps) => match m_with_deps {
-    (m, _) => m != entry_module,
+    (m, _) => module_path_of(m) != entry_path,
   }) |> driver_partition_layers |> each((layer) => each(driver_check_module, layer))
   // Parse + infer the entry ONCE; its AST is what compile lowers live.
   // An unreadable entry REPORTS, never parses emptiness — the silent
@@ -839,19 +888,33 @@ fn driver_check_entry(ref entry_module) with Memory + Alloc + ImageAlloc + Files
 }
 
 // Walk the post-order DAG and pair each module with its in-DAG deps.
-// In-DAG: dep names that appear among the collected modules (filters
+// In-DAG: dep PATHS that appear among the collected modules (filters
 // out missing-module fallbacks that have no source). Returns
-// `[(module_name, [dep_name])]` in post-order.
+// `[(entry, [dep_path])]` in post-order.
 // Each module's imports come from the walk that already read them; the
-// in-DAG filter drops out-of-DAG names (missing modules, vocabulary aliases
+// in-DAG filter drops out-of-DAG modules (missing ones, vocabulary aliases
 // the driver doesn't process), which contribute nothing to the layer
 // partition's wait condition. A missing module carries no imports, which is
 // the same empty list its own fs_exists test used to produce.
+//
+// The dep edge is matched on the RESOLVED PATH for the same reason the
+// visited set keys it: an importer spelling a dep one way and the DAG
+// holding it under another is one module, and a name-match would drop the
+// edge — the partition would then run the importer before its dep, which
+// is the identity bug wearing an ordering costume. The PAIR carries the
+// whole entry, so the per-module check reads the name for its diagnostic
+// and the path for its read instead of re-resolving either by name.
 fn driver_collect_dag_with_deps(ref entry_module) with Memory + Alloc + Filesystem + Intern + GraphRead = {
   let modules = driver_collect_dag(entry_module)
-  let names = map(module_name_of, modules)
+  let paths = map(module_path_of, modules)
   map(
-    (entry) => (module_name_of(entry), filter((dep) => contains_module(names, dep), module_imports_of(entry))),
+    (entry) => (
+      entry,
+      filter(
+        (dep_path) => contains_module(paths, dep_path),
+        map(driver_module_path, module_imports_of(entry))
+      )
+    ),
     modules
   )
 }
@@ -867,8 +930,12 @@ fn driver_partition_layers(ref modules_with_deps) with Memory + Alloc =
 
 // processed / layers_rev pinned (the Intent Boundary): both thread from []
 // through the recursion, so their element types have no other source — an
-// unpinned `processed ++ layer_names` floored the concat in m3's copy.
-fn driver_partition_peel(ref remaining, ref processed: [String], ref layers_rev: [[String]]) with Memory + Alloc = if len(remaining) == 0 {
+// unpinned `processed ++ layer_paths` floored the concat in m3's copy.
+// `processed` is the set of module IDENTITIES already ordered, so it carries
+// PATHS — the same key the dep edges and the visited set use, because a
+// wait condition comparing a different key than the edges is the identity
+// bug one layer up. The layers themselves carry whole entries.
+fn driver_partition_peel(ref remaining, ref processed: [String], ref layers_rev: [[ModuleEntry]]) with Memory + Alloc = if len(remaining) == 0 {
   reverse(layers_rev)
 } else {
   let layer_pairs = filter(
@@ -880,17 +947,18 @@ fn driver_partition_peel(ref remaining, ref processed: [String], ref layers_rev:
   if len(layer_pairs) == 0 {
     // Cycle or unsatisfiable dep — process remaining sequentially
     // as a final layer to surface diagnostics at driver_check_module.
-    let leftover_names = map(((m, _)) => m, remaining)
-    reverse([leftover_names] ++ layers_rev)
+    let leftover = map(((m, _)) => m, remaining)
+    reverse([leftover] ++ layers_rev)
   } else {
-    let layer_names = map(((m, _)) => m, layer_pairs)
+    let layer_entries = map(((m, _)) => m, layer_pairs)
+    let layer_paths = map(module_path_of, layer_entries)
     let next_remaining = filter(
       (m_with_deps) => match m_with_deps {
-        (m, _) => !contains_module(layer_names, m),
+        (m, _) => !contains_module(layer_paths, module_path_of(m)),
       },
       remaining
     )
-    let next_processed = processed ++ layer_names
-    driver_partition_peel(next_remaining, next_processed, [layer_names] ++ layers_rev)
+    let next_processed = processed ++ layer_paths
+    driver_partition_peel(next_remaining, next_processed, [layer_entries] ++ layers_rev)
   }
 }

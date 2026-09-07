@@ -33,6 +33,19 @@
 
 ## ⊜ Interrogate, don't absorb — the law that prevents the next re-grounding ⊜
 
+> **INTERROGATE THE CODE EXACTLY AS HARD AS THE DOCS** (Morgan, 2026-09-06).
+> The prose is not the only thing an intelligence wrote without being vetted
+> line by line — the ARTIFACT is too, and a structure's existence is not
+> evidence that it should exist. Read every function you touch the way you
+> read a claim: what is it compensating for, and would the finished medium
+> have it at all? The compensations do not announce themselves; they look like
+> competent code, they have careful comments, and their comments frequently
+> name the very defect they exist to paper over ("the parser cannot see
+> seams", "the freeze exists so readers never read live"). Read the comment as
+> a CONFESSION and follow it to the root. This is why a fix must never be
+> defined as ultimate-relative-to-what-is-there: that laundering is how one
+> unverified structure propagates its shape into everything built beside it.
+>
 > **These three docs are the current best answer, NOT authority.** At every claim
 > you read here or in `PLAN.md`/`SYNTAX.md`, ask: *is this the ultimate form, or
 > just the considered form?* The decisions in `PLAN.md §4` are resolved — but the
@@ -542,6 +555,9 @@ rewrite in residue form inline.)
 | "Look up X by name" (ledger / index / map) | If a `~>` edge or the env already connects it → re-derivation (Anchor 1); follow the edge, read the live node |
 | Presenting "Option A (ultimate) vs Option B (safer/lower-risk)" — to me OR to the user | The fork IS the drift; the thesis already answers it. Ultimate form wins; DECIDE it, don't outsource a thesis-answered call; never hedge the wheel against the seed |
 | "It's a big change, so later" / "today was good" | Forbidden. Keep going; report result + next move |
+| "This fixes the symptom / unblocks the path / is the smallest correct change" | **SUFFICIENT IS NOT ULTIMATE** (Morgan, 2026-09-06, after two non-ultimate builds in one session). A fix that works is not thereby the form. Ask what the thing WOULD be if nothing around it were assumed; sufficiency is the ultimate form's most convincing costume because it passes every test you thought to run |
+| Defining "ultimate" relative to the structures already there | **THE SURROUNDING CODE IS NOT A PREMISE.** Much of it was written by an intelligence nobody vets line-by-line, so an "ultimate given X" where X is unverified is X's drift laundered through your judgment. Verify X first, and ask whether X should exist — the ultimate form of a compensation is its DELETION |
+| Building the foundational-looking piece first because it is tractable | **HARDEST FIRST, no deferrals.** The easy piece is easy because it assumes the hard one's answer; build it first and you will build it twice. Name the hardest question, answer it, then everything downstream is forced |
 | "I'll improve/tune/ratchet the condemned meanwhile" — hygiene, caching, a better cadence on machinery a named peer sentences to deletion | Patching the CONDEMNED (Anchor 2's roadmap face, 2026-07-31). The deletion IS the work; only the oracles that arbitrate the replacement — the march, the ratchets, the divergence count — may touch it |
 | A standing per-run re-derivation wearing "verification"'s name (a second pass that narrates divergence and proceeds with its own answer) | An OVERRIDE, not a verification — a verifier refuses or the divergence is impossible. Verification happens ONCE: structurally per compile, whole-program at the march per landing (the trial/final lesson, 2026-07-31) |
 | "AI"/"agent"/"completion" in user-facing text | Substrate vocabulary: "medium proposes" / "cursor argmax" |

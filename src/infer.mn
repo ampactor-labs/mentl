@@ -7847,9 +7847,31 @@ fn subst_changes(ty, mapping) = match ty {
   TFloat => false,
   TUnit => false,
   TByte => false,
-  TVar(id) => match graph_chase(id) {
-    GNode(NBound(_), _) => true,
-    _ => find_mapping(mapping, graph_chase_handle(id)) >= 0,
+  // THE CHECK CHASES, SO THE BUILD CAN SHARE. This answered TRUE for every
+  // bound var — "an NBound var inlines its binding (always differs)" — and
+  // in a JUDGED decl most vars are bound, so check-then-build was here but
+  // never got to answer no: every polymorphic reference rebuilt the callee's
+  // whole type tree. That is Hβ.infer.instantiate-shares-never-clones, whose
+  // cost the docs place on the ALLOCATION channel rather than time.
+  // Following the edge and asking whether the CONTENT changes is the same
+  // question asked where the answer lives: a bound cell holding no mapped
+  // var answers false and its entire subtree SHARES; only a path that
+  // actually reaches a quantified var rebuilds, and it rebuilds exactly as
+  // before. Privacy is untouched — the mapping still decides first, so a
+  // quantified var freshens per use.
+  // Answering by the mapping ALONE is the opposite error and was measured on
+  // the way here: a quantified var sitting BEHIND a binding goes unseen,
+  // never freshens, and polymorphism severs silently.
+  // Termination is the occurs invariant's — graph_bind refuses a type cell
+  // containing itself; the row sort's benign self-loops go through
+  // subst_row_changes, not this walk.
+  TVar(id) => if find_mapping(mapping, graph_chase_handle(id)) >= 0 {
+    true
+  } else {
+    match graph_chase(id) {
+      GNode(NBound(inner), _) => subst_changes(inner, mapping),
+      _ => false,
+    }
   },
   TList(elem) => subst_changes(elem, mapping),
   TTuple(elems) => subst_list_changes(elems, mapping, 0, len(elems)),

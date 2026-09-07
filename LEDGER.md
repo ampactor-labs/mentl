@@ -35,6 +35,220 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-07 · pin 8fb668de4613c1a2 · THE CHECK CHASES, SO THE BUILD CAN
+  SHARE — and three configurations measured where rung 3's real wall is.
+  verify green, march CLEAN m2 == m3, census 0, cost 17.85s / 2252MB.
+  ▶ WHAT LANDED. subst_changes answered TRUE for every bound var, and in a
+  judged decl most vars ARE bound, so check-then-build was present and never
+  got to answer no: every polymorphic reference rebuilt the callee's whole
+  type tree (`Hβ.infer.instantiate-shares-never-clones`, whose cost the docs
+  place on the allocation channel). The check follows the edge now and asks
+  whether the CONTENT changes — a bound cell holding no mapped var answers
+  false and its subtree shares; only a path reaching a quantified var
+  rebuilds. The opposite error was BUILT and measured first: answering by the
+  mapping alone leaves a quantified var behind a binding unseen, and
+  polymorphism severs silently.
+  ▶ THE WALL IS THE READ PATH, and three configurations name it. Publishing
+  the decl's CELL instead of a Frozen snapshot compiles clean at census 0
+  every time, and the resulting m2 fails to compile the wheel three
+  different ways: (a) with generalize's chase_deep intact — OOM through
+  chase_row_deep / chase_edges_deep / tail_set_union / alloc, because a fold
+  that ran once per DECL now runs once per USE; (b) with a shallow head and a
+  non-chasing free_in_ty — the quantifier reads the param CELLS themselves,
+  over-quantifies, and a judge branch exhausts its planned mint band
+  (graph_fresh_ty's loud `load_i32(0 - 1)`); (c) with a shallow head and a
+  CHASING free_in_ty — still the mint band, because chase_deep is bounded at
+  d > 200 and an unbounded walk is not. That last one is CLAUDE.md's own law
+  arriving as a bug: the three "vars of a type" walks must AGREE.
+  ▶ THE ROOT UNDER ALL THREE, and Morgan's question named it before the
+  measurement did — "the word chase makes me feel like work that doesn't
+  need to be done is being done; isn't everything a record, and don't
+  records carry all the information needed?" They do, and a stored LINK is
+  precisely a record failing to carry it. graph_compress_row's own comment
+  is the proof: path compression is "an OPTIMIZATION WRITE", and "a BRANCH
+  cursor SKIPS it, because a branch rebinding shared chain cells makes
+  sibling chases schedule-dependent — the measured k2 yield-floor flips at
+  window 8 traced to exactly these writes (1,463 foreign row binds)".
+  So: chase-with-compression is a READ THAT WRITES; parallel readers cannot
+  write; compression is therefore disabled in branches; branches re-walk
+  uncompressed chains; and under live publication that re-walk is the
+  re-fold that OOMs. The chase is not merely wasted work — IT IS WHAT MAKES
+  READ-ONLY PARALLELISM UNSOUND, and it is why the multi-cursor fan cannot
+  simply be turned up.
+  ▶ WHERE SOTA SITS AND WHY MENTL LEAVES IT. Union-find with path
+  compression is O(α(n)) amortized and e-graphs (egg's deferred rebuild) are
+  its batch form — both optimal FOR A SINGLE-THREADED MUTATOR, and both
+  depend on read-side mutation. Mentl's setting breaks that assumption four
+  ways: ONE writer (inference), MONOTONE refinement, a flat handle-addressed
+  image where a chase is a pointer walk across the cache-hostile working set
+  §5.O names as the constant-factor amplifier, and N parallel readers
+  WANTED. There, canonical-on-write dominates: the writer pays once at the
+  bind, every reader does a direct load, reads are PURE, and N cursors read
+  lock-free with no atomics and no branch guard. The law is already in the
+  artifact at half strength — graph_bind_row stores flatten_row_stored,
+  depth-1 by invariant at the WRITE — while reads still re-fold and the TYPE
+  sort does not do it at all.
+  ▶ NEXT, forced: move compression to the WRITE path and delete it from the
+  read. resolve_row calls graph_compress_row today (a reader writing);
+  graph_bind_row is where it belongs (the writer compressing what it just
+  walked). Then branch reads are pure, the branch guard disappears, the
+  re-walk disappears, and publish-Live becomes affordable — which is rung 3,
+  the fan's shared context, and the parallel cursor, all unblocked by one
+  relocation.
+
+- 2026-09-06 · pin 41aec80bddfe2ce2 · THE WARM PATH WAS HALF-KEYED, AND THE
+  GATE THAT KNEW IT STOPPED ONE LINE SHORT. frontier 374/0, verify green,
+  march CLEAN m2 == m3, census 0, cost 15.16s / 2148MB.
+  ▶ THE PRIOR ENTRY IS CORRECTED, not amended. It said "board whole, every
+  gate green," and that was true AS MEASURED and wrong. The pin it blessed
+  shipped a broken incremental compile.
+  ▶ THE BUG. f58dfc10 moved module identity onto the resolved path and took
+  the tree scan and the manifest with it — but split_weave_by_module still
+  bucketed the analyzed statements by NAME. assoc_stmts then answered EMPTY
+  for every cached module, so the warm path emitted the cone alone: 2933
+  bytes where the cold compile of the same tree is 37644, `a` and the entire
+  prelude gone. That is the SAME half-keying the prior entry warned about in
+  its own prose — "a half-keyed graph is the same defect wearing an ordering
+  costume" — written by someone who had just missed a fifth site. Knowing the
+  shape of a class does not find its members; only a measurement does.
+  ▶ WHY IT RODE A PIN. tests/frontier's warm-inc leg has exactly the check
+  that catches this: incremental output vs a cold compile of the patched
+  tree, byte-compared. It did not run. The cone-line check above it went red
+  on a RENDERING change — the cone prints `b.mn main.mn` now, because it
+  carries the identity — and the leg `return`ed. So a cosmetic red masked a
+  correctness red sitting one line below it, and the board reported the leg
+  as a single failure that looked like mine to re-bank.
+  ▶ THE FIX IS TWO LINES AND ONE OF THEM ISN'T THE BUG. split_weave_by_module
+  keys the bucket by the range tuple's PATH (the tuple already carried both;
+  range_of_module keeps matching the NAME, because that is what a user types
+  at an address). And the leg no longer returns on an independent failure.
+  The second is the one that matters: a leg that halts at its first red hides
+  the rest of its own coverage, and only a genuine precondition — no artifact
+  to read — earns an early return. Two legs in this file still return; both
+  are real preconditions (a failed compile has no wat to diff).
+  ▶ A DIAGNOSTIC THAT COULD LIE, in the gate built to catch those. The census
+  leg fans its queries through xargs and threw away every child's stderr and
+  exit code, so a query that DIED was indistinguishable from a shape that is
+  genuinely absent — and the judge blamed the shape. It records the exit now
+  and says QUERY DIED, and the failure message names the pid-suffixed files
+  that exist instead of an unsuffixed path nothing ever wrote.
+  ▶ ONE UNRESOLVED, NAMED RATHER THAN GUESSED. The board's census-40 red did
+  not reproduce on a clean dir (372/1, then 374/0). A SIGPIPE-under-pipefail
+  hypothesis — grep -q short-circuiting the cat feeding it — was TESTED at
+  200 iterations and did NOT reproduce; the outputs are ~100 bytes, too small
+  to race. No cause is banked. What landed instead is the instrument that
+  will name the failure if it returns, which is the honest move when a probe
+  disproves you: do not crown the next thing you see.
+  ▶ THE MEASUREMENT THAT ANSWERED THE LTS QUESTION, banked here because it
+  reframes a named peer. The same spawning module through two runners:
+  wasmtime 47's CLI answers `Error: the -Sthreads flag is no longer
+  supported` and exits 1; 36's runs it to 60. The CLI cannot execute Mentl's
+  own output past 36, so the LTS pin is a CEILING, not a preference, and
+  every release after it is unreachable while the CLI is the runner.
+  Hβ.ops.wasmtime-runner-migration steps (5)-(6) are therefore not hygiene;
+  they are the only exit. tools/runner builds clean here against wasmtime 47.
+  Its own next_tid counter is the projection tools/thread-gate.sh currently
+  rebuilds from strace, which is Hβ.march.concurrency-is-a-projection with
+  the substrate already written.
+
+- 2026-09-06 · pin f58dfc1070f5c7a5 · A MODULE'S IDENTITY WAS THE SPELLING
+  THAT REACHED IT. Board whole (verify green, march CLEAN m2 == m3, frontier
+  374/0, crown 62/0, proof-exactness 9/0, effect-identity PASS, instrument
+  reads); census 0; cost 11.19s / 2148MB.
+  ▶ THE FIND, from a wrong turn. Building a positive control for an
+  unrelated gate, a concatenated lib blob was fed to `mentl compile <file>`
+  and refused with E_DuplicateTypeName on `type Bool`. The blob was
+  malformed — the file path resolves imports, so prelude arrived twice —
+  but the interesting half was that the SAME BYTES through stdin compiled
+  and ran. Two transports, two meanings. Probing that split found the root
+  one layer down and much worse: `import lists` checks clean at 0
+  diagnostics, `import lib/lists` refuses with 58. One file. Two spellings.
+  Two module identities.
+  ▶ THE ROOT. driver_collect_visit keyed its visited set by the module NAME
+  and called driver_module_path on the very next line. So both spellings
+  passed the check, the same source was collected twice, and every
+  declaration in it collided with itself. An import is an EDGE; drawing an
+  edge that already exists is a no-op, which is what an edge IS. The walk
+  was drawing a second one.
+  ▶ WHY NO GATE SAW IT — tripwire 3, whole. The wheel's own build is the
+  cat-blob through stdin, which never resolves an import at all, and every
+  lib spells its siblings bare (`import lists`, no prefix). So the wheel
+  never once resolved a path-prefixed import, and a user's first one is red
+  on line one. The board was green in the same minute `mentl check` refused
+  a four-line program.
+  ▶ THE FIX IS ONE KEY AT FIVE SITES, and the fifth is why it is not
+  smaller: the visited set, the dep edges, the layer partition's wait
+  condition, the tree scan's downstream closure, the entry filter. Fixing
+  only the visited set would have been WORSE than the bug — a name-matched
+  dep edge against a path-keyed DAG is DROPPED, and the partition then runs
+  an importer before its dep. A half-keyed graph is the same defect wearing
+  an ordering costume.
+  ▶ IT DELETES, three times, and each deletion was already named in this
+  file's own header as fixed for every OTHER consumer of the walk:
+  driver_check_module was re-resolving a path the walk had resolved (up to
+  five fs_exists probes per module) and re-reading a file the walk had read;
+  rederive_cone was resolving a name that was already a path. The per-module
+  check was the last consumer still following a name. Net code +8 lines —
+  the additions are the ModuleEntry alias and the path-keying, and the
+  commit says so rather than claiming a deletion it did not make (Law 11).
+  ▶ THE PERSISTED MANIFEST keys on the same identity, so the first warm run
+  after this sees every hash as new, re-derives once, and re-persists with
+  paths. Self-healing, one cold run.
+  ▶ GATE, born RED: tests/syntax/import-path-spelling.mn — 58 errors through
+  the manifest link while the identical source is silent through the blob
+  link. That divergence is precisely what the syntax battery's manifest leg
+  was built to catch, so the gate needed no new harness; it needed a fixture
+  nobody had thought to write. 58 → 0.
+  ▶ THE MEDIUM CONVICTED THE AUTHOR. The first draft wrote
+  `map((dep) => driver_module_path(dep), …)` out of caution about passing a
+  `ref`-param fn point-free. verify's anonymity ratchet went red — "eta rose
+  28 → 30 — a named fn newly hidden behind a lambda." Point-free checks
+  clean; the caution was superstition. That is `mentl audit`'s larval form
+  doing its job on someone editing the wheel, which is the whole point of
+  ratcheting a shape rather than reviewing for it. effectful_lambda_max
+  385 → 384, holding the gain the same leg measured.
+  ▶ A SECOND DEFECT, found because the board could not run. tools/wt-env.sh
+  is SOURCED, so its wasmtime flag probe inherited the caller's shell
+  options. Under `set -o pipefail` — which verify.sh sets and an interactive
+  source does not — wasmtime's nonzero exit masked grep's MATCH, so the
+  probe took the wrong branch and added the `-W shared-memory=y` that 36 LTS
+  rejects; every gate run trapped with "unknown -W option". Invisible on 43,
+  which wants the flag regardless, so there the wrong branch and the right
+  behaviour coincided: the defect could only fire on the version this repo
+  pins. A captured string matched with `case` has no exit status to inherit.
+  The deeper reading is that the version fork itself is the liability, which
+  is what Hβ.ops.wasmtime-runner-migration steps (5)-(6) already say.
+  ▶ AND THE GATE THAT STARTED IT ALL: tools/thread-gate.sh, wired into
+  state.sh. Nothing on the board counted a thread, which is why
+  judge_window = 1 sat beside a spawn-per-branch for ten days with every
+  gate green (433 threads on `fn main() = 7`). Three legs — a positive
+  control that requires a really-spawning fixture to read above the floor
+  (the first draft of it was VACUOUS: the fixture failed to compile,
+  wat2wasm assembled the empty output, the run exited 0, and it "passed"
+  having measured nothing); a DELTA ratchet between a 61-decl and a 1-decl
+  program, so wasmtime's own host threads cancel and the gate measures us
+  rather than the runner; and a two-draw byte compare, the leg that survives
+  Phase 9.2 unchanged because a race's only symptom is the run-to-run
+  variance that hid the 2026-08-07 garbled cell. judge_spawn_delta_max: 0,
+  seen RED at ceiling -1. Retirement named:
+  Hβ.march.concurrency-is-a-projection — the medium performs
+  wasi_thread_spawn through its own effect and already holds the number this
+  script rebuilds from syscalls.
+  ▶ TWO STALE CLAIMS RETRACTED against the artifact. RESIDUE said a
+  thread-free module "(boot included)" ships no thread-spawn import;
+  wasm-objdump reads func[17] wasi.thread-spawn and a shared env.memory in
+  the pinned boot, so boot is a spawning module by that taxonomy. And
+  wt-env.sh's "it costs ~13 minutes" for the wheel compile measured 20s
+  here — the perf arc's own win, never re-read into the prose that motivated
+  it.
+  ▶ THE SHAPE ALL FOUR SHARE, worth more than any one of them: a fact that
+  was true when written, silently stopped being true, and no gate read it.
+  judge_window beside a spawn-per-branch; "(boot included)" beside a boot
+  that imports thread-spawn; a probe whose answer depended on its caller; a
+  cost claim off by 40×. None were bad reasoning. All were unread
+  measurements — which is the argument for projections over prose at exactly
+  the altitude PLAN §0's fifth property makes the point.
+
 - 2026-09-04 · (no repin — fixtures only) · E_EffectMismatch 15 → 5, AND
   TWO OF MY OWN CLAIMS RETRACTED. Battery errors 19 → 9; carriers eleven
   files → four; micros 149/149; verify green.

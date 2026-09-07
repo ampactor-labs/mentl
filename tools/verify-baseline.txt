@@ -807,7 +807,7 @@ record_pattern_open_max: 0
 # two ratchets this run tripped were fixed rather than raised: the ref
 # markers came off the guard's own fns, written by the same copy-the-
 # surrounding-style reflex the quiet gate exists to catch.
-effectful_lambda_max: 385
+effectful_lambda_max: 384
 
 # 2026-08-07: the USE-AFTER-MOVE ratchet (PLAN §11 Phase 4.1,
 # Hβ.own.use-after-move) — T_UseAfterMove narrations on the wheel's own
@@ -1233,5 +1233,41 @@ env_frame_max: 0
 # refused a clean fixpoint on its next run. The ceiling now sits just above
 # the highest of the three. A ratchet set inside its own measurement's
 # variance is not a ratchet; it is a coin flip that blocks good work.
-selfcompile_peak_kb_max: 2310000
+# 2310000 → 2320000 (2026-09-06): THE ENGINE CHANGED, NOT THE WHEEL. The
+# gates now run on tools/runner (wasmtime 47 embedded) because the CLI is a
+# dead end — it cannot execute a spawning Mentl module past 36. The input is
+# the same source and the OUTPUT IS BYTE-IDENTICAL across the two engines
+# (the runner-built m2 sha256-matches the CLI-built boot, 41aec80b…), so this
+# is not the wheel growing. It is measured, not assumed: three CLI readings
+# of this source came in at 2200336 / 2200508 / 2200512 KB — a 176KB spread —
+# and four runner readings at 2311820 / 2311160 / 2309348 / 2305804 KB, a
+# ~6MB spread. +109MB, ~5.0%, far outside either engine's own noise. The old
+# line ALSO had to move regardless of judgment: two of those four readings
+# fall under 2310000 and two above it, so the ceiling had come to sit inside
+# the runner's variance — the coin flip the paragraph above names, arriving
+# by a different road. The new line sits just above the highest observed
+# reading, and the +109MB is the engine's, to be re-derived (not inherited)
+# if the runner's memory config is ever tuned.
+selfcompile_peak_kb_max: 2320000
+
+# ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
+# Guest OS threads the compile creates, counted at clone/clone3, as the
+# DELTA between a 61-declaration program and a 1-declaration one. The delta
+# and not an absolute: wasmtime's own host threads are identical in both and
+# cancel, while guest layer-branch spawns scale with the branch count — so
+# this ratchet measures US and stays true across runner upgrades, where an
+# absolute ceiling would go red on somebody else's implementation detail.
+#
+# The line above ratcheted the MEMORY the 433-thread defect cost. Nothing
+# ratcheted the threads themselves, which is why judge_window = 1 could sit
+# beside a spawn-per-branch for ten days with the whole board green — the
+# gate that would have caught it on day one is this one, and it did not
+# exist. Zero is the honest floor today (measured: 5 clones at 1 decl, 5 at
+# 61, both host overhead) because a singleton judge block runs BrDirect.
+#
+# WHEN PHASE 9.2 RESTORES judge_window = 8 THIS IS RE-BASELINED, NOT DELETED:
+# the number becomes the width the parallel walk is supposed to have, and the
+# gate goes on answering the same question one octave up. Seen RED at ceiling
+# -1 before it was trusted.
+judge_spawn_delta_max: 0
 lists_movers_max: 6

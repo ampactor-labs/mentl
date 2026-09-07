@@ -1043,6 +1043,38 @@ eleven consecutive ledger entries while the leak rode the whole arc; nothing
 written was false, the gate had merely gone quiet. Closed mechanically by Phase
 0.1: a gate not run is a visible blank, and a red one refuses the pin.
 
+**ONE LAW, FOUR FACES — AND THE ORACLE IS THEIR SUM (2026-09-06).** The
+board's four largest open items are not four projects. Each is the same
+violation — *a materialized view stored where an edge belonged* — and the
+oracle is what they add up to:
+- **SCHEMES** (`Frozen`, rung 3): a decl's type frozen at its own exit, the
+  moment the cell is least finished. The two-pass tower re-judges the gap;
+  the movers line counts it.
+- **PROVENANCE** (`Reason`): a RECURSIVE VALUE TREE stored inline on every
+  node (`GNode(NodeKind, Reason)`), 24 constructors of which nearly all
+  carry a copied handle (`Declared(String)` names a node that exists),
+  copied structure (`Unified(R, R)` duplicates both subtrees into every
+  node that unified — the render's own comment admits "the DAG rendered as
+  the tree it is"), copied values (`UnifyFailed(Ty, Ty)` snapshots types
+  that may later resolve differently, so a Why chain can render what is no
+  longer true), or copied POSITIONS.
+- **POSITIONS** (`Span` in a Reason): a coordinate copied beside the very
+  handle it describes — the dominant call is literally
+  `graph_bind(handle, ty, Located(span, …))`. Copied coordinates also ROT
+  UNDER EDITING, which the resident session depends on them not doing.
+- **THE FAN** (11.1): the context re-judged per candidate instead of judged
+  once and read live.
+**THE SUM:** the oracle's central waste — every branch re-judging the whole
+context — IS rung 3, not a consequence of it; the teaching tie-break needs
+"what distinguishes these survivors", which is a provenance DIFF, cheap over
+edges and absurd over duplicated trees; the shared context needs live cells
+to be shareable at all; and the runner's shared image plus its own spawn
+count is what makes N real cursors observable. Fix them separately and each
+is a chore; fix them as one law and the oracle falls out. **Hardest first,
+and it is not the tractable-looking piece: judge the context ONCE and let
+branches read it live — which is rung 3's live cells, the same problem
+wearing the search layer's clothes.**
+
 **THE STANDING CURSOR (Morgan 2026-08-26 — the Space spine; supersedes the
 2026-08-11/12 selectors, whose corrected DEP chain it absorbs).** The
 production target until Morgan stands it down: the medium complete and
@@ -1756,13 +1788,42 @@ first-class — DONE statement (2) whole.
 The co-equal aspect (§4⑦) consolidated, not begun — most of its substrate
 landed in 5–10; this phase is the finish that makes it FELT.
 
-- **11.1 · The fused fan.** The `??`-fan and the e-graph compose in the
-  FORCED order (prove-then-extract): a survivor is an equality class,
-  extraction picks under the effect-aware rewrites, the repr gradient pins
-  widths — a proposal is proven AND extraction-optimal. The gradient
-  ranker (Reason chains + proximity + in-scope vocabulary) seats; the
-  teaching TIE-BREAK asks the minimal-entropy question when meaning-space
-  ties; `!E`-gated speculation live-runs only what the crown proves inert.
+- **11.1 · The fused fan — THE ORACLE IS NOT A SEARCH.** It is inference run
+  with the hole's constraints unresolved, narrowed monotonically, forking
+  only where meanings genuinely CONFLICT. The received shape was measured
+  2026-09-06 and contradicts the design it implements, five ways:
+  `fan_verify` enumerates every candidate and THEN judges each
+  (generate-then-filter, where §1's law is proof pruning guided search at
+  every step); it forks UNIFORMLY, so form-variants pay full fork cost in
+  the code that cites the fork/merge duality; each `candidate_judge`
+  re-infers WHOLE in an isolated instance (recompute, not refine — the
+  `Frozen` law at the search layer); those instances take an empty
+  `graph_handler`, so a fact proven in one branch is invisible to its
+  siblings and the shared image is paid for and unused; and the fan spawns
+  through `spawn_task` DIRECTLY — zero uses of `><` in synth_proposer or
+  oracle — at a width set by the `judge_window` constant, where the
+  language's own `~> Schedule` is read live at every other fanout. The
+  crown jewel is the one place Mentl does not solve Mentl.
+  **THE ULTIMATE FORM:** propagate, then enumerate (narrow the hole's
+  type/row/ownership/refinement first; enumerate from the PRUNED space,
+  cheapest constraint first); construct only inhabitable terms
+  (type-directed from the vocabulary's own types — ill-typed candidates are
+  never BUILT, not built-and-rejected); FORK AT MEANINGS, MERGE AT FORMS
+  (form-variants saturate in the e-graph, monotone and needing no
+  isolation, so the fan's width IS the number of genuine ambiguities —
+  exactly what the tie-break must resolve); judge the context ONCE and let
+  branches read it live, candidates as deltas; LEMMA SHARING, JOIN-ONLY (a
+  proven fact independent of the branch's candidate is monotone and may
+  flow to siblings — branch-local bindings never do, the 2026-08-07 race
+  and the severance that hid it; this is portfolio solving with clause
+  sharing over the shared image, and it is where threads actually pay);
+  the fan written as `(c) >< (c) ~> Schedule` so width is a handler
+  decision and `judge_window` dissolves; multi-shot making the SEARCH
+  durable (a branch is a continuation record, memcpy-serializable, so an
+  exploration suspends and resumes across runs and machines — the axis no
+  peer has); prove-then-extract FORCED; and never a list — unique survivor
+  fills, multiple meanings ask the ONE minimal-entropy question, because a
+  list is the medium admitting it does not know.
 - **11.2 · `mentl edit` / `mentl space` polished.** The keystroke→parse→format→render loop
   continuous (`Hβ.felt.mentl-edit-runtime`), reactivity typed and
   demand-driven, the verification dashboard (live V_Pending / transitive

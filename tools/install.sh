@@ -74,7 +74,12 @@ if [ "\${1:-}" = "session" ]; then
   # space seam's twin); the wheel derives once and answers read verbs
   # over one-line connections speaking the CLI's own grammar. Port
   # override: MENTL_SESSION_PORT.
-  exec "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
+  # WT_CLI, not WT: this verb LISTENS, and the embedded runner consumes
+  # -S tcplisten= and drops it — a server that silently never listens. The
+  # runner cannot own this yet because wasmtime-wasi's p1 adapter implements
+  # no sockets at all (Hβ.ops.runner-owns-the-p1-socket); until it does, the
+  # listening verbs are the one place still pinned to the CLI, and they say so.
+  exec "\$WT_CLI" run "\${WT_CLI_FLAGS[@]}" \\
     --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" \\
     -S "tcplisten=127.0.0.1:\${MENTL_SESSION_PORT:-7377}" \\
     "\$MENTL_HOME/boot/mentl.wasm" session
@@ -106,7 +111,10 @@ if [ "\${1:-}" = "space" ]; then
   # preopen table), so the shim owns this seam exactly as it owns run's
   # exec seam. The repo maps at guest "." so the verb serves ide/ from any
   # directory. Port override: MENTL_SPACE_PORT.
-  exec "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
+  # WT_CLI, not WT — the listening seam, same as the session verb above.
+  # (No backticks in this heredoc: it is unquoted, so they would run as
+  # command substitution at install time — which is exactly what they did.)
+  exec "\$WT_CLI" run "\${WT_CLI_FLAGS[@]}" \\
     --dir "\$MENTL_HOME::." --dir /tmp \\
     -S "tcplisten=127.0.0.1:\${MENTL_SPACE_PORT:-7378}" \\
     "\$MENTL_HOME/boot/mentl.wasm" space
