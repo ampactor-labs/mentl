@@ -28,8 +28,117 @@
 
 ---
 
+`Hβ.lower.closure-continuation-partial-are-one-record` — NAMED 2026-09-09 by
+the same interrogation. The reification landing routed a bare name into the
+PARTIAL path, which is right relative to what is there, and what is there is
+three node kinds for one record.
+
+MEASURED AT THE ADT, not argued from PLAN's prose:
+`LMakeClosure(Int, LowFn, [LowExpr])` and
+`LMakeContinuation(Int, LowFn, [LowExpr], Int, Int)` — the continuation IS
+the closure plus `state_index` and `ret_slot`, which is what PLAN §5.U says
+dimensionally and what `lower.mn` says literally. Every walk carries two
+near-identical arms for them (`collect_call_vectors_list`,
+`collect_fn_emit_records`, `lexpr_handle`, the emit). And the PARTIAL is not
+a third shape at all: `lower_call_partial` ends in
+`LMakeClosure(handle, fn_ir, captures)`, so a hole-product is already
+emitted as a closure — with the holes turned into `LFn` params by
+`partial_split` and the filled fields turned into captures.
+
+SO THE THREE ARE ONE, and SYNTAX already says so at the surface: "the hole
+is the suspension point — SPACE and TIME are one … partial application and
+continuation-resumption are the same operation — hole-filling keyed by
+identity — distinguished only by whether the hole is filled at the call site
+or captured and resumed." The kernel says it too (§5.U: handler = state =
+closure = evidence = continuation = branch-thunk, ONE contiguous
+handle-addressed record). The surface and the kernel agree; the LOWERING
+holds three.
+
+THE COST IS NOT COSMETIC. A partial's remaining fields become positional
+`__part_N` params of a synthesized `partial_<h>` fn, so the hole stops being
+keyed by IDENTITY the moment it is lowered — which is the one thing SYNTAX
+insists a hole never loses ("the hole is keyed by IDENTITY, never by
+position"). A continuation's hole keeps its slot instead. Same absence, two
+representations, and the identity survives in neither. Unifying them is what
+makes `??` one marker at three altitudes rather than three markers that
+happen to be spelled alike, and it is the precondition for a suspended
+partial being memcpy-persistable the way a continuation already is.
+
+DEP: rides the value-layer's unified record (§5.U) and is cheapest AFTER
+`Hβ.lower.lowering-is-a-column` puts LowExpr's constructors in columns —
+merging two constructors is a column merge there and a 39-arm sweep before.
+
+`Hβ.driver.staleness-is-a-poll-not-an-edge` — NAMED 2026-09-09, and the
+landing at pin e67380fe is the evidence FOR it rather than against. That
+landing fixed `driver_manifest` to re-read every module from disk and
+re-hash it, because `session_current` decides whether the resident tree
+moved by recomputing that manifest and comparing it to a banked copy. The
+fix was correct and the mechanism is not the ultimate form: a manifest is a
+materialized view of the world, recomputed per message and diffed against a
+stored snapshot, which is the exact shape §11's "ONE LAW, FOUR FACES"
+convicts everywhere else. The medium asks "did any byte of any file change"
+and answers by reading every file, when what it needs is "which cells'
+inputs changed" — the changed cone, which the graph could carry as an edge
+from the module node to its source. The honest floor today is real (the
+comment banked at the fix names the mtime probe as the cheaper read once io
+carries `fd_filestat`), but an mtime probe is a cheaper POLL, not an edge.
+The ultimate form is that the outside notifies and the notification
+invalidates a cone — which is also what the Resident Space session needs to
+stop re-deriving, and what makes `persist = memcpy` worth having across
+runs rather than within one. Sequenced with Arc E of §11's Space spine.
+
+`Hβ.effects.one-walk-three-implementations` — NAMED 2026-09-09 by asking
+whether the thing the reification landing worked AROUND was itself ultimate.
+It is not, and the three dispatch tiers PLAN §6 presents as "the proof
+becomes the dispatch" are, at the artifact, ONE traversal written three
+times.
+
+THE TRAVERSAL: walk the install chain innermost-out; stop at the first
+handler that covers this op; call its arm against its record.
+
+THE THREE WRITINGS, all measured:
+- **Lexical** — `resolve_in_stack` (`lower.mn`), Mentl, COMPILE time, keyed
+  by `handler_covers_effect(hname, ename)`, returning `{handle, target}` and
+  baking a `__hstate_<h>` FRAME LOCAL into the perform.
+- **Singleton** — `$world_find` (hand-written WAT, `backends/wasm.mn`),
+  RUNTIME, keyed by the interned HANDLER NAME at `hkey@16`, returning the
+  record. Reachable only when exactly one handler declares the op, because
+  the name is what it can compare.
+- **Evidence** — `LEvPerform` + `lower_compute_ev_slot_for_op`, RUNTIME,
+  keyed by a slot INDEX threaded through the frame — a copy of a fact the
+  chain already holds, carried in a second place.
+
+WHAT THAT COSTS, not as theory. The lexical tier's frame local is why a
+reified op cannot use it (the body is a lifted fn; the frame is gone) — the
+whole reason the landing below took the singleton tier only. The singleton
+tier's NAME key is why an ambiguous op cannot reify at all — the whole of
+`eta_max: 3`. Neither is a property of dispatch; both are properties of a
+key chosen by one of three implementations. And the two runtime writings
+disagree about where evidence lives, which is the frame-vs-chain split the
+world-as-value arc already dissolved once for state.
+
+THE ULTIMATE FORM is one walk with one key — the EFFECT the node covers,
+which `key@0` already carries (see the correction below) — evaluated at
+whichever time the chain is known. That is not a fourth tier: it is the IC
+cursor's own law (PLAN §2, "read live is the semantics and cached is the
+mechanism, never hand-rolled"), so the lexical tier stops being a separate
+algorithm and becomes the SAME walk constant-folded when the install stack
+is statically known, exactly as `mn-escape-innermost` already measures the
+runtime walk answering when it is not. The ev slot deletes; the name key
+narrows to an optimization of the effect key; `resolve_in_stack` and
+`$world_find` become one thing with two evaluation times. Fewer mechanisms,
+one home, and the two blocked shapes above stop being blocked as a
+side effect rather than as a fix.
+
+DEP: none for the read itself (the fields exist). It touches band A's modal
+install-identity and should land with, not before, the crown crucibles that
+pin escape and masking semantics — they are the oracle for whether one walk
+preserves what three currently agree on by accident.
+
 `Hβ.emit.reified-op-needs-a-declaring-set-walk` — NAMED 2026-09-09 by the
-build below, which closed everything EXCEPT this. A reified op resolves its
+build below, which closed everything EXCEPT this. SUPERSEDED the same day as
+a FACE of `Hβ.effects.one-walk-three-implementations` above; kept because the
+measurement is the record and the mis-shaping is the lesson. A reified op resolves its
 handler from the live world chain at CALL time, and `$world_find` keys on
 one interned HANDLER name. That is exact when a unique handler declares the
 op (the singleton tier) and has nothing to key on when several do:
@@ -48,18 +157,30 @@ under", and the crown's own escape crucible pins the opposite —
 and dispatching to the DYNAMIC innermost handler (pinned 20). A reified op
 that captured its birth handler would contradict a green crown fixture.
 
-THE BUILD-READY FORM: the walk keys on the DECLARING SET, not on one name.
-The set of handlers declaring an op is static (the op→handler edges drawn at
-register_handler — `lower_op_default_handler` already reads them and only
-gives up because it wants exactly one). So `$world_find`'s sibling walks the
-chain and stops at the first node whose hkey is in that set, and the arm is
-reached through the record itself rather than through a name baked at emit —
-which is the evidence tier's `call_indirect` (PLAN §6's third tier) sourced
-from the CHAIN instead of from a frame-threaded ev slot. That re-homing is
-the point and the reason this is its own peer rather than a paragraph: the
-ev slot is a copy of a fact the chain already holds, so the general form is
-a Carried-Truth deletion, and it subsumes the singleton tier as the
-one-element case.
+THE BUILD-READY FORM AS FIRST BANKED, AND WHY IT WAS THE WRONG SHAPE. It
+read: "the walk keys on the DECLARING SET, not on one name … so
+`$world_find`'s SIBLING walks the chain and stops at the first node whose
+hkey is in that set." That proposes a fourth mechanism, and it was written
+from the same premise the defect came from — that `$world_find` is the
+dispatch and anything it cannot answer needs a new walk beside it. Measured
+the same day against the artifact, both halves are wrong, and this peer is
+now a FACE of `Hβ.effects.one-walk-three-implementations` below rather than
+a build of its own.
+
+(1) THERE IS NOTHING TO ADD TO THE RECORD. A chain node is 20 bytes,
+`[key@0][entry@4][next@8][iw@12][hkey@16]`, and `walk_install_groups`
+(`backends/wasm.mn`) pushes ONE NODE PER EFFECT GROUP with `key@0` = the
+interned EFFECT name. So "which node covers this op" is already answerable
+from a field the install writes — one word over from the one `$world_find`
+reads. No declaring-set table, no sibling walk: a walk keyed on `key@0`
+answers the ambiguous case with the data already there.
+
+(2) AND THE WALK ALREADY EXISTS, TWICE. `resolve_in_stack` (`lower.mn`)
+walks the lexical install stack innermost-out asking
+`handler_covers_effect(hname, ename)` — which is the effect-keyed question,
+already, at compile time. `$world_find` walks the runtime chain asking a
+NAME question. They are the same traversal with two keys and two
+implementations, one in Mentl and one in hand-written WAT.
 
 `Hβ.emit.nonfn-binding-as-function-value` — RESOLVED 2026-09-09 for every
 non-ambiguous shape, with `.reified-op-needs-a-declaring-set-walk` above
