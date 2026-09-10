@@ -204,6 +204,57 @@ runtime message carrying no number — 502 produces the identical message. The
 law that the number form of a claim must be READ FROM THE ARTIFACT applies
 to a number you reasoned your way to just as much as to one you remembered.
 
+`Hβ.effects.an-arm-may-not-perform-its-own-handlers-ops` — NAMED 2026-09-10,
+MEASURED, and OPEN. The uniform world bracket made the deep-handler law true
+everywhere, and the wheel does not obey it.
+
+THE MEASUREMENT, from the frontier against pin f862677e (368 pass / 10 red;
+five of the ten are this one root, `mentl fmt` and `mentl session` and the
+warm-inc leg among them): the backtrace reads
+`ev_declaring_node ← format_one_stmt ← op_format_default_format_program`.
+`format_program` is an ARM of `format_default`, and inside it
+`format_one_stmt` performs another Format op that `format_default` itself
+declares. A deep handler is not installed for its own arms — the arm body
+runs in the world OUTSIDE the install, which is what the law says and what
+`tests/frontier/mn-deep-handler-arm.mn` pins at 51 — so that sibling perform
+walks past its own handler, finds no other Format install, and hits the
+walk's loud refusal. Under the old lexical tier there was no bracket at all,
+so it resolved to ITSELF and worked. The wheel's handlers were authored
+against the missing bracket.
+
+THE SAME ROOT ANSWERS THE ESCAPE FIXTURE.
+`tests/frontier/mn-effect-escaped-install.mn` wants exit 7: a stateless arm
+direct-called with no record after its install's extent closed — what its own
+text calls "the value-sound licence for stateless arms", and explicitly
+reserves the choice about for band A's install-identity. That licence is not
+a separate question. It is incompatible with the law by construction: the
+bracket's whole content is the install's world, so an arm reached with NO
+install has no world to run under. You cannot both refuse the dead extent and
+honour the licence, and making the walk uniform answers it — which means the
+answer was taken as a side effect of another change and needs to be made on
+purpose.
+
+THE FORM, and it is a DELETION rather than a mechanism: an arm that needs a
+sibling op already has that op's implementation in the same handler, so
+performing it is a re-derivation of something in scope — the Carried-Truth
+Law at the handler boundary. The arms call the plain function; the ops stay
+the effect's interface for callers OUTSIDE. `E_InitPerformsOwnOp` already
+refuses the neighbouring case (an init performing into the install being
+built), and the general shape is its sibling: an arm performing an op only
+its own handler declares is statically knowable and should REFUSE at compile
+time, not trap at runtime — which is also what makes the restructure
+mechanical instead of archaeological, since the diagnostic enumerates every
+site. Whether re-installing (`~> self`) is a legitimate second form is the
+open sub-question; it is the only way to keep the sibling-perform spelling.
+
+UNTIL IT LANDS the pin is not shippable — `mentl fmt` and `mentl space` trap
+on real input — and march's own redmark names the two honest moves, fix it or
+restore the prior boot. The micros do not cover it (149/0 throughout) because
+they never run a verb whose handler arms perform sibling ops; the frontier
+does, which is the whole reason it exists (PLAN §11 tripwire 3, read from the
+other side: the board is blind to what the wheel does but the micros never
+exercise).
+
 `Hβ.effects.one-walk-three-implementations` — NAMED 2026-09-09, **BUILT
 2026-09-10, boot not yet re-pinned.** Four LowExpr constructors
 (`LPerform`, `LDirectPerform`, `LEvPerform`, `LWorldResolve`) became one
