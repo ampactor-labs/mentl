@@ -2301,6 +2301,8 @@ type DiagKind
   | EDuplicateFnName(String, Span)
   // a second `type name` in one namespace — the decls silently MERGE: disjoint ctor sets share tag ids and a cross-tag match returns the wrong arm (measured: exit 13 where 99 was meant, zero diagnostics)
   | EDuplicateTypeName(String, Span)
+  // two DISTINCT emitted fn records claim one symbol. Not a program error — the naming function collided, and the emitter's keep-first dedup would silently drop the second body while every call meaning it went to the first. The sibling above refuses that for AUTHORED names; synthesized ones (lambda_/partial_/__k_/the twins) never reached it, being unique only because a mint counter happens to be unique. This is that invariant checked instead of assumed (symbol)
+  | EEmittedNameCollision(String, Span)
   // unresolved handle, epoch (lower-time NFree)
   | EUnresolvedType(Int, Int, Span)
   // effect name, the graph-derived
@@ -2484,6 +2486,7 @@ fn diag_span(d) with Pure = match d {
   EOpShadowsOp(_, _, _, s) => s,
   EDuplicateFnName(_, s) => s,
   EDuplicateTypeName(_, s) => s,
+  EEmittedNameCollision(_, s) => s,
   EUnresolvedType(_, _, s) => s,
   EEffectUnhandled(_, _, s) => s,
   EUnresolvedHole(_, s) => s,
@@ -2551,6 +2554,7 @@ fn diag_source(d) with Pure = match d {
   EOpShadowsOp(_, _, _, _) => "infer",
   EDuplicateFnName(_, _) => "infer",
   EDuplicateTypeName(_, _) => "infer",
+  EEmittedNameCollision(_, _) => "emit",
   EUnresolvedType(_, _, _) => "lower",
   EEffectUnhandled(_, _, _) => "effects",
   EUnresolvedHole(_, _) => "verify",
@@ -2618,6 +2622,7 @@ fn diag_code(d) with Pure = match d {
   EOpShadowsOp(_, _, _, _) => "E_OpShadowsOp",
   EDuplicateFnName(_, _) => "E_DuplicateFnName",
   EDuplicateTypeName(_, _) => "E_DuplicateTypeName",
+  EEmittedNameCollision(_, _) => "E_EmittedNameCollision",
   EUnresolvedType(_, _, _) => "E_UnresolvedType",
   EEffectUnhandled(_, _, _) => "E_EffectUnhandled",
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
@@ -2689,6 +2694,16 @@ fn diag_refuses(d) with Pure = match d {
   // no duplicate fn names, measured).
   True,
   EDuplicateFnName(_, _) => True,
+  EEmittedNameCollision(_, _) => // ARMED at birth (2026-09-10) and born at ZERO on every program measured,
+  // which is the point: it does not police a mistake, it holds an invariant
+  // that was true by two unrelated accidents. Authored duplicates are refused
+  // upstream by EDuplicateFnName; synthesized symbols were unique only
+  // because a mint counter is unique, and the emitter's keep-first dedup
+  // compares NAMES — so the day a symbol stops being minted from a counter,
+  // an unchecked collision drops one body and silently redirects every call
+  // that meant it. Emitting a program whose calls go to the wrong function is
+  // not something to report and proceed through.
+  True,
   EOpShadowsOp(_, _, _, _) => // ARMED at birth (2026-09-04), and the arming is the whole point: a
   // reported-but-emitted collision is the corruption plus a note about it.
   // The env holds ONE entry per name, so two effects declaring the same op
@@ -2866,6 +2881,9 @@ fn diag_applicability(d) with Pure = match d {
   EOrphanHandlerAttach(_) => Unspecified,
   EResumeOutsideArm(_) => Unspecified,
   EResumeAmbiguousOp(_, _) => MaybeIncorrect,
+  EEmittedNameCollision(_, _) => // Nothing the reader can apply — the collision is in the compiler's own
+  // naming, and the program that provoked it is correct.
+  Unspecified,
   _ => MaybeIncorrect,
 }
 
@@ -2938,6 +2956,7 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   EOpShadowsOp(name, prior, now, _) => "effect `{now}` declares an op `{name}` that effect `{prior}` already declares, and this program links both. The env holds one entry per name, so the second declaration REPLACES the first rather than joining it: every existing call to `{name}` is now judged against `{now}`'s signature, and the errors surface wherever those calls are — inside the library, at spans your program never wrote. Rename this op",
   EDuplicateFnName(name, _) => "a second `fn {name}` in one namespace — the first declaration already binds it; rename one",
   EDuplicateTypeName(name, _) => "a second `type {name}` in one namespace — the declarations would merge and their constructor sets share tag ids; rename one",
+  EEmittedNameCollision(symbol, _) => "two different functions both emit as `{symbol}` — the dedup keeps the first, so every call meaning the second would reach the first instead. This is the compiler's own naming, not your program: report it",
   EUnresolvedType(h, epoch, _) => "handle {int_to_str(h)} @epoch={int_to_str(epoch)}",
   EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",

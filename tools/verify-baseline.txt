@@ -805,6 +805,22 @@ solo_violations_max: 0
 # that only forwards to it.
 eta_max: 0
 
+# frontier_red_max — the frontier legs allowed to stand red at a repin.
+# Read by march.sh, which runs the frontier ITSELF against the boot it just
+# wrote and refuses the pin when the count rises past this. It exists because
+# pin f862677e was blessed on a frontier verdict measured against the PRIOR
+# boot: honestly labelled, and still a verdict on the wrong generation, while
+# eleven legs were red on the right one. The gate had always refused red — it
+# exits nonzero and stamps the boot sha it proved — but the stamp is read by a
+# pre-commit hook and a fresh clone has none, so nothing in that environment
+# ever asked. Now the pin asks.
+#
+# ONE standing red: `why coordinates are the developer's`, which wants
+# Located to carry a handle rather than a bare span so show_reason can name a
+# module (Arc C of the plan, Hβ.reason.located-carries-a-handle). It goes to
+# zero there, and this ceiling with it.
+frontier_red_max: 1
+
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
 # receiver's full sorted field set. Born at ZERO (pin 4ce9914b7360), which

@@ -6680,11 +6680,18 @@ fn reachable_from_main(stmts) = {
 // visitor-walk projection of this set is the deeper form, gated on the
 // ev-slot seam close.
 //
-// ev_perform_node (+ its world_find_from walk) is the world-read the
-// LEvPerform arm mints (the world-as-value arc's R2) — the ONE runtime
-// evidence read; the keyed-region machinery died with the region.
+// THE WORLD WALK IS NOT IN THIS LIST, and the reason is the list's own
+// limit: seeding a NAME only reaches it if the module defining it is already
+// in the program's set. `ev_declaring_node` was a lib fn with zero Mentl
+// callers, so the wheel linked it (the wheel imports memory) and a small
+// program did not — eleven frontier legs read RED on an undefined symbol for
+// programs whose only crime was being small. It is emitted into the preamble
+// now, beside the `$world_push` it is the dual of, and needs no reaching at
+// all. `Hβ.driver.link-is-reachability` is what makes a minted name demand
+// its module the way an import does; every name below still rides on the
+// module set already carrying it.
 fn emit_runtime_contract() =
-  ["ev_declaring_node", "world_declaring_from", "node_arm_at", "len", "list_compare", "list_concat", "list_eq", "list_index", "list_set", "make_list", "make_list_sc", "slice", "str_compare", "str_concat", "str_eq", "str_hash"]
+  ["len", "list_compare", "list_concat", "list_eq", "list_index", "list_set", "make_list", "make_list_sc", "slice", "str_compare", "str_concat", "str_eq", "str_hash"]
 
 // make_list_sc is the literal allocator's SECOND face, paired with make_list:
 // emit_list_literal mints `call $make_list` for the word floor (sc 0) and

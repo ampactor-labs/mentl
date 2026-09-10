@@ -102,9 +102,45 @@ board_self_run() {
   printf '%s' "$out"
 }
 
-board_reported() {  # what the caller measured — recorded verbatim, never parsed
+# THE FRONTIER IS RE-DERIVED HERE, NOT ACCEPTED FROM THE CALLER, and this
+# function exists because accepting it shipped a regression. At pin
+# f862677e the caller passed a frontier verdict measured against the PRIOR
+# boot — labelled as such, honestly, and still worthless: the pin block
+# recorded a verdict on a generation that was not the one being blessed, and
+# eleven legs were red on the one that was. The gate itself was never at
+# fault (it exits nonzero on red, and its green stamp exists precisely so a
+# pre-commit gate can demand it ran against this exact wheel) — but that
+# stamp is read by a hook, and a fresh clone has no hooks, so in this
+# environment nothing anywhere refused.
+#
+# So march runs it, after the swap, against the boot it just wrote — the
+# same principle it already applies to m4: the orchestrator re-derives the
+# ground truth rather than committing on another runner's word (CLAUDE.md
+# ⟲). A red frontier marks the board RED and refuses the pin, EXCEPT for
+# the standing reds the baseline names, which is the project's own answer
+# to "expected red" everywhere else: a ratchet, not a sentence in a commit
+# message.
+board_frontier() {
+  local gate="tools/frontier-gate.sh" line red max
+  [ -x "$gate" ] && [ -f "$gate" ] || { printf '%s' "NOT RUN (no $gate)"; return; }
+  line=$(bash "$gate" --compiler boot 2>&1 | grep -E '^frontier: [0-9]+ pass' | tail -1)
+  [ -n "$line" ] || { printf '%s' "NOT RUN (the gate produced no summary)"; return; }
+  red=$(printf '%s' "$line" | grep -oE '[0-9]+ red' | grep -oE '[0-9]+')
+  max=$(grep -E '^frontier_red_max:' tools/verify-baseline.txt 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
+  if [ -n "$max" ] && [ -n "$red" ] && [ "$red" -gt "$max" ]; then
+    printf '%s' "${line#frontier: } — RED: rose past the $max standing red(s) in verify-baseline.txt"
+  else
+    printf '%s' "${line#frontier: }"
+  fi
+}
+
+board_reported() {  # board_reported <frontier line>. verify is the caller's, and
+                    # has to be: it runs doc-truth, which refuses until this pin's
+                    # narrative is written — so it cannot run from inside the
+                    # write of that very block. The frontier is passed in already
+                    # measured, so the gate runs ONCE per pin.
   printf '%s\n%s' \
-    "  - frontier: ${MARCH_FRONTIER:-NOT RUN (run tools/frontier-gate.sh)}" \
+    "  - frontier: $1" \
     "  - micros+census: ${MARCH_VERIFY:-NOT RUN (run tools/verify.sh)}"
 }
 
@@ -116,9 +152,13 @@ emit_provenance() {  # emit_provenance <gen> <verdict> <lines> <census>
   # $( ) strips the trailing newline board_self_run ends with, so the join
   # supplies it — without this the last self-run gate and the frontier line
   # share a line.
-  board="${selfrun}"$'\n'"$(board_reported)"
+  local frontier
+  frontier="$(board_frontier)"
+  board="${selfrun}"$'\n'"$(board_reported "$frontier")"
   redmark=""
-  case "$selfrun" in *RED*) redmark=$'\n- ‹BOARD RED — a gate above refuses this pin; fix it or restore the prior boot›';; esac
+  # The self-run gates and the frontier line march derives itself may both
+  # refuse; the caller's verify text may not, being free prose.
+  case "$selfrun$frontier" in *RED*) redmark=$'\n- ‹BOARD RED — a gate above refuses this pin; fix it or restore the prior boot›';; esac
   block=$(cat <<EOF
 - source: ‹NARRATIVE UNWRITTEN — replace this line: what landed and why,
   the §7 ledger entry of the same name carrying the arc›

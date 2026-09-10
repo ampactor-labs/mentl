@@ -1869,32 +1869,76 @@ fn dedup_names_flat(names, i, n, out, count) = if i >= n {
   }
 }
 
-fn fn_record_seen(records, target: String, i, n) = if i >= n {
-  false
-} else {
-  match list_index(records, i) {
-    (name, _, _, _) => if name == target { true } else { fn_record_seen(records, target, i + 1, n) },
-  }
-}
+// What a record already in the keep-set says about the one being offered.
+// Three outcomes, so an ADT: a Bool here would have to mean "seen" and leave
+// the two ways of being seen — the same function twice, and two functions
+// under one name — indistinguishable, which is exactly the distinction the
+// dedup exists to make and the one it was not making.
+type FnRecordVerdict = FrFresh | FrIdentical | FrCollision
 
 // Flat-buffer keep-first dedup of fn records — the sibling of
 // dedup_names, same O(U^3)->O(U^2) fix (Hβ.emit.flat-accumulator-dedup).
-fn dedup_fn_records(records) = {
+//
+// IT COMPARES THE RECORD, NOT THE NAME. Keep-first on a name alone is only
+// sound while no two DIFFERENT functions can share one, and that was true
+// here by two unrelated accidents rather than by anything checked: authored
+// duplicates are refused upstream (`E_DuplicateFnName`, whose own comment
+// says "the emitter would pick one silently"), and synthesized symbols —
+// `lambda_<h>`, `partial_<h>`, `__k_<ph>`, the twins' mangles — were unique
+// only because a mint counter is unique. The second accident is provenance
+// leaking into identity, and it is exactly what content-addressed emitted
+// names (Hβ.emit.identity-is-content-not-mint-order) removes. So the check
+// comes first: with the record compared, a genuine duplicate still dedups
+// (which is the deletion content naming is FOR) and a collision refuses
+// instead of dropping a body while its callers keep pointing at another.
+fn dedup_fn_records(records) with Diagnostic + Memory + Alloc + GraphRead + Intern = {
   let n = len(records)
   dedup_fn_records_flat(records, 0, n, make_list(n), 0)
 }
 
-fn dedup_fn_records_flat(records, i, n, out, count) = if i >= n {
+fn fn_record_verdict(records, r, i, n) = if i >= n {
+  FrFresh
+} else {
+  let existing = list_index(records, i)
+  match (existing, r) {
+    ((have, _, _, _), (want, _, _, _)) => if have == want {
+      // Names match, so the whole-record compare is the CONTENT compare —
+      // structural `==` to the bottom over the five node-kinds, which is the
+      // one equality the medium has (PLAN §5.U); no bespoke body walk.
+      if existing == r { FrIdentical } else { FrCollision }
+    } else {
+      fn_record_verdict(records, r, i + 1, n)
+    },
+  }
+}
+
+fn dedup_fn_records_flat(records, i, n, out, count) with Diagnostic + Memory + Alloc + GraphRead + Intern = if i >= n {
   slice(out, 0, count)
 } else {
   let r = list_index(records, i)
-  match r {
-    (name, _, _, _) => if fn_record_seen(out, name, 0, count) {
+  match fn_record_verdict(out, r, 0, count) {
+    FrFresh => dedup_fn_records_flat(records, i + 1, n, list_set(out, count, r), count + 1),
+    FrIdentical => dedup_fn_records_flat(records, i + 1, n, out, count),
+    FrCollision => {
+      report(EEmittedNameCollision(fn_record_name(r), fn_record_span(r)))
       dedup_fn_records_flat(records, i + 1, n, out, count)
-    } else {
-      dedup_fn_records_flat(records, i + 1, n, list_set(out, count, r), count + 1)
     },
   }
+}
+
+fn fn_record_name(r) = match r {
+  (name, _, _, _) => name,
+}
+
+// The record carries no span of its own, and it does not need one: its body's
+// first statement is a graph node, and the graph is where every coordinate
+// already lives. An empty body has nothing to point at and says so.
+fn fn_record_span(r) with GraphRead + Memory + Alloc + !Mutate = match r {
+  (_, _, body, _) => if len(body) == 0 {
+    span_zero()
+  } else {
+    span_of_node_raw(lexpr_handle(list_index(body, 0)))
+  },
 }
 
 // Emit the function table and elem mapping indices to function
@@ -2654,6 +2698,30 @@ fn emit_memory_decl(threaded, wants_rmw) = {
   // performs resolve
   // outer, never self).
   wat_emit("  (func $world_push (param $key i32)(param $entry i32)(param $iw i32)(local $n i32)(local.set $n (call $alloc (i32.const 16)))(local.get $n)(local.get $key)(i32.store offset=0)(local.get $n)(local.get $entry)(i32.store offset=4)(local.get $n)(global.get $world_g)(i32.store offset=8)(local.get $n)(local.get $iw)(i32.store offset=12)(global.set $world_g (local.get $n)))\n")
+  // $ev_declaring_node — THE WALK, the exact dual of the push above and
+  // therefore its neighbour. Walk the chain from $top: stop at the first node
+  // whose key@0 is the sought effect AND whose record has a NONZERO arm in
+  // this op's slot, which is the declaring test — emit_arm_writes skips the
+  // ops a handler does not implement and pad_group_to_effect_ops makes every
+  // slot present, so the zero is readable, and table slot 0 is reserved null
+  // so a real arm can never look like one. The arm address is the same one
+  // the perform's emit computes inline: record + 8 + 4*nstate + 4*(base+slot),
+  // where entry@4 is the install's own [record][base] view.
+  //
+  // THE KEY IS THE OP, NOT THE EFFECT. Keyed on the effect alone, this
+  // stopped at the innermost node for the effect whether or not that handler
+  // answers the op — a split-effect pair returned 15 where 33 is correct,
+  // with no diagnostic, a clean assemble and no trap. The compile-time walk
+  // had the identical error and got caught by the assembler; this one indexed
+  // a live arm region and ran.
+  //
+  // A miss is a BROKEN PROMISE, not a value: the sought key goes to scratch
+  // word 0 (the postmortem window) and then a load at 0xFFFFFFFF traps — a
+  // 4-byte read crossing 2^32, out of bounds at ANY wasm32 size including the
+  // full 65536 pages. `0 - 8` was the prior choice and went SILENT once memory
+  // reached 4GB, where 0xFFFFFFF8+4 is in bounds: the miss returned a virgin 0
+  // and the broken promise surfaced as a garbage dispatch far from here.
+  wat_emit("  (func $ev_declaring_node (param $top i32)(param $target i32)(param $slot i32)(result i32)(local $n i32)(local $entry i32)(local $record i32)(local.set $n (local.get $top))(block $done (loop $walk (br_if $done (i32.eqz (local.get $n)))(if (i32.eq (i32.load offset=0 (local.get $n))(local.get $target))(then (local.set $entry (i32.load offset=4 (local.get $n)))(local.set $record (i32.load offset=0 (local.get $entry)))(if (i32.load (i32.add (local.get $record)(i32.add (i32.const 8)(i32.add (i32.mul (i32.const 4)(i32.load offset=4 (local.get $record)))(i32.mul (i32.const 4)(i32.add (i32.load offset=4 (local.get $entry))(local.get $slot)))))))(then (return (local.get $n))))))(local.set $n (i32.load offset=8 (local.get $n)))(br $walk)))(i32.const 0)(local.get $target)(i32.store)(i32.load (i32.const -1)))\n")
   // The task record — [task closure@0][completion@4][result@8], allocated
   // per spawn through the ONE allocator (no static slot region, no
   // capacity ceiling, no tid ledger; every record is heap-uniform and
@@ -4804,7 +4872,7 @@ fn emit_wide_deref(r) = match r {
 fn emit_declaring_node(hs: String, ekey: String, slot) = {
   wat_emit("    (local.set $evn_")
   wat_emit(hs)
-  wat_emit(" (call $ev_declaring_node (local.get $__state) (global.get $world_g) (i32.const ")
+  wat_emit(" (call $ev_declaring_node (global.get $world_g) (i32.const ")
   wat_emit(int_to_str(string_offset(ekey)))
   wat_emit(") (i32.const ")
   wat_emit(int_to_str(slot))
