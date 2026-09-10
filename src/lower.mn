@@ -361,7 +361,7 @@ type LowExpr
   //   6th = arm_names — per-effect groups of (effect name, arm-fn names), op-decl
   //         order within each effect; emit lays each group contiguously and
   //         builds a thin [record, base] evidence-entry per effect (the world
-  //         chain node's entry — the perform's ev_perform_node dispatch).
+  //         chain node's entry — what the perform's walk reads to reach an arm).
   // Per PLAN §5.U.
   | LResumeK(Int, LowExpr, LowExpr)
   | LHandleWith(Int, LowExpr, LowExpr, String, [LowExpr], [{arms: [String], ename: String}])
@@ -377,38 +377,23 @@ type LowExpr
   // AST is where the literal lives and this is the pass that sees both.
   | LFeedback(Int, Int, LowExpr, LowExpr)
   // handle of the enclosing <~ site
-  // effect op invocation — Tier-1 direct-call form. 4th = state_local: the
-  // install-LOCAL name "__hstate_<h>" of the lexically-enclosing handler the
-  // arm runs against ("" sentinel = use caller __state). Threads the handler's
-  // STATE RECORD as the arm-call's __state per handler-IS-state.
   | LFeedbackPrior(Int)
-  | LPerform(Int, String, [LowExpr], String)
-  // handle, hname, op_name, stateful, args — the SINGLETON-tier perform as its own node: the direct arm call against the record resolved LIVE from the world chain (LWorldResolve on the HANDLER name — the op→handler edge is per-OP, so the handler is the singleton tier's key; an ename key mis-resolved the split-effect pair, where two handlers cover one effect's disjoint op sets and chain-top-for-the-ename is the WRONG record). The chain is the ONE home — a state-global cache went stale across every $world_g rebind (LResumeK, __k_compose): a k remainder crossing an exited install read the null page as its state, silently (the mn-world-resume-frozen 30-not-42). The stateful bit is the handler's own decl fact (config or `with` state — the arm reads the record for EITHER), read once at the mint; it selects the block SHAPE — stateful gets the SingletonUninstalled chain-miss guard (the compile gate's refusal conjunction at the runtime altitude), stateless keeps the unguarded form (the arm ignores __state, so a null record is sound by construction — the same licence the gate's STATEFUL conjunct encodes). Every walk delegates through singleton_perform_block (semantics identical by construction); the census walk fires its demand so the gate can refuse the stateful-and-never-installed perform whose chain find can only miss
-  // The chain-top record for a HANDLER, read LIVE from $world_g — the
-  // singleton perform's record source ($world_find in the preamble: walk
-  // [key][entry][parent][iw][hkey] nodes, i32.eq on the interned handler
-  // name at hkey@16, return the entry's record@0; 0 on miss). The ename
-  // key@0 stays the EVIDENCE tier's walk (ev_perform_node) — two keys,
-  // two dispatch semantics, one chain. Sound under every $world_g rebind
-  // by construction — a k re-entry's frozen chain IS what the find walks.
-  | LDirectPerform(Int, String, String, Bool, [LowExpr])
-  // handle, handler name (interned)
-  // Tier-2 evidence-dispatched perform (handler comes from the caller via
-  // an evidence slot on __state — handler IS evidence). The ev-slot holds
-  // a per-effect entry [record ptr, base]; the arm runs against that RECORD
-  // as its __state. The effect is addressed by its decl-IDENTITY (the effect
-  // name as key), NEVER by a position in this fn's row — position shifts under
-  // any row delta (the mn-eq→str_concat miscompile, proven). op_slot stays a
-  // position: it indexes the effect's OWN immutable decl-order op-list (a
-  // stable identity, not a row position). emit reads via a KEY-SCAN of the
-  // self-describing captured_evs region [key@0][record@4][base@8] entries:
-  //   entry  = scan __state captured_evs for str_eq(entry.key, the effect key)
-  //   record = entry[record];  base = entry[base]
-  //   arm    = record[8 + 4*record[4] + 4*(base + op_slot)]  (fence-relative
-  //            off the record's OWN nstate@4) — an interior read, never a
-  //            static body-captures guess.
-  | LWorldResolve(Int, String)
-  // handle, op_name, effect-key, op_slot, args
+  // THE ONE PERFORM. It replaced LPerform + LDirectPerform + LEvPerform,
+  // which were never three operations: they were ONE — walk the install
+  // chain innermost-out to the handler that DECLARES this op, run its arm
+  // against its record, under its install world — whose answer happened to
+  // be known to three different degrees. Written three times they disagreed
+  // twice in one session, on the KEY (silently wrong, 15 where 33 is right)
+  // and on the WORLD BRACKET (52 where the deep-handler law says 51), and
+  // neither divergence was a typo: two implementations of one operation
+  // cannot be held in agreement, and the failure is silent.
+  // Hβ.kernel.staging-is-an-epoch-not-a-mode is the position — compile time
+  // is the prefix of one execution that the bound edges permit, so what
+  // varies between these constructors is HOW MUCH WAS BOUND, never what the
+  // operation means. The bracket is uniform across all three by
+  // construction, which is what makes the divergence unconstructible rather
+  // than fixed.
+  | LPerform(Int, PerformDispatch, [LowExpr])
   // W6: handle, record, SELECTOR. The byte offset is a PROJECTION of the
   // receiver's resolved type (prefix-sum of repr_width over the sorted
   // fields) and projects at EMIT under the active specialization bracket —
@@ -416,7 +401,6 @@ type LowExpr
   // call site's instantiation closes the record (the LShow precedent, one
   // layer deeper). FByName selects a record field; FByIndex a positional
   // product slot.
-  | LEvPerform(Int, String, String, Int, [LowExpr])
   | LFieldLoad(Int, LowExpr, FieldSel)
   // W11: a REAL machine int<->float conversion — the gradient's coercion arm.
   // float_of_int / float_to_int are NOT identity stubs that reinterpret bits
@@ -462,6 +446,50 @@ type ConvertKind
   // i32.trunc_f64_s   — f64 truncated toward zero to i32
   | FloatToInt
 
+// HOW MUCH OF THE WALK WAS ALREADY DONE — the one perform's only variation.
+// The operation is fixed: find, innermost-out, the installed handler that
+// DECLARES this op; run its arm against its record, under its install world.
+// What differs is the epoch at which each part of that answer became
+// available, which is a property of the program and not a mode anyone
+// selects (Hβ.kernel.staging-is-an-epoch-not-a-mode).
+//
+// PdLexical(handler, op, install) — the install is in this very frame, so
+//   the walk finished at compile time and both the record and the install
+//   world are its own locals. The residual is a direct call.
+// PdResolved(handler, op, effect key, op slot) — exactly one handler
+//   declares the op, so the ARM was resolved statically while the record was
+//   not. The walk runs; the call is direct.
+// PdWalked(op, effect key, op slot) — nothing was bound. The walk yields
+//   record, world and the arm through the record's own slot; the call is
+//   indirect.
+//
+// EVERY ARM CARRIES THE OP, because a perform is a perform OF AN OP and the
+// executable-root census is keyed that way. Registering the EFFECT there
+// instead reached `demands_to_enames` as a name no EffectOpScheme claims and
+// fell through to STRICT — which is the right verdict for an unresolvable op
+// and reached by accident rather than by reading the op's own scheme. With
+// the op registered, the walked case still lands strict (no unique declarer
+// is exactly why it walks) and the resolved case is finally VISIBLE to the
+// gate at all, classified by its handler's statefulness the way the
+// classifier was written to do.
+//
+// The two resolved arms carry the HANDLER and the OP, never the `<h>_<op>`
+// symbol those two spell. Fusing them at the mint is the same violation this
+// whole node exists to end: emit needs the symbol, the preinstall-init check
+// needs the handler alone, and a stored fusion serves the first by making the
+// second unaskable — measured, in this arc, as three micros that stopped
+// naming E_InitPerformsOwnOp the moment the name went in pre-joined.
+// PdSelfState — NOT a dispatch. It is a direct call to a synthesized fn (the
+//   k drivers) against the caller's own __state, which used to hide behind
+//   LPerform's `""` state-local sentinel. A sentinel is a constructor that
+//   has not been named yet; naming it is what lets every OTHER arm bracket
+//   unconditionally, because this is the only one that must not.
+type PerformDispatch
+  = PdLexical(String, String, Int)
+  | PdResolved(String, String, String, Int)
+  | PdWalked(String, String, Int)
+  | PdSelfState(String)
+
 type LowValue = LInt(Int) | LFloat(Float) | LString(String) | LBool(Bool)
 
 type LowFn = LFn(String, Int, [String], [LowExpr], EffRow, Int)
@@ -472,7 +500,7 @@ type LowFn = LFn(String, Int, [String], [LowExpr], EffRow, Int)
 // capture count; handler arm fns pass nstate+total_arms
 // (the record's captured-evs sit after state AND arms);
 // plain top-level fns pass 0. emit_fn_body installs it as
-// the body-context so every LEvPerform/LEvRef key-scans the
+// the body-context so every LEvRef key-scans the
 // captured_evs region based at 8+4*fence — one rule across all three fn shapes.
 type FieldSel = FByName(String) | FByIndex(Int)
 
@@ -545,10 +573,7 @@ fn lexpr_handle(e) with Pure = match e {
   LHandleWith(h, _, _, _, _, _) => h,
   LFeedback(h, _, _, _) => h,
   LFeedbackPrior(h) => h,
-  LPerform(h, _, _, _) => h,
-  LDirectPerform(h, _, _, _, _) => h,
-  LWorldResolve(h, _) => h,
-  LEvPerform(h, _, _, _, _) => h,
+  LPerform(h, _, _) => h,
   LFieldLoad(h, _, _) => h,
   LConvert(h, _, _) => h,
   LStateSlotStore(h, _, _, _) => h,
@@ -646,7 +671,7 @@ fn lower_callee_name(fbody) = match fbody {
 // The `CallExpr` dispatch falls back to this when the callee isn't a
 // `SchemeKind`-recognized constructor or effect op. Every call is BARE:
 // the callee's performs dispatch through the LIVE WORLD CHAIN
-// (ev_perform_node — the world-as-value arc's R2), so no call threads an
+// (the world-as-value arc's R2), so no call threads an
 // evidence region. The one thing a call may carry is the CONTINUATION:
 // a resume-BOUND callee (reachable from a MultiShot arm per the
 // resume_bindings closure)
@@ -731,12 +756,12 @@ fn lower_call_dispatch(handle, f, fh, fbody, r_args) = {
         // zero-arg call (already reported there) lowers to the empty
         // record, never a garbage read past an empty args list.
         if len(lo_args) == 0 { LMakeRecord(handle, []) } else { list_index(lo_args, 0) },
-        Some(EffectOpScheme(_, _, _, _)) => // Row-guided dispatch per PLAN §6's handler-elimination
-        // tiers. The row IS the evidence contract:
-        //   - Effect in declared row → Tier 2: LEvPerform (handler
-        //     comes from caller via evidence slot on __state)
-        //   - Effect NOT in row → Tier 1: LPerform (handler is
-        //     locally installed, direct call)
+        Some(EffectOpScheme(_, _, _, _)) => // ONE perform, whose DISPATCH says how much of the walk this
+        // site could finish now (PerformDispatch). PLAN §6's
+        // handler-elimination tiers are degrees of that boundness, not
+        // three operations: the meaning is always "walk innermost-out to
+        // the node that DECLARES this op, run its arm against its record,
+        // under its install world."
         // A WASI import op bridges directly to the WASM-level import
         // (no $op_<name> handler arm) — the import IS the bridge.
         // addr (effect Cast) erases to its OPERAND: the word face IS
@@ -849,7 +874,7 @@ fn partial_split(r_args, n_args, n_ps, handle, i, ci) = if i >= n_ps {
 type PartialCalleeForm
   = PcfCall(String)
   | PcfVariant(TagId)
-  | PcfPerform(String, String, Bool)
+  | PcfPerform(PerformDispatch)
 
 // The callee shapes a partial can synthesize a body for: a top-level fn
 // (direct LCall) and ADT construction (LMakeVariant) — for both, infer's
@@ -870,23 +895,20 @@ fn partial_callee_form(handle, fbody, fh) = match fbody {
     match env_kind_of(name) {
       Some(FnScheme) => Some(PcfCall(name)),
       Some(ConstructorScheme(tag_id, _)) => Some(PcfVariant(tag_id)),
-      Some(EffectOpScheme(_, _, _, _)) => // An OP reified as a value. The dispatch tier is not free here: the
-      // LEXICAL tier names a __hstate local of the ENCLOSING frame, and
-      // this body becomes a lifted LFn where that local does not exist, so
-      // baking the reification site's lexical choice into an escaping
-      // closure would read a frame that is gone. The SINGLETON tier is the
-      // sound one by construction — it resolves the handler's record from
-      // the LIVE world chain inside the synthesized body, at CALL time,
-      // which is where an escaped closure's handler actually is (the same
-      // read-the-schedule-live law `><` obeys). So the op→handler edge
-      // decides: a unique declaring handler reifies, ambiguous or unhandled
-      // floors typed through lower_call_partial's None. The site facts are
-      // settled HERE, at the reference, because the note is a fact about
-      // the site and the args only arrive when the body is built.
-      match lower_op_default_handler(name) {
-        Some(hname) => Some(PcfPerform(hname, name, singleton_perform_note(handle, hname))),
-        None => None,
-      },
+      Some(EffectOpScheme(_, _, _, _)) => // An OP reified as a value, and it passes None for the lexical
+      // answer — not to disable a tier, but because it HAS no lexical
+      // answer: this body becomes a lifted fn, so a frame local resolved
+      // here would name a frame that is gone by the time it runs. The walk
+      // therefore finishes at call time, which is where an escaped
+      // closure's handler actually is (the same read-the-schedule-live law
+      // `><` obeys).
+      //
+      // This arm used to REFUSE whenever the op was ambiguous, because the
+      // only runtime walk it could reach keyed on the handler NAME and an
+      // ambiguous op has no single one. That refusal was the whole of the
+      // eta-wrapper ceiling. The op-keyed walk has no such gap, so there is
+      // nothing left to decline.
+      Some(PcfPerform(perform_dispatch_of(handle, name, None))),
       _ => None,
     }
   },
@@ -903,7 +925,7 @@ fn partial_callee_form(handle, fbody, fh) = match fbody {
 fn apply_callee_form(form, handle, fh, bargs) = match form {
   PcfCall(name) => LCall(handle, LGlobal(fh, name), bargs),
   PcfVariant(tag_id) => LMakeVariant(handle, tag_id, bargs),
-  PcfPerform(hname, op_name, stateful) => LDirectPerform(handle, hname, op_name, stateful, bargs),
+  PcfPerform(disp) => LPerform(handle, disp, bargs),
 }
 
 // A bare CONSTRUCTOR or OP name in value position is the parameter product
@@ -1795,7 +1817,7 @@ fn resolve_in_stack(op_name: String, ename, stack) = if ename == "" || len(stack
   if field_name_eq(stack_entry_name(e), "") {
     None
   } else if handler_declares_op(stack_entry_name(e), ename, op_name) {
-    Some({handle: stack_entry_handle(e), target: "{stack_entry_name(e)}_{op_name}"})
+    Some({handle: stack_entry_handle(e), target: stack_entry_name(e)})
   } else {
     resolve_in_stack(op_name, ename, drop_last(stack))
   }
@@ -1810,11 +1832,11 @@ fn resolve_in_stack(op_name: String, ename, stack) = if ename == "" || len(stack
 // emitted a call to an arm the resolved handler does not have. The
 // assembler caught it, which is the same
 // compiles-clean-then-refuses shape the reification landing just closed one
-// layer up. LDirectPerform's own comment had named the hazard ("an ename
-// key mis-resolved the split-effect pair") and the fix taken there was to
-// key the SINGLETON walk by handler name instead — moving the problem to a
-// key that cannot answer an ambiguous op, which is the whole of the
-// eta-wrapper ceiling.
+// layer up. The hazard had been NAMED in the tree ("an ename key
+// mis-resolved the split-effect pair") and the fix taken then was to key a
+// second walk by handler NAME instead — moving the problem to a key that
+// cannot answer an ambiguous op, which is where the eta-wrapper ceiling
+// came from. Both walks are one walk now, and both key on the op.
 //
 // Nothing is added to answer it. `build_handler_arm_names` already lays each
 // group's arms DENSE over [0, max_slot] with `""` at the ops this handler
@@ -1999,16 +2021,14 @@ fn lookup_effect_op_names(eff_name) = match env_lookup(eff_name) {
   None => [],
 }
 
-// Perform dispatch — the single decision point, lexical-install first.
-//   - A handler is lexically installed for the op's effect → Tier 1:
-//     LPerform-with-state, a direct `$op_<handler>_<op>` call against the
-//     install's OWN state record (`__hstate_<h>`), the SAME record the arm
-//     was installed against.
-//   - Else → Tier 2: LEvPerform, evidence-passing. The caller threads the
-//     handler record into __state's captured_evs keyed by the effect's
-//     IDENTITY; the read KEY-SCANS for it (no row position to shift). op_slot
-//     stays a position — the op's index in its effect's IMMUTABLE decl-order
-//     op-list (a stable identity, not a row position).
+// Perform lowering — the single decision point. The DISCIPLINE branches
+// here (a MultiShot perform yields rather than calling an arm); the
+// dispatch does not, because there is one perform and one walk. What the
+// site can bind of that walk NOW rides on the PerformDispatch it carries,
+// and op_slot is a position in every case — the op's index in its
+// effect's IMMUTABLE decl-order op-list (a stable identity, not a row
+// position), which is what makes "does this node DECLARE the op" a single
+// load rather than a table.
 // M4 — divergence: an expression that ALWAYS yields (unwinds and never
 // returns to its own position). An Abandon-op perform is the leaf; an
 // if/match whose every branch diverges diverges; a block diverges if a
@@ -2084,34 +2104,64 @@ fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline
   // call-boundary check (never a bare return, which would skip an
   // install's driver bracket — the M1.3 finding).
   LYield(handle, op_name, lo_args, LConst(handle, LInt(0))),
-  _ => lower_perform_tiers(handle, op_name, lo_args),
+  _ => lower_perform_walk(handle, op_name, lo_args),
 }
 
-fn lower_perform_tiers(handle, op_name, lo_args) = match lower_resolve_handler_for_op(op_name) {
+// THE ONE WALK, ASKED AT LOWER. It is the same traversal the runtime does —
+// innermost-out to the handler that declares this op — and this is simply the
+// PREFIX of it that the bound edges permit. A lexically enclosing install
+// answers the whole thing; a uniquely-declaring handler answers the arm but
+// not the record; nothing bound answers neither. Three residuals, one
+// operation, and no arm of the emit may differ on what it MEANS — which is
+// why the world bracket is not a property of any of them.
+fn lower_perform_walk(handle, op_name, lo_args) =
+  LPerform(handle, perform_dispatch_of(handle, op_name, lower_resolve_handler_for_op(op_name)), lo_args)
+
+// `lexical` is not a flag, it is the binding-time INPUT: how much of the walk
+// this site can finish now. An ordinary perform passes what the install stack
+// says; a REIFIED op (a bare op name lowered as a value) passes None, because
+// its body becomes a lifted fn and the frame a lexical answer would name will
+// not exist when it runs. Same walk, fewer bound edges, later epoch.
+fn perform_dispatch_of(handle, op_name, lexical) = {
+  let ename = lower_effect_name_of_op(op_name)
+  let slot = lower_compute_ev_slot_for_op(op_name)
+  perform_dispatch_at(handle, op_name, ename, slot, lexical)
+}
+
+fn perform_dispatch_at(handle, op_name, ename, slot, lexical) = match lexical {
   Some(r) => {
-    let target = resolve_target(r)
-    let state_local = "__hstate_{int_to_str(resolve_handle(r))}"
-    graph_dispatch_note(handle, DtLexical(target, state_local))
-    LPerform(handle, target, lo_args, state_local)
+    let hname = resolve_target(r)
+    graph_dispatch_note(handle, DtLexical("{hname}_{op_name}", "__hstate_{int_to_str(resolve_handle(r))}"))
+    PdLexical(hname, op_name, resolve_handle(r))
   },
-  None => // Tier 1-SINGLETON — no lexical install covers the op, but a UNIQUE
-  // handler declares it (the op→handler edge drawn at register_handler).
-  // Resolve that singleton's record LIVE from the world chain (the fn
-  // identity is static — the direct arm call stays; only the STATE is
-  // dynamic) and direct-call the arm, never thread a copy of a
-  // once-installed record through the ev-region (Carried-Truth). The
-  // route-infra handlers (graph/env/…) land here; it dissolves the
-  // deep-chain evidence trap at fresh_handle. Only a genuinely unknown or
-  // ambiguous handler keeps the evidence floor below.
-  match lower_op_default_handler(op_name) {
-    Some(hname) => lower_singleton_perform(handle, op_name, hname, lo_args),
+  None => match lower_op_default_handler(op_name) {
+    // The arm is static (one handler declares it) and the record is not. The
+    // record comes from the SAME walk the unbound case uses — it used to come
+    // from a second one keyed on the handler name, which could not answer an
+    // ambiguous op and was the whole of the eta ceiling.
+    Some(hname) => {
+      graph_dispatch_note(handle, DtSingleton(hname, handler_stateful(hname)))
+      PdResolved(hname, op_name, ename, slot)
+    },
     None => {
-      let ename = lower_effect_name_of_op(op_name)
-      let slot = lower_compute_ev_slot_for_op(op_name)
       graph_dispatch_note(handle, DtEvidence(ename, slot))
-      LEvPerform(handle, op_name, ename, slot, lo_args)
+      PdWalked(op_name, ename, slot)
     },
   },
+}
+
+// The arm fn this dispatch names, or "" when it names none. A walked
+// dispatch reaches its arm through the chain node's own record, so it
+// has no symbol to name and wants none; the other three call
+// `$op_<target>` directly. Emit writes that call and reachability keeps
+// the callee alive, so the two read ONE projection — the divergence
+// where emit called a symbol reachability had already pruned is what
+// this fn exists to make unconstructible.
+fn perform_target_name(disp) -> String = match disp {
+  PdLexical(hname, op_name, _) => "{hname}_{op_name}",
+  PdResolved(hname, op_name, _, _) => "{hname}_{op_name}",
+  PdWalked(_, _, _) => "",
+  PdSelfState(name) => name,
 }
 
 // The op's UNIQUE default handler, read from the EffectOpScheme edge drawn at
@@ -2129,77 +2179,15 @@ fn lower_op_default_handler(op_name) = match env_lookup(op_name) {
   None => None,
 }
 
-// Resolve the singleton's record from the LIVE world chain into a per-node
-// local, then direct-call $op_<hname>_<op> against it — the SAME record the arm
-// was installed with (handler IS state), reached live at its one home instead
-// of via a threaded ev-slot. The find keys on the HANDLER name (the op→handler
-// edge is per-op — hname is already in hand); emit interns it and compares the
-// interned pointer against the chain nodes' hkey@16. Reuses LPerform's Tier-1
-// emit with the chain find standing in for the lexical __hstate local.
-fn lower_singleton_perform(handle, op_name, hname, lo_args) =
-  LDirectPerform(handle, hname, op_name, singleton_perform_note(handle, hname), lo_args)
+// DELETED WITH THE TIER: singleton_perform_block built an LBlock of
+// LWorldResolve + LPerform, guarded by an LIf on the record pointer when the
+// handler was stateful, refusing SingletonUninstalled on a chain miss. All of
+// it is gone. The record now comes from the one walk, which TRAPS on a miss
+// with the effect key in the postmortem window — so the guard, its
+// LInvariantFailure, and the whole second block shape had nothing left to do.
+// A second refusal for a case the first refusal already covers is the same
+// duplication as a second walk, one layer up.
 
-// The singleton tier's SITE facts — the handler's stateful bit and the
-// dispatch note — read and written once at the node, returning the bit the
-// construction needs. Split out because the reified-op form (a bare op name
-// as a value, partial_callee_form) has to settle the tier at the reference
-// while the args only arrive when the synthesized body is built: the note is
-// a fact about the SITE, not about the call, and a deferred note would also
-// have widened the callee-form lambda's row past its siblings' — three arms
-// of one match must agree on a closure type, and a closure carries its row.
-fn singleton_perform_note(handle, hname) = {
-  let stateful = handler_stateful(hname)
-  graph_dispatch_note(handle, DtSingleton(hname, stateful))
-  stateful
-}
-
-// The singleton perform's emission SHAPE — the block every walk and the
-// emit delegate through, so LDirectPerform's semantics equal the old
-// inline form BY CONSTRUCTION at every layer (locals, reach, evidence,
-// bytes — Law 7 arbitrates). The record source is the LIVE world chain
-// (LWorldResolve on the node's effect key): the singleton tier's evidence
-// IS the chain-top entry, so the resolve is sound under every $world_g
-// rebind — an LResumeK re-entry's frozen chain carries the crossed
-// install's record where the old $<hname>_state_g cache had already been
-// bracket-restored to 0 (the mn-world-resume-frozen 30-not-42: a k
-// remainder's perform read the null page as its config, silently). The
-// shape is selected by the node's stateful bit, mirroring the compile
-// gate's own refusal conjunction at the runtime altitude: a STATEFUL
-// handler's arm reads its state record (config or `with` fields — the
-// record packs both), so a chain MISS is missing evidence and the op call
-// REFUSES loudly at the site (SingletonUninstalled) instead of silently
-// reading the null page as its state — the address-12 corruption class
-// where a never-installed collector's accumulator lived below every
-// region mark and surfaced as a stale-pointer walk whole compiles
-// downstream. A STATELESS handler's arm ignores __state, so the null
-// record is sound by construction and the block keeps the unguarded form
-// — the exact licence the gate's STATEFUL conjunct encodes; the two
-// altitudes cannot contradict on any shape.
-fn singleton_perform_block(handle, hname: String, op_name: String, stateful, lo_args) = {
-  let rec_local = "_{int_to_str(handle)}"
-  if stateful {
-    // The guard condition is the record pointer's own truthiness (wasm `if`
-    // consumes a nonzero i32 natively) — no comparison nodes, so no
-    // operand-width dispatch to mislead. Both arms and the condition carry
-    // the op node's handle, so the LIf's result width and the local's
-    // register name all read the ONE (handle → repr) projection the LLet
-    // decl wrote.
-    LBlock(
-      handle,
-      [LLet(handle, rec_local, LWorldResolve(handle, hname)), LIf(
-        handle,
-        LLocal(handle, rec_local),
-        [LPerform(handle, "{hname}_{op_name}", lo_args, rec_local)],
-        [LInvariantFailure(handle, SingletonUninstalled(hname))]
-      )]
-    )
-  } else {
-    LBlock(
-      handle,
-      [LLet(handle, rec_local, LWorldResolve(handle, hname)), LPerform(handle, "{hname}_{op_name}", lo_args, rec_local)]
-    )
-  }
-}
 
 // Look up which effect an op belongs to via EffectOpScheme.
 fn lookup_parent_effect(op_name) = match env_lookup(op_name) {
@@ -4231,7 +4219,7 @@ fn lower_resume_callk(handle, val, state_updates) = {
                 LLet(
                   handle,
                   "__rd_{int_to_str(handle)}",
-                  LPerform(handle, "__redrive_{hname}", [LLocal(handle, kr)], "")
+                  LPerform(handle, PdSelfState("__redrive_{hname}"), [LLocal(handle, kr)])
                 ),
                 // The redrive LOOPS this handler's OWN ops (dispatch-until-clear),
                 // so a flag STILL raised after it is a FOREIGN op — M4 made abort
@@ -4804,7 +4792,6 @@ fn lower_body_reified(body_node) = match k_spine_next(body_node, []) {
 fn k2_guard(e) = if ls_program_may_yield() { k2_floor_guard(e, true) } else { e }
 
 fn k2_floor_guard(e, terminus) = match e {
-  LWorldResolve(_, _) => e,
   LLet(h, name, init) => // A `__kr_` let is the k2 COMPOSITION JUNCTION's own park (the spine
   // machinery minted the flag-check + LKExtend right below it), so its
   // init's yield is already composed — walk it under terminus so the
@@ -4888,9 +4875,7 @@ fn k2_floor_guard(e, terminus) = match e {
   LMakeRecord(h, fs) => LMakeRecord(h, k2_floor_list(fs)),
   LMakeVariant(h, t, fs) => LMakeVariant(h, t, k2_floor_list(fs)),
   LFeedback(h, d, b, s) => LFeedback(h, d, k2_floor_guard(b, false), k2_floor_guard(s, false)),
-  LPerform(h, n, args, r) => LPerform(h, n, k2_floor_list(args), r),
-  LDirectPerform(h, hn, op, st, args) => LDirectPerform(h, hn, op, st, k2_floor_list(args)),
-  LEvPerform(h, n, ev, s, args) => LEvPerform(h, n, ev, s, k2_floor_list(args)),
+  LPerform(h, d, args) => LPerform(h, d, k2_floor_list(args)),
   LWasiCall(h, n, args) => LWasiCall(h, n, k2_floor_list(args)),
   LFieldLoad(h, rec, o) => LFieldLoad(h, k2_floor_guard(rec, false), o),
   LConvert(h, k, x) => LConvert(h, k, k2_floor_guard(x, false)),
@@ -5626,16 +5611,20 @@ fn reach_match_arms(arms, acc) = if len(arms) == 0 {
   }
 }
 
+fn reach_perform_target(disp) = {
+  let t = perform_target_name(disp)
+  if t == "" { [] } else { ["op_{t}"] }
+}
+
 fn reach_names_expr(expr, acc) = match expr {
-  LWorldResolve(_, _) => acc,
   LGlobal(_, n) => [n] ++ acc,
   LDirectCall(_h, _fh, n, _t, args) => reach_names_list(args, [n] ++ acc),
-  LPerform(_h, target, args, _) => // emit calls `$op_<target>` (the arm fn), so reach the arm fn by its emitted
-  // name — the un-prefixed `target` matched nothing (installed handlers survived
-  // via their reached decl-container, but a singleton dispatch to an UNINSTALLED
-  // handler is the arm fn's only reference).
-  reach_names_list(args, ["op_{target}"] ++ acc),
-  LDirectPerform(h, hn, op, st, args) => reach_names_expr(singleton_perform_block(h, hn, op, st, args), acc),
+  LPerform(_h, disp, args) => // Emit calls op_<target> (the arm fn), so reach the arm fn by its emitted
+  // name — the un-prefixed target matched nothing (installed handlers survive
+  // via their reached decl-container, but a singleton dispatch to an
+  // UNINSTALLED handler is the arm fn's only reference). A walked dispatch
+  // names nothing and reaches its arm through the chain node's record.
+  reach_names_list(args, reach_perform_target(disp) ++ acc),
   LHandleWith(_h, b, hn, _hname, inits, arm_names) => reach_names_list(
     inits,
     reach_names_expr(hn, reach_names_expr(b, reach_arm_group_names(arm_names, acc)))
@@ -5676,7 +5665,6 @@ fn reach_names_expr(expr, acc) = match expr {
   LMatch(_h, s, arms) => reach_match_arms(arms, reach_names_expr(s, acc)),
   LFeedback(_h, _d, b, s) => reach_names_expr(s, reach_names_expr(b, acc)),
   LWasiCall(_h, _n, args) => reach_names_list(args, acc),
-  LEvPerform(_h, _n, _e, _s, a) => reach_names_list(a, acc),
   LInvariantFailure(_, _) => acc,
   LFieldLoad(_h, rec, _off) => reach_names_expr(rec, acc),
   LConvert(_h, _, operand) => reach_names_expr(operand, acc),
@@ -6501,15 +6489,13 @@ fn spec_global_name(h, name: String) with EnvRead + LookupTy + GraphRead + WASI 
 // operand handles (arith / comparison / equality operands — the floor-is-
 // wrong witnesses the worthiness predicate reads). acc = (sites, ophs).
 fn spec_scan_expr(expr, acc) with Memory + Alloc = match expr {
-  LWorldResolve(_, _) => acc,
   LGlobal(h, n) => match acc {
     (s, o) => ([(h, n)] ++ s, o),
   },
   LDirectCall(_h, fh, n, _t, args) => match spec_scan_list(args, acc) {
     (s, o) => ([(fh, n)] ++ s, o),
   },
-  LPerform(_h, _t, args, _) => spec_scan_list(args, acc),
-  LDirectPerform(h, hn, op, st, args) => spec_scan_expr(singleton_perform_block(h, hn, op, st, args), acc),
+  LPerform(_h, _d, args) => spec_scan_list(args, acc),
   LHandleWith(_h, b, hn, _hname, inits, _arms) => spec_scan_list(inits, spec_scan_expr(hn, spec_scan_expr(b, acc))),
   LLet(_h, _n, inner) => spec_scan_expr(inner, acc),
   LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f), caps) => spec_scan_list(caps, spec_scan_list(body, acc)),
@@ -6568,7 +6554,6 @@ fn spec_scan_expr(expr, acc) with Memory + Alloc = match expr {
   },
   LFeedback(_h, _d, b, s) => spec_scan_expr(s, spec_scan_expr(b, acc)),
   LWasiCall(_h, _n, args) => spec_scan_list(args, acc),
-  LEvPerform(_h, _n, _e, _s, a) => spec_scan_list(a, acc),
   LInvariantFailure(_, _) => acc,
   LFieldLoad(_h, rec, _sel) => // A field-load receiver is a STRUCTURE witness: a var-rooted receiver
   // bound at a site to a concrete record/tuple heals under that site's twin.

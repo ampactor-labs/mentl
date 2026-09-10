@@ -264,9 +264,9 @@ fn report_unhandled_effects(lowered) = match env_lookup("main") {
           // (the seventh: visit_effect_demand/install), run over the
           // post-reach tree the gate already holds. The artifact is the
           // truth source: dead-code performs never appear (reach pruned
-          // them from this tree), a resolved install's LPerform fires no
-          // demand, and the floor's LEvPerform carries its ename on the
-          // node. The full collector bracket rides along because the one
+          // them from this tree), and every perform that WALKS carries its
+          // ename in its own dispatch, so the demand is read off the node
+          // rather than re-derived. The full collector bracket rides along because the one
           // walk fires every projection's ops.
           let census = {
             walk_lemit(lowered)

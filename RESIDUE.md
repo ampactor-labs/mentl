@@ -87,9 +87,89 @@ invalidates a cone — which is also what the Resident Space session needs to
 stop re-deriving, and what makes `persist = memcpy` worth having across
 runs rather than within one. Sequenced with Arc E of §11's Space spine.
 
-`Hβ.effects.lexical-tier-omits-the-world-bracket` — NAMED 2026-09-09, a
-FACE of `Hβ.effects.one-walk-three-implementations` below and the measured
-proof that the three walks do not merely key differently, they DISAGREE.
+`Hβ.kernel.staging-is-an-epoch-not-a-mode` — NAMED 2026-09-10. Not a feature
+request: the position that says which of the two shapes below is a fix and
+which is a workaround, and the reason the dispatch peers are ONE peer.
+
+THE MEASURED MOTIVATION, both from this session's own digs. Mentl's three
+dispatch tiers ARE a binding-time analysis, hand-rolled — lexical = the
+install is statically known, singleton = the handler is statically unique,
+evidence = neither — and each has its own implementation, its own key and its
+own emit path. In one session that produced TWO semantic divergences between
+implementations of one operation: the keys disagreed (silently wrong, 15
+where 33 is correct, `mn-split-effect-evidence.mn`) and the world brackets
+still disagree (52 where the law says 51, `mn-deep-handler-arm.mn`). Neither
+was a typo. Two implementations of one operation cannot be held in agreement,
+and the failure mode is silence.
+
+WHAT EVERY EXISTING ANSWER SHARES. Partial evaluation, MetaOCaml's stage
+brackets, Zig's `comptime`, Rust's `const fn`, Koka's evidence tiers: they
+differ hugely in ergonomics and agree that there are TWO EVALUATORS over one
+program whose equivalence is a theorem proved once and thereafter hoped. Rust
+pays in a duplicated universe (const traits, const generics). Zig pays in a
+comptime interpreter beside the generated code, and sells "same source" as
+the feature precisely because two evaluators is the norm. MetaOCaml makes the
+programmer draw the boundary by hand. The staging annotation exists because
+the language cannot TELL — that is the assumption to kill.
+
+THE FORM, four moves, each riding a primitive Mentl already has:
+1. **Binding time is a ROW, not an annotation.** "Computable now" is the
+   absence of dependence on an unbound edge — the same Boolean algebra with
+   negation that proves `!Alloc`, transitively. `const fn` is the effect row
+   Rust does not have, reimplemented as a parallel type system. As a row
+   there is no second universe and nothing to annotate.
+2. **The residual is a CONTINUATION, not a generated program.** You do not
+   specialize, you RUN; where execution meets an unbound edge it SUSPENDS.
+   §4④ already makes suspension one substrate for search, backtracking and
+   durable execution, and `persist = memcpy` is built — so the compiled
+   artifact is the memcpy'd continuation of the compile. Futamura needs a
+   specializer and an interpreter; this needs an epoch.
+3. **The cut is therefore a HANDLER.** Where execution suspends is a
+   scheduling decision — `~> Stage`, read live at the install, exactly as
+   `Seq | Thread | Simd | Gpu` already are. How much runs at build time stops
+   being a language design and becomes a handler swap; the same suspension
+   resumes on another machine.
+4. **The gradient is the dial.** Pin a depth, a repr, an instance → more of
+   the graph is bound → more completes early → the residual shrinks. Zig and
+   Rust give a binary keyword; here "how much ran early" is a MEASUREMENT of
+   how much was proven, on the gradient that already drives every projection.
+
+IN ONE SENTENCE: there is no compile time and no run time. There is one
+execution over one graph; compile time is the prefix of it the bound edges
+permit, and the artifact shipped is the continuation where it stopped.
+
+ALREADY HALF-BUILT, which is the strongest evidence for it. `mint_fold`
+(egraph.mn) does not emit a residual program — it MINTS A NODE and draws an
+equivalence edge. Compile-time evaluation is already an edge in the graph
+rather than a transformation over source. The shape is right; it is applied
+to arithmetic and nothing else.
+
+THE HONEST COST. If compile-time evaluation is real execution then
+compile-time effects are real effects and the compiler must handle them —
+which is the answer, not the problem: `~> Stage` catches them and `!IO`
+PROVES the build touched no network, a strictly better story for build
+reproducibility than Zig (comptime IO forbidden arbitrarily) or Rust
+(const-eval as a crippled sublanguage). The genuinely hard part is
+termination: a suspension that never suspends is a hung compile. Mentl's
+answer already exists in kind — `E_ComputedDelayDepth` and the K-exhausted
+Mycroft floor both refuse rather than loop.
+
+THE FALSIFIABLE TEST, and it is a gate rather than an argument: under this
+design `resolve_in_stack` and `world_declaring_from` have exactly ONE
+definition, and both divergences above become UNCONSTRUCTIBLE rather than
+fixed. Anything that leaves two definitions and adds a third agreement to
+maintain is a workaround wearing the fix's clothes.
+
+`Hβ.effects.lexical-tier-omits-the-world-bracket` — NAMED 2026-09-09,
+**RESOLVED 2026-09-10 BY CONSTRUCTION, in the tree, boot not yet re-pinned**
+(`tests/frontier/mn-deep-handler-arm.mn` reads 51 through this tree's m2 and
+52 through the old boot, which is what the pin is for). Not fixed: made
+unconstructible. The three writings became one node, so the bracket is
+emitted once for every dispatch that calls an arm and there is no longer a
+tier that could omit it — which is the falsifiable test its parent peer
+banked, discharged. A FACE of `Hβ.effects.one-walk-three-implementations`
+below and the measured proof that the three walks did not merely key
+differently, they DISAGREED.
 
 THE LAW is stated by the tree, not imported: the evidence tier's emit
 comment says "only the arm call itself runs under the node's install_world
@@ -124,11 +204,62 @@ runtime message carrying no number — 502 produces the identical message. The
 law that the number form of a claim must be READ FROM THE ARTIFACT applies
 to a number you reasoned your way to just as much as to one you remembered.
 
-`Hβ.effects.one-walk-three-implementations` — NAMED 2026-09-09 by asking
-whether the thing the reification landing worked AROUND was itself ultimate.
-It is not, and the three dispatch tiers PLAN §6 presents as "the proof
-becomes the dispatch" are, at the artifact, ONE traversal written three
-times.
+`Hβ.effects.one-walk-three-implementations` — NAMED 2026-09-09, **BUILT
+2026-09-10, boot not yet re-pinned.** Four LowExpr constructors
+(`LPerform`, `LDirectPerform`, `LEvPerform`, `LWorldResolve`) became one
+`LPerform(Int, PerformDispatch, [LowExpr])`, whose only variation is HOW
+MUCH OF THE WALK WAS ALREADY BOUND — `PdLexical` / `PdResolved` /
+`PdWalked`, plus `PdSelfState`, which is not a dispatch at all but the k
+drivers' direct call, named because it was hiding behind the old node's `""`
+state-local sentinel and is the one arm that must NOT bracket. Deleted with
+them: `$world_find` (the hand-written WAT second walk), `hkey@16` and with it
+the chain node's fifth word (20 bytes → 16 — a key that existed only so a
+second walk could find a handler BY NAME, when naming the handler was never
+the question), `singleton_perform_block`, `singleton_perform_note`, and the
+three `lib/dsp/processors.mn` eta wrappers the ambiguous-op gap forced
+(`eta` 3 → 0, a CONSEQUENCE and not a target). The record below is what it
+was while open.
+
+THE BUILD FOUND TWO MORE, and both are worth more than the collapse:
+
+- **`Hβ.emit.fn-table-index-zero-aliased-the-absence` — RESOLVED the same
+  landing.** The declaring test on both sides is "the arm slot is filled" —
+  `""` at compile time, nonzero at runtime, because `emit_arm_writes` skips
+  the ops a handler does not implement and the allocator's virginity
+  contract leaves those slots 0. But table index 0 was a REAL function, so
+  "no arm here" and "call whichever fn sorted first" were the same word.
+  Measured, not reasoned: `op_outer_note` drew index 0 in the two-handler
+  fixture, the walk read the one node that DID declare the op as a gap,
+  walked past it, and trapped. Slot 0 is reserved null now, emitted at the
+  one writer (`emit_fn_table` + `fn_table_idx`, wasm.mn), so a null funcref
+  traps at `call_indirect` and every zero fn_ptr anywhere in the image — a
+  virgin closure record, a cleared slot — refuses loudly instead of
+  dispatching somewhere unrelated. This is forensic law 5 exactly: an
+  invariant held by ACCIDENT, named and made a contract.
+
+- **The census channel is OP-keyed and the collapse was feeding it the
+  EFFECT.** `demands_to_enames` (pipeline.mn) resolves each demand through
+  `env_lookup` as an `EffectOpScheme` to classify it; an effect name is a
+  name no scheme claims, so it fell through the `_` arm to STRICT. That is
+  the right verdict for an op with no unique declarer and it was being
+  reached by accident rather than by reading the op's own scheme. Every
+  dispatch carries its op now: the walked case still lands strict (having no
+  unique declarer is exactly why it walks) and the RESOLVED case became
+  visible to the executable-root gate at all, which it never was — the
+  singleton tier's direct call fired no demand, so the gate could not see
+  it. `mn-singleton-preinstall-call` is the fixture that measured the
+  difference.
+
+  Both of these are the same shape as the peer itself, one layer down: a
+  derived value stored where the facts belonged. `PdResolved` first shipped
+  carrying the fused `<handler>_<op>` symbol because emit wants a symbol —
+  which made the handler name unaskable and silently un-armed
+  `E_InitPerformsOwnOp` in three micros. The dispatch carries the two facts;
+  `perform_target_name` spells the symbol.
+
+THE RECORD, as it stood: the three dispatch tiers PLAN §6 presents as "the
+proof becomes the dispatch" were, at the artifact, ONE traversal written
+three times.
 
 THE TRAVERSAL: walk the install chain innermost-out; stop at the first
 handler that covers this op; call its arm against its record.

@@ -201,9 +201,7 @@ effect ImageAlloc {
 //
 // ─── The evidence read IS the world walk (the world-as-value arc) ────────
 // The live install chain — [key@0][entry@4][parent@8][install_world@12]
-// [hkey@16] nodes consed by every install's $world_push (hkey = the interned
-// handler name, the SINGLETON tier's find key — $world_find walks it; this
-// evidence walk keys on the ename at @0) — is walked from world_top()
+// nodes consed by every install's $world_push — is walked from world_top()
 // by interned-key i32.eq (string constants dedup — W5 — so the key the
 // install PLACED and the key the perform SEEKS are the SAME offset), and
 // the perform dispatches through the FOUND NODE: node.entry is the same

@@ -1652,7 +1652,7 @@ effect SpecTwins {
 //   offset 8+4*i    : the i-th capture      (i in 0..capture_count)
 //   offset 8+4*C+4*j: the j-th evidence fn idx (C = capture_count)
 // The body's evidence count and capture_count are known at emit time;
-// LEvPerform's offset arithmetic is compile-time-resolved.
+// the perform's offset arithmetic is compile-time-resolved.
 type Evidence = Ev(String, Int)
 
 // op_name, slot_idx — the slot in __state where
@@ -2212,8 +2212,8 @@ type DiagKind
   // from a state init or a config default, which lower into one inits
   // list and so reach this one class (measured: both refuse). The
   // install's world_push has not run while they run — by construction,
-  // for every install of it — so the singleton dispatch's world_find
-  // provably returns 0 and the belt beneath it is the only outcome. The
+  // for every install of it — so the dispatch's walk provably reaches the
+  // chain's end and the loud refusal beneath it is the only outcome. The
   // runtime already says this precisely; saying it at compile time is the
   // difference between a program that traps and one that never ships
   // (handler name, op name).
@@ -2809,9 +2809,9 @@ fn diag_refuses(d) with Pure = match d {
   // the lowered install itself — a direct-perform inside `LHandleWith`'s
   // own inits list, naming that same install's handler. No resolution
   // dependency and no extent guess: the install's world_push has not run
-  // while its inits run, for every install, so the singleton dispatch's
-  // world_find provably answers 0. The runtime already refuses precisely
-  // there (the belt under the guard); arming moves the same verdict to a
+  // while its inits run, for every install, so the dispatch's walk
+  // provably reaches the chain's end. The runtime already refuses precisely
+  // there (ev_declaring_node's own trap); arming moves the same verdict to a
   // point where nothing has been emitted. Census on the wheel at arming:
   // 0 — every handler in it has a pure init, which is why no gate saw the
   // shape until one was written for it.

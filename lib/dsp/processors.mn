@@ -31,17 +31,13 @@ handler lowpass(alpha) with state = 0.0 {
   },
 }
 
-fn process_lowpass(alpha, buffer) = {
-  // NOT `map(process, buffer)`. A bare op reifies now — but only when ONE
-  // handler declares it, because the reified body resolves its record from
-  // the live world chain by HANDLER name, at call time. `process` is
-  // declared by lowpass, biquad AND envelope, so there is no single name to
-  // resolve and no single arm to call, and the reference floors typed.
-  // Hβ.emit.reified-op-needs-a-declaring-set-walk banks the general form:
-  // walk the chain against the DECLARING SET and reach the arm through the
-  // record. These three wrappers are the whole of the eta-wrapper ceiling.
-  map((x) => process(x), buffer)
-} ~> lowpass(alpha)
+// A bare op IS the function value — `process` is declared by lowpass,
+// biquad AND envelope, and that ambiguity used to be fatal here because the
+// reified body resolved its record by HANDLER name, which three declarers
+// have no single answer to. The walk keys on the OP now, so the reified
+// value means what it always meant: whichever install answers `process`
+// where the closure is actually called.
+fn process_lowpass(alpha, buffer) = map(process, buffer) ~> lowpass(alpha)
 
 // ── Biquad filter ───────────────────────────────────────────
 // Five config coefficients captured at install; four state cells (the two
@@ -53,17 +49,7 @@ handler biquad(b0, b1, b2, a1, a2) with y1 = 0.0, y2 = 0.0, x1 = 0.0, x2 = 0.0 {
   },
 }
 
-fn process_biquad(b0, b1, b2, a1, a2, buffer) = {
-  // NOT `map(process, buffer)`. A bare op reifies now — but only when ONE
-  // handler declares it, because the reified body resolves its record from
-  // the live world chain by HANDLER name, at call time. `process` is
-  // declared by lowpass, biquad AND envelope, so there is no single name to
-  // resolve and no single arm to call, and the reference floors typed.
-  // Hβ.emit.reified-op-needs-a-declaring-set-walk banks the general form:
-  // walk the chain against the DECLARING SET and reach the arm through the
-  // record. These three wrappers are the whole of the eta-wrapper ceiling.
-  map((x) => process(x), buffer)
-} ~> biquad(b0, b1, b2, a1, a2)
+fn process_biquad(b0, b1, b2, a1, a2, buffer) = map(process, buffer) ~> biquad(b0, b1, b2, a1, a2)
 
 // ── Envelope follower ───────────────────────────────────────
 // Asymmetric attack/release captured at install; `state` is the running
@@ -77,17 +63,7 @@ handler envelope(attack, release) with state = 0.0 {
   },
 }
 
-fn process_envelope(attack, release, buffer) = {
-  // NOT `map(process, buffer)`. A bare op reifies now — but only when ONE
-  // handler declares it, because the reified body resolves its record from
-  // the live world chain by HANDLER name, at call time. `process` is
-  // declared by lowpass, biquad AND envelope, so there is no single name to
-  // resolve and no single arm to call, and the reference floors typed.
-  // Hβ.emit.reified-op-needs-a-declaring-set-walk banks the general form:
-  // walk the chain against the DECLARING SET and reach the arm through the
-  // record. These three wrappers are the whole of the eta-wrapper ceiling.
-  map((x) => process(x), buffer)
-} ~> envelope(attack, release)
+fn process_envelope(attack, release, buffer) = map(process, buffer) ~> envelope(attack, release)
 
 // ── Preset handlers ─────────────────────────────────────────
 handler warm_filter with state = 0.0 {
