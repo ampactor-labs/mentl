@@ -35,6 +35,75 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-10 · pin f862677e5959751a · ONE WALK. TRANSITION m3 == m4, census 0,
+  micros 149/0, eta 3 → 0, movers 435.
+  ▶ FOUR NODES WERE ONE OPERATION. `LPerform`, `LDirectPerform`, `LEvPerform`
+  and `LWorldResolve` all mean: walk the install chain innermost-out to the
+  handler that DECLARES this op, run its arm against its record, under its
+  install world. What differed was never the meaning — it was how much of
+  that walk the bound edges had already finished, which is a property of the
+  program and not a mode anyone selects
+  (`Hβ.kernel.staging-is-an-epoch-not-a-mode`, banked this session, is the
+  position that says so). Written four times they disagreed twice in one
+  session: on the KEY (silently wrong, 15 where 33 is right) and on the WORLD
+  BRACKET (52 where the deep-handler law says 51). Neither was a typo, and
+  that is the whole argument — two implementations of one operation cannot be
+  held in agreement, and the failure is silent.
+  ▶ THE FORM: `LPerform(Int, PerformDispatch, [LowExpr])` with
+  `PdLexical(handler, op, install)` / `PdResolved(handler, op, ekey, slot)` /
+  `PdWalked(op, ekey, slot)`, plus `PdSelfState`, which is NOT a dispatch —
+  it is the k drivers' direct call against the caller's own `__state`, which
+  had been hiding inside the old node's `""` state-local sentinel. Naming it
+  is what lets every other arm bracket unconditionally, because it is the one
+  that must not. `Hβ.effects.lexical-tier-omits-the-world-bracket` is
+  therefore RESOLVED BY CONSTRUCTION rather than fixed: there is no tier left
+  that could omit the bracket. That was the falsifiable test its parent peer
+  banked, and it discharged.
+  ▶ DELETED: `$world_find` (the hand-written WAT second walk), `hkey@16` and
+  with it the chain node's fifth word — 20 bytes → 16 — a key that existed
+  only so a second walk could find a handler BY NAME, when naming the handler
+  was never the question; `singleton_perform_block`, `singleton_perform_note`,
+  and the three `lib/dsp/processors.mn` eta wrappers the ambiguous-op gap had
+  forced. eta reaching 0 is a CONSEQUENCE of the walk keying on the op, not a
+  target that was chased.
+  ▶ THE BUILD FOUND TWO DEFECTS WORTH MORE THAN THE COLLAPSE, both the same
+  shape as the peer itself one layer down.
+    (1) THE FN TABLE'S INDEX 0 ALIASED THE ABSENCE. Both sides test "the arm
+    slot is filled" — `""` at compile time, nonzero at runtime, because
+    `emit_arm_writes` skips the ops a handler does not implement and the
+    allocator's virginity contract leaves those slots 0. But table index 0
+    was a REAL function, so "no arm here" and "call whichever fn sorted
+    first" were the same word. Measured, not reasoned: `op_outer_note` drew
+    index 0 in the two-handler fixture, the walk read the one node that DID
+    declare the op as a gap, walked past it, and trapped. Slot 0 is reserved
+    null now, emitted at the one writer (`emit_fn_table` + `fn_table_idx`),
+    so a null funcref traps at `call_indirect` and every zero fn_ptr anywhere
+    in the image — a virgin closure record, a cleared slot — refuses loudly
+    instead of dispatching somewhere unrelated. Forensic law 5 exactly: an
+    invariant held by ACCIDENT, named and made a contract.
+    (2) THE EXECUTABLE-ROOT CENSUS IS OP-KEYED AND THE COLLAPSE FED IT
+    EFFECTS. `demands_to_enames` resolves each demand through `env_lookup` as
+    an `EffectOpScheme`; an effect name is a name no scheme claims, so it
+    fell through the `_` arm to STRICT — the right verdict for an op with no
+    unique declarer, reached by accident rather than by reading the op's own
+    scheme. Every dispatch carries its op now: the walked case still lands
+    strict (having no unique declarer is exactly why it walks) and the
+    RESOLVED case became visible to the gate at all, which it never was —
+    the singleton tier's direct call fired no demand, so the root gate could
+    not see it. `mn-singleton-preinstall-call` measured the difference.
+  ▶ AND ONE I WROTE MYSELF, recorded because the census law's whole point is
+  that the second instance is the stop: `PdResolved` first shipped carrying
+  the fused `<handler>_<op>` symbol, because emit wants a symbol. That made
+  the handler name unaskable and silently un-armed `E_InitPerformsOwnOp` in
+  three micros. The dispatch carries the two facts; `perform_target_name`
+  spells the symbol. A derived value stored where the facts belonged — inside
+  the landing whose entire subject is that violation.
+  ▶ THE PIN: `mn-deep-handler-arm` 52 → 51, split-effect pair holds 33/33,
+  `op-as-value` 6, `ctor-as-value` 6, micros 149/0, TRANSITION with m3 == m4,
+  peak 2355148 KB under the 2358000 ceiling. Frontier was 377/2 against the
+  OLD boot with `deep-handler-arm` as one of the two reds; this pin is what
+  blesses it.
+
 - 2026-09-10 · pin cc1b7170971d1910 · THE RUNTIME WALK ASKS THE OP TOO. FIXED
   POINT m2 == m3, census 0, frontier 377 pass / 2 red.
   ▶ THE SILENT HALF OF THE PREVIOUS LANDING'S DEFECT. Pin 5c39a1a7 fixed the

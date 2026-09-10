@@ -789,16 +789,21 @@ solo_violations_max: 0
 # then the eight unblocked wrappers came out against the new boot: four
 # constructor wrappers in cli.mn, three `map((v) => TVar(v), …)` in infer.mn,
 # and `map((h) => interrogate_at(h))` in eight_loop.mn.
-# THE THREE THAT REMAIN ARE ONE SHAPE, and it is a different blocker: all
-# three are `map((x) => process(x), buffer)` in lib/dsp/processors.mn, where
-# `process` is declared by lowpass, biquad AND envelope. A reified op
-# resolves its handler from the live world chain by HANDLER name at call
-# time, so an ambiguous op has no single name to resolve and no single arm to
-# call. This ceiling reaches 0 when
-# Hβ.emit.reified-op-needs-a-declaring-set-walk lands — the chain walk keyed
-# on the declaring set — and NOT by rewriting the three as named wrappers,
-# which would launder the same redundancy past this very count.
-eta_max: 3
+# 2026-09-10: 3 -> 0, at pin f862677e5959751a. The last three were one shape
+# and a different blocker: `map((x) => process(x), buffer)` three times in
+# lib/dsp/processors.mn, where `process` is declared by lowpass, biquad AND
+# envelope. A reified op resolved its handler from the live world chain by
+# HANDLER name, so an ambiguous op had no single name to resolve and no
+# single arm to call. The one-walk collapse keys that walk on the OP, so
+# ambiguity stopped being fatal and the three wrappers came out bare — a
+# CONSEQUENCE of the walk, never a target, and specifically not the
+# rewrite-as-named-wrappers move that would have laundered the same
+# redundancy past this very count.
+# ZERO IS NOT A RESTING PLACE, it is a refuse-contract: the next eta-wrapper
+# to appear in the wheel raises this and the gate refuses the pin. What the
+# count MEANS at zero is that no named fn in the wheel hides behind a lambda
+# that only forwards to it.
+eta_max: 0
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
