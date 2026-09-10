@@ -910,7 +910,14 @@ loop_scaffold_refs_max: 3
 # desugar path, a rise is a new mint nobody reviewed. Measured 44 with
 # str_literal_5 (an identity relic) already deleted out of it; the spliced
 # names were shown compiler-synthesized, so the literal scan sees all of it.
-desugar_vocabulary: 43
+# 2026-09-10 · 43 -> 44 · RE-DERIVED, and the seed follows the set because
+# the set is what the emit actually mints. The world-chain walk's minted trio
+# changed shape: `ev_perform_node` and the effect-only `world_find_from` are
+# DELETED and `ev_declaring_node`, `world_declaring_from` and `node_arm_at`
+# replace them — two names out, three in, because asking whether a handler
+# DECLARES an op (rather than merely covering its effect) is one read the old
+# pair had no home for. The +1 is that read.
+desugar_vocabulary: 44
 
 authored_own_max: 83
 authored_ref_max: 812
@@ -1365,6 +1372,23 @@ env_frame_max: 0
 # it makes this key's whole history of variance-driven re-sets unrepeatable.
 # Named as Hβ.tools.cost-ratchet-reads-the-os-not-the-wheel; until it is
 # built, the line clears the measured min-of-three band.
+# 2026-09-10 · RAISED TO 2362000 AND PUT BACK THE SAME DAY — the raise is
+# recorded because it was wrong, not because it stood. `pad_group_to_effect_ops`
+# makes every handler's per-effect arm region dense over that EFFECT's full op
+# list instead of over the ops that handler happens to implement, which is the
+# cost of the layout telling the truth (op_slot is documented as a position
+# into the effect's immutable op-list, every reader indexes by it, and the
+# region was only dense to the handler's own highest slot — so a dispatch for
+# an unimplemented op read PAST it, measured silently wrong at
+# tests/frontier/mn-split-effect-evidence.mn as 15 where 33 is correct). The
+# refused repin read 2359588KB min-of-three and the ceiling went to 2362000.
+# Then the SAME landing deleted the condemned pair it had been carrying for
+# one generation (ev_perform_node, the effect-only world_find_from) and
+# inlined miss_or_node, and the next march read 2350376KB — under the ORIGINAL
+# line. So the ceiling is back where it was. The lesson is the ordering: a
+# ratchet raised mid-arc, before the arc's own deletions land, buys room the
+# finished work does not need, and slack bought that way never gets noticed
+# again because nothing refuses.
 selfcompile_peak_kb_max: 2358000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────

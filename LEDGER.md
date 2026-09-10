@@ -35,6 +35,55 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-10 · pin cc1b7170971d1910 · THE RUNTIME WALK ASKS THE OP TOO. FIXED
+  POINT m2 == m3, census 0, frontier 377 pass / 2 red.
+  ▶ THE SILENT HALF OF THE PREVIOUS LANDING'S DEFECT. Pin 5c39a1a7 fixed the
+  COMPILE-TIME walk's key and said in its own entry that the runtime one still
+  keyed on the effect, untested. The fixture that tests it —
+  `tests/frontier/mn-split-effect-evidence.mn` — needs three things at once:
+  the perform behind a frame fence so the lexical walk cannot answer, a second
+  declarer so the op is ambiguous and the singleton walk declines, and a
+  split-effect pair with the NON-declaring handler innermost. It returned 15
+  where 33 is correct, with ZERO diagnostics, a clean assemble and no trap.
+  Where the compile-time version emitted a call to a named arm that does not
+  exist and the assembler objected, this one indexed a live arm region and
+  ran. Banked RED before anything was fixed.
+  ▶ AND THE ROOT WAS THE LAYOUT, not the walk. `op_slot` is documented as "a
+  STABLE position into an effect's immutable op-list" and every reader indexes
+  the arm region by it — but `set_at_extend` only grew a group to the highest
+  slot THAT handler implements, so a handler covering one op of a two-op
+  effect laid a ONE-slot region and the other op's slot was ABSENT rather than
+  zero. The layout promised density over the EFFECT's ops and delivered
+  density over the HANDLER's. `pad_group_to_effect_ops` closes it at the
+  layout instead of at each reader, and that is precisely what makes the
+  declaring test readable: `node_arm_at` can now ask the record the same
+  question `handler_declares_op` asks the groups, because the answer is
+  present and zero instead of past the end.
+  ▶ TWO GENERATIONS, MEASURED AGAIN. The arity could not simply grow: the
+  pinned boot's emit writes the old call shape while the source declares the
+  new one, and m2 would not assemble ("expected [i32,i32,i32,i32] but got
+  [i32,i32,i32]"). So both forms shipped for one pin with the emit moved to
+  the new one — and then, once the repin carried it, `ev_perform_node`, the
+  effect-only `world_find_from`, and `miss_or_node` were all DELETED in the
+  same landing. `miss_or_node` had been extracted to give two walks one
+  refusal; the moment the second walk died the reason evaporated and it
+  inlined. Net at the prelude floor, measured at each step: 2783 → 2773 →
+  2760.
+  ▶ TWO RATCHETS MOVED AND ONE MOVED BACK, which is the reusable lesson. The
+  peak ratchet refused a mid-arc repin at 2359588KB — the padding is real
+  cost — and the ceiling went to 2362000 with its justification. After the
+  deletions the same tree read 2350376KB, UNDER the original line, so the
+  raise was reverted and the history kept. A ratchet raised before an arc's
+  own deletions land buys room the finished work does not need, and slack
+  bought that way is never noticed again, because nothing refuses. The
+  prelude floor's +23 is genuine and stays: it is `node_arm_at`, the read
+  that is the whole capability, and it falls with
+  `Hβ.driver.link-is-reachability` — a bare program has no handlers and
+  dispatches nothing, yet links this walk.
+  ▶ STILL OPEN, unchanged and still RED: the lexical tier omits the world
+  bracket (52 where the law says 51). Two of the three walks now agree on the
+  key; they still disagree on the world.
+
 - 2026-09-10 · pin 5c39a1a78d5ca549 · THE DISPATCH KEY IS THE OP, NOT THE
   EFFECT. FIXED POINT m2 == m3, census 0, frontier 376 pass / 2 red.
   ▶ FOUND BY ASKING WHETHER THE THING I WORKED AROUND WAS ULTIMATE. The

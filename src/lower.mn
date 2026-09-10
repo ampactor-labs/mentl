@@ -1913,8 +1913,23 @@ fn build_handler_arm_names(hname, arms) = {
     },
     arms
   )
-  fold([], place_arm_in_groups, placements)
+  fold([], place_arm_in_groups, placements) |> map(pad_group_to_effect_ops)
 }
+
+// DENSE OVER THE EFFECT'S OP LIST, not over the handler's own arms — and the
+// difference was a silent wrong. The op slot is documented as a STABLE
+// position into an effect's immutable op-list, and every reader indexes the
+// arm region by it, but `set_at_extend` only grew a group to the highest slot
+// THIS handler implements. A handler covering one op of a two-op effect
+// therefore laid a ONE-slot region, and a dispatch for the other op indexed
+// past it into whatever the record held next: measured at
+// tests/frontier/mn-split-effect-evidence.mn as 15 where 33 is correct, with
+// zero diagnostics, a clean assemble, and no trap. Padding closes it at the
+// layout rather than at each reader, and it is what makes the runtime walk's
+// "does this node declare the op" test READABLE — an unimplemented slot is
+// now present and zero, where before it was absent and whatever came after.
+fn pad_group_to_effect_ops(g: {arms: [String], ename: String}) =
+  ({arms: grow_to_with_gaps(group_arms(g), len(lookup_effect_op_names(group_ename(g)))), ename: group_ename(g)})
 
 // Place one arm at its op-slot in its effect-group's arm_list, find-or-
 // create the group. The arm_list is dense [0, max_slot] with the empty-
@@ -6684,7 +6699,7 @@ fn reachable_from_main(stmts) = {
 // LEvPerform arm mints (the world-as-value arc's R2) — the ONE runtime
 // evidence read; the keyed-region machinery died with the region.
 fn emit_runtime_contract() =
-  ["ev_perform_node", "world_find_from", "len", "list_compare", "list_concat", "list_eq", "list_index", "list_set", "make_list", "make_list_sc", "slice", "str_compare", "str_concat", "str_eq", "str_hash"]
+  ["ev_declaring_node", "world_declaring_from", "node_arm_at", "len", "list_compare", "list_concat", "list_eq", "list_index", "list_set", "make_list", "make_list_sc", "slice", "str_compare", "str_concat", "str_eq", "str_hash"]
 
 // make_list_sc is the literal allocator's SECOND face, paired with make_list:
 // emit_list_literal mints `call $make_list` for the word floor (sc 0) and

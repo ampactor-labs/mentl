@@ -217,12 +217,33 @@ effect ImageAlloc {
 // hand: the sought key's interned offset goes to scratch word 0 (the
 // postmortem window), then a deterministic out-of-bounds load traps — the
 // backtrace names the perform site, the scratch word the effect.
-fn world_find_from(n, target) with Memory = if n == 0 {
+// THE KEY IS THE OP, NOT THE EFFECT. The compile-time walk had the identical
+// error until pin 5c39a1a7 and it emitted a call to a named arm that does not
+// exist, which the assembler caught; here the dispatch indexed a live arm
+// region and ran, returning a wrong number with no diagnostic and no trap.
+//
+// The declaring test needs no table: an op the handler does not implement has
+// a ZERO in its slot (emit_arm_writes skips gaps; pad_group_to_effect_ops
+// makes every effect op's slot present so the zero is readable). The walk
+// asks the record the same question handler_declares_op asks the groups.
+fn world_declaring_from(n, target, slot) with Memory = if n == 0 {
   0
-} else if load_i32(n) == target {
+} else if load_i32(n) == target && node_arm_at(n, slot) != 0 {
   n
 } else {
-  world_find_from(load_i32(n + 8), target)
+  world_declaring_from(load_i32(n + 8), target, slot)
+}
+
+// One arm slot of a chain node's record. entry@4 is the per-effect
+// [record, base] view the install builds; the arm region starts past the
+// state fence at record[4], and `base` is where this effect's slots begin.
+// The SAME address the perform's emit computes inline — read here so the
+// walk and the dispatch cannot drift apart on it.
+fn node_arm_at(n, slot) with Memory = {
+  let entry = load_i32(n + 4)
+  let record = load_i32(entry)
+  let base = load_i32(entry + 4)
+  load_i32(record + 8 + 4 * load_i32(record + 4) + 4 * (base + slot))
 }
 
 // `top` arrives as an ARGUMENT — the perform site's emit passes
@@ -231,17 +252,20 @@ fn world_find_from(n, target) with Memory = if n == 0 {
 // unhandled Memory demand — the crossing constraint; world_top stays
 // declared for wheel-source consumers once the pin carries its
 // recognition).
-fn ev_perform_node(top, target) with Memory = {
-  let node = world_find_from(top, target)
-  if node == 0 {
-    store_i32(0, target)
-    // 0 - 1 = 0xFFFFFFFF: a 4-byte load crossing 2^32 — out of bounds at
-    // ANY wasm32 memory size, including the full 65536 pages. The prior
-    // `0 - 8` went SILENT when memory grew to 4GB (2fc7544): 0xFFFFFFF8+4
-    // is in bounds there, so a miss returned virgin 0 and the broken
-    // promise cascaded to a garbage dispatch far from this site.
-    load_i32(0 - 1)
-  } else {
-    node
+// The op-keyed entry — what every perform emits. A miss is a BROKEN PROMISE
+// and traps, key in hand: the sought key's interned offset goes to scratch
+// word 0 (the postmortem window), then a deterministic out-of-bounds load
+// traps — the backtrace names the perform site, the scratch word the effect.
+// 0 - 1 = 0xFFFFFFFF: a 4-byte load crossing 2^32, out of bounds at ANY
+// wasm32 memory size including the full 65536 pages. The prior `0 - 8` went
+// SILENT when memory grew to 4GB (2fc7544): 0xFFFFFFF8+4 is in bounds there,
+// so a miss returned virgin 0 and the broken promise cascaded to a garbage
+// dispatch far from this site.
+fn ev_declaring_node(top, target, slot) with Memory =
+  match world_declaring_from(top, target, slot) {
+    0 => {
+      store_i32(0, target)
+      load_i32(0 - 1)
+    },
+    node => node,
   }
-}

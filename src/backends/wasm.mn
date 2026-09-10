@@ -4512,8 +4512,14 @@ fn emit_expr(expr) = match expr {
     // (0) resolve ONCE — the node into its per-site local. The live world
     // passes as an ARGUMENT (the wheel source performs no world_top op —
     // the crossing constraint, memory.mn's own note).
-    wat_emit("    (local.set $evn_{hs} (call $ev_perform_node (local.get $__state) (global.get $world_g) (i32.const ")
+    wat_emit("    (local.set $evn_{hs} (call $ev_declaring_node (local.get $__state) (global.get $world_g) (i32.const ")
     wat_emit(int_to_str(key_off))
+    // The OP slot rides the walk: a node keyed on this effect whose arm slot
+    // is zero does not answer this op, and the walk continues outward. The
+    // effect key alone stopped at the innermost COVERING handler and indexed
+    // its arm region for an op it never implemented.
+    wat_emit(") (i32.const ")
+    wat_emit(int_to_str(op_slot))
     wat_emit(")))\n")
     // (1) arm __state = record = entry[0]
     wat_emit("    (local.get $evn_{hs})(i32.load offset=4)(i32.load offset=0)\n")

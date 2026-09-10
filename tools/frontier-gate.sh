@@ -2440,6 +2440,7 @@ for i in "${!compilers[@]}"; do
   # walk must not disturb that. ASSEMBLE is in the leg for the same
   # reason as the reification pair — check alone called the RED one green.
   for ok in "split-effect-op-key:mn-split-effect-op-key:33:the op key walks past a handler that only covers the effect" \
+            "split-effect-evidence:mn-split-effect-evidence:33:the RUNTIME walk skips a node whose arm slot for this op is empty" \
             "deep-handler-arm:mn-deep-handler-arm:51:an arm's own perform resolves outward, not into its own install"; do
     ok_tag=${ok%%:*}; ok_r=${ok#*:}; ok_fix=${ok_r%%:*}; ok_r=${ok_r#*:}
     ok_want=${ok_r%%:*}; ok_what=${ok_r#*:}
@@ -2863,7 +2864,21 @@ for i in "${!compilers[@]}"; do
   # `Hβ.driver.link-is-reachability` and predicted the number would fall hard
   # once the link was judged. It was not the whole judgment — dead imports are
   # the crudest possible unreachability — and it still more than halved.
-  cost_ceiling=2737
+  # 2760 (2026-09-10): ROSE 2737 → 2760, and the +23 is a capability, not
+  # slack. The world-chain walk stopped keying on the EFFECT alone — which
+  # dispatched an op through a handler that merely COVERS its effect, silently
+  # wrong at tests/frontier/mn-split-effect-evidence.mn — and now asks the
+  # record whether it declares the op. That question is `node_arm_at`, a new
+  # fn in lib/memory.mn plus the comment that says what it reads and why the
+  # walk and the emit must compute the same address. Everything transitional
+  # was taken back in the same landing: `ev_perform_node` and the effect-only
+  # `world_find_from` are DELETED, and `miss_or_node` — extracted to give two
+  # walks one refusal — was inlined the moment the second walk died, which is
+  # 2783 → 2773 → 2760 measured at each step. What remains is the smallest
+  # form of the fix, and this ceiling still falls with
+  # `Hβ.driver.link-is-reachability`: a bare program has no handlers and
+  # dispatches nothing, so it links this walk for no reason at all.
+  cost_ceiling=2760
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then
