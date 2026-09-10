@@ -2429,6 +2429,42 @@ for i in "${!compilers[@]}"; do
     fi
   done
 
+  # ─── THE DISPATCH KEY IS THE OP (Hβ.effects.one-walk-three-
+  # implementations) ─────────────────────────────────────────────────
+  # Two fixtures on one law. The split-effect pair was RED: covering an
+  # effect is not answering an op, and keying the walk on the effect
+  # resolved `b` to the handler that only implements `a` — zero
+  # diagnostics, then `(call $op_ha_b)` at the assembler. The
+  # deep-handler arm was already GREEN and stays as a pin: an arm that
+  # performs the op it handles must resolve OUTWARD, and re-keying the
+  # walk must not disturb that. ASSEMBLE is in the leg for the same
+  # reason as the reification pair — check alone called the RED one green.
+  for ok in "split-effect-op-key:mn-split-effect-op-key:33:the op key walks past a handler that only covers the effect" \
+            "deep-handler-arm:mn-deep-handler-arm:51:an arm's own perform resolves outward, not into its own install"; do
+    ok_tag=${ok%%:*}; ok_r=${ok#*:}; ok_fix=${ok_r%%:*}; ok_r=${ok_r#*:}
+    ok_want=${ok_r%%:*}; ok_what=${ok_r#*:}
+    ok_err="$dir/$ok_tag.err"
+    ok_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/$ok_fix.mn" 2> "$ok_err")
+    # ERRORS, not the E_ prefix. The sibling legs grep 'E_' and get away with
+    # it because their fixtures happen to raise no format-liftable warning;
+    # these two raised E_RedundantBraces and both read RED on a clean
+    # compile. A gate that cannot tell a warning from a refusal is measuring
+    # the reporter, not the artifact.
+    ok_diags=$(grep -c ' error: ' "$ok_err" 2>/dev/null || true)
+    if [ -z "$ok_wat" ] || [ "$ok_diags" != "0" ]; then
+      fail "$ok_what (compile: $ok_diags diagnostic(s); see $ok_err)"
+    else
+      printf '%s' "$ok_wat" > "$dir/$ok_tag.wat"
+      if ! wt_asm "$dir/$ok_tag.wat" "$dir/$ok_tag.wasm" 2>"$dir/$ok_tag.asm.err"; then
+        fail "$ok_what (ASSEMBLER refused what check passed: $(head -1 "$dir/$ok_tag.asm.err"))"
+      elif [ "$(wt_run "$dir/$ok_tag.wasm" > /dev/null 2>&1; echo $?)" = "$ok_want" ]; then
+        pass "$ok_what ($ok_want)"
+      else
+        fail "$ok_what (ran, wrong answer — want $ok_want)"
+      fi
+    fi
+  done
+
   # ─── The relevant tier (affine gains exactly-once) ──────────────────
   # T_OwnUnconsumed fires on an authored `own` the body never consumes
   # (drops) and stays SILENT on a transfer-out (hands_back — the return

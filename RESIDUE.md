@@ -87,6 +87,43 @@ invalidates a cone — which is also what the Resident Space session needs to
 stop re-deriving, and what makes `persist = memcpy` worth having across
 runs rather than within one. Sequenced with Arc E of §11's Space spine.
 
+`Hβ.effects.lexical-tier-omits-the-world-bracket` — NAMED 2026-09-09, a
+FACE of `Hβ.effects.one-walk-three-implementations` below and the measured
+proof that the three walks do not merely key differently, they DISAGREE.
+
+THE LAW is stated by the tree, not imported: the evidence tier's emit
+comment says "only the arm call itself runs under the node's install_world
+(deep-handler law: the arm's own performs resolve outer, never self)".
+
+THE MEASUREMENT, `tests/frontier/mn-deep-handler-arm.mn`, born RED at 52
+where the law says 51. `note(5)` under `~> inner ~> outer`, where inner's
+arm is `resume(note(n) + 1)` and outer's is `resume(n * 10)`. main's perform
+takes the LEXICAL tier, which emits a bare `(call $op_inner_note)` with no
+world bracket, so the arm runs with the world still containing `inner`; the
+arm's own perform takes the EVIDENCE tier, walks that un-narrowed world,
+finds `inner`, and self-dispatches once. That second call DOES bracket, so
+it reaches `outer` and returns 51, and the outer arm adds its own 1. One
+missing bracket, exactly one extra hop.
+
+THE FIX NEEDS NOTHING NEW EITHER. The install already saves the chain from
+before its own push into `$__hstate_<h>_wprev`, and its own comment calls
+that value "install_world = the saved chain, what the arm dispatch sets
+around the arm call". The lexical tier has the local in scope — `LPerform`'s
+`state_local` is `__hstate_<h>` for the same install `h` — and never reads
+it. What blocks a two-line fix is that `LPerform` is shared with the
+SINGLETON tier, whose `state_local` is a record local with no `_wprev`
+sibling, because `LWorldResolve` throws the node away and keeps
+`node[4][0]`. So the bracket lands when the tiers stop disagreeing about
+what they carry — the node, not the record — which is the one-walk build
+and is why this is a face of it rather than a patch.
+
+RECORDED AS A KILL AND A CORRECTION: the first read of this fixture called
+the hypothesis REFUTED on the strength of a 501 that was never measured. The
+multiplier was 100, the exit was out of range, and 501 was inferred from a
+runtime message carrying no number — 502 produces the identical message. The
+law that the number form of a claim must be READ FROM THE ARTIFACT applies
+to a number you reasoned your way to just as much as to one you remembered.
+
 `Hβ.effects.one-walk-three-implementations` — NAMED 2026-09-09 by asking
 whether the thing the reification landing worked AROUND was itself ultimate.
 It is not, and the three dispatch tiers PLAN §6 presents as "the proof

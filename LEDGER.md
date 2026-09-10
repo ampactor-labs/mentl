@@ -35,6 +35,80 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-10 · pin 5c39a1a78d5ca549 · THE DISPATCH KEY IS THE OP, NOT THE
+  EFFECT. FIXED POINT m2 == m3, census 0, frontier 376 pass / 2 red.
+  ▶ FOUND BY ASKING WHETHER THE THING I WORKED AROUND WAS ULTIMATE. The
+  reification landing took the singleton tier only, because the lexical tier
+  bakes a frame local and the singleton tier's handler-name key cannot answer
+  an ambiguous op. Neither is a property of dispatch; both are properties of
+  a key one of three implementations chose. Interrogating that turned up a
+  live miscompile in the tier nobody was looking at.
+  ▶ THE DEFECT. `resolve_in_stack` asked `handler_covers_effect` — does one
+  of this handler's arm GROUPS key on that effect. A handler implementing ANY
+  op of an effect therefore answered yes for EVERY op of it, so a
+  split-effect pair (two handlers, one effect, disjoint op sets) resolved
+  every op to whichever was innermost. `a(10) + b(20) ~> ha ~> hb` over
+  `effect Two { a; b }` checked with ZERO diagnostics and emitted
+  `(call $op_ha_b)`, an arm `ha` does not have. The assembler caught it —
+  the same compiles-clean-then-refuses shape the reification landing closed
+  one layer up, one layer down. The hazard was NAMED in the tree already:
+  LDirectPerform's own comment says "an ename key mis-resolved the
+  split-effect pair", and the response taken there had been to key the
+  SINGLETON walk by handler name instead — moving the problem to a key that
+  cannot answer an ambiguous op, which is the whole of the eta ceiling.
+  ▶ NOTHING WAS ADDED TO ANSWER IT. `build_handler_arm_names` already lays
+  each group's arms DENSE over [0, max_slot] with `""` where the handler does
+  not implement an op, and `emit_arm_writes` skips those gaps so the runtime
+  record's slot stays zero. Both sides could always answer "does this handler
+  declare this op"; only the question was wrong.
+  ▶ AND THE FIX DELETED A LAMBDA RATHER THAN ADDING ONE. The first form gave
+  each question its own `any(...)` scan and the anonymity tier convicted it,
+  376 -> 377. Both questions are reads of ONE list — the arms this handler
+  lays for one effect — so the group lookup went to `handler_arms_for`,
+  reusing the `split_group_by_ename` that arm placement already uses. Two
+  questions now cost one fewer scanning lambda than the single question did.
+  The SCHEDULE resolution keeps the effect question deliberately: a fanout
+  performs no named op, so which scheduler is installed IS an effect-altitude
+  question.
+  ▶ WHAT THE DIG FOUND AND DID NOT FIX, banked RED rather than carried. The
+  lexical tier emits its direct call with NO world bracket, so an arm runs in
+  the PERFORM-SITE world rather than its install world, and its own perform
+  self-dispatches once before escaping: measured 52 where the law the
+  evidence tier's own comment states ("the arm's own performs resolve outer,
+  never self") says 51. Pre-existing — the prior pin answers 52 too. The
+  install already saves what the fix needs (`_wprev`, the chain from before
+  its own push, which its comment calls "what the arm dispatch sets around
+  the arm call"); what blocks a two-line fix is that `LPerform` is shared
+  with the singleton tier, whose state local has no `_wprev` sibling because
+  `LWorldResolve` throws the node away and keeps the record. So the bracket
+  lands when the tiers stop disagreeing about what they carry, which is the
+  one-walk build. Born RED as `tests/frontier/mn-deep-handler-arm.mn`.
+  ▶ A CORRECTION, because the number form of the law applies to a number you
+  reasoned to as much as to one you remembered. The first read of that
+  fixture called the self-dispatch hypothesis REFUTED, on the strength of a
+  501 that was never measured: the multiplier was 100, the exit was out of
+  range, and 501 was inferred from a runtime message carrying no number. 502
+  produces the identical message. Re-run at an in-range multiplier it
+  answered 52, and the hypothesis was right all along.
+  ▶ ONE MORE GATE CORRECTED. Both new legs first read RED on a clean
+  compile, because the leg counted `grep -c 'E_'` — which matches
+  `E_RedundantBraces`, a format-liftable WARNING. Copied from a sibling leg
+  that gets away with it. A gate that cannot tell a warning from a refusal is
+  measuring the reporter, not the artifact; these count ` error: `.
+  ▶ AND THE PIN MACHINERY, same disease one layer up. The ‹BOARD RED› marker
+  that lets doc-truth refuse a pin scanned the WHOLE board block — including
+  the frontier and micros lines, which are free text the CALLER supplies. So
+  a frontier line honestly recording "born RED as <fixture>", which is the
+  discipline's own prescribed way to bank a measured silent-wrong, blocked
+  its own pin; meanwhile "1 red" in lower case had ridden every pin before
+  it. Whether a red frontier LEG blesses a pin is settled by precedent, not
+  by spelling. `board_verdicts` is now `board_self_run` (the three gates the
+  march runs itself, the only verdicts that may refuse) plus
+  `board_reported` (recorded verbatim, never parsed), and the marker reads
+  only the first. Both arms exercised before the ceiling moved: a genuine
+  `crown: RED` still fires it, a description containing the word no longer
+  does.
+
 - 2026-09-09 · pin 74b628ac3c0b6d99 · ETA 11 -> 3. FIXED POINT m2 == m3,
   census 0, frontier 375 pass / 1 red.
   ▶ THE SECOND HALF OF ONE ARC, split by a measurement rather than by taste.

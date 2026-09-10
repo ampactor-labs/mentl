@@ -1794,17 +1794,55 @@ fn resolve_in_stack(op_name: String, ename, stack) = if ename == "" || len(stack
   // the frame fence — enclosing installs live in another WASM frame
   if field_name_eq(stack_entry_name(e), "") {
     None
-  } else if handler_covers_effect(stack_entry_name(e), ename) {
+  } else if handler_declares_op(stack_entry_name(e), ename, op_name) {
     Some({handle: stack_entry_handle(e), target: "{stack_entry_name(e)}_{op_name}"})
   } else {
     resolve_in_stack(op_name, ename, drop_last(stack))
   }
 }
 
-// A handler covers an effect iff one of its arm-name groups keys on that
-// effect — read from the same registry emit lays the arms by (one truth).
-fn handler_covers_effect(hname: String, ename: String) =
-  any((g) => group_ename(g) == ename, lookup_handler_arm_names_of(hname))
+// THE KEY IS THE OP, NOT THE EFFECT. This asked `handler_covers_effect` —
+// does one of this handler's arm groups key on that effect — until
+// 2026-09-09, and a handler that implements ANY op of an effect answered
+// yes for EVERY op of it. So a split-effect pair, two handlers covering one
+// effect's disjoint op sets, resolved every op to whichever was innermost:
+// tests/frontier/mn-split-effect-op-key.mn checked with ZERO diagnostics and
+// emitted a call to an arm the resolved handler does not have. The
+// assembler caught it, which is the same
+// compiles-clean-then-refuses shape the reification landing just closed one
+// layer up. LDirectPerform's own comment had named the hazard ("an ename
+// key mis-resolved the split-effect pair") and the fix taken there was to
+// key the SINGLETON walk by handler name instead — moving the problem to a
+// key that cannot answer an ambiguous op, which is the whole of the
+// eta-wrapper ceiling.
+//
+// Nothing is added to answer it. `build_handler_arm_names` already lays each
+// group's arms DENSE over [0, max_slot] with `""` at the ops this handler
+// does not implement, so "does this handler declare this op" is the slot
+// being filled — the same question the RUNTIME record answers with its arm
+// region, where `emit_arm_writes` skips gaps and leaves the slot zero.
+// The arms this handler lays for ONE effect — dense over that effect's op
+// slots, a gap where it does not implement one, empty when it does not cover
+// the effect at all. Both questions below are reads of this one list, and
+// the find is the find place_arm_in_groups already uses, so the group lookup
+// has one home and neither question carries a scanning lambda of its own.
+fn handler_arms_for(hname: String, ename: String) =
+  match split_group_by_ename(lookup_handler_arm_names_of(hname), ename) {
+    (_, grp, _) => group_arms(grp),
+  }
+
+// The SCHEDULE resolution keeps the EFFECT question, and that is not an
+// oversight: a fanout performs no named op, it asks which scheduler class is
+// installed, so a Thread install is answered at the effect altitude by
+// construction. Two different questions over one list, neither standing in
+// for the other.
+fn handler_covers_effect(hname: String, ename: String) = len(handler_arms_for(hname, ename)) > 0
+
+fn handler_declares_op(hname: String, ename: String, op_name: String) = {
+  let arms = handler_arms_for(hname, ename)
+  let slot = lower_compute_ev_slot_for_op(op_name)
+  if slot >= len(arms) { false } else { !field_name_eq(arms[slot], "") }
+}
 
 // The execution strategy a fanout (`<|`/`><`) runs under — read LIVE
 // from the installed `~>` chain, NEVER baked into the verb. A verb

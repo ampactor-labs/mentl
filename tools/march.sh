@@ -78,7 +78,16 @@ disasm() {  # disasm <in.wasm> → echoes the cached .dis path
 # effect-identity); the slow ones report what the caller measured or say
 # NOT RUN. Any red leaves a ‹BOARD RED› marker, which doc-truth refuses
 # exactly as it refuses an unwritten narrative.
-board_verdicts() {
+# The gates THIS march ran itself, and the only lines whose verdict may
+# refuse a pin. Kept separate from the caller-reported lines below because a
+# substring test cannot tell a VERDICT from a DESCRIPTION: the ‹BOARD RED›
+# marker used to scan the whole block, so a frontier line that says
+# "born RED, banked as <peer>" — the discipline's own way of recording a
+# measured silent-wrong — blocked its own pin, while "1 red" in lower case
+# sailed through every pin before it. Whether a red frontier LEG blesses a
+# pin is settled by precedent and not by spelling: the standing
+# why-coordinates red has ridden many pins.
+board_self_run() {
   local out="" name script rc
   for name in crown proof-exactness effect-identity; do
     script="tools/${name}-gate.sh"
@@ -90,17 +99,26 @@ board_verdicts() {
     fi
     out="${out}  - ${name}: ${rc}"$'\n'
   done
-  out="${out}  - frontier: ${MARCH_FRONTIER:-NOT RUN (run tools/frontier-gate.sh)}"$'\n'
-  out="${out}  - micros+census: ${MARCH_VERIFY:-NOT RUN (run tools/verify.sh)}"
   printf '%s' "$out"
+}
+
+board_reported() {  # what the caller measured — recorded verbatim, never parsed
+  printf '%s\n%s' \
+    "  - frontier: ${MARCH_FRONTIER:-NOT RUN (run tools/frontier-gate.sh)}" \
+    "  - micros+census: ${MARCH_VERIFY:-NOT RUN (run tools/verify.sh)}"
 }
 
 emit_provenance() {  # emit_provenance <gen> <verdict> <lines> <census>
   local gen="$1" verdict="$2" lines="$3" census="$4" sha block tmp board redmark
   sha=$(sha256sum boot/mentl.wasm | awk '{print $1}')
-  board=$(board_verdicts)
+  local selfrun
+  selfrun=$(board_self_run)
+  # $( ) strips the trailing newline board_self_run ends with, so the join
+  # supplies it — without this the last self-run gate and the frontier line
+  # share a line.
+  board="${selfrun}"$'\n'"$(board_reported)"
   redmark=""
-  case "$board" in *RED*) redmark=$'\n- ‹BOARD RED — a gate above refuses this pin; fix it or restore the prior boot›';; esac
+  case "$selfrun" in *RED*) redmark=$'\n- ‹BOARD RED — a gate above refuses this pin; fix it or restore the prior boot›';; esac
   block=$(cat <<EOF
 - source: ‹NARRATIVE UNWRITTEN — replace this line: what landed and why,
   the §7 ledger entry of the same name carrying the arc›

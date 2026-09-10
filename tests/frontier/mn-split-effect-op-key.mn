@@ -1,0 +1,33 @@
+// THE DISPATCH KEY IS THE OP, NOT THE EFFECT. Two handlers cover one
+// effect's DISJOINT op sets — `ha` answers `a`, `hb` answers `b` — and both
+// are installed. Resolving `b` must walk PAST the innermost handler, because
+// covering the effect is not answering the op.
+//
+// Born RED 2026-09-09 against the pin that keyed the lexical walk on the
+// effect: `mentl check` reported ZERO diagnostics and the emit wrote
+// `(call $op_ha_b)`, an arm `ha` does not have, so the ASSEMBLER was the
+// first thing in the chain to object. The hazard was NAMED in the tree
+// already — LDirectPerform's own comment says "an ename key mis-resolved the
+// split-effect pair" — and the response taken there had been to key the
+// singleton walk by HANDLER name instead, which cannot answer an ambiguous
+// op at all and is the whole of the eta-wrapper ceiling.
+//
+// Nothing was added to fix it: the lowering already lays each handler
+// group's arms dense over the effect's op slots, with a gap where the handler
+// does not implement one, and the runtime record's arm region leaves those
+// slots zero. Both sides could always answer "does this handler declare this
+// op"; only the question was wrong. Expected: 11 + 22 = 33.
+effect Two {
+  a(n: Int) -> Int
+  b(n: Int) -> Int
+}
+
+handler ha {
+  a(n) => resume(n + 1),
+}
+
+handler hb {
+  b(n) => resume(n + 2),
+}
+
+fn main() = a(10) + b(20) ~> ha ~> hb
