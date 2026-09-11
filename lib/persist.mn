@@ -50,7 +50,23 @@ type PersistHandle = PersistHandle(Int)
 // top-level let the persisting process stored into); the returned address
 // is the word-face belt beside it.
 effect Persist {
-  persist(Int, String)
+  // THE WIRE, ALREADY PACKED, and the path to put it at. The op does not
+  // take a ROOT and pack it, because packing is not policy: `persist =
+  // memcpy` is the substrate operation and is identical for every handler
+  // that could answer this — disk, network, a test sink. What a handler
+  // chooses is WHERE the bytes go, which is what "this handler IS the disk
+  // policy" already says one screen down.
+  //
+  // It also has to be this way, measured. image_pack snapshots the globals,
+  // and $world_g is one of them. Packed from inside an arm, the world it
+  // captures is the arm's — which by the deep-handler law EXCLUDES the very
+  // handler doing the packing. A warm run then restored a chain that could
+  // not answer `persist`, and trapped at exactly that dispatch
+  // (ev_declaring_node, i32.const 100764 = Persist, slot 0, pinned at
+  // 0x4a589 in driver_warm_persist). Packing at the PERFORM site captures
+  // the caller's world, which still has the handler in it, so the restored
+  // image can answer the op that wrote it.
+  persist(String, String)
   // Fanout storage. persist_branch checkpoints the whole image before
   // invoking the branch; results join from live handler state. THE
   // RESUME BARRIER lives in the param's row: a crashed branch re-enters
@@ -123,16 +139,27 @@ fn image_pack(k) with Memory + Alloc = {
 // declared `Filesystem` row above stays honest about what a caller must
 // grant; the effect's own home is what keeps the op out of reach.
 // Hβ.io.filesystem-impl-bypasses-the-effect carries the boundary.
+// The BRANCH wire's writer, and the one place a pack still runs inside an
+// arm. persist_branch checkpoints BEFORE invoking the branch, at a path
+// derived from the handler's own state, so neither half can move to the
+// perform site the way `persist`'s did. It therefore still records the arm's
+// world — without persist_to_disk — and a branch re-entered from its wire
+// inherits a chain that cannot answer the op that wrote it. That is
+// `Hβ.persist.branch-world-tag` exactly, now with the measurement the peer
+// never had: the same shape on the `persist` arm trapped warm-inc at
+// ev_declaring_node, Persist slot 0.
 fn persist_write(k, ref path) with Memory + Alloc + Filesystem + WASI =
   fs_write_file_impl(path, image_pack(k))
 
 // persist_to_disk — the default disk policy for the rooted-image wire.
 handler persist_to_disk with branch_results = [] {
-  persist(k, path) => {
+  persist(wire, path) => {
     // This handler IS the disk policy — it writes through the WASI substrate
     // layer directly (the swappable point is the Persist effect itself; a
     // bare fs_write_file resolves only inside the wheel's own compile).
-    persist_write(k, path)
+    // It writes the wire it was HANDED; the pack ran at the perform site,
+    // where the world still contains this handler (see the op's decl).
+    fs_write_file_impl(path, wire)
     resume()
   },
   persist_branch(thunk) => // Checkpoint the whole image before running the branch, then retain the

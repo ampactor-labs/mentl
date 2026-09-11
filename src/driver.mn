@@ -603,7 +603,7 @@ fn driver_warm_persist(ref entry_module, ref asts, ref pairs) with Memory + Allo
     list_set(warm_asts, 0, asts)
     list_set(warm_manifest, 0, pairs)
     list_set(warm_entry, 0, entry_module)
-    persist(addr(asts), driver_warm_path(entry_module))
+    persist(image_pack(addr(asts)), driver_warm_path(entry_module))
   } else {
     eprint_string("warm: image past the wire capacity — skipping the persist (cold next run)\n")
   }
