@@ -9012,6 +9012,48 @@ typed) ·
 `Hβ.m2.callsite-result-width` (the loud width family) ·
 `Hβ.felt.ide-run-in-page` (in-browser assembler).
 
+`Hβ.diag.an-arms-report-escapes-an-inner-capture` — NAMED 2026-09-11,
+MEASURED TO THE INSTRUCTION, fix designed, NOT BUILT.
+
+THE SYMPTOM: `mn-poly-fragment` and `mn-poly-multicall` refuse with
+`E_OccursCheck` where the Mycroft fragment used to infer. The signature'd
+sibling `mn-sigd-poly-recursion` passes, so the machinery below is intact.
+
+THE ROOT, probed rather than reasoned. `infer_fn_speculative` runs round 1
+under `~> poly_capture` and retries only `if held_has_poly(held, name)`. A
+probe at the round boundary printed NOTHING — the retry never fires. A second
+probe in the capture's own `diag_report` arm fired five times, refuting the
+first guess that the capture was dead; printing the captured LINES named the
+root exactly. Every captured report is a `T_OverDeclared` from a prelude decl
+— raised in the judgment BODY. `depth`'s own refusal is never captured,
+because it is raised from inside `graph_handler`'s arm (graph.mn's occurs
+write-guard belt), and by the deep-handler law an arm's performs resolve
+OUTER of its own install. `poly_capture` is installed deeper than
+`graph_handler`, so the report goes past it to `diagnostics_handler`.
+
+THE GENERAL LAW, which is larger than this fixture: a diagnostic performed
+from inside ANY handler arm cannot be seen by a capture bracket installed
+inside that handler. Speculation can only capture what the body reports. The
+same file already half-knew it — graph.mn:272 says "the arm that speaks it
+cannot see its own instance (an arm's performs resolve OUTER)" — and drew the
+conclusion for the RENDER (coordinates only, no type chase) without drawing it
+for the CAPTURE.
+
+THE FIX, and it is NOT the 95-site one. Moving the belt to the perform side
+means changing `graph_bind`'s contract at ~95 call sites in infer.mn alone.
+The contained form is that the arm STORES and the body REPORTS: the write
+guard pushes its refusal into graph_handler's own state, and inference drains
+it at the judgment boundary — which is exactly where speculation brackets, so
+the drained report lands in the body's world and the capture sees it. That
+respects the law rather than working around it (the arm stops narrating what
+it cannot narrate), is Carried-Truth-shaped (the fact is carried and read live
+by the one who owns the narration), and touches the guard, one op, and one
+drain point instead of a hundred binds.
+
+GUARD, RED-first: `mn-poly-fragment` runs 3 with zero diagnostics;
+`mn-poly-teach` keeps its refusal + teach; `mn-sigd-poly-recursion` stays
+green.
+
 `Hβ.infer.sigd-polymorphic-recursion` — §11 5.3's first step,
 STAMPED 2026-08-07 (build next). BASELINE, measured at the 5.1c
 kill: `fn depth(x: a, n) -> Int = ... depth([x], n - 1)` with a
