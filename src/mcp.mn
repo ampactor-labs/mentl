@@ -490,24 +490,38 @@ fn session_run(at_read) = {
     // drift-audit: ignore — the flagged keyword is inside the teaching string (a quoted shell invocation), not control flow
     eprint_string("mentl session: no listener preopened — the install shim adds -S tcplisten=127.0.0.1:7377 for this verb; by hand: wasmtime run <flags> --dir . -S tcplisten=127.0.0.1:7377 <boot> session\n")
     1
-  } else if !fs_exists(driver_module_path("main")) {
-    eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
-    1
   } else {
-    infer_context(() => match driver_entry_with_ranges("main") {
-      (ast, ranges) => {
-        eprint_string("mentl session: graph resident on 127.0.0.1:7377 — read verbs answer live; every other verb falls back cold through the shim\n")
-        session_sock_loop(
-          lfd,
-          driver_module_ast(ast, ranges, "main"),
-          ranges,
-          driver_manifest(ranges),
-          at_read,
-          session_current
-        )
-      },
+    // THE GUARD IS INSIDE THE BRACKET, which is mcp_run's own lesson one verb
+    // over — "The artifact directory is made INSIDE the bracket, because that
+    // is..." — learned there and not here. `fs_exists` is a Filesystem op and
+    // dispatch_invocation installs env / graph / mutate / diagnostics and no
+    // Filesystem, so this guard ran in a world that cannot answer it. It
+    // worked only while a stateless singleton could be direct-called with no
+    // record at all; the uniform world bracket ended that, and the guard
+    // trapped at its own dispatch (ev_declaring_node, i32.const 100524 =
+    // Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
+    // cost nothing on the path that reports no project.
+    infer_context(() => {
+      if !fs_exists(driver_module_path("main")) {
+        eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
+        1
+      } else {
+        match driver_entry_with_ranges("main") {
+          (ast, ranges) => {
+            eprint_string("mentl session: graph resident on 127.0.0.1:7377 — read verbs answer live; every other verb falls back cold through the shim\n")
+            session_sock_loop(
+              lfd,
+              driver_module_ast(ast, ranges, "main"),
+              ranges,
+              driver_manifest(ranges),
+              at_read,
+              session_current
+            )
+          },
+        }
+        0
+      }
     } ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
-    0
   }
 }
 
