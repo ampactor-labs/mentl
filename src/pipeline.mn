@@ -273,9 +273,14 @@ fn report_unhandled_effects(lowered) = match env_lookup("main") {
             drain_effect_census()
           } ~> effect_census_collector ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> state_slots_collector ~> yield_seen_collector ~> wasi_ops_collector
           match census {
-            (demands, installed) => match demands_to_enames(demands, 0, [], []) {
-              (performed, strict) => report_unhandled_names(p, 0, len(p), performed, strict, installed, reason_span_or_zero(reason)),
-            },
+            (demands, installed) => report_unhandled_names(
+              p,
+              0,
+              len(p),
+              demands_to_enames(demands, 0, []),
+              installed,
+              reason_span_or_zero(reason)
+            ),
           }
         },
       },
@@ -287,69 +292,74 @@ fn report_unhandled_effects(lowered) = match env_lookup("main") {
 
 // A drained demand is an ename already (the floor's ekey) or a yield's
 // OP name — resolve ops to their effect through the live scheme; a name
-// that is no op passes through as itself. Three tiers, each with its
-// own soundness story: a STATELESS singleton demand GROUNDS (the arm
-// ignores __state — a chainless direct call is value-sound by
-// construction, the measured licence: the escaped-install thunk runs
-// its arm and answers correctly); a STATEFUL singleton joins the
-// performed set and clears on an install anywhere (dynamic installs —
-// the backtrack family's per-candidate `~>` — cover it at runtime, and
-// the SingletonUninstalled guard is the loud belt when they don't); an
-// EVIDENCE-floor demand joins the STRICT set — no unique handler means
-// a dead-chain perform walks garbage evidence with NO belt, so an
-// install elsewhere clears nothing. The row alone cannot split a dead
-// extent from live dynamic coverage; that split is the modal
-// install-identity frontier (band A), and the tripwire fixtures
-// (escaped-install, residual-absence) pin today's semantics until it
-// lands.
-fn demands_to_enames(ref demands, i, acc, strict) = if i >= len(demands) {
-  (acc, strict)
+// that is no op passes through as itself. That is the WHOLE job.
+//
+// THE THREE TIERS ARE DELETED, and they were one question the substrate no
+// longer asks. Each tier was a soundness story about how a perform reaches
+// its handler: a STATELESS singleton "grounded" because a chainless direct
+// call ignores __state; a STATEFUL singleton cleared on an install anywhere
+// because a direct call needed a record the chain might supply; an
+// EVIDENCE-floor demand was strict because it alone walked. Every one of
+// those distinctions described the dispatch TIER, and there are no tiers —
+// one walk, one refusal, the same belt under all of them. What remained was
+// `handler_stateful`, whose only other reader built a `DtSingleton` Bool that
+// nothing ever read.
+//
+// The licence the stateless tier carried is what let a handler's own arms
+// escape unnoticed: `format_default` re-emits `Format`, so `Format` survives
+// to main's root row (measured — a declared `!Render` on the same shape
+// refuses with `Memory + Alloc + Render`), and the gate dropped the demand
+// before it could be seen. The ROW is authoritative and always was.
+fn demands_to_enames(ref demands, i, acc) = if i >= len(demands) {
+  acc
 } else {
   let d = list_index(demands, i)
-  let verdict = match env_lookup(d) {
+  let en = match env_lookup(d) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
-        EffectOpScheme(op_effect, default_handler, _, _) => if byte_len(default_handler) > 0 {
-          if handler_stateful(default_handler) { Some((op_effect, false)) } else { None }
-        } else {
-          Some((op_effect, true))
-        },
-        _ => Some((d, true)),
+        EffectOpScheme(op_effect, _, _, _) => op_effect,
+        _ => d,
       },
     },
-    None => Some((d, true)),
+    None => d,
   }
-  match verdict {
-    None => demands_to_enames(demands, i + 1, acc, strict),
-    Some((en, is_strict)) => demands_to_enames(
-      demands,
-      i + 1,
-      if string_in_list(acc, en) { acc } else { push(acc, en) },
-      if is_strict && !string_in_list(strict, en) { push(strict, en) } else { strict }
-    ),
-  }
+  demands_to_enames(demands, i + 1, if string_in_list(acc, en) { acc } else { push(acc, en) })
 }
 
-fn report_unhandled_names(ref names, i, n, ref performed, ref strict, ref installed, ref span) = if i >= n {
+fn report_unhandled_names(ref names, i, n, ref performed, ref installed, ref span) = if i >= n {
   ()
 } else {
   let ename = eff_name_str(list_index(names, i))
-  // The conjuncts: present at the root, NOT substrate-grounded, actually
-  // PERFORMED somewhere reachable (a `with Sample`-style declared
-  // contract with zero performs is the iterative-class canon, never an
-  // evidence hole — SYNTAX's own lowpass declares it), and either
-  // STRICT (an evidence floor or a stateless singleton — the escaped-
-  // install class, no runtime belt) or genuinely UNINSTALLED anywhere.
-  // A stateful-singleton demand with an install clears: dynamic
-  // installs cover it at runtime and the SingletonUninstalled guard is
-  // the loud belt beneath — the row alone cannot split a dead extent
-  // from live dynamic coverage (the modal install-identity frontier,
-  // band A, owns that split).
+  // TWO CONJUNCTS, because the row is authoritative: the effect is PRESENT
+  // at the executable root (this list IS main's residual row — everything
+  // any `~>` absorbed has already been subtracted), it is not
+  // SUBSTRATE-GROUNDED, and it is actually PERFORMED somewhere reachable.
+  // The last one is the only thing the emit census is for and it is real: a
+  // declared-but-never-performed row (`with Sample`, SYNTAX's own lowpass)
+  // is the iterative-class canon, never an evidence hole.
+  //
+  // AND the `installed` licence, which survives BY MEASUREMENT after being
+  // deleted and refuted in one build. Deleting it looked right — the row is
+  // authoritative, and a per-candidate `~>` is lexically present where it
+  // runs — but the wheel refused on `GraphRead`: `graph_handler`'s arms
+  // perform sibling GraphRead ops, and that is legal FORWARDING, because the
+  // wheel NESTS graph installs (dispatch_invocation installs one, each
+  // compile installs another that shadows it), so an inner arm's sibling
+  // perform reaches the outer handler. The row cannot see that nesting — it
+  // is a whole-program fact about install identity, which is band A's seat
+  // exactly as this file already said. So an install anywhere still clears.
+  //
+  // What that licence therefore CANNOT catch is the same shape with no outer
+  // install: `format_default` re-emits `Format` from its own arm, reaching
+  // the root, cleared because format_default is "installed somewhere" — it
+  // compiled clean and trapped in `mentl fmt`. That gap is real and named
+  // (Hβ.effects.handler-re-emits-what-it-handles); the decl-site narration
+  // below is what makes it visible today, and band A is what refuses it.
   if effect_ops_substrate_grounded(ename) {
     ()
   } else if !string_in_list(performed, ename) {
     ()
-  } else if !string_in_list(strict, ename) && string_in_list(installed, ename) {
+  } else if string_in_list(installed, ename) {
     ()
   } else {
     // Sequenced effectful read BEFORE the construction (the record-
@@ -358,7 +368,7 @@ fn report_unhandled_names(ref names, i, n, ref performed, ref strict, ref instal
     let proposal = absorbing_proposal(ename)
     report(EEffectUnhandled(ename, proposal, span))
   }
-  report_unhandled_names(names, i + 1, n, performed, strict, installed, span)
+  report_unhandled_names(names, i + 1, n, performed, installed, span)
 }
 
 // Every op of the effect projects to a substrate instruction (the

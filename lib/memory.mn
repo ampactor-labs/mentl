@@ -218,7 +218,7 @@ effect ImageAlloc {
 //
 // THE WALK ITSELF IS NOT HERE, and this file is not where it belonged. It is
 // `$ev_declaring_node`, emitted into the module preamble beside its own twin
-// `$world_push` (backends/wasm.mn) — one mechanism, one home. It lived here
+// $world_push (backends/wasm.mn) — one mechanism, one home. It lived here
 // as ordinary Mentl with ZERO Mentl callers, reached only by emit minting its
 // name, and a name minted at emit links only if the module that defines it is
 // in the program's set. The wheel imports this file so the wheel was fine; a

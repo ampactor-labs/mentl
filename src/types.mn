@@ -879,7 +879,12 @@ type BindHome = BindUnwritten | BindLocal(Int) | BindUpval(Int, Int) | BindPrior
 // tier it chose at the perform node's handle. All-payload constructors
 // by design — the sparse column's absent contract is the addr-0 virgin
 // cell, so no nullary tag may alias it.
-type DispatchTier = DtLexical(String, String) | DtSingleton(String, Bool) | DtEvidence(String, Int) | DtWasi(String)
+// The Bool DtSingleton carried was the handler's statefulness, written at the
+// one mint site and read NOWHERE — the last residue of the deleted singleton
+// dispatch tier, where statefulness answered "can this direct call run
+// without a record?". One walk answers it for every dispatch now, so the
+// question is gone and so is its field.
+type DispatchTier = DtLexical(String, String) | DtSingleton(String) | DtEvidence(String, Int) | DtWasi(String)
 
 // The state-slot-home column's value (lowering-is-a-column step i): a
 // resume site's `with field = NEW` updates, each field name paired with

@@ -1937,7 +1937,7 @@ fn fn_record_span(r) with GraphRead + Memory + Alloc + !Mutate = match r {
   (_, _, body, _) => if len(body) == 0 {
     span_zero()
   } else {
-    span_of_node_raw(lexpr_handle(list_index(body, 0)))
+    parse_span_of(lexpr_handle(list_index(body, 0)))
   },
 }
 

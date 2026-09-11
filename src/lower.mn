@@ -2140,7 +2140,7 @@ fn perform_dispatch_at(handle, op_name, ename, slot, lexical) = match lexical {
     // from a second one keyed on the handler name, which could not answer an
     // ambiguous op and was the whole of the eta ceiling.
     Some(hname) => {
-      graph_dispatch_note(handle, DtSingleton(hname, handler_stateful(hname)))
+      graph_dispatch_note(handle, DtSingleton(hname))
       PdResolved(hname, op_name, ename, slot)
     },
     None => {
@@ -6797,16 +6797,6 @@ fn seq_face_structural(face) = match face {
 // multiplied by the null page (the mn-world-resume-frozen fixture's silent
 // 30). One fn, two readers — the mint's guard shape and the compile gate's
 // refusal conjunct — so both altitudes tighten together.
-fn handler_stateful(hname: String) = match env_lookup(hname) {
-  Some(entry) => match entry {
-    (_, _, kind) => match kind {
-      HandlerKind(_, config, states, _) => len(config) > 0 || len(states) > 0,
-      _ => false,
-    },
-  },
-  None => false,
-}
-
 fn ls_find_str_local_loop(lst: [String], target: String, i, n) = if i >= n {
   -1
 } else if list_index(lst, i) == target {
