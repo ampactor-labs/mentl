@@ -397,13 +397,23 @@ if C=$(wt_m2_ensure); then
   omax=$(grep -E '^authored_own_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
   refmax=$(grep -E '^authored_ref_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
   say "· quiet gate: $cown authored own, $cref authored ref in src/ — the Hylo bar's counts"
+  # MONOTONE DOWN needs BOTH halves. This gate had only the rise arm for
+  # five weeks, so a marker the inference retired left the ceiling where it
+  # was and the slack accumulated invisibly — a ratchet that can only be
+  # breached, never tightened, is measuring nothing between breaches (§11
+  # tripwire 4, the same shape as the crown's eleven quiet entries). Every
+  # other ratchet in this file prints its fall; these two now do too.
   if [[ -n "$omax" && "$cown" -gt "$omax" ]]; then
     say "✗ quiet-gate RATCHET: authored own rose $omax -> $cown — the inference failed somewhere; teach it, do not annotate around it."
     fail=1
+  elif [[ -n "$omax" && "$cown" -lt "$omax" ]]; then
+    say "  ↓ authored own FELL $omax -> $cown — lower authored_own_max in $BASELINE to hold it."
   fi
   if [[ -n "$refmax" && "$cref" -gt "$refmax" ]]; then
     say "✗ quiet-gate RATCHET: authored ref rose $refmax -> $cref — the inference failed somewhere; teach it, do not annotate around it."
     fail=1
+  elif [[ -n "$refmax" && "$cref" -lt "$refmax" ]]; then
+    say "  ↓ authored ref FELL $refmax -> $cref — lower authored_ref_max in $BASELINE to hold it."
   fi
   # The EFFECT-SEAM gate (Hβ.io.fs-close-op-is-bypassed, closed 2026-09-04).
   # An effect exists so a handler can intercept the operation. A caller that

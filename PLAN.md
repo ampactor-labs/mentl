@@ -474,12 +474,53 @@ trued 2026-08-25). Not an aspiration — the Carried-Truth Law read at the
 performance scale. The kernel is one graph whose native access is the flat-array
 handle chase (§2), so a super-constant lookup for a fact already connected by a
 handle is not "work"; it is a discarded edge. **"O(1) only" means: follow the
-edge, never re-scan by name, shape, list position, or side ledger.** Whole
-program actions keep their honest bounds: compile is O(reachable image), edit is
-O(changed cone), structural equality/show/hash are O(value shape), proof is
-O(obligation fragment), and persistence is O(image bytes) until dirty-page image
-tracking lands. The law bans accidental super-constant lookup; it does not ban
-the structural walks whose output is the requested value.
+edge, never re-scan by name, shape, list position, or side ledger.**
+
+**THE LAW, IN ITS ULTIMATE FORM — and the excuse it replaces (Morgan,
+2026-09-07).** This paragraph used to read: *"Whole program actions keep their
+honest bounds: compile is O(reachable image) … the law bans accidental
+super-constant lookup; it does not ban the structural walks whose output is the
+requested value."* That sentence was not an accounting. It was an ALIBI, and it
+was written by an intelligence excusing a compiler that throws its own work
+away — the exact thing this document's own §9.9 warns about, a permanent cost
+called "honest" by the builder who did not want to pay it. It licensed
+re-deriving, on every run, a result that could not have changed.
+
+**Measured 2026-09-07, which is why the sentence is gone.** The compiler
+persists its analyzed image and restores it (`persist = memcpy` is REAL —
+`image_pack` is one `mem_copy(dst, 0, size)`), then re-ran saturate, lower,
+reachability, the gate and emit over the restored graph **every single run**. A
+five-line two-module program compiled warm in 5.75s against a ~2.0s process
+floor: ~3.8s spent re-deriving bytes the previous run had already produced —
+while the driver printed *"warm: image current — nothing re-derived."* The
+message was true of INFERENCE and false of the compile. A scoped claim rendered
+as an absolute is the same move as the paragraph it lived under.
+
+**THE TWO COSTS ARE DIFFERENT AND THE OLD SENTENCE CONFLATED THEM:**
+- **DERIVATION — computing a fact. O(1) amortized, no exceptions.** A fact is
+  computed ONCE and read forever after. If the inputs did not change, the
+  derivation cost is ZERO. This is the Carried-Truth Law extended over TIME:
+  re-deriving across runs is the same violation as re-deriving across call
+  sites, and the image is what makes "forever" reachable — one `mem_copy`
+  carries every fact the last run proved.
+- **DELIVERY — handing over a value. O(what was asked for).** You cannot
+  produce N bytes in fewer than N operations. That is information, not
+  overhead, and it is the ONLY irreducible cost in the medium.
+
+**So the whole law is: the cost of an operation is the size of the answer it
+was asked for, and nothing else.** Two corollaries, both enforceable: nothing
+is re-derived (time), and nothing is derived that was not demanded (scope —
+Arc D's `link-is-reachability` is this half). An operation whose cost grows
+with the program while its ANSWER did not change is the law violated, whatever
+bound it claims. **The test is falsifiable and it is a gate: change nothing,
+compile again, and measure. A compiler that re-reads its own conclusions has
+not earned the word "incremental."**
+
+Everything the old sentence listed as a floor is one of the two above or it is
+a defect: structural equality is O(1) when the graph already proved the two
+handles equal and O(shape) only when it must look; proof re-discharges in the
+changed cone alone; persistence is O(image bytes) once and O(dirty pages)
+after. None of them licenses a re-derivation.
 
 **The diagnosis (8-agent adversarial workflow, 2026-07-13 — the 22-min
 self-compile).** The cost is 100% guest ALGORITHM: JIT is ~20ms, AOT marginal,
@@ -713,8 +754,19 @@ and this is the STATE.
 
 - **Regions** are compile-time root-tagging + return-transfer, NOT a runtime
   arena. The `emit_memory_arena` swap is dormant (§5.O open work).
-- **`persist = memcpy`** is the design. Today: bump-allocated, not closed /
-  relocatable / versioned. Durable execution ABSENT (bands B/O).
+- **`persist = memcpy` IS BUILT, and this line said it was absent** — the doc
+  rot named as violation #1, measured 2026-09-07. `lib/persist.mn`'s
+  `image_pack` is literally one `mem_copy(dst, 0, size)` over `[0, heap-line)`
+  plus the globals record; `image_resume` gates on the build key and swaps it
+  in; `mentl resume <image>` re-enters a persisted image with the source not
+  required to exist; and the driver's warm start restores an analyzed image
+  rather than re-inferring. The honest remainder is NOT the mechanism: host
+  resources (fds, stdin position, sockets) are outside the image and do not
+  restore, and persisting mid-spawn is band E's fusion work. Durable
+  execution's *substrate* is here; its cross-machine face
+  (`Hβ.persist.cross-machine-resume`) is not.
+  **The cost of this sentence being wrong was real**: a session reading it
+  would have built the memcpy that already existed.
 - **`TCont` effect-WORLD** is INERT on OneShot — tag carried, not enforced.
   "Inert" means the stack-only path never becomes a rehydratable continuation
   value, so no changed-world comparison can fire there. The fix is not a special
@@ -733,7 +785,12 @@ and this is the STATE.
 - **Subsystem-as-cursor** (§2) is ~60% earned. Gap ranked: LOWERING (39
   constructors → columns), ENV (dissolves with schemes-are-edges), REVERSE EDGE
   (landed 2026-08-07), verify/tighten BANKS. The move: put the fact in a column,
-  dual-write, migrate readers, delete the side-structure.
+  dual-write, migrate readers, delete the side-structure — and its full cycle
+  ran once at pin 8aeca3c8: the emittable-fn enumeration went from dual-written
+  and zero-read to carrying each symbol's signature edges, emit's six
+  re-derivations of the emitted ABI became one settled read, and the walker
+  that only re-derived it (`find_local_handle_expr`, 30 arms) deleted. Eleven
+  walker families remain of the twelve that entry enumerates.
 - **Schemes are VALUES, not edges** — the root the judgment tower compensates
   for. Row half LANDED (5.2); forward-HOF under-publish CLOSED (pin c6eb188e1d37).
   Rung 3 whole is the dissolution.
@@ -1043,6 +1100,38 @@ eleven consecutive ledger entries while the leak rode the whole arc; nothing
 written was false, the gate had merely gone quiet. Closed mechanically by Phase
 0.1: a gate not run is a visible blank, and a red one refuses the pin.
 
+**ONE LAW, FOUR FACES — AND THE ORACLE IS THEIR SUM (2026-09-06).** The
+board's four largest open items are not four projects. Each is the same
+violation — *a materialized view stored where an edge belonged* — and the
+oracle is what they add up to:
+- **SCHEMES** (`Frozen`, rung 3): a decl's type frozen at its own exit, the
+  moment the cell is least finished. The two-pass tower re-judges the gap;
+  the movers line counts it.
+- **PROVENANCE** (`Reason`): a RECURSIVE VALUE TREE stored inline on every
+  node (`GNode(NodeKind, Reason)`), 24 constructors of which nearly all
+  carry a copied handle (`Declared(String)` names a node that exists),
+  copied structure (`Unified(R, R)` duplicates both subtrees into every
+  node that unified — the render's own comment admits "the DAG rendered as
+  the tree it is"), copied values (`UnifyFailed(Ty, Ty)` snapshots types
+  that may later resolve differently, so a Why chain can render what is no
+  longer true), or copied POSITIONS.
+- **POSITIONS** (`Span` in a Reason): a coordinate copied beside the very
+  handle it describes — the dominant call is literally
+  `graph_bind(handle, ty, Located(span, …))`. Copied coordinates also ROT
+  UNDER EDITING, which the resident session depends on them not doing.
+- **THE FAN** (11.1): the context re-judged per candidate instead of judged
+  once and read live.
+**THE SUM:** the oracle's central waste — every branch re-judging the whole
+context — IS rung 3, not a consequence of it; the teaching tie-break needs
+"what distinguishes these survivors", which is a provenance DIFF, cheap over
+edges and absurd over duplicated trees; the shared context needs live cells
+to be shareable at all; and the runner's shared image plus its own spawn
+count is what makes N real cursors observable. Fix them separately and each
+is a chore; fix them as one law and the oracle falls out. **Hardest first,
+and it is not the tractable-looking piece: judge the context ONCE and let
+branches read it live — which is rung 3's live cells, the same problem
+wearing the search layer's clothes.**
+
 **THE STANDING CURSOR (Morgan 2026-08-26 — the Space spine; supersedes the
 2026-08-11/12 selectors, whose corrected DEP chain it absorbs).** The
 production target until Morgan stands it down: the medium complete and
@@ -1075,12 +1164,20 @@ form the whole time. The arcs, in order:
   a projection the caller runs, instantiation the correspondence-edge mint,
   the trial/final collapse following; (iii) the enumeration-reader
   relocation with cons-state re-homed; (iv) `Hβ.lower.lowering-is-a-column`,
-  ABSORBING `Hβ.lower.open-row-field-offset-from-known-set` as its keystone
-  consumer — the open-row field-offset silent wrong (SYNTAX's own section
-  records it) is the lower-time-bake family's last live member, invisible to
-  check/match/micros, and no client-facing page ships it; (v) env re-key
-  onto the smap primitive — folds into (ii)'s env rework, one landing;
-  (vi) pointees-are-words.
+  whose STEP (ii) OPENED 2026-09-07 — the emittable-fn enumeration got its
+  first reader (each symbol's param and result types, read through the
+  settled `sigs_col` ABI column) and `find_local_handle_expr` deleted whole,
+  taking the walker census from twelve to eleven — and which ABSORBS
+  `Hβ.lower.open-row-field-offset-from-known-set` as its keystone consumer.
+  ONE CORRECTION, MEASURED at that landing: the surviving open-row case is
+  not a silent wrong. The DIRECT call's neighbour-read was fixed 2026-09-01;
+  what remains is the INTERIOR one, and it emits `(unreachable) ;; field
+  offset unprovable` — a refusal the executable trips, with no twin demanded
+  at the site at all. The wheel ships four such floors today (`op_name`,
+  `name`, `init`, `body`), so it is live, and `mentl check` still passes,
+  so it is invisible where the sentence said. No client-facing page ships
+  either shape; (v) env re-key onto the smap primitive — folds into (ii)'s
+  env rework, one landing; (vi) pointees-are-words.
 - **Arc C · Image lifetime v1.** With pointees-as-words, 4.3's fork/reset
   resumes soundly; persist = memcpy v0 under its black-box contract
   (requested path honored, versioned image, resume restores, incompatible
@@ -1756,13 +1853,42 @@ first-class — DONE statement (2) whole.
 The co-equal aspect (§4⑦) consolidated, not begun — most of its substrate
 landed in 5–10; this phase is the finish that makes it FELT.
 
-- **11.1 · The fused fan.** The `??`-fan and the e-graph compose in the
-  FORCED order (prove-then-extract): a survivor is an equality class,
-  extraction picks under the effect-aware rewrites, the repr gradient pins
-  widths — a proposal is proven AND extraction-optimal. The gradient
-  ranker (Reason chains + proximity + in-scope vocabulary) seats; the
-  teaching TIE-BREAK asks the minimal-entropy question when meaning-space
-  ties; `!E`-gated speculation live-runs only what the crown proves inert.
+- **11.1 · The fused fan — THE ORACLE IS NOT A SEARCH.** It is inference run
+  with the hole's constraints unresolved, narrowed monotonically, forking
+  only where meanings genuinely CONFLICT. The received shape was measured
+  2026-09-06 and contradicts the design it implements, five ways:
+  `fan_verify` enumerates every candidate and THEN judges each
+  (generate-then-filter, where §1's law is proof pruning guided search at
+  every step); it forks UNIFORMLY, so form-variants pay full fork cost in
+  the code that cites the fork/merge duality; each `candidate_judge`
+  re-infers WHOLE in an isolated instance (recompute, not refine — the
+  `Frozen` law at the search layer); those instances take an empty
+  `graph_handler`, so a fact proven in one branch is invisible to its
+  siblings and the shared image is paid for and unused; and the fan spawns
+  through `spawn_task` DIRECTLY — zero uses of `><` in synth_proposer or
+  oracle — at a width set by the `judge_window` constant, where the
+  language's own `~> Schedule` is read live at every other fanout. The
+  crown jewel is the one place Mentl does not solve Mentl.
+  **THE ULTIMATE FORM:** propagate, then enumerate (narrow the hole's
+  type/row/ownership/refinement first; enumerate from the PRUNED space,
+  cheapest constraint first); construct only inhabitable terms
+  (type-directed from the vocabulary's own types — ill-typed candidates are
+  never BUILT, not built-and-rejected); FORK AT MEANINGS, MERGE AT FORMS
+  (form-variants saturate in the e-graph, monotone and needing no
+  isolation, so the fan's width IS the number of genuine ambiguities —
+  exactly what the tie-break must resolve); judge the context ONCE and let
+  branches read it live, candidates as deltas; LEMMA SHARING, JOIN-ONLY (a
+  proven fact independent of the branch's candidate is monotone and may
+  flow to siblings — branch-local bindings never do, the 2026-08-07 race
+  and the severance that hid it; this is portfolio solving with clause
+  sharing over the shared image, and it is where threads actually pay);
+  the fan written as `(c) >< (c) ~> Schedule` so width is a handler
+  decision and `judge_window` dissolves; multi-shot making the SEARCH
+  durable (a branch is a continuation record, memcpy-serializable, so an
+  exploration suspends and resumes across runs and machines — the axis no
+  peer has); prove-then-extract FORCED; and never a list — unique survivor
+  fills, multiple meanings ask the ONE minimal-entropy question, because a
+  list is the medium admitting it does not know.
 - **11.2 · `mentl edit` / `mentl space` polished.** The keystroke→parse→format→render loop
   continuous (`Hβ.felt.mentl-edit-runtime`), reactivity typed and
   demand-driven, the verification dashboard (live V_Pending / transitive

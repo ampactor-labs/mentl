@@ -1,0 +1,34 @@
+// AN EFFECT OP IS A FUNCTION VALUE, or it refuses — never both compiling
+// clean and dying at the assembler. The op face of
+// Hβ.emit.nonfn-binding-as-function-value, born RED 2026-09-09: `each(note,
+// xs)` checked with ZERO diagnostics and emitted `(global.get $note)` for a
+// global that never existed, so wat2wasm objected about a symbol hundreds of
+// thousands of lines from anything the developer wrote.
+//
+// A bare op name is the parameter product with every field a hole, so it
+// reifies through the same partial mint a constructor does — with one law
+// the constructor does not need: the dispatch tier must be the SINGLETON
+// one. The lexical tier names a state local of the frame the reification
+// site is in, and the synthesized body is a LIFTED fn where that frame is
+// gone; the world-chain resolve inside the body reads the handler that is
+// installed when the closure is actually CALLED, which is the only handler
+// the escaped value can honestly mean.
+//
+// The performs must really land, so the answer is read back through the
+// handler's own state: 1 + 2 + 3. Expected: 6.
+effect Log {
+  note(n: Int)
+  total() -> Int
+}
+
+handler counter with sum = 0 {
+  note(n) => resume() with sum = sum + n,
+  total() => resume(sum),
+}
+
+fn tally() = {
+  each(note, [1, 2, 3])
+  total()
+} ~> counter
+
+fn main() = tally()

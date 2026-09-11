@@ -215,7 +215,7 @@ fn unconsumed_msg(name: String) with Memory + Alloc =
 // a sorted set (maintained by set_insert during consume), so folding
 // set_union across them preserves the invariant.
 fn union_all_deltas(ref deltas) with !Mutate =
-  fold([], (acc, delta) => set_union(acc, delta), deltas)
+  fold([], set_union, deltas)
 
 // Pairwise collision check across branch deltas. For each pair of
 // branch deltas (i < j), any name in their intersection was

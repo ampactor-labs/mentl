@@ -79,28 +79,50 @@ effect Format {
 // of the same fanout); 7 (one record per RenderResult, not parallel-
 // arrays); 9 (every NodeBody variant bodied; no "later").
 handler format_default {
-  format_program(ast) => // ─── format_program — top-level render ────────────────────────────
-  //
-  // The whole AST renders by walking top-level statements through |>,
-  // each statement individually formatted via format_at_handle, and
-  // the results joined with newline separators. Pure rendering — no
-  // graph mutation, no side effects beyond the output String.
-  {
-    let stmts = ast_top_level_stmts(ast)
-    let rendered = stmts |> map((s) => format_one_stmt(s))
-    resume(join_lines(rendered))
-  },
-  format_at_handle(handle) => // ─── format_at_handle — render one node ───────────────────────────
-  //
-  // The render-aspects of the formatter at one position fan out via <|.
-  // `(node, kind, ctx)` is borrowed (read-only) to SEVEN render-aspect
-  // branches: tokens, indent, line_break, comment, span, reason, sibling.
-  // "doc" is NOT a separate aspect — `//`-vs-`///` dissolved to ONE comment
-  // (SYNTAX.md comment-dissolution), so prose is the single `comment` aspect.
-  // This IS the eight-arms-of-one-read (PLAN §2) projected to render: not
-  // every kernel arm produces a distinct render branch. Outputs tuple
-  // together; assemble_render composes them into the canonical String.
-  {
+  format_program(ast) => resume(render_program(ast)),
+  format_at_handle(handle) => resume(render_node_at(handle)),
+  format_chain(chain_node) => resume(render_chain_node(chain_node)),
+}
+
+// ─── THE THREE IMPLEMENTATIONS, as plain fns ────────────────────────
+//
+// AN ARM MAY NOT PERFORM ITS OWN HANDLER'S OPS. A deep handler is not
+// installed for its own arms — the arm body runs in the world OUTSIDE the
+// install, which is what `tests/frontier/mn-deep-handler-arm.mn` pins at 51
+// — so an op performed from inside an arm walks PAST its own handler. With
+// `format_default` the only Format install, that walk reached the chain's
+// end and refused: `mentl fmt` trapped on real input, having compiled with
+// zero diagnostics. It read `ev_declaring_node <- format_one_stmt <-
+// op_format_default_format_program`.
+//
+// It was authored against a missing bracket. The lexical dispatch tier used
+// to emit a bare direct call with NO world bracket, so a perform inside an
+// arm resolved to the arm's own handler and this shape worked. Making the
+// bracket uniform made the law true everywhere and left these behind.
+//
+// The form is a DELETION, not a mechanism: an arm that needs a sibling op
+// already holds that op's implementation, so performing it re-derives
+// something in scope — Carried-Truth at the handler boundary. The op is the
+// INTERFACE, for callers outside; the fn is the implementation, for the arms
+// and for every helper the arms call. Rows stay inferred (Intent Boundaries
+// only), and the arms become one line each.
+fn render_program(ast) = {
+  let stmts = ast_top_level_stmts(ast)
+  let rendered = stmts |> map(format_one_stmt)
+  join_lines(rendered)
+}
+
+// ─── render_node_at — render one node ─────────────────────────────
+//
+// The render-aspects of the formatter at one position fan out via <|.
+// `(node, kind, ctx)` is borrowed (read-only) to SEVEN render-aspect
+// branches: tokens, indent, line_break, comment, span, reason, sibling.
+// "doc" is NOT a separate aspect — `//`-vs-`///` dissolved to ONE comment
+// (SYNTAX.md comment-dissolution), so prose is the single `comment` aspect.
+// This IS the eight-arms-of-one-read (PLAN §2) projected to render: not
+// every kernel arm produces a distinct render branch. Outputs tuple
+// together; assemble_render composes them into the canonical String.
+fn render_node_at(handle) = {
     // Handle-based throughout: the body reads via graph_node_body (the
     // same projection the parent scan uses) — the old `graph_node_at(h)`
     // one-arg call typechecked against an op binding while the
@@ -126,20 +148,19 @@ handler format_default {
       // 7. sibling glue
       ((_, _, c)) => render_sibling_separator(c)
     ) {
-      (tokens, indent, line_break, comment, span, reason, sibling) => {
-        let assembled = assemble_render(tokens, indent, line_break, comment, span, reason, sibling)
-        resume(assembled)
-      },
+      (tokens, indent, line_break, comment, span, reason, sibling) =>
+      assemble_render(tokens, indent, line_break, comment, span, reason, sibling),
     }
-  },
-  format_chain(chain_node) => // ─── format_chain — render one verb-chain ─────────────────────────
-  //
-  // Distinguishes the five verb-classes; each gets canonical layout
-  // per SYNTAX.md §342-389. `<|` opens-tuple-on-same-line with branches
-  // indented. `><` alone-on-line at indented center between paren-
-  // pipelines. `<~` indented center, optionally inline. `|>` and `~>`
-  // at left edge with stages on indented lines.
-  {
+}
+
+// ─── render_chain_node — render one verb-chain ────────────────────
+//
+// Distinguishes the five verb-classes; each gets canonical layout
+// per SYNTAX.md §342-389. `<|` opens-tuple-on-same-line with branches
+// indented. `><` alone-on-line at indented center between paren-
+// pipelines. `<~` indented center, optionally inline. `|>` and `~>`
+// at left edge with stages on indented lines.
+fn render_chain_node(chain_node) = {
     let kind = ast_kind_of(chain_node)
     // ast_kind_of projects the NodeBody altitude — the Expr sits one
     // constructor in (NExpr(PipeExpr(..))); the bare-Expr arms never
@@ -161,8 +182,7 @@ handler format_default {
       render_feedback_chain(l, r),
       _ => render_non_chain(chain_node),
     }
-    resume(rendered)
-  },
+  rendered
 }
 
 // ─── Canonical layout constants (SYNTAX.md §1185) ───────────────────
@@ -196,17 +216,17 @@ let fanout_distribute_kind = PFanout(FanDistribute)
 // absorbs the verb into the body (the recurrence `((prev) => …) <~ delay(1)`
 // rendered bare read back as `delay(1)(prev)` — an application). One read
 // of the ONE table, shared by every chain renderer's head.
-fn render_chain_pos(node) with Format + Memory + GraphRead + !Mutate =
-  if expr_prec_of(node) < 1 { parenthesize(format_chain(node)) } else { format_chain(node) }
+fn render_chain_pos(node) =
+  if expr_prec_of(node) < 1 { parenthesize(render_chain_node(node)) } else { render_chain_node(node) }
 
-fn render_converge_chain(left, right) with Format = {
+fn render_converge_chain(left, right) = {
   let left_str = render_chain_pos(left)
   let right_str = render_chain_pos(right)
   "{left_str}\n{spaces(left_edge_indent())}|> {right_str}"
 }
 
-fn render_diverge_chain(input, branches_tuple) with Format + !Mutate + Memory + Alloc = {
-  let input_str = format_chain(input)
+fn render_diverge_chain(input, branches_tuple) = {
+  let input_str = render_chain_node(input)
   // The right operand is the branch-tuple NODE; render_branch_tuple eats
   // the element LIST (the converged judge caught the node passed whole).
   // A non-tuple right operand is a single branch, rendered as one chain.
@@ -214,7 +234,7 @@ fn render_diverge_chain(input, branches_tuple) with Format + !Mutate + Memory + 
     N(bkind, _, _) => {
       let branches = match bkind {
         NExpr(MakeTupleExpr(elems)) => render_branch_tuple(elems),
-        _ => "{spaces(indented_center())}{format_chain(branches_tuple)},",
+        _ => "{spaces(indented_center())}{render_chain_node(branches_tuple)},",
       }
       "{input_str}\n{spaces(left_edge_indent())}<| (\n{branches}\n{spaces(left_edge_indent())})"
     },
@@ -234,10 +254,10 @@ fn render_diverge_chain(input, branches_tuple) with Format + !Mutate + Memory + 
 // Each branch parenthesized at base indent; >< alone on its line at
 // indented center (4-space) between consecutive branches. The carrier
 // is FanoutExpr's branch LIST (the N-ary law) — the render walks it.
-fn render_compose_chain(branches) with Format + !Mutate = match branches {
+fn render_compose_chain(branches) = match branches {
   [] => "",
-  [one] => parenthesize(format_chain(one)),
-  [h, ...t] => "{parenthesize(format_chain(h))}\n{spaces(indented_center())}><\n{render_compose_chain(t)}",
+  [one] => parenthesize(render_chain_node(one)),
+  [h, ...t] => "{parenthesize(render_chain_node(h))}\n{spaces(indented_center())}><\n{render_compose_chain(t)}",
 }
 
 // A named row renders as its authored signed triples: the first term
@@ -281,7 +301,7 @@ fn render_fanout_inline(branches) = match branches {
 // A single-stage body renders inline — same tree, same scope:
 //
 //   (try_fn()) ~> catch_abort
-fn render_tee(body, handler_expr) with Format + GraphRead = {
+fn render_tee(body, handler_expr) = {
   let body_str = render_chain_pos(body)
   let handler_str = render_chain_pos(handler_expr)
   let hc = graph_comment_at(node_handle(handler_expr))
@@ -305,7 +325,7 @@ fn render_tee(body, handler_expr) with Format + GraphRead = {
 // <~ at indented center (4-space) with the FeedbackSpec on the same
 // line. Requires iterative context (Sample / Tick / Clock / IC handler
 // installed upstream); without it, parser rejects with E_FeedbackNoContext.
-fn render_feedback_chain(input, spec) with Format = {
+fn render_feedback_chain(input, spec) = {
   let input_str = render_chain_pos(input)
   let spec_str = render_chain_pos(spec)
   "{input_str}\n{spaces(indented_center())}<~ {spec_str}"
@@ -1357,17 +1377,17 @@ fn any_child_is(target, nodes) with Memory + Alloc = if len(nodes) == 0 {
   any_child_is(target, drop_last(nodes))
 }
 
-fn render_branch_tuple(branches) with Format + Alloc + Memory + !Mutate = if len(branches) == 0 {
+fn render_branch_tuple(branches) = if len(branches) == 0 {
   ""
 } else {
   let head = last(branches)
   let tail = drop_last(branches)
-  let head_str = format_chain(head)
+  let head_str = render_chain_node(head)
   let head_line = spaces(indented_center()) ++ head_str ++ ","
   if len(tail) == 0 { head_line } else { head_line ++ "\n" ++ render_branch_tuple(tail) }
 }
 
-fn render_non_chain(node) with Format + !Mutate = format_at_handle(node_handle(node))
+fn render_non_chain(node) = render_node_at(node_handle(node))
 
 // String intent boundaries: the seven-fan's tuple elements reach here as
 // free vars (the branch returns don't ground the destructure), and `++`
@@ -1379,7 +1399,7 @@ fn render_non_chain(node) with Format + !Mutate = format_at_handle(node_handle(n
 fn assemble_render(tokens: String, indent: String, line_break: String, comment: String, span: String, reason: String, sibling: String) with Alloc + Memory =
   comment ++ indent ++ tokens ++ line_break ++ sibling
 
-fn format_one_stmt(stmt) with Format + !Mutate = format_at_handle(node_handle(stmt))
+fn format_one_stmt(stmt) = render_node_at(node_handle(stmt))
 
 fn ast_top_level_stmts(ast) with Pure = ast
 

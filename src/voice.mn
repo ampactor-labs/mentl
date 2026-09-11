@@ -269,7 +269,7 @@ type Answer
   // references
   | AnsRefs([Span], Reason)
   // pending obligations
-  | AnsDebt([(Span, Predicate, Reason)], Reason)
+  | AnsDebt([(Int, Span, Predicate, Reason)], Reason)
   | AnsSilence
 
 // Edit is a Patch applied to a FileHandle. Outcome is either
@@ -292,10 +292,10 @@ type CompileOutcome
   // the failure diagnostics
   | CompileFailed([DiagKind])
 
-type CheckOutcome = CheckOutcome([DiagKind], [(Span, Predicate, Reason)])
+type CheckOutcome = CheckOutcome([DiagKind], [(Int, Span, Predicate, Reason)])
 
 // diagnostics, pending obligations
-type AuditReport = AuditReport([(Span, Predicate, Reason)])
+type AuditReport = AuditReport([(Int, Span, Predicate, Reason)])
 
 // the live pending obligations — drift + plan + effect-registry surfaces
 //
@@ -929,12 +929,15 @@ fn query_result_to_answer(result) with Memory + Alloc = match result {
   QRWhy(reason) => AnsReason(reason),
   QRRefs(spans) => AnsRefs(spans, Inferred("refs-of: {int_to_str(len(spans))} reference(s)")),
   QRVerifyDebt(debt) => AnsDebt(debt, Inferred("verify-debt: {int_to_str(len(debt))} obligation(s)")),
-  QRCensus(label, spans) => // The census result is a forensic LIST the graph proved — the same
+  QRCensus(label, sites) => // The census result is a forensic LIST the graph proved — the same
   // shape refs-of carries, so it rides AnsRefs (the §7 registry-trap
-  // rule: computed, never dropped to Silence).
-  AnsRefs(spans, Inferred("census: {int_to_str(len(spans))} {label}")),
-  QRDecls(spans) => // The decls column's sites ride AnsRefs like the census.
-  AnsRefs(spans, Inferred("decls: {int_to_str(len(spans))} judged decl(s)")),
+  // rule: computed, never dropped to Silence). AnsRefs carries SPANS, so
+  // the module half drops here and only here: this answer is consumed by
+  // readers that already know the file they asked about.
+  AnsRefs(map(census_site_span, sites), Inferred("census: {int_to_str(len(sites))} {label}")),
+  QRDecls(sites) => // The decls column's sites ride AnsRefs like the census — same shape,
+  // so the module half drops at the same boundary and for the same reason.
+  AnsRefs(map(census_site_span, sites), Inferred("decls: {int_to_str(len(sites))} judged decl(s)")),
   QRWhere(_, sites) => // The where badges' site list rides AnsRefs like the census; the
   // badge lines render at the CLI (the terminal projection's home).
   AnsRefs(site_spans(sites), Inferred("where: {int_to_str(len(sites))} fanout site(s)")),
@@ -977,11 +980,15 @@ fn site_spans(sites) with Memory + Alloc = match sites {
 // obligation (span, predicate, reason) is the refinement the path could not
 // discharge statically: ERefinementRejected IS its canonical DiagKind. The
 // audit findings are the same obligations — the forensic surface is one read.
+fn census_site_span(site) with Pure = match site {
+  (_m, s) => s,
+}
+
 fn diagnostics_from_debt(debt) with Alloc + Memory = if len(debt) == 0 {
   []
 } else {
   match last(debt) {
-    (span, predicate, _reason) => [ERefinementRejected(predicate, span)] ++ diagnostics_from_debt(drop_last(debt)),
+    (_modh, span, predicate, _reason) => [ERefinementRejected(predicate, span)] ++ diagnostics_from_debt(drop_last(debt)),
   }
 }
 

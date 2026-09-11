@@ -1,0 +1,22 @@
+// expect: 7
+// SYNTAX §«Imports» — a module's IDENTITY is the module it resolves to,
+// never the spelling that reached it. `lists` and `lib/lists` name one
+// file, so importing the path-prefixed spelling from a module whose
+// prelude already imported the bare one draws a SECOND edge to a module
+// already in the DAG — and drawing an edge that exists is a no-op,
+// because that is what an edge is.
+//
+// Born RED (2026-09-06): the DAG walk keyed its visited set by the
+// SPELLING and resolved to a path on the next line, so the two spellings
+// collected the same file twice and every declaration in it collided
+// with itself — 58 diagnostics on this four-line program, while the
+// identical source through the blob link is silent because the
+// concatenation never resolves an import at all.
+//
+// That divergence is what this battery's manifest leg exists to catch,
+// and it is the §11 tripwire-3 shape exactly: the wheel's own build is
+// the cat-blob through stdin, and every lib spells its siblings bare, so
+// no gate on the board had ever resolved a path-prefixed import.
+import lib/lists
+
+fn main() = len([1, 2, 3]) + 4

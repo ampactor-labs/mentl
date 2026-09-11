@@ -657,7 +657,22 @@ comment_refs_max: 0
 # query.mn and pipeline.mn. Same family as the three facet landings before
 # it, and the same non-constant per-fn cost — what moves a scheme is
 # forward reference, not count. No condemned machinery touched.
-movers_max: 474
+#
+# 474 → 476 at the signature-column landing (2026-09-07): the same family
+# again, and the same per-fn cost. The arc added ~15 fns across types.mn,
+# env.mn, lower.mn and wasm.mn (the enumeration entry's edge producers, the
+# settled-ABI readers, and the lambdas the anonymity tier asked be given decl
+# homes) while DELETING the param-width ladder and the 30-arm
+# find_local_handle_expr family. What moves a scheme is forward reference,
+# not count, so a net line-count fall does not imply a mover fall. NO
+# CONDEMNED MACHINERY WAS TOUCHED — the two-pass tower is untouched by this
+# landing, which only changed where emit reads a width from. The number goes
+# to zero at rung 3's dissolution, whose real DEP this landing was built to
+# remove (`Hβ.infer.live-cells-need-one-settled-signature`).
+# 2026-09-07: 476 -> 435 at the module-blind-parse landing. Not a movers fix;
+# the per-module parse changes what the trial and final each see, and the
+# class fell out. The condemned pass still owns the rest (0 deletes it).
+movers_max: 435
 
 # The effect seam: filesystem impl calls outside the handler that owns them.
 # MEASURED 24 before this landing and 13 after (both read from the artifact,
@@ -702,7 +717,10 @@ movers_max: 474
 # WASI while the capability the handler names is Filesystem, so
 # `with !Filesystem` went on holding over routes that created, wrote,
 # renamed and unlinked files.
-fs_impl_bypass_max: 8
+# 2026-09-07: 8 -> 0. driver_manifest hashed each module by RE-READING its
+# file; the text rides the entry now, so it hashes what it was handed and the
+# last filesystem calls outside the handler that owns them are gone.
+fs_impl_bypass_max: 0
 
 # 2026-08-07: the PER-MODULE ratchet (PLAN §11 Phase 3.5's first half) —
 # E_MissingVariable across every src module's SOLO check, monotone DOWN.
@@ -757,7 +775,51 @@ solo_violations_max: 0
 # Ratcheted 29 → 28 at the trio deletion (pin 54c97b0f7220): oracle's
 # `(pos) => candidates_at(pos)` eta-wrapper became the ??-suspension
 # `candidates_at(performed, ??)` — the Stage-Law form, no wrapper at all.
-eta_max: 28
+# 2026-09-08: 28 -> 11. Seventeen eta-wrappers deleted — each was
+# `(x) => f(x)` around a plain top-level fn, so the name was passed bare.
+# The remaining ELEVEN were not style, they were BLOCKED: a bare non-fn
+# binding used as a function value compiled with ZERO diagnostics and then
+# either trapped or emitted `(global.get $<name>)` for a global that did not
+# exist, the assembler objecting first.
+# 2026-09-09: 11 -> 3, in TWO landings, because the boot compiles m2 and the
+# wheel cannot write a form the boot does not carry (measured: bundling both
+# made m2 fail to assemble at wat:99217). The fix landed first
+# (Hβ.emit.nonfn-binding-as-function-value — a bare name is the parameter
+# product with every field a hole, so it reifies through the partial mint),
+# then the eight unblocked wrappers came out against the new boot: four
+# constructor wrappers in cli.mn, three `map((v) => TVar(v), …)` in infer.mn,
+# and `map((h) => interrogate_at(h))` in eight_loop.mn.
+# 2026-09-10: 3 -> 0, at pin f862677e5959751a. The last three were one shape
+# and a different blocker: `map((x) => process(x), buffer)` three times in
+# lib/dsp/processors.mn, where `process` is declared by lowpass, biquad AND
+# envelope. A reified op resolved its handler from the live world chain by
+# HANDLER name, so an ambiguous op had no single name to resolve and no
+# single arm to call. The one-walk collapse keys that walk on the OP, so
+# ambiguity stopped being fatal and the three wrappers came out bare — a
+# CONSEQUENCE of the walk, never a target, and specifically not the
+# rewrite-as-named-wrappers move that would have laundered the same
+# redundancy past this very count.
+# ZERO IS NOT A RESTING PLACE, it is a refuse-contract: the next eta-wrapper
+# to appear in the wheel raises this and the gate refuses the pin. What the
+# count MEANS at zero is that no named fn in the wheel hides behind a lambda
+# that only forwards to it.
+eta_max: 0
+
+# frontier_red_max — the frontier legs allowed to stand red at a repin.
+# Read by march.sh, which runs the frontier ITSELF against the boot it just
+# wrote and refuses the pin when the count rises past this. It exists because
+# pin f862677e was blessed on a frontier verdict measured against the PRIOR
+# boot: honestly labelled, and still a verdict on the wrong generation, while
+# eleven legs were red on the right one. The gate had always refused red — it
+# exits nonzero and stamps the boot sha it proved — but the stamp is read by a
+# pre-commit hook and a fresh clone has none, so nothing in that environment
+# ever asked. Now the pin asks.
+#
+# ONE standing red: `why coordinates are the developer's`, which wants
+# Located to carry a handle rather than a bare span so show_reason can name a
+# module (Arc C of the plan, Hβ.reason.located-carries-a-handle). It goes to
+# zero there, and this ceiling with it.
+frontier_red_max: 1
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
@@ -807,7 +869,17 @@ record_pattern_open_max: 0
 # two ratchets this run tripped were fixed rather than raised: the ref
 # markers came off the guard's own fns, written by the same copy-the-
 # surrounding-style reflex the quiet gate exists to catch.
-effectful_lambda_max: 385
+# 384 → 382 at the signature-column landing (2026-09-07), and it FELL by
+# doing what this ratchet asks. The tier convicted two new rows on the first
+# run of that arc; the fix is the one its own message names — "a row newly
+# denied its decl home" — so the sig-pair builders, the slot projection and
+# the wideness predicate became named fns (emit_sig_pair_of_record,
+# emit_sig_pair_of_twin, sig_slot_repr, symbol_is_wide, fn_record_is_wide)
+# instead of inline lambdas. Two MORE came back than went out, because the
+# deleted param-width ladder took its own `find` and `any` lambdas with it.
+# 2026-09-07: 382 -> 379 at the module-blind-parse landing — the deleted seam
+# and rehome families took their lambdas with them.
+effectful_lambda_max: 376
 
 # 2026-08-07: the USE-AFTER-MOVE ratchet (PLAN §11 Phase 4.1,
 # Hβ.own.use-after-move) — T_UseAfterMove narrations on the wheel's own
@@ -859,10 +931,17 @@ loop_scaffold_refs_max: 3
 # desugar path, a rise is a new mint nobody reviewed. Measured 44 with
 # str_literal_5 (an identity relic) already deleted out of it; the spliced
 # names were shown compiler-synthesized, so the literal scan sees all of it.
-desugar_vocabulary: 43
+# 2026-09-10 · 43 -> 44 · RE-DERIVED, and the seed follows the set because
+# the set is what the emit actually mints. The world-chain walk's minted trio
+# changed shape: `ev_perform_node` and the effect-only `world_find_from` are
+# DELETED and `ev_declaring_node`, `world_declaring_from` and `node_arm_at`
+# replace them — two names out, three in, because asking whether a handler
+# DECLARES an op (rather than merely covering its effect) is one read the old
+# pair had no home for. The +1 is that read.
+desugar_vocabulary: 44
 
 authored_own_max: 83
-authored_ref_max: 813
+authored_ref_max: 812
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1233,5 +1312,124 @@ env_frame_max: 0
 # refused a clean fixpoint on its next run. The ceiling now sits just above
 # the highest of the three. A ratchet set inside its own measurement's
 # variance is not a ratchet; it is a coin flip that blocks good work.
-selfcompile_peak_kb_max: 2310000
+# 2310000 → 2320000 (2026-09-06): THE ENGINE CHANGED, NOT THE WHEEL. The
+# gates now run on tools/runner (wasmtime 47 embedded) because the CLI is a
+# dead end — it cannot execute a spawning Mentl module past 36. The input is
+# the same source and the OUTPUT IS BYTE-IDENTICAL across the two engines
+# (the runner-built m2 sha256-matches the CLI-built boot, 41aec80b…), so this
+# is not the wheel growing. It is measured, not assumed: three CLI readings
+# of this source came in at 2200336 / 2200508 / 2200512 KB — a 176KB spread —
+# and four runner readings at 2311820 / 2311160 / 2309348 / 2305804 KB, a
+# ~6MB spread. +109MB, ~5.0%, far outside either engine's own noise. The old
+# line ALSO had to move regardless of judgment: two of those four readings
+# fall under 2310000 and two above it, so the ceiling had come to sit inside
+# the runner's variance — the coin flip the paragraph above names, arriving
+# by a different road. The new line sits just above the highest observed
+# reading, and the +109MB is the engine's, to be re-derived (not inherited)
+# if the runner's memory config is ever tuned.
+# 2320000 → 2326000 (2026-09-07, the signature-column landing): THE WHEEL
+# GREW, and the old line had come to sit inside the measurement's own
+# variance again — the coin flip the 2250000 paragraph names, arriving a
+# third time. Measured, not assumed: FOUR readings of this landing's tree
+# came in at 2321788 / 2323120 / 2323980 / 2324148 KB, and three of those
+# are the SAME m2 binary on the SAME wheel.mn re-run back to back — a
+# 2.4MB spread with the input held fixed, so the cost line is a band and
+# not a point, and any ceiling within ~0.1% of it flaps. An earlier reading
+# of this same tree at 2318112 sat UNDER the old line, which is exactly how
+# a coin flip looks from the winning side; it is not evidence the landing
+# fit. THE GROWTH IS REAL TOO and it is the arc's own: the emitted-signature
+# column stores one ESig per emitted symbol where nothing was stored, the
+# enumeration entry carries an Option-wrapped Ty per parameter slot, and
+# Mentl comments are GRAPH CONTENT, so this landing's prose is interned
+# weave with a footprint of its own. Against that it DELETED the per-param
+# body walk at three readers and the 30-arm find_local_handle_expr family.
+# Net ~+8MB over the pre-arc 2315808. The new line sits just above the
+# highest observed reading, per this file's own standing rule.
+#
+# THE INSTRUMENT ITSELF IS NAMED BY THIS: the ratchet compares ONE sample
+# of a measurement whose fixed-input spread is megabytes, which is why it
+# has now been re-set three times for variance rather than for growth. The
+# fix is the reading, not the line — `Hβ.tools.cost-ratchet-reads-one-sample`
+# in RESIDUE: take the minimum of N legs, or compare against a band.
+#
+# 2026-09-07 · 2326000 -> 2350000 · THE MODULE COLUMN, and the FIRST raise
+# this file records that is provably GROWTH rather than variance — because
+# the estimator was fixed in the same session it fired. read_cost now
+# re-runs the m3 leg twice on a breach and rules on the MINIMUM of three,
+# since peak RSS is one-sided (jitter can only push an observed peak ABOVE
+# the true requirement). The minima across two full marches read 2340292 and
+# 2343036 KB against a 2326000 line: +0.61%, where the measured fixed-input
+# jitter band is 0.28%. A single sample could not have told those apart, and
+# the three previous entries in this file are what that looks like.
+#
+# THE COST IS STRUCTURAL AND IT IS ACCOUNTED, not absorbed: the per-module
+# parse adds a twelfth column to SpinePage, so every open band now allocates
+# one more 16384-slot flat array — 64KB per band, and the self-compile's
+# handle space is a few hundred bands. That is the whole delta, and it is
+# the price of every node knowing which file it was born in without a
+# containment scan re-deriving it.
+#
+# AGAINST IT, DELETED WHOLE: module_seams / seams_walk / span_render_local /
+# seam_of_line (an O(nodes) walk per call, three callers), scope_localize's
+# per-diagnostic weave-offset subtraction, rehome_seam_comments / rehome_walk
+# / rehome_one / module_slot_of, split_weave_by_module's per-stmt containment
+# test, driver_module_ast's re-filter, entry_start_caret's range search,
+# file_line_of, and the range map itself. m3 emits 416371 WAT lines against
+# 420099 at the previous pin — 3728 fewer.
+# 2026-09-08 · 2350000 -> 2358000 · MIN-OF-THREE STILL FLAPS, and this entry
+# exists to say so rather than to buy room. Four min-of-three readings across
+# four marches of near-identical trees: 2340292, 2343036, 2344996, 2352324 —
+# a 12MB spread IN THE ESTIMATOR. One of those refused a repin and the next
+# march passed the same tree, with the gate printing "the lone sample was
+# jitter" about a reading that was itself a minimum. The estimator fix was
+# right and it is not enough: it narrowed the band, it did not close it.
+#
+# THE PROXY IS THE PROBLEM. Peak RSS is an OS high-water mark — page reclaim,
+# allocator behaviour and whatever else the machine is doing all move it —
+# while the thing the ratchet is FOR is the wheel's own footprint, which is
+# deterministic per input. The wheel already measures that and prints it:
+# `image: N image-classified byte(s)`, the arena census's extent-delta
+# account. Ratcheting THAT is a deterministic gate with no band at all, and
+# it makes this key's whole history of variance-driven re-sets unrepeatable.
+# Named as Hβ.tools.cost-ratchet-reads-the-os-not-the-wheel; until it is
+# built, the line clears the measured min-of-three band.
+# 2026-09-10 · RAISED TO 2362000 AND PUT BACK THE SAME DAY — the raise is
+# recorded because it was wrong, not because it stood. `pad_group_to_effect_ops`
+# makes every handler's per-effect arm region dense over that EFFECT's full op
+# list instead of over the ops that handler happens to implement, which is the
+# cost of the layout telling the truth (op_slot is documented as a position
+# into the effect's immutable op-list, every reader indexes by it, and the
+# region was only dense to the handler's own highest slot — so a dispatch for
+# an unimplemented op read PAST it, measured silently wrong at
+# tests/frontier/mn-split-effect-evidence.mn as 15 where 33 is correct). The
+# refused repin read 2359588KB min-of-three and the ceiling went to 2362000.
+# Then the SAME landing deleted the condemned pair it had been carrying for
+# one generation (ev_perform_node, the effect-only world_find_from) and
+# inlined miss_or_node, and the next march read 2350376KB — under the ORIGINAL
+# line. So the ceiling is back where it was. The lesson is the ordering: a
+# ratchet raised mid-arc, before the arc's own deletions land, buys room the
+# finished work does not need, and slack bought that way never gets noticed
+# again because nothing refuses.
+selfcompile_peak_kb_max: 2358000
+
+# ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
+# Guest OS threads the compile creates, counted at clone/clone3, as the
+# DELTA between a 61-declaration program and a 1-declaration one. The delta
+# and not an absolute: wasmtime's own host threads are identical in both and
+# cancel, while guest layer-branch spawns scale with the branch count — so
+# this ratchet measures US and stays true across runner upgrades, where an
+# absolute ceiling would go red on somebody else's implementation detail.
+#
+# The line above ratcheted the MEMORY the 433-thread defect cost. Nothing
+# ratcheted the threads themselves, which is why judge_window = 1 could sit
+# beside a spawn-per-branch for ten days with the whole board green — the
+# gate that would have caught it on day one is this one, and it did not
+# exist. Zero is the honest floor today (measured: 5 clones at 1 decl, 5 at
+# 61, both host overhead) because a singleton judge block runs BrDirect.
+#
+# WHEN PHASE 9.2 RESTORES judge_window = 8 THIS IS RE-BASELINED, NOT DELETED:
+# the number becomes the width the parallel walk is supposed to have, and the
+# gate goes on answering the same question one octave up. Seen RED at ceiling
+# -1 before it was trusted.
+judge_spawn_delta_max: 0
 lists_movers_max: 6

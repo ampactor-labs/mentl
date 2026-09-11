@@ -1,0 +1,43 @@
+// THE DEEP-HANDLER LAW at the ARM: an arm that performs the very op it
+// handles must resolve OUTWARD — to the next install down the chain — never
+// back into itself. `inner`'s arm performs `note`, so under the law that
+// reaches `outer` (5 * 10 = 50), and the arm adds 1: 51. Under a
+// perform-site-world dispatch it reaches `inner` again and recurses forever.
+//
+// BORN RED 2026-09-09 answering 52, GREEN at 51 since pin f862677e5959751a.
+// The law is not a reading of the literature: the emit states it in its own
+// words, "the arm's own performs resolve outer, never self".
+//
+// WHAT THE 52 WAS, kept because it is the argument for the form that
+// replaced it. It was a divergence between two implementations of one walk.
+// main's `note(5)` took the LEXICAL tier, which emitted a bare direct call
+// with NO world bracket, so `inner`'s arm ran with the world still
+// containing `inner`. The arm's own `note(n)` took the EVIDENCE tier, walked
+// that un-narrowed world, and found `inner` — self. THAT call bracketed
+// correctly, so the second arm reached `outer` and returned 51, and the
+// first arm added its own 1: 52. Exactly one extra hop, which is what one
+// missing bracket buys — and the install had been saving what the fix needed
+// the whole time, in `_wprev`, the chain from before its own push, which its
+// own comment called "what the arm dispatch sets around the arm call".
+//
+// It was not FIXED. The four perform nodes became one, so the bracket is
+// emitted once for every dispatch that calls an arm and no tier survives
+// that could omit it. This fixture is the standing proof of that: the number
+// it pins can only move if a second walk is ever written again.
+//
+// RECORDED AS A CORRECTION, and it stays recorded: an earlier read of this
+// fixture called the hypothesis refuted, on the strength of a 501 that was
+// never measured — the multiplier was 100, the exit was out of range, and
+// 501 was INFERRED from a runtime error message that carried no number. 502
+// would have produced the identical message.
+effect Log { note(n: Int) -> Int }
+
+handler outer {
+  note(n) => resume(n * 10),
+}
+
+handler inner {
+  note(n) => resume(note(n) + 1),
+}
+
+fn main() = note(5) ~> inner ~> outer

@@ -517,6 +517,14 @@ fn crc_judge_dollars(ref dollars, i, ref lvix, ref cdix) = if i >= len(dollars) 
       if hit {
         ()
       } else {
+        // The report is about the module the COMMENT lives in, not whichever
+        // one this whole-weave walk happened to leave in force. Read it from
+        // the commented node's own handle — the same read every judgment does
+        // at its stmt — or the register scopes lib prose into the user's
+        // stderr (measured: eight W_CommentRefUnresolved lines from `last`,
+        // `join_loop` and `str_contains` reaching a caret projection on one
+        // eight-line file).
+        graph_module_enter(graph_module_of(h))
         report(WCommentRefUnresolved(comment_owner(h), raw, graph_comment_span_at(h)))
       }
       crc_judge_dollars(dollars, i + 1, lvix, cdix)
@@ -892,7 +900,7 @@ fn pre_register_handler_sig(hname, config, state, arms) = {
     state
   )
   let inst_vars = mint_instance_vars(ename, effect_instance_arity(ename), 0)
-  let inst_ty = TName(ename, map((v) => TVar(v), inst_vars))
+  let inst_ty = TName(ename, map(TVar, inst_vars))
   let inst_h = mint(Inferred("effect '{ename}' instance"))
   graph_bind(inst_h, inst_ty, Inferred("effect '{ename}' instance"))
   let handler_ty = TName("Handler", [inst_ty])
@@ -1119,7 +1127,7 @@ fn frontend(source) = source |> lex |> parse_program
 // ops carry arms (a partial-effect handler leaves zero fn slots; a perform
 // through one is a garbage dispatch — the tighten_collector constraint).
 handler diag_quiet {
-  diag_report(d, _line) => resume(),
+  diag_report(d, _line, _dmod) => resume(),
   diag_errors() => resume(0),
   diag_refusals() => resume(0),
 }
@@ -1130,8 +1138,8 @@ handler diag_quiet {
 // any in-branch diag_errors/diag_refusals read with branch-local truth.
 // diag_lines_taken hands the whole fact set to the join.
 handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals = 0 {
-  diag_report(diag, line) => // The banked fact carries the DIAG STRUCTURALLY beside the rendered
-  // line — the join re-performs diag_report(diag, line) into the root
+  diag_report(diag, line, dmod) => // The banked fact carries the DIAG STRUCTURALLY beside the rendered
+  // line — the join re-performs diag_report(diag, line, dmod) into the root
   // chain, so every Diagnostic forwarder (tighten_collector, the mcp
   // bank) sees a branch report exactly as a live one, and the root's
   // scope register / tally read the diag itself. The old bank kept only
@@ -1141,7 +1149,7 @@ handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals 
   // judges through the branch bracket).
   {
     let iserr = diag_severity(diag) == SError
-    let grown = list_set(list_extend_to(lines, count + 1), count, (diag, line))
+    let grown = list_set(list_extend_to(lines, count + 1), count, (diag, line, dmod))
     if iserr {
       if diag_refuses(diag) {
         resume() with lines = grown, count = count + 1, errors = errors + 1, refusals = refusals + 1
@@ -1161,7 +1169,7 @@ handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals 
 // capture handler hands the driver its held list through this op, the
 // diag_lines_taken precedent one bracket over.
 effect PolyCapture {
-  poly_captured() -> [(DiagKind, String)]
+  poly_captured() -> [(DiagKind, String, String)]
 }
 
 // The speculative judgment's diag CAPTURE: an attempt runs under it so
@@ -1172,10 +1180,64 @@ effect PolyCapture {
 // driver replays the held list outward on accept or drops it for the
 // honest re-run.
 handler poly_capture with held = [] {
-  diag_report(diag, line) => resume() with held = push(held, (diag, line)),
+  diag_report(diag, line, dmod) => resume() with held = push(held, (diag, line, dmod)),
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
   poly_captured() => resume(held),
+}
+
+// A single source IS a module — stdin's, the REPL line's, the march blob's.
+// There is no unattributed parse and therefore no absent case for any reader
+// to carry: the column is total because entering a module is what parsing is.
+fn infer_program_converged(src) = {
+  enter_link_root()
+  infer_modules_converged([("<stdin>", src)])
+}
+
+// ─── The per-module parse — one text per module, never one weave ─────────
+// THE ROOT the module-blind parse compensated for five ways (the out-of-band
+// range map, NModule minted after the fact from that map, rehome_seam_comments
+// whose own comment said "the parser cannot see seams", module_path_of_span's
+// containment scan, and the seam-render family). The driver used to
+// concatenate the dep DAG into ONE text, so every node was born in the weave's
+// coordinate space unattributed and five machines existed to put back what
+// that threw away.
+//
+// One-namespace judgment never required one TEXT, only one ENV. So: parse each
+// module on its own, concatenate the DECL LISTS, judge as one program. Spans
+// are local from birth because each lex starts at line 1, and the module is on
+// the node because the parse runs inside it.
+//
+// The NModule node is minted BEFORE its own parse so it can be entered, then
+// its body is re-registered with the decls that parse returned — exactly the
+// decls, with no span-containment filter, because there is no weave to cut.
+// The LINK'S OWN module, entered before anything else can mint or report.
+// Without it the window between graph install and the first per-file parse
+// has no module in force — discovery's E_MissingModule fires there — and the
+// readers would each need a "which file, if any" arm, which is the absent
+// case this column exists to not have. The link is a module: it is the
+// program the developer asked for, and the per-file parses enter their own
+// inside it.
+fn enter_link_root() = {
+  let rspan = Span(1, 0, 1, 0)
+  match mint_node(NModule({decls: [], path: "<link>", span: rspan}), rspan) {
+    N(_, _, h) => graph_module_enter(h),
+  }
+}
+
+fn parse_modules(ref mods) = mods |> map(parse_one_module) |> flatten
+
+fn parse_one_module(m) = match m {
+  (path, text) => {
+    let mspan = Span(1, 0, count_lines(text) + 2, 0)
+    let mh = match mint_node(NModule({decls: [], path: path, span: mspan}), mspan) {
+      N(_, _, h) => h,
+    }
+    graph_module_enter(mh)
+    let stmts = lex(text) |> parse_program
+    graph_register_node(mh, NModule({decls: stmts, path: path, span: mspan}))
+    stmts
+  },
 }
 
 // THE ONE JUDGE (Hβ.infer.order-independent-verdicts): every judgment
@@ -1227,10 +1289,9 @@ handler poly_capture with held = [] {
 // This is not an improvement to the condemned tower (Anchor 2): its judgment,
 // its cadence and its two generations are untouched, and when rung 3 deletes
 // the second pass this seam simply loses a caller.
-fn infer_program_converged(src) = {
-  let toks = lex(src)
+fn infer_modules_converged(ref mods) = {
   match {
-    toks |> parse_program |> infer_program_trial
+    parse_modules(mods) |> infer_program_trial
   } ~> diag_quiet {
     (rows, layers, summ) => {
       let flat_rows = list_to_flat(rows)
@@ -1239,7 +1300,7 @@ fn infer_program_converged(src) = {
       // crc walk's lower bound, so the backtick judge reads only THIS
       // pass's comment cells.
       let pstart = graph_next()
-      let out = toks |> parse_program |> infer_program_final(flat_rows, layers, pstart, summ)
+      let out = parse_modules(mods) |> infer_program_final(flat_rows, layers, pstart, summ)
       // The divergence read: the final's publishes are the env's latest
       // entries, so re-rendering the same names compares the two passes.
       // Nothing refuses on a mismatch — the final's answer already
@@ -1985,8 +2046,19 @@ fn group_judge_members(ref stmts, ref members, own rows, j) = if j >= len(member
 // The ONE measure home: judge the stmt, return its sizing row — the
 // trial's sweep writes it at the stmt's position; the final's plan
 // prefix-sums it into the deterministic handle bases.
+// EVERY JUDGMENT RUNS INSIDE A MODULE. The stmt was attributed at its own
+// parse, so the fact is already on its handle — read it, never thread it.
+// Entering here means the type cells this judgment mints belong to the file
+// that caused them, and the diagnostics register can stamp a report with the
+// module it is about, which is what scopes narration now that spans are local
+// and a line range no longer distinguishes one file from another.
+fn enter_module_of(ref node) = match node {
+  N(_, _, h) => graph_module_enter(graph_module_of(h)),
+}
+
 fn stmt_measure_one(ref node) = {
   let before = graph_next()
+  enter_module_of(node)
   infer_stmt(node)
   (stmt_decl_name(node), graph_next() - before)
 }
@@ -2383,6 +2455,7 @@ fn branch_judge(stmt, base, seed, summ, ceil, gseed, iseed, range) = {
     // fires inside branch-judged finalizes too.
     set_mint_ceiling(ceil)
     consume_seed(seed)
+    enter_module_of(stmt)
     infer_stmt(stmt)
     let vdebt = verify_debt()
     let clog = consume_log()
@@ -2463,8 +2536,8 @@ fn branch_replay_diags(ref dl, i) = if i >= len(dl) {
   ()
 } else {
   match dl[i] {
-    (d, l) => {
-      diag_report(d, l)
+    (d, l, dm) => {
+      diag_report(d, l, dm)
       branch_replay_diags(dl, i + 1)
     },
   }
@@ -2485,8 +2558,8 @@ fn branch_replay_verify(ref vdebt, i) = if i < 0 {
   ()
 } else {
   match vdebt[i] {
-    (span, pred, reason) => {
-      verify(span, pred, reason)
+    (modh, span, pred, reason) => {
+      verify(modh, span, pred, reason)
       branch_replay_verify(vdebt, i - 1)
     },
   }
@@ -2679,7 +2752,7 @@ fn infer_stmt(ref node) = match node {
 // exit (which binds the row), generalize, re-extend env with scheme.
 fn held_has_poly(held, name: String) = any(
   (p) => match p {
-    (d, _) => match d {
+    (d, _, _) => match d {
       TPolyRecursionSignature(owner, _) => owner == name,
       _ => false,
     },
@@ -2689,13 +2762,13 @@ fn held_has_poly(held, name: String) = any(
 
 fn held_has_error(held) = any(
   (p) => match p {
-    (d, _) => diag_severity(d) == SError,
+    (d, _, _) => diag_severity(d) == SError,
   },
   held
 )
 
 fn replay_one(p) = match p {
-  (d, line) => diag_report(d, line),
+  (d, line, dmod) => diag_report(d, line, dmod),
 }
 
 fn replay_held(held) = each(replay_one, held)
@@ -3005,7 +3078,25 @@ fn infer_fn_speculative(name, params, body_node, ret_ann, effs, handle, span: Va
   }
 }
 
+// THE JUDGMENT BOUNDARY IS WHERE THE GUARD'S REFUSALS GET NARRATED. graph's
+// occurs write-guard cannot report where it stands — a diagnostic performed
+// inside an arm resolves OUTER of its own install and sails past any capture
+// bracket installed deeper, which is exactly where infer_fn_speculative
+// installs poly_capture. So the arm notes and this drains, in the BODY's
+// world, one statement after the judgment that provoked them. Every bracket
+// that should see the refusal now does, the Mycroft retry among them
+// (Hβ.diag.an-arms-report-escapes-an-inner-capture).
 fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, poly_hint) = {
+  infer_fn_judge(name, params, body_node, ret_ann, effs, handle, span, poly_hint)
+  each(
+    (t) => match t {
+      (d, line, dmod) => diag_report(d, line, dmod),
+    },
+    graph_guard_drain()
+  )
+}
+
+fn infer_fn_judge(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, poly_hint) = {
   // The decls column, first writer: the FnStmt node handle, noted per
   // judgment (rounds re-note; readers dedup by handle). The let and
   // handler-decl arms of infer_stmt are the other two — a column of
@@ -5115,7 +5206,7 @@ fn any_arg_labeled(ref args) = any(
 // collection the keep-set uses (signature_free_roots — one walk, the
 // trio discipline), filtered to the row sort the membership compares.
 fn config_row_roots(p) = match param_ty(p) {
-  TVar(h) => filter((r) => is_row_handle(r), signature_free_roots([h])),
+  TVar(h) => filter(is_row_handle, signature_free_roots([h])),
   _ => [],
 }
 
@@ -7847,9 +7938,31 @@ fn subst_changes(ty, mapping) = match ty {
   TFloat => false,
   TUnit => false,
   TByte => false,
-  TVar(id) => match graph_chase(id) {
-    GNode(NBound(_), _) => true,
-    _ => find_mapping(mapping, graph_chase_handle(id)) >= 0,
+  // THE CHECK CHASES, SO THE BUILD CAN SHARE. This answered TRUE for every
+  // bound var — "an NBound var inlines its binding (always differs)" — and
+  // in a JUDGED decl most vars are bound, so check-then-build was here but
+  // never got to answer no: every polymorphic reference rebuilt the callee's
+  // whole type tree. That is Hβ.infer.instantiate-shares-never-clones, whose
+  // cost the docs place on the ALLOCATION channel rather than time.
+  // Following the edge and asking whether the CONTENT changes is the same
+  // question asked where the answer lives: a bound cell holding no mapped
+  // var answers false and its entire subtree SHARES; only a path that
+  // actually reaches a quantified var rebuilds, and it rebuilds exactly as
+  // before. Privacy is untouched — the mapping still decides first, so a
+  // quantified var freshens per use.
+  // Answering by the mapping ALONE is the opposite error and was measured on
+  // the way here: a quantified var sitting BEHIND a binding goes unseen,
+  // never freshens, and polymorphism severs silently.
+  // Termination is the occurs invariant's — graph_bind refuses a type cell
+  // containing itself; the row sort's benign self-loops go through
+  // subst_row_changes, not this walk.
+  TVar(id) => if find_mapping(mapping, graph_chase_handle(id)) >= 0 {
+    true
+  } else {
+    match graph_chase(id) {
+      GNode(NBound(inner), _) => subst_changes(inner, mapping),
+      _ => false,
+    }
   },
   TList(elem) => subst_changes(elem, mapping),
   TTuple(elems) => subst_list_changes(elems, mapping, 0, len(elems)),
@@ -8232,7 +8345,7 @@ fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
   } else {
     apply_refinement_constraint(inner, value_handle, span)
   },
-  TRefined(_, pred) => verify(span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
+  TRefined(_, pred) => verify(graph_module_current(), span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
   _ => (),
 }
 
@@ -8259,7 +8372,7 @@ fn register_type_constructors(type_name, variants) = {
         qmap
       )
       let param_handles = filter((h) => !is_row_handle(h), all_handles)
-      let result_ty = TName(type_name, map((h) => TVar(h), param_handles))
+      let result_ty = TName(type_name, map(TVar, param_handles))
       let qhandles = all_handles
       // THE GROUPING IS CARRIED, NEVER RE-DERIVED: the type's own env entry
       // holds its variant specs — minted here where the list is already in
@@ -8812,7 +8925,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, span: ValidSpan) =
   // and again at re-generalization after the arms.
   let ename = derive_handler_ename(arms, hname)
   let inst_vars = mint_instance_vars(ename, effect_instance_arity(ename), 0)
-  let inst_ty = TName(ename, map((v) => TVar(v), inst_vars))
+  let inst_ty = TName(ename, map(TVar, inst_vars))
   let inst_h = mint(Inferred("effect '{ename}' instance"))
   graph_bind(inst_h, inst_ty, Inferred("effect '{ename}' instance"))
   let handler_ty = TName("Handler", [inst_ty])
@@ -9814,7 +9927,7 @@ fn check_splice_flow_labels(fragments, span: ValidSpan) = each(
 fn splice_flow_check(h, fspan: ValidSpan) = match graph_chase(h) {
   GNode(NBound(ty), _) => {
     let label = query_flow_label(ty)
-    verify(fspan, PFlowLe(label, Public), Located(fspan, Inferred("ifc: string splice flow label")))
+    verify(graph_module_current(), fspan, PFlowLe(label, Public), Located(fspan, Inferred("ifc: string splice flow label")))
   },
   _ => // unresolved: open-world default = Public, no check needed
   (),

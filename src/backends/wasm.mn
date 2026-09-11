@@ -590,10 +590,26 @@ fn spec_demands_of(lowered, recs) with EnvRead + LookupTy + GraphRead + WASI + M
 // The declared [String] is the Intent Boundary the ++ sites read — without it
 // the filter-with-handler-block chain left the element open and the concat
 // emitted its unresolved-element floor (the 00c0b6 trap that caught this).
+// A twin carries four facts, and the fourth is new: the BASE symbol it is a
+// copy of, which is the name lower's enumeration entry was written under and
+// therefore where its signature edges live.
+//
+// IT SHOULD BE A RECORD — {base, enc, pairs, rec} — and it is a positional
+// quadruple instead, under protest and with the reason measured this turn.
+// Written as a record, these helpers read `rp.rec` through an UNANNOTATED
+// parameter, which is an interior open-row field access, and the wheel
+// compiles that to `(unreachable) ;; field offset unprovable` — three of
+// them, and the twin loop executes one, so the m3 leg traps. The defect is
+// `Hβ.infer.record-row-vars-are-not-unioned`, live and on the board: an open
+// row reached from inside another function demands no twin, so the callee
+// bakes an offset it cannot know. Four such floors already sit in the
+// shipping wheel on other fields (op_name / name / init / body), which is
+// what makes this the next thing to build rather than a curiosity. The
+// record form is the gate that fix has to pass, and it goes back in there.
 fn spec_fold_collect(spec_recs, acc0) with LookupTy + EnvRead + Memory + Alloc + GraphRead + WASI = fold(
   acc0,
   (acc, rp) => match rp {
-    (rec2, pairs, enc) => match rec2 {
+    (rec2, pairs, enc, _base) => match rec2 {
       (_m, _ps, body, _f) => {
         spec_ctx_set(pairs, enc)
         let acc2 = collect_fold_tys_list(body, acc)
@@ -611,7 +627,7 @@ fn spec_fold_collect(spec_recs, acc0) with LookupTy + EnvRead + Memory + Alloc +
 fn spec_recs_dedup(recs) with Memory + Alloc = fold(
   [],
   (acc, rp) => match rp {
-    (rec2, _p, _e) => match rec2 {
+    (rec2, _p, _e, _base) => match rec2 {
       (m, _ps, _b, _f) => if spec_rec_name_seen(acc, m, 0) { acc } else { acc ++ [rp] },
     },
   },
@@ -622,7 +638,7 @@ fn spec_rec_name_seen(ref recs, ref m: String, i) with Memory = if i >= len(recs
   false
 } else {
   match list_index(recs, i) {
-    (rec2, _p, _e) => match rec2 {
+    (rec2, _p, _e, _base) => match rec2 {
       (n, _ps, _b, _f) => if n == m { true } else { spec_rec_name_seen(recs, m, i + 1) },
     },
   }
@@ -630,31 +646,139 @@ fn spec_rec_name_seen(ref recs, ref m: String, i) with Memory = if i >= len(recs
 
 fn spec_rec_names(spec_recs) -> [String] with Memory + Alloc = map(
   (rp) => match rp {
-    (rec2, _p, _e) => match rec2 {
+    (rec2, _p, _e, _base) => match rec2 {
       (m, _ps, _b, _f) => m,
     },
   },
   spec_recs
 )
 
-fn spec_wide_twin_names(spec_recs) -> [String] with LookupTy + GraphRead + WASI + EnvRead + Memory + Alloc = fold(
-  [],
-  (acc, rp) => match rp {
-    (rec2, pairs, enc) => {
+// ─── THE SIGNATURE COLUMN's one write (lowering-is-a-column (ii)) ─────
+//
+// THE ONE DERIVATION of an emitted symbol's ABI. Every width in the module
+// is decided HERE, once per symbol, and nowhere else: the header, the call
+// sites, the word-face wrapper, and the local decls all READ the answer
+// through graph_sig_at. Six derivations retired onto this one — and their
+// six comments each already claimed the readers agreed ("one truth, two
+// readers", "the one decider, two readers", "THE ONE SIGNATURE BOTH SIDES
+// AGREE ON"). They were CONFESSIONS: the readers ran the same code, which
+// is not the same as reading the same fact, and the difference is a real
+// bug the march billed four times (three assembly REDs, then an f64.load
+// on a caller that unboxed a result its callee returned wide). A fact
+// derived twice is two facts that happen to match; a fact derived once is
+// an ABI.
+//
+// The derivation itself reads the graph LIVE — a param's width is the repr
+// of its proven type, the result's is the repr of the body's tail — and it
+// runs at the SETTLING POINT, after inference is complete and inside each
+// record's own twin bracket. That ordering is the whole content of the fix:
+// the same live read at an unsettled moment (rung 3's live cells) or under
+// the wrong bracket (module scope, for a body emitted under a twin's pairs)
+// answers differently, and a contract may not be time-varying.
+// The width of ONE signature slot: the enumeration's edge, projected. An
+// ABSENT edge is the slot the graph never judged and takes the word floor
+// honestly — a fabricated width here is the whole bug class. A var resolves
+// through lookup_ty, the bracket-aware chase, so a twin's body reads its OWN
+// instantiation where the raw graph chase would floor it; a ground type
+// answers directly, which is the case a handle could never carry.
+fn sig_repr_of_ty(slot) = match slot {
+  None => RI32,
+  Some(ty) => sig_repr_of_present(ty),
+}
+
+fn sig_repr_of_present(ty) = match ty {
+  TVar(h) => repr_of(lookup_ty(h)),
+  TAlias(_, inner) => sig_repr_of_present(inner),
+  TRefined(base, _) => sig_repr_of_present(base),
+  TReprPin(r, _) => r,
+  _ => repr_of(ty),
+}
+
+fn sig_slot_repr(slot) = match slot {
+  (_n, t) => sig_repr_of_ty(t),
+}
+
+// The symbol's signature from the enumeration entry lower wrote — the fn's
+// own inferred TFun, component by component. What this replaced was a body
+// walk per parameter looking for a use-site, a name-search of the declared
+// scheme when the walk missed, and a structural re-walk of the lowered tail
+// for the result: three reconstructions of a vector the graph had stated and
+// lower had already read.
+fn emitted_sig_of_entry(e) = ESig(map(sig_slot_repr, e.params), sig_repr_of_ty(e.ret))
+
+// An emitted symbol with no enumeration entry has no judged face — the
+// all-word floor, at the arity the record itself declares. The column is a
+// multi-map (a name re-noted across judgment rounds keeps every entry), and
+// `last` is the FIRST-noted of them: smap_add prepends, so the bucket runs
+// newest-first and the oldest entry is the construction the emission walks.
+fn emitted_sig_of_symbol(name: String, arity) = match graph_emitfn_at(name) {
+  [] => ESig(map((_) => RI32, range(0, arity)), RI32),
+  entries => emitted_sig_of_entry(last(entries)),
+}
+
+fn emitted_sig_of_record(record) = match record {
+  (name, param_names, _b, _f) => emitted_sig_of_symbol(name, len(param_names)),
+}
+
+// A symbol whose native face carries any wide slot reaches the fn table
+// through its $wf$ word wrapper. Wideness is a PROJECTION of the signature,
+// never a second walk of the body.
+fn sig_is_wide(s) = match s {
+  ESig(ps, r) => repr_is_wide(r) || any(repr_is_wide, ps),
+}
+
+// The emitted symbol's settled face, read at any of the four reader sites.
+// A miss is the word floor — the pre-direct protocol, sound by the word
+// contract and now taken at ONE key, so caller and callee floor together
+// or not at all.
+fn sig_of_symbol(name: String, arity) = match graph_sig_at(name) {
+  Some(s) => match s {
+    ESig(ps, r) => if len(ps) == arity { (ps, r) } else { sig_floor(arity) },
+  },
+  None => sig_floor(arity),
+}
+
+fn sig_floor(arity) = (map((_) => RI32, range(0, arity)), RI32)
+
+// The base records' pairs — derived at the floor bracket, which is the
+// bracket their bodies emit under.
+fn emit_sig_pairs_base(fn_records) = map(emit_sig_pair_of_record, fn_records)
+
+fn emit_sig_pair_of_record(r) = match r {
+  (name, _ps, _b, _f) => (name, emitted_sig_of_record(r)),
+}
+
+// A twin's pairs — derived INSIDE the instantiation bracket its body will
+// be emitted under, so the stored face is the one the body actually signs.
+// The caller's `spec_subst_pairs(declared, spec_site_pairs(fh, cname))`
+// re-derivation of this exact substitution is what the column deletes.
+fn emit_sig_pairs_spec(spec_recs) = map(emit_sig_pair_of_twin, spec_recs)
+
+// A twin is the BASE's body renamed, so its edges are the BASE's enumeration
+// entry — read under the twin's own bracket, which is what makes its
+// `a := Float` a native f64 slot where the floor copy signs a word. Keyed
+// under the MANGLED name, because that is the symbol the header writes and
+// the call sites name.
+fn emit_sig_pair_of_twin(rp) = match rp {
+  (rec2, pairs, enc, base) => match rec2 {
+    (m, ps, _b, _f) => {
       spec_ctx_set(pairs, enc)
-      let w = fn_record_is_wide(rec2)
+      let s = emitted_sig_of_symbol(base, len(ps))
       spec_ctx_clear()
-      if w {
-        match rec2 {
-          (m, _ps, _b, _f) => [m] ++ acc,
-        }
-      } else {
-        acc
-      }
+      (m, s)
     },
   },
-  spec_recs
-)
+}
+
+// The wideness predicate's ONE spelling — the column read, projected. An
+// unpublished or hand-written symbol is not wide: the word floor has no
+// wide slot to wrap.
+fn symbol_is_wide(name: String) = match graph_sig_at(name) {
+  Some(s) => sig_is_wide(s),
+  None => false,
+}
+
+fn sig_wide_names(names) = filter(symbol_is_wide, names)
 
 fn emit_module(lowered) = {
   // The fn emit records, collected ONCE (emit_functions and the wrapper/table
@@ -662,9 +786,6 @@ fn emit_module(lowered) = {
   // native signature carries a wide slot reaches the table through its $wf$
   // word wrapper; the elem substitution below is that law's one write.
   let fn_records = collect_fn_emit_records(lowered) |> dedup_fn_records
-  let wide_fn_names = fn_records |> filter(fn_record_is_wide) |> map((r) => match r {
-    (nm, _, _, _) => nm,
-  })
   // Named-generic twins (the demand analysis above): each demand's record is
   // the BASE record renamed — the same body, emitted under the spec_pairs state so
   // every repr read resolves through the site's instantiation. Registered
@@ -681,9 +802,9 @@ fn emit_module(lowered) = {
     (d) => match d {
       (m, base, pairs, enc) => match spec_find_rec(fn_records, base) {
         Some(rec) => match rec {
-          (_n, ps, body, f) => [((m, ps, body, f), pairs, enc)] ++ map(
+          (_n, ps, body, f) => [((m, ps, body, f), pairs, enc, base)] ++ map(
             (nr) => match nr {
-              (nn, nps, nbody, nf) => ((spec_mangle(nn, enc), nps, nbody, nf), pairs, enc),
+              (nn, nps, nbody, nf) => ((spec_mangle(nn, enc), nps, nbody, nf), pairs, enc, nn),
             },
             collect_fn_emit_records(body)
           ),
@@ -695,8 +816,34 @@ fn emit_module(lowered) = {
     spec_demands
   )) |> spec_recs_dedup
   let spec_names = spec_rec_names(spec_recs)
-  let spec_wide = spec_wide_twin_names(spec_recs)
   set_spec_twins(spec_names)
+  // THE SETTLING POINT. Every symbol the module will emit is known here —
+  // the base records and every twin with the bracket it emits under — and
+  // inference is complete, so a width read now cannot move again. One
+  // derivation per symbol, one write of the whole table; from this line on
+  // the ABI is a fact to READ, and the emitter has no second opinion to
+  // offer. This is the infer->lower/emit boundary graph_bind_row's own
+  // comment names as "the freeze that makes lattice reads sound", reached
+  // at the emit altitude: reading a settled fact after inference completes
+  // is a read, not a snapshot.
+  // THE COLUMN IS COMPLETE — every emitted symbol gets a stated face, not
+  // only the ones departing from the word floor. A sparse form was BUILT on
+  // the reasoning that a miss and an all-word entry answer identically, so
+  // storing the second stores the default; its measured cost came back
+  // INSIDE THE NOISE (three m3 legs on one fixed binary and one fixed input
+  // span 2321788..2324148 KB, and the sparse/complete gap was smaller than
+  // that), so the bytes decide nothing here and the first reading of them
+  // that said otherwise is retracted. The contract decides: ONE rule, "read
+  // the symbol's face", with no second rule about what absence means for
+  // every reader to learn.
+  graph_sigs_publish(emit_sig_pairs_base(fn_records) ++ emit_sig_pairs_spec(spec_recs))
+  let wide_fn_names = sig_wide_names(map(
+    (r) => match r {
+      (nm, _, _, _) => nm,
+    },
+    fn_records
+  ))
+  let spec_wide = sig_wide_names(spec_names)
   // The fold-leaf collection — the base tree once, then each twin's body
   // under its own bracket, so a twin's show/hash on substituted types
   // collects the sigs its emission will name (the float-element leaf beside
@@ -762,7 +909,7 @@ fn emit_module(lowered) = {
       let table_all = table_fn_names ++ spec_names
       let wide_all = wide_fn_names ++ spec_wide
       emit_fn_table(table_all, wide_all)
-      emit_fn_index_globals(table_all, 0)
+      emit_fn_index_globals(table_all, fn_table_base())
       emit_static_top_closures(top_fn_names ++ spec_names, table_all, 0)
       // Module VALUE bindings: ONE projection feeds the declaration half and
       // the init half (never two walks of one tree).
@@ -777,7 +924,7 @@ fn emit_module(lowered) = {
       // word-arity face like every other wide fn).
       each(
         (rp) => match rp {
-          (rec2, pairs, enc) => {
+          (rec2, pairs, enc, _base) => {
             // The twin's emission is a region too: pairs/enc live OUTSIDE the
             // mark (allocated with spec_recs above), the registry commit stores
             // pre-mark pointers, and both strings stream before the reset.
@@ -885,8 +1032,8 @@ handler yield_seen_collector with n = 0 {
 }
 
 // The seventh projection — the executable gate's EVIDENCE CENSUS: every
-// evidence-tier perform demand (LEvPerform's effect key — the floor's own
-// node carries the ename; LYield's non-empty op) and every install's
+// walking perform's demand (the dispatch's own effect key, carried on the
+// node; LYield's non-empty op) and every install's
 // absorbed enames (LHandleWith's arm groups). The gate walks the SAME
 // post-reach tree emit walks and reads THIS drain — the artifact is the
 // truth source; a lower-side ledger caching the same facts was the
@@ -918,10 +1065,10 @@ handler effect_census_collector with demands = [], installs = [] {
 // THE INITS' OWN SCOPE, drawn as an install rather than threaded as a flag.
 // Walking an install's inits is the one place the lowered tree already
 // proves a perform precedes its handler's existence, so a `~>` over that
-// sub-walk is the whole mechanism. A direct perform naming THIS handler has
-// a `world_find` that cannot answer — the install's `world_push` has not
-// run — so it refuses here instead of trapping there
-// (`Hβ.emit.self-init-singleton-call-is-statically-uninstalled`).
+// sub-walk is the whole mechanism. A direct perform naming THIS handler
+// walks a chain the install's `world_push` has not yet extended, so the
+// walk provably reaches the end — it refuses here instead of trapping
+// there (`Hβ.emit.self-init-singleton-call-is-statically-uninstalled`).
 handler preinstall_init_scope(own_handler, init_span) {
   visit_direct_perform(hn, op) => {
     if hn == own_handler { report(EInitPerformsOwnOp(hn, op, init_span)) } else { () }
@@ -1244,11 +1391,6 @@ fn walk_lemit_expr(expr) = match expr {
   },
   LHandleWith(ih, b, hn, hname, inits, arm_names) => {
     walk_install_groups(arm_names, 0)
-    // The install's world_push carries the interned HANDLER name as the
-    // singleton tier's find key (hkey@16) — register it through the same
-    // visit_string channel the group enames ride, so the push's constant
-    // and every LWorldResolve seeking this handler agree on one offset.
-    if hname != "" { visit_string(hname) }
     walk_lemit_expr(b)
     walk_lemit_expr(hn)
     // The inits walk under this install's own name. A direct perform of an
@@ -1275,34 +1417,30 @@ fn walk_lemit_expr(expr) = match expr {
     walk_lemit_expr(b)
     walk_lemit_expr(s)
   },
-  LPerform(_, _, args, _) => walk_lemit_list(args),
-  LDirectPerform(h, hn, op, st, args) => {
-    visit_effect_demand(op)
-    // The one decidable extent: this direct perform names a handler, and
-    // the inits scope below knows whose inits it is walking. Same name
-    // means the world_find at this site answers 0 for certain.
-    visit_direct_perform(hn, op)
-    walk_lemit_expr(singleton_perform_block(h, hn, op, st, args))
-  },
-  LWorldResolve(_, hkey) => // The chain find compares the interned HANDLER name — register it
-  // through the SAME visit_string channel the install's world_push hkey
-  // rides, so both sides resolve to one nonzero data offset (else every
-  // find misses at 0).
-  visit_string(hkey),
-  LWasiCall(_, op_name, args) => {
-    visit_wasi_op(op_name)
+  // ONE arm, because there is one perform. Every dispatch that WALKS
+  // interns its effect key through the SAME visit_string channel user
+  // literals flow through, so string_offset resolves it to a stable nonzero
+  // data offset (else every key collides at 0), and registers the effect as
+  // a demand. The lexical dispatch walks nothing, so it registers nothing.
+  // A dispatch that names its handler announces it for the preinstall-init
+  // scope, which is listening only inside an install's own inits walk.
+  LPerform(_, disp, args) => {
+    match disp {
+      PdFrame(_, hname, op_name) => visit_direct_perform(hname, op_name),
+      PdWalk(ekey, _, op_name, target) => {
+        visit_string(ekey)
+        visit_effect_demand(op_name)
+        match target {
+          ArmNamed(hname) => visit_direct_perform(hname, op_name),
+          ArmSlot => (),
+        }
+      },
+      PdDriver(_) => (),
+    }
     walk_lemit_list(args)
   },
-  LEvPerform(_, _, ekey, _, args) => // Fold the ev-key registration into the one walk: every effect-key the
-  // world dispatch compares (LEvPerform ename)
-  // is interned through the SAME visit_string channel user literals flow
-  // through, so string_offset resolves it to a stable nonzero data offset
-  // (else every key collides at 0). The keys ARE in the nodes this single
-  // pre-pass already visits — no redundant second walk (the project_emit_state
-  // single-walk multi-projection invariant, Hβ.emit.consolidate-pre-pass-walks).
-  {
-    visit_string(ekey)
-    visit_effect_demand(ekey)
+  LWasiCall(_, op_name, args) => {
+    visit_wasi_op(op_name)
     walk_lemit_list(args)
   },
   LInvariantFailure(_, _) => (),
@@ -1730,50 +1868,121 @@ fn dedup_names_flat(names, i, n, out, count) = if i >= n {
   }
 }
 
-fn fn_record_seen(records, target: String, i, n) = if i >= n {
-  false
-} else {
-  match list_index(records, i) {
-    (name, _, _, _) => if name == target { true } else { fn_record_seen(records, target, i + 1, n) },
-  }
-}
+// What a record already in the keep-set says about the one being offered.
+// Three outcomes, so an ADT: a Bool here would have to mean "seen" and leave
+// the two ways of being seen — the same function twice, and two functions
+// under one name — indistinguishable, which is exactly the distinction the
+// dedup exists to make and the one it was not making.
+type FnRecordVerdict = FrFresh | FrIdentical | FrCollision
 
 // Flat-buffer keep-first dedup of fn records — the sibling of
 // dedup_names, same O(U^3)->O(U^2) fix (Hβ.emit.flat-accumulator-dedup).
-fn dedup_fn_records(records) = {
+//
+// IT COMPARES THE RECORD, NOT THE NAME. Keep-first on a name alone is only
+// sound while no two DIFFERENT functions can share one, and that was true
+// here by two unrelated accidents rather than by anything checked: authored
+// duplicates are refused upstream (`E_DuplicateFnName`, whose own comment
+// says "the emitter would pick one silently"), and synthesized symbols —
+// `lambda_<h>`, `partial_<h>`, `__k_<ph>`, the twins' mangles — were unique
+// only because a mint counter is unique. The second accident is provenance
+// leaking into identity, and it is exactly what content-addressed emitted
+// names (Hβ.emit.identity-is-content-not-mint-order) removes. So the check
+// comes first: with the record compared, a genuine duplicate still dedups
+// (which is the deletion content naming is FOR) and a collision refuses
+// instead of dropping a body while its callers keep pointing at another.
+fn dedup_fn_records(records) with Diagnostic + Memory + Alloc + GraphRead + Intern = {
   let n = len(records)
   dedup_fn_records_flat(records, 0, n, make_list(n), 0)
 }
 
-fn dedup_fn_records_flat(records, i, n, out, count) = if i >= n {
+fn fn_record_verdict(records, r, i, n) = if i >= n {
+  FrFresh
+} else {
+  let existing = list_index(records, i)
+  match (existing, r) {
+    ((have, _, _, _), (want, _, _, _)) => if have == want {
+      // Names match, so the whole-record compare is the CONTENT compare —
+      // structural `==` to the bottom over the five node-kinds, which is the
+      // one equality the medium has (PLAN §5.U); no bespoke body walk.
+      if existing == r { FrIdentical } else { FrCollision }
+    } else {
+      fn_record_verdict(records, r, i + 1, n)
+    },
+  }
+}
+
+fn dedup_fn_records_flat(records, i, n, out, count) with Diagnostic + Memory + Alloc + GraphRead + Intern = if i >= n {
   slice(out, 0, count)
 } else {
   let r = list_index(records, i)
-  match r {
-    (name, _, _, _) => if fn_record_seen(out, name, 0, count) {
+  match fn_record_verdict(out, r, 0, count) {
+    FrFresh => dedup_fn_records_flat(records, i + 1, n, list_set(out, count, r), count + 1),
+    FrIdentical => dedup_fn_records_flat(records, i + 1, n, out, count),
+    FrCollision => {
+      report(EEmittedNameCollision(fn_record_name(r), fn_record_span(r)))
       dedup_fn_records_flat(records, i + 1, n, out, count)
-    } else {
-      dedup_fn_records_flat(records, i + 1, n, list_set(out, count, r), count + 1)
     },
   }
+}
+
+fn fn_record_name(r) = match r {
+  (name, _, _, _) => name,
+}
+
+// The record carries no span of its own, and it does not need one: its body's
+// first statement is a graph node, and the graph is where every coordinate
+// already lives. An empty body has nothing to point at and says so.
+fn fn_record_span(r) with GraphRead + Memory + Alloc + !Mutate = match r {
+  (_, _, body, _) => if len(body) == 0 {
+    span_zero()
+  } else {
+    parse_span_of(lexpr_handle(list_index(body, 0)))
+  },
 }
 
 // Emit the function table and elem mapping indices to function
 // labels. Every closure's fn_ptr slot stores the i32 index into
 // this table; `call_indirect (type $ftK)` dispatches by index.
+//
+// SLOT 0 IS RESERVED AND STAYS NULL, and that is a CONTRACT rather than a
+// spare byte. Everything in the image that says "no function here" says it
+// with a zero — an arm slot for an op its handler does not implement, a
+// closure record the allocator handed back virgin, a cleared fn_ptr — and
+// while slot 0 held a real function, every one of those zeros was
+// indistinguishable from a legitimate call to whichever fn sorted first.
+// It was not hypothetical: op_outer_note drew index 0 in a two-handler
+// fixture, so the declaring walk read the one node that DID declare the op
+// as a gap and walked past it (measured 2026-09-10, the trap this reserve
+// closed). A null funcref traps at call_indirect, so the absence now
+// refuses loudly at every one of those sites instead of dispatching into
+// an unrelated body — the accident named and made a contract at the one
+// writer, which is where table indices are minted.
 fn emit_fn_table(fn_names, wide_names) = {
   let n = len(fn_names)
   if n == 0 {
     ()
   } else {
     wat_emit("  (table $fns ")
-    wat_emit(int_to_str(n))
+    wat_emit(int_to_str(fn_table_base() + n))
     wat_emit(" funcref)\n")
-    wat_emit("  (elem $fns (i32.const 0)")
+    wat_emit("  (elem $fns (i32.const ")
+    wat_emit(int_to_str(fn_table_base()))
+    wat_emit(")")
     emit_fn_refs(fn_names, wide_names)
     wat_emit(")\n")
   }
 }
+
+// The first index an emitted function may occupy. One home, read by both
+// index producers — the per-name globals and the static closure records'
+// baked words — so the two cannot drift apart.
+fn fn_table_base() = 1
+
+// The table index of a named fn, the ONE derivation. The static closure
+// data segments bake this word (a data segment cannot read a global, which
+// is why the position is searched here rather than carried), and the
+// per-name idx globals count from the same base.
+fn fn_table_idx(all_names, name) = fn_table_base() + ls_find_str_local(all_names, name, 0)
 
 // A wide-signatured fn's table slot holds its $wf$ word wrapper — the same
 // POSITION (every idx global and closure mint unchanged), a word FACE.
@@ -2026,7 +2235,7 @@ fn emit_init_lets_loop(ref value_lets, i, n) = if i >= n {
 fn emit_static_top_closures(top_names, all_names, base_slot) = each(
   (indexed) => match indexed {
     (i, name) => {
-      let fn_idx = ls_find_str_local(all_names, name, 0)
+      let fn_idx = fn_table_idx(all_names, name)
       let addr = heap_base() + (base_slot + i) * 8
       // Static data segment for the 8-byte closure record.
       wat_emit("  (data (i32.const ")
@@ -2140,7 +2349,6 @@ fn collect_call_vectors_arms_from(arms, acc, i) = if i >= len(arms) {
 }
 
 fn collect_call_vectors_expr(expr, acc) = match expr {
-  LWorldResolve(_, _) => acc,
   LShow(h, x) => collect_call_vectors_expr(show_node_of(h, x), acc),
   LHash(h, x) => collect_call_vectors_expr(hash_node_of(h, x), acc),
   LDirectCall(_h, _fh, _n, _t, args) => collect_call_vectors_list(args, acc),
@@ -2155,7 +2363,10 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LResumeK(h, k, v) => // The resume invocation delegates through the SAME LCall shape its emit
   // arm constructs — registration identical by construction.
   collect_call_vectors_expr(LCall(h, k, [v]), acc),
-  LEvPerform(h, _n, _e, _s, args) => collect_call_vectors_list(args, vec_push(args, repr_of(lookup_ty(h)), acc)),
+  // Every perform's call vector is registered — the walked forms dispatch
+  // through call_indirect and need the type; the direct ones cost nothing to
+  // include and the set is deduped. One arm, one rule.
+  LPerform(h, _d, args) => collect_call_vectors_list(args, vec_push(args, repr_of(lookup_ty(h)), acc)),
   LLet(_h, _n, inner) => collect_call_vectors_expr(inner, acc),
   LBinOp(_h, _op, l, r) => collect_call_vectors_expr(r, collect_call_vectors_expr(l, acc)),
   LUnaryOp(_h, _op, i) => collect_call_vectors_expr(i, acc),
@@ -2175,8 +2386,6 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LMatch(_h, s, arms) => collect_call_vectors_arms(arms, collect_call_vectors_expr(s, acc)),
   LHandleWith(_h, b, hn, _hn2, inits, _arms) => collect_call_vectors_expr(b, collect_call_vectors_expr(hn, collect_call_vectors_list(inits, acc))),
   LFeedback(_h, _d, b, s) => collect_call_vectors_expr(s, collect_call_vectors_expr(b, acc)),
-  LPerform(_h, _n, args, _) => collect_call_vectors_list(args, acc),
-  LDirectPerform(h, hn, op, st, args) => collect_call_vectors_expr(singleton_perform_block(h, hn, op, st, args), acc),
   LWasiCall(_h, _n, args) => collect_call_vectors_list(args, acc),
   LFieldLoad(_h, rec, _o) => collect_call_vectors_expr(rec, acc),
   LConvert(_h, _, operand) => collect_call_vectors_expr(operand, acc),
@@ -2479,7 +2688,7 @@ fn emit_memory_decl(threaded, wants_rmw) = {
     wat_emit("  (func $heap_reset_impl (param $mark i32)(local.get $mark)(i32.const 0)(global.get $heap_ptr)(local.get $mark)(i32.sub)(memory.fill)(global.set $heap_ptr (local.get $mark)))\n")
   }
   // $world_push — cons one [key@0][entry@4][parent@8][install_world@12]
-  // [hkey@16] node onto the live world chain (the install's runtime edge; a
+  // node onto the live world chain (the install's runtime edge; a
   // dedicated fn like $heap_reset_impl, never inline — the callers' scratch
   // may be live at the install site). entry is the install's own
   // [record][base] view (ONE view object, never copied); install_world is
@@ -2487,19 +2696,31 @@ fn emit_memory_decl(threaded, wants_rmw) = {
   // dispatch sets around the arm call (deep-handler semantics: an arm's
   // performs resolve
   // outer, never self).
-  wat_emit("  (func $world_push (param $key i32)(param $entry i32)(param $iw i32)(param $hkey i32)(local $n i32)(local.set $n (call $alloc (i32.const 20)))(local.get $n)(local.get $key)(i32.store offset=0)(local.get $n)(local.get $entry)(i32.store offset=4)(local.get $n)(global.get $world_g)(i32.store offset=8)(local.get $n)(local.get $iw)(i32.store offset=12)(local.get $n)(local.get $hkey)(i32.store offset=16)(global.set $world_g (local.get $n)))\n")
-  // $world_find — the chain-top RECORD for a HANDLER: walk the live
-  // $world_g [key][entry][parent][iw][hkey] nodes, i32.eq on the interned
-  // HANDLER name at hkey@16 (both sides intern through visit_string —
-  // pointer-eq is the licence; ename key@0 stays the EVIDENCE tier's walk,
-  // ev_perform_node — two keys, two dispatch semantics, one chain: the
-  // singleton tier's op→handler edge is per-OP, and an ename find
-  // mis-resolved the split-effect pair, two handlers covering one effect's
-  // disjoint op sets). Return the entry's record@0; 0 on miss. Sound under
-  // every $world_g rebind because the find walks whatever chain is LIVE —
-  // an LResumeK re-entry's frozen chain included, where a bracket-restored
-  // state global read 0.
+  wat_emit("  (func $world_push (param $key i32)(param $entry i32)(param $iw i32)(local $n i32)(local.set $n (call $alloc (i32.const 16)))(local.get $n)(local.get $key)(i32.store offset=0)(local.get $n)(local.get $entry)(i32.store offset=4)(local.get $n)(global.get $world_g)(i32.store offset=8)(local.get $n)(local.get $iw)(i32.store offset=12)(global.set $world_g (local.get $n)))\n")
+  // $ev_declaring_node — THE WALK, the exact dual of the push above and
+  // therefore its neighbour. Walk the chain from $top: stop at the first node
+  // whose key@0 is the sought effect AND whose record has a NONZERO arm in
+  // this op's slot, which is the declaring test — emit_arm_writes skips the
+  // ops a handler does not implement and pad_group_to_effect_ops makes every
+  // slot present, so the zero is readable, and table slot 0 is reserved null
+  // so a real arm can never look like one. The arm address is the same one
+  // the perform's emit computes inline: record + 8 + 4*nstate + 4*(base+slot),
+  // where entry@4 is the install's own [record][base] view.
   //
+  // THE KEY IS THE OP, NOT THE EFFECT. Keyed on the effect alone, this
+  // stopped at the innermost node for the effect whether or not that handler
+  // answers the op — a split-effect pair returned 15 where 33 is correct,
+  // with no diagnostic, a clean assemble and no trap. The compile-time walk
+  // had the identical error and got caught by the assembler; this one indexed
+  // a live arm region and ran.
+  //
+  // A miss is a BROKEN PROMISE, not a value: the sought key goes to scratch
+  // word 0 (the postmortem window) and then a load at 0xFFFFFFFF traps — a
+  // 4-byte read crossing 2^32, out of bounds at ANY wasm32 size including the
+  // full 65536 pages. `0 - 8` was the prior choice and went SILENT once memory
+  // reached 4GB, where 0xFFFFFFF8+4 is in bounds: the miss returned a virgin 0
+  // and the broken promise surfaced as a garbage dispatch far from here.
+  wat_emit("  (func $ev_declaring_node (param $top i32)(param $target i32)(param $slot i32)(result i32)(local $n i32)(local $entry i32)(local $record i32)(local.set $n (local.get $top))(block $done (loop $walk (br_if $done (i32.eqz (local.get $n)))(if (i32.eq (i32.load offset=0 (local.get $n))(local.get $target))(then (local.set $entry (i32.load offset=4 (local.get $n)))(local.set $record (i32.load offset=0 (local.get $entry)))(if (i32.load (i32.add (local.get $record)(i32.add (i32.const 8)(i32.add (i32.mul (i32.const 4)(i32.load offset=4 (local.get $record)))(i32.mul (i32.const 4)(i32.add (i32.load offset=4 (local.get $entry))(local.get $slot)))))))(then (return (local.get $n))))))(local.set $n (i32.load offset=8 (local.get $n)))(br $walk)))(i32.const 0)(local.get $target)(i32.store)(i32.load (i32.const -1)))\n")
   // The task record — [task closure@0][completion@4][result@8], allocated
   // per spawn through the ONE allocator (no static slot region, no
   // capacity ceiling, no tid ledger; every record is heap-uniform and
@@ -2516,7 +2737,6 @@ fn emit_memory_decl(threaded, wants_rmw) = {
   // leaning on the allocator's virginity contract. Emitted only for a
   // spawning module (Law 7 — thread-free modules are byte-identical).
   //
-  wat_emit("  (func $world_find (param $hkey i32) (result i32) (local $n i32)(local.set $n (global.get $world_g))(block $done (loop $walk (br_if $done (i32.eqz (local.get $n)))(if (i32.eq (i32.load offset=16 (local.get $n)) (local.get $hkey))(then (return (i32.load offset=0 (i32.load offset=4 (local.get $n))))))(local.set $n (i32.load offset=8 (local.get $n)))(br $walk)))(i32.const 0))\n")
   if threaded {
     wat_emit("  (func $spawn_task_impl (param $clo i32) (result i32)(local $t i32)(local.set $t (call $alloc (i32.const 12)))(i32.store offset=0 (local.get $t)(local.get $clo))(i32.store offset=4 (local.get $t)(i32.const 0))(if (i32.lt_s (call $wasi_thread_spawn (local.get $t))(i32.const 0))(then (unreachable)))(local.get $t))\n")
     wat_emit("  (func $join_task_impl (param $t i32) (result i32)(block $done (loop $wait (br_if $done (i32.eq (i32.atomic.load (i32.add (local.get $t)(i32.const 4)))(i32.const 1)))(drop (memory.atomic.wait32 (i32.add (local.get $t)(i32.const 4))(i32.const 0)(i64.const -1)))(br $wait)))(i32.load offset=8 (local.get $t)))\n")
@@ -2570,13 +2790,12 @@ fn emit_functions(fn_records) = each(
 // A fn whose NATIVE signature carries a wide slot cannot sit in the table
 // as itself — every call_indirect speaks the word-arity face. Its $wf$
 // twin derefs each wide argument's reference, direct-calls the native body
-// (full native speed inside), and spills a wide result back to a cell. The
-// record's own projections (param_repr_of / body_result_repr) are
-// the SAME reads emit_fn_body's signature makes — one truth, two readers.
-fn fn_record_is_wide(r) = match r {
-  (name, param_names, body, _) => repr_is_wide(body_result_repr(body)) || any((p) => repr_is_wide(param_repr_of(name, p, body)), param_names),
-}
-
+// (full native speed inside), and spills a wide result back to a cell. It
+// READS the wrapped symbol's settled signature — the same column read the
+// native header signed with. It used to re-derive both halves at module
+// scope, OUTSIDE the twin bracket the body was emitted under, which is the
+// divergence shape in miniature: a wrapper deref'ing at a width its callee
+// never signed.
 fn emit_wide_wrappers(fn_records) = each(
   (r) => {
     let m = heap_mark()
@@ -2586,13 +2805,18 @@ fn emit_wide_wrappers(fn_records) = each(
   fn_records |> filter(fn_record_is_wide)
 )
 
+fn fn_record_is_wide(r) = match r {
+  (nm, _ps, _b, _f) => symbol_is_wide(nm),
+}
+
 fn emit_one_wrapper_to_string(record) = {
   emit_wide_wrapper(record)
   wat_collect()
 } ~> emit_memory_bump ~> wat_to_string
 
 fn emit_wide_wrapper(record) = match record {
-  (name, param_names, body, _) => {
+  (name, param_names, body, _) => match sig_of_symbol(name, len(param_names)) {
+    (preprs, sig_ret) => {
     wat_emit("  (func $wf$")
     wat_emit(name)
     wat_emit(" (param $__state i32)")
@@ -2610,16 +2834,16 @@ fn emit_wide_wrapper(record) = match record {
     wat_emit("    (local.get $__state)\n")
     each(
       (indexed) => match indexed {
-        (i, p) => {
+        (i, _p) => {
           wat_emit("    (local.get $wp")
           wat_emit(int_to_str(i))
           wat_emit(")\n")
-          emit_wide_deref(param_repr_of(name, p, body))
+          emit_wide_deref(list_index(preprs, i))
         },
       },
       enumerate(param_names)
     )
-    match body_result_repr(body) {
+    match sig_ret {
       RI32 => {
         wat_emit("    (return_call $")
         wat_emit(name)
@@ -2657,6 +2881,7 @@ fn emit_wide_wrapper(record) = match record {
       },
     }
     wat_emit("  )\n")
+    },
   },
 }
 
@@ -2696,7 +2921,6 @@ fn fn_emit_records_arms(arms, i) = if i >= len(arms) {
 }
 
 fn collect_fn_emit_records_expr(expr) = match expr {
-  LWorldResolve(_, _) => [],
   LShow(_h, x) => collect_fn_emit_records_expr(x),
   LHash(_h, x) => collect_fn_emit_records_expr(x),
   LMakeClosure(_h, LFn(name, _arity, param_names, body, _row, fence), captures) => // The LowFn fence IS the body-context every fn shape carries: closures
@@ -2727,10 +2951,8 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LResumeK(_h, k, v) => collect_fn_emit_records_expr(k) ++ collect_fn_emit_records_expr(v),
   LHandleWith(_h, b, hn, _hname, inits, _arm_names) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(hn) ++ collect_fn_emit_records(inits),
   LFeedback(_h, _d, b, s) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(s),
-  LPerform(_h, _n, args, _) => collect_fn_emit_records(args),
-  LDirectPerform(_h, _hn, _op, _st, args) => collect_fn_emit_records(args),
+  LPerform(_h, _d, args) => collect_fn_emit_records(args),
   LWasiCall(_h, _n, args) => collect_fn_emit_records(args),
-  LEvPerform(_h, _n, _e, _s, a) => collect_fn_emit_records(a),
   LInvariantFailure(_, _) => [],
   LFieldLoad(_h, rec, _off) => collect_fn_emit_records_expr(rec),
   LConvert(_h, _, operand) => collect_fn_emit_records_expr(operand),
@@ -2760,18 +2982,23 @@ fn emit_fn_body(name, param_names, body, captures_count) = {
   // handle output IS the graph's Reason projected as bytes; the
   // SourceMap comment makes the projection observable downstream.
   emit_reason_comment_for_fn(name, body)
+  // The header STATES the settled signature; it does not decide one. Both
+  // halves come from the same column read every call site takes, so the
+  // bytes a caller pushes and the bytes this header accepts are literally
+  // one fact — i32 byte-identical at the floor (Law 7), f64 where the
+  // gradient cashed out.
+  let sig = sig_of_symbol(name, len(param_names))
   wat_emit("  (func $")
   wat_emit(name)
   wat_emit(" (param $__state i32)")
-  emit_params(name, param_names, body)
-  // The result WIDTH is the body's tail-expression repr (read live), the
-  // value the fn actually returns — i32 byte-identical for the floor (Law 7),
-  // f64 when the body computes a float. The result is part of the function's
-  // structural signature (the repr-vector), so call_indirect sites that
-  // dispatch to a float-returning fn carry the matching result width.
-  wat_emit(" (result ")
-  wat_emit(repr_wat(body_result_repr(body)))
-  wat_emit(")")
+  match sig {
+    (preprs, ret) => {
+      emit_params(param_names, preprs)
+      wat_emit(" (result ")
+      wat_emit(repr_wat(ret))
+      wat_emit(")")
+    },
+  }
   wat_emit(" (local $state_tmp i32)")
   wat_emit(" (local $f64_tmp f64)")
   wat_emit(" (local $wide_cell i32)")
@@ -2781,7 +3008,9 @@ fn emit_fn_body(name, param_names, body, captures_count) = {
   wat_emit(" (local $callee_closure i32)")
   wat_emit(" (local $alloc_size i32)")
   wat_emit(" (local $loop_i i32)")
-  emit_named_locals(walk_locals_list(body, []), param_local_entries(name, param_names, body, []))
+  emit_named_locals(walk_locals_list(body, []), match sig {
+    (preprs, _) => param_local_entries(param_names, preprs, []),
+  })
   wat_emit("\n")
   emit_body(body)
   wat_emit("  )\n")
@@ -2879,7 +3108,6 @@ fn walk_locals_list(stmts, acc) = if len(stmts) == 0 {
 }
 
 fn walk_locals_expr(expr, acc) = match expr {
-  LWorldResolve(_, _) => acc,
   LLet(h, name, inner) => {
     // The local's WIDTH: llet_repr — the ONE projection this decl and the
     // LLet store both read, so they cannot disagree. The NAME is
@@ -2969,12 +3197,15 @@ fn walk_locals_expr(expr, acc) = match expr {
       walk_locals_expr(b, ["__fb_prev_{int_to_str(h)} {fb_rw}", "__fb_{int_to_str(h)} {fb_rw}"] ++ acc)
     )
   },
-  LPerform(_h, _n, args, _) => walk_locals_list(args, acc),
-  LDirectPerform(h, hn, op, st, args) => walk_locals_expr(singleton_perform_block(h, hn, op, st, args), acc),
   LWasiCall(_h, _n, args) => walk_locals_list(args, acc),
-  LEvPerform(h, _n, _e, _s, a) => // The perform's per-site pair (mirror-true to the LEvPerform emit arm):
-  // evn = the resolved world node, evw = the world saved around the arm call.
-  walk_locals_list(a, ["evn_{int_to_str(h)} i32", "evw_{int_to_str(h)} i32"] ++ acc),
+  // The perform's per-site pair, mirror-true to the ONE emit arm: evw holds
+  // the world saved around the arm call and EVERY dispatch needs it, because
+  // the bracket is not a property of any one of them; evn holds the resolved
+  // node and only the walking forms fill it. Declaring both for all is the
+  // honest read of "one arm, one shape" — a local nobody sets costs a word of
+  // frame and cannot be the thing that makes two forms differ.
+  LPerform(h, _d, a) =>
+    walk_locals_list(a, ["evn_{int_to_str(h)} i32", "evw_{int_to_str(h)} i32"] ++ acc),
   LInvariantFailure(_, _) => acc,
   LFieldLoad(_h, rec, _off) => walk_locals_expr(rec, acc),
   LConvert(_h, _, operand) => walk_locals_expr(operand, acc),
@@ -3015,16 +3246,16 @@ fn emit_named_locals(entries, seen: [String]) = if len(entries) == 0 {
 }
 
 // The fn's param entries in the same "name width" spelling the walk
-// collects — the seed set for emit_named_locals, widths read from the
-// same live projection emit_params renders.
-fn param_local_entries(fn_name: String, names, body, acc) = if len(names) == 0 {
+// collects — the seed set for emit_named_locals, rendered from the SAME
+// repr-vector the header signed, so a binder's declared width and its
+// param slot are one fact and not two agreeing ones.
+fn param_local_entries(names, preprs, acc) = if len(names) == 0 {
   acc
 } else {
   param_local_entries(
-    fn_name,
     drop_last(names),
-    body,
-    [last(names) ++ " " ++ repr_wat(param_repr_of(fn_name, last(names), body))] ++ acc
+    drop_last(preprs),
+    [last(names) ++ " " ++ repr_wat(last(preprs))] ++ acc
   )
 }
 
@@ -3231,14 +3462,11 @@ fn tail_expr_repr(expr) = match expr {
   },
 }
 
-// A parameter's WAT width is the repr of its PROVEN type — read live from a
-// body use-site `LLocal(h, name)`, the same edge the graph already drew when
-// it typed the reference. No LowFn shape change: the param's type is recovered
-// from the graph through its use, or — when the body never reads it — through
-// the fn's OWN TYPE PRODUCT via the columns (an unread param is NOT an
-// unconstrained slot: the unused-f64 probe pair proved an i32-floor signature
-// under an f64-pushing caller is invalid WAT). All-i32 fns stay byte-identical.
-fn emit_params(fn_name: String, names, body) = each(
+// The param slots RENDERED from the settled repr-vector. This fn used to
+// decide the widths as it wrote them; it now only writes them, which is why
+// the header and the call sites cannot differ — there is one vector and both
+// read it (the deciding lives in emitted_sig_of_record, once).
+fn emit_params(names, preprs) = each(
   (indexed) => match indexed {
     (i, name) => {
       // `_` is not a name — it is the absence of one. A wildcard param binds
@@ -3252,7 +3480,7 @@ fn emit_params(fn_name: String, names, body) = each(
       // the interned literal never match), so the rename would silently never
       // fire and the collision would stand.
       let wat_name = if field_name_eq(name, "_") { "_{int_to_str(i)}" } else { name }
-      let r = param_repr_of(fn_name, name, body)
+      let r = list_index(preprs, i)
       wat_emit(" (param $")
       wat_emit(local_wat_name(wat_name, r))
       wat_emit(" ")
@@ -3263,166 +3491,22 @@ fn emit_params(fn_name: String, names, body) = each(
   enumerate(names)
 )
 
-// The repr of param `name`: the body's first `LLocal(h, name)` read when the
-// body uses it, else the fn's OWN TYPE PRODUCT through the graph columns —
-// an UNUSED wide param must still sign at its real width (the unused-f64
-// probe pair: an i32-floor signature under an f64-pushing caller is invalid
-// WAT). The columns are the road back: emitfns_col carries the synthesized
-// family's origin; decls_col the judged FnStmt handles. A fn in neither
-// column (a machine-made helper with no graph origin) floors honestly —
-// its params never carried a judged type to begin with.
-fn param_repr_of(fn_name: String, name, body) = {
-  let h = find_local_handle_list(name, body)
-  if h == 0 {
-    // A wildcard param IS unconstrained (it binds nothing, no reader can
-    // exist) — the floor is its truth, and skipping the column walk for
-    // the `_` legion is what keeps the emit's wall flat (measured: the
-    // un-skipped walk cost 91s of m3 leg on the wheel's lambda wildcards).
-    if field_name_eq(name, "_") { RI32 } else { param_ty_repr(fn_name, name) }
-  } else {
-    repr_of(lookup_ty(h))
-  }
-}
+// The param-width ladder that stood here is DELETED — it was three routes to
+// one fact the enumeration entry now states: the body's first LLocal use-site
+// (a whole-body walk per param), the declared scheme searched BY NAME when
+// the walk missed, and the word floor when the name search missed, which for
+// the entire synthesized family was always. Its own comment named this column
+// as the answer and priced the walk that would have reached it; the O(1) form
+// exists, so the ladder goes. Hβ.emit.unused-wide-param-floor closes here: an
+// unused wide param signs at its real width because the entry carries the
+// param's TYPE, and being unread was never evidence of being a word.
 
-fn param_ty_repr(fn_name: String, name: String) = match env_lookup(fn_name) {
-  Some(entry) => match entry {
-    (scheme, _, _) => match resolved_fn_ty(judgment_ty(scheme)) {
-      TFun(tparams, _, _) => tparam_repr_by_name(tparams, name),
-      _ => RI32,
-    },
-  },
-  None => // Not env-registered — the synthesized family (lambda_N, thunks,
-  // arms). Its unused params keep the word floor they always had: the
-  // family's call protocol is the indirect/wrapper machinery, and no
-  // probe has shown the floor incoherent there. The column walk that
-  // WOULD answer it (emitfns_col's origin) measured 3x the whole m3
-  // leg on snoc-list indexing — the O(1) form is the column as an smap,
-  // named in Hβ.emit.unused-wide-param-floor's residue. The PROVEN
-  // class (decl fns, direct calls) is healed by the env bucket above.
-  RI32,
-}
-
-fn tparam_repr_by_name(tparams, name: String) = match find((tp) => field_name_eq(param_name(tp), name), tparams) {
-  Some(tp) => repr_of_resolved(param_ty(tp)),
-  None => RI32,
-}
-
-// A scheme's body straight, or chased one TVar hop to its bound TFun —
-// the emitter's own minimal read (query's deep chase is the forensic
-// layer's; the scheme body of a generalized decl is structural, and one
-// hop covers the var-bodied residue).
-fn resolved_fn_ty(ty) = match ty {
-  TVar(h) => match graph_chase(h) {
-    GNode(NBound(inner), _) => inner,
-    _ => ty,
-  },
-  _ => ty,
-}
-
-fn find_local_handle_list(name, stmts) = if len(stmts) == 0 {
-  0
-} else {
-  let h = find_local_handle_expr(name, last(stmts))
-  if h != 0 { h } else { find_local_handle_list(name, drop_last(stmts)) }
-}
-
-// Walk a LowExpr for the first `LLocal(h, name)` matching `name`. Stops at
-// nested fn boundaries (LMakeClosure/LMakeContinuation/LDeclareFn) — an inner
-// fn's `name` is its own binding, not this param. Returns 0 if absent.
-fn find_local_handle_arms(name, arms, i) = if i >= len(arms) {
-  0
-} else {
-  match list_index(arms, i) {
-    (_, body) => {
-      let h = find_local_handle_expr(name, body)
-      if h != 0 { h } else { find_local_handle_arms(name, arms, i + 1) }
-    },
-  }
-}
-
-fn find_local_handle_expr(name: String, expr) = match expr {
-  LWorldResolve(_, _) => 0,
-  LLocal(h, n) => if n == name { h } else { 0 },
-  LShow(_h, x) => find_local_handle_expr(name, x),
-  LHash(_h, x) => find_local_handle_expr(name, x),
-  LMakeClosure(_h, _fn, caps) => // A closure's BODY is its own scope (an inner `name` is its own binding) —
-  // but its CAPTURES and EVS are PARENT-frame expressions: a param used ONLY
-  // inside a nested lambda still has a live read here, and the param decl
-  // must see the SAME handle the capture-store emits, or the two disagree on
-  // width ($k i32 declared, $k.f64 read — the twin-assembly break this fixed).
-  find_local_handle_list(name, caps),
-  LMakeContinuation(_h, _fn, caps, _, _) => find_local_handle_list(name, caps),
-  LResumeK(_h, k, v) => {
-    let kh = find_local_handle_expr(name, k)
-    if kh != 0 { kh } else { find_local_handle_expr(name, v) }
-  },
-  LYield(_h, _op, args, k) => {
-    let ah = find_local_handle_list(name, args)
-    if ah != 0 { ah } else { find_local_handle_expr(name, k) }
-  },
-  LKExtend(_h, k) => find_local_handle_expr(name, k),
-  LDeclareFn(_) => 0,
-  LLet(_h, _n, inner) => find_local_handle_expr(name, inner),
-  LBinOp(_h, _op, l, r) => {
-    let lh = find_local_handle_expr(name, l)
-    if lh != 0 { lh } else { find_local_handle_expr(name, r) }
-  },
-  LUnaryOp(_h, _op, inner) => find_local_handle_expr(name, inner),
-  LDirectCall(_h2, _fh, _n2, _t, args) => find_local_handle_list(name, args),
-  LCall(_h, f, args) => {
-    let fh = find_local_handle_expr(name, f)
-    if fh != 0 { fh } else { find_local_handle_list(name, args) }
-  },
-  LTailCall(_h, f, args) => {
-    let fh = find_local_handle_expr(name, f)
-    if fh != 0 { fh } else { find_local_handle_list(name, args) }
-  },
-  LReturn(_h, inner) => find_local_handle_expr(name, inner),
-  LIf(_h, c, t, e) => {
-    let ch = find_local_handle_expr(name, c)
-    if ch != 0 {
-      ch
-    } else {
-      let th = find_local_handle_list(name, t)
-      if th != 0 { th } else { find_local_handle_list(name, e) }
-    }
-  },
-  LBlock(_h, stmts) => find_local_handle_list(name, stmts),
-  LMakeList(_h, elems) => find_local_handle_list(name, elems),
-  LMakeTuple(_h, elems) => find_local_handle_list(name, elems),
-  LSimdLanes(_h, lanes) => find_local_handle_list(name, lanes),
-  LMakeRecord(_h, fs) => find_local_handle_list(name, fs),
-  LMakeVariant(_h, _t, fs) => find_local_handle_list(name, fs),
-  LMatch(_h, s, arms) => {
-    let sh = find_local_handle_expr(name, s)
-    if sh != 0 { sh } else { find_local_handle_arms(name, arms, 0) }
-  },
-  LHandleWith(_h, b, hn, _hn2, inits, _arms) => {
-    let bh = find_local_handle_expr(name, b)
-    if bh != 0 {
-      bh
-    } else {
-      let hh = find_local_handle_expr(name, hn)
-      if hh != 0 { hh } else { find_local_handle_list(name, inits) }
-    }
-  },
-  LFeedback(_h, _d, b, s) => {
-    let bh = find_local_handle_expr(name, b)
-    if bh != 0 { bh } else { find_local_handle_expr(name, s) }
-  },
-  LPerform(_h, _n, args, _) => find_local_handle_list(name, args),
-  LDirectPerform(h, hn, op, st, args) => find_local_handle_expr(name, singleton_perform_block(h, hn, op, st, args)),
-  LWasiCall(_h, _n, args) => find_local_handle_list(name, args),
-  LEvPerform(_h, _n, _e, _s, a) => find_local_handle_list(name, a),
-  LFieldLoad(_h, rec, _off) => find_local_handle_expr(name, rec),
-  LConvert(_h, _, operand) => find_local_handle_expr(name, operand),
-  LStateSlotStore(_h, _o, v, _) => find_local_handle_expr(name, v),
-  LConst(_, _) => 0,
-  LFeedbackPrior(_) => 0,
-  LGlobal(_, _) => 0,
-  LUpval(_, _) => 0,
-  LInvariantFailure(_, _) => 0,
-}
+// (The 30-arm LowExpr walk that hunted a param's first use-site went with the
+// ladder above — a whole traversal of the lowered tree, per parameter, per
+// function, run three times over from three readers, to recover a type the
+// fn's own TFun states. Nothing reads it now. This is what a Carried-Truth
+// fix is supposed to look like from the outside: the column arrives and a
+// subsystem leaves.)
 
 // A statement is a value used ZERO times — the kernel-uniform word
 // every expression yields is DROPPED between statements; only the
@@ -3698,15 +3782,6 @@ fn emit_expr(expr) = match expr {
     wat_emit(spec_target_name(h, name))
     wat_emit(")\n")
   },
-  LWorldResolve(_h, hkey) => {
-    // The chain-top record for the interned HANDLER name, read from the
-    // LIVE $world_g — the walk_lemit arm interned hkey through
-    // visit_string, the same channel the install's world_push hkey rode,
-    // so the two i32.eq as the same data offset.
-    wat_emit("    (call $world_find (i32.const ")
-    wat_emit(int_to_str(string_offset(hkey)))
-    wat_emit("))\n")
-  },
   LLet(h, name, val) => {
     emit_expr(val)
     wat_emit("    (local.set $")
@@ -3752,18 +3827,14 @@ fn emit_expr(expr) = match expr {
     // routes through (the callee-ref handle carries the site's
     // instantiated TFun, so a wide-keyed generic call lands on its twin).
     let cname2 = spec_target_name(fh, cname)
-    // The callee's EMITTED widths: a twin's signature is the site's
-    // instantiation (native wide); an untwinned callee emits per its
-    // DECLARED scheme — a param declared Float is a native f64 slot, a
-    // generic/Int param is the word floor (the seq-op raw bodies and every
-    // generic body live there). The call site follows those widths arg by
-    // arg: native where the slot is wide, the word spill (address of a
-    // fresh cell) where the slot is a word but the value is wide. The
-    // result mirrors it: a declared-word result whose site type is wide is
-    // an ADDRESS the caller derefs — the same emit_wide_ref/emit_wide_deref
-    // pair the closure convention uses, applied per the one signature both
-    // sides agree on.
-    let widths = direct_callee_widths(fh, cname, cname2, len(args))
+    // The callee's EMITTED widths, read from the column at the symbol this
+    // call names. The site follows them arg by arg: native where the slot is
+    // wide, the word spill (address of a fresh cell) where the slot is a
+    // word but the value is wide. The result mirrors it: a word result whose
+    // site type is wide is an ADDRESS the caller derefs — the same
+    // emit_wide_ref/emit_wide_deref pair the closure convention uses,
+    // applied per the signature the callee's own header signed.
+    let widths = direct_callee_widths(cname2, len(args))
     match widths {
       (param_reprs, ret_repr) => {
         wat_emit("    (global.get $")
@@ -4196,15 +4267,18 @@ fn emit_expr(expr) = match expr {
     // each effect-group's arms contiguous + its [record, base] entry
     emit_handler_effect_entries(local_name, nstate, arm_names)
     // The WORLD bracket — every install draws its runtime edge: save the
-    // live chain, cons one [key][entry][parent][install_world][hkey] node
-    // per absorbed effect group (entry = the group's [record][base] view
-    // built above; install_world = the saved chain, what the arm dispatch
-    // sets around the arm call; hkey = the interned HANDLER name, the
-    // singleton tier's find key — 0 for an anonymous install, which no
-    // singleton find ever seeks), restore after the extent (the same
+    // live chain, cons one [key][entry][parent][install_world] node per
+    // absorbed effect group (entry = the group's [record][base] view built
+    // above; install_world = the saved chain, what the arm dispatch sets
+    // around the arm call), restore after the extent (the same
     // save/restore shape as the scoped-singleton global below, world
-    // outermost). The evidence perform walks key@0 (ev_perform_node); the
-    // singleton perform walks hkey@16 ($world_find).
+    // outermost). ONE key: the interned effect name at key@0, walked by
+    // world_declaring_from, which reads the arm slot through the entry to
+    // pick the node that DECLARES the op. The second key — the interned
+    // handler name at hkey@16, five bytes on every node of every install —
+    // existed only so a second walk could find a handler BY NAME, and that
+    // walk is gone: naming the handler was never the question, declaring
+    // the op was.
     wat_emit("(global.get $world_g)(local.set $")
     wat_emit(local_name)
     wat_emit("_wprev)\n")
@@ -4218,9 +4292,7 @@ fn emit_expr(expr) = match expr {
         wat_emit(group_ename(g))
         wat_emit(")(local.get $")
         wat_emit(local_name)
-        wat_emit("_wprev)(i32.const ")
-        wat_emit(if hname == "" { "0" } else { int_to_str(string_offset(hname)) })
-        wat_emit(")(call $world_push)\n")
+        wat_emit("_wprev)(call $world_push)\n")
       },
       arm_names
     )
@@ -4310,21 +4382,25 @@ fn emit_expr(expr) = match expr {
     wat_emit(int_to_str(h))
     wat_emit(")\n")
   },
-  LDirectPerform(h, hn, op, st, args) => emit_expr(singleton_perform_block(h, hn, op, st, args)),
-  LPerform(h, op_name, args, state_local) => {
-    // Tier-1 perform: a direct `(call $op_<handler>_<op>)` against the
-    // lexically-installed handler's OWN state record. state_local carries
-    // the install-LOCAL "__hstate_<h>" (the record the arm was installed
-    // against, per handler-IS-state); the "" sentinel falls back to the
-    // caller's __state (productive-under-error). The arm fn takes __state
-    // as its implicit first param, so we push the record, then args, then
-    // the direct call. Mirrors the seed's $emit_lperform handler-arm path.
-    if state_local == "" {
-      wat_emit("    (local.get $__state)\n")
-    } else {
-      wat_emit("    (local.get $")
-      wat_emit(state_local)
-      wat_emit(")\n")
+  // THE ONE PERFORM'S EMIT. Three shapes used to live here and in two other
+  // arms, and they disagreed about the WORLD BRACKET: the evidence arm saved
+  // the world, set it to the node's install world around the arm call and
+  // restored, while the two direct arms called bare. That difference was
+  // observable — an arm's own perform self-dispatched once before escaping,
+  // 52 where the deep-handler law says 51 — and it was possible only because
+  // the bracket was written per-arm. Here the record and the world are
+  // FETCHED by the dispatch and the bracket is emitted once, outside the
+  // branch, so no degree of boundness can mean something different from
+  // another.
+  LPerform(h, disp, args) => {
+    let hs = int_to_str(h)
+    // (0) the arm's __state and the world to run it under. A lexical answer
+    // reads the install's own two locals; anything that walks resolves the
+    // node once into evn_<h> and reads both out of it.
+    match disp {
+      PdFrame(ih, _, _) => wat_emit("    (local.get $__hstate_{int_to_str(ih)})\n"),
+      PdWalk(ekey, slot, _, _) => emit_declaring_node(hs, ekey, slot),
+      PdDriver(_) => wat_emit("    (local.get $__state)\n"),
     }
     // The arm fn is SHARED between the floor and every twin, so its ABI
     // is floor words: a twin's repr-true wide arg crosses BY REFERENCE
@@ -4335,9 +4411,44 @@ fn emit_expr(expr) = match expr {
     // unboxed and its result left i32 where f64 was declared
     // (Hβ.emit.twin-state-width — the two assembly refusals).
     emit_args_word(args)
-    wat_emit("    (call $op_")
-    wat_emit(op_name)
-    wat_emit(")\n")
+    // (2) the arm's identity, where the target does not already name it: the
+    // slot form pushes the fn index out of the record's own arm region.
+    // (3) THE WORLD BRACKET, once, for every dispatch — the deep-handler law
+    // by construction. PdDriver is the one shape that must NOT bracket, and
+    // it is not a dispatch: it is a direct call to a synthesized driver
+    // against the caller's own state.
+    match disp {
+      PdDriver(name) => {
+        wat_emit("    (call $op_")
+        wat_emit(name)
+        wat_emit(")\n")
+      },
+      _ => {
+        match disp {
+          PdWalk(_, slot, _, ArmSlot) => emit_arm_index(hs, slot),
+          _ => (),
+        }
+        wat_emit("    (global.get $world_g)(local.set $evw_")
+        wat_emit(hs)
+        wat_emit(")\n")
+        emit_install_world(disp, hs)
+        match perform_target_symbol(disp) {
+          Some(sym) => {
+            wat_emit("    (call $op_")
+            wat_emit(sym)
+            wat_emit(")\n")
+          },
+          None => {
+            wat_emit("    (call_indirect (type ")
+            wat_emit(call_ft_name(args, repr_of(lookup_ty(h))))
+            wat_emit("))\n")
+          },
+        }
+        wat_emit("    (global.set $world_g (local.get $evw_")
+        wat_emit(hs)
+        wat_emit("))\n")
+      },
+    }
     emit_wide_deref(repr_of(lookup_ty(h)))
   },
   LWasiCall(_h, import_name, args) => {
@@ -4479,65 +4590,6 @@ fn emit_expr(expr) = match expr {
       wat_emit(import_name)
       wat_emit(")\n")
     }
-  },
-  LEvPerform(h, _op_name, ekey, op_slot, args) => // Tier-2 evidence-dispatched perform — the WORLD read (the arc's R2).
-  // ev_perform_node walks the live install chain by interned key and
-  // returns the NODE [key@0][entry@4][parent@8][install_world@12] (miss =
-  // the loud postmortem trap, memory.mn). The arm runs against the entry's
-  // RECORD as its own __state (handler IS evidence); its fn_idx lives in
-  // the record's arm region, fence-relative off the record's OWN nstate.
-  // An interior read of a graph-derived record — never a vtable, never a
-  // row slot. The args evaluate under the PERFORM-SITE world; only the
-  // arm call itself runs under the node's install_world (deep-handler
-  // law: the arm's own performs resolve outer, never self), restored
-  // immediately after — so a tail-resumptive resume-as-return continues
-  // the remainder under the perform-site world by construction.
-  //   node   = ev_perform_node(world_g, key_off)    (key_off = string_offset(ename))
-  //   entry  = node[4];  record = entry[0];  base_field = entry[1]
-  //   arm_fn = record[(8 + 4*op_slot) + 4*base_field + 4*record[4]]
-  //   dispatch = call_indirect (type $ft<argc+1>) (record, args…, arm_fn)
-  {
-    // the effect-key's interned data offset (W5 dedup)
-    let key_off = string_offset(ekey)
-    let arm_const = 8 + 4 * op_slot
-    let hs = int_to_str(h)
-    // (0) resolve ONCE — the node into its per-site local. The live world
-    // passes as an ARGUMENT (the wheel source performs no world_top op —
-    // the crossing constraint, memory.mn's own note).
-    wat_emit("    (local.set $evn_{hs} (call $ev_perform_node (local.get $__state) (global.get $world_g) (i32.const ")
-    wat_emit(int_to_str(key_off))
-    wat_emit(")))\n")
-    // (1) arm __state = record = entry[0]
-    wat_emit("    (local.get $evn_{hs})(i32.load offset=4)(i32.load offset=0)\n")
-    // (2) user args — word-faced (wide payloads cross by reference)
-    emit_args_word(args)
-    // (3) arm fn_idx = record[arm_const + 4*base + 4*nstate]
-    //
-    // record
-    wat_emit("    (local.get $evn_{hs})(i32.load offset=4)(i32.load offset=0)\n")
-    wat_emit("    (i32.const ")
-    wat_emit(int_to_str(arm_const))
-    // + arm_const
-    wat_emit(")(i32.add)\n")
-    // base_field
-    wat_emit("    (local.get $evn_{hs})(i32.load offset=4)(i32.load offset=4)\n")
-    // + 4*base_field
-    wat_emit("    (i32.const 4)(i32.mul)(i32.add)\n")
-    // nstate = record[4]
-    wat_emit("    (local.get $evn_{hs})(i32.load offset=4)(i32.load offset=0)(i32.load offset=4)\n")
-    // + 4*nstate
-    wat_emit("    (i32.const 4)(i32.mul)(i32.add)\n")
-    // arm_fn idx
-    // (4) the ARM WORLD BRACKET + dispatch — the word-arity face; a wide
-    // result derefs back native.
-    wat_emit("    (i32.load offset=0)\n")
-    wat_emit("    (global.get $world_g)(local.set $evw_{hs})\n")
-    wat_emit("    (global.set $world_g (i32.load offset=12 (local.get $evn_{hs})))\n")
-    wat_emit("    (call_indirect (type ")
-    wat_emit(call_ft_name(args, repr_of(lookup_ty(h))))
-    wat_emit("))\n")
-    wat_emit("    (global.set $world_g (local.get $evw_{hs}))\n")
-    emit_wide_deref(repr_of(lookup_ty(h)))
   },
   LInvariantFailure(_h, invariant) => // Compiler-created executable boundaries have no productive-under-error
   // value. Preserve the typed invariant in the WAT diagnostic and terminate;
@@ -4808,6 +4860,61 @@ fn emit_wide_deref(r) = match r {
   RV128 => wat_emit("    (unreachable) ;; wide-deref: v128 has no producer yet\n"),
 }
 
+// ─── The one perform's three fetches ────────────────────────────────
+// Resolve the declaring node ONCE into evn_<h> and push the arm's record.
+// The walk is `ev_declaring_node(top, effect key, op slot)` — it stops at the
+// innermost node whose handler actually DECLARES this op, and traps with the
+// key in the postmortem window on a miss, which is why no dispatch needs a
+// chain-miss guard of its own.
+//   node = evn_<h>;  entry = node[4];  record = entry[0];  base = entry[1]
+fn emit_declaring_node(hs: String, ekey: String, slot) = {
+  wat_emit("    (local.set $evn_")
+  wat_emit(hs)
+  wat_emit(" (call $ev_declaring_node (global.get $world_g) (i32.const ")
+  wat_emit(int_to_str(string_offset(ekey)))
+  wat_emit(") (i32.const ")
+  wat_emit(int_to_str(slot))
+  wat_emit(")))\n")
+  wat_emit("    (local.get $evn_")
+  wat_emit(hs)
+  wat_emit(")(i32.load offset=4)(i32.load offset=0)\n")
+}
+
+// The arm's fn index out of the record's OWN arm region, fence-relative off
+// the record's nstate@4 and this effect's base — an interior read of a
+// graph-derived record, never a vtable and never a row slot.
+//   arm = record[(8 + 4*slot) + 4*base + 4*record[4]]
+fn emit_arm_index(hs: String, slot) = {
+  wat_emit("    (local.get $evn_")
+  wat_emit(hs)
+  wat_emit(")(i32.load offset=4)(i32.load offset=0)\n    (i32.const ")
+  wat_emit(int_to_str(8 + 4 * slot))
+  wat_emit(")(i32.add)\n    (local.get $evn_")
+  wat_emit(hs)
+  wat_emit(")(i32.load offset=4)(i32.load offset=4)\n    (i32.const 4)(i32.mul)(i32.add)\n    (local.get $evn_")
+  wat_emit(hs)
+  wat_emit(")(i32.load offset=4)(i32.load offset=0)(i32.load offset=4)\n    (i32.const 4)(i32.mul)(i32.add)\n    (i32.load offset=0)\n")
+}
+
+// The world the arm runs under. A lexical install saved the chain from before
+// its own push into `_wprev` at install time — its own comment calls that
+// value "what the arm dispatch sets around the arm call", and until this
+// landing nothing read it. A walked node carries the same thing at iw@12.
+// ONE source per shape, both feeding the one bracket.
+fn emit_install_world(disp, hs: String) = match disp {
+  PdFrame(ih, _, _) => {
+    wat_emit("    (global.set $world_g (local.get $__hstate_")
+    wat_emit(int_to_str(ih))
+    wat_emit("_wprev))\n")
+  },
+  _ => {
+    wat_emit("    (global.set $world_g (i32.load offset=12 (local.get $evn_")
+    wat_emit(hs)
+    wat_emit(")))\n")
+  },
+}
+
+// The statically-known arm name, for the two shapes that have one.
 // Word-face an argument list: each arg emits at its native width, then a
 // wide one crosses by reference.
 fn emit_args_word(args) = each(
@@ -4823,36 +4930,19 @@ fn repr_is_wide(r) with Pure = match r {
   _ => true,
 }
 
-// The direct call's ONE signature source (both sides agree by reading it):
-// a TWINNED callee's emitted widths are the site's instantiation (the twin
-// was emitted under that bracket), read from the callee-ref handle's live
-// TFun; an untwinned callee emits per its DECLARED scheme, read from the
-// env — a generic or Int param is the word floor, a declared-Float param a
-// native f64 slot. A callee whose type cannot be read floors to all-word:
-// the pre-direct protocol, sound by the word contract.
-fn direct_callee_widths(fh, cname: String, cname2: String, n) = {
-  let declared = match env_lookup(cname) {
-    Some(entry) => match entry {
-      (scheme, _, _) => judgment_ty(scheme),
-    },
-    None => lookup_ty(fh),
-  }
-  // A twin's emitted signature is the declared scheme UNDER THE SITE'S
-  // instantiation pairs — the SAME projection that minted the redirect
-  // (spec_site_pairs / spec_subst_pairs), so the call site and the twin
-  // body cannot disagree on a width. Raw lookup_ty(fh) floors free vars
-  // and lied against the twin's native f64 slots (three assembly REDs).
-  let src_ty =
-    if cname2 == cname { declared } else { spec_subst_pairs(declared, spec_site_pairs(fh, cname)) }
-  match src_ty {
-    TFun(ps, ret, _) => if len(ps) == n {
-      (map((p) => repr_of(param_ty(p)), ps), repr_of(ret))
-    } else {
-      (map((_) => RI32, range(0, n)), RI32)
-    },
-    _ => (map((_) => RI32, range(0, n)), RI32),
-  }
-}
+// The direct call's signature: THE CALLEE'S OWN, read from the column under
+// the symbol the call actually names (cname2 — the twin's mangled name at a
+// specialized site, the plain name otherwise). Not "the same derivation the
+// callee runs" — the SAME FACT the callee's header signed, which is the only
+// form of agreement an ABI can have.
+//
+// What this deletes is a whole parallel derivation: the declared scheme via
+// env_lookup, a lookup_ty(fh) fallback, and — at a twinned site — the site's
+// instantiation re-applied by hand (spec_site_pairs / spec_subst_pairs) to
+// reconstruct the bracket the twin's body had been emitted under. Every one
+// of those was a second opinion about a fact the callee had already stated,
+// and the last one billed the f64.load miscompile that named this column.
+fn direct_callee_widths(cname2: String, n) = sig_of_symbol(cname2, n)
 
 fn emit_fold_state_insert() = {
   wat_emit("    (local.set $callee_closure)\n")
@@ -5079,7 +5169,6 @@ fn collect_fold_tys_arms_from(arms, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show:
 }
 
 fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) with LookupTy + EnvRead + Alloc + Memory + WASI + GraphRead = match expr {
-  LWorldResolve(_, _) => acc,
   LShow(_h, x) => collect_fold_tys_expr(x, fold_acc_show(acc, x)),
   LHash(_h, x) => collect_fold_tys_expr(x, fold_acc_hash(acc, x)),
   LCall(_h, f, args) => collect_fold_tys_expr(f, collect_fold_tys_list(args, acc)),
@@ -5087,7 +5176,6 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
   LTailCall(_h, f, args) => collect_fold_tys_expr(f, collect_fold_tys_list(args, acc)),
   LBinOp(_h, op, l, r) => collect_fold_tys_expr(r, collect_fold_tys_expr(l, fold_trigger_binop(op, lexpr_handle(l), acc))),
   LResumeK(_h, k, v) => collect_fold_tys_expr(v, collect_fold_tys_expr(k, acc)),
-  LEvPerform(_h, _n, _e, _s, args) => collect_fold_tys_list(args, acc),
   LLet(_h, _n, inner) => collect_fold_tys_expr(inner, acc),
   LUnaryOp(_h, _op, i) => collect_fold_tys_expr(i, acc),
   LReturn(_h, i) => collect_fold_tys_expr(i, acc),
@@ -5106,8 +5194,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
   LMatch(_h, s, arms) => collect_fold_tys_arms(arms, collect_fold_tys_expr(s, acc)),
   LHandleWith(_h, b, hn, _hn2, inits, _arms) => collect_fold_tys_expr(b, collect_fold_tys_expr(hn, collect_fold_tys_list(inits, acc))),
   LFeedback(_h, _d, b, s) => collect_fold_tys_expr(s, collect_fold_tys_expr(b, acc)),
-  LPerform(_h, _n, args, _) => collect_fold_tys_list(args, acc),
-  LDirectPerform(_h, _hn, _op, _st, args) => collect_fold_tys_list(args, acc),
+  LPerform(_h, _d, args) => collect_fold_tys_list(args, acc),
   LWasiCall(_h, _n, args) => collect_fold_tys_list(args, acc),
   LFieldLoad(_h, rec, _o) => collect_fold_tys_expr(rec, acc),
   LConvert(_h, _, operand) => collect_fold_tys_expr(operand, acc),
@@ -6892,7 +6979,7 @@ fn emit_match_arms(arms, w, h) = if len(arms) == 0 {
   // scratch words name the value and the graph address to interrogate —
   // the medium narrating its own death instead of dying mute
   // (Hβ.emit.trap-as-exception-postmortem, the larval in-scratch form;
-  // the ev_perform_node postmortem's shape at the match layer).
+  // the declaring-node walk's own postmortem shape at the match layer).
   wat_emit("    (i32.const 0)(local.get $scrut_tmp)(i32.store)\n")
   wat_emit("    (i32.const 4)(i32.const ")
   wat_emit(int_to_str(h))

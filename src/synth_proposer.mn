@@ -348,7 +348,7 @@ fn context_hole_span(context) with Pure = match context {
 // vocabulary plus the shape enumerators). The ORDER is the only thing
 // rank decides; a constraint-tie still teaches (the render's collapse
 // line is unchanged — rank is a prior, never a guess).
-fn rank_sort(hole_span, cands) with GraphRead + EnvRead + !Mutate + Memory + Alloc = cands |> map((c) => (rank_of(c, hole_span), c)) |> fold([], (acc, rc) => rank_insert(acc, rc)) |> map((rc) => match rc {
+fn rank_sort(hole_span, cands) with GraphRead + EnvRead + !Mutate + Memory + Alloc = cands |> map((c) => (rank_of(c, hole_span), c)) |> fold([], rank_insert) |> map((rc) => match rc {
   (_, c) => c,
 })
 

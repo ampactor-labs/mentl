@@ -35,6 +35,786 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-10 · pin f862677e5959751a · ONE WALK. TRANSITION m3 == m4, census 0,
+  micros 149/0, eta 3 → 0, movers 435.
+  ▶ FOUR NODES WERE ONE OPERATION. `LPerform`, `LDirectPerform`, `LEvPerform`
+  and `LWorldResolve` all mean: walk the install chain innermost-out to the
+  handler that DECLARES this op, run its arm against its record, under its
+  install world. What differed was never the meaning — it was how much of
+  that walk the bound edges had already finished, which is a property of the
+  program and not a mode anyone selects
+  (`Hβ.kernel.staging-is-an-epoch-not-a-mode`, banked this session, is the
+  position that says so). Written four times they disagreed twice in one
+  session: on the KEY (silently wrong, 15 where 33 is right) and on the WORLD
+  BRACKET (52 where the deep-handler law says 51). Neither was a typo, and
+  that is the whole argument — two implementations of one operation cannot be
+  held in agreement, and the failure is silent.
+  ▶ THE FORM: `LPerform(Int, PerformDispatch, [LowExpr])` with
+  `PdLexical(handler, op, install)` / `PdResolved(handler, op, ekey, slot)` /
+  `PdWalked(op, ekey, slot)`, plus `PdSelfState`, which is NOT a dispatch —
+  it is the k drivers' direct call against the caller's own `__state`, which
+  had been hiding inside the old node's `""` state-local sentinel. Naming it
+  is what lets every other arm bracket unconditionally, because it is the one
+  that must not. `Hβ.effects.lexical-tier-omits-the-world-bracket` is
+  therefore RESOLVED BY CONSTRUCTION rather than fixed: there is no tier left
+  that could omit the bracket. That was the falsifiable test its parent peer
+  banked, and it discharged.
+  ▶ DELETED: `$world_find` (the hand-written WAT second walk), `hkey@16` and
+  with it the chain node's fifth word — 20 bytes → 16 — a key that existed
+  only so a second walk could find a handler BY NAME, when naming the handler
+  was never the question; `singleton_perform_block`, `singleton_perform_note`,
+  and the three `lib/dsp/processors.mn` eta wrappers the ambiguous-op gap had
+  forced. eta reaching 0 is a CONSEQUENCE of the walk keying on the op, not a
+  target that was chased.
+  ▶ THE BUILD FOUND TWO DEFECTS WORTH MORE THAN THE COLLAPSE, both the same
+  shape as the peer itself one layer down.
+    (1) THE FN TABLE'S INDEX 0 ALIASED THE ABSENCE. Both sides test "the arm
+    slot is filled" — `""` at compile time, nonzero at runtime, because
+    `emit_arm_writes` skips the ops a handler does not implement and the
+    allocator's virginity contract leaves those slots 0. But table index 0
+    was a REAL function, so "no arm here" and "call whichever fn sorted
+    first" were the same word. Measured, not reasoned: `op_outer_note` drew
+    index 0 in the two-handler fixture, the walk read the one node that DID
+    declare the op as a gap, walked past it, and trapped. Slot 0 is reserved
+    null now, emitted at the one writer (`emit_fn_table` + `fn_table_idx`),
+    so a null funcref traps at `call_indirect` and every zero fn_ptr anywhere
+    in the image — a virgin closure record, a cleared slot — refuses loudly
+    instead of dispatching somewhere unrelated. Forensic law 5 exactly: an
+    invariant held by ACCIDENT, named and made a contract.
+    (2) THE EXECUTABLE-ROOT CENSUS IS OP-KEYED AND THE COLLAPSE FED IT
+    EFFECTS. `demands_to_enames` resolves each demand through `env_lookup` as
+    an `EffectOpScheme`; an effect name is a name no scheme claims, so it
+    fell through the `_` arm to STRICT — the right verdict for an op with no
+    unique declarer, reached by accident rather than by reading the op's own
+    scheme. Every dispatch carries its op now: the walked case still lands
+    strict (having no unique declarer is exactly why it walks) and the
+    RESOLVED case became visible to the gate at all, which it never was —
+    the singleton tier's direct call fired no demand, so the root gate could
+    not see it. `mn-singleton-preinstall-call` measured the difference.
+  ▶ AND ONE I WROTE MYSELF, recorded because the census law's whole point is
+  that the second instance is the stop: `PdResolved` first shipped carrying
+  the fused `<handler>_<op>` symbol, because emit wants a symbol. That made
+  the handler name unaskable and silently un-armed `E_InitPerformsOwnOp` in
+  three micros. The dispatch carries the two facts; `perform_target_name`
+  spells the symbol. A derived value stored where the facts belonged — inside
+  the landing whose entire subject is that violation.
+  ▶ THE PIN: `mn-deep-handler-arm` 52 → 51, split-effect pair holds 33/33,
+  `op-as-value` 6, `ctor-as-value` 6, micros 149/0, TRANSITION with m3 == m4,
+  peak 2355148 KB under the 2358000 ceiling. Frontier was 377/2 against the
+  OLD boot with `deep-handler-arm` as one of the two reds; this pin is what
+  blesses it.
+
+- 2026-09-10 · pin cc1b7170971d1910 · THE RUNTIME WALK ASKS THE OP TOO. FIXED
+  POINT m2 == m3, census 0, frontier 377 pass / 2 red.
+  ▶ THE SILENT HALF OF THE PREVIOUS LANDING'S DEFECT. Pin 5c39a1a7 fixed the
+  COMPILE-TIME walk's key and said in its own entry that the runtime one still
+  keyed on the effect, untested. The fixture that tests it —
+  `tests/frontier/mn-split-effect-evidence.mn` — needs three things at once:
+  the perform behind a frame fence so the lexical walk cannot answer, a second
+  declarer so the op is ambiguous and the singleton walk declines, and a
+  split-effect pair with the NON-declaring handler innermost. It returned 15
+  where 33 is correct, with ZERO diagnostics, a clean assemble and no trap.
+  Where the compile-time version emitted a call to a named arm that does not
+  exist and the assembler objected, this one indexed a live arm region and
+  ran. Banked RED before anything was fixed.
+  ▶ AND THE ROOT WAS THE LAYOUT, not the walk. `op_slot` is documented as "a
+  STABLE position into an effect's immutable op-list" and every reader indexes
+  the arm region by it — but `set_at_extend` only grew a group to the highest
+  slot THAT handler implements, so a handler covering one op of a two-op
+  effect laid a ONE-slot region and the other op's slot was ABSENT rather than
+  zero. The layout promised density over the EFFECT's ops and delivered
+  density over the HANDLER's. `pad_group_to_effect_ops` closes it at the
+  layout instead of at each reader, and that is precisely what makes the
+  declaring test readable: `node_arm_at` can now ask the record the same
+  question `handler_declares_op` asks the groups, because the answer is
+  present and zero instead of past the end.
+  ▶ TWO GENERATIONS, MEASURED AGAIN. The arity could not simply grow: the
+  pinned boot's emit writes the old call shape while the source declares the
+  new one, and m2 would not assemble ("expected [i32,i32,i32,i32] but got
+  [i32,i32,i32]"). So both forms shipped for one pin with the emit moved to
+  the new one — and then, once the repin carried it, `ev_perform_node`, the
+  effect-only `world_find_from`, and `miss_or_node` were all DELETED in the
+  same landing. `miss_or_node` had been extracted to give two walks one
+  refusal; the moment the second walk died the reason evaporated and it
+  inlined. Net at the prelude floor, measured at each step: 2783 → 2773 →
+  2760.
+  ▶ TWO RATCHETS MOVED AND ONE MOVED BACK, which is the reusable lesson. The
+  peak ratchet refused a mid-arc repin at 2359588KB — the padding is real
+  cost — and the ceiling went to 2362000 with its justification. After the
+  deletions the same tree read 2350376KB, UNDER the original line, so the
+  raise was reverted and the history kept. A ratchet raised before an arc's
+  own deletions land buys room the finished work does not need, and slack
+  bought that way is never noticed again, because nothing refuses. The
+  prelude floor's +23 is genuine and stays: it is `node_arm_at`, the read
+  that is the whole capability, and it falls with
+  `Hβ.driver.link-is-reachability` — a bare program has no handlers and
+  dispatches nothing, yet links this walk.
+  ▶ STILL OPEN, unchanged and still RED: the lexical tier omits the world
+  bracket (52 where the law says 51). Two of the three walks now agree on the
+  key; they still disagree on the world.
+
+- 2026-09-10 · pin 5c39a1a78d5ca549 · THE DISPATCH KEY IS THE OP, NOT THE
+  EFFECT. FIXED POINT m2 == m3, census 0, frontier 376 pass / 2 red.
+  ▶ FOUND BY ASKING WHETHER THE THING I WORKED AROUND WAS ULTIMATE. The
+  reification landing took the singleton tier only, because the lexical tier
+  bakes a frame local and the singleton tier's handler-name key cannot answer
+  an ambiguous op. Neither is a property of dispatch; both are properties of
+  a key one of three implementations chose. Interrogating that turned up a
+  live miscompile in the tier nobody was looking at.
+  ▶ THE DEFECT. `resolve_in_stack` asked `handler_covers_effect` — does one
+  of this handler's arm GROUPS key on that effect. A handler implementing ANY
+  op of an effect therefore answered yes for EVERY op of it, so a
+  split-effect pair (two handlers, one effect, disjoint op sets) resolved
+  every op to whichever was innermost. `a(10) + b(20) ~> ha ~> hb` over
+  `effect Two { a; b }` checked with ZERO diagnostics and emitted
+  `(call $op_ha_b)`, an arm `ha` does not have. The assembler caught it —
+  the same compiles-clean-then-refuses shape the reification landing closed
+  one layer up, one layer down. The hazard was NAMED in the tree already:
+  LDirectPerform's own comment says "an ename key mis-resolved the
+  split-effect pair", and the response taken there had been to key the
+  SINGLETON walk by handler name instead — moving the problem to a key that
+  cannot answer an ambiguous op, which is the whole of the eta ceiling.
+  ▶ NOTHING WAS ADDED TO ANSWER IT. `build_handler_arm_names` already lays
+  each group's arms DENSE over [0, max_slot] with `""` where the handler does
+  not implement an op, and `emit_arm_writes` skips those gaps so the runtime
+  record's slot stays zero. Both sides could always answer "does this handler
+  declare this op"; only the question was wrong.
+  ▶ AND THE FIX DELETED A LAMBDA RATHER THAN ADDING ONE. The first form gave
+  each question its own `any(...)` scan and the anonymity tier convicted it,
+  376 -> 377. Both questions are reads of ONE list — the arms this handler
+  lays for one effect — so the group lookup went to `handler_arms_for`,
+  reusing the `split_group_by_ename` that arm placement already uses. Two
+  questions now cost one fewer scanning lambda than the single question did.
+  The SCHEDULE resolution keeps the effect question deliberately: a fanout
+  performs no named op, so which scheduler is installed IS an effect-altitude
+  question.
+  ▶ WHAT THE DIG FOUND AND DID NOT FIX, banked RED rather than carried. The
+  lexical tier emits its direct call with NO world bracket, so an arm runs in
+  the PERFORM-SITE world rather than its install world, and its own perform
+  self-dispatches once before escaping: measured 52 where the law the
+  evidence tier's own comment states ("the arm's own performs resolve outer,
+  never self") says 51. Pre-existing — the prior pin answers 52 too. The
+  install already saves what the fix needs (`_wprev`, the chain from before
+  its own push, which its comment calls "what the arm dispatch sets around
+  the arm call"); what blocks a two-line fix is that `LPerform` is shared
+  with the singleton tier, whose state local has no `_wprev` sibling because
+  `LWorldResolve` throws the node away and keeps the record. So the bracket
+  lands when the tiers stop disagreeing about what they carry, which is the
+  one-walk build. Born RED as `tests/frontier/mn-deep-handler-arm.mn`.
+  ▶ A CORRECTION, because the number form of the law applies to a number you
+  reasoned to as much as to one you remembered. The first read of that
+  fixture called the self-dispatch hypothesis REFUTED, on the strength of a
+  501 that was never measured: the multiplier was 100, the exit was out of
+  range, and 501 was inferred from a runtime message carrying no number. 502
+  produces the identical message. Re-run at an in-range multiplier it
+  answered 52, and the hypothesis was right all along.
+  ▶ ONE MORE GATE CORRECTED. Both new legs first read RED on a clean
+  compile, because the leg counted `grep -c 'E_'` — which matches
+  `E_RedundantBraces`, a format-liftable WARNING. Copied from a sibling leg
+  that gets away with it. A gate that cannot tell a warning from a refusal is
+  measuring the reporter, not the artifact; these count ` error: `.
+  ▶ AND THE PIN MACHINERY, same disease one layer up. The ‹BOARD RED› marker
+  that lets doc-truth refuse a pin scanned the WHOLE board block — including
+  the frontier and micros lines, which are free text the CALLER supplies. So
+  a frontier line honestly recording "born RED as <fixture>", which is the
+  discipline's own prescribed way to bank a measured silent-wrong, blocked
+  its own pin; meanwhile "1 red" in lower case had ridden every pin before
+  it. Whether a red frontier LEG blesses a pin is settled by precedent, not
+  by spelling. `board_verdicts` is now `board_self_run` (the three gates the
+  march runs itself, the only verdicts that may refuse) plus
+  `board_reported` (recorded verbatim, never parsed), and the marker reads
+  only the first. Both arms exercised before the ceiling moved: a genuine
+  `crown: RED` still fires it, a description containing the word no longer
+  does.
+
+- 2026-09-09 · pin 74b628ac3c0b6d99 · ETA 11 -> 3. FIXED POINT m2 == m3,
+  census 0, frontier 375 pass / 1 red.
+  ▶ THE SECOND HALF OF ONE ARC, split by a measurement rather than by taste.
+  The previous pin taught lower that a bare constructor or op name reifies;
+  this one deletes the eight hand-written eta-wrappers that existed only
+  because it could not. Four in cli.mn (`(t) => VRun(t)` → `VRun`, and the
+  same for VCheck / VCompile / VAudit), three `map((v) => TVar(v), …)` in
+  infer.mn, one `map((h) => interrogate_at(h))` in eight_loop.mn. They could
+  not land together: boot compiles m2, so a wheel written against a
+  capability the boot lacks fails at the assembler — measured at wat:99217
+  on `(global.get $interrogate_at)` when the first attempt bundled them.
+  ▶ THE THREE THAT REMAIN ARE ONE SHAPE AND A DIFFERENT BLOCKER, which is
+  why the ceiling is 3 and not 0. All three are `map((x) => process(x),
+  buffer)` in lib/dsp/processors.mn, where `process` is declared by lowpass,
+  biquad AND envelope. The reified body resolves its handler record from the
+  live world chain by HANDLER name (`$world_find` keys on one interned
+  name), which is exact for a singleton and has nothing to key on when
+  several handlers declare the op. Their comments name that now — they had
+  been naming the family that just closed, which would have read as a
+  standing cost rather than as a peer with a design.
+  ▶ ONE GATE FINDING, and it is the same law as the last landing's: the new
+  comments backticked `eta_max`, a verify-baseline key rather than a Mentl
+  name, and the comment-ref ratchet convicted all three (0 -> 3). A
+  backticked name is a reference; prose drops the backticks.
+  ▶ THE COUNTS: eta 11 -> 3, effectful lambdas held at 376, movers 435,
+  drift shapes at their ceilings, census 0. The eta ceiling's justification
+  in verify-baseline was rewritten rather than just lowered — a ceiling
+  whose reason is stale is the ratchet going blind, which §11 tripwire 4
+  already paid for once.
+
+- 2026-09-09 · pin e17d872b5df570db · A BARE NAME IS THE PRODUCT WITH EVERY
+  FIELD A HOLE. FIXED POINT m2 == m3, census 0, frontier 375 pass / 1 red.
+  ▶ THE DEFECT, two faces of one missing read. A constructor or an effect op
+  used as a VALUE compiled with ZERO diagnostics and then failed somewhere
+  else. `map(Box, [1,2,3])` exited 134 with `wasm trap: unreachable` at
+  `<unknown>!unbox` under `iterate_from$spnBox` — the twin layer BELIEVED the
+  nominal and specialized on it, while lower had emitted
+  `LMakeVariant(handle, tag, [])` whatever the arity, so what `map` produced
+  was not a variant and the match reading it fell to its exhaustive floor.
+  `each(note, [1,2,3]) ~> counter` emitted `(global.get $note)` for a global
+  that never existed, so the ASSEMBLER was the first thing in the chain to
+  object, about a symbol the developer never wrote.
+  ▶ THE ENV PROVED THE ANSWER AT THE REFERENCE the whole time.
+  `ConstructorScheme(tag, total)` and `EffectOpScheme(effect, handler,
+  ambiguous, discipline)` are distinct SchemeKind tags written at the
+  declaration; lower re-derived "a bare name in argument position is a fn
+  reference" instead of reading them. Carried-Truth at the value-of-a-name
+  boundary.
+  ▶ AND THE FIX IS NOT A NEW MECHANISM. A bare name is the parameter product
+  with every field unsupplied (SYNTAX §«Partial application»), so the VarRef
+  arm routes through the SAME `lower_call_partial` mint an authored hole
+  already used, with zero supplied args. What changed around it: the arity
+  comes from the DECLARATION (`scheme_ref_fun_arity`), because a nullary
+  reference types as the ADT rather than as a TFun and the use site cannot
+  tell "no parameters" from "not yet resolved"; and the emitfn `ret` reads
+  `ret_ty_of(fh)`, the callee's own TFun where the params were already read,
+  since the old `Some(lookup_ty(handle))` agreed with it only while every
+  partial was a CallExpr and would have published the whole arrow as the
+  ABI's return where the arrow's RESULT is meant.
+  ▶ THE OP FACE TAKES THE SINGLETON TIER, AND THE OBVIOUS SHORTCUT IS
+  REFUSED BY A GREEN FIXTURE. The lexical tier names a `__hstate` local of
+  the enclosing frame and the synthesized body is a LIFTED fn where that
+  frame is gone. The tempting alternative — capture the lexically resolved
+  record at the reification site, which the partial mint could do, since it
+  already captures supplied args — would make the closure mean "the handler
+  I was born under", and the crown's `mn-escape-innermost` pins the
+  opposite: an escaped closure dispatches to the DYNAMIC innermost install
+  (20). So the world-chain resolve inside the body, at call time, is the
+  only honest form.
+  ▶ THE FIRST BUILD WAS ALSO WRONG, AND THE MEDIUM SAID SO — three findings
+  in one verify. (1) `partial_callee_form` returned three CLOSURES carrying
+  the dispatch decision. That is drift mode 1 with the serial numbers filed
+  off — a closure holding a dispatch IS the vtable — and the anonymity tier
+  counted it, 378 -> 379. The form is a `PartialCalleeForm` ADT now and the
+  dispatch is a match at the one construction site, so the count FELL to
+  376: the restructure deleted two lambdas that predate this landing.
+  (2) The census convicted `_ => 0` in the arity read as a wildcard-zero,
+  9 -> 10, and it was right: zero is a real arity, and the arm was saying
+  "this name is not a function", which is what `None` says. The two readings
+  differ at exactly the case that matters — a non-nullary constructor whose
+  type has not resolved, where a fabricated 0 rebuilds the payload-less
+  variant this landing exists to delete. (3) Two comments backticked a
+  fixture's type name; a backticked name is a reference, and the ratchet
+  said so, 0 -> 2. All three found by gates, none by review.
+  ▶ TWO LANDINGS, BECAUSE THE BOOT COMPILES M2. The wheel cannot WRITE the
+  new form until boot carries it — measured, not reasoned: the first attempt
+  bundled the eta-wrapper deletions with the fix and m2 failed to assemble at
+  wat:99217 on `(global.get $interrogate_at)`, because boot still held the
+  old lower. The wrappers come out against THIS boot, next.
+  ▶ WHAT STAYS OPEN. Ambiguous ops cannot reify: `process` in
+  `lib/dsp/processors.mn` is declared by `lowpass`, `biquad` and `envelope`,
+  so `$world_find` has no single handler key and there is no single
+  `$op_<hname>_process` to call. `Hβ.emit.reified-op-needs-a-declaring-set-walk`
+  carries it with the build-ready form — the chain walk keys on the DECLARING
+  SET (static, already read by `lower_op_default_handler`, which only gives
+  up because it wants exactly one) and reaches the arm through the record,
+  which is the evidence tier's `call_indirect` sourced from the CHAIN rather
+  than from a frame-threaded ev slot. That re-homing is a Carried-Truth
+  deletion and it subsumes the singleton tier as its one-element case.
+
+- 2026-09-09 · pin e67380fee7f6959d · AN IDENTITY READ CANNOT BE SERVED FROM
+  MEMORY. FIXED POINT m2 == m3, census 0, frontier 373 pass / 1 red.
+  ▶ THE TWO MCP LEGS HAD ONE ROOT AND IT WAS MINE. `session_current`
+  (mcp.mn) decides whether the resident tree moved by recomputing
+  `driver_manifest(ranges)` and comparing it against the banked copy. The
+  per-module-parse landing "optimized" driver_manifest into hashing the TEXT
+  CARRIED IN `ranges` — the bytes captured when that entry was compiled —
+  and reported it as an effect-seam win. It compares a value against itself:
+  the candidate can never differ, so the check can never fire. Measured
+  before the fix: the living-session leg answered `main has 4 lines; 5 is
+  past the end` for a line the edit had just created, `session: tree moved`
+  fired 0 times against a required 1, and `declared as triple` was absent
+  from every face while `declared as double` stood. Both legs pass now.
+  ▶ THE LESSON IS NOT "DON'T CACHE" — it is that a read whose whole job is
+  to notice the world changed has no in-memory form. The function's comment
+  says so now, at the function, with the measurement in it.
+  ▶ THE RATCHET THAT COULD ONLY BE BREACHED. verify.sh's quiet gate (the
+  Hylo bar's own/ref counts) had a rise arm and no fall arm, alone among the
+  file's ratchets. So a marker the inference retired left the ceiling
+  standing and the slack accumulated invisibly — §11 tripwire 4's shape, one
+  gate over: nothing written was false, the number had simply stopped
+  meaning anything between breaches. Both arms now, both seen fire at all
+  three states (rose / held / fell) before the ceilings moved: authored ref
+  813 -> 812, effectful lambda 379 -> 378.
+  ▶ A CEILING RESTING ON A PEER THAT DID NOT EXIST. `eta_max: 11` is held
+  by eleven eta-wrappers that are blocked, not stylistic — seven wrap a
+  constructor, four wrap an effect op — and the blocker was cited by name in
+  a commit message, in a fixture comment, in three lib/dsp comments and in
+  the baseline's own justification, while RESIDUE had NO entry for it. That
+  is the "a gap that lives only in a comment is not named" law failing on
+  the file that states it. Banked as
+  `Hβ.emit.nonfn-binding-as-function-value` — one peer, not two, because
+  both faces are the same missing read: the env holds
+  `ConstructorScheme(tag, arity)` and `EffectOpScheme(...)` as distinct
+  tags at the declaration, and the emit re-derives "a bare name in argument
+  position is a fn reference" instead of reading that proof. Re-measured
+  against this pin, not recalled: `map(Box, [1,2,3])` checks with zero
+  diagnostics and exits 134 with `wasm trap: unreachable` at
+  `<unknown>!unbox` under `iterate_from$spnBox` — the twin layer BELIEVED
+  the nominal and specialized on it, and what map produced was not a
+  variant; `each(note, [1,2,3]) ~> counter` checks with zero diagnostics and
+  emits `(global.get $note)` for a global that never existed, the assembler
+  objecting first. The old name (`constructor-as-function-value`) described
+  one of the two faces and is corrected at all four tracked sites plus the
+  prior PROVENANCE entry, which had claimed "Banked as" when nothing was.
+  ▶ THE ONE RED STAYS RED AND IS NOT THIS LANDING'S. `why coordinates are
+  the developer's` wants `mn-where-badges:8`; the line is right now (the
+  per-module parse fixed that), the FILE is missing, and it is missing
+  because `Located(Span, Reason)` carries a coordinate rather than the
+  handle whose module column would name the file. Every located facet that
+  answers a path — census, decls, debt — carries the module beside the span.
+  The Reason cannot, so the renderer has nothing to read. That is Arc C
+  (`Reason` positions are handles), and the gate stays RED until it lands.
+
+- 2026-09-09 · pin d935b01dbf0af2aa · TWO BLIND MEASURES — the cost facet
+  counted every module twice and called the longest file the whole program.
+  FIXED POINT m2 == m3, census 0, every ratchet held.
+  ▶ FOUND BY USING THEM. A design exploration reached for `mentl query … cost`
+  as evidence and read 72 nodes per source line, which would have meant 4–7×
+  structural duplication and would have set a whole arc's premise. The number
+  was an artifact of this session's own per-module parse. The real ratio is
+  12.0. The lesson is not "check your numbers" — it is that a measurement
+  taken from a facet nobody had re-derived since the representation moved is
+  not evidence, and the fastest way to find that out is to try to build on it.
+  ▶ BLINDNESS ONE: `weave_line_extent` (graph.mn) folded a MAX over module
+  spans. That was right while spans were offsets into ONE concatenated weave —
+  the last line any module reached WAS the total, because they were laid end
+  to end. Per-module parse makes every file start at line 1, so the max became
+  the LONGEST MODULE: 9929 (infer.mn's own length) reported for the whole
+  59,501-line wheel, and the same 9929 for a different entry whose only shared
+  module was that one. It is a SUM now, which is what "total source processed"
+  meant all along; it is only since the parse moved that the two differ.
+  ▶ BLINDNESS TWO: `module_cells` returned the trial's NModule node AND the
+  final's for every file, because each pass parses. 107 cells for 53 modules —
+  exactly 2n+1, the link root being minted once. It dedups by PATH now,
+  keeping the LAST: a module's identity is what it RESOLVES TO, never the node
+  that represents it (driver_collect_visit's visited set already keys on this,
+  and the census dedup needed the same correction days earlier — this is the
+  third time one law has been applied at a third site, so the source is fixed
+  rather than the symptom).
+  ▶ AND A REAL BUG UNDER IT: `module_decls_of` took the FIRST match on the
+  raw undeduped list, so `driver_module_ast` and `split_weave_by_module` were
+  reading the TRIAL generation's decls — a shadow tree, structurally
+  equivalent but judged in the pass that gets thrown away. Both read the
+  deduped projection now.
+  ▶ A RATCHET READING TOO SMALL DOES NOT GO RED, IT GOES BLIND — it accepts
+  every rise beneath the number it reports. That is §11 tripwire 4 in a form
+  the tripwire does not cover: the gate ran, it passed, and it was measuring
+  the wrong thing.
+  ▶ THE CEILING NEEDED NO RE-BASELINE, which is the confirmation the repair is
+  a repair: the bare-floor fixture reads 2736 against its untouched 2737 — the
+  value it read before the regression. 54 modules / 59,599 lines for the
+  wheel, against the march's own 59,501-line input.
+
+- 2026-09-07 · pin d935b01dbf0af2aa · THE PARSE ENTERS THE MODULE — the
+  module-blind parse closed, five machines deleted with it. TRANSITION m3 ==
+  m4, census 0, 416464 lines against 420099.
+  ▶ THE ROOT, named yesterday and unbuilt: the driver concatenated the dep
+  DAG into ONE text and parsed it whole, so every node was born in the
+  weave's coordinate space unattributed. `mentl why` answered a name on line
+  8 with `at 2729:1-2729:15` while the refs facet three lines away answered
+  `addr:7` — because refs read the graph and Reasons read a copy.
+  ▶ THE FORM, from that entry's own sentence: one-namespace judgment never
+  required one TEXT, only one ENV. Each module is parsed on its own and the
+  DECL LISTS concatenate. Spans are the developer's from birth; the module
+  is on the node because the parse runs inside it — a twelfth SpinePage
+  column, written at the mint from the handler's live cur_module.
+  ▶ THE BIAS, and why it is not decoration. The cell holds the module handle
+  PLUS ONE. A fresh graph's first mint is handle 0, so the first module node
+  IS handle 0, and an unbiased column cannot tell "born in module 0" from
+  "never stamped". Measured, not reasoned: the first march trapped on handle
+  1 whose module really was 0. The Option-niche word this file already uses
+  for mint_high.
+  ▶ TOTAL, WITH NO SENTINEL. Every compile enters the LINK's own module
+  before discovery, because discovery both mints and reports; each per-file
+  parse enters its own inside that. So no reader carries a "which file, if
+  any" arm, and the two that briefly answered "" were convicted by the
+  census as wildcard-fabrications (21 -> 23) and became refusals instead.
+  ▶ DELETED WHOLE: module_seams / seams_walk / span_render_local /
+  seam_of_line (an O(nodes) walk per call, three callers) · scope_localize's
+  per-diagnostic weave-offset subtraction · rehome_seam_comments /
+  rehome_walk / rehome_one / module_slot_of (a comment could only cross a
+  seam because "the parser cannot see seams") · split_weave_by_module's
+  per-stmt containment test · driver_module_ast's re-filter, replaced by the
+  read its own comment prescribed · entry_start_caret's range search, which
+  had no information left to compute · file_line_of · and the range map.
+  ▶ THE REGISTER SCOPES BY MODULE. ScopeAt(start, nlines) named a file only
+  because spans were offsets into one text; every file starts at line 1 now.
+  The report carries the module it is about, read where GraphRead already
+  lives, because the register's arm is deliberately graph-free.
+  ▶ RATCHETS: movers 476 -> 435. Effect seam 8 -> 0 (driver_manifest hashes
+  the text it was handed instead of re-reading the file). Effectful lambdas
+  382 -> 379. Peak ceiling 2326000 -> 2350000 — the first raise in that file
+  provably measuring GROWTH, because the estimator was fixed the same
+  session: min-of-three read 2340292 and 2343036 against a 0.28% jitter
+  band, which one sample could not have distinguished. The cost is one more
+  16384-slot column per open band, and it is the price of every node knowing
+  its file without a scan re-deriving it.
+  ▶ WHAT THE GATES CAUGHT, each a real regression this arc introduced and
+  then fixed, recorded because the shapes recur: the census dedup keyed on a
+  SPAN, unique only because spans used to be weave offsets — two modules now
+  share a line 10 and the second site was silently DROPPED (it is keyed on
+  (module, span) now, which says the invariant instead of relying on it);
+  the census and decls facets rendered a line with no file once
+  span_render_local was gone, which the module column answers directly;
+  W_CommentRefUnresolved reported against whichever module the whole-weave
+  walk had left in force rather than the one the comment lives in; and
+  rederive_cone judged every warm-path module under the name "<stdin>",
+  because it called the single-source entry point. Frontier went 30 red at
+  the first full run to 5.
+  ▶ WHAT IS STILL OPEN, and it is this landing's: warm-start and warm-inc
+  emit ONE differing constant — a handle baked into a trap payload, cold
+  13558 against warm 539 — which is the lower-time-bake class meeting a
+  changed numbering; and the two MCP session legs. Frontier 368 pass / 5 red
+  against 373 / 1 before the arc.
+  ▶ WHAT THIS DOES NOT CLOSE: the Reason layer. Located still carries a
+  SPAN, so show_reason still cannot name a file and the frontier's
+  `why coordinates are the developer's` — the fifth red, and the one that is
+  NOT this landing's — stays RED. The remaining work is Located carrying a
+  handle: where the position is its own node's, it dissolves.
+
+- 2026-09-07 · pin c1481440808d43ce · A RATCHET SET INSIDE ITS OWN VARIANCE
+  IS A COIN FLIP — the cost gate's estimator, and the pin it had been
+  refusing. NO WHEEL SOURCE CHANGED at this pin; the only code is six lines
+  of tools/march.sh. march CLEAN m2 == m3, cost 15.86s / 2320048 KB, census
+  0, battery green.
+  ▶ THE REFUSAL. The board opened saying `boot is BEHIND current source`
+  (8aeca3c8 against a tree whose m2 reads c1481440), which makes every
+  boot-suite line on it a verdict on the OLD wheel — the exact condition
+  §7's own preamble warns not to launder through prose. The repin was then
+  refused by the peak ratchet at 2326460KB against a 2326000KB ceiling.
+  0.02% over.
+  ▶ THE MEASUREMENT. Six m3 legs over BYTE-IDENTICAL input read 2320048 /
+  2321280 / 2323680 / 2323932 / 2325080 / 2326460 KB — a 6412KB spread,
+  0.28%, against the 2.4MB band the peer had on record. The ceiling was
+  therefore sitting INSIDE the noise, which means it had been refusing clean
+  repins at random and would hide a real two-megabyte regrowth. Both failure
+  modes at once, exactly as `Hβ.tools.cost-ratchet-reads-one-sample` said
+  when it was named this morning.
+  ▶ THE FIX IS THE READING, NOT THE LINE — the peer's own prescription,
+  built. `read_cost` no longer convicts on one sample: a breach re-runs the
+  m3 leg twice and the ratchet rules on the MINIMUM of three. The estimator
+  is not a smoothing choice, it is the shape of the measurement — peak RSS
+  is ONE-SIDED, since allocator and OS jitter can only push an observed peak
+  ABOVE the true requirement and never below it, so a lone sample is biased
+  high and the minimum converges on the truth from above. A genuine
+  regression survives the minimum undiminished; only the jitter dies. The
+  extra legs are paid ONLY on a breach, so the green path costs nothing.
+  Raising the ceiling instead would have laundered jitter as headroom, and
+  the peer records that being done three times already (2250000, 2310000,
+  2320000) — each time for variance rather than growth.
+  ▶ SEEN FIRE AND SEEN RULE. At the real ceiling the run passed on its first
+  sample and the new path never executed — an unexercised gate is not a
+  gate — so the ceiling was temporarily dropped to 2000000: the path fired,
+  printed re-reads 2323680 / 2323932 against a first sample of 2321280, took
+  the minimum, and STILL refused. Both halves proven, baseline restored.
+  ▶ THE CEILING IS UNCHANGED. Nothing here buys headroom; it buys a gate
+  that means what it says.
+
+- 2026-09-07 · pin 8aeca3c83401fdb6 · AN ABI IS ONE FACT, SO IT GETS ONE
+  HOME — the emitted-signature column, and the enumeration entry that feeds
+  it. verify green (micros 149/0, census 0), march CLEAN m2 == m3 at every
+  step, cost 19.16s / 2323984 KB; crown · proof-exactness · effect-identity
+  green at the pin; ratchets re-derived (movers 476, effectful lambdas 382
+  — a FALL, wildcard-fabricates back to 21).
+  ▶ THE CENSUS. A function's WAT signature — its param repr-vector and its
+  result repr — had SIX derivations: emit_params via param_repr_of (the
+  header's params), body_result_repr (the header's result),
+  direct_callee_widths (every call site), fn_record_is_wide (the table's
+  wideness test), emit_wide_wrapper (the word-face deref widths), and
+  param_local_entries (the local decls). Every one carried a comment
+  asserting the readers agree — "one truth, two readers", "the one decider,
+  two readers", "applied per THE ONE SIGNATURE BOTH SIDES AGREE ON". Read
+  them as CONFESSIONS: they ran the same CODE, which is not the same as
+  reading the same FACT, and the difference had already billed three
+  assembly REDs and the f64.load miscompile that blocked rung 3. Two of the
+  six ran at module scope, OUTSIDE the twin bracket the body they described
+  was emitted under.
+  ▶ THE COLUMN. sigs_col joins the spine's column family, written ONCE per
+  compile at the emit settling point: the moment where every symbol is known
+  (base records plus each twin with the bracket it emits under) and inference
+  is complete, so a width read there cannot move again. Not N notes — a fact
+  that settles at a MOMENT is written whole at that moment, because N notes
+  re-open the window a reader could observe half a table through, which is
+  the time-varying read the column exists to end. All six sites became
+  readers. m2 == m3 BYTE-IDENTICAL: six derivations collapsed to one and not
+  a byte moved, which is the strongest available statement that they had
+  been computing one answer.
+  ▶ THE ENTRY CARRIES THE EDGES. The derivation was itself a re-derivation:
+  param_repr_of walked the WHOLE BODY per parameter hunting a use-site, fell
+  to a name-search of the declared scheme, and floored when that missed —
+  which for the synthesized family was always. Lower computes that vector
+  already (off the origin's live TFun) and hands it to ls_enter_frame, where
+  it dies at frame exit. All seven LFn writers now note the param and result
+  types onto the enumeration entry, converted to a record while it still had
+  no readers to break. DELETED: the three-route ladder, param_ty_repr,
+  tparam_repr_by_name, resolved_fn_ty, and the entire 30-arm
+  find_local_handle_expr walker family — one of the twelve families
+  `Hβ.lower.lowering-is-a-column` enumerates, so its census reads eleven.
+  ▶ A TY, NOT A HANDLE — and the banked fix direction had it wrong.
+  RESIDUE's plan for `Hβ.emit.unused-wide-param-floor` read "the param's
+  handle → repr_of(lookup_ty(h))". ty_handle_of is 0 for every GROUND type,
+  so a `s: Gain` param — the exact Float case that entry exists for — would
+  have arrived as "no judged type" and floored again, reproducing the bug
+  through the fix. Not a Repr either: the width is projected through
+  lookup_ty at read time so a twin's body resolves its OWN instantiation.
+  ▶ AND NOT A SENTINEL. The first form wrote TVar(0) for "no judged type"
+  and the census convicted it on sight as drift mode 10 — a wildcard arm
+  minting a TVar. It was right: "handle zero means no node" is a convention
+  every reader must learn, where Option(Ty) is a fact the type states. The
+  medium caught this, not a human and not a march.
+  ▶ THE WALL THE FORM HIT BELONGS TO SOMETHING ELSE. Written as a record,
+  the twin's four facts read through unannotated helpers — an INTERIOR
+  open-row field access — and the wheel compiles that to `(unreachable) ;;
+  field offset unprovable`, three of them, one on the twin loop's own path,
+  so an m3 leg trapped at op_each_handler_yield. Measured at the repro:
+  `fn outer(u) = inner(u)` over `fn inner(u) = u.rec` emits ONE $inner, NO
+  twin of any kind, and an offset baked from a set it cannot know. The wheel
+  ALREADY SHIPS FOUR such floors (op_name, name, init, body). The twin shape
+  is a positional quadruple under protest with that reason in the source,
+  and `Hβ.infer.record-row-vars-are-not-unioned` is the next build with the
+  record form as the gate it has to pass.
+  ▶ TWO OF THIS SESSION'S OWN READINGS RETRACTED, both by re-measurement.
+  A sparse column (store only the wide symbols; a miss floors identically)
+  was built and read as costing 7.4MB more — then three m3 legs on ONE fixed
+  binary over ONE fixed wheel.mn spanned 2321788..2324148 KB, so the gap was
+  inside the noise and the reading said nothing. The complete column stands
+  on its contract instead: one rule, with no absence-semantics for a reader
+  to learn. The same spread put the cost ceiling INSIDE its own measurement's
+  variance for the third recorded time, so it is raised as an explicit
+  in-commit act and the instrument is named —
+  `Hβ.tools.cost-ratchet-reads-one-sample`: read the MINIMUM of N legs,
+  because noise only ever pushes a peak up.
+
+- 2026-09-07 · pin 8fb668de4613c1a2 · THE CHECK CHASES, SO THE BUILD CAN
+  SHARE — and three configurations measured where rung 3's real wall is.
+  verify green, march CLEAN m2 == m3, census 0, cost 17.85s / 2252MB.
+  ▶ WHAT LANDED. subst_changes answered TRUE for every bound var, and in a
+  judged decl most vars ARE bound, so check-then-build was present and never
+  got to answer no: every polymorphic reference rebuilt the callee's whole
+  type tree (`Hβ.infer.instantiate-shares-never-clones`, whose cost the docs
+  place on the allocation channel). The check follows the edge now and asks
+  whether the CONTENT changes — a bound cell holding no mapped var answers
+  false and its subtree shares; only a path reaching a quantified var
+  rebuilds. The opposite error was BUILT and measured first: answering by the
+  mapping alone leaves a quantified var behind a binding unseen, and
+  polymorphism severs silently.
+  ▶ THE WALL IS THE READ PATH, and three configurations name it. Publishing
+  the decl's CELL instead of a Frozen snapshot compiles clean at census 0
+  every time, and the resulting m2 fails to compile the wheel three
+  different ways: (a) with generalize's chase_deep intact — OOM through
+  chase_row_deep / chase_edges_deep / tail_set_union / alloc, because a fold
+  that ran once per DECL now runs once per USE; (b) with a shallow head and a
+  non-chasing free_in_ty — the quantifier reads the param CELLS themselves,
+  over-quantifies, and a judge branch exhausts its planned mint band
+  (graph_fresh_ty's loud `load_i32(0 - 1)`); (c) with a shallow head and a
+  CHASING free_in_ty — still the mint band, because chase_deep is bounded at
+  d > 200 and an unbounded walk is not. That last one is CLAUDE.md's own law
+  arriving as a bug: the three "vars of a type" walks must AGREE.
+  ▶ THE ROOT UNDER ALL THREE, and Morgan's question named it before the
+  measurement did — "the word chase makes me feel like work that doesn't
+  need to be done is being done; isn't everything a record, and don't
+  records carry all the information needed?" They do, and a stored LINK is
+  precisely a record failing to carry it. graph_compress_row's own comment
+  is the proof: path compression is "an OPTIMIZATION WRITE", and "a BRANCH
+  cursor SKIPS it, because a branch rebinding shared chain cells makes
+  sibling chases schedule-dependent — the measured k2 yield-floor flips at
+  window 8 traced to exactly these writes (1,463 foreign row binds)".
+  So: chase-with-compression is a READ THAT WRITES; parallel readers cannot
+  write; compression is therefore disabled in branches; branches re-walk
+  uncompressed chains; and under live publication that re-walk is the
+  re-fold that OOMs. The chase is not merely wasted work — IT IS WHAT MAKES
+  READ-ONLY PARALLELISM UNSOUND, and it is why the multi-cursor fan cannot
+  simply be turned up.
+  ▶ WHERE SOTA SITS AND WHY MENTL LEAVES IT. Union-find with path
+  compression is O(α(n)) amortized and e-graphs (egg's deferred rebuild) are
+  its batch form — both optimal FOR A SINGLE-THREADED MUTATOR, and both
+  depend on read-side mutation. Mentl's setting breaks that assumption four
+  ways: ONE writer (inference), MONOTONE refinement, a flat handle-addressed
+  image where a chase is a pointer walk across the cache-hostile working set
+  §5.O names as the constant-factor amplifier, and N parallel readers
+  WANTED. There, canonical-on-write dominates: the writer pays once at the
+  bind, every reader does a direct load, reads are PURE, and N cursors read
+  lock-free with no atomics and no branch guard. The law is already in the
+  artifact at half strength — graph_bind_row stores flatten_row_stored,
+  depth-1 by invariant at the WRITE — while reads still re-fold and the TYPE
+  sort does not do it at all.
+  ▶ NEXT, forced: move compression to the WRITE path and delete it from the
+  read. resolve_row calls graph_compress_row today (a reader writing);
+  graph_bind_row is where it belongs (the writer compressing what it just
+  walked). Then branch reads are pure, the branch guard disappears, the
+  re-walk disappears, and publish-Live becomes affordable — which is rung 3,
+  the fan's shared context, and the parallel cursor, all unblocked by one
+  relocation.
+
+- 2026-09-06 · pin 41aec80bddfe2ce2 · THE WARM PATH WAS HALF-KEYED, AND THE
+  GATE THAT KNEW IT STOPPED ONE LINE SHORT. frontier 374/0, verify green,
+  march CLEAN m2 == m3, census 0, cost 15.16s / 2148MB.
+  ▶ THE PRIOR ENTRY IS CORRECTED, not amended. It said "board whole, every
+  gate green," and that was true AS MEASURED and wrong. The pin it blessed
+  shipped a broken incremental compile.
+  ▶ THE BUG. f58dfc10 moved module identity onto the resolved path and took
+  the tree scan and the manifest with it — but split_weave_by_module still
+  bucketed the analyzed statements by NAME. assoc_stmts then answered EMPTY
+  for every cached module, so the warm path emitted the cone alone: 2933
+  bytes where the cold compile of the same tree is 37644, `a` and the entire
+  prelude gone. That is the SAME half-keying the prior entry warned about in
+  its own prose — "a half-keyed graph is the same defect wearing an ordering
+  costume" — written by someone who had just missed a fifth site. Knowing the
+  shape of a class does not find its members; only a measurement does.
+  ▶ WHY IT RODE A PIN. tests/frontier's warm-inc leg has exactly the check
+  that catches this: incremental output vs a cold compile of the patched
+  tree, byte-compared. It did not run. The cone-line check above it went red
+  on a RENDERING change — the cone prints `b.mn main.mn` now, because it
+  carries the identity — and the leg `return`ed. So a cosmetic red masked a
+  correctness red sitting one line below it, and the board reported the leg
+  as a single failure that looked like mine to re-bank.
+  ▶ THE FIX IS TWO LINES AND ONE OF THEM ISN'T THE BUG. split_weave_by_module
+  keys the bucket by the range tuple's PATH (the tuple already carried both;
+  range_of_module keeps matching the NAME, because that is what a user types
+  at an address). And the leg no longer returns on an independent failure.
+  The second is the one that matters: a leg that halts at its first red hides
+  the rest of its own coverage, and only a genuine precondition — no artifact
+  to read — earns an early return. Two legs in this file still return; both
+  are real preconditions (a failed compile has no wat to diff).
+  ▶ A DIAGNOSTIC THAT COULD LIE, in the gate built to catch those. The census
+  leg fans its queries through xargs and threw away every child's stderr and
+  exit code, so a query that DIED was indistinguishable from a shape that is
+  genuinely absent — and the judge blamed the shape. It records the exit now
+  and says QUERY DIED, and the failure message names the pid-suffixed files
+  that exist instead of an unsuffixed path nothing ever wrote.
+  ▶ ONE UNRESOLVED, NAMED RATHER THAN GUESSED. The board's census-40 red did
+  not reproduce on a clean dir (372/1, then 374/0). A SIGPIPE-under-pipefail
+  hypothesis — grep -q short-circuiting the cat feeding it — was TESTED at
+  200 iterations and did NOT reproduce; the outputs are ~100 bytes, too small
+  to race. No cause is banked. What landed instead is the instrument that
+  will name the failure if it returns, which is the honest move when a probe
+  disproves you: do not crown the next thing you see.
+  ▶ THE MEASUREMENT THAT ANSWERED THE LTS QUESTION, banked here because it
+  reframes a named peer. The same spawning module through two runners:
+  wasmtime 47's CLI answers `Error: the -Sthreads flag is no longer
+  supported` and exits 1; 36's runs it to 60. The CLI cannot execute Mentl's
+  own output past 36, so the LTS pin is a CEILING, not a preference, and
+  every release after it is unreachable while the CLI is the runner.
+  Hβ.ops.wasmtime-runner-migration steps (5)-(6) are therefore not hygiene;
+  they are the only exit. tools/runner builds clean here against wasmtime 47.
+  Its own next_tid counter is the projection tools/thread-gate.sh currently
+  rebuilds from strace, which is Hβ.march.concurrency-is-a-projection with
+  the substrate already written.
+
+- 2026-09-06 · pin f58dfc1070f5c7a5 · A MODULE'S IDENTITY WAS THE SPELLING
+  THAT REACHED IT. Board whole (verify green, march CLEAN m2 == m3, frontier
+  374/0, crown 62/0, proof-exactness 9/0, effect-identity PASS, instrument
+  reads); census 0; cost 11.19s / 2148MB.
+  ▶ THE FIND, from a wrong turn. Building a positive control for an
+  unrelated gate, a concatenated lib blob was fed to `mentl compile <file>`
+  and refused with E_DuplicateTypeName on `type Bool`. The blob was
+  malformed — the file path resolves imports, so prelude arrived twice —
+  but the interesting half was that the SAME BYTES through stdin compiled
+  and ran. Two transports, two meanings. Probing that split found the root
+  one layer down and much worse: `import lists` checks clean at 0
+  diagnostics, `import lib/lists` refuses with 58. One file. Two spellings.
+  Two module identities.
+  ▶ THE ROOT. driver_collect_visit keyed its visited set by the module NAME
+  and called driver_module_path on the very next line. So both spellings
+  passed the check, the same source was collected twice, and every
+  declaration in it collided with itself. An import is an EDGE; drawing an
+  edge that already exists is a no-op, which is what an edge IS. The walk
+  was drawing a second one.
+  ▶ WHY NO GATE SAW IT — tripwire 3, whole. The wheel's own build is the
+  cat-blob through stdin, which never resolves an import at all, and every
+  lib spells its siblings bare (`import lists`, no prefix). So the wheel
+  never once resolved a path-prefixed import, and a user's first one is red
+  on line one. The board was green in the same minute `mentl check` refused
+  a four-line program.
+  ▶ THE FIX IS ONE KEY AT FIVE SITES, and the fifth is why it is not
+  smaller: the visited set, the dep edges, the layer partition's wait
+  condition, the tree scan's downstream closure, the entry filter. Fixing
+  only the visited set would have been WORSE than the bug — a name-matched
+  dep edge against a path-keyed DAG is DROPPED, and the partition then runs
+  an importer before its dep. A half-keyed graph is the same defect wearing
+  an ordering costume.
+  ▶ IT DELETES, three times, and each deletion was already named in this
+  file's own header as fixed for every OTHER consumer of the walk:
+  driver_check_module was re-resolving a path the walk had resolved (up to
+  five fs_exists probes per module) and re-reading a file the walk had read;
+  rederive_cone was resolving a name that was already a path. The per-module
+  check was the last consumer still following a name. Net code +8 lines —
+  the additions are the ModuleEntry alias and the path-keying, and the
+  commit says so rather than claiming a deletion it did not make (Law 11).
+  ▶ THE PERSISTED MANIFEST keys on the same identity, so the first warm run
+  after this sees every hash as new, re-derives once, and re-persists with
+  paths. Self-healing, one cold run.
+  ▶ GATE, born RED: tests/syntax/import-path-spelling.mn — 58 errors through
+  the manifest link while the identical source is silent through the blob
+  link. That divergence is precisely what the syntax battery's manifest leg
+  was built to catch, so the gate needed no new harness; it needed a fixture
+  nobody had thought to write. 58 → 0.
+  ▶ THE MEDIUM CONVICTED THE AUTHOR. The first draft wrote
+  `map((dep) => driver_module_path(dep), …)` out of caution about passing a
+  `ref`-param fn point-free. verify's anonymity ratchet went red — "eta rose
+  28 → 30 — a named fn newly hidden behind a lambda." Point-free checks
+  clean; the caution was superstition. That is `mentl audit`'s larval form
+  doing its job on someone editing the wheel, which is the whole point of
+  ratcheting a shape rather than reviewing for it. effectful_lambda_max
+  385 → 384, holding the gain the same leg measured.
+  ▶ A SECOND DEFECT, found because the board could not run. tools/wt-env.sh
+  is SOURCED, so its wasmtime flag probe inherited the caller's shell
+  options. Under `set -o pipefail` — which verify.sh sets and an interactive
+  source does not — wasmtime's nonzero exit masked grep's MATCH, so the
+  probe took the wrong branch and added the `-W shared-memory=y` that 36 LTS
+  rejects; every gate run trapped with "unknown -W option". Invisible on 43,
+  which wants the flag regardless, so there the wrong branch and the right
+  behaviour coincided: the defect could only fire on the version this repo
+  pins. A captured string matched with `case` has no exit status to inherit.
+  The deeper reading is that the version fork itself is the liability, which
+  is what Hβ.ops.wasmtime-runner-migration steps (5)-(6) already say.
+  ▶ AND THE GATE THAT STARTED IT ALL: tools/thread-gate.sh, wired into
+  state.sh. Nothing on the board counted a thread, which is why
+  judge_window = 1 sat beside a spawn-per-branch for ten days with every
+  gate green (433 threads on `fn main() = 7`). Three legs — a positive
+  control that requires a really-spawning fixture to read above the floor
+  (the first draft of it was VACUOUS: the fixture failed to compile,
+  wat2wasm assembled the empty output, the run exited 0, and it "passed"
+  having measured nothing); a DELTA ratchet between a 61-decl and a 1-decl
+  program, so wasmtime's own host threads cancel and the gate measures us
+  rather than the runner; and a two-draw byte compare, the leg that survives
+  Phase 9.2 unchanged because a race's only symptom is the run-to-run
+  variance that hid the 2026-08-07 garbled cell. judge_spawn_delta_max: 0,
+  seen RED at ceiling -1. Retirement named:
+  Hβ.march.concurrency-is-a-projection — the medium performs
+  wasi_thread_spawn through its own effect and already holds the number this
+  script rebuilds from syscalls.
+  ▶ TWO STALE CLAIMS RETRACTED against the artifact. RESIDUE said a
+  thread-free module "(boot included)" ships no thread-spawn import;
+  wasm-objdump reads func[17] wasi.thread-spawn and a shared env.memory in
+  the pinned boot, so boot is a spawning module by that taxonomy. And
+  wt-env.sh's "it costs ~13 minutes" for the wheel compile measured 20s
+  here — the perf arc's own win, never re-read into the prose that motivated
+  it.
+  ▶ THE SHAPE ALL FOUR SHARE, worth more than any one of them: a fact that
+  was true when written, silently stopped being true, and no gate read it.
+  judge_window beside a spawn-per-branch; "(boot included)" beside a boot
+  that imports thread-spawn; a probe whose answer depended on its caller; a
+  cost claim off by 40×. None were bad reasoning. All were unread
+  measurements — which is the argument for projections over prose at exactly
+  the altitude PLAN §0's fifth property makes the point.
+
 - 2026-09-04 · (no repin — fixtures only) · E_EffectMismatch 15 → 5, AND
   TWO OF MY OWN CLAIMS RETRACTED. Battery errors 19 → 9; carriers eleven
   files → four; micros 149/149; verify green.

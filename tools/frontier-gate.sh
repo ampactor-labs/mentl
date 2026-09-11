@@ -465,11 +465,25 @@ run_warm_incremental() {
     fail "$label incremental compile (exit=$rc; see $dir/$label.2.err)"
     return
   fi
-  if ! grep -q '^warm: re-deriving b main$' "$dir/$label.2.err"; then
-    fail "$label cone line (want 'warm: re-deriving b main'; see $dir/$label.2.err)"
-    return
+  # The cone names RESOLVED PATHS, because a path is what a module's identity
+  # IS (pin f58dfc10 — `lists` and `lib/lists` were two identities for one
+  # file until the tree scan keyed the path). Rendering names here would mean
+  # a path->name lookup, which is the re-derivation the same landing deleted.
+  # The assertion is unchanged in substance and re-derived by hand before it
+  # was re-banked (Law 11): b is the edited module, main its importer, and the
+  # `$` anchor still proves a stayed CACHED — an unchanged dep must not appear.
+  # A failure here does NOT return: the divergence check below reads the same
+  # two artifacts and does not depend on this one. It used to return, and that
+  # is how a REAL incremental bug rode a pin — the cone line went red on a
+  # rendering change, the leg stopped, and "incremental == cold" never ran to
+  # report that the warm path had dropped every cached module. A leg that
+  # halts at its first failure hides the rest of its own coverage; only a
+  # genuine precondition (no artifact to read) earns an early return.
+  if ! grep -q '^warm: re-deriving b\.mn main\.mn$' "$dir/$label.2.err"; then
+    fail "$label cone line (want 'warm: re-deriving b.mn main.mn'; see $dir/$label.2.err)"
+  else
+    pass "$label cone named (b main re-derived, a cached)"
   fi
-  pass "$label cone named (b main re-derived, a cached)"
   cp "$wdir/a.mn" "$wdir/b.mn" "$wdir/main.mn" "$refdir/"
   wt_run --dir "$refdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
     > "$dir/$label.ref.wat" 2> "$dir/$label.ref.err"
@@ -940,11 +954,28 @@ run_census() {
         xargs -0 -n 1 -P "${FRONTIER_POOL:-$(nproc)}" bash -c '
           source "$CENSUS_ROOT/tools/wt-env.sh" >/dev/null 2>&1
           q="${1%%:*}"; ln="${1##*:}"
-          wt_run --dir "$CENSUS_ROOT" "$CENSUS_ART" query "$DOC" "census $q" > "$CENSUS_DIR/census-$ln-$$.out" 2>/dev/null' census-child
+          # The child KEEPS its stderr and RECORDS a nonzero exit. Discarding
+          # both meant a query that died — under the pool, all N of these are
+          # wheel-scale — was indistinguishable from a shape that is genuinely
+          # missing, and the judge below then blamed the shape. A diagnostic
+          # whose NAME can lie is the class this gate exists to catch.
+          wt_run --dir "$CENSUS_ROOT" "$CENSUS_ART" query "$DOC" "census $q" \
+            > "$CENSUS_DIR/census-$ln-$$.out" 2> "$CENSUS_DIR/census-$ln-$$.err" \
+            || printf "%s\n" "$?" > "$CENSUS_DIR/census-$ln-$$.rc"' census-child
   for spec in '|>:10' '<|:11' '><:12' '~>:13' 'anonymous:14' '<~:15' 'eta:24' 'effectful-lambda:25' 'iteration:26' 'wildcard-zero:27' 'failure-mask:28' 'print-in-report:31' 'wildcard-fabricates:32' 'underscore-retain:33' 'flag-as-int:34' 'parallel-arrays:35' 'parallel-arrays:37' 'vtable-record:36' 'env-frame:38' 'default-param:39' 'record-pattern:40' 'record-pattern-open:40' 'declared-row-hof:41'; do
     q="${spec%%:*}"; line="${spec##*:}"
     if ! cat "$dir"/census-"$line"*.out 2>/dev/null | grep -q "mn-census-verbs:$line"; then
-      ok=0; fail "census '$q' misses its own site (line $line; see $dir/census-$line.out)"
+      ok=0
+      # Which of the two failures is it? A recorded exit means the INSTRUMENT
+      # died and the shape was never judged; only a clean run that answered
+      # without its own site convicts the shape. The paths named are the ones
+      # that exist — the files carry the writer's pid, and the old message
+      # pointed at an unsuffixed name nothing ever wrote.
+      if compgen -G "$dir/census-$line-*.rc" > /dev/null; then
+        fail "census '$q' QUERY DIED (exit $(cat "$dir"/census-"$line"*.rc | tr '\n' ' ')) — shape never judged; see $dir/census-$line-*.err"
+      else
+        fail "census '$q' misses its own site (line $line; see $dir/census-$line-*.out)"
+      fi
     fi
   done
   [ "$ok" = 1 ] && pass "structural census: all twenty-two shapes count their own site (|> <| >< ~> <~ anonymous eta effectful-lambda iteration wildcard-zero failure-mask print-in-report wildcard-fabricates underscore-retain flag-as-int parallel-arrays-both-faces vtable-record env-frame default-param record-pattern record-pattern-open declared-row-hof)"
@@ -1350,8 +1381,20 @@ for i in "${!compilers[@]}"; do
   # value-sound licence (the arm ignores state), pinned by the
   # escaped-install tripwire below (exit 7 — the modal install-identity
   # frontier owns the eventual split, like residual-absence beside it).
+  # RE-BANKED 2026-09-11 from 7 to 134, ON PURPOSE. The 7 pinned the
+  # value-sound licence for stateless arms — a chainless direct call that
+  # answered correctly because the arm ignores its record. The uniform world
+  # bracket ended that licence, and the two are incompatible by construction:
+  # the bracket's CONTENT is the install's world, so an arm reached after its
+  # install's extent closed has no world to run under. The fixture's own text
+  # reserved this split for band A's install identity; making the walk uniform
+  # answered it as a side effect, so it is answered deliberately here. 134 is
+  # the walk's loud refusal — nothing executes unproven. The COMPILE-time
+  # refusal is still band A's: the row cannot see a dead extent, and the
+  # executable gate clears the effect because the handler is installed
+  # somewhere.
   run_program "$compiler" effect-escaped-install \
-    "$ROOT/tests/frontier/mn-effect-escaped-install.mn" 7 no "$dir"
+    "$ROOT/tests/frontier/mn-effect-escaped-install.mn" 134 no "$dir"
   run_program "$compiler" effect-residual-absence \
     "$ROOT/tests/frontier/mn-effect-residual-absence.mn" 42 no "$dir"
   run_program "$compiler" effect-absorbed \
@@ -1837,7 +1880,7 @@ for i in "${!compilers[@]}"; do
   # to /mentl-home (the space verb's own mount convention).
   pkill -f "tcplisten=127.0.0.1:${sess_port}" 2>/dev/null
   sleep 1
-  (cd "$sessdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" -S "tcplisten=127.0.0.1:${sess_port}" "$compiler" session >"$dir/session.log" 2>&1) &
+  (cd "$sessdir" && "$WT_CLI" run "${WT_CLI_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" -S "tcplisten=127.0.0.1:${sess_port}" "$compiler" session >"$dir/session.log" 2>&1) &
   sess_pid=$!
   : > "$dir/session-resident.txt"
   for _ in $(seq 1 60); do
@@ -1880,7 +1923,7 @@ for i in "${!compilers[@]}"; do
     fail "space no-listener refusal (see $dir/space-refuse.out)"
   fi
   space_port=7379
-  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." -S "tcplisten=127.0.0.1:${space_port}" "$compiler" space >"$dir/space-serve.log" 2>&1 &
+  "$WT_CLI" run "${WT_CLI_FLAGS[@]}" --dir "$ROOT::." -S "tcplisten=127.0.0.1:${space_port}" "$compiler" space >"$dir/space-serve.log" 2>&1 &
   space_pid=$!
   space_hdr=""
   for _ in $(seq 1 20); do
@@ -2368,6 +2411,73 @@ for i in "${!compilers[@]}"; do
     fail "pcompose quartet (diagnostics on a correct fanout: $pq_diags; see $pq_err)"
   fi
 
+  # ─── A NON-FN BINDING IN VALUE POSITION (Hβ.emit.nonfn-binding-as-
+  # function-value) ──────────────────────────────────────────────────
+  # Both faces of one class, and the ASSEMBLE step is the load-bearing
+  # one: before the fix each face compiled with ZERO diagnostics, so a
+  # check-only leg would have called both green. The constructor face
+  # built payload-less variants and trapped `unreachable` in the match
+  # that read them; the op face emitted `(global.get $<op>)` for a
+  # global that never existed and the ASSEMBLER was the first thing in
+  # the chain to object. Both born RED against the prior boot; both
+  # answer 6 through the reified hole-product.
+  for nb in "ctor-as-value:mn-ctor-as-value:the constructor" \
+            "op-as-value:mn-op-as-value:the effect op"; do
+    nb_tag=${nb%%:*}; nb_rest=${nb#*:}; nb_fix=${nb_rest%%:*}; nb_what=${nb_rest#*:}
+    nb_err="$dir/$nb_tag.err"
+    nb_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/$nb_fix.mn" 2> "$nb_err")
+    nb_diags=$(grep -c 'E_' "$nb_err" 2>/dev/null || true)
+    if [ -z "$nb_wat" ] || [ "$nb_diags" != "0" ]; then
+      fail "$nb_what as a value (compile: $nb_diags diagnostic(s); see $nb_err)"
+    else
+      printf '%s' "$nb_wat" > "$dir/$nb_tag.wat"
+      if ! wt_asm "$dir/$nb_tag.wat" "$dir/$nb_tag.wasm" 2>"$dir/$nb_tag.asm.err"; then
+        fail "$nb_what as a value (ASSEMBLER refused what check passed: $(head -1 "$dir/$nb_tag.asm.err"))"
+      elif [ "$(wt_run "$dir/$nb_tag.wasm" > /dev/null 2>&1; echo $?)" = "6" ]; then
+        pass "$nb_what as a value: the bare name reifies through the hole-product and runs (6)"
+      else
+        fail "$nb_what as a value (ran, wrong answer — want 6)"
+      fi
+    fi
+  done
+
+  # ─── THE DISPATCH KEY IS THE OP (Hβ.effects.one-walk-three-
+  # implementations) ─────────────────────────────────────────────────
+  # Two fixtures on one law. The split-effect pair was RED: covering an
+  # effect is not answering an op, and keying the walk on the effect
+  # resolved `b` to the handler that only implements `a` — zero
+  # diagnostics, then `(call $op_ha_b)` at the assembler. The
+  # deep-handler arm was already GREEN and stays as a pin: an arm that
+  # performs the op it handles must resolve OUTWARD, and re-keying the
+  # walk must not disturb that. ASSEMBLE is in the leg for the same
+  # reason as the reification pair — check alone called the RED one green.
+  for ok in "split-effect-op-key:mn-split-effect-op-key:33:the op key walks past a handler that only covers the effect" \
+            "split-effect-evidence:mn-split-effect-evidence:33:the RUNTIME walk skips a node whose arm slot for this op is empty" \
+            "deep-handler-arm:mn-deep-handler-arm:51:an arm's own perform resolves outward, not into its own install"; do
+    ok_tag=${ok%%:*}; ok_r=${ok#*:}; ok_fix=${ok_r%%:*}; ok_r=${ok_r#*:}
+    ok_want=${ok_r%%:*}; ok_what=${ok_r#*:}
+    ok_err="$dir/$ok_tag.err"
+    ok_wat=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/$ok_fix.mn" 2> "$ok_err")
+    # ERRORS, not the E_ prefix. The sibling legs grep 'E_' and get away with
+    # it because their fixtures happen to raise no format-liftable warning;
+    # these two raised E_RedundantBraces and both read RED on a clean
+    # compile. A gate that cannot tell a warning from a refusal is measuring
+    # the reporter, not the artifact.
+    ok_diags=$(grep -c ' error: ' "$ok_err" 2>/dev/null || true)
+    if [ -z "$ok_wat" ] || [ "$ok_diags" != "0" ]; then
+      fail "$ok_what (compile: $ok_diags diagnostic(s); see $ok_err)"
+    else
+      printf '%s' "$ok_wat" > "$dir/$ok_tag.wat"
+      if ! wt_asm "$dir/$ok_tag.wat" "$dir/$ok_tag.wasm" 2>"$dir/$ok_tag.asm.err"; then
+        fail "$ok_what (ASSEMBLER refused what check passed: $(head -1 "$dir/$ok_tag.asm.err"))"
+      elif [ "$(wt_run "$dir/$ok_tag.wasm" > /dev/null 2>&1; echo $?)" = "$ok_want" ]; then
+        pass "$ok_what ($ok_want)"
+      else
+        fail "$ok_what (ran, wrong answer — want $ok_want)"
+      fi
+    fi
+  done
+
   # ─── The relevant tier (affine gains exactly-once) ──────────────────
   # T_OwnUnconsumed fires on an authored `own` the body never consumes
   # (drops) and stays SILENT on a transfer-out (hands_back — the return
@@ -2426,6 +2536,15 @@ for i in "${!compilers[@]}"; do
   # boot answered unknown-verb).
   wy_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" why "$wdoc" gain 2>/dev/null)
   printf '%s' "$wy_out" | grep -q 'let gain' || { w_ok=0; fail "why verb (got: $wy_out)"; }
+  # AT THE DEVELOPER'S COORDINATES. `gain` is line 8 of a 24-line fixture,
+  # so a weave coordinate is unmistakable here — born RED 2026-09-06, when
+  # this answered `at 2729:1-2729:15` because show_reason rendered the raw
+  # span from the one-namespace concatenation. Every felt surface goes
+  # through that renderer (LSP hover, the cursor view's Why line, the type
+  # facet's Reason), and the refs facet three lines away had been answering
+  # local coordinates the whole time. §0's intent-is-walkable property is
+  # only true if the chain walks somewhere a developer can open.
+  printf '%s' "$wy_out" | grep -q 'mn-where-badges:8' || { w_ok=0; fail "why coordinates are the developer's (got: $wy_out)"; }
   # The capability-at-tee badge (§11 6.3's felt face): the install line
   # names the handler and the effect set its arms absorb, from the
   # graph's own facts. Born RED 2026-08-08 (the boot lacked the facet).
@@ -2757,7 +2876,21 @@ for i in "${!compilers[@]}"; do
   # `Hβ.driver.link-is-reachability` and predicted the number would fall hard
   # once the link was judged. It was not the whole judgment — dead imports are
   # the crudest possible unreachability — and it still more than halved.
-  cost_ceiling=2737
+  # 2760 (2026-09-10): ROSE 2737 → 2760, and the +23 is a capability, not
+  # slack. The world-chain walk stopped keying on the EFFECT alone — which
+  # dispatched an op through a handler that merely COVERS its effect, silently
+  # wrong at tests/frontier/mn-split-effect-evidence.mn — and now asks the
+  # record whether it declares the op. That question is `node_arm_at`, a new
+  # fn in lib/memory.mn plus the comment that says what it reads and why the
+  # walk and the emit must compute the same address. Everything transitional
+  # was taken back in the same landing: `ev_perform_node` and the effect-only
+  # `world_find_from` are DELETED, and `miss_or_node` — extracted to give two
+  # walks one refusal — was inlined the moment the second walk died, which is
+  # 2783 → 2773 → 2760 measured at each step. What remains is the smallest
+  # form of the fix, and this ceiling still falls with
+  # `Hβ.driver.link-is-reachability`: a bare program has no handlers and
+  # dispatches nothing, so it links this walk for no reason at all.
+  cost_ceiling=2760
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

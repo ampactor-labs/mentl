@@ -78,7 +78,16 @@ disasm() {  # disasm <in.wasm> → echoes the cached .dis path
 # effect-identity); the slow ones report what the caller measured or say
 # NOT RUN. Any red leaves a ‹BOARD RED› marker, which doc-truth refuses
 # exactly as it refuses an unwritten narrative.
-board_verdicts() {
+# The gates THIS march ran itself, and the only lines whose verdict may
+# refuse a pin. Kept separate from the caller-reported lines below because a
+# substring test cannot tell a VERDICT from a DESCRIPTION: the ‹BOARD RED›
+# marker used to scan the whole block, so a frontier line that says
+# "born RED, banked as <peer>" — the discipline's own way of recording a
+# measured silent-wrong — blocked its own pin, while "1 red" in lower case
+# sailed through every pin before it. Whether a red frontier LEG blesses a
+# pin is settled by precedent and not by spelling: the standing
+# why-coordinates red has ridden many pins.
+board_self_run() {
   local out="" name script rc
   for name in crown proof-exactness effect-identity; do
     script="tools/${name}-gate.sh"
@@ -90,17 +99,66 @@ board_verdicts() {
     fi
     out="${out}  - ${name}: ${rc}"$'\n'
   done
-  out="${out}  - frontier: ${MARCH_FRONTIER:-NOT RUN (run tools/frontier-gate.sh)}"$'\n'
-  out="${out}  - micros+census: ${MARCH_VERIFY:-NOT RUN (run tools/verify.sh)}"
   printf '%s' "$out"
+}
+
+# THE FRONTIER IS RE-DERIVED HERE, NOT ACCEPTED FROM THE CALLER, and this
+# function exists because accepting it shipped a regression. At pin
+# f862677e the caller passed a frontier verdict measured against the PRIOR
+# boot — labelled as such, honestly, and still worthless: the pin block
+# recorded a verdict on a generation that was not the one being blessed, and
+# eleven legs were red on the one that was. The gate itself was never at
+# fault (it exits nonzero on red, and its green stamp exists precisely so a
+# pre-commit gate can demand it ran against this exact wheel) — but that
+# stamp is read by a hook, and a fresh clone has no hooks, so in this
+# environment nothing anywhere refused.
+#
+# So march runs it, after the swap, against the boot it just wrote — the
+# same principle it already applies to m4: the orchestrator re-derives the
+# ground truth rather than committing on another runner's word (CLAUDE.md
+# ⟲). A red frontier marks the board RED and refuses the pin, EXCEPT for
+# the standing reds the baseline names, which is the project's own answer
+# to "expected red" everywhere else: a ratchet, not a sentence in a commit
+# message.
+board_frontier() {
+  local gate="tools/frontier-gate.sh" line red max
+  [ -x "$gate" ] && [ -f "$gate" ] || { printf '%s' "NOT RUN (no $gate)"; return; }
+  line=$(bash "$gate" --compiler boot 2>&1 | grep -E '^frontier: [0-9]+ pass' | tail -1)
+  [ -n "$line" ] || { printf '%s' "NOT RUN (the gate produced no summary)"; return; }
+  red=$(printf '%s' "$line" | grep -oE '[0-9]+ red' | grep -oE '[0-9]+')
+  max=$(grep -E '^frontier_red_max:' tools/verify-baseline.txt 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
+  if [ -n "$max" ] && [ -n "$red" ] && [ "$red" -gt "$max" ]; then
+    printf '%s' "${line#frontier: } — RED: rose past the $max standing red(s) in verify-baseline.txt"
+  else
+    printf '%s' "${line#frontier: }"
+  fi
+}
+
+board_reported() {  # board_reported <frontier line>. verify is the caller's, and
+                    # has to be: it runs doc-truth, which refuses until this pin's
+                    # narrative is written — so it cannot run from inside the
+                    # write of that very block. The frontier is passed in already
+                    # measured, so the gate runs ONCE per pin.
+  printf '%s\n%s' \
+    "  - frontier: $1" \
+    "  - micros+census: ${MARCH_VERIFY:-NOT RUN (run tools/verify.sh)}"
 }
 
 emit_provenance() {  # emit_provenance <gen> <verdict> <lines> <census>
   local gen="$1" verdict="$2" lines="$3" census="$4" sha block tmp board redmark
   sha=$(sha256sum boot/mentl.wasm | awk '{print $1}')
-  board=$(board_verdicts)
+  local selfrun
+  selfrun=$(board_self_run)
+  # $( ) strips the trailing newline board_self_run ends with, so the join
+  # supplies it — without this the last self-run gate and the frontier line
+  # share a line.
+  local frontier
+  frontier="$(board_frontier)"
+  board="${selfrun}"$'\n'"$(board_reported "$frontier")"
   redmark=""
-  case "$board" in *RED*) redmark=$'\n- ‹BOARD RED — a gate above refuses this pin; fix it or restore the prior boot›';; esac
+  # The self-run gates and the frontier line march derives itself may both
+  # refuse; the caller's verify text may not, being free prose.
+  case "$selfrun$frontier" in *RED*) redmark=$'\n- ‹BOARD RED — a gate above refuses this pin; fix it or restore the prior boot›';; esac
   block=$(cat <<EOF
 - source: ‹NARRATIVE UNWRITTEN — replace this line: what landed and why,
   the §7 ledger entry of the same name carrying the arc›
@@ -227,10 +285,37 @@ read_cost() {  # read_cost <leg> — sets MARCH_COST from $OUT/<leg>.time, ratch
   MARCH_COST="$leg leg ${wall}s wall · $(( ${rss_kb:-0} / 1024 ))MB peak RSS (${rss_kb:-0} KB)"
   echo "· cost: $MARCH_COST"
   peak_max=$(grep -E '^selfcompile_peak_kb_max:' "$BASELINE" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
-  if [ -n "${peak_max:-}" ] && [ "${rss_kb:-0}" -gt "$peak_max" ]; then
-    echo "✗ PEAK RATCHET: self-compile RSS ${rss_kb}KB > ${peak_max}KB ceiling — raising it is an"
+  [ -n "${peak_max:-}" ] || return 0
+  [ "${rss_kb:-0}" -gt "$peak_max" ] || return 0
+  # ── RE-MEASURE BEFORE CONVICTING (the march's own arbitration shape: the
+  # fixpoint leg re-runs m4 ITSELF rather than ruling on one reading). Peak
+  # RSS is not a symmetric measurement — allocator and OS jitter can only
+  # push an OBSERVED peak ABOVE the true requirement, never below it — so a
+  # single sample is biased HIGH and the MINIMUM is the honest estimator. A
+  # genuine regression survives the min undiminished; only the jitter dies.
+  # The extra legs are paid ONLY on a breach, so the green path is unchanged.
+  # (Refused a repin at 2326460 vs a 2326000 ceiling — 0.02%, inside the
+  # measured run-variance — which is the reading that named the defect. The
+  # answer to a noisy gate is a better estimator, never a raised ceiling:
+  # bumping it launders jitter as headroom and the ratchet stops meaning
+  # anything. Hβ.tools.cost-ratchet-reads-one-sample.)
+  local best="$rss_kb" i r_wall r_rss
+  echo "· peak ${rss_kb}KB over the ${peak_max}KB ceiling — re-measuring before convicting"
+  for i in 1 2; do
+    gen "$OUT/m2.wasm" "$OUT/$leg-recheck.wat" "$OUT/$leg-recheck.err"
+    if [ -s "$OUT/$leg-recheck.time" ]; then
+      read -r r_wall r_rss < <(tail -1 "$OUT/$leg-recheck.time")
+      echo "·   re-read $i: ${r_rss}KB"
+      if [ "${r_rss:-0}" -lt "$best" ]; then best="$r_rss"; fi
+    fi
+  done
+  if [ "$best" -gt "$peak_max" ]; then
+    echo "✗ PEAK RATCHET: self-compile RSS ${best}KB (min of 3) > ${peak_max}KB ceiling — raising it is an"
     echo "  explicit in-commit act (fixed-input justification in $BASELINE); repin refused."
     costok=0
+  else
+    echo "✓ peak ratchet: ${best}KB (min of 3) inside the ${peak_max}KB ceiling — the lone sample was jitter"
+    MARCH_COST="$leg leg ${wall}s wall · $(( best / 1024 ))MB peak RSS (${best} KB, min of 3)"
   fi
 }
 read_cost m3

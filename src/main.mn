@@ -231,8 +231,8 @@ fn edit_run(target_opt) = {
 // weave line, so the module-aware proximity decay ranks the entry's own
 // absences above the closure's.
 fn mentl_edit_session(entry_module) = match driver_entry_with_ranges(entry_module) {
-  (_ast, ranges) => {
-    let opening = entry_start_caret(entry_module, ranges)
+  (_ast, _mods) => {
+    let opening = entry_start_caret()
     patch_set_target(entry_module)
     cursor_session(opening)
   },
@@ -240,20 +240,15 @@ fn mentl_edit_session(entry_module) = match driver_entry_with_ranges(entry_modul
 
 // type_name_eq pins the compare `: String` — a bare `==` on two names
 // allocated by different passes is the pointer-eq class and never matches.
-fn entry_start_caret(entry_module, ranges) = match find(
-  (r) => match r {
-    (m, _, _, _) => type_name_eq(m, entry_module),
-  },
-  ranges
-) {
-  Some(r) => match r {
-    (_, _, line_start, _) => Caret(
-      0,
-      Located(Span(line_start, 1, line_start, 1), Inferred("mentl edit session start — at the entry"))
-    ),
-  },
-  None => Caret(0, Inferred("mentl edit session start")),
-}
+// The entry's opening caret is line 1 of the entry's own file. This used to
+// SEARCH the range map for the entry's start line in the concatenated weave,
+// because a caret could only be expressed in that one coordinate space. Spans
+// are local from birth now, so the answer is the constant it always meant and
+// the search had nothing to find that the file did not already say.
+fn entry_start_caret() with Memory + Alloc = Caret(
+  0,
+  Located(Span(1, 1, 1, 1), Inferred("mentl edit session start — at the entry"))
+)
 
 // ─── space_run — the ide, served by the wheel (`mentl space`)
 //
@@ -651,7 +646,7 @@ fn tighten_run(target_opt) = {
       let cands = tightenables()
       let authorable = filter(
         (c) => match c {
-          (_, used, _, _) => row_is_authorable(used),
+          (_, used, _, _, _) => row_is_authorable(used),
         },
         cands
       )
@@ -664,7 +659,7 @@ fn tighten_run(target_opt) = {
         // narrow — at worst it leaves slack a tightened callee exposes,
         // which the NEXT run's re-judgment catches (the ratchet
         // converges). Per file, patch bottom-up so line offsets hold.
-        let n = apply_tightenings(authorable, ranges)
+        let n = apply_tightenings(authorable)
         print_string("tighten: {int_to_str(n)} of {int_to_str(len(authorable))} authorable applied — the medium authored these; verify with a fresh check + the gates\n")
         if n > 0 { 0 } else { 1 }
       }
@@ -731,16 +726,14 @@ fn every_eff_arg_authorable(args, i) = if i >= len(args) {
 // order by (path, line DESCENDING) — the negated-line sort key — so each
 // file patches bottom-up and earlier offsets never shift, then fold with
 // one open file at a time (read on path change, write on leave).
-fn apply_tightenings(cands, ranges) = {
+fn apply_tightenings(cands) = {
   let located = flatten(map(
     (c) => match c {
-      (declared, used, name, span) => match file_line_of(ranges, span) {
-        Some(pl) => // A list literal after a let must open on its own line — on one
-        // line `pl [(…)]` parses as indexing.
-        match pl {
-          (p, l) => [(p, 0 - l, name, declared, used)],
-        },
-        None => [],
+      // The candidate CARRIES its module, so the patch knows which file to
+      // open without a containment scan placing a line in a range. The path
+      // is the module's own; the span is already the developer's line.
+      (declared, used, name, span, dmod) => match span {
+        Span(sl, _, _, _) => [(driver_module_path(dmod), 0 - sl, name, declared, used)],
       },
     },
     cands
@@ -1083,7 +1076,7 @@ fn field_ranked(handles, caret0) -> [(Float, Handle)] with GraphRead + Memory + 
   handles
 )))
 
-fn render_field_tier(ranked: [(Float, Handle)], target: String, ranges, fstart, i) = if i >= len(ranked) {
+fn render_field_tier(ranked: [(Float, Handle)], target: String, fstart, i) = if i >= len(ranked) {
   ()
 } else {
   match list_index(ranked, i) {
@@ -1092,8 +1085,8 @@ fn render_field_tier(ranked: [(Float, Handle)], target: String, ranges, fstart, 
       match pspan {
         Span(sl, sc, _, _) => {
           print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
-          render_at(cursor_at_handle(ph), ph, pspan, ranges)
-          render_field_tier(ranked, target, ranges, fstart, i + 1)
+          render_at(cursor_at_handle(ph), ph, pspan, target)
+          render_field_tier(ranked, target, fstart, i + 1)
         },
       }
     },
@@ -1113,7 +1106,7 @@ fn render_field_tier(ranked: [(Float, Handle)], target: String, ranges, fstart, 
 // argmax is this list's head; the field is the argmax UNCOLLAPSED —
 // the multi-cursor read, sequential (the per-position `><` under
 // `~> Thread` rides Hβ.ops.wasmtime-runner-migration).
-fn render_field(target: String, ranges, fstart, nlines) = {
+fn render_field(target: String, fstart, nlines) = {
   let caret0 = Caret(0, Located(Span(fstart, 1, fstart, 1), Inferred("field read")))
   let holes = field_positions(enumerate_hole_positions(), fstart, nlines)
   // THE PROBLEM IS THE SOLUTION — absence is ONE node-kind, and the
@@ -1127,10 +1120,10 @@ fn render_field(target: String, ranges, fstart, nlines) = {
   let tights = field_tightenables(tightenables(), fstart, nlines)
   let grads = field_positions(enumerate_gradient_positions(), fstart, nlines)
   print("Field: {int_to_str(len(holes))} hole(s), {int_to_str(len(pending))} pending proof(s), {int_to_str(len(tights))} tightening(s), {int_to_str(len(grads))} gradient position(s) in {target}\n")
-  render_field_tier(field_ranked(holes, caret0), target, ranges, fstart, 0)
+  render_field_tier(field_ranked(holes, caret0), target, fstart, 0)
   render_pending_tier(pending, target, fstart, 0)
   render_tighten_tier(tights, target, fstart, 0)
-  render_field_tier(field_ranked(grads, caret0), target, ranges, fstart, 0)
+  render_field_tier(field_ranked(grads, caret0), target, fstart, 0)
   0
 }
 
@@ -1139,7 +1132,7 @@ fn render_field(target: String, ranges, fstart, nlines) = {
 // Reason (the Why-walk's edge). Ledger order IS accrual order ≈ source
 // order.
 fn field_pending(debt, fstart, nlines) with Memory + Alloc = filter(
-  ((dspan, _, _)) => match dspan {
+  ((_modh, dspan, _, _)) => match dspan {
     Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
   },
   debt
@@ -1149,7 +1142,7 @@ fn render_pending_tier(pending, target: String, fstart, i) = if i >= len(pending
   ()
 } else {
   match list_index(pending, i) {
-    (dspan, pred, reason) => match dspan {
+    (_modh, dspan, pred, reason) => match dspan {
       Span(sl, sc, _, _) => {
         print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
         print("Pending: {show_predicate(pred)} — undischarged; a ground witness or a refinement collapses it\n")
@@ -1164,7 +1157,7 @@ fn render_pending_tier(pending, target: String, fstart, i) = if i >= len(pending
 // decl sits in the file's range: the declared row, the proven row, and
 // the standing patch invitation (`mentl tighten` authors it).
 fn field_tightenables(cands, fstart, nlines) with Memory + Alloc = filter(
-  ((_, _, _, tspan)) => match tspan {
+  ((_, _, _, tspan, _)) => match tspan {
     Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
   },
   cands
@@ -1174,7 +1167,7 @@ fn render_tighten_tier(tights, target: String, fstart, i) = if i >= len(tights) 
   ()
 } else {
   match list_index(tights, i) {
-    (declared, used, name, tspan) => match tspan {
+    (declared, used, name, tspan, _dmod) => match tspan {
       Span(sl, sc, _, _) => {
         print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
         print(tighten_line(name, declared, used))
@@ -1233,8 +1226,14 @@ fn address_project(ranges, target: String, line, col) = match range_of_module(ra
     1
   },
   Some(r) => match r {
-    (_m, _p, start, nlines) => if line == 0 {
-      render_field(target, ranges, start, nlines)
+    // start is GONE: a module's first line is 1, because its spans are its
+    // own. The weave offset this used to add to every caret was the whole
+    // reason an address had two coordinate systems to reconcile.
+    (_m, _p, text) => {
+      let start = 1
+      let nlines = count_lines(text) + 1
+      if line == 0 {
+      render_field(target, start, nlines)
     } else if line < 0 {
       eprint_string("mentl: line {int_to_str(line)} — lines count from 1 (0 = the whole-file field)\n")
       1
@@ -1256,11 +1255,12 @@ fn address_project(ranges, target: String, line, col) = match range_of_module(ra
         },
         Some(pick) => match pick {
           (pspan, ph) => {
-            render_at(cursor_at_handle(ph), ph, pspan, ranges)
+            render_at(cursor_at_handle(ph), ph, pspan, target)
             0
           },
         },
       }
+    }
     },
   },
 }
@@ -1272,27 +1272,13 @@ fn span_index_of_snapshot() with GraphRead = match graph_snapshot() {
 // The span's file:line through the module-range map — the render-side
 // inverse of the concatenation fold. (range_of_module lives in driver.mn,
 // beside the fold that mints the map.)
-fn file_line_of(ref ranges, ref span) -> Option((String, Int)) with Memory + Alloc = match span {
-  Span(sl, _, _, _) => match find(
-    (r) => match r {
-      (_, _, start, nlines) => sl >= start && sl < start + nlines,
-    },
-    ranges
-  ) {
-    Some(r) => match r {
-      (_, p, start, _) => Some((p, sl - start + 1)),
-    },
-    None => None,
-  },
-}
-
-fn file_line(ref ranges, ref span) with Memory + Alloc = match file_line_of(ranges, span) {
-  Some(pl) => match pl {
-    (p, l) => "{p}:{int_to_str(l)}",
-  },
-  None => match span {
-    Span(sl, _, _, _) => "line {int_to_str(sl)}",
-  },
+// A span's file:line. It used to SEARCH the range map for the module whose
+// weave range contained the line — the render-side inverse of the
+// concatenation fold, and the fifth machine that fold required. The module is
+// the addressed one and the span is already its own coordinate, so the
+// question the search answered no longer has to be asked.
+fn file_line(ref target: String, ref span) with Memory + Alloc = match span {
+  Span(sl, _, _, _) => "{target}:{int_to_str(sl)}",
 }
 
 // The three-case line rule (the panel's corrected form, deterministic):
@@ -1422,7 +1408,7 @@ fn address_case_c(ref spans, gline, i, n, best) with Memory + Alloc = if i >= n 
 }
 
 // ─── the terse render — facet-silence at the terminal
-fn render_at(view, h, pspan, ranges) = match view {
+fn render_at(view, h, pspan, target: String) = match view {
   CursorView(kind, propose, _topology, row, trace, verify, teach, why) => {
     // The register-gated lede — the read side of the comment weave the
     // parser fills: a node carrying authored prose speaks its first line
@@ -1433,7 +1419,7 @@ fn render_at(view, h, pspan, ranges) = match view {
     // print_string here was the transport baked into the narration.
     let prose = graph_comment_at(h)
     if len(prose) > 0 { print("Lede: {comment_first_line(prose)}\n") } else { () }
-    print("Query: {source_slice(pspan, ranges)}{node_query_line(h, kind)}\n")
+    print("Query: {source_slice(pspan, target)}{node_query_line(h, kind)}\n")
     // The Propose facet — the socket's content at the address surface. The
     // graph already computed it (propose_at runs synth at an authored hole;
     // empty everywhere else, so silence needs no second hole check). Exactly
@@ -1479,7 +1465,7 @@ fn render_at(view, h, pspan, ranges) = match view {
       Some(_) => print("Teach: an annotation here would unlock a capability — `mentl teach` names it\n"),
     }
     print("Why: ")
-    render_why_hops(why_expand(why, 0), ranges, 0)
+    render_why_hops(why_expand(why, 0), target, 0)
   },
 }
 
@@ -1533,33 +1519,29 @@ fn node_query_line(h, kind) with GraphRead + WASI + EnvRead + Memory + Alloc + I
 // The addressed source text itself, read back through the range map — the
 // line the user pointed at, sliced to the node's span. The file is the one
 // authority on its own text.
-fn source_slice(ref span, ref ranges) with Filesystem + Memory + Alloc = match span {
-  Span(sl, sc, el, ec) => match find(
-    (r) => match r {
-      (_, _, start, nlines) => sl >= start && sl < start + nlines,
-    },
-    ranges
-  ) {
-    None => "",
-    Some(r) => match r {
-      (_, p, start, _) => if fs_exists(p) {
-        let text = fs_read_file(p)
-        let lstart = nth_line_offset(text, sl - start, 0, 0)
-        let lend = line_end_from(text, lstart)
-        let a = lstart + sc - 1
-        // A MULTI-LINE span ends on a DIFFERENT line, so its end column is not
-        // an offset into this one — slice to the end of the addressed line
-        // instead. The end line was discarded here until 2026-08-16, and once
-        // declarations carried their true extent a multi-line handler
-        // declaration rendered a two-character fragment of its own keyword.
-        let b = if el > sl { lend } else { lstart + ec }
-        let lo = if a < lend { a } else { lstart }
-        let hi = if b <= lend { b } else { lend }
-        if hi > lo { "{str_slice(text, lo, hi)} : " } else { "" }
-      } else {
-        ""
-      },
-    },
+// The addressed line's own text. The containment scan that placed a weave
+// line inside a module range is gone: the module is the one being addressed
+// and the line is its own, so this opens that file and reads that line.
+fn source_slice(ref span, ref target: String) with Filesystem + Memory + Alloc = match span {
+  Span(sl, sc, el, ec) => {
+    let p = driver_module_path(target)
+    if fs_exists(p) {
+      let text = fs_read_file(p)
+      let lstart = nth_line_offset(text, sl - 1, 0, 0)
+      let lend = line_end_from(text, lstart)
+      let a = lstart + sc - 1
+      // A MULTI-LINE span ends on a DIFFERENT line, so its end column is not
+      // an offset into this one — slice to the end of the addressed line
+      // instead. The end line was discarded here until 2026-08-16, and once
+      // declarations carried their true extent a multi-line handler
+      // declaration rendered a two-character fragment of its own keyword.
+      let b = if el > sl { lend } else { lstart + ec }
+      let lo = if a < lend { a } else { lstart }
+      let hi = if b <= lend { b } else { lend }
+      if hi > lo { "{str_slice(text, lo, hi)} : " } else { "" }
+    } else {
+      ""
+    }
   },
 }
 
@@ -1587,19 +1569,19 @@ fn line_end_from(ref text, i) with Memory = if i >= byte_len(text) {
 // literal value (node_const at the let's value node, read live) and the
 // author's attached `//` lede (graph_comment_at). The prose rides the
 // same rails as the types: nothing here is stored twice.
-fn render_why_hops(reason, ranges, depth) = if depth > 7 {
+fn render_why_hops(reason, target: String, depth) = if depth > 7 {
   print("\n")
 } else {
   match reason {
     Located(span, inner) => {
       if depth > 0 { print("     ") } else { () }
-      print("{reason_phrase(inner)}, at {file_line(ranges, span)}{binding_ledes(span, inner)}\n")
-      render_why_deeper(inner, ranges, depth)
+      print("{reason_phrase(inner)}, at {file_line(target, span)}{binding_ledes(span, inner)}\n")
+      render_why_deeper(inner, target, depth)
     },
     VarLookup(name, br) => {
       if depth > 0 { print("     ") } else { () }
       print("{name} read here\n")
-      render_why_hops(br, ranges, depth + 1)
+      render_why_hops(br, target, depth + 1)
     },
     _ => {
       if depth > 0 { print("     ") } else { () }
@@ -1608,24 +1590,24 @@ fn render_why_hops(reason, ranges, depth) = if depth > 7 {
   }
 }
 
-fn render_why_deeper(inner, ranges, depth) = match inner {
-  VarLookup(_, br) => render_why_hops(br, ranges, depth + 1),
-  LetBinding(_, br) => render_why_hops(br, ranges, depth + 1),
-  FnReturn(_, br) => render_why_hops(br, ranges, depth + 1),
-  InferredCallReturn(_, br) => render_why_hops(br, ranges, depth + 1),
-  InferredPipeResult(_, br) => render_why_hops(br, ranges, depth + 1),
+fn render_why_deeper(inner, target: String, depth) = match inner {
+  VarLookup(_, br) => render_why_hops(br, target, depth + 1),
+  LetBinding(_, br) => render_why_hops(br, target, depth + 1),
+  FnReturn(_, br) => render_why_hops(br, target, depth + 1),
+  InferredCallReturn(_, br) => render_why_hops(br, target, depth + 1),
+  InferredPipeResult(_, br) => render_why_hops(br, target, depth + 1),
   Unified(a, b) => // A unification joins TWO provenances — walk both (the second indented
   // as its own branch), the DAG rendered as the tree it is.
   {
-    render_why_hops(a, ranges, depth + 1)
-    render_why_hops(b, ranges, depth + 1)
+    render_why_hops(a, target, depth + 1)
+    render_why_hops(b, target, depth + 1)
   },
   OpConstraint(_, a, b) => {
-    render_why_hops(a, ranges, depth + 1)
-    render_why_hops(b, ranges, depth + 1)
+    render_why_hops(a, target, depth + 1)
+    render_why_hops(b, target, depth + 1)
   },
-  IfBranch(br) => render_why_hops(br, ranges, depth + 1),
-  Instantiation(_, br) => render_why_hops(br, ranges, depth + 1),
+  IfBranch(br) => render_why_hops(br, target, depth + 1),
+  Instantiation(_, br) => render_why_hops(br, target, depth + 1),
   _ => print_string(""),
 }
 

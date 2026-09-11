@@ -106,7 +106,7 @@ fn spine_slot(h) = h % spine_slots
 // {nodes, ...} receiver computes field offsets over the partial demanded set
 // (the trecordopen-wrong-field class — measured here as `.nodes` reading
 // offset 0, the boundaries column, before the annotation).
-fn spine_page(ref spine, h) -> {bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]} with Memory =
+fn spine_page(ref spine, h) -> SpinePage with Memory =
   list_index(spine, spine_band(h))
 
 // Open bands through band b — the MINT path only: every other write lands
@@ -130,7 +130,7 @@ fn spine_open_loop(own spine, opened, b) with Memory + Alloc = if opened > b {
   (spine, opened)
 } else {
   let page =
-    {bind: make_list(spine_slots), boundaries: make_list(spine_slots), canon: make_list(spine_slots), comments: make_list(spine_slots), dispatch: make_list(spine_slots), installs: make_list(spine_slots), narrowing: make_list(spine_slots), nodes: make_list(spine_slots), program: make_list(spine_slots), slots: make_list(spine_slots), spans: make_list(spine_slots)}
+    SpinePage{bind: make_list(spine_slots), boundaries: make_list(spine_slots), canon: make_list(spine_slots), comments: make_list(spine_slots), dispatch: make_list(spine_slots), installs: make_list(spine_slots), module: make_list(spine_slots), narrowing: make_list(spine_slots), nodes: make_list(spine_slots), program: make_list(spine_slots), slots: make_list(spine_slots), spans: make_list(spine_slots)}
   spine_open_loop(list_set(spine, opened, page), opened + 1, b)
 }
 
@@ -149,6 +149,30 @@ fn spine_put_body(ref spine, h, own body) with Memory = {
 fn spine_put_comment(ref spine, h, own cell) with Memory = {
   let _ = list_set(spine_page(spine, h).comments, spine_slot(h), cell)
   ()
+}
+
+// The module a node was born in, stamped at the mint from the handler's
+// live cur_module. Not trail-backed: a rolled-back branch's cells are
+// discarded whole, and a re-mint at the same handle restamps — there is no
+// state to invert. The column is TOTAL by construction: a mint always runs
+// inside some module, because entering one is what parsing a file IS.
+fn spine_put_module(ref spine, h, m) with Memory = {
+  let _ = list_set(spine_page(spine, h).module, spine_slot(h), m)
+  ()
+}
+
+// The module in force, named — the mechanism-layer read for the write
+// guard's own reports. It reads THIS instance's state directly rather than
+// performing graph_module_current, because an arm's performs resolve OUTER
+// of its own install (the wrong-instance class this guard family already
+// pays for) and because charging GraphRead into this handler's residual is
+// the row leak its comment names.
+fn spine_module_name(ref spine, spine_open, m) with Memory + Cast + Alloc = match spine_body_at(spine, spine_open, m) {
+  NModule(mm) => mm.path,
+  _ => {
+    load_i32(0 - 1)
+    ""
+  },
 }
 
 fn spine_put_canon(ref spine, h, to) with Memory = {
@@ -260,7 +284,7 @@ fn poly_teach_line(owner: String, reason) with Memory + Alloc =
 // over the SHARED spine with a private planned range — the root install is
 // bare and the defaults are the empty graph. Handler state records live in
 // shared heap; the install chain stays per-instance, correctly private.
-handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, high_limit0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = next0, mint_limit = limit0, mint_high = high0, high_limit = high_limit0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, holes_pend = [], holes_col = [] {
+handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, high_limit0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = next0, mint_limit = limit0, mint_high = high0, high_limit = high_limit0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [] {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -284,6 +308,39 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
   graph_snapshot() => resume(Graph(next, span_index)),
   graph_node_body(handle) => resume(spine_body_at(spine, spine_open, handle)),
   graph_span_of(handle) => resume(spine_span_at(spine, spine_open, handle)),
+  // The module a node was born in — ONE cell read, never the containment
+  // scan that module_path_of_span ran over every node (whose own comment
+  // named its "O(1) destiny"; this is that destiny). TOTAL: every node is
+  // born inside some module, including stdin's, so there is no absent case
+  // to encode. A virgin cell here means a node was minted with no module in
+  // force, which is a defect in the caller, and it traps loudly rather than
+  // answering a fabricated 0 that every reader downstream would have to
+  // re-check (the surrender-fallback this column exists to end).
+  graph_module_of(handle) => {
+    if spine_band(handle) >= spine_open { load_i32(0 - 1) } else { 0 }
+    // The cell holds the module handle BIASED BY ONE — the Option-niche word
+    // this file already uses for mint_high's "0 = unlimited". It is not
+    // decoration: a fresh graph's FIRST mint is handle 0, so the first module
+    // node IS handle 0, and an unbiased column could not tell "born in module
+    // 0" from "never stamped" — measured, the day this column landed, as a
+    // trap on handle 1 whose module really was 0.
+    let cell = list_index(spine_page(spine, handle).module, spine_slot(handle))
+    if cell == 0 { load_i32(0 - 1) } else { 0 }
+    resume(cell - 1)
+  },
+  // Enter a module: every subsequent mint is attributed to it. The module
+  // node attributes ITSELF, which is what makes the column total without a
+  // sentinel — the first stamp has no earlier module to inherit, so it is
+  // its own, and the recursion bottoms out at the file the developer named.
+  graph_module_current() => resume(cur_module),
+  graph_module_enter(m) => {
+    match spine_ensure(spine, spine_open, spine_band(m)) {
+      (sp, so) => {
+        spine_put_module(sp, m, m + 1)
+        resume() with spine = sp, spine_open = so, cur_module = m
+      },
+    }
+  },
   graph_push_checkpoint() => // The checkpoint is the fork's STATE VALUE — but pages never move, so the
   // spine contributes two words (the band-table pointer, for the rare
   // in-fork table growth, and the open count) instead of six spine copies.
@@ -318,6 +375,7 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
     match spine_ensure(spine, spine_open, spine_band(handle)) {
       (sp, so) => {
         spine_put_node(sp, handle, GNode(NFree(epoch), reason))
+        spine_put_module(sp, handle, cur_module + 1)
         let new_trail = trail_append(trail, trail_len, MFreshNode(handle))
         if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(handle)) }
         // The jump takes the BANDED ceiling (high_limit; 0 = the root's
@@ -335,6 +393,7 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
     match spine_ensure(spine, spine_open, spine_band(handle)) {
       (sp, so) => {
         spine_put_node(sp, handle, GNode(NRowFree(epoch), reason))
+        spine_put_module(sp, handle, cur_module + 1)
         let new_trail = trail_append(trail, trail_len, MFreshNode(handle))
         if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(handle)) }
         // The jump takes the BANDED ceiling (high_limit; 0 = the root's
@@ -494,9 +553,18 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
     // typed teaching render lives at unify's pre-check sites (the
     // perform side, inside the analysis brackets), which fire first on
     // every unification path — this belt guards the non-unify binds.
-    diag_report(
-      EOccursCheck(handle, ty, reason_span_or_zero(reason)),
-      occurs_guard_line(handle, reason)
+    // STORED, NOT REPORTED. A diag_report here resolves OUTER of this
+    // install and sails past any capture bracket installed deeper — which
+    // is where speculation installs one, so the refusal the Mycroft retry
+    // keys on never reached it. The body drains and narrates
+    // (graph_guard_drain); this arm only notes.
+    let g1 = push(
+      guard_diags,
+      (
+        EOccursCheck(handle, ty, reason_span_or_zero(reason)),
+        occurs_guard_line(handle, reason),
+        spine_module_name(spine, spine_open, cur_module)
+      )
     )
     // The poly-recursion teach rides the refusal (coordinates-only
     // discipline as above — the mint reason is read from THIS
@@ -504,20 +572,28 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
     // through a fn's OWN param/return mint is the
     // self-call-at-a-different-type fingerprint; name the fn and the
     // signature route.
-    match graph_node_at(spine, next, handle) {
+    let g2 = match graph_node_at(spine, next, handle) {
       GNode(_, mint_r) => match mint_r {
-        FnParam(owner, _, _) => diag_report(
-          TPolyRecursionSignature(owner, reason_span_or_zero(reason)),
-          poly_teach_line(owner, reason)
+        FnParam(owner, _, _) => push(
+          g1,
+          (
+            TPolyRecursionSignature(owner, reason_span_or_zero(reason)),
+            poly_teach_line(owner, reason),
+            spine_module_name(spine, spine_open, cur_module)
+          )
         ),
-        FnReturn(owner, _) => diag_report(
-          TPolyRecursionSignature(owner, reason_span_or_zero(reason)),
-          poly_teach_line(owner, reason)
+        FnReturn(owner, _) => push(
+          g1,
+          (
+            TPolyRecursionSignature(owner, reason_span_or_zero(reason)),
+            poly_teach_line(owner, reason),
+            spine_module_name(spine, spine_open, cur_module)
+          )
         ),
-        _ => (),
+        _ => g1,
       },
     }
-    resume()
+    resume() with guard_diags = g2
   } else {
     let old_node = graph_node_at(spine, next, handle)
     spine_put_node(spine, handle, GNode(NBound(ty), reason))
@@ -694,6 +770,14 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
   } else {
     resume() with holes_col = hole_pairs_into(holes_pend, entry_name, holes_col), holes_pend = []
   },
+  // The write guard's stored refusals, handed to the body that can narrate
+  // them. Empty — the overwhelming case — resumes without a state rebind,
+  // so the per-judgment drain costs nothing when no bind refused.
+  graph_guard_drain() => if len(guard_diags) == 0 {
+    resume([])
+  } else {
+    resume(guard_diags) with guard_diags = []
+  },
   graph_hole_unnote(h) => resume() with holes_pend = holes_pend_without(holes_pend, h),
   graph_holes_at() => resume(holes_col),
   graph_bind_note(use_handle, bh) => // The bind-home column (lowering-is-a-column
@@ -719,11 +803,11 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
     spine_put_install(spine, h, ish)
     resume()
   },
-  graph_emitfn_note(kind, origin, fn_name, fence, caps) => // The emittable-fn
+  graph_emitfn_note(entry) => // The emittable-fn
   // enumeration (the no-mint resolution): one append per synthesized-fn
   // construction, in lower's deterministic walk order. Non-trailed by
   // the decls contract; the step-iii reader filters by the reach set.
-  resume() with emitfns_col = push(emitfns_col, (kind, origin, fn_name, fence, caps)),
+  resume() with emitfns_col = push(emitfns_col, entry),
   graph_emitfn_at(fn_name) => // The enumeration's by-name O(1) read — the identity projection of the
   // ordered column, MATERIALIZED ON DEMAND (the note path stays one push;
   // piggybacking the index there measured +94MB of hot-arm state
@@ -754,6 +838,16 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
     let grown = emitfns_index_build(emitfns_col, seed, emitfns_idx_covers)
     resume(smap_get_all(grown, fn_name)) with emitfns_idx = grown, emitfns_idx_covers = len(emitfns_col)
   },
+  graph_sigs_publish(pairs) => // THE SIGNATURE COLUMN's one write. The whole table lands in a single
+  // rebind at the emit settling point, so no reader can observe a partial
+  // one — the property N per-symbol notes could not give.
+  resume() with sigs_col = smap_build(pairs),
+  graph_sig_at(name) => // Unpublished is the empty `[]` that costs nothing (the emitfns_idx
+  // discipline: graph_handler installs per speculative branch, so a
+  // smap_new() in the state init would be a 4096-word table per branch).
+  // Every read before the publish — every non-emit route, `check`,
+  // `query`, the judgment's own — answers None and takes the word floor.
+  if len(sigs_col) == 0 { resume(None) } else { resume(smap_get(sigs_col, name)) },
   graph_branch_seed() => resume((spine, spine_open, span_index)),
   graph_rollback(target_idx) => {
     let n = len(checkpoint_stack)
@@ -861,8 +955,9 @@ fn hole_pairs_into(hs, name: String, acc) = fold(acc, (a, h) => push(a, (h, name
 fn emitfns_index_build(col, idx, i) = if i >= len(col) {
   idx
 } else {
-  match list_index(col, i) {
-    (k, o, nm, f, c) => emitfns_index_build(col, smap_add(idx, nm, (k, o, nm, f, c)), i + 1),
+  {
+    let e = list_index(col, i)
+    emitfns_index_build(col, smap_add(idx, e.name, e), i + 1)
   }
 }
 
@@ -1320,10 +1415,42 @@ fn scan_for_enclosing_module(target, i, n) with GraphRead + !Mutate = if i >= n 
 // transitive-closure loop over `grep '^import'`, re-deriving by name what the
 // graph holds by edge. That hand walk is what this projection retires, and it
 // is a read of the weave, never a second walk of the filesystem.
+// ONE CELL PER MODULE, keyed by PATH. The trial and the final each parse, so
+// each mints its own NModule node for the same file — two cells, one module.
+// Every consumer of this projection was therefore double-counting: the cost
+// facet reported 107 modules and 119,128 source lines for a 53-module,
+// 59,501-line wheel, exactly 2n+1 (the link root is minted once). A module's
+// identity is what it RESOLVES TO, never the node that happens to represent
+// it — the same law driver_collect_visit's visited set keys on, and the same
+// one the census dedup needed. LAST wins, matching env_snapshot's dedup-to-
+// latest for the same reason: the final generation is the judged one.
 fn module_cells() with Memory + Alloc + GraphRead + !Mutate = {
   let snapshot = graph_snapshot()
   match snapshot {
-    Graph(next, _spans) => collect_module_cells(0, next),
+    Graph(next, _spans) => dedup_module_cells(collect_module_cells(0, next), []),
+  }
+}
+
+// Keep the LAST cell for a path by skipping any that a later one supersedes.
+// The walk is handle-ascending, so the last cell is the FINAL generation's —
+// the judged one, whose decls are the nodes the returned ast actually holds.
+// Keeping the first would hand every consumer the trial's shadow tree.
+fn dedup_module_cells(ref cells, acc) with Memory + Alloc = if len(cells) == 0 {
+  acc
+} else {
+  match cells[0] {
+    (path, _s, _d) => dedup_module_cells(
+      rest(cells),
+      if cell_path_in(rest(cells), path, 0) { acc } else { push(acc, cells[0]) }
+    ),
+  }
+}
+
+fn cell_path_in(ref acc, ref path: String, i) with Memory + Alloc = if i >= len(acc) {
+  false
+} else {
+  match acc[i] {
+    (p, _s, _d) => if p == path { true } else { cell_path_in(acc, path, i + 1) },
   }
 }
 
@@ -1347,16 +1474,26 @@ fn module_paths() with Memory + Alloc + GraphRead + !Mutate = map(
   module_cells()
 )
 
-// The weave's line extent — the last line any module's range reaches, which
-// IS the total source the medium processed for this entry. A graph read, so
-// it is DETERMINISTIC: unlike a wall clock it can be ratcheted, and a landing
-// that makes the medium process more source to answer the same question is a
-// refusal rather than a number somebody notices later.
+// The total source the medium processed for this entry — the SUM of every
+// module's own extent. A graph read, so it is DETERMINISTIC: unlike a wall
+// clock it can be ratcheted, and a landing that makes the medium process more
+// source to answer the same question is a refusal rather than a number
+// somebody notices later.
+//
+// IT WAS A MAX, and the max was right exactly as long as spans were offsets
+// into ONE concatenated weave: the last line any module reached WAS the total,
+// because the modules were laid end to end. The per-module parse makes every
+// file start at line 1, so the max became the LONGEST MODULE — this answered
+// 9929 (infer.mn's own length) for the whole 59,501-line wheel, and for two
+// different entries whose only shared module was that one. A ratchet reading
+// too small does not go red; it goes BLIND, and accepts every rise beneath the
+// number it now reports (§11 tripwire 4). Summing the per-module extents is
+// what "total source" meant all along; it is only now that the two differ.
 fn weave_line_extent() with Memory + Alloc + GraphRead + !Mutate = fold(
   0,
   (acc, c) => match c {
     (_p, s, _d) => match s {
-      Span(_sl, _sc, el, _ec) => if el > acc { el } else { acc },
+      Span(sl, _sc, el, _ec) => acc + (el - sl),
     },
   },
   module_cells()

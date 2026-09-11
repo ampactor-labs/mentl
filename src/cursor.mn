@@ -255,7 +255,7 @@ fn enumerate_hole_positions() with GraphRead + Alloc + Memory + !Mutate = match 
 // rendered as the entry's own line 1 — the C1c-era virgin-walk residue,
 // closed here by the chased-kind filter it named).
 fn enumerate_gradient_positions() with GraphRead + Teach + Alloc + Memory + !Mutate = match graph_snapshot() {
-  Graph(next, _spans) => filter((i) => gradient_position(i), range(0, next)),
+  Graph(next, _spans) => filter(gradient_position, range(0, next)),
 }
 
 fn gradient_position(i) with GraphRead + Teach = match graph_node_body(i) {
@@ -749,4 +749,4 @@ fn verify_pending_at(handle) with Verify + GraphRead + Memory + Alloc + !Mutate 
 }
 
 fn filter_by_span(target, debt) with Memory + Alloc =
-  filter(((debt_span, _, _)) => span_overlaps(target, debt_span), debt)
+  filter(((_m, debt_span, _, _)) => span_overlaps(target, debt_span), debt)

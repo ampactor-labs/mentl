@@ -92,7 +92,7 @@ fn tiebreak_declared_intent(survivors, cur) with Memory + Alloc = {
 fn tiebreak_source_span(survivors) with Memory + Alloc =
   min_by_key(survivors, (s) => span_start(handler_span(s)))
 
-fn tiebreak_lex(survivors) with Memory + Alloc = min_by_key(survivors, (s) => handler_name(s))
+fn tiebreak_lex(survivors) with Memory + Alloc = min_by_key(survivors, handler_name)
 
 // first_verified_wins — applies the five tiebreak steps in order;
 // each step narrows. Returns the unique winner.
@@ -123,7 +123,7 @@ fn race_internal(handlers) with Branch + Memory + Alloc = {
 // succeeded. Cap at 8 per MO §2 (one fork per Mentl tentacle as
 // the natural concurrency budget).
 fn collect_verified_survivors(handlers, cp) with Branch + Memory + Alloc =
-  handlers |> take(8) |> map_list(??, (h) => try_handler_with_rollback(h, cp)) |> filter_list(??, (outcome) => outcome_verified(outcome))
+  handlers |> take(8) |> map_list(??, (h) => try_handler_with_rollback(h, cp)) |> filter_list(??, outcome_verified)
 
 // ─── Helper interfaces (subordinate; bodies inline or stubbed) ───────
 //

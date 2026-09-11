@@ -1,0 +1,22 @@
+// A CONSTRUCTOR IS A FUNCTION VALUE. Born RED 2026-09-08 while ratcheting
+// the eta-wrapper census: seven of the wheel's eta-wrappers existed ONLY
+// because `map((v) => TVar(v), vs)` could not be written `map(TVar, vs)`,
+// and the reason was not a type error — the bare form compiled with ZERO
+// diagnostics, lowered to a payload-less variant whatever the arity, and
+// faulted `unreachable` at the first match that read what it built.
+//
+// GREEN 2026-09-09: a bare name is the parameter product with every field
+// a hole (SYNTAX §«Partial application» — `Box` IS `Box(??)`), so it
+// reifies through the same partial mint, with no supplied args and no new
+// mechanism. The arity is the declaration's own, read from the env scheme:
+// a nullary reference types as the ADT rather than as a TFun, so the use
+// site cannot tell "no parameters" from "not yet resolved" and only the
+// declaration can. Answers 6. The op face is mn-op-as-value.mn.
+type Box = Box(Int) | Empty
+
+fn unbox(b) = match b {
+  Box(n) => n,
+  Empty => 0,
+}
+
+fn main() = map(Box, [1, 2, 3]) |> map(unbox) |> fold(0, (a, b) => a + b)

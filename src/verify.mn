@@ -34,13 +34,13 @@ import io
 // the swap targets the undecidable arm; the decidable arm here stays
 // load-bearing across the swap.
 handler verify_ledger with debt = [] {
-  verify(span, predicate, reason) => match predicate_decide(predicate) {
+  verify(modh, span, predicate, reason) => match predicate_decide(predicate) {
     Some(true) => resume(),
     Some(false) => {
       report_refinement_rejected(predicate, span, reason)
       resume()
     },
-    None => resume() with debt = [(span, predicate, reason)] ++ debt,
+    None => resume() with debt = [(modh, span, predicate, reason)] ++ debt,
   },
   verify_debt() => resume(debt),
   verify_reset() => resume() with debt = [],
@@ -566,29 +566,31 @@ fn report_verify_debt(debt) = if len(debt) == 0 {
   // hello-world, the audit's measured flood) stay the census
   // channel's. ScopeAll keeps every line; the SUMMARY count still
   // reports through diag_report in every scope.
-  debt_lines(debt, module_seams(), diag_scope_of(), 0)
+  debt_lines(debt, diag_scope_of(), 0)
   report(VPending(len(debt), span_zero()))
 }
 
-fn debt_lines(ref debt, ref seams, ref scope, i) = if i >= len(debt) {
+// The seams argument is GONE with the weave: the span is already the
+// developer's own coordinate, so there is no offset to subtract and no
+// containment scan to run. The module rides the obligation, so scoping is a
+// name compare instead of a line-range test that two files could both pass.
+fn debt_lines(ref debt, ref scope, i) = if i >= len(debt) {
   ()
 } else {
   match debt[i] {
-    (dspan, pred, _) => if debt_span_in_scope(dspan, scope) {
-      eprint_string("verify: pending {classify_predicate(pred)} {show_predicate(pred)} at {span_render_local(seams, dspan)}\n")
+    (modh, dspan, pred, _) => if debt_in_scope(modh, scope) {
+      eprint_string("verify: pending {classify_predicate(pred)} {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(dspan)}\n")
     } else {
       ()
     },
   }
-  debt_lines(debt, seams, scope, i + 1)
+  debt_lines(debt, scope, i + 1)
 }
 
-fn debt_span_in_scope(ref dspan, ref scope) with Pure = match scope {
+fn debt_in_scope(modh, ref scope) with GraphRead + Memory + Alloc = match scope {
   ScopeAll => true,
   ScopeNone => false,
-  ScopeAt(sstart, snlines) => match dspan {
-    Span(sl, _, _, _) => sl >= sstart && sl < sstart + snlines,
-  },
+  ScopeModule(name) => module_name_of_handle(modh) == name,
 }
 
 fn classify_predicate(pred) with Pure = match pred {
@@ -612,7 +614,7 @@ effect SmtSolver {
 }
 
 handler verify_smt with witnesses = [], debt = [] {
-  verify(span, predicate, reason) => match predicate_decide(predicate) {
+  verify(modh, span, predicate, reason) => match predicate_decide(predicate) {
     Some(true) => resume(),
     Some(false) => {
       report_refinement_rejected(predicate, span, reason)
@@ -629,14 +631,14 @@ handler verify_smt with witnesses = [], debt = [] {
       SmtUnsat => resume(),
       SmtSat(counterexample) => {
         report_refinement_rejected(predicate, span, reason)
-        resume() with witnesses = [(span, predicate, counterexample)] ++ witnesses
+        resume() with witnesses = [(modh, span, predicate, counterexample)] ++ witnesses
       },
       SmtUnknown => // SmtUnknown is a GENUINELY undischarged obligation — accrue it as
       // pending debt (never silently resume, which would discharge an
       // obligation the solver could not prove; the no-silent-fallback law
       // at the proof gate). It lives in the SAME debt ledger verify_ledger
       // keeps, so verify_debt projects it live.
-      resume() with debt = [(span, predicate, reason)] ++ debt,
+      resume() with debt = [(modh, span, predicate, reason)] ++ debt,
     },
   },
   verify_debt() => // verify_debt projects the SMT handler's residual LIVE (Carried-Truth — the
@@ -661,7 +663,7 @@ handler verify_smt with witnesses = [], debt = [] {
 // edge, not a separate counterexample dump.)
 fn verify_residual(ref debt, ref witnesses) with Memory + Alloc = debt ++ map(
   (w) => match w {
-    (span, pred, model) => (span, pred, VerifyWitness(model)),
+    (modh, span, pred, model) => (modh, span, pred, VerifyWitness(model)),
   },
   witnesses
 )

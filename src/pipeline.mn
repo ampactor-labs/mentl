@@ -264,18 +264,23 @@ fn report_unhandled_effects(lowered) = match env_lookup("main") {
           // (the seventh: visit_effect_demand/install), run over the
           // post-reach tree the gate already holds. The artifact is the
           // truth source: dead-code performs never appear (reach pruned
-          // them from this tree), a resolved install's LPerform fires no
-          // demand, and the floor's LEvPerform carries its ename on the
-          // node. The full collector bracket rides along because the one
+          // them from this tree), and every perform that WALKS carries its
+          // ename in its own dispatch, so the demand is read off the node
+          // rather than re-derived. The full collector bracket rides along because the one
           // walk fires every projection's ops.
           let census = {
             walk_lemit(lowered)
             drain_effect_census()
           } ~> effect_census_collector ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> state_slots_collector ~> yield_seen_collector ~> wasi_ops_collector
           match census {
-            (demands, installed) => match demands_to_enames(demands, 0, [], []) {
-              (performed, strict) => report_unhandled_names(p, 0, len(p), performed, strict, installed, reason_span_or_zero(reason)),
-            },
+            (demands, installed) => report_unhandled_names(
+              p,
+              0,
+              len(p),
+              demands_to_enames(demands, 0, []),
+              installed,
+              reason_span_or_zero(reason)
+            ),
           }
         },
       },
@@ -287,69 +292,74 @@ fn report_unhandled_effects(lowered) = match env_lookup("main") {
 
 // A drained demand is an ename already (the floor's ekey) or a yield's
 // OP name — resolve ops to their effect through the live scheme; a name
-// that is no op passes through as itself. Three tiers, each with its
-// own soundness story: a STATELESS singleton demand GROUNDS (the arm
-// ignores __state — a chainless direct call is value-sound by
-// construction, the measured licence: the escaped-install thunk runs
-// its arm and answers correctly); a STATEFUL singleton joins the
-// performed set and clears on an install anywhere (dynamic installs —
-// the backtrack family's per-candidate `~>` — cover it at runtime, and
-// the SingletonUninstalled guard is the loud belt when they don't); an
-// EVIDENCE-floor demand joins the STRICT set — no unique handler means
-// a dead-chain perform walks garbage evidence with NO belt, so an
-// install elsewhere clears nothing. The row alone cannot split a dead
-// extent from live dynamic coverage; that split is the modal
-// install-identity frontier (band A), and the tripwire fixtures
-// (escaped-install, residual-absence) pin today's semantics until it
-// lands.
-fn demands_to_enames(ref demands, i, acc, strict) = if i >= len(demands) {
-  (acc, strict)
+// that is no op passes through as itself. That is the WHOLE job.
+//
+// THE THREE TIERS ARE DELETED, and they were one question the substrate no
+// longer asks. Each tier was a soundness story about how a perform reaches
+// its handler: a STATELESS singleton "grounded" because a chainless direct
+// call ignores __state; a STATEFUL singleton cleared on an install anywhere
+// because a direct call needed a record the chain might supply; an
+// EVIDENCE-floor demand was strict because it alone walked. Every one of
+// those distinctions described the dispatch TIER, and there are no tiers —
+// one walk, one refusal, the same belt under all of them. What remained was
+// handler_stateful, whose only other reader built a `DtSingleton` Bool that
+// nothing ever read.
+//
+// The licence the stateless tier carried is what let a handler's own arms
+// escape unnoticed: `format_default` re-emits `Format`, so `Format` survives
+// to main's root row (measured — a declared `!Render` on the same shape
+// refuses with `Memory + Alloc + Render`), and the gate dropped the demand
+// before it could be seen. The ROW is authoritative and always was.
+fn demands_to_enames(ref demands, i, acc) = if i >= len(demands) {
+  acc
 } else {
   let d = list_index(demands, i)
-  let verdict = match env_lookup(d) {
+  let en = match env_lookup(d) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
-        EffectOpScheme(op_effect, default_handler, _, _) => if byte_len(default_handler) > 0 {
-          if handler_stateful(default_handler) { Some((op_effect, false)) } else { None }
-        } else {
-          Some((op_effect, true))
-        },
-        _ => Some((d, true)),
+        EffectOpScheme(op_effect, _, _, _) => op_effect,
+        _ => d,
       },
     },
-    None => Some((d, true)),
+    None => d,
   }
-  match verdict {
-    None => demands_to_enames(demands, i + 1, acc, strict),
-    Some((en, is_strict)) => demands_to_enames(
-      demands,
-      i + 1,
-      if string_in_list(acc, en) { acc } else { push(acc, en) },
-      if is_strict && !string_in_list(strict, en) { push(strict, en) } else { strict }
-    ),
-  }
+  demands_to_enames(demands, i + 1, if string_in_list(acc, en) { acc } else { push(acc, en) })
 }
 
-fn report_unhandled_names(ref names, i, n, ref performed, ref strict, ref installed, ref span) = if i >= n {
+fn report_unhandled_names(ref names, i, n, ref performed, ref installed, ref span) = if i >= n {
   ()
 } else {
   let ename = eff_name_str(list_index(names, i))
-  // The conjuncts: present at the root, NOT substrate-grounded, actually
-  // PERFORMED somewhere reachable (a `with Sample`-style declared
-  // contract with zero performs is the iterative-class canon, never an
-  // evidence hole — SYNTAX's own lowpass declares it), and either
-  // STRICT (an evidence floor or a stateless singleton — the escaped-
-  // install class, no runtime belt) or genuinely UNINSTALLED anywhere.
-  // A stateful-singleton demand with an install clears: dynamic
-  // installs cover it at runtime and the SingletonUninstalled guard is
-  // the loud belt beneath — the row alone cannot split a dead extent
-  // from live dynamic coverage (the modal install-identity frontier,
-  // band A, owns that split).
+  // TWO CONJUNCTS, because the row is authoritative: the effect is PRESENT
+  // at the executable root (this list IS main's residual row — everything
+  // any `~>` absorbed has already been subtracted), it is not
+  // SUBSTRATE-GROUNDED, and it is actually PERFORMED somewhere reachable.
+  // The last one is the only thing the emit census is for and it is real: a
+  // declared-but-never-performed row (`with Sample`, SYNTAX's own lowpass)
+  // is the iterative-class canon, never an evidence hole.
+  //
+  // AND the `installed` licence, which survives BY MEASUREMENT after being
+  // deleted and refuted in one build. Deleting it looked right — the row is
+  // authoritative, and a per-candidate `~>` is lexically present where it
+  // runs — but the wheel refused on `GraphRead`: `graph_handler`'s arms
+  // perform sibling GraphRead ops, and that is legal FORWARDING, because the
+  // wheel NESTS graph installs (dispatch_invocation installs one, each
+  // compile installs another that shadows it), so an inner arm's sibling
+  // perform reaches the outer handler. The row cannot see that nesting — it
+  // is a whole-program fact about install identity, which is band A's seat
+  // exactly as this file already said. So an install anywhere still clears.
+  //
+  // What that licence therefore CANNOT catch is the same shape with no outer
+  // install: `format_default` re-emits `Format` from its own arm, reaching
+  // the root, cleared because format_default is "installed somewhere" — it
+  // compiled clean and trapped in `mentl fmt`. That gap is real and named
+  // (Hβ.effects.handler-re-emits-what-it-handles); the decl-site narration
+  // below is what makes it visible today, and band A is what refuses it.
   if effect_ops_substrate_grounded(ename) {
     ()
   } else if !string_in_list(performed, ename) {
     ()
-  } else if !string_in_list(strict, ename) && string_in_list(installed, ename) {
+  } else if string_in_list(installed, ename) {
     ()
   } else {
     // Sequenced effectful read BEFORE the construction (the record-
@@ -358,7 +368,7 @@ fn report_unhandled_names(ref names, i, n, ref performed, ref strict, ref instal
     let proposal = absorbing_proposal(ename)
     report(EEffectUnhandled(ename, proposal, span))
   }
-  report_unhandled_names(names, i + 1, n, performed, strict, installed, span)
+  report_unhandled_names(names, i + 1, n, performed, installed, span)
 }
 
 // Every op of the effect projects to a substrate instruction (the
@@ -576,7 +586,9 @@ wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, 
 // boundary — the living session re-derives on a moved tree, and stale
 // generations' candidates must not shadow the current truth.
 effect Tighten {
-  tightenables() -> [(EffRow, EffRow, String, Span)]
+  // the MODULE rides each candidate: `mentl tighten` edits a FILE, and a
+  // local span names a line without naming which file's line it is.
+  tightenables() -> [(EffRow, EffRow, String, Span, String)]
   tighten_reset()
 }
 
@@ -589,12 +601,14 @@ effect Tighten {
 // zero fn slots for the rest, and a perform through a zero slot is a
 // garbage dispatch.
 handler tighten_collector with found = [] {
-  diag_report(diag, line) => {
+  diag_report(diag, line, dmod) => {
     // Forward outward with the SAME rendered line — the forwarder never
-    // re-renders (the line was made once, at the report boundary).
-    diag_report(diag, line)
+    // re-renders (the line was made once, at the report boundary), and the
+    // module rides along unread: a forwarder must not re-derive what the
+    // reporter already established.
+    diag_report(diag, line, dmod)
     match diag {
-      TOverDeclared(declared, used, name, span) => resume() with found = push(found, (declared, used, name, span)),
+      TOverDeclared(declared, used, name, span) => resume() with found = push(found, (declared, used, name, span, dmod)),
       _ => resume(),
     }
   },
@@ -674,8 +688,8 @@ fn audit_walk(debt, tights, i, fns) with GraphRead + EnvRead + LookupTy + Memory
         }
       }
       let extent = Span(decl_start_line(handle), 0, extent_end, 0)
-      let pending = filter(((dspan, _, _)) => span_overlaps(extent, dspan), debt)
-      let mine = filter(((_, _, tname, _)) => tname == name, tights)
+      let pending = filter(((_modh, dspan, _, _)) => span_overlaps(extent, dspan), debt)
+      let mine = filter(((_, _, tname, _, _)) => tname == name, tights)
       [build_audit_report(name, handle, lookup_ty(handle), pending, mine)] ++ audit_walk(debt, tights, i + 1, fns)
     },
   }
@@ -776,7 +790,7 @@ handler wasi_filesystem {
 // `with !Diagnostic` so its own arms cannot recursively perform
 // report — structural gate via spec 01's algebra.
 handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
-  diag_report(diag, line) => // The line arrives MADE (rendered at the report boundary, in the
+  diag_report(diag, line, dmod) => // The line arrives MADE (rendered at the report boundary, in the
   // reporter's own world) — this arm's remaining projections
   // (severity, refuses, span, the register's file-local rewrite) are
   // pure ctor/string reads, so the arm's row carries no graph or
@@ -789,7 +803,7 @@ handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
   if diag_severity(diag) == SError {
     // An error renders in EVERY scope — a broken claim anywhere in the
     // weave changes the answer's validity; the register never silences it.
-    eprint_string(scope_localize(line, diag, scope))
+    eprint_string(line)
     if diag_refuses(diag) {
       resume() with errors = errors + 1, refusals = refusals + 1
     } else {
@@ -797,15 +811,14 @@ handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
     }
   } else {
     // Narration is the register's business: ScopeAll (the census paths)
-    // prints everything; ScopeAt renders only the file the user asked
-    // about (types.mn DiagScope — substrate self-lint is the substrate's
-    // census channel, and partly weave-relative besides).
+    // prints everything; ScopeModule renders only the file the user asked
+    // about. The comparison is on the module the report CARRIES, not on a
+    // line range — spans are local now, so every file starts at line 1 and a
+    // range names nothing.
     match scope {
       ScopeAll => eprint_string(line),
       ScopeNone => (),
-      ScopeAt(sstart, snlines) => match diag_span(diag) {
-        Span(sl, _, _, _) => if sl >= sstart && sl < sstart + snlines { eprint_string(scope_localize(line, diag, scope)) },
-      },
+      ScopeModule(target) => if dmod == target { eprint_string(line) } else { () },
     }
     resume()
   },
@@ -815,26 +828,10 @@ handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
   diag_scope_of() => resume(scope),
 }
 
-// The register's own range IS the file:line subtraction: a diagnostic
-// whose span falls inside ScopeAt renders in the USER'S coordinates,
-// rebuilt by replacing diag_line's one `at <span>` tail (both renders
-// share show_span, so the tail length is exact); everything else keeps
-// the weave form — the census channels are weave-native, and the seam
-// walk stays OUT of this path by design (a per-line seam read at
-// census scale is the crc-class cost the debt renderer measured).
-fn scope_localize(line, diag, scope) with Memory + Alloc = match scope {
-  ScopeAt(sstart, snlines) => match diag_span(diag) {
-    Span(sl, sc, el, ec) => if sl >= sstart && sl < sstart + snlines {
-      let old_tail = "at {show_span(diag_span(diag))}\n"
-      let new_tail =
-        "at {int_to_str(sl - sstart + 1)}:{int_to_str(sc)}-{int_to_str(el - sstart + 1)}:{int_to_str(ec)}\n"
-      "{str_slice(line, 0, byte_len(line) - byte_len(old_tail))}{new_tail}"
-    } else {
-      line
-    },
-  },
-  _ => line,
-}
+// scope_localize DELETED with the weave: it rebuilt every rendered span by
+// subtracting the module's weave offset back off it, string-slicing the `at
+// <span>` tail and re-rendering the arithmetic. Spans are local from birth,
+// so the number it computed is now the number the span already holds.
 
 // diag_branch (the branch cursor's per-stmt collector) lives in
 // infer.mn beside diag_quiet — the branch bracket and the join are its
@@ -1123,28 +1120,42 @@ fn audit_report_lines(fn_name: String, row_str: String, severable, unlocks, more
     "  pending: {int_to_str(len(pending))} undischarged proof obligation(s) — the field ranks them\n"
   }
   let tighten_section =
-    tightens |> map(((declared, proven, _, _)) => "  tighten: with {show_effrow(declared)} — body proves {show_effrow(proven)} (mentl tighten authors the patch)\n") |> str_concat_all
+    tightens |> map(((declared, proven, _, _, _)) => "  tighten: with {show_effrow(declared)} — body proves {show_effrow(proven)} (mentl tighten authors the patch)\n") |> str_concat_all
   "{header}{severance_section}{refs_section}{verb_section}{iter_section}{anon_section}{drift_section}{pending_section}{tighten_section}"
 }
 
 // Query rendering — delegates to query.mn for Question parsing.
-// Ref lines speak the developer's coordinates through the module
-// seams (the one seam projection the debt lines read too); the seams
-// read once per render, never per line.
-fn render_ref_spans(ref spans) with GraphRead + Memory + Alloc = {
-  let seams = module_seams()
-  spans |> map((s) => "\n  at {span_render_local(seams, s)}") |> str_concat_all
+// Ref lines speak the developer's coordinates directly — spans are local
+// from birth, so the seam projection this read through is gone with the
+// weave. The FILE is the remaining half: a span list cannot name one, and
+// giving it one means carrying handles rather than coordinates
+// (Hβ.why.reason-span-is-a-weave-coordinate, the same work one layer over).
+fn render_ref_spans(ref spans) with GraphRead + Memory + Alloc =
+  spans |> map(ref_span_line) |> str_concat_all
+
+fn ref_span_line(ref s) with Memory + Alloc = "\n  at {show_span(s)}"
+
+// A census site speaks the developer's FILE and line, and both halves come
+// from the graph: the span is the node's own coordinate, the module is the
+// column's. This is what span_render_local produced by scanning every
+// module's range for one containing a weave line — one read now, no scan.
+fn render_census_sites(ref sites) with GraphRead + Memory + Alloc =
+  sites |> map(census_site_line) |> str_concat_all
+
+fn census_site_line(site) with Memory + Alloc = match site {
+  (path, s) => "\n  at {path}:{show_span(s)}",
 }
 
 // One line per undischarged obligation: the predicate the graph holds,
 // at the developer's own coordinates — the debt facet's site list.
-fn render_debt_lines(obligations) with GraphRead + Memory + Alloc = {
-  let seams = module_seams()
-  obligations |> map((ob) => render_debt_line(seams, ob)) |> str_concat_all
-}
+// The seam walk is GONE: the span is already the developer's own coordinate
+// and the module rides the obligation, so a line is one read and a name, with
+// no containment scan over every node to place it.
+fn render_debt_lines(obligations) with GraphRead + Memory + Alloc =
+  obligations |> map(render_debt_line) |> str_concat_all
 
-fn render_debt_line(seams, ob) = match ob {
-  (s, pred, _) => "\n  {show_predicate(pred)} at {span_render_local(seams, s)}",
+fn render_debt_line(ob) with GraphRead + Memory + Alloc = match ob {
+  (modh, s, pred, _) => "\n  {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(s)}",
 }
 
 // The import edges rendered as a verdict per edge. DEAD means the imported
@@ -1250,10 +1261,10 @@ fn render_query_result(result) = match result {
     None => "→ no handler installed",
   },
   QRFlowLabel(label, reason) => "→ {show_flow_label(label)}\n  Reason: {show_reason(reason)}",
-  QRCensus(label, spans) => "→ {int_to_str(len(spans))} {label}{render_ref_spans(spans)}",
-  QRDecls(spans) => // The decls column's projection — the oracle queue's own seed set,
+  QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_census_sites(sites)}",
+  QRDecls(sites) => // The decls column's projection — the oracle queue's own seed set,
   // rendered located so the seed is inspectable at the CLI.
-  "→ {int_to_str(len(spans))} judged decl(s){render_ref_spans(spans)}",
+  "→ {int_to_str(len(sites))} judged decl(s){render_census_sites(sites)}",
   QRModules(paths) => "→ {int_to_str(len(paths))} module(s) in the weave\n  {str_join_lines(paths)}",
   QRImports(rows) => render_import_rows(rows),
   QRUnreferenced(rows) => render_unref_rows(rows),
@@ -1273,12 +1284,11 @@ fn str_join_lines(lines) with Pure = match lines {
 // The site badges: the schedule word at the fanout's own line —
 // `>< [Thread] at file:line` — the exact fact lower reads ambiently,
 // projected statically (the where stamp's exactness law).
-fn render_where_sites(sites) with GraphRead + Memory + Alloc =
-  render_where_sites_from(sites, module_seams())
+fn render_where_sites(sites) with GraphRead + Memory + Alloc = render_where_sites_from(sites)
 
-fn render_where_sites_from(sites, seams) with Memory + Alloc = match sites {
+fn render_where_sites_from(sites) with Memory + Alloc = match sites {
   [] => "",
-  [(word, s), ...t] => "\n  >< [{word}] at {span_render_local(seams, s)}{render_where_sites_from(t, seams)}",
+  [(word, s), ...t] => "\n  >< [{word}] at {show_span(s)}{render_where_sites_from(t)}",
 }
 
 // show_flow_label — defined in types.mn alongside flow_label_join/flow_le.

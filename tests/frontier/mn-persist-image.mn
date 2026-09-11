@@ -26,7 +26,7 @@ fn main(argv) = {
     let b = list_index(xs, 5)
     let thunk = () => a + b - 3
     list_set(root, 0, thunk)
-    persist(addr(thunk), "/tmp/mn-persist-image.img")
+    persist(image_pack(addr(thunk)), "/tmp/mn-persist-image.img")
     40
   }
 } ~> persist_to_disk ~> fail_exit

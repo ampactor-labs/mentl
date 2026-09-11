@@ -396,7 +396,7 @@ fn apply_annotation_tentatively(handle, ann, base_ty) = match ann {
     // carries this claim's discharge (band F's own path), so the apply
     // itself admits.
     let span = unwrap_source_span(sp)
-    verify(span, pred, Refinement(pred, PTrue))
+    verify(graph_module_current(), span, pred, Refinement(pred, PTrue))
     true
   },
   AOwn(_, _) => // parameter-level marker; type narrowing at call sites

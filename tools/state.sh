@@ -59,8 +59,8 @@ else
   echo "              bash tools/frontier-gate.sh  ·  the pre-commit perimeter refuses a"
   echo "              wheel commit without it, so this blank is a landing you cannot make"
 fi
-echo "    crown · proof-exactness · effect-identity · instrument: no stamp kept —"
-echo "              running them is the only way to know (Hβ.tools.gate-stamp-is-uniform)"
+echo "    crown · proof-exactness · effect-identity · instrument · threads: no stamp"
+echo "              kept — running them is the only way to know (Hβ.tools.gate-stamp-is-uniform)"
 
 echo "▸ VERIFY (micros + census — stamped)"
 bash tools/verify.sh || exit 1
@@ -72,6 +72,7 @@ if [ "${1:-}" != "--quick" ]; then
   gate "CROWN (!E soundness crucibles)"                                  bash tools/crown-gate.sh
   gate "EFFECT IDENTITY (Fail ≠ Abort)"                                  bash tools/effect-identity-gate.sh
   gate "INSTRUMENT (can the board go RED?)"                              bash tools/instrument-gate.sh
+  gate "THREADS (is the concurrency width what the source says?)"        bash tools/thread-gate.sh
 
   if [ "$reds" -eq 0 ]; then
     echo "▸ THE BOARD IS WHOLE — every gate green."

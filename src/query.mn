@@ -155,14 +155,18 @@ type QueryResult
   | QROwnership([TParam])
   | QRWhy(Reason)
   | QRRefs([Span])
-  | QRVerifyDebt([(Span, Predicate, Reason)])
+  | QRVerifyDebt([(Int, Span, Predicate, Reason)])
   | QRHandlerProvider(Option(String))
   // IFC projection — the FlowLabel the type already proves
   | QRFlowLabel(FlowLabel, Reason)
   // census label + the located sites (count = len)
-  | QRCensus(String, [Span])
+  // the sites as (module, span) PAIRS: a local span names a line, and the
+  // module names whose line it is — the two halves the weave used to fuse
+  // into one global coordinate and three readers had to take apart again.
+  | QRCensus(String, [(String, Span)])
   // the judged decl sites (count = len)
-  | QRDecls([Span])
+  // (module, span) pairs, for the same reason the census carries them.
+  | QRDecls([(String, Span)])
   // the weave's module paths, in weave order (count = len)
   | QRModules([String])
   // (importing module, imported path, is any name it brings referenced here)
@@ -262,7 +266,7 @@ handler query_default {
     // collect each node's span — read live, never an "AST index required"
     // surrender. This IS rename: the [Span] is exactly the edit set.
     resume(QRRefs(refs_of_name(name))),
-    QDecls => resume(QRDecls(map(span_of_handle, decl_handles()))),
+    QDecls => resume(QRDecls(map(decl_site_of, decl_handles()))),
     QVerifyDebt => {
       let debt = verify_debt()
       resume(QRVerifyDebt(debt))
@@ -804,18 +808,40 @@ fn census_sites(shape) with GraphRead + !Mutate + Alloc + Memory = match graph_s
 fn span_of_node_raw(handle) with GraphRead + !Mutate + Memory + Alloc =
   span_of_reason(graph_reason_at(handle))
 
+// The dedup key is (MODULE, span), not the span alone. It was the span alone
+// while spans were offsets into ONE concatenated weave, where a coordinate was
+// globally unique by construction. The per-module parse makes every file start
+// at line 1, so two modules genuinely share a line 10 and span-keyed dedup
+// silently DROPS the second site — measured the day the parse moved: the verb
+// census missed its own fixture's `|>` because a lib module had already
+// claimed that line. The pair is unique again for the reason the coordinate
+// used to be, and now it says so instead of relying on it.
 fn census_walk(shape, i, n, acc) with GraphRead + Memory + Alloc + !Mutate = if i >= n {
   acc
 } else {
   if census_matches(shape, i, graph_node_body(i)) {
     let sp = span_of_node_raw(i)
-    if sp == span_zero() || span_in(acc, sp, 0) {
+    // A MODULE'S IDENTITY IS ITS PATH, never the node that represents it —
+    // the same law driver_collect_visit's visited set already keys on. The
+    // trial and the final each parse, so each mints its OWN NModule node for
+    // the same file: keying the dedup on the HANDLE made one site read as two
+    // (measured: every census count exactly DOUBLED, types:3748 four times).
+    let m = module_name_of_handle(graph_module_of(i))
+    if sp == span_zero() || site_in(acc, m, sp, 0) {
       census_walk(shape, i + 1, n, acc)
     } else {
-      census_walk(shape, i + 1, n, push(acc, sp))
+      census_walk(shape, i + 1, n, push(acc, (m, sp)))
     }
   } else {
     census_walk(shape, i + 1, n, acc)
+  }
+}
+
+fn site_in(ref acc, ref m: String, ref sp, i) with Memory + Alloc = if i >= len(acc) {
+  false
+} else {
+  match acc[i] {
+    (am, asp) => if am == m && asp == sp { true } else { site_in(acc, m, sp, i + 1) },
   }
 }
 
@@ -1751,6 +1777,10 @@ fn ops_contain(ops, target: String, i, n) with Memory = if i >= n {
 // span_of_handle — the node's source span, read live from its Reason chain
 // (the parser/infer wrote Located(span, _) at the node). One graph_chase, the
 // span peeled from the located reason — no parallel span-index re-lookup.
+// A decl's site: its own module beside its own span, both read from the
+// graph rather than reconstructed from a coordinate.
+fn decl_site_of(handle) with GraphRead + !Mutate + Memory + Alloc = (module_name_of_handle(graph_module_of(handle)), span_of_handle(handle))
+
 fn span_of_handle(handle) with GraphRead + !Mutate + Memory + Alloc = match graph_chase(handle) {
   GNode(_, reason) => span_of_reason(reason),
 }
