@@ -2064,6 +2064,20 @@ effect GraphWrite {
   // contract.
   graph_hole_note(Int)
   graph_hole_drain(String)
+  // THE WRITE GUARD'S REFUSALS, STORED BY THE ARM AND REPORTED BY THE BODY.
+  // graph_bind's occurs belt cannot report where it stands: a diagnostic
+  // performed from inside an arm resolves OUTER of its own install, so it
+  // sails past any capture bracket installed deeper — which is exactly
+  // where speculation installs one. Measured: infer_fn_speculative's
+  // poly_capture saw only body-raised T_OverDeclared, never the refusal it
+  // retries on, so held_has_poly was false and the Mycroft fragment never
+  // ran (Hβ.diag.an-arms-report-escapes-an-inner-capture).
+  //
+  // So the arm STORES the triple and inference DRAINS it at the judgment
+  // boundary, where the report lands in the body's world and every bracket
+  // that should see it does. Same shape as the holes pair above, one
+  // concern over: an arm may note, only the body may narrate.
+  graph_guard_drain() -> [(DiagKind, String, String)]
   // The pipe completion's retraction: a stage's `??` slot lowers (the
   // note fires at the visit) and is then spliced over by the piped
   // value — consumed, not surviving. The unnote removes it from the

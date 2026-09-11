@@ -284,7 +284,7 @@ fn poly_teach_line(owner: String, reason) with Memory + Alloc =
 // over the SHARED spine with a private planned range — the root install is
 // bare and the defaults are the empty graph. Handler state records live in
 // shared heap; the install chain stays per-instance, correctly private.
-handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, high_limit0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = next0, mint_limit = limit0, mint_high = high0, high_limit = high_limit0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0 {
+handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, high_limit0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = next0, mint_limit = limit0, mint_high = high0, high_limit = high_limit0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [] {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -553,10 +553,18 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
     // typed teaching render lives at unify's pre-check sites (the
     // perform side, inside the analysis brackets), which fire first on
     // every unification path — this belt guards the non-unify binds.
-    diag_report(
-      EOccursCheck(handle, ty, reason_span_or_zero(reason)),
-      occurs_guard_line(handle, reason),
-      spine_module_name(spine, spine_open, cur_module)
+    // STORED, NOT REPORTED. A diag_report here resolves OUTER of this
+    // install and sails past any capture bracket installed deeper — which
+    // is where speculation installs one, so the refusal the Mycroft retry
+    // keys on never reached it. The body drains and narrates
+    // (graph_guard_drain); this arm only notes.
+    let g1 = push(
+      guard_diags,
+      (
+        EOccursCheck(handle, ty, reason_span_or_zero(reason)),
+        occurs_guard_line(handle, reason),
+        spine_module_name(spine, spine_open, cur_module)
+      )
     )
     // The poly-recursion teach rides the refusal (coordinates-only
     // discipline as above — the mint reason is read from THIS
@@ -564,22 +572,28 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
     // through a fn's OWN param/return mint is the
     // self-call-at-a-different-type fingerprint; name the fn and the
     // signature route.
-    match graph_node_at(spine, next, handle) {
+    let g2 = match graph_node_at(spine, next, handle) {
       GNode(_, mint_r) => match mint_r {
-        FnParam(owner, _, _) => diag_report(
-          TPolyRecursionSignature(owner, reason_span_or_zero(reason)),
-          poly_teach_line(owner, reason),
-          spine_module_name(spine, spine_open, cur_module)
+        FnParam(owner, _, _) => push(
+          g1,
+          (
+            TPolyRecursionSignature(owner, reason_span_or_zero(reason)),
+            poly_teach_line(owner, reason),
+            spine_module_name(spine, spine_open, cur_module)
+          )
         ),
-        FnReturn(owner, _) => diag_report(
-          TPolyRecursionSignature(owner, reason_span_or_zero(reason)),
-          poly_teach_line(owner, reason),
-          spine_module_name(spine, spine_open, cur_module)
+        FnReturn(owner, _) => push(
+          g1,
+          (
+            TPolyRecursionSignature(owner, reason_span_or_zero(reason)),
+            poly_teach_line(owner, reason),
+            spine_module_name(spine, spine_open, cur_module)
+          )
         ),
-        _ => (),
+        _ => g1,
       },
     }
-    resume()
+    resume() with guard_diags = g2
   } else {
     let old_node = graph_node_at(spine, next, handle)
     spine_put_node(spine, handle, GNode(NBound(ty), reason))
@@ -755,6 +769,14 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
     resume()
   } else {
     resume() with holes_col = hole_pairs_into(holes_pend, entry_name, holes_col), holes_pend = []
+  },
+  // The write guard's stored refusals, handed to the body that can narrate
+  // them. Empty — the overwhelming case — resumes without a state rebind,
+  // so the per-judgment drain costs nothing when no bind refused.
+  graph_guard_drain() => if len(guard_diags) == 0 {
+    resume([])
+  } else {
+    resume(guard_diags) with guard_diags = []
   },
   graph_hole_unnote(h) => resume() with holes_pend = holes_pend_without(holes_pend, h),
   graph_holes_at() => resume(holes_col),
