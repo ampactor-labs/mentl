@@ -938,10 +938,28 @@ loop_scaffold_refs_max: 3
 # replace them — two names out, three in, because asking whether a handler
 # DECLARES an op (rather than merely covering its effect) is one read the old
 # pair had no home for. The +1 is that read.
-desugar_vocabulary: 44
+# 2026-09-11 · 44 -> 41 · RE-DERIVED, and the seed follows again — the same
+# trio, one generation later, going the other way. `ev_declaring_node`,
+# `world_declaring_from` and `node_arm_at` left the desugar vocabulary at pin
+# 0e79bdbd, when the world-chain walk moved OUT of lib/memory.mn and into the
+# emitted preamble beside $world_push: emit stopped minting their names as
+# demands, so they stopped being a name-keyed contract with lib/ at all. The
+# contract breach was real and this baseline move was MISSED at that landing —
+# found here by the gate, bisected to that pin, and the set diffed to exactly
+# those three. 41 SURVIVES the crossing-generation deletion that follows the
+# next repin: the three fns still sitting in lib/memory.mn are already out of
+# the intersection, so removing them moves nothing. The number falls to zero
+# when Hβ.driver.link-is-reachability lands and an emit-minted name demands
+# its defining module the way an import does.
+desugar_vocabulary: 41
 
+# 2026-09-11 · 812 -> 811 · the gate's own DOWN arm, held. Bisected with the
+# gate's regex to pin 0bd0525e, and the retired marker is `ref strict` in
+# pipeline.mn — it did not become unnecessary, its FUNCTION was deleted with
+# the dispatch-tier residue. That still counts: a borrow nobody authors is a
+# borrow the inference no longer has to be told about, however it left.
 authored_own_max: 83
-authored_ref_max: 812
+authored_ref_max: 811
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the

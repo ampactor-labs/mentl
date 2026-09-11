@@ -3078,25 +3078,23 @@ fn infer_fn_speculative(name, params, body_node, ret_ann, effs, handle, span: Va
   }
 }
 
+// One note, narrated: the triple the guard could not raise itself. It is a
+// NAMED decl rather than a lambda at the drain because the row IS the whole
+// content of the fn — Diagnostics with nowhere to live is exactly what the
+// anonymity tier convicts, and the tier is right: this is a stage.
+fn report_guard_note(t) = match t {
+  (d, line, dmod) => diag_report(d, line, dmod),
+}
+
 // THE JUDGMENT BOUNDARY IS WHERE THE GUARD'S REFUSALS GET NARRATED. graph's
 // occurs write-guard cannot report where it stands — a diagnostic performed
 // inside an arm resolves OUTER of its own install and sails past any capture
 // bracket installed deeper, which is exactly where infer_fn_speculative
-// installs poly_capture. So the arm notes and this drains, in the BODY's
-// world, one statement after the judgment that provoked them. Every bracket
-// that should see the refusal now does, the Mycroft retry among them
-// (Hβ.diag.an-arms-report-escapes-an-inner-capture).
+// installs poly_capture. So the arm notes and the judgment's own tail drains,
+// in the BODY's world, one statement after the match that provoked them.
+// Every bracket that should see the refusal now does, the Mycroft retry among
+// them (Hβ.diag.an-arms-report-escapes-an-inner-capture).
 fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, poly_hint) = {
-  infer_fn_judge(name, params, body_node, ret_ann, effs, handle, span, poly_hint)
-  each(
-    (t) => match t {
-      (d, line, dmod) => diag_report(d, line, dmod),
-    },
-    graph_guard_drain()
-  )
-}
-
-fn infer_fn_judge(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, poly_hint) = {
   // The decls column, first writer: the FnStmt node handle, noted per
   // judgment (rounds re-note; readers dedup by handle). The let and
   // handler-decl arms of infer_stmt are the other two — a column of
@@ -3319,6 +3317,7 @@ fn infer_fn_judge(name, params, body_node, ret_ann, effs, handle, span: ValidSpa
       }
     },
   }
+  each(report_guard_note, graph_guard_drain())
 }
 
 // Deferral discriminator: the gate parks only when the body row is BOUND

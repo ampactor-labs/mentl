@@ -489,7 +489,7 @@ type ConvertKind
 // stored fusion serves the first by making the other two unaskable —
 // measured once already in this arc, as three micros that stopped naming
 // E_InitPerformsOwnOp the moment the name went in pre-joined.
-// `perform_target_name` spells it; nothing stores it.
+// `perform_target_symbol` spells it; nothing stores it.
 type ArmTarget = ArmNamed(String) | ArmSlot
 
 type PerformDispatch
