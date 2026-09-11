@@ -1381,8 +1381,20 @@ for i in "${!compilers[@]}"; do
   # value-sound licence (the arm ignores state), pinned by the
   # escaped-install tripwire below (exit 7 — the modal install-identity
   # frontier owns the eventual split, like residual-absence beside it).
+  # RE-BANKED 2026-09-11 from 7 to 134, ON PURPOSE. The 7 pinned the
+  # value-sound licence for stateless arms — a chainless direct call that
+  # answered correctly because the arm ignores its record. The uniform world
+  # bracket ended that licence, and the two are incompatible by construction:
+  # the bracket's CONTENT is the install's world, so an arm reached after its
+  # install's extent closed has no world to run under. The fixture's own text
+  # reserved this split for band A's install identity; making the walk uniform
+  # answered it as a side effect, so it is answered deliberately here. 134 is
+  # the walk's loud refusal — nothing executes unproven. The COMPILE-time
+  # refusal is still band A's: the row cannot see a dead extent, and the
+  # executable gate clears the effect because the handler is installed
+  # somewhere.
   run_program "$compiler" effect-escaped-install \
-    "$ROOT/tests/frontier/mn-effect-escaped-install.mn" 7 no "$dir"
+    "$ROOT/tests/frontier/mn-effect-escaped-install.mn" 134 no "$dir"
   run_program "$compiler" effect-residual-absence \
     "$ROOT/tests/frontier/mn-effect-residual-absence.mn" 42 no "$dir"
   run_program "$compiler" effect-absorbed \
