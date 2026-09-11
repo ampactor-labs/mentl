@@ -1426,17 +1426,16 @@ fn walk_lemit_expr(expr) = match expr {
   // scope, which is listening only inside an install's own inits walk.
   LPerform(_, disp, args) => {
     match disp {
-      PdLexical(hname, op_name, _) => visit_direct_perform(hname, op_name),
-      PdResolved(hname, op_name, ekey, _) => {
+      PdFrame(_, hname, op_name) => visit_direct_perform(hname, op_name),
+      PdWalk(ekey, _, op_name, target) => {
         visit_string(ekey)
         visit_effect_demand(op_name)
-        visit_direct_perform(hname, op_name)
+        match target {
+          ArmNamed(hname) => visit_direct_perform(hname, op_name),
+          ArmSlot => (),
+        }
       },
-      PdWalked(op_name, ekey, _) => {
-        visit_string(ekey)
-        visit_effect_demand(op_name)
-      },
-      PdSelfState(_) => (),
+      PdDriver(_) => (),
     }
     walk_lemit_list(args)
   },
@@ -4399,10 +4398,9 @@ fn emit_expr(expr) = match expr {
     // reads the install's own two locals; anything that walks resolves the
     // node once into evn_<h> and reads both out of it.
     match disp {
-      PdLexical(_, _, ih) => wat_emit("    (local.get $__hstate_{int_to_str(ih)})\n"),
-      PdResolved(_, _, ekey, slot) => emit_declaring_node(hs, ekey, slot),
-      PdWalked(_, ekey, slot) => emit_declaring_node(hs, ekey, slot),
-      PdSelfState(_) => wat_emit("    (local.get $__state)\n"),
+      PdFrame(ih, _, _) => wat_emit("    (local.get $__hstate_{int_to_str(ih)})\n"),
+      PdWalk(ekey, slot, _, _) => emit_declaring_node(hs, ekey, slot),
+      PdDriver(_) => wat_emit("    (local.get $__state)\n"),
     }
     // The arm fn is SHARED between the floor and every twin, so its ABI
     // is floor words: a twin's repr-true wide arg crosses BY REFERENCE
@@ -4413,37 +4411,37 @@ fn emit_expr(expr) = match expr {
     // unboxed and its result left i32 where f64 was declared
     // (Hβ.emit.twin-state-width — the two assembly refusals).
     emit_args_word(args)
-    // (2) the arm's identity, where it is not already a name: the walked
-    // form pushes the fn index out of the record's own arm slot.
-    match disp {
-      PdWalked(_, _, slot) => emit_arm_index(hs, slot),
-      _ => (),
-    }
+    // (2) the arm's identity, where the target does not already name it: the
+    // slot form pushes the fn index out of the record's own arm region.
     // (3) THE WORLD BRACKET, once, for every dispatch — the deep-handler law
-    // by construction rather than by three arms agreeing. PdSelfState is the
-    // one shape that must NOT bracket, and it is not a dispatch: it is a
-    // direct call to a synthesized driver against the caller's own state.
+    // by construction. PdDriver is the one shape that must NOT bracket, and
+    // it is not a dispatch: it is a direct call to a synthesized driver
+    // against the caller's own state.
     match disp {
-      PdSelfState(name) => {
+      PdDriver(name) => {
         wat_emit("    (call $op_")
         wat_emit(name)
         wat_emit(")\n")
       },
       _ => {
+        match disp {
+          PdWalk(_, slot, _, ArmSlot) => emit_arm_index(hs, slot),
+          _ => (),
+        }
         wat_emit("    (global.get $world_g)(local.set $evw_")
         wat_emit(hs)
         wat_emit(")\n")
         emit_install_world(disp, hs)
-        match disp {
-          PdWalked(_, _, _) => {
+        match perform_target_symbol(disp) {
+          Some(sym) => {
+            wat_emit("    (call $op_")
+            wat_emit(sym)
+            wat_emit(")\n")
+          },
+          None => {
             wat_emit("    (call_indirect (type ")
             wat_emit(call_ft_name(args, repr_of(lookup_ty(h))))
             wat_emit("))\n")
-          },
-          _ => {
-            wat_emit("    (call $op_")
-            wat_emit(perform_target_name(disp))
-            wat_emit(")\n")
           },
         }
         wat_emit("    (global.set $world_g (local.get $evw_")
@@ -4904,7 +4902,7 @@ fn emit_arm_index(hs: String, slot) = {
 // landing nothing read it. A walked node carries the same thing at iw@12.
 // ONE source per shape, both feeding the one bracket.
 fn emit_install_world(disp, hs: String) = match disp {
-  PdLexical(_, _, ih) => {
+  PdFrame(ih, _, _) => {
     wat_emit("    (global.set $world_g (local.get $__hstate_")
     wat_emit(int_to_str(ih))
     wat_emit("_wprev))\n")

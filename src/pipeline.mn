@@ -302,7 +302,7 @@ fn report_unhandled_effects(lowered) = match env_lookup("main") {
 // EVIDENCE-floor demand was strict because it alone walked. Every one of
 // those distinctions described the dispatch TIER, and there are no tiers —
 // one walk, one refusal, the same belt under all of them. What remained was
-// `handler_stateful`, whose only other reader built a `DtSingleton` Bool that
+// handler_stateful, whose only other reader built a `DtSingleton` Bool that
 // nothing ever read.
 //
 // The licence the stateless tier carried is what let a handler's own arms

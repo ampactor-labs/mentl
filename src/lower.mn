@@ -453,42 +453,49 @@ type ConvertKind
 // available, which is a property of the program and not a mode anyone
 // selects (Hβ.kernel.staging-is-an-epoch-not-a-mode).
 //
-// PdLexical(handler, op, install) — the install is in this very frame, so
-//   the walk finished at compile time and both the record and the install
-//   world are its own locals. The residual is a direct call.
-// PdResolved(handler, op, effect key, op slot) — exactly one handler
-//   declares the op, so the ARM was resolved statically while the record was
-//   not. The walk runs; the call is direct.
-// PdWalked(op, effect key, op slot) — nothing was bound. The walk yields
-//   record, world and the arm through the record's own slot; the call is
-//   indirect.
+// TWO AXES, NOT THREE TIERS, and the first shape of this node got that
+// wrong. It shipped as PdLexical | PdResolved | PdWalked — which is exactly
+// the lexical / singleton / evidence tiers the collapse had just deleted,
+// re-entered as an enum, with the emit still branching on them FIVE times
+// inside the one arm that claimed they were one operation. The axes are
+// independent:
 //
-// EVERY ARM CARRIES THE OP, because a perform is a perform OF AN OP and the
-// executable-root census is keyed that way. Registering the EFFECT there
-// instead reached `demands_to_enames` as a name no EffectOpScheme claims and
-// fell through to STRICT — which is the right verdict for an unresolvable op
-// and reached by accident rather than by reading the op's own scheme. With
-// the op registered, the walked case still lands strict (no unique declarer
-// is exactly why it walks) and the resolved case is finally VISIBLE to the
-// gate at all, classified by its handler's statefulness the way the
-// classifier was written to do.
+//   WHERE THE RECORD AND WORLD COME FROM — the frame (the install's own two
+//     locals, because the walk finished at compile time) or the walk (the
+//     node, whose entry carries the record and whose iw@12 carries the world)
+//   HOW THE ARM IS REACHED — a static symbol, or an index out of the
+//     record's own slot
 //
-// The two resolved arms carry the HANDLER and the OP, never the `<h>_<op>`
-// symbol those two spell. Fusing them at the mint is the same violation this
-// whole node exists to end: emit needs the symbol, the preinstall-init check
-// needs the handler alone, and a stored fusion serves the first by making the
-// second unaskable — measured, in this arc, as three micros that stopped
-// naming E_InitPerformsOwnOp the moment the name went in pre-joined.
-// PdSelfState — NOT a dispatch. It is a direct call to a synthesized fn (the
-//   k drivers) against the caller's own __state, which used to hide behind
-//   LPerform's `""` state-local sentinel. A sentinel is a constructor that
-//   has not been named yet; naming it is what lets every OTHER arm bracket
-//   unconditionally, because this is the only one that must not.
+// Three constructors over two binary axes leaves the fourth combination
+// (frame, slot) representable and meaningless — a PRODUCT encoded as a SUM,
+// which is drift-8 at the type level. Nesting ArmTarget under PdWalk makes it
+// unconstructible: a frame answer knows the handler, so it always knows the
+// symbol, and only a walk can reach an arm through a slot.
+//
+// PdFrame(install, handler, op) — the install is in this very frame.
+// PdWalk(effect key, op slot, op, target) — the walk yields record and world;
+//   the target names the handler when one declares the op, else ArmSlot and
+//   the arm comes out of the record.
+// PdDriver(fn) — NOT a dispatch. A direct call to a synthesized fn (the k
+//   drivers) against the CALLER's own __state, which used to hide behind
+//   LPerform's `""` state-local sentinel. It stays in this type because it
+//   stands in the dispatch position, and it is the one shape that must not
+//   bracket — naming it is what lets every other shape bracket
+//   unconditionally.
+//
+// The HANDLER and the OP stay separate, never the `<h>_<op>` symbol they
+// spell. Emit wants the symbol; the emit-walk's preinstall-init check wants
+// the handler alone and the executable-root census wants the op alone, and a
+// stored fusion serves the first by making the other two unaskable —
+// measured once already in this arc, as three micros that stopped naming
+// E_InitPerformsOwnOp the moment the name went in pre-joined.
+// `perform_target_name` spells it; nothing stores it.
+type ArmTarget = ArmNamed(String) | ArmSlot
+
 type PerformDispatch
-  = PdLexical(String, String, Int)
-  | PdResolved(String, String, String, Int)
-  | PdWalked(String, String, Int)
-  | PdSelfState(String)
+  = PdFrame(Int, String, String)
+  | PdWalk(String, Int, String, ArmTarget)
+  | PdDriver(String)
 
 type LowValue = LInt(Int) | LFloat(Float) | LString(String) | LBool(Bool)
 
@@ -2132,7 +2139,7 @@ fn perform_dispatch_at(handle, op_name, ename, slot, lexical) = match lexical {
   Some(r) => {
     let hname = resolve_target(r)
     graph_dispatch_note(handle, DtLexical("{hname}_{op_name}", "__hstate_{int_to_str(resolve_handle(r))}"))
-    PdLexical(hname, op_name, resolve_handle(r))
+    PdFrame(resolve_handle(r), hname, op_name)
   },
   None => match lower_op_default_handler(op_name) {
     // The arm is static (one handler declares it) and the record is not. The
@@ -2141,27 +2148,28 @@ fn perform_dispatch_at(handle, op_name, ename, slot, lexical) = match lexical {
     // ambiguous op and was the whole of the eta ceiling.
     Some(hname) => {
       graph_dispatch_note(handle, DtSingleton(hname))
-      PdResolved(hname, op_name, ename, slot)
+      PdWalk(ename, slot, op_name, ArmNamed(hname))
     },
     None => {
       graph_dispatch_note(handle, DtEvidence(ename, slot))
-      PdWalked(op_name, ename, slot)
+      PdWalk(ename, slot, op_name, ArmSlot)
     },
   },
 }
 
-// The arm fn this dispatch names, or "" when it names none. A walked
-// dispatch reaches its arm through the chain node's own record, so it
-// has no symbol to name and wants none; the other three call
-// `$op_<target>` directly. Emit writes that call and reachability keeps
-// the callee alive, so the two read ONE projection — the divergence
-// where emit called a symbol reachability had already pruned is what
-// this fn exists to make unconstructible.
-fn perform_target_name(disp) -> String = match disp {
-  PdLexical(hname, op_name, _) => "{hname}_{op_name}",
-  PdResolved(hname, op_name, _, _) => "{hname}_{op_name}",
-  PdWalked(_, _, _) => "",
-  PdSelfState(name) => name,
+// The arm fn this dispatch names — None when it reaches the arm through the
+// record's own slot, which names nothing. An OPTION rather than "", because
+// the empty string is a constructor nobody named: both readers here have to
+// branch on presence, and a sentinel makes that branch a string compare that
+// any other empty name would satisfy. Emit writes the call and reachability
+// keeps the callee alive, so the two read ONE projection — the divergence
+// where emit called a symbol reachability had already pruned is what this fn
+// exists to make unconstructible.
+fn perform_target_symbol(disp) = match disp {
+  PdFrame(_, hname, op_name) => Some("{hname}_{op_name}"),
+  PdWalk(_, _, op_name, ArmNamed(hname)) => Some("{hname}_{op_name}"),
+  PdWalk(_, _, _, ArmSlot) => None,
+  PdDriver(name) => Some(name),
 }
 
 // The op's UNIQUE default handler, read from the EffectOpScheme edge drawn at
@@ -4219,7 +4227,7 @@ fn lower_resume_callk(handle, val, state_updates) = {
                 LLet(
                   handle,
                   "__rd_{int_to_str(handle)}",
-                  LPerform(handle, PdSelfState("__redrive_{hname}"), [LLocal(handle, kr)])
+                  LPerform(handle, PdDriver("__redrive_{hname}"), [LLocal(handle, kr)])
                 ),
                 // The redrive LOOPS this handler's OWN ops (dispatch-until-clear),
                 // so a flag STILL raised after it is a FOREIGN op — M4 made abort
@@ -5611,9 +5619,9 @@ fn reach_match_arms(arms, acc) = if len(arms) == 0 {
   }
 }
 
-fn reach_perform_target(disp) = {
-  let t = perform_target_name(disp)
-  if t == "" { [] } else { ["op_{t}"] }
+fn reach_perform_target(disp) = match perform_target_symbol(disp) {
+  Some(sym) => ["op_{sym}"],
+  None => [],
 }
 
 fn reach_names_expr(expr, acc) = match expr {
