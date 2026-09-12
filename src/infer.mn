@@ -1314,8 +1314,24 @@ fn infer_modules_converged(ref mods) = {
       // line — unscoped compiles (march / census / battery) keep it, a
       // user-target verb's ScopeAt quiets it. 2b's image/scratch boundary
       // fixes itself from this measured number, never from a claim.
+      // THE HIGH-WATER LINE, BESIDE THE CLASSIFIED COUNT — and it is the
+      // number the cost ratchet should have been reading all along. The
+      // board policed peak RSS, a HOST proxy: measured 2026-09-12, two
+      // byte-identical m2 binaries over one identical input answered
+      // 2,389,636KB and 2,356,360KB — 33MB of kernel-reclaim jitter against
+      // a ceiling whose whole margin was 30MB, so the ratchet could neither
+      // convict a real rise nor acquit a false one. The bump image is
+      // monotonic and the judgment never resets it (heap_reset lives in the
+      // micro/session drivers, not this path), so the mark at the judgment's
+      // close IS its high-water — and it is EXACT: the same three runs whose
+      // RSS spread 33MB answered image_bytes identically to the byte. A
+      // deterministic compile deserves a deterministic cost number, and the
+      // medium was already holding it (Hβ.perf.cost-ratchet-reads-the-image).
       match diag_scope_of() {
-        ScopeAll => eprint_string("image: {int_to_str(image_bytes())} image-classified byte(s)\n"),
+        ScopeAll => {
+          eprint_string("image: {int_to_str(image_bytes())} image-classified byte(s)\n")
+          eprint_string("heap: {int_to_str(heap_mark())} byte(s) at the judgment's high-water line\n")
+        },
         _ => (),
       }
       if prints_equal(prints, prints2) {

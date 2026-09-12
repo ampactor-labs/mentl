@@ -154,7 +154,14 @@ type QueryResult
   | QREffects(EffRow)
   | QROwnership([TParam])
   | QRWhy(Reason)
-  | QRRefs([Span])
+  // The refs sites as (module, span) PAIRS — the same shape the census and
+  // decls facets already answer in. This facet was the last holdout carrying
+  // a BARE span, and a bare span is not an address: `at 3090:3` names a line
+  // in no file, so reading it costs a grep to find out whose line it is (paid
+  // twice in one session). Worse, the dedup compared bare spans, so two refs
+  // at one line:col in DIFFERENT modules were one entry by construction.
+  // The handle knows its module; the collector was discarding it.
+  | QRRefs([(String, Span)])
   | QRVerifyDebt([(Int, Span, Predicate, Reason)])
   | QRHandlerProvider(Option(String))
   // IFC projection — the FlowLabel the type already proves
@@ -264,7 +271,9 @@ handler query_default {
     // wrote each use into the program weave). refs-of is the projection of
     // the inbound use-edges: scan the weave for NExpr(VarRef(name)) and
     // collect each node's span — read live, never an "AST index required"
-    // surrender. This IS rename: the [Span] is exactly the edit set.
+    // surrender. This IS rename: the (module, span) sites are exactly the
+    // edit set, and a rename needs the module half — an edit set that names
+    // lines without naming files edits nothing.
     resume(QRRefs(refs_of_name(name))),
     QDecls => resume(QRDecls(map(decl_site_of, decl_handles()))),
     QVerifyDebt => {
@@ -416,14 +425,14 @@ fn walk_chain(handle, depth) with Memory + Alloc + GraphRead = if depth > 50 || 
 // the scan-era answer order and its first-seen span dedup.
 fn refs_of_name(name) with GraphRead + !Mutate + Alloc + Memory = {
   let hs = graph_refs_at(name)
-  collect_ref_spans(hs, len(hs) - 1, make_list(0))
+  collect_ref_sites(hs, len(hs) - 1, make_list(0))
 }
 
-fn collect_ref_spans(ref hs, i, acc) with GraphRead + Memory + Alloc + !Mutate = if i < 0 {
+fn collect_ref_sites(ref hs, i, acc) with GraphRead + Memory + Alloc + !Mutate = if i < 0 {
   acc
 } else {
   // A zero span is a synthetic mint (a pre-registration ghost),
-  // not a source site — the located answer skips it. A span already
+  // not a source site — the located answer skips it. A site already
   // collected is the SAME source site re-minted by a later judgment
   // generation (the converged rounds re-parse; one reference
   // rendered four times before this dedup) — the reference's
@@ -432,16 +441,21 @@ fn collect_ref_spans(ref hs, i, acc) with GraphRead + Memory + Alloc + !Mutate =
   // parse site, never the union-find root's reason — the chased read
   // greened only because VarRef roots happened to retain Located
   // reasons, an accident-invariant this swap retires.
+  //
+  // A SOURCE LOCATION IS (MODULE, SPAN), NOT A SPAN. The handle carries
+  // its module — graph_module_of is the same read decl_site_of makes for
+  // the decls column — and this collector was dropping it, which made the
+  // dedup below compare two different files' line 42 as one site. The
+  // identity the comment above claims is only an identity once the module
+  // is in it.
   let sp = span_of_node_raw(hs[i])
-  if sp == span_zero() || span_in(acc, sp, 0) {
-    collect_ref_spans(hs, i - 1, acc)
+  let m = module_name_of_handle(graph_module_of(hs[i]))
+  if sp == span_zero() || site_in(acc, m, sp, 0) {
+    collect_ref_sites(hs, i - 1, acc)
   } else {
-    collect_ref_spans(hs, i - 1, push(acc, sp))
+    collect_ref_sites(hs, i - 1, push(acc, (m, sp)))
   }
 }
-
-fn span_in(ref acc, ref sp, i) with Memory + Alloc =
-  if i >= len(acc) { false } else { if acc[i] == sp { true } else { span_in(acc, sp, i + 1) } }
 
 // ─── The import edges, read for what they actually carry ────────────
 //

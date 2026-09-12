@@ -305,7 +305,17 @@ fn vocabulary_call_candidate(name, row, allowed_row) with GraphRead + GraphWrite
 // nothing).
 fn candidate_rank(name, decl_reason, hole_span) with GraphRead + !Mutate + Alloc + Memory = {
   let decl_near = scope_distance_decay(hole_span, caret_span_from_reason(decl_reason))
-  let use_near = fold(0.0, (acc, s) => acc + scope_distance_decay(hole_span, s), refs_of_name(name))
+  // The sites carry their module now, and destructuring them SURFACES a
+  // defect this fold has always had: scope_distance_decay compares two line
+  // coordinates, so a use in ANOTHER file scored as though it sat that many
+  // lines from the hole — a ref at line 12 of any module read as maximally
+  // near. Behaviour is preserved here rather than quietly re-ranked, because
+  // the honest fix needs the HOLE's module and a span is not an address
+  // (Hβ.synth.proximity-compares-across-modules; it closes with the same
+  // positions-are-handles work the Why chain waits on).
+  let use_near = fold(0.0, (acc, s) => match s {
+    (_, sp) => acc + scope_distance_decay(hole_span, sp),
+  }, refs_of_name(name))
   0.5 + decl_near + use_near
 }
 

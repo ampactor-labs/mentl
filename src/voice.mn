@@ -927,7 +927,12 @@ fn compose_propose_situation(target_handle, target_reason, prior_turn) with Memo
 fn query_result_to_answer(result) with Memory + Alloc = match result {
   QRType(ty, reason) => AnsType(ty, reason),
   QRWhy(reason) => AnsReason(reason),
-  QRRefs(spans) => AnsRefs(spans, Inferred("refs-of: {int_to_str(len(spans))} reference(s)")),
+  // refs-of carries (module, span) sites now, so it drops its module half at
+  // exactly the boundary the census and decls arms below drop theirs, and for
+  // the same reason: AnsRefs is the caret's carrier and the caret already
+  // knows its file. The TERMINAL is where the module was needed and where it
+  // now survives (pipeline.mn's site line).
+  QRRefs(sites) => AnsRefs(map(census_site_span, sites), Inferred("refs-of: {int_to_str(len(sites))} reference(s)")),
   QRVerifyDebt(debt) => AnsDebt(debt, Inferred("verify-debt: {int_to_str(len(debt))} obligation(s)")),
   QRCensus(label, sites) => // The census result is a forensic LIST the graph proved — the same
   // shape refs-of carries, so it rides AnsRefs (the §7 registry-trap

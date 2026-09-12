@@ -1125,16 +1125,6 @@ fn audit_report_lines(fn_name: String, row_str: String, severable, unlocks, more
 }
 
 // Query rendering — delegates to query.mn for Question parsing.
-// Ref lines speak the developer's coordinates directly — spans are local
-// from birth, so the seam projection this read through is gone with the
-// weave. The FILE is the remaining half: a span list cannot name one, and
-// giving it one means carrying handles rather than coordinates
-// (Hβ.why.reason-span-is-a-weave-coordinate, the same work one layer over).
-fn render_ref_spans(ref spans) with GraphRead + Memory + Alloc =
-  spans |> map(ref_span_line) |> str_concat_all
-
-fn ref_span_line(ref s) with Memory + Alloc = "\n  at {show_span(s)}"
-
 // A census site speaks the developer's FILE and line, and both halves come
 // from the graph: the span is the node's own coordinate, the module is the
 // column's. This is what span_render_local produced by scanning every
@@ -1246,12 +1236,14 @@ fn render_query_result(result) = match result {
   QREffects(row) => "→ {show_effrow(row)}",
   QROwnership(params) => "→ {int_to_str(len(params))} params",
   QRWhy(reason) => show_reason(reason),
-  QRRefs(spans) => // The refs facet renders WHAT the graph computed, not just how much:
+  QRRefs(sites) => // The refs facet renders WHAT the graph computed, not just how much:
   // one located line per inbound use-edge (the seam the propose-facet fix
   // convicted once already — the graph computed it, the terminal threw it
   // away). Every "who calls X" grep this replaces was a re-derivation of
-  // edges the weave holds.
-  "→ {int_to_str(len(spans))} reference(s){render_ref_spans(spans)}",
+  // edges the weave holds — and the answer is only a replacement once it
+  // names the FILE, which is why it renders through the census's own site
+  // line rather than a second renderer that knew one half of an address.
+  "→ {int_to_str(len(sites))} reference(s){render_census_sites(sites)}",
   QRVerifyDebt(obligations) => // The debt renders WHAT is owed, not just how much (the refs facet's
   // own lesson): each obligation located with its predicate, so the
   // discharge work has an instrument instead of a count.

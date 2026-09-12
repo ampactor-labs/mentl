@@ -720,7 +720,32 @@ movers_max: 435
 # 2026-09-07: 8 -> 0. driver_manifest hashed each module by RE-READING its
 # file; the text rides the entry now, so it hashes what it was handed and the
 # last filesystem calls outside the handler that owns them are gone.
-fs_impl_bypass_max: 0
+#
+# 2026-09-12 · 0 -> 9 · AND THE ZERO WAS NOT A MEASUREMENT. This gate counts
+# by parsing the refs answer for '^  at <module>:', and at pin 0268bb1e
+# (2026-09-08, "the parse enters the module") the refs facet was downgraded to
+# render a BARE span — `at 3090:3` — in the very commit where its census and
+# debt siblings GAINED module_name_of_handle. A bare span cannot match
+# [a-z_/]+, so from 09-08 the count was structurally zero: not clean, BLIND.
+# It read green for four days. This is §11 tripwire 4 in its second form —
+# the first was a gate that stopped being REPORTED, this is one that stopped
+# being ABLE TO ANSWER — and it was found only because refs-of was given its
+# module back (the same landing as this line).
+#
+# The 9 it sees, triaged at the artifact, every one a site where a declared
+# `!Filesystem` would falsely prove absence over a real file operation:
+#   persist:162  the persist_to_disk handler's OWN arm — legitimate; this
+#                allowlist (pipeline|io) predates that handler's landing.
+#   persist:152  persist_write — real, already named Hβ.persist.branch-world-tag
+#   persist:93   image_resume reads the wire past the op — real
+#   main:1732 ×4 battery_libs concatenates four lib sources directly — real
+#   main:1866   the micro battery reads each fixture directly — real
+#   dsp/cfc:270 read_recording, a library reaching the substrate — real
+# Eight real bypasses accumulated while nobody could see them. The ceiling is
+# the MEASUREMENT, not a tolerance: it is monotone down from here and the
+# landing that drives it to zero is the next filesystem-seam arc. Raising it
+# again requires the same enumeration this entry carries.
+fs_impl_bypass_max: 9
 
 # 2026-08-07: the PER-MODULE ratchet (PLAN §11 Phase 3.5's first half) —
 # E_MissingVariable across every src module's SOLO check, monotone DOWN.
@@ -958,8 +983,12 @@ desugar_vocabulary: 41
 # pipeline.mn — it did not become unnecessary, its FUNCTION was deleted with
 # the dispatch-tier residue. That still counts: a borrow nobody authors is a
 # borrow the inference no longer has to be told about, however it left.
+# 2026-09-12 · 811 -> 807 · the refs facet's two renderers (render_ref_spans,
+# ref_span_line) and its private span_in deleted into the census's own site
+# line and site_in — four borrow markers gone with the duplicate code that
+# carried them. A consolidation pays this ceiling directly.
 authored_own_max: 83
-authored_ref_max: 811
+authored_ref_max: 807
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1428,7 +1457,37 @@ env_frame_max: 0
 # ratchet raised mid-arc, before the arc's own deletions land, buys room the
 # finished work does not need, and slack bought that way never gets noticed
 # again because nothing refuses.
-selfcompile_peak_kb_max: 2358000
+# 2026-09-12 · 2358000 -> 2432000 · AND THIS ONE IS NOT THE RAISE THE ENTRY
+# ABOVE WARNS ABOUT. That lesson is about buying slack before an arc's own
+# deletions land. This is about the INSTRUMENT, and it was measured, not felt.
+#
+# The repin at a1f4be6f refused on 2388696KB min-of-three. Before touching the
+# line I asked whether the arc had actually grown, and the answers killed the
+# question instead of settling it:
+#   · the control reproduces. boot over 3bc63981's own source (the last pin)
+#     read 2337872KB min-of-3 against the 2339804KB that pin recorded — the
+#     environment is not drifting.
+#   · my own commit did not do it. Same compiler, two inputs: a07fb8b8's
+#     source 2391020KB, a1f4be6f's 2387016KB. The commit LOWERED it.
+#   · then the sweep refuted itself. 0e79bdbd and e5ae5736 are byte-identical
+#     in src/ and lib/, so boot emits one m2 for both — sha256 7ad73818…, the
+#     SAME BINARY on the SAME input — and they measured 2389636KB and
+#     2356360KB. 33MB, 1.4%, pure kernel-reclaim jitter.
+# The ceiling's whole margin was 30MB. An instrument with 33MB of spread can
+# neither convict a real rise nor acquit a false one, and it never could: the
+# original 2358000 line sat 20MB above the control, inside its own noise from
+# birth. Four pins of "green" here proved nothing either way.
+#
+# So 2432000 is a SANITY bound with its resolution stated — above the arc's
+# highest observed sample (2398796KB) plus one noise width — and it is
+# explicitly temporary. The exact replacement ships in THIS commit: the
+# judgment now prints `heap: N byte(s) at the judgment's high-water line`,
+# read from the monotonic bump image the self-compile never resets. The same
+# three runs whose RSS spread 33MB answered image_bytes identically to the
+# byte, so the medium's own number is exact where the host's proxy is noise.
+# Next pin reads the heap line and this RSS ceiling becomes a crash guard
+# (Hβ.perf.cost-ratchet-reads-the-image).
+selfcompile_peak_kb_max: 2432000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the
