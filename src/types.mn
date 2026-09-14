@@ -3217,13 +3217,22 @@ effect Filesystem {
 // line: a single 5-splice interpolation mis-rendered the LAST splice when
 // an earlier splice's evaluation allocated (the shared-scratch clobber
 // class, §9); a splice list of pre-built values has nothing to clobber.
-fn diag_line(diag) with GraphRead + Memory + Alloc + !Mutate + Intern = {
+// THE ADDRESS IS (MODULE, SPAN) — the same law the census site line and the
+// refs facet answer to. `at 4479:38` names a line in NO FILE, and `src` does
+// not rescue it: src is the PHASE (`infer`, `parser`), not the module, so a
+// diagnostic about main.mn reads `parser: … at 148:32` and the reader greps to
+// find out whose line 148 that was. The module was already carried — report
+// reads it live and hands it to every arm, whose own comment says the module
+// "rides along unread" — so this was a rendered fact one parameter from being
+// an address. Measured 2026-09-14 by a representation probe whose ~135 type
+// errors named lines in fifteen different files and no file at all.
+fn diag_line(diag, dmod) with GraphRead + Memory + Alloc + !Mutate + Intern = {
   let src = diag_source(diag)
   let code = diag_code(diag)
   let kindw = diag_kind(diag)
   let msg = diag_message(diag)
   let sp = show_span(diag_span(diag))
-  "{src}: {code} {kindw}: {msg} at {sp}\n"
+  "{src}: {code} {kindw}: {msg} at {dmod}:{sp}\n"
 }
 
 // report — the ONE reporting boundary. The render runs HERE, in the
@@ -3242,7 +3251,13 @@ fn diag_line(diag) with GraphRead + Memory + Alloc + !Mutate + Intern = {
 // report is about, and that is one cell read, carried here rather than
 // re-derived by scanning ranges for one that contains the line.
 fn report(diag) with Diagnostic + GraphRead + Memory + Alloc + Intern =
-  diag_report(diag, diag_line(diag), current_module_name())
+  diag_report_at(diag, current_module_name())
+
+// The module is read ONCE and used twice — in the rendered address and as the
+// register's own scope key — so the render and the carried module cannot drift
+// apart into two answers about one report.
+fn diag_report_at(diag, dmod) with Diagnostic + GraphRead + Memory + Alloc + Intern =
+  diag_report(diag, diag_line(diag, dmod), dmod)
 
 // The name of the module in force — the file a report fired inside. One cell
 // read plus one body read, where the range map's containment scan used to be.
