@@ -1243,6 +1243,33 @@ rule attributed to it must be read out of the paper first.
 
 ### Named-residue index (entry-born peers not yet in a §5.R band — one home each)
 
+`Hβ.perf.cost-ratchet-reads-the-image` — THE BOARD POLICES COST WITH A HOST
+PROXY, and the proxy's noise is wider than the margin it guards. Measured
+2026-09-12: two byte-identical m2 binaries (sha256 7ad73818…, boot's emit of
+0e79bdbd and e5ae5736, which differ in no src/ or lib/ byte) over one
+identical input answered 2389636KB and 2356360KB of peak RSS — 33MB of
+kernel-reclaim jitter against `selfcompile_peak_kb_max`'s 30MB margin. The
+line had sat inside its own noise since it was set; four pins of green there
+were neither a pass nor a fail. The deterministic quantity was always
+available and the medium already holds it: the self-compile never calls
+heap_reset (that lives in the micro/session drivers), so the bump image is
+monotone and its mark at the judgment's close IS the high-water — and it is
+EXACT, the same three runs whose RSS spread 33MB answering `image_bytes`
+identically to the byte. The judgment now prints `heap: N byte(s) at the
+judgment's high-water line` (2006311616 at this pin). CLOSE CONDITION: march
+ratchets THAT number, the RSS ceiling demotes to a crash guard, and the
+per-decl arena's win (§11 4.3) becomes a fall in a figure that cannot jitter.
+
+`Hβ.synth.proximity-compares-across-modules` — `candidate_rank`'s use-nearness
+fold feeds `scope_distance_decay(hole_span, sp)` a span from ANY module, so a
+reference at line 12 of an unrelated file scores as maximally near the hole and
+lifts vocabulary that is nowhere near the caret. Surfaced 2026-09-12 by
+destructuring the (module, span) sites the refs facet now carries; behaviour was
+preserved rather than quietly re-ranked, because the honest fix needs the HOLE's
+module and a span is not an address. CLOSE CONDITION: rides positions-are-handles
+with the Why chain's own coordinate work — the gradient's first real ranking
+signal should not be a coincidence of line numbering.
+
 `Hβ.infer.declared-row-vacuous-against-a-free-body-row` — **STAMPED
 2026-08-18, and the fork it was banked as is ANSWERED.** Morgan's
 criterion (SOTA-surpassing, most empowering to Mentl's own parts, most
@@ -1811,6 +1838,24 @@ types.mn, so a checked user program has no access to the vocabulary —
 `fn f() with !Filesystem` calling `fs_create` answers `E_MissingVariable`,
 not a refusal. The property lives on the wheel's own link and the verify
 tier reads it there, through the medium's `refs of` answer.
+▶ AND THAT LAST SENTENCE IS WHY THE COUNT WENT BLIND (measured 2026-09-12,
+pin 96a96663). The tier reads `refs of` by parsing `^  at <module>:`, and
+at pin 0268bb1e — the commit where the census and debt facets GAINED
+`module_name_of_handle` — the refs facet was downgraded to render a BARE
+span. `at 3090:3` cannot match `[a-z_/]+`, so from 09-08 the tier counted
+zero by CONSTRUCTION and `fs_impl_bypass_max: 0` recorded a blindness, not
+a victory. Four days green. Restoring the module to refs (same pin) makes
+it answer 9, and they are this entry's own named remainder, now located:
+`persist:162` (the `persist_to_disk` arm — LEGITIMATE; the tier's
+`(pipeline|io)` allowlist predates that handler), `persist:152`
+(`persist_write`, already `Hβ.persist.branch-world-tag`), `persist:93`
+(`image_resume` reading the wire past the op), `main:1732` ×4
+(`battery_libs`, exactly as predicted above), `main:1866` (the battery's
+per-fixture read), `dsp/cfc:270` (`read_recording`). The ceiling is the
+measurement now, monotone down, and driving it to zero is unchanged as
+this entry's close condition. THE LESSON THAT OUTLIVES THE COUNT: a gate
+whose input is another projection's RENDER inherits that render's
+regressions silently — the tier should read sites, not parse a line.
 
 `Hβ.types.type-expressions-are-not-graph-content` — A TYPE IN AN
 ANNOTATION HAS NO HANDLE AND NO SPAN, so the reference it makes cannot be

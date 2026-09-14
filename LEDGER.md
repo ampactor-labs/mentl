@@ -35,6 +35,49 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-12 · pin 96a966630934056e · THE INSTRUMENTS ON TRIAL. TRANSITION
+  m3 == m4, census 0, micros 149/0, movers 435, frontier 378/1, crown green.
+  ▶ Four ratchets refused the repin and all four were right: a comment
+  backticking `perform_target_name` after its rename, a drain lambda with no
+  decl home, a mover bought by splitting `infer_fn` around a wrapper, and a
+  sugar-vocabulary contract whose baseline move was missed three pins earlier.
+  The mover one is worth the entry: `refs of infer_fn_judge` answered ONE
+  reference, at 3090, ABOVE its decl at 3099 — and the wrapper was never
+  needed, because `infer_fn`'s body was already a BlockExpr whose final
+  expression is the big match, so the drain appends as the block's own tail.
+  One decl, one home, 435 again. Naming it honestly: dissolving a wrapper to
+  avoid a forward reference is not an ultimate form, it is declining to feed a
+  condemned pass. Rung 3 is what stops decl order being load-bearing.
+  ▶ THEN THE INSTRUMENTS FAILED, twice, and that is the landing.
+  (1) refs-of answered `at 3090:3` — a line in no file. The collector held the
+  handle and read only the span out of it, while its census sibling three lines
+  below already rendered `module:line:col`. The deleted comment had priced the
+  fix as "carrying handles rather than coordinates, the same work one layer
+  over"; it was three lines. Giving refs its module back RESURRECTED verify's
+  effect-seam gate, which counts by parsing `^  at <module>:` and had therefore
+  read a structural zero — not clean, BLIND — since pin 0268bb1e, the very
+  commit where census and debt GAINED the module and refs lost it. Four days
+  green. It sees 9: one legitimate (the persist handler's own arm), eight real
+  sites where a declared `!Filesystem` would falsely prove absence. §11's
+  tripwire 4 in a second form — the first was a gate that stopped being
+  REPORTED, this is one that stopped being ABLE TO ANSWER.
+  (2) The cost ratchet refused on 2388696KB against 2358000KB, so the arc was
+  bisected instead of the ceiling raised. The control reproduced (2337872KB vs
+  the 2339804KB its pin recorded); the suspect commit LOWERED the peak; and
+  then the sweep refuted itself — 0e79bdbd and e5ae5736 are byte-identical in
+  src/ and lib/, so boot emits ONE m2 for both (sha256 7ad73818…), and the same
+  binary on the same input read 2389636KB and 2356360KB. 33MB of kernel jitter
+  against a 30MB margin; the line had sat inside its own noise since birth.
+  The replacement shipped in the same commit rather than as a promise: the
+  judgment prints its own high-water line from the monotonic bump image it
+  never resets (2006311616 bytes at this pin), and the three runs whose RSS
+  spread 33MB answered image_bytes identically to the byte.
+  `Hβ.perf.cost-ratchet-reads-the-image` carries the swap.
+  ▶ One defect surfaced rather than hidden: destructuring the new sites in
+  `candidate_rank` showed the proximity fold comparing line numbers ACROSS
+  files. Behaviour preserved, `Hβ.synth.proximity-compares-across-modules`
+  banked — it closes with positions-are-handles, the same root as the rest.
+
 - 2026-09-10 · pin f862677e5959751a · ONE WALK. TRANSITION m3 == m4, census 0,
   micros 149/0, eta 3 → 0, movers 435.
   ▶ FOUR NODES WERE ONE OPERATION. `LPerform`, `LDirectPerform`, `LEvPerform`
