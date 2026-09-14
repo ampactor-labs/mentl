@@ -1869,26 +1869,104 @@ landed in 5–10; this phase is the finish that makes it FELT.
   oracle — at a width set by the `judge_window` constant, where the
   language's own `~> Schedule` is read live at every other fanout. The
   crown jewel is the one place Mentl does not solve Mentl.
-  **THE ULTIMATE FORM:** propagate, then enumerate (narrow the hole's
-  type/row/ownership/refinement first; enumerate from the PRUNED space,
-  cheapest constraint first); construct only inhabitable terms
-  (type-directed from the vocabulary's own types — ill-typed candidates are
-  never BUILT, not built-and-rejected); FORK AT MEANINGS, MERGE AT FORMS
-  (form-variants saturate in the e-graph, monotone and needing no
-  isolation, so the fan's width IS the number of genuine ambiguities —
-  exactly what the tie-break must resolve); judge the context ONCE and let
-  branches read it live, candidates as deltas; LEMMA SHARING, JOIN-ONLY (a
-  proven fact independent of the branch's candidate is monotone and may
-  flow to siblings — branch-local bindings never do, the 2026-08-07 race
-  and the severance that hid it; this is portfolio solving with clause
-  sharing over the shared image, and it is where threads actually pay);
-  the fan written as `(c) >< (c) ~> Schedule` so width is a handler
-  decision and `judge_window` dissolves; multi-shot making the SEARCH
-  durable (a branch is a continuation record, memcpy-serializable, so an
-  exploration suspends and resumes across runs and machines — the axis no
-  peer has); prove-then-extract FORCED; and never a list — unique survivor
-  fills, multiple meanings ask the ONE minimal-entropy question, because a
-  list is the medium admitting it does not know.
+  **AND THE RECEIVED SHAPE IS NOT MENTL'S PRIVATE FAILURE — IT IS THE
+  FIELD'S** (surveyed 2026-09-14). Five areas, five different communities,
+  one limit: *the artifacts of reasoning are discarded between phases.*
+  Type-directed synthesis (Smyth's live bidirectional evaluation, Scrybe's
+  top-down deduction over it) propagates a SPEC — examples — through the
+  sketch, never the judgment. LLM-based synthesis generates, then verifies,
+  then repairs on the counterexample: verification is a post-hoc FILTER and
+  every candidate is judged WHOLE. E-graph extraction is NP-hard over an
+  arbitrary DAG cost, answered with ILP or heuristics, and side effects are
+  handled by *relaxing the CFG skeleton* — an approximation bolted on
+  because the IR has no effect algebra. Effect systems reached rows ≡
+  capabilities (POPL 2026, Tang et al., arXiv 2507.10301 — §4③'s own
+  citation) and NOBODY carries negation into that unification.
+  Disambiguation clusters candidates and asks a multiple-choice query scored
+  by information gain ("Choose, Don't Label", 2026), whose authors name
+  clustering quality and scaling in candidate count as its limits. Every one
+  of those five is the Carried-Truth Law read at the search layer, which is
+  why the fix here is the same fix as everywhere else in this document and
+  not a cleverer search.
+
+  **THE ULTIMATE FORM — THE ORACLE IS INFERENCE WITH A TERM-SORTED
+  UNKNOWN.** A `??` is a cell whose binding is undetermined; so is every
+  unresolved type variable, and Mentl ALREADY owns that machine — union-find
+  over the graph, monotone narrowing, trail-backed checkpoints. The oracle
+  today re-implements it badly. Make the hole a TERM CELL IN THE SAME
+  UNION-FIND and four things stop being aspirations:
+  - **Propagation precedes enumeration.** Type, row, ownership grade,
+    refinement and consumer shape narrow the cell BEFORE anything is built,
+    so ill-typed candidates are never CONSTRUCTED rather than
+    constructed-and-rejected, and enumeration runs only on a maximally
+    narrowed cell with more than one inhabitant, cheapest constraint first.
+    Smyth/Scrybe do this for examples; doing it for the whole eight-aspect
+    judgment (§2's arms, all of them) is the surpass.
+  - **Fork only at genuine disjunction.** A trail forks when a constraint is
+    a real disjunction; form-variants never fork, being congruence classes —
+    which IS the e-graph. "Fork at meanings, merge at forms" stops being
+    policy and becomes mechanism, and the fan's width is literally the
+    number of disjunctions in the constraint system.
+  - **Shared context is free, not engineered.** Branches are trail SEGMENTS
+    over ONE graph, so a fact proven above the fork is simply visible: there
+    is no sharing protocol because there is nothing to share. LEMMA SHARING
+    is then promotion below the checkpoint — a fact independent of the
+    branch's choice is monotone and may flow to siblings, branch-local
+    bindings never (the 2026-08-07 race and the severance that hid it) —
+    sound for exactly the reason clause-sharing is sound in portfolio SAT,
+    and it is where threads actually pay.
+  - **Stated precisely, because the slogan would be false:** this is
+    CLP-style propagation over the graph with DISJUNCTION AS A LAYER ABOVE
+    the cell substrate. Plain unification is not confluent for terms. The
+    shared thing is the substrate — cells, trail, narrowing — not the
+    solving discipline.
+
+  **THE QUESTION IS COMPUTED, NOT CLUSTERED.** Two survivors differ at a
+  FIRST DIVERGENCE IN THE TRAIL — the earliest cell where they bound
+  differently. That cell is not a cluster label; it is the exact proposition
+  the developer never stated, and because every binding carries a Reason it
+  renders in their own vocabulary ("is `xs` consumed here, or borrowed?"),
+  never as "which of these two programs?". This dissolves both limits the
+  multiple-choice line names against itself: there is no clustering to be
+  bad at, and no scaling in candidate count, because the question is
+  computed from two trails rather than from enumerating a set. **The
+  tradeoff is named rather than smuggled:** first-divergence is the EARLIEST
+  distinguishing proposition, not the maximum-information-gain one. The
+  claim is that earliest is the better question for a medium you live in —
+  it asks about what the developer was just writing, where max-gain asks
+  about whatever behavioural consequence happens to split the space — and
+  that is a design decision, recorded as one, falsifiable by a felt walk.
+
+  **EXTRACTION GETS SMALLER, NOT CLEVERER.** Extraction is NP-hard over an
+  ARBITRARY cost function on an AND-OR DAG; Mentl's cost is not arbitrary.
+  It is the repr gradient, and repr is a TYPE-LEVEL fact (§5.U), so wherever
+  the type pins the width the extraction choice is FORCED and the search
+  collapses onto the genuinely-free positions. That is not a better ILP — it
+  is a smaller problem. Rewrite-legality under effects is likewise a row
+  query where the field needs a CFG relaxation to approximate one, the
+  effect row playing both halves exactly as §5 already says. Prove-then-
+  extract stays FORCED; the order is the soundness argument, not a
+  preference.
+
+  **THE TWO AXES NO PEER CAN RETROFIT.** `!E` in the modal setting — the
+  unification is discharged, the NEGATION half is open, and absence under
+  polymorphism, through higher-order code, across a persisted continuation's
+  `TCont` world is unclaimed territory (§4③'s open burden is also the moat).
+  And a DURABLE SEARCH: a branch is a continuation record in a
+  memcpy-serializable image, and `persist = memcpy` is BUILT (§7), so an
+  exploration suspends and resumes across runs and machines while every peer
+  synthesizer is a within-process search. The fan is written
+  `(c) >< (c) ~> Schedule` so width is a handler decision and `judge_window`
+  dissolves; and the answer is never a LIST — unique survivor fills, and
+  multiple meanings ask the one question, because a list is the medium
+  admitting it does not know.
+
+  **THIS REORDERS NOTHING, WHICH IS THE POINT.** Term cells need live cells
+  (rung 3); the first-divergence question needs provenance as EDGES, a diff
+  being cheap over shared edges and absurd over duplicated trees; and both
+  need D0, because a cell is only a cell once positions are handles. §11's
+  "one law, four faces" said this before the survey; the survey's
+  contribution is that the four faces are where everyone else is stuck too.
 - **11.2 · `mentl edit` / `mentl space` polished.** The keystroke→parse→format→render loop
   continuous (`Hβ.felt.mentl-edit-runtime`), reactivity typed and
   demand-driven, the verification dashboard (live V_Pending / transitive
