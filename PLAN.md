@@ -1307,7 +1307,31 @@ form the whole time. The arcs, in order:
   — was the tell that the work was already done one pass over. Delete the
   duplicate; do not complete it.
 
-  **THE PRIZE IS NOW MEASURED, and it never had been.** The pass boundary
+  **THE CUT WAS BUILT AND THE MARCH REFUSED IT (2026-09-15).** The single pass
+  was constructed whole and `mentl check` passed; the march then measured
+  **8.09s / 954MB against 12.52s / 2,338MB — −59% peak RSS, −35% wall** — and
+  refused: `census 13 > 0`, then `BROKEN: m3 ≠ m4 (m4 exit=134)`. The 13 are
+  one class, named by the medium: *"a row gate for 'X' is still unresolved at
+  the pass tail"*, every X a row-polymorphic HOF (`filter_list`/`filter_loop`,
+  `map_list`/`map_loop`, `min_by_key`, `env_resolve_where`, …).
+  `assert_row_gates_drained()` already drains at the tail, so these are
+  UNRESOLVABLE rather than un-drained: `group_mono_views` keeps ROW handles
+  quantified and freshening per use, so nothing binds the gate's handle.
+  **The second pass therefore had a load-bearing role beyond planned
+  numbering — it judged with every scheme ALREADY PUBLISHED**, which is what
+  discharged those gates. That is the fourth correction to this arc in one
+  day, again from the artifact. The open question is exact: *how does a
+  declared-row gate on a row-polymorphic HOF discharge inside one pass?* —
+  and loosening it is not a guess to make, since a declared row enforced
+  against a free row var is a false absence proof
+  (`Hβ.infer.forward-hof-row-underpublish`'s own class). Source reverted;
+  `RESIDUE.md` carries the full record. **A DEFECT THAT IS LIVE TODAY fell
+  out of it: the trial runs under `~> diag_quiet`, so those 13
+  `E_InternalInvariant` reports are SUPPRESSED on every compile right now —
+  a gate gone quiet, §11 tripwire 4's own class, found only because deleting
+  the second pass removed the muting.**
+
+  **THE PRIZE WAS MEASURED FIRST, and it never had been.** The pass boundary
   reports itself (`passes:` on the ScopeAll channel — `pstart` was already the
   trial's handle frontier, so only the byte mark beside it was missing). From
   a clean march's m3 leg: **the second pass is 1,338,717,968 bytes and 465,664

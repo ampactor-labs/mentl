@@ -1370,7 +1370,63 @@ at an intra-cycle forward use instantiating a fresh copy, the disconnected-vars
 class `group_mono_views` (:1934) exists to prevent — was the tell that the
 work already existed one pass over. Delete the duplicate; do not complete it.
 
-THE PRIZE IS MEASURED — 2026-09-15, and it had never been measured before.
+THE CUT WAS BUILT AND THE MARCH REFUSED IT — 2026-09-15, and the refusal is
+worth more than the build. The single pass was constructed whole
+(`infer_program_once`: one parse, diagnostics shipping, `comment_refs_check`
+moved on, the fresh-ledger bracket dropped, the measuring deleted from
+`stmt_measure_one`, the two-pass driver replaced) and `mentl check` passed
+clean. THE PRIZE IS REAL AND MEASURED ON THE ARTIFACT:
+
+    m3 leg   12.52s / 2,338MB peak   →   8.09s / 954MB peak
+    m2 WAT   415,649 lines           →   406,793 (−8,856)
+    m2 bytes 2,532,613               →   2,484,780 (−47KB)
+
+**−59% peak RSS and −35% wall**, with the WAT shrinking because reachability
+prunes the now-unreachable second-pass machinery out of emit. Then:
+
+    ✗ CENSUS GATE: m3-leg census 13 > 0 — the repin is refused
+    ✗✗ BROKEN: m3 ≠ m4 (m4 exit=134) — genuine non-reproduction
+
+THE 13 ARE ONE CLASS AND THEY NAME THE BLOCKER IN THE MEDIUM'S OWN WORDS:
+`E_InternalInvariant: a row gate for 'X' is still unresolved at the pass tail
+— a chain survived the whole pass`, for `filter_list`/`filter_loop`,
+`map_list`/`map_loop`, `min_by_key`, `env_resolve_where`/`env_bucket_pos_where`,
+`driver_check_module`. Every one is a HIGHER-ORDER fn whose row is polymorphic
+in a function parameter's row. `assert_row_gates_drained()` already performs
+the pass-tail drain (its own comment: re-parked cross-group gates "drain HERE,
+where the whole pass's chains have closed"), so these are not un-drained —
+they are genuinely UNRESOLVABLE in one pass, because `group_mono_views` keeps
+ROW handles QUANTIFIED, freshening per use, so no use ever binds the gate's
+row handle.
+
+**SO THE SECOND PASS HAD A LOAD-BEARING ROLE BEYOND PLANNED NUMBERING, and
+this entry claimed it did not.** It judged with every scheme ALREADY
+PUBLISHED, which is what let a declared-row gate on a polymorphic HOF resolve.
+That is the fourth correction to this arc's design in one day and, like the
+other three, it came from the artifact rather than from reasoning one step
+past the last claim. The open design question is therefore sharp: **how does a
+declared-row gate on a row-polymorphic HOF discharge inside a single pass?**
+Loosening the gate is NOT the answer to guess at — enforcing a declared row
+against a free row var is a false absence proof, the crown-adjacent class
+`Hβ.infer.forward-hof-row-underpublish` already paid for.
+
+AND A DEFECT THAT EXISTS TODAY, INDEPENDENT OF THE CUT: the trial runs under
+`~> diag_quiet`, so **those 13 `E_InternalInvariant` reports are being
+suppressed on every compile right now**. The two-pass wheel has 13 unresolved
+row gates in its first pass and the board cannot see them, because the pass
+that raises them is muted and the pass that ships is the other one. A gate
+that went quiet — the same class as the eleven-entry crown gap (§11 tripwire
+4). Removing `diag_quiet` is what surfaced them; they did not arrive with the
+cut.
+
+ALSO MEASURED, and confirming the reservation thesis from the effect side:
+deleting the pass made `mentl check` refuse with seven `E_EffectMismatch` in
+driver.mn — every one of those declared rows carries `BranchEnv + WasiThreads`
+(the fan machinery a single pass cannot reach) and lacks `RegionTrack` (whose
+in-pass handler was the duplicate of pipeline.mn:127's ambient one). The
+effect row described the deletion before any gate ran.
+
+THE PRIZE WAS MEASURED FIRST — 2026-09-15, and it had never been measured before.
 The arc was being designed against an unpriced target, so the pass boundary
 now reports itself (`passes:` on the ScopeAll channel, beside image/heap;
 `pstart` was already the trial's handle frontier, so only the byte mark beside
