@@ -1193,15 +1193,67 @@ form the whole time. The arcs, in order:
   `Live(h) => instantiate(generalize(h))` still runs `chase_deep` +
   `subst_ty`, its own comment reading *"the clone rides the mapped spine as
   before."* Liveness was tried, measured, and moved neither number.
-  **The real target, and it is reachable:** the final consumes three things
-  from the trial — `rows`, `layers`, `summ` — and only `rows` requires
-  judging (`layers` is `stmt_layers_ast`, an AST fact; `summ` is the trial's
-  one classify, which the code says *"no pass changes them"*). `scc_groups(…)`
-  already sits in that same function and §5.3's per-cycle Mycroft fixpoint
-  (`graph_commit_checkpoint`) landed in August. So the trial is a
-  whole-program pre-registration standing where **per-SCC fixpoint iteration**
-  belongs, and the machinery exists. Design what replaces `rows` — forward
-  references within and across SCCs — then cut. The env-carries-cells form
+  **The real target — and the paragraph that stood here was REFUTED BY THE
+  ARTIFACT on 2026-09-15, in four reads.** It said: *"the final consumes three
+  things from the trial — `rows`, `layers`, `summ` — and only `rows` requires
+  judging … So the trial is a whole-program pre-registration standing where
+  per-SCC fixpoint iteration belongs … Design what replaces `rows` — forward
+  references within and across SCCs — then cut."* **`rows` carries no forward
+  references.** It is `(decl_name, mint_count)` pairs, and the wheel says so at
+  its one writer (`stmt_measure_one`, infer.mn:2075): `let before =
+  graph_next()` · `infer_stmt(node)` · `(stmt_decl_name(node), graph_next() -
+  before)`. **The trial runs a complete whole-program inference and survives
+  only as a per-statement count of graph nodes.** Its two consumers read
+  DISJOINT halves and neither wants the judgment: `round_prints` matches
+  `(name, _)` (infer.mn:1109) and `rows_total`/`rows_bases` match `(_, c)`
+  (infer.mn:2206, :2214) — and the name half is `stmt_decl_name`, a free AST
+  fact. The trial's own comment states the purpose: *"the final's plan
+  prefix-sums it into the deterministic handle bases."*
+
+  **SO THE TRIAL IS A HANDLE-COUNTING ORACLE, and the question it answers is
+  the one to attack: why must the numbering be planned in ADVANCE?** Because
+  `infer_stmt_list_planned` pre-assigns each stmt a dense range `[base, base +
+  count)` with bases as prefix sums in SOURCE order, so handle numbers are
+  invariant to walk order — the byte-equality gate the parallel fan (9.2) must
+  pass. That is a *flattening* of `(arena_id, offset)` into one dense integer
+  space, and the flattening is the sole reason the counts must be known first.
+  §10.1 KEYSTONE 2 already names the unflattened form
+  (`Hβ.native.deterministic-handle-partition`): with the arena identified by
+  the stmt's source index and the offset local to it, stmt *i*'s fifth mint is
+  `(i, 5)` whatever any other stmt does and whatever order they are judged in
+  — **deterministic by construction, needing no advance count at all.**
+
+  **THE CONVERGENCE, and it is why this is hardest-first rather than one
+  chore:** the counting pass (`Hβ.infer.judge-once-per-scc`), the per-decl
+  arena (4.3 / `Hβ.perf.per-decl-arena`), and the deterministic partition
+  (9.2 + 10.1's keystone) are ONE representation change. A handle that is
+  `(arena, offset)` makes the arena real, makes the partition deterministic
+  without planning, and deletes the counting pass — three named peers, one
+  cut. It also deletes the slack machinery the prediction needs:
+  `mint_overflow_quota = 64`, `graph_mint_plan`/`graph_mint_seal`, and the
+  measured *"324 over-measure stmts, every delta 1 or 2"* residue — which is
+  itself the tell, because a count that is *almost* right is a PREDICTION of
+  the final's minting, not a measurement of it. Handle-uniformity survives:
+  a packed `(arena << K) | offset` is still one word, so §5.U's
+  memcpy-serializability is untouched.
+
+  **WHAT IS MEASURED vs WHAT IS NOT, stated so the next session does not
+  inherit a second overclaim.** MEASURED: the four reads above, and that
+  `env_handler` is installed OUTSIDE both passes (the trial's chain ends at
+  `verify_ledger`, infer.mn:1081; the final's at `resume_summaries_ctx`,
+  infer.mn:2147), so **ONE env spans both generations** — `round_prints`
+  reading "the env's latest entries" before and after the final is that
+  sharing, used as the movers instrument. NOT YET VERIFIED, and each is a
+  probe before any cut: (a) whether anything in the final resolves a name only
+  the TRIAL registered — the trial's entries are still there, merely shadowed
+  by the final's re-registration, so deletion removes a shadow something may
+  be reading; (b) whether `classify_fixpoint` is purely syntactic over the AST
+  or needs a judged graph; (c) whether the final re-runs the cycle discipline
+  (`scc_groups`/`group_mono_views`/`group_completion_fold`) or only walks
+  `layers` — if it does not, cyclic decls may depend on the trial in a way
+  none of the above sees. An adversarial refutation of this reframe was
+  dispatched and died on a rate limit before running; (a)–(c) are what it
+  owed. The env-carries-cells form
   (Binding = BStatic | BCell), the quantifier as a caller-run projection and
   instantiation as the correspondence-edge mint remain the banked shape for
   the SCHEME layer, but they are no longer justified by the movers claim;

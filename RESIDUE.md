@@ -1267,29 +1267,63 @@ rather than by more rows. Interim discipline, cheap and available now: when a
 number must appear in prose, delete it and point at the verb instead — the
 deletion is the fix, as it was for the refusal count above.
 
-`Hβ.infer.judge-once-per-scc` — THE TRIAL PASS IS A WHOLE-PROGRAM
-PRE-REGISTRATION STANDING WHERE PER-SCC FIXPOINT ITERATION BELONGS, and it is
-the tower's actual retirement (born 2026-09-15 out of the liveness
-refutation — see `Hβ.infer.schemes-are-edges`, which was carrying this
-dividend it cannot pay). The measurement that makes it tractable rather than
-aspirational: `infer_program_final` consumes exactly three things from the
-trial — `rows`, `layers`, `summ` — and **only `rows` requires judging.**
-`layers` is `stmt_layers_ast(frees_all, name_idx)`, an AST fact computable
-without judgment; `summ` is the trial's ONE classify and the final's own
-comment says *"grades read arm structure — no pass changes them"*. So the
-second judgment exists solely to supply provisional schemes for forward
-references. Meanwhile `scc_groups(frees_all, name_idx)` is computed in that
-same function and already used by `trial_group_walk`, and §5.3's per-cycle
-Mycroft iteration (three rounds on the checkpoint substrate,
-`graph_commit_checkpoint` as speculation's accept half) landed 2026-08-07 —
-i.e. the machinery for "judge a cycle to a fixpoint without a prior
-whole-program pass" is BUILT and is currently used only for unsig'd
-polymorphic recursion. THE DESIGN QUESTION TO ANSWER FIRST (hardest first):
-what replaces `rows` for a forward reference *across* SCC boundaries, given
-the walk is already callee-first by SCC and "a decl is finished when it
-publishes"? If callee-first ordering makes cross-SCC forward refs impossible
-by construction, `rows` has no consumer and the trial deletes outright; if
-not, the residual class is the design. CLOSE CONDITION: one judgment pass,
+`Hβ.infer.judge-once-per-scc` — THE TRIAL PASS IS A HANDLE-COUNTING ORACLE:
+it runs a complete whole-program inference and survives only as a
+per-statement count of graph nodes. Born 2026-09-15 out of the liveness
+refutation (see `Hβ.infer.schemes-are-edges`, which was carrying a dividend
+it cannot pay), and **RE-AIMED THE SAME DAY BY THE ARTIFACT — the first
+version of this entry, written hours earlier, was wrong and the correction is
+the content.** It said: *"only `rows` requires judging … the second judgment
+exists solely to supply provisional schemes for forward references."* `rows`
+carries no forward references. Its one writer is `stmt_measure_one`
+(infer.mn:2075) — `let before = graph_next()` · `infer_stmt(node)` ·
+`(stmt_decl_name(node), graph_next() - before)` — and its two consumers read
+DISJOINT halves, neither wanting the judgment: `round_prints` matches
+`(name, _)` (infer.mn:1109), `rows_total`/`rows_bases` match `(_, c)`
+(infer.mn:2206, :2214). The name half is `stmt_decl_name`, a free AST fact.
+The Carried-Truth Law at maximum literalness: an entire judgment computed,
+discarded except for its SIZE.
+
+WHY THE SIZE IS WANTED, which is the real target: `infer_stmt_list_planned`
+pre-assigns each stmt a dense range `[base, base + count)` with bases as
+prefix sums in SOURCE order, so handle numbering is invariant to walk order —
+the byte-equality gate the parallel fan must pass. That is a FLATTENING of
+`(arena_id, offset)` into one dense integer space, and the flattening is the
+only reason counts must be known in advance. §10.1 KEYSTONE 2
+(`Hβ.native.deterministic-handle-partition`) already names the unflattened
+form: arena = the stmt's source index, offset local to it, so stmt *i*'s
+fifth mint is `(i, 5)` regardless of every other stmt and of judgment order.
+Deterministic by construction, no count needed. Packed as
+`(arena << K) | offset` a handle is still one word, so §5.U's
+memcpy-serializability and handle-uniformity are untouched.
+
+THE CONVERGENCE (why this is hardest-first, not a chore): this peer, 4.3's
+`Hβ.perf.per-decl-arena`, and 9.2/10.1's deterministic partition are ONE
+representation change. `(arena, offset)` makes the arena real, makes the
+partition deterministic without planning, and deletes the counting pass. It
+also deletes the slack the PREDICTION needs — `mint_overflow_quota = 64`,
+`graph_mint_plan`/`graph_mint_seal`, and the measured *"324 over-measure
+stmts, every delta 1 or 2"* residue, which is the tell: a count that is
+almost right is a prediction of the final's minting, not a measurement of it.
+
+MEASURED FURTHER, and it qualifies the above: `env_handler` is installed
+OUTSIDE both passes — the trial's chain ends at `verify_ledger`
+(infer.mn:1081), the final's at `resume_summaries_ctx` (infer.mn:2147) — so
+ONE env spans both generations and every scheme the trial published is still
+present, merely SHADOWED by the final's re-registration (`env_lookup` scans
+backward; latest wins). `round_prints` reading "the env's latest entries"
+before and after the final IS that sharing, used as the movers instrument.
+So the trial's judgment is not passed forward as a value, but it is not
+absent either — deleting the pass removes a shadow.
+
+THE THREE PROBES OWED BEFORE ANY CUT (an adversarial refutation was
+dispatched 2026-09-15 and died on a rate limit before running; this is its
+unpaid brief): (a) does anything in the final resolve a name only the TRIAL
+registered — i.e. is the shadow ever read? (b) is `classify_fixpoint` purely
+syntactic over the AST, or does it need a judged graph? (c) does the final
+re-run the cycle discipline (`scc_groups` / `group_mono_views` /
+`group_completion_fold`), or only walk `layers` — and if not, how do cyclic
+decls judge correctly without the trial? CLOSE CONDITION: one judgment pass,
 `movers` retired as a key rather than driven to zero, and the trial/final
 vocabulary gone from infer.mn. Everything the movers ratchet, the
 order-dependence at 4.2, and the between-generation node identity cost is
