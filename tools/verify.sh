@@ -316,16 +316,28 @@ if C=$(wt_m2_ensure); then
   # The MOVERS ratchet — the same stderr, the condemned pass's vital sign:
   # the count of schemes the final judges DIFFERENTLY than the trial
   # published (overrides, never verification verdicts — PLAN's resolved
-  # design D5). Monotone DOWN by law: rung 3 ends at 0 with the second pass
-  # DELETED, and a RISE is the tower regrowing (Anchor 2's condemned
-  # clause). Direction itself, ratcheted — the board could not see a circle
-  # before this line.
+  # design D5). A RISE is the tower regrowing (Anchor 2's condemned clause).
+  #
+  # THE CAUSALITY HERE WAS BACKWARDS AND IS CORRECTED 2026-09-15. This block
+  # read "rung 3 ends at 0 with the second pass DELETED" and the line below
+  # said "(0 deletes it)" — driving the count to zero as the way to retire
+  # the pass. The artifact says the reverse, measured 2026-09-01 at
+  # src/infer.mn:1054: `Live(handle)` publishes shipped, every reader was
+  # made total over them, and the count did not move (470 → 470), because
+  # "a trial cell and a final cell are different nodes in different parses,
+  # and no amount of liveness inside one pass can make two of them agree.
+  # So the count cannot reach zero while both passes exist … the pass is
+  # what has to go." Zero is therefore a CONSEQUENCE of deleting the second
+  # pass, never a precondition for it, and a landing that promises to drive
+  # movers down by improving the tower is improving condemned machinery.
+  # What this ratchet is FOR, then: it is the tower's regrowth alarm and its
+  # size gauge — not a road to zero.
   movers=$(grep -oE 'judgment: [0-9]+ scheme' "$C/m2.err" | grep -oE '[0-9]+' | head -1); movers=${movers:-0}
   mmax=$(grep -E '^movers_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· movers: $movers trial→final override(s) — the condemned pass's vital sign (0 deletes it)"
+  say "· movers: $movers trial→final override(s) — the condemned pass's size gauge (deleting the pass is what reaches 0)"
   if [[ -n "$mmax" && "$movers" -gt "$mmax" ]]; then
     say "✗ movers RATCHET: rose $mmax -> $movers — the tower is regrowing. No improvement"
-    say "  to condemned machinery is legal (Anchor 2); land the rung-3 form or revert."
+    say "  to condemned machinery is legal (Anchor 2); delete the trial pass or revert."
     fail=1
   elif [[ -n "$mmax" && "$movers" -lt "$mmax" ]]; then
     say "  ↓ movers FELL $mmax -> $movers — lower movers_max in $BASELINE to hold it."

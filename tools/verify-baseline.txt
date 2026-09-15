@@ -671,8 +671,19 @@ comment_refs_max: 0
 # remove (`Hβ.infer.live-cells-need-one-settled-signature`).
 # 2026-09-07: 476 -> 435 at the module-blind-parse landing. Not a movers fix;
 # the per-module parse changes what the trial and final each see, and the
-# class fell out. The condemned pass still owns the rest (0 deletes it).
-movers_max: 435
+# class fell out. The condemned pass still owns the rest.
+# 2026-09-15 · 435 -> 433 · at the diagnostic-address landing (d8d86cf5), which
+# was not about movers at all — diag_line took a module param and
+# diag_report_at was born, and two schemes stopped diverging. The FELL notice
+# fired on that run and was MISSED, because the run's output was read through a
+# `grep ✗` filter: the same defect this session has been documenting in the
+# gates, committed by the reader instead of the gate. Read the whole verdict.
+# AND IT CORROBORATES THE REPRICING ABOVE: movers moves on incidental
+# decl-shape changes and did not move at all when liveness shipped (470 → 470,
+# infer.mn:1054). It is a size gauge for the condemned pass, not a road to
+# zero — deleting the pass is what reaches 0
+# (`Hβ.infer.judge-once-per-scc`).
+movers_max: 433
 
 # The effect seam: filesystem impl calls outside the handler that owns them.
 # MEASURED 24 before this landing and 13 after (both read from the artifact,

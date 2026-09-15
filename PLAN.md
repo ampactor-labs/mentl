@@ -1129,8 +1129,15 @@ to be shareable at all; and the runner's shared image plus its own spawn
 count is what makes N real cursors observable. Fix them separately and each
 is a chore; fix them as one law and the oracle falls out. **Hardest first,
 and it is not the tractable-looking piece: judge the context ONCE and let
-branches read it live — which is rung 3's live cells, the same problem
-wearing the search layer's clothes.**
+branches read it live — the same problem the SCHEMES face wears one layer
+down.** CORRECTED 2026-09-15: this sentence used to end "which is rung 3's
+live cells", and liveness is NOT the lever — `Live(handle)` shipped, every
+reader was made total over it, and the movers count did not move (470 → 470,
+infer.mn:1054). "Judge ONCE" means exactly what it says at both altitudes:
+one judgment of the context, not a live variant of a frozen one. In the
+compiler that is deleting the trial pass; in the fan it is the shared trail
+segment. The two faces are the same because both are *one judgment read many
+times*, never *a second judgment reconciled with the first*.
 
 **THE STANDING CURSOR (Morgan 2026-08-26 — the Space spine; supersedes the
 2026-08-11/12 selectors, whose corrected DEP chain it absorbs).** The
@@ -1156,13 +1163,34 @@ form the whole time. The arcs, in order:
   never moves, so every extent delta was heap_ptr − heap_ptr from the day
   family 1 landed; the arms read $heap_mark_impl now, and the frontier's
   arena census leg was born RED against the prior boot and went green here;
-  (ii) rung 3 WHOLE (`Hβ.infer.schemes-are-edges`, movers → 0) — **the next
-  landing, executed from the stage contract RESIDUE banks**: the first
-  attempt (a Live variant in Scheme, a projection boundary, a wrapper ADT)
-  was refuted by the medium three ways and reverted whole; the terminal
-  form is the env carrying cells (Binding = BStatic | BCell), the quantifier
-  a projection the caller runs, instantiation the correspondence-edge mint,
-  the trial/final collapse following; (iii) the enumeration-reader
+  (ii) **DELETE THE TRIAL PASS — and this entry used to say "rung 3 WHOLE
+  (`Hβ.infer.schemes-are-edges`, movers → 0), the next landing". THAT IS
+  MEASURED FALSE and the measurement is in the wheel's own source**
+  (`src/infer.mn:1054`, 2026-09-01): *"both publishes became `Live(handle)`
+  and every reader was made total over the posture, and the count did not
+  move — 470 before, 470 after, the same four flips … The divergence is
+  BETWEEN GENERATIONS: a trial cell and a final cell are different nodes in
+  different parses, and no amount of liveness inside one pass can make two of
+  them agree. So the count cannot reach zero while both passes exist, and the
+  retirement condition below is not a gate the walk can pass — the pass is
+  what has to go."* `Live(h)` is live at infer.mn:1011, :2048, :2620 (13
+  sites) and did not even remove the COPY: `instantiate`'s
+  `Live(h) => instantiate(generalize(h))` still runs `chase_deep` +
+  `subst_ty`, its own comment reading *"the clone rides the mapped spine as
+  before."* Liveness was tried, measured, and moved neither number.
+  **The real target, and it is reachable:** the final consumes three things
+  from the trial — `rows`, `layers`, `summ` — and only `rows` requires
+  judging (`layers` is `stmt_layers_ast`, an AST fact; `summ` is the trial's
+  one classify, which the code says *"no pass changes them"*). `scc_groups(…)`
+  already sits in that same function and §5.3's per-cycle Mycroft fixpoint
+  (`graph_commit_checkpoint`) landed in August. So the trial is a
+  whole-program pre-registration standing where **per-SCC fixpoint iteration**
+  belongs, and the machinery exists. Design what replaces `rows` — forward
+  references within and across SCCs — then cut. The env-carries-cells form
+  (Binding = BStatic | BCell), the quantifier as a caller-run projection and
+  instantiation as the correspondence-edge mint remain the banked shape for
+  the SCHEME layer, but they are no longer justified by the movers claim;
+  (iii) the enumeration-reader
   relocation with cons-state re-homed; (iv) `Hβ.lower.lowering-is-a-column`,
   whose STEP (ii) OPENED 2026-09-07 — the emittable-fn enumeration got its
   first reader (each symbol's param and result types, read through the
@@ -1961,12 +1989,20 @@ landed in 5–10; this phase is the finish that makes it FELT.
   multiple meanings ask the one question, because a list is the medium
   admitting it does not know.
 
-  **THIS REORDERS NOTHING, WHICH IS THE POINT.** Term cells need live cells
-  (rung 3); the first-divergence question needs provenance as EDGES, a diff
-  being cheap over shared edges and absurd over duplicated trees; and both
-  need D0, because a cell is only a cell once positions are handles. §11's
-  "one law, four faces" said this before the survey; the survey's
-  contribution is that the four faces are where everyone else is stuck too.
+  **WHAT IT DEPENDS ON — corrected 2026-09-15, because the first draft of
+  this paragraph inherited a refuted chain.** It said "term cells need live
+  cells (rung 3) … and both need D0". Both halves are wrong at the artifact.
+  Liveness is not the lever (`Live(handle)` shipped and moved nothing,
+  infer.mn:1054), so what a term cell needs is ONE judgment to read — the
+  trial pass deleted, not a live variant minted. And D0 is not the gate it
+  was taken for: its 690 code sites would delete `subst_ty`/`chase_deep` only
+  alongside an instantiate-as-correspondence-edge design that does not yet
+  exist, so it is a PARKED precondition with a named missing half, not the
+  next step. What survives intact: the first-divergence question needs
+  provenance as EDGES — a diff is cheap over shared edges and absurd over
+  duplicated trees — and the shared trail segment needs one judged context.
+  §11's "one law, four faces" still holds; the correction is which face is
+  load-bearing, and it is the PASS, not the freeze.
 - **11.2 · `mentl edit` / `mentl space` polished.** The keystroke→parse→format→render loop
   continuous (`Hβ.felt.mentl-edit-runtime`), reactivity typed and
   demand-driven, the verification dashboard (live V_Pending / transitive

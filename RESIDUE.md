@@ -1243,6 +1243,34 @@ rule attributed to it must be read out of the paper first.
 
 ### Named-residue index (entry-born peers not yet in a §5.R band — one home each)
 
+`Hβ.infer.judge-once-per-scc` — THE TRIAL PASS IS A WHOLE-PROGRAM
+PRE-REGISTRATION STANDING WHERE PER-SCC FIXPOINT ITERATION BELONGS, and it is
+the tower's actual retirement (born 2026-09-15 out of the liveness
+refutation — see `Hβ.infer.schemes-are-edges`, which was carrying this
+dividend it cannot pay). The measurement that makes it tractable rather than
+aspirational: `infer_program_final` consumes exactly three things from the
+trial — `rows`, `layers`, `summ` — and **only `rows` requires judging.**
+`layers` is `stmt_layers_ast(frees_all, name_idx)`, an AST fact computable
+without judgment; `summ` is the trial's ONE classify and the final's own
+comment says *"grades read arm structure — no pass changes them"*. So the
+second judgment exists solely to supply provisional schemes for forward
+references. Meanwhile `scc_groups(frees_all, name_idx)` is computed in that
+same function and already used by `trial_group_walk`, and §5.3's per-cycle
+Mycroft iteration (three rounds on the checkpoint substrate,
+`graph_commit_checkpoint` as speculation's accept half) landed 2026-08-07 —
+i.e. the machinery for "judge a cycle to a fixpoint without a prior
+whole-program pass" is BUILT and is currently used only for unsig'd
+polymorphic recursion. THE DESIGN QUESTION TO ANSWER FIRST (hardest first):
+what replaces `rows` for a forward reference *across* SCC boundaries, given
+the walk is already callee-first by SCC and "a decl is finished when it
+publishes"? If callee-first ordering makes cross-SCC forward refs impossible
+by construction, `rows` has no consumer and the trial deletes outright; if
+not, the residual class is the design. CLOSE CONDITION: one judgment pass,
+`movers` retired as a key rather than driven to zero, and the trial/final
+vocabulary gone from infer.mn. Everything the movers ratchet, the
+order-dependence at 4.2, and the between-generation node identity cost is
+paid here.
+
 `Hβ.perf.cost-ratchet-reads-the-image` — THE BOARD POLICES COST WITH A HOST
 PROXY, and the proxy's noise is wider than the margin it guards. Measured
 2026-09-12: two byte-identical m2 binaries (sha256 7ad73818…, boot's emit of
@@ -6876,9 +6904,33 @@ kin with the row proof the file's comments once claimed. stereo_chain
 stays honestly charged regardless (its result tuple is a real per-call
 construction).
 
-`Hβ.infer.schemes-are-edges` — THE MENTL WAY for the judgment (named
-2026-07-30, Morgan's question "is there a better way — a more Mentl
-way?" answered at the root): the entire convergence tower — trial /
+`Hβ.infer.schemes-are-edges` — **REPRICED 2026-09-15: LIVENESS WAS TRIED
+AND MOVED NOTHING.** This entry's dividend was stated as the movers count
+reaching zero and the tower collapsing with it. `src/infer.mn:1054` records
+the measurement, 2026-09-01: *"both publishes became `Live(handle)` and every
+reader was made total over the posture, and the count did not move — 470
+before, 470 after, the same four flips … a trial cell and a final cell are
+different nodes in different parses, and no amount of liveness inside one
+pass can make two of them agree. So the count cannot reach zero while both
+passes exist … the pass is what has to go."* `Live(h)` is published at
+infer.mn:1011, :2048, :2620; it did not remove the COPY either, since
+`instantiate`'s `Live(h) => instantiate(generalize(h))` still runs
+`chase_deep` + `subst_ty` (*"the clone rides the mapped spine as before"*).
+So: the snapshot-vs-edge reading below is still a true description of the
+SHAPE, and the form it names is still the right form for the scheme layer —
+but it is not what retires the tower, and no landing may claim movers as its
+payoff. **The tower's retirement is the trial pass DELETED**, and the route
+is per-SCC fixpoint iteration: the final consumes `rows`, `layers`, `summ`
+from the trial and only `rows` needs judging (`layers` is `stmt_layers_ast`;
+`summ` is the trial's one classify, *"no pass changes them"*), while
+`scc_groups(…)` sits in that same function and §5.3's Mycroft fixpoint
+(`graph_commit_checkpoint`) already landed. `Hβ.infer.judge-once-per-scc` is
+the work; this entry is its scheme-layer companion, not its precondition.
+D0 (types-are-nodes) is likewise PARKED rather than gating: 690 code sites,
+and it deletes `subst_ty`/`chase_deep` only alongside an
+instantiate-as-correspondence-edge design that does not exist yet.
+
+The original reading, still accurate as description: the entire tower — trial /
 rounds / cone / fingerprints / the bound / the freeze law / the
 declared-row pins / the attractor dances — is ONE compensation for
 published schemes being SNAPSHOTS read by name while everything else
