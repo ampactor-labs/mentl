@@ -1338,20 +1338,39 @@ a handle-counting oracle" (right about `rows`, wrong about *solely*). A
 dependency invisible in every signature is what a Carried-Truth audit exists
 to find, and it is why two readings of the same code missed it.
 
-THE DELETION DECOMPOSES, with step 1's hazard named because it looks free:
-(1) MAKE THE FINAL A WHOLE JUDGE — its own `pre_register_fn_sig` AND its own
-cycle discipline. The registration alone REGRESSES: the trial re-freezes
-skeletons to MONO views for unsig'd cycle members (`group_mono_views`, :1934),
-so a quantified skeleton at an intra-cycle forward use instantiates a fresh
-copy — the disconnected-vars class that comment calls "the crawl's root, one
-stale link per round". So step 1 is the DISCIPLINE, not the registration.
-(2) HANDLE = `(arena, offset)` — the count plan dissolves and the trial
-deletes whole. After step 1 the two passes are the SAME pass, which is the
-honest diagnosis: the final is not a second judgment, it is a HALF judgment
-leaning on the first, and that is why `movers` exists and cannot reach zero.
+PROBE (b) ALSO RAN AND CONFIRMS: `classify_fixpoint` is purely syntactic —
+the whole classifier region (infer.mn:9264–9560) has ZERO `env_lookup`,
+`graph_*`, `lookup_ty` or `chase_deep` calls, and `summary_of` resolves
+against the classifier's own smap via `summaries_frozen`. `summ` needs no
+judged graph.
 
-STILL UNVERIFIED: (b) is `classify_fixpoint` purely syntactic over the AST, or
-does it need a judged graph? CLOSE CONDITION: one judgment pass,
+THE THREE PROBES TOGETHER INVERT THE FIX — DELETE THE FINAL, NOT THE TRIAL.
+Diffed: the TRIAL pre-registers fn sigs, runs the SCC cycle discipline, walks
+unplanned, and installs FRESH analysis ledgers it discards. The FINAL does no
+pre-registration, no cycle discipline, walks LAYER-ordered with PLANNED handle
+bases, adds `comment_refs_check`, and ships its ledgers. **The trial is the
+COMPLETE judge; the final's only structural addition is planned handle
+numbering.** The second pass exists to redo the judgment with
+order-independent handle identity and nothing else — so it is a CONSEQUENCE of
+the flattened handle, and `(arena, offset)` removes its reason to exist. Keep
+the trial, move `comment_refs_check` onto it, drop the fresh-ledger bracket so
+its obligations ship. ONE change; three compensations die with it: the
+counting (`rows`), the movers instrument (a divergence between two passes that
+should not both exist), and the fresh-ledger bracket — whose own comment says
+it exists because "without them the trial's undischarged debt accrued into the
+SHARED verify ledger and the final judgment reported doubled V_Pending", i.e.
+a compensation for running twice. The two-parse seam goes the same way, as its
+own comment predicted: "when rung 3 deletes the second pass this seam simply
+loses a caller."
+
+SUPERSEDES the two-step decomposition recorded here hours earlier ("make the
+final a WHOLE judge, then (arena, offset)"). Step 1 was building the trial a
+second time inside the final, and its own named hazard — a quantified skeleton
+at an intra-cycle forward use instantiating a fresh copy, the disconnected-vars
+class `group_mono_views` (:1934) exists to prevent — was the tell that the
+work already existed one pass over. Delete the duplicate; do not complete it.
+
+CLOSE CONDITION: one judgment pass,
 `movers` retired as a key rather than driven to zero, and the trial/final
 vocabulary gone from infer.mn. Everything the movers ratchet, the
 order-dependence at 4.2, and the between-generation node identity cost is

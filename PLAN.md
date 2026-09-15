@@ -1269,27 +1269,43 @@ form the whole time. The arcs, in order:
   invisible in every signature is exactly what a Carried-Truth audit is for,
   and it is why two readings of the same code missed it.
 
-  **THE DELETION THEREFORE DECOMPOSES, and the hazard in step 1 is named
-  because it would otherwise look free:**
-  1. **Make the final a WHOLE judge** — its own `pre_register_fn_sig` and its
-     own cycle discipline. Naively this is one added call, and naively it
-     REGRESSES: the trial's skeletons are re-frozen to MONO views for unsig'd
-     cycle members (`group_mono_views`, :1934), so a quantified skeleton at an
-     intra-cycle forward use instantiates a fresh copy — the disconnected-vars
-     class the cycle-discipline comment names as *"the crawl's root, one stale
-     link per round."* So step 1 is the discipline, not the registration.
-  2. **Handle = `(arena, offset)`** — the count plan dissolves, and the trial
-     deletes whole.
-  After step 1 the two passes are the SAME pass, which is the honest statement
-  of what is wrong today: **the final is not a second judgment, it is a HALF
-  judgment leaning on the first** — no pre-registration, no cycle discipline,
-  living off the trial's leftovers. That is why `movers` exists and why it
-  cannot reach zero.
+  **PROBE (b) ALSO RAN: `classify_fixpoint` IS purely syntactic** — the whole
+  classifier region (infer.mn:9264–9560) contains ZERO `env_lookup`,
+  `graph_*`, `lookup_ty` or `chase_deep` calls; `summary_of` resolves against
+  the classifier's own smap through `summaries_frozen`. `summ` needs no judged
+  graph, as its comment claimed. All three probes are answered.
 
-  STILL UNVERIFIED: (b) whether `classify_fixpoint` is purely syntactic over
-  the AST or needs a judged graph. An adversarial refutation was dispatched
-  2026-09-15 and died on a rate limit before running; (a) and (c) were then
-  run inline and are recorded above. The env-carries-cells form
+  **AND TOGETHER THEY INVERT THE FIX. The two passes, diffed:** the TRIAL
+  pre-registers fn sigs, runs the SCC cycle discipline, walks unplanned, and
+  installs FRESH analysis ledgers that are DISCARDED. The FINAL does none of
+  the pre-registration, none of the cycle discipline, walks LAYER-ordered with
+  PLANNED handle bases, adds `comment_refs_check(stmts, pstart, parse_end)`,
+  and ships its ledgers. So **the trial is the COMPLETE judge and the final is
+  an incomplete one whose only structural addition is planned handle
+  numbering.** The second pass exists to redo the judgment with
+  order-independent handle identity — nothing else.
+
+  **THEREFORE THE SECOND PASS IS A CONSEQUENCE OF THE FLATTENED HANDLE, and
+  unflattening it deletes the FINAL, not the trial.** With `(arena, offset)`
+  there is no numbering to plan, so there is nothing to redo: keep the trial —
+  which already judges completely — move `comment_refs_check` onto it, and drop
+  the fresh-ledger bracket so its obligations ship. ONE change, and three
+  compensations die with it: the counting (`rows`), the movers instrument
+  (which measures a divergence between two passes that should not both exist),
+  and the fresh-ledger bracket itself — whose own comment says it exists
+  because *"without them the trial's undischarged debt accrued into the SHARED
+  verify ledger and the final judgment reported doubled V_Pending"*, i.e. it is
+  a compensation for running twice. The two-parse seam goes the same way; its
+  own comment already predicted this (*"when rung 3 deletes the second pass
+  this seam simply loses a caller"*).
+
+  This SUPERSEDES the two-step decomposition written here hours earlier
+  ("1. make the final a WHOLE judge … 2. handle = (arena, offset)"). Step 1
+  was building the trial a second time inside the final, and its named hazard
+  — that a quantified skeleton at an intra-cycle forward use instantiates a
+  fresh copy, the disconnected-vars class `group_mono_views` exists to prevent
+  — was the tell that the work was already done one pass over. Delete the
+  duplicate; do not complete it. The env-carries-cells form
   (Binding = BStatic | BCell), the quantifier as a caller-run projection and
   instantiation as the correspondence-edge mint remain the banked shape for
   the SCHEME layer, but they are no longer justified by the movers claim;
