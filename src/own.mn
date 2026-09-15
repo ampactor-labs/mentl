@@ -85,7 +85,7 @@ handler affine_ledger with used = [], used_sites = [], branches = [], fn_saved =
     if set_contains(used, name) {
       let first = find_first_span(used_sites, name)
       if borrow_depth > 0 {
-        report(TUseAfterMove(read_after_move_msg(name, first), span))
+        report(EUseAfterMove(read_after_move_msg(name, first), span))
       } else {
         report(EOwnershipViolation(consume_twice_msg(name, first), span))
       }
@@ -214,8 +214,7 @@ fn unconsumed_msg(name: String) with Memory + Alloc =
 // Flat-array union across all branch deltas. Every delta is already
 // a sorted set (maintained by set_insert during consume), so folding
 // set_union across them preserves the invariant.
-fn union_all_deltas(ref deltas) with !Mutate =
-  fold([], set_union, deltas)
+fn union_all_deltas(ref deltas) with !Mutate = fold([], set_union, deltas)
 
 // Pairwise collision check across branch deltas. For each pair of
 // branch deltas (i < j), any name in their intersection was
@@ -596,7 +595,8 @@ fn usage_of(ref name: String, ref node, mode) with Memory + Alloc + EnvRead + Gr
     NExpr(PipeExpr(_, l, r)) => // The datum's true slot mode is the completed call's own param; the
     // enclosing mode threads both sides (the ledger's borrow bracket at
     // the completed call is the runtime truth, and a divergence here
-    // surfaces as a T_UseAfterMove hit the zero ratchet arbitrates).
+    // surfaces as an E_UseAfterMove refusal, which is now the arbiter —
+    // the zero ratchet that used to arbitrate it retired into the arming).
     pair_seq(usage_of(name, l, mode), usage_of(name, r, mode)),
     NExpr(FanoutExpr(branches)) => // Parallel branches ALL run — ⊗, exactly the ledger's BParallel
     // collision semantics (consumed in two branches is consumed twice).

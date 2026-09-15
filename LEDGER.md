@@ -35,6 +35,67 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-15 · pin 216967799af60910 · A COUNTER HELD AT ZERO IS A PROXY FOR A
+  PROOF. CLEAN m2 == m3, census 0, micros 149/0, movers 433, frontier 378/1,
+  crown green, `use_after_move_max` RETIRED.
+  ▶ The plan that opened this landing was wrong and the correction is the
+  entry. It said: teach twelve census ratchets to read structure instead of
+  rendered text. But **fourteen of the twenty-six baseline keys sit at ZERO**,
+  and a counter held at zero is not a measurement — it is a proxy for a proof
+  nobody minted. Improving eight of those twelve would have been Anchor 2
+  violated inside a plan whose whole thesis is Anchor 2. The medium already
+  owns the better mechanism and states its licence in its own prose:
+  `diag_refuses`, whose entries read *"ARMED at birth … born at ZERO on every
+  program measured, which is the point: it does not police a mistake, it holds
+  an invariant."* §11 8.4 names the endpoint — universal executable refusal. So
+  the arc is: arm the zero classes, retire their keys, one marched landing each.
+  ▶ `T_UseAfterMove` goes first not because it is easiest but because its
+  arming condition was already **stated in the artifact and met**: the fixture's
+  own comment said "narration until the wheel's own census reaches 0 (the arming
+  law)", `use_after_move_max` has read 0 since Phase 4.1, and RESIDUE already
+  banked "the ARMING (diag_refuses at held zero, post-falsification)". It is now
+  `EUseAfterMove` / `SError` / a `diag_refuses` `True` arm, and the refusal was
+  proven through the armed wheel: exit 1, zero WAT bytes, `'xs' read after move
+  (moved at 18:20-18:22) — the value this name owned has been consumed`.
+  ▶ **Two assumptions died on the way, and both were mine.** (1) I read the
+  `T_`/`E_` prefix as a severity encoding; it is not — `ERedundantBraces`,
+  `EBlockNeedsBraces` and `ELambdaFence` are `E_`-prefixed *and* `SWarning`.
+  What `T_` actually marks is membership in SYNTAX's gradient-narration table,
+  so the rename is a catalog decision and the class moves between SYNTAX tables
+  by hand (the tax `Hβ.diag.catalog-as-projection` already names). (2) I assumed
+  `diag_refuses` was the whole arming; it is not — pipeline's printing arm reads
+  `if diag_severity(diag) == SError { … if diag_refuses(diag) … }`, so a
+  `SWarning` never reaches `diag_refuses` at all. Arming is severity AND refusal.
+  ▶ **The key RETIRES, and that is the measurement that proves the move.** An
+  armed class has nothing to count: a wheel carrying one cannot compile. A
+  landing that arms a class and keeps its ratchet has kept the proxy beside the
+  proof and changed nothing.
+  ▶ **The sequel was not the arming's doing.** The frontier fell 378/1 → 375/4
+  and three of the four reds trace to `d8d86cf5` — this session's own fix giving
+  the diagnostic its module half. Three gates were welded to the old render
+  (`at 2:`, `at 10:1`, `at 3:1`) and snapped when the render improved: the
+  RENDER-PARSE class this session spent the day naming, committed by me, after
+  verify, without running the frontier. Each was tightened to assert the
+  STRONGER string — `at main:2:`, `mn-own-unconsumed:10:1`, `at <stdin>:3:1` —
+  so a diagnostic pointing at the right line of the *wrong file* now fails where
+  before it passed. Loosening would have been the easy read and the wrong one.
+  ▶ And the standing red was re-read, because its message had gone stale against
+  its own subject — the same class one size down. `why coordinates` was born RED
+  answering `at 2729:1-2729:15`, a weave offset; it now answers `at 8:1-8:15`,
+  **the developer's own line**. The line half is FIXED. What is missing is the
+  file half, and it cannot be fixed in the renderer: `show_reason` is handed a
+  Reason, and `Located(span, inner)` carries a coordinate with **no handle**, so
+  there is nothing to read a module from. The diagnostic path escapes this only
+  because its CALLER threads the module in (`diag_report_at`); `why` cannot
+  borrow that trick, because a Why chain walks across modules and stamping the
+  verb's own file onto a coordinate from elsewhere is a fabrication, not a fix.
+  The honest form is the POSITIONS face of §11's four-faces law — Located
+  carries the handle, the span read live — measured at **157 construction
+  sites**, a representation change and its own arc
+  (`Hβ.why.reason-span-is-a-weave-coordinate`, which types.mn's own seam-render
+  comment already names three lines above the renderer). The leg stays RED on
+  purpose and its message now says what it measures.
+
 - 2026-09-12 · pin 96a966630934056e · THE INSTRUMENTS ON TRIAL. TRANSITION
   m3 == m4, census 0, micros 149/0, movers 435, frontier 378/1, crown green.
   ▶ Four ratchets refused the repin and all four were right: a comment

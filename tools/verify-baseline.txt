@@ -780,6 +780,24 @@ fs_impl_bypass_max: 9
 # ZERO IS THE FLOOR AND THE CONTRACT: every module's solo check resolves
 # every name through its own declared imports. Per §11 3.5 this gates
 # the drift-catalog retirement.
+# INTERROGATED 2026-09-15 and KEPT — the measurement is recorded so the
+# next session does not re-derive it. The day E_UseAfterMove was armed and
+# use_after_move_max retired, this key was the obvious next candidate: it
+# reads ZERO, and the thing it counts (E_MissingVariable) is ALREADY in
+# diag_refuses, which looks exactly like a counter standing beside a proof.
+# It is not. E_MissingVariable refuses the program the wheel actually
+# LINKS — one concatenated blob in which every name resolves whether or
+# not its module declared the dep. This sweep checks each module ALONE,
+# which is a judgment the wheel never performs on itself, so the zero here
+# is not a held invariant but a genuine measurement of something otherwise
+# unobserved. That is §11 tripwire (3) — the board is blind to what the
+# wheel never does — and lib/** joining the sweep in 2026-08-16 found 20
+# unresolved names the very first run, which is the proof that retiring it
+# would delete a real channel rather than a duplicate. Its honest
+# retirement is the per-module env overlay (§7: "CLOSED at entry, OPEN
+# per-module … the overlay is the stamped second half",
+# Hβ.driver.per-module-env-overlay), after which the link itself judges
+# per module and the sweep has nothing left to discover.
 solo_violations_max: 0
 
 # 2026-08-07: the ANONYMITY ratchet (PLAN §11 Phase 2.5, second half) —
@@ -851,10 +869,19 @@ eta_max: 0
 # pre-commit hook and a fresh clone has none, so nothing in that environment
 # ever asked. Now the pin asks.
 #
-# ONE standing red: `why coordinates are the developer's`, which wants
-# Located to carry a handle rather than a bare span so show_reason can name a
-# module (Arc C of the plan, Hβ.reason.located-carries-a-handle). It goes to
-# zero there, and this ceiling with it.
+# ONE standing red: `why coordinates carry their file`, which wants Located to
+# carry a handle rather than a bare span so show_reason can name a module. Its
+# peer is `Hβ.why.reason-span-is-a-weave-coordinate` — and this line named it
+# `Hβ.reason.located-carries-a-handle` until 2026-09-15, a name that appears
+# NOWHERE in RESIDUE.md. A gap not in RESIDUE does not exist, so a ceiling
+# justified by an unresolvable peer name is the comment-ref class in the very
+# file that ratchets comment_refs_max to zero. One home, and the name matches it.
+# The LINE half of that red is already fixed (it answers the developer's line 8,
+# not a weave offset); the FILE half is 157 Located construction sites — a
+# representation change, its own arc. This ceiling goes to zero there.
+# READ BY TWO GATES, which is the point: march.sh:129 (refusing a pin above it)
+# and frontier-gate.sh's green stamp (which the pre-commit perimeter demands).
+# Both read THIS key; neither hard-codes a number.
 frontier_red_max: 1
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
@@ -918,15 +945,24 @@ record_pattern_open_max: 0
 effectful_lambda_max: 376
 
 # 2026-08-07: the USE-AFTER-MOVE ratchet (PLAN §11 Phase 4.1,
-# Hβ.own.use-after-move) — T_UseAfterMove narrations on the wheel's own
-# compile. BORN AT ZERO (measured at the landing on both march legs: the
-# ledger's borrow leg now consults the used-set, and the wheel never
-# reads a moved own). Zero is the floor and the arming licence: the
-# class arms (joins diag_refuses) only while the wheel's census holds 0,
-# after the E_OwnershipViolation-precedent falsification pass. A rise is
-# the wheel reading a moved own — a real use-after-free the moment §5.O
-# layer 3's arena makes Consume reclaim.
-use_after_move_max: 0
+# Hβ.own.use-after-move) — RETIRED 2026-09-15, BY BEING SATISFIED. This key
+# counted T_UseAfterMove narrations on the wheel's own compile and held them
+# at ZERO, and its own text named what the zero was FOR: "Zero is the floor
+# and the arming licence: the class arms (joins diag_refuses) only while the
+# wheel's census holds 0, after the E_OwnershipViolation-precedent
+# falsification pass." Both conditions were met — zero at the Phase 4.1
+# landing (pin 8ba768c810c4) and every board since, the falsifying fixture
+# green — so the key was a counter waiting to authorise a refusal, long after
+# it had. E_UseAfterMove is armed; a wheel carrying one cannot compile, so
+# there is nothing to count and a ratchet here would be a weaker second copy
+# of the refusal. THE GENERAL LAW, and the reason this entry is worth its
+# length: a ratchet held at ZERO is a proxy for a proof, and the medium holds
+# proofs directly (diag_refuses' own licence — "born at ZERO on every program
+# measured, which is the point: it does not police a mistake, it holds an
+# invariant"). Fourteen of the twenty-six keys in this file sat at zero on
+# 2026-09-15; each one that is a real DiagKind retires this way, and each one
+# that is only a census shape retires when its shape is minted as a class
+# (§11 8.4's universal executable refusal). Do not re-add this key.
 
 # 2026-08-17: THE SCAFFOLD RATCHET (CLAUDE.md ⟳). tools/loop-prompt.md is
 # imperative prose telling an agent how to behave — the one thing PLAN §0

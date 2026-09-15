@@ -4675,6 +4675,32 @@ than a reparsed text prefix). So this peer is DEP-gated on that arc, and the
 gate stays RED in the meantime rather than being closed by threading seams
 through show_reason — which would add a fourth O(nodes) scan per rendered
 Reason node and call the re-derivation fixed.
+RE-MEASURED 2026-09-15 (pin 21696779): **THE LINE HALF IS FIXED AND THIS
+ENTRY'S OWN MEASUREMENT HAD ROTTED.** The `at 2729:1-2729:15` above is
+history — `mentl why tests/frontier/mn-where-badges.mn gain` now answers
+`at 8:1-8:15`, the developer's own line, because the weave went away and
+every module starts at line 1 (types.mn's seam-render comment records
+module_seams / seams_walk / span_render_local / seam_of_line DELETED, and
+notes the range scan had become actively WRONG as well as slow — it would
+resolve any line to the first module). So the O(nodes) scan this entry was
+refusing to add a fourth caller to no longer exists, and the DEP-gate on
+Arc D is discharged for the line half.
+WHAT IS ACTUALLY LEFT IS THE FILE HALF, and the root sentence above stands
+verbatim: a span discards its module at birth. The renderer cannot recover
+it — `show_reason` is handed a Reason, and `Located(span, inner)` carries a
+coordinate with no handle, so there is nothing to read a module from. The
+DIAGNOSTIC path escapes only because its CALLER threads the module in
+(`diag_report_at(diag, dmod)`, the address landing at pin d8d86cf5); `why`
+cannot borrow that, because a Why chain walks ACROSS modules and stamping
+the verb's own file onto a coordinate from elsewhere is a fabrication, not
+a fix — the silent-wrong class wearing a green gate. The honest form is the
+POSITIONS face of §11's four-faces law: Located carries the handle and the
+span is read live. **Measured cost: 157 `Located(` construction sites**
+(121 in infer.mn alone) — a representation change, therefore its own arc,
+not a rider. The frontier leg stays RED on purpose and is the single entry
+in `frontier_red_max`; its failure message was corrected the same day to
+say what it now measures, because a gate whose message outlives its subject
+is this same law one size down.
 THE SECOND FAILURE MODE, independent of the render: weave coordinates ROT
 UNDER EDITING. An edit above line 8 moves every span below it, while handles
 stay put — so the resident session (§11 Arc E) inherits this the moment a
@@ -6081,10 +6107,23 @@ reads first: consuming second use stays armed E_OwnershipViolation;
 borrow-read of a moved name is T_UseAfterMove (narration; wheel census
 ZERO at birth, use_after_move_max: 0 ratchet). Gate:
 tests/frontier/mn-use-after-move.mn via run_narration, seen RED.
-RESIDUAL — the ARMING: joins diag_refuses at held wheel-zero after an
-E_OwnershipViolation-precedent falsification pass (the unresolved-
-callee borrow default reports true reads-after-move beside the miss —
-verify no false channel on resolved programs first).
+THE ARMING — DISCHARGED 2026-09-15 (pin 21696779, LEDGER entry of the
+same name). The residual read: "joins diag_refuses at held wheel-zero
+after an E_OwnershipViolation-precedent falsification pass." Both
+conditions were met — the census held ZERO every board since the
+landing, and the fixture is the falsifying witness the licence
+requires. It is `EUseAfterMove` now: `SError`, a `diag_refuses` `True`
+arm, the frontier leg re-banked `run_narration` → `run_refusal`, and
+the class moved from SYNTAX's gradient-narration table to the hard-
+error one. **`use_after_move_max` RETIRED** — an armed class has
+nothing to count, because a wheel carrying one cannot compile, and a
+landing that arms while keeping the key has kept the proxy beside the
+proof. Two measured corrections to the plan that armed it: the `T_`/`E_`
+prefix is NOT a severity encoding (`ERedundantBraces` is `E_` and
+`SWarning`; what `T_` marks is the SYNTAX table), and `diag_refuses` is
+not the whole arming — pipeline's printing arm gates on
+`diag_severity == SError` FIRST, so a warning never reaches the refusal
+question at all. Arming is severity AND refusal.
 
 `Hβ.infer.grade-is-join-and-mode` — BUILT 2026-08-07 (pin 4115ed285d39,
 against the stamp; the LEDGER entry of the same name carries the arc).

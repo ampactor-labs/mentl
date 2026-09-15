@@ -1328,11 +1328,24 @@ calculus). Full mechanics: `LEDGER.md`.
   affine ledger's consume arm checked `borrow_depth` before the used-set, so
   every borrow surface read moved owns silently. `set_contains(used, name)`
   now reads first — consuming second use stays armed `E_OwnershipViolation`;
-  borrow-read of a moved name is `T_UseAfterMove`, born at wheel-ZERO and
-  ratcheted there (`use_after_move_max: 0`). Gate seen RED:
-  `tests/frontier/mn-use-after-move.mn` via `run_narration`. The ARMING
-  (diag_refuses at held zero, post-falsification) is the banked residual in
-  `RESIDUE.md`.
+  borrow-read of a moved name refuses as `E_UseAfterMove`. Gate seen RED
+  twice, once per half: `tests/frontier/mn-use-after-move.mn` as a narration
+  at the landing, and again as a REFUSAL contract on 2026-09-15 (exit 0 with
+  4,474 WAT bytes against the unarmed tree) when the class was ARMED at pin
+  21696779. **WHOLE — the banked residual is discharged and its ratchet is
+  gone.** The entry used to end here with "born at wheel-ZERO and ratcheted
+  there (`use_after_move_max: 0`) … The ARMING is the banked residual", and
+  that arrangement is the thing worth carrying forward: the key's own text
+  named the zero as an *arming licence*, both its conditions were met at the
+  landing, and it then sat for five weeks as a counter standing in for a proof
+  nobody had minted. **A ratchet held at ZERO is a proxy for a proof** —
+  `diag_refuses` holds the proof directly, in its own words ("born at ZERO on
+  every program measured, which is the point: it does not police a mistake, it
+  holds an invariant"). Fourteen of verify-baseline's twenty-six keys read zero
+  the day this one retired; each that is a real `DiagKind` retires the same
+  way, and each that is only a census shape retires when its shape is minted as
+  a class — which is 8.4's universal executable refusal, arriving one landing
+  at a time rather than as a sweep.
 - **4.2 · `Hβ.infer.grade-is-join-and-mode`** — ✅ LANDED 2026-08-07 (pin
   6cd6281a971f, built against the stamp). count_uses' additive sum deleted
   whole into `usage_of` — the mode-paired `(consume, read)` Usage walk (⊔

@@ -939,15 +939,8 @@ type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm | EfkK
 // learn, where None is a fact the type states and the reader floors on. The
 // ONE projection that must not vary by reader (the ABI) is settled once into
 // the sigs column at the emit boundary.
-type EmitFnEntry = {
-  caps: [(String, Int)],
-  fence: Int,
-  kind: EmitFnKind,
-  name: String,
-  origin: Int,
-  params: [(String, Option(Ty))],
-  ret: Option(Ty),
-}
+type EmitFnEntry
+  = EmitFnEntry({caps: [(String, Int)], fence: Int, kind: EmitFnKind, name: String, origin: Int, params: [(String, Option(Ty))], ret: Option(Ty)})
 
 // The snapshot carries exactly what its consumers read: the mint bound
 // and the span index. The node cells are NOT here — they live in the
@@ -1191,20 +1184,8 @@ type CursorView
 // files and finding out at the type error which one you missed. Three hand
 // copies of one type is the Carried-Truth Law at the declaration layer; the
 // name is its one home, and the next column is one line.
-type SpinePage = {
-  bind: [BindHome],
-  boundaries: [ExecutableBoundary],
-  canon: [Int],
-  comments: [(String, Span)],
-  dispatch: [DispatchTier],
-  installs: [InstallShape],
-  module: [Int],
-  narrowing: [Int],
-  nodes: [GNode],
-  program: [NodeBody],
-  slots: [StateSlotHome],
-  spans: [Span],
-}
+type SpinePage
+  = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) with Memory = count_lines_from(s, byte_len(s), 0, 0)
@@ -2283,9 +2264,11 @@ type DiagKind
   // The affine tier's read half: a borrow of a name the ledger already
   // moved. Silent before this class existed — sound only because the
   // heap never frees, the accident-invariant §5.O layer 3's arena
-  // deletes. Narration until the wheel's own count reaches 0 (the
-  // census arming law).
-  | TUseAfterMove(String, Span)
+  // deletes. ARMED 2026-09-15: the decl used to end "Narration until the
+  // wheel's own count reaches 0 (the census arming law)", and the count
+  // reached 0 at the Phase 4.1 landing and held. A narration held at zero
+  // is a counter standing in for a proof — so it became the proof.
+  | EUseAfterMove(String, Span)
   // declared vs inferred
   | EEffectMismatch(EffRow, EffRow, Span)
   // the offending row
@@ -2491,7 +2474,7 @@ fn diag_span(d) with Pure = match d {
   TPolyRecursionSignature(_, s) => s,
   TOwnUnconsumed(_, s) => s,
   TOwnAcrossReplay(_, s) => s,
-  TUseAfterMove(_, s) => s,
+  EUseAfterMove(_, s) => s,
   EEffectMismatch(_, _, s) => s,
   EPurityViolated(_, s) => s,
   ERefinementRejected(_, s) => s,
@@ -2559,7 +2542,7 @@ fn diag_source(d) with Pure = match d {
   TPolyRecursionSignature(_, _) => "infer",
   TOwnUnconsumed(_, _) => "ownership",
   TOwnAcrossReplay(_, _) => "ownership",
-  TUseAfterMove(_, _) => "ownership",
+  EUseAfterMove(_, _) => "ownership",
   EEffectMismatch(_, _, _) => "effects",
   EPurityViolated(_, _) => "effects",
   ERefinementRejected(_, _) => "verify",
@@ -2627,7 +2610,7 @@ fn diag_code(d) with Pure = match d {
   TPolyRecursionSignature(_, _) => "T_PolyRecursionSignature",
   TOwnUnconsumed(_, _) => "T_OwnUnconsumed",
   TOwnAcrossReplay(_, _) => "T_OwnAcrossReplay",
-  TUseAfterMove(_, _) => "T_UseAfterMove",
+  EUseAfterMove(_, _) => "E_UseAfterMove",
   EEffectMismatch(_, _, _) => "E_EffectMismatch",
   EPurityViolated(_, _) => "E_PurityViolated",
   ERefinementRejected(_, _) => "E_RefinementRejected",
@@ -2665,7 +2648,7 @@ fn diag_severity(d) with Pure = match d {
   TPolyRecursionSignature(_, _) => SWarning,
   TOwnUnconsumed(_, _) => SWarning,
   TOwnAcrossReplay(_, _) => SWarning,
-  TUseAfterMove(_, _) => SWarning,
+  EUseAfterMove(_, _) => SError,
   VPending(_, _) => SVerificationPending,
   EVerifyUnencodable(_) => SVerificationPending,
   _ => SError,
@@ -2795,6 +2778,26 @@ fn diag_refuses(d) with Pure = match d {
   // programs (a genuine double move still refuses, disjoint arms still pass).
   True,
   EOwnershipViolation(_, _) => True,
+  EUseAfterMove(_, _) => // ARMED 2026-09-15 — the affine tier's READ half joining the consume half
+  // above, and the arming condition was written by the class itself: its
+  // decl and its fixture both said "narration until the wheel's own count
+  // reaches 0 (the census arming law)". The count reached 0 at the Phase 4.1
+  // landing (pin 8ba768c810c4) and has held every board since, so what
+  // remained was a counter standing in for a proof — `use_after_move_max: 0`
+  // in verify-baseline, retired by this arm because an armed class has
+  // nothing to count: a wheel carrying one cannot compile.
+  // WHAT IT HOLDS, and why proceeding is not an option: the ledger already
+  // proved the name moved, and the read takes the bytes anyway. Today that is
+  // sound only by accident — the bump heap never frees, the
+  // accident-invariant §5.O layer 3's arena deletes — so this is a
+  // use-after-free the day ownership gets a real reclaim, emitted silently
+  // at exit 0. The licence is the same one its sibling holds: the detector
+  // reads the used-set BEFORE borrow_depth (4.1's ordering fix), so a borrow
+  // of a live name cannot reach it, and tests/frontier/mn-use-after-move.mn
+  // is the falsifying witness, re-banked from run_narration to the refusal
+  // contract in the same landing and seen RED first (exit 0, 4,474 WAT bytes
+  // against the unarmed tree).
+  True,
   EMissingVariable(_, _) => // ARMED 2026-07-18, the manifest arc's dividend: wheel census 0, and the
   // user-path licence MEASURED — a no-import stdlib program (map / fold /
   // len / any) resolves via the DAG's prelude seed and runs; the stdin
@@ -2882,7 +2885,7 @@ fn diag_applicability(d) with Pure = match d {
   // must place (or an honest widening to `ref`), never a patch.
   Unspecified,
   TOwnAcrossReplay(_, _) => Unspecified,
-  TUseAfterMove(_, _) => // The fix is structural — drop the read or restructure so the
+  EUseAfterMove(_, _) => // The fix is structural — drop the read or restructure so the
   // move happens after it — never a patch.
   Unspecified,
   EPatternInexhaustive(_, _, _) => HasPlaceholders,
@@ -2960,7 +2963,7 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   TPolyRecursionSignature(name, _) => "the infinite type runs through '{name}''s own parameter or return — if '{name}' calls itself at a different type (polymorphic recursion), a FULL signature on '{name}' (every parameter and the return annotated) buys the poly self-call",
   TOwnUnconsumed(msg, _) => msg,
   TOwnAcrossReplay(msg, _) => msg,
-  TUseAfterMove(msg, _) => msg,
+  EUseAfterMove(msg, _) => msg,
   EEffectMismatch(declared, inferred, _) => "effect row mismatch: {show_effrow(declared)} vs {show_effrow(inferred)}",
   EPurityViolated(row, _) => "expected Pure but found effects: {show_effrow(row)}",
   ERefinementRejected(pred, _) => "refinement predicate proven false at compile time: {show_predicate(pred)}",
@@ -3261,7 +3264,8 @@ fn diag_report_at(diag, dmod) with Diagnostic + GraphRead + Memory + Alloc + Int
 
 // The name of the module in force — the file a report fired inside. One cell
 // read plus one body read, where the range map's containment scan used to be.
-fn current_module_name() with GraphRead + Memory + Alloc = module_name_of_handle(graph_module_current())
+fn current_module_name() with GraphRead + Memory + Alloc =
+  module_name_of_handle(graph_module_current())
 
 // A module handle's own name, read from its node. The non-NModule arm REFUSES
 // rather than answering "": every value in the module column was written by
@@ -3718,7 +3722,6 @@ fn show_span(ref span) with Memory + Alloc = match span {
 // the scan actively WRONG rather than merely slow (it would resolve any line
 // to the first module). A span that still needs its file needs a HANDLE, not
 // a range table — Hβ.why.reason-span-is-a-weave-coordinate.
-
 fn show_pipe_kind(pk) with Pure = match pk {
   PForward => "|>",
   PFanout(FanShare) => "<|",

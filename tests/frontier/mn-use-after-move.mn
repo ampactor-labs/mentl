@@ -1,6 +1,11 @@
 // Phase 4.1 (Hβ.own.use-after-move): a borrow-read of a name the affine
-// ledger already moved is T_UseAfterMove — the read half of affine,
-// narration until the wheel's own census reaches 0 (the arming law).
+// ledger already moved is E_UseAfterMove — the read half of affine, and it
+// REFUSES. This line used to end "narration until the wheel's own census
+// reaches 0 (the arming law)"; the census reached 0 at the landing and held
+// every board since, so the condition this fixture named was met and the
+// class armed 2026-09-15. This file is the falsifying witness the arming
+// licence requires, and it was seen RED as a refusal contract first — exit 0
+// with 4,474 WAT bytes against the unarmed tree.
 // Pre-fix this program compiled with ZERO diagnostics and ran: the
 // ledger's borrow leg resumed without consulting the used-set, sound
 // only because the heap never frees — the accident-invariant §5.O

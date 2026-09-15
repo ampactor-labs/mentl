@@ -342,19 +342,15 @@ if C=$(wt_m2_ensure); then
   elif [[ -n "$mmax" && "$movers" -lt "$mmax" ]]; then
     say "  ↓ movers FELL $mmax -> $movers — lower movers_max in $BASELINE to hold it."
   fi
-  # The USE-AFTER-MOVE ratchet (PLAN §11 Phase 4.1, Hβ.own.use-after-move):
-  # T_UseAfterMove narrations on the wheel's own compile stderr — born at
-  # ZERO, held there so the arming licence (diag_refuses' wheel-zero law)
-  # stays mechanical. A rise is the wheel reading a moved own — a real
-  # use-after-free the moment the arena makes Consume reclaim.
-  cuam=$(grep -c "T_UseAfterMove" "$C/m2.err" || true)
-  umax=$(grep -E '^use_after_move_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· use-after-move: $cuam narration(s) on the wheel compile"
-  if [[ -n "$umax" && "$cuam" -gt "$umax" ]]; then
-    say "✗ use-after-move RATCHET: rose $umax -> $cuam — the wheel reads a moved own;"
-    say "  restructure the site (the arena makes this a use-after-free)."
-    fail=1
-  fi
+  # THE USE-AFTER-MOVE RATCHET IS RETIRED (2026-09-15) — the class is ARMED.
+  # It counted T_UseAfterMove narrations on the wheel's own compile and held
+  # them at ZERO so that diag_refuses' wheel-zero arming licence stayed
+  # mechanical. The licence was satisfied at the Phase 4.1 landing and held
+  # every board since, so the counter had become what it was waiting to
+  # authorise: E_UseAfterMove refuses now, and a wheel carrying one cannot
+  # compile at all. There is nothing left to count — a ratchet beside an
+  # armed class is a weaker second copy of the refusal (the mode-33
+  # precedent: the grep dies, the projection is the check).
   # PIN FRESHNESS (Hβ.march.boot-drifts-behind-clean-landings, 2026-08-17).
   # boot IS the pinned fixpoint, so when it matches current source
   # sha256(boot(wheel)) == sha256(boot) — the m2 this gate just built is the

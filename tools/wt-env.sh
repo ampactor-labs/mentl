@@ -191,10 +191,31 @@ wt_state_key() {  # the gate-relevant tree state, hashed. Over-inclusion is a
   # green for a tree whose battery had grown — measured 2026-08-18 by
   # mutating a syntax fixture and reading the same hash back. The comment
   # above already named it: under-inclusion is the bug.
+  # AND THE SCRIPTS ENTER WITHOUT THEIR PROSE (2026-09-15). "Over-inclusion is
+  # a spurious re-run" was written by someone not paying for it: these four
+  # scripts are hashed WHOLE, so adding a COMMENT to verify.sh or a note to
+  # verify-baseline.txt is indistinguishable from moving a threshold, and it
+  # discards a twelve-minute measurement of the compiler's behaviour. It did
+  # exactly that four times in one landing, which is the cadence law broken by
+  # the gate rather than by the hand. A `#` line cannot change what bash
+  # executes and a comment in the baseline cannot change a ceiling, so they are
+  # stripped before hashing — the key reads the CONTRACT (`name: value` lines,
+  # executable lines) and not the prose about it. This is the Carried-Truth Law
+  # at the gate layer: a measurement is re-derived only when its inputs changed,
+  # and prose is not an input.
+  # WHOLE-LINE COMMENTS ONLY, and the first draft of this got it wrong in the
+  # direction the comment above forbids. Stripping TRAILING `#` truncates
+  # `${#arr[@]}` and `${x#prefix}` mid-expression, so two behaviourally
+  # different lines would hash the SAME — under-inclusion, the actual bug,
+  # introduced while fixing over-inclusion. A line that is nothing but a
+  # comment has no such hazard. Fixtures and the wheel stay WHOLE, because a
+  # `.mn` comment IS graph content (SYNTAX §Comments) and can change a verdict.
   { wt_wheel lib src
     cat boot/mentl.wasm tests/micros/*.mn tests/syntax/*.mn tests/rows/*.mn \
-        tests/floors/*.mn tools/verify.sh tools/run-micro.sh \
-        tools/wt-env.sh tools/verify-baseline.txt 2>/dev/null
+        tests/floors/*.mn 2>/dev/null
+    sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' \
+        tools/verify.sh tools/run-micro.sh tools/wt-env.sh \
+        tools/verify-baseline.txt 2>/dev/null
     printf '%s' "${WT_RUN_FLAGS[*]}"
   } | sha256sum | cut -d' ' -f1
 }
