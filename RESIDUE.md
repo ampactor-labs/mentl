@@ -1316,14 +1316,42 @@ before and after the final IS that sharing, used as the movers instrument.
 So the trial's judgment is not passed forward as a value, but it is not
 absent either — deleting the pass removes a shadow.
 
-THE THREE PROBES OWED BEFORE ANY CUT (an adversarial refutation was
-dispatched 2026-09-15 and died on a rate limit before running; this is its
-unpaid brief): (a) does anything in the final resolve a name only the TRIAL
-registered — i.e. is the shadow ever read? (b) is `classify_fixpoint` purely
-syntactic over the AST, or does it need a judged graph? (c) does the final
-re-run the cycle discipline (`scc_groups` / `group_mono_views` /
-`group_completion_fold`), or only walk `layers` — and if not, how do cyclic
-decls judge correctly without the trial? CLOSE CONDITION: one judgment pass,
+PROBES (a) AND (c) RAN INLINE THE SAME DAY AND FOUND THE SECOND PRODUCT —
+the shadow IS read, and the entry above was still half wrong. Measured:
+`pre_register_fn_sig` has EXACTLY ONE CALLER, `pre_register_stmt`
+(infer.mn:843), the trial's arm; the final's `pre_register_stmt_final`
+(infer.mn:2664) differs in exactly that arm, doing `smap_add(seen, name, 1)`
+and nothing else — **the final never pre-registers a function signature.**
+And every piece of cycle machinery (`scc_groups` at :1069, `trial_judge_group`,
+`group_mono_views`, `group_completion_fold`, `group_final_publish`) is called
+ONLY from the trial — **the final has no cycle discipline.** `layers` is
+dependency depth whose own comment says cycles share one, so callee-first
+order kills ACYCLIC forward refs and intra-CYCLE refs resolve through the
+shared env to the TRIAL's pre-registered skeletons.
+
+SO THE TRIAL HAS TWO PRODUCTS: counts passed BY VALUE (`rows`), and the
+FORWARD-REFERENCE TABLE passed BY SHADOW (ambient handler state, never an
+edge). Both earlier readings were half right — the original entry said the
+second judgment "supplies provisional schemes for forward references" (right
+FUNCTION, wrong CARRIER: it named `rows`); the first correction said "solely
+a handle-counting oracle" (right about `rows`, wrong about *solely*). A
+dependency invisible in every signature is what a Carried-Truth audit exists
+to find, and it is why two readings of the same code missed it.
+
+THE DELETION DECOMPOSES, with step 1's hazard named because it looks free:
+(1) MAKE THE FINAL A WHOLE JUDGE — its own `pre_register_fn_sig` AND its own
+cycle discipline. The registration alone REGRESSES: the trial re-freezes
+skeletons to MONO views for unsig'd cycle members (`group_mono_views`, :1934),
+so a quantified skeleton at an intra-cycle forward use instantiates a fresh
+copy — the disconnected-vars class that comment calls "the crawl's root, one
+stale link per round". So step 1 is the DISCIPLINE, not the registration.
+(2) HANDLE = `(arena, offset)` — the count plan dissolves and the trial
+deletes whole. After step 1 the two passes are the SAME pass, which is the
+honest diagnosis: the final is not a second judgment, it is a HALF judgment
+leaning on the first, and that is why `movers` exists and cannot reach zero.
+
+STILL UNVERIFIED: (b) is `classify_fixpoint` purely syntactic over the AST, or
+does it need a judged graph? CLOSE CONDITION: one judgment pass,
 `movers` retired as a key rather than driven to zero, and the trial/final
 vocabulary gone from infer.mn. Everything the movers ratchet, the
 order-dependence at 4.2, and the between-generation node identity cost is

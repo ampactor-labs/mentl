@@ -1237,23 +1237,59 @@ form the whole time. The arcs, in order:
   a packed `(arena << K) | offset` is still one word, so §5.U's
   memcpy-serializability is untouched.
 
-  **WHAT IS MEASURED vs WHAT IS NOT, stated so the next session does not
-  inherit a second overclaim.** MEASURED: the four reads above, and that
-  `env_handler` is installed OUTSIDE both passes (the trial's chain ends at
-  `verify_ledger`, infer.mn:1081; the final's at `resume_summaries_ctx`,
-  infer.mn:2147), so **ONE env spans both generations** — `round_prints`
-  reading "the env's latest entries" before and after the final is that
-  sharing, used as the movers instrument. NOT YET VERIFIED, and each is a
-  probe before any cut: (a) whether anything in the final resolves a name only
-  the TRIAL registered — the trial's entries are still there, merely shadowed
-  by the final's re-registration, so deletion removes a shadow something may
-  be reading; (b) whether `classify_fixpoint` is purely syntactic over the AST
-  or needs a judged graph; (c) whether the final re-runs the cycle discipline
-  (`scc_groups`/`group_mono_views`/`group_completion_fold`) or only walks
-  `layers` — if it does not, cyclic decls may depend on the trial in a way
-  none of the above sees. An adversarial refutation of this reframe was
-  dispatched and died on a rate limit before running; (a)–(c) are what it
-  owed. The env-carries-cells form
+  **PROBES (a) AND (c) RAN THE SAME DAY AND THE ANSWER CORRECTS BOTH PRIOR
+  CLAIMS — THE TRIAL HAS TWO PRODUCTS, NOT ONE.** `env_handler` is installed
+  OUTSIDE both passes (the trial's chain ends at `verify_ledger`,
+  infer.mn:1081; the final's at `resume_summaries_ctx`, infer.mn:2147), so ONE
+  env spans both generations and the trial's entries survive, shadowed. The
+  question was whether the shadow is ever READ. It is, and it is load-bearing:
+  - `pre_register_fn_sig` has **exactly one caller** — `pre_register_stmt`
+    (infer.mn:843), the TRIAL's arm. The final's `pre_register_stmt_final`
+    (infer.mn:2664) differs from the trial's in exactly that arm: on `FnStmt`
+    it does `smap_add(seen, name, 1)` and nothing else. **The final never
+    pre-registers a function signature.**
+  - Every piece of cycle machinery — `scc_groups` (called once, :1069),
+    `trial_judge_group`, `group_mono_views`, `group_completion_fold`,
+    `group_final_publish` — is called ONLY from the trial. **The final has no
+    cycle discipline.**
+  - `layers` is dependency DEPTH and its own comment states cycles share one:
+    *"A cycle contributes no edge from an on-stack callee: the SCC's members
+    take depths from their acyclic callees and judge together as one binding
+    group."* So callee-first order eliminates ACYCLIC forward references, and
+    intra-CYCLE ones have nowhere to resolve but the trial's entries.
+
+  **SO: the trial's second product is the FORWARD-REFERENCE TABLE, carried by
+  ambient handler state rather than by an edge.** That is why both earlier
+  readings were half right. §11 and RESIDUE said *"the second judgment exists
+  solely to supply provisional schemes for forward references"* — right about
+  the FUNCTION, wrong about the CARRIER (it named `rows`). The correction
+  above said *"solely a handle-counting oracle, nothing of its judgment
+  survives"* — right about `rows`, wrong about *solely*. The truth is the
+  union: **counts passed by value, signatures passed by shadow.** A dependency
+  invisible in every signature is exactly what a Carried-Truth audit is for,
+  and it is why two readings of the same code missed it.
+
+  **THE DELETION THEREFORE DECOMPOSES, and the hazard in step 1 is named
+  because it would otherwise look free:**
+  1. **Make the final a WHOLE judge** — its own `pre_register_fn_sig` and its
+     own cycle discipline. Naively this is one added call, and naively it
+     REGRESSES: the trial's skeletons are re-frozen to MONO views for unsig'd
+     cycle members (`group_mono_views`, :1934), so a quantified skeleton at an
+     intra-cycle forward use instantiates a fresh copy — the disconnected-vars
+     class the cycle-discipline comment names as *"the crawl's root, one stale
+     link per round."* So step 1 is the discipline, not the registration.
+  2. **Handle = `(arena, offset)`** — the count plan dissolves, and the trial
+     deletes whole.
+  After step 1 the two passes are the SAME pass, which is the honest statement
+  of what is wrong today: **the final is not a second judgment, it is a HALF
+  judgment leaning on the first** — no pre-registration, no cycle discipline,
+  living off the trial's leftovers. That is why `movers` exists and why it
+  cannot reach zero.
+
+  STILL UNVERIFIED: (b) whether `classify_fixpoint` is purely syntactic over
+  the AST or needs a judged graph. An adversarial refutation was dispatched
+  2026-09-15 and died on a rate limit before running; (a) and (c) were then
+  run inline and are recorded above. The env-carries-cells form
   (Binding = BStatic | BCell), the quantifier as a caller-run projection and
   instantiation as the correspondence-edge mint remain the banked shape for
   the SCHEME layer, but they are no longer justified by the movers claim;
