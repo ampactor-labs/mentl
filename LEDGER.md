@@ -35,6 +35,48 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-15 · pin 2bcc0ae47b45db3c · THE CONDEMNED PASS WAS NEVER PRICED,
+  AND IT IS THE LARGER HALF. CLEAN m2 == m3, census 0, 12.52s, 2338MB peak.
+  ▶ Four commits of this day's docs argued about how to delete the trial/final
+  tower, and a fifth found that every one of them — PLAN's original, and my
+  own three corrections — reasoned against a number nobody had. The pass
+  boundary now reports itself, and what was missing to do so was ONE binding:
+  `pstart = graph_next()` already captured the trial's handle frontier (for
+  the crc walk's lower bound), so only `heap_mark()` beside it was absent.
+  ▶ THE MEASUREMENT, from this pin's own m3 leg:
+  `trial 668,132,712 byte(s) / 248,740 handle(s) · final +1,338,717,968
+  byte(s) / +465,664 handle(s)` against a 2,006,850,312-byte high-water.
+  **The second pass is 67% of the judgment's memory, mints 1.87× more handles
+  than the pass it merely re-does, and costs 2.00× its bytes.** It is not a
+  repeat of the judgment; it is the bigger part of it. Deleting it takes the
+  judgment from ~2.0GB to ~0.67GB and unblocks every ceiling 4.3 is pinned
+  under, which reprices rung 3 from housekeeping to the largest memory win on
+  the board.
+  ▶ TWO READINGS BESIDE IT. Image-classified bytes are 35MB of 2,007MB, so
+  **98% of the judgment's heap is scratch** — §5.O layer 3's arena thesis with
+  a number on it for the first time. And netting out one parse per pass, the
+  FINAL's judgment alone mints ~217k handles MORE than the TRIAL's. The
+  hypothesis, recorded as one and NOT acted on: `group_mono_views` makes cycle
+  members SHARE type cells in the trial, and the final has neither
+  pre-registration nor cycle discipline, so an intra-cycle forward use
+  instantiates a FRESH copy — the disconnected-vars class. Earlier the same
+  day that class was named as a hazard of a FUTURE change; if the hypothesis
+  holds, the final is already paying it. A probe decides it.
+  ▶ WHY AN INSTRUMENT RATHER THAN THE BUILD. The build was attempted first and
+  the arithmetic refused it: a handle already decomposes (`spine_band` /
+  `spine_slot`, `spine_slots = 16384`) and the page structure was written FOR
+  per-decl banding, but `spine_open_loop` allocates TWELVE columns per page,
+  each `make_list(16384)`, eagerly — so one band per decl is 3,385 pages ≈
+  2.66GB of spine alone against a 2.4GB peak. Naive banding doubles the image.
+  Its two prerequisites (size the band from the measured p99 of 331, not
+  16384; make the sparse columns lazy) are recorded in `RESIDUE.md`. Lazy
+  columns were then checked as the alternative headline and measured ~31MB of
+  a 2,400MB peak — a real prerequisite, not an impactful change today. The
+  instrument was chosen because it prices all of it.
+  ▶ The report rides the ScopeAll channel beside image/heap, so the march,
+  census and battery print it and a user's `mentl check` stays quiet; it is
+  stderr only, and m2 == m3 held byte-identical.
+
 - 2026-09-15 · pin 216967799af60910 · A COUNTER HELD AT ZERO IS A PROXY FOR A
   PROOF. CLEAN m2 == m3, census 0, micros 149/0, movers 433, frontier 378/1,
   crown green, `use_after_move_max` RETIRED.

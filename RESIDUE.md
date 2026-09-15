@@ -1370,6 +1370,33 @@ at an intra-cycle forward use instantiating a fresh copy, the disconnected-vars
 class `group_mono_views` (:1934) exists to prevent — was the tell that the
 work already existed one pass over. Delete the duplicate; do not complete it.
 
+THE PRIZE IS MEASURED — 2026-09-15, and it had never been measured before.
+The arc was being designed against an unpriced target, so the pass boundary
+now reports itself (`passes:` on the ScopeAll channel, beside image/heap;
+`pstart` was already the trial's handle frontier, so only the byte mark beside
+it was missing). Read from the m3 leg of a clean march:
+
+    image:  35,206,616 image-classified byte(s)
+    heap:   2,006,850,312 byte(s) at the judgment's high-water line
+    passes: trial 668,132,712 byte(s) / 248,740 handle(s)
+          · final +1,338,717,968 byte(s) / +465,664 handle(s)
+
+**THE SECOND PASS IS 67% OF THE JUDGMENT'S MEMORY** — 1.34GB of 2.01GB — and
+it mints 465,664 handles against the trial's 248,740. The pass that merely
+RE-DOES the judgment is 1.87× LARGER than the judgment it re-does, and costs
+2.00× its bytes. Deleting it takes the judgment's high-water from ~2.0GB to
+~0.67GB, which also unblocks every ceiling the arena arc (4.3) is pinned
+under. TWO READINGS BESIDE IT: image-classified bytes are 35MB of 2,007MB, so
+**98% of the judgment's heap is scratch** — 4.3's arena thesis with a number
+on it for the first time; and each pass includes one parse, so netting those
+out the FINAL's judgment alone mints ~217k handles more than the TRIAL's.
+HYPOTHESIS, NOT ACTED ON, stated so the next probe is cheap: `group_mono_views`
+makes cycle members SHARE type cells in the trial, and the final has neither
+pre-registration nor cycle discipline, so an intra-cycle forward use
+instantiates a FRESH copy — the disconnected-vars class. If that holds, the
+final is ALREADY paying the hazard this entry named as a risk of a future
+change. It is a hypothesis until a probe shows it.
+
 THE SUBSTRATE IS ALREADY THE DESIGN, AND THE NAIVE CUT IS REFUTED BY
 ARITHMETIC (measured 2026-09-15, before a line was written). A handle ALREADY
 decomposes as `(band, slot)` — `spine_band(h) = h / spine_slots`,

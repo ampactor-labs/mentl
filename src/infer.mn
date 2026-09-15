@@ -1289,73 +1289,83 @@ fn parse_one_module(m) = match m {
 // This is not an improvement to the condemned tower (Anchor 2): its judgment,
 // its cadence and its two generations are untouched, and when rung 3 deletes
 // the second pass this seam simply loses a caller.
-fn infer_modules_converged(ref mods) = {
-  match {
-    parse_modules(mods) |> infer_program_trial
-  } ~> diag_quiet {
-    (rows, layers, summ) => {
-      let flat_rows = list_to_flat(rows)
-      let prints = round_prints(flat_rows)
-      // The final's parse START, captured before its own parse: the
-      // crc walk's lower bound, so the backtick judge reads only THIS
-      // pass's comment cells.
-      let pstart = graph_next()
-      let out = parse_modules(mods) |> infer_program_final(flat_rows, layers, pstart, summ)
-      // The divergence read: the final's publishes are the env's latest
-      // entries, so re-rendering the same names compares the two passes.
-      // Nothing refuses on a mismatch — the final's answer already
-      // shipped — which is why this is a count driven to zero, not a
-      // gate.
-      let prints2 = round_prints(flat_rows)
-      // The arena census (Hβ.perf.per-decl-arena 2a-ii, the corrected DEP
-      // chain's named next landing): the accumulated image-classified byte
-      // count, read from the extent-delta account the image_enter/exit
-      // brackets feed. Same maintainer channel and scope law as the movers
-      // line — unscoped compiles (march / census / battery) keep it, a
-      // user-target verb's ScopeAt quiets it. 2b's image/scratch boundary
-      // fixes itself from this measured number, never from a claim.
-      // THE HIGH-WATER LINE, BESIDE THE CLASSIFIED COUNT — and it is the
-      // number the cost ratchet should have been reading all along. The
-      // board policed peak RSS, a HOST proxy: measured 2026-09-12, two
-      // byte-identical m2 binaries over one identical input answered
-      // 2,389,636KB and 2,356,360KB — 33MB of kernel-reclaim jitter against
-      // a ceiling whose whole margin was 30MB, so the ratchet could neither
-      // convict a real rise nor acquit a false one. The bump image is
-      // monotonic and the judgment never resets it (heap_reset lives in the
-      // micro/session drivers, not this path), so the mark at the judgment's
-      // close IS its high-water — and it is EXACT: the same three runs whose
-      // RSS spread 33MB answered image_bytes identically to the byte. A
-      // deterministic compile deserves a deterministic cost number, and the
-      // medium was already holding it (Hβ.perf.cost-ratchet-reads-the-image).
+fn infer_modules_converged(ref mods) = match {
+  parse_modules(mods) |> infer_program_trial
+} ~> diag_quiet {
+  (rows, layers, summ) => {
+    let flat_rows = list_to_flat(rows)
+    let prints = round_prints(flat_rows)
+    // The final's parse START, captured before its own parse: the
+    // crc walk's lower bound, so the backtick judge reads only THIS
+    // pass's comment cells.
+    let pstart = graph_next()
+    // THE PASS BOUNDARY, READ WHERE IT ALREADY EXISTS (2026-09-15). The
+    // two-pass tower judges the whole program TWICE and nobody had ever
+    // measured what the second pass costs — the arc that deletes it
+    // (Hβ.infer.judge-once-per-scc) was being designed against an unpriced
+    // prize. `pstart` is already the trial's handle frontier, captured one
+    // line up for the crc walk, so the only fact missing was the byte mark
+    // beside it. The image is monotonic and the judgment never resets it,
+    // so this mark IS the trial's high-water, exact and deterministic —
+    // the same property that made image_bytes the cost ratchet's reader
+    // where peak RSS was 33MB of kernel jitter.
+    let trial_high = heap_mark()
+    let out = parse_modules(mods) |> infer_program_final(flat_rows, layers, pstart, summ)
+    // The divergence read: the final's publishes are the env's latest
+    // entries, so re-rendering the same names compares the two passes.
+    // Nothing refuses on a mismatch — the final's answer already
+    // shipped — which is why this is a count driven to zero, not a
+    // gate.
+    let prints2 = round_prints(flat_rows)
+    // The arena census (Hβ.perf.per-decl-arena 2a-ii, the corrected DEP
+    // chain's named next landing): the accumulated image-classified byte
+    // count, read from the extent-delta account the image_enter/exit
+    // brackets feed. Same maintainer channel and scope law as the movers
+    // line — unscoped compiles (march / census / battery) keep it, a
+    // user-target verb's ScopeAt quiets it. 2b's image/scratch boundary
+    // fixes itself from this measured number, never from a claim.
+    // THE HIGH-WATER LINE, BESIDE THE CLASSIFIED COUNT — and it is the
+    // number the cost ratchet should have been reading all along. The
+    // board policed peak RSS, a HOST proxy: measured 2026-09-12, two
+    // byte-identical m2 binaries over one identical input answered
+    // 2,389,636KB and 2,356,360KB — 33MB of kernel-reclaim jitter against
+    // a ceiling whose whole margin was 30MB, so the ratchet could neither
+    // convict a real rise nor acquit a false one. The bump image is
+    // monotonic and the judgment never resets it (heap_reset lives in the
+    // micro/session drivers, not this path), so the mark at the judgment's
+    // close IS its high-water — and it is EXACT: the same three runs whose
+    // RSS spread 33MB answered image_bytes identically to the byte. A
+    // deterministic compile deserves a deterministic cost number, and the
+    // medium was already holding it (Hβ.perf.cost-ratchet-reads-the-image).
+    match diag_scope_of() {
+      ScopeAll => {
+        eprint_string("image: {int_to_str(image_bytes())} image-classified byte(s)\n")
+        eprint_string("heap: {int_to_str(heap_mark())} byte(s) at the judgment's high-water line\n")
+        eprint_string("passes: trial {int_to_str(trial_high)} byte(s) / {int_to_str(pstart)} handle(s) · final +{int_to_str(heap_mark() - trial_high)} byte(s) / +{int_to_str(graph_next() - pstart)} handle(s) — the second pass's price, which rung 3 deletes\n")
+      },
+      _ => (),
+    }
+    if prints_equal(prints, prints2) {
+      ()
+    } else {
+      // The movers report is the MAINTAINER'S instrument — it rides the
+      // register's scope read, so the march / census / battery (never
+      // scoped) keep every line, and a user-target verb's ScopeAt
+      // quiets the ~21-line block that opened every hello-world's
+      // stderr (six audit reports converged on the channel). The block
+      // is never about the user's file, so it has no per-span case; a
+      // divergence a user must see surfaces as a diagnostic through
+      // diag_report, never through this channel.
       match diag_scope_of() {
         ScopeAll => {
-          eprint_string("image: {int_to_str(image_bytes())} image-classified byte(s)\n")
-          eprint_string("heap: {int_to_str(heap_mark())} byte(s) at the judgment's high-water line\n")
+          eprint_string("judgment: {int_to_str(movers_count(flat_rows, prints, prints2, 0))} scheme(s) moved between the trial and the final — movers:{movers_line(flat_rows, prints, prints2, 0, 0)}\n")
+          movers_diff(flat_rows, prints, prints2, 0, 0)
         },
         _ => (),
       }
-      if prints_equal(prints, prints2) {
-        ()
-      } else {
-        // The movers report is the MAINTAINER'S instrument — it rides the
-        // register's scope read, so the march / census / battery (never
-        // scoped) keep every line, and a user-target verb's ScopeAt
-        // quiets the ~21-line block that opened every hello-world's
-        // stderr (six audit reports converged on the channel). The block
-        // is never about the user's file, so it has no per-span case; a
-        // divergence a user must see surfaces as a diagnostic through
-        // diag_report, never through this channel.
-        match diag_scope_of() {
-          ScopeAll => {
-            eprint_string("judgment: {int_to_str(movers_count(flat_rows, prints, prints2, 0))} scheme(s) moved between the trial and the final — movers:{movers_line(flat_rows, prints, prints2, 0, 0)}\n")
-            movers_diff(flat_rows, prints, prints2, 0, 0)
-          },
-          _ => (),
-        }
-      }
-      out
-    },
-  }
+    }
+    out
+  },
 }
 
 // The TOTAL, beside the capped display: the sixteen-slot line names the
@@ -7953,7 +7963,7 @@ fn subst_changes(ty, mapping) = match ty {
   TFloat => false,
   TUnit => false,
   TByte => false,
-  // THE CHECK CHASES, SO THE BUILD CAN SHARE. This answered TRUE for every
+  TVar(id) => // THE CHECK CHASES, SO THE BUILD CAN SHARE. This answered TRUE for every
   // bound var — "an NBound var inlines its binding (always differs)" — and
   // in a JUDGED decl most vars are bound, so check-then-build was here but
   // never got to answer no: every polymorphic reference rebuilt the callee's
@@ -7971,7 +7981,7 @@ fn subst_changes(ty, mapping) = match ty {
   // Termination is the occurs invariant's — graph_bind refuses a type cell
   // containing itself; the row sort's benign self-loops go through
   // subst_row_changes, not this walk.
-  TVar(id) => if find_mapping(mapping, graph_chase_handle(id)) >= 0 {
+  if find_mapping(mapping, graph_chase_handle(id)) >= 0 {
     true
   } else {
     match graph_chase(id) {
@@ -9942,7 +9952,12 @@ fn check_splice_flow_labels(fragments, span: ValidSpan) = each(
 fn splice_flow_check(h, fspan: ValidSpan) = match graph_chase(h) {
   GNode(NBound(ty), _) => {
     let label = query_flow_label(ty)
-    verify(graph_module_current(), fspan, PFlowLe(label, Public), Located(fspan, Inferred("ifc: string splice flow label")))
+    verify(
+      graph_module_current(),
+      fspan,
+      PFlowLe(label, Public),
+      Located(fspan, Inferred("ifc: string splice flow label"))
+    )
   },
   _ => // unresolved: open-world default = Public, no check needed
   (),

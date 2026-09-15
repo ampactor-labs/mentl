@@ -1307,6 +1307,23 @@ form the whole time. The arcs, in order:
   — was the tell that the work was already done one pass over. Delete the
   duplicate; do not complete it.
 
+  **THE PRIZE IS NOW MEASURED, and it never had been.** The pass boundary
+  reports itself (`passes:` on the ScopeAll channel — `pstart` was already the
+  trial's handle frontier, so only the byte mark beside it was missing). From
+  a clean march's m3 leg: **the second pass is 1,338,717,968 bytes and 465,664
+  handles against the trial's 668,132,712 and 248,740 — 67% of the judgment's
+  2.01GB high-water, 1.87× more handles than the pass it re-does, at 2.00× the
+  bytes.** Deleting it takes the judgment from ~2.0GB to ~0.67GB and unblocks
+  the ceilings 4.3 is pinned under. Beside it: image-classified bytes are 35MB
+  of 2,007MB, so **98% of the judgment's heap is scratch** — 4.3's arena
+  thesis with a number for the first time. Netting out one parse per pass, the
+  FINAL's judgment alone mints ~217k handles more than the TRIAL's; the
+  hypothesis (NOT acted on) is that `group_mono_views` makes cycle members
+  SHARE cells in the trial while the final, having neither pre-registration nor
+  cycle discipline, instantiates a FRESH copy per intra-cycle forward use — the
+  disconnected-vars class this entry named as a *future* hazard, possibly
+  already being paid. A probe decides it.
+
   **AND THE SUBSTRATE IS ALREADY `(arena, offset)` — but the naive cut is
   REFUTED BY ARITHMETIC, measured before a line was written.** A handle
   already decomposes: `spine_band(h) = h / spine_slots`, `spine_slot(h) = h %
