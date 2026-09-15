@@ -1243,6 +1243,30 @@ rule attributed to it must be read out of the paper first.
 
 ### Named-residue index (entry-born peers not yet in a §5.R band — one home each)
 
+`Hβ.doctruth.state-claims-are-unchecked` — DOC-TRUTH GATES IDENTITY, NOT STATE,
+AND §7 IS ENTIRELY STATE. The gate checks shas (PROVENANCE head vs boot), the
+ledger head pin, that every named command exists, the verb namespace against
+`mentl help`, the TokenKind checksum, retired identity words, and doc-path
+citations — all **identity** claims, each anchored to a thing that either exists
+or does not. §7's honest audit is made of **quantity and posture** claims
+("fifteen classes refuse", "persist remains scaffold", "~60% earned"), and
+nothing reads them. Measured 2026-09-15, two rots found in one sweep: the
+refusal count said fifteen where `diag_refuses` arms EIGHTEEN — in a sentence
+whose own words are "read `diag_refuses` for the live list, never this doc" —
+and the thread bullet still listed persist as scaffold six lines below the
+bullet that exists *because* that exact absence claim was named doc-rot
+violation #1 on 2026-09-07. One truth, two homes, the fix taken at one.
+THE SHAPE: a count in prose is a copy of a fact the artifact holds, so the
+ultimate form is not a doc-truth row that re-derives each number — that would be
+a second copy checking the first. It is §7's own stated destiny, *"State-as-
+PROJECTION is §7's own destiny; each line here is a POINTER"*: the audit's
+numbers come from the board, and prose that states one is refused. CLOSE
+CONDITION: §7 carries no bare count, `state.sh` projects the audit, and
+doc-truth's coverage boundary (identity vs state) is closed by that projection
+rather than by more rows. Interim discipline, cheap and available now: when a
+number must appear in prose, delete it and point at the verb instead — the
+deletion is the fix, as it was for the refusal count above.
+
 `Hβ.infer.judge-once-per-scc` — THE TRIAL PASS IS A WHOLE-PROGRAM
 PRE-REGISTRATION STANDING WHERE PER-SCC FIXPOINT ITERATION BELONGS, and it is
 the tower's actual retirement (born 2026-09-15 out of the liveness

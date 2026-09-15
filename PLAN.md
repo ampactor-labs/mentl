@@ -775,13 +775,28 @@ and this is the STATE.
   resume through the same row check every `~>` edge already uses.
 - **O(1) complexity** is the DIRECTION, not built. Honest contract: O(1) chase,
   O(changed cone) incremental, O(reachable) image, O(1) reclaim-after-proof.
-- **Executable refusal** is PARTIAL — fifteen classes refuse (read `diag_refuses`
-  for the live list, never this doc). Remaining census classes are the
-  ratcheting work toward universal.
+- **Executable refusal** is PARTIAL — read `diag_refuses` for the live list and
+  its size; this doc carries neither. It used to say "fifteen classes refuse" in
+  the same breath as "never this doc", and the artifact measured EIGHTEEN on
+  2026-09-15 — a sentence that told the reader not to trust it while giving them
+  a number to trust. **A count in prose is a copy of a fact the artifact holds**,
+  so the count is deleted rather than corrected: the pointer is the whole
+  content. The remaining census classes are the ratcheting work toward
+  universal, and the ZERO-held ones are not ratchet work at all — a class
+  measured at zero is armed, not counted (`diag_refuses`' own licence: "born at
+  ZERO on every program measured, which is the point").
 - **Per-module manifest** — CLOSED at entry, OPEN per-module
   (`solo_violations_max: 0`). The overlay is the stamped second half.
 - **Thread schedule** is REAL (host threads over shared image). Safety gated on
-  band A. SIMD/GPU/persist remain scaffold (bands E/O).
+  band A. SIMD/GPU remain scaffold (bands E/O). **PERSIST IS NOT IN THAT LIST
+  and this bullet said it was until 2026-09-15** — six lines above, the
+  persist-is-built bullet exists *because* the absence claim was named "doc rot
+  violation #1" on 2026-09-07, and the correction landed in that bullet while
+  this sibling kept the old word. One truth, two homes, and the fix took at the
+  first home only: the Carried-Truth Law at the doc layer, inside the section
+  that arbitrates it. What is genuinely open for persist is the cross-machine
+  face (`Hβ.persist.cross-machine-resume`) and host resources outside the image,
+  both named in that bullet.
 - **Subsystem-as-cursor** (§2) is ~60% earned. Gap ranked: LOWERING (39
   constructors → columns), ENV (dissolves with schemes-are-edges), REVERSE EDGE
   (landed 2026-08-07), verify/tighten BANKS. The move: put the fact in a column,
