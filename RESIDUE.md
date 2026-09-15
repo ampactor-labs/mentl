@@ -2147,6 +2147,54 @@ across the concatenated weave). If it does, ordering is a second problem
 and the refusal waits on it; if it never does, the refusal is free. That
 measurement is the gate and it has not been taken.
 
+`Hβ.emit.field-offset-floor-is-never-reported` — RESOLVED 2026-09-15. THE
+FLOOR WAS WRITTEN AND NEVER SAID. `emit_expr`'s `LFieldLoad` arm answered an
+unprovable offset with `(unreachable)` plus a WAT comment naming the field,
+and told no one: the compile exited 0, `mentl check` passed, and the program
+trapped at the instruction that admits it. The site's own comment claimed the
+opposite — "the medium makes the wrong move unsayable (PLAN §0)" — while
+delivering its inverse at the one boundary that named the promise. Something
+unproven executed, right up to the `unreachable`.
+▶ HOW IT SURFACED, which is the argument for the class. The single-pass cut's
+march died on the m4 leg at `wasm trap: unreachable` with a backtrace into
+`emitfns_index_build` and no diagnostic anywhere in the run. Four measurements
+cleared the cut: m2's and m3's bodies for that fn are byte-identical but for
+the handle number inside the comment; the pre-cut Sep-12 generations carry the
+same four floors; `emitted_sig_of_entry` reads fields off a list element in the
+same file and does NOT floor, because the op's declared `-> [EmitFnEntry]`
+reaches its receiver. The cut did not emit the trap. It was the first thing to
+step on one that had been shipping.
+▶ THE FIX IS THE REPORT, AT THE SITE THAT ALREADY KNEW. `TFieldOffsetUnprovable
+(String, Span)` carries `field_offset_unprovable_why`'s own rendering — the
+selector and the receiver's live type — on the RECEIVER's span, since the
+selector has no node and the receiver is the value whose row failed to close.
+No second walk re-derives the offset: the report rides the emit that discovered
+it, so it can neither over- nor under-refuse. The `Diagnostic` row propagating
+through eight emit declarations is the change describing itself before a gate
+ran.
+▶ GATE, BORN RED: `tests/frontier/mn-field-offset-unprovable.mn`, three lines,
+no lib — a quantified op parameter field-accessed in a handler arm. Through the
+pin: exit 0, ZERO errors, 4500B of WAT with the floor inside. After: one located
+error, no other class beside it (`run_narration`).
+▶ THE SEVERITY WAS DECIDED BY THE CENSUS, NOT BY TASTE. Reported as SError
+the march ruled `FIXED POINT holds: m2 == m3` and `m3 clean (no trap)` and
+then REFUSED the repin: `CENSUS GATE: m3-leg census 4 > 0 — the wheel makes
+claims about its own source it does not believe`. That is the ratchet working
+exactly as PLAN §10 states it, and the answer is not to soften the report but
+to walk the ladder the codebase already has — `T_UseAfterMove` narrated under
+its own census until the licence held, then the arming commit renamed it
+`E_UseAfterMove` and flipped it to SError. This class is on that ladder at the
+first rung. The severity tracks ENFORCEMENT posture, never how bad the code
+is: an unprovable offset is an `(unreachable)` in a shipped module.
+▶ WHAT REMAINS IS THE ARMING, and it is a countdown with a number.
+`field_offset_unprovable_max: 4` holds the wheel's own census —
+`emitfns_index_build` (graph.mn, the unconditional else-branch that trapped),
+`arms_include_op`, `record_field_handle`, `arm_body_handle`. `diag_refuses`'
+licence is a wheel census of ZERO, so the class reports and does not refuse
+until those four fall. Each is a receiver whose row never closed; they belong
+to the two entries below. At zero, the ratchet line, the pre-arm fixture's
+`run_narration`, and this paragraph all retire together.
+
 `Hβ.infer.record-row-vars-are-not-unioned` — RECORD ROW VARS ARE SECOND
 CLASS IN THE UNION-FIND, and that is what survives the offset fix below.
 Measured 2026-09-02 at pin 7740ac94; standing repro
@@ -2169,6 +2217,46 @@ latent `unreachable`s in the shipping compiler, live today, each one an
 interior open-row read that happens not to be reached. That is the argument
 for building this now rather than filing it: the class is not hypothetical
 and it is not confined to new code.
+▶ AND "HAPPENS NOT TO BE REACHED" EXPIRED ON 2026-09-15. The single-pass
+cut's m4 leg trapped inside `emitfns_index_build`, whose ENTIRE else-branch
+is the `name` floor — the fn can only return `idx`; any actual fold dies. A
+later generation populated the column before a read and stepped on it. The
+four now report (`Hβ.emit.field-offset-floor-is-never-reported` above) with
+located spans, and the two that have receivers with parse spans are
+`emitfns_index_build`'s `list_index(col, i)` and `arms_include_op`'s
+`last(arms)`; `record_field_handle` and `arm_body_handle` read lambda
+parameters and render at `0:0`, which is its own finding about where a
+`map`'s element loses its span.
+▶ THE MINIATURE DOES NOT REPRODUCE, measured across nine shapes the same
+day, and that is information about where the cause is NOT. All of these
+PASS: the annotated interior call this entry names; an unannotated helper
+reading a field off `list_index`; the same through `map`; a self-recursive
+walk; a plain `let` born `[]` then pushed then walked; handler state pushed
+AND read in ONE arm; handler state across two arms with the INIT pinning the
+element type; the op param declared `name: Type`; the op param declared
+type-only as the wheel writes it; the reading arm also rebinding state. The
+ONE shape that traps is a handler state field born `[]`, filled in one arm
+from a value whose type is not declared, and field-accessed in ANOTHER —
+which is the quantified-receiver case the frontier fixture now pins, not the
+wheel's. `emitfns_col` is filled from an op declaring `EmitFnEntry` and the
+full-wheel projection still answers
+`col: List({ name: String | r406994@e26 })`, so the wheel's instance has a
+cause none of the nine isolates. `mentl why` on that row var is the next
+measurement and it has not been taken.
+▶ AND THE CALL SITE'S TYPE IS FULLY DECLARED, WHICH IS THE SHARPEST FORM OF
+THIS ENTRY'S CLAIM. `HandlerDeclStmt`'s own constructor (types.mn:1668) reads
+`[{init: Node, name: String}]` and `[{args: [String], body: Node, op_name:
+String}]` — closed records, no variable — and `stmt_child_handles` passes
+exactly those to `map(record_field_handle, states)` and
+`map(arm_body_handle, arms)`. The callees still open:
+`{ init: Node | r466502@e3 }`, `{ body: Node | r466607@e3 }`,
+`{ op_name: t467756@e0 | r467757@e19 }`. The graph PROVED the element type at
+the constructor, the caller HELD it, and the callee re-derived a free row —
+Carried-Truth at the element type, with nothing left ambiguous about which
+side lost the fact. The epochs say the same thing: e0/e3/e19 are the decl's
+own signature generalization, so these rows were minted before any call site
+existed and never unified with one. That is the union-find citizenship this
+entry names, and it is now measured on the wheel rather than on a repro.
 ▶ IT GATES A SHAPE ALREADY WANTED. The twin record in emit_module
 (`{base, enc, pairs, rec}`) is the natural form for a fourth fact and it is
 a positional quadruple instead, because written as a record its three reads

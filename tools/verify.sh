@@ -342,6 +342,30 @@ if C=$(wt_m2_ensure); then
   elif [[ -n "$mmax" && "$movers" -lt "$mmax" ]]; then
     say "  ↓ movers FELL $mmax -> $movers — lower movers_max in $BASELINE to hold it."
   fi
+  # THE UNPROVABLE-FIELD-OFFSET RATCHET — same stderr, and it reads a class
+  # that did not exist before 2026-09-15 because the floor was emitted
+  # silently. Every count here is an `(unreachable)` the wheel ships inside
+  # itself; the class arms when this reaches 0 (diag_refuses' wheel-zero
+  # licence), so this is a countdown, not a tolerance. A RISE is a new
+  # landmine.
+  #
+  # LIKE movers ABOVE, THIS IS THE PINNED BOOT'S SELF-REPORT, and on the
+  # landing that BIRTHS the class the pin predates it, so the read is 0 and
+  # the FELL notice below fires once against a compiler that could not have
+  # counted. The ceiling is 4 because 4 is what the NEW compiler measured
+  # running on the wheel (the m3 leg), not what the old one failed to say.
+  # After the repin the two agree and the notice is real.
+  fou=$(grep -c 'T_FieldOffsetUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); fou=${fou:-0}
+  fmax=$(grep -E '^field_offset_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
+  say "· field-offset floors: $fou unprovable slot(s) the wheel ships as (unreachable) — 0 arms the class"
+  if [[ -n "$fmax" && "$fou" -gt "$fmax" ]]; then
+    say "✗ field-offset RATCHET: rose $fmax -> $fou — a new silent trap entered the wheel."
+    say "  Close the receiver's row at the reported span; the diagnostic names the field and the type."
+    fail=1
+  elif [[ -n "$fmax" && "$fou" -lt "$fmax" ]]; then
+    say "  ↓ field-offset floors FELL $fmax -> $fou — lower field_offset_unprovable_max in $BASELINE;"
+    say "    at 0, rename TFieldOffsetUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
+  fi
   # THE USE-AFTER-MOVE RATCHET IS RETIRED (2026-09-15) — the class is ARMED.
   # It counted T_UseAfterMove narrations on the wheel's own compile and held
   # them at ZERO so that diag_refuses' wheel-zero arming licence stayed

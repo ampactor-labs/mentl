@@ -35,6 +35,61 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-15 · pin f7cfce238ca3b57a · THE FLOOR WAS WRITTEN AND NEVER SAID.
+  CLEAN m2 == m3, census 0, frontier 380/0/1, 19.99s, 2342MB peak.
+  ▶ THE M4 TRAP IS ROOTED AND IT WAS NOT THE CUT'S. The prior pin's march
+  died on the m4 leg at `wasm trap: unreachable` with a backtrace into
+  `emitfns_index_build` and no diagnostic anywhere in the run. The plan's
+  leading hypothesis was the 433-movers blast radius; it is REFUTED. Four
+  measurements: m2's and m3's bodies for that fn are byte-identical but for
+  the handle number inside a comment; the pre-cut Sep-12 generations carry
+  the same four floors; the fn's ENTIRE else-branch is `(unreachable) ;;
+  field offset unprovable: field 'name'`, so it can only ever return `idx`;
+  and `emitted_sig_of_entry` reads fields off a list element in the same
+  file and does NOT floor, because the op's declared `-> [EmitFnEntry]`
+  reaches its receiver. The cut did not emit the trap — it was the first
+  generation to step on one that had been shipping.
+  ▶ THE DEFECT IS THE REFUSAL-TO-REFUSE, and the site's own comment was the
+  confession: "the medium makes the wrong move unsayable (PLAN §0)" written
+  over code that emitted the trap and reported nothing. A program carrying
+  one compiled clean, passed `mentl check`, and died at the instruction that
+  admits it — §0's one promise inverted at the boundary that named it.
+  `TFieldOffsetUnprovable(String, Span)` now rides the emit that discovered
+  it (no second walk re-derives the offset, so it can neither over- nor
+  under-refuse), carrying `field_offset_unprovable_why`'s own rendering on
+  the RECEIVER's span. The `Diagnostic` row propagating through eight emit
+  declarations is the change describing itself before a gate ran.
+  ▶ THE GATE WAS SEEN RED, and the severity was decided by a gate too.
+  `tests/frontier/mn-field-offset-unprovable.mn` is three lines with no lib
+  — a quantified op parameter field-accessed in a handler arm. Through the
+  prior pin: exit 0, ZERO diagnostics, 4500B of WAT with the floor inside.
+  Reported as SError the march then ruled `FIXED POINT holds` and `m3 clean`
+  and REFUSED the repin: `CENSUS GATE: m3-leg census 4 > 0 — the wheel makes
+  claims about its own source it does not believe`. That is the ratchet
+  working, and the answer was the ladder the codebase already has, not a
+  softer report: `T_UseAfterMove` narrated under its own census until the
+  licence held, then the arming commit renamed it `E_UseAfterMove`. This
+  class is at that ladder's first rung — `field_offset_unprovable_max: 4`.
+  ▶ THE FOUR ARE ONE PEER AND THE EVIDENCE IS NOW ON THE WHEEL, not on a
+  repro. `HandlerDeclStmt` (types.mn:1668) DECLARES `[{init: Node, name:
+  String}]` — closed, no variable — `stmt_child_handles` passes exactly that
+  to `map(record_field_handle, states)`, and the callee opens
+  `{ init: Node | r466502@e3 }`. Epochs e0/e3/e19 are the decl's own
+  signature generalization, so those rows were minted before any call site
+  existed and never unified with one. That is
+  `Hβ.infer.record-row-vars-are-not-unioned`'s union-find citizenship,
+  measured on the medium itself.
+  ▶ NINE SHAPES THAT DO NOT REPRODUCE, recorded because they rule causes
+  OUT: the annotated interior call; an unannotated helper off `list_index`;
+  the same through `map`; a self-recursive walk; a plain `let` born `[]`
+  then pushed then walked; handler state pushed AND read in ONE arm; handler
+  state across two arms with the INIT pinning the element; the op param as
+  `name: Type`; the op param type-only as the wheel writes it; and the
+  reading arm also rebinding state. All PASS. The one miniature that traps
+  is a quantified receiver, which is the fixture, not the wheel's case.
+  `mentl why` on that row var is the next measurement and it has not been
+  taken.
+
 - 2026-09-15 · pin 2bcc0ae47b45db3c · THE CONDEMNED PASS WAS NEVER PRICED,
   AND IT IS THE LARGER HALF. CLEAN m2 == m3, census 0, 12.52s, 2338MB peak.
   ▶ Four commits of this day's docs argued about how to delete the trial/final

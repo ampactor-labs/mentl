@@ -1417,14 +1417,14 @@ fn walk_lemit_expr(expr) = match expr {
     walk_lemit_expr(b)
     walk_lemit_expr(s)
   },
-  // ONE arm, because there is one perform. Every dispatch that WALKS
+  LPerform(_, disp, args) => // ONE arm, because there is one perform. Every dispatch that WALKS
   // interns its effect key through the SAME visit_string channel user
   // literals flow through, so string_offset resolves it to a stable nonzero
   // data offset (else every key collides at 0), and registers the effect as
   // a demand. The lexical dispatch walks nothing, so it registers nothing.
   // A dispatch that names its handler announces it for the preinstall-init
   // scope, which is listening only inside an install's own inits walk.
-  LPerform(_, disp, args) => {
+  {
     match disp {
       PdFrame(_, hname, op_name) => visit_direct_perform(hname, op_name),
       PdWalk(ekey, _, op_name, target) => {
@@ -1933,11 +1933,7 @@ fn fn_record_name(r) = match r {
 // first statement is a graph node, and the graph is where every coordinate
 // already lives. An empty body has nothing to point at and says so.
 fn fn_record_span(r) with GraphRead + Memory + Alloc + !Mutate = match r {
-  (_, _, body, _) => if len(body) == 0 {
-    span_zero()
-  } else {
-    parse_span_of(lexpr_handle(list_index(body, 0)))
-  },
+  (_, _, body, _) => if len(body) == 0 { span_zero() } else { parse_span_of(lexpr_handle(list_index(body, 0))) },
 }
 
 // Emit the function table and elem mapping indices to function
@@ -2363,10 +2359,10 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LResumeK(h, k, v) => // The resume invocation delegates through the SAME LCall shape its emit
   // arm constructs — registration identical by construction.
   collect_call_vectors_expr(LCall(h, k, [v]), acc),
-  // Every perform's call vector is registered — the walked forms dispatch
+  LPerform(h, _d, args) => // Every perform's call vector is registered — the walked forms dispatch
   // through call_indirect and need the type; the direct ones cost nothing to
   // include and the set is deduped. One arm, one rule.
-  LPerform(h, _d, args) => collect_call_vectors_list(args, vec_push(args, repr_of(lookup_ty(h)), acc)),
+  collect_call_vectors_list(args, vec_push(args, repr_of(lookup_ty(h)), acc)),
   LLet(_h, _n, inner) => collect_call_vectors_expr(inner, acc),
   LBinOp(_h, _op, l, r) => collect_call_vectors_expr(r, collect_call_vectors_expr(l, acc)),
   LUnaryOp(_h, _op, i) => collect_call_vectors_expr(i, acc),
@@ -2817,70 +2813,70 @@ fn emit_one_wrapper_to_string(record) = {
 fn emit_wide_wrapper(record) = match record {
   (name, param_names, body, _) => match sig_of_symbol(name, len(param_names)) {
     (preprs, sig_ret) => {
-    wat_emit("  (func $wf$")
-    wat_emit(name)
-    wat_emit(" (param $__state i32)")
-    each(
-      (indexed) => match indexed {
-        (i, _) => {
-          wat_emit(" (param $wp")
-          wat_emit(int_to_str(i))
-          wat_emit(" i32)")
+      wat_emit("  (func $wf$")
+      wat_emit(name)
+      wat_emit(" (param $__state i32)")
+      each(
+        (indexed) => match indexed {
+          (i, _) => {
+            wat_emit(" (param $wp")
+            wat_emit(int_to_str(i))
+            wat_emit(" i32)")
+          },
         },
-      },
-      enumerate(param_names)
-    )
-    wat_emit(" (result i32) (local $wf_f64 f64) (local $wf_cell i32)\n")
-    wat_emit("    (local.get $__state)\n")
-    each(
-      (indexed) => match indexed {
-        (i, _p) => {
-          wat_emit("    (local.get $wp")
-          wat_emit(int_to_str(i))
+        enumerate(param_names)
+      )
+      wat_emit(" (result i32) (local $wf_f64 f64) (local $wf_cell i32)\n")
+      wat_emit("    (local.get $__state)\n")
+      each(
+        (indexed) => match indexed {
+          (i, _p) => {
+            wat_emit("    (local.get $wp")
+            wat_emit(int_to_str(i))
+            wat_emit(")\n")
+            emit_wide_deref(list_index(preprs, i))
+          },
+        },
+        enumerate(param_names)
+      )
+      match sig_ret {
+        RI32 => {
+          wat_emit("    (return_call $")
+          wat_emit(name)
           wat_emit(")\n")
-          emit_wide_deref(list_index(preprs, i))
         },
-      },
-      enumerate(param_names)
-    )
-    match sig_ret {
-      RI32 => {
-        wat_emit("    (return_call $")
-        wat_emit(name)
-        wat_emit(")\n")
-      },
-      RF64 => {
-        wat_emit("    (call $")
-        wat_emit(name)
-        wat_emit(")\n")
-        wat_emit("    (local.set $wf_f64)\n")
-        wat_emit("    (i32.const 8)\n")
-        wat_emit("    (call $alloc)\n")
-        wat_emit("    (local.tee $wf_cell)\n")
-        wat_emit("    (local.get $wf_f64)\n")
-        wat_emit("    (f64.store)\n")
-        wat_emit("    (local.get $wf_cell)\n")
-      },
-      RI64 => {
-        wat_emit("    (call $")
-        wat_emit(name)
-        wat_emit(")\n")
-        wat_emit("    (unreachable) ;; wide-result: i64 has no producer yet\n")
-      },
-      RF32 => {
-        wat_emit("    (call $")
-        wat_emit(name)
-        wat_emit(")\n")
-        wat_emit("    (unreachable) ;; wide-result: f32 has no producer yet\n")
-      },
-      RV128 => {
-        wat_emit("    (call $")
-        wat_emit(name)
-        wat_emit(")\n")
-        wat_emit("    (unreachable) ;; wide-result: v128 has no producer yet\n")
-      },
-    }
-    wat_emit("  )\n")
+        RF64 => {
+          wat_emit("    (call $")
+          wat_emit(name)
+          wat_emit(")\n")
+          wat_emit("    (local.set $wf_f64)\n")
+          wat_emit("    (i32.const 8)\n")
+          wat_emit("    (call $alloc)\n")
+          wat_emit("    (local.tee $wf_cell)\n")
+          wat_emit("    (local.get $wf_f64)\n")
+          wat_emit("    (f64.store)\n")
+          wat_emit("    (local.get $wf_cell)\n")
+        },
+        RI64 => {
+          wat_emit("    (call $")
+          wat_emit(name)
+          wat_emit(")\n")
+          wat_emit("    (unreachable) ;; wide-result: i64 has no producer yet\n")
+        },
+        RF32 => {
+          wat_emit("    (call $")
+          wat_emit(name)
+          wat_emit(")\n")
+          wat_emit("    (unreachable) ;; wide-result: f32 has no producer yet\n")
+        },
+        RV128 => {
+          wat_emit("    (call $")
+          wat_emit(name)
+          wat_emit(")\n")
+          wat_emit("    (unreachable) ;; wide-result: v128 has no producer yet\n")
+        },
+      }
+      wat_emit("  )\n")
     },
   },
 }
@@ -3008,9 +3004,12 @@ fn emit_fn_body(name, param_names, body, captures_count) = {
   wat_emit(" (local $callee_closure i32)")
   wat_emit(" (local $alloc_size i32)")
   wat_emit(" (local $loop_i i32)")
-  emit_named_locals(walk_locals_list(body, []), match sig {
-    (preprs, _) => param_local_entries(param_names, preprs, []),
-  })
+  emit_named_locals(
+    walk_locals_list(body, []),
+    match sig {
+      (preprs, _) => param_local_entries(param_names, preprs, []),
+    }
+  )
   wat_emit("\n")
   emit_body(body)
   wat_emit("  )\n")
@@ -3198,14 +3197,13 @@ fn walk_locals_expr(expr, acc) = match expr {
     )
   },
   LWasiCall(_h, _n, args) => walk_locals_list(args, acc),
-  // The perform's per-site pair, mirror-true to the ONE emit arm: evw holds
+  LPerform(h, _d, a) => // The perform's per-site pair, mirror-true to the ONE emit arm: evw holds
   // the world saved around the arm call and EVERY dispatch needs it, because
   // the bracket is not a property of any one of them; evn holds the resolved
   // node and only the walking forms fill it. Declaring both for all is the
   // honest read of "one arm, one shape" — a local nobody sets costs a word of
   // frame and cannot be the thing that makes two forms differ.
-  LPerform(h, _d, a) =>
-    walk_locals_list(a, ["evn_{int_to_str(h)} i32", "evw_{int_to_str(h)} i32"] ++ acc),
+  walk_locals_list(a, ["evn_{int_to_str(h)} i32", "evw_{int_to_str(h)} i32"] ++ acc),
   LInvariantFailure(_, _) => acc,
   LFieldLoad(_h, rec, _off) => walk_locals_expr(rec, acc),
   LConvert(_h, _, operand) => walk_locals_expr(operand, acc),
@@ -3500,14 +3498,14 @@ fn emit_params(names, preprs) = each(
 // exists, so the ladder goes. Hβ.emit.unused-wide-param-floor closes here: an
 // unused wide param signs at its real width because the entry carries the
 // param's TYPE, and being unread was never evidence of being a word.
-
+//
 // (The 30-arm LowExpr walk that hunted a param's first use-site went with the
 // ladder above — a whole traversal of the lowered tree, per parameter, per
 // function, run three times over from three readers, to recover a type the
 // fn's own TFun states. Nothing reads it now. This is what a Carried-Truth
 // fix is supposed to look like from the outside: the column arrives and a
 // subsystem leaves.)
-
+//
 // A statement is a value used ZERO times — the kernel-uniform word
 // every expression yields is DROPPED between statements; only the
 // final statement's word is the block's value. Non-yielding forms (a
@@ -4382,7 +4380,7 @@ fn emit_expr(expr) = match expr {
     wat_emit(int_to_str(h))
     wat_emit(")\n")
   },
-  // THE ONE PERFORM'S EMIT. Three shapes used to live here and in two other
+  LPerform(h, disp, args) => // THE ONE PERFORM'S EMIT. Three shapes used to live here and in two other
   // arms, and they disagreed about the WORLD BRACKET: the evidence arm saved
   // the world, set it to the node's install world around the arm call and
   // restored, while the two direct arms called bare. That difference was
@@ -4392,7 +4390,7 @@ fn emit_expr(expr) = match expr {
   // FETCHED by the dispatch and the bracket is emitted once, outside the
   // branch, so no degree of boundness can mean something different from
   // another.
-  LPerform(h, disp, args) => {
+  {
     let hs = int_to_str(h)
     // (0) the arm's __state and the world to run it under. A lexical answer
     // reads the install's own two locals; anything that walks resolves the
@@ -4613,9 +4611,26 @@ fn emit_expr(expr) = match expr {
       // NO SILENT FALLBACK (resolve_field_offset returned -1): the field's
       // offset was not provable from the graph. Emit (unreachable) — the
       // named wrong — not a fabricated offset-0 load that reads a foreign
-      // field. The medium makes the wrong move unsayable (PLAN §0). And it
-      // SAYS WHICH: the selector and the receiver's live type ride the
-      // marker, so the census reads an inventory instead of a count.
+      // field. And it SAYS WHICH: the selector and the receiver's live type
+      // ride the marker, so the census reads an inventory instead of a count.
+      //
+      // AND IT REPORTS, which it never did before. This comment used
+      // to end "the medium makes the wrong move unsayable (PLAN §0)" and the
+      // artifact delivered the inverse: the floor was WRITTEN into the module
+      // and never SAID to anyone, so a program carrying one passed `mentl
+      // check` with zero diagnostics and trapped at the instruction that
+      // admits it. Nothing executes unproven is the one promise this site is
+      // the boundary for. Measured 2026-09-15: the shipping wheel carries four
+      // of these (`op_name`, `name`, `init`, `body`), one of them the
+      // unconditional else-branch of emitfns_index_build, and the march found
+      // it the only way a silent floor is ever found — a later generation
+      // stepped on it and the m4 leg died at `wasm trap: unreachable` with no
+      // diagnostic anywhere in the run.
+      //
+      // The report rides the RECEIVER's span: the selector has no node of its
+      // own, and the receiver is the value whose row failed to close, which is
+      // what the reader has to go fix.
+      report(TFieldOffsetUnprovable(field_offset_unprovable_why(rec, sel), parse_span_of(lexpr_handle(rec))))
       wat_emit("    (unreachable)  ;; field offset unprovable: ")
       wat_emit(field_offset_unprovable_why(rec, sel))
       wat_emit("\n")
@@ -5209,7 +5224,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
 
 // The one dedup walk: emit each distinct fold_sig's helper ONCE, the leaf
 // generator selected by the op.
-fn emit_distinct_fold_leaves(op, tys, seen) with EnvRead + Alloc + Memory + WasmOut + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern = if len(tys) == 0 {
+fn emit_distinct_fold_leaves(op, tys, seen) with EnvRead + Alloc + Memory + WasmOut + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic = if len(tys) == 0 {
   ()
 } else {
   let ty = last(tys)
@@ -5229,7 +5244,7 @@ fn emit_distinct_fold_leaves(op, tys, seen) with EnvRead + Alloc + Memory + Wasm
 
 // The four leaves behind the one walk. Emission order (eq, compare, hash,
 // show) preserves the module layout the four separate entry fns produced.
-fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) with EnvRead + Memory + Alloc + WasmOut + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern = {
+fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) with EnvRead + Memory + Alloc + WasmOut + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic = {
   // One region over the four leaf families: the closures record lives
   // outside the mark; every generated helper streams as it is built.
   //
@@ -6058,7 +6073,7 @@ fn eq_subtys_variants(specs, i, n, seen, acc) = if i >= n {
 // each assembling via FOLDED `(call $str_concat (local.get $__state) <l> <r>)`
 // s-expressions — the value, the field-loads, and the recursive show calls are
 // sub-expressions of the concat tree (correct stack discipline, no interleave).
-fn emit_one_show_helper(sig, ty) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern = match fold_strip(ty) {
+fn emit_one_show_helper(sig, ty) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic = match fold_strip(ty) {
   TName(name, _) => emit_one_show_sum_helper(sig, name),
   TList(elem) => emit_one_show_list_helper(sig, elem),
   _ => emit_one_show_product_helper(sig, ty),
@@ -6079,7 +6094,7 @@ fn emit_show_header(sig) = {
 // structural projection. The fold runs over the canonically-sorted fields at
 // their width-summed offsets (the SAME align_for + repr_width the eq leaf and
 // the store side run — Carried-Truth).
-fn emit_one_show_product_helper(sig, ty) with EnvRead + WasmOut + Memory + Alloc + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern = {
+fn emit_one_show_product_helper(sig, ty) with EnvRead + WasmOut + Memory + Alloc + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic = {
   emit_show_header(sig)
   let is_record = ty_is_record(fold_strip(ty))
   let open = if is_record { "\{" } else { "(" }
@@ -6121,7 +6136,7 @@ fn name_positional(elems, i, n) with Alloc + Memory =
 // concat( <name-prefix + ", " sep>, concat( show(field), <rest> ) ). The first
 // field has no leading ", "; a record field is prefixed "name: ". The byte
 // offset is width-summed (align_for + repr_width). Terminates with "" at the end.
-fn emit_show_product_fields(fields, i, off, is_record) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern = if i >= len(fields) {
+fn emit_show_product_fields(fields, i, off, is_record) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic = if i >= len(fields) {
   emit_show_str_literal("")
 } else {
   match list_index(fields, i) {
@@ -6196,7 +6211,7 @@ fn emit_show_field_load(off, r) = {
 // "Ctor(" ++ f0 ++ ", " ++ f1 ++ ")". The variant names + payload types are read
 // LIVE from the env (variant_named_specs_of). A recursive ADT re-enters
 // $show_n<Name> (finite on the value). Mirrors emit_eq_leaf_sum's guard.
-fn emit_one_show_sum_helper(sig, type_name) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern = {
+fn emit_one_show_sum_helper(sig, type_name) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic = {
   let specs = variant_named_specs_of(type_name)
   wat_emit("  (func $show_")
   wat_emit(sig)
@@ -6222,7 +6237,7 @@ fn emit_one_show_sum_helper(sig, type_name) with EmitMemory + StringTable + Allo
 // ($a in the nullary arm, $ta in the heap arm). A nullary variant renders its
 // bare name; a fielded variant renders "Ctor(" ++ payloads ++ ")". The cascade
 // terminal is "" (the env enumerates every variant; control lands on one arm).
-fn emit_show_sum_tag_dispatch(specs, i, n, scrutinee) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern = if i >= n {
+fn emit_show_sum_tag_dispatch(specs, i, n, scrutinee) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic = if i >= n {
   emit_show_str_literal("")
 } else {
   match list_index(specs, i) {
@@ -6314,7 +6329,7 @@ fn emit_show_variant_load(off, pty) = {
 // LIST show: "[" ++ <element loop, joined by ", "> ++ "]". The element count is
 // runtime (len); $show_listbody_<sig> folds str_concat over list_index(a, i),
 // joining ", ". The element leaf is read from the proven element type.
-fn emit_one_show_list_helper(sig, elem) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern = {
+fn emit_one_show_list_helper(sig, elem) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic = {
   emit_show_header(sig)
   emit_show_concat_open()
   emit_show_str_literal("[")

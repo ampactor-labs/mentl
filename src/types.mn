@@ -2319,6 +2319,16 @@ type DiagKind
   // §«Partial application» — productive,
   // never executable)
   | EUnresolvedHole(Int, Span)
+  // a reachable field access whose offset the
+  // graph could not prove — the receiver's row
+  // never closed, so emit has no slot to load
+  // and writes `(unreachable)` instead. The
+  // floor was WRITTEN and never SAID: a program
+  // carrying one compiles clean and traps at the
+  // instruction that admits it, which is §0's
+  // "nothing executes unproven" inverted at the
+  // one boundary that claimed it
+  | TFieldOffsetUnprovable(String, Span)
   // clock-replay trace ran out
   | EReplayExhausted(Span)
 
@@ -2492,6 +2502,7 @@ fn diag_span(d) with Pure = match d {
   EUnresolvedType(_, _, s) => s,
   EEffectUnhandled(_, _, s) => s,
   EUnresolvedHole(_, s) => s,
+  TFieldOffsetUnprovable(_, s) => s,
   EReplayExhausted(s) => s,
 }
 
@@ -2560,6 +2571,7 @@ fn diag_source(d) with Pure = match d {
   EUnresolvedType(_, _, _) => "lower",
   EEffectUnhandled(_, _, _) => "effects",
   EUnresolvedHole(_, _) => "verify",
+  TFieldOffsetUnprovable(_, _) => "lower",
   EReplayExhausted(_) => "clock",
 }
 
@@ -2628,6 +2640,7 @@ fn diag_code(d) with Pure = match d {
   EUnresolvedType(_, _, _) => "E_UnresolvedType",
   EEffectUnhandled(_, _, _) => "E_EffectUnhandled",
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
+  TFieldOffsetUnprovable(_, _) => "T_FieldOffsetUnprovable",
   EReplayExhausted(_) => "E_ReplayExhausted",
 }
 
@@ -2648,6 +2661,19 @@ fn diag_severity(d) with Pure = match d {
   TPolyRecursionSignature(_, _) => SWarning,
   TOwnUnconsumed(_, _) => SWarning,
   TOwnAcrossReplay(_, _) => SWarning,
+  TFieldOffsetUnprovable(_, _) => // PRE-ARM, on the exact ladder T_UseAfterMove walked: narrate → ratchet →
+  // arm, and the arming commit renames it E_ and moves it to SError beside
+  // its siblings. The severity tracks the ENFORCEMENT posture, never how bad
+  // the code is — an unprovable offset is an `(unreachable)` the emit ships,
+  // so it is an error in every sense except the one this projection names.
+  // It cannot be SError today for a mechanical reason, and the mechanism is
+  // the point: the census is a zero-tolerance ratchet on the wheel's own
+  // errors about its own source, and the wheel has FOUR of these. Reporting
+  // them as errors refuses the repin — which is the census working, not a
+  // problem to route around. The four are `Hβ.infer.record-row-vars-are-not-
+  // unioned`'s to close; the field_offset_unprovable_max ratchet in
+  // tools/verify-baseline.txt counts them down.
+  SWarning,
   EUseAfterMove(_, _) => SError,
   VPending(_, _) => SVerificationPending,
   EVerifyUnencodable(_) => SVerificationPending,
@@ -2891,6 +2917,7 @@ fn diag_applicability(d) with Pure = match d {
   EPatternInexhaustive(_, _, _) => HasPlaceholders,
   EEffectUnhandled(_, _, _) => MaybeIncorrect,
   EUnresolvedHole(_, _) => HasPlaceholders,
+  TFieldOffsetUnprovable(_, _) => MaybeIncorrect,
   ERefinementRejected(_, _) => Unspecified,
   EVerifyUnencodable(_) => Unspecified,
   ETypeMismatch(_, _, _) => Unspecified,
@@ -2982,6 +3009,7 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   EUnresolvedType(h, epoch, _) => "handle {int_to_str(h)} @epoch={int_to_str(epoch)}",
   EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
+  TFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed, so this load has no provable slot and the emit writes a trap here; close the row (annotate the receiver at its Intent Boundary, or give the call site a shape the twin can key on)",
   EReplayExhausted(_) => "clock replay trace exhausted",
 }
 

@@ -685,6 +685,27 @@ comment_refs_max: 0
 # (`Hβ.infer.judge-once-per-scc`).
 movers_max: 433
 
+# THE UNPROVABLE-FIELD-OFFSET CENSUS — the wheel's own count of reachable
+# field accesses whose slot the graph could not prove. Each one is an
+# `(unreachable)` the emit writes into the shipping module, and until
+# 2026-09-15 each one was written and never SAID: `mentl check` passed, the
+# compile exited 0, and the program trapped at the instruction that admits
+# it. Four of them rode the wheel. One was the unconditional else-branch of
+# emitfns_index_build, and the march found it the only way a silent floor is
+# ever found — the m4 leg died at a bare `wasm trap: unreachable` with no
+# diagnostic anywhere in the run.
+#
+# This is a ratchet toward an ARMING, not a standing tolerance. E_FieldOffset
+# Unprovable is declared and reported but NOT in diag_refuses, because that
+# licence is a wheel census of ZERO (types.mn states it: "the medium never
+# violates it on ITSELF, so enforcing it on everyone cannot refuse the
+# medium"). Each of the four is a receiver whose row never closed —
+# emitfns_index_build's `col` reads List({ name: String | r }) in the full
+# wheel though the op that fills it declares EmitFnEntry, which is the
+# Carried-Truth Law at the element type. Drive them to zero, then arm, then
+# this line and the pre-arm fixture both retire.
+field_offset_unprovable_max: 4
+
 # The effect seam: filesystem impl calls outside the handler that owns them.
 # MEASURED 24 before this landing and 13 after (both read from the artifact,
 # the pre-number taken by stashing the fix and re-running the tier — not

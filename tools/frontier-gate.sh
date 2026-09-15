@@ -1420,6 +1420,17 @@ for i in "${!compilers[@]}"; do
   # RED against the pre-arm pin (diagnostic on stderr, WAT still emitted).
   run_refusal "$compiler" row-contradiction \
     "$ROOT/tests/frontier/mn-row-contradiction.mn" E_DeclaredRowContradiction "$dir"
+  # An unprovable field offset REPORTS (2026-09-15). Born RED against the
+  # pin the day it landed: the same three lines compiled through boot with
+  # ZERO errors and 4500B of WAT carrying the floor inside them, so the
+  # program trapped at an instruction no diagnostic had ever mentioned.
+  # Pre-arm, so run_narration, not run_refusal — the wheel's own census is
+  # four (emitfns_index_build, arms_include_op, record_field_handle,
+  # arm_body_handle) and diag_refuses' licence is a wheel census of zero.
+  # The ratchet in verify-baseline holds those four; when they fall this
+  # moves to run_refusal in the commit that arms the class.
+  run_narration "$compiler" field-offset-unprovable \
+    "$ROOT/tests/frontier/mn-field-offset-unprovable.mn" T_FieldOffsetUnprovable "$dir"
   # The root-row governance gate's three tiers, each pinned: an
   # EVIDENCE-floor demand refuses even with an install elsewhere (a
   # dead-chain perform walks garbage evidence, no belt — the one strict

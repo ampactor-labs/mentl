@@ -1384,8 +1384,30 @@ form the whole time. The arcs, in order:
   what remains is the INTERIOR one, and it emits `(unreachable) ;; field
   offset unprovable` — a refusal the executable trips, with no twin demanded
   at the site at all. The wheel ships four such floors today (`op_name`,
-  `name`, `init`, `body`), so it is live, and `mentl check` still passes,
-  so it is invisible where the sentence said. No client-facing page ships
+  `name`, `init`, `body`), so it is live.
+  **AND "NOT A SILENT WRONG" WAS THE WORD THAT WAS WRONG, corrected
+  2026-09-15 by the artifact.** That sentence ended "`mentl check` still
+  passes, so it is invisible where the sentence said", which read the
+  invisibility as a scoping detail. It was the defect. The floor was
+  WRITTEN into every module and never SAID to anyone: the compile exited
+  0, no diagnostic named it, and the program trapped at the instruction
+  that admits it — so it is silent in the only sense that matters, and a
+  trap nobody was told about is not a refusal. The emit site's own comment
+  claimed `PLAN §0` ("the medium makes the wrong move unsayable") while
+  delivering its inverse at the one boundary that named the promise.
+  The single-pass cut's m4 leg died inside `emitfns_index_build`, whose
+  ENTIRE else-branch is the `name` floor, at a bare `wasm trap:
+  unreachable` with no diagnostic anywhere in the run — which is how a
+  silent floor is always found, by a later generation stepping on it.
+  `T_FieldOffsetUnprovable` now reports at the receiver's span carrying the
+  selector and the receiver's live type; the class is pre-arm under
+  `field_offset_unprovable_max: 4` (`diag_refuses`' licence is a wheel
+  census of zero) and `Hβ.emit.field-offset-floor-is-never-reported`
+  carries the record. The four sites are the peer's own: the constructor
+  `HandlerDeclStmt` (types.mn:1668) DECLARES `[{init: Node, name: String}]`
+  closed, the caller holds it, and the callee re-derives a free row at
+  epoch 3 — Carried-Truth at the element type, measured on the wheel rather
+  than on a repro. No client-facing page ships
   either shape; (v) env re-key onto the smap primitive — folds into (ii)'s
   env rework, one landing; (vi) pointees-are-words.
 - **Arc C · Image lifetime v1.** With pointees-as-words, 4.3's fork/reset
