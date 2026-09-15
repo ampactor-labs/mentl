@@ -1370,6 +1370,32 @@ at an intra-cycle forward use instantiating a fresh copy, the disconnected-vars
 class `group_mono_views` (:1934) exists to prevent — was the tell that the
 work already existed one pass over. Delete the duplicate; do not complete it.
 
+THE SUBSTRATE IS ALREADY THE DESIGN, AND THE NAIVE CUT IS REFUTED BY
+ARITHMETIC (measured 2026-09-15, before a line was written). A handle ALREADY
+decomposes as `(band, slot)` — `spine_band(h) = h / spine_slots`,
+`spine_slot(h) = h % spine_slots`, `spine_slots = 16384` (graph.mn:96-100) —
+and the page structure was built FOR this: its own comment reads "mint
+distribution (max 2,305 mints per decl on the wheel, p99 331 — 7× headroom for
+the per-decl banding this page structure carries next)". So `(arena, offset)`
+is not a new mechanism; per-decl banding is `band = decl index`, and pages open
+on demand (`spine_ensure`), so a sparse handle space costs only pages touched.
+BUT: `spine_open_loop` (graph.mn:129-135) allocates a page with TWELVE columns,
+each `make_list(spine_slots)` — and `make_list(n) = alloc_list(n)`
+(lib/lists.mn:110), eager. So one page is 12 × 16,384 slots, and one band per
+decl is 3,385 bands = ~665M slots ≈ 2.66GB of spine alone, against a measured
+2.4GB whole-compile peak. Naive per-decl banding roughly DOUBLES the image.
+TWO PREREQUISITES, both deletions, both measurable: (1) SIZE THE BAND FROM THE
+MEASURED DISTRIBUTION — p99 is 331, not 16384; a 512-slot band puts per-decl
+banding at ~83MB with overflow bands for the ~1% tail, and total memory is
+unchanged for the dense case because it is (pages × slots) either way — only
+each band's unused tail is waste. (2) LAZY COLUMNS — twelve dense columns
+allocated eagerly for a page whose sparse columns the readers already guard
+("a spine_open guard for the sparse columns", graph.mn:103) is the same
+over-allocation disease one layer down, and it is independent of this arc.
+The 16384 figure was chosen so ONE page holds the worst decl (16384/2305 =
+7.1×); that sizing is right for a DENSE space and wrong for a per-decl one,
+where the cost is paid 3,385 times instead of ~40.
+
 CLOSE CONDITION: one judgment pass,
 `movers` retired as a key rather than driven to zero, and the trial/final
 vocabulary gone from infer.mn. Everything the movers ratchet, the

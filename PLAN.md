@@ -1305,7 +1305,29 @@ form the whole time. The arcs, in order:
   — that a quantified skeleton at an intra-cycle forward use instantiates a
   fresh copy, the disconnected-vars class `group_mono_views` exists to prevent
   — was the tell that the work was already done one pass over. Delete the
-  duplicate; do not complete it. The env-carries-cells form
+  duplicate; do not complete it.
+
+  **AND THE SUBSTRATE IS ALREADY `(arena, offset)` — but the naive cut is
+  REFUTED BY ARITHMETIC, measured before a line was written.** A handle
+  already decomposes: `spine_band(h) = h / spine_slots`, `spine_slot(h) = h %
+  spine_slots`, `spine_slots = 16384` (graph.mn:96–100), pages opening on
+  demand — and the page structure was built FOR this, its own comment reading
+  *"max 2,305 mints per decl on the wheel, p99 331 — 7× headroom for the
+  per-decl banding this page structure carries next"*. So per-decl banding is
+  just `band = decl index`. BUT `spine_open_loop` (graph.mn:129) allocates
+  TWELVE columns per page, each `make_list(16384)`, eagerly — so one band per
+  decl is 3,385 pages ≈ 665M slots ≈ **2.66GB of spine alone**, against a
+  measured 2.4GB whole-compile peak. It roughly doubles the image. Two
+  prerequisites, both deletions: **(1) size the band from the measured
+  distribution** — p99 is 331, not 16384; a 512-slot band lands ~83MB with
+  overflow bands for the ~1% tail, and total memory is unchanged in the dense
+  case because it is (pages × slots) either way, only each band's unused tail
+  being waste. **(2) lazy columns** — twelve dense columns for a page whose
+  sparse columns readers already guard (graph.mn:103) is the same
+  over-allocation one layer down, independent of this arc. The 16384 figure
+  was sized so ONE page holds the worst decl; that is right for a DENSE space
+  and wrong for a per-decl one, where the cost is paid 3,385 times rather than
+  ~40. The env-carries-cells form
   (Binding = BStatic | BCell), the quantifier as a caller-run projection and
   instantiation as the correspondence-edge mint remain the banked shape for
   the SCHEME layer, but they are no longer justified by the movers claim;
