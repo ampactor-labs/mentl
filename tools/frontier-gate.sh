@@ -129,6 +129,8 @@ MATH_RTLIBS=(
 
 total_pass=0
 total_fail=0
+# Declared standing failures (frontier_expected_red) — not reds. See judge().
+total_xred=0
 RUNTIME_SHADOW=""
 BOOT_RUNTIME_SHADOW=""
 # 2026-07-17: repinned after Stage 1b removed check_ref_escape. The runtime libs
@@ -178,6 +180,52 @@ pass() {
 fail() {
   echo "  RED  $*"
   total_fail=$((total_fail + 1))
+}
+
+# ─── The NAMED standing failure, replacing a COUNT (2026-09-15) ───────
+# `frontier_red_max: 1` was a permission slip with a blank name field. It
+# compared only the COUNT (march.sh's board_frontier: `[ "$red" -gt "$max" ]`),
+# so it could not tell WHICH leg was red — fix the standing one, break a crown
+# leg, and the board still printed "378 pass / 1 red", byte-identical to a
+# healthy day. A count standing in for an identity is drift 8 (`mode == 0/1/2`)
+# at the gate layer, and the perimeter was wired to read it, so the blindness
+# reached the commit gate.
+# It could not catch the OTHER direction either: when a standing red is FIXED,
+# `red=0 -gt max=1` is false, nothing reports the ceiling is now slack, and it
+# silently licenses one future unrelated red forever — §9.11's "a banked
+# expectation is a HYPOTHESIS about the era that banked it", with nothing to
+# test it.
+# The project already uses the right form everywhere else: tests/floors/ does
+# not COUNT refusals, each fixture DECLARES that it must refuse. So a standing
+# failure is a contract keyed by NAME, in the baseline's one home, and it is
+# judged in BOTH directions — which is strictly stronger than the ceiling it
+# replaces, and retires `frontier_red_max` entirely.
+expected_red_has() {  # <key>
+  grep -qE "^frontier_expected_red:[[:space:]]*$1([[:space:]]|\$)" \
+    "$ROOT/tools/verify-baseline.txt" 2>/dev/null
+}
+
+# judge <key> <ok:0|1> <message…>
+#   ok=1, undeclared -> PASS      ok=0, undeclared -> RED
+#   ok=0, declared   -> XRED      ok=1, declared   -> RED (the contract is STALE:
+#                                 the peer landed, so the entry must retire —
+#                                 the case a count can never see)
+judge() {
+  local key="$1" ok="$2"; shift 2
+  if expected_red_has "$key"; then
+    if [ "$ok" = 1 ]; then
+      echo "  RED  $key: STALE EXPECTED-RED — this leg now PASSES; delete"
+      echo "       'frontier_expected_red: $key' from tools/verify-baseline.txt"
+      total_fail=$((total_fail + 1))
+    else
+      echo "  XRED $key (declared standing failure) — $*"
+      total_xred=$((total_xred + 1))
+    fi
+  elif [ "$ok" = 1 ]; then
+    pass "$*"
+  else
+    fail "$*"
+  fi
 }
 
 # Normalize only compiler errors and unresolved proof obligations. Runtime
@@ -2588,8 +2636,18 @@ for i in "${!compilers[@]}"; do
   # which is 157 construction sites, a representation change, its own arc.
   # Banked as Hβ.why.reason-span-is-a-weave-coordinate; types.mn's own
   # seam-render comment names it too. This leg stays RED on purpose and is
-  # the one entry in frontier_red_max.
-  printf '%s' "$wy_out" | grep -q 'mn-where-badges:8' || { w_ok=0; fail "why coordinates carry their file (line half fixed; file half is Hβ.why.reason-span-is-a-weave-coordinate) (got: $wy_out)"; }
+  # the one entry in frontier_expected_red, judged by name in both
+  # directions — so the day the peer lands, this leg starts PASSING and the
+  # gate REFUSES until the entry is deleted, instead of a slack count
+  # silently licensing some other leg's red.
+  # A DECLARED standing failure, judged by NAME in both directions (see
+  # judge()). It no longer zeroes w_ok: the aggregate below claims only that
+  # the WHERE badges narrate, which they do — folding an unrelated `why`
+  # coordinate defect into that verdict hid a real pass behind a real red.
+  wy_file_ok=0
+  printf '%s' "$wy_out" | grep -q 'mn-where-badges:8' && wy_file_ok=1
+  judge why-coordinates "$wy_file_ok" \
+    "why coordinates carry their file (line half fixed; file half is Hβ.why.reason-span-is-a-weave-coordinate) (got: $wy_out)"
   # The capability-at-tee badge (§11 6.3's felt face): the install line
   # names the handler and the effect set its arms absorb, from the
   # graph's own facts. Born RED 2026-08-08 (the boot lacked the facet).
@@ -3052,7 +3110,7 @@ for i in "${!compilers[@]}"; do
   fi
 done
 
-echo "frontier: $total_pass pass / $total_fail red"
+echo "frontier: $total_pass pass / $total_fail red / $total_xred expected-red"
 
 # The GREEN STAMP, keyed by the boot it tested (the d51661f1 lesson —
 # 2026-08-09): a fully-green run records the boot's sha256 so the
@@ -3074,10 +3132,13 @@ echo "frontier: $total_pass pass / $total_fail red"
 # tightens automatically the day the ceiling reaches 0. This is not a
 # loosening: it replaces a second, stricter, UNREACHABLE contract with the
 # banked one, and an unsatisfiable gate is a gate that gets --no-verify'd.
-fr_max=$(grep -E '^frontier_red_max:' "$ROOT/tools/verify-baseline.txt" \
-           2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
-fr_max=${fr_max:-0}
-if [ "$total_fail" -le "$fr_max" ]; then
+# THE STAMP IS BACK TO LITERAL ZERO (2026-09-15) — because an expected red is
+# no longer a red. The ceiling this replaces (`frontier_red_max`, read here
+# and in march.sh) compared only a COUNT and so could not tell WHICH leg was
+# failing; the named contract in judge() does, in both directions, and a
+# declared standing failure lands in $total_xred rather than $total_fail. So
+# zero here is the strong form, not the unreachable one it was this morning.
+if [ "$total_fail" -eq 0 ]; then
   sha256sum "$ROOT/boot/mentl.wasm" | cut -d' ' -f1 > "$ROOT/.build/frontier-stamp"
 else
   rm -f "$ROOT/.build/frontier-stamp"

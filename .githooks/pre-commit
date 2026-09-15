@@ -121,13 +121,19 @@ fi
 # stamped `frontier: NOT RUN`, a visible blank that refuses nothing. The
 # full-green law says a wheel commit lands only when the frontier ran,
 # green, against the exact boot being committed. Mechanically: the gate
-# writes .build/frontier-stamp (the boot sha256) on a run within
-# frontier_red_max and clears it above; this gate demands the stamp match
-# the staged boot. Boot↔source coherence stays the march's contract
-# (m2 == m3). "Green" means WITHIN THE BANKED CEILING, not literal zero,
-# and that word cost this gate its first real case: it hard-coded 0 while
-# march.sh read frontier_red_max, so the march blessed pins this refused
-# to commit. One home now — frontier-gate.sh reads the same key.
+# writes .build/frontier-stamp (the boot sha256) on a 0-red run and clears
+# it otherwise; this gate demands the stamp match the staged boot.
+# Boot↔source coherence stays the march's contract (m2 == m3).
+# "Green" is literal ZERO again, and the history is worth keeping because
+# the word moved twice in one day. It hard-coded 0 while march.sh read a
+# `frontier_red_max` COUNT, so the march blessed pins this refused to
+# commit — fixed that morning by reading the same count here, which then
+# propagated the count's real defect into the commit gate: a count cannot
+# say WHICH leg is red, so a fixed standing red plus a broken crown leg
+# passed identically. Standing failures are DECLARED BY NAME now
+# (frontier_expected_red, judged in both directions) and land in the
+# summary's expected-red field, so zero is the strong form rather than the
+# unreachable one.
 staged_boot=$(git diff --cached --name-only --diff-filter=ACMR | grep -cx 'boot/mentl.wasm' || true)
 if [[ "$has_compiler_change" == "true" || "$staged_boot" -gt 0 ]]; then
     STAMP="$REPO_ROOT/.build/frontier-stamp"
@@ -137,8 +143,10 @@ if [[ "$has_compiler_change" == "true" || "$staged_boot" -gt 0 ]]; then
         echo "pre-commit: THE FULL-GREEN PERIMETER REFUSES — the frontier has not"
         echo "run green against this boot ($(echo "$boot_sha" | cut -c1-12)…). Run:"
         echo "    bash tools/frontier-gate.sh"
-        echo "and commit only within frontier_red_max (tools/verify-baseline.txt —"
-        echo "the ONE home the march reads too; a rise above it clears the stamp)."
+        echo "and commit only on 0 red. A standing failure is DECLARED BY NAME"
+        echo "(frontier_expected_red in tools/verify-baseline.txt) and reports as"
+        echo "expected-red, not red — so zero here is the strong form, and a leg"
+        echo "no entry declares clears the stamp."
         exit 1
     fi
     echo "pre-commit: full-green perimeter — frontier stamped green at this boot."

@@ -125,10 +125,18 @@ board_frontier() {
   [ -x "$gate" ] && [ -f "$gate" ] || { printf '%s' "NOT RUN (no $gate)"; return; }
   line=$(bash "$gate" --compiler boot 2>&1 | grep -E '^frontier: [0-9]+ pass' | tail -1)
   [ -n "$line" ] || { printf '%s' "NOT RUN (the gate produced no summary)"; return; }
-  red=$(printf '%s' "$line" | grep -oE '[0-9]+ red' | grep -oE '[0-9]+')
-  max=$(grep -E '^frontier_red_max:' tools/verify-baseline.txt 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
-  if [ -n "$max" ] && [ -n "$red" ] && [ "$red" -gt "$max" ]; then
-    printf '%s' "${line#frontier: } — RED: rose past the $max standing red(s) in verify-baseline.txt"
+  # ANY red refuses the pin (2026-09-15). This read `[ "$red" -gt "$max" ]`
+  # against `frontier_red_max`, a COUNT — so it could not tell WHICH leg was
+  # red, and fixing the standing one while breaking a crown leg left the pin
+  # blessable and the board printing the same "1 red" as a healthy day. A
+  # count standing in for an identity is drift 8 at the gate layer. The
+  # standing failures are now DECLARED BY NAME (frontier_expected_red, judged
+  # in both directions by frontier-gate.sh's judge()), and land in the
+  # summary's `expected-red` field rather than in `red` — so this comparison
+  # is against ZERO, which is the strong form rather than the unreachable one.
+  red=$(printf '%s' "$line" | grep -oE '[0-9]+ red' | head -1 | grep -oE '[0-9]+')
+  if [ -n "$red" ] && [ "$red" -gt 0 ]; then
+    printf '%s' "${line#frontier: } — RED: a leg no frontier_expected_red entry declares"
   else
     printf '%s' "${line#frontier: }"
   fi

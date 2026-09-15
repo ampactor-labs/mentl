@@ -879,10 +879,36 @@ eta_max: 0
 # The LINE half of that red is already fixed (it answers the developer's line 8,
 # not a weave offset); the FILE half is 157 Located construction sites — a
 # representation change, its own arc. This ceiling goes to zero there.
-# READ BY TWO GATES, which is the point: march.sh:129 (refusing a pin above it)
-# and frontier-gate.sh's green stamp (which the pre-commit perimeter demands).
-# Both read THIS key; neither hard-codes a number.
-frontier_red_max: 1
+# frontier_red_max IS RETIRED 2026-09-15, REPLACED BY A NAME. The key above
+# was a COUNT, and a count standing in for an identity is drift 8 at the gate
+# layer. march.sh's board_frontier compared `[ "$red" -gt "$max" ]` and never
+# read WHICH leg was red, so fixing the standing one and breaking a crown leg
+# left the board printing "378 pass / 1 red" — byte-identical to a healthy
+# day. Worse in the other direction: when a standing red is FIXED, `red=0 -gt
+# max=1` is false, so nothing reports that the ceiling has gone slack and it
+# silently licenses one future unrelated red forever — §9.11's "a banked
+# expectation is a HYPOTHESIS about the era that banked it", with nothing left
+# to test it. The perimeter was wired to read this count on the same day it
+# was written, so the blindness reached the commit gate.
+# THE FORM THE PROJECT ALREADY USES: tests/floors/ does not COUNT refusals,
+# each fixture DECLARES that it must refuse. So a standing failure is a
+# contract keyed by NAME, judged in BOTH directions by frontier-gate.sh's
+# `judge`: the leg failing as declared is XRED (the contract holds, not a
+# red); the leg PASSING is RED and says to delete the entry (the stale case a
+# count cannot see); any OTHER leg failing is RED. The gate's own stamp is
+# back to literal zero reds, because an expected red is no longer a red.
+#
+# ONE standing entry. `why coordinates carry their file` wants Located to
+# carry a handle rather than a bare span so show_reason can name a module; its
+# peer is `Hβ.why.reason-span-is-a-weave-coordinate`. (This block named it
+# `Hβ.reason.located-carries-a-handle` until 2026-09-15 — a name appearing
+# NOWHERE in RESIDUE.md, i.e. a ceiling justified by an unresolvable peer, the
+# comment-ref class in the very file that ratchets comment_refs_max to zero.)
+# The LINE half is already fixed: it answers the developer's line 8, not a
+# weave offset. The FILE half is 157 Located construction sites — a
+# representation change and its own arc. The entry retires there, and the gate
+# will SAY SO on the day it does.
+frontier_expected_red: why-coordinates
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
