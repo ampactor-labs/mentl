@@ -35,6 +35,55 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-16 · pin e0b380878e8ef756 · THE BATTERY STOPPED COMPILING WHAT THE
+  MEDIUM HAD ALREADY COMPILED. CLEAN m2 == m3, census 0, 16.17s, 2342MB peak,
+  micro battery **215s → 71s (3.0x)** with the verdict unchanged.
+  ▶ THE MEASUREMENT CAME FIRST AND CORRECTED ITSELF ONCE. A first pass quoted
+  ~343s for the battery, extrapolated from ONE timed micro at 2.3s; the
+  whole-battery run measures **215s (1.44s a fixture)** — shell startup
+  amortizes and the extrapolation was wrong by 60%. The number in the header
+  comment is the measured one. A second baseline attempt was also thrown out:
+  run from /tmp, the extracted script's `source $(dirname $0)/wt-env.sh` found
+  nothing, `MENTL_RT_LIBS` was empty, and 42 micros "failed" with undefined
+  `$list_index`. A gate measured with the libs unlinked measures nothing.
+  ▶ THE CARRIED-TRUTH VIOLATION. `mentl test` compiles all 149 in ONE process
+  and WRITES each module to .build/test/<stem>.wat with its expectation; the
+  bash loop then spawned three processes per fixture — compile, assemble, run
+  — and the compile was that same judgment, re-derived. verify paid for BOTH
+  channels; the repin gate paid for the bash half again. §5.O at the gate
+  layer: an operation whose cost grows while its ANSWER did not change.
+  ▶ THE EQUALITY IS CHECKED, NOT ASSUMED. `battery_libs()` (src/main.mn) reads
+  lib/memory ++ lib/strings ++ lib/lists ++ lib/prelude; `MENTL_RT_LIBS`
+  (tools/wt-env.sh:112) is those four in that order. Same input, same WAT.
+  That equality is the thing to re-check if either side's link changes, and
+  it is written at the head of the battery for the next reader.
+  ▶ THE SPLIT SAYS WHERE THE COST WAS: compile 67s, exec 3.6s for the 135
+  MICRO fixtures (14 are REFUSE and complete compile-side — the refuse
+  contract judges the JUDGMENT, so there is nothing to execute). The old
+  loop's 215s was 149 separate compiles of 2,600 lib lines each.
+  ▶ TWO BUGS CAUGHT IN THE WRITING, both the shape this session has been
+  chasing. The exec children inherit the loop's stdin and would have eaten
+  the remaining verdicts — every spawn takes `< /dev/null` — and the fixture
+  COUNT was checked only at the compile phase, so a truncated exec loop would
+  have passed silently. Both ends assert now: the medium judged every fixture
+  AND the loop consumed every verdict.
+  ▶ THE ERROR COUNT MOVED TO THE MEDIUM. It used to be re-grepped out of each
+  fixture's own stderr — a second compile's work for a number
+  `battery_compile` already returns. It rides the MICRO line now, and a
+  compiler predating the field prints UNAVAILABLE rather than a false zero
+  (verify's leg-2 summary says exactly that until the next boot carries it).
+  ▶ GATES, BOTH SEEN RED: a fixture's `// expect:` flipped to a wrong value
+  FAILS and the script exits 1; `.build/test/` deleted still passes 149/0, so
+  the battery cannot be reading a stale artifact. A battery that reuses a
+  cached module is precisely the shape that can quietly stop checking.
+  ▶ ONE PLANNED CHANGE REFUSED BY READING IT. The plan said verify's micro leg
+  and contract-battery leg were now one channel. They are not: leg 2 runs the
+  PINNED boot, leg 2b runs THIS TREE's m2 (its own comment says so — "read the
+  wheel the gate just built"). Merging them would have deleted coverage of the
+  current tree to save a duplicate that was never a duplicate. verify.sh is
+  unchanged; the win reaches it through the battery it already calls, and
+  march-gate's --micros leg inherits it the same way.
+
 - 2026-09-16 · pin 88ad0b6b9a9ab8e7 · A GATE THAT READS A CRASHED PROCESS FOR
   THE ABSENCE OF A STRING CANNOT FAIL. CLEAN m2 == m3, census 0, 14.56s,
   2332MB peak, contract battery 149/149.

@@ -1878,7 +1878,14 @@ fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(mic
           print_string("FAILC {stem}\n")
           1
         } else {
-          print_string("MICRO {stem} .build/test/{stem}.wat {int_to_str(want)}\n")
+          // The error COUNT rides the line because the exec side stopped
+          // compiling. The bash battery used to re-derive it by grepping each
+          // fixture's own stderr — a second compile's worth of work for a
+          // number this judgment already holds (battery_compile returns it).
+          // Dropping it silently would retire a live signal: verify's summary
+          // names which fixtures carry reported errors, and a count nobody
+          // prints is a count nobody reads.
+          print_string("MICRO {stem} .build/test/{stem}.wat {int_to_str(want)} {int_to_str(nerr)}\n")
           0
         },
         ExpectRefuse(cls) => // The contract judges the JUDGMENT: the named class reported as an
