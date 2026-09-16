@@ -2195,8 +2195,68 @@ until those four fall. Each is a receiver whose row never closed; they belong
 to the two entries below. At zero, the ratchet line, the pre-arm fixture's
 `run_narration`, and this paragraph all retire together.
 
+`Hβ.emit.twinned-base-body-is-emitted-unselected` — A TWINNED FUNCTION'S BASE
+BODY IS EMITTED, TABLE-REGISTERED, AND SELECTED BY NOTHING. Measured
+2026-09-16 at pin e0b380878e8ef756, twice by independent channels, and it
+RE-ROOTS the four field-offset floors below: they are not waiting on the
+union-find change that entry names.
+▶ THE FOUR FLOORS ARE IN BASE BODIES, AND THE TWINS ARE CORRECT. Each of
+`record_field_handle` / `arm_body_handle` / `arms_include_op` /
+`emitfns_index_build` emits TWO bodies. The twin —
+`$record_field_handle$spr_initnNode_namelb_`, mangled with the closed row —
+emits `i32.load offset=0`, the right slot. The BASE carries
+`(unreachable) ;; field offset unprovable`. The twin machinery works.
+▶ AND unify_record_open_against_closed IS CORRECT TOO, which is what rules the
+union-find out for this class. When the caller's closed
+`{init: Node, name: String}` meets the callee's demand it binds the row var to
+the residual with `RowClosed` — its own comment: "PROVEN. The other side is
+CLOSED, so its fields are the whole set." The call site closes. What never
+closes is the base body, compiled once against its own uninstantiated
+signature.
+▶ THE SIZE, from two channels that agree. Grepping the emitted wheel: of 548
+functions carrying at least one twin, **305 bases are referenced nowhere** and
+152 more only by their own self-recursion (457 of 5,018 emitted bodies). Asking
+the EMITTER the same question from inside — `spec_global_name` is "the ONE
+naming projection every reference-emitting arm reads", so a base is needed
+exactly when some site's own projection returns its plain name — answers
+**308 bases both twinned and named by no site**, out of 3,542 bases / 1,289
+twins / 16,688 named sites. Two methods, one number.
+▶ WHAT THE PRUNE CANNOT NAIVELY TAKE, measured rather than assumed: 1,027
+bases are named by no site, and dropping them all would break the module. The
+site scan covers the NAMED channel only (`LGlobal` / `LDirectCall`), so a
+lambda reached through a closure record and a handler arm reached through its
+arms table are both unnamed and both live. The defensible set is the narrower
+one — twinned AND unnamed — where the demand analysis saw every call site and
+specialized all of them.
+▶ THE REMAINING GAP IS SELF-RECURSION, and it is why the 308 covers only TWO
+of the four floors. `arms_include_op` and `emitfns_index_build` name their own
+bases in their own tail calls, so they read as "named" while nothing outside
+selects them. `spec_scan_expr`'s accumulator carries no enclosing-fn identity,
+so the scan cannot currently discount a self-reference; giving it one is the
+step that takes the set from 308 to ~457 and reaches all four floors.
+▶ THE PRUNE IS A TRANSITION, not a no-op. `table_all = table_fn_names ++
+spec_names` appends twins so base indices stay stable (the comment says so);
+dropping bases shifts every index after them. Re-pin from m3, well precedented.
+▶ AND THE SINGLE-PASS CUT'S BLOCKER 2 IS A DIFFERENT QUESTION. These floors are
+latent today because every call site routes to a twin; under the single-pass
+judgment one routed to a BASE and trapped at m4. That is *which body a site
+selects*, not *whether the base exists* — and with `T_FieldOffsetUnprovable`
+reporting (pin f7cfce23) it now names itself at a span instead of dying at a
+bare `unreachable`.
+▶ ONE SMALL SIBLING FOUND IN THE READ: `spec_scan_expr`'s accumulator is
+`(sites, ophs)` and every caller destructures the second half to `_o`. The
+operand handles were the worthiness predicate's input; 5.1a deleted the
+predicate and left the collection. A collected-and-never-read accumulator half
+is the write-only-ledger shape at the emit layer.
+
 `Hβ.infer.record-row-vars-are-not-unioned` — RECORD ROW VARS ARE SECOND
 CLASS IN THE UNION-FIND, and that is what survives the offset fix below.
+**NOT THE ROOT OF THE FOUR SHIPPING FLOORS — see
+`Hβ.emit.twinned-base-body-is-emitted-unselected` above, measured 2026-09-16:
+the twins are correct, `unify_record_open_against_closed` is correct, and the
+floors sit in base bodies nothing selects. This entry's own interior-call
+repro (`outer`/`inner`) stands; the wheel's four are a different mechanism and
+were attributed here on a reading, not a measurement.**
 Measured 2026-09-02 at pin 7740ac94; standing repro
 `tests/repro-wf/open-row-interior-site.mn` — WHICH DOES NOT EXIST. The path
 was named here and in PLAN §11 Arc E and there is no tests/repro-wf entry
