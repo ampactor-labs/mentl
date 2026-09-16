@@ -35,6 +35,47 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-16 · pin 88ad0b6b9a9ab8e7 · A GATE THAT READS A CRASHED PROCESS FOR
+  THE ABSENCE OF A STRING CANNOT FAIL. CLEAN m2 == m3, census 0, 14.56s,
+  2332MB peak, contract battery 149/149.
+  ▶ THE LOOP'S COST, MEASURED because the question was asked plainly: the
+  compiler compiles its own 60,093 lines in 14.56s; the 149-micro battery
+  costs ~343s through the bash loop at 2.3s a fixture (three process spawns
+  each, re-linking four runtime libs every time) and 56s through
+  `mentl test` in ONE process. The compiler is not slow. Roughly six-sevenths
+  of the battery's wall time is the scaffold re-deriving what it just built —
+  §5.O's law at the gate layer.
+  ▶ AND THE FAST CHANNEL WAS HALF DEAD, WHICH IS WHY THE SLOW ONE COULD NEVER
+  RETIRE. `mentl test` trapped at fixture 118 of 149 and verify reported
+  `✓ contract battery: every fixture's own contract holds`, because the leg
+  piped stderr to /dev/null and counted FAILC lines — and a crashed process
+  prints none. The 31 fixtures alphabetically after the crash point were
+  never judged at all. CLAUDE.md's ⟳ ratchet has named this absorption for
+  months; the absorption existed, nothing watched it, and the bash loop it
+  was built to retire stayed.
+  ▶ THE CRASH WAS THE PRIOR PIN'S OWN, checked rather than assumed: the
+  pre-change compiler runs the killer fixture clean, so
+  `git show 8c0842d3:boot/mentl.wasm` is the control. The field-offset report
+  landed at pin f7cfce23 fires DURING emit, inside the twin-emission region
+  (backends/wasm.mn's `let m = heap_mark() … heap_reset(m)`, whose own
+  comment states that nothing allocated inside it escapes). The bank was the
+  escape: `mcp_diag_collector` held a POINTER to the rendered line,
+  heap_reset zeroed [m, bump), and the refuse contract's `str_contains`
+  slice_raw'd a garbage length into `alloc`.
+  ▶ THE FIX DELETES. The collector was banking rendered PROSE and the
+  contract was re-deriving a class name out of it by substring search — the
+  Carried-Truth Law at the harness, since the DiagKind carries the class.
+  `gate_classes()` banks `diag_code(diag)`, a data-section literal no region
+  can free, and the contract compares names. The scan is gone.
+  ▶ GATE SEEN RED against the compiler shipped one pin earlier:
+  `SHIPPED(5a4224fa) exit=134 judged=117/149` · `FIXED exit=0 judged=149/149`.
+  The leg captures the exit status and requires every fixture handed over to
+  come back judged; either failure names itself.
+  ▶ THE NEXT STEP IS MEASURED, NOT GUESSED. `mentl test` already writes each
+  fixture's WAT and its expected value to .build/test/, and the bash loop
+  recompiles all 149 anyway. Having the exec side assemble-and-run those
+  instead takes verify from ~7 min to ~3.5.
+
 - 2026-09-15 · pin f7cfce238ca3b57a · THE FLOOR WAS WRITTEN AND NEVER SAID.
   CLEAN m2 == m3, census 0, frontier 380/0/1, 19.99s, 2342MB peak.
   ▶ THE M4 TRAP IS ROOTED AND IT WAS NOT THE CUT'S. The prior pin's march

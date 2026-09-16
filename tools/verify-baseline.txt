@@ -989,7 +989,12 @@ record_pattern_open_max: 0
 # deleted param-width ladder took its own `find` and `any` lambdas with it.
 # 2026-09-07: 382 -> 379 at the module-blind-parse landing — the deleted seam
 # and rehome families took their lambdas with them.
-effectful_lambda_max: 376
+# 376 -> 375 at pin 88ad0b6b: the refuse contract's `(l) => str_contains(l, cls)`
+# is gone. It was searching rendered diagnostic prose for a class name the
+# DiagKind already carries, and the comparison is now an equality over banked
+# class codes. A ratchet falling because a re-derivation was deleted is the
+# shape this counter exists to reward.
+effectful_lambda_max: 375
 
 # 2026-08-07: the USE-AFTER-MOVE ratchet (PLAN §11 Phase 4.1,
 # Hβ.own.use-after-move) — RETIRED 2026-09-15, BY BEING SATISFIED. This key

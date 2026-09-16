@@ -65,6 +65,22 @@ import memory
 // to the bracket's diagnostics_handler, the one tally home.
 effect GateLedger {
   gate_facts() -> [String]
+  // THE CLASSES, not the prose. A banked LINE is rendered at report time and
+  // therefore lives wherever the bump pointer was standing — which, for a
+  // diagnostic raised during emit, is INSIDE a region the twin-emission loop
+  // resets (backends/wasm.mn's `let m = heap_mark() … heap_reset(m)`, whose
+  // own contract is that nothing allocated inside it escapes). The bank was
+  // the escape: heap_reset zeroes [m, bump), so a later read of the banked
+  // line walks zeroed memory, and `mentl test`'s refuse contract — the only
+  // reader that touches the text — slice_raw'd a garbage length and trapped
+  // the whole battery at fixture 118 of 149, silently, because the harness
+  // counted FAILC lines and a crash prints none.
+  //
+  // A class NAME is `diag_code(diag)`'s string literal: a data-section
+  // constant, not a bump allocation, so it survives every region. And it is
+  // what the contract actually wanted — the substring scan over rendered
+  // prose was re-deriving, by text search, a fact the DiagKind carries.
+  gate_classes() -> [String]
 }
 
 // The session's collecting console — the address projection's transport
@@ -92,18 +108,19 @@ handler console_bank with lines = [] {
 // and the verdict text carries only gate-phase diagnostics (measured on
 // the first walk: the E_EffectMismatch line reached stderr but not the
 // verdict).
-handler mcp_diag_collector with lines = [] {
+handler mcp_diag_collector with lines = [], classes = [] {
   diag_report(diag, line, dmod) => {
     // Forward outward with the SAME rendered line; the bank keeps it too.
     // Branch-fired reports arrive HERE as live re-performs (the join
     // replays each banked diag through the root chain), so no separate
     // absorb arm exists to fold them.
     diag_report(diag, line, dmod)
-    resume() with lines = push(lines, line)
+    resume() with lines = push(lines, line), classes = push(classes, diag_code(diag))
   },
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
   gate_facts() => resume(lines),
+  gate_classes() => resume(classes),
 }
 
 // mcp_judge — the canonical judgment over one proposal, batch-shaped at

@@ -245,10 +245,8 @@ fn mentl_edit_session(entry_module) = match driver_entry_with_ranges(entry_modul
 // because a caret could only be expressed in that one coordinate space. Spans
 // are local from birth now, so the answer is the constant it always meant and
 // the search had nothing to find that the file did not already say.
-fn entry_start_caret() with Memory + Alloc = Caret(
-  0,
-  Located(Span(1, 1, 1, 1), Inferred("mentl edit session start — at the entry"))
-)
+fn entry_start_caret() with Memory + Alloc =
+  Caret(0, Located(Span(1, 1, 1, 1), Inferred("mentl edit session start — at the entry")))
 
 // ─── space_run — the ide, served by the wheel (`mentl space`)
 //
@@ -729,10 +727,10 @@ fn every_eff_arg_authorable(args, i) = if i >= len(args) {
 fn apply_tightenings(cands) = {
   let located = flatten(map(
     (c) => match c {
-      // The candidate CARRIES its module, so the patch knows which file to
+      (declared, used, name, span, dmod) => // The candidate CARRIES its module, so the patch knows which file to
       // open without a containment scan placing a line in a range. The path
       // is the module's own; the span is already the developer's line.
-      (declared, used, name, span, dmod) => match span {
+      match span {
         Span(sl, _, _, _) => [(driver_module_path(dmod), 0 - sl, name, declared, used)],
       },
     },
@@ -1226,41 +1224,41 @@ fn address_project(ranges, target: String, line, col) = match range_of_module(ra
     1
   },
   Some(r) => match r {
-    // start is GONE: a module's first line is 1, because its spans are its
+    (_m, _p, text) => // start is GONE: a module's first line is 1, because its spans are its
     // own. The weave offset this used to add to every caret was the whole
     // reason an address had two coordinate systems to reconcile.
-    (_m, _p, text) => {
+    {
       let start = 1
       let nlines = count_lines(text) + 1
       if line == 0 {
-      render_field(target, start, nlines)
-    } else if line < 0 {
-      eprint_string("mentl: line {int_to_str(line)} — lines count from 1 (0 = the whole-file field)\n")
-      1
-    } else if line > nlines {
-      eprint_string("mentl: {target} has {int_to_str(nlines)} lines; {int_to_str(line)} is past the end\n")
-      1
-    } else {
-      let gline = start + line - 1
-      // Flattened ONCE before the walk (the iterate-flattens-once law,
-      // fourth sighting): the log is push-built, so a raw list_index
-      // walk pays O(depth) per probe — tolerable for the cold verb's
-      // single generation, a measured 131s PER CALL on the resident
-      // session whose log carries every converged generation's parses.
-      let spans = list_to_flat(span_index_of_snapshot())
-      match address_resolve(spans, gline, col) {
-        None => {
-          eprint_string("mentl: no node at {target}:{int_to_str(line)} (a blank or comment-only line)\n")
-          1
-        },
-        Some(pick) => match pick {
-          (pspan, ph) => {
-            render_at(cursor_at_handle(ph), ph, pspan, target)
-            0
+        render_field(target, start, nlines)
+      } else if line < 0 {
+        eprint_string("mentl: line {int_to_str(line)} — lines count from 1 (0 = the whole-file field)\n")
+        1
+      } else if line > nlines {
+        eprint_string("mentl: {target} has {int_to_str(nlines)} lines; {int_to_str(line)} is past the end\n")
+        1
+      } else {
+        let gline = start + line - 1
+        // Flattened ONCE before the walk (the iterate-flattens-once law,
+        // fourth sighting): the log is push-built, so a raw list_index
+        // walk pays O(depth) per probe — tolerable for the cold verb's
+        // single generation, a measured 131s PER CALL on the resident
+        // session whose log carries every converged generation's parses.
+        let spans = list_to_flat(span_index_of_snapshot())
+        match address_resolve(spans, gline, col) {
+          None => {
+            eprint_string("mentl: no node at {target}:{int_to_str(line)} (a blank or comment-only line)\n")
+            1
           },
-        },
+          Some(pick) => match pick {
+            (pspan, ph) => {
+              render_at(cursor_at_handle(ph), ph, pspan, target)
+              0
+            },
+          },
+        }
       }
-    }
     },
   },
 }
@@ -1813,9 +1811,14 @@ fn battery_compile(src, wat_path) = compile_context(() => {
           0
         }
       }
-      let lines = gate_facts()
+      // THE CLASSES, never the rendered lines. A line banked during emit
+      // points into the twin loop's region and is zeroed by its heap_reset
+      // before any reader gets there (GateLedger's own record); the class is
+      // a data-section literal. The refuse contract compares names now, so
+      // the substring scan over prose is gone with it.
+      let classes = gate_classes()
       let nerr = diag_errors()
-      (failed, nerr, lines)
+      (failed, nerr, classes)
     },
   }
 } ~> mcp_diag_collector ~> wasi_filesystem)
@@ -1870,7 +1873,7 @@ fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(mic
       1
     },
     Some(contract) => match battery_compile(libs ++ src, ".build/test/{stem}.wat") {
-      (failed, nerr, lines) => match contract {
+      (failed, nerr, classes) => match contract {
         ExpectRun(want) => if failed > 0 {
           print_string("FAILC {stem}\n")
           1
@@ -1882,7 +1885,7 @@ fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(mic
         // error. Armed classes also withhold the artifact; unarmed ones
         // surface-and-emit — both are the medium's own law, and the
         // battery asserts exactly what the medium asserts.
-        if nerr > 0 && any((l) => str_contains(l, cls), lines) {
+        if nerr > 0 && any((c) => c == cls, classes) {
           print_string("REFUSE {stem} {cls}\n")
           0
         } else {

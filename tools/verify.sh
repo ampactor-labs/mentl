@@ -83,11 +83,27 @@ if ! tools/micro-battery.sh "$BOOT" "micros-through-boot"; then fail=1; fi
 #     wt_m2_ensure is the ONE keyed artifact the census leg reads too, so
 #     asking for it here costs a cache hit, not a build.
 if C=$(wt_m2_ensure); then
-  bat=$(wt_run --dir . "$C/m2.wasm" test tests/micros 2>/dev/null | grep -cE '^(FAILC|FAILR|NOEXPECT) ' || true)
-  if [[ "$bat" -eq 0 ]]; then
-    say "✓ contract battery: every fixture's own contract holds (this tree's wheel)"
+  # THE EXIT CODE AND THE COUNT ARE PART OF THE CONTRACT, and leaving them
+  # out cost this gate its meaning. It used to pipe straight into
+  # `grep -cE '^(FAILC|FAILR|NOEXPECT) '` and pass on zero — so when the verb
+  # TRAPPED partway, it printed no failure line and the gate said every
+  # fixture's contract holds. Measured 2026-09-16: `mentl test` died at
+  # fixture 118 of 149 (exit 134, a dangling banked diagnostic line — the
+  # GateLedger record in src/mcp.mn) and this leg was green through it, with
+  # the 31 fixtures after the crash point never judged at all. A gate that
+  # reads a crashed process for the ABSENCE of a string cannot fail.
+  # So: capture the status, and require the verb to have judged every fixture
+  # it was handed.
+  bat_out=$(wt_run --dir . "$C/m2.wasm" test tests/micros 2>/dev/null); bat_rc=$?
+  bat=$(printf '%s\n' "$bat_out" | grep -cE '^(FAILC|FAILR|NOEXPECT) ' || true)
+  bat_seen=$(printf '%s\n' "$bat_out" | grep -cE '^(MICRO|REFUSE|FAILC|FAILR|NOEXPECT) ' || true)
+  bat_want=$(ls tests/micros/*.mn 2>/dev/null | wc -l)
+  if [[ "$bat_rc" -eq 0 && "$bat" -eq 0 && "$bat_seen" -eq "$bat_want" ]]; then
+    say "✓ contract battery: $bat_seen/$bat_want fixture contracts hold (this tree's wheel)"
   else
-    say "✗ contract battery: $bat broken contract(s) — the wheel this tree just built"
+    say "✗ contract battery: exit=$bat_rc, $bat broken contract(s), $bat_seen/$bat_want fixtures judged"
+    [[ "$bat_rc" -ne 0 ]] && say "  the verb itself failed — rerun it without 2>/dev/null and read the trap."
+    [[ "$bat_seen" -lt "$bat_want" ]] && say "  it stopped early: everything after the last judged fixture went unchecked."
     fail=1
   fi
   # 2c. The SYNTAX conformance battery (PLAN §11 Phase 0.4) — fixtures for
