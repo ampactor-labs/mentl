@@ -2195,11 +2195,38 @@ until those four fall. Each is a receiver whose row never closed; they belong
 to the two entries below. At zero, the ratchet line, the pre-arm fixture's
 `run_narration`, and this paragraph all retire together.
 
-`Hβ.emit.twinned-base-body-is-emitted-unselected` — A TWINNED FUNCTION'S BASE
-BODY IS EMITTED, TABLE-REGISTERED, AND SELECTED BY NOTHING. Measured
-2026-09-16 at pin e0b380878e8ef756, twice by independent channels, and it
-RE-ROOTS the four field-offset floors below: they are not waiting on the
-union-find change that entry names.
+`Hβ.emit.twinned-base-body-is-emitted-unselected` — **RETRACTED 2026-09-16,
+THE SAME DAY IT WAS WRITTEN, BY BUILDING IT.** The entry claimed 305 twinned
+base bodies were emitted and selected by nothing, and it re-rooted the four
+field-offset floors onto emit hygiene. Both halves are FALSE. The prune was
+built — a `visit_ref` projection on the consolidated pre-pass, resolving every
+named reference through `spec_global_name`, filtering the emitted set by it —
+and the wheel answered: **0 dropped of 3,543**, with all four floor bases found
+in the resolved-reference set AND in `top_fn_names`. They are selected, they
+are live, and the original root below stands.
+▶ WHY BOTH MEASUREMENTS AGREED AND BOTH WERE WRONG. A closure record
+references a function by its TABLE INDEX, not by its name. Grepping the
+emitted module for `$name)` cannot see that, and `spec_scan_expr` discards the
+name at `LMakeClosure` — so two channels that look independent share one blind
+spot, and "agreeing" meant nothing. `emit_static_top_closures` builds a static
+record for every `top_fn_names` entry; that is the reference the greps missed.
+Two methods that share a blind spot are one method.
+▶ WHAT THE BUILD COST AND WHAT IT BOUGHT. One wrong emit (the wider rule
+dropped handler arms and lambda index globals — `undefined function variable
+$op_lookup_ty_graph_lookup_ty`, `$lambda_N_idx`), one correct-but-inert emit,
+and the retraction. It also surfaced a real seam kept below: the consolidated
+walk has TWO install sites (`project_emit_state` and `report_unhandled_effects`
+in pipeline.mn) and adding a projection to one traps the other on garbage
+evidence. Nothing enforces that they carry the same op set.
+▶ THE SEAM WORTH KEEPING: `walk_lemit_expr` fires every projection's ops, and
+its two installers list their collectors by hand. A new projection compiles
+clean and dies at runtime in the installer nobody updated. The bracket should
+be one named chain both sites install, not two hand-kept lists.
+
+`Hβ.emit.twinned-base-body-is-emitted-unselected` — THE ORIGINAL CLAIM, KEPT
+FOR ITS SHAPE (retracted above; do not act on it). Measured
+2026-09-16 at pin e0b380878e8ef756, twice by channels that turned out to share
+a blind spot.
 ▶ THE FOUR FLOORS ARE IN BASE BODIES, AND THE TWINS ARE CORRECT. Each of
 `record_field_handle` / `arm_body_handle` / `arms_include_op` /
 `emitfns_index_build` emits TWO bodies. The twin —
@@ -2251,12 +2278,19 @@ is the write-only-ledger shape at the emit layer.
 
 `Hβ.infer.record-row-vars-are-not-unioned` — RECORD ROW VARS ARE SECOND
 CLASS IN THE UNION-FIND, and that is what survives the offset fix below.
-**NOT THE ROOT OF THE FOUR SHIPPING FLOORS — see
-`Hβ.emit.twinned-base-body-is-emitted-unselected` above, measured 2026-09-16:
-the twins are correct, `unify_record_open_against_closed` is correct, and the
-floors sit in base bodies nothing selects. This entry's own interior-call
-repro (`outer`/`inner`) stands; the wheel's four are a different mechanism and
-were attributed here on a reading, not a measurement.**
+**THIS ENTRY IS THE ROOT AFTER ALL.** It was briefly re-rooted onto emit
+hygiene on 2026-09-16 and that claim was RETRACTED the same day by building
+the prune and measuring 0 dropped: the four floor bases are referenced and
+live, reached as values through `map`, and the base body carries the floor
+precisely because that site does not pin the element type — so
+`spec_global_name` answers the plain name, the base is selected, and its row
+was never closed. What the detour did establish, and it is worth keeping: the
+TWINS are correct (`$record_field_handle$spr_initnNode_namelb_` emits
+`i32.load offset=0`) and `unify_record_open_against_closed` is correct (it
+binds the row `RowClosed` over the residual). So the defect is neither the
+twin machinery nor that unify arm — it is that a function passed as a VALUE to
+a higher-order callee gets no instantiation to key on, and compiles once
+against a row nothing closes.
 Measured 2026-09-02 at pin 7740ac94; standing repro
 `tests/repro-wf/open-row-interior-site.mn` — WHICH DOES NOT EXIST. The path
 was named here and in PLAN §11 Arc E and there is no tests/repro-wf entry
