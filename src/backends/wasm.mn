@@ -2480,23 +2480,39 @@ fn emit_runtime_imports(wasi_ops) = {
   each((op) => if op != "proc_exit" { emit_one_wasi_import(op) }, wasi_ops)
 }
 
-// One `(import "wasi_snapshot_preview1" "<op>" (func $<op> <sig>))`. The
-// internal name is `$<op>` (no prefix) — the import IS the bridge, matching
-// LWasiCall's `(call $<op>)`. Ops with no preview1 signature (atomics,
-// thread-spawn — WASM instructions or imported elsewhere) carry no import.
-fn emit_one_wasi_import(op) = {
-  let sig = wasi_import_sig(op)
-  if sig == "" {
-    ()
-  } else {
-    wat_emit("  (import \"wasi_snapshot_preview1\" \"")
-    wat_emit(op)
+// One `(import "<module>" "<field>" (func $<op> <sig>))`, module and field
+// read from the op's host_import entry. The internal name is `$<op>` (no
+// prefix) — the import IS the bridge, matching LWasiCall's `(call $<op>)`.
+// Ops with no host entry (atomics, thread-spawn — WASM instructions or
+// imported elsewhere) carry no import.
+fn emit_one_wasi_import(op) = match host_import(op) {
+  None => (),
+  Some((module, field, _, _)) => {
+    wat_emit("  (import \"")
+    wat_emit(module)
+    wat_emit("\" \"")
+    wat_emit(field)
     wat_emit("\"\n    (func $")
     wat_emit(op)
     wat_emit(" ")
-    wat_emit(sig)
+    wat_emit(wasi_import_sig(op))
     wat_emit("))\n")
-  }
+  },
+}
+
+// The FFI boundary's one home: every host-served op with its import module,
+// field name and ABI widths. The preview1 rows ride wasi_import_reprs (field
+// = op name, the p1 convention); the medium's own seam is the `mentl_host`
+// module tools/runner serves (lib/io.mn's Host effect).
+fn host_import(op) = match wasi_import_reprs(op) {
+  Some((preprs, res)) => Some(("wasi_snapshot_preview1", op, preprs, res)),
+  None => if op == "host_wat_write" {
+    Some(("mentl_host", "wat_write", [RI32, RI32], None))
+  } else if op == "host_exec" {
+    Some(("mentl_host", "exec", [RI32, RI32], Some(RI32)))
+  } else {
+    None
+  },
 }
 
 // The WASI preview1 ABI signatures — the FFI boundary's external facts as
@@ -2553,11 +2569,11 @@ else if op == "args_sizes_get" {
 
 fn wat_frag_concat(a: String, b: String) -> String = a ++ b
 
-// The import-decl string — a PROJECTION of wasi_import_reprs.
-// "" = not a preview1 import (skip), the emitter's existing contract.
-fn wasi_import_sig(op) = match wasi_import_reprs(op) {
+// The import-decl string — a PROJECTION of host_import's widths.
+// "" = not a host import (skip), the emitter's existing contract.
+fn wasi_import_sig(op) = match host_import(op) {
   None => "",
-  Some((preprs, res)) => {
+  Some((_, _, preprs, res)) => {
     let params = wat_frag_concat(
       preprs |> map(repr_wat) |> fold("(param", (acc, w) => wat_frag_concat(wat_frag_concat(acc, " "), w)),
       ")"
@@ -4466,8 +4482,8 @@ fn emit_expr(expr) = match expr {
     // same wasi_import_reprs home the import decl projects from, so a
     // word arg filling an i64 param (path_open's rights, fd_readdir's
     // cookie) extends at the boundary instead of type-mismatching.
-    match wasi_import_reprs(import_name) {
-      Some((preprs, _)) => emit_wasi_args_at_widths(args, preprs, 0),
+    match host_import(import_name) {
+      Some((_, _, preprs, _)) => emit_wasi_args_at_widths(args, preprs, 0),
       None => emit_expr_list(args),
     }
     if import_name == "store_i32" {

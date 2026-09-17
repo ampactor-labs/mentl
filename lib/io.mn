@@ -66,6 +66,21 @@ effect WASI {
   proc_exit(Int)
 }
 
+// Host — the medium's own host seam beside preview1, served by tools/runner
+// under the import module `mentl_host` (Hβ.ops.runner-is-the-process-handler).
+// WASI has no exec, so a compiled program could be emitted but never run
+// from inside the wheel; these two ops are the executor. The emitted WAT
+// STREAMS to the host through host_wat_write exactly as bytes stream to an
+// fd (the host holds the text — the guest's emit regions reset per fn, so
+// no in-image collecting sink is sound for a whole module), and host_exec
+// assembles, instantiates and runs the streamed module in its own instance
+// over its own memory, returning its exit as a value (a trap answers 134).
+// (ptr, len) pairs, the fd_write_bytes idiom; argv is NUL-joined.
+effect Host {
+  host_wat_write(Int, Int)
+  host_exec(Int, Int) -> Int
+}
+
 // wasi_args — the process argv as a [String], read live from the host at
 // _start. This is what makes the CLI real: without it _start handed main a
 // len-0 list and every `mentl <verb>` fell through to compile-stdin

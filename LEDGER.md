@@ -35,6 +35,21 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-18 · pin d8c0870cbd2a9a28 · THE BOOT LEARNS THE EXEC SEAM (rung one
+  of two). CLEAN m2 == m3, census 0, m3 leg 8.45s / 947MB. tools/runner is
+  the host half of the Process seam: `mentl_host.wat_write` streams the
+  emitted WAT to the host, `mentl_host.exec` assembles it (wasmtime reads
+  WAT directly — no wat2wasm), instantiates it in its own Store over its
+  own memory, runs `_start` and returns the exit as a VALUE (trap = 134);
+  `link_and_run` is the one fn the root instance and every child share.
+  Seen RED on the old binary (`unknown import: mentl_host::wat_write`),
+  green at 42 with a trapping second child answering 134. The wheel side
+  at this rung is recognition only: `effect Host` in lib/io.mn, the two
+  ops in `is_wasi_import_op`, and `host_import` — the import table's one
+  missing column (module + field), the `wasi_snapshot_preview1` literal
+  gone from the emitter. A boot must know a host op before any wheel may
+  perform it (the root gate grounds per op), so this pin exists so the next
+  one can.
 - 2026-09-17 · pin 6de7e4f5d9c371e8 · THE JUDGMENT IS ONE PASS. Pinned four
   times in one landing: TRANSITION m3 == m4 at e96ca9b14c511f20 (the board
   then named three frontier reds at that pin — a fixture calling the deleted
