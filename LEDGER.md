@@ -35,15 +35,16 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
-- 2026-09-17 · pin 486fc83aa299335d · THE JUDGMENT IS ONE PASS. Pinned three
+- 2026-09-17 · pin 6de7e4f5d9c371e8 · THE JUDGMENT IS ONE PASS. Pinned four
   times in one landing: TRANSITION m3 == m4 at e96ca9b14c511f20 (the board
   then named three frontier reds at that pin — a fixture calling the deleted
   `image_pack`, the fn-shadows-op refusal muted by the write order the
   second pass had supplied, and own.mn under-importing `imap` — all three
   fixed at their roots), CLEAN at f33e8350e8abc00d (verify's ratchets then
   named an effectful lambda without a decl home and two backticked
-  non-names), and CLEAN here, census 0, m3 leg **9.29s / 944MB** against
-  the two-pass pin's
+  non-names), CLEAN at 486fc83aa299335d, and CLEAN here after the commit
+  hook's fmt pass moved the emitted bytes (PROVENANCE carries the probe);
+  census 0, m3 leg **9.37s / 946MB** against the two-pass pin's
   16.17s / 2,342MB (−60% peak RSS), WAT 409,812 → 402,974 lines, infer.mn
   −971 lines net. The trial/final tower is deleted whole: `infer_program_once`
   is the judgment, `judge_stmt_one` returns no count, the planned layer
