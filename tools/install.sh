@@ -59,15 +59,25 @@ if [ "\${1:-}" = "run" ] && [ -n "\${2:-}" ]; then
   # the executable gate's refusal law: a hole or a broken program exits
   # nonzero with zero WAT, and the shim stops there.
   src="\$2"; shift 2
-  tmp="\$(mktemp -d)"
-  out_wat="\$tmp/out.wat"; out_wasm="\$tmp/out.wasm"
-  mentl_wasm compile "\$src" > "\$out_wat"; rc=\$?
-  if [ "\$rc" -ne 0 ] || [ ! -s "\$out_wat" ]; then rm -rf "\$tmp"; exit "\$rc"; fi
-  "\${W2W[@]}" "\$out_wat" -o "\$out_wasm" || { rm -rf "\$tmp"; exit 1; }
+  # THE COMPILED TARGET IS CACHED BY CONTENT. This used to compile the target
+  # into a mktemp dir and delete it on exit, so asking the wheel a second
+  # question paid the wheel's whole compile again (~17s) before the question
+  # ran — which is why every probe of the medium was a grep instead. The key
+  # is the boot binary plus every source the compile can read (the target and
+  # the repo's src/ and lib/ — an over-approximation that is always correct:
+  # an edit anywhere invalidates), the same shape as the march's .build/m2cache.
+  # A hit skips compile and assemble; a refused compile leaves no entry.
+  key="\$( { cat "\$MENTL_HOME/boot/mentl.wasm" "\$src"; find "\$MENTL_HOME/src" "\$MENTL_HOME/lib" -name '*.mn' | sort | xargs cat; } | sha256sum | cut -c1-16)"
+  cache="\$MENTL_HOME/.build/runcache/\$key"
+  out_wat="\$cache/out.wat"; out_wasm="\$cache/out.wasm"
+  if [ ! -s "\$out_wasm" ]; then
+    mkdir -p "\$cache"
+    mentl_wasm compile "\$src" > "\$out_wat"; rc=\$?
+    if [ "\$rc" -ne 0 ] || [ ! -s "\$out_wat" ]; then rm -rf "\$cache"; exit "\$rc"; fi
+    "\${W2W[@]}" "\$out_wat" -o "\$out_wasm" || { rm -rf "\$cache"; exit 1; }
+  fi
   "\$WT" run "\${WT_RUN_FLAGS[@]}" --dir "\$PWD" --dir /tmp "\$out_wasm" "\$@"
-  rc=\$?
-  rm -rf "\$tmp"
-  exit "\$rc"
+  exit \$?
 fi
 if [ "\${1:-}" = "session" ]; then
   # session = the resident graph. The listener is a HOST resource (the

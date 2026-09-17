@@ -861,7 +861,7 @@ fn focus_reason(target) with Memory + Alloc = match target {
 // Verify-tentacle (refinement obligations). H6 exhaustive over
 // Question's 15 variants via pattern alternation per SYNTAX.md L956.
 fn tentacle_for_question(question) with Pure = match question {
-  QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_) | QVariants(_) | QModules | QImports | QUnreferenced | QPerforms | QOrphanClaims | QCost | QUnknown(_) => TentQuery,
+  QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QUnknown(_) => TentQuery,
   QOwnership(_) => TentTrace,
   QWhy(_) | QSubstChain(_) => TentWhy,
   QVerifyDebt => TentVerify,
@@ -873,7 +873,7 @@ fn tentacle_for_question(question) with Pure = match question {
 // exhaustive over Question via pattern alternation.
 fn question_span(question) with Memory + Alloc = match question {
   QTypeAt(s) => s,
-  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QVerifyDebt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_) | QVariants(_) | QModules | QImports | QUnreferenced | QPerforms | QOrphanClaims | QCost | QUnknown(_) => span_zero(),
+  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QVerifyDebt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QUnknown(_) => span_zero(),
 }
 
 // compose_propose_situation — sparse Situation for a propose gesture.
@@ -927,12 +927,12 @@ fn compose_propose_situation(target_handle, target_reason, prior_turn) with Memo
 fn query_result_to_answer(result) with Memory + Alloc = match result {
   QRType(ty, reason) => AnsType(ty, reason),
   QRWhy(reason) => AnsReason(reason),
-  // refs-of carries (module, span) sites now, so it drops its module half at
+  QRRefs(sites) => // refs-of carries (module, span) sites now, so it drops its module half at
   // exactly the boundary the census and decls arms below drop theirs, and for
   // the same reason: AnsRefs is the caret's carrier and the caret already
   // knows its file. The TERMINAL is where the module was needed and where it
   // now survives (pipeline.mn's site line).
-  QRRefs(sites) => AnsRefs(map(census_site_span, sites), Inferred("refs-of: {int_to_str(len(sites))} reference(s)")),
+  AnsRefs(map(census_site_span, sites), Inferred("refs-of: {int_to_str(len(sites))} reference(s)")),
   QRVerifyDebt(debt) => AnsDebt(debt, Inferred("verify-debt: {int_to_str(len(debt))} obligation(s)")),
   QRCensus(label, sites) => // The census result is a forensic LIST the graph proved — the same
   // shape refs-of carries, so it rides AnsRefs (the §7 registry-trap
@@ -957,6 +957,7 @@ fn query_result_to_answer(result) with Memory + Alloc = match result {
   QRUnreferenced(rows) => // The declaration verdicts render at the CLI. A row names a module and
   // a name, not a caret site, so the answer carries the count alone.
   AnsRefs([], Inferred("unreferenced: {int_to_str(len(rows))} declared name(s)")),
+  QRUnreachable(rows) => AnsRefs([], Inferred("unreachable: {int_to_str(len(rows))} fn decl(s)")),
   QRPerforms(rows) => // The effect rosters render at the CLI. A row names a module and an
   // effect, not a caret site, so the answer carries the count alone.
   AnsRefs([], Inferred("performs: {int_to_str(len(rows))} effect(s)")),

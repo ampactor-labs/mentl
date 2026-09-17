@@ -492,10 +492,7 @@ type ConvertKind
 // `perform_target_symbol` spells it; nothing stores it.
 type ArmTarget = ArmNamed(String) | ArmSlot
 
-type PerformDispatch
-  = PdFrame(Int, String, String)
-  | PdWalk(String, Int, String, ArmTarget)
-  | PdDriver(String)
+type PerformDispatch = PdFrame(Int, String, String) | PdWalk(String, Int, String, ArmTarget) | PdDriver(String)
 
 type LowValue = LInt(Int) | LFloat(Float) | LString(String) | LBool(Bool)
 
@@ -878,10 +875,7 @@ fn partial_split(r_args, n_args, n_ps, handle, i, ci) = if i >= n_ps {
 // than as a returned closure: fn name · variant tag · the singleton-tier
 // perform's (handler, op, stateful) triple. Each carries exactly what
 // apply_callee_form needs and nothing the site could re-derive.
-type PartialCalleeForm
-  = PcfCall(String)
-  | PcfVariant(TagId)
-  | PcfPerform(PerformDispatch)
+type PartialCalleeForm = PcfCall(String) | PcfVariant(TagId) | PcfPerform(PerformDispatch)
 
 // The callee shapes a partial can synthesize a body for: a top-level fn
 // (direct LCall) and ADT construction (LMakeVariant) — for both, infer's
@@ -1074,24 +1068,17 @@ fn lower_call_partial(handle, fbody, fh, r_args, n_ps) = match partial_callee_fo
         // result. The callee's TFun is read at fh — the callee-ref handle
         // the redirect already routes through — and the split's own count
         // says which tail of it survives as parameters.
-        graph_emitfn_note(EmitFnEntry{
-          caps: [],
-          fence: len(captures),
-          kind: EfkPartial,
-          name: "partial_{int_to_str(handle)}",
-          origin: handle,
-          params: zip(param_names, partial_param_tys(fh, len(param_names))),
-          // The synthesized fn returns the CALLEE's return, so read it where
-          // the params are already read — the callee's own TFun at fh — not
-          // off the partial node. The two agreed while every partial was a
-          // CallExpr (the call node's type IS the applied result), and they
-          // part the moment a BARE name reifies: there the node's own type is
-          // the function type, and `Some(lookup_ty(handle))` would have
-          // published the whole arrow as the ABI's return where the arrow's
-          // RESULT is meant.
-          // One home for the fact, both shapes correct.
-          ret: ret_ty_of(fh),
-        })
+        //
+        // The synthesized fn returns the CALLEE's return, so read it where
+        // the params are already read — the callee's own TFun at fh — not
+        // off the partial node. The two agreed while every partial was a
+        // CallExpr (the call node's type IS the applied result), and they
+        // part the moment a BARE name reifies: there the node's own type is
+        // the function type, and `Some(lookup_ty(handle))` would have
+        // published the whole arrow as the ABI's return where the arrow's
+        // RESULT is meant.
+        // One home for the fact, both shapes correct.
+        graph_emitfn_note(EmitFnEntry{caps: [], fence: len(captures), kind: EfkPartial, name: "partial_{int_to_str(handle)}", origin: handle, params: zip(param_names, partial_param_tys(fh, len(param_names))), ret: ret_ty_of(fh)})
         let fn_ir = LFn(
           "partial_{int_to_str(handle)}",
           len(param_names),
@@ -1855,10 +1842,9 @@ fn resolve_in_stack(op_name: String, ename, stack) = if ename == "" || len(stack
 // the effect at all. Both questions below are reads of this one list, and
 // the find is the find place_arm_in_groups already uses, so the group lookup
 // has one home and neither question carries a scanning lambda of its own.
-fn handler_arms_for(hname: String, ename: String) =
-  match split_group_by_ename(lookup_handler_arm_names_of(hname), ename) {
-    (_, grp, _) => group_arms(grp),
-  }
+fn handler_arms_for(hname: String, ename: String) = match split_group_by_ename(lookup_handler_arm_names_of(hname), ename) {
+  (_, grp, _) => group_arms(grp),
+}
 
 // The SCHEDULE resolution keeps the EFFECT question, and that is not an
 // oversight: a fanout performs no named op, it asks which scheduler class is
@@ -2121,8 +2107,11 @@ fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline
 // not the record; nothing bound answers neither. Three residuals, one
 // operation, and no arm of the emit may differ on what it MEANS — which is
 // why the world bracket is not a property of any of them.
-fn lower_perform_walk(handle, op_name, lo_args) =
-  LPerform(handle, perform_dispatch_of(handle, op_name, lower_resolve_handler_for_op(op_name)), lo_args)
+fn lower_perform_walk(handle, op_name, lo_args) = LPerform(
+  handle,
+  perform_dispatch_of(handle, op_name, lower_resolve_handler_for_op(op_name)),
+  lo_args
+)
 
 // `lexical` is not a flag, it is the binding-time INPUT: how much of the walk
 // this site can finish now. An ordinary perform passes what the install stack
@@ -2138,15 +2127,18 @@ fn perform_dispatch_of(handle, op_name, lexical) = {
 fn perform_dispatch_at(handle, op_name, ename, slot, lexical) = match lexical {
   Some(r) => {
     let hname = resolve_target(r)
-    graph_dispatch_note(handle, DtLexical("{hname}_{op_name}", "__hstate_{int_to_str(resolve_handle(r))}"))
+    graph_dispatch_note(
+      handle,
+      DtLexical("{hname}_{op_name}", "__hstate_{int_to_str(resolve_handle(r))}")
+    )
     PdFrame(resolve_handle(r), hname, op_name)
   },
   None => match lower_op_default_handler(op_name) {
-    // The arm is static (one handler declares it) and the record is not. The
+    Some(hname) => // The arm is static (one handler declares it) and the record is not. The
     // record comes from the SAME walk the unbound case uses — it used to come
     // from a second one keyed on the handler name, which could not answer an
     // ambiguous op and was the whole of the eta ceiling.
-    Some(hname) => {
+    {
       graph_dispatch_note(handle, DtSingleton(hname))
       PdWalk(ename, slot, op_name, ArmNamed(hname))
     },
@@ -2195,8 +2187,7 @@ fn lower_op_default_handler(op_name) = match env_lookup(op_name) {
 // LInvariantFailure, and the whole second block shape had nothing left to do.
 // A second refusal for a case the first refusal already covers is the same
 // duplication as a second walk, one layer up.
-
-
+//
 // Look up which effect an op belongs to via EffectOpScheme.
 fn lookup_parent_effect(op_name) = match env_lookup(op_name) {
   Some(entry) => match entry {
@@ -2310,7 +2301,7 @@ fn lower_expr_body(e, handle, span) = match e {
         RFbPrior(fb_h) => // (LF.B) a `<~` lambda param resolves to the feedback site's prior local,
         // read LIVE — the recurrence's y[n-1] term IS this node.
         LFeedbackPrior(fb_h),
-        // A NON-FN BINDING IN VALUE POSITION IS A REIFICATION, and until
+        RGlobal => // A NON-FN BINDING IN VALUE POSITION IS A REIFICATION, and until
         // 2026-09-09 it was two silent wrongs. A constructor lowered to
         // LMakeVariant(handle, tag, []) whatever its arity, so mapping a
         // one-field constructor over a list checked with zero diagnostics
@@ -2328,19 +2319,19 @@ fn lower_expr_body(e, handle, span) = match e {
         // through the SAME partial mint an authored hole already used, with
         // no supplied args and no new mechanism. The callee shape is read live from the
         // node's own program cell, never rebuilt from the matched Expr.
-        RGlobal => match env_kind_of(name) {
+        match env_kind_of(name) {
           Some(ConstructorScheme(tag_id, _)) => match scheme_ref_fun_arity(name) {
-            // Not a function type: the reference IS the value — a nullary
+            None => // Not a function type: the reference IS the value — a nullary
             // variant, the sentinel form emit already knows.
-            None => LMakeVariant(handle, tag_id, []),
+            LMakeVariant(handle, tag_id, []),
             Some(arity) => lower_call_partial(handle, graph_node_body(handle), handle, [], arity),
           },
           Some(EffectOpScheme(_, _, _, _)) => match scheme_ref_fun_arity(name) {
-            // An op's declared scheme is always a signature, zero-arg
+            None => // An op's declared scheme is always a signature, zero-arg
             // included, so a miss here is an unresolved judgment and the
             // typed floor is the honest answer — lower_call_partial's own
             // None path, reached with the arity the graph actually proved.
-            None => LInvariantFailure(handle, PartialCalleeShape(handle)),
+            LInvariantFailure(handle, PartialCalleeShape(handle)),
             Some(arity) => lower_call_partial(handle, graph_node_body(handle), handle, [], arity),
           },
           Some(FnScheme) => // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
@@ -2512,15 +2503,7 @@ fn lower_expr_body(e, handle, span) = match e {
         // Lambda is anonymous — empty fn_name; ls_outer_fn_name skips it.
         // lambda_h = THIS lambda's own handle (the handle LMakeClosure uses
         // below).
-        graph_emitfn_note(EmitFnEntry{
-          caps: zip(captures_names, captures_handles),
-          fence: len(captures_exprs),
-          kind: EfkLambda,
-          name: lambda_name,
-          origin: handle,
-          params: zip(param_names_list, entry_param_tys(handle, params)),
-          ret: ret_ty_of(handle),
-        })
+        graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkLambda, name: lambda_name, origin: handle, params: zip(param_names_list, entry_param_tys(handle, params)), ret: ret_ty_of(handle)})
         // THE DIRECT SWAP (landing shape α): the LowFn is built by the
         // COLUMN-SEEDED projector — the one construction, program+
         // columns in, LowFn out. The site keeps what FEEDS the columns
@@ -2944,19 +2927,19 @@ fn fanout_thunk_walk(handle, branch_nodes, boundaries, i, n) = if i >= n {
 fn fanout_boundaries(handle) = match graph_boundary_at(handle) {
   FanoutBoundary(edges) => Ok(edges),
   PendingContinuationBoundary(_, _, _, _) => {
-    report(EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
+    report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
     Err(WrongFanoutBoundaryKind)
   },
   ContinuationBoundary(_) => {
-    report(EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
+    report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
     Err(WrongFanoutBoundaryKind)
   },
   InterpBoundary(_) => {
-    report(EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
+    report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
     Err(WrongFanoutBoundaryKind)
   },
   NoBoundary => {
-    report(EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
+    report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
     Err(MissingFanoutBoundary)
   },
 }
@@ -2964,14 +2947,14 @@ fn fanout_boundaries(handle) = match graph_boundary_at(handle) {
 fn fanout_boundary_at(boundaries, i, fallback_h) = if i < len(boundaries) {
   Ok(list_index(boundaries, i))
 } else {
-  report(EUnresolvedType(fallback_h, graph_epoch(), parse_span_of(fallback_h)))
+  report_at(fallback_h, EUnresolvedType(fallback_h, graph_epoch(), parse_span_of(fallback_h)))
   Err(MissingFanoutEdge(i))
 }
 
 fn executable_boundary_row(thunk_h) = match lookup_ty(thunk_h) {
   TFun(_, _, row) => Ok(row),
   _ => {
-    report(EUnresolvedType(thunk_h, graph_epoch(), parse_span_of(thunk_h)))
+    report_at(thunk_h, EUnresolvedType(thunk_h, graph_epoch(), parse_span_of(thunk_h)))
     Err(UnresolvedBoundaryThunk(thunk_h))
   },
 }
@@ -3142,15 +3125,7 @@ fn synthesize_diverge_thunks(parent_handle, input_h, input_local_name, branch_no
                     // A branch thunk takes nothing — its input rides capture
                     // slot 0 — so the param vector is empty by construction
                     // and the result is the thunk node's own judged type.
-                    graph_emitfn_note(EmitFnEntry{
-                      caps: zip(captures_names, captures_handles),
-                      fence: len(captures_exprs),
-                      kind: EfkThunk,
-                      name: thunk_name,
-                      origin: thunk_h,
-                      params: [],
-                      ret: Some(lookup_ty(thunk_h)),
-                    })
+                    graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkThunk, name: thunk_name, origin: thunk_h, params: [], ret: Some(lookup_ty(thunk_h))})
                     // THE DIRECT SWAP (α, the fanout pair's one projector):
                     // Some(input_h) = the `<|` share — the branch applied to
                     // the input riding capture slot 0 through the normal call
@@ -3206,15 +3181,7 @@ fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, bound
         match resolve_captures_outer(free_names, parent_handle) {
           (captures_names, captures_exprs, captures_handles) => match executable_boundary_row(thunk_h) {
             Ok(thunk_row) => {
-              graph_emitfn_note(EmitFnEntry{
-                caps: zip(captures_names, captures_handles),
-                fence: len(captures_exprs),
-                kind: EfkThunk,
-                name: thunk_name,
-                origin: thunk_h,
-                params: [],
-                ret: Some(lookup_ty(thunk_h)),
-              })
+              graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkThunk, name: thunk_name, origin: thunk_h, params: [], ret: Some(lookup_ty(thunk_h))})
               // THE DIRECT SWAP (α, the fanout pair's one projector):
               // None = the `><` distribute — the branch evaluated as its
               // own value. Synthetic parallel-thunk: empty fn_name, not a
@@ -3469,8 +3436,7 @@ fn lower_stmt_body(s, handle, span) = match s {
     // twin of this line was dead: project_nested_fn computes its own for
     // the frame, and nothing here read it.)
     let base_param_tys = entry_param_tys(handle, params)
-    let param_tys_list =
-      if bind_h == "" { base_param_tys } else { base_param_tys ++ floor_tys(2) }
+    let param_tys_list = if bind_h == "" { base_param_tys } else { base_param_tys ++ floor_tys(2) }
     // The same "__k" seeding the lambda mint applies (an UNBOUND nested
     // fn inside an arm may still call a bound sibling); a bound fn's own
     // __k param shadows the seed harmlessly.
@@ -3493,15 +3459,7 @@ fn lower_stmt_body(s, handle, span) = match s {
         //
         let outer = ls_outer_fn_name()
         let fn_name = if outer == "" { name } else { "{outer}_{name}" }
-        graph_emitfn_note(EmitFnEntry{
-          caps: zip(captures_names, captures_handles),
-          fence: len(captures_exprs),
-          kind: EfkNested,
-          name: fn_name,
-          origin: handle,
-          params: zip(param_names_list, param_tys_list),
-          ret: ret_ty_of(handle),
-        })
+        graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkNested, name: fn_name, origin: handle, params: zip(param_names_list, param_tys_list), ret: ret_ty_of(handle)})
         // THE DIRECT SWAP (landing shape α, second kind): the LowFn is
         // built by the column-seeded projector. The resume-binding
         // context (THE CUT, bank A3 — the arm_state_ctx install, the
@@ -4050,15 +4008,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // The enumeration note fires PARENT-BEFORE-CHILD (nested mints note
   // during body lowering below) — the tree order every projected kind
   // shares, so the future enumeration reader walks parents first.
-  graph_emitfn_note(EmitFnEntry{
-    caps: [],
-    fence: fence,
-    kind: EfkArm,
-    name: fn_name,
-    origin: node_handle(arm.body),
-    params: zip(arm_params, arm_param_tys),
-    ret: Some(lookup_ty(node_handle(arm.body))),
-  })
+  graph_emitfn_note(EmitFnEntry{caps: [], fence: fence, kind: EfkArm, name: fn_name, origin: node_handle(arm.body), params: zip(arm_params, arm_param_tys), ret: Some(lookup_ty(node_handle(arm.body)))})
   ls_enter_frame(fn_name, arm_params, locals_handles, captures_names, captures_handles)
   lower_frame_fence_push()
   // A STATEFUL arm binds `__hrec` to its own $__state — the install
@@ -4633,15 +4583,7 @@ fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
         // the captured remainder's answer — the R and S of the boundary's
         // own TCont, which the edge already carries. No walk finds this;
         // the edge states it.
-        graph_emitfn_note(EmitFnEntry{
-          caps: zip(captures_names, captures_handles),
-          fence: len(captures_exprs),
-          kind: EfkK,
-          name: "__k_{int_to_str(ph)}",
-          origin: ph,
-          params: [(hole, Some(lookup_ty(resume_input_h)))],
-          ret: Some(lookup_ty(answer_h)),
-        })
+        graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkK, name: "__k_{int_to_str(ph)}", origin: ph, params: [(hole, Some(lookup_ty(resume_input_h)))], ret: Some(lookup_ty(answer_h))})
         ls_enter_frame("", [hole], [resume_input_h], captures_names, captures_handles)
         lower_frame_fence_push()
         let subs = map(((p, n)) => (p, k_hole_read(p, n)), outer_holes) ++
@@ -4673,7 +4615,7 @@ fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
         if disc == MultiShot {
           LMakeContinuation(continuation_h, k_fn, captures_exprs, ph, resume_input_h)
         } else {
-          report(EResumeWorldMismatch(disc, MultiShot, span_zero()))
+          report_at(continuation_h, EResumeWorldMismatch(disc, MultiShot, span_zero()))
           LInvariantFailure(ph, NonMultiShotContinuation(disc))
         }
       },
@@ -4684,19 +4626,22 @@ fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
 fn continuation_boundary_at(site_h) = match graph_boundary_at(site_h) {
   ContinuationBoundary(edge) => Ok(edge),
   PendingContinuationBoundary(_, _, continuation_h, _) => {
-    report(EUnresolvedType(continuation_h, graph_epoch(), parse_span_of(continuation_h)))
+    report_at(
+      continuation_h,
+      EUnresolvedType(continuation_h, graph_epoch(), parse_span_of(continuation_h))
+    )
     Err(UnfinalizedContinuationBoundary(continuation_h))
   },
   FanoutBoundary(_) => {
-    report(EUnresolvedType(site_h, graph_epoch(), parse_span_of(site_h)))
+    report_at(site_h, EUnresolvedType(site_h, graph_epoch(), parse_span_of(site_h)))
     Err(WrongContinuationBoundaryKind)
   },
   InterpBoundary(_) => {
-    report(EUnresolvedType(site_h, graph_epoch(), parse_span_of(site_h)))
+    report_at(site_h, EUnresolvedType(site_h, graph_epoch(), parse_span_of(site_h)))
     Err(WrongContinuationBoundaryKind)
   },
   NoBoundary => {
-    report(EUnresolvedType(site_h, graph_epoch(), parse_span_of(site_h)))
+    report_at(site_h, EUnresolvedType(site_h, graph_epoch(), parse_span_of(site_h)))
     Err(MissingContinuationBoundary)
   },
 }
@@ -5067,11 +5012,7 @@ fn tparam_handle(tp) = ty_handle_of(param_ty(tp))
 // right: "handle zero means no node" is a convention every reader has to
 // learn, where None is a fact the type states. The reader floors on None.
 fn entry_param_tys(fn_handle, params) = match lookup_ty(fn_handle) {
-  TFun(tparams, _, _) => if len(tparams) == len(params) {
-    map(some_param_ty, tparams)
-  } else {
-    map(some_param_ty, params)
-  },
+  TFun(tparams, _, _) => if len(tparams) == len(params) { map(some_param_ty, tparams) } else { map(some_param_ty, params) },
   _ => map(some_param_ty, params),
 }
 
@@ -5090,11 +5031,7 @@ fn none_of(_i) = None
 // the tail is exactly what remains). A callee whose type is not a readable
 // TFun floors: no judged params, no fabricated widths.
 fn partial_param_tys(callee_h, n) = match lookup_ty(callee_h) {
-  TFun(tparams, _, _) => if len(tparams) >= n {
-    map(some_param_ty, drop(len(tparams) - n, tparams))
-  } else {
-    floor_tys(n)
-  },
+  TFun(tparams, _, _) => if len(tparams) >= n { map(some_param_ty, drop(len(tparams) - n, tparams)) } else { floor_tys(n) },
   _ => floor_tys(n),
 }
 
@@ -6399,8 +6336,7 @@ fn spec_pairs_sorted_insert(sorted, p) with Memory + Alloc = if len(sorted) == 0
   }
 }
 
-fn spec_pairs_sort(pairs) with Memory + Alloc =
-  fold([], spec_pairs_sorted_insert, pairs)
+fn spec_pairs_sort(pairs) with Memory + Alloc = fold([], spec_pairs_sorted_insert, pairs)
 
 fn spec_repr_digit(t) with Pure = match repr_of(t) {
   RI32 => "0",

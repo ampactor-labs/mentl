@@ -442,6 +442,20 @@
 > is the developer's own intent-prose alone (SYNTAX §«What a comment TRENDS
 > TO» carries the surface law; the deletion test names the missing verb).
 >
+> **THE VERB MAP — the grep's Mentl-native twin, so the confession is never
+> re-paid** (2026-09-17: a dead-fn census was grepped out of m3.wat while
+> `mentl query src/main.mn unreferenced` had named the same fns since
+> 2026-09-04; the transitive facet it lacked, `unreachable`, was built the
+> same day instead of grepping again). Before any grep/awk over source:
+> `mentl query <entry> unreferenced` (one hop) · `unreachable` (transitive
+> from main, fn decls) · `refs of NAME` · `census <shape>` · `decls` ·
+> `modules` / `imports` / `performs` / `orphan-claims`; `mentl
+> <file:line>` (the line's ROOT — widest node) and `<file:line:col>` (the
+> TIGHTEST node — a `??`, a lambda's param) for the eight-aspect read with
+> the Lede; `mentl why/where <file> <name>`; `mentl doc <module>` for the
+> decl roster with types and ledes. A question none of these answers is
+> the facet to grow — in the same landing, never a grep absorbed into habit.
+>
 > **The self-build audit runs at every landing:** which step of THIS landing
 > did Claude or Morgan perform that the medium could have performed? What is
 > the SMALLEST capability that lets the medium do it next time? Build it in

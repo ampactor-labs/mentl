@@ -3281,19 +3281,44 @@ fn diag_line(diag, dmod) with GraphRead + Memory + Alloc + !Mutate + Intern = {
 // subtract and nothing to localize — the only question left is which file a
 // report is about, and that is one cell read, carried here rather than
 // re-derived by scanning ranges for one that contains the line.
+// report_at — THE reporting boundary: a diagnostic AT a node. The module is
+// the node's own column read (graph_module_of, total by construction), never
+// the cursor's ambient position. That distinction is the whole reason this
+// boundary exists in this form. The ambient module is right exactly while a
+// walk is inside one file — the parse — and wrong the moment a walk spans the
+// program: emit visits every reachable fn in table order, so "the module in
+// force" is wherever the walk happens to be, and under the driver's
+// ScopeModule register a report attributed that way filters out as another
+// file's business. Measured on the driver path: a program with a field-offset
+// floor compiled to an EMPTY stderr and trapped at the instruction that admits
+// it, while the blob path (no scope) printed the class all along — a gate green
+// on a chain the developer never runs.
+//
+// The target this is one step toward, ripple measured 2026-09-17: DiagKind's
+// 65 constructors each COPY a Span out of a handle their report site had in
+// hand (§11's provenance face, the same defect Reason carries). The copy
+// deletes when the constructor carries the handle and span/module are both
+// column reads; what gates that is the parser's 17 sites, which report at a
+// token span and leave the hole to their caller, so recovery must change
+// before they can report at a node. Until then this takes the handle and the
+// diag keeps its span.
+fn report_at(h, diag) with Diagnostic + GraphRead + Memory + Alloc + Intern =
+  diag_report_at(diag, module_name_of_handle(graph_module_of(h)))
+
+// The parse-phase form: a report inside the module being parsed, where the
+// module in force IS the right one because the parser never leaves a file.
+// Defined as report_at at the module node — the module attributes itself, so
+// this is the same read — and NOT a second boundary: a site that has a node
+// reports at it, and a site that reaches for this instead of its handle after
+// the parse is reporting from the wrong place.
 fn report(diag) with Diagnostic + GraphRead + Memory + Alloc + Intern =
-  diag_report_at(diag, current_module_name())
+  report_at(graph_module_current(), diag)
 
 // The module is read ONCE and used twice — in the rendered address and as the
 // register's own scope key — so the render and the carried module cannot drift
 // apart into two answers about one report.
 fn diag_report_at(diag, dmod) with Diagnostic + GraphRead + Memory + Alloc + Intern =
   diag_report(diag, diag_line(diag, dmod), dmod)
-
-// The name of the module in force — the file a report fired inside. One cell
-// read plus one body read, where the range map's containment scan used to be.
-fn current_module_name() with GraphRead + Memory + Alloc =
-  module_name_of_handle(graph_module_current())
 
 // A module handle's own name, read from its node. The non-NModule arm REFUSES
 // rather than answering "": every value in the module column was written by

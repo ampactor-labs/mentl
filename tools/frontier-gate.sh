@@ -1403,6 +1403,12 @@ for i in "${!compilers[@]}"; do
   # whose link has no lib/threading and therefore no collision to
   # find. The defect only exists through the MANIFEST, so the leg drives
   # the compiler the way a person does — a verb and a path.
+  # SEEN RED A SECOND TIME 2026-09-17, at the single-pass pin: the check
+  # lived at the op's env write and read a PRIOR fn — an order the second
+  # pass supplied (fn sigs pre-registered by the trial, ops re-registered
+  # by the final). With one pass effects register first, so the fn WON
+  # silently (exit 0, 35KB of WAT, E_TypeMismatch noise in threading). The
+  # check now runs at the fn's own write too; this leg is what caught it.
   fso_err="$dir/fn-shadows-op.err"
   fso_wat=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" \
     "$compiler" compile "$ROOT/tests/frontier/mn-fn-shadows-op.mn" 2> "$fso_err")
@@ -1660,24 +1666,11 @@ for i in "${!compilers[@]}"; do
     fail "arena census: no image line on the compile's stderr — the census print is prose, not mechanism"
   fi
 
-  # The movers ratchet (rung 3's instrument, Hβ.infer.schemes-are-edges):
-  # the trial/final divergence on a polymorphic fixture, ceiling falling
-  # only. lib/lists.mn diverges at 6 today; the stage contract's landing
-  # (env carries cells — nothing left to diverge) drives it to 0 and the
-  # ceiling retires like solo_violations_max did.
-  mv_max=$(grep -E '^lists_movers_max:' "$ROOT/tools/verify-baseline.txt" | head -1 | cut -d: -f2 | tr -d ' ')
-  wt_run "$compiler" < "$ROOT/lib/lists.mn" > "$dir/mv.wat" 2> "$dir/mv.compile.err"
-  mv_n=$(grep -oE '^judgment: [0-9]+' "$dir/mv.compile.err" | grep -oE '[0-9]+' | head -1)
-  mv_n=${mv_n:-0}
-  if [ -n "$mv_max" ] && [ "$mv_n" -le "$mv_max" ]; then
-    if [ "$mv_n" -eq 0 ]; then
-      pass "movers ratchet: the trial/final divergence reads 0 (ceiling $mv_max retires)"
-    else
-      pass "movers ratchet: $mv_n mover(s) within the $mv_max ceiling (0 retires it at rung 3)"
-    fi
-  else
-    fail "movers ratchet: $mv_n mover(s) against ceiling ${mv_max:-unset} — the judgment diverged more, not less"
-  fi
+  # The lib/lists.mn movers ratchet stood here (the trial/final divergence
+  # on a polymorphic fixture). RETIRED 2026-09-17 with the second pass: the
+  # `judgment:` line it read no longer prints, and a leg that passes on a
+  # missing line is the mute-gate class this file's canary legs exist to
+  # refuse.
 
   # Severance honesty (audit): a fn whose row carries Alloc is never
   # offered "proven zero allocation"; a pure fn still earns the offer.
@@ -1856,10 +1849,29 @@ for i in "${!compilers[@]}"; do
   l2=$(cd "$ldemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ldemo" --dir /tmp "$compiler" lede.mn:2 2>/dev/null | grep -c '^Lede: .*outer prose')
   l4=$(cd "$ldemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ldemo" --dir /tmp "$compiler" lede.mn:4 2>/dev/null | grep -c '^Lede: .*interior step')
   l5=$(cd "$ldemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ldemo" --dir /tmp "$compiler" lede.mn:5 2>/dev/null | grep -c '^Lede: .*trailing beat')
-  if [ "$l2" = 1 ] && [ "$l4" = 1 ] && [ "$l5" = 1 ]; then
-    pass "comment lede (decl + interior + trailing all attach and render)"
+  # The fourth altitude, the ANONYMOUS node: prose above a lambda inside an
+  # argument list attaches to the lambda (the weave keys by span, so it
+  # always did) and speaks at the lambda's LINE — RED 2026-09-17 because
+  # the lambda's recorded span was its head alone (`(x`), so the line's
+  # widest-node rule reached a body sub-node and the Lede spoke only at
+  # the exact column.
+  l12=$(cd "$ldemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ldemo" --dir /tmp "$compiler" lede.mn:12 2>/dev/null | grep -c '^Lede: .*anonymous step')
+  if [ "$l2" = 1 ] && [ "$l4" = 1 ] && [ "$l5" = 1 ] && [ "$l12" = 1 ]; then
+    pass "comment lede (decl + interior + trailing + lambda all attach and render)"
   else
-    fail "comment lede (decl=$l2 interior=$l4 trailing=$l5)"
+    fail "comment lede (decl=$l2 interior=$l4 trailing=$l5 lambda=$l12)"
+  fi
+  # `mentl doc` — the comment paradigm's reader-facing verb. It ran the
+  # per-module walk check retired, so every invocation opened with
+  # E_MissingVariable noise from the prelude and rendered nothing of its
+  # own (RED 2026-09-17). Contract: no diagnostics, each decl with its type,
+  # the decl's prose as its lede.
+  dout=$(cd "$ldemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ldemo" --dir /tmp "$compiler" doc lede 2>"$dir/doc.err")
+  derr=$(grep -c ' error: ' "$dir/doc.err" || true)
+  if [ "$derr" = 0 ] && printf '%s' "$dout" | grep -q '^compute : ' && printf '%s' "$dout" | grep -q 'The outer prose'; then
+    pass "doc projection (decls with types and ledes, no diagnostics)"
+  else
+    fail "doc projection (errors=$derr; see $dir/doc.err; got: $(printf '%s' "$dout" | head -3))"
   fi
   fdemo="$ROOT/tests/frontier/propose-fan-demo"
   # The FIELD form (`mentl <file>:0`): the whole absence field ranked and

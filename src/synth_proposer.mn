@@ -313,9 +313,13 @@ fn candidate_rank(name, decl_reason, hole_span) with GraphRead + !Mutate + Alloc
   // the honest fix needs the HOLE's module and a span is not an address
   // (Hβ.synth.proximity-compares-across-modules; it closes with the same
   // positions-are-handles work the Why chain waits on).
-  let use_near = fold(0.0, (acc, s) => match s {
-    (_, sp) => acc + scope_distance_decay(hole_span, sp),
-  }, refs_of_name(name))
+  let use_near = fold(
+    0.0,
+    (acc, s) => match s {
+      (_, sp) => acc + scope_distance_decay(hole_span, sp),
+    },
+    refs_of_name(name)
+  )
   0.5 + decl_near + use_near
 }
 
@@ -618,9 +622,19 @@ fn fan_verify(candidates, target_ty) = {
   }
 }
 
+// The fan's in-flight window — a scheduling constant, never a semantics
+// input: the banded partition makes every branch's bytes a pure function
+// of source and plan, so any width must produce identical output.
+// SERIALIZED AT 1 since 2026-08-07: with live row cells in published
+// schemes, sibling branches of one shared forward callee JOIN one cell
+// concurrently and the un-CAS'd read-modify-write garbles the edge list.
+// Width returns at Phase 9.2 as a `~> Schedule` read (PLAN §11.1 — the
+// constant dissolves; a handler decides the width) on atomic join writes.
+let judge_window = 1
+
 // Blocks of judge_window, joined in candidate order — completion order
 // never matters; the replay stream is byte-identical to the sequential
-// walk at any block size (judge_blocks' law, second workload).
+// walk at any block size.
 fn fan_blocks(ref candidates, target_ty, base, seed, gseed, iseed, top, n, b, own acc) = if b >= n {
   acc
 } else {

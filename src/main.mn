@@ -898,23 +898,52 @@ fn doc_run(target_opt) = {
     Some(t) => t,
     None => "main",
   }
-  // driver_check's per-module inference performs the same analysis ops
-  // every other inference-reaching chain absorbs — this chain ran them all
-  // driverless until the SingletonUninstalled guard made the class loud,
-  // then carried the core WITHOUT env_handler until the order-law audit
-  // completed it; the bracket makes both classes unforgettable.
-  infer_context(() => doc_project(entry_module) ~> stdout_console ~> wasi_filesystem ~> mentl_default)
+  // The same one-namespace weave check reads (driver_entry_with_ranges):
+  // this verb ran driver_check's per-module walk until 2026-09-17, so the
+  // prelude's own body missed the vocabulary its layer supplies and every
+  // `mentl doc` opened with E_MissingVariable noise on a clean program —
+  // the reader-facing verb of the comment paradigm, broken at its root, and
+  // its own comment ("today the doc projection IS driver_check") said so.
+  infer_context(() => {
+    driver_entry_with_ranges(entry_module)
+    doc_render(entry_module, module_cells())
+  } ~> stdout_console ~> wasi_filesystem ~> mentl_default)
   0
 }
 
-// Today the doc projection IS driver_check: it validates the module and
-// surfaces its `///` Reasons through the diagnostics handler. The dedicated
-// render step (md / html / llms handlers over the module signature) is a
-// NAMED gated peer — Hβ.f1.doc-handler-substrate — not a phantom call:
-// doc_emit_for_module was referenced but never defined (reachable_from_main
-// emitted the dangling global), so the honest form names the peer and stops.
-fn doc_project(entry_module) = driver_check(entry_module)
+// The documentation projection: the entry module's declarations, each with
+// its judged type and the first line of its attached prose — the weave's
+// comment cells read back, the same edge `mentl <file:line>` speaks as
+// `Lede:` and the Why engine walks. Nothing here is authored twice: the
+// type is the judgment's, the prose is the graph's.
+fn doc_render(entry_module: String, cells) = each(doc_render_cell(entry_module), cells)
 
+fn doc_render_cell(entry_module: String, cell) = match cell {
+  (path, _, decls) => if path == entry_module { each(doc_render_decl, decls) } else { () },
+}
+
+fn doc_render_decl(d) = match d {
+  N(NStmt(FnStmt(name, _, _, _, _)), _, h) => doc_render_line(name, h),
+  N(NStmt(HandlerDeclStmt(name, _, _, _, _)), _, h) => doc_render_line(name, h),
+  N(NStmt(TypeDefStmt(name, _)), _, h) => doc_render_line(name, h),
+  N(NStmt(EffectDeclStmt(name, _, _)), _, h) => doc_render_line(name, h),
+  _ => (),
+}
+
+fn doc_render_line(name: String, h) = {
+  let ty = match env_lookup(name) {
+    Some((sch, _, _)) => " : {show_type(judgment_ty(sch))}",
+    None => "",
+  }
+  let prose = graph_comment_at(h)
+  let lede = if len(prose) > 0 { "\n    {comment_first_line(prose)}" } else { "" }
+  print("{name}{ty}{lede}\n")
+}
+
+// Rendering this roster through md / html / llms handlers is the named
+// peer Hβ.f1.doc-handler-substrate; the terminal form above is the one every
+// render handler projects from.
+//
 // ─── compile_run / run_run — emit WAT / compile + execute
 //
 // compile_run emits WAT to stdout (CI use case; shell pipeline).
@@ -1281,8 +1310,11 @@ fn file_line(ref target: String, ref span) with Memory + Alloc = match span {
 
 // The three-case line rule (the panel's corrected form, deterministic):
 //  (a) among nodes whose span STARTS on the line (and, with a column,
-//      contains it) — smallest start column, then largest area (the
-//      line's statement root);
+//      contains it) — `file:LINE` takes the WIDEST (the line's root),
+//      `file:L:C` the TIGHTEST containing the point; ties break leftward,
+//      identical spans to the latest mint (address_better_a is the rule's
+//      one home — this list used to say "smallest start column, then
+//      largest area", which was never what it did);
 //  (b) else the tightest node COVERING the point (a continuation line);
 //  (c) else the nearest node by start line (the no-Module-root top-level
 //      gap — blank lines between decls are ordinary addresses, not errors).

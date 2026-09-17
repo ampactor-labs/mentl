@@ -152,7 +152,7 @@ else
     say "  ✓ ratchet: 1 decl -> $one_c threads, 61 decls -> $many_c, delta $delta (ceiling $want)"
   else
     say "  ✗ ratchet: delta $delta exceeds $want — per-branch spawning is back (1 decl $one_c, 61 decls $many_c)"
-    say "    judge_window is in src/infer.mn; a block of one runs BrDirect by block size, not by reading it."
+    say "    the judgment is one sequential pass since 2026-09-17; only the ??-fan (synth_proposer.mn, judge_window) may spawn."
     fail=1
   fi
 fi

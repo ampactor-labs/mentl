@@ -243,7 +243,7 @@ fn driver_extract_imports(ref source) with Memory + Alloc + Intern + GraphRead =
 // fs_exists test the ADT already answers. That is the same re-derivation
 // this file's header names for every OTHER consumer of the walk; the
 // per-module check was the last one still following a name.
-fn driver_check_module(ref entry) with Memory + Alloc + ImageAlloc + Filesystem + WASI + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + InferCtx + Intern + Cast + Mutate + BranchEnv + Consume + WasiThreads = match module_source_of(entry) {
+fn driver_check_module(ref entry) with Memory + Alloc + ImageAlloc + WASI + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + Intern + Cast + Consume + RegionTrack = match module_source_of(entry) {
   None => report(EMissingModule(module_name_of(entry), module_path_of(entry), span_zero())),
   Some(source) => {
     source |> infer_program_converged
@@ -279,7 +279,7 @@ fn driver_check_module(ref entry) with Memory + Alloc + ImageAlloc + Filesystem 
 // Each module either loads from cache or re-infers; envs install in
 // dependency order so every imported name is in `env_handler` before
 // the entry module's inference runs.
-fn driver_check(ref entry_module) with Memory + Alloc + ImageAlloc + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + LookupTy + Verify + InferCtx + Intern + Cast + Mutate + WASI + BranchEnv + Consume + WasiThreads + DiagRegister =
+fn driver_check(ref entry_module) with Memory + Alloc + ImageAlloc + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + LookupTy + Verify + Intern + Cast + WASI + Consume + DiagRegister + RegionTrack =
   entry_module |> driver_collect_dag_with_deps |> driver_partition_layers |> each((layer) => each(driver_check_module, layer))
 
 // driver_check_entry — the compile path's check: infer every DEP of the
@@ -423,7 +423,7 @@ fn module_decls_of(ref cells, ref target, ref ast) with Memory + Alloc = if len(
   }
 }
 
-fn driver_entry_with_ranges(ref entry_module) with Memory + Alloc + ImageAlloc + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + InferCtx + Intern + Mutate + Cast + WASI + BranchEnv + Consume + WasiThreads = {
+fn driver_entry_with_ranges(ref entry_module) with Memory + Alloc + ImageAlloc + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + Intern + Cast + WASI + Consume + RegionTrack = {
   // Discovery is a STRUCTURE read: the DAG walk parses each module only
   // for its imports, and the weave parse below re-reports every shape
   // with weave spans — so discovery narration is a duplicate in
@@ -558,7 +558,7 @@ fn driver_warm_ready(path) with Memory + Alloc + Filesystem = if fs_exists(path)
   false
 }
 
-fn driver_compile_entry(ref entry_module) with Memory + Alloc + ImageAlloc + Cast + Persist + Fail + WASI + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + InferCtx + Intern + Mutate + BranchEnv + Consume + WasiThreads = {
+fn driver_compile_entry(ref entry_module) with Memory + Alloc + ImageAlloc + Cast + Persist + Fail + WASI + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + Intern + Consume + RegionTrack = {
   let path = driver_warm_path(entry_module)
   if driver_warm_ready(path) {
     eprint_string("warm: restoring the analyzed image\n")
@@ -667,7 +667,7 @@ fn assoc_stmts(ref pairs, name: String) with Memory + Alloc = match find(
 // a nonempty cone (every DAG module is one of its transitive deps, so
 // the downstream closure of any change reaches it). The re-judged state
 // re-persists, so the image tracks the tree edit by edit.
-fn driver_incremental() with Memory + Alloc + ImageAlloc + Cast + Persist + Fail + WASI + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + LookupTy + Verify + InferCtx + Intern + Mutate + BranchEnv + Consume + WasiThreads + DiagRegister = {
+fn driver_incremental() with Memory + Alloc + ImageAlloc + Cast + Persist + WASI + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + LookupTy + Verify + Intern + Consume + DiagRegister + RegionTrack = {
   let entry = list_index(warm_entry, 0)
   let scan = driver_tree_scan(entry)
   let cur_pairs = scan_pairs(scan)
@@ -782,7 +782,7 @@ fn names_join(ref xs) with Memory + Alloc =
 // is the read — the driver_module_path call that stood here re-resolved a
 // name the scan had already resolved, and against a path it would not have
 // resolved at all.
-fn rederive_cone(ref cone) with Memory + Alloc + ImageAlloc + WASI + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + LookupTy + Verify + InferCtx + Intern + Cast + BranchEnv + Consume + WasiThreads + DiagRegister = map(
+fn rederive_cone(ref cone) with Memory + Alloc + ImageAlloc + WASI + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + LookupTy + Verify + Intern + Cast + Consume + DiagRegister + RegionTrack = map(
   (m) => {
     // The module is judged UNDER ITS OWN NAME. This read
     // infer_program_converged, which names its single module "<stdin>" — so
@@ -796,7 +796,7 @@ fn rederive_cone(ref cone) with Memory + Alloc + ImageAlloc + WASI + Filesystem 
   cone
 )
 
-fn driver_check_entry(ref entry_module) with Memory + Alloc + ImageAlloc + Filesystem + WASI + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + InferCtx + Intern + Cast + Mutate + BranchEnv + Consume + WasiThreads = {
+fn driver_check_entry(ref entry_module) with Memory + Alloc + ImageAlloc + Filesystem + WASI + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + Intern + Cast + Consume + RegionTrack = {
   // Check the deps DAG (every module the entry imports) — not the entry.
   // "Not the entry" is an IDENTITY question, so it is asked of the path: the
   // entry reached by one spelling and collected under its resolved path is

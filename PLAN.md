@@ -755,10 +755,12 @@ and this is the STATE.
 - **Regions** are compile-time root-tagging + return-transfer, NOT a runtime
   arena. The `emit_memory_arena` swap is dormant (§5.O open work).
 - **`persist = memcpy` IS BUILT, and this line said it was absent** — the doc
-  rot named as violation #1, measured 2026-09-07. `lib/persist.mn`'s
-  `image_pack` is literally one `mem_copy(dst, 0, size)` over `[0, heap-line)`
-  plus the globals record; `image_resume` gates on the build key and swaps it
-  in; `mentl resume <image>` re-enters a persisted image with the source not
+  rot named as violation #1, measured 2026-09-07. `lib/persist.mn` writes
+  `[0, heap-line)` plus a bounded globals header STRAIGHT FROM THE IMAGE to
+  the file (`fs_write_image_impl`, one host op, all-or-nothing — 2026-09-17;
+  it had been a 2x buffer copy behind a 960MB capacity gate that refused the
+  wheel's own image, both deleted); `image_resume` gates on the build key and
+  swaps it in; `mentl resume <image>` re-enters a persisted image with the source not
   required to exist; and the driver's warm start restores an analyzed image
   rather than re-inferring. The honest remainder is NOT the mechanism: host
   resources (fds, stdin position, sockets) are outside the image and do not
@@ -799,7 +801,11 @@ and this is the STATE.
   both named in that bullet.
 - **Subsystem-as-cursor** (§2) is ~60% earned. Gap ranked: LOWERING (39
   constructors → columns), ENV (dissolves with schemes-are-edges), REVERSE EDGE
-  (landed 2026-08-07), verify/tighten BANKS. The move: put the fact in a column,
+  (the refs + decls columns landed 2026-08-07 — but `refs_col` is keyed by
+  NAME, not handle, so it is the reverse edge's waypoint, not the edge;
+  `Hβ.lower.reach-edge-on-node` is the handle-keyed form, and this line said
+  "landed" for six weeks while PLAN cited that peer three times and RESIDUE
+  never held it — corrected 2026-09-17), verify/tighten BANKS. The move: put the fact in a column,
   dual-write, migrate readers, delete the side-structure — and its full cycle
   ran once at pin 8aeca3c8: the emittable-fn enumeration went from dual-written
   and zero-read to carrying each symbol's signature edges, emit's six
@@ -809,8 +815,14 @@ and this is the STATE.
 - **Schemes are VALUES, not edges** — the root the judgment tower compensates
   for. Row half LANDED (5.2); forward-HOF under-publish CLOSED (pin c6eb188e1d37).
   Rung 3 whole is the dissolution.
-- **Layer sweep SERIALIZED** (judge_window 1) since 2026-08-07. Parallel returns
-  at Phase 9.2 with deterministic handle partition.
+- **The judgment is ONE pass** (2026-09-17 — the trial/final tower deleted,
+  `LEDGER.md` carries the numbers). The planned layer sweep and its block fan
+  went with it; `judge_window = 1` survives only at its one reader, the
+  ??-fan (synth_proposer.mn), serialized since 2026-08-07 until Phase 9.2's
+  deterministic handle partition and atomic join writes.
+- **Incrementality is not a cached cursor yet:** `epoch` is a mutation
+  counter, not an invalidation key — nothing derives "what changed" from it;
+  the warm start restores an image and re-derives the compile over it (§5.O).
 - **Resident Space** is not yet the shipping medium. `mentl space` serves the
   browser surface, and cursor/query/propose pieces exist, but the browser still
   needs the resident graph session: one WASM instance, a durable image boundary,
@@ -1347,6 +1359,23 @@ form the whole time. The arcs, in order:
   cycle discipline, instantiates a FRESH copy per intra-cycle forward use — the
   disconnected-vars class this entry named as a *future* hazard, possibly
   already being paid. A probe decides it.
+
+  **LANDED 2026-09-17 — THE SECOND PASS IS GONE, m3 == m4, census 0.** The
+  judgment is `infer_program_once`; the m3 leg measures **10.31s / 941MB**
+  against the two-pass wheel's 15.0s / 2,334MB, WAT 409,812 → 402,974
+  lines, and the trial/final vocabulary, the movers instrument, the planned
+  sweep, the block fan and the fingerprint render are deleted (the medium's
+  own `mentl query src/main.mn unreachable` names dead fns now — the facet
+  was built because the census that found them was a grep). The refused
+  cut's exact question — *how does a declared-row gate on a row-polymorphic
+  HOF discharge in one pass?* — resolved without loosening: a gate defers
+  while ANY free var remains and resolves when the only frees left are the
+  SIGNATURE'S OWN (`sig_frees`), because a row var the signature quantifies
+  is the HOF's polymorphism, not an unresolved chain. The m4 trap's root was
+  the parser: `free_vars_stmt` answered `[]` for every `HandlerDeclStmt`, so
+  arm references never reached the callee-first DAG. `RESIDUE.md`'s
+  `Hβ.infer.judge-once-per-scc` carries the whole record; `(arena, offset)`
+  did not have to land for the pass to go and stays 9.2/10.1's keystone.
 
   **AND THE SUBSTRATE IS ALREADY `(arena, offset)` — but the naive cut is
   REFUTED BY ARITHMETIC, measured before a line was written.** A handle

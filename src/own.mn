@@ -13,6 +13,8 @@ import types
 
 import strings
 
+import imap
+
 // affine_ledger — the Consume handler. Installed per-function body.
 // State tracks consumed-names and the first-use span (for diagnostic
 // pinpointing). `with !Consume` on the handler would statically
@@ -688,11 +690,12 @@ fn usage_flds(ref name, ref flds, mode) with Memory + Alloc + EnvRead + GraphRea
 // one is the callee's own cell, and the shallow chase to its bound node is
 // the layer's live read (own.mn sits below infer, so judgment_ty — which
 // would also run the quantifier split this reader has no use for — is not
-// in scope). Reading only the frozen shape here is what the trial/final
-// divergence is MADE of: when the entry is not yet an arrow the answer is
-// None, every bare arg reads, the grade lands `r`, and the final's
-// re-judgment lands `o` — the whole printed flip set
-// (`buffer:rlf → buffer:olf`, `list:ri → list:oi`).
+// in scope). Reading only the frozen shape here was what the two-pass
+// tower's trial/final divergence was MADE of: when the entry was not yet
+// an arrow the answer was None, every bare arg read, the grade landed
+// ref, and the second judgment flipped it to own. With one judgment
+// (2026-09-17) the read is the shape at this moment, and the callee-first
+// walk makes it an arrow for every acyclic callee before its callers ask.
 fn callee_borrow_params(ref f) with !Mutate + GraphRead + EnvRead + Memory + Alloc = match f {
   N(fb, _, _) => match fb {
     NExpr(VarRef(cn)) => match env_lookup(cn) {

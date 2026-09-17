@@ -683,7 +683,12 @@ comment_refs_max: 0
 # infer.mn:1054). It is a size gauge for the condemned pass, not a road to
 # zero — deleting the pass is what reaches 0
 # (`Hβ.infer.judge-once-per-scc`).
-movers_max: 433
+# 2026-09-17: 433 -> RETIRED, by the entry's own words — "deleting the pass
+# is what reaches 0." The second judgment is deleted (infer_program_once is
+# the one walk), so there is no trial for a final to override, no line for a
+# gauge to read, and no key: a ratchet held at zero over a deleted instrument
+# is a mute gate. The regrowth alarm is structural — a second pass would
+# have to be written back into infer.mn.
 
 # THE UNPROVABLE-FIELD-OFFSET CENSUS — the wheel's own count of reachable
 # field accesses whose slot the graph could not prove. Each one is an
@@ -786,7 +791,9 @@ field_offset_unprovable_max: 4
 # Filesystem effect is declared in src/types.mn, so a lib/ module cannot
 # perform it and still compile standalone. Move the decl to io.mn beside its
 # impls and every one of these becomes an op the handler can see.
-fs_impl_bypass_max: 8
+# Held at the measured 7 the landing after — the board read 7 the night the
+# entry above was written and the ceiling was left at 8 to spare a gate cycle.
+fs_impl_bypass_max: 7
 
 # 2026-08-07: the PER-MODULE ratchet (PLAN §11 Phase 3.5's first half) —
 # E_MissingVariable across every src module's SOLO check, monotone DOWN.
@@ -1095,11 +1102,11 @@ desugar_vocabulary: 41
 # ref_span_line) and its private span_in deleted into the census's own site
 # line and site_in — four borrow markers gone with the duplicate code that
 # carried them. A consolidation pays this ceiling directly.
-authored_own_max: 83
+authored_own_max: 67
 # 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
 # primitive's deletion — the honest grade needs no marker where there is no
 # second copy to annotate.
-authored_ref_max: 805
+authored_ref_max: 744
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1598,7 +1605,11 @@ env_frame_max: 0
 # byte, so the medium's own number is exact where the host's proxy is noise.
 # Next pin reads the heap line and this RSS ceiling becomes a crash guard
 # (Hβ.perf.cost-ratchet-reads-the-image).
-selfcompile_peak_kb_max: 2432000
+# 2026-09-17: 2432000 -> 1000000. The single pass measured 972556KB on its
+# m3 leg and 963248KB on m4 (the two-pass wheel read 2390696KB the same
+# day) — the judgment's 67% second pass is gone. The ceiling is the
+# measured spread plus ~3%; it only falls from here.
+selfcompile_peak_kb_max: 1000000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the
@@ -1620,4 +1631,3 @@ selfcompile_peak_kb_max: 2432000
 # gate goes on answering the same question one octave up. Seen RED at ceiling
 # -1 before it was trusted.
 judge_spawn_delta_max: 0
-lists_movers_max: 6

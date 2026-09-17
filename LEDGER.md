@@ -35,6 +35,41 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-17 · pin 486fc83aa299335d · THE JUDGMENT IS ONE PASS. Pinned three
+  times in one landing: TRANSITION m3 == m4 at e96ca9b14c511f20 (the board
+  then named three frontier reds at that pin — a fixture calling the deleted
+  `image_pack`, the fn-shadows-op refusal muted by the write order the
+  second pass had supplied, and own.mn under-importing `imap` — all three
+  fixed at their roots), CLEAN at f33e8350e8abc00d (verify's ratchets then
+  named an effectful lambda without a decl home and two backticked
+  non-names), and CLEAN here, census 0, m3 leg **9.29s / 944MB** against
+  the two-pass pin's
+  16.17s / 2,342MB (−60% peak RSS), WAT 409,812 → 402,974 lines, infer.mn
+  −971 lines net. The trial/final tower is deleted whole: `infer_program_once`
+  is the judgment, `judge_stmt_one` returns no count, the planned layer
+  sweep / block fan / fingerprint render / movers probes are gone (32 fns),
+  `judge_window` lives at its one reader (the ??-fan), and the `movers` and
+  `lists_movers` ratchets are RETIRED with their instrument rather than held
+  at a phantom zero. The 2026-09-15 refusal's question resolved without
+  loosening: a declared-row gate defers while any free var remains and
+  resolves when the only frees are the signature's own (`sig_frees`). The
+  m4 trap's root was `free_vars_stmt` answering `[]` for `HandlerDeclStmt`
+  (arm references never reached the callee-first DAG); the parser walks
+  arms now. SAME LANDING, the medium doing more of its own work: `mentl
+  query <entry> unreachable` (the transitive face of `unreferenced` — built
+  because the dead-fn census was a grep over m3.wat; it names 277 fn decls
+  on the wheel), a lambda's span is its whole extent so `mentl <file:line>`
+  reaches it and its Lede speaks (binop spans likewise run left through
+  right), and `mentl doc` runs — it had opened with 152 prelude errors from
+  the per-module walk check retired, and now renders the decl roster with
+  types and ledes. Persist writes the image as one streaming host op
+  (`fs_write_image_impl`, the 2x buffer copy and the 960MB capacity gate
+  deleted); `report_at(h, …)` attributes post-judgment diagnostics to the
+  handle's module; the field-offset floor speaks on the driver path (all
+  four wheel floors); `region_index` consolidated into the word-keyed
+  `wmap` primitive. Gates seen RED first: lede.mn:12 (no Lede at the
+  lambda's line), `mentl doc lede` (152 errors), `unreachable` naming the
+  32 before their deletion.
 - 2026-09-16 · pin e0b380878e8ef756 · THE BATTERY STOPPED COMPILING WHAT THE
   MEDIUM HAD ALREADY COMPILED. CLEAN m2 == m3, census 0, 16.17s, 2342MB peak,
   micro battery **215s → 71s (3.0x)** with the verdict unchanged.

@@ -478,7 +478,7 @@ fn report_holes(holes, i) = if i >= len(holes) {
   let h = list_index(holes, i)
   // The weave span — the parse truth authored_hole itself proved; the
   // reason-chain span is clobbered by the binder's unification.
-  report(EUnresolvedHole(h, parse_span_of(h)))
+  report_at(h, EUnresolvedHole(h, parse_span_of(h)))
   report_holes(holes, i + 1)
 }
 
@@ -832,7 +832,7 @@ handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
 // subtracting the module's weave offset back off it, string-slicing the `at
 // <span>` tail and re-rendering the arithmetic. Spans are local from birth,
 // so the number it computed is now the number the span already holds.
-
+//
 // diag_branch (the branch cursor's per-stmt collector) lives in
 // infer.mn beside diag_quiet — the branch bracket and the join are its
 // only consumers.
@@ -1181,6 +1181,15 @@ fn unref_row_is_dead(row) with Pure = match row {
   (_, _, outside) => outside == 0,
 }
 
+// The transitive face: a row's third field is reached-from-entry, so the
+// same zero test names the fns the entry cannot reach.
+fn render_unreach_rows(rows) with Memory + Alloc =
+  "→ {int_to_str(len(rows))} fn decl(s); {int_to_str(count(unref_row_is_dead, rows))} the entry cannot reach\n{str_join_lines(map(render_unreach_row, filter(unref_row_is_dead, rows)))}"
+
+fn render_unreach_row(row) with Pure = match row {
+  (m, name, _) => "  UNREACHABLE  {m} -> {name}",
+}
+
 fn render_unref_rows(rows) with Memory + Alloc =
   "→ {int_to_str(len(rows))} declared name(s); {int_to_str(count(unref_row_is_dead, rows))} that nothing outside their own declaration references\n{str_join_lines(map(render_unref_row, filter(unref_row_is_dead, rows)))}"
 
@@ -1260,6 +1269,7 @@ fn render_query_result(result) = match result {
   QRModules(paths) => "→ {int_to_str(len(paths))} module(s) in the weave\n  {str_join_lines(paths)}",
   QRImports(rows) => render_import_rows(rows),
   QRUnreferenced(rows) => render_unref_rows(rows),
+  QRUnreachable(rows) => render_unreach_rows(rows),
   QRPerforms(rows) => render_perform_rows(rows),
   QROrphanClaims(rows) => render_orphan_rows(rows),
   QRCost(mods, lines, nodes) => "→ {int_to_str(mods)} module(s) · {int_to_str(lines)} source line(s) · {int_to_str(nodes)} node(s) minted",
@@ -1309,6 +1319,7 @@ type QueryVerb
   | QVModules
   | QVImports
   | QVUnreferenced
+  | QVUnreachable
   | QVPerforms
   | QVOrphanClaims
   | QVCost
@@ -1346,6 +1357,8 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVImports
 } else if w == "unreferenced" {
   QVUnreferenced
+} else if w == "unreachable" {
+  QVUnreachable
 } else if w == "performs" {
   QVPerforms
 } else if w == "orphan-claims" {
@@ -1392,6 +1405,7 @@ fn build_question(verb, arg, raw) with Memory + Alloc = match verb {
   QVModules => QModules,
   QVImports => QImports,
   QVUnreferenced => QUnreferenced,
+  QVUnreachable => QUnreachable,
   QVPerforms => QPerforms,
   QVOrphanClaims => QOrphanClaims,
   QVCost => QCost,

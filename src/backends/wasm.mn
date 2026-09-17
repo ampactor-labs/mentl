@@ -1071,6 +1071,10 @@ handler effect_census_collector with demands = [], installs = [] {
 // there (`Hβ.emit.self-init-singleton-call-is-statically-uninstalled`).
 handler preinstall_init_scope(own_handler, init_span) {
   visit_direct_perform(hn, op) => {
+    // `hn` is the handler's NAME, not its node — the walk identifies handlers
+    // by String here — so this site has nothing to report AT and falls back
+    // to the module in force. Shape 4 of the identity arc, seen from the
+    // diagnostic boundary: a name cannot be attributed, a handle can.
     if hn == own_handler { report(EInitPerformsOwnOp(hn, op, init_span)) } else { () }
     resume()
   },
@@ -4636,16 +4640,19 @@ fn emit_expr(expr) = match expr {
       // module in force at the CURSOR — which is right while judgment walks a
       // file and wrong here: emit walks the whole program, so the module in
       // force is wherever the walk happens to be, never where this receiver
-      // lives. The register then filters the line as out-of-scope and the
-      // class says nothing, which is exactly what it did: this diagnostic
-      // landed armed, the four wheel floors kept shipping, and the fixture's
-      // own contract ("the class surfaces on stderr") was false from the day
-      // it was written. The module is not ambient — graph_module_of is the
-      // handle's own column read, total by construction, and the handle is
-      // already in hand for the span.
-      diag_report_at(
-        TFieldOffsetUnprovable(field_offset_unprovable_why(rec, sel), parse_span_of(lexpr_handle(rec))),
-        module_name_of_handle(graph_module_of(lexpr_handle(rec)))
+      // lives. Under the driver's ScopeModule register the line then filters
+      // as out-of-scope and the class says nothing — measured on the DRIVER
+      // path, `mentl compile <file>`, where the fixture compiled to an empty
+      // stderr. The BLOB path (stdin: the self-compile, the march, every
+      // gate) never sets a scope, so there the class always spoke and the
+      // ratchet always read 4. A gate green on a chain the developer never
+      // runs: that divergence is the finding, and this arm is one symptom of
+      // it. The module is not ambient — graph_module_of is the handle's own
+      // column read, total by construction, and the handle is already in
+      // hand for the span.
+      report_at(
+        lexpr_handle(rec),
+        TFieldOffsetUnprovable(field_offset_unprovable_why(rec, sel), parse_span_of(lexpr_handle(rec)))
       )
       wat_emit("    (unreachable)  ;; field offset unprovable: ")
       wat_emit(field_offset_unprovable_why(rec, sel))

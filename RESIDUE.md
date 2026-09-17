@@ -1479,11 +1479,45 @@ The 16384 figure was chosen so ONE page holds the worst decl (16384/2305 =
 7.1×); that sizing is right for a DENSE space and wrong for a per-decl one,
 where the cost is paid 3,385 times instead of ~40.
 
-CLOSE CONDITION: one judgment pass,
-`movers` retired as a key rather than driven to zero, and the trial/final
-vocabulary gone from infer.mn. Everything the movers ratchet, the
-order-dependence at 4.2, and the between-generation node identity cost is
-paid here.
+**LANDED 2026-09-17 — one judgment pass, marched m3 == m4 (TRANSITION),
+census 0.** The close condition above is met whole: `movers_max` retired
+(0, the instrument deleted with the divergence it measured), the
+trial/final vocabulary gone (`infer_program_once` is the judgment;
+`stmt_measure_one` → `judge_stmt_one`, no count returned; the `rows` /
+`layers` / `bases` plumbing, the planned layer sweep, the block fan, the
+fingerprint render and the movers probes deleted — 32 fns the medium's own
+`unreachable` facet now names on demand; `judge_window` moved to its one
+reader, the ??-fan). MEASURED on the march: m3 leg **10.31s / 941MB** (the
+two-pass wheel: 15.0s / 2,334MB — −60% peak, −31% wall); the WAT 409,812 →
+402,974 lines; infer.mn −971 lines net. The wheel's judgment sits under the
+signed-2GB warm line for the first time, which is what makes
+`persist = memcpy` of the wheel's own image reachable.
+
+THE TWO OPEN QUESTIONS BOTH RESOLVED AT THE ARTIFACT, and neither by
+loosening: (1) *how does a declared-row gate on a row-polymorphic HOF
+discharge in one pass?* — by owning its frees. The gate is deferred while
+ANY free var remains (empty owned-set: defer-safety), and RESOLVED when the
+only frees left are the SIGNATURE'S OWN (`sig_frees` = `free_in_ty` over
+`chase_deep(TFun(params, ret, Pure))` at the gate's mint site): a row var
+the signature quantifies is not an unresolved chain, it is the HOF's
+polymorphism, and enforcing the declared row against it is exactly the
+absence proof the signature makes. `assert_gates_walk` stops reporting
+signature-owned frees as `E_InternalInvariant`. The 13 (then 39, when the
+first deep-chase finalized rows early) went to zero. (2) *the m4 trap* —
+`m4 exit=134` inside `emitfns_index_build` — was NOT the field-offset
+floor's doing at root: `free_vars_stmt` answered `[]` for every
+`HandlerDeclStmt`, so a handler arm's references never reached the
+callee-first DAG and `graph_handler` was judged BEFORE the fn its arms
+call. The parser now walks config inits, state inits and arm bodies
+(binding config/state/arm args) — one arm, the class closed. And the
+DEFECT THAT EXISTED INDEPENDENTLY is closed by construction: there is no
+`~> diag_quiet` pass left to mute anything.
+
+WHAT STANDS OPEN, named: `(arena, offset)` — the handle unflattening this
+entry designed — did NOT have to land for the pass to go; the plan machinery
+(`graph_mint_plan`/`graph_mint_seal`, `mint_overflow_quota`) survives at
+the ??-fan's spawn and dies with 9.2's partition. `Hβ.perf.per-decl-arena`
+(4.3) resumes on the 941MB judgment, ~98% of it scratch.
 
 `Hβ.perf.cost-ratchet-reads-the-image` — THE BOARD POLICES COST WITH A HOST
 PROXY, and the proxy's noise is wider than the margin it guards. Measured
@@ -4722,6 +4756,17 @@ THE SITE is `register_one_op`'s env write, where the losing fn's entry is
 still present — the one place both claims on the name meet. The span comes
 from the prior entry's own Reason, so the diagnostic points at the fn to
 rename rather than at the library. E_FnShadowsOp is armed; wheel census 0.
+THE ORDER FLIPPED WITH THE SECOND PASS (2026-09-17): the "op last" write
+order above was the two-pass tower's — the trial pre-registered fn sigs
+and the final re-registered ops. With one judgment, effects register
+BEFORE the decl fold, so the op is prior and the fn wins silently: the
+frontier leg went RED at the single-pass pin (exit 0, WAT emitted,
+E_TypeMismatch noise inside threading.mn where its own `spawn_task` calls
+now reached the user fn). The check runs at BOTH writes now —
+`pre_register_stmt`'s FnStmt arm reads a prior `EffectOpScheme` and
+reports at the fn's span; `register_one_op` keeps the other order's arm.
+A refusal that depends on a write ORDER is a refusal that depends on an
+accident; two arms make it depend on the collision alone.
 THE THIRD KILL, and the one that cost the most: both earlier probes ran
 through the MICRO harness, whose blob link has no lib/threading —
 so `spawn` was only ever a user fn there and the collision was never in
@@ -5825,6 +5870,82 @@ iteration-is-topology's own tier — and the frontier pins declaration
 order (`type of pair` answers alpha-first). The family remains one of
 the nineteen Ty descents; its one home arrives with
 `Hβ.types.traversal-is-a-handler`.
+
+`Hβ.lower.reach-edge-on-node` — REACHABILITY IS AN EDGE THE GRAPH DOES
+NOT YET DRAW. PLAN cited this peer three times (§5.O layer 2, §9.3, the
+name-is-handle build order) and this catalog never held it — a gap not in
+RESIDUE.md does not exist, and this one existed for six weeks unbanked
+(found 2026-09-17). The fact: emit's `reachable_from_main` (lower.mn)
+computes the entry's transitive reach as a NAME-keyed worklist over
+`reach_names_expr`, keeps it in a scratch buffer, and the fn set it proves
+is read by nobody else — so the `unreachable` query facet (born the same
+day, query.mn `reach_report`) RE-DERIVES the same closure over
+`collect_free_vars` from the decls column, and `refs_col` is name-keyed
+too (PLAN §7's "REVERSE EDGE landed" corrected to say so). Three walks
+of one fact. The ultimate form: reachability is a spine COLUMN written
+ONCE at the one worklist — a bit per decl handle, set when the frontier
+constructs it — and emit, `unreachable`, the census, and the oracle's
+seed set READ it; the name walks delete. DEP: identity-is-a-handle
+(`EmitFnEntry.origin` read instead of `e.name`, the `LFn(String, …)`
+carrier) — the same arc, since a handle-keyed column cannot be written
+from a name-keyed walk. RED test banked: `mentl query src/main.mn
+unreachable` names 277 fn decls on the wheel at this pin; the column form
+must name the same set from a read.
+
+`Hβ.parser.expr-interior-comment-attach` — measured 2026-09-17 rather than
+assumed: the weave attaches by SPAN to ANY node, so the anonymous case
+(prose above a lambda inside an argument list) ALREADY attaches, resolves
+its backticks through the enclosing decl's binders, and speaks at the
+lambda's address — `tests/frontier/lede-demo` lede.mn:12 is the contract,
+seen RED at the LINE address because the lambda's span was its head alone
+(`(x`), fixed by giving a lambda its whole extent (`lambda_span`) and a
+binop its whole extent (left through right — it stopped at the operator).
+WHAT REMAINS is the positions where the lexer's run never reaches a node
+that STARTS after it on its own line — a comment between a match arm's
+pattern and its `=>`, or inside a parenthesized operand chain — where the
+leading rule attaches to the next node at minimal span start, which may be
+the wrong sibling. The gate that will name it: one fixture per interior
+position through `mentl <file:line>`, each seen RED. Its sibling
+`Hβ.parser.interior-comment-to-enclosing-block` (skip_ws's own comment
+names it: per-interior-position attachment to the enclosing block) is
+SUBSUMED — attachment is one span-keyed pass, and "the enclosing block" is
+just the widest node whose span contains the run when nothing follows.
+
+`Hβ.f1.doc-handler-substrate` — `mentl doc` RUNS as of 2026-09-17 (it had
+opened with 152 prelude errors from the per-module walk `check` retired,
+and its own comment called it a stub) and renders the terminal form: the
+entry module's declarations, each with its judged type and the first line
+of its attached prose (`doc_render`, main.mn — the same comment cell the
+address's `Lede:` and the Why engine read). Cited from that fn's comment
+since the stub era and never held here. What remains is the RENDER
+HANDLERS over that roster — md / html / llms projections as `~>` handlers
+the way `format_default` projects layout — and the full body of each
+comment in the `RExplain` register (SYNTAX §Comments: register is a
+projection, not a delimiter). The roster is the one home every render
+handler projects from; none of them re-reads the source.
+
+`Hβ.ops.runner-is-the-process-handler` — THE SHIM IS A SECOND HOME FOR
+THREE FACTS THE MEDIUM HOLDS (the eight interrogations run on
+`~/.local/bin/mentl`, 2026-09-17). (1) The run seam: `run_run` is `compile`
+then `process_exec ~> process_no_exec` — the wheel REFUSES and the shim
+performs the exec, a handler arm living in bash. (2) The assemble flags:
+`tools/wt-env.sh`'s own header says it dissolves when `mentl run`/`asm`
+are real. (3) The run cache: a content-keyed `.build/runcache` the shim
+computes by hashing the boot plus every source — the CACHED CURSOR
+re-implemented in bash beside `Hβ.persist.module-image-cache`. And
+`tools/runner` (the Rust wasmtime embedding that already owns
+thread-spawn and shared memory) IS the Process handler's substrate: the
+one host resource the guest cannot create, exactly like the listener.
+THE FORM: the runner exposes exec-of-a-module as a host import; the wheel's
+`process_exec` op gets a real handler (`~> process_host`) so `mentl run`
+is one handler swap over the compile graph as `run_run`'s own comment
+already claims; `asm` becomes a verb (wat → wasm is a projection the
+wheel can own — `Hβ.native.*` makes it moot later, but the seam moves
+inside now); and the cache keys on the IMAGE (the persisted judgment's
+build key, `image_resume`'s own gate), so a hit is an image restore, not
+a shell hash. Then wt-env.sh, the shim's run block and the cache dir
+delete. SEQUENCED after the single-pass landing as its own march — it
+changes what every gate invokes.
 
 `Hβ.voice.comment-mass-absorbs-into-projections` — the wheel is 38%
 prose, and almost none of it is the endpoint (Morgan's charge,
