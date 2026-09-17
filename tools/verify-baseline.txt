@@ -777,7 +777,16 @@ field_offset_unprovable_max: 4
 # the MEASUREMENT, not a tolerance: it is monotone down from here and the
 # landing that drives it to zero is the next filesystem-seam arc. Raising it
 # again requires the same enumeration this entry carries.
-fs_impl_bypass_max: 9
+# 2026-09-17: 9 -> 8. persist's write became ONE operation with one home —
+# "this path ends up holding exactly these bytes, or it does not exist" is a
+# single filesystem question, so fs_write_image_impl (lib/io.mn) owns the
+# open/write/write/close/unlink rather than persist reaching past the seam five
+# times for it. The reach that remains there is the image READ, and the arc
+# that drives this to zero is the layering one the bypasses all share: the
+# Filesystem effect is declared in src/types.mn, so a lib/ module cannot
+# perform it and still compile standalone. Move the decl to io.mn beside its
+# impls and every one of these becomes an op the handler can see.
+fs_impl_bypass_max: 8
 
 # 2026-08-07: the PER-MODULE ratchet (PLAN §11 Phase 3.5's first half) —
 # E_MissingVariable across every src module's SOLO check, monotone DOWN.
@@ -1087,7 +1096,10 @@ desugar_vocabulary: 41
 # line and site_in — four borrow markers gone with the duplicate code that
 # carried them. A consolidation pays this ceiling directly.
 authored_own_max: 83
-authored_ref_max: 807
+# 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
+# primitive's deletion — the honest grade needs no marker where there is no
+# second copy to annotate.
+authored_ref_max: 805
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the

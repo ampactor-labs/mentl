@@ -57,13 +57,13 @@ effect Persist {
   // chooses is WHERE the bytes go, which is what "this handler IS the disk
   // policy" already says one screen down.
   //
-  // It also has to be this way, measured. image_pack snapshots the globals,
+  // It also has to be this way, measured. image_header snapshots the globals,
   // and $world_g is one of them. Packed from inside an arm, the world it
   // captures is the arm's — which by the deep-handler law EXCLUDES the very
   // handler doing the packing. A warm run then restored a chain that could
   // not answer `persist`, and trapped at exactly that dispatch
   // (ev_declaring_node, i32.const 100764 = Persist, slot 0, pinned at
-  // 0x4a589 in driver_warm_persist). Packing at the PERFORM site captures
+  // 0x4a589 in driver_warm_persist). Building the header at the PERFORM site captures
   // the caller's world, which still has the handler in it, so the restored
   // image can answer the op that wrote it.
   persist(String, String)
@@ -99,7 +99,8 @@ fn image_resume(path) with Memory + Alloc + WASI + Fail = {
   }
 }
 
-// The wire, one byte-record String. Payload layout:
+// The wire's layout, written STREAMING — the file is the only place it is
+// ever whole:
 //   +0   build key      (the same-build gate)
 //   +4   k              (the named record's address in the image)
 //   +8   image size     (the heap line at the persist moment)
@@ -108,21 +109,79 @@ fn image_resume(path) with Memory + Alloc + WASI + Fail = {
 //                        patched below to the image extent so restore
 //                        rewinds allocation to the persisted moment)
 //   +16+8G  image bytes [0, size)
-// The size reads FIRST — everything the persisting program built lies below
-// it; the wire itself allocates above and stays out of its own copy.
-fn image_pack(k) with Memory + Alloc = {
+//
+// THE IMAGE IS THE WIRE — nothing materializes it. A wire built by copying
+// [0, size) into a fresh buffer would double the footprint to produce bytes
+// that are already contiguous, which is the Carried-Truth Law at the
+// persistence boundary; and the doubling is not a memory nicety, it is the
+// difference between a medium that can resume its own work and one that
+// cannot. Twice an image crosses the allocator's signed-2GB bound at half the
+// judgment, so the largest programs — the wheel among them — fall out of the
+// warm path entirely and re-derive from cold on every run. A single copy here
+// costs the incremental compiler.
+//
+// The header stays a buffer because it is BOUNDED (16 bytes plus the globals
+// record) — the same cost on a 4KB image as on a 2GB one. The image extent is
+// written from address 0 through the fd that fs_create_impl exists to give
+// ("for writers that emit through the fd across a long extent instead of
+// banking one buffer" — its own words, written before this had a caller).
+//
+// The size reads FIRST: everything the persisting program built lies below it,
+// and the header allocates above, so the header stays out of the extent it
+// describes.
+// The HEADER, built at the perform site — which is not a style choice but the
+// world law above: globals_save captures $world_g, and inside an arm that
+// world excludes the arm's own handler, so a restored image could not answer
+// the op that wrote it. The header is what carries the globals, so the header
+// is what must be built out here. The EXTENT carries no world at all — it is
+// just the bytes at [0, size) — so the arm writes it, and nothing has to be
+// copied to get it there.
+fn image_header(k) with Memory + Alloc = {
   let size = heap_mark()
   let gsz = globals_area()
-  let wire = bytes_buf(16 + gsz + size)
-  let p = wire + 8
+  let hdr = bytes_buf(16 + gsz)
+  let p = hdr + 8
   store_i32(p, image_key())
   store_i32(p + 4, k)
   store_i32(p + 8, size)
   store_i32(p + 12, gsz / 8)
+  // globals_save runs AFTER the header allocation, so slot 0 holds the bumped
+  // line; the patch puts back the extent this wire actually carries, which is
+  // what restore must rewind to. The old pack had the same two lines for the
+  // same reason — the bump it was correcting was just image-sized.
   globals_save(p + 16)
   store_i32(p + 16, size)
-  mem_copy(p + 16 + gsz, 0, size)
-  str_of_buf(wire)
+  str_of_buf(hdr)
+}
+
+// The write, streaming: the header the perform site built, then the image
+// extent straight from address 0. The size is READ BACK from the header at +8
+// rather than re-read from heap_mark — by the time a handler runs, the line
+// has moved, and the extent this wire describes is the one its own header
+// states (Carried-Truth: the fact is in hand, do not re-derive it).
+// A SHORT WRITE LEAVES NO IMAGE. driver_warm_ready admits a wire on two
+// facts — at least 16 bytes, and a matching build key — and both of those
+// live in the HEADER, so a header-only file is indistinguishable from a
+// whole one to every reader. It would restore a declared extent that was
+// never written: not a failed warm start, a silently wrong program.
+//
+// This is not hypothetical and it is not the old path's problem inherited.
+// It is what this file does TODAY on the wheel, measured: the wheel's own
+// judgment line is 2,268,065,808 bytes, which as a signed word is
+// -2,026,901,488, so the extent write is handed a negative length, writes
+// nothing, and leaves exactly that 184-byte header. The capacity gate this
+// change deleted used to hide it by refusing to write at all.
+//
+// So the write states its own outcome and the file only survives if the
+// extent it declares is the extent that landed.
+fn image_write_wire(ref hdr, ref path) with Memory + Alloc + WASI = {
+  let p = str_payload(hdr)
+  let size = load_i32(p + 8)
+  if fs_write_image_impl(path, p, byte_len(hdr), 0, size) {
+    ()
+  } else {
+    eprint_string("warm: image not persisted — the judgment line is {int_to_str(size)} byte(s), past what one extent can carry; the next run derives cold\n")
+  }
 }
 
 // The disk policy's one home — both arms write the wire through it. An
@@ -148,8 +207,7 @@ fn image_pack(k) with Memory + Alloc = {
 // `Hβ.persist.branch-world-tag` exactly, now with the measurement the peer
 // never had: the same shape on the `persist` arm trapped warm-inc at
 // ev_declaring_node, Persist slot 0.
-fn persist_write(k, ref path) with Memory + Alloc + Filesystem + WASI =
-  fs_write_file_impl(path, image_pack(k))
+fn persist_write(k, ref path) with Memory + Alloc + WASI = image_write_wire(image_header(k), path)
 
 // persist_to_disk — the default disk policy for the rooted-image wire.
 handler persist_to_disk with branch_results = [] {
@@ -157,9 +215,11 @@ handler persist_to_disk with branch_results = [] {
     // This handler IS the disk policy — it writes through the WASI substrate
     // layer directly (the swappable point is the Persist effect itself; a
     // bare fs_write_file resolves only inside the wheel's own compile).
-    // It writes the wire it was HANDED; the pack ran at the perform site,
-    // where the world still contains this handler (see the op's decl).
-    fs_write_file_impl(path, wire)
+    // It writes the wire it was HANDED: the HEADER, built at the perform site
+    // where the world still contains this handler (see the op's decl). The
+    // image extent needs no world and no copy — it is already contiguous at
+    // [0, size), and this streams it straight out behind the header.
+    image_write_wire(wire, path)
     resume()
   },
   persist_branch(thunk) => // Checkpoint the whole image before running the branch, then retain the

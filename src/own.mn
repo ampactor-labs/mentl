@@ -258,7 +258,7 @@ fn report_branch_collisions(ref deltas, ref span) with Memory + Alloc + Intern +
 // handles, a judged branch indexes one statement's. It was one fixed 65536
 // for both, and the branch paid the root's sizing on every install — see
 // region_index_new for the measurement.
-handler region_tracker with region_stack = [], next_region = 0, region_index = region_index_new(65536) {
+handler region_tracker with region_stack = [], next_region = 0, region_index = wmap_new(65536) {
   region_enter(span) => {
     // Push at the END — every Mentl stack does (§9's wrong-end class: the
     // old front-push met last/drop_last readers, an enter-front/pop-bottom
@@ -295,7 +295,7 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = r
         Region(_, s) => s,
       }
     }
-    resume() with region_index = region_index_add(region_index, value_handle, (install_span, rid))
+    resume() with region_index = wmap_add(region_index, value_handle, (install_span, rid))
   },
   tag_alloc_join(value_handle, field_handles) => {
     // H4.1: composite values (record / variant with fields) take
@@ -320,7 +320,7 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = r
       }
     }
     let joined = join_field_regions(region_index, field_handles, cur_rid)
-    resume() with region_index = region_index_add(region_index, value_handle, (install_span, joined))
+    resume() with region_index = wmap_add(region_index, value_handle, (install_span, joined))
   },
   check_escape(value_handle, escape_span) => {
     // The fn-return read, three verdicts (regions are LIVE — infer_fn
@@ -357,7 +357,7 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = r
                 Region(p, _) => p,
               }
             }
-            resume() with region_index = region_index_add(region_index, value_handle, (install_span, parent))
+            resume() with region_index = wmap_add(region_index, value_handle, (install_span, parent))
           } else if region_on_stack(region_stack, region_id) {
             resume()
           } else {
@@ -380,7 +380,7 @@ handler region_tracker with region_stack = [], next_region = 0, region_index = r
 // self-compile (perf, 2026-07-13; the O(N²) alloc-check scan, §5.O). The handle
 // is a dense Int, so i32.eq buckets — no str_eq. Returns Some(tag) / None, exactly
 // as find did.
-fn lookup_tag(ref idx, handle) with Memory + Alloc = region_index_get(idx, handle)
+fn lookup_tag(ref idx, handle) with Memory + Alloc = wmap_get(idx, handle)
 
 // The bucket count is the INDEX'S OWN, read live from its header.
 //
@@ -395,37 +395,38 @@ fn lookup_tag(ref idx, handle) with Memory + Alloc = region_index_get(idx, handl
 // already knows it, and the count becomes a parameter with no second copy to
 // keep in sync. A caller sizes the index to the work it actually indexes.
 // The two sizings, named where the index is. Both must be powers of two —
-// region_bucket masks with len(idx) - 1.
+// wmap_bucket masks with len(idx) - 1.
 //
 // PROGRAM indexes a whole program's handles: the root chain and the trial's
 // own world, which both judge everything. BRANCH indexes ONE statement's,
 // and a statement mints its own handles plus the overflow quota, so a few
 // hundred buckets leave the chains short while costing 64× less to build.
+//
+// BOTH CONSTANTS HAVE ZERO READERS, and this block used to read as though
+// the sizing had landed ("a caller sizes the index to the work it actually
+// indexes"). It has not: region_tracker's state init is still the literal
+// 65536 at both of its installs (pipeline.mn's root chain and infer.mn's
+// branch_bracket), so a judged branch still fills 65536 slots to hold a few
+// dozen entries — the measured 28 million slot-writes for `fn main() = 7`
+// that Hβ.own.region-index-per-install names. Commit c88408e9 is explicit
+// that only the precondition landed and that making the count a handler
+// config param "trapped m3 at exit 134 with zero bytes … unexplained".
+//
+// That exit-134-with-no-diagnostic is the silent-floor signature, and it is
+// now cheap to test rather than guess: T_FieldOffsetUnprovable reports as of
+// this landing, so parameterising the handler and reading the diagnostic
+// says whether the open-row field-offset class is what refused it. Until
+// that probe runs, the cause is unmeasured and these constants stay what
+// they are — named residue, not a fix.
+//
+// The index ITSELF is the wmap family (lib/imap.mn) — the word-keyed
+// primitive. A region tag is keyed by a handle and a handle is a word, so this
+// file holds no map of its own: a second bucket-array-and-scan here would be
+// the one primitive spelled twice, which is what the imap header's own law
+// refuses.
 let region_buckets_program = 65536
 
 let region_buckets_branch = 1024
-
-fn region_index_new(n) with Memory + Alloc = list_filled(n, [])
-
-fn region_bucket(idx, handle) with Memory = i32_and(handle, len(idx) - 1)
-
-fn region_index_add(idx, handle, tag) with Memory + Alloc = {
-  let b = region_bucket(idx, handle)
-  list_set(idx, b, [(handle, tag)] ++ list_index(idx, b))
-}
-
-fn region_index_get(ref idx, handle) with Memory + Alloc = {
-  let b = region_bucket(idx, handle)
-  region_bucket_scan(list_index(idx, b), handle, 0)
-}
-
-fn region_bucket_scan(ref bucket, handle, i) with Memory + Alloc = if i >= len(bucket) {
-  None
-} else {
-  match list_index(bucket, i) {
-    (h, tag) => if h == handle { Some(tag) } else { region_bucket_scan(bucket, handle, i + 1) },
-  }
-}
 
 fn region_on_stack(ref stack, rid) with Memory + Alloc = any(
   (r) => match r {

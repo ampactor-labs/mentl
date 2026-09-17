@@ -4630,7 +4630,23 @@ fn emit_expr(expr) = match expr {
       // The report rides the RECEIVER's span: the selector has no node of its
       // own, and the receiver is the value whose row failed to close, which is
       // what the reader has to go fix.
-      report(TFieldOffsetUnprovable(field_offset_unprovable_why(rec, sel), parse_span_of(lexpr_handle(rec))))
+      //
+      // AND IT RIDES THE RECEIVER'S MODULE, read from the column that holds
+      // it. `report` derives the module from graph_module_current() — the
+      // module in force at the CURSOR — which is right while judgment walks a
+      // file and wrong here: emit walks the whole program, so the module in
+      // force is wherever the walk happens to be, never where this receiver
+      // lives. The register then filters the line as out-of-scope and the
+      // class says nothing, which is exactly what it did: this diagnostic
+      // landed armed, the four wheel floors kept shipping, and the fixture's
+      // own contract ("the class surfaces on stderr") was false from the day
+      // it was written. The module is not ambient — graph_module_of is the
+      // handle's own column read, total by construction, and the handle is
+      // already in hand for the span.
+      diag_report_at(
+        TFieldOffsetUnprovable(field_offset_unprovable_why(rec, sel), parse_span_of(lexpr_handle(rec))),
+        module_name_of_handle(graph_module_of(lexpr_handle(rec)))
+      )
       wat_emit("    (unreachable)  ;; field offset unprovable: ")
       wat_emit(field_offset_unprovable_why(rec, sel))
       wat_emit("\n")

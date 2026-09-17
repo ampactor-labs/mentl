@@ -1,17 +1,66 @@
 // imap — the ONE indexed-map primitive (Hβ.runtime.indexed-map-primitive, §5.O).
 //
-// A str_hash-bucketed String→value map. Five perf waypoints hand-rolled this
-// exact shape independently (env / summary / esc / base / reach); region_index
-// is its handle-keyed sibling. The value is opaque, so one primitive serves
-// them all: smap, the String-keyed map family. Miss → None, distinguishing "absent"
-// from a present empty value (Some []).
+// THE KEY IS A WORD. The wmap family is the primitive; everything else is a
+// projection of it through a key→word function. That is not a refactor of
+// taste: a map keyed by anything else re-derives a word at every read, which is
+// §5.O's own law ("a name is a HANDLE ... every table handle-keyed, never a
+// name scan") read at the container.
+//
+// One shape, one home. A bucket array, a prepend, a scan — what varies between
+// uses is only how a key becomes a bucket word and how two keys compare, and
+// both of those are projections rather than primitives. A second copy of this
+// shape elsewhere in the tree is this law violated, however it is spelled.
+//
+// The smap family is the String projection: str_hash makes the bucket word, and
+// the bucket keeps the name because two names can share a hash. It is NOT a
+// second primitive, it is the residue of names not being handles yet — when
+// they intern, the projection is the identity one and this family dissolves.
+// Miss → None, distinguishing "absent" from a present empty value (Some []).
 //
 // Byte-identical to the linear scans it replaces: build reverse-inserts and
 // prepends, so the smallest original index sits at the bucket front and
 // smap_get returns the SAME first-match the O(n) scan did. The `name: String`
 // pins carry the content-equality (str_eq inside the small bucket) — a bare
 // `==` on the list-erased word would floor to pointer-eq, the very bug the
-// crown gate shed. A name is a HANDLE; this is where the six copies converge.
+// crown gate shed.
+//
+// ─── wmap: the primitive ─────────────────────────────────────────────────
+// `n` is the bucket count and MUST be a power of two — the bucket index is a
+// mask, not a modulo, so a non-power-of-two silently loses the high keys.
+fn wmap_new(n) with Memory + Alloc = list_filled(n, [])
+
+fn wmap_bucket(ref idx, k) with Memory = i32_and(k, len(idx) - 1)
+
+fn wmap_add(idx, k, val) with Memory + Alloc = {
+  let b = wmap_bucket(idx, k)
+  list_set(idx, b, [(k, val)] ++ list_index(idx, b))
+}
+
+fn wmap_get(ref idx, k) with Memory + Alloc =
+  wmap_bucket_scan(list_index(idx, wmap_bucket(idx, k)), k, 0)
+
+fn wmap_bucket_scan(ref bucket, k, i) with Memory + Alloc = if i >= len(bucket) {
+  None
+} else {
+  match list_index(bucket, i) {
+    (bk, val) => if bk == k { Some(val) } else { wmap_bucket_scan(bucket, k, i + 1) },
+  }
+}
+
+// The MULTI-map read — every value entered under K, newest first (add
+// prepends), collected in one bucket scan: O(bucket), never O(map).
+fn wmap_get_all(ref idx, k) with Memory + Alloc =
+  wmap_bucket_collect(list_index(idx, wmap_bucket(idx, k)), k, 0, [])
+
+fn wmap_bucket_collect(ref bucket, k, i, acc) with Memory + Alloc = if i >= len(bucket) {
+  acc
+} else {
+  match list_index(bucket, i) {
+    (bk, val) => wmap_bucket_collect(bucket, k, i + 1, if bk == k { push(acc, val) } else { acc }),
+  }
+}
+
+// ─── smap: the String projection ─────────────────────────────────────────
 fn smap_new() with Memory + Alloc = list_filled(4096, [])
 
 fn smap_build(pairs) with Memory + Alloc = smap_build_from(pairs, len(pairs) - 1, smap_new())

@@ -404,7 +404,8 @@ fn module_identity(r) with Memory + Alloc + Filesystem = match r {
 // computes this same filter and holds it in its decls field, but
 // discards the minted handle — reading the node instead of
 // re-filtering is the O(1) form once the mint keeps an edge to it.
-fn driver_module_ast(ref ast, ref ranges, ref target) with Memory + Alloc + GraphRead + !Mutate = module_decls_of(module_cells(), target, ast)
+fn driver_module_ast(ref ast, ref ranges, ref target) with Memory + Alloc + GraphRead + !Mutate =
+  module_decls_of(module_cells(), target, ast)
 
 // A module's own top-level nodes, READ from its NModule node — which holds
 // exactly what its own parse returned, because the parse runs inside it.
@@ -485,7 +486,7 @@ fn driver_entry_with_ranges(ref entry_module) with Memory + Alloc + ImageAlloc +
 // own words, in the comment that stood here). Each module is parsed on its own
 // now, so a comment attaches inside the file that wrote it and there is no
 // seam to re-home across.
-
+//
 // The warm image's roots — the analyzed weave as per-module statement
 // buckets (the ONE ast home; the whole program is its flatten,
 // warm_program, and a second stored flat copy would be a cache of that read).
@@ -494,6 +495,7 @@ let warm_manifest = [[]]
 let warm_entry = [""]
 
 let warm_asts = [[]]
+
 fn warm_program() with Memory + Alloc = list_index(warm_asts, 0) |> map((pr) => match pr {
   (_, ss) => ss,
 }) |> flatten
@@ -514,14 +516,10 @@ fn driver_tree_scan(ref entry_module) with Memory + Alloc + Filesystem + Intern 
   let paths = map(module_path_of, modules)
   map(
     (entry) => match module_source_of(entry) {
-      Some(text) => (
-        module_path_of(entry),
-        str_hash(text),
-        filter(
-          (dep_path) => contains_module(paths, dep_path),
-          map(driver_module_path, module_imports_of(entry))
-        )
-      ),
+      Some(text) => (module_path_of(entry), str_hash(text), filter(
+        (dep_path) => contains_module(paths, dep_path),
+        map(driver_module_path, module_imports_of(entry))
+      )),
       None => (module_path_of(entry), 0, []),
     },
     modules
@@ -581,32 +579,37 @@ fn driver_compile_entry(ref entry_module) with Memory + Alloc + ImageAlloc + Cas
 }
 
 // Persist the analyzed state whole — the ast root, the manifest, the
-// entry name — one image, only when the analysis is CLEAN (the
-// diagnostics ledger rides the image as counts, not replayable prints)
-// AND the image fits its own wire: image_pack allocates a second
-// image-sized buffer above the line, and the allocator's bound
-// arithmetic crosses at the signed 2GB boundary — measured 2026-07-30,
-// a 1017MB line trapped where 807MB packed clean. The warm cache is
-// best-effort POLICY, so past the capacity it skips loudly and the
-// next run derives cold; the capacity itself dissolves with the
-// per-decl arena's image/scratch split (§5.O layer 3).
+// entry name — one image, whenever the analysis is CLEAN (the
+// diagnostics ledger rides the image as counts, not replayable prints).
+//
+// THE CAPACITY GATE IS GONE, and what it was guarding is worth keeping in
+// the record. It read `line < 960MB` and skipped the persist above that,
+// because image_pack allocated a SECOND image-sized buffer above the line
+// and the doubled footprint crossed the allocator's signed-2GB bound
+// (measured 2026-07-30: a 1017MB line trapped where 807MB packed clean).
+// The gate was sound for the copy it was written against. The copy was
+// not: both callers wrote the packed wire straight to a file, so it
+// materialized bytes that were already contiguous at [0, size).
+//
+// The cost of that was not 2x memory, it was the incremental compiler.
+// The WHEEL's own judgment is a ~2.3GB line, so it sat permanently above
+// the ceiling and NEVER persisted once — every self-compile derived cold,
+// every edit paid a full re-derivation, and the run said so in one line
+// ("image past the wire capacity") that read like a note rather than the
+// reason the loop was slow. §5.O's law names exactly this: a compiler
+// that re-reads its own conclusions has not earned the word incremental.
+//
+// image_header + a streaming write have no second buffer, so there is no
+// doubled footprint and nothing to gate. This does NOT wait on the
+// per-decl arena's image/scratch split, which the old comment named as
+// the thing the capacity would dissolve with — that split makes the image
+// SMALLER, a good and separate win; it was never what made it unwritable.
 fn driver_warm_persist(ref entry_module, ref asts, ref pairs) with Memory + Alloc + Cast + Persist + WASI + Filesystem + Diagnostic = if diag_errors() == 0 {
-  // The capacity read is SIGNED, so a heap line past 2GB reads NEGATIVE
-  // and `negative < 960MB` waved it through — the guard inverting at
-  // exactly the loads it exists to refuse (measured 2026-07-31: four
-  // frontier fixtures whose judgment crossed 2GB walked the persist into
-  // alloc's 4GB wraparound trap under the gate's invocation). The
-  // non-negative conjunct is the signed word's own honest bound.
-  let line = heap_mark()
-  if line >= 0 && line < 960 * 1048576 {
-    fs_mkdir(".build")
-    list_set(warm_asts, 0, asts)
-    list_set(warm_manifest, 0, pairs)
-    list_set(warm_entry, 0, entry_module)
-    persist(image_pack(addr(asts)), driver_warm_path(entry_module))
-  } else {
-    eprint_string("warm: image past the wire capacity — skipping the persist (cold next run)\n")
-  }
+  fs_mkdir(".build")
+  list_set(warm_asts, 0, asts)
+  list_set(warm_manifest, 0, pairs)
+  list_set(warm_entry, 0, entry_module)
+  persist(image_header(addr(asts)), driver_warm_path(entry_module))
 } else {
   ()
 }
@@ -837,13 +840,10 @@ fn driver_collect_dag_with_deps(ref entry_module) with Memory + Alloc + Filesyst
   let modules = driver_collect_dag(entry_module)
   let paths = map(module_path_of, modules)
   map(
-    (entry) => (
-      entry,
-      filter(
-        (dep_path) => contains_module(paths, dep_path),
-        map(driver_module_path, module_imports_of(entry))
-      )
-    ),
+    (entry) => (entry, filter(
+      (dep_path) => contains_module(paths, dep_path),
+      map(driver_module_path, module_imports_of(entry))
+    )),
     modules
   )
 }

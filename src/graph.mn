@@ -106,8 +106,7 @@ fn spine_slot(h) = h % spine_slots
 // {nodes, ...} receiver computes field offsets over the partial demanded set
 // (the trecordopen-wrong-field class — measured here as `.nodes` reading
 // offset 0, the boundaries column, before the annotation).
-fn spine_page(ref spine, h) -> SpinePage with Memory =
-  list_index(spine, spine_band(h))
+fn spine_page(ref spine, h) -> SpinePage with Memory = list_index(spine, spine_band(h))
 
 // Open bands through band b — the MINT path only: every other write lands
 // at an already-minted handle, whose band is open by construction. Returns
@@ -308,7 +307,7 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
   graph_snapshot() => resume(Graph(next, span_index)),
   graph_node_body(handle) => resume(spine_body_at(spine, spine_open, handle)),
   graph_span_of(handle) => resume(spine_span_at(spine, spine_open, handle)),
-  // The module a node was born in — ONE cell read, never the containment
+  graph_module_of(handle) => // The module a node was born in — ONE cell read, never the containment
   // scan that module_path_of_span ran over every node (whose own comment
   // named its "O(1) destiny"; this is that destiny). TOTAL: every node is
   // born inside some module, including stdin's, so there is no absent case
@@ -316,7 +315,7 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
   // force, which is a defect in the caller, and it traps loudly rather than
   // answering a fabricated 0 that every reader downstream would have to
   // re-check (the surrender-fallback this column exists to end).
-  graph_module_of(handle) => {
+  {
     if spine_band(handle) >= spine_open { load_i32(0 - 1) } else { 0 }
     // The cell holds the module handle BIASED BY ONE — the Option-niche word
     // this file already uses for mint_high's "0 = unlimited". It is not
@@ -328,18 +327,16 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
     if cell == 0 { load_i32(0 - 1) } else { 0 }
     resume(cell - 1)
   },
-  // Enter a module: every subsequent mint is attributed to it. The module
+  graph_module_current() => // Enter a module: every subsequent mint is attributed to it. The module
   // node attributes ITSELF, which is what makes the column total without a
   // sentinel — the first stamp has no earlier module to inherit, so it is
   // its own, and the recursion bottoms out at the file the developer named.
-  graph_module_current() => resume(cur_module),
-  graph_module_enter(m) => {
-    match spine_ensure(spine, spine_open, spine_band(m)) {
-      (sp, so) => {
-        spine_put_module(sp, m, m + 1)
-        resume() with spine = sp, spine_open = so, cur_module = m
-      },
-    }
+  resume(cur_module),
+  graph_module_enter(m) => match spine_ensure(spine, spine_open, spine_band(m)) {
+    (sp, so) => {
+      spine_put_module(sp, m, m + 1)
+      resume() with spine = sp, spine_open = so, cur_module = m
+    },
   },
   graph_push_checkpoint() => // The checkpoint is the fork's STATE VALUE — but pages never move, so the
   // spine contributes two words (the band-table pointer, for the rare
@@ -560,11 +557,7 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
     // (graph_guard_drain); this arm only notes.
     let g1 = push(
       guard_diags,
-      (
-        EOccursCheck(handle, ty, reason_span_or_zero(reason)),
-        occurs_guard_line(handle, reason),
-        spine_module_name(spine, spine_open, cur_module)
-      )
+      (EOccursCheck(handle, ty, reason_span_or_zero(reason)), occurs_guard_line(handle, reason), spine_module_name(spine, spine_open, cur_module))
     )
     // The poly-recursion teach rides the refusal (coordinates-only
     // discipline as above — the mint reason is read from THIS
@@ -576,19 +569,11 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
       GNode(_, mint_r) => match mint_r {
         FnParam(owner, _, _) => push(
           g1,
-          (
-            TPolyRecursionSignature(owner, reason_span_or_zero(reason)),
-            poly_teach_line(owner, reason),
-            spine_module_name(spine, spine_open, cur_module)
-          )
+          (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), poly_teach_line(owner, reason), spine_module_name(spine, spine_open, cur_module))
         ),
         FnReturn(owner, _) => push(
           g1,
-          (
-            TPolyRecursionSignature(owner, reason_span_or_zero(reason)),
-            poly_teach_line(owner, reason),
-            spine_module_name(spine, spine_open, cur_module)
-          )
+          (TPolyRecursionSignature(owner, reason_span_or_zero(reason)), poly_teach_line(owner, reason), spine_module_name(spine, spine_open, cur_module))
         ),
         _ => g1,
       },
@@ -770,14 +755,10 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
   } else {
     resume() with holes_col = hole_pairs_into(holes_pend, entry_name, holes_col), holes_pend = []
   },
-  // The write guard's stored refusals, handed to the body that can narrate
+  graph_guard_drain() => // The write guard's stored refusals, handed to the body that can narrate
   // them. Empty — the overwhelming case — resumes without a state rebind,
   // so the per-judgment drain costs nothing when no bind refused.
-  graph_guard_drain() => if len(guard_diags) == 0 {
-    resume([])
-  } else {
-    resume(guard_diags) with guard_diags = []
-  },
+  if len(guard_diags) == 0 { resume([]) } else { resume(guard_diags) with guard_diags = [] },
   graph_hole_unnote(h) => resume() with holes_pend = holes_pend_without(holes_pend, h),
   graph_holes_at() => resume(holes_col),
   graph_bind_note(use_handle, bh) => // The bind-home column (lowering-is-a-column
@@ -817,11 +798,22 @@ handler graph_handler(spine0, spine_open0, next0, limit0, span_index0, high0, hi
   // notes and reads cost O(new entries) total across a run and never a
   // rebuild. A latched flag went stale the moment a note followed a read
   // — which is precisely what the emit-time worklist does
-  // (Hβ.lower.lowering-is-a-column). The arm has NO call sites yet: the
-  // enumeration is step (i) vocabulary, dual-written and zero-read, and
-  // this read is what the relocation's worklist will resolve entries
-  // through — without the quadratic column scan the floor dig measured
-  // at a 106s m3 leg.
+  // (Hβ.lower.lowering-is-a-column).
+  //
+  // THE ARM HAS A CALLER, and this comment said it had none. It read "the
+  // arm has NO call sites yet: the enumeration is step (i) vocabulary,
+  // dual-written and zero-read" — written when that was true and left
+  // standing after `emitted_sig_of_symbol` (backends/wasm.mn) became its
+  // reader, which is the whole emitted-ABI path. A comment claiming zero
+  // readers is a claim ABOUT THE GRAPH, and the graph refutes it: that is
+  // the confession SYNTAX §«What a comment TRENDS TO» describes, and the
+  // projection it confesses is a call-site count the medium can already
+  // walk. It cost this session a wrong first read of which structures
+  // were live.
+  //
+  // What the reader gets is the multi-map's newest-first bucket, and the
+  // relocation's worklist resolves through it without the quadratic
+  // column scan the floor dig measured at a 106s m3 leg.
   //
   // The table stays UNALLOCATED until a read demands it, and that is not
   // hygiene: `graph_handler` installs once per judged decl (the layer
