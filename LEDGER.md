@@ -35,7 +35,22 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
-- 2026-09-18 · pin d8c0870cbd2a9a28 · THE BOOT LEARNS THE EXEC SEAM (rung one
+- 2026-09-17 · pin 1cbe5e6d0a8d7610 · THE BOOT'S EMITTER LEARNS THE
+  UNIT-RETURNING HOST CALL (the exec ladder's second recognition rung).
+  CLEAN m2 == m3, census 0, m3 leg 8.89s / 935MB, 403,325 → 403,380 wat
+  lines. The first wheel to perform `host_wat_write` was refused by
+  wat2wasm ("type mismatch in drop"): the emitter's generic import tail
+  wrote the call with nothing pushed, while the statement law's zero word
+  came only from three per-op arms. The tail reads `host_import`'s result
+  column now — every unit-returning import pushes `(i32.const 0)`, one
+  rule in one home. Beside it: the `wat_to_host` sink handler (wat_emit
+  streamed through lib/io.mn's Host effect) and `compile()`'s chain no
+  longer installs `wat_stdout` — the sink is the caller's install, so `run`
+  can redirect its own product. Nothing performs the seam yet: the ladder
+  is two rungs because the boot both grounds the ops at the root gate and
+  emits their calls, and each fact must be pinned before a wheel relies on
+  it. Rung two performs it.
+- 2026-09-17 · pin d8c0870cbd2a9a28 · THE BOOT LEARNS THE EXEC SEAM (rung one
   of two). CLEAN m2 == m3, census 0, m3 leg 8.45s / 947MB. tools/runner is
   the host half of the Process seam: `mentl_host.wat_write` streams the
   emitted WAT to the host, `mentl_host.exec` assembles it (wasmtime reads

@@ -68,6 +68,22 @@ handler wat_to_file(fd) {
   },
 }
 
+// wat_to_host — the sink the EXECUTOR reads: each segment streams to the
+// host's own buffer through the Process seam (lib/io.mn's Host effect —
+// mentl_host.wat_write in tools/runner), exactly as wat_to_file hands bytes
+// to an fd before resuming, so the emit phase's per-fn region resets can
+// never touch the product. The module is then assembled and run by
+// host_exec, which reads the whole streamed text — no wat2wasm, no file,
+// no in-image copy. This is the sink `mentl run` and the in-process
+// battery install; the shim's exec loop it retires did the same three
+// steps as three processes.
+handler wat_to_host {
+  wat_emit(s) => {
+    host_wat_write(str_payload(s), byte_len(s))
+    resume()
+  },
+}
+
 // wat_to_string — buffer wat_emit calls into a flat String; wat_collect
 // materializes ONCE at the end via str_concat_all. Handles BOTH
 // WasmOut.wat_emit AND WatBuffer.wat_collect — one handler, two effects.
@@ -4606,7 +4622,16 @@ fn emit_expr(expr) = match expr {
     } else {
       wat_emit("    (call $")
       wat_emit(import_name)
-      wat_emit(")\n")
+      wat_emit(")")
+      // A unit-returning import leaves nothing on the stack; the statement
+      // law expects the kernel-uniform zero word (the store/copy/fence
+      // precedent above, read here from the table's result column instead
+      // of a per-op arm — measured 2026-09-17 as wat2wasm's "type mismatch
+      // in drop" on the first unit-returning host op, host_wat_write).
+      match host_import(import_name) {
+        Some((_, _, _, None)) => wat_emit("(i32.const 0)\n"),
+        _ => wat_emit("\n"),
+      }
     }
   },
   LInvariantFailure(_h, invariant) => // Compiler-created executable boundaries have no productive-under-error

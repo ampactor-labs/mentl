@@ -156,7 +156,12 @@ fn compile(entry_module) = compile_context(() => {
   // second fs_read / re-judgment (Carried-Truth: the entry
   // is proven once and read live, never re-derived).
   entry_module |> driver_compile_entry |> compile_remainder
-} ~> wat_stdout ~>
+} ~>
+// The emit SINK is the caller's install, never this chain's: compile_run
+// streams to stdout (wat_stdout), run_run streams to the executor
+// (wat_to_host) — one compile graph, the handler swap IS the verb. This
+// chain used to bake wat_stdout in, so the outer install every caller wrote
+// was dead and `run` could not redirect its own product.
 // the warm-start cache (driver_compile_entry)
 persist_to_disk ~>
 // image_resume's refusal policy (probe-guarded)
