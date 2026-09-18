@@ -933,10 +933,20 @@ run_capability_workflow() {
   edit_fixture "$compiler" "$dir" capability-hole "$fixture"
   assert_edit_window capability-hole
 
-  if grep -Fq '1 candidate(s)' "$EDIT_OUT" && grep -Fq 'pure_seven' "$EDIT_OUT"; then
-    pass "capability-hole filter retained only pure_seven()"
+  # TWO survivors since the domain read landed (2026-09-18), and the second is
+  # the medium being right: `Seven = Int where self == 7` admits exactly one
+  # value, so `7` is a proven fill and withholding it would be the medium
+  # hiding what it knows. The fixture's own premise sentence — "integer seeds
+  # omit 7" — described the floor's blindness, not a law. What this leg is FOR
+  # survives untouched: the !Network row admits `pure_seven()` alone of the
+  # four candidates, and the three refusals keep their Reasons, asserted below.
+  # A literal and a named call are a REAL choice (the name carries intent the
+  # magic number loses), so the tie is correct and `rank_of` already orders the
+  # named callee first without suppressing the literal.
+  if grep -Fq '2 candidate(s)' "$EDIT_OUT" && grep -Fq 'pure_seven' "$EDIT_OUT"; then
+    pass "capability-hole filter kept pure_seven() beside the type's one literal inhabitant"
   else
-    fail "capability-hole filter did not expose the sole pure survivor"
+    fail "capability-hole filter did not expose the pure survivor beside the literal"
   fi
 
   for rejected in direct_network transitive_network higher_order_network; do
@@ -947,15 +957,15 @@ run_capability_workflow() {
     fi
   done
 
-  if ! grep -Fq '??' "$EDIT_SCRATCH" && \
-      grep -Eq 'with !Network = pure_seven\(\)([[:space:]]|$)' "$EDIT_SCRATCH"; then
-    pass "capability-hole exact patch applied (pure_seven())"
-    patched=1
+  # A tie never patches — the accept path fills only a lone survivor, so the
+  # authored `??` must survive here exactly as it does in the tie fixture. The
+  # accept path's own coverage is run_positive_workflow's, where `Positive`
+  # leaves one survivor and the patch lands.
+  if grep -Eq 'with !Network = \?\?([[:space:]]|$)' "$EDIT_SCRATCH"; then
+    pass "capability-hole refused to guess between the name and the literal"
   else
-    fail "capability-hole exact pure_seven() patch not applied"
+    fail "capability-hole patched a tie instead of asking"
   fi
-
-  check_and_execute "$compiler" "$dir" capability-hole 7 "$patched"
 }
 
 # Two proven survivors is the teaching TIE-BREAK (PLAN §5): the medium
@@ -1099,11 +1109,18 @@ run_capability_tie_workflow() {
   edit_fixture "$compiler" "$dir" capability-tie "$fixture"
   assert_edit_window capability-tie
 
-  if grep -Fq '2 candidate(s)' "$EDIT_OUT" && \
+  # THREE survivors since the domain read landed (2026-09-18): the two named
+  # candidates the !Network row admits, plus `7`, which `Seven`'s own
+  # refinement names as the type's one inhabitant. Each of the three is a
+  # distinct intent — two names that happen to denote the same constant are
+  # NOT one meaning (`default_retries()` and `max_batch()` both being 7 is a
+  # coincidence of values), and a bare literal is a third choice that keeps no
+  # name at all. So the medium asks, which is what this leg exists to assert.
+  if grep -Fq '3 candidate(s)' "$EDIT_OUT" && \
       grep -Fq 'pure_seven' "$EDIT_OUT" && grep -Fq 'calm_seven' "$EDIT_OUT"; then
-    pass "capability-tie projection surfaced both proven survivors"
+    pass "capability-tie projection surfaced every proven survivor"
   else
-    fail "capability-tie projection missing the two-survivor tie"
+    fail "capability-tie projection missing the three-survivor tie"
   fi
 
   if grep -Eq 'with !Network = \?\?([[:space:]]|$)' "$EDIT_SCRATCH"; then

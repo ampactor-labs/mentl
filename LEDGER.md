@@ -35,6 +35,54 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-18 · pin 8798566eca3c7a0e · THE REFINEMENT SEEDS THE HOLE (Arc O1's
+  first half — propagation before enumeration). CLEAN m2 == m3, census 0, m3
+  leg 8.32s / 959MB, 405,039 → 407,393 wat lines; frontier 378/0/2,
+  proof-exactness 9/0. The ??-fan minted 0/1/-1 for every Int-shaped hole and
+  let the gate reject what the type never admitted, while the predicate sat
+  one field away: `enumerate_typed`'s `TRefined` arm recursed on the BASE and
+  dropped it. It reads the predicate now as a `Domain` (types.mn), and the
+  CONTRACT is what makes building from it safe — a Domain over-approximates,
+  so it decides what to CONSTRUCT (a superset cuts no inhabitant) while the
+  proof gate keeps deciding what to ADMIT. Meet yields to the decided side
+  when one side is unreadable; join widens to the top rather than claim an
+  uncoverable bound; a float refinement reads `DUndecided` because
+  strict-to-inclusive needs a predecessor and a float has none
+  (`Hβ.verify.domain-over-reals`). ONE WALK, NOT A SECOND: `ty_lo` asked this
+  structure for the lower bound alone and had no upper half, so a consumer
+  wanting a ceiling would have grown a mirror family — the parallel-arrays
+  drift at the function layer. `pred_lo` and `lo_best` are deleted; `ty_lo` is
+  `domain_lo(ty_domain(ty))`. The read proves strictly more than before
+  (`self == n` yields a bound), so it marched and ran proof-exactness ALONE
+  before the seeder was built on it. The seed rule is boundary-value analysis
+  with NO width constant: the bounds plus the interior nearest zero, deduped
+  — `0 < self` seeds 1; `0 <= self <= 1` seeds exactly 0 and 1; `self == 7`
+  seeds 7; an unreadable predicate keeps the floor and the gate still judges.
+  THEN THE BOARD CAUGHT THE CONSEQUENCE, which is the landing's real content:
+  `Seven = Int where self == 7` admits one value, so the medium proposes `7`
+  beside `pure_seven()` and a lone-survivor fixture went red. That fixture's
+  comment had asserted "integer seeds omit 7" as a law when it described the
+  floor's blindness. Re-banked, both it and the gate: a name and a magic
+  number are a REAL choice, and two nullary fns denoting 7 are not one meaning
+  either (`default_retries()` and `max_batch()` coinciding is an accident of
+  values), so the medium asks rather than guessing and `rank_of` already
+  orders the named callee first without suppressing the literal. The four
+  assertions that moved were duplicates of `run_positive_workflow`'s, which
+  still covers accept, the zero-debt check and running the patched program.
+  THEN THE COMPARISON RATCHET CAUGHT THIS LANDING'S OWN CODE, which is the
+  other half of what happened: six new address compares (56 → 62) and one
+  comment backticking a name the landing had just deleted, the positive-form
+  law the prose gate holds. Four of the six came from a parallel family —
+  `lo_best`, `hi_best`, `lo_hull`, `hi_hull`, four near-identical
+  bound-combiners differing by one glyph — which is drift regardless of the
+  ratchet; they are ONE meet and ONE join now, parameterized by the comparator
+  rather than by a flag, so the family is deleted and the rise is +4 rather
+  than +6. `eq_type_unprovable_max` moves 56 → 60 with the entering and
+  leaving site names recorded. The rise is not avoidable by writing less code:
+  a word-repr instantiation mints no twin (`spec_enc_is_floor` skips an
+  all-word key), so EVERY generic comparison in this wheel lands in the class
+  until the twin reaches word-typed instantiations — step (2) of
+  `Hβ.emit.eq-on-unresolved-operand-is-pointer-eq`.
 - 2026-09-18 · pin 8bc24aca3f860bca · THE EMIT-TIME DIAGNOSTIC SAYS WHERE IT
   STANDS. CLEAN m2 == m3, census 0, m3 leg 10.15s / 946MB, 404,891 → 405,039
   wat lines; frontier 382/0/2. `T_EqTypeUnprovable` reported 41 of its 56

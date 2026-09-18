@@ -1735,6 +1735,34 @@ type Pat
 
 type LitValue = LVInt(Int) | LVFloat(Float) | LVString(String) | LVBool(Bool)
 
+// Domain — what a refinement states about the INHABITANTS of a type, read as
+// one fact rather than as the lower bound alone. `ty_lo` and its family asked
+// the same walk for half of this and there was no upper half at all, so a
+// `Bit = Int where 0 <= self && self <= 1` could prove its floor and say
+// nothing about its ceiling.
+//
+// THE READING DIRECTION IS A CONTRACT: a Domain is an OVER-approximation of
+// the true inhabitant set, never an exact one. Every consumer may therefore
+// use it to decide what to CONSTRUCT (a superset misses nothing — the ??-fan's
+// Strong Completeness) while the proof gate stays mandatory for what to ADMIT
+// (a superset admits too much — Strong Soundness is the gate's, never the
+// domain's). Meet keeps that direction by taking the decided side when one
+// side is unreadable; join widens to the top when it cannot bound a side.
+//
+// `DRange` is integral because strict-to-inclusive needs a predecessor and a
+// float has none; a float refinement reads `DUndecided` and its consumers fall
+// to their floor, which is honest rather than wrong. The open/closed-bound form
+// that would carry `Sample = Float where -1.0 <= self` is named residue
+// (`Hβ.verify.domain-over-reals`), not a silent gap.
+type Domain
+  // inclusive lower and upper bounds; None is open. DRange(None, None) is TOP.
+  = DRange(Option(Int), Option(Int))
+  // exactly these inhabitants — the only exact answer the fragment gives
+  | DFinite([LitValue])
+  // the fragment stops here. Consumers treat it as TOP for construction; the
+  // medium SAYS it rather than pretending the predicate was empty.
+  | DUndecided
+
 // Decidable shape. Verify discharges: ledger (Phase 1) accumulates;
 // verify_smt (Arc F.1) routes by theory — Z3 / cvc5 / Bitwuzla.
 type Predicate

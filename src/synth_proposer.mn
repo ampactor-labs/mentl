@@ -212,7 +212,14 @@ fn enumerate_typed(target_ty, allowed_effects, context) with EnvRead + Memory + 
   TVar(_) => one_hole_candidate(context),
   TRecord(fields) => enumerate_records(fields, context),
   TRecordOpen(fields, rest) => enumerate_records(fields, context),
-  TRefined(base, _pred) => enumerate_typed(base, allowed_effects, context),
+  TRefined(_, _) => // The refinement is the strongest thing known about the hole, and this arm
+  // used to recurse on the BASE and drop it — the predicate sitting one field
+  // away while three integer seeds were minted for a type that admits one.
+  // The DOMAIN is that predicate read as inhabitants (verify.mn), so the seeds
+  // come FROM it and the ones it excludes are never constructed. The post-hoc
+  // gate stays: a domain over-approximates by contract, so it decides what to
+  // build and `refinement_admits` still decides what survives.
+  enumerate_domain(target_ty, allowed_effects, context),
   TAlias(_, inner) => enumerate_typed(inner, allowed_effects, context),
   TReprPin(_, base) => enumerate_typed(base, allowed_effects, context),
   TCont(_, _, _, _) => one_continuation_candidate(context),
@@ -472,6 +479,67 @@ fn enumerate_lambdas(params, ret, row, context) with Alloc + Memory + GraphWrite
     EnrichedCandidate({node: synthesize_lambda_node(params, ret), origin: ProposerEnumerative, reason: Inferred("an anonymous fn matching the hole's shape; its body is the next hole")})
   list_set(buf, 0, candidate)
   buf
+}
+
+// A refined target seeds from its DOMAIN rather than from the unrefined
+// floor. The rule is boundary-value analysis and it carries NO width
+// constant, which is the point: a threshold would be a number nobody can
+// derive, and the bounds plus the interior value nearest zero are three
+// deterministic reads that answer every shape.
+//
+//   `Int where 0 < self`        -> [1, ∞)   -> one seed, 1, and the two the
+//                                             floor would have minted are
+//                                             never constructed
+//   `Int where 0 <= self <= 1`  -> [0, 1]   -> two seeds, 0 and 1, exactly
+//                                             the inhabitants
+//   `Int where self == 7`       -> {7}      -> one seed, and it is the only
+//                                             value the type admits
+//   an unreadable predicate     -> the floor, and the gate still judges
+//
+// A domain that admits NOTHING is a finding, not an empty list: the
+// refinement is unsatisfiable and the medium should say so at the hole rather
+// than propose silence. That projection is named residue
+// (`Hβ.synth.empty-domain-teaches`), and until it lands the empty seed set
+// falls through to the vocabulary, which is honest but quiet.
+fn enumerate_domain(ty, allowed_effects, context) with GraphRead + Memory + Alloc + GraphWrite + !Mutate + EnvRead + WASI + LookupTy = {
+  let d = ty_domain(ty)
+  match d {
+    DFinite(vs) => vs |> map(lit_candidate),
+    DUndecided => enumerate_int_literals(context),
+    DRange(lo, hi) => match (lo, hi) {
+      (None, None) => enumerate_int_literals(context),
+      _ => domain_bounds_seeds(lo, hi) |> map(int_literal_candidate),
+    },
+  }
+}
+
+// The bounds themselves, plus the interior value nearest zero — deduped, so a
+// bound that IS that value yields one seed rather than two of it.
+fn domain_bounds_seeds(lo, hi) with Memory + Alloc = {
+  let ends = [] |> push_opt(lo) |> push_opt(hi)
+  match interior_near_zero(lo, hi) {
+    Some(z) => if ends |> any(int_same(z, ??)) { ends } else { ends ++ [z] },
+    None => ends,
+  }
+}
+
+fn push_opt(v, xs) with Memory + Alloc = match v {
+  Some(n) => xs ++ [n],
+  None => xs,
+}
+
+fn int_same(a, b) with Pure = a == b
+
+// Zero when the range admits it; otherwise the open end has no interior to
+// name and the closed end already seeded it.
+fn interior_near_zero(lo, hi) with Memory + Alloc =
+  if bound_admits_lo(lo, 0) && bound_admits_hi(hi, 0) { Some(0) } else { None }
+
+fn lit_candidate(v) with GraphRead + GraphWrite + !Mutate + Memory + Alloc = match v {
+  LVInt(n) => int_literal_candidate(n),
+  LVFloat(f) => float_literal_candidate(f),
+  LVString(s) => EnrichedCandidate({node: synthesize_string_literal_node(s), origin: ProposerEnumerative, reason: Inferred("the type's string inhabitants")}),
+  LVBool(b) => EnrichedCandidate({node: synth_node(LitBool(b)), origin: ProposerEnumerative, reason: Inferred("the type's boolean inhabitants")}),
 }
 
 fn enumerate_int_literals(context) with Alloc + Memory + GraphWrite = {

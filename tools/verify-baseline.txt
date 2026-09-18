@@ -967,7 +967,18 @@ frontier_expected_red: eq-in-arm-pointer
 # where the polymorphism is over words); at 0 the class arms and the
 # eq-in-arm-pointer leg turns green by proving its arm. A RISE is a new
 # address compare entering the wheel.
-eq_type_unprovable_max: 56
+# 56 -> 60 at pin 8798566e: the Domain walk (verify.mn) is new generic
+# code, and EVERY generic comparison in this wheel lands in this class, because
+# a word-repr instantiation mints no twin (spec_enc_is_floor skips an all-word
+# key) so the floor body compares two type vars. Measured by diffing the site
+# names: `bound_admits_lo`, `bound_admits_hi`, `int_same`, `int_max`, `int_min`
+# entered; `lo_best`, `hi_best`, `lo_hull`, `hi_hull` left, because four
+# near-identical bound-combiners collapsed into one meet and one join
+# parameterized by the comparator. The rise is +4 rather than +6 for that
+# reason, and it is a rise the countdown cannot avoid by writing less code —
+# only by the twin reaching word-typed instantiations, which is step (2) of
+# Hβ.emit.eq-on-unresolved-operand-is-pointer-eq.
+eq_type_unprovable_max: 60
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the

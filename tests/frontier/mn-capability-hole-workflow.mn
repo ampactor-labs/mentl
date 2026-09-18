@@ -1,8 +1,14 @@
 // The candidate vocabulary has four zero-argument functions returning Seven.
 // Only the pure candidate satisfies choose's !Network constraint. The other three
 // introduce Network directly, transitively, and through a higher-order call.
-// Literal synthesis cannot bypass the function candidates: integer seeds omit
-// 7, and Seven's refinement rejects every other integer.
+// Beside it stands the literal `7`, because Seven's refinement names exactly one
+// inhabitant and the medium reads that domain (verify.mn) rather than minting a
+// fixed floor of integer seeds. This comment used to claim the opposite — that
+// "integer seeds omit 7" kept literal synthesis from bypassing the function
+// candidates — which described the floor's blindness as though it were a law.
+// The row filter is what this fixture proves, and it proves it unchanged: one
+// of four candidates survives !Network, and the three refusals keep their
+// Reasons. A name and a magic number are a real choice, so the medium asks.
 
 type Seven = Int where self == 7
 
