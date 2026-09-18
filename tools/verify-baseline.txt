@@ -954,6 +954,21 @@ frontier_expected_red: why-coordinates
 # (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq) and the gate SAYS so.
 frontier_expected_red: eq-in-arm-pointer
 
+# 2026-09-18: THE UNPROVABLE-COMPARISON census (T_EqTypeUnprovable, the
+# field-offset floor's sibling): a `==`/`!=`/`<`… whose operand type is still a
+# variable at emit falls to a one-word compare, right for a word and an address
+# lie for anything else. The first form wrote a trap and the wheel compiled by
+# it died compiling the wheel (m4 exit 134): the wheel carries 56 of these,
+# measured on the m3 leg the day the class was born — 15 at authored spans
+# (word and handle membership, two `<` on Option payloads, and Strings compared
+# by interned address, e.g. in_owner_names) and 41 on synthesized nodes at span
+# 0, unattributed until the report carries the nearest authored span.
+# Countdown to 0 (twins reaching the site; an Intent Boundary naming the type
+# where the polymorphism is over words); at 0 the class arms and the
+# eq-in-arm-pointer leg turns green by proving its arm. A RISE is a new
+# address compare entering the wheel.
+eq_type_unprovable_max: 56
+
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
 # receiver's full sorted field set. Born at ZERO (pin 4ce9914b7360), which

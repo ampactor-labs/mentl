@@ -2329,6 +2329,12 @@ type DiagKind
   // "nothing executes unproven" inverted at the
   // one boundary that claimed it
   | TFieldOffsetUnprovable(String, Span)
+  // a comparison (`==`, `!=`, `<`, …) whose operand type is still a VARIABLE
+  // at emit: no structure to compare, so an address compare would answer a
+  // lie — the emit reports at the operand's span and writes the trap instead
+  // (measured 2026-09-18: a handler arm over quantified op parameters
+  // answered "ab" != "ab"). T_FieldOffsetUnprovable's sibling, same ladder.
+  | TEqTypeUnprovable(String, Span)
   // clock-replay trace ran out
   | EReplayExhausted(Span)
 
@@ -2503,6 +2509,7 @@ fn diag_span(d) with Pure = match d {
   EEffectUnhandled(_, _, s) => s,
   EUnresolvedHole(_, s) => s,
   TFieldOffsetUnprovable(_, s) => s,
+  TEqTypeUnprovable(_, s) => s,
   EReplayExhausted(s) => s,
 }
 
@@ -2572,6 +2579,7 @@ fn diag_source(d) with Pure = match d {
   EEffectUnhandled(_, _, _) => "effects",
   EUnresolvedHole(_, _) => "verify",
   TFieldOffsetUnprovable(_, _) => "lower",
+  TEqTypeUnprovable(_, _) => "lower",
   EReplayExhausted(_) => "clock",
 }
 
@@ -2641,6 +2649,7 @@ fn diag_code(d) with Pure = match d {
   EEffectUnhandled(_, _, _) => "E_EffectUnhandled",
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
   TFieldOffsetUnprovable(_, _) => "T_FieldOffsetUnprovable",
+  TEqTypeUnprovable(_, _) => "T_EqTypeUnprovable",
   EReplayExhausted(_) => "E_ReplayExhausted",
 }
 
@@ -2661,6 +2670,9 @@ fn diag_severity(d) with Pure = match d {
   TPolyRecursionSignature(_, _) => SWarning,
   TOwnUnconsumed(_, _) => SWarning,
   TOwnAcrossReplay(_, _) => SWarning,
+  TEqTypeUnprovable(_, _) => // PRE-ARM beside its sibling below, on the same ladder: the wheel's own
+  // census of the class is what the arming commit counts down to zero.
+  SWarning,
   TFieldOffsetUnprovable(_, _) => // PRE-ARM, on the exact ladder T_UseAfterMove walked: narrate → ratchet →
   // arm, and the arming commit renames it E_ and moves it to SError beside
   // its siblings. The severity tracks the ENFORCEMENT posture, never how bad
@@ -2918,6 +2930,7 @@ fn diag_applicability(d) with Pure = match d {
   EEffectUnhandled(_, _, _) => MaybeIncorrect,
   EUnresolvedHole(_, _) => HasPlaceholders,
   TFieldOffsetUnprovable(_, _) => MaybeIncorrect,
+  TEqTypeUnprovable(_, _) => MaybeIncorrect,
   ERefinementRejected(_, _) => Unspecified,
   EVerifyUnencodable(_) => Unspecified,
   ETypeMismatch(_, _, _) => Unspecified,
@@ -3010,6 +3023,7 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
   TFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed, so this load has no provable slot and the emit writes a trap here; close the row (annotate the receiver at its Intent Boundary, or give the call site a shape the twin can key on)",
+  TEqTypeUnprovable(why, _) => "{why} — the operand's type is still a variable at emit, so the comparison has no structure to read and falls to a one-word compare (right for a word, an address lie for anything else); prove the operand: give the call site a shape the twin can key on, or name the type at its Intent Boundary",
   EReplayExhausted(_) => "clock replay trace exhausted",
 }
 

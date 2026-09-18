@@ -5041,8 +5041,36 @@ fn emit_struct_eq(left_h, neg) = if left_h == 0 {
   // one "li" walker and the second site's elements walked the wrong
   // protocol (measured: the paired tuple/nested-list program trapped in
   // list_eq_loop). One resolve, one truth.
-  emit_eq_for_ty(fold_strip(chase_deep(lookup_ty(left_h))), neg)
+  match fold_strip(chase_deep(lookup_ty(left_h))) {
+    TVar(_) => {
+      report_cmp_unprovable(left_h, if neg { "!=" } else { "==" })
+      if neg { wat_emit("    (i32.ne)\n") } else { wat_emit("    (i32.eq)\n") }
+    },
+    ty => emit_eq_for_ty(ty, neg),
+  }
 }
+
+// A comparison whose operand type is still a VARIABLE at emit has no
+// structure to read: the word compare it falls to is value-equality only
+// when the value IS one word, and an ADDRESS compare on anything else
+// answers a lie (measured 2026-09-18 — a handler arm over quantified op
+// parameters answered "ab" != "ab", tests/frontier/mn-eq-in-arm-pointer.mn).
+// The emit REPORTS at the operand's span, carrying the operator and the
+// operand's live type — T_FieldOffsetUnprovable's sibling on the same
+// ladder: narrate → ratchet → arm. NARRATION ONLY here, by measurement: the
+// first form wrote `(unreachable)` and the wheel compiled by it died
+// compiling the wheel (m4 exit 134): the wheel carries such sites itself,
+// shipping today as word compares the battery has not caught — some over
+// words, some over interned names whose addresses coincide by the intern
+// contract (the verify leg counts them; the baseline key is the one home
+// of the number). So the floor stays, the census counts them down (twins
+// reaching the site, or a type named at an Intent Boundary where the
+// polymorphism is over words), and the arming commit turns the narration
+// into the refusal.
+fn report_cmp_unprovable(left_h, opname) with Diagnostic + LookupTy + GraphRead + Memory + Alloc + Intern = report_at(
+  left_h,
+  TEqTypeUnprovable("`{opname}` on {show_type(lookup_ty(left_h))}", parse_span_of(left_h))
+)
 
 // fold_strip / fold_sig — the structural fold's shared skeleton — now live at
 // their Carried-Truth home in types.mn (a type's fold-signature is a property
@@ -5096,9 +5124,11 @@ fn emit_eq_for_ty(ty, neg) = match ty {
   // cmp twin (emit_cmp_for_ty's TFloat arm) had and this one lacked —
   // float_is_zero's `f == 0.0` emitted (f64.const 0.0)(i32.eq).
   if neg { wat_emit("    (f64.ne)\n") } else { wat_emit("    (f64.eq)\n") },
-  _ => // Scalar word: Int / Unit / unresolved TVar (a handle IS a word) /
-  // fn-table index / continuation pointer. i32.eq IS structural for a
-  // single value word; `==` leaves a Bool regardless of operand width.
+  _ => // Scalar word: Int / Unit / fn-table index / continuation pointer —
+  // resolved types whose value IS one word, so i32.eq IS structural;
+  // `==` leaves a Bool regardless of operand width. An unresolved TVar
+  // never reaches this arm: the entry reports it (report_cmp_unprovable)
+  // and writes the same word compare, counted.
   if neg { wat_emit("    (i32.ne)\n") } else { wat_emit("    (i32.eq)\n") },
 }
 
@@ -5724,8 +5754,15 @@ fn emit_struct_cmp(op, left_h) = if left_h == 0 {
   emit_binop_repr(op, RI32)
 } else {
   // the fold boundary (the eq entry's law): resolve once, the family
-  // reads var-free
-  emit_cmp_for_ty(op, fold_strip(chase_deep(lookup_ty(left_h))))
+  // reads var-free — and an operand still a VARIABLE here is refused the
+  // same way `==` refuses it: an address ordering is the same lie.
+  match fold_strip(chase_deep(lookup_ty(left_h))) {
+    TVar(_) => {
+      report_cmp_unprovable(left_h, binop_to_str(op))
+      emit_binop_repr(op, RI32)
+    },
+    ty => emit_cmp_for_ty(op, ty),
+  }
 }
 
 // The compare leaf over an already-stripped operand type. Aggregates (product/

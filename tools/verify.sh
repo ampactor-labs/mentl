@@ -346,6 +346,25 @@ if C=$(wt_m2_ensure); then
     say "  ↓ field-offset floors FELL $fmax -> $fou — lower field_offset_unprovable_max in $BASELINE;"
     say "    at 0, rename TFieldOffsetUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
   fi
+  # THE UNPROVABLE-COMPARISON ratchet — the floor class one operator over
+  # (2026-09-18): `==`/`!=`/`<`… on an operand whose type is still a
+  # variable at emit REPORTS T_EqTypeUnprovable and writes the trap instead
+  # of i32.eq on two addresses. Same ladder as the field-offset floor above:
+  # the pinned boot's self-report on the wheel, a countdown to 0, at which
+  # the class arms (E_, SError, diag_refuses) and the eq-in-arm-pointer leg
+  # turns green by PROVING its arm — never by the annotation the fixture
+  # deliberately omits.
+  equ=$(grep -c 'T_EqTypeUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); equ=${equ:-0}
+  eqmax=$(grep -E '^eq_type_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
+  say "· unprovable comparisons: $equ operand(s) still a variable at emit — 0 arms the class"
+  if [[ -n "$eqmax" && "$equ" -gt "$eqmax" ]]; then
+    say "✗ unprovable-comparison RATCHET: rose $eqmax -> $equ — a new address compare entered the wheel."
+    say "  Prove the operand at the reported span; the diagnostic names the operator and the type."
+    fail=1
+  elif [[ -n "$eqmax" && "$equ" -lt "$eqmax" ]]; then
+    say "  ↓ unprovable comparisons FELL $eqmax -> $equ — lower eq_type_unprovable_max in $BASELINE;"
+    say "    at 0, rename TEqTypeUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
+  fi
   # THE USE-AFTER-MOVE RATCHET IS RETIRED (2026-09-15) — the class is ARMED.
   # It counted T_UseAfterMove narrations on the wheel's own compile and held
   # them at ZERO so that diag_refuses' wheel-zero arming licence stayed

@@ -1284,6 +1284,28 @@ board — the Intent Boundary rule measured, never eyeballed. SEQUENCED BEFORE
 the verify verb: a silent wrong in `==` outranks the gates' refactor (proof
 beats review, at the medium's own `==`). CLOSE: the arm refuses, the leg is
 green with the fixture unannotated, the sweep's survivors are named, m3 == m4.
+▶ STEP (1) LANDED AS NARRATION, AND THE TRAP FORM WAS REFUTED BY THE WHEEL
+(2026-09-18, the same day): `emit_struct_eq` and `emit_struct_cmp` report
+`T_EqTypeUnprovable` (operator + the operand's live type, at the operand's
+span) on a `TVar` operand and keep the one-word compare. The first form wrote
+`(unreachable)`, and the wheel compiled by it died compiling the wheel (m4
+exit 134): the wheel carries FIFTY-SIX such comparisons — 41 on synthesized
+nodes (span 0 — the desugar's own compares, which the report cannot yet
+locate for a reader: the nearest authored span is the missing read) and 15
+authored, shipping as word compares the battery has not caught — word and
+handle membership, and the interning accident PLAN §9 catalogs (`in_owner_names`'
+`list_index(xs, i) == name` compares two
+Strings by address and is right only because names are interned once;
+`handle_in`, `int_in`, `dedup`-style membership over handles; two `<` on
+`Option` payloads in verify.mn's interval meet/join). `eq_type_unprovable_max:
+56` is the countdown; a rise is a new address compare. The census also
+CORRECTS the sweep's premise: the 225 `: String` annotations are not merely
+fossils of a pre-twin era — a String is a WORD at the repr level, so a
+String instantiation runs the FLOOR body, where a bare `==` is a pointer
+compare; the annotation is what routes it to `str_eq`. The sweep therefore
+waits on step (2): the operand is proven at the site (the twin keyed on the
+resolved type, arms specialized per install) and the annotation retires
+because the proof reaches, never because the compare happened to hold.
 
 `Hβ.effects.install-chain-as-value` — OPEN, named 2026-09-18 from the audit
 of rung B's own lambdas. `compile_context(body) = infer_context(() =>

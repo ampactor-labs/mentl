@@ -35,6 +35,43 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-18 · pin be76d16fba138842 · THE COMPARISON FLOOR IS REPORTED.
+  CLEAN m2 == m3, census 0, m3 leg 8.31s / 949MB, 404,462 → 404,891 wat
+  lines; frontier 382/0/2. `T_EqTypeUnprovable` is born — the sibling of
+  `T_FieldOffsetUnprovable` one operator over, on the same ladder (narrate →
+  ratchet → arm). A `==`/`!=`/`<`… whose operand type is still a VARIABLE at
+  emit has no structure to read and fell silently to a one-word compare:
+  right when the value IS a word, an ADDRESS lie otherwise. The witness,
+  banked RED at the prior pin, is nine lines — a handler arm over quantified
+  op parameters (`same(a, b) => resume(a == b)`) called with `"ab"` and
+  `str_concat("a","b")` exits 1 with no diagnostic, while the same compare in
+  a plain fn answers 0 whether direct-called OR reached through a HOF,
+  because 5.1a's twin carries the String proof to those bodies and no twin
+  reaches an ARM. `emit_struct_eq` and `emit_struct_cmp` now report at the
+  operand's span with the operator and the operand's live type.
+  NARRATION, NOT A TRAP, AND THE MEASUREMENT IS THE LESSON: the first form
+  wrote `(unreachable)`, and the wheel compiled by it died compiling the
+  wheel (m4 exit 134, m3 ≠ m4 by 404,921 lines). The wheel carries 56 such
+  comparisons — 15 at authored spans (word and handle membership walks, two
+  `<` on Option payloads in verify.mn's interval meet/join, and Strings
+  compared by interned address: `in_owner_names`' `list_index(xs, i) == name`
+  is right only because names are interned once, the accident PLAN §9
+  catalogs) and 41 on synthesized nodes at span 0, unattributed until the
+  report carries a nearest authored span. `eq_type_unprovable_max: 56` is the
+  countdown and the count's one home; at 0 the class arms and
+  `eq-in-arm-pointer` turns green by PROVING its arm — handler arms twinned
+  per install-site instantiation — never by the annotation the fixture
+  deliberately omits. THE CENSUS CORRECTED THE SWEEP IT WAS BORN TO SERVE:
+  the 225 `: String` parameter annotations are not pre-twin fossils, because
+  a String is a WORD at the repr level, so a String instantiation runs the
+  FLOOR body where a bare `==` is a pointer compare and the annotation is
+  what routes it to `str_eq`. Deleting them before the proof reaches the site
+  would MINT this silent wrong 225 times. Beside it, the gate learned to hold
+  a red it was handed: `run_program`'s run verdict went through plain
+  pass/fail, so `frontier_expected_red` covered only hand-judged legs and the
+  prior pin's block read "1 red, undeclared" for a leg declared by name; the
+  verdict goes through `judge` now, keyed by the leg's label, so every
+  program leg can be declared red and retires loudly the day it passes.
 - 2026-09-18 · pin 952bf0cdc9f20c21 · THE WHEEL EXECUTES, AND THE RUNNER
   OWNS THE SOCKET. CLEAN m2 == m3, census 0, m3 leg 7.89s / 947MB,
   403,380 → 404,462 wat lines; frontier 382/0/2 on the runner. Rung B of
