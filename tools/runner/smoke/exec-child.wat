@@ -6,7 +6,7 @@
 ;; battery banks for a trap. Expected exit: 42 when both answers hold;
 ;; otherwise the first child's own answer, so a wrong decode is legible.
 ;; RED against a runner without the seam: instantiation refuses the
-;; unknown import (measured 2026-09-18 before the seam landed).
+;; unknown import (measured 2026-09-17 before the seam landed).
 (module
   (import "mentl_host" "wat_write" (func $wat_write (param i32 i32)))
   (import "mentl_host" "exec" (func $exec (param i32 i32) (result i32)))

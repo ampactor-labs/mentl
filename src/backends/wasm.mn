@@ -21,6 +21,8 @@ import effects
 
 import lower
 
+import strings
+
 // WasmOut effect — the output sink. Every character of emitted WAT goes
 // through perform wat_emit(s). Default handler writes to stdout; test
 // handler collects into a buffer; format handler pretty-prints.
@@ -74,9 +76,8 @@ handler wat_to_file(fd) {
 // to an fd before resuming, so the emit phase's per-fn region resets can
 // never touch the product. The module is then assembled and run by
 // host_exec, which reads the whole streamed text — no wat2wasm, no file,
-// no in-image copy. This is the sink `mentl run` and the in-process
-// battery install; the shim's exec loop it retires did the same three
-// steps as three processes.
+// no in-image copy: `mentl run` and the in-process battery install this
+// sink and the program runs in the same process that compiled it.
 handler wat_to_host {
   wat_emit(s) => {
     host_wat_write(str_payload(s), byte_len(s))
@@ -2285,24 +2286,10 @@ fn emit_byte_escape(b) = {
   wat_emit(hex_digit(b % 16))
 }
 
-fn hex_digit(d) with Pure = match d {
-  0 => "0",
-  1 => "1",
-  2 => "2",
-  3 => "3",
-  4 => "4",
-  5 => "5",
-  6 => "6",
-  7 => "7",
-  8 => "8",
-  9 => "9",
-  10 => "a",
-  11 => "b",
-  12 => "c",
-  13 => "d",
-  14 => "e",
-  15 => "f",
-}
+// One glyph of the shared hex table (lib/strings.mn hex_glyphs — the same
+// bytes the formatter's `\xHH` renders), as the one-byte string wat_emit
+// takes.
+fn hex_digit(d) with Memory + Alloc = str_slice(hex_glyphs(), d, d + 1)
 
 // Every call_indirect references a function type index. We emit a
 // type for each arity the program's call sites use: the program
@@ -4630,7 +4617,8 @@ fn emit_expr(expr) = match expr {
       // in drop" on the first unit-returning host op, host_wat_write).
       match host_import(import_name) {
         Some((_, _, _, None)) => wat_emit("(i32.const 0)\n"),
-        _ => wat_emit("\n"),
+        Some((_, _, _, Some(_))) => wat_emit("\n"),
+        None => wat_emit("\n"),
       }
     }
   },

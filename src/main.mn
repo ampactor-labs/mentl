@@ -164,7 +164,7 @@ fn dispatch_invocation(verb) = {
     // tables crossed on the prior pin, so this generation's boot
     // lowers the call it is about to execute.)
     if stdin_is_tty() { welcome_run() } else { compile_stdin_run() },
-    VRun(target) => run_run(target),
+    VRun(target, args) => run_run(target, args),
     VCheck(target) => check_run(target),
     VAt(target, line, col) => at_run(target, line, col),
     VTest(target) => test_run(target),
@@ -980,53 +980,42 @@ fn compile_stdin_run() = {
 
 // Process — the execute-the-compiled-module effect. process_exec is the
 // ONE external-boundary op (the host process surface). run = compile then
-// ~> <a Process handler> catches the
-// process_exec the run pipeline performs over the SAME compile graph (no
-// re-invoked toolchain). The op carries the entry module; the compiled
-// artifact is handle-addressed (the compile emitted it), so the host wire
-// reads it by entry — no fabricated WAT string threaded out of compile.
-// The handler body crossing into the host (wasmtime spawn) is the
-// external wire, peer of the web/nvim wires — Hβ.cli.process-exec-wire.
+// ~> <a Process handler> catches the process_exec the run pipeline performs
+// over the SAME compile graph (no re-invoked toolchain). The op carries the
+// program's argv on the wire (NUL-joined, argv[0] first); the compiled
+// artifact has already streamed to the executor through the emit sink
+// (wat_to_host), so nothing is threaded out of compile — the handler swap
+// IS the difference between `compile` and `run`. A native mentl (band N)
+// performs the same op against its own executor.
 effect Process {
   // exit code
   process_exec(String) -> Int
 }
 
-// The op is right and stays: `run` IS compile-then-`process_exec`, one handler
-// swap over the same compile graph, and a native mentl (band N) can perform it
-// for real. The op is the seam, correctly placed.
-//
-// This HANDLER is what was wrong. It was named for the wasmtime projection and
-// its comment said it "dispatches the entry to that boundary and returns the exit
-// code the run reports" — it printed a sentence and resumed 0. Nothing ran; every
-// `mentl run` through the wheel reported success it had not performed, and the only
-// reason no one noticed is that tools/install.sh's shim intercepts `run`,
-// compiles, assembles, executes, and propagates the REAL exit code (measured:
-// `fn main() = 7` exits 7 through the shim).
-//
-// WASI has no exec. That is a substrate fact, not a gap to paper over, so the
-// handler is named for what it is and REFUSES. The shim owns the seam honestly;
-// this arm's job is to never claim otherwise.
-handler process_no_exec {
-  process_exec(entry) => {
-    eprint_string("mentl run: cannot execute {entry} from inside wasm — WASI has no exec.\n")
-    eprint_string("  the install shim owns this seam: `mentl run {entry}` via ~/.local/bin/mentl\n")
-    eprint_string("  compiles, assembles, and runs it, returning the program's own exit code.\n")
-    resume(1)
-  },
+// The Process handler the runner serves: the arm performs the Host seam's
+// exec op (lib/io.mn) over the WAT the wat_to_host sink streamed, and the
+// program's exit comes back as a value — a trap answers 134, the status
+// the micro battery banks. WASI has no exec, so the seam is the runner's
+// (Hβ.ops.runner-is-the-process-handler): tools/runner assembles the
+// streamed text and runs it in its own Store, one process for compile and
+// run alike.
+handler process_host {
+  process_exec(argv) => resume(host_exec(str_payload(argv), byte_len(argv))),
 }
 
-fn run_run(target) = {
-  // run IS compile then process_exec ~> <a Process handler> — one handler
-  // swap over the SAME compile graph. compile emits the module; the run
-  // performs process_exec(entry). Under WASI the only truthful handler is
-  // process_no_exec, which refuses; the shim performs the run for real.
-  {
-    compile(target)
-    process_exec(target)
-  } ~> process_no_exec ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
-  1
-}
+// argv on the wire: NUL after every word, the executor splits on it.
+fn argv_wire(words) = fold("", (acc, w) => "{acc}{w}\0", words)
+
+// run IS compile then process_exec ~> process_host — one handler swap
+// over the SAME compile graph: compile streams the module to the host,
+// process_exec runs it. The program's exit is this verb's value, and the
+// dispatch makes main's value the process exit — so `mentl run x` answers
+// exactly what x answered (a refused compile exits through the gate
+// before anything runs).
+fn run_run(target, args) = {
+  compile(target)
+  process_exec(argv_wire([target] ++ args))
+} ~> process_host ~> wat_to_host ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
 
 // ─── check_run — diagnostics; no emit
 //
@@ -1810,12 +1799,15 @@ fn battery_expect_digits(src, i, acc) with Memory = if i >= byte_len(src) {
 }
 
 // One micro, one fresh chain — the same chain compile_stdin drives, with
-// the emission STREAMED through wat_to_file straight into the micro's
-// .build/test wat (the whole-compile collecting install read region-reset
-// segments — the scope law at wat_to_string's decl). Verdict: 0 on an
-// emitted module, 1 on a ledger-refused compile (no file written) or an
-// unopenable destination.
-fn battery_compile(src, wat_path) = compile_context(() => {
+// the emission STREAMED through wat_to_host to the executor (the
+// whole-compile collecting install read region-reset segments — the scope
+// law at wat_to_string's decl) and then RUN there: the program's exit comes
+// back as a value through the Process seam, so the battery judges
+// `// expect: N` itself instead of printing a manifest for a bash loop
+// that spawned an assembler and a runtime per fixture. Returns
+// (gate-failed, error-count, banked classes, exit) — exit is -1 when the
+// gate refused and nothing ran.
+fn battery_compile(src, stem) = compile_context(() => {
   let lowered =
     src |> infer_program_converged |> saturate_pass |> lower_program |> reachable_from_main
   // THE SAME law executable_gate applies, batch-shaped: refusal = holes +
@@ -1829,19 +1821,13 @@ fn battery_compile(src, wat_path) = compile_context(() => {
   // (mcp_diag_collector, the forwarder: every line still reaches stderr).
   match gate_reads(lowered) {
     (nholes, refused) => {
-      let failed = if nholes > 0 || refused > 0 {
-        1
+      let exit = if nholes > 0 || refused > 0 {
+        -1
       } else {
-        let fd = fs_create(wat_path)
-        if fd == 0 {
-          1
-        } else {
-          {
-            emit_module(lowered)
-          } ~> wat_to_file(fd)
-          fs_close(fd)
-          0
-        }
+        {
+          emit_module(lowered)
+        } ~> wat_to_host
+        process_exec(argv_wire([stem]))
       }
       // THE CLASSES, never the rendered lines. A line banked during emit
       // points into the twin loop's region and is zeroed by its heap_reset
@@ -1850,14 +1836,12 @@ fn battery_compile(src, wat_path) = compile_context(() => {
       // the substring scan over prose is gone with it.
       let classes = gate_classes()
       let nerr = diag_errors()
-      (failed, nerr, classes)
+      (if exit < 0 { 1 } else { 0 }, nerr, classes, exit)
     },
   }
-} ~> mcp_diag_collector ~> wasi_filesystem)
+} ~> process_host ~> mcp_diag_collector ~> wasi_filesystem)
 
 fn battery_run(dir, names) = {
-  fs_mkdir(".build")
-  fs_mkdir(".build/test")
   // libs is MATERIALIZED flat (str_concat("", x) — the view-flatten idiom)
   // BELOW the loop's first mark: a concat spine here would be poisoned by
   // the region resets — compile #1's flatten memoizes the flat buffer INTO
@@ -1867,7 +1851,7 @@ fn battery_run(dir, names) = {
   let libs = str_concat("", battery_libs())
   // The names list flattens below the mark for the same reason (sort returns
   // a concat spine; indexing memoizes in place).
-  let micros = list_to_flat(sort(filter((n) => ends_with(n, ".mn"), names)))
+  let micros = list_to_flat(sort(filter(ends_with(??, ".mn"), names)))
   // A RAW recursion, not a handler fold: each call's compile is a REGION
   // (heap_mark before, heap_reset after — everything the micro allocated is
   // dead once its WAT is written, and every micro starts at the same
@@ -1904,21 +1888,20 @@ fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(mic
       print_string("NOEXPECT {stem}\n")
       1
     },
-    Some(contract) => match battery_compile(libs ++ src, ".build/test/{stem}.wat") {
-      (failed, nerr, classes) => match contract {
+    Some(contract) => match battery_compile(libs ++ src, stem) {
+      (failed, nerr, classes, exit) => match contract {
         ExpectRun(want) => if failed > 0 {
           print_string("FAILC {stem}\n")
           1
-        } else {
-          // The error COUNT rides the line because the exec side stopped
-          // compiling. The bash battery used to re-derive it by grepping each
-          // fixture's own stderr — a second compile's worth of work for a
-          // number this judgment already holds (battery_compile returns it).
-          // Dropping it silently would retire a live signal: verify's summary
-          // names which fixtures carry reported errors, and a count nobody
-          // prints is a count nobody reads.
-          print_string("MICRO {stem} .build/test/{stem}.wat {int_to_str(want)} {int_to_str(nerr)}\n")
+        } else if exit == want {
+          // The error COUNT rides the line: a fixture that runs true while
+          // reporting errors is the sound-incomplete contract at work, and a
+          // count nobody prints is a count nobody reads.
+          print_string("PASS {stem}: exit={int_to_str(exit)} (expected {int_to_str(want)}) diags={int_to_str(nerr)}\n")
           0
+        } else {
+          print_string("FAIL(run) {stem}: exit={int_to_str(exit)} expected={int_to_str(want)} diags={int_to_str(nerr)}\n")
+          1
         },
         ExpectRefuse(cls) => // The contract judges the JUDGMENT: the named class reported as an
         // error. Armed classes also withhold the artifact; unarmed ones
@@ -1928,7 +1911,9 @@ fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(mic
           print_string("REFUSE {stem} {cls}\n")
           0
         } else {
-          print_string("FAILR {stem} wanted {cls} (errors={int_to_str(nerr)})\n")
+          // The verdict names what the judgment DID bank, so a contract that
+          // misses says which class stood where the wanted one was expected.
+          print_string("FAILR {stem} wanted {cls} (errors={int_to_str(nerr)}; banked: {join(", ", classes)})\n")
           1
         },
       },

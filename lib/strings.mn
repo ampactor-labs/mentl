@@ -323,6 +323,75 @@ fn str_unescape_into(s, i, n, dest, w) with Memory = if i >= n {
   str_unescape_into(s, i + 1, n, dest, w + 1)
 }
 
+// str_escape — str_unescape's exact inverse: graph bytes → the source
+// spelling SYNTAX declares (`\n \r \t \\ \" \{ \} \0 \xHH`). The formatter
+// is the parse's inverse, so a string that decoded from any of those must
+// render back to one of them: a raw control byte in canonical source is a
+// render that lost its escape (measured 2026-09-18 — `"\x00"` came back as
+// a NUL byte, and fmt was not a fixpoint on the wheel's own argv wire).
+// Two passes over the bytes, both as topology: a pure fold counts the
+// escaped length for the one allocation, then `each` streams every byte's
+// spelling into a `ByteSink` whose write cursor is the handler's state —
+// no walk threads an index (the iteration-shape tier's own law).
+// A control byte with no short spelling renders as `\xHH`, lowercase — the
+// emitter's own data escapes spell hex the same way, from the same glyphs.
+fn str_escape(s) with Memory + Alloc = {
+  let ptr = s |> fold(0, escape_len_acc) |> bytes_buf
+  s |> each(escape_emit) ~> byte_sink(ptr)
+  str_of_buf(ptr)
+}
+
+fn escape_len_acc(acc, b) with Pure = acc + escape_len(b)
+
+// A byte stream landing in a flat buffer: the sink owns the cursor.
+effect ByteSink {
+  emit_byte(b)
+}
+
+handler byte_sink(dest) with w = 0 {
+  emit_byte(b) => {
+    store_i8(dest + 8 + w, b)
+    resume() with w = w + 1
+  },
+}
+
+// One byte's spelling, streamed: itself, `\` and a letter, or `\xHH`.
+fn escape_emit(b) with ByteSink + Memory = {
+  let k = escape_len(b)
+  if k == 1 {
+    emit_byte(b)
+  } else if k == 2 {
+    emit_byte(92)
+    emit_byte(escape_tail(b))
+  } else {
+    emit_byte(92)
+    emit_byte(120)
+    emit_byte(hex_nibble(i32_and(b / 16, 15)))
+    emit_byte(hex_nibble(i32_and(b, 15)))
+  }
+}
+
+// The short escapes: backslash, quote, the splice braces, newline, return,
+// tab, NUL — each two source bytes. Everything else below 32, and 127, is a
+// four-byte `\xHH`; the rest is itself.
+fn escape_len(b) with Pure = if b == 92 || b == 34 || b == 123 || b == 125 || b == 10 || b == 13 || b == 9 || b == 0 {
+  2
+} else if b < 32 || b == 127 {
+  4
+} else {
+  1
+}
+
+// The second byte of a two-byte escape (the letter after the backslash).
+fn escape_tail(b) with Pure =
+  if b == 10 { 110 } else if b == 13 { 114 } else if b == 9 { 116 } else if b == 0 { 48 } else { b }
+
+// The sixteen hex glyphs, one home: the formatter's `\xHH` reads one byte
+// of it, the emitter's `\HH` data escapes read a one-glyph slice.
+fn hex_glyphs() with Pure = "0123456789abcdef"
+
+fn hex_nibble(v) with Memory = byte_at(hex_glyphs(), v)
+
 // Integer conversion
 //
 // int_to_str — decimal representation of a signed 32-bit integer.

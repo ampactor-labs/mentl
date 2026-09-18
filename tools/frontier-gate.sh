@@ -342,10 +342,16 @@ run_program() {
 
   wt_run "${run_flags[@]}" "$wasm" > "$rout" 2> "$rerr"
   rc=$?
+  # The run's verdict goes through judge, keyed by the leg's label, so a
+  # program leg can be DECLARED RED by name in frontier_expected_red and
+  # retires loudly the day it passes — the same two-direction contract the
+  # named legs already have. Compile and assemble stay plain: a declared
+  # standing failure is a claim about the program's ANSWER, never a licence
+  # for it to stop compiling.
   if [ "$rc" -eq "$expected" ]; then
-    pass "$label run (exit=$rc)"
+    judge "$label" 1 "$label run (exit=$rc)"
   else
-    fail "$label run (exit=$rc expected=$expected; see $rerr)"
+    judge "$label" 0 "$label run (exit=$rc expected=$expected; see $rerr)"
   fi
 }
 
@@ -1955,7 +1961,7 @@ for i in "${!compilers[@]}"; do
   # to /mentl-home (the space verb's own mount convention).
   pkill -f "tcplisten=127.0.0.1:${sess_port}" 2>/dev/null
   sleep 1
-  (cd "$sessdir" && "$WT_CLI" run "${WT_CLI_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" -S "tcplisten=127.0.0.1:${sess_port}" "$compiler" session >"$dir/session.log" 2>&1) &
+  (cd "$sessdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" -S "tcplisten=127.0.0.1:${sess_port}" "$compiler" session >"$dir/session.log" 2>&1) &
   sess_pid=$!
   : > "$dir/session-resident.txt"
   for _ in $(seq 1 60); do
@@ -1998,7 +2004,7 @@ for i in "${!compilers[@]}"; do
     fail "space no-listener refusal (see $dir/space-refuse.out)"
   fi
   space_port=7379
-  "$WT_CLI" run "${WT_CLI_FLAGS[@]}" --dir "$ROOT::." -S "tcplisten=127.0.0.1:${space_port}" "$compiler" space >"$dir/space-serve.log" 2>&1 &
+  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." -S "tcplisten=127.0.0.1:${space_port}" "$compiler" space >"$dir/space-serve.log" 2>&1 &
   space_pid=$!
   space_hdr=""
   for _ in $(seq 1 20); do
@@ -3016,7 +3022,17 @@ for i in "${!compilers[@]}"; do
   # form of the fix, and this ceiling still falls with
   # `Hβ.driver.link-is-reachability`: a bare program has no handlers and
   # dispatches nothing, so it links this walk for no reason at all.
-  cost_ceiling=2760
+  # 2822 (2026-09-18): ROSE 2760 → 2822, a capability of the same class —
+  # `str_escape`, the formatter's exact inverse of `str_unescape`, landed
+  # beside its decoder in lib/strings.mn (one home for the escape set:
+  # `mentl fmt` rendered a NUL as a raw byte and was not a fixpoint on the
+  # wheel's own argv wire) with the shared hex-glyph table the emitter's
+  # data escapes now read too, its walk a pure count-fold and a `ByteSink`
+  # handler whose write cursor is handler state (the audit's iteration-
+  # shape tier convicted the index-threaded form). A bare program formats
+  # nothing, so it links the encoder for no reason at all — the same
+  # sentence as the line above, and the same peer takes it back.
+  cost_ceiling=2822
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then
@@ -3081,6 +3097,15 @@ for i in "${!compilers[@]}"; do
   # projects five arms at a fn declaration and none at a type
   # declaration, so this leg holds the surface while that one is built.
   run_program "$compiler" eight-arms "$ROOT/tests/frontier/mn-eight-arms.mn" 42 yes "$dir"
+  # `==` on an operand whose type is still a variable at emit — a handler
+  # arm over quantified op parameters, where no call-site twin reaches —
+  # emits i32.eq on two heap addresses: two byte-equal Strings compare
+  # unequal, exit 1, no diagnostic (measured 2026-09-18, nine lines). The
+  # contract is exit 0; the leg is declared RED in frontier_expected_red
+  # until the eq leaf refuses the unresolved operand at its span
+  # (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq), and it turns green
+  # the day that refusal lands with the twin reaching the arm.
+  run_program "$compiler" eq-in-arm-pointer "$ROOT/tests/frontier/mn-eq-in-arm-pointer.mn" 0 yes "$dir"
 
   # ─── The per-module solo sweep (PLAN §11 Phase 3.5, ratcheted) ──────
   # E_MissingVariable across every SHIPPED module's SOLO check, ceiling in

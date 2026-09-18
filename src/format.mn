@@ -43,6 +43,8 @@ import graph
 
 import parser
 
+import strings
+
 // ─── The Format effect ──────────────────────────────────────────────
 //
 // Three ops:
@@ -123,34 +125,33 @@ fn render_program(ast) = {
 // every kernel arm produces a distinct render branch. Outputs tuple
 // together; assemble_render composes them into the canonical String.
 fn render_node_at(handle) = {
-    // Handle-based throughout: the body reads via graph_node_body (the
-    // same projection the parent scan uses) — the old `graph_node_at(h)`
-    // one-arg call typechecked against an op binding while the
-    // direct-call tier emitted the two-arg raw fn, an op/fn name
-    // collision that only surfaced when this arm gained its first
-    // installer (the fmt verb).
-    let body = graph_node_body(handle)
-    let ctx = render_context_at(handle)
-    let pos = (body, handle, ctx)
-    match pos <| (
-      // 1. tokens
-      ((b, _, _)) => render_body_tokens(b),
-      // 2. indent (canonical)
-      ((b, _, c)) => render_indent_for(b, c),
-      // 3. line break
-      ((b, _, _)) => render_line_break_after(b),
-      // 4. the one comment, read live from the weave
-      ((_, h, _)) => render_comment_at(h),
-      // 5. span (debug only)
-      ((_, _, _)) => "",
-      // 6. reason (debug)
-      ((_, h, _)) => render_reason_at(h),
-      // 7. sibling glue
-      ((_, _, c)) => render_sibling_separator(c)
-    ) {
-      (tokens, indent, line_break, comment, span, reason, sibling) =>
-      assemble_render(tokens, indent, line_break, comment, span, reason, sibling),
-    }
+  // Handle-based throughout: the body reads via graph_node_body (the
+  // same projection the parent scan uses) — the old `graph_node_at(h)`
+  // one-arg call typechecked against an op binding while the
+  // direct-call tier emitted the two-arg raw fn, an op/fn name
+  // collision that only surfaced when this arm gained its first
+  // installer (the fmt verb).
+  let body = graph_node_body(handle)
+  let ctx = render_context_at(handle)
+  let pos = (body, handle, ctx)
+  match pos <| (
+    // 1. tokens
+    ((b, _, _)) => render_body_tokens(b),
+    // 2. indent (canonical)
+    ((b, _, c)) => render_indent_for(b, c),
+    // 3. line break
+    ((b, _, _)) => render_line_break_after(b),
+    // 4. the one comment, read live from the weave
+    ((_, h, _)) => render_comment_at(h),
+    // 5. span (debug only)
+    ((_, _, _)) => "",
+    // 6. reason (debug)
+    ((_, h, _)) => render_reason_at(h),
+    // 7. sibling glue
+    ((_, _, c)) => render_sibling_separator(c)
+  ) {
+    (tokens, indent, line_break, comment, span, reason, sibling) => assemble_render(tokens, indent, line_break, comment, span, reason, sibling),
+  }
 }
 
 // ─── render_chain_node — render one verb-chain ────────────────────
@@ -161,27 +162,27 @@ fn render_node_at(handle) = {
 // pipelines. `<~` indented center, optionally inline. `|>` and `~>`
 // at left edge with stages on indented lines.
 fn render_chain_node(chain_node) = {
-    let kind = ast_kind_of(chain_node)
-    // ast_kind_of projects the NodeBody altitude — the Expr sits one
-    // constructor in (NExpr(PipeExpr(..))); the bare-Expr arms never
-    // matched and every chain fell to the non-chain render (order-masked;
-    // the order-independent judge named it, 2026-07-25).
-    let rendered = match kind {
-      NExpr(PipeExpr(PForward, l, r)) => // |>
-      // `<|`/`><` are ONE PFanout; the formatter projects the glyph from
-      // the ownership aspect — FanShare → `<|`, FanDistribute → `><` (the
-      // surface keeps both authored glyphs as intent).
-      render_converge_chain(l, r),
-      NExpr(PipeExpr(PFanout(FanShare), l, r)) => // <|
-      render_diverge_chain(l, r),
-      NExpr(FanoutExpr(branches)) => // >< — the N-ary carrier
-      render_compose_chain(branches),
-      NExpr(PipeExpr(PTee, l, r)) => // ~>
-      render_tee(l, r),
-      NExpr(PipeExpr(PFeedback, l, r)) => // <~
-      render_feedback_chain(l, r),
-      _ => render_non_chain(chain_node),
-    }
+  let kind = ast_kind_of(chain_node)
+  // ast_kind_of projects the NodeBody altitude — the Expr sits one
+  // constructor in (NExpr(PipeExpr(..))); the bare-Expr arms never
+  // matched and every chain fell to the non-chain render (order-masked;
+  // the order-independent judge named it, 2026-07-25).
+  let rendered = match kind {
+    NExpr(PipeExpr(PForward, l, r)) => // |>
+    // `<|`/`><` are ONE PFanout; the formatter projects the glyph from
+    // the ownership aspect — FanShare → `<|`, FanDistribute → `><` (the
+    // surface keeps both authored glyphs as intent).
+    render_converge_chain(l, r),
+    NExpr(PipeExpr(PFanout(FanShare), l, r)) => // <|
+    render_diverge_chain(l, r),
+    NExpr(FanoutExpr(branches)) => // >< — the N-ary carrier
+    render_compose_chain(branches),
+    NExpr(PipeExpr(PTee, l, r)) => // ~>
+    render_tee(l, r),
+    NExpr(PipeExpr(PFeedback, l, r)) => // <~
+    render_feedback_chain(l, r),
+    _ => render_non_chain(chain_node),
+  }
   rendered
 }
 
@@ -412,7 +413,7 @@ fn render_expr_tokens(e) with GraphRead + Memory + Alloc + !Mutate + Intern = ma
   // other negative is stable: `-5` re-parses UNeg(5) and re-renders `-5`.
   if n == 0 - 2147483648 { "2147483648" } else { int_to_str(n) },
   LitFloat(f) => float_to_str(f),
-  LitString(s) => "\"{escape_string_content(s)}\"",
+  LitString(s) => "\"{str_escape(s)}\"",
   LitBool(b) => if b { "true" } else { "false" },
   LitUnit => "()",
   VarRef(name) => name,
@@ -746,14 +747,6 @@ fn pipe_prec(k) with Pure = match k {
 
 // ─── The totality helpers — one per structural form ─────────────────
 //
-// Re-escape string content to the surface escape set: the parse stored
-// resolved bytes; the render is the parse's inverse, so a quote, brace,
-// backslash, or control byte re-escapes (without this, format∘parse =
-// identity was FALSE for any string carrying one — the wheel's own
-// wat_emit lines included).
-fn escape_string_content(s) with Memory + Alloc =
-  s |> ((x) => replace(x, "\\", "\\\\") |> ((x) => replace(x, "\"", "\\\"") |> ((x) => replace(x, "\n", "\\n") |> ((x) => replace(x, "\t", "\\t") |> ((x) => replace(x, "\{", "\\\{") |> ((x) => replace(x, "\}", "\\\}")))))))
-
 // Interior comments are graph content (the weave attaches them to the
 // following statement) — the block render carries each statement's prose
 // or the formatter would destroy it. A trailing same-line comment
@@ -789,7 +782,7 @@ fn render_string_parts(ref parts, i) with GraphRead + Memory + Alloc + !Mutate +
   ""
 } else {
   let one = match ast_kind_of(parts[i]) {
-    NExpr(LitString(s)) => escape_string_content(s),
+    NExpr(LitString(s)) => str_escape(s),
     NExpr(ShowExpr(inner)) => // The splice's ShowExpr wrap is invisible surface — the braces
     // render the INNER (render∘parse fixpoint over the wrap).
     "\{{render_tokens_for(inner)}\}",
@@ -1191,7 +1184,7 @@ fn render_handler_arms(ref arms, i) with GraphRead + Memory + Alloc + !Mutate + 
 fn render_lit_value(lv) with Memory + Alloc = match lv {
   LVInt(n) => int_to_str(n),
   LVFloat(f) => float_to_str(f),
-  LVString(s) => "\"{escape_string_content(s)}\"",
+  LVString(s) => "\"{str_escape(s)}\"",
   LVBool(b) => if b { "true" } else { "false" },
 }
 

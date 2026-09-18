@@ -946,6 +946,13 @@ eta_max: 0
 # representation change and its own arc. The entry retires there, and the gate
 # will SAY SO on the day it does.
 frontier_expected_red: why-coordinates
+# 2026-09-18: `==` on an operand whose type is still a variable at emit (a
+# handler arm over quantified op parameters — no call-site twin reaches it)
+# emits i32.eq on two heap addresses; tests/frontier/mn-eq-in-arm-pointer.mn
+# answers 1 for two byte-equal Strings with no diagnostic. Declared RED the day
+# it was measured; retires when the eq leaf refuses the unresolved operand
+# (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq) and the gate SAYS so.
+frontier_expected_red: eq-in-arm-pointer
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
@@ -1010,7 +1017,12 @@ record_pattern_open_max: 0
 # DiagKind already carries, and the comparison is now an equality over banked
 # class codes. A ratchet falling because a re-derivation was deleted is the
 # shape this counter exists to reward.
-effectful_lambda_max: 375
+# 375 -> 367 at pin 952bf0cd (measured by the census site diff, old tree against
+# new): format.mn 10 -> 4 — the formatter's escape re-render and its lambdas
+# deleted into str_escape's byte fold, the decoder's exact inverse — and cli.mn
+# 21 -> 20 with the run verb's argument parse, and main.mn 21 -> 20 with the
+# battery's filter as the holed stage `ends_with(??, ".mn")`.
+effectful_lambda_max: 367
 
 # 2026-08-07: the USE-AFTER-MOVE ratchet (PLAN §11 Phase 4.1,
 # Hβ.own.use-after-move) — RETIRED 2026-09-15, BY BEING SATISFIED. This key

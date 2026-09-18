@@ -35,6 +35,110 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-18 · pin 952bf0cdc9f20c21 · THE WHEEL EXECUTES, AND THE RUNNER
+  OWNS THE SOCKET. CLEAN m2 == m3, census 0, m3 leg 7.89s / 947MB,
+  403,380 → 404,462 wat lines; frontier 382/0/2 on the runner. Rung B of
+  `Hβ.ops.runner-is-the-process-handler`: `process_host` performs
+  `host_exec` over the WAT `wat_to_host` streamed, `mentl run <path>
+  [args…]` returns the program's exit (mn-A 6, mn-oob-traps 134 through
+  the wheel, no shim), and `mentl test <dir>` compiles, runs and judges
+  every fixture in ONE process — 149 micros, 135 pass / 14 refuse, 12.2s
+  / 157MB against the bash loop's ~71s and 3N spawns. tools/micro-
+  battery.sh deleted; verify, march-gate and the march's repin battery
+  read the verb's verdict through one helper (wt_battery); the shim's run
+  block and runcache deleted; `VRun(String, [String])` carries the
+  program's argv. The runner's proc_exit honours any exit status
+  (wasmtime-wasi refused 134 and everything outside [0..126) — measured on
+  the first trapping `mentl run`; smoke/exit-status.wat). THE PIN'S FIRST
+  BOARD WAS RED, and the red was the host's: the exec-seam wheel imports
+  `mentl_host`, no wasmtime CLI defines it, and `session`/`space` still
+  launched on the 36 CLI — three listening legs red; `-W
+  unknown-imports-trap` is real on 36.0.2 and applied after the wasi-
+  threads shim instantiates, so it cannot help (measured). So
+  `Hβ.ops.runner-owns-the-p1-socket` LANDED in the same rung: `-S
+  tcplisten=` binds a nonblocking listener reserved as one more preopen
+  slot (the wheel's find_listener probe unchanged), and the five
+  socket-facing p1 ops reach the guest through a TRAMPOLINE module the
+  runner writes beside the guest — it imports the guest's shared memory,
+  re-exports it, asks `mentl_sock.*` first and wasmtime-wasi second. The
+  trampoline is the finding: a host function calling a host function has
+  no wasm frame, and the adapter locates guest memory through that frame
+  ("missing required memory export", measured on the first file read
+  through a direct forward). The wasmtime CLI, the LTS pin, WT_CLI,
+  WASMTIME_BIN and the shm probe are deleted from wt-env (a missing runner
+  refuses with the build command — no fallback engine exists); the shim
+  and the frontier launch session/space on the runner; a session answers
+  `audit main` over its socket 2s after launch. Two SYNTAX corrections
+  caught on re-read before the pin: base-type parameter annotations that
+  were not Intent Boundaries (`words: [String]`, `stem: String`) removed,
+  and lifecycle vocabulary in three new comments rewritten in positive
+  form; the emitter's import-tail match enumerates its arms. THREE MORE
+  FINDINGS BETWEEN THE RED STAMP AND THE PIN, each from the medium's own
+  instruments: (1) `mentl fmt` on the changed files at the commit gate
+  rendered the argv wire's `"\x00"` as a RAW NUL BYTE — the formatter's
+  `escape_string_content` re-escaped six of the nine escapes SYNTAX
+  declares and was not `str_unescape`'s inverse over control bytes;
+  `str_escape` (lib/strings.mn, the decoder's exact inverse, seen RED on
+  the pinned boot's fmt of a nine-escape probe and a first-pass fixpoint
+  on the candidate's) replaces it, and the emitter's sixteen-arm hex
+  match and its own nibble table became one `hex_glyphs`. (2) The re-pin
+  battery FAILR'd `mn-refuse-closed-residual-field` — a contract that had
+  been green by ACCIDENT: `mcp_diag_collector` banked each report by
+  `push`, a cell allocated inside the emitter's per-fn region for a
+  diagnostic raised there (T_FieldOffsetUnprovable), zeroed by the
+  region's reset and overwritten by the next allocation; the verdict read
+  5,784 banked classes for a judgment that reported five, and whether the
+  wanted class was among them depended on which fixture ran before. The
+  bank is in-place storage allocated at install now (a flat slot list, a
+  byte buffer, two counters; overflow counted and named), `gate_facts` is
+  one text, and FAILR names the classes it did bank. (3) The prelude
+  floor rose 2760 → 2813 by the encoder's lines — a capability, raised in
+  frontier-gate.sh with its reason, and the same peer takes it back. (4)
+  The full verify on the pin refused: the comment-ref ratchet rose 0 → 4.
+  Three of the four are infer.mn comments untouched for weeks, each
+  backticking `f` for ANOTHER decl's function parameter (`fold`'s, `map`'s,
+  a handler's config arg); a 2×2 of old/new boot against old/new source
+  pinned the cause to the SOURCE, and the diff's one removed line naming
+  `f` was the hex table's `15 => "f"`. The prose gate's last fallback is
+  the program's own literal vocabulary (the `$`-name judgment, which a
+  failed plain name also reaches), so those three references had only ever
+  resolved through a hex-digit literal — an invariant held by accident,
+  named the moment the accident was deleted. The prose now names the
+  resolvable owner; the fourth reference (a state name cited from outside
+  its handler) is written as prose. The resolver is unchanged: a plain
+  name written by the program's own literals is a reference by the
+  judgment's stated law, and a one-letter coincidence is not a rule. (5)
+  `mentl audit lib/strings.mn` convicted the encoder's two byte walks as
+  index-threaded self-calls (the loop in recursion's costume); `fold` walks
+  a String's bytes (probe: `"ab"` sums to 195), so `str_escape` is a pure
+  count-fold plus a `ByteSink` handler whose write cursor is handler state,
+  streamed by `each` — iteration-shape convictions on the file 34 → 32, the
+  prelude floor 2813 → 2822 by the sink's lines (raised with its reason),
+  and the nine-escape probe still spells 22 bytes exact. (6) "Not this
+  landing's" was the wrong sentence about two items the audit named, and
+  interrogating them instead: `mcp_verdict_text`'s `wat_path: String` was a
+  FOSSIL (an unannotated spliced parameter renders through the twin, probe
+  exit 9) and is deleted; the battery's filter lambda is the holed stage
+  `ends_with(??, ".mn")` (probe: a holed call runs as a stage, exit 2); and
+  the class those `: String` annotations compensate for — 300 base-type
+  parameter annotations in the wheel, 225 of them `: String` — is a LIVE
+  silent wrong: the eq leaf's wildcard arm answers an operand whose type is
+  still a variable at emit with `i32.eq`, so a handler arm over quantified
+  op parameters compares two byte-equal Strings by ADDRESS (exit 1, no
+  diagnostic; the same compare direct-called or through a HOF answers 0
+  because the twin carries the proof). `tests/frontier/mn-eq-in-arm-
+  pointer.mn` is banked RED in frontier_expected_red the day it was
+  measured; `Hβ.emit.eq-on-unresolved-operand-is-pointer-eq` (the arm
+  refuses, then the fossils sweep, then the Intent Boundary rule becomes a
+  ratcheted census shape) and `Hβ.effects.install-chain-as-value` (the
+  thunk-bracket family behind the effectful-lambda count) are born in
+  RESIDUE. The effectful-lambda ceiling fell 375 → 367 (format 10 → 4, cli
+  21 → 20, main 21 → 20, measured by the census site diff) and is held. (7) Banking that
+  red found the gate could not hold it: `run_program`'s run verdict went
+  through plain pass/fail, so `frontier_expected_red` covered only the
+  hand-judged legs and the pin's block read "1 red, undeclared". The run
+  verdict now goes through `judge` keyed by the leg's label — every program
+  leg can be declared red by name and retires loudly the day it passes.
 - 2026-09-17 · pin 1cbe5e6d0a8d7610 · THE BOOT'S EMITTER LEARNS THE
   UNIT-RETURNING HOST CALL (the exec ladder's second recognition rung).
   CLEAN m2 == m3, census 0, m3 leg 8.89s / 935MB, 403,325 → 403,380 wat

@@ -1243,6 +1243,74 @@ rule attributed to it must be read out of the paper first.
 
 ### Named-residue index (entry-born peers not yet in a §5.R band — one home each)
 
+`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq` — OPEN, measured 2026-09-18,
+RED contract banked the same day. The eq leaf's wildcard arm (`emit_eq_for_ty`,
+backends/wasm.mn) answers an operand whose type is still a VARIABLE at emit with
+`i32.eq` — "a handle IS a word" — so two byte-equal Strings compare by ADDRESS
+wherever no call-site twin reaches the compare. The `++` arm beside it refuses
+the same case (`emit_concat_unresolved`: an `(unreachable)` with a comment
+marker, written and never said — the floor class
+`Hβ.emit.field-offset-floor-is-never-reported` closed one operator over).
+MEASURED IN NINE LINES: `tests/frontier/mn-eq-in-arm-pointer.mn` — a handler arm
+over quantified op parameters, `same(a, b) => resume(a == b)`, called with
+`"ab"` and `str_concat("a", "b")` — exits 1 with no diagnostic; the same compare
+in a plain fn, direct-called OR reached through a HOF, answers 0, because total
+monomorphization's twin carries the String proof to those bodies (probed both
+ways). The arm is the one body no twin specializes. THE COMPENSATION CLASS THIS
+ARM CREATED: PLAN §9's "pointer-eq on names — annotate the name param
+`: String`" prescribes carrying the proof by hand, and the wheel does: 300 fn
+parameters in src/ and lib/ carry a base-type annotation the Intent Boundary
+rule reserves for refinements, ownership and repr pins; 225 are `: String`. One
+of them, `mcp_verdict_text`'s `wat_path: String`, measured DEAD the same day (an
+unannotated spliced parameter renders through the twin, probe exit 9) and was
+deleted; the other 224 are unmeasured, and a fossil that is deleted where the
+twin does NOT reach becomes this silent wrong. THE FIX, in order: (1) the
+wildcard arm splits — `TVar` reports `T_EqTypeUnprovable(String, Span)` at the
+LEFT operand's span carrying the operator and the operand's live type (the
+sibling of `T_FieldOffsetUnprovable`, same pre-arm licence: born at a wheel
+census the class-arming commit turns into a refusal), while the resolved
+scalars (Int, Unit, byte, nullary tag, fn-table index, continuation pointer)
+keep `i32.eq` byte-identical; (2) the frontier leg `eq-in-arm-pointer` turns
+from declared-red to green only when the ARM itself is proven — either the
+handler's arms twin per install-site instantiation (the op's row carries the
+instance) or the effect declares the op's types — never by the annotation
+that the fixture deliberately omits; (3) THE SWEEP: with the refusal live,
+delete the 225 `: String` annotations and compile the wheel — every refusal
+names a site the twin does not reach (a real Intent Boundary, or the twin's own
+gap), every silent site was a fossil; (4) the class becomes a census shape,
+`CsBaseTypeAnnotation` (a `TParam` whose authored annotation is a base type,
+neither refinement nor ownership nor repr pin), ratcheted DOWN on the verify
+board — the Intent Boundary rule measured, never eyeballed. SEQUENCED BEFORE
+the verify verb: a silent wrong in `==` outranks the gates' refactor (proof
+beats review, at the medium's own `==`). CLOSE: the arm refuses, the leg is
+green with the fixture unannotated, the sweep's survivors are named, m3 == m4.
+
+`Hβ.effects.install-chain-as-value` — OPEN, named 2026-09-18 from the audit
+of rung B's own lambdas. `compile_context(body) = infer_context(() =>
+emit_context(body))` and every `*_context(() => …)` bracket pass a THUNK to a
+fn that installs a fixed handler chain around it — the wheel's one idiom for
+"this chain, named once, over any body", because `~>` draws one install edge
+per handler and a chain of installs has no value form. The anonymity tier
+convicts each such thunk as an effectful lambda (368 on the wheel link at pin
+952bf0cd, the bracket the dominant shape), so the ratchet can only fall to the
+brackets' floor while the idiom stands; `battery_compile`, `mcp_judge` and
+`run_run` each repeat a `~> a ~> b ~> c` tail by hand for the same reason. Two
+candidate forms, decided by measurement at build, never by preference: (a)
+handler COMPOSITION as a value — `wasi_filesystem ∘ mcp_diag_collector ∘
+process_host` is ONE handler whose arms are the union, installed by one `~>`
+(the algebraic-effects literature's composed handler; well-defined when the
+handled sets are disjoint, and the install order IS the world-chain order the
+dispatch already reads); (b) the install chain with its BODY as a hole —
+`?? ~> h1 ~> h2` is the chain awaiting its body (SYNTAX's product-with-a-hole),
+but the body field is a COMPUTATION, not a value: `x |> (?? ~> h)` would
+evaluate `x` BEFORE the install, so a pipe into a `~>`-hole must be call-by-
+name at that field — SYNTAX's "the hole is the suspension point" made literal,
+and the evaluation-order rule it opens is the design decision to record when
+this lands. Either form deletes the bracket family and the hand-repeated tails,
+and the effectful-lambda floor drops with them. CLOSE: `compile_context` /
+`infer_context` / `emit_context` deleted, the anonymity count falling by their
+sites, m3 == m4.
+
 `Hβ.doctruth.state-claims-are-unchecked` — DOC-TRUTH GATES IDENTITY, NOT STATE,
 AND §7 IS ENTIRELY STATE. The gate checks shas (PROVENANCE head vs boot), the
 ledger head pin, that every named command exists, the verb namespace against
@@ -5946,6 +6014,39 @@ build key, `image_resume`'s own gate), so a hit is an image restore, not
 a shell hash. Then wt-env.sh, the shim's run block and the cache dir
 delete. SEQUENCED after the single-pass landing as its own march — it
 changes what every gate invokes.
+▶ LANDED IN TWO RUNGS PLUS ONE, 2026-09-17/18 — the bootstrap knot
+sets the count: the boot both GROUNDS an op at the executable-root gate
+(`is_wasi_import_op`) and EMITS its import (`host_import`, the table's
+module column — the `wasi_snapshot_preview1` literal gone from the
+emitter), so each fact must be pinned before a wheel relies on it.
+Rung one (pin d8c0870cbd2a9a28): `effect Host { host_wat_write,
+host_exec }` in lib/io.mn, the ops grounded, the import rows, no
+perform. Rung A′ (pin 1cbe5e6d0a8d7610): the emitter's generic import
+tail pushes the statement law's zero word for every UNIT-RETURNING
+import by reading the table's result column (measured as wat2wasm's
+"type mismatch in drop" on the first perform), the `wat_to_host` sink,
+and `compile()` no longer baking `wat_stdout` into its own chain — the
+sink is the caller's install. Rung B: `process_host` performs
+`host_exec` over the streamed WAT, `mentl run <path> [args…]` returns
+the program's own exit (the runner's proc_exit honours any status —
+wasmtime-wasi's adapter refused 134 and every value outside [0..126);
+tools/runner/smoke/exit-status.wat), and `mentl test <dir>` compiles,
+RUNS and judges every fixture in one process: 149 micros in 12.2s /
+157MB where the bash loop spawned 3N processes in ~71s; tools/micro-
+battery.sh deleted, its three readers on wt_battery (the verb's own
+verdict). `mentl run tests/micros/mn-A.mn` exits 6 through the wheel
+with no shim; mn-oob-traps exits 134. The runner's exec seam:
+`mentl_host.wat_write` streams, `mentl_host.exec` assembles the text
+(wasmtime reads WAT — no wat2wasm), runs the child in its own Store
+and returns its status as a value (tools/runner/smoke/exec-child.wat,
+42 with a trapping second child answering 134). The shim's run block
+and its runcache are DELETED — `mentl run` falls through to the wheel
+like every other verb — and process_no_exec is gone with them. What
+this rung did NOT delete: run-micro.sh and the wt-env assemble
+vocabulary (verify's syntax/floors/rows legs and the effect-identity
+gate still read them) — they retire with `mentl verify`
+(`Hβ.ops.gates-are-contracts`), the landing that owns every remaining
+bash reader.
 
 `Hβ.voice.comment-mass-absorbs-into-projections` — the wheel is 38%
 prose, and almost none of it is the endpoint (Morgan's charge,
@@ -6589,6 +6690,28 @@ with the census print. D5's honesty note: image_bytes has ZERO
 performers and memory.mn's comment states the census print in
 present tense — mechanism prose ahead of the artifact, trued
 2026-08-12 in the same commit as this fold.
+▶ THE PER-FN EMISSION REGION'S FIRST MEASURED CASUALTY AT THE
+DIAGNOSTICS LAYER (2026-09-18), and it is the site-classification
+unsoundness above, live. mcp_diag_collector banked each report by
+`push` — a cell allocated wherever the bump pointer stood, which for a
+diagnostic raised during a fn's emit (T_FieldOffsetUnprovable) is INSIDE
+the twin loop's region; the region's reset zeroed the cell and the next
+allocation overwrote it. The battery's refuse contract then read 5,784
+banked classes for a judgment that reported five, and whether the wanted
+class was among them depended on which fixture had run before — the
+149/149 battery had been green by that accident since the collector
+learned to bank classes. The GateLedger comment had argued the class
+survives because its name is a data-section literal: true of the string,
+false of the cell holding the pointer — the exact shape 2b's refutation
+names (a published fact pointer-written into scratch). Fixed at the
+collector: storage allocated at install (a flat slot list, a byte buffer)
+and filled IN PLACE, the only moving state a pair of counters; an
+overflow is counted and named in the text. The general law stands as
+written: a handler whose state ALLOCATES inside a region is unsound until
+the image/scratch split makes the allocation site's class a fact the
+reset reads. Every other push-banking handler in the wheel updates during
+inference, where no region is open today; the day one opens there, this
+record is the first thing to re-measure.
 
 `Hβ.own.use-after-move` — BUILT (2026-08-07, pin 8ba768c810c4, before
 the arena exactly as prescribed). The mechanism was one leg's ORDER:
@@ -9288,6 +9411,32 @@ resource the guest cannot create — filed as
 `Hβ.ops.runner-owns-the-p1-socket`. Until it lands the split is
 NAMED, never silent: the board runs on the runner, the two listening
 verbs run on 36, and the LTS pin retires at (6) only when both do.
+▶ (5) AND (6) EXECUTED 2026-09-18 — `Hβ.ops.runner-owns-the-p1-socket`
+LANDED, and the board FORCED it. The exec-seam wheel (rung B of
+`Hβ.ops.runner-is-the-process-handler`) imports `mentl_host`, which no
+CLI defines; 36's `-W unknown-imports-trap` is applied AFTER its
+wasi-threads shim instantiates (measured: the flag is accepted and the
+import still refuses), so the listening verbs could not start on 36 at
+all — the pin's board went RED on exactly the three session/space legs.
+The runner owns the socket now: `-S tcplisten=ADDR` binds a nonblocking
+listener and RESERVES its fd as one more preopen slot (the table stays
+positional, the wheel's find_listener probe unchanged), and the five
+socket-facing p1 ops reach the guest through a TRAMPOLINE module the
+runner writes beside the guest — it imports the guest's shared memory,
+re-exports it as "memory", and each function asks the runner's
+`mentl_sock.*` first (-1 = not a socket) and wasmtime-wasi's own
+definition second. The trampoline is the finding: a host function
+calling another host function has no calling wasm frame, and the
+adapter finds guest memory through that frame ("missing required
+memory export", measured on the first file read through a direct
+host-to-host forward). Only a run with a listener gets it. wt-env.sh
+has no CLI fallback any more (a missing runner refuses with the build
+command); WT_CLI, the shm probe and WASMTIME_BIN are deleted; the shim
+and the frontier launch session/space on the runner; the LTS pin is
+retired. Measured: a session on the runner answers `audit main` over
+its socket 2s after launch, and the frontier through the exec-seam boot
+on the runner reads 380 pass / 0 red / 1 expected-red — the three
+listening legs that were RED on the CLI, green.
 
 `Hβ.infer.live-cells-need-one-settled-signature` — RUNG 3'S REAL DEP.
 ▶ THE DEP IS BUILT (2026-09-07, the same day it was measured). The ABI now

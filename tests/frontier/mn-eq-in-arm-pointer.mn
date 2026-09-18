@@ -1,0 +1,18 @@
+// `==` is one structural-equality derivation, total over the five node-kinds
+// (SYNTAX §Equality): two byte-equal Strings are equal wherever they are
+// compared. Here the compare sits in a handler ARM over the op's quantified
+// parameters, the one place no call-site twin reaches, so the operand type
+// the emit reads is still a variable. The eq leaf's wildcard arm answers a
+// variable with `i32.eq` — an address compare — and this program exits 1
+// with no diagnostic (measured 2026-09-18). The contract is exit 0, and until
+// the arm refuses an unresolved operand at its span the leg stands declared
+// RED in frontier_expected_red (`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq`).
+effect Cmp {
+  same(a, b) -> Bool
+}
+
+handler by_eq {
+  same(a, b) => resume(a == b),
+}
+
+fn main() = (if same("ab", str_concat("a", "b")) { 0 } else { 1 }) ~> by_eq

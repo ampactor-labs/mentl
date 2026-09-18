@@ -64,24 +64,24 @@ import memory
 // shape). Counts are NOT banked here — diag_errors/diag_refusals forward
 // to the bracket's diagnostics_handler, the one tally home.
 effect GateLedger {
-  gate_facts() -> [String]
-  // THE CLASSES, not the prose. A banked LINE is rendered at report time and
-  // therefore lives wherever the bump pointer was standing — which, for a
-  // diagnostic raised during emit, is INSIDE a region the twin-emission loop
-  // resets (backends/wasm.mn's `let m = heap_mark() … heap_reset(m)`, whose
-  // own contract is that nothing allocated inside it escapes). The bank was
-  // the escape: heap_reset zeroes [m, bump), so a later read of the banked
-  // line walks zeroed memory, and `mentl test`'s refuse contract — the only
-  // reader that touches the text — slice_raw'd a garbage length and trapped
-  // the whole battery at fixture 118 of 149, silently, because the harness
-  // counted FAILC lines and a crash prints none.
-  //
-  // A class NAME is `diag_code(diag)`'s string literal: a data-section
-  // constant, not a bump allocation, so it survives every region. And it is
-  // what the contract actually wanted — the substring scan over rendered
-  // prose was re-deriving, by text search, a fact the DiagKind carries.
+  // The banked diagnostic text, every reported line verbatim in report
+  // order (each line carries its own newline, as the stderr log prints it).
+  gate_facts() -> String
+  // THE CLASSES, not the prose: `diag_code(diag)` per report, in order — the
+  // refuse contract compares names, never a substring of rendered prose. A
+  // class name is a data-section literal, so the pointer banked is stable
+  // across every region; the SLOT it is banked into is the collector's own
+  // in-place storage (see the handler), because a bank that ALLOCATES on
+  // report dies with the region the report was raised in.
   gate_classes() -> [String]
 }
+
+// The bank's capacities — allocated once at install, filled in place. A
+// judgment that reports more than this many diagnostics keeps counting past
+// the slots and says so in its text, never silently.
+let diag_bank_slots = 8192
+
+let diag_bank_bytes = 1048576
 
 // The session's collecting console — the address projection's transport
 // at the MCP surface. The SAME core that narrates to stdout on the CLI
@@ -102,25 +102,47 @@ handler console_bank with lines = [] {
 // every diagnostic re-performs outward from the arm — an arm's own
 // performs resolve in the INSTALL's world, reaching the bracket's
 // diagnostics_handler (the stderr log), never re-entering this collector.
-// The diag_absorb arm is load-bearing: the converged judgment banks each
-// stmt's diagnostics in its branch cursor and replays them at the join
-// THROUGH THIS OP — without the arm, branch-judged lines bypass the bank
-// and the verdict text carries only gate-phase diagnostics (measured on
-// the first walk: the E_EffectMismatch line reached stderr but not the
-// verdict).
-handler mcp_diag_collector with lines = [], classes = [] {
+// Branch-fired reports arrive HERE as live re-performs (the converged
+// judgment replays each banked diag through the root chain at the join),
+// so no separate absorb arm exists to fold them.
+//
+// THE BANK IS WRITTEN IN PLACE into storage allocated at install, below
+// every region an emit opens. A diagnostic raised during emit
+// (T_FieldOffsetUnprovable is one) is raised inside the twin loop's
+// region, so a bank that `push`es its class allocates the cell there —
+// zeroed at that region's reset, overwritten by whatever allocates next.
+// Measured 2026-09-18 on exactly that shape: the refuse contract read
+// 5,784 banked classes for a judgment that reported five, and whether
+// the wanted class was among them depended on which fixture ran before —
+// a battery green by accident. The class NAME is a data-section literal
+// and survives every region; only a cell holding its pointer dies. So: a
+// flat slot list for the classes and a byte buffer for the lines, filled
+// by in-place stores (list_set / mem_copy) with word counters as the only
+// state that moves; the reads hand out views of the filled prefix,
+// allocated at read time outside every region. A report past the
+// capacity is COUNTED and named in the text, never dropped silently.
+handler mcp_diag_collector with slots = make_list(diag_bank_slots), n = 0, text = str_of_buf(bytes_buf(diag_bank_bytes)), tlen = 0, dropped = 0 {
   diag_report(diag, line, dmod) => {
     // Forward outward with the SAME rendered line; the bank keeps it too.
-    // Branch-fired reports arrive HERE as live re-performs (the join
-    // replays each banked diag through the root chain), so no separate
-    // absorb arm exists to fold them.
     diag_report(diag, line, dmod)
-    resume() with lines = push(lines, line), classes = push(classes, diag_code(diag))
+    if n < diag_bank_slots { list_set(slots, n, diag_code(diag)) } else { slots }
+    let need = byte_len(line)
+    if tlen + need <= diag_bank_bytes {
+      // str_payload of the flat stride-1 bank is its byte address, no copy.
+      mem_copy(str_payload(text) + tlen, str_payload(line), need)
+      resume() with n = n + 1, tlen = tlen + need
+    } else {
+      resume() with n = n + 1, dropped = dropped + 1
+    }
   },
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
-  gate_facts() => resume(lines),
-  gate_classes() => resume(classes),
+  gate_facts() => resume(if dropped == 0 {
+    str_slice(text, 0, tlen)
+  } else {
+    str_slice(text, 0, tlen) ++ "… {int_to_str(dropped)} diagnostic line(s) did not fit the bank\n"
+  }),
+  gate_classes() => resume(slice(slots, 0, if n < diag_bank_slots { n } else { diag_bank_slots })),
 }
 
 // mcp_judge — the canonical judgment over one proposal, batch-shaped at
@@ -148,18 +170,18 @@ fn mcp_judge(source, wat_path) = compile_context(() => {
       } else {
         0
       }
-      let lines = gate_facts()
+      let text = gate_facts()
       let nerr = diag_errors()
-      (lines, nerr, refused, emitted)
+      (text, nerr, refused, emitted)
     },
   }
 } ~> mcp_diag_collector ~> wasi_filesystem)
 
 // The verdict's head states exactly what the gate did — refused, emitted
 // with surfaced errors (unarmed classes; the sound-incomplete contract,
-// spoken), or proven whole. The diagnostic lines follow verbatim: the
+// spoken), or proven whole. The diagnostic text follows verbatim: the
 // refusal's teaching IS the payload.
-fn mcp_verdict_text(lines, nerr, nref, emitted, wat_path: String) = {
+fn mcp_verdict_text(text, nerr, nref, emitted, wat_path) = {
   let head = if nref > 0 {
     "REFUSED — {int_to_str(nref)} claim(s) the medium could not discharge; nothing was emitted\n"
   } else {
@@ -173,7 +195,7 @@ fn mcp_verdict_text(lines, nerr, nref, emitted, wat_path: String) = {
       }
     }
   }
-  head ++ str_concat_all(lines)
+  head ++ text
 }
 
 // ─── The protocol surface — JSON-RPC response builders ───────────────
@@ -229,8 +251,8 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
       }
       match srco {
         Some(JStr(source)) => match mcp_judge(source, ".build/mcp/last.wat") {
-          (lines, nerr, nref, emitted) => {
-            let text = mcp_verdict_text(lines, nerr, nref, emitted, ".build/mcp/last.wat")
+          (banked, nerr, nref, emitted) => {
+            let text = mcp_verdict_text(banked, nerr, nref, emitted, ".build/mcp/last.wat")
             (mcp_response(
               id,
               JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])), ("isError", JBool(false))])

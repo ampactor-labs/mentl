@@ -29,7 +29,9 @@ type EntryVerb
   // a persisted image path — the file IS the argument
   | VResume(String)
   | VCompileStdin
-  | VRun(String)
+  // target, then the program's own argv (everything after the target — the
+  // executor hands it to the program as its args, NUL-joined at the seam)
+  | VRun(String, [String])
   | VCheck(String)
   // the cursor-address form — `mentl lib/tutorial/09-all.mn:40:20`: target, line, col (0 = whole-line). Drift-38's endpoint: the address IS the surface; verbs are transports
   | VAt(String, Int, Int)
@@ -76,6 +78,14 @@ type VerbSpec = VerbSpec(String, String, ([String]) -> EntryHandlerInvocation, S
 fn req_target(argv, mk, msg) with Memory + Alloc =
   if len(argv) >= 3 { Invocation(mk(path_to_module(argv[2]))) } else { ParseError(msg) }
 
+// The run verb keeps everything after its target: those words are the
+// PROGRAM's argv, not the wheel's, and the executor passes them through.
+fn run_verb_args(a) with Memory + Alloc = if len(a) >= 3 {
+  Invocation(VRun(path_to_module(a[2]), drop(3, a)))
+} else {
+  ParseError("run needs a target: mentl run <path> [args…]")
+}
+
 // The verbs, in help-presentation order (the parser matches by name, so order
 // here is the human's reading order, never the dispatch order). A `""` hint is
 // a no-argument verb.
@@ -95,8 +105,8 @@ fn why_verb_args(a) with Memory + Alloc = if len(a) >= 4 {
 
 fn verb_specs() with Memory + Alloc = [VerbSpec(
   "run",
-  "<path>",
-  (a) => req_target(a, VRun, "run needs a target: mentl run <path>"),
+  "<path> [args…]",
+  run_verb_args,
   "compile, prove, execute (a hole or refuted claim REFUSES)"
 ), VerbSpec(
   "check",

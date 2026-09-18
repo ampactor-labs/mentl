@@ -6358,8 +6358,9 @@ fn infer_match_arm_iter(arms, scrut, result_h, span: ValidSpan, i, n) = if i >= 
 // Walk arms, gathering each PCon's tag_id (deduped via set_insert).
 // Non-PCon arms (wildcards, vars, lits) contribute no tag. The seed's
 // transfer is structural (the fold chain absorbs it) — an authored `own`
-// here claimed a consume the callee's param product cannot see (fold's
-// `f` is a param callee, product unreadable → the seed reads), and the
+// here claimed a consume the callee's param product cannot see (`fold`'s
+// function parameter is a param callee, product unreadable → the seed
+// reads), and the
 // grade now says so (§11 4.2's one wheel narration; band H's bar is
 // fewer authored markers, not more).
 fn collect_arm_tags(arms, init) = fold(
@@ -7991,8 +7992,9 @@ fn effect_type_vars(ops) = ops |> map((op) => match op {
 }) |> flatten
 
 // VARIANCE at the op's result. A parameter's unannotated fn-type row is a
-// VAR on purpose — the effect-polymorphic flow channel `map`'s `f` needs,
-// and masking it convicted 297 wheel sites in one march. A RESULT is the
+// VAR on purpose — the effect-polymorphic flow channel `map`'s function
+// parameter needs, and masking it convicted 297 wheel sites in one march.
+// A RESULT is the
 // other direction: nothing flows in, so a var there is not a channel but an
 // unstated promise, and the arm that produces the value teaches the
 // declaration its row instead of meeting it. Measured 2026-08-18: a closure
@@ -8243,7 +8245,8 @@ fn register_handler(hname, ename_parsed, config, state, arms, span: ValidSpan) =
   let s_h = mint(Inferred("handler result of '{hname}'"))
   // Accumulate the arms' residual row R into r_handle: inferring each arm
   // body under this row scope routes every effect it performs (incl. a call
-  // to a config arg `f`) into r_handle via inf_add_effect/inf_add_row. On
+  // to a function-valued config arg) into r_handle via inf_add_effect/
+  // inf_add_row. On
   // exit, r_handle binds to R — the row `~> h` adds to the caller.
   inf_enter_fn(r_handle, s_h, span, [])
   // EVERYTHING THE INSTALL EVALUATES BELONGS INSIDE THIS SCOPE — the config

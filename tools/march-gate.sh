@@ -210,12 +210,13 @@ if [ $fail = 0 ]; then
 fi
 
 # ── micros-through-m2 — the promoted stress tier (--micros only) ──────────
-# ONE battery, one home: the loop lives in tools/micro-battery.sh (full
-# expectation grammar, run-micro.sh harness). This gate contributes the
-# compiler under test — the candidate m2, not the pinned boot.
+# ONE battery, one home: the medium's own `test` verb compiles, runs and
+# judges every fixture in one process (wt_battery reads its verdict). This
+# gate contributes the compiler under test — the candidate m2, not the
+# pinned boot.
 if [ "$DO_MICROS" = 1 ]; then
-  echo "── micros-through-m2 (each: m2-compile → wat2wasm → run → exit, +rt) ──"
-  tools/micro-battery.sh "$GATE_WASM" "micros-through-m2" || fail_m=1
+  echo "── micros-through-m2 (one process: m2 compiles, runs and judges each fixture) ──"
+  wt_battery "$GATE_WASM" tests/micros "micros-through-m2" || fail_m=1
 fi
 
 exit $((fail + fail_m))
