@@ -78,14 +78,11 @@ type Explanation = Explanation(String, String, String, Option(Patch), Reason)
 //
 // reason_chain: the Why chain
 //
-// The propose projection: every PROVEN survivor as (Node, Reason), and every
-// vocabulary candidate the ALLOWED row refused as (name, Reason) — the
-// rejection keeps its Why (PLAN §5: retain the rejection reasons; the row
-// pruning IS the second moat, and a pruned candidate the developer cannot
-// see is a guess they cannot audit).
-type Proposals = Proposals([(Node, Reason)], [(String, Reason)])
-
-// survivors, rejected
+// The propose projection is `Proposal` (types.mn), beside the `Domain` its
+// value question carries: one VERDICT plus every vocabulary candidate the
+// ALLOWED row refused, each refusal keeping its Why (PLAN §5: the row pruning
+// IS the second moat, and a pruned candidate the developer cannot see is a
+// guess they cannot audit).
 type Context = Context([(String, Binding, Reason, SchemeKind)], EffRow, String, Span)
 
 // scope bindings (the Env's own entries), the LIVE active-effect row, the enclosing decl's name ("" at top level — the vocabulary excludes candidates whose free-name closure reaches it: proposing the hole's own enclosing fn, or anything that transitively calls it, is nontermination by construction), and the HOLE'S OWN SPAN — the position the proposals are for, the ranker's nearness anchor (candidate_rank reads decl and use nearness against it).
@@ -118,8 +115,8 @@ effect Teach {
 // enumerate_inhabitants (multi-shot raw). Any proposer — enumerative,
 // SMT, LLM, user — plugs in as a handler. The compiler verifies.
 effect Synth {
-  // proven survivors with their Whys + row-rejected vocabulary with theirs
-  synth_propose(Ty, EffRow, Context) -> Proposals
+  // the verdict with its Why + row-rejected vocabulary with theirs
+  synth_propose(Ty, EffRow, Context) -> Proposal
   verify_candidate(Candidate, Ty) -> Bool
   enumerate_inhabitants(Ty, EffRow, Context) -> [Node]
 }
@@ -636,17 +633,6 @@ fn annotation_eq(a, b) with Pure = match a {
 // until leaf reasons (Declared, Unmarked, MissingVar) terminate. Depth-limited at 20.    // drift-audit: ignore — "cycles" referencing graph cycle detection, not deferred work
 fn why_from_handle(handle) = match graph_chase(handle) {
   GNode(_, reason) => why_expand(reason, 0),
-}
-
-fn teach_synthesize(hole_handle, context) = match graph_chase(hole_handle) {
-  GNode(kind, _) => match kind {
-    NBound(ty) => match context {
-      Context(_, allowed, _, _) => match synth_propose(ty, allowed, context) {
-        Proposals(survivors, _rejected) => if len(survivors) == 1 { Some(head(survivors)) } else { None },
-      },
-    },
-    _ => None,
-  },
 }
 
 // H6: exhaustive Ty enumeration. Only TFun carries an explicit

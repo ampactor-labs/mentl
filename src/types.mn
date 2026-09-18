@@ -1165,7 +1165,7 @@ type PipeContext = NoPipe | InsidePipe(PipeKind) | StartingPipe | EndingPipe
 // Annotation is mentl.mn's existing ADT (APure/ANotEffect/AOwn/...).
 // Predicate is at types.mn:568.
 type CursorView
-  = CursorView(NodeKind, Proposals, PipeContext, EffRow, Ownership, [(Int, Span, Predicate, Reason)], Option(AnnotationSuggestion), Reason)
+  = CursorView(NodeKind, Proposal, PipeContext, EffRow, Ownership, [(Int, Span, Predicate, Reason)], Option(AnnotationSuggestion), Reason)
 
 // query   propose  topology     row     trace      verify  teach    why
 // ─── SpinePage — the graph's columns, named ONCE ─────────────────────────
@@ -1762,6 +1762,54 @@ type Domain
   // the fragment stops here. Consumers treat it as TOP for construction; the
   // medium SAYS it rather than pretending the predicate was empty.
   | DUndecided
+
+// Proposal — the oracle's ANSWER at a hole, as one value.
+//
+// The Synth op answered with a LIST, and a list is the medium admitting it
+// does not know (PLAN §11.1). Five surfaces then re-derived the same verdict
+// from `len` — the address render, the edit transport's accept path and its
+// projection, the teach entry, the cursor's empty case — and the render's
+// one-survivor arm DROPPED the Reason while its tie arm kept it: the medium
+// showing its reasoning exactly when it is unsure and withholding it exactly
+// when the developer is most likely to take the fill on faith. The verdict is
+// computed ONCE, where the survivors are known, and read everywhere else.
+//
+// Rejections sit beside the verdict rather than inside it: a lone survivor
+// coexists with three row-refused names, and the refusal teaches either way,
+// so repeating the list per arm would be the same fact in three homes.
+type Proposal = Proposal({rejected: [(String, Reason)], verdict: Verdict})
+
+// A fill arrives WITH its reason because the constructor holds no other
+// shape — the render cannot drop what the type does not let it separate.
+type Verdict = VFill(Node, Reason) | VAsk(Divergence, [(Node, Reason)]) | VNone
+
+// WHERE the survivors diverge — PLAN §11.1's first divergence, classified.
+// Read from the facts the cursor already projects, never clustered from the
+// candidate set, so there is no clustering to be bad at and no scaling in
+// candidate count. Precedence is a judgment, most consequential first: a
+// capability difference changes what the program may DO, so it outranks
+// every other distinction; survivors that denote one value differ only in
+// which name carries the intent; a value difference is a choice inside what
+// the type admits, so the domain rides it; anything left is structure.
+//
+// A same-denotation tie is a MEANING tie at the intent altitude, not the
+// free form-space tie of PLAN §5's duality. The duality calls a tie free
+// when a COST function totally orders it, and cost is blind to what a later
+// reader learns from a name — so `7` and `pure_seven()` are not
+// interchangeable the way two extraction-equal forms are. Rank orders how a
+// tie renders; the divergence is what decides it.
+//
+// The SOURCE of "which cell" is the survivors' own live reads today and the
+// trail segment's first differing bind once branches share one graph
+// (`Hβ.synth.divergence-from-the-trail`); the classification and its voice
+// stand either way.
+type Divergence
+  // the first two survivors whose rows differ, in rank order
+  = DivRow(EffRow, EffRow)
+  | DivName
+  // what the target type admits — the same read that seeded the candidates
+  | DivValue(Domain)
+  | DivShape
 
 // Decidable shape. Verify discharges: ledger (Phase 1) accumulates;
 // verify_smt (Arc F.1) routes by theory — Z3 / cvc5 / Bitwuzla.
@@ -3672,6 +3720,33 @@ fn show_effrow(ref row) with GraphRead + Memory + !Mutate + Alloc + Intern = mat
       },
     }
   },
+}
+
+// What a refinement states about a type's inhabitants, said to a person. The
+// open-bounded arms name the side that IS bounded rather than inventing an
+// infinity symbol for the side that is not, and TOP says the truth the
+// unbounded-domain residue names (`Hβ.synth.unbounded-domain-asks`): nothing
+// here narrows the position, which is why the medium is asking at all.
+fn show_domain(d) with Memory + Alloc = match d {
+  DRange(lo, hi) => match (lo, hi) {
+    (Some(l), Some(h)) => "the type admits {int_to_str(l)} through {int_to_str(h)}",
+    (Some(l), None) => "the type admits {int_to_str(l)} and up",
+    (None, Some(h)) => "the type admits up to {int_to_str(h)}",
+    (None, None) => "nothing here bounds the value — a refinement would",
+  },
+  DFinite(vs) => "the type admits exactly {int_to_str(len(vs))} value(s)",
+  DUndecided => "the predicate is past the decidable fragment, so the type's bound is unread",
+}
+
+// The tie's one line: the proposition the developer never stated, spoken in
+// the vocabulary of whatever separates the survivors. Never "one more
+// constraint collapses it" — that sentence was the same words at every tie,
+// which is a placeholder wearing a teaching voice.
+fn show_divergence(d) with GraphRead + Memory + !Mutate + Alloc + Intern = match d {
+  DivRow(a, b) => "these differ in what they may DO — {show_effrow(a)} against {show_effrow(b)}: which capability does this position carry?",
+  DivName => "every survivor denotes the same value — the question is which name carries the intent",
+  DivValue(dom) => "the survivors differ in VALUE and {show_domain(dom)}: which one does this position mean?",
+  DivShape => "the survivors differ in SHAPE — what structure does this position hold?",
 }
 
 fn show_eff_name(ref name) with Intern + Memory + Alloc + GraphRead + !Mutate = match name {

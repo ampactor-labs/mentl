@@ -1702,6 +1702,21 @@ node-kinds** (the `Hβ.eq.structural-deep` peer is this general definition reali
 not a carve-out); `str_eq` is the byte-sequence instance the surface `==` lowers
 to, never a developer-facing primitive.
 
+**TWO MEASURED HOLES IN THAT TOTALITY, both named rather than implied.** The
+paragraph above is the surface law and the lathe is not yet turned to all of
+it. (1) An operand whose type is still a VARIABLE at emit falls to a one-word
+compare — right for a word, an address lie for anything else — and says so as
+`T_EqTypeUnprovable` (`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq`).
+(2) A POLYMORPHIC sum compares its payload by ADDRESS, measured 2026-09-18:
+`Some(BInt(7)) == Some(BInt(7))` is false while the monomorphic
+`BInt(7) == BInt(7)` is true, because the generated helper is keyed on the
+nominal name alone and the constructor's declared payload type is the
+quantified var (`Hβ.eq.polymorphic-sum-payload-is-pointer-eq`,
+tests/frontier/mn-eq-polymorphic-sum.mn). The second is invisible to the
+first's census, because the unprovable operand sits inside a generated leaf
+rather than at an authored comparison — which is why it is written here, where
+the totality is claimed, and not only in the peer that will close it.
+
 ---
 
 ## Canonical layout (formatter canon)
@@ -2088,7 +2103,7 @@ token, so there is nothing to lift.*
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
 | `T_OverDeclared`      | declared row wider than body uses             | `MachineApplicable`  | tighten the signature to unlock capabilities    |
 | `T_FieldOffsetUnprovable` | a reachable field access whose slot the graph cannot prove — the receiver's row never closed, so emit has no offset and writes `(unreachable)`. The diagnostic renders the selector and the receiver's own live type at the receiver's span. BORN 2026-09-15, and the shape of its birth is the lesson: the floor had been emitted since the offset read existed and was never REPORTED, so a program carrying one compiled clean, passed `mentl check`, and trapped at the instruction that admits it — §0's "nothing executes unproven" inverted at the one boundary that claimed it. Pre-arm (the wheel's own census is four); `tests/frontier/mn-field-offset-unprovable.mn` holds the contract and moves to a refusal in the commit that arms it | `MaybeIncorrect` | close the receiver's row — annotate it at its Intent Boundary, or give the call site a shape the twin can key on |
-| `T_EqTypeUnprovable` | a comparison (`==`, `!=`, `<`, …) whose operand type is still a variable at emit — no structure to read, so it falls to a one-word compare: value-equality for a word, an ADDRESS lie for anything else. The diagnostic carries the operator and the operand's live type at the operand's span. BORN 2026-09-18 as narration: a handler arm over quantified op parameters answered `"ab" != "ab"` (`tests/frontier/mn-eq-in-arm-pointer.mn`, declared red), and the wheel carries such compares itself — the trap form was refuted by the wheel dying on its own compile. Pre-arm; `eq_type_unprovable_max` in tools/verify-baseline.txt is the count's one home and the countdown, `T_FieldOffsetUnprovable`'s sibling on the same ladder | `MaybeIncorrect` | prove the operand — give the call site a shape the twin can key on, or name the type at its Intent Boundary |
+| `T_EqTypeUnprovable` | a comparison (`==`, `!=`, `<`, …) whose operand type is still a variable at emit — no structure to read, so it falls to a one-word compare: value-equality for a word, an ADDRESS lie for anything else. The diagnostic carries the operator and the operand's live type at the operand's span. BORN 2026-09-18 as narration: a handler arm over quantified op parameters answered `"ab" != "ab"` (`tests/frontier/mn-eq-in-arm-pointer.mn`, declared red), and the wheel carries such compares itself — the trap form was refuted by the wheel dying on its own compile. Pre-arm; `eq_type_unprovable_max` in tools/verify-baseline.txt is the count's one home and the countdown, `T_FieldOffsetUnprovable`'s sibling on the same ladder. IT SEES ONE ALTITUDE ONLY, and the limit is measured rather than suspected: a POLYMORPHIC sum's payload compares by address inside a GENERATED leaf, where no authored comparison stands for this diagnostic to attach to, so the count held unchanged across that defect's whole discovery (`Hβ.eq.polymorphic-sum-payload-is-pointer-eq`) | `MaybeIncorrect` | prove the operand — give the call site a shape the twin can key on, or name the type at its Intent Boundary |
 | `T_Gradient`          | an annotation INPUT would narrow the cursor's projection | `MachineApplicable` | accept the suggestion to narrow             |
 | `W_Suggestion`        | probable Quick Fix available                  | `MaybeIncorrect`     | (Mentl-proposed)                                |
 | `W_RedundantWhere`    | `type X = Y where true` — vacuous predicate   | `MachineApplicable`  | drop the `where true`; alias is transparent     |

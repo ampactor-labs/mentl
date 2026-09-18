@@ -953,6 +953,18 @@ frontier_expected_red: why-coordinates
 # it was measured; retires when the eq leaf refuses the unresolved operand
 # (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq) and the gate SAYS so.
 frontier_expected_red: eq-in-arm-pointer
+# 2026-09-18: the same class one layer in, and this one needs no missing twin.
+# `==` on a POLYMORPHIC sum compares its payload by ADDRESS: `fold_sig` folds
+# `TName(n, args)` to the bare name, so one `$eq_nOption` serves every
+# instantiation, and `variant_specs_of` answers with the constructor's DECLARED
+# payload type — a quantified var, which `emit_field_eq`'s last arm turns into
+# a word compare with no diagnostic, inside a generated leaf no authored
+# comparison visits. `Some(BInt(7)) == Some(BInt(7))` is false; the fixture's
+# monomorphic control is true on the same run, and the exit (6) names which
+# halves broke. Retires when the sig folds its arguments and the specs
+# substitute them (Hβ.eq.polymorphic-sum-payload-is-pointer-eq) — by PROOF,
+# never by a comparator written beside the compare.
+frontier_expected_red: eq-polymorphic-sum
 
 # 2026-09-18: THE UNPROVABLE-COMPARISON census (T_EqTypeUnprovable, the
 # field-offset floor's sibling): a `==`/`!=`/`<`… whose operand type is still a

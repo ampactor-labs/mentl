@@ -246,6 +246,28 @@ fn enumerate_hole_positions() with GraphRead + Alloc + Memory + !Mutate = match 
   Graph(next, _spans) => filter(authored_hole, range(0, next)),
 }
 
+// The name a ZERO-ARG call candidate calls, or None for every other shape.
+// One home for a read the proposer and the transport both make — the
+// transport to render the candidate as source, the proposer to ask the
+// callee's own row and body what the candidate means. An arg-bearing call
+// answers None because nothing downstream can yet say what its arguments
+// are (`Hβ.synth.vocabulary-arg-holes` is where they start being sayable).
+fn callee_name_of(node) with Memory + Alloc = match node {
+  N(body, _, _) => match body {
+    NExpr(CallExpr(callee, args)) => if len(args) == 0 {
+      match callee {
+        N(cb, _, _) => match cb {
+          NExpr(VarRef(name)) => Some(name),
+          _ => None,
+        },
+      }
+    } else {
+      None
+    },
+    _ => None,
+  },
+}
+
 // A gradient position IS a fn declaration — the teach verb's own scope
 // (map_fn_stmts feeds FnStmt handles). The kind gate runs BEFORE the
 // teach read: the ungated walk asked teach_gradient about every cell in
@@ -671,7 +693,7 @@ fn propose_at(h, k) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnos
     Context(_, allowed, _, _) => synth_propose(ty_of_kind(h, k), allowed, ctx),
   }
 } else {
-  Proposals([], [])
+  Proposal({rejected: [], verdict: VNone})
 }
 
 // Synth's Context reads LIVE from the graph the cursor sits in — never

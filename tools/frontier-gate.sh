@@ -1916,10 +1916,59 @@ for i in "${!compilers[@]}"; do
   fi
   pdemo="$ROOT/tests/frontier/propose-demo"
   pout=$(cd "$pdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$pdemo" --dir /tmp "$compiler" hole.mn:9:37 2>"$dir/propose-at.err")
-  if [ $? -eq 0 ] && printf '%s' "$pout" | grep -q 'Query: ?? : Positive' && printf '%s' "$pout" | grep -q 'Propose: 1'; then
-    pass "cursor-address propose (the socket speaks the one survivor)"
+  # The fill arrives WITH its Reason, on the same line. RED before the
+  # Proposal ADT: this arm destructured `(survivor, _r)` and dropped the Why
+  # while the tie arm two lines down kept it — the medium showing its
+  # reasoning exactly when it was unsure and withholding it exactly where a
+  # developer is most likely to accept on faith. `VFill(Node, Reason)` makes
+  # the drop unsayable: the render cannot hold a fill without its Why.
+  if [ $? -eq 0 ] && printf '%s' "$pout" | grep -q 'Query: ?? : Positive' \
+     && printf '%s' "$pout" | grep -q "Propose: 1  — .*integer inhabitants"; then
+    pass "cursor-address propose (the socket speaks the one survivor, with its Why)"
   else
     fail "cursor-address propose (got: $pout; see $dir/propose-at.err)"
+  fi
+  # ── the COMPUTED question — one arm of Divergence per fixture ──────
+  # A tie used to end in one fixed sentence ("one more constraint … collapses
+  # it"), the same words at every tie, which is a placeholder wearing a
+  # teaching voice. The question is now COMPUTED from what actually separates
+  # the survivors, in the precedence types.mn states: row, then denotation,
+  # then value, then shape. Each leg below is one arm; all four were RED
+  # against the boot, which printed the fixed sentence for every one of them.
+  #
+  # VALUE: two integer seeds of `Bit = Int where 0 <= self && self <= 1`, and
+  # the line names what the type admits rather than asking for "a constraint".
+  qv=$(cd "$fdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo" --dir /tmp "$compiler" bit.mn:8:30 2>/dev/null)
+  if printf '%s' "$qv" | grep -q 'differ in VALUE and the type admits 0 through 1'; then
+    pass "computed question: value (the admitted domain, not a generic ask)"
+  else
+    fail "computed question: value (got: $(printf '%s' "$qv" | tail -2))"
+  fi
+  # ROW: `silent()` is Pure, `logged()` performs Log, and choose's declared
+  # row admits both — so the fill decides what the program may DO, which
+  # outranks every other distinction.
+  qr=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-row-tie.mn:31:33 2>/dev/null)
+  if printf '%s' "$qr" | grep -q 'differ in what they may DO — Pure against Log'; then
+    pass "computed question: row (the capability split outranks name and value)"
+  else
+    fail "computed question: row (got: $(printf '%s' "$qr" | tail -2))"
+  fi
+  # NAME: pure_seven(), calm_seven() and the literal 7 all denote 7 — the
+  # denotation walk follows a zero-arg call to its callee's body — so the
+  # only real choice is which name carries the intent.
+  qn=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-capability-tie.mn:16:38 2>/dev/null)
+  if printf '%s' "$qn" | grep -q 'denotes the same value — the question is which name'; then
+    pass "computed question: name (one value, three spellings)"
+  else
+    fail "computed question: name (got: $(printf '%s' "$qn" | tail -2))"
+  fi
+  # SHAPE: the constant read stops at a branch, so the medium will not claim
+  # two unread bodies agree — the arm that keeps DivName honest.
+  qs=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-shape-tie.mn:19:31 2>/dev/null)
+  if printf '%s' "$qs" | grep -q 'differ in SHAPE'; then
+    pass "computed question: shape (an unread body never reads as agreement)"
+  else
+    fail "computed question: shape (got: $(printf '%s' "$qs" | tail -2))"
   fi
   # ── the render register (DiagScope) ────────────────────────────────
   # A user-target projection over the FULL weave (repo root mounted, so
@@ -3123,6 +3172,19 @@ for i in "${!compilers[@]}"; do
   # (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq), and it turns green
   # the day that refusal lands with the twin reaching the arm.
   run_program "$compiler" eq-in-arm-pointer "$ROOT/tests/frontier/mn-eq-in-arm-pointer.mn" 0 yes "$dir"
+  # The same class one layer in, and this one needs no missing twin to
+  # fire: `==` on a POLYMORPHIC sum compares its payload by ADDRESS.
+  # `fold_sig` folds `TName(n, args)` to the bare name, so ONE
+  # `$eq_nOption` serves every instantiation, and `variant_specs_of`
+  # answers with the ctor's DECLARED payload type — a quantified var,
+  # which `emit_field_eq`'s last arm turns into a word compare with no
+  # diagnostic, inside a generated leaf no authored comparison visits.
+  # The fixture carries its own control: the monomorphic sum compares
+  # right (0), the wrapped int adds 2, the wrapped String adds 4, so the
+  # exit NAMES which halves are broken. Measured 6 on 2026-09-18.
+  # Declared RED until the sig folds its arguments and the specs
+  # substitute them (Hβ.eq.polymorphic-sum-payload-is-pointer-eq).
+  run_program "$compiler" eq-polymorphic-sum "$ROOT/tests/frontier/mn-eq-polymorphic-sum.mn" 0 yes "$dir"
 
   # ─── The per-module solo sweep (PLAN §11 Phase 3.5, ratcheted) ──────
   # E_MissingVariable across every SHIPPED module's SOLO check, ceiling in

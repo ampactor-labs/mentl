@@ -1441,28 +1441,28 @@ fn render_at(view, h, pspan, target: String) = match view {
     print("Query: {source_slice(pspan, target)}{node_query_line(h, kind)}\n")
     // The Propose facet — the socket's content at the address surface. The
     // graph already computed it (propose_at runs synth at an authored hole;
-    // empty everywhere else, so silence needs no second hole check). Exactly
-    // one proven survivor is the medium's answer, rendered through the SAME
-    // projection the edit transport's accept path uses; two or more is the
-    // tie that TEACHES (never a hidden first-wins pick between proven
-    // survivors — PLAN §5's tie-break law at this surface too).
+    // VNone everywhere else, so silence needs no second hole check). The
+    // VERDICT is read, never re-derived from a count: a fill arrives with
+    // the Reason its constructor carries — this arm dropped it while the
+    // tie arm below kept it, which showed the medium's reasoning exactly
+    // when it was least sure and withheld it exactly where a developer is
+    // most likely to accept on faith — and a tie TEACHES by naming what
+    // separates the survivors (never a hidden first-wins pick — PLAN §5's
+    // tie-break law at this surface too).
     match propose {
-      Proposals([], _) => (),
-      Proposals([only], _) => match only {
-        (survivor, _r) => print("Propose: {render_candidate_source(survivor)}\n"),
-      },
-      Proposals(survivors, _) => {
-        // The FAN projected: a tie TEACHES by showing the actual proven
-        // space — every survivor rendered with its Reason — then names the
-        // move that collapses it. Never a hidden first-wins pick.
-        print("Propose: {int_to_str(len(survivors))} proven survivors — a tie:\n")
-        each(
-          (pair) => match pair {
-            (node, reason) => print("  {render_candidate_source(node)}  — {show_reason(reason)}\n"),
-          },
-          survivors
-        )
-        print("  one more constraint (a refinement, a type, an example) collapses it\n")
+      Proposal(pr) => match pr.verdict {
+        VNone => (),
+        VFill(survivor, reason) => print("Propose: {render_candidate_source(survivor)}  — {show_reason(reason)}\n"),
+        VAsk(divergence, survivors) => {
+          print("Propose: {int_to_str(len(survivors))} proven survivors — a tie:\n")
+          each(
+            (pair) => match pair {
+              (node, reason) => print("  {render_candidate_source(node)}  — {show_reason(reason)}\n"),
+            },
+            survivors
+          )
+          print("  {show_divergence(divergence)}\n")
+        },
       },
     }
     match row {

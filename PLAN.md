@@ -2143,6 +2143,19 @@ landed in 5–10; this phase is the finish that makes it FELT.
   oracle — at a width set by the `judge_window` constant, where the
   language's own `~> Schedule` is read live at every other fanout. The
   crown jewel is the one place Mentl does not solve Mentl.
+  **A SIXTH WAS FOUND AND CLOSED 2026-09-18, and it was the one that touched
+  the developer: the ANSWER was a LIST.** `Proposals([(Node, Reason)],
+  [(String, Reason)])` made six surfaces re-derive the verdict from `len`,
+  and the copies disagreed at the position where it costs most — the address
+  render's one-survivor arm dropped the Reason while its tie arm kept one per
+  candidate, so the medium showed its reasoning when unsure and withheld it
+  where a developer is likeliest to accept on faith. `Proposal({verdict,
+  rejected})` over `VFill(Node, Reason) | VAsk(Divergence, …) | VNone` makes
+  that unsayable, and the tie's fixed sentence ("one more constraint … 
+  collapses it", the same words at every position) became the COMPUTED
+  question below, classified by `Divergence` — row, then denotation, then
+  value, then shape — with one RED-first fixture per arm. The remaining five
+  are the fan's own mechanism and stand.
   **AND THE RECEIVED SHAPE IS NOT MENTL'S PRIVATE FAILURE — IT IS THE
   FIELD'S** (surveyed 2026-09-14). Five areas, five different communities,
   one limit: *the artifacts of reasoning are discarded between phases.*
@@ -2210,6 +2223,20 @@ landed in 5–10; this phase is the finish that makes it FELT.
   it asks about what the developer was just writing, where max-gain asks
   about whatever behavioural consequence happens to split the space — and
   that is a design decision, recorded as one, falsifiable by a felt walk.
+  **THE CLASSIFICATION LANDED BEFORE THE TRAIL DID, and the split is stated
+  so neither half is mistaken for the other (2026-09-18).** `Divergence`
+  names WHAT separates the survivors and speaks it in that arm's own
+  vocabulary; its SOURCE today is each survivor's live reads, because every
+  candidate is judged in a COPIED instance binding its own fresh handle, so a
+  trail diff over the demo fixtures measures EMPTY and in-segment handles
+  collide after rollback. The sequential trail segment over ONE graph is what
+  makes the first-divergence cell readable, and when it lands only the source
+  changes — the four arms, their precedence and their voice stand
+  (`Hβ.synth.divergence-from-the-trail`). The precedence itself is a judgment
+  and is recorded as one: a same-denotation tie is a MEANING tie at the
+  INTENT altitude, not §5's free form-space tie, because the duality calls a
+  tie free when a COST function totally orders it and cost is blind to what a
+  later reader learns from a name.
 
   **EXTRACTION GETS SMALLER, NOT CLEVERER.** Extraction is NP-hard over an
   ARBITRARY cost function on an AND-OR DAG; Mentl's cost is not arbitrary.

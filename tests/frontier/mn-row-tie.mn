@@ -1,0 +1,33 @@
+// The tie whose question is the ROW. Two proven survivors of one refined
+// type, and what separates them is not a name or a value but a CAPABILITY:
+// `silent()` performs nothing, `logged()` performs Log, and `choose`'s
+// declared row admits both. Filling this hole decides what the program may
+// DO, so a tie line asking for "one more constraint" would be naming the
+// least consequential thing about the choice.
+//
+// The literal `7` joins them — Seven admits exactly one value — and it is
+// Pure like `silent()`, so the split is genuinely between two rows and not
+// between a call and a constant. This is a PROJECTION fixture: it carries an
+// authored hole, so it never becomes an executable (SYNTAX: a hole is
+// productive, never executable), and the gate reads its Propose facet.
+
+effect Log {
+  note()
+}
+
+handler quiet_log {
+  note() => resume(),
+}
+
+type Seven = Int where self == 7
+
+fn silent() -> Seven with Pure = 7
+
+fn logged() -> Seven with Log = {
+  note()
+  7
+}
+
+fn choose() -> Seven with Log = ??
+
+fn main() = (choose()) ~> quiet_log

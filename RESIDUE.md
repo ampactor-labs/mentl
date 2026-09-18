@@ -1326,8 +1326,10 @@ handle membership, and the interning accident PLAN §9 catalogs (`in_owner_names
 `list_index(xs, i) == name` compares two
 Strings by address and is right only because names are interned once;
 `handle_in`, `int_in`, `dedup`-style membership over handles; two `<` on
-`Option` payloads in verify.mn's interval meet/join). `eq_type_unprovable_max:
-56` is the countdown; a rise is a new address compare. The census also
+`Option` payloads in verify.mn's interval meet/join).
+`eq_type_unprovable_max` (tools/verify-baseline.txt, the count's one home —
+this sentence carried the number itself until 2026-09-18, and it was already
+stale) is the countdown; a rise is a new address compare. The census also
 CORRECTS the sweep's premise: the 225 `: String` annotations are not merely
 fossils of a pre-twin era — a String is a WORD at the repr level, so a
 String instantiation runs the FLOOR body, where a bare `==` is a pointer
@@ -1335,6 +1337,72 @@ compare; the annotation is what routes it to `str_eq`. The sweep therefore
 waits on step (2): the operand is proven at the site (the twin keyed on the
 resolved type, arms specialized per install) and the annotation retires
 because the proof reaches, never because the compare happened to hold.
+
+`Hβ.eq.polymorphic-sum-payload-is-pointer-eq` — OPEN, MEASURED 2026-09-18, RED
+contract banked the same hour. `==` on a POLYMORPHIC sum compares its payload
+by ADDRESS. `Some(BInt(7)) == Some(BInt(7))` is false; `BInt(7) == BInt(7)` is
+true on the same run, and `tests/frontier/mn-eq-polymorphic-sum.mn` carries both
+so its exit names which halves broke (measured 6 = wrapped-int 2 + wrapped-text
+4, the monomorphic control 0). The emitted WAT says why in nine lines:
+`$eq_nOption` loads `Some`'s payload at offset 4 and compares it with
+`(i32.eq)`.
+▶ TWO READS DROP A PROOF THE GRAPH HOLDS, and they compound. `fold_sig`
+(types.mn) renders `TName(n, args)` as `"n{n}"` — its comment says "nominal —
+name carries identity", which is TRUE of a nullary nominal type and false of an
+applied one — where `TList`, `TTuple` and `TRecord` all fold their payloads
+structurally, so `Option(Boxed)`, `Option(Int)` and `Option(String)` share ONE
+generated helper and that helper cannot know which it serves. Then
+`variant_specs_of` (lower.mn) answers with the constructor's DECLARED payload
+types, so `Some`'s is the quantified var, which `emit_field_eq`'s final arm —
+the one commented "Int / Unit / resolved-TVar / … — word eq" — turns into a
+word compare. The arm swallows an UNRESOLVED TVar as if it were a resolved one.
+▶ WHY THE CENSUS IS BLIND TO IT, which is the part worth carrying:
+`T_EqTypeUnprovable` reports at an AUTHORED comparison whose operand type is a
+variable, and here the authored operands are proven (`Option(Boxed)` both
+sides). The unprovable operand is INSIDE a generated leaf, reached from a
+`fold_sig`-named helper no authored span points at — so the count held at 60
+across the whole discovery. A census that measures one surface cannot see the
+same class one layer in; the peer
+`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq` and this one are one defect at
+two altitudes, and the second is the one that fires with no missing twin.
+▶ BLAST RADIUS, unmeasured and named as such: `fold_sig` keys the eq, hash,
+show and compare helpers alike, so `hash` over a polymorphic sum hashes a
+pointer and the eq/hash divergence PLAN §5.U calls structurally unsayable is
+sayable here; `Option(String)`, `Result(T, E)` and every user-written
+container of a boxed payload are in it. Six `variant_specs_of` call sites in
+backends/wasm.mn and one in lower.mn.
+▶ THE FIX, and it is a proof, never a comparator written beside the compare:
+(1) `fold_sig(TName(n, args))` folds its arguments as its siblings already do,
+so each instantiation names its own helper; (2) `variant_specs_of` takes the
+APPLIED type and SUBSTITUTES the arguments into each declared payload, so the
+payload recursion sees `Boxed` and calls that sum's own helper, `String` and
+calls `str_eq`; (3) `emit_field_eq`'s final arm stops swallowing an unresolved
+`TVar` silently — it reports `T_EqTypeUnprovable` at the payload site, so the
+next gap of this shape is loud instead of measured by accident. Helper NAMES
+change, so the march is a TRANSITION and the re-pin is from m3. CLOSE: the
+fixture exits 0 with its control intact, the leg `eq-polymorphic-sum` leaves
+`frontier_expected_red`, and a hash gate over the same shape is banked with it.
+
+`Hβ.synth.divergence-from-the-trail` — OPEN, named 2026-09-18 at the landing
+that made the question computable. `Divergence` (types.mn) classifies WHAT
+separates two proven survivors — row, denotation, value, shape — and renders
+the proposition the developer never stated. Its SOURCE today is each
+survivor's own live reads: the callee's declared row from the env entry the
+vocabulary enumerator admitted it through, the callee's body for a denotation.
+PLAN §11.1's form reads it from the TRAIL — the earliest cell where two
+branches bound differently — and that is not reachable yet for a measured
+reason, not a preference: each candidate is judged in a COPIED graph instance
+(`candidate_proven`, synth_proposer.mn) binding its own fresh handle, so a
+trail diff over the demo fixtures is EMPTY, and in-segment handles collide
+numerically after rollback. It becomes reachable with Arc O1's sequential
+trail segment over ONE graph (`graph_push_checkpoint` + `heap_mark` +
+`world_top`, the triple `try_each_annotation` already owns), where the
+divergence is the first differing bind with `graph_compress_row`'s
+path-compression writes filtered out — those are optimization, not meaning.
+WHAT DOES NOT CHANGE when it lands: the four arms, their precedence, and their
+voice. Only which cell the classifier is handed. CLOSE: the fan runs as trail
+segments, the row and value arms read the diverging CELL's own Reason rather
+than the survivors' shapes, and the four fixtures hold their lines unchanged.
 
 `Hβ.effects.install-chain-as-value` — OPEN, named 2026-09-18 from the audit
 of rung B's own lambdas. `compile_context(body) = infer_context(() =>

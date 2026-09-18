@@ -88,13 +88,13 @@ type ProposerKind
   | ProposerSMT
   // wrap-handler suggestions per H5 AWrapHandler
   | ProposerHandlerCatalog
-  // user-supplied seeds via teach_synthesize
+  // seeds the developer supplies at the position
   | ProposerUser
 
 // ─── EnrichedCandidate — Candidate + provenance ────────────────────
 //
-// The Synth effect's `propose` returns [Node]; this file's chain
-// wraps each Node with its proposer of origin. Drift 7 closure: ONE
+// `synth_propose` answers with one Proposal; this file's chain carries
+// each candidate node with its proposer of origin until then. Drift 7 closure: ONE
 // record-shape, never parallel arrays. RANK IS A PROJECTION, NOT A
 // FIELD (Hβ.synth.rank-is-a-projection-not-a-field, resolved): the
 // stored cost field compared a measured proximity against invented
@@ -140,7 +140,8 @@ handler synth_default {
       (vocab, rejected) => {
         let enriched = concat_candidates(vocab, enumerate_typed(target_ty, allowed_effects, context))
         let verified = verify_each_enriched(enriched, target_ty, cand_start)
-        resume(Proposals(verified |> rank_sort(context_hole_span(context)) |> map_to_proposals, rejected))
+        let survivors = verified |> rank_sort(context_hole_span(context)) |> map_to_proposals
+        resume(Proposal({rejected: rejected, verdict: verdict_of(survivors, target_ty, context)}))
       },
     },
   },
@@ -873,6 +874,155 @@ fn map_to_proposals(enriched) with Alloc + Memory = map(
   },
   enriched
 )
+
+// ─── The verdict — computed ONCE, where the survivors are known ──────
+//
+// Five surfaces used to re-derive it from `len(survivors)`, and the copies
+// disagreed: the address render dropped the lone survivor's Reason while
+// keeping every tie's, so the medium showed its reasoning exactly when it
+// was unsure and withheld it exactly when the developer was most likely to
+// take the fill on faith. `VFill` holds the Reason because the constructor
+// admits no other shape.
+fn verdict_of(survivors, target_ty, context) = match survivors {
+  [] => VNone,
+  [only] => match only {
+    (node, reason) => VFill(node, reason),
+  },
+  _ => VAsk(divergence_of(survivors, target_ty, context), survivors),
+}
+
+// WHERE the survivors diverge, in the precedence types.mn's `Divergence`
+// states. Every read is LIVE at question time — a callee's row from the very
+// env entry the vocabulary enumerator admitted it through, a denotation from
+// the callee's own body — so nothing rides on the candidate record and
+// nothing can go stale between the enumeration and the question.
+//
+// The nodes arrive RANK-SORTED, so a row split is reported as the top
+// survivor against the first one that may do something it may not.
+fn divergence_of(survivors, target_ty, context) = {
+  let nodes = map(proposal_node, survivors)
+  match first_row_split(context, nodes) {
+    Some(split) => match split {
+      (a, b) => DivRow(a, b),
+    },
+    None => {
+      let denotations = map(candidate_denotation([]), nodes)
+      if any(denotation_unread, denotations) {
+        // A survivor that is not a constant at all makes this a choice
+        // between structures, and the domain has nothing to say about it.
+        DivShape
+      } else if denotations_alike(denotations) {
+        DivName
+      } else {
+        DivValue(ty_domain(target_ty))
+      }
+    },
+  }
+}
+
+fn proposal_node(pair) with Pure = match pair {
+  (node, _) => node,
+}
+
+// Rows compare by MUTUAL subsumption — the crown's own algebra, never a
+// structural compare, because two spellings of one row are one row.
+fn first_row_split(context, nodes) = {
+  let rows = map(candidate_row(context), nodes)
+  let base = head(rows)
+  match find(row_differs(base), rest(rows)) {
+    Some(r) => Some((base, r)),
+    None => None,
+  }
+}
+
+fn row_differs(a, b) = !(row_subsumes(a, b) && row_subsumes(b, a))
+
+// A literal, a constructor, a lambda skeleton performs nothing by itself,
+// and Pure is that reading rather than a fallback. A call carries its
+// callee's declared row.
+fn candidate_row(context, node) = match callee_name_of(node) {
+  None => mk_ef_pure(),
+  Some(name) => scope_row_of(name, context),
+}
+
+// The callee's row, re-read from the scope the enumerator admitted this
+// candidate through — one home, read live, never carried on the candidate
+// record beside its rendered Reason text. The scan is by NAME and pays the
+// O(1) law's standing debt with every other env read (`Hβ.perf.env-o1-index`,
+// `Hβ.perf.name-is-handle`); it runs once per survivor of a tie.
+fn scope_row_of(name: String, context) = match context {
+  Context(scope_bindings, _, _, _) => match find(binding_is_named(name), scope_bindings) {
+    Some(entry) => match entry {
+      (_, scheme, _, _) => extract_row(judgment_ty(scheme)),
+    },
+    None => mk_ef_pure(),
+  },
+}
+
+fn binding_is_named(name: String, entry) = match entry {
+  (ename, _, _, _) => ename == name,
+}
+
+// What this candidate DENOTES, if the medium can read it: a literal denotes
+// itself, and a zero-arg call denotes whatever its callee's body denotes,
+// followed down the call chain (`seen` breaks a cycle the vocabulary's own
+// nontermination exclusion does not reach, since that exclusion is about the
+// HOLE's enclosing decl, not about the callees of a candidate).
+//
+// This read is why `7` and `pure_seven()` classify as one value with two
+// names. It is the shape of the e-graph rewrite that would MERGE them — a
+// Pure nullary fn inlined to its literal body — and when that rule lands the
+// two collapse into one class and extraction answers with a fill; until
+// then, asking which name carries the intent is the honest answer, not a
+// stand-in for one (`Hβ.synth.fan-extraction-needs-a-feeder`).
+fn candidate_denotation(seen, node) = match callee_name_of(node) {
+  Some(name) => if contains_name(seen, name) {
+    None
+  } else {
+    match fn_body_by_name(name) {
+      None => None,
+      Some(body) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
+      candidate_denotation([name] ++ seen, body),
+    }
+  },
+  None => node_const(node_handle(node)),
+}
+
+fn denotation_unread(d) with Pure = match d {
+  None => true,
+  Some(_) => false,
+}
+
+// Every survivor reading as one constant. The comparison is asked about the
+// LitValues THEMSELVES, never about the `Option` around them: a polymorphic
+// sum's payload compares by ADDRESS today, so `Some(x) == Some(y)` answers
+// false for structurally equal payloads — measured 2026-09-18, one
+// $eq_nOption helper serving every instantiation because `fold_sig` folds
+// `TName(n, args)` to the bare name and the declared payload type is the
+// quantified var (`Hβ.eq.polymorphic-sum-payload-is-pointer-eq`,
+// tests/frontier/mn-eq-polymorphic-sum.mn). LitValue's own payloads are
+// ground — Int, Float, String, Bool — so this compare is the total
+// structural one, and it stays right when that peer closes.
+//
+// The element pin is an Intent Boundary (the concat precedent above): the
+// list arrives through `map`, whose element identity the graph cannot prove
+// at the compare site, and the twin keys on what the author states once.
+fn denotations_alike(ds: [Option(LitValue)]) = match head(ds) {
+  None => false,
+  Some(first) => all(denotes_value(first), rest(ds)),
+}
+
+// The pins are the Intent Boundary the comparison needs: `denotes_value` is
+// partially applied into `all`, so the element identity the caller states
+// does not reach the closure's own parameters, and an unpinned `==` here
+// would fall to the word compare the unprovable-comparison census counts.
+// The author states the identity once; both operands are then ground and the
+// compare is the total structural one (PLAN's pointer-eq-on-names class, the
+// same remedy its own entry names).
+fn denotes_value(first: LitValue, d: Option(LitValue)) = match d {
+  None => false,
+  Some(v) => v == first,
+}
 
 // ─── Node synthesizers — per-shape AST construction ─────────────────
 //

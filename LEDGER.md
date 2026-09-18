@@ -35,6 +35,89 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-18 · pin 3498d0541c93c45b · THE ORACLE ANSWERS WITH A VERDICT (Arc
+  O1 — the Proposal ADT and the computed question). CLEAN m2 == m3, census 0,
+  m3 leg 8.61s / 961MB, 407,393 → 409,333 wat lines; frontier 384/0/3,
+  proof-exactness 9/0, crown 62/0, verify green.
+  **THE LIST WAS THE BUG.** `Proposals([(Node, Reason)], [(String, Reason)])`
+  made six surfaces re-derive the verdict from `len(survivors)`, and the copies
+  disagreed at the one position where it costs most: `render_at`'s
+  single-survivor arm destructured `(survivor, _r)` and DROPPED the Reason
+  while its tie arm two lines down carried one per candidate. The medium was
+  showing its reasoning when unsure and withholding it when a developer is
+  likeliest to accept on faith — the dependence mechanism in miniature, inside
+  the projection whose whole purpose is the opposite.
+  `Proposal({verdict, rejected})` over `VFill(Node, Reason) |
+  VAsk(Divergence, [(Node, Reason)]) | VNone` makes the drop unsayable: the
+  constructor admits no fill without its Why. Rejections sit beside the verdict
+  rather than inside it, because a lone survivor coexists with three
+  row-refused names and the refusal teaches either way. Five re-derivations
+  became reads (`render_at`, `apply_suggestion`'s `len == 1`, `show_proposals`,
+  `propose_at`'s empty case, the `CursorView` slot); the sixth,
+  `teach_synthesize`, had zero callers — `mentl query src/mentl.mn
+  unreferenced` named it — and was DELETED rather than ported. Porting dead
+  code is how a representation change becomes a migration.
+  **THE TIE STOPPED SAYING THE SAME SENTENCE.** Every tie ended in "one more
+  constraint (a refinement, a type, an example) collapses it": identical words
+  at every position, which is a placeholder wearing a teaching voice. The
+  question is COMPUTED — `Divergence` classifies what actually separates the
+  survivors and renders in that arm's own vocabulary, in a stated precedence.
+  ROW first (a capability difference changes what the program may DO), read
+  from the very env entry the vocabulary enumerator admitted each candidate
+  through, compared by MUTUAL subsumption because two spellings of one row are
+  one row. Then DENOTATION: a zero-arg call is followed to its callee's body
+  and asked again, depth-bounded by a seen set, so `pure_seven()`,
+  `calm_seven()` and the literal `7` are one value with three names and the
+  only real choice is which name carries the intent. Then VALUE, carrying the
+  Domain the seeder already read, so the line says what the type admits rather
+  than asking for "a constraint". Then SHAPE.
+  The precedence is a JUDGMENT and is recorded as one. A same-denotation tie
+  is a MEANING tie at the intent altitude, not PLAN §5's free form-space tie:
+  the duality calls a tie free when a COST function totally orders it, and cost
+  is blind to what a later reader learns from a name. Rank orders how a tie
+  renders; the divergence is what decides it. The honest boundary is stated in
+  the type's own prose: the SOURCE of "which cell" is each survivor's live
+  reads today and the trail segment's first differing bind once branches share
+  one graph (`Hβ.synth.divergence-from-the-trail`) — the classification and its
+  voice stand either way, so this is the evolution of §11.1's first divergence
+  and not a placeholder for it.
+  Four fixtures, one per arm — `propose-fan-demo/bit.mn` (value),
+  `mn-row-tie.mn` (row, new), `mn-capability-tie.mn` (name),
+  `mn-shape-tie.mn` (shape, new) — plus the fill's Reason on
+  `propose-demo/hole.mn`. All five seen RED against pin 8798566e, which printed
+  `Propose: 1` bare and that one sentence at all four ties. The SHAPE fixture
+  exists to keep DENOTATION honest: the constant read folds literals,
+  arithmetic and unary operators and STOPS at a branch, so an unread body is
+  never reported as agreement.
+  **EVERY LAMBDA DISSOLVED INTO A PARTIAL APPLICATION.** The first form used
+  five closures and the anonymity ratchet caught three of them (367 → 370 — "a
+  row newly denied its decl home"). The fix was not a raised ceiling: the Stage
+  Law says a stage-shaped fn declares CONFIGURATION first and the flowing DATUM
+  last, so `candidate_row(context, node)`, `candidate_denotation(seen, node)`,
+  `binding_is_named(name, entry)`, `row_differs(a, b)` and
+  `denotes_value(first, d)` each became `map(f(config))` by declaration-order
+  fill — no `??`, no lambda, the language's own form. 367 held.
+  **AND THE CLASSIFIER FOUND A LIVE SILENT WRONG, banked rather than worked
+  around.** The first draft compared two `Option(LitValue)` with `==` and the
+  tie misclassified; the census did NOT rise, which refuted the obvious
+  hypothesis, so the emitted WAT was read instead: `$eq_nOption`, ONE helper
+  for every instantiation, loading `Some`'s payload at offset 4 and comparing
+  it with `(i32.eq)`. Two reads drop a proof the graph holds — `fold_sig`
+  renders `TName(n, args)` as the bare name where `TList`/`TTuple`/`TRecord`
+  all fold their payloads, and `variant_specs_of` answers with the
+  constructor's DECLARED payload type, a quantified var, which
+  `emit_field_eq`'s last arm turns into a word compare with no diagnostic.
+  **`==` on any polymorphic sum compares its payload by ADDRESS**, and
+  `T_EqTypeUnprovable` cannot see it because the unprovable operand is inside a
+  generated leaf rather than at an authored comparison.
+  `tests/frontier/mn-eq-polymorphic-sum.mn` carries its own monomorphic control
+  (which passes on the same run) so the exit names which halves broke —
+  measured 6 — and it is declared RED as `eq-polymorphic-sum`. The classifier
+  compares the LitValues themselves rather than the wrapper, which is the
+  straighter form regardless and stays right when the peer closes;
+  `denotes_value`'s parameters carry the Intent Boundary the partial
+  application's closure needs, and the unprovable-comparison census held at 60.
+
 - 2026-09-18 · pin 8798566eca3c7a0e · THE REFINEMENT SEEDS THE HOLE (Arc O1's
   first half — propagation before enumeration). CLEAN m2 == m3, census 0, m3
   leg 8.32s / 959MB, 405,039 → 407,393 wat lines; frontier 378/0/2,
