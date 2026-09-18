@@ -1231,10 +1231,10 @@ fn project_emit_state(lowered, closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show:
 // a record contributes its delimiters + each "name: "; a tuple its parens; a
 // list its brackets + ", "; a sum each "Ctor("/")"/nullary name. Runs inside
 // project_emit_state where string_literal_collector catches visit_string.
-fn register_show_literals(show_tys) with EmitStringLiteralOp + EnvRead + Memory + Alloc =
+fn register_show_literals(show_tys) with EmitStringLiteralOp + EnvRead + Memory + Alloc + GraphRead =
   register_show_literals_list(show_tys, [])
 
-fn register_show_literals_list(tys, seen) with EmitStringLiteralOp + EnvRead + Alloc + Memory = if len(tys) == 0 {
+fn register_show_literals_list(tys, seen) with EmitStringLiteralOp + EnvRead + Alloc + Memory + GraphRead = if len(tys) == 0 {
   ()
 } else {
   let ty = last(tys)
@@ -1250,8 +1250,8 @@ fn register_show_literals_list(tys, seen) with EmitStringLiteralOp + EnvRead + A
 // The literal set of one type's $show_<sig> helper. The "" separator is always
 // registered (the join + the list-body's empty terminal). visit_string dedups
 // (string_entry_exists), so registering a literal twice is harmless.
-fn register_one_show_literals(ty) with EmitStringLiteralOp + EnvRead + Memory + Alloc = match fold_strip(ty) {
-  TName(name, _) => register_show_sum_literals(variant_named_specs_of(name), 0),
+fn register_one_show_literals(ty) with EmitStringLiteralOp + EnvRead + Memory + Alloc + GraphRead = match fold_strip(ty) {
+  TName(_, _) => register_show_sum_literals(variant_named_specs_at(fold_strip(ty)), 0),
   TList(_) => {
     visit_string("[")
     visit_string("]")
@@ -1519,7 +1519,7 @@ fn walk_lemit_arms(arms) = each(
 fn walk_lemit_pat(pat) = match pat {
   LPLit(LString(s)) => visit_string(s),
   LPLit(_) => (),
-  LPCon(_, _, subs) => each(walk_lemit_pat, subs),
+  LPCon(_, _, pairs) => each(walk_lemit_pat, pat_of_pairs(pairs)),
   LPTuple(elems) => each(
     (e) => match e {
       (_, sp) => walk_lemit_pat(sp),
@@ -3317,7 +3317,7 @@ fn walk_locals_arms(arms, acc) = if len(arms) == 0 {
 // loaded it f64-wide: the m3 assembly's 20-site local.set class.
 fn walk_locals_pat(pat, r, acc) = match pat {
   LPVar(name) => [local_wat_name(name, r) ++ " " ++ repr_wat(r)] ++ acc,
-  LPCon(name, _, sub_pats) => walk_locals_pat_con(ctor_payload_tys_of(name), sub_pats, acc),
+  LPCon(_, _, pairs) => walk_locals_pat_con(ty_of_pairs(pairs), pat_of_pairs(pairs), acc),
   LPUnresolvedCon(_, sub_pats) => // No declaration proves the payload tys — declare each sub-binder at the
   // word floor so the (dead — predicate false) arm body still assembles.
   fold(acc, (a, p) => walk_locals_pat(p, RI32, a), sub_pats),
@@ -5188,19 +5188,6 @@ fn emit_eq_sum_call(sig, neg) = {
   if neg { wat_emit("    (i32.eqz)\n") } else { () }
 }
 
-// ctor_payload_tys_of — the payload types of a constructor BY NAME, resolved
-// through the env's own bucket index (env_lookup_ctor, the kind-filtered
-// read). The snapshot scan this replaces walked the whole env backward per
-// pattern bind (6.86% of the self-compile, perf 2026-07-24) and compared
-// names through a str_eq pin the untyped snapshot tuple forced; the index
-// walk compares under the String proof. No constructor entry → [] (a
-// nullary or unresolved ctor — the uniform-stride fallback is then
-// byte-identical).
-fn ctor_payload_tys_of(ctor_name) with EnvRead + Memory + Alloc + GraphRead + WASI = match env_lookup_ctor(ctor_name) {
-  Some((scheme, _reason, _kind)) => ctor_payload_tys(judgment_ty(scheme)),
-  None => [],
-}
-
 // ─── The eq-leaf of the structural fold: generated recursive helpers ──────
 // A product == is a CALL to $eq_<sig>, generated once per distinct product
 // type and deduped (the e-graph canonicalizes equal folds). The generator
@@ -5509,8 +5496,8 @@ fn emit_hash_seq_body(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
 // specs and emits sentinel-guard + tag-compare + per-tag payload recursion;
 // a SEQUENCE-of-struct walks elements through its own recursive body
 // (emit_eq_leaf_seq). One generator per leaf family — divergence is unsayable.
-fn emit_one_eq_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy = match fold_strip(ty) {
-  TName(name, _) => emit_eq_leaf_sum(sig, name),
+fn emit_one_eq_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy + GraphRead = match fold_strip(ty) {
+  TName(_, _) => emit_eq_leaf_sum(sig, fold_strip(ty)),
   TList(elem) => emit_eq_leaf_seq(sig, elem),
   _ => {
     wat_emit("  (func $eq_")
@@ -5542,8 +5529,8 @@ fn emit_one_eq_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupT
 // uniform i32 slots) via emit_field_eq — a sum payload field re-enters this
 // family. Recursive ADTs (Tree) call $eq_nTree again: a runtime call, finite
 // on the value, never inline-infinite. The env's variant specs are read LIVE.
-fn emit_eq_leaf_sum(sig, type_name) with EnvRead + Alloc + Memory + WasmOut + LookupTy = {
-  let specs = variant_specs_of(type_name)
+fn emit_eq_leaf_sum(sig, applied) with EnvRead + Alloc + Memory + WasmOut + LookupTy + GraphRead = {
+  let specs = variant_specs_at(applied)
   wat_emit("  (func $eq_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
@@ -5850,8 +5837,8 @@ fn emit_cmp_sign_test(op) = {
 // returning the first non-zero field-compare (else 0); a SUM (TName payload-ADT)
 // compares tags first (sign of the tag difference), then the matched variant's
 // payload fields. One generator, two of the five leaves — divergence unsayable.
-fn emit_one_compare_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy = match fold_strip(ty) {
-  TName(name, _) => emit_one_compare_sum_helper(sig, name),
+fn emit_one_compare_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy + GraphRead = match fold_strip(ty) {
+  TName(_, _) => emit_one_compare_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_cmp_leaf_seq(sig, elem),
   _ => {
     wat_emit("  (func $compare_")
@@ -5873,8 +5860,8 @@ fn emit_one_compare_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + Lo
 //     order (declaration order = tag id = sentinel value).
 //   - else both heap records: compare tags (sign of difference); if equal,
 //     descend the matched variant's payload conjunction (first non-zero wins).
-fn emit_one_compare_sum_helper(sig, type_name) with EnvRead + Alloc + Memory + WasmOut + LookupTy = {
-  let specs = variant_specs_of(type_name)
+fn emit_one_compare_sum_helper(sig, applied) with EnvRead + Alloc + Memory + WasmOut + LookupTy + GraphRead = {
+  let specs = variant_specs_at(applied)
   wat_emit("  (func $compare_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
@@ -6127,11 +6114,21 @@ fn eq_subtys(ty, seen, acc) = match fold_strip(ty) {
   } else {
     eq_subtys(elem, seen, acc)
   },
-  TName(name, _) => if ls_find_str_local(seen, name, 0) >= 0 {
+  TName(_, _) => // The seen-set keys by the fold SIG, not by the type's name. The sig IS
+  // the helper's identity, so keying by it terminates a recursive ADT
+  // exactly as the name did — `Tree(Int)` reaching `Tree(Int)` is one sig —
+  // while keeping `Option(Int)` and `Option(Boxed)` the two collections they
+  // are. Keyed by name, the second instantiation was silently skipped and
+  // its helper went uncollected.
+  if ls_find_str_local(seen, fold_sig(fold_strip(ty)), 0) >= 0 {
     acc
   } else {
-    let specs = variant_specs_of(name)
-    eq_subtys_variants(specs, 0, len(specs), [name] ++ seen, [ty] ++ acc)
+    // The specs at THIS instantiation: a payload that is the type's own
+    // parameter collects the ARGUMENT's sub-types, so the leaf an
+    // `Option(Boxed)` needs — the $eq_ helper of its argument — is collected rather than
+    // missed, and the assembly finds every helper the emit will call.
+    let specs = variant_specs_at(fold_strip(ty))
+    eq_subtys_variants(specs, 0, len(specs), [fold_sig(fold_strip(ty))] ++ seen, [ty] ++ acc)
   },
   _ => acc,
 }
@@ -6181,7 +6178,7 @@ fn eq_subtys_variants(specs, i, n, seen, acc) = if i >= n {
 // s-expressions — the value, the field-loads, and the recursive show calls are
 // sub-expressions of the concat tree (correct stack discipline, no interleave).
 fn emit_one_show_helper(sig, ty) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = match fold_strip(ty) {
-  TName(name, _) => emit_one_show_sum_helper(sig, name),
+  TName(_, _) => emit_one_show_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_one_show_list_helper(sig, elem),
   _ => emit_one_show_product_helper(sig, ty),
 }
@@ -6318,8 +6315,8 @@ fn emit_show_field_load(off, r) = {
 // "Ctor(" ++ f0 ++ ", " ++ f1 ++ ")". The variant names + payload types are read
 // LIVE from the env (variant_named_specs_of). A recursive ADT re-enters
 // $show_n<Name> (finite on the value). Mirrors emit_eq_leaf_sum's guard.
-fn emit_one_show_sum_helper(sig, type_name) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = {
-  let specs = variant_named_specs_of(type_name)
+fn emit_one_show_sum_helper(sig, applied) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = {
+  let specs = variant_named_specs_at(applied)
   wat_emit("  (func $show_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (result i32) (local $ta i32)")
@@ -6564,11 +6561,12 @@ fn show_subtys(ty, seen, acc) = match fold_strip(ty) {
   // collector reads the same fact the dispatch reads.
   acc,
   TList(elem) => show_subtys(elem, seen, [ty] ++ acc),
-  TName(name, _) => if ls_find_str_local(seen, name, 0) >= 0 {
+  TName(_, _) => // Keyed by the fold SIG, the helper's own identity — see eq_subtys.
+  if ls_find_str_local(seen, fold_sig(fold_strip(ty)), 0) >= 0 {
     acc
   } else {
-    let specs = variant_specs_of(name)
-    show_subtys_variants(specs, 0, len(specs), [name] ++ seen, [ty] ++ acc)
+    let specs = variant_specs_at(fold_strip(ty))
+    show_subtys_variants(specs, 0, len(specs), [fold_sig(fold_strip(ty))] ++ seen, [ty] ++ acc)
   },
   _ => acc,
 }
@@ -6618,8 +6616,8 @@ fn show_operand_contrib(arg, acc) with LookupTy + Alloc + Memory + EnvRead + WAS
 // canonical offset; a SUM seeds the mix with the tag, then mixes the matched
 // variant's payload. The FNV offset basis (2166136261) and prime (16777619)
 // are the SAME str_hash / hash_source share — one hash family, no divergence.
-fn emit_one_hash_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy = match fold_strip(ty) {
-  TName(name, _) => emit_one_hash_sum_helper(sig, name),
+fn emit_one_hash_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy + GraphRead = match fold_strip(ty) {
+  TName(_, _) => emit_one_hash_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_hash_leaf_seq(sig, elem),
   _ => {
     wat_emit("  (func $hash_")
@@ -6639,8 +6637,8 @@ fn emit_one_hash_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + Looku
 // [tag@0][f0@4]…, so: seed $h with the FNV basis; if the operand is a sentinel
 // (< heap_base) mix the word itself; else mix tag@0, then the matched variant's
 // payload fields. Two structurally-equal ADT values fold identically.
-fn emit_one_hash_sum_helper(sig, type_name) with EnvRead + Alloc + Memory + WasmOut + LookupTy = {
-  let specs = variant_specs_of(type_name)
+fn emit_one_hash_sum_helper(sig, applied) with EnvRead + Alloc + Memory + WasmOut + LookupTy + GraphRead = {
+  let specs = variant_specs_at(applied)
   wat_emit("  (func $hash_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (result i32)")
@@ -6775,22 +6773,6 @@ fn emit_field_hash_agg_call(off, sig) = {
 fn hash_operand_contrib(arg, acc) with LookupTy + Alloc + Memory + EnvRead + WASI + GraphRead = {
   let h = lexpr_handle(arg)
   if h == 0 { acc } else { eq_subtys(fold_strip(chase_deep(lookup_ty(h))), [], acc) }
-}
-
-// variant_named_specs_of — like variant_specs_of but ALSO carries each
-// variant's constructor NAME (show prints it; eq does not need it). Read live
-// from the env's ConstructorScheme — (tag_id, ctor_name, [payload_ty]) in
-// declaration (tag) order.
-// The keyed read: the TypeVariants entry IS the (tag, name, payloads)
-// triple this projection returns — one env lookup, the scan deleted.
-fn variant_named_specs_of(type_name) with EnvRead + Memory + Alloc = match env_lookup_variants(type_name) {
-  Some(entry) => match entry {
-    (_, _r, kind) => match kind {
-      TypeVariants(specs) => specs,
-      _ => [],
-    },
-  },
-  None => [],
 }
 
 fn emit_binop_repr(op, r) = match r {
@@ -7258,7 +7240,7 @@ fn emit_pat_predicate_at(pat, path, path_len) = match pat {
       wat_emit(".eq)\n")
     },
   },
-  LPCon(name, tag, sub_pats) => if len(sub_pats) == 0 {
+  LPCon(_, tag, pairs) => if len(pairs) == 0 {
     // Nullary constructor IS its sentinel (HB) — direct compare.
     emit_scrut_at(path, path_len)
     wat_emit("    (i32.const ")
@@ -7280,7 +7262,7 @@ fn emit_pat_predicate_at(pat, path, path_len) = match pat {
     wat_emit("    (i32.const ")
     wat_emit(int_to_str(tag))
     wat_emit(")\n    (i32.eq)\n")
-    emit_pat_con_subs_predicate(ctor_payload_tys_of(name), sub_pats, 0, path, path_len)
+    emit_pat_con_subs_predicate(ty_of_pairs(pairs), pat_of_pairs(pairs), 0, path, path_len)
     wat_emit("      )\n      (else (i32.const 0)))\n")
   },
   LPTuple(ebs) => {
@@ -7414,7 +7396,7 @@ fn emit_pat_binds_at(pat, path, path_len, val_repr) = match pat {
   },
   LPWild => (),
   LPLit(_) => (),
-  LPCon(name, _, sub_pats) => emit_pat_con_subs_binds(ctor_payload_tys_of(name), sub_pats, 0, path, path_len),
+  LPCon(_, _, pairs) => emit_pat_con_subs_binds(ty_of_pairs(pairs), pat_of_pairs(pairs), 0, path, path_len),
   LPUnresolvedCon(_, sub_pats) => // Dead arm (predicate false) — bind each sub at the scrutinee root, word
   // floor: never executes, always assembles.
   each((p) => emit_pat_binds_at(p, path, path_len, RI32), sub_pats),
@@ -7634,7 +7616,7 @@ fn lowpat_has_binders(pat) = match pat {
   LPVar(_) => true,
   LPWild => false,
   LPLit(_) => false,
-  LPCon(_, _, sub_pats) => lowpats_have_binders(sub_pats),
+  LPCon(_, _, pairs) => lowpats_have_binders(pat_of_pairs(pairs)),
   LPUnresolvedCon(_, sub_pats) => lowpats_have_binders(sub_pats),
   LPTuple(ebs) => tuple_pats_have_binders(ebs),
   LPRecord(fbs, rest) => if record_pats_have_binders(fbs) {

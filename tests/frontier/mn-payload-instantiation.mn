@@ -1,0 +1,31 @@
+// The other two faces of the payload read, both measured against the prior
+// wheel before the fix and both silent-to-loud in the usual order.
+//
+// SHOW rendered the payload's ADDRESS: `"{Some(BInt(7))}"` came back
+// `Some(1048584)`. The generated $show helper was one per nominal NAME, so it
+// could not know its payload was a `Boxed` rather than a word, and printed the
+// word it had.
+//
+// The WIDTH face was not silent at all — it did not assemble. `Some(1.5)`'s
+// binder was declared from the DECLARED payload type (the quantified var, so
+// the word floor) while the body read it at the proven f64: one local written
+// $v, another read $v.f64, and wasmtime refused the module with an
+// unknown-local error. A monomorphic `BF(Float)` payload was right on the same wheel,
+// which is what named the difference as instantiation rather than floats.
+//
+// The two are one read: a constructor's payload types come from the
+// instantiation the graph proved, never from the declaration that quantified
+// them. Exits name the face — show 1, width 2.
+// expect: 0
+
+type Boxed = BInt(Int) | BText(String)
+
+fn main() = {
+  let shown = if "{Some(BInt(7))}" == "Some(BInt(7))" { 0 } else { 1 }
+  let wide = match Some(1.5) {
+    Some(v) => v,
+    None => 0.0,
+  }
+  let widened = if wide > 1.49 && wide < 1.51 { 0 } else { 2 }
+  shown + widened
+}

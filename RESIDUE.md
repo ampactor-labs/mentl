@@ -1338,7 +1338,26 @@ waits on step (2): the operand is proven at the site (the twin keyed on the
 resolved type, arms specialized per install) and the annotation retires
 because the proof reaches, never because the compare happened to hold.
 
-`Hβ.eq.polymorphic-sum-payload-is-pointer-eq` — OPEN, MEASURED 2026-09-18, RED
+`Hβ.eq.polymorphic-sum-payload-is-pointer-eq` — ✅ CLOSED 2026-09-18 at pin
+df79c2f3, one landing after it was banked, BY PROOF: `fold_sig` folds its
+arguments so each instantiation names its own leaf, `variant_specs_at` grounds
+the declared payloads against the application's arguments, the sub-type
+collectors key their seen-set by that sig rather than by the type's name, and
+`LPCon` carries its payload types the way `LPTuple` always has. The gate's
+other direction refused the stale `frontier_expected_red` entry the moment the
+leg passed. Two declared-payload readers — `ctor_payload_tys_of` and
+`variant_named_specs_of` — were dead at the landing and went with it.
+THE ENTRY IS KEPT WHOLE below because its blindness is the transferable part:
+a census that measures one surface cannot see the same class one layer in, and
+it was the census HOLDING at its number that refuted the first hypothesis and
+sent the dig to the artifact. THE REMAINDER, named rather than implied:
+`emit_field_eq`'s final arm still swallows an unresolved `TVar` silently
+(`Hβ.emit.generated-leaf-swallows-an-unresolved-payload` — it should report at
+the payload site, so the next gap of this shape is loud instead of found by a
+later generation stepping on it), and a nominal type whose parameter is a ROW
+grounds nothing, which is unconstructible today and named at the code
+(`Hβ.types.nominal-row-parameter`). The record as measured:
+OPEN, MEASURED 2026-09-18, RED
 contract banked the same hour. `==` on a POLYMORPHIC sum compares its payload
 by ADDRESS. `Some(BInt(7)) == Some(BInt(7))` is false; `BInt(7) == BInt(7)` is
 true on the same run, and `tests/frontier/mn-eq-polymorphic-sum.mn` carries both
@@ -1371,17 +1390,48 @@ pointer and the eq/hash divergence PLAN §5.U calls structurally unsayable is
 sayable here; `Option(String)`, `Result(T, E)` and every user-written
 container of a boxed payload are in it. Six `variant_specs_of` call sites in
 backends/wasm.mn and one in lower.mn.
-▶ THE FIX, and it is a proof, never a comparator written beside the compare:
+▶ THE FIX WAS (1) and (2) AND IT LANDED; (3) IS THE REMAINDER.
 (1) `fold_sig(TName(n, args))` folds its arguments as its siblings already do,
-so each instantiation names its own helper; (2) `variant_specs_of` takes the
-APPLIED type and SUBSTITUTES the arguments into each declared payload, so the
-payload recursion sees `Boxed` and calls that sum's own helper, `String` and
-calls `str_eq`; (3) `emit_field_eq`'s final arm stops swallowing an unresolved
-`TVar` silently — it reports `T_EqTypeUnprovable` at the payload site, so the
-next gap of this shape is loud instead of measured by accident. Helper NAMES
-change, so the march is a TRANSITION and the re-pin is from m3. CLOSE: the
-fixture exits 0 with its control intact, the leg `eq-polymorphic-sum` leaves
-`frontier_expected_red`, and a hash gate over the same shape is banked with it.
+so each instantiation names its own helper — LANDED; (2) the specs read takes
+the APPLIED type and SUBSTITUTES the arguments into each declared payload, so
+the payload recursion sees `Boxed` and calls that sum's own helper, `String`
+and calls `str_eq` — LANDED as `variant_specs_at`; (3) `emit_field_eq`'s final
+arm still swallows an unresolved `TVar` silently, and should report at the
+payload site so the next gap of this shape is loud instead of found by a later
+generation stepping on it — OPEN, carried at the top of this entry. The march
+was the predicted TRANSITION (412,993 lines, +0.9% for the twinned helpers),
+re-pinned from m3. TWO THINGS THE PLAN DID NOT PREDICT, both measured at the
+build: the collectors' seen-set had to re-key from the type's NAME to the sig,
+or the second instantiation was silently skipped and its helper never
+collected; and the three faces needed `LPCon`, `lower_pat_typed` and
+`bind_pat_locals` all three, because `PCon` was the constructor left behind
+wherever `PTuple` had already been taught.
+
+`Hβ.emit.generated-leaf-swallows-an-unresolved-payload` — OPEN, named
+2026-09-18 as the remainder of the payload-instantiation landing.
+`emit_field_eq`'s final arm — commented "Int / Unit / resolved-TVar /
+nullary-tag / fn-idx / cont-ptr — word eq" — answers an UNRESOLVED `TVar` the
+same way it answers a resolved one, with `(i32.eq)` and no diagnostic. That is
+the silent surrender-fallback at the one site `T_EqTypeUnprovable` cannot
+visit, because a generated leaf has no authored span to report at. Grounding
+the payload types removed the instantiation case that made it fire in ordinary
+code, so nothing is known to reach it today — which is exactly the condition
+under which the last such floor sat unreported for its whole life, and why
+this is banked rather than assumed gone. THE FIX: the arm reports at the
+payload's own site, carrying the constructor and the position, so the next gap
+of this shape is loud instead of found by a later generation stepping on it.
+The class is pre-arm, on `T_FieldOffsetUnprovable`'s ladder; a wheel census of
+zero is the arming licence, not the retirement. CLOSE: the arm reports, a
+fixture that reaches it is banked RED-first, and the report's own census
+enters verify-baseline.
+
+`Hβ.types.nominal-row-parameter` — OPEN, named 2026-09-18 at the grounding
+walk. `ground_ty` passes a `TFun`'s effect row and a `TCont`'s world through
+untouched: a nominal type's arguments are TYPES, so a type parameter that is a
+ROW is not constructible at that boundary today. When it is — the modal arc's
+own direction — the row grounds through the same positions the types do, and
+the walk's two pass-through arms become substitutions. Named at the code so
+the omission is a decision rather than an oversight.
 
 `Hβ.synth.divergence-from-the-trail` — OPEN, named 2026-09-18 at the landing
 that made the question computable. `Divergence` (types.mn) classifies WHAT

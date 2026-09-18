@@ -294,8 +294,18 @@ fn fold_sig(ty) with Memory = match fold_strip(ty) {
   TVar(_) => // unresolved handle — a word
   "i",
   TList(elem) => "l{fold_sig(elem)}",
-  TName(n, _) => // nominal — name carries identity
-  "n{n}",
+  TName(n, args) => // Nominal — the name carries identity, AND the arguments carry the rest of
+  // it. This arm read `"n{n}"` and dropped `args` until 2026-09-18; its
+  // comment said "name carries identity", which is true of a nullary nominal
+  // type and false of an applied one. `Option(Int)`, `Option(String)` and
+  // `Option(Boxed)` shared ONE generated helper, which therefore could not
+  // know which it served and compared, rendered and hashed its payload as a
+  // word — an ADDRESS for anything boxed. Every sibling arm here already
+  // folds its payload; this one now does too, so each instantiation names
+  // its own leaf, exactly as total monomorphization twins a function per the
+  // types its call sites prove. A type with no arguments renders as it always
+  // did, so every monomorphic ADT keeps its helper name.
+  if len(args) == 0 { "n{n}" } else { "n{n}{fold_sig_list(args, 0, len(args))}_" },
   TTuple(elems) => "t{fold_sig_list(elems, 0, len(elems))}_",
   TRecord(fs) => "r{fold_sig_fields(fs, 0, len(fs))}_",
   TRecordOpen(fs, _) => "r{fold_sig_fields(fs, 0, len(fs))}_",

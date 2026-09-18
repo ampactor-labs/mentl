@@ -35,6 +35,74 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-18 · pin df79c2f3585451a7 · THE PAYLOAD IS READ AT ITS INSTANTIATION.
+  TRANSITION m3 == m4 at 412,993 wat lines (+3,660, 0.9% — the twinned
+  helpers), CLEAN at the pin, census 0, m3 leg 8.67s / 975MB; frontier 388/0/2,
+  proof-exactness 9/0, crown 62/0, verify green.
+  **A constructor's payload types were read from the DECLARATION, where they
+  may be quantified, instead of from the INSTANTIATION the graph proved.**
+  Found by following a misclassified proposal tie down, and none of the three
+  faces it turned out to have was the one the search started from:
+  `Some(BInt(7)) == Some(BInt(7))` answered FALSE while `BInt(7) == BInt(7)`
+  answered true on the same run; `"{Some(BInt(7))}"` rendered `Some(1048584)`,
+  the payload's address; and `let a = Some(1.5)` produced a module that DOES
+  NOT ASSEMBLE — one local written $v, another read $v.f64. A monomorphic
+  `BF(Float)` payload was correct throughout, which is the measurement that
+  named the difference as instantiation rather than floats.
+  **THE CENSUS WAS BLIND, AND ITS BLINDNESS IS THE LESSON.** The obvious
+  hypothesis was the class banked hours earlier — `==` on an operand whose type
+  is a variable at emit — so the first move was to count it. It held at 60,
+  unchanged, which REFUTED the hypothesis and sent the dig to the emitted WAT
+  instead of to a plausible story. `T_EqTypeUnprovable` reports at an AUTHORED
+  comparison; here both authored operands are proven `Option(Boxed)` and the
+  unprovable one lives inside a GENERATED leaf, where no authored span points.
+  A census that measures one surface cannot see the same class one layer in.
+  **TWO READS DROPPED THE PROOF.** `fold_sig` rendered `TName(n, args)` as the
+  bare name, where `TList`/`TTuple`/`TRecord` all fold their payloads — its own
+  comment said "nominal — name carries identity", which is true of a nullary
+  nominal type and false of an applied one — so ONE `$eq_nOption` served every
+  instantiation and could not know which. And `variant_specs_of` answered with
+  the DECLARED payload types, which `emit_field_eq`'s final arm (commented
+  "Int / Unit / resolved-TVar / … — word eq") turned into a word compare,
+  swallowing an UNRESOLVED var as though it were a resolved one.
+  **THE FIX IS THE READ.** `variant_specs_at(applied)` grounds each declared
+  payload against the arguments the application carries — one home, and a type
+  with no arguments grounds to itself, so every monomorphic ADT emits exactly
+  what it emitted before. `fold_sig` folds its arguments, so each instantiation
+  names its own leaf: total monomorphization's own law read at the generated
+  fold rather than a new mechanism. The eq and show sub-type collectors key
+  their seen-set by that SIG rather than by the type's name — keyed by name the
+  second instantiation is silently skipped and its helper never collected,
+  which would have been this defect in a new costume. `LPCon` carries its
+  payload types the way `LPTuple` has carried its element types since its own
+  offsets stopped being baked.
+  **THE SHAPE OF THE WHOLE DEFECT: `PCon` was the constructor left behind
+  everywhere `PTuple` had already been taught** — in `LowPat`'s payload, in
+  `lower_pat_typed` (where `PCon` fell through to the untyped path and dropped
+  the scrutinee's type), and in `bind_pat_locals` (where `PCon` floored while
+  `PTuple` zipped). Three sites, one omission, and the loud face needed all
+  three. `con_payload_tys_at` reads through `chase_deep` before stripping, the
+  same fold boundary the collectors run at their dispatch entry; without it a
+  bound scrutinee answered with no specs at all and every payload floored —
+  measured, not reasoned.
+  **THE DELETIONS:** `ctor_payload_tys_of` and `variant_named_specs_of`, both
+  declared-payload readers, dead the moment the grounded read landed —
+  `mentl query src/backends/wasm.mn unreferenced` named the first — and the
+  effectful-lambda ceiling fell 367 → 366 with them.
+  **ONE DESIGN QUESTION ANSWERED BY MEASUREMENT AND RECORDED SO IT IS NOT
+  REOPENED.** The elegant move looked like generalizing `subst_ty`'s mapping
+  from var→var to var→Ty and having one substitution walk. The measurement
+  refutes it: that mapping is var→var *because it serves ROW vars too*, and
+  rows have no `Ty` form, so unifying would need a sum over codomains on the
+  compiler's hottest path to buy nothing. Freshening and grounding are two
+  operations with different codomains, not one walk written twice.
+  **AND THE GATE RETIRED ITS OWN DECLARATION.** `eq-polymorphic-sum` was banked
+  as `frontier_expected_red` in the previous landing and refused as STALE by
+  the gate's other direction the moment it passed here — the whole life of an
+  expected-red entry inside one day, which is what that two-directional
+  contract exists to produce. `mn-payload-instantiation.mn` joins it for the
+  show and width faces; each fixture's exit NAMES which face broke.
+
 - 2026-09-18 · pin 3498d0541c93c45b · THE ORACLE ANSWERS WITH A VERDICT (Arc
   O1 — the Proposal ADT and the computed question). CLEAN m2 == m3, census 0,
   m3 leg 8.61s / 961MB, 407,393 → 409,333 wat lines; frontier 384/0/3,

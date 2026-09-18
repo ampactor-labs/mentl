@@ -1,25 +1,27 @@
-// `==` on a POLYMORPHIC sum compares its payload by ADDRESS. Measured
-// 2026-09-18 while classifying a proposal tie: two structurally equal
-// `Some(LI(7))` answered unequal, and the emitted helper says why —
-// `$eq_nOption`, ONE helper for every instantiation, loading `Some`'s
-// payload at offset 4 and comparing it with `(i32.eq)`.
+// `==` over a POLYMORPHIC sum, proven to the bottom. This fixture was born RED
+// on 2026-09-18 and turned green the same day by proof, which is the whole
+// life of an expected-red entry and worth keeping visible.
 //
-// The root is two reads that drop a proof the graph holds. `fold_sig`
-// renders `TName(n, args)` as the bare name, so `Option(Boxed)` and
-// `Option(Int)` share one helper where `TList` / `TTuple` / `TRecord` all
-// fold their payloads structurally; and `variant_specs_of` answers with the
-// constructor's DECLARED payload types, so `Some`'s is the quantified var,
-// which `emit_field_eq`'s final arm turns into a word compare with no
-// diagnostic — the silent surrender-fallback at the one site
-// `T_EqTypeUnprovable` does not visit, because the unprovable operand is
-// inside a generated leaf rather than at an authored comparison.
+// WHAT IT CAUGHT: two structurally equal `Some(BInt(7))` answered UNEQUAL, and
+// the emitted helper said why — `$eq_nOption`, ONE helper for every
+// instantiation, loading `Some`'s payload at offset 4 and comparing it with
+// `(i32.eq)`. Two reads dropped a proof the graph held. `fold_sig` rendered
+// `TName(n, args)` as the bare name, where `TList` / `TTuple` / `TRecord` all
+// fold their payloads, so `Option(Boxed)` and `Option(Int)` shared one helper
+// that could not know which it served; and `variant_specs_of` answered with
+// the constructor's DECLARED payload type — the quantified var — which
+// `emit_field_eq`'s last arm turned into a word compare with no diagnostic.
 //
-// The monomorphic control passes on the same run: `LI(7) == LI(7)` is 0,
-// because there every declared payload is ground.
+// It was invisible to `T_EqTypeUnprovable`, whose whole census held unchanged
+// across the discovery: that diagnostic reports at an AUTHORED comparison
+// whose operand type is a variable, and here the authored operands are proven
+// `Option(Boxed)` on both sides. The unprovable operand lives inside a
+// GENERATED leaf, where no authored span points.
 //
-// DECLARED RED (`Hβ.eq.polymorphic-sum-payload-is-pointer-eq`). It turns
-// green by PROOF — the sig folding its arguments and the specs substituting
-// them — never by a comparator written beside it.
+// The control is the point of the shape: the monomorphic `BInt(7) == BInt(7)`
+// was RIGHT on the same run, because there every declared payload is ground.
+// So the exit NAMES which halves are broken rather than merely failing —
+// measured 6 before the fix (wrapped int 2 + wrapped text 4), 0 after.
 // expect: 0
 
 type Boxed = BInt(Int) | BText(String)

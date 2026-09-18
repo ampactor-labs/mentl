@@ -3172,19 +3172,20 @@ for i in "${!compilers[@]}"; do
   # (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq), and it turns green
   # the day that refusal lands with the twin reaching the arm.
   run_program "$compiler" eq-in-arm-pointer "$ROOT/tests/frontier/mn-eq-in-arm-pointer.mn" 0 yes "$dir"
-  # The same class one layer in, and this one needs no missing twin to
-  # fire: `==` on a POLYMORPHIC sum compares its payload by ADDRESS.
-  # `fold_sig` folds `TName(n, args)` to the bare name, so ONE
-  # `$eq_nOption` serves every instantiation, and `variant_specs_of`
-  # answers with the ctor's DECLARED payload type — a quantified var,
-  # which `emit_field_eq`'s last arm turns into a word compare with no
-  # diagnostic, inside a generated leaf no authored comparison visits.
-  # The fixture carries its own control: the monomorphic sum compares
-  # right (0), the wrapped int adds 2, the wrapped String adds 4, so the
-  # exit NAMES which halves are broken. Measured 6 on 2026-09-18.
-  # Declared RED until the sig folds its arguments and the specs
-  # substitute them (Hβ.eq.polymorphic-sum-payload-is-pointer-eq).
+  # A constructor's payload types come from the INSTANTIATION the graph
+  # proved, never from the declaration that quantified them. These two
+  # legs are the three faces that read measured on 2026-09-18, and they
+  # were declared-red for exactly one landing before proof retired the
+  # declaration: `==` compared a polymorphic sum's payload by ADDRESS
+  # (6, the fixture's own control passing on the same run), `show`
+  # printed that address, and a `Some(1.5)` never assembled because the
+  # binder was declared at the declared width and read at the proven one.
+  # `fold_sig` folds its arguments now, so each instantiation names its
+  # own leaf, and LPCon carries its payload types the way LPTuple always
+  # has. Each fixture's exit NAMES which face broke rather than merely
+  # failing.
   run_program "$compiler" eq-polymorphic-sum "$ROOT/tests/frontier/mn-eq-polymorphic-sum.mn" 0 yes "$dir"
+  run_program "$compiler" payload-instantiation "$ROOT/tests/frontier/mn-payload-instantiation.mn" 0 yes "$dir"
 
   # ─── The per-module solo sweep (PLAN §11 Phase 3.5, ratcheted) ──────
   # E_MissingVariable across every SHIPPED module's SOLO check, ceiling in

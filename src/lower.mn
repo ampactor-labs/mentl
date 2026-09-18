@@ -511,8 +511,17 @@ type FieldSel = FByName(String) | FByIndex(Int)
 type LowPat
   = LPVar(String)
   | LPWild
-  // name, tag_id (from ConstructorScheme), sub-pats
-  | LPCon(String, TagId, [LowPat])
+  // name, tag_id (from ConstructorScheme), and each sub-pattern WITH the
+  // payload type the scrutinee proved at this use — the same shape LPTuple
+  // has carried since its own offsets stopped being baked. The emit walkers
+  // used to take the pattern from here and the payload types from a SECOND
+  // read keyed by the constructor's NAME, and that second read answered with
+  // the DECLARED types: `Some`'s payload is the quantified `a`, so a binder
+  // for `Some(1.5)` was declared at the word floor and read back at f64 —
+  // `unknown local $v.f64`, a module that does not assemble (measured
+  // 2026-09-18). One source, one truth: the two lists cannot disagree
+  // because there is only one.
+  | LPCon(String, TagId, [(Ty, LowPat)])
   // a pattern naming a ctor no declaration proves — infer already reported the miss; the match test is FALSE (no tag exists to compare) and the sub-binders still declare so the dead arm body assembles. Replaces the fabricated tag -1, which violated TagId's own 0..255 refinement — the armed E_RefinementRejected caught it on the wheel the hour the class armed.
   | LPUnresolvedCon(String, [LowPat])
   // [(elem_ty: Ty, sub_pat: LowPat)]
@@ -3585,7 +3594,14 @@ fn bind_pat_locals(pat, ty) = match pat {
     ls_bind_local(name, ty_handle_of(ty))
     bind_pat_locals(inner, ty)
   },
-  PCon(_, sub_pats) => bind_pat_locals_floor(sub_pats),
+  PCon(name, sub_pats) => // A constructor's binders take the payload types the SCRUTINEE proved,
+  // the same zip PTuple has done since its own elements stopped flooring.
+  // This arm read `bind_pat_locals_floor(sub_pats)`, so `Some(v)`'s local
+  // was bound with no type handle while the emit later read `v` at its
+  // proven f64 — the two halves named different locals and the module did
+  // not assemble. An unresolved receiver still floors, through the zip's
+  // own short list.
+  bind_pat_locals_zip(sub_pats, con_payload_tys_at(name, ty), 0),
   PTuple(sub_pats) => match tuple_pat_strip(ty) {
     TTuple(elems) => bind_pat_locals_zip(sub_pats, elems, 0),
     _ => bind_pat_locals_floor(sub_pats),
@@ -3618,10 +3634,14 @@ fn bind_pat_locals_zip(subs, elems, i) = if i >= len(subs) {
   bind_pat_locals_zip(subs, elems, i + 1)
 }
 
-// PCon-payload / PList-element / PRecord-field sub-pattern types are the named
-// peer Hβ.lower.bind-handle-typed-subpattern (additive, same TVar->handle
-// carry); they floor to TVar(0) = i32.eq, byte-identical to the prior sentinel
-// — never a silent wrong type.
+// The floor for the sub-patterns whose element types are still unread:
+// PList elements and PRecord fields, the remainder of the named peer
+// `Hβ.lower.bind-handle-typed-subpattern` (additive, same TVar->handle carry).
+// TVar(0) = i32.eq, byte-identical to the prior sentinel — never a silent
+// wrong type. The PCon half of that peer CLOSED 2026-09-18: its payloads read
+// the scrutinee's own instantiation, because flooring them was not
+// byte-identical at all once a payload was an f64 — the binder and the emit
+// named different locals and the module did not assemble.
 fn bind_pat_locals_floor(pats) = each((p) => bind_pat_locals(p, TVar(0)), pats)
 
 fn bind_pat_rest(rest) = match rest {
@@ -3766,6 +3786,16 @@ fn lower_pat_typed(pat, ty, srep) = match pat {
   // nested sequences are reached through elements (rep unknown) and stay
   // on the total reader.
   LPList(lower_pats(sub), rest, srep),
+  PCon(name, sub) => // The receiver's type grounds the constructor's payloads, so a binder
+  // takes the width the graph PROVED rather than the one the declaration
+  // quantified. Without this arm `PCon` fell through to the untyped
+  // `lower_pat`, and `Some(1.5)`'s binder was declared a word and read as an
+  // f64 — a module that does not assemble. The tag resolution is the untyped
+  // arm's, unchanged; only the payload types are new.
+  match env_kind_of(name) {
+    Some(ConstructorScheme(t, _)) => LPCon(name, t, lower_pat_con_elems(sub, con_payload_tys_at(name, ty), 0)),
+    _ => lower_pat(pat),
+  },
   PAs(name, inner) => // The binder rides the pattern's own path; the inner keeps the
   // scrutinee's type (the whole point — the name IS the value).
   LPAs(name, lower_pat_typed(inner, ty, srep)),
@@ -3891,6 +3921,59 @@ fn lower_pat_tuple_uniform(subs, i) = if i >= len(subs) {
   [(TVar(0), lower_pat(list_index(subs, i)))] ++ lower_pat_tuple_uniform(subs, i + 1)
 }
 
+// The constructor pattern's sub-patterns paired with their PROVEN payload
+// types, read at the scrutinee's own instantiation. A payload the specs do
+// not reach takes TVar(0) — the same explicit no-proof floor the tuple path
+// uses, never a fabricated width.
+fn lower_pat_con_elems(subs, ptys, i) = if i >= len(subs) {
+  []
+} else {
+  let pty = if i < len(ptys) { list_index(ptys, i) } else { TVar(0) }
+  [(pty, lower_pat_typed(list_index(subs, i), pty, SRUnknown))] ++ lower_pat_con_elems(subs, ptys, i + 1)
+}
+
+fn lower_pat_con_uniform(subs, i) = if i >= len(subs) {
+  []
+} else {
+  [(TVar(0), lower_pat(list_index(subs, i)))] ++ lower_pat_con_uniform(subs, i + 1)
+}
+
+// The two views of one paired list. The walkers that read a payload's OFFSET
+// need the whole type list (the width-summed fold), and the walkers that read
+// a sub-pattern need the patterns; both project from the ONE source LPCon
+// carries, computed at the arm rather than re-read from the env by name — the
+// pairing is where the correctness lives, and these cannot disagree.
+fn ty_of_pairs(pairs) with Memory + Alloc = map(pair_ty, pairs)
+
+fn pat_of_pairs(pairs) with Memory + Alloc = map(pair_pat, pairs)
+
+fn pair_ty(pair) with Memory + Alloc = match pair {
+  (t, _) => t,
+}
+
+fn pair_pat(pair) with Memory + Alloc = match pair {
+  (_, p) => p,
+}
+
+// One constructor's payload types AT the scrutinee's instantiation — the
+// grounded specs, keyed by the constructor NAME the pattern carries. An
+// unresolved scrutinee answers with no types and the caller floors each slot.
+// The receiver arrives as whatever the pattern's own site holds, which for a
+// match scrutinee is a var the graph has since bound — so the read resolves
+// through chase_deep before stripping, the same fold boundary the eq and show
+// collectors run at their dispatch entry. Without it a `match a` whose `a` is
+// a bound var answered with no specs at all, and every payload floored.
+fn con_payload_tys_at(cname: String, scrutinee_ty) with EnvRead + GraphRead + Memory + Alloc + WASI = match find(spec_named(cname), variant_named_specs_at(fold_strip(chase_deep(scrutinee_ty)))) {
+  Some(spec) => match spec {
+    (_, _, tys) => tys,
+  },
+  None => [],
+}
+
+fn spec_named(cname: String, spec) with Memory + Alloc = match spec {
+  (_, n, _) => n == cname,
+}
+
 fn lower_pat(pat) = match pat {
   PVar(name) => LPVar(name),
   PWild => LPWild,
@@ -3899,8 +3982,13 @@ fn lower_pat(pat) = match pat {
   // on the int tag without re-walking the env. A name without an
   // env entry (already a missing-var diagnostic from infer) gets
   // tag = -1; emit treats that arm as never-match.
+  //
+  // This is the UNTYPED path — no scrutinee type in hand — so each payload
+  // takes TVar(0), the explicit no-proof floor lower_pat_tuple_uniform
+  // already uses, which emit reads as the word. A genuinely-typed scrutinee
+  // takes lower_pat_typed's arm and carries its PROVEN payload types.
   match env_kind_of(name) {
-    Some(ConstructorScheme(t, _)) => LPCon(name, t, lower_pats(sub)),
+    Some(ConstructorScheme(t, _)) => LPCon(name, t, lower_pat_con_uniform(sub, 0)),
     Some(RecordSchemeKind(_)) => // Nominal-record pattern `Pri(pa)`: the runtime value IS the bare
     // record (no tag word) — the ctor wrapper is the identity in
     // pattern position exactly as in construction (the call-form arm
@@ -6520,7 +6608,7 @@ fn spec_scan_list(exprs, acc) with Memory + Alloc = fold(acc, (a, e) => spec_sca
 fn lowpat_has_tuple(pat) with Memory + Alloc = match pat {
   LPTuple(_) => true,
   LPAs(_, inner) => lowpat_has_tuple(inner),
-  LPCon(_, _, subs) => any(lowpat_has_tuple, subs),
+  LPCon(_, _, pairs) => any(lowpat_has_tuple, pat_of_pairs(pairs)),
   LPUnresolvedCon(_, subs) => any(lowpat_has_tuple, subs),
   LPRecord(fbs, _) => any(
     (f) => match f {
@@ -6761,19 +6849,133 @@ fn ls_find_str_local_loop(lst: [String], target: String, i, n) = if i >= n {
 // The keyed read: the type's own entry carries its variant specs
 // (TypeVariants, minted at registration). The whole-env backward scan
 // this replaces re-derived the grouping per read.
-fn variant_specs_of(type_name) with EnvRead + Memory + Alloc = match env_lookup_variants(type_name) {
-  Some(entry) => match entry {
-    (_, _r, kind) => match kind {
-      TypeVariants(specs) => map(
-        (sp) => match sp {
-          (t, _, tys) => (t, tys),
-        },
-        specs
-      ),
-      _ => [],
+fn variant_specs_of(type_name) with EnvRead + Memory + Alloc + GraphRead =
+  variant_specs_at(TName(type_name, []))
+
+// ─── The variant specs AT AN INSTANTIATION ───────────────────────────
+//
+// The DECLARED payload types with the type's own parameters replaced by the
+// arguments the graph proved at this use. `Some`'s declared payload is the
+// quantified var `a`, and every emit-side reader that took the declaration at
+// its word then compared, rendered, hashed and laid out a payload it could not
+// see. MEASURED 2026-09-18, three faces of the one read:
+//   `Some(BInt(7)) == Some(BInt(7))`  answered FALSE — the payload compared by
+//                                     address, while the monomorphic
+//                                     `BInt(7) == BInt(7)` was right
+//   `"{Some(BInt(7))}"`               rendered `Some(1048584)` — the address
+//   `let a = Some(1.5)`               never assembled: the binder's local was
+//                                     declared at the declared width and read
+//                                     at the proven one (`unknown local $v.f64`)
+// The first two are silent and the third is loud, which is the usual order:
+// the loud one is the same defect with a width behind it.
+//
+// A type with NO arguments grounds to itself, so every monomorphic ADT reads
+// exactly what it read before and the emit does not move for it.
+//
+// This is not a second copy of `subst_ty`. That one FRESHENS — every
+// quantified var to a fresh var of its own domain — and its mapping is
+// var→var precisely because it serves ROW vars too, which have no `Ty` form.
+// This one GROUNDS, var→Ty, over the type arguments a nominal application
+// carries. Forcing the two into one walk would need a sum over codomains on
+// the compiler's hottest path to buy nothing; they are two operations.
+fn variant_specs_at(applied) with EnvRead + Memory + Alloc + GraphRead =
+  map(drop_variant_name, variant_named_specs_at(applied))
+
+fn drop_variant_name(spec) with Memory + Alloc = match spec {
+  (t, _, tys) => (t, tys),
+}
+
+// The same read carrying each variant's constructor NAME — show prints it.
+fn variant_named_specs_at(applied) with EnvRead + Memory + Alloc + GraphRead = match applied {
+  TName(name, args) => match env_lookup_variants(name) {
+    Some(entry) => match entry {
+      (binding, _r, kind) => match kind {
+        TypeVariants(specs) => if len(args) == 0 { specs } else { map(ground_variant_spec(type_params_of(binding), args), specs) },
+        _ => [],
+      },
     },
+    None => [],
   },
-  None => [],
+  _ => [],
+}
+
+// The declared parameters, read from the type's own RESULT form: the entry's
+// binding is `Frozen` over the result `TName(name, params)`, so the params
+// stand in exactly the positions the applied arguments do. Reading them from
+// the result rather than from the quantifier keeps the correspondence
+// positional by construction — a quantifier is a SET, and a set has no
+// positions.
+// Matched at `Frozen` directly rather than through `judgment_ty`: a
+// TypeVariants entry is registered Frozen at its own declaration, and going
+// through the general reader would drag generalize's whole row — including
+// WASI — into every emit-side payload read for a shape that cannot occur.
+fn type_params_of(binding) with Memory + Alloc = match binding {
+  Frozen(_, ty) => match ty {
+    TName(_, params) => params,
+    _ => [],
+  },
+  Live(_) => // A Live binding here would mean the entry came from somewhere the
+  // registration does not reach; inventing parameters for it is the
+  // fabrication this whole read exists to end, so it grounds nothing.
+  [],
+}
+
+fn ground_variant_spec(params, args, spec) with GraphRead + Memory + Alloc = match spec {
+  (t, cn, tys) => (t, cn, map(ground_ty(params, args), tys)),
+}
+
+// Replace each parameter var with the argument standing in its position.
+// H6-exhaustive over Ty: a constructor added here without an arm is a compile
+// error rather than a silently un-grounded payload.
+//
+// A `TFun`'s effect row and a `TCont`'s world pass through: a nominal type's
+// arguments are TYPES, so a row parameter is not constructible at this
+// boundary today. When it is, the row grounds through the same positions
+// (`Hβ.types.nominal-row-parameter`).
+fn ground_ty(params, args, ty) with GraphRead + Memory + Alloc = match ty {
+  TVar(h) => ground_var(params, args, h, ty),
+  TList(elem) => TList(ground_ty(params, args, elem)),
+  TTuple(elems) => TTuple(map(ground_ty(params, args), elems)),
+  TName(n, as_applied) => TName(n, map(ground_ty(params, args), as_applied)),
+  TRecord(fields) => TRecord(map(ground_field(params, args), fields)),
+  TRecordOpen(fields, v) => TRecordOpen(map(ground_field(params, args), fields), v),
+  TFun(ps, ret, eff) => TFun(map(ground_param(params, args), ps), ground_ty(params, args, ret), eff),
+  TRefined(base, pred) => TRefined(ground_ty(params, args, base), pred),
+  TReprPin(r, base) => TReprPin(r, ground_ty(params, args, base)),
+  TAlias(n, inner) => TAlias(n, ground_ty(params, args, inner)),
+  TCont(input, answer, d, world) => TCont(ground_ty(params, args, input), ground_ty(params, args, answer), d, world),
+  TInt => ty,
+  TFloat => ty,
+  TUnit => ty,
+  TByte => ty,
+}
+
+fn ground_field(params, args, field) with GraphRead + Memory + Alloc = match field {
+  (n, fty) => (n, ground_ty(params, args, fty)),
+}
+
+fn ground_param(params, args, p) with GraphRead + Memory + Alloc = match p {
+  TParam(n, pty, authored, resolved, dflt) => TParam(n, ground_ty(params, args, pty), authored, resolved, dflt),
+}
+
+// The argument standing in this var's position. Keyed by the union-find ROOT
+// on both sides — a parameter var aliased since the declaration is still that
+// parameter, the same reason `subst_ty`'s own lookup is root-keyed. A var that
+// is not a parameter stays itself: a payload may carry vars the type does not
+// quantify, and inventing a grounding for one would be the fabrication this
+// whole read exists to end.
+fn ground_var(params, args, h, ty) with GraphRead + Memory + Alloc = match find(param_at_root(h), enumerate(params)) {
+  Some(hit) => match hit {
+    (i, _) => if i < len(args) { list_index(args, i) } else { ty },
+  },
+  None => ty,
+}
+
+fn param_at_root(h, indexed) with GraphRead + Memory + Alloc = match indexed {
+  (_, p) => match p {
+    TVar(ph) => graph_chase_handle(ph) == graph_chase_handle(h),
+    _ => false,
+  },
 }
 
 // A constructor's scheme result type is TName(type_name, _) (nullary, bare) or

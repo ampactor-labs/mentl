@@ -953,18 +953,15 @@ frontier_expected_red: why-coordinates
 # it was measured; retires when the eq leaf refuses the unresolved operand
 # (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq) and the gate SAYS so.
 frontier_expected_red: eq-in-arm-pointer
-# 2026-09-18: the same class one layer in, and this one needs no missing twin.
-# `==` on a POLYMORPHIC sum compares its payload by ADDRESS: `fold_sig` folds
-# `TName(n, args)` to the bare name, so one `$eq_nOption` serves every
-# instantiation, and `variant_specs_of` answers with the constructor's DECLARED
-# payload type — a quantified var, which `emit_field_eq`'s last arm turns into
-# a word compare with no diagnostic, inside a generated leaf no authored
-# comparison visits. `Some(BInt(7)) == Some(BInt(7))` is false; the fixture's
-# monomorphic control is true on the same run, and the exit (6) names which
-# halves broke. Retires when the sig folds its arguments and the specs
-# substitute them (Hβ.eq.polymorphic-sum-payload-is-pointer-eq) — by PROOF,
-# never by a comparator written beside the compare.
-frontier_expected_red: eq-polymorphic-sum
+# 2026-09-18: `eq-polymorphic-sum` was declared RED here for one landing and
+# RETIRED by proof in the next — the whole life of an expected-red entry, in a
+# day. It read: `==` on a POLYMORPHIC sum compares its payload by ADDRESS,
+# because `fold_sig` folded `TName(n, args)` to the bare name so one
+# `$eq_nOption` served every instantiation, and `variant_specs_of` answered
+# with the constructor's DECLARED payload type. The sig folds its arguments
+# now and the specs ground them, so the leaf calls its argument's own helper;
+# the gate's other direction refused the stale declaration the moment it
+# passed, which is what that contract is for.
 
 # 2026-09-18: THE UNPROVABLE-COMPARISON census (T_EqTypeUnprovable, the
 # field-offset floor's sibling): a `==`/`!=`/`<`… whose operand type is still a
@@ -1060,7 +1057,12 @@ record_pattern_open_max: 0
 # deleted into str_escape's byte fold, the decoder's exact inverse — and cli.mn
 # 21 -> 20 with the run verb's argument parse, and main.mn 21 -> 20 with the
 # battery's filter as the holed stage `ends_with(??, ".mn")`.
-effectful_lambda_max: 367
+# 367 -> 366 at the payload-instantiation landing: `ctor_payload_tys_of` and
+# `variant_named_specs_of` deleted whole. Each read a constructor's DECLARED
+# payload types, and the emit that used them could not see what the graph had
+# proven; the grounded read replaces both, so the lambda goes with the
+# re-derivation it served. The reward shape again.
+effectful_lambda_max: 366
 
 # 2026-08-07: the USE-AFTER-MOVE ratchet (PLAN §11 Phase 4.1,
 # Hβ.own.use-after-move) — RETIRED 2026-09-15, BY BEING SATISFIED. This key
