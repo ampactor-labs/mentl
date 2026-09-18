@@ -1284,6 +1284,35 @@ board — the Intent Boundary rule measured, never eyeballed. SEQUENCED BEFORE
 the verify verb: a silent wrong in `==` outranks the gates' refactor (proof
 beats review, at the medium's own `==`). CLOSE: the arm refuses, the leg is
 green with the fixture unannotated, the sweep's survivors are named, m3 == m4.
+▶ THE 41 ARE ATTRIBUTED, AND THEY ARE NOT WHAT THIS ENTRY GUESSED (2026-09-18,
+the measurement that renamed the class). A node minted after parse has no
+span, so 41 of the 56 reported at 0:0 with nothing to locate them, and a count
+with no finding behind it is the shape §7 convicts. The report now says which
+emission it stands in (`EmitSite`, types.mn — installed per fn record at
+`emit_one_fn_to_string`, defaulting to "module scope"; RETIREMENT: when a
+post-parse node carries its nearest authored span, the span says this and the
+effect goes). TWO HYPOTHESES DIED to it. The first was mine: the eight
+declarations whose rows the change widened are all show/fold helper
+GENERATORS, which read as "the sites are in generated leaves" — false, the row
+is transitive reachability, not the firing site. The second was the entry's
+own: NOT arms. The 41 land in 41 ORDINARY wheel fns, concentrated —
+`cw_compete_lead` 8, `cw_compete_trail` 6 (parser.mn's comment-weave span
+competition), `alpha_pairs_ok` 3 (infer.mn's alpha-equivalence pair walk),
+`list_compare_loop` 2 — and only 2 of the 56 are twin bodies.
+▶ THE CLASS, RENAMED BY ITS OWN EVIDENCE: a comparison whose operand comes out
+of a DESTRUCTURED CONTAINER the graph never closed. `cw_compete_lead` matches
+`leads[k]` as `(bsl, bsc, bel, bec, bh)` and compares each against a
+parameter; the tuple's components are vars because the list's ELEMENT type was
+never proven, exactly the family `Hβ.infer.record-row-vars-are-not-unioned`
+names one constructor over. Every one is an Int or a handle at runtime, which
+is why the word compare holds and the battery never caught it. So the fix
+ORDER inverts from what this entry planned: arm-twinning closes the FIXTURE
+and the arm class (small), while the bulk is the container element type, and
+the two `module_decls_of` / `lambda_64592` pairs (base AND twin both
+reporting) raise the question the count cannot answer — whether a floor body
+whose every call site redirects to a twin is EMITTED DEAD, in which case its
+comparison wants deleting rather than proving (`Hβ.lower.reach-edge-on-node`).
+That measurement is the next one, and it is not taken.
 ▶ STEP (1) LANDED AS NARRATION, AND THE TRAP FORM WAS REFUTED BY THE WHEEL
 (2026-09-18, the same day): `emit_struct_eq` and `emit_struct_cmp` report
 `T_EqTypeUnprovable` (operator + the operand's live type, at the operand's

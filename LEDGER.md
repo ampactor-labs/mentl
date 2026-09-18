@@ -35,6 +35,38 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-18 · pin 8bc24aca3f860bca · THE EMIT-TIME DIAGNOSTIC SAYS WHERE IT
+  STANDS. CLEAN m2 == m3, census 0, m3 leg 10.15s / 946MB, 404,891 → 405,039
+  wat lines; frontier 382/0/2. `T_EqTypeUnprovable` reported 41 of its 56
+  sites at span 0:0, because a node minted after parse carries no span — a
+  count with no finding behind it. The `EmitSite` effect (types.mn) carries
+  the emission in flight: one install per fn record at
+  `emit_one_fn_to_string`, a module-scope default for the fold helpers and
+  table emissions outside every record, and a retirement named at the decl
+  (when a post-parse node carries its nearest authored span, the span says
+  this). TWO HYPOTHESES DIED TO IT, which is the landing. (1) The eight
+  declarations whose rows widened are every one a show/fold helper GENERATOR,
+  which read as "the sites are in generated leaves" — false: an effect row is
+  transitive reachability, not the firing site, and reading it as the answer
+  was the same mistake as reading a count as a finding. (2) The class is NOT
+  handler arms, which the peer entry predicted and the fixture made look
+  obvious. The 41 land in 41 ORDINARY wheel fns, concentrated: 8 in
+  `cw_compete_lead`, 6 in `cw_compete_trail` (parser.mn's comment-weave span
+  competition), 3 in `alpha_pairs_ok` (infer.mn's alpha-equivalence walk), 2
+  in `list_compare_loop`; only 2 of the 56 sit in a twin body. THE CLASS
+  RENAMES ITSELF: a comparison whose operand comes out of a DESTRUCTURED
+  CONTAINER the graph never closed. `cw_compete_lead` matches `leads[k]` as
+  `(bsl, bsc, bel, bec, bh)` and compares each against a parameter; the
+  components are vars because the list's ELEMENT type was never proven —
+  `Hβ.infer.record-row-vars-are-not-unioned`'s family one constructor over.
+  Every one is an Int or a handle at runtime, which is exactly why the word
+  compare holds and 149 micros never caught it. So the fix order inverts from
+  what the peer planned: arm twinning closes the fixture and the arm class,
+  the BULK is the container element type, and the base/twin pairs
+  (`module_decls_of`, `lambda_64592`, both bodies reporting) raise the
+  measurement not yet taken — whether a floor body every call site redirects
+  past is emitted DEAD, wanting deletion rather than proof
+  (`Hβ.lower.reach-edge-on-node`).
 - 2026-09-18 · pin be76d16fba138842 · THE COMPARISON FLOOR IS REPORTED.
   CLEAN m2 == m3, census 0, m3 leg 8.31s / 949MB, 404,462 → 404,891 wat
   lines; frontier 382/0/2. `T_EqTypeUnprovable` is born — the sibling of

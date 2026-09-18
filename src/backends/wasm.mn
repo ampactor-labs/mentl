@@ -241,6 +241,21 @@ handler spec_registry with twins = [] {
   set_spec_twins(ns) => resume() with twins = ns,
 }
 
+// The emission in flight, for the diagnostics that stand at a spanless node
+// (EmitSite, types.mn). The per-fn install: emit_one_fn_to_string already
+// holds the record's name, so the name is a config arg and the arm is a read.
+handler emit_site_named(site) {
+  emit_site() => resume(site),
+}
+
+// The module-scope default, and its answer is information rather than a
+// fallback: the fold helpers, the init lets and the table emissions genuinely
+// stand outside every fn record, so a diagnostic there IS at module scope and
+// says so.
+handler emit_site_module {
+  emit_site() => resume("module scope"),
+}
+
 // ─── The show/hash dispatch — emit-time, the one home ─────────────────────
 // to_string / hash arrive as STRUCTURAL nodes (LShow / LHash); the operand's
 // type is read HERE, under whatever specialization bracket is active — so a
@@ -2920,7 +2935,7 @@ fn emit_one_fn_to_string(record) = match record {
   (name, param_names, body, captures_count) => {
     emit_fn_body(name, param_names, body, captures_count)
     wat_collect()
-  } ~> emit_memory_bump ~> wat_to_string,
+  } ~> emit_site_named(name) ~> emit_memory_bump ~> wat_to_string,
 }
 
 // Deep-walk the lowered program, projecting every fn-bearing variant
@@ -5067,9 +5082,12 @@ fn emit_struct_eq(left_h, neg) = if left_h == 0 {
 // reaching the site, or a type named at an Intent Boundary where the
 // polymorphism is over words), and the arming commit turns the narration
 // into the refusal.
-fn report_cmp_unprovable(left_h, opname) with Diagnostic + LookupTy + GraphRead + Memory + Alloc + Intern = report_at(
+fn report_cmp_unprovable(left_h, opname) with Diagnostic + LookupTy + GraphRead + Memory + Alloc + Intern + EmitSite = report_at(
   left_h,
-  TEqTypeUnprovable("`{opname}` on {show_type(lookup_ty(left_h))}", parse_span_of(left_h))
+  TEqTypeUnprovable(
+    "`{opname}` on {show_type(lookup_ty(left_h))}, emitting {emit_site()}",
+    parse_span_of(left_h)
+  )
 )
 
 // fold_strip / fold_sig — the structural fold's shared skeleton — now live at
@@ -5306,7 +5324,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
 
 // The one dedup walk: emit each distinct fold_sig's helper ONCE, the leaf
 // generator selected by the op.
-fn emit_distinct_fold_leaves(op, tys, seen) with EnvRead + Alloc + Memory + WasmOut + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic = if len(tys) == 0 {
+fn emit_distinct_fold_leaves(op, tys, seen) with EnvRead + Alloc + Memory + WasmOut + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic + EmitSite = if len(tys) == 0 {
   ()
 } else {
   let ty = last(tys)
@@ -5326,7 +5344,7 @@ fn emit_distinct_fold_leaves(op, tys, seen) with EnvRead + Alloc + Memory + Wasm
 
 // The four leaves behind the one walk. Emission order (eq, compare, hash,
 // show) preserves the module layout the four separate entry fns produced.
-fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) with EnvRead + Memory + Alloc + WasmOut + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic = {
+fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) with EnvRead + Memory + Alloc + WasmOut + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic + EmitSite = {
   // One region over the four leaf families: the closures record lives
   // outside the mark; every generated helper streams as it is built.
   //
@@ -6162,7 +6180,7 @@ fn eq_subtys_variants(specs, i, n, seen, acc) = if i >= n {
 // each assembling via FOLDED `(call $str_concat (local.get $__state) <l> <r>)`
 // s-expressions — the value, the field-loads, and the recursive show calls are
 // sub-expressions of the concat tree (correct stack discipline, no interleave).
-fn emit_one_show_helper(sig, ty) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic = match fold_strip(ty) {
+fn emit_one_show_helper(sig, ty) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = match fold_strip(ty) {
   TName(name, _) => emit_one_show_sum_helper(sig, name),
   TList(elem) => emit_one_show_list_helper(sig, elem),
   _ => emit_one_show_product_helper(sig, ty),
@@ -6183,7 +6201,7 @@ fn emit_show_header(sig) = {
 // structural projection. The fold runs over the canonically-sorted fields at
 // their width-summed offsets (the SAME align_for + repr_width the eq leaf and
 // the store side run — Carried-Truth).
-fn emit_one_show_product_helper(sig, ty) with EnvRead + WasmOut + Memory + Alloc + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic = {
+fn emit_one_show_product_helper(sig, ty) with EnvRead + WasmOut + Memory + Alloc + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic + EmitSite = {
   emit_show_header(sig)
   let is_record = ty_is_record(fold_strip(ty))
   let open = if is_record { "\{" } else { "(" }
@@ -6225,7 +6243,7 @@ fn name_positional(elems, i, n) with Alloc + Memory =
 // concat( <name-prefix + ", " sep>, concat( show(field), <rest> ) ). The first
 // field has no leading ", "; a record field is prefixed "name: ". The byte
 // offset is width-summed (align_for + repr_width). Terminates with "" at the end.
-fn emit_show_product_fields(fields, i, off, is_record) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic = if i >= len(fields) {
+fn emit_show_product_fields(fields, i, off, is_record) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = if i >= len(fields) {
   emit_show_str_literal("")
 } else {
   match list_index(fields, i) {
@@ -6300,7 +6318,7 @@ fn emit_show_field_load(off, r) = {
 // "Ctor(" ++ f0 ++ ", " ++ f1 ++ ")". The variant names + payload types are read
 // LIVE from the env (variant_named_specs_of). A recursive ADT re-enters
 // $show_n<Name> (finite on the value). Mirrors emit_eq_leaf_sum's guard.
-fn emit_one_show_sum_helper(sig, type_name) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic = {
+fn emit_one_show_sum_helper(sig, type_name) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = {
   let specs = variant_named_specs_of(type_name)
   wat_emit("  (func $show_")
   wat_emit(sig)
@@ -6326,7 +6344,7 @@ fn emit_one_show_sum_helper(sig, type_name) with EmitMemory + StringTable + Allo
 // ($a in the nullary arm, $ta in the heap arm). A nullary variant renders its
 // bare name; a fielded variant renders "Ctor(" ++ payloads ++ ")". The cascade
 // terminal is "" (the env enumerates every variant; control lands on one arm).
-fn emit_show_sum_tag_dispatch(specs, i, n, scrutinee) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic = if i >= n {
+fn emit_show_sum_tag_dispatch(specs, i, n, scrutinee) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = if i >= n {
   emit_show_str_literal("")
 } else {
   match list_index(specs, i) {
@@ -6418,7 +6436,7 @@ fn emit_show_variant_load(off, pty) = {
 // LIST show: "[" ++ <element loop, joined by ", "> ++ "]". The element count is
 // runtime (len); $show_listbody_<sig> folds str_concat over list_index(a, i),
 // joining ", ". The element leaf is read from the proven element type.
-fn emit_one_show_list_helper(sig, elem) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic = {
+fn emit_one_show_list_helper(sig, elem) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = {
   emit_show_header(sig)
   emit_show_concat_open()
   emit_show_str_literal("[")

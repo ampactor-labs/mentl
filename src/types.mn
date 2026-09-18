@@ -1624,6 +1624,21 @@ effect SpecTwins {
   set_spec_twins([String])
 }
 
+// EmitSite — WHERE an emit-time diagnostic is standing. A node minted after
+// parse carries no span (`parse_span_of` answers zero on it), so a report at
+// one is prose nobody can locate: T_EqTypeUnprovable's first census read 41 of
+// its 56 sites at 0:0 with nothing to name them, which is a count standing in
+// for a finding. The emission in flight IS the nearest true coordinate, and it
+// is ambient by nature — installed once per fn record where the name is
+// already in hand, read by whichever diagnostic needs to say where it stands,
+// never threaded through the emit tree as a parameter. RETIREMENT: when a node
+// minted after parse carries its nearest authored span
+// (`Hβ.why.reason-span-is-a-weave-coordinate`'s family), the span says this and
+// the effect goes.
+effect EmitSite {
+  emit_site() -> String
+}
+
 // Evidence (spec W4) — runtime witness of an effect-to-handler-arm
 // binding. A polymorphic function that performs an op dispatches
 // via an evidence slot: the caller threads the evidence record into
