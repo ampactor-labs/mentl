@@ -1254,9 +1254,21 @@ form the whole time. The arcs, in order:
   2"* residue was the tell all along, because a count that is *almost* right
   is a PREDICTION of the final's minting, not a measurement of it. What
   `(arena, offset)` still owns is the counting pass and the deterministic
-  partition. Handle-uniformity survives:
-  a packed `(arena << K) | offset` is still one word, so §5.U's
-  memcpy-serializability is untouched.
+  partition. Handle-uniformity survives, and the FORM of that survival is
+  corrected here (2026-09-19) because the sentence that stood in this slot
+  wrote it in C: *"a packed `(arena << K) | offset` is still one word."*
+  **`<<` IS NOT A TOKEN** — SYNTAX's enumeration has no shift, `<` is TLt and
+  `|` is variant-separation, so that expression does not lex, and the wheel
+  contains zero `<<` in 60,500 lines. It is also the wrong SHAPE, which is
+  the part worth catching: a packed bitfield is position-as-identity, drift 8
+  at the representation layer, and §5.U's own law says the surface never
+  carries a representation decision. **A handle IS a two-field product
+  `{arena, offset}`**; whether it occupies one word is `repr`'s business, and
+  the artifact beside it already writes the decode without a bit op —
+  `spine_band(h) = h / spine_slots`, `spine_slot(h) = h % spine_slots`
+  (graph.mn). So handle-uniformity is a REPR PIN on a product, `repr_of`'s
+  own arm, and §5.U's memcpy-serializability is untouched for the reason it
+  always was: one word, pinned, never hand-packed.
 
   **PROBES (a) AND (c) RAN THE SAME DAY AND THE ANSWER CORRECTS BOTH PRIOR
   CLAIMS — THE TRIAL HAS TWO PRODUCTS, NOT ONE.** `env_handler` is installed

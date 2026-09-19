@@ -1558,6 +1558,26 @@ doc-truth's coverage boundary (identity vs state) is closed by that projection
 rather than by more rows. Interim discipline, cheap and available now: when a
 number must appear in prose, delete it and point at the verb instead — the
 deletion is the fix, as it was for the refusal count above.
+A THIRD CATEGORY, MEASURED 2026-09-19 AND CAUGHT BY A HUMAN READING, WHICH IS
+THE TELL: **notation**. A doc that writes an expression makes a claim about
+the LANGUAGE, and nothing checks that the docs' own code spans lex. PLAN §11
+Arc B′ and this file's `Hβ.infer.judge-once-per-scc` both described the
+unflattened handle as a packed `(arena << K) | offset` — and `<<` is not a
+token (SYNTAX's enumeration has no shift; `<` is TLt, `|` is
+variant-separation), so the expression does not lex, while the wheel it
+describes contains zero `<<` in 60,500 lines and decodes the same handle with
+`/` and `%` two functions away. Both sites are corrected; the class is not.
+It is worse than a typo because foreign notation carries a foreign SHAPE in
+with it: a hand-packed bitfield is position-as-identity, drift 8 at the
+representation layer, in a document whose §5.U forbids the surface to carry a
+representation decision at all. Identity claims are checked, state claims are
+not, and notation claims were not even NAMED until a reader asked whether the
+operator existed. CLOSE: the docs' fenced and backticked Mentl spans go
+through the medium's own lexer — `mentl check` over an extracted span, the
+docs-as-projection direction — so an unsayable expression in the three
+documents is a refusal, not a review finding. Explicitly NOT a grep row added
+to doc-truth.sh: that script is condemned by `mentl verify` owning the suite,
+and the requirement is recorded here so the verb inherits it.
 
 `Hβ.infer.judge-once-per-scc` — THE TRIAL PASS IS A HANDLE-COUNTING ORACLE:
 it runs a complete whole-program inference and survives only as a
@@ -1585,9 +1605,19 @@ only reason counts must be known in advance. §10.1 KEYSTONE 2
 (`Hβ.native.deterministic-handle-partition`) already names the unflattened
 form: arena = the stmt's source index, offset local to it, so stmt *i*'s
 fifth mint is `(i, 5)` regardless of every other stmt and of judgment order.
-Deterministic by construction, no count needed. Packed as
-`(arena << K) | offset` a handle is still one word, so §5.U's
-memcpy-serializability and handle-uniformity are untouched.
+Deterministic by construction, no count needed.
+THE HANDLE'S FORM, corrected 2026-09-19 — this entry said *"packed as
+`(arena << K) | offset` a handle is still one word."* `<<` is not a Mentl
+token (SYNTAX's enumeration has no shift; `<` is TLt, `|` is
+variant-separation), the expression does not lex, and the wheel contains no
+`<<` anywhere. The shape was wrong too: a hand-packed bitfield is
+position-as-identity — drift 8 one layer down — and a representation
+decision written into the surface, which §5.U forbids. A handle is a
+two-field PRODUCT `{arena, offset}` whose one-word occupancy is a `repr`
+pin read at lower, exactly as `spine_band(h) = h / spine_slots` and
+`spine_slot(h) = h % spine_slots` already decode today without a bit op.
+memcpy-serializability and handle-uniformity hold for the same reason as
+before — one word — without any authored packing.
 
 THE CONVERGENCE (why this is hardest-first, not a chore): this peer, 4.3's
 `Hβ.perf.per-decl-arena`, and 9.2/10.1's deterministic partition are ONE
