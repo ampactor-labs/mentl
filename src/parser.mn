@@ -1741,7 +1741,12 @@ fn binop_loop(ref tokens, left, pos, min_prec, slot) = {
     match parse_binop(tokens, skip_ws(tokens, p + 1), prec + 1, slot) {
       (right, p2) => match left {
         N(_, left_span, _) => {
-          let combined_span = span_join(left_span, op_span)
+          // The operation's span is its whole extent, left operand through
+          // right — it used to stop at the operator (`x * ` for `x * 2`), a
+          // span that named no expression in the source.
+          let combined_span = match right {
+            N(_, right_span, _) => span_join(left_span, right_span),
+          }
           let node = match op_to_pipe_kind(k) {
             Some(pk) => match pk {
               PFanout(FanDistribute) => // The N-ary law (SYNTAX §><): a `><` chain's branches are
@@ -2008,7 +2013,7 @@ fn parse_primary(ref tokens, pos, slot) = {
           match parse_body(tokens, skip_ws(tokens, p4)) {
             (raw_body, p5) => {
               let body = bind_param_destructures(dlets, raw_body, span)
-              (nexpr(LambdaExpr(params, body), span), p5)
+              (nexpr(LambdaExpr(params, body), lambda_span(span, body)), p5)
             },
           }
         },
@@ -2027,7 +2032,7 @@ fn parse_primary(ref tokens, pos, slot) = {
     {
       report(ELambdaAsOrOr(span))
       match parse_expr(tokens, pos + 1) {
-        (body, p) => (nexpr(LambdaExpr([], body), span), p),
+        (body, p) => (nexpr(LambdaExpr([], body), lambda_span(span, body)), p),
       }
     },
     TTildeGt => // SYNTAX.md:1593 — E_OrphanHandlerAttach: the tee-arrow at expression
@@ -2148,7 +2153,7 @@ fn parse_paren_or_tuple(ref tokens, pos, start_span) = {
     let p_after = skip_ws(tokens, p + 1)
     if at(tokens, p_after, TFatArrow) {
       match parse_expr(tokens, skip_ws(tokens, p_after + 1)) {
-        (body, pb) => (nexpr(LambdaExpr([], body), start_span), pb),
+        (body, pb) => (nexpr(LambdaExpr([], body), lambda_span(start_span, body)), pb),
       }
     } else {
       (nexpr(LitUnit, start_span), p + 1)
@@ -2172,7 +2177,7 @@ fn parse_paren_or_tuple(ref tokens, pos, start_span) = {
                     (params, dlets) => match parse_expr(tokens, skip_ws(tokens, p_after + 1)) {
                       (raw_body, pb) => {
                         let body = bind_param_destructures(dlets, raw_body, start_span)
-                        (nexpr(LambdaExpr(params, body), start_span), pb)
+                        (nexpr(LambdaExpr(params, body), lambda_span(start_span, body)), pb)
                       },
                     },
                   }
@@ -2201,7 +2206,7 @@ fn parse_paren_or_tuple(ref tokens, pos, start_span) = {
                       raw_body,
                       start_span
                     )
-                    (nexpr(LambdaExpr([param], body), start_span), pb)
+                    (nexpr(LambdaExpr([param], body), lambda_span(start_span, body)), pb)
                   },
                 },
               },
@@ -2773,11 +2778,21 @@ fn parse_resume(ref tokens, pos, span: ValidSpan) = {
   }
 }
 
+// A lambda's span is its WHOLE extent — head through body. It used to be
+// the head alone (`(x`), so the line address's widest-node rule reached a
+// body sub-node instead and the prose the weave had attached to the lambda
+// never spoke at its own line (measured 2026-09-17: `Lede:` at `:4:5`,
+// none at `:4`). The node's span is the node's extent; a head-only span is
+// a copy of the wrong fact.
+fn lambda_span(head, body) with Memory + Alloc = match body {
+  N(_, bsp, _) => span_join(head, bsp),
+}
+
 fn parse_lambda(ref tokens, pos, span: ValidSpan) = {
   let buf = make_list(4)
   match parse_lambda_params(tokens, pos, buf, 0) {
     (final_buf, final_count, p) => match parse_expr(tokens, skip_ws(tokens, p)) {
-      (body, p2) => (nexpr(LambdaExpr(slice(final_buf, 0, final_count), body), span), p2),
+      (body, p2) => (nexpr(LambdaExpr(slice(final_buf, 0, final_count), body), lambda_span(span, body)), p2),
     },
   }
 }
@@ -3466,22 +3481,54 @@ fn free_vars_state_updates(updates, bound) = fold(
   updates
 )
 
-// H6: exhaustive Stmt enumeration. Type/effect/handler
-// declarations and imports contribute no value-level free vars
-// to closure capture. Refinement stmts similarly. Named
-// explicitly so new Stmt variants decide their cfv behavior.
+// H6: exhaustive Stmt enumeration. Type/effect declarations and imports
+// contribute no value-level free vars. Named explicitly so new Stmt
+// variants decide their cfv behavior.
+//
+// THIS WALK IS THE JUDGMENT'S DAG, not only closure capture. stmt_frees →
+// scc_groups orders every decl callee-first from what this returns, so a
+// statement kind that answers [] here is a decl with no recorded callees,
+// free to judge before the things it calls. The handler arm answered []
+// under a comment that was true for capture (a handler decl never sits
+// inside a lambda) and false for the DAG — measured 2026-09-17 as the
+// single-pass cut's m4 trap: graph_handler judged before
+// emitfns_index_build, its arm's reference resolved against the placeholder
+// skeleton, the call site's type never mirrored the callee's open-record
+// scheme, no twin was minted, and the table dispatched the base body's
+// floor. The two-pass final was blind to it because the trial had published
+// every scheme first (PLAN §11's "forward-reference table carried by
+// shadow" — this is the carrier). The graph's own reverse edge knew the
+// reference the whole time; two homes for one fact, disagreeing.
+// RefineStmt keeps [] for a different reason: its predicate is not yet an
+// expression this walk can descend (Hβ.types.predicate-is-expr).
 fn free_vars_stmt(s, bound) = match s {
   LetStmt(_, expr, _) => collect_free_vars(expr, bound),
   FnStmt(_, _, _, _, body_node) => collect_free_vars(body_node, bound),
   ExprStmt(expr) => collect_free_vars(expr, bound),
   TypeDefStmt(_, _) => [],
   EffectDeclStmt(_, _, _) => [],
-  HandlerDeclStmt(_, _, _, _, _) => [],
+  HandlerDeclStmt(_, _, config, state, arms) => {
+    // Inits evaluate in the installer's scope with the config in hand; an
+    // arm additionally binds the state names and its own args. `resume` is
+    // a keyword and never a reference.
+    let init_bound = free_vars_merge(bound, free_vars_param_names(config))
+    let arm_bound = free_vars_merge(init_bound, map((st) => st.name, state))
+    free_vars_merge(
+      free_vars_list(map((st) => st.init, state), init_bound),
+      free_vars_handler_arms(arms, arm_bound)
+    )
+  },
   ImportStmt(_) => [],
   RefineStmt(_, _, _) => [],
   AliasStmt(_, _) => [],
   RowAliasStmt(_, _) => [],
 }
+
+fn free_vars_handler_arms(arms, bound) = fold(
+  [],
+  (acc, arm) => free_vars_merge(acc, collect_free_vars(arm.body, free_vars_merge(bound, arm.args))),
+  arms
+)
 
 fn free_vars_list(nodes, bound) =
   fold([], (acc, node) => free_vars_merge(acc, collect_free_vars(node, bound)), nodes)

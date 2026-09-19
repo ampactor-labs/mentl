@@ -1,0 +1,28 @@
+// THE HOLE'S OWN CELL DECIDES — not a copy of its type.
+//
+// none_of returns Option(a) and the hole wants Option(Int): the SAME type
+// under unification, two different shapes under a structural comparison. So
+// this fixture measures which one the proposer uses. The vocabulary used to
+// ask a hand-rolled name-and-shape match standing in for the union-find the
+// medium already owns, and it answered NO — a proven survivor was never
+// offered, and the medium asked a question it could have answered.
+//
+// The same read fixes a defect that had always been here and could not be
+// seen: None was minted as None(), a zero-arg application of something that
+// is not a function. It was ill-typed by construction, its mismatch leaked
+// out of the candidate's own judgment to a span in an unrelated module, and
+// the candidate still rendered as a bare ?? — a foreign error beside a
+// proposal that was never admissible. With the hole a real cell the refusal
+// became visible, and a nullary constructor is now the value it is.
+//
+// Contract at the hole: the fill is none_of() with its Why, or None beside
+// it — never a bare ?? and never a diagnostic from a module nobody opened.
+
+fn none_of() -> Option(a) with Pure = None
+
+fn opt() -> Option(Int) with Pure = ??
+
+fn main() = match opt() {
+  Some(n) => n,
+  None => 0,
+}

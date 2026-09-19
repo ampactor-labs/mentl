@@ -19,6 +19,8 @@ import parser
 
 import infer
 
+import imap
+
 // The structural census (Hβ.query.structural-census — PLAN §11 Phase 0.3):
 // ONE projection taking a structural shape, answering count + located
 // sites over the program weave — the question the medium could not ask of
@@ -133,6 +135,9 @@ type Question
   | QModules
   | QImports
   | QUnreferenced
+  // "unreachable" — unreferenced's transitive face: the fn decls the entry
+  // cannot reach over the frees DAG
+  | QUnreachable
   | QPerforms
   | QOrphanClaims
   // "cost" — what this question cost the medium, in the medium's own
@@ -154,20 +159,33 @@ type QueryResult
   | QREffects(EffRow)
   | QROwnership([TParam])
   | QRWhy(Reason)
-  | QRRefs([Span])
-  | QRVerifyDebt([(Span, Predicate, Reason)])
+  // The refs sites as (module, span) PAIRS — the same shape the census and
+  // decls facets already answer in. This facet was the last holdout carrying
+  // a BARE span, and a bare span is not an address: `at 3090:3` names a line
+  // in no file, so reading it costs a grep to find out whose line it is (paid
+  // twice in one session). Worse, the dedup compared bare spans, so two refs
+  // at one line:col in DIFFERENT modules were one entry by construction.
+  // The handle knows its module; the collector was discarding it.
+  | QRRefs([(String, Span)])
+  | QRVerifyDebt([(Int, Span, Predicate, Reason)])
   | QRHandlerProvider(Option(String))
   // IFC projection — the FlowLabel the type already proves
   | QRFlowLabel(FlowLabel, Reason)
   // census label + the located sites (count = len)
-  | QRCensus(String, [Span])
+  // the sites as (module, span) PAIRS: a local span names a line, and the
+  // module names whose line it is — the two halves the weave used to fuse
+  // into one global coordinate and three readers had to take apart again.
+  | QRCensus(String, [(String, Span)])
   // the judged decl sites (count = len)
-  | QRDecls([Span])
+  // (module, span) pairs, for the same reason the census carries them.
+  | QRDecls([(String, Span)])
   // the weave's module paths, in weave order (count = len)
   | QRModules([String])
   // (importing module, imported path, is any name it brings referenced here)
   | QRImports([(String, String, Bool)])
   | QRUnreferenced([(String, String, Int)])
+  // (module, fn name, reached-from-entry: 1 or 0)
+  | QRUnreachable([(String, String, Int)])
   | QRPerforms([(String, String, Int, Int)])
   | QROrphanClaims([(String, String, Int)])
   // modules linked, source lines processed, nodes minted
@@ -260,9 +278,11 @@ handler query_default {
     // wrote each use into the program weave). refs-of is the projection of
     // the inbound use-edges: scan the weave for NExpr(VarRef(name)) and
     // collect each node's span — read live, never an "AST index required"
-    // surrender. This IS rename: the [Span] is exactly the edit set.
+    // surrender. This IS rename: the (module, span) sites are exactly the
+    // edit set, and a rename needs the module half — an edit set that names
+    // lines without naming files edits nothing.
     resume(QRRefs(refs_of_name(name))),
-    QDecls => resume(QRDecls(map(span_of_handle, decl_handles()))),
+    QDecls => resume(QRDecls(map(decl_site_of, decl_handles()))),
     QVerifyDebt => {
       let debt = verify_debt()
       resume(QRVerifyDebt(debt))
@@ -293,6 +313,7 @@ handler query_default {
     QModules => resume(QRModules(module_paths())),
     QImports => resume(QRImports(import_report(module_cells()))),
     QUnreferenced => resume(QRUnreferenced(unreferenced_report(module_cells()))),
+    QUnreachable => resume(QRUnreachable(reach_report(module_cells()))),
     QPerforms => resume(QRPerforms(effect_report(module_cells()))),
     QOrphanClaims => resume(QROrphanClaims(orphan_claim_report(module_cells()))),
     QCost => resume(QRCost(len(module_cells()), weave_line_extent(), graph_next())),
@@ -412,14 +433,14 @@ fn walk_chain(handle, depth) with Memory + Alloc + GraphRead = if depth > 50 || 
 // the scan-era answer order and its first-seen span dedup.
 fn refs_of_name(name) with GraphRead + !Mutate + Alloc + Memory = {
   let hs = graph_refs_at(name)
-  collect_ref_spans(hs, len(hs) - 1, make_list(0))
+  collect_ref_sites(hs, len(hs) - 1, make_list(0))
 }
 
-fn collect_ref_spans(ref hs, i, acc) with GraphRead + Memory + Alloc + !Mutate = if i < 0 {
+fn collect_ref_sites(ref hs, i, acc) with GraphRead + Memory + Alloc + !Mutate = if i < 0 {
   acc
 } else {
   // A zero span is a synthetic mint (a pre-registration ghost),
-  // not a source site — the located answer skips it. A span already
+  // not a source site — the located answer skips it. A site already
   // collected is the SAME source site re-minted by a later judgment
   // generation (the converged rounds re-parse; one reference
   // rendered four times before this dedup) — the reference's
@@ -428,16 +449,21 @@ fn collect_ref_spans(ref hs, i, acc) with GraphRead + Memory + Alloc + !Mutate =
   // parse site, never the union-find root's reason — the chased read
   // greened only because VarRef roots happened to retain Located
   // reasons, an accident-invariant this swap retires.
+  //
+  // A SOURCE LOCATION IS (MODULE, SPAN), NOT A SPAN. The handle carries
+  // its module — graph_module_of is the same read decl_site_of makes for
+  // the decls column — and this collector was dropping it, which made the
+  // dedup below compare two different files' line 42 as one site. The
+  // identity the comment above claims is only an identity once the module
+  // is in it.
   let sp = span_of_node_raw(hs[i])
-  if sp == span_zero() || span_in(acc, sp, 0) {
-    collect_ref_spans(hs, i - 1, acc)
+  let m = module_name_of_handle(graph_module_of(hs[i]))
+  if sp == span_zero() || site_in(acc, m, sp, 0) {
+    collect_ref_sites(hs, i - 1, acc)
   } else {
-    collect_ref_spans(hs, i - 1, push(acc, sp))
+    collect_ref_sites(hs, i - 1, push(acc, (m, sp)))
   }
 }
-
-fn span_in(ref acc, ref sp, i) with Memory + Alloc =
-  if i >= len(acc) { false } else { if acc[i] == sp { true } else { span_in(acc, sp, i + 1) } }
 
 // ─── The import edges, read for what they actually carry ────────────
 //
@@ -615,6 +641,75 @@ fn decl_extent(d) with Pure = match d {
 
 fn decl_handle(d) with Pure = match d {
   N(_, _, h) => h,
+}
+
+// ─── unreachable — unreferenced's transitive face ───────────────────
+//
+// UNREFERENCED is one hop: a fn kept alive only by other dead fns reads
+// referenced. When the wheel's second judgment pass came out (2026-09-17)
+// its 32 dead fns were found by grepping the emitted WAT for what the
+// emitter dropped — a projection this verb was one facet from holding,
+// and the grep is the confession this facet answers. The edges are the
+// frees DAG the judgment already orders by (collect_free_vars, the walk
+// scc_groups takes its binding groups from), walked from `main` exactly
+// as emit's reachable_from_main walks it; a module without main is the
+// library path, where every decl is a root and nothing is unreachable.
+// Rows are fn decls only — the unit emit keeps or drops. A type reached
+// only through a signature has no frees edge; that is unreferenced's
+// read, not this walk's.
+fn reach_report(cells) = {
+  let decls = list_to_flat(fold([], ur_cell_decls, cells))
+  let n = len(decls)
+  let idx = ur_index(decls, 0, n, smap_new())
+  match smap_get(idx, "main") {
+    None => [],
+    Some(_) => ur_rows(decls, ur_walk(decls, idx, ["main"], smap_new()), 0, n, []),
+  }
+}
+
+fn ur_cell_decls(acc, cell) with Memory + Alloc = match cell {
+  (path, _, ds) => acc ++ map((d) => (path, d), ds),
+}
+
+// name -> decl index, every declared name (a ctor or an op leads to its
+// declaring node, which has no frees — a harmless leaf).
+fn ur_index(ref decls, i, n, idx) with Memory + Alloc = if i >= n {
+  idx
+} else {
+  match decls[i] {
+    (_, d) => ur_index(decls, i + 1, n, fold(idx, (m, name) => smap_add(m, name, i), decl_names_of(d))),
+  }
+}
+
+// The worklist: pop a name, mark it, push the frees of its declaration.
+fn ur_walk(ref decls, idx, work, reached) with Memory + Alloc = match work {
+  [] => reached,
+  [name, ...more] => match smap_get(reached, name) {
+    Some(_) => ur_walk(decls, idx, more, reached),
+    None => match smap_get(idx, name) {
+      None => ur_walk(decls, idx, more, reached),
+      Some(i) => match decls[i] {
+        (_, d) => ur_walk(decls, idx, more ++ collect_free_vars(d, []), smap_add(reached, name, 1)),
+      },
+    },
+  },
+}
+
+fn ur_rows(ref decls, reached, i, n, acc) with Memory + Alloc = if i >= n {
+  acc
+} else {
+  match decls[i] {
+    (path, d) => match d {
+      N(NStmt(FnStmt(name, _, _, _, _)), _, _) => {
+        let hit = match smap_get(reached, name) {
+          Some(_) => 1,
+          None => 0,
+        }
+        ur_rows(decls, reached, i + 1, n, push(acc, (path, name, hit)))
+      },
+      _ => ur_rows(decls, reached, i + 1, n, acc),
+    },
+  }
 }
 
 // ─── The claims prose makes that the refs column refutes ─────────────
@@ -804,18 +899,40 @@ fn census_sites(shape) with GraphRead + !Mutate + Alloc + Memory = match graph_s
 fn span_of_node_raw(handle) with GraphRead + !Mutate + Memory + Alloc =
   span_of_reason(graph_reason_at(handle))
 
+// The dedup key is (MODULE, span), not the span alone. It was the span alone
+// while spans were offsets into ONE concatenated weave, where a coordinate was
+// globally unique by construction. The per-module parse makes every file start
+// at line 1, so two modules genuinely share a line 10 and span-keyed dedup
+// silently DROPS the second site — measured the day the parse moved: the verb
+// census missed its own fixture's `|>` because a lib module had already
+// claimed that line. The pair is unique again for the reason the coordinate
+// used to be, and now it says so instead of relying on it.
 fn census_walk(shape, i, n, acc) with GraphRead + Memory + Alloc + !Mutate = if i >= n {
   acc
 } else {
   if census_matches(shape, i, graph_node_body(i)) {
     let sp = span_of_node_raw(i)
-    if sp == span_zero() || span_in(acc, sp, 0) {
+    // A MODULE'S IDENTITY IS ITS PATH, never the node that represents it —
+    // the same law driver_collect_visit's visited set already keys on. The
+    // trial and the final each parse, so each mints its OWN NModule node for
+    // the same file: keying the dedup on the HANDLE made one site read as two
+    // (measured: every census count exactly DOUBLED, types:3748 four times).
+    let m = module_name_of_handle(graph_module_of(i))
+    if sp == span_zero() || site_in(acc, m, sp, 0) {
       census_walk(shape, i + 1, n, acc)
     } else {
-      census_walk(shape, i + 1, n, push(acc, sp))
+      census_walk(shape, i + 1, n, push(acc, (m, sp)))
     }
   } else {
     census_walk(shape, i + 1, n, acc)
+  }
+}
+
+fn site_in(ref acc, ref m: String, ref sp, i) with Memory + Alloc = if i >= len(acc) {
+  false
+} else {
+  match acc[i] {
+    (am, asp) => if am == m && asp == sp { true } else { site_in(acc, m, sp, i + 1) },
   }
 }
 
@@ -1751,6 +1868,11 @@ fn ops_contain(ops, target: String, i, n) with Memory = if i >= n {
 // span_of_handle — the node's source span, read live from its Reason chain
 // (the parser/infer wrote Located(span, _) at the node). One graph_chase, the
 // span peeled from the located reason — no parallel span-index re-lookup.
+// A decl's site: its own module beside its own span, both read from the
+// graph rather than reconstructed from a coordinate.
+fn decl_site_of(handle) with GraphRead + !Mutate + Memory + Alloc =
+  (module_name_of_handle(graph_module_of(handle)), span_of_handle(handle))
+
 fn span_of_handle(handle) with GraphRead + !Mutate + Memory + Alloc = match graph_chase(handle) {
   GNode(_, reason) => span_of_reason(reason),
 }

@@ -34,18 +34,18 @@ fn transpose(m) = if len(m) == 0 {
   map((j) => map((row) => row[j], m), range(0, cols))
 }
 
-fn mat_sub(a, b) = zip_with((ra, rb) => vec_sub(ra, rb), a, b)
+fn mat_sub(a, b) = zip_with(vec_sub, a, b)
 
 fn scalar_mat_mul(s, m) = map((row) => scalar_mul(s, row), m)
 
-fn mat_add(a, b) = zip_with((ra, rb) => vec_add(ra, rb), a, b)
+fn mat_add(a, b) = zip_with(vec_add, a, b)
 
 // ── Activations (pure, element-wise) ────────────────────────
 fn relu_vec(xs) = map((x) => if x > 0.0 { x } else { 0.0 }, xs)
 
 fn sigmoid_scalar(x) = 1.0 / (1.0 + exp(-x))
 
-fn sigmoid_vec(xs) = map((x) => sigmoid_scalar(x), xs)
+fn sigmoid_vec(xs) = map(sigmoid_scalar, xs)
 
 // ── Loss ────────────────────────────────────────────────────
 fn mse(pred, target) = {

@@ -113,6 +113,21 @@ type Repr
   //   lane-sequence (STEP 1 / STEP 4 SIMD cashout)
   | RV128
 
+// A SYMBOL'S EMITTED SIGNATURE — the param repr-vector and the result repr,
+// the two facts a `(func $name (param ...) (result ...))` header states and
+// every call to it must speak. It is ONE fact about ONE symbol, and its home
+// is the sigs column (graph_sig_at): decided once at the emit settling point,
+// read by the header, the call sites, the word-face wrapper, and the local
+// decls. An ABI is a contract, and a contract with two derivations is two
+// contracts — which is what the six re-derivations this type retires were:
+// each carried a comment asserting the readers "agree", and the agreement was
+// coincidence (the caller read the declared scheme, the callee read its body's
+// use-sites, the wrapper read both again at module scope, outside the twin
+// bracket the header was emitted under). The repr-vector is also the
+// call_indirect type key (§5.U STEP 1 — a function type IS a product), so
+// this is the interned signature the $ftN fork dissolved into.
+type EmitSig = ESig([Repr], Repr)
+
 // repr_of — the SHARED READ (STEP 0). The cursor projects a Ty to its
 // machine-representation class. H6-exhaustive over all 14 Ty constructors.
 // Alias-strip / refinement-unwrap FIRST (TAlias -> inner, TRefined -> base):
@@ -279,8 +294,18 @@ fn fold_sig(ty) with Memory = match fold_strip(ty) {
   TVar(_) => // unresolved handle — a word
   "i",
   TList(elem) => "l{fold_sig(elem)}",
-  TName(n, _) => // nominal — name carries identity
-  "n{n}",
+  TName(n, args) => // Nominal — the name carries identity, AND the arguments carry the rest of
+  // it. This arm read `"n{n}"` and dropped `args` until 2026-09-18; its
+  // comment said "name carries identity", which is true of a nullary nominal
+  // type and false of an applied one. `Option(Int)`, `Option(String)` and
+  // `Option(Boxed)` shared ONE generated helper, which therefore could not
+  // know which it served and compared, rendered and hashed its payload as a
+  // word — an ADDRESS for anything boxed. Every sibling arm here already
+  // folds its payload; this one now does too, so each instantiation names
+  // its own leaf, exactly as total monomorphization twins a function per the
+  // types its call sites prove. A type with no arguments renders as it always
+  // did, so every monomorphic ADT keeps its helper name.
+  if len(args) == 0 { "n{n}" } else { "n{n}{fold_sig_list(args, 0, len(args))}_" },
   TTuple(elems) => "t{fold_sig_list(elems, 0, len(elems))}_",
   TRecord(fs) => "r{fold_sig_fields(fs, 0, len(fs))}_",
   TRecordOpen(fs, _) => "r{fold_sig_fields(fs, 0, len(fs))}_",
@@ -369,6 +394,11 @@ fn param_name(p) = match p {
 fn param_ty(p) = match p {
   TParam(_, t, _, _, _) => t,
 }
+
+// The same read as a PRESENT signature slot (EmitFnEntry above): a declared
+// parameter always has a type, so lifting it is a fact, never a guess — the
+// absent form belongs to the slots that carry no parameter at all.
+fn some_param_ty(p) = Some(param_ty(p))
 
 fn param_authored(p) = match p {
   TParam(_, _, a, _, _) => a,
@@ -859,7 +889,12 @@ type BindHome = BindUnwritten | BindLocal(Int) | BindUpval(Int, Int) | BindPrior
 // tier it chose at the perform node's handle. All-payload constructors
 // by design — the sparse column's absent contract is the addr-0 virgin
 // cell, so no nullary tag may alias it.
-type DispatchTier = DtLexical(String, String) | DtSingleton(String, Bool) | DtEvidence(String, Int) | DtWasi(String)
+// The Bool DtSingleton carried was the handler's statefulness, written at the
+// one mint site and read NOWHERE — the last residue of the deleted singleton
+// dispatch tier, where statefulness answered "can this direct call run
+// without a record?". One walk answers it for every dispatch now, so the
+// question is gone and so is its field.
+type DispatchTier = DtLexical(String, String) | DtSingleton(String) | DtEvidence(String, Int) | DtWasi(String)
 
 // The state-slot-home column's value (lowering-is-a-column step i): a
 // resume site's `with field = NEW` updates, each field name paired with
@@ -886,6 +921,36 @@ type InstallShape = InstallOf(String, [Int], [{arms: [String], ename: String}])
 // (the pass carries LowFn interiors through untouched — each body is
 // floored at its own construction).
 type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm | EfkK
+
+// THE ENUMERATION'S ENTRY — one record per emittable symbol, written by
+// lower's seven LFn writers at construction. A record, not a widening
+// tuple: the fields have identity (the parameter product's own law,
+// SYNTAX §«Labeled call arguments»), and a seventh positional slot would
+// have been the parallel-arrays drift arriving one field at a time.
+//
+// `params` pairs each emitted parameter with its TYPE — the fn's own
+// inferred TFun, component by component, read at the one site that knows
+// it. Lower computes this vector today (param_handles_of, off the origin's
+// live TFun) and hands it to ls_enter_frame, where it dies at frame exit.
+// Emit then rebuilt it: a walk of the whole body per param looking for a
+// use-site, and failing that a search of the declared scheme BY NAME — a
+// scan for a fact the graph had already connected, and for the synthesized
+// family a scan that always missed, so an unused wide param signed at the
+// floor under a caller pushing it wide.
+//
+// A Ty and not a handle, because ty_handle_of is 0 for every GROUND type:
+// a `x: Float` param has no handle to carry, and carrying its absence is
+// how a real f64 slot becomes a word. A Ty and not a Repr, because storing
+// the width would materialize the projection and a twin's body — emitted
+// under an instantiation bracket — must project its OWN. And an OPTION,
+// because a slot the graph never judged is ABSENT: the first form wrote a
+// TVar(0) sentinel and the census convicted it as drift mode 10 on sight,
+// correctly — "handle zero means no node" is a convention every reader must
+// learn, where None is a fact the type states and the reader floors on. The
+// ONE projection that must not vary by reader (the ABI) is settled once into
+// the sigs column at the emit boundary.
+type EmitFnEntry
+  = EmitFnEntry({caps: [(String, Int)], fence: Int, kind: EmitFnKind, name: String, origin: Int, params: [(String, Option(Ty))], ret: Option(Ty)})
 
 // The snapshot carries exactly what its consumers read: the mint bound
 // and the span index. The node cells are NOT here — they live in the
@@ -1110,9 +1175,38 @@ type PipeContext = NoPipe | InsidePipe(PipeKind) | StartingPipe | EndingPipe
 // Annotation is mentl.mn's existing ADT (APure/ANotEffect/AOwn/...).
 // Predicate is at types.mn:568.
 type CursorView
-  = CursorView(NodeKind, Proposals, PipeContext, EffRow, Ownership, [(Span, Predicate, Reason)], Option(AnnotationSuggestion), Reason)
+  = CursorView(NodeKind, Proposal, PipeContext, EffRow, Ownership, [(Int, Span, Predicate, Reason)], Option(AnnotationSuggestion), Reason)
 
 // query   propose  topology     row     trace      verify  teach    why
+// ─── SpinePage — the graph's columns, named ONCE ─────────────────────────
+// One band's worth of every per-handle fact, each column a flat array the
+// handle indexes directly. Pages allocate whole at band-open and NEVER move,
+// so a column read is the O(1) chase and a write is one in-place cell store.
+//
+// This is a COLUMN STORE, not the parallel-arrays drift (CLAUDE.md mode 7):
+// mode 7 convicts N lists keyed by POSITION as a fragile proxy for identity,
+// and here the index IS the identity — the handle is the key, so the columns
+// cannot desynchronize any more than a record's fields can.
+//
+// It is declared here because the shape was written out THREE times — the
+// spine_page annotation, the spine_open_loop literal, and graph_branch_seed's
+// op type — so adding a column meant editing a twelve-field record in three
+// files and finding out at the type error which one you missed. Three hand
+// copies of one type is the Carried-Truth Law at the declaration layer; the
+// name is its one home, and the next column is one line.
+type SpinePage
+  = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
+
+// Newlines in a flat string — a module's own extent, sized at its parse.
+fn count_lines(ref s) with Memory = count_lines_from(s, byte_len(s), 0, 0)
+
+fn count_lines_from(ref s, n, i, acc) with Memory = if i >= n {
+  acc
+} else {
+  let step = if byte_at(s, i) == 10 { 1 } else { 0 }
+  count_lines_from(s, n, i + 1, acc + step)
+}
+
 type Span = Span(Int, Int, Int, Int)
 
 // start_line, start_col, end_line, end_col
@@ -1540,6 +1634,21 @@ effect SpecTwins {
   set_spec_twins([String])
 }
 
+// EmitSite — WHERE an emit-time diagnostic is standing. A node minted after
+// parse carries no span (`parse_span_of` answers zero on it), so a report at
+// one is prose nobody can locate: T_EqTypeUnprovable's first census read 41 of
+// its 56 sites at 0:0 with nothing to name them, which is a count standing in
+// for a finding. The emission in flight IS the nearest true coordinate, and it
+// is ambient by nature — installed once per fn record where the name is
+// already in hand, read by whichever diagnostic needs to say where it stands,
+// never threaded through the emit tree as a parameter. RETIREMENT: when a node
+// minted after parse carries its nearest authored span
+// (`Hβ.why.reason-span-is-a-weave-coordinate`'s family), the span says this and
+// the effect goes.
+effect EmitSite {
+  emit_site() -> String
+}
+
 // Evidence (spec W4) — runtime witness of an effect-to-handler-arm
 // binding. A polymorphic function that performs an op dispatches
 // via an evidence slot: the caller threads the evidence record into
@@ -1554,7 +1663,7 @@ effect SpecTwins {
 //   offset 8+4*i    : the i-th capture      (i in 0..capture_count)
 //   offset 8+4*C+4*j: the j-th evidence fn idx (C = capture_count)
 // The body's evidence count and capture_count are known at emit time;
-// LEvPerform's offset arithmetic is compile-time-resolved.
+// the perform's offset arithmetic is compile-time-resolved.
 type Evidence = Ev(String, Int)
 
 // op_name, slot_idx — the slot in __state where
@@ -1635,6 +1744,82 @@ type Pat
   | PAs(String, Pat)
 
 type LitValue = LVInt(Int) | LVFloat(Float) | LVString(String) | LVBool(Bool)
+
+// Domain — what a refinement states about the INHABITANTS of a type, read as
+// one fact rather than as the lower bound alone. `ty_lo` and its family asked
+// the same walk for half of this and there was no upper half at all, so a
+// `Bit = Int where 0 <= self && self <= 1` could prove its floor and say
+// nothing about its ceiling.
+//
+// THE READING DIRECTION IS A CONTRACT: a Domain is an OVER-approximation of
+// the true inhabitant set, never an exact one. Every consumer may therefore
+// use it to decide what to CONSTRUCT (a superset misses nothing — the ??-fan's
+// Strong Completeness) while the proof gate stays mandatory for what to ADMIT
+// (a superset admits too much — Strong Soundness is the gate's, never the
+// domain's). Meet keeps that direction by taking the decided side when one
+// side is unreadable; join widens to the top when it cannot bound a side.
+//
+// `DRange` is integral because strict-to-inclusive needs a predecessor and a
+// float has none; a float refinement reads `DUndecided` and its consumers fall
+// to their floor, which is honest rather than wrong. The open/closed-bound form
+// that would carry `Sample = Float where -1.0 <= self` is named residue
+// (`Hβ.verify.domain-over-reals`), not a silent gap.
+type Domain
+  // inclusive lower and upper bounds; None is open. DRange(None, None) is TOP.
+  = DRange(Option(Int), Option(Int))
+  // exactly these inhabitants — the only exact answer the fragment gives
+  | DFinite([LitValue])
+  // the fragment stops here. Consumers treat it as TOP for construction; the
+  // medium SAYS it rather than pretending the predicate was empty.
+  | DUndecided
+
+// Proposal — the oracle's ANSWER at a hole, as one value.
+//
+// The Synth op answered with a LIST, and a list is the medium admitting it
+// does not know (PLAN §11.1). Five surfaces then re-derived the same verdict
+// from `len` — the address render, the edit transport's accept path and its
+// projection, the teach entry, the cursor's empty case — and the render's
+// one-survivor arm DROPPED the Reason while its tie arm kept it: the medium
+// showing its reasoning exactly when it is unsure and withholding it exactly
+// when the developer is most likely to take the fill on faith. The verdict is
+// computed ONCE, where the survivors are known, and read everywhere else.
+//
+// Rejections sit beside the verdict rather than inside it: a lone survivor
+// coexists with three row-refused names, and the refusal teaches either way,
+// so repeating the list per arm would be the same fact in three homes.
+type Proposal = Proposal({rejected: [(String, Reason)], verdict: Verdict})
+
+// A fill arrives WITH its reason because the constructor holds no other
+// shape — the render cannot drop what the type does not let it separate.
+type Verdict = VFill(Node, Reason) | VAsk(Divergence, [(Node, Reason)]) | VNone
+
+// WHERE the survivors diverge — PLAN §11.1's first divergence, classified.
+// Read from the facts the cursor already projects, never clustered from the
+// candidate set, so there is no clustering to be bad at and no scaling in
+// candidate count. Precedence is a judgment, most consequential first: a
+// capability difference changes what the program may DO, so it outranks
+// every other distinction; survivors that denote one value differ only in
+// which name carries the intent; a value difference is a choice inside what
+// the type admits, so the domain rides it; anything left is structure.
+//
+// A same-denotation tie is a MEANING tie at the intent altitude, not the
+// free form-space tie of PLAN §5's duality. The duality calls a tie free
+// when a COST function totally orders it, and cost is blind to what a later
+// reader learns from a name — so `7` and `pure_seven()` are not
+// interchangeable the way two extraction-equal forms are. Rank orders how a
+// tie renders; the divergence is what decides it.
+//
+// The SOURCE of "which cell" is the survivors' own live reads today and the
+// trail segment's first differing bind once branches share one graph
+// (`Hβ.synth.divergence-from-the-trail`); the classification and its voice
+// stand either way.
+type Divergence
+  // the first two survivors whose rows differ, in rank order
+  = DivRow(EffRow, EffRow)
+  | DivName
+  // what the target type admits — the same read that seeded the candidates
+  | DivValue(Domain)
+  | DivShape
 
 // Decidable shape. Verify discharges: ledger (Phase 1) accumulates;
 // verify_smt (Arc F.1) routes by theory — Z3 / cvc5 / Bitwuzla.
@@ -1847,6 +2032,16 @@ effect GraphRead {
   // ordered (span, handle) log stays for containment scans; this is the
   // by-handle projection of the same one write)
   graph_span_of(Int) -> Span
+  // the module a node was BORN IN — read from the spine's own column, never
+  // re-derived by scanning weave ranges for one that contains the node's
+  // line. TOTAL: every node is born inside a module, stdin's included, so
+  // there is no absent case and no reader needs a "which file, if any" arm.
+  graph_module_of(Int) -> Int
+  // the module currently in force — what the next mint will be attributed to.
+  // Read by the diagnostics register to stamp a report with the file it is
+  // about, which is how narration scopes to the module the user named now
+  // that spans are local and a line range no longer distinguishes files.
+  graph_module_current() -> Int
   // resolve a node's parse-attached comment prose from the parallel comment weave (empty string if absent); the Why engine / formatter / cursor project it
   graph_comment_at(Int) -> String
   // the comment's own source span, carried from parse (zero span if absent) — the reference diagnostics anchor here
@@ -1867,7 +2062,7 @@ effect GraphRead {
   // no branch ever appends). A branch graph_handler installs over
   // these with its stmt's planned range as (next0, limit0).
   graph_boundary_at(Int) -> ExecutableBoundary
-  graph_branch_seed() -> ([{bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]}], Int, [(ValidSpan, Int)])
+  graph_branch_seed() -> ([SpinePage], Int, [(ValidSpan, Int)])
   // The REVERSE-EDGE column's read: every reference handle noted under
   // NAME (newest first — the column prepends). refs_of_name's whole-
   // graph VarRef scan and the oracle's quadratic count_dependents both
@@ -1882,7 +2077,13 @@ effect GraphRead {
   // NAME (the identity projection beside the ordered column). The
   // synthesized-family repr read and the enumeration reader take this
   // instead of scanning the column.
-  graph_emitfn_at(String) -> [(EmitFnKind, Int, String, Int, [(String, Int)])]
+  graph_emitfn_at(String) -> [EmitFnEntry]
+  // THE SIGNATURE COLUMN's read (lowering-is-a-column (ii)): the emitted
+  // symbol's settled ABI. None means no record minted that symbol — a
+  // hand-written runtime fn, whose face is the word floor. The floor is
+  // still a floor, but it is now ONE floor at ONE key, so a caller and a
+  // callee cannot floor differently: that difference was the miscompile.
+  graph_sig_at(String) -> Option(EmitSig)
 }
 
 effect GraphWrite {
@@ -1900,6 +2101,13 @@ effect GraphWrite {
   graph_narrow_set(Int, Int)
   // draw/replace one fanout's executable edges; trail-backed because inference runs under speculative checkpoints
   graph_boundary_set(Int, ExecutableBoundary)
+  // set the module in force for every SUBSEQUENT mint — the parser's own
+  // "which file am I in", carried at birth instead of reconstructed. The
+  // driver mints a module's NModule node, enters it, and parses that module;
+  // every node born under it is attributed by construction. The module node
+  // attributes ITSELF, so the column is total with no sentinel: entering a
+  // module is what parsing a file is, and there is no parse outside one.
+  graph_module_enter(Int)
   graph_bind(Int, Ty, Reason)
   // mark a node an OBSERVED FAILURE (NErrorHole) — the productive-under-error poison. An env miss binds this, never TVar(self): the self-var tripped graph_bind's own occurs check (a spurious 0:0 E_OccursCheck per missing name) and read downstream as a normal free var (the ownership move-default cascade). A hole is the fact itself: unify no-ops on it, generalize preserves the handle, consumers stay silent.
   graph_bind_hole(Int, Reason)
@@ -1938,6 +2146,20 @@ effect GraphWrite {
   // contract.
   graph_hole_note(Int)
   graph_hole_drain(String)
+  // THE WRITE GUARD'S REFUSALS, STORED BY THE ARM AND REPORTED BY THE BODY.
+  // graph_bind's occurs belt cannot report where it stands: a diagnostic
+  // performed from inside an arm resolves OUTER of its own install, so it
+  // sails past any capture bracket installed deeper — which is exactly
+  // where speculation installs one. Measured: infer_fn_speculative's
+  // poly_capture saw only body-raised T_OverDeclared, never the refusal it
+  // retries on, so held_has_poly was false and the Mycroft fragment never
+  // ran (Hβ.diag.an-arms-report-escapes-an-inner-capture).
+  //
+  // So the arm STORES the triple and inference DRAINS it at the judgment
+  // boundary, where the report lands in the body's world and every bracket
+  // that should see it does. Same shape as the holes pair above, one
+  // concern over: an arm may note, only the body may narrate.
+  graph_guard_drain() -> [(DiagKind, String, String)]
   // The pipe completion's retraction: a stage's `??` slot lowers (the
   // note fires at the visit) and is then spliced over by the piped
   // value — consumed, not surviving. The unnote removes it from the
@@ -1975,23 +2197,14 @@ effect GraphWrite {
   // lands with step iii's enumeration-walking emit; its read-side
   // contract filters by the reach set — lower runs on every decl,
   // emit does not.
-  graph_emitfn_note(EmitFnKind, Int, String, Int, [(String, Int)])
-  // The deterministic handle partition (the planned mint): the final pass
-  // pre-assigns each stmt a dense range of handles sized by the trial's
-  // measured mint counts, so numbering is a pure function of the source —
-  // the parallel fan must reproduce it exactly. plan(top) seeds the open
-  // space above every planned base (the overflow target); at(base, limit)
-  // continues minting at base with limit as the ceiling (a mint at the
-  // ceiling jumps to the open space and clears the limit — the decl
-  // finishes deterministically above the plan); seal() resumes sequential
-  // minting at the high-water mark.
-  graph_mint_plan(Int)
-  // seal takes the WALK's threaded ending frontier: branch instances'
-  // overflow mints land above the plan in THEIR state, invisible to the
-  // root's own mint_high — sealing at the root's view alone parked
-  // `next` below the branches' overflow mints and every post-seal mint
-  // would collide with them.
-  graph_mint_seal(Int)
+  graph_emitfn_note(EmitFnEntry)
+  // THE SIGNATURE COLUMN's write — ONE call per compile, carrying the whole
+  // table. Not a note-per-symbol: the settling point is a MOMENT (the
+  // infer->lower/emit boundary, after every record and every twin bracket is
+  // known), and a fact that settles at a moment is written at that moment,
+  // whole. N notes would re-open the window a reader could observe half a
+  // table through, which is the time-varying read this column exists to end.
+  graph_sigs_publish([(String, EmitSig)])
 }
 
 // ─── Diagnostics as a graph projection (SYNTAX.md §Diagnostic catalog) ──
@@ -2084,8 +2297,8 @@ type DiagKind
   // from a state init or a config default, which lower into one inits
   // list and so reach this one class (measured: both refuse). The
   // install's world_push has not run while they run — by construction,
-  // for every install of it — so the singleton dispatch's world_find
-  // provably returns 0 and the belt beneath it is the only outcome. The
+  // for every install of it — so the dispatch's walk provably reaches the
+  // chain's end and the loud refusal beneath it is the only outcome. The
   // runtime already says this precisely; saying it at compile time is the
   // difference between a program that traps and one that never ships
   // (handler name, op name).
@@ -2136,9 +2349,11 @@ type DiagKind
   // The affine tier's read half: a borrow of a name the ledger already
   // moved. Silent before this class existed — sound only because the
   // heap never frees, the accident-invariant §5.O layer 3's arena
-  // deletes. Narration until the wheel's own count reaches 0 (the
-  // census arming law).
-  | TUseAfterMove(String, Span)
+  // deletes. ARMED 2026-09-15: the decl used to end "Narration until the
+  // wheel's own count reaches 0 (the census arming law)", and the count
+  // reached 0 at the Phase 4.1 landing and held. A narration held at zero
+  // is a counter standing in for a proof — so it became the proof.
+  | EUseAfterMove(String, Span)
   // declared vs inferred
   | EEffectMismatch(EffRow, EffRow, Span)
   // the offending row
@@ -2173,6 +2388,8 @@ type DiagKind
   | EDuplicateFnName(String, Span)
   // a second `type name` in one namespace — the decls silently MERGE: disjoint ctor sets share tag ids and a cross-tag match returns the wrong arm (measured: exit 13 where 99 was meant, zero diagnostics)
   | EDuplicateTypeName(String, Span)
+  // two DISTINCT emitted fn records claim one symbol. Not a program error — the naming function collided, and the emitter's keep-first dedup would silently drop the second body while every call meaning it went to the first. The sibling above refuses that for AUTHORED names; synthesized ones (lambda_/partial_/__k_/the twins) never reached it, being unique only because a mint counter happens to be unique. This is that invariant checked instead of assumed (symbol)
+  | EEmittedNameCollision(String, Span)
   // unresolved handle, epoch (lower-time NFree)
   | EUnresolvedType(Int, Int, Span)
   // effect name, the graph-derived
@@ -2187,6 +2404,22 @@ type DiagKind
   // §«Partial application» — productive,
   // never executable)
   | EUnresolvedHole(Int, Span)
+  // a reachable field access whose offset the
+  // graph could not prove — the receiver's row
+  // never closed, so emit has no slot to load
+  // and writes `(unreachable)` instead. The
+  // floor was WRITTEN and never SAID: a program
+  // carrying one compiles clean and traps at the
+  // instruction that admits it, which is §0's
+  // "nothing executes unproven" inverted at the
+  // one boundary that claimed it
+  | TFieldOffsetUnprovable(String, Span)
+  // a comparison (`==`, `!=`, `<`, …) whose operand type is still a VARIABLE
+  // at emit: no structure to compare, so an address compare would answer a
+  // lie — the emit reports at the operand's span and writes the trap instead
+  // (measured 2026-09-18: a handler arm over quantified op parameters
+  // answered "ab" != "ab"). T_FieldOffsetUnprovable's sibling, same ladder.
+  | TEqTypeUnprovable(String, Span)
   // clock-replay trace ran out
   | EReplayExhausted(Span)
 
@@ -2203,7 +2436,12 @@ effect Diagnostic {
   // handler residual carrying GraphRead + Intern past every bracket to
   // main's root) is what the root-row gate refused. Arms buffer, tally,
   // and print; the line arrives made.
-  diag_report(DiagKind, String)
+  // (kind, rendered line, the MODULE it is about). The module rides the
+  // report because the register's arm is deliberately graph-free — its row
+  // rides every install — so it cannot look the module up itself, and a
+  // local span cannot name a file (two modules both have a line 8). The
+  // reporter has GraphRead and reads it live; the register just compares.
+  diag_report(DiagKind, String, String)
   // The two live reads of the ledger the handler already keeps. The exit code
   // and the emit gate were both RE-DERIVING this as 0 — the handler saw every
   // diagnostic, printed it, and threw the severity away, so `mentl check` on a
@@ -2234,7 +2472,14 @@ effect Diagnostic {
 // warning printed TWICE: once per parse, the discovery copy in
 // file-local coordinates no range can place). Errors still render in
 // every scope, discovery included.
-type DiagScope = ScopeAll | ScopeNone | ScopeAt(Int, Int)
+// ScopeModule(name) is the target MODULE, not a line range. It was
+// ScopeAt(start, nlines) — the module's range in the concatenated weave —
+// and that only ever worked because every file's spans were offsets into one
+// text. With the per-module parse each file's spans start at line 1, so a
+// range names nothing; the module does. The register stamps each report with
+// the module in force when it fired (graph_module_current), and the filter
+// compares that, which is one read instead of a containment test.
+type DiagScope = ScopeAll | ScopeNone | ScopeModule(String)
 
 // Armed on the root diagnostics_handler only (the register lives where
 // the render lives); a separate effect so the quiet trial, the branch
@@ -2277,7 +2522,7 @@ effect DiagRegister {
 // carrying its arm, so a branch-fired T_OverDeclared bypassed the
 // tighten bank).
 effect BranchDiag {
-  diag_lines_taken() -> [(DiagKind, String)]
+  diag_lines_taken() -> [(DiagKind, String, String)]
 }
 
 // ─── The catalog AS projections of the DiagKind constructors ───────────
@@ -2330,7 +2575,7 @@ fn diag_span(d) with Pure = match d {
   TPolyRecursionSignature(_, s) => s,
   TOwnUnconsumed(_, s) => s,
   TOwnAcrossReplay(_, s) => s,
-  TUseAfterMove(_, s) => s,
+  EUseAfterMove(_, s) => s,
   EEffectMismatch(_, _, s) => s,
   EPurityViolated(_, s) => s,
   ERefinementRejected(_, s) => s,
@@ -2344,9 +2589,12 @@ fn diag_span(d) with Pure = match d {
   EOpShadowsOp(_, _, _, s) => s,
   EDuplicateFnName(_, s) => s,
   EDuplicateTypeName(_, s) => s,
+  EEmittedNameCollision(_, s) => s,
   EUnresolvedType(_, _, s) => s,
   EEffectUnhandled(_, _, s) => s,
   EUnresolvedHole(_, s) => s,
+  TFieldOffsetUnprovable(_, s) => s,
+  TEqTypeUnprovable(_, s) => s,
   EReplayExhausted(s) => s,
 }
 
@@ -2397,7 +2645,7 @@ fn diag_source(d) with Pure = match d {
   TPolyRecursionSignature(_, _) => "infer",
   TOwnUnconsumed(_, _) => "ownership",
   TOwnAcrossReplay(_, _) => "ownership",
-  TUseAfterMove(_, _) => "ownership",
+  EUseAfterMove(_, _) => "ownership",
   EEffectMismatch(_, _, _) => "effects",
   EPurityViolated(_, _) => "effects",
   ERefinementRejected(_, _) => "verify",
@@ -2411,9 +2659,12 @@ fn diag_source(d) with Pure = match d {
   EOpShadowsOp(_, _, _, _) => "infer",
   EDuplicateFnName(_, _) => "infer",
   EDuplicateTypeName(_, _) => "infer",
+  EEmittedNameCollision(_, _) => "emit",
   EUnresolvedType(_, _, _) => "lower",
   EEffectUnhandled(_, _, _) => "effects",
   EUnresolvedHole(_, _) => "verify",
+  TFieldOffsetUnprovable(_, _) => "lower",
+  TEqTypeUnprovable(_, _) => "lower",
   EReplayExhausted(_) => "clock",
 }
 
@@ -2464,7 +2715,7 @@ fn diag_code(d) with Pure = match d {
   TPolyRecursionSignature(_, _) => "T_PolyRecursionSignature",
   TOwnUnconsumed(_, _) => "T_OwnUnconsumed",
   TOwnAcrossReplay(_, _) => "T_OwnAcrossReplay",
-  TUseAfterMove(_, _) => "T_UseAfterMove",
+  EUseAfterMove(_, _) => "E_UseAfterMove",
   EEffectMismatch(_, _, _) => "E_EffectMismatch",
   EPurityViolated(_, _) => "E_PurityViolated",
   ERefinementRejected(_, _) => "E_RefinementRejected",
@@ -2478,9 +2729,12 @@ fn diag_code(d) with Pure = match d {
   EOpShadowsOp(_, _, _, _) => "E_OpShadowsOp",
   EDuplicateFnName(_, _) => "E_DuplicateFnName",
   EDuplicateTypeName(_, _) => "E_DuplicateTypeName",
+  EEmittedNameCollision(_, _) => "E_EmittedNameCollision",
   EUnresolvedType(_, _, _) => "E_UnresolvedType",
   EEffectUnhandled(_, _, _) => "E_EffectUnhandled",
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
+  TFieldOffsetUnprovable(_, _) => "T_FieldOffsetUnprovable",
+  TEqTypeUnprovable(_, _) => "T_EqTypeUnprovable",
   EReplayExhausted(_) => "E_ReplayExhausted",
 }
 
@@ -2501,7 +2755,23 @@ fn diag_severity(d) with Pure = match d {
   TPolyRecursionSignature(_, _) => SWarning,
   TOwnUnconsumed(_, _) => SWarning,
   TOwnAcrossReplay(_, _) => SWarning,
-  TUseAfterMove(_, _) => SWarning,
+  TEqTypeUnprovable(_, _) => // PRE-ARM beside its sibling below, on the same ladder: the wheel's own
+  // census of the class is what the arming commit counts down to zero.
+  SWarning,
+  TFieldOffsetUnprovable(_, _) => // PRE-ARM, on the exact ladder T_UseAfterMove walked: narrate → ratchet →
+  // arm, and the arming commit renames it E_ and moves it to SError beside
+  // its siblings. The severity tracks the ENFORCEMENT posture, never how bad
+  // the code is — an unprovable offset is an `(unreachable)` the emit ships,
+  // so it is an error in every sense except the one this projection names.
+  // It cannot be SError today for a mechanical reason, and the mechanism is
+  // the point: the census is a zero-tolerance ratchet on the wheel's own
+  // errors about its own source, and the wheel has FOUR of these. Reporting
+  // them as errors refuses the repin — which is the census working, not a
+  // problem to route around. The four are `Hβ.infer.record-row-vars-are-not-
+  // unioned`'s to close; the field_offset_unprovable_max ratchet in
+  // tools/verify-baseline.txt counts them down.
+  SWarning,
+  EUseAfterMove(_, _) => SError,
   VPending(_, _) => SVerificationPending,
   EVerifyUnencodable(_) => SVerificationPending,
   _ => SError,
@@ -2549,6 +2819,16 @@ fn diag_refuses(d) with Pure = match d {
   // no duplicate fn names, measured).
   True,
   EDuplicateFnName(_, _) => True,
+  EEmittedNameCollision(_, _) => // ARMED at birth (2026-09-10) and born at ZERO on every program measured,
+  // which is the point: it does not police a mistake, it holds an invariant
+  // that was true by two unrelated accidents. Authored duplicates are refused
+  // upstream by EDuplicateFnName; synthesized symbols were unique only
+  // because a mint counter is unique, and the emitter's keep-first dedup
+  // compares NAMES — so the day a symbol stops being minted from a counter,
+  // an unchecked collision drops one body and silently redirects every call
+  // that meant it. Emitting a program whose calls go to the wrong function is
+  // not something to report and proceed through.
+  True,
   EOpShadowsOp(_, _, _, _) => // ARMED at birth (2026-09-04), and the arming is the whole point: a
   // reported-but-emitted collision is the corruption plus a note about it.
   // The env holds ONE entry per name, so two effects declaring the same op
@@ -2621,6 +2901,26 @@ fn diag_refuses(d) with Pure = match d {
   // programs (a genuine double move still refuses, disjoint arms still pass).
   True,
   EOwnershipViolation(_, _) => True,
+  EUseAfterMove(_, _) => // ARMED 2026-09-15 — the affine tier's READ half joining the consume half
+  // above, and the arming condition was written by the class itself: its
+  // decl and its fixture both said "narration until the wheel's own count
+  // reaches 0 (the census arming law)". The count reached 0 at the Phase 4.1
+  // landing (pin 8ba768c810c4) and has held every board since, so what
+  // remained was a counter standing in for a proof — `use_after_move_max: 0`
+  // in verify-baseline, retired by this arm because an armed class has
+  // nothing to count: a wheel carrying one cannot compile.
+  // WHAT IT HOLDS, and why proceeding is not an option: the ledger already
+  // proved the name moved, and the read takes the bytes anyway. Today that is
+  // sound only by accident — the bump heap never frees, the
+  // accident-invariant §5.O layer 3's arena deletes — so this is a
+  // use-after-free the day ownership gets a real reclaim, emitted silently
+  // at exit 0. The licence is the same one its sibling holds: the detector
+  // reads the used-set BEFORE borrow_depth (4.1's ordering fix), so a borrow
+  // of a live name cannot reach it, and tests/frontier/mn-use-after-move.mn
+  // is the falsifying witness, re-banked from run_narration to the refusal
+  // contract in the same landing and seen RED first (exit 0, 4,474 WAT bytes
+  // against the unarmed tree).
+  True,
   EMissingVariable(_, _) => // ARMED 2026-07-18, the manifest arc's dividend: wheel census 0, and the
   // user-path licence MEASURED — a no-import stdlib program (map / fold /
   // len / any) resolves via the DAG's prelude seed and runs; the stdin
@@ -2669,9 +2969,9 @@ fn diag_refuses(d) with Pure = match d {
   // the lowered install itself — a direct-perform inside `LHandleWith`'s
   // own inits list, naming that same install's handler. No resolution
   // dependency and no extent guess: the install's world_push has not run
-  // while its inits run, for every install, so the singleton dispatch's
-  // world_find provably answers 0. The runtime already refuses precisely
-  // there (the belt under the guard); arming moves the same verdict to a
+  // while its inits run, for every install, so the dispatch's walk
+  // provably reaches the chain's end. The runtime already refuses precisely
+  // there (ev_declaring_node's own trap); arming moves the same verdict to a
   // point where nothing has been emitted. Census on the wheel at arming:
   // 0 — every handler in it has a pure init, which is why no gate saw the
   // shape until one was written for it.
@@ -2708,12 +3008,14 @@ fn diag_applicability(d) with Pure = match d {
   // must place (or an honest widening to `ref`), never a patch.
   Unspecified,
   TOwnAcrossReplay(_, _) => Unspecified,
-  TUseAfterMove(_, _) => // The fix is structural — drop the read or restructure so the
+  EUseAfterMove(_, _) => // The fix is structural — drop the read or restructure so the
   // move happens after it — never a patch.
   Unspecified,
   EPatternInexhaustive(_, _, _) => HasPlaceholders,
   EEffectUnhandled(_, _, _) => MaybeIncorrect,
   EUnresolvedHole(_, _) => HasPlaceholders,
+  TFieldOffsetUnprovable(_, _) => MaybeIncorrect,
+  TEqTypeUnprovable(_, _) => MaybeIncorrect,
   ERefinementRejected(_, _) => Unspecified,
   EVerifyUnencodable(_) => Unspecified,
   ETypeMismatch(_, _, _) => Unspecified,
@@ -2726,6 +3028,9 @@ fn diag_applicability(d) with Pure = match d {
   EOrphanHandlerAttach(_) => Unspecified,
   EResumeOutsideArm(_) => Unspecified,
   EResumeAmbiguousOp(_, _) => MaybeIncorrect,
+  EEmittedNameCollision(_, _) => // Nothing the reader can apply — the collision is in the compiler's own
+  // naming, and the program that provoked it is correct.
+  Unspecified,
   _ => MaybeIncorrect,
 }
 
@@ -2783,7 +3088,7 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   TPolyRecursionSignature(name, _) => "the infinite type runs through '{name}''s own parameter or return — if '{name}' calls itself at a different type (polymorphic recursion), a FULL signature on '{name}' (every parameter and the return annotated) buys the poly self-call",
   TOwnUnconsumed(msg, _) => msg,
   TOwnAcrossReplay(msg, _) => msg,
-  TUseAfterMove(msg, _) => msg,
+  EUseAfterMove(msg, _) => msg,
   EEffectMismatch(declared, inferred, _) => "effect row mismatch: {show_effrow(declared)} vs {show_effrow(inferred)}",
   EPurityViolated(row, _) => "expected Pure but found effects: {show_effrow(row)}",
   ERefinementRejected(pred, _) => "refinement predicate proven false at compile time: {show_predicate(pred)}",
@@ -2798,9 +3103,12 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   EOpShadowsOp(name, prior, now, _) => "effect `{now}` declares an op `{name}` that effect `{prior}` already declares, and this program links both. The env holds one entry per name, so the second declaration REPLACES the first rather than joining it: every existing call to `{name}` is now judged against `{now}`'s signature, and the errors surface wherever those calls are — inside the library, at spans your program never wrote. Rename this op",
   EDuplicateFnName(name, _) => "a second `fn {name}` in one namespace — the first declaration already binds it; rename one",
   EDuplicateTypeName(name, _) => "a second `type {name}` in one namespace — the declarations would merge and their constructor sets share tag ids; rename one",
+  EEmittedNameCollision(symbol, _) => "two different functions both emit as `{symbol}` — the dedup keeps the first, so every call meaning the second would reach the first instead. This is the compiler's own naming, not your program: report it",
   EUnresolvedType(h, epoch, _) => "handle {int_to_str(h)} @epoch={int_to_str(epoch)}",
   EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
+  TFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed, so this load has no provable slot and the emit writes a trap here; close the row (annotate the receiver at its Intent Boundary, or give the call site a shape the twin can key on)",
+  TEqTypeUnprovable(why, _) => "{why} — the operand's type is still a variable at emit, so the comparison has no structure to read and falls to a one-word compare (right for a word, an address lie for anything else); prove the operand: give the call site a shape the twin can key on, or name the type at its Intent Boundary",
   EReplayExhausted(_) => "clock replay trace exhausted",
 }
 
@@ -2911,8 +3219,12 @@ effect LowerScope {
 // verify_ledger accumulates (V_Pending); verify_smt discharges (E_RefinementRejected on
 // reject). Handler swap; source code unchanged.
 effect Verify {
-  verify(Span, Predicate, Reason)
-  verify_debt() -> [(Span, Predicate, Reason)]
+  // the module the obligation was raised in rides the perform: the ledger arm
+  // is graph-free (its row rides every install), so it cannot read the module
+  // itself, and a local span alone cannot name a file — two modules both have
+  // a line 8. Captured where it is live, carried, never re-derived.
+  verify(Int, Span, Predicate, Reason)
+  verify_debt() -> [(Int, Span, Predicate, Reason)]
   // The generation boundary's clear: the living session re-derives on a
   // moved tree and stale generations' obligations must not shadow the
   // current judgment's re-accrual (the tighten_reset law at the proof
@@ -3035,13 +3347,22 @@ effect Filesystem {
 // line: a single 5-splice interpolation mis-rendered the LAST splice when
 // an earlier splice's evaluation allocated (the shared-scratch clobber
 // class, §9); a splice list of pre-built values has nothing to clobber.
-fn diag_line(diag) with GraphRead + Memory + Alloc + !Mutate + Intern = {
+// THE ADDRESS IS (MODULE, SPAN) — the same law the census site line and the
+// refs facet answer to. `at 4479:38` names a line in NO FILE, and `src` does
+// not rescue it: src is the PHASE (`infer`, `parser`), not the module, so a
+// diagnostic about main.mn reads `parser: … at 148:32` and the reader greps to
+// find out whose line 148 that was. The module was already carried — report
+// reads it live and hands it to every arm, whose own comment says the module
+// "rides along unread" — so this was a rendered fact one parameter from being
+// an address. Measured 2026-09-14 by a representation probe whose ~135 type
+// errors named lines in fifteen different files and no file at all.
+fn diag_line(diag, dmod) with GraphRead + Memory + Alloc + !Mutate + Intern = {
   let src = diag_source(diag)
   let code = diag_code(diag)
   let kindw = diag_kind(diag)
   let msg = diag_message(diag)
   let sp = show_span(diag_span(diag))
-  "{src}: {code} {kindw}: {msg} at {sp}\n"
+  "{src}: {code} {kindw}: {msg} at {dmod}:{sp}\n"
 }
 
 // report — the ONE reporting boundary. The render runs HERE, in the
@@ -3051,8 +3372,67 @@ fn diag_line(diag) with GraphRead + Memory + Alloc + !Mutate + Intern = {
 // what dissolves the diagnostics/graph arm-dependency cycle the install
 // ORDER could only half-satisfy (diagnostics-outer-of-graph served the
 // occurs report and starved the render; the reverse starved the report).
+// The report carries the MODULE it is about, read live where GraphRead
+// already is. The register's arm stays graph-free (its row rides every
+// install), which is why the old filter could only compare LINE NUMBERS and
+// had to carry scope_localize to subtract a weave offset back off every
+// rendered span. Spans are local from birth now, so there is nothing to
+// subtract and nothing to localize — the only question left is which file a
+// report is about, and that is one cell read, carried here rather than
+// re-derived by scanning ranges for one that contains the line.
+// report_at — THE reporting boundary: a diagnostic AT a node. The module is
+// the node's own column read (graph_module_of, total by construction), never
+// the cursor's ambient position. That distinction is the whole reason this
+// boundary exists in this form. The ambient module is right exactly while a
+// walk is inside one file — the parse — and wrong the moment a walk spans the
+// program: emit visits every reachable fn in table order, so "the module in
+// force" is wherever the walk happens to be, and under the driver's
+// ScopeModule register a report attributed that way filters out as another
+// file's business. Measured on the driver path: a program with a field-offset
+// floor compiled to an EMPTY stderr and trapped at the instruction that admits
+// it, while the blob path (no scope) printed the class all along — a gate green
+// on a chain the developer never runs.
+//
+// The target this is one step toward, ripple measured 2026-09-17: DiagKind's
+// 65 constructors each COPY a Span out of a handle their report site had in
+// hand (§11's provenance face, the same defect Reason carries). The copy
+// deletes when the constructor carries the handle and span/module are both
+// column reads; what gates that is the parser's 17 sites, which report at a
+// token span and leave the hole to their caller, so recovery must change
+// before they can report at a node. Until then this takes the handle and the
+// diag keeps its span.
+fn report_at(h, diag) with Diagnostic + GraphRead + Memory + Alloc + Intern =
+  diag_report_at(diag, module_name_of_handle(graph_module_of(h)))
+
+// The parse-phase form: a report inside the module being parsed, where the
+// module in force IS the right one because the parser never leaves a file.
+// Defined as report_at at the module node — the module attributes itself, so
+// this is the same read — and NOT a second boundary: a site that has a node
+// reports at it, and a site that reaches for this instead of its handle after
+// the parse is reporting from the wrong place.
 fn report(diag) with Diagnostic + GraphRead + Memory + Alloc + Intern =
-  diag_report(diag, diag_line(diag))
+  report_at(graph_module_current(), diag)
+
+// The module is read ONCE and used twice — in the rendered address and as the
+// register's own scope key — so the render and the carried module cannot drift
+// apart into two answers about one report.
+fn diag_report_at(diag, dmod) with Diagnostic + GraphRead + Memory + Alloc + Intern =
+  diag_report(diag, diag_line(diag, dmod), dmod)
+
+// A module handle's own name, read from its node. The non-NModule arm REFUSES
+// rather than answering "": every value in the module column was written by
+// graph_module_enter with an NModule handle, and every compile enters its link
+// root before anything can report, so a miss here is a node minted outside any
+// module — a defect in the caller. Answering with an empty name would hand
+// every downstream reader a file called nothing and make the defect invisible,
+// which is the wildcard-fabrication the census convicts.
+fn module_name_of_handle(h) with GraphRead + Memory + Alloc = match graph_node_body(h) {
+  NModule(m) => m.path,
+  _ => {
+    load_i32(0 - 1)
+    ""
+  },
+}
 
 // Every show_* that renders a Ty chases TVars through graph_chase.
 // A raw handle only appears when chase terminates on NFree/NRowFree —
@@ -3336,6 +3716,33 @@ fn show_effrow(ref row) with GraphRead + Memory + !Mutate + Alloc + Intern = mat
   },
 }
 
+// What a refinement states about a type's inhabitants, said to a person. The
+// open-bounded arms name the side that IS bounded rather than inventing an
+// infinity symbol for the side that is not, and TOP says the truth the
+// unbounded-domain residue names (`Hβ.synth.unbounded-domain-asks`): nothing
+// here narrows the position, which is why the medium is asking at all.
+fn show_domain(d) with Memory + Alloc = match d {
+  DRange(lo, hi) => match (lo, hi) {
+    (Some(l), Some(h)) => "the type admits {int_to_str(l)} through {int_to_str(h)}",
+    (Some(l), None) => "the type admits {int_to_str(l)} and up",
+    (None, Some(h)) => "the type admits up to {int_to_str(h)}",
+    (None, None) => "nothing here bounds the value — a refinement would",
+  },
+  DFinite(vs) => "the type admits exactly {int_to_str(len(vs))} value(s)",
+  DUndecided => "the predicate is past the decidable fragment, so the type's bound is unread",
+}
+
+// The tie's one line: the proposition the developer never stated, spoken in
+// the vocabulary of whatever separates the survivors. Never "one more
+// constraint collapses it" — that sentence was the same words at every tie,
+// which is a placeholder wearing a teaching voice.
+fn show_divergence(d) with GraphRead + Memory + !Mutate + Alloc + Intern = match d {
+  DivRow(a, b) => "these differ in what they may DO — {show_effrow(a)} against {show_effrow(b)}: which capability does this position carry?",
+  DivName => "every survivor denotes the same value — the question is which name carries the intent",
+  DivValue(dom) => "the survivors differ in VALUE and {show_domain(dom)}: which one does this position mean?",
+  DivShape => "the survivors differ in SHAPE — what structure does this position hold?",
+}
+
 fn show_eff_name(ref name) with Intern + Memory + Alloc + GraphRead + !Mutate = match name {
   ENamed(h) => intern_name_of(h),
   EParameterized(h, args) => "{intern_name_of(h)}({show_list(args, show_eff_arg, ", ")})",
@@ -3486,39 +3893,14 @@ fn show_span(ref span) with Memory + Alloc = match span {
 // march) yields an empty seam list and every span renders raw — the
 // census's own coordinates, by construction. One home; the verify debt
 // lines and the query refs facet both project through it.
-fn module_seams() with GraphRead + Memory + Alloc = match graph_snapshot() {
-  Graph(_, sp) => seams_walk(list_to_flat(sp), 0, []),
-}
-
-fn seams_walk(ref spans, i, acc) with GraphRead + Memory + Alloc = if i >= len(spans) {
-  acc
-} else {
-  match spans[i] {
-    (_, h) => match graph_node_body(h) {
-      NModule(m) => match m.span {
-        Span(ls, _, le, _) => seams_walk(spans, i + 1, push(acc, (ls, le, m.path))),
-      },
-      _ => seams_walk(spans, i + 1, acc),
-    },
-  }
-}
-
-fn span_render_local(ref seams, ref dspan) with Memory + Alloc = match dspan {
-  Span(sl, _, _, _) => seam_of_line(seams, sl, 0, dspan),
-}
-
-fn seam_of_line(ref seams, line, i, ref dspan) with Memory + Alloc = if i >= len(seams) {
-  show_span(dspan)
-} else {
-  match seams[i] {
-    (ls, le, path) => if line >= ls && line < le {
-      "{path}:{int_to_str(line - ls + 1)}"
-    } else {
-      seam_of_line(seams, line, i + 1, dspan)
-    },
-  }
-}
-
+// module_seams / seams_walk / span_render_local / seam_of_line DELETED with
+// the weave. They existed to answer "which file is this weave line in" by
+// scanning every module's range for one that contained it — O(nodes) per
+// call, three callers. Spans are the developer's own coordinates now, so the
+// question has no content: every module starts at line 1, which also makes
+// the scan actively WRONG rather than merely slow (it would resolve any line
+// to the first module). A span that still needs its file needs a HANDLE, not
+// a range table — Hβ.why.reason-span-is-a-weave-coordinate.
 fn show_pipe_kind(pk) with Pure = match pk {
   PForward => "|>",
   PFanout(FanShare) => "<|",
@@ -3598,13 +3980,13 @@ fn query_flow_label(ref ty) with GraphRead + Memory + Alloc + EnvRead = match ty
   TAlias(_, inner) => inner |> query_flow_label,
   TReprPin(_, base) => base |> query_flow_label,
   TList(elem) => elem |> query_flow_label,
-  TTuple(elems) => elems |> map((e) => query_flow_label(e)) |> fold(Public, (acc, lbl) => flow_label_join(acc, lbl)),
+  TTuple(elems) => elems |> map(query_flow_label) |> fold(Public, flow_label_join),
   TRecord(fields) => fields |> map((f) => match f {
     (_, fty) => query_flow_label(fty),
-  }) |> fold(Public, (acc, lbl) => flow_label_join(acc, lbl)),
+  }) |> fold(Public, flow_label_join),
   TRecordOpen(fields, _) => fields |> map((f) => match f {
     (_, fty) => query_flow_label(fty),
-  }) |> fold(Public, (acc, lbl) => flow_label_join(acc, lbl)),
+  }) |> fold(Public, flow_label_join),
   TCont(input, answer, _, _) => flow_label_join(query_flow_label(input), query_flow_label(answer)),
   TInt => Public,
   TFloat => Public,

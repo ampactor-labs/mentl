@@ -52,28 +52,18 @@ mentl_wasm() {
     --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" "\${extra[@]}" \\
     "\$MENTL_HOME/boot/mentl.wasm" "\$@"
 }
-if [ "\${1:-}" = "run" ] && [ -n "\${2:-}" ]; then
-  # run = compile -> assemble -> execute. The execute half is the process
-  # boundary the wasm cannot cross (WASI has no exec — the wheel's run
-  # verb names this exact seam); the shim owns it. The compile half keeps
-  # the executable gate's refusal law: a hole or a broken program exits
-  # nonzero with zero WAT, and the shim stops there.
-  src="\$2"; shift 2
-  tmp="\$(mktemp -d)"
-  out_wat="\$tmp/out.wat"; out_wasm="\$tmp/out.wasm"
-  mentl_wasm compile "\$src" > "\$out_wat"; rc=\$?
-  if [ "\$rc" -ne 0 ] || [ ! -s "\$out_wat" ]; then rm -rf "\$tmp"; exit "\$rc"; fi
-  "\${W2W[@]}" "\$out_wat" -o "\$out_wasm" || { rm -rf "\$tmp"; exit 1; }
-  "\$WT" run "\${WT_RUN_FLAGS[@]}" --dir "\$PWD" --dir /tmp "\$out_wasm" "\$@"
-  rc=\$?
-  rm -rf "\$tmp"
-  exit "\$rc"
-fi
+# `mentl run` is the WHEEL's verb: compile, stream the module to the runner
+# through the Process seam, execute it there, answer the program's own exit
+# (src/main.mn run_run ~> process_host; tools/runner mentl_host.exec). The
+# shim owned this seam as compile → wat2wasm → wasmtime with a content-keyed
+# run cache; it falls through to the wheel like every other verb now, and the
+# warm image restore is the compile's own cache.
 if [ "\${1:-}" = "session" ]; then
-  # session = the resident graph. The listener is a HOST resource (the
-  # space seam's twin); the wheel derives once and answers read verbs
-  # over one-line connections speaking the CLI's own grammar. Port
-  # override: MENTL_SESSION_PORT.
+  # session = the resident graph. The listener is a HOST resource the
+  # runner owns (-S tcplisten=, the p1 socket protocol lib/net.mn speaks);
+  # the wheel derives once and answers read verbs over one-line
+  # connections speaking the CLI's own grammar. Port override:
+  # MENTL_SESSION_PORT.
   exec "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
     --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" \\
     -S "tcplisten=127.0.0.1:\${MENTL_SESSION_PORT:-7377}" \\
@@ -103,9 +93,11 @@ fi
 if [ "\${1:-}" = "space" ]; then
   # space = the ide, served by the wheel. A listener is a HOST resource
   # (WASI p1 has no bind/listen — the wheel's find_listener only reads the
-  # preopen table), so the shim owns this seam exactly as it owns run's
+  # preopen table), so the runner owns this seam exactly as it owns the
   # exec seam. The repo maps at guest "." so the verb serves ide/ from any
   # directory. Port override: MENTL_SPACE_PORT.
+  # (No backticks in this heredoc: it is unquoted, so they would run as
+  # command substitution at install time — which is exactly what they did.)
   exec "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
     --dir "\$MENTL_HOME::." --dir /tmp \\
     -S "tcplisten=127.0.0.1:\${MENTL_SPACE_PORT:-7378}" \\

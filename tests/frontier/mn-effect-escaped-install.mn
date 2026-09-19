@@ -1,16 +1,28 @@
-// The escaped install — TODAY'S semantics pinned as the modal frontier's
-// tripwire (the residual-absence leg's sibling). A thunk minted UNDER an
-// install, called with that install's extent long dead: the
-// stateless-singleton tier direct-calls the arm with an empty world
-// chain, and the call is VALUE-SOUND by construction (the arm ignores
-// __state — ponger answers its honest 7), so the compile gate GROUNDS
-// the demand by that measured licence. The row cannot split this live
-// dynamic-coverage-free escape from the backtrack family's legitimate
-// per-candidate installs; the split is install-identity — the modal
-// crown's seat (PLAN §4③, band A). When that form lands, this leg
-// forces the conscious choice: keep the value-sound licence for
-// stateless arms, or refuse the dead extent by identity.
-// Expected exit: 7.
+// The escaped install — a thunk minted UNDER an install and called with
+// that install's extent long dead. It REFUSES, loudly, and that is the
+// answer to a question this leg used to reserve.
+//
+// It pinned 7 for two years of sessions: the stateless-singleton tier
+// direct-called the arm with an empty world chain, and the call was
+// VALUE-SOUND by construction (the arm ignores __state — ponger answers
+// its honest 7), so the compile gate grounded the demand by that measured
+// licence. The text then said the eventual split — keep the licence, or
+// refuse the dead extent by identity — belonged to install-identity, the
+// modal crown's seat (PLAN §4③, band A).
+//
+// THE SPLIT IS ANSWERED, and not by band A. The two were never
+// alternatives: the world bracket's CONTENT is the install's world, so an
+// arm reached after its extent closed has no world to run under at all.
+// Making the walk uniform (one perform node, one bracket) made the licence
+// unconstructible rather than undesirable, so the conscious choice this leg
+// was written to force is made here — the dead extent refuses.
+//
+// WHAT IS STILL BAND A'S: refusing at COMPILE time. The row cannot see a
+// dead extent, and the executable gate clears Ping because ponger is
+// installed somewhere, so this program compiles clean and refuses at the
+// dispatch. Loud, not silent — nothing executes unproven — but a runtime
+// verdict where identity would give a static one.
+// Expected exit: 134 (the walk's refusal).
 
 effect Ping { ping() -> Int }
 

@@ -50,6 +50,23 @@ sc=$(git status --short); echo "    uncommitted: $([ -z "$sc" ] && echo none || 
 # tripwire 4 — the crown went eleven ledger entries unmentioned while a
 # leak rode the whole arc).
 echo "▸ STAMPS (which boot-suite gates have measured THIS boot)"
+# THE PERIMETER ITSELF IS A GATE, and it was the one nobody reported. Every
+# line below asks whether a gate has RUN; none asked whether the gate that
+# refuses commits is INSTALLED. Measured 2026-09-14: core.hooksPath was unset
+# and .git/hooks/pre-commit did not exist, so .githooks/pre-commit — whose own
+# comment claims it "survives any editor, any model, any future tooling
+# change" — had run on ZERO commits, while the frontier line below asserted
+# "the pre-commit perimeter refuses a wheel commit without it". Tripwire 4 one
+# level deeper: not a gate that stopped being reported, a gate that was never
+# switched on, and a board that spoke of it as though it were.
+hookspath=$(git config core.hooksPath 2>/dev/null)
+if [ "$hookspath" = ".githooks" ]; then
+  echo "    perimeter: pre-commit INSTALLED (core.hooksPath → .githooks)"
+else
+  echo "    perimeter: ✗ RED — pre-commit NOT INSTALLED (core.hooksPath='${hookspath:-unset}')"
+  echo "               drift-audit and verify refuse nothing at commit time; every"
+  echo "               gate below is advisory until this is on. bash tools/setup-git-hooks.sh"
+fi
 boot_sha=$(sha256sum boot/mentl.wasm 2>/dev/null | cut -d' ' -f1)
 stamp=$(cat .build/frontier-stamp 2>/dev/null)
 if [ -n "$boot_sha" ] && [ "$stamp" = "$boot_sha" ]; then
@@ -59,8 +76,8 @@ else
   echo "              bash tools/frontier-gate.sh  ·  the pre-commit perimeter refuses a"
   echo "              wheel commit without it, so this blank is a landing you cannot make"
 fi
-echo "    crown · proof-exactness · effect-identity · instrument: no stamp kept —"
-echo "              running them is the only way to know (Hβ.tools.gate-stamp-is-uniform)"
+echo "    crown · proof-exactness · effect-identity · instrument · threads: no stamp"
+echo "              kept — running them is the only way to know (Hβ.tools.gate-stamp-is-uniform)"
 
 echo "▸ VERIFY (micros + census — stamped)"
 bash tools/verify.sh || exit 1
@@ -72,6 +89,7 @@ if [ "${1:-}" != "--quick" ]; then
   gate "CROWN (!E soundness crucibles)"                                  bash tools/crown-gate.sh
   gate "EFFECT IDENTITY (Fail ≠ Abort)"                                  bash tools/effect-identity-gate.sh
   gate "INSTRUMENT (can the board go RED?)"                              bash tools/instrument-gate.sh
+  gate "THREADS (is the concurrency width what the source says?)"        bash tools/thread-gate.sh
 
   if [ "$reds" -eq 0 ]; then
     echo "▸ THE BOARD IS WHOLE — every gate green."

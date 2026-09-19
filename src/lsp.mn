@@ -419,7 +419,7 @@ fn map_debt_to_diagnostics(debt, i, n, acc_rev) with Memory + Alloc + GraphRead 
   reverse(acc_rev)
 } else {
   match list_index(debt, i) {
-    (span, predicate, reason) => match span {
+    (_modh, span, predicate, reason) => match span {
       Span(sl, sc, el, ec) => {
         let diag = LspDiagnostic(
           sl,

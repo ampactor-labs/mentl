@@ -27,7 +27,7 @@ say() { printf '%s\n' "$*"; }
 fail=0
 
 [[ -f "$BASELINE" ]] || { say "verify: baseline missing: $BASELINE"; exit 2; }
-[[ -x "$WT" ]] || { say "verify: wasmtime not found at $WT (set WASMTIME_BIN)"; exit 2; }
+[[ -x "$WT" ]] || { say "verify: the runner is not built at $WT (cargo build --release --manifest-path tools/runner/Cargo.toml)"; exit 2; }
 
 # ── the GREEN STAMP — verify is idempotent on an unchanged tree ─────────────
 # The verdict is a pure function of the gate-relevant state (wt_state_key:
@@ -58,13 +58,12 @@ BOOT="boot/mentl.wasm"
 export MENTL_BOOT="$BOOT"
 say "✓ compiler: $BOOT"
 
-# 2. Micro battery — ONE loop, one home (tools/micro-battery.sh): the full
-#    expectation grammar (run values AND refuse contracts, the medium reads
-#    its own gate) against the pinned boot. The refuse contracts this gate's
-#    old loop skipped loudly are judged exec-side now; the in-process
-#    contract battery in 2b is the second channel, not the only one.
+# 2. Micro battery — the medium's own `test` verb against the pinned boot:
+#    every fixture compiled, run through the runner's exec seam and judged
+#    against its own `// expect:` contract in ONE process (wt_battery reads
+#    the verdict and holds the exit + every-fixture-judged contract).
 say "· micro battery (tests/micros through the pinned boot)..."
-if ! tools/micro-battery.sh "$BOOT" "micros-through-boot"; then fail=1; fi
+if ! wt_battery "$BOOT" tests/micros "micros-through-boot"; then fail=1; fi
 
 # 2b. The contract battery — the medium enforcing every fixture's own
 #     contract (run AND refuse grammars) in one process. A FAILC / FAILR /
@@ -83,13 +82,18 @@ if ! tools/micro-battery.sh "$BOOT" "micros-through-boot"; then fail=1; fi
 #     wt_m2_ensure is the ONE keyed artifact the census leg reads too, so
 #     asking for it here costs a cache hit, not a build.
 if C=$(wt_m2_ensure); then
-  bat=$(wt_run --dir . "$C/m2.wasm" test tests/micros 2>/dev/null | grep -cE '^(FAILC|FAILR|NOEXPECT) ' || true)
-  if [[ "$bat" -eq 0 ]]; then
-    say "✓ contract battery: every fixture's own contract holds (this tree's wheel)"
-  else
-    say "✗ contract battery: $bat broken contract(s) — the wheel this tree just built"
-    fail=1
-  fi
+  # THE EXIT CODE AND THE COUNT ARE PART OF THE CONTRACT, and leaving them
+  # out cost this gate its meaning. It used to pipe straight into
+  # `grep -cE '^(FAILC|FAILR|NOEXPECT) '` and pass on zero — so when the verb
+  # TRAPPED partway, it printed no failure line and the gate said every
+  # fixture's contract holds. Measured 2026-09-16: `mentl test` died at
+  # fixture 118 of 149 (exit 134, a dangling banked diagnostic line — the
+  # GateLedger record in src/mcp.mn) and this leg was green through it, with
+  # the 31 fixtures after the crash point never judged at all. A gate that
+  # reads a crashed process for the ABSENCE of a string cannot fail.
+  # So: capture the status, and require the verb to have judged every fixture
+  # it was handed.
+  if ! wt_battery "$C/m2.wasm" tests/micros "contract battery (this tree's wheel)"; then fail=1; fi
   # 2c. The SYNTAX conformance battery (PLAN §11 Phase 0.4) — fixtures for
   #     forms SYNTAX declares and the WHEEL NEVER WRITES. That is the whole
   #     point: every other leg on this board measures what the wheel does, so
@@ -313,36 +317,63 @@ if C=$(wt_m2_ensure); then
   elif [[ -n "$cmax" && "$crefs" -lt "$cmax" ]]; then
     say "  ↓ comment-refs FELL $cmax -> $crefs — lower comment_refs_max in $BASELINE to hold it."
   fi
-  # The MOVERS ratchet — the same stderr, the condemned pass's vital sign:
-  # the count of schemes the final judges DIFFERENTLY than the trial
-  # published (overrides, never verification verdicts — PLAN's resolved
-  # design D5). Monotone DOWN by law: rung 3 ends at 0 with the second pass
-  # DELETED, and a RISE is the tower regrowing (Anchor 2's condemned
-  # clause). Direction itself, ratcheted — the board could not see a circle
-  # before this line.
-  movers=$(grep -oE 'judgment: [0-9]+ scheme' "$C/m2.err" | grep -oE '[0-9]+' | head -1); movers=${movers:-0}
-  mmax=$(grep -E '^movers_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· movers: $movers trial→final override(s) — the condemned pass's vital sign (0 deletes it)"
-  if [[ -n "$mmax" && "$movers" -gt "$mmax" ]]; then
-    say "✗ movers RATCHET: rose $mmax -> $movers — the tower is regrowing. No improvement"
-    say "  to condemned machinery is legal (Anchor 2); land the rung-3 form or revert."
+  # The MOVERS ratchet stood here — the two-pass tower's size gauge (schemes
+  # the final judged differently than the trial published). RETIRED
+  # 2026-09-17 with the pass it gauged: one judgment has no trial→final
+  # override to count, and a ratchet whose instrument is gone reads a phantom
+  # zero forever — the mute-gate class, never green.
+  # THE UNPROVABLE-FIELD-OFFSET RATCHET — same stderr, and it reads a class
+  # that did not exist before 2026-09-15 because the floor was emitted
+  # silently. Every count here is an `(unreachable)` the wheel ships inside
+  # itself; the class arms when this reaches 0 (diag_refuses' wheel-zero
+  # licence), so this is a countdown, not a tolerance. A RISE is a new
+  # landmine.
+  #
+  # LIKE movers ABOVE, THIS IS THE PINNED BOOT'S SELF-REPORT, and on the
+  # landing that BIRTHS the class the pin predates it, so the read is 0 and
+  # the FELL notice below fires once against a compiler that could not have
+  # counted. The ceiling is 4 because 4 is what the NEW compiler measured
+  # running on the wheel (the m3 leg), not what the old one failed to say.
+  # After the repin the two agree and the notice is real.
+  fou=$(grep -c 'T_FieldOffsetUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); fou=${fou:-0}
+  fmax=$(grep -E '^field_offset_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
+  say "· field-offset floors: $fou unprovable slot(s) the wheel ships as (unreachable) — 0 arms the class"
+  if [[ -n "$fmax" && "$fou" -gt "$fmax" ]]; then
+    say "✗ field-offset RATCHET: rose $fmax -> $fou — a new silent trap entered the wheel."
+    say "  Close the receiver's row at the reported span; the diagnostic names the field and the type."
     fail=1
-  elif [[ -n "$mmax" && "$movers" -lt "$mmax" ]]; then
-    say "  ↓ movers FELL $mmax -> $movers — lower movers_max in $BASELINE to hold it."
+  elif [[ -n "$fmax" && "$fou" -lt "$fmax" ]]; then
+    say "  ↓ field-offset floors FELL $fmax -> $fou — lower field_offset_unprovable_max in $BASELINE;"
+    say "    at 0, rename TFieldOffsetUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
   fi
-  # The USE-AFTER-MOVE ratchet (PLAN §11 Phase 4.1, Hβ.own.use-after-move):
-  # T_UseAfterMove narrations on the wheel's own compile stderr — born at
-  # ZERO, held there so the arming licence (diag_refuses' wheel-zero law)
-  # stays mechanical. A rise is the wheel reading a moved own — a real
-  # use-after-free the moment the arena makes Consume reclaim.
-  cuam=$(grep -c "T_UseAfterMove" "$C/m2.err" || true)
-  umax=$(grep -E '^use_after_move_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· use-after-move: $cuam narration(s) on the wheel compile"
-  if [[ -n "$umax" && "$cuam" -gt "$umax" ]]; then
-    say "✗ use-after-move RATCHET: rose $umax -> $cuam — the wheel reads a moved own;"
-    say "  restructure the site (the arena makes this a use-after-free)."
+  # THE UNPROVABLE-COMPARISON ratchet — the floor class one operator over
+  # (2026-09-18): `==`/`!=`/`<`… on an operand whose type is still a
+  # variable at emit REPORTS T_EqTypeUnprovable and writes the trap instead
+  # of i32.eq on two addresses. Same ladder as the field-offset floor above:
+  # the pinned boot's self-report on the wheel, a countdown to 0, at which
+  # the class arms (E_, SError, diag_refuses) and the eq-in-arm-pointer leg
+  # turns green by PROVING its arm — never by the annotation the fixture
+  # deliberately omits.
+  equ=$(grep -c 'T_EqTypeUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); equ=${equ:-0}
+  eqmax=$(grep -E '^eq_type_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
+  say "· unprovable comparisons: $equ operand(s) still a variable at emit — 0 arms the class"
+  if [[ -n "$eqmax" && "$equ" -gt "$eqmax" ]]; then
+    say "✗ unprovable-comparison RATCHET: rose $eqmax -> $equ — a new address compare entered the wheel."
+    say "  Prove the operand at the reported span; the diagnostic names the operator and the type."
     fail=1
+  elif [[ -n "$eqmax" && "$equ" -lt "$eqmax" ]]; then
+    say "  ↓ unprovable comparisons FELL $eqmax -> $equ — lower eq_type_unprovable_max in $BASELINE;"
+    say "    at 0, rename TEqTypeUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
   fi
+  # THE USE-AFTER-MOVE RATCHET IS RETIRED (2026-09-15) — the class is ARMED.
+  # It counted T_UseAfterMove narrations on the wheel's own compile and held
+  # them at ZERO so that diag_refuses' wheel-zero arming licence stayed
+  # mechanical. The licence was satisfied at the Phase 4.1 landing and held
+  # every board since, so the counter had become what it was waiting to
+  # authorise: E_UseAfterMove refuses now, and a wheel carrying one cannot
+  # compile at all. There is nothing left to count — a ratchet beside an
+  # armed class is a weaker second copy of the refusal (the mode-33
+  # precedent: the grep dies, the projection is the check).
   # PIN FRESHNESS (Hβ.march.boot-drifts-behind-clean-landings, 2026-08-17).
   # boot IS the pinned fixpoint, so when it matches current source
   # sha256(boot(wheel)) == sha256(boot) — the m2 this gate just built is the
@@ -397,13 +428,23 @@ if C=$(wt_m2_ensure); then
   omax=$(grep -E '^authored_own_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
   refmax=$(grep -E '^authored_ref_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
   say "· quiet gate: $cown authored own, $cref authored ref in src/ — the Hylo bar's counts"
+  # MONOTONE DOWN needs BOTH halves. This gate had only the rise arm for
+  # five weeks, so a marker the inference retired left the ceiling where it
+  # was and the slack accumulated invisibly — a ratchet that can only be
+  # breached, never tightened, is measuring nothing between breaches (§11
+  # tripwire 4, the same shape as the crown's eleven quiet entries). Every
+  # other ratchet in this file prints its fall; these two now do too.
   if [[ -n "$omax" && "$cown" -gt "$omax" ]]; then
     say "✗ quiet-gate RATCHET: authored own rose $omax -> $cown — the inference failed somewhere; teach it, do not annotate around it."
     fail=1
+  elif [[ -n "$omax" && "$cown" -lt "$omax" ]]; then
+    say "  ↓ authored own FELL $omax -> $cown — lower authored_own_max in $BASELINE to hold it."
   fi
   if [[ -n "$refmax" && "$cref" -gt "$refmax" ]]; then
     say "✗ quiet-gate RATCHET: authored ref rose $refmax -> $cref — the inference failed somewhere; teach it, do not annotate around it."
     fail=1
+  elif [[ -n "$refmax" && "$cref" -lt "$refmax" ]]; then
+    say "  ↓ authored ref FELL $refmax -> $cref — lower authored_ref_max in $BASELINE to hold it."
   fi
   # The EFFECT-SEAM gate (Hβ.io.fs-close-op-is-bypassed, closed 2026-09-04).
   # An effect exists so a handler can intercept the operation. A caller that

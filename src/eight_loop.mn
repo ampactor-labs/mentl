@@ -229,7 +229,7 @@ handler interrogate_default {
     match snapshot {
       Graph(next, _spans) => {
         let positions = enumerate_handles(0, next)
-        let reports = positions |> map((h) => interrogate_at(h))
+        let reports = positions |> map(interrogate_at)
         resume(reports)
       },
     }

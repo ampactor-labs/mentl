@@ -267,24 +267,29 @@ fn span_of_cursor(cursor) with GraphRead + Memory + Alloc = match cursor {
 // blocked on adding the op to graph.mn's effect declaration.
 fn apply_suggestion(cursor, view) with GraphRead + PatchWrite + Memory + !Mutate + Alloc = match cursor {
   Cursor(handle, _, _) => match view {
-    CursorView(_, propose, _, _, _, _, teach, _) => // A hole accepts its PROPOSE survivor: exactly one proven candidate is
-    // the medium's answer. Two or more is the teaching TIE-BREAK — surface
-    // the tie, never guess between proven survivors (PLAN §5). Non-hole
-    // positions accept the teach annotation as before.
+    CursorView(_, propose, _, _, _, _, teach, _) => // A hole accepts its PROPOSE survivor: the verdict says whether there
+    // is one, and the accept path READS it rather than re-deriving it from
+    // a survivor count. `VAsk` is the teaching TIE-BREAK — surface the
+    // question, never guess between proven survivors (PLAN §5); `VNone`
+    // and non-hole positions accept the teach annotation as before.
     match propose {
-      Proposals(survivors, _rejected) => if authored_hole(handle) && len(survivors) == 1 {
-        match head(survivors) {
-          (survivor, _reason) => replace_span(parse_span_of(handle), render_candidate_source(survivor)),
-        }
-      } else {
-        match teach {
-          None => (),
-          Some(suggestion) => match suggestion {
-            AnnotationSuggestion(_kind, ann_text, _unlocks, reason) => apply_patch_at_cursor(span_of_reason(reason), ann_text),
-          },
-        }
+      Proposal(p) => match p.verdict {
+        VFill(survivor, _reason) => if authored_hole(handle) {
+          replace_span(parse_span_of(handle), render_candidate_source(survivor))
+        } else {
+          apply_teach_suggestion(teach)
+        },
+        VAsk(_, _) => apply_teach_suggestion(teach),
+        VNone => apply_teach_suggestion(teach),
       },
     },
+  },
+}
+
+fn apply_teach_suggestion(teach) with PatchWrite + Memory + Alloc = match teach {
+  None => (),
+  Some(suggestion) => match suggestion {
+    AnnotationSuggestion(_kind, ann_text, _unlocks, reason) => apply_patch_at_cursor(span_of_reason(reason), ann_text),
   },
 }
 
@@ -294,17 +299,16 @@ fn apply_suggestion(cursor, view) with GraphRead + PatchWrite + Memory + !Mutate
 // renderer is the formatter projection (Hβ.felt.candidate-render-is-format),
 // unreached while the enumerators seed literals.
 fn render_candidate_source(node) with GraphRead + Memory + !Mutate + Alloc = match node {
-  N(body, _, h) => match body {
-    NExpr(CallExpr(callee, args)) => // An in-scope vocabulary call renders as its source form.
-    if len(args) == 0 { "{callee_var_name(callee)}()" } else { "??" },
-    _ => render_literal_source(h),
-  },
-}
-
-fn callee_var_name(callee) with Pure = match callee {
-  N(cb, _, _) => match cb {
-    NExpr(VarRef(name)) => name,
-    _ => "??",
+  N(body, _, h) => match callee_name_of(node) {
+    Some(name) => "{name}()",
+    None => // A BARE NAME renders as itself. A nullary constructor is a value, not
+    // a call (SYNTAX: `let nothing = None`), so the candidate node is a
+    // VarRef — and without this arm it fell to the literal renderer and
+    // printed `??`, which is the medium showing a proposal it cannot name.
+    match body {
+      NExpr(VarRef(name)) => name,
+      _ => render_literal_source(h),
+    },
   },
 }
 
@@ -331,21 +335,26 @@ fn show_node_kind(kind) with Pure = match kind {
 }
 
 fn show_proposals(props) with GraphRead + Alloc + Memory + Intern + !Mutate = match props {
-  Proposals(survivors, rejected) => {
-    let survivors_block = if len(survivors) == 0 {
-      "(none)"
-    } else {
-      "{int_to_str(len(survivors))} candidate(s){str_concat_all(map(show_one_proposal, survivors))}"
-    }
+  Proposal(p) => {
+    let verdict_block = show_verdict(p.verdict)
     // The rejections TEACH: each row-refused name keeps its Why on the same
     // projection (a pruned candidate the developer cannot see is a guess
     // they cannot audit — PLAN §5).
-    if len(rejected) == 0 {
-      survivors_block
+    if len(p.rejected) == 0 {
+      verdict_block
     } else {
-      "{survivors_block}{str_concat_all(map(show_one_rejection, rejected))}"
+      "{verdict_block}{str_concat_all(map(show_one_rejection, p.rejected))}"
     }
   },
+}
+
+// The edit transport's own voice for the verdict. A tie carries its
+// divergence here too — the question is computed once in synth, so every
+// surface says the same thing about the same tie.
+fn show_verdict(verdict) with GraphRead + Alloc + Memory + Intern + !Mutate = match verdict {
+  VNone => "(none)",
+  VFill(node, reason) => "1 candidate(s){show_one_proposal((node, reason))}",
+  VAsk(divergence, survivors) => "{int_to_str(len(survivors))} candidate(s){str_concat_all(map(show_one_proposal, survivors))} · {show_divergence(divergence)}",
 }
 
 // The pair pin is an Intent Boundary (spec_mangle's law): name's only

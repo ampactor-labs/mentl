@@ -10,10 +10,10 @@
 #                         wt_m2_ensure, so it cannot accumulate. KEPT: it is
 #                         the ~13-minute boot-compile every gate reads.
 #   regenerated-per-run   gate/ march/ frontier-gate/ proof-exactness-gate/
-#                         test/ oracle-selftest/ solo/ — deleted whole; the
-#                         next gate run rewrites what it needs. (.build/test
-#                         is written by the wheel's own compiled binary —
-#                         src/main.mn's `mentl test` verb — same kind.)
+#                         oracle-selftest/ solo/ — deleted whole; the next
+#                         gate run rewrites what it needs. (`mentl test`
+#                         writes nothing here: every fixture streams to the
+#                         runner and runs in-process.)
 #   session scratch       everything else under .build (a dig's named
 #                         scratch, e.g. triple/) — deleted whole; a live dig
 #                         re-derives its scratch from source in one ladder.

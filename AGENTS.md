@@ -37,10 +37,15 @@ UNKNOWN, never green.**
 
 ## Toolchain — the gates need more than `mentl` does
 
-`bash tools/install.sh` puts `mentl` on the path and it needs only
-[`wasmtime`](https://wasmtime.dev). The gates need:
+`bash tools/install.sh` puts `mentl` on the path and it needs only the
+runner, `cargo build --release --manifest-path tools/runner/Cargo.toml`
+(a wasmtime embedding; the wasmtime CLI is not used anywhere). The gates
+need:
 
-- **wasmtime** — runs `boot/mentl.wasm`; every verb and every gate leg.
+- **tools/runner** — runs `boot/mentl.wasm`; every verb and every gate
+  leg. It owns what the CLI could not: wasi-threads' spawn, the exec seam
+  `mentl run`/`mentl test` execute through, and the listening socket
+  `session`/`space` serve on.
 - **WABT** (`wat2wasm`, `wasm-validate`, `wasm-objdump`) — the march
   assembles each generation's WAT, so `tools/march.sh` cannot run without it.
 - **wasm-tools** — `validate --features all`, and `shrink` for minimal repros.

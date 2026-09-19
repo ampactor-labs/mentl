@@ -164,7 +164,7 @@ fn dispatch_invocation(verb) = {
     // tables crossed on the prior pin, so this generation's boot
     // lowers the call it is about to execute.)
     if stdin_is_tty() { welcome_run() } else { compile_stdin_run() },
-    VRun(target) => run_run(target),
+    VRun(target, args) => run_run(target, args),
     VCheck(target) => check_run(target),
     VAt(target, line, col) => at_run(target, line, col),
     VTest(target) => test_run(target),
@@ -179,7 +179,7 @@ fn dispatch_invocation(verb) = {
     VWith(hname, target) => with_run(hname, target),
     VWelcome => welcome_run(),
   }
-} ~> env_handler(make_list(0), 0, env_index_new()) ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink ~> diagnostics_handler
+} ~> env_handler(make_list(0), 0, env_index_new()) ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler
 
 // ─── edit_run — canonical Web IDE (browser-WASM; per IE walkthrough)
 //
@@ -231,8 +231,8 @@ fn edit_run(target_opt) = {
 // weave line, so the module-aware proximity decay ranks the entry's own
 // absences above the closure's.
 fn mentl_edit_session(entry_module) = match driver_entry_with_ranges(entry_module) {
-  (_ast, ranges) => {
-    let opening = entry_start_caret(entry_module, ranges)
+  (_ast, _mods) => {
+    let opening = entry_start_caret()
     patch_set_target(entry_module)
     cursor_session(opening)
   },
@@ -240,20 +240,13 @@ fn mentl_edit_session(entry_module) = match driver_entry_with_ranges(entry_modul
 
 // type_name_eq pins the compare `: String` — a bare `==` on two names
 // allocated by different passes is the pointer-eq class and never matches.
-fn entry_start_caret(entry_module, ranges) = match find(
-  (r) => match r {
-    (m, _, _, _) => type_name_eq(m, entry_module),
-  },
-  ranges
-) {
-  Some(r) => match r {
-    (_, _, line_start, _) => Caret(
-      0,
-      Located(Span(line_start, 1, line_start, 1), Inferred("mentl edit session start — at the entry"))
-    ),
-  },
-  None => Caret(0, Inferred("mentl edit session start")),
-}
+// The entry's opening caret is line 1 of the entry's own file. This used to
+// SEARCH the range map for the entry's start line in the concatenated weave,
+// because a caret could only be expressed in that one coordinate space. Spans
+// are local from birth now, so the answer is the constant it always meant and
+// the search had nothing to find that the file did not already say.
+fn entry_start_caret() with Memory + Alloc =
+  Caret(0, Located(Span(1, 1, 1, 1), Inferred("mentl edit session start — at the entry")))
 
 // ─── space_run — the ide, served by the wheel (`mentl space`)
 //
@@ -449,7 +442,7 @@ fn march_run() = {
       }
     }
   }
-} ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+} ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
 
 // The canonical stdin chain with the streaming sink; the census count
 // reads INSIDE the same install (the count and the counter are one
@@ -651,7 +644,7 @@ fn tighten_run(target_opt) = {
       let cands = tightenables()
       let authorable = filter(
         (c) => match c {
-          (_, used, _, _) => row_is_authorable(used),
+          (_, used, _, _, _) => row_is_authorable(used),
         },
         cands
       )
@@ -664,7 +657,7 @@ fn tighten_run(target_opt) = {
         // narrow — at worst it leaves slack a tightened callee exposes,
         // which the NEXT run's re-judgment catches (the ratchet
         // converges). Per file, patch bottom-up so line offsets hold.
-        let n = apply_tightenings(authorable, ranges)
+        let n = apply_tightenings(authorable)
         print_string("tighten: {int_to_str(n)} of {int_to_str(len(authorable))} authorable applied — the medium authored these; verify with a fresh check + the gates\n")
         if n > 0 { 0 } else { 1 }
       }
@@ -731,16 +724,14 @@ fn every_eff_arg_authorable(args, i) = if i >= len(args) {
 // order by (path, line DESCENDING) — the negated-line sort key — so each
 // file patches bottom-up and earlier offsets never shift, then fold with
 // one open file at a time (read on path change, write on leave).
-fn apply_tightenings(cands, ranges) = {
+fn apply_tightenings(cands) = {
   let located = flatten(map(
     (c) => match c {
-      (declared, used, name, span) => match file_line_of(ranges, span) {
-        Some(pl) => // A list literal after a let must open on its own line — on one
-        // line `pl [(…)]` parses as indexing.
-        match pl {
-          (p, l) => [(p, 0 - l, name, declared, used)],
-        },
-        None => [],
+      (declared, used, name, span, dmod) => // The candidate CARRIES its module, so the patch knows which file to
+      // open without a containment scan placing a line in a range. The path
+      // is the module's own; the span is already the developer's line.
+      match span {
+        Span(sl, _, _, _) => [(driver_module_path(dmod), 0 - sl, name, declared, used)],
       },
     },
     cands
@@ -907,23 +898,52 @@ fn doc_run(target_opt) = {
     Some(t) => t,
     None => "main",
   }
-  // driver_check's per-module inference performs the same analysis ops
-  // every other inference-reaching chain absorbs — this chain ran them all
-  // driverless until the SingletonUninstalled guard made the class loud,
-  // then carried the core WITHOUT env_handler until the order-law audit
-  // completed it; the bracket makes both classes unforgettable.
-  infer_context(() => doc_project(entry_module) ~> stdout_console ~> wasi_filesystem ~> mentl_default)
+  // The same one-namespace weave check reads (driver_entry_with_ranges):
+  // this verb ran driver_check's per-module walk until 2026-09-17, so the
+  // prelude's own body missed the vocabulary its layer supplies and every
+  // `mentl doc` opened with E_MissingVariable noise on a clean program —
+  // the reader-facing verb of the comment paradigm, broken at its root, and
+  // its own comment ("today the doc projection IS driver_check") said so.
+  infer_context(() => {
+    driver_entry_with_ranges(entry_module)
+    doc_render(entry_module, module_cells())
+  } ~> stdout_console ~> wasi_filesystem ~> mentl_default)
   0
 }
 
-// Today the doc projection IS driver_check: it validates the module and
-// surfaces its `///` Reasons through the diagnostics handler. The dedicated
-// render step (md / html / llms handlers over the module signature) is a
-// NAMED gated peer — Hβ.f1.doc-handler-substrate — not a phantom call:
-// doc_emit_for_module was referenced but never defined (reachable_from_main
-// emitted the dangling global), so the honest form names the peer and stops.
-fn doc_project(entry_module) = driver_check(entry_module)
+// The documentation projection: the entry module's declarations, each with
+// its judged type and the first line of its attached prose — the weave's
+// comment cells read back, the same edge `mentl <file:line>` speaks as
+// `Lede:` and the Why engine walks. Nothing here is authored twice: the
+// type is the judgment's, the prose is the graph's.
+fn doc_render(entry_module: String, cells) = each(doc_render_cell(entry_module), cells)
 
+fn doc_render_cell(entry_module: String, cell) = match cell {
+  (path, _, decls) => if path == entry_module { each(doc_render_decl, decls) } else { () },
+}
+
+fn doc_render_decl(d) = match d {
+  N(NStmt(FnStmt(name, _, _, _, _)), _, h) => doc_render_line(name, h),
+  N(NStmt(HandlerDeclStmt(name, _, _, _, _)), _, h) => doc_render_line(name, h),
+  N(NStmt(TypeDefStmt(name, _)), _, h) => doc_render_line(name, h),
+  N(NStmt(EffectDeclStmt(name, _, _)), _, h) => doc_render_line(name, h),
+  _ => (),
+}
+
+fn doc_render_line(name: String, h) = {
+  let ty = match env_lookup(name) {
+    Some((sch, _, _)) => " : {show_type(judgment_ty(sch))}",
+    None => "",
+  }
+  let prose = graph_comment_at(h)
+  let lede = if len(prose) > 0 { "\n    {comment_first_line(prose)}" } else { "" }
+  print("{name}{ty}{lede}\n")
+}
+
+// Rendering this roster through md / html / llms handlers is the named
+// peer Hβ.f1.doc-handler-substrate; the terminal form above is the one every
+// render handler projects from.
+//
 // ─── compile_run / run_run — emit WAT / compile + execute
 //
 // compile_run emits WAT to stdout (CI use case; shell pipeline).
@@ -935,7 +955,7 @@ fn doc_project(entry_module) = driver_check(entry_module)
 // wires) — its handler body crosses out of the medium into the host
 // process boundary, named Hβ.cli.process-exec-wire.
 fn compile_run(target) = {
-  compile(target) ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  compile(target) ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
   // The dispatch exit-code contract: main's value IS the process exit.
   // Refusal paths already exit nonzero through the gate; success is 0.
   0
@@ -944,7 +964,7 @@ fn compile_run(target) = {
 // `mentl resume <image>` — the compile projection re-entered from a
 // persisted image (pipeline.mn resume_image); same outer belt as compile.
 fn resume_run(img) = {
-  resume_image(img) ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  resume_image(img) ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
   0
 }
 
@@ -954,59 +974,48 @@ fn resume_run(img) = {
 // handler chain — wat_stdout for emit + wasi_filesystem (stdin via fd 0
 // goes through the same handler) + the substrate stack.
 fn compile_stdin_run() = {
-  compile_stdin() ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  compile_stdin() ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
   0
 }
 
 // Process — the execute-the-compiled-module effect. process_exec is the
 // ONE external-boundary op (the host process surface). run = compile then
-// ~> <a Process handler> catches the
-// process_exec the run pipeline performs over the SAME compile graph (no
-// re-invoked toolchain). The op carries the entry module; the compiled
-// artifact is handle-addressed (the compile emitted it), so the host wire
-// reads it by entry — no fabricated WAT string threaded out of compile.
-// The handler body crossing into the host (wasmtime spawn) is the
-// external wire, peer of the web/nvim wires — Hβ.cli.process-exec-wire.
+// ~> <a Process handler> catches the process_exec the run pipeline performs
+// over the SAME compile graph (no re-invoked toolchain). The op carries the
+// program's argv on the wire (NUL-joined, argv[0] first); the compiled
+// artifact has already streamed to the executor through the emit sink
+// (wat_to_host), so nothing is threaded out of compile — the handler swap
+// IS the difference between `compile` and `run`. A native mentl (band N)
+// performs the same op against its own executor.
 effect Process {
   // exit code
   process_exec(String) -> Int
 }
 
-// The op is right and stays: `run` IS compile-then-`process_exec`, one handler
-// swap over the same compile graph, and a native mentl (band N) can perform it
-// for real. The op is the seam, correctly placed.
-//
-// This HANDLER is what was wrong. It was named for the wasmtime projection and
-// its comment said it "dispatches the entry to that boundary and returns the exit
-// code the run reports" — it printed a sentence and resumed 0. Nothing ran; every
-// `mentl run` through the wheel reported success it had not performed, and the only
-// reason no one noticed is that tools/install.sh's shim intercepts `run`,
-// compiles, assembles, executes, and propagates the REAL exit code (measured:
-// `fn main() = 7` exits 7 through the shim).
-//
-// WASI has no exec. That is a substrate fact, not a gap to paper over, so the
-// handler is named for what it is and REFUSES. The shim owns the seam honestly;
-// this arm's job is to never claim otherwise.
-handler process_no_exec {
-  process_exec(entry) => {
-    eprint_string("mentl run: cannot execute {entry} from inside wasm — WASI has no exec.\n")
-    eprint_string("  the install shim owns this seam: `mentl run {entry}` via ~/.local/bin/mentl\n")
-    eprint_string("  compiles, assembles, and runs it, returning the program's own exit code.\n")
-    resume(1)
-  },
+// The Process handler the runner serves: the arm performs the Host seam's
+// exec op (lib/io.mn) over the WAT the wat_to_host sink streamed, and the
+// program's exit comes back as a value — a trap answers 134, the status
+// the micro battery banks. WASI has no exec, so the seam is the runner's
+// (Hβ.ops.runner-is-the-process-handler): tools/runner assembles the
+// streamed text and runs it in its own Store, one process for compile and
+// run alike.
+handler process_host {
+  process_exec(argv) => resume(host_exec(str_payload(argv), byte_len(argv))),
 }
 
-fn run_run(target) = {
-  // run IS compile then process_exec ~> <a Process handler> — one handler
-  // swap over the SAME compile graph. compile emits the module; the run
-  // performs process_exec(entry). Under WASI the only truthful handler is
-  // process_no_exec, which refuses; the shim performs the run for real.
-  {
-    compile(target)
-    process_exec(target)
-  } ~> process_no_exec ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
-  1
-}
+// argv on the wire: NUL after every word, the executor splits on it.
+fn argv_wire(words) = fold("", (acc, w) => "{acc}{w}\0", words)
+
+// run IS compile then process_exec ~> process_host — one handler swap
+// over the SAME compile graph: compile streams the module to the host,
+// process_exec runs it. The program's exit is this verb's value, and the
+// dispatch makes main's value the process exit — so `mentl run x` answers
+// exactly what x answered (a refused compile exits through the gate
+// before anything runs).
+fn run_run(target, args) = {
+  compile(target)
+  process_exec(argv_wire([target] ++ args))
+} ~> process_host ~> wat_to_host ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
 
 // ─── check_run — diagnostics; no emit
 //
@@ -1083,7 +1092,7 @@ fn field_ranked(handles, caret0) -> [(Float, Handle)] with GraphRead + Memory + 
   handles
 )))
 
-fn render_field_tier(ranked: [(Float, Handle)], target: String, ranges, fstart, i) = if i >= len(ranked) {
+fn render_field_tier(ranked: [(Float, Handle)], target: String, fstart, i) = if i >= len(ranked) {
   ()
 } else {
   match list_index(ranked, i) {
@@ -1092,8 +1101,8 @@ fn render_field_tier(ranked: [(Float, Handle)], target: String, ranges, fstart, 
       match pspan {
         Span(sl, sc, _, _) => {
           print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
-          render_at(cursor_at_handle(ph), ph, pspan, ranges)
-          render_field_tier(ranked, target, ranges, fstart, i + 1)
+          render_at(cursor_at_handle(ph), ph, pspan, target)
+          render_field_tier(ranked, target, fstart, i + 1)
         },
       }
     },
@@ -1113,7 +1122,7 @@ fn render_field_tier(ranked: [(Float, Handle)], target: String, ranges, fstart, 
 // argmax is this list's head; the field is the argmax UNCOLLAPSED —
 // the multi-cursor read, sequential (the per-position `><` under
 // `~> Thread` rides Hβ.ops.wasmtime-runner-migration).
-fn render_field(target: String, ranges, fstart, nlines) = {
+fn render_field(target: String, fstart, nlines) = {
   let caret0 = Caret(0, Located(Span(fstart, 1, fstart, 1), Inferred("field read")))
   let holes = field_positions(enumerate_hole_positions(), fstart, nlines)
   // THE PROBLEM IS THE SOLUTION — absence is ONE node-kind, and the
@@ -1127,10 +1136,10 @@ fn render_field(target: String, ranges, fstart, nlines) = {
   let tights = field_tightenables(tightenables(), fstart, nlines)
   let grads = field_positions(enumerate_gradient_positions(), fstart, nlines)
   print("Field: {int_to_str(len(holes))} hole(s), {int_to_str(len(pending))} pending proof(s), {int_to_str(len(tights))} tightening(s), {int_to_str(len(grads))} gradient position(s) in {target}\n")
-  render_field_tier(field_ranked(holes, caret0), target, ranges, fstart, 0)
+  render_field_tier(field_ranked(holes, caret0), target, fstart, 0)
   render_pending_tier(pending, target, fstart, 0)
   render_tighten_tier(tights, target, fstart, 0)
-  render_field_tier(field_ranked(grads, caret0), target, ranges, fstart, 0)
+  render_field_tier(field_ranked(grads, caret0), target, fstart, 0)
   0
 }
 
@@ -1139,7 +1148,7 @@ fn render_field(target: String, ranges, fstart, nlines) = {
 // Reason (the Why-walk's edge). Ledger order IS accrual order ≈ source
 // order.
 fn field_pending(debt, fstart, nlines) with Memory + Alloc = filter(
-  ((dspan, _, _)) => match dspan {
+  ((_modh, dspan, _, _)) => match dspan {
     Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
   },
   debt
@@ -1149,7 +1158,7 @@ fn render_pending_tier(pending, target: String, fstart, i) = if i >= len(pending
   ()
 } else {
   match list_index(pending, i) {
-    (dspan, pred, reason) => match dspan {
+    (_modh, dspan, pred, reason) => match dspan {
       Span(sl, sc, _, _) => {
         print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
         print("Pending: {show_predicate(pred)} — undischarged; a ground witness or a refinement collapses it\n")
@@ -1164,7 +1173,7 @@ fn render_pending_tier(pending, target: String, fstart, i) = if i >= len(pending
 // decl sits in the file's range: the declared row, the proven row, and
 // the standing patch invitation (`mentl tighten` authors it).
 fn field_tightenables(cands, fstart, nlines) with Memory + Alloc = filter(
-  ((_, _, _, tspan)) => match tspan {
+  ((_, _, _, tspan, _)) => match tspan {
     Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
   },
   cands
@@ -1174,7 +1183,7 @@ fn render_tighten_tier(tights, target: String, fstart, i) = if i >= len(tights) 
   ()
 } else {
   match list_index(tights, i) {
-    (declared, used, name, tspan) => match tspan {
+    (declared, used, name, tspan, _dmod) => match tspan {
       Span(sl, sc, _, _) => {
         print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
         print(tighten_line(name, declared, used))
@@ -1233,33 +1242,40 @@ fn address_project(ranges, target: String, line, col) = match range_of_module(ra
     1
   },
   Some(r) => match r {
-    (_m, _p, start, nlines) => if line == 0 {
-      render_field(target, ranges, start, nlines)
-    } else if line < 0 {
-      eprint_string("mentl: line {int_to_str(line)} — lines count from 1 (0 = the whole-file field)\n")
-      1
-    } else if line > nlines {
-      eprint_string("mentl: {target} has {int_to_str(nlines)} lines; {int_to_str(line)} is past the end\n")
-      1
-    } else {
-      let gline = start + line - 1
-      // Flattened ONCE before the walk (the iterate-flattens-once law,
-      // fourth sighting): the log is push-built, so a raw list_index
-      // walk pays O(depth) per probe — tolerable for the cold verb's
-      // single generation, a measured 131s PER CALL on the resident
-      // session whose log carries every converged generation's parses.
-      let spans = list_to_flat(span_index_of_snapshot())
-      match address_resolve(spans, gline, col) {
-        None => {
-          eprint_string("mentl: no node at {target}:{int_to_str(line)} (a blank or comment-only line)\n")
-          1
-        },
-        Some(pick) => match pick {
-          (pspan, ph) => {
-            render_at(cursor_at_handle(ph), ph, pspan, ranges)
-            0
+    (_m, _p, text) => // start is GONE: a module's first line is 1, because its spans are its
+    // own. The weave offset this used to add to every caret was the whole
+    // reason an address had two coordinate systems to reconcile.
+    {
+      let start = 1
+      let nlines = count_lines(text) + 1
+      if line == 0 {
+        render_field(target, start, nlines)
+      } else if line < 0 {
+        eprint_string("mentl: line {int_to_str(line)} — lines count from 1 (0 = the whole-file field)\n")
+        1
+      } else if line > nlines {
+        eprint_string("mentl: {target} has {int_to_str(nlines)} lines; {int_to_str(line)} is past the end\n")
+        1
+      } else {
+        let gline = start + line - 1
+        // Flattened ONCE before the walk (the iterate-flattens-once law,
+        // fourth sighting): the log is push-built, so a raw list_index
+        // walk pays O(depth) per probe — tolerable for the cold verb's
+        // single generation, a measured 131s PER CALL on the resident
+        // session whose log carries every converged generation's parses.
+        let spans = list_to_flat(span_index_of_snapshot())
+        match address_resolve(spans, gline, col) {
+          None => {
+            eprint_string("mentl: no node at {target}:{int_to_str(line)} (a blank or comment-only line)\n")
+            1
           },
-        },
+          Some(pick) => match pick {
+            (pspan, ph) => {
+              render_at(cursor_at_handle(ph), ph, pspan, target)
+              0
+            },
+          },
+        }
       }
     },
   },
@@ -1272,33 +1288,22 @@ fn span_index_of_snapshot() with GraphRead = match graph_snapshot() {
 // The span's file:line through the module-range map — the render-side
 // inverse of the concatenation fold. (range_of_module lives in driver.mn,
 // beside the fold that mints the map.)
-fn file_line_of(ref ranges, ref span) -> Option((String, Int)) with Memory + Alloc = match span {
-  Span(sl, _, _, _) => match find(
-    (r) => match r {
-      (_, _, start, nlines) => sl >= start && sl < start + nlines,
-    },
-    ranges
-  ) {
-    Some(r) => match r {
-      (_, p, start, _) => Some((p, sl - start + 1)),
-    },
-    None => None,
-  },
-}
-
-fn file_line(ref ranges, ref span) with Memory + Alloc = match file_line_of(ranges, span) {
-  Some(pl) => match pl {
-    (p, l) => "{p}:{int_to_str(l)}",
-  },
-  None => match span {
-    Span(sl, _, _, _) => "line {int_to_str(sl)}",
-  },
+// A span's file:line. It used to SEARCH the range map for the module whose
+// weave range contained the line — the render-side inverse of the
+// concatenation fold, and the fifth machine that fold required. The module is
+// the addressed one and the span is already its own coordinate, so the
+// question the search answered no longer has to be asked.
+fn file_line(ref target: String, ref span) with Memory + Alloc = match span {
+  Span(sl, _, _, _) => "{target}:{int_to_str(sl)}",
 }
 
 // The three-case line rule (the panel's corrected form, deterministic):
 //  (a) among nodes whose span STARTS on the line (and, with a column,
-//      contains it) — smallest start column, then largest area (the
-//      line's statement root);
+//      contains it) — `file:LINE` takes the WIDEST (the line's root),
+//      `file:L:C` the TIGHTEST containing the point; ties break leftward,
+//      identical spans to the latest mint (address_better_a is the rule's
+//      one home — this list used to say "smallest start column, then
+//      largest area", which was never what it did);
 //  (b) else the tightest node COVERING the point (a continuation line);
 //  (c) else the nearest node by start line (the no-Module-root top-level
 //      gap — blank lines between decls are ordinary addresses, not errors).
@@ -1422,7 +1427,13 @@ fn address_case_c(ref spans, gline, i, n, best) with Memory + Alloc = if i >= n 
 }
 
 // ─── the terse render — facet-silence at the terminal
-fn render_at(view, h, pspan, ranges) = match view {
+// One refusal, rendered: the name the medium would not offer and the Why it
+// kept for it.
+fn print_refusal(pair) = match pair {
+  (name, reason) => print("  · refused {name} — {show_reason(reason)}\n"),
+}
+
+fn render_at(view, h, pspan, target: String) = match view {
   CursorView(kind, propose, _topology, row, trace, verify, teach, why) => {
     // The register-gated lede — the read side of the comment weave the
     // parser fills: a node carrying authored prose speaks its first line
@@ -1433,32 +1444,42 @@ fn render_at(view, h, pspan, ranges) = match view {
     // print_string here was the transport baked into the narration.
     let prose = graph_comment_at(h)
     if len(prose) > 0 { print("Lede: {comment_first_line(prose)}\n") } else { () }
-    print("Query: {source_slice(pspan, ranges)}{node_query_line(h, kind)}\n")
+    print("Query: {source_slice(pspan, target)}{node_query_line(h, kind)}\n")
     // The Propose facet — the socket's content at the address surface. The
     // graph already computed it (propose_at runs synth at an authored hole;
-    // empty everywhere else, so silence needs no second hole check). Exactly
-    // one proven survivor is the medium's answer, rendered through the SAME
-    // projection the edit transport's accept path uses; two or more is the
-    // tie that TEACHES (never a hidden first-wins pick between proven
-    // survivors — PLAN §5's tie-break law at this surface too).
+    // VNone everywhere else, so silence needs no second hole check). The
+    // VERDICT is read, never re-derived from a count: a fill arrives with
+    // the Reason its constructor carries — this arm dropped it while the
+    // tie arm below kept it, which showed the medium's reasoning exactly
+    // when it was least sure and withheld it exactly where a developer is
+    // most likely to accept on faith — and a tie TEACHES by naming what
+    // separates the survivors (never a hidden first-wins pick — PLAN §5's
+    // tie-break law at this surface too).
     match propose {
-      Proposals([], _) => (),
-      Proposals([only], _) => match only {
-        (survivor, _r) => print("Propose: {render_candidate_source(survivor)}\n"),
+      Proposal(pr) => match pr.verdict {
+        VNone => (),
+        VFill(survivor, reason) => print("Propose: {render_candidate_source(survivor)}  — {show_reason(reason)}\n"),
+        VAsk(divergence, survivors) => {
+          print("Propose: {int_to_str(len(survivors))} proven survivors — a tie:\n")
+          each(
+            (pair) => match pair {
+              (node, reason) => print("  {render_candidate_source(node)}  — {show_reason(reason)}\n"),
+            },
+            survivors
+          )
+          print("  {show_divergence(divergence)}\n")
+        },
       },
-      Proposals(survivors, _) => {
-        // The FAN projected: a tie TEACHES by showing the actual proven
-        // space — every survivor rendered with its Reason — then names the
-        // move that collapses it. Never a hidden first-wins pick.
-        print("Propose: {int_to_str(len(survivors))} proven survivors — a tie:\n")
-        each(
-          (pair) => match pair {
-            (node, reason) => print("  {render_candidate_source(node)}  — {show_reason(reason)}\n"),
-          },
-          survivors
-        )
-        print("  one more constraint (a refinement, a type, an example) collapses it\n")
-      },
+    }
+    // THE REFUSALS, at the surface that shows the proposals. The Proposal
+    // has carried `rejected` since it was a pair of lists — every name the
+    // medium considered and would not offer, each with its Why — and this
+    // surface rendered none of them, so the audit trail existed and nobody
+    // could read it. A candidate the developer cannot see refused is a
+    // guess they cannot audit; that sentence was written for the row prune
+    // and applies to the surface just as hard.
+    match propose {
+      Proposal(pj) => each(print_refusal, pj.rejected),
     }
     match row {
       EfRow([], [], EtClosed) => (),
@@ -1479,7 +1500,7 @@ fn render_at(view, h, pspan, ranges) = match view {
       Some(_) => print("Teach: an annotation here would unlock a capability — `mentl teach` names it\n"),
     }
     print("Why: ")
-    render_why_hops(why_expand(why, 0), ranges, 0)
+    render_why_hops(why_expand(why, 0), target, 0)
   },
 }
 
@@ -1533,33 +1554,29 @@ fn node_query_line(h, kind) with GraphRead + WASI + EnvRead + Memory + Alloc + I
 // The addressed source text itself, read back through the range map — the
 // line the user pointed at, sliced to the node's span. The file is the one
 // authority on its own text.
-fn source_slice(ref span, ref ranges) with Filesystem + Memory + Alloc = match span {
-  Span(sl, sc, el, ec) => match find(
-    (r) => match r {
-      (_, _, start, nlines) => sl >= start && sl < start + nlines,
-    },
-    ranges
-  ) {
-    None => "",
-    Some(r) => match r {
-      (_, p, start, _) => if fs_exists(p) {
-        let text = fs_read_file(p)
-        let lstart = nth_line_offset(text, sl - start, 0, 0)
-        let lend = line_end_from(text, lstart)
-        let a = lstart + sc - 1
-        // A MULTI-LINE span ends on a DIFFERENT line, so its end column is not
-        // an offset into this one — slice to the end of the addressed line
-        // instead. The end line was discarded here until 2026-08-16, and once
-        // declarations carried their true extent a multi-line handler
-        // declaration rendered a two-character fragment of its own keyword.
-        let b = if el > sl { lend } else { lstart + ec }
-        let lo = if a < lend { a } else { lstart }
-        let hi = if b <= lend { b } else { lend }
-        if hi > lo { "{str_slice(text, lo, hi)} : " } else { "" }
-      } else {
-        ""
-      },
-    },
+// The addressed line's own text. The containment scan that placed a weave
+// line inside a module range is gone: the module is the one being addressed
+// and the line is its own, so this opens that file and reads that line.
+fn source_slice(ref span, ref target: String) with Filesystem + Memory + Alloc = match span {
+  Span(sl, sc, el, ec) => {
+    let p = driver_module_path(target)
+    if fs_exists(p) {
+      let text = fs_read_file(p)
+      let lstart = nth_line_offset(text, sl - 1, 0, 0)
+      let lend = line_end_from(text, lstart)
+      let a = lstart + sc - 1
+      // A MULTI-LINE span ends on a DIFFERENT line, so its end column is not
+      // an offset into this one — slice to the end of the addressed line
+      // instead. The end line was discarded here until 2026-08-16, and once
+      // declarations carried their true extent a multi-line handler
+      // declaration rendered a two-character fragment of its own keyword.
+      let b = if el > sl { lend } else { lstart + ec }
+      let lo = if a < lend { a } else { lstart }
+      let hi = if b <= lend { b } else { lend }
+      if hi > lo { "{str_slice(text, lo, hi)} : " } else { "" }
+    } else {
+      ""
+    }
   },
 }
 
@@ -1587,19 +1604,19 @@ fn line_end_from(ref text, i) with Memory = if i >= byte_len(text) {
 // literal value (node_const at the let's value node, read live) and the
 // author's attached `//` lede (graph_comment_at). The prose rides the
 // same rails as the types: nothing here is stored twice.
-fn render_why_hops(reason, ranges, depth) = if depth > 7 {
+fn render_why_hops(reason, target: String, depth) = if depth > 7 {
   print("\n")
 } else {
   match reason {
     Located(span, inner) => {
       if depth > 0 { print("     ") } else { () }
-      print("{reason_phrase(inner)}, at {file_line(ranges, span)}{binding_ledes(span, inner)}\n")
-      render_why_deeper(inner, ranges, depth)
+      print("{reason_phrase(inner)}, at {file_line(target, span)}{binding_ledes(span, inner)}\n")
+      render_why_deeper(inner, target, depth)
     },
     VarLookup(name, br) => {
       if depth > 0 { print("     ") } else { () }
       print("{name} read here\n")
-      render_why_hops(br, ranges, depth + 1)
+      render_why_hops(br, target, depth + 1)
     },
     _ => {
       if depth > 0 { print("     ") } else { () }
@@ -1608,24 +1625,24 @@ fn render_why_hops(reason, ranges, depth) = if depth > 7 {
   }
 }
 
-fn render_why_deeper(inner, ranges, depth) = match inner {
-  VarLookup(_, br) => render_why_hops(br, ranges, depth + 1),
-  LetBinding(_, br) => render_why_hops(br, ranges, depth + 1),
-  FnReturn(_, br) => render_why_hops(br, ranges, depth + 1),
-  InferredCallReturn(_, br) => render_why_hops(br, ranges, depth + 1),
-  InferredPipeResult(_, br) => render_why_hops(br, ranges, depth + 1),
+fn render_why_deeper(inner, target: String, depth) = match inner {
+  VarLookup(_, br) => render_why_hops(br, target, depth + 1),
+  LetBinding(_, br) => render_why_hops(br, target, depth + 1),
+  FnReturn(_, br) => render_why_hops(br, target, depth + 1),
+  InferredCallReturn(_, br) => render_why_hops(br, target, depth + 1),
+  InferredPipeResult(_, br) => render_why_hops(br, target, depth + 1),
   Unified(a, b) => // A unification joins TWO provenances — walk both (the second indented
   // as its own branch), the DAG rendered as the tree it is.
   {
-    render_why_hops(a, ranges, depth + 1)
-    render_why_hops(b, ranges, depth + 1)
+    render_why_hops(a, target, depth + 1)
+    render_why_hops(b, target, depth + 1)
   },
   OpConstraint(_, a, b) => {
-    render_why_hops(a, ranges, depth + 1)
-    render_why_hops(b, ranges, depth + 1)
+    render_why_hops(a, target, depth + 1)
+    render_why_hops(b, target, depth + 1)
   },
-  IfBranch(br) => render_why_hops(br, ranges, depth + 1),
-  Instantiation(_, br) => render_why_hops(br, ranges, depth + 1),
+  IfBranch(br) => render_why_hops(br, target, depth + 1),
+  Instantiation(_, br) => render_why_hops(br, target, depth + 1),
   _ => print_string(""),
 }
 
@@ -1736,7 +1753,7 @@ fn test_run(target_opt) = {
 }
 
 fn test_check_run(entry_module) =
-  pipeline_check(entry_module) ~> assert_reporter ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  pipeline_check(entry_module) ~> assert_reporter ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
 
 // ─── The battery: `mentl test <dir>` ────────────────────────────────────
 // The micro battery IS the medium reading its own gates: glob the directory,
@@ -1798,12 +1815,15 @@ fn battery_expect_digits(src, i, acc) with Memory = if i >= byte_len(src) {
 }
 
 // One micro, one fresh chain — the same chain compile_stdin drives, with
-// the emission STREAMED through wat_to_file straight into the micro's
-// .build/test wat (the whole-compile collecting install read region-reset
-// segments — the scope law at wat_to_string's decl). Verdict: 0 on an
-// emitted module, 1 on a ledger-refused compile (no file written) or an
-// unopenable destination.
-fn battery_compile(src, wat_path) = compile_context(() => {
+// the emission STREAMED through wat_to_host to the executor (the
+// whole-compile collecting install read region-reset segments — the scope
+// law at wat_to_string's decl) and then RUN there: the program's exit comes
+// back as a value through the Process seam, so the battery judges
+// `// expect: N` itself instead of printing a manifest for a bash loop
+// that spawned an assembler and a runtime per fixture. Returns
+// (gate-failed, error-count, banked classes, exit) — exit is -1 when the
+// gate refused and nothing ran.
+fn battery_compile(src, stem) = compile_context(() => {
   let lowered =
     src |> infer_program_converged |> saturate_pass |> lower_program |> reachable_from_main
   // THE SAME law executable_gate applies, batch-shaped: refusal = holes +
@@ -1817,30 +1837,27 @@ fn battery_compile(src, wat_path) = compile_context(() => {
   // (mcp_diag_collector, the forwarder: every line still reaches stderr).
   match gate_reads(lowered) {
     (nholes, refused) => {
-      let failed = if nholes > 0 || refused > 0 {
-        1
+      let exit = if nholes > 0 || refused > 0 {
+        -1
       } else {
-        let fd = fs_create(wat_path)
-        if fd == 0 {
-          1
-        } else {
-          {
-            emit_module(lowered)
-          } ~> wat_to_file(fd)
-          fs_close(fd)
-          0
-        }
+        {
+          emit_module(lowered)
+        } ~> wat_to_host
+        process_exec(argv_wire([stem]))
       }
-      let lines = gate_facts()
+      // THE CLASSES, never the rendered lines. A line banked during emit
+      // points into the twin loop's region and is zeroed by its heap_reset
+      // before any reader gets there (GateLedger's own record); the class is
+      // a data-section literal. The refuse contract compares names now, so
+      // the substring scan over prose is gone with it.
+      let classes = gate_classes()
       let nerr = diag_errors()
-      (failed, nerr, lines)
+      (if exit < 0 { 1 } else { 0 }, nerr, classes, exit)
     },
   }
-} ~> mcp_diag_collector ~> wasi_filesystem)
+} ~> process_host ~> mcp_diag_collector ~> wasi_filesystem)
 
 fn battery_run(dir, names) = {
-  fs_mkdir(".build")
-  fs_mkdir(".build/test")
   // libs is MATERIALIZED flat (str_concat("", x) — the view-flatten idiom)
   // BELOW the loop's first mark: a concat spine here would be poisoned by
   // the region resets — compile #1's flatten memoizes the flat buffer INTO
@@ -1850,7 +1867,7 @@ fn battery_run(dir, names) = {
   let libs = str_concat("", battery_libs())
   // The names list flattens below the mark for the same reason (sort returns
   // a concat spine; indexing memoizes in place).
-  let micros = list_to_flat(sort(filter((n) => ends_with(n, ".mn"), names)))
+  let micros = list_to_flat(sort(filter(ends_with(??, ".mn"), names)))
   // A RAW recursion, not a handler fold: each call's compile is a REGION
   // (heap_mark before, heap_reset after — everything the micro allocated is
   // dead once its WAT is written, and every micro starts at the same
@@ -1887,24 +1904,32 @@ fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(mic
       print_string("NOEXPECT {stem}\n")
       1
     },
-    Some(contract) => match battery_compile(libs ++ src, ".build/test/{stem}.wat") {
-      (failed, nerr, lines) => match contract {
+    Some(contract) => match battery_compile(libs ++ src, stem) {
+      (failed, nerr, classes, exit) => match contract {
         ExpectRun(want) => if failed > 0 {
           print_string("FAILC {stem}\n")
           1
-        } else {
-          print_string("MICRO {stem} .build/test/{stem}.wat {int_to_str(want)}\n")
+        } else if exit == want {
+          // The error COUNT rides the line: a fixture that runs true while
+          // reporting errors is the sound-incomplete contract at work, and a
+          // count nobody prints is a count nobody reads.
+          print_string("PASS {stem}: exit={int_to_str(exit)} (expected {int_to_str(want)}) diags={int_to_str(nerr)}\n")
           0
+        } else {
+          print_string("FAIL(run) {stem}: exit={int_to_str(exit)} expected={int_to_str(want)} diags={int_to_str(nerr)}\n")
+          1
         },
         ExpectRefuse(cls) => // The contract judges the JUDGMENT: the named class reported as an
         // error. Armed classes also withhold the artifact; unarmed ones
         // surface-and-emit — both are the medium's own law, and the
         // battery asserts exactly what the medium asserts.
-        if nerr > 0 && any((l) => str_contains(l, cls), lines) {
+        if nerr > 0 && any((c) => c == cls, classes) {
           print_string("REFUSE {stem} {cls}\n")
           0
         } else {
-          print_string("FAILR {stem} wanted {cls} (errors={int_to_str(nerr)})\n")
+          // The verdict names what the judgment DID bank, so a contract that
+          // misses says which class stood where the wanted one was expected.
+          print_string("FAILR {stem} wanted {cls} (errors={int_to_str(nerr)}; banked: {join(", ", classes)})\n")
           1
         },
       },
@@ -1934,7 +1959,7 @@ handler assert_reporter with passed = 0, failed = 0 {
 // Walks the ~> chain; collects effect rows transitively; emits
 // AuditReport. Per DESIGN §9.1 + traces/a-day §1400.
 fn audit_run(target) = {
-  audit(target) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> verify_ledger ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  audit(target) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> verify_ledger ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
   0
 }
 
@@ -1943,7 +1968,7 @@ fn audit_run(target) = {
 // `mentl query <module> "<question>"` — read-only query against
 // the substrate. Per traces/a-day §0800 + DESIGN §8 mentl query.
 fn query_run(target, question) =
-  query(target, question) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  query(target, question) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
 
 // ─── with_run — the universal escape hatch (env_lookup resolution)
 //
@@ -2043,7 +2068,7 @@ fn repl_eval_line(line) = if byte_len(line) == 0 {
 // itself — a write followed by the live read is unfalsifiable, and it is
 // the same `<~` the cursor session runs (draw the edge, re-project).
 fn new_project(name) = {
-  scaffold_project(name) ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  scaffold_project(name) ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
   0
 }
 

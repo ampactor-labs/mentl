@@ -31,9 +31,13 @@ handler lowpass(alpha) with state = 0.0 {
   },
 }
 
-fn process_lowpass(alpha, buffer) = {
-  map((x) => process(x), buffer)
-} ~> lowpass(alpha)
+// A bare op IS the function value — `process` is declared by lowpass,
+// biquad AND envelope, and that ambiguity used to be fatal here because the
+// reified body resolved its record by HANDLER name, which three declarers
+// have no single answer to. The walk keys on the OP now, so the reified
+// value means what it always meant: whichever install answers `process`
+// where the closure is actually called.
+fn process_lowpass(alpha, buffer) = map(process, buffer) ~> lowpass(alpha)
 
 // ── Biquad filter ───────────────────────────────────────────
 // Five config coefficients captured at install; four state cells (the two
@@ -45,9 +49,7 @@ handler biquad(b0, b1, b2, a1, a2) with y1 = 0.0, y2 = 0.0, x1 = 0.0, x2 = 0.0 {
   },
 }
 
-fn process_biquad(b0, b1, b2, a1, a2, buffer) = {
-  map((x) => process(x), buffer)
-} ~> biquad(b0, b1, b2, a1, a2)
+fn process_biquad(b0, b1, b2, a1, a2, buffer) = map(process, buffer) ~> biquad(b0, b1, b2, a1, a2)
 
 // ── Envelope follower ───────────────────────────────────────
 // Asymmetric attack/release captured at install; `state` is the running
@@ -61,9 +63,7 @@ handler envelope(attack, release) with state = 0.0 {
   },
 }
 
-fn process_envelope(attack, release, buffer) = {
-  map((x) => process(x), buffer)
-} ~> envelope(attack, release)
+fn process_envelope(attack, release, buffer) = map(process, buffer) ~> envelope(attack, release)
 
 // ── Preset handlers ─────────────────────────────────────────
 handler warm_filter with state = 0.0 {

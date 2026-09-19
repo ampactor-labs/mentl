@@ -6,3 +6,10 @@ fn compute(x) = {
 }
 
 fn main() = compute(20)
+
+fn scaled(v) = apply(
+  // the anonymous step — a lambda is a node like any other, and its line is its own
+  (x) => x * 3,
+  v)
+
+fn apply(f, v) = f(v)

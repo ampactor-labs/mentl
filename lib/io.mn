@@ -66,6 +66,21 @@ effect WASI {
   proc_exit(Int)
 }
 
+// Host — the medium's own host seam beside preview1, served by tools/runner
+// under the import module `mentl_host` (Hβ.ops.runner-is-the-process-handler).
+// WASI has no exec, so a compiled program could be emitted but never run
+// from inside the wheel; these two ops are the executor. The emitted WAT
+// STREAMS to the host through host_wat_write exactly as bytes stream to an
+// fd (the host holds the text — the guest's emit regions reset per fn, so
+// no in-image collecting sink is sound for a whole module), and host_exec
+// assembles, instantiates and runs the streamed module in its own instance
+// over its own memory, returning its exit as a value (a trap answers 134).
+// (ptr, len) pairs, the fd_write_bytes idiom; argv is NUL-joined.
+effect Host {
+  host_wat_write(Int, Int)
+  host_exec(Int, Int) -> Int
+}
+
 // wasi_args — the process argv as a [String], read live from the host at
 // _start. This is what makes the CLI real: without it _start handed main a
 // len-0 list and every `mentl <verb>` fell through to compile-stdin
@@ -510,6 +525,42 @@ fn fs_write_file_impl(path_str, bytes_str) with Memory + Alloc + WASI = match fs
       ()
     }
   },
+}
+
+// fs_write_image_impl — a header buffer followed by a raw memory extent,
+// streamed to path, ALL OR NOTHING. Returns whether the whole extent landed.
+//
+// This is the streaming sibling of fs_write_file_impl, and it exists so that
+// writing a large image is ONE filesystem operation with one home. A caller
+// that opened the fd, wrote twice, closed and unlinked for itself would be
+// reaching past this seam five times for what is a single question — does this
+// path now hold exactly these bytes — and each of those reaches is an
+// operation the Filesystem handler can no longer see.
+//
+// ALL OR NOTHING is the contract, not a convenience. A reader that admits a
+// wire on its header alone cannot tell a truncated file from a whole one, so a
+// short write must leave NO file rather than a plausible one: the failure has
+// to be absence, which every reader already handles, instead of a declared
+// extent that was never written.
+//
+// A length that does not fit a signed word is refused here rather than handed
+// to the syscall as a negative — the honest bound of the word this interface
+// is built from, named where it bites.
+fn fs_write_image_impl(path_str, hdr_ptr, hdr_len, base, len) with Memory + Alloc + WASI = {
+  let fd = fs_create_impl(path_str)
+  if fd == 0 {
+    false
+  } else {
+    let nh = fd_write_bytes(fd, hdr_ptr, hdr_len)
+    let nb = if len < 0 { 0 - 1 } else { fd_write_bytes(fd, base, len) }
+    fd_close(fd)
+    if nh == hdr_len && nb == len {
+      true
+    } else {
+      fs_unlink_impl(path_str)
+      false
+    }
+  }
 }
 
 // FX.A.basics primitives — per FX walkthrough §2.1 (commit 61b2b60).
