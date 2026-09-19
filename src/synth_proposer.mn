@@ -272,6 +272,10 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context) with GraphRead + 
   ),
 }
 
+// Answers whether two types COULD unify, from their head constructors alone —
+// the sound index that keeps the vocabulary from judging the whole prelude at
+// every hole. It never rejects a unifiable pair, so it can hide no survivor.
+//
 // PROPAGATION PRECEDES ENUMERATION (PLAN §11.1), and this is the sound
 // form of it at the vocabulary. The question a pre-filter may ask is not
 // "are these the same type" — that is unification's, and asking it here is
@@ -739,6 +743,9 @@ fn segment_verify(candidates, hole_h) = if len(candidates) == 0 {
   candidates |> map(judge_in_segment(hole_h, base, seed, iseed))
 }
 
+// Judges one candidate inside its own trail segment and joins its facts to the
+// root only if it proved.
+//
 // A REFUTED BRANCH'S FACTS DO NOT REACH THE ROOT, and that changed here.
 // The copy-era join replayed every branch "proven or not", which was benign
 // only while a structural pre-filter guaranteed no candidate could fail to
@@ -764,6 +771,9 @@ fn judge_in_segment(hole_h, base, seed, iseed, candidate) = {
   }
 }
 
+// Renders why a segment refused its candidate, from the medium's own
+// `diag_message` rather than the banked line.
+//
 // A REFUSAL KEEPS ITS WHY, exactly as a row refusal always has. The branch
 // is rolled back and its diagnostics never reach the root, so without this
 // the medium would drop a candidate in silence — and a candidate the
@@ -844,6 +854,10 @@ fn indexed_value(indexed) with Memory + Alloc = match indexed {
   (_, v) => v,
 }
 
+// Decides whether a candidate inhabits the hole: infer the candidate, `unify`
+// its cell with the hole's own, then discharge the hole's refinement against
+// what the cell now says.
+//
 // THE PROOF GATE, one home, and the hole is a TERM CELL in it.
 //
 // §1's law is that any intelligence may propose and nothing executes
@@ -1193,6 +1207,9 @@ fn synthesize_tuple_node(elems) with GraphRead + GraphWrite + !Mutate + Memory +
 fn synthesize_record_node(fields) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
   synth_node(MakeRecordExpr(synth_record_holes_for(fields)))
 
+// Builds a constructor candidate: a bare `VarRef` when the scheme is nullary,
+// a `CallExpr` with one hole per field when it is not.
+//
 // A NULLARY CONSTRUCTOR IS A VALUE, NOT A CALL — and this read is the fix
 // for a defect that had always been here and could not be seen. The node
 // was minted as `CallExpr(VarRef(name), holes)` unconditionally, so `None`

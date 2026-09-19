@@ -35,6 +35,57 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-19 · pin 92a8d732e9a254c7 (UNMOVED) · THE REALIZATIONS LAND IN THE
+  ARTIFACT. CLEAN m2 == m3 at the same sha as the entry below it — prose is
+  graph content that attaches as a Reason edge and does not alter the emitted
+  program, so a comments-and-documents landing reproduces the wheel
+  byte-identically. census 0, frontier 389/0/2, verify green, comment-refs 0.
+  **THE COMMENT LAW WAS BEING CITED AND NOT USED, and Morgan caught it.**
+  Measured on this session's own landing: 17 of 165 added comment lines carried
+  a backticked reference, and every lede was a HEADLINE — `mentl <file:line>`
+  rendered `Lede: THE PROOF GATE, one home, and the hole is a TERM CELL in it.`
+  where a developer needed to be told what the function IS. SYNTAX says the
+  first line is the LEDE the address surface renders and a backticked
+  identifier is a resolvable EDGE the Why engine walks; paragraphs were written
+  where the medium wanted edges. **The inversion that proves the mechanism was
+  not in use:** when the comment-ref gate refused a backticked name that
+  resolved nowhere, the fix taken was DELETING THE BACKTICKS — degrading a
+  reference into prose to satisfy the check whose entire purpose is keeping
+  references real. Ledes rewritten to say what each decl IS, argument moved
+  into the body; `CLAUDE.md`'s working discipline carries the law as item (6),
+  with its verification: ask the medium what the prose says, because the author
+  is the last one who can see it.
+  **A WRITE-ONLY EFFECT, banked rather than admired.** `graph_mutated(Int,
+  Mutation)` carries *(handle, prior value)* at nine guarded write sites and
+  **every handler arm in the tree discards both arguments** — `mutate_sink`
+  (graph.mn) and `lsp_adapter` (lsp.mn). That is §5.U's textbook Carried-Truth
+  violation, live in the graph handler. The sink's comment claimed *"the IC
+  loop swaps it for the oracle's re-projection"* while `project_queue_merger`
+  holds zero `graph_mutated` arms; both comments are corrected at their sites,
+  and `Hβ.graph.mutation-delta-is-write-only` carries the mechanism. §7's
+  incrementality bullet is trued: epoch IS an invalidation key — the merger
+  memoizes on it — but it is polled and the WHOLE queue re-projects, so what is
+  missing is the CONE, not the key. The same delta is what the march
+  re-implements as a TEXT diff of two WATs and the ratchets as counts parsed
+  from a file.
+  **AND A LIVE SILENT WRONG AT THE FELT SURFACE, found by the comment audit
+  itself.** `mentl <file>:<line>` reads the SOURCE by (file, line) and the
+  GRAPH NODE by **line alone**: at line 733, `synth_proposer.mn` and
+  `lower.mn` each render their own source beside `lexer.mn`'s `scan_number` —
+  its type, effects, ownership, Lede and Why. Every aspect agrees with itself,
+  which is exactly what makes it unnoticeable. It is §11's POSITIONS face with
+  a second witness (Landing 1's candidate diagnostic leaking to
+  `strings:0:0-0:0`), demo-blocking by Arc E's own terminal gate, and it blocks
+  the comment law that found it — a lede cannot be verified by projection while
+  the projection names the wrong decl. Banked as
+  `Hβ.cursor.address-drops-module-identity` and PREEMPTING the queue per §11's
+  measured-fault rule; the fix is a READ, since the module is already a spine
+  column (`spine_put_module`, `cur_module`).
+  **Not closed:** both peers are named, neither is built. The composition this
+  session derived — `project(universes, address)`, with the trail as the delta
+  between two images and the teaching question as its two-universe case — lives
+  in the plan and is what the two peers serve.
+
 - 2026-09-19 · pin 92a8d732e9a254c7 · THE HOLE IS A TERM CELL. CLEAN m2 == m3,
   census 0, 413,159 lines, m3 leg 8.45s / 971MB; frontier 389/0/2, verify
   green.

@@ -844,13 +844,32 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   },
 }
 
-// The Mutate effect's no-subscriber floor. graph_handler's write arms
-// perform graph_mutated at every outermost commit; subscribers are a
-// handler-swap surface (the IC loop's project_queue_merger re-projects on
-// the bumped epoch, MV-LSP.push streams diagnostics). One-shot compile
-// paths have no subscriber — this sink acknowledges the event and
-// resumes. Installed OUTSIDE graph_handler in every chain that has no
-// live subscriber; the IC loop swaps it for the oracle's re-projection.
+// Acknowledges a mutation and drops it — and today that is EVERY handler
+// of `graph_mutated` in the tree, which makes the effect write-only.
+//
+// This block used to say subscribers "are a handler-swap surface (the IC
+// loop's `project_queue_merger` re-projects on the bumped epoch, MV-LSP.push
+// streams diagnostics) … the IC loop swaps it for the oracle's
+// re-projection." Measured 2026-09-19: `project_queue_merger` contains ZERO
+// `graph_mutated` arms, and the only other arm in the tree is `lsp_adapter`'s,
+// which discards both arguments exactly as this one does. The comment
+// described an architecture the artifact does not have, which is the one
+// thing a comment must never do.
+//
+// WHAT IS ACTUALLY THROWN AWAY, and why it matters more than a dead event:
+// the write arms perform `graph_mutated(new_epoch, MSetNode(handle, old_node))`
+// — handle AND prior value, at nine sites, guarded so speculation never emits.
+// That payload is a DELTA between two images: exactly what an incremental
+// re-projection, a board comparing two pins, and a first-divergence question
+// each need. `project_queue_merger` instead POLLS `graph_epoch()` and
+// re-projects the WHOLE queue whenever it moved, collapsing a per-handle cone
+// to one boolean. The delta is computed (rollback needs it), performed across
+// an effect boundary, and discarded by everyone.
+//
+// RETIREMENT: `Hβ.graph.mutation-delta-is-write-only`. This sink stays — a
+// chain with no subscriber must still be able to run — but it stops being the
+// ONLY reader when the cone lands. Until then the honest name for this handler
+// is what it does: a floor, not a seam.
 handler mutate_sink {
   graph_mutated(_epoch, _mutation) => resume(),
 }

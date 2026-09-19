@@ -642,10 +642,18 @@ fn range_to_json(sl, sc, el, ec) with Memory + Alloc =
 
 // ─── lsp_adapter handler + session loop ───────────────────────────────
 //
-// lsp_adapter — outermost handler in the Mentl chain. Subscribes to
-// graph_mutated for push diagnostics (MV-LSP.push peer extends this).
-// State carries msg_id_counter for outgoing notifications and
-// initialized flag for protocol state machine.
+// lsp_adapter — outermost handler in the Mentl chain. State carries
+// msg_id_counter for outgoing notifications and initialized flag for the
+// protocol state machine.
+//
+// Its `graph_mutated` arm DISCARDS the mutation; this block used to say it
+// "subscribes to graph_mutated for push diagnostics (MV-LSP.push peer extends
+// this)", which read as a live wire and is an intention. Nothing here pushes
+// anything: the arm takes `(handle, prior value)` — the delta a push
+// diagnostic would be computed FROM — and resumes. Corrected 2026-09-19 with
+// its sibling at `mutate_sink` (graph.mn), the other half of the same
+// write-only effect; `Hβ.graph.mutation-delta-is-write-only` carries the
+// class, and push diagnostics are what this arm grows into when it does.
 handler lsp_adapter with msg_id_counter = 0, initialized = false, shutdown_received = false {
   graph_mutated(_epoch, _mutation) => resume(),
 }

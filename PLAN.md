@@ -823,9 +823,28 @@ and this is the STATE.
   judged inside a checkpoint on the ONE live graph now; the width returns at
   Phase 9.2's deterministic handle partition and atomic join writes, as a
   `~> Schedule` decision, never a constant.
-- **Incrementality is not a cached cursor yet:** `epoch` is a mutation
-  counter, not an invalidation key — nothing derives "what changed" from it;
-  the warm start restores an image and re-derives the compile over it (§5.O).
+- **The caret projection DROPS MODULE IDENTITY — a live silent wrong at the
+  medium's own felt surface** (measured 2026-09-19). `mentl <file>:<line>` reads
+  the SOURCE by (file, line) and the GRAPH NODE by line ALONE, so on a
+  multi-module link whichever module owns that line number is judged instead:
+  `src/synth_proposer.mn:733` renders `segment_verify`'s source beside
+  `scan_number`'s type, effects, ownership, Lede and Why, and `src/lower.mn:733`
+  does the same, because `src/lexer.mn:733` owns that line. Every aspect agrees
+  with itself, which is what makes it unnoticeable. This is §11's POSITIONS face
+  with a second witness — Landing 1's leaked candidate diagnostic attributed to
+  `strings:0:0-0:0` — and it is demo-blocking by Arc E's own terminal gate
+  ("eight-aspect projections at the caret"). `Hβ.cursor.address-drops-module-identity`.
+- **Incrementality is not a cached cursor yet, and the precise shape is
+  sharper than "epoch is a counter"** (corrected 2026-09-19). Epoch IS used as
+  an invalidation key: `project_queue_merger` (oracle.mn) memoizes the project
+  queue on it and re-projects when it moves, with its own comment stating the
+  law correctly. What is missing is the CONE — it re-projects the WHOLE queue,
+  collapsing to one boolean a per-handle delta the graph already computes.
+  `graph_mutated(Int, Mutation)` carries *(handle, prior value)* at nine write
+  sites and **every handler in the tree discards both arguments**
+  (`mutate_sink`, `lsp_adapter`), so the delta is write-only
+  (`Hβ.graph.mutation-delta-is-write-only`). The warm start likewise restores an
+  image and re-derives the compile over it (§5.O).
 - **Resident Space** is not yet the shipping medium. `mentl space` serves the
   browser surface, and cursor/query/propose pieces exist, but the browser still
   needs the resident graph session: one WASM instance, a durable image boundary,

@@ -499,6 +499,23 @@
 > entry, deleting ~50 sites and covering every future construct by
 > construction. When the second site of a shape appears, design the pass
 > that makes ALL sites impossible — the census law's constructive half.
+> (6) **PROSE IN A `.mn` FILE IS GRAPH CONTENT — USE THE MECHANISM, and verify
+> it by PROJECTING, never by re-reading** (paid for 2026-09-19, caught by
+> Morgan). The first line is the LEDE the address surface renders, a backticked
+> identifier is a resolvable EDGE the Why engine walks, and a residue comment
+> names its retirement condition. Measured on that session's own landing: 17 of
+> 165 added comment lines carried a backticked reference, and every lede was a
+> HEADLINE — `mentl <file:line>` rendered `Lede: THE PROOF GATE, one home, and
+> the hole is a TERM CELL in it.` where a developer needed to be told what the
+> function IS. Paragraphs were written where the medium wanted edges. **And the
+> inversion that proves the mechanism was not being used:** when the
+> comment-ref gate refused a backticked name that resolved nowhere, the fix
+> taken was DELETING THE BACKTICKS — degrading a reference into prose to
+> satisfy the check whose whole purpose is keeping references real. Point it at
+> something that resolves, or say it without posing as a reference. The
+> verification is the same as everywhere else here: ask the medium
+> (`mentl <file:line>`, `mentl doc <module>`) what the prose says, because the
+> author is the last one who can see it.
 >
 > **Medium-authored change is the PREFERRED form wherever a verb exists** —
 > tighten-style batch authorship, gated by the board, approved by Morgan and

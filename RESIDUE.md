@@ -28,6 +28,73 @@
 
 ---
 
+`Hβ.cursor.address-drops-module-identity` — OPEN, BORN 2026-09-19, and it is a
+LIVE SILENT WRONG at the medium's primary felt surface. `mentl <file>:<line>`
+reads the SOURCE SLICE by (file, line) and the GRAPH NODE by **line alone**, so
+on a multi-module link whichever module owns that line number is judged instead.
+Measured at one line across three files:
+
+| address | `Query:` slice | type / effects / ownership / Lede / Why |
+|---|---|---|
+| `src/lexer.mn:733` | `fn scan_number(…)` | `-> NumScan` — correct |
+| `src/synth_proposer.mn:733` | `fn segment_verify(candidates, hole_h)` | `-> NumScan with (source: String, n: ValidOffset, pos: ValidOffset, col: Int)` |
+| `src/lower.mn:733` | an `NExpr(VarRef(name))` arm | the same foreign judgment |
+
+`src/lexer.mn:723` carries the comment the other two render as their `Lede:`.
+So a developer standing anywhere but the entry module is shown a confident,
+silent, foreign answer — and every aspect agrees with itself, which is what
+makes it unnoticeable. It was found only because a comment audit asked the
+address surface what one function's prose looked like and got another
+function's.
+THE CLASS IS §11's POSITIONS face and this is its second witness: Landing 1's
+ledger records the proposer's candidate diagnostic leaking to
+`strings:0:0-0:0`, a module the developer never opened. One root — a coordinate
+that is not module-qualified — sighted twice independently.
+IT ALSO BLOCKS THE DISCIPLINE THAT FOUND IT, which is the sharpest argument for
+taking it first: the comment law says verify a lede by PROJECTING the address
+rather than re-reading the source, and the projection cannot be trusted to name
+the right decl. Checking five re-written ledes the same session, four answered
+correctly and the fifth (`synthesize_ctor_call_node`) rendered a foreign one —
+so the author is told their prose is wrong when it is right, or right when it is
+wrong, at whichever lines collide. A verification surface that lies makes the
+law unusable, not merely inconvenient.
+THE FIX IS A READ, not a new fact: the module is already a spine column
+(`spine_put_module`, `cur_module`, graph.mn), so the address path can carry the
+module it was handed rather than dropping it between the source read and the
+node read. CLOSE: a fixture addressing a known line in a NON-entry module
+asserts that module's own judgment, seen wrong against the current pin first;
+and the `strings:0:0` attribution stops being constructible.
+
+`Hβ.graph.mutation-delta-is-write-only` — OPEN, BORN 2026-09-19. `graph_mutated(Int,
+Mutation)` (types.mn) carries `MSetNode(Int, GNode)` — *(handle, prior value)* —
+and is performed at NINE sites in `graph_handler`'s write arms, each guarded by
+`len(checkpoint_stack) == 0` so speculation never emits. **Every handler arm of
+it in the tree discards both arguments**: `mutate_sink` (graph.mn) and
+`lsp_adapter` (lsp.mn). The effect is write-only, which is the class §5.U names
+as the textbook Carried-Truth violation (the zero-reader `resume_kinds` ledger,
+deleted).
+AND THE SINK'S COMMENT NAMED A SUBSCRIBER THAT DOES NOT EXIST — it said "the IC
+loop swaps it for the oracle's re-projection", and `project_queue_merger`
+(oracle.mn) contains zero `graph_mutated` arms. Both comments are corrected at
+their sites; the peer carries the mechanism.
+WHAT THE DISCARD COSTS, stated precisely so the fix is not mis-scoped: the one
+real IC consumer is honest about its law — *"read live is the meaning,
+cached-by-epoch is the mechanism … never a third cache"* — and it POLLS
+`graph_epoch()`, re-projecting the WHOLE queue when the counter moved. So epoch
+IS an invalidation key; what is missing is the CONE. The per-handle delta the
+trail already computes is collapsed to one boolean at the poll and dropped
+entirely at the sink.
+WHY IT IS WORTH MORE THAN AN UNUSED EVENT: a delta between two images is what
+incremental re-projection, a board comparing two pins, and a first-divergence
+question each need — the same operation at three altitudes (`project(universes,
+address)`). Today each re-implements it in a weaker medium: `tools/march.sh`
+diffs two generations as WAT TEXT (`diff -q "$OUT/m2.wat" "$OUT/m3.wat"`),
+`tools/verify.sh` compares COUNTS parsed from a text file, and
+`tools/emit-diff.py` does handle-anchored comparison in python. CLOSE: a
+subscriber reads the delta and re-projects the changed cone only, the march's
+generation compare reads it instead of diffing text, and `epoch` stops being the
+whole key.
+
 `Hβ.synth.denotation-of-a-nullary-constructor` — OPEN, BORN 2026-09-19 at the
 landing that made the hole a term cell, and found by that landing's own gate
 reading wrong. At an `Option(Int)` hole the two proven survivors are
