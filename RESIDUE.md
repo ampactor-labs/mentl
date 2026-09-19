@@ -28,6 +28,45 @@
 
 ---
 
+`Hβ.verify.board-is-not-yet-a-value` — OPEN, BORN 2026-09-19 with `mentl
+verify`. The verb reads the twelve census bounds off ONE judged graph and
+REFUSES on a breach, which is the count half. What it does not yet do is
+produce a BOARD AS A VALUE that a later run can DIFF: it renders lines and
+exits, so the comparison against the previous pin is still a human reading two
+transcripts, or a shell diffing two renderings — the same text-comparison the
+march's own `diff -q m2.wat m3.wat` performs one altitude up.
+WHY THAT MATTERS BEYOND TIDINESS: a board line and the oracle's teaching
+question are the SAME operation — a projection over two universes at an
+address, answering what differs. §11's own table says so. A board stored as a
+value at each pin makes "what changed since the last pin" a read, and the
+`Mutation` payload the graph already computes and discards
+(`Hβ.graph.mutation-delta-is-write-only`) is the same delta one layer down.
+Until then the board can say a bound rose and cannot say WHICH SITE is new,
+though `census_sites` returns exactly that list and the verb throws it away.
+CLOSE: the board is written at repin as a value the next run reads; a breach
+names the new sites rather than the new number; and the comparison is a diff of
+values, never of rendered strings.
+
+`Hβ.verify.bounds-outside-the-graph-stay-in-bash` — OPEN, BORN 2026-09-19, the
+honest remainder of the same landing, named so nothing inherits it silently.
+Fourteen of the old baseline's twenty-six keys are NOT census shapes and did
+not move: the micro battery (an exec seam WASI has no process-spawn for), the
+march's peak RSS and wall cost, the loop-scaffold count (a filesystem fact),
+doc-truth's sha chain, `census_errors` / `comment_refs` /
+`field_offset_unprovable` / `eq_type_unprovable` (diagnostic-class counts read
+from a compile's stderr rather than from a walk), the authored own/ref quiet
+gate (a TEXT count the baseline's own entry already calls "the census-shape
+count is the named refinement"), the fs-impl bypass, the solo manifest, the
+desugar vocabulary, and the judge-spawn delta.
+THE SPLIT IS NOT ARBITRARY and the line is worth stating: a census shape is a
+WALK over the judged graph, so the medium answers it by construction; the rest
+are measurements of the world the graph does not contain. Each has its own
+path in — the diagnostic counts become a read of the judgment's own ledger
+(they are already `DiagKind`s), the quiet gate becomes the census shape its
+baseline entry names, and the exec/cost legs ride the march's absorption into
+`mentl march`. CLOSE: `verify-baseline.txt` has no readers and is deleted, and
+`tools/verify.sh` holds only what needs a process the guest cannot spawn.
+
 `Hβ.cursor.address-drops-module-identity` — **CLOSED 2026-09-19, born the same
 day**, and it was a LIVE SILENT WRONG at the medium's primary felt surface.
 `mentl <file>:<line>`

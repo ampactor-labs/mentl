@@ -507,129 +507,32 @@ if C=$(wt_m2_ensure); then
     say "✗ sugar-vocabulary CONTRACT: $svmax -> $csugar — the demand-link's seed set changed. A prelude name entered or left the desugar vocabulary; re-derive the set, decide whether the seed follows it, and move the baseline in the same commit."
     fail=1
   fi
-  # The ANONYMITY ratchet — the census tier's convictions (PLAN §11 Phase
-  # 2.5): the whole-link counts of CsEta (an anonymous fn whose name
-  # already exists) and CsEffectfulLambda (a row without a decl home).
-  # NOT raw CsAnonymous — the pure-local majority is vocabulary the tier
-  # itself declares silent. Two link judgments per run (the census is a
-  # query, not a compile diagnostic — the cost is the floor's, priced and
-  # accepted). Monotone DOWN: each conviction named away is a stage
-  # gaining its name; a rise is intent newly discarded. An EMPTY census
-  # answer refuses loudly — a broken query reading as zero would green a
-  # real rise (the silent-fallback class).
-  ceta=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census eta" 2>/dev/null | grep -oE '[0-9]+ eta-wrapper' | grep -oE '[0-9]+' | head -1)
-  crow=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census effectful-lambda" 2>/dev/null | grep -oE '[0-9]+ effectful' | grep -oE '[0-9]+' | head -1)
-  emax=$(grep -E '^eta_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  rmax=$(grep -E '^effectful_lambda_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  if [[ -z "$ceta" || -z "$crow" ]]; then
-    say "✗ anonymity RATCHET: the census query answered nothing (eta='$ceta' effectful='$crow') — the projection is broken, not clean."
+  # THE BOARD — the medium's own standing bounds, read from its own graph.
+  #
+  # This was TWELVE invocations of the medium: `query src/main.mn "census
+  # eta"`, `"census effectful-lambda"`, the nine drift shapes, the open
+  # receiver — each a whole wheel judgment thrown away after a regex read one
+  # integer out of its rendering, each compared against a number grepped from
+  # verify-baseline.txt. Three re-derivations of one fact, twelve times over.
+  # `mentl verify` judges ONCE and reads every count off that graph, with each
+  # bound and its justification living together in src/board.mn where
+  # `mentl why` can walk them. MEASURED at the landing: 3.63s against 42.37s,
+  # and the 11.7x is the side effect — the law is that twelve compiles were
+  # twelve re-derivations of one graph.
+  #
+  # The verb REFUSES on a breach (nonzero exit) and refuses on an unread weave
+  # rather than reporting twelve confident zeros — the vacuity it was caught
+  # committing on its first run, which is `Hβ.query.unreadable-source-refusal`
+  # at a second surface.
+  bout=$(wt_run --dir . "$C/m2.wasm" verify src/main.mn 2>/dev/null)
+  brc=$?
+  printf '%s\n' "$bout" | sed -n 's/^  /· board /p'
+  if [[ "$brc" -ne 0 ]]; then
+    say "✗ BOARD: a bound the medium keeps about itself was breached (mentl verify exit $brc)."
     fail=1
-  else
-    say "· anonymity: $ceta eta-wrapper(s), $crow effectful lambda(s) — the tier's convictions on the wheel link"
-    if [[ -n "$emax" && "$ceta" -gt "$emax" ]]; then
-      say "✗ anonymity RATCHET: eta rose $emax -> $ceta — a named fn newly hidden behind a lambda."
-      fail=1
-    elif [[ -n "$emax" && "$ceta" -lt "$emax" ]]; then
-      say "  ↓ eta FELL $emax -> $ceta — lower eta_max in $BASELINE to hold it."
-    fi
-    if [[ -n "$rmax" && "$crow" -gt "$rmax" ]]; then
-      say "✗ anonymity RATCHET: effectful lambdas rose $rmax -> $crow — a row newly denied its decl home."
-      fail=1
-    elif [[ -n "$rmax" && "$crow" -lt "$rmax" ]]; then
-      say "  ↓ effectful-lambda FELL $rmax -> $crow — lower effectful_lambda_max in $BASELINE to hold it."
-    fi
-  fi
-  # The OPEN-RECEIVER ratchet — the wheel keeps its record destructures
-  # PROVABLE. A record pattern takes its field offsets from the receiver's
-  # full sorted field set; a TRecordOpen receiver has none, so lowering
-  # falls back to the pattern's own index and the read is a guess. The
-  # trap is that a COMPLETE pattern over an open row is structurally
-  # identical to a partial one, so no discipline at the site can tell them
-  # apart and only this count can — which is why the wheel's own two sites
-  # sat on an uncheckable promise until their receivers were annotated.
-  # Held at ZERO, and the ceiling is the contract, not a tolerance.
-  cro=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census record-pattern-open" 2>/dev/null | grep -oE '[0-9]+ record pattern' | grep -oE '[0-9]+' | head -1)
-  romax=$(grep -E '^record_pattern_open_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  if [[ -z "$cro" ]]; then
-    say "✗ open-receiver RATCHET: the census query answered nothing — the projection is broken, not clean."
+  elif ! printf '%s' "$bout" | grep -q 'bound(s) hold'; then
+    say "✗ BOARD: mentl verify answered nothing — the projection is broken, not clean."
     fail=1
-  else
-    say "· open-receiver: $cro record pattern(s) whose receiver row is open — offsets guessed, not proven"
-    if [[ -n "$romax" && "$cro" -gt "$romax" ]]; then
-      say "✗ open-receiver RATCHET: rose $romax -> $cro — annotate the receiver so its row closes."
-      fail=1
-    fi
-  fi
-  # The DRIFT-SHAPE ratchet — the 5.6 absorption's enforcement half (PLAN
-  # §11): the whole-link counts of the three absorbed drift modes, read
-  # from the weave by the census shapes that replaced their bash rows.
-  # wildcard-zero holds the wheel's DOCUMENTED sentinels (each carries its
-  # inline reason at the site — a rise is a NEW masked case, not a style
-  # slip); failure-mask and print-in-report hold at ZERO. Same contract as
-  # the anonymity tier: monotone DOWN, empty answer refuses loudly.
-  cwz=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census wildcard-zero" 2>/dev/null | grep -oE '[0-9]+ wildcard-zero' | grep -oE '[0-9]+' | head -1)
-  cfm=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census failure-mask" 2>/dev/null | grep -oE '[0-9]+ failure-mask' | grep -oE '[0-9]+' | head -1)
-  cpir=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census print-in-report" 2>/dev/null | grep -oE '[0-9]+ print-in-report' | grep -oE '[0-9]+' | head -1)
-  cwf=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census wildcard-fabricates" 2>/dev/null | grep -oE '[0-9]+ wildcard-fabricates' | grep -oE '[0-9]+' | head -1)
-  cur=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census underscore-retain" 2>/dev/null | grep -oE '[0-9]+ underscore-retain' | grep -oE '[0-9]+' | head -1)
-  cfi=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census flag-as-int" 2>/dev/null | grep -oE '[0-9]+ flag-as-int' | grep -oE '[0-9]+' | head -1)
-  cpa=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census parallel-arrays" 2>/dev/null | grep -oE '[0-9]+ parallel-arrays' | grep -oE '[0-9]+' | head -1)
-  cvt=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census vtable-record" 2>/dev/null | grep -oE '[0-9]+ vtable-record' | grep -oE '[0-9]+' | head -1)
-  cef=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "census env-frame" 2>/dev/null | grep -oE '[0-9]+ env-frame' | grep -oE '[0-9]+' | head -1)
-  wzmax=$(grep -E '^wildcard_zero_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  fmmax=$(grep -E '^failure_mask_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  pirmax=$(grep -E '^print_in_report_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  wfmax=$(grep -E '^wildcard_fabricates_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  urmax=$(grep -E '^underscore_retain_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  fimax=$(grep -E '^flag_as_int_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  pamax=$(grep -E '^parallel_arrays_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  vtmax=$(grep -E '^vtable_record_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  efmax=$(grep -E '^env_frame_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  if [[ -z "$cwz" || -z "$cfm" || -z "$cpir" || -z "$cwf" || -z "$cur" || -z "$cfi" || -z "$cpa" || -z "$cvt" || -z "$cef" ]]; then
-    say "✗ drift-shape RATCHET: a census query answered nothing (wz='$cwz' fm='$cfm' pir='$cpir' wf='$cwf' ur='$cur' fi='$cfi' pa='$cpa' vt='$cvt' ef='$cef') — the projection is broken, not clean."
-    fail=1
-  else
-    say "· drift shapes: $cwz wildcard-zero, $cfm failure-mask, $cpir print-in-report, $cwf wildcard-fabricates, $cur underscore-retain, $cfi flag-as-int, $cpa parallel-arrays, $cvt vtable-record, $cef env-frame — the absorbed modes on the wheel link"
-    if [[ -n "$wzmax" && "$cwz" -gt "$wzmax" ]]; then
-      say "✗ drift-shape RATCHET: wildcard-zero rose $wzmax -> $cwz — a new masked case; enumerate the variant or document the sentinel."
-      fail=1
-    elif [[ -n "$wzmax" && "$cwz" -lt "$wzmax" ]]; then
-      say "  ↓ wildcard-zero FELL $wzmax -> $cwz — lower wildcard_zero_max in $BASELINE to hold it."
-    fi
-    if [[ -n "$fmmax" && "$cfm" -gt "$fmmax" ]]; then
-      say "✗ drift-shape RATCHET: failure-mask rose $fmmax -> $cfm — a bug is zero or blocking; no || true."
-      fail=1
-    fi
-    if [[ -n "$pirmax" && "$cpir" -gt "$pirmax" ]]; then
-      say "✗ drift-shape RATCHET: print-in-report rose $pirmax -> $cpir — a print inside report(...) corrupts WAT stdout."
-      fail=1
-    fi
-    if [[ -n "$wfmax" && "$cwf" -gt "$wfmax" ]]; then
-      say "✗ drift-shape RATCHET: wildcard-fabricates rose $wfmax -> $cwf — a wildcard newly mints Forall/TVar/Pure/empty; enumerate the variant."
-      fail=1
-    elif [[ -n "$wfmax" && "$cwf" -lt "$wfmax" ]]; then
-      say "  ↓ wildcard-fabricates FELL $wfmax -> $cwf — lower wildcard_fabricates_max in $BASELINE to hold it."
-    fi
-    if [[ -n "$urmax" && "$cur" -gt "$urmax" ]]; then
-      say "✗ drift-shape RATCHET: underscore-retain rose $urmax -> $cur — an unused value renamed instead of deleted."
-      fail=1
-    fi
-    if [[ -n "$fimax" && "$cfi" -gt "$fimax" ]]; then
-      say "✗ drift-shape RATCHET: flag-as-int rose $fimax -> $cfi — an int-coded flag; the ADT is begging to exist."
-      fail=1
-    fi
-    if [[ -n "$pamax" && "$cpa" -gt "$pamax" ]]; then
-      say "✗ drift-shape RATCHET: parallel-arrays rose $pamax -> $cpa — paired _h binders; one record was native."
-      fail=1
-    fi
-    if [[ -n "$vtmax" && "$cvt" -gt "$vtmax" ]]; then
-      say "✗ drift-shape RATCHET: vtable-record rose $vtmax -> $cvt — a dispatch-slot record; the graph + handler is the form."
-      fail=1
-    fi
-    if [[ -n "$efmax" && "$cef" -gt "$efmax" ]]; then
-      say "✗ drift-shape RATCHET: env-frame rose $efmax -> $cef — a scope-as-frame-stack name; env lookup is an effect op, never a parent-pointer walk."
-      fail=1
-    fi
   fi
   # The manifest gate — the wheel's own DAG judgment, zero-tolerance. The
   # blob census is structurally BLIND to a missing import edge (every name

@@ -35,6 +35,72 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-19 · pin abe0334ee840c5ff (CLEAN m2 == m3) · THE BOARD BEGINS
+  DISSOLVING INTO THE MEDIUM. `mentl verify` lands as `mentl march`'s sibling:
+  the wheel's standing bounds on its own source, read off ONE judged graph.
+  **WHAT IT REPLACES, measured rather than described.** The census half of
+  `tools/verify.sh` ran TWELVE separate invocations of the medium — `query
+  src/main.mn "census eta"`, then `"census effectful-lambda"`, then nine drift
+  shapes, then the open receiver — each a whole wheel judgment discarded after
+  a regex pulled one integer out of its rendered sentence, each compared
+  against a number grepped from `tools/verify-baseline.txt`. Three
+  re-derivations of one fact, twelve times over: the count the walk had
+  already computed, the bound the project had already decided, and the verdict
+  a shell `if` then invented. A change to the SENTENCE could break the GATE.
+  **3.63s against 42.37s.** The 11.7× is the side effect and the law is
+  Carried-Truth: twelve compiles were twelve re-derivations of one graph, and
+  §11's own test — a change justified by a number and not a law is the wrong
+  change — is satisfied by the law, with the number as the receipt.
+  **THE BOUNDS ARE GRAPH FACTS NOW, and their prose rides them.** The baseline
+  file is 1,695 lines holding 26 numbers — 1,669 lines of justification kept
+  in a file the numbers could drift from, which is the ledger disease at the
+  gate layer. `src/board.mn` carries each bound as a `Bound({ceiling, shape})`
+  with its reason as its attached comment: a Reason edge on the node it
+  justifies, walkable by `mentl why`, rendered as that entry's `Lede:` at its
+  own address, and impossible to separate from the number it explains. The
+  twelve census bounds moved; the legs that measure the world OUTSIDE the
+  graph — the micro battery's exec seam, the march's peak RSS, the scaffold
+  count, doc-truth's sha chain — remain the script's and are named rather than
+  silently inherited.
+  **THE VERB WAS CAUGHT LYING TWICE AND BOTH ARE PINNED.** Its first run
+  reported twelve bounds holding with every count ZERO: `pipeline_check` judges
+  without leaving the weave the census walks, so the board measured a graph
+  holding no source and called it green. That is
+  `Hβ.query.unreadable-source-refusal` at a second surface, and the fix is
+  that peer's own ruling — the weave judgment (`driver_entry_with_ranges`) and
+  a REFUSAL when the entry never joined. The instrument gate then found the
+  same vacuity one layer in: a module whose own file loads but whose IMPORT
+  does not still joins the weave, so the census walks a graph missing that
+  module's content and every bound reads a number too small to breach. It
+  answered "12 bound(s) hold" for a program the driver had just refused. The
+  board reads `diag_errors()` and declines to measure rather than measuring
+  less — a partial measurement is worse than none because it looks like one.
+  Both legs stand in `tools/instrument-gate.sh` beside its negative control,
+  which is what proves the refusal is not just refusing everything.
+  **RED FIRST, by construction**: the prior pin serves no `verify` verb at all,
+  so the instrument leg and doc-truth's verb-namespace check are both RED
+  against `dda49fd2` and go green here. The board's own breach arm was seen
+  live: 367 effectful lambdas against a bound of 365 on the first green run.
+  **THE RATCHET ROSE AND THE RAISE IS RECORDED ON THE NUMBER.** 365 → 367,
+  both STRUCTURAL: `infer_context` takes a THUNK, so every route that judges
+  pays one lambda — and hand-inlining its chain instead is the move that
+  decl's own comment says seven routes already paid for — and each `VerbSpec`
+  carries the argument parser its table is built from, one per verb across
+  twenty-five siblings. Adding a verb costs exactly two. The justification
+  lives in `src/board.mn` beside the ceiling rather than in a text file, which
+  is the whole point of the move.
+  **WHAT A BOUND IS NOT**, written into the module so the next session cannot
+  miss it: a bound is not a proof. Fourteen of the old file's keys read ZERO,
+  and a ratchet held at zero is a proxy for a proof nobody minted (§7, in
+  those words). Every line in the roster is a COUNTDOWN whose ultimate form is
+  its own deletion — the shape becomes a `DiagKind` the executable refuses,
+  `diag_refuses` holds the invariant directly, and the line retires the way the
+  use-after-move ratchet did at pin 21696779. A line that never falls is 8.4's
+  universal executable refusal, unbuilt, saying so.
+  Board: verify green, census 0, comment-refs 0, march CLEAN, frontier 390/0/2,
+  proof-exactness 9/0, crown 62/0, effect identity, instrument (with both new
+  legs), threads. verify.sh 680 → 583 lines. Cost: m3 leg 8.32s · 971MB peak.
+
 - 2026-09-19 · pin dda49fd201194e86 (CLEAN m2 == m3) · THE ADDRESS CARRIES ITS
   MODULE. `mentl <file>:<line>` read the SOURCE SLICE by (file, line) and the
   GRAPH NODE by **line alone**, over a span index holding every node in the

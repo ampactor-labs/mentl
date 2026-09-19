@@ -1066,7 +1066,7 @@ record_pattern_open_max: 0
 # (`() => candidate_judge(…) ~> graph_handler(…)`) went with the copy. A
 # candidate is judged inline inside a checkpoint now, so there is no thunk
 # to hand a task.
-effectful_lambda_max: 365
+effectful_lambda_max: 367
 
 # 2026-08-07: the USE-AFTER-MOVE ratchet (PLAN §11 Phase 4.1,
 # Hβ.own.use-after-move) — RETIRED 2026-09-15, BY BEING SATISFIED. This key

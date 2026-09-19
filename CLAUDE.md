@@ -449,7 +449,9 @@
 > same day instead of grepping again). Before any grep/awk over source:
 > `mentl query <entry> unreferenced` (one hop) · `unreachable` (transitive
 > from main, fn decls) · `refs of NAME` · `census <shape>` · `decls` ·
-> `modules` / `imports` / `performs` / `orphan-claims`; `mentl
+> `modules` / `imports` / `performs` / `orphan-claims`; `mentl verify`
+> (the standing bounds on a program's own source, read off one judged
+> graph — a breach refuses); `mentl
 > <file:line>` (the line's ROOT — widest node) and `<file:line:col>` (the
 > TIGHTEST node — a `??`, a lambda's param) for the eight-aspect read with
 > the Lede; `mentl why/where <file> <name>`; `mentl doc <module>` for the

@@ -2139,8 +2139,13 @@ silently.
 
 - **`mentl diagnostics`** — the live catalog projected from the `DiagKind`
   constructors, so the tables in this file stop being a hand-kept second home.
-- **`mentl verify`** — the wheel's own Verify as a verb, absorbing
-  `tools/verify.sh` (`CLAUDE.md ⟳`: scaffolds dissolve into verbs).
+
+*(`mentl verify` LANDED 2026-09-19 and left this list — the medium's standing
+bounds on its own source, each bound and its justification in `src/board.mn`
+where `mentl why` walks them. It absorbs the census half of `tools/verify.sh`;
+the legs that measure the world outside the graph — the micro battery's exec
+seam, the march's peak RSS, the scaffold count — remain the script's, named
+rather than silently inherited.)*
 
 ## Authority
 

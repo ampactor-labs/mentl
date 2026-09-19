@@ -1,0 +1,140 @@
+// board.mn — the medium's standing verdict on its own source.
+//
+// A BOARD LINE is a named invariant of the wheel, the bound it may not
+// cross, and the count the medium reads for it live. Every line's count
+// comes from `census_sites` — the same walk `mentl query <file> "census
+// <shape>"` projects — so the board asks the medium a question the medium
+// already answers, and nothing between the two re-derives it.
+//
+// WHAT THIS REPLACES, and why the replacement is the point rather than the
+// tidying. The bounds lived in `tools/verify-baseline.txt`: 1,695 lines
+// holding 26 numbers, 1,669 of them prose justifying those numbers. Each
+// check ran the medium, RENDERED the count to a sentence, re-parsed the
+// sentence with a regex, and compared the result against a number grepped
+// out of that file. Three re-derivations of one fact — the count the walk
+// had already computed, the bound the project had already decided, and the
+// verdict a shell `if` then invented. The prose was the deepest loss: a
+// bound's justification is a Reason, and a Reason belongs on the node it
+// justifies, so each bound below carries its own — walkable by `mentl why`,
+// rendered as its `Lede:` at its own address, and impossible to separate
+// from the number it explains.
+//
+// WHAT A BOUND IS NOT. A bound is not a proof. Fourteen of the old file's
+// keys read ZERO, and a ratchet held at zero is a proxy for a proof nobody
+// minted (PLAN §7, in those words). The ultimate form of every line here is
+// its own DELETION: the shape becomes a `DiagKind` the executable refuses,
+// `diag_refuses` holds the invariant directly, and the line retires the way
+// the use-after-move ratchet did at pin 21696779. So this roster is a COUNTDOWN,
+// and a line that never falls is not a passing gate — it is 8.4's universal
+// executable refusal, unbuilt, saying so.
+import types
+
+import query
+
+// One measured invariant: the shape the medium counts and the count it may
+// not exceed. The two fields are inseparable — a shape with no bound is a
+// report, and a bound with no shape is the text file this replaces.
+type Bound = Bound({ceiling: Int, shape: CensusShape})
+
+// What the medium found when it looked. The count rides BOTH arms because
+// a board that only speaks when it fails cannot show a countdown moving,
+// and the falling number is the whole reason these lines exist.
+type Standing = Within(Int) | Over(Int)
+
+// The roster, complete by construction: a shape absent here is not measured,
+// which is visible, where a shape measured against a missing bound would be
+// a silent pass. Each entry's prose is its justification — the `why` the old
+// file kept 1,669 lines away from the number it belonged to.
+fn board_bounds() with Memory + Alloc = [
+  // Zero because a named fn hidden behind a lambda has no decl to carry its
+  // row, and the row is what the whole effect algebra reads. Retires when
+  // the shape is a refusal rather than a count.
+  Bound({ceiling: 0, shape: CsEta}),
+  // The one line here that is genuinely a COUNTDOWN rather than a held zero:
+  // every effectful lambda is a row denied its decl home, and each one the
+  // Stage Law dissolves into a named partial application lowers it. It has
+  // fallen at every landing that touched it and rises only when a hand
+  // writes an anonymous stage.
+  //
+  // 365 -> 367 at this verb's own landing, and the raise is recorded HERE
+  // rather than argued in a file the number could drift from. Both are
+  // STRUCTURAL, not authored anonymity: `infer_context` takes a THUNK, so
+  // every route that judges pays one lambda — and hand-inlining its chain
+  // instead is the move that decl's own comment says was already paid for by
+  // seven routes; and each `VerbSpec` carries the argument parser its table
+  // is built from, one per verb across twenty-five siblings. Adding a verb
+  // costs exactly two, which is the idiom's price and not a new drift. It
+  // falls again when a thunk-free install form exists for the one chain.
+  Bound({ceiling: 367, shape: CsEffectfulLambda}),
+  // A record pattern whose receiver row never closes reads a field offset
+  // the graph cannot prove. `T_FieldOffsetUnprovable` reports that class at
+  // the receiver now; this line retires when that diagnostic arms.
+  Bound({ceiling: 0, shape: CsRecordPatternOpen}),
+  // Drift mode 10 — the nine survivors are documented sentinels, not masked
+  // cases. Every wildcard that is NOT one of them is a variant the author
+  // declined to enumerate, and the medium cannot tell the difference, which
+  // is exactly why the bound is a count and not zero.
+  Bound({ceiling: 9, shape: CsWildcardZero}),
+  // Drift mode 13 — a bug is zero or it is blocking; a masked failure is the
+  // surrender-fallback Anchor 2 deletes rather than wraps.
+  Bound({ceiling: 0, shape: CsFailureMask}),
+  // A print inside a `report(...)` arm corrupts WAT stdout — the wheel's own
+  // emission running through the same file descriptor as its narration.
+  Bound({ceiling: 0, shape: CsPrintInReport}),
+  // Drift mode 10's typed face: a wildcard arm minting `Forall`, a bare
+  // `TVar`, `"Pure"` or `""` is a fabricated judgment, and a fabricated
+  // judgment is indistinguishable downstream from a proven one.
+  Bound({ceiling: 21, shape: CsWildcardFabricates}),
+  // Drift mode 15 — a value given a leading-underscore name instead of being
+  // deleted. The rename silences the reader, never the fact that nothing
+  // reads it.
+  Bound({ceiling: 0, shape: CsUnderscoreRetain}),
+  // Drift mode 8 — an int-coded flag is an ADT the author did not write, and
+  // every comparison against it is a claim the type system cannot check.
+  Bound({ceiling: 0, shape: CsFlagAsInt}),
+  // Drift mode 7 — adjacent `x, x_h` parameters are one record split across
+  // two positions, with position standing in for the identity the record
+  // would have carried.
+  Bound({ceiling: 0, shape: CsParallelArrays}),
+  // Drift mode 1 — a dispatch-slot record. The word never appears in correct
+  // Mentl: the graph plus a handler IS the form a vtable approximates.
+  Bound({ceiling: 0, shape: CsVtableRecord}),
+  // Drift mode 2 — scope as a parent-pointer frame stack. Env lookup is an
+  // effect op; a frame walk is that op re-implemented where the handler was.
+  Bound({ceiling: 0, shape: CsEnvFrame})
+]
+
+// The board: every bound answered by one live count.
+//
+// The count is `len(census_sites(shape))` — the walk's own result, not a
+// number recovered from its rendering. That distinction is the landing: the
+// old path ran this same walk, printed "N site(s)", and then asked a regex
+// what N was, so a change to the SENTENCE could break the GATE. Nothing here
+// can drift from the walk, because there is nothing between them.
+fn board_read() with GraphRead + !Mutate + Alloc + Memory = board_bounds() |> map(bound_standing)
+
+fn bound_standing(b) with GraphRead + !Mutate + Alloc + Memory = match b {
+  Bound(r) => {
+    let n = len(census_sites(r.shape))
+    (b, if n > r.ceiling { Over(n) } else { Within(n) })
+  },
+}
+
+// One line, in the medium's voice: the shape, what it found, and — when the
+// bound is breached — the fact that a count rose rather than a rule fired,
+// which is the honest description of what a ratchet knows.
+fn board_line(entry) with Memory + Alloc = match entry {
+  (b, standing) => match b {
+    Bound(r) => match standing {
+      Within(n) => "  · {int_to_str(n)} {census_label(r.shape)} — within {int_to_str(r.ceiling)}\n",
+      Over(n) => "  ✗ {int_to_str(n)} {census_label(r.shape)} — ROSE past {int_to_str(r.ceiling)}\n",
+    },
+  },
+}
+
+fn board_breached(entry) with Pure = match entry {
+  (_b, standing) => match standing {
+    Within(_) => false,
+    Over(_) => true,
+  },
+}

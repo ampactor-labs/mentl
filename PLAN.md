@@ -888,7 +888,8 @@ in `RESIDUE.md` does not exist. §11 names the peers each phase touches.
 ```
 # ── the BOOT ERA (post-first-light, 2026-07-10): boot/mentl.wasm IS the compiler ──
 bash tools/state.sh            # THE BOARD, ground FIRST: git → verify → march → frontier → proof-exactness → crown → effect-identity, one scoreboard; --quick = verify only
-bash tools/verify.sh           # the floor: micros + census — STAMPED green (unchanged tree answers in ms; FORCE_VERIFY=1 re-runs)
+mentl verify [path]            # THE BOARD, in the medium: the standing bounds on its own source, read off ONE judged graph (src/board.mn carries each bound WITH its justification); a breach REFUSES, an unread or unclean weave refuses rather than measuring less
+bash tools/verify.sh           # the floor the verb has not absorbed: micros through the exec seam, the sha chain, the world outside the graph — STAMPED green (unchanged tree answers in ms; FORCE_VERIFY=1 re-runs)
 bash tools/march-gate.sh --micros   # rungs + battery through boot's wheel-emitted m2 (reads the shared .build/m2cache)
 bash tools/march.sh            # THE RATCHET: boot→m2→m3, ASSERTS m2 == m3; on m2 ≠ m3 runs m4 ITSELF and rules TRANSITION (re-pin from m3) vs BROKEN
 bash tools/frontier-gate.sh    # scheduled matrix + ?? authoring workflows (--compiler fresh for the current wheel)

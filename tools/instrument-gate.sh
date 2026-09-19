@@ -35,7 +35,7 @@ source "$ROOT/tools/wt-env.sh"
 # because nothing ran — the gate against vacuous gates, vacuous. That is not a
 # hypothetical: it is what this script did on its first run, and only the
 # clean-program negative control exposed it. Keep the controls.
-BOOT="$ROOT/boot/mentl.wasm"
+BOOT="${INSTRUMENT_BOOT:-$ROOT/boot/mentl.wasm}"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 printf 'fn main() = 7\n'                                   > "$T/ok.mn"
 printf 'import totally/absent\nfn main() = 7\n'            > "$T/missing.mn"
@@ -57,6 +57,17 @@ m check ok      >/dev/null 2>&1; ck "check <clean> accepts"          "$?" "0"
 # 2026-07-17 because its census on the wheel is 0).
 b=$(m compile missing 2>/dev/null | wc -c); ck "emit refuses armed class (0 bytes)" "$b" "0"
 m compile missing >/dev/null 2>&1;          ck "  and exits nonzero"                "$?" "1"
+
+# THE BOARD — `mentl verify` must be able to say NOTHING WAS MEASURED.
+# Its first run reported twelve bounds holding on a graph that held no source:
+# the driver it used judged without leaving the weave the census walks, so every
+# shape counted zero and the verb answered green. That is this gate's own class
+# one layer up — a board that measures nothing while still being reported — so
+# it is pinned here rather than remembered. A target that never joined the weave
+# REFUSES; the wheel itself still answers with real counts.
+m verify missing >/dev/null 2>&1; ck "verify <unread weave> refuses" "$?" "1"
+bl=$(cd "$ROOT" && m verify src/main.mn 2>/dev/null | grep -c 'within\|ROSE')
+if [ "$bl" -gt 0 ]; then echo "  ✓ verify still measures the wheel: $bl bound(s)"; else echo "  ✗ verify measured nothing on the wheel — the board is vacuous"; fail=1; fi
 
 # NEGATIVE CONTROL — the gate must not pass by refusing everything.
 b=$(m compile ok 2>/dev/null | wc -c)

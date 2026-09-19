@@ -51,6 +51,8 @@ import own
 
 import query
 
+import board
+
 import infer
 
 import backends/wasm
@@ -173,6 +175,7 @@ fn dispatch_invocation(verb) = {
     VTeach(target) => teach_run(target),
     VRepl => repl_run(),
     VMarch => march_run(),
+    VVerify(target) => verify_run(target),
     VMcp => mcp_run(session_at_read),
     VSession => session_run(session_at_read),
     VNew(name) => new_project(name),
@@ -2012,6 +2015,81 @@ fn audit_run(target) = {
 // the substrate. Per traces/a-day §0800 + DESIGN §8 mentl query.
 fn query_run(target, question) =
   query(target, question) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
+
+// ─── verify_run — the medium judges its own source (`mentl verify`)
+//
+// Reads every bound in `board_bounds()` against the count `census_sites`
+// computes live, on ONE judged graph, and refuses when any is breached.
+//
+// THE MEASUREMENT THAT MADE THIS A LANDING AND NOT A PORT: the shell gate
+// answered these same twelve counts with twelve separate invocations of the
+// medium — `query src/main.mn "census eta"`, then `"census
+// effectful-lambda"`, then nine drift shapes, then the open receiver — each
+// one a whole wheel compile thrown away after a regex read one integer out
+// of its rendering. Twelve judgments of one program to ask twelve questions
+// of one graph. The verb judges once and reads twelve columns off it, which
+// is the Carried-Truth Law at the gate layer: the graph already knew.
+//
+// The board REFUSES rather than reports. A breached bound exits nonzero
+// because a gate that narrates is a gate that stops being run (§11 tripwire
+// 4), and the one thing this verb may never do is let a rise through with a
+// note about it.
+// THE WEAVE JUDGMENT, not `pipeline_check`, and this verb learned it the way
+// `mentl query` did — by measuring twelve confident zeros on its first run.
+// `pipeline_check` judges without leaving the weave the census walks, so
+// every shape counted nothing and the board reported twelve bounds holding
+// on a graph that held no source. That is `Hβ.query.unreadable-source-
+// refusal` reproduced at a second surface, and the fix is its own ruling: a
+// board over an unread weave REFUSES the question rather than answering it,
+// because the one failure a gate may never have is a green that means
+// "nothing was measured" (§11 tripwire 4 — a gate that stops being reported
+// stops being run; a gate that measures nothing has stopped being run while
+// still being reported).
+fn verify_run(target_opt) = infer_context(() => {
+  let entry_module = match target_opt {
+    Some(t) => t,
+    None => "main",
+  }
+  match driver_entry_with_ranges(entry_module) {
+    (_ast, ranges) => match range_of_module(ranges, entry_module) {
+      None => {
+        eprint_string("mentl verify: no source to judge — {entry_module} never joined the weave\n")
+        1
+      },
+      Some(_) => // AND THE WEAVE MUST HAVE JUDGED CLEAN, which is the same vacuity one
+      // layer in and the instrument gate is what found it: a module whose own
+      // file loads but whose IMPORT does not still joins the weave, so the
+      // arm above admits it, the census walks a graph missing that module's
+      // content, and every bound reads a number too small to breach. It
+      // answered "12 bound(s) hold" for a program the driver had just
+      // refused. A partial measurement is worse than none because it looks
+      // like one, so the board reads the judgment's own error count and
+      // declines to measure rather than measuring less.
+      if diag_errors() > 0 {
+        eprint_string("mentl verify: {entry_module} did not judge clean — a board over a refused weave measures a program nobody has\n")
+        1
+      } else {
+        verify_board(entry_module)
+      },
+    },
+  }
+} ~> stdout_console ~> wasi_filesystem ~> mentl_default)
+
+fn verify_board(entry_module: String) = {
+  let board = board_read()
+  print_string("verify: the medium's verdict on {entry_module}\n")
+  each(print_board_line, board)
+  let breached = len(filter(board_breached, board))
+  if breached > 0 {
+    print_string("verify: {int_to_str(breached)} bound(s) breached — a count the medium keeps about itself rose.\n")
+    1
+  } else {
+    print_string("verify: {int_to_str(len(board))} bound(s) hold.\n")
+    0
+  }
+}
+
+fn print_board_line(entry) = print_string(board_line(entry))
 
 // ─── with_run — the universal escape hatch (env_lookup resolution)
 //
