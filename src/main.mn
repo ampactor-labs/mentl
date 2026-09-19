@@ -919,7 +919,7 @@ fn doc_run(target_opt) = {
 fn doc_render(entry_module: String, cells) = each(doc_render_cell(entry_module), cells)
 
 fn doc_render_cell(entry_module: String, cell) = match cell {
-  (path, _, decls) => if path == entry_module { each(doc_render_decl, decls) } else { () },
+  (_h, path, _, decls) => if path == entry_module { each(doc_render_decl, decls) } else { () },
 }
 
 fn doc_render_decl(d) = match d {
@@ -1263,16 +1263,36 @@ fn address_project(ranges, target: String, line, col) = match range_of_module(ra
         // walk pays O(depth) per probe — tolerable for the cold verb's
         // single generation, a measured 131s PER CALL on the resident
         // session whose log carries every converged generation's parses.
-        let spans = list_to_flat(span_index_of_snapshot())
-        match address_resolve(spans, gline, col) {
+        //
+        // NARROWED TO THE ADDRESSED MODULE FIRST, and that is what makes the
+        // three-case line rule below an ADDRESS rather than a line-number
+        // lottery. A module's spans are its OWN coordinates — every file
+        // starts at line 1, stated four lines up — so the weave-wide index
+        // holds one entry per module per line number and the rule's
+        // widest-node pick was answering whichever module's node happened to
+        // be widest. Measured: `mentl src/synth_proposer.mn:733` rendered
+        // `scan_number`'s type, effects, ownership and Lede from
+        // `src/lexer.mn`, and its Why line said `at synth_proposer:733` —
+        // a confident foreign answer at the one surface `PLAN §0` exists to
+        // make impossible. Filtering HERE, once, rather than threading a
+        // module into `address_case_a`/`find_tightest`/`address_case_c`,
+        // is what makes the wrong answer unsayable in all three cases
+        // instead of refused in each.
+        match module_handle_of_path(target) {
           None => {
-            eprint_string("mentl: no node at {target}:{int_to_str(line)} (a blank or comment-only line)\n")
+            eprint_string("mentl: {target} is in the weave but minted no module node — nothing to address\n")
             1
           },
-          Some(pick) => match pick {
-            (pspan, ph) => {
-              render_at(cursor_at_handle(ph), ph, pspan, target)
-              0
+          Some(mh) => match address_resolve(spans_of_module(span_index_of_snapshot(), mh), gline, col) {
+            None => {
+              eprint_string("mentl: no node at {target}:{int_to_str(line)} (a blank or comment-only line)\n")
+              1
+            },
+            Some(pick) => match pick {
+              (pspan, ph) => {
+                render_at(cursor_at_handle(ph), ph, pspan, target)
+                0
+              },
             },
           },
         }
@@ -1283,6 +1303,29 @@ fn address_project(ranges, target: String, line, col) = match range_of_module(ra
 
 fn span_index_of_snapshot() with GraphRead = match graph_snapshot() {
   Graph(_x, spans) => spans,
+}
+
+// The addressed module's own span index, flat and in mint order.
+//
+// One word compare per entry against the module stamped at each node's mint
+// (`graph_module_of`) — the fact the graph already holds, never a path
+// re-matched per candidate or a span containment re-derived. The flatten is on
+// the OUTPUT because `filter` builds by push: the log it reads is iterated
+// once, and it is the result the three-case rule then indexes into.
+// The module NODE itself is excluded, and that is not tidying. Its span is
+// the whole file, so it covers every line trivially and wins the covering
+// case (b) at any line no decl reaches — a comment line between decls
+// answered `synth_proposer.mn — Hμ.synth-proposer peer handle` with the
+// module's own placeholder Why. "The file contains your line" is the one
+// thing an address never needed to be told, and the whole-file reading
+// already has its own spelling: `mentl <file>:0`, the ranked field, which
+// takes a different branch entirely. Excluding it lets case (c) do its job
+// and answer with the nearest real node instead.
+fn spans_of_module(spans, mh) with Memory + Alloc + GraphRead =
+  list_to_flat(filter(span_in_module(mh), spans))
+
+fn span_in_module(mh, e) with GraphRead = match e {
+  (_s, h) => h != mh && graph_module_of(h) == mh,
 }
 
 // The span's file:line through the module-range map — the render-side

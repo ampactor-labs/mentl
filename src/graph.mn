@@ -1412,7 +1412,7 @@ fn dedup_module_cells(ref cells, acc) with Memory + Alloc = if len(cells) == 0 {
   acc
 } else {
   match cells[0] {
-    (path, _s, _d) => dedup_module_cells(
+    (_h, path, _s, _d) => dedup_module_cells(
       rest(cells),
       if cell_path_in(rest(cells), path, 0) { acc } else { push(acc, cells[0]) }
     ),
@@ -1423,29 +1423,64 @@ fn cell_path_in(ref acc, ref path: String, i) with Memory + Alloc = if i >= len(
   false
 } else {
   match acc[i] {
-    (p, _s, _d) => if p == path { true } else { cell_path_in(acc, path, i + 1) },
+    (_h, p, _s, _d) => if p == path { true } else { cell_path_in(acc, path, i + 1) },
   }
 }
 
+// Every NModule node in the weave, as `(handle, path, span, decls)`.
+//
+// The HANDLE leads because it is the module's identity and the other three
+// are projections of the node it names — this walk is standing on it at `i`
+// and used to drop it, which `driver_module_ast`'s own comment had already
+// confessed ("discards the minted handle — reading the node instead of
+// re-filtering is the O(1) form once the mint keeps an edge to it"). Its
+// first consumer is `module_handle_of_path`, which is what lets an address
+// name a module by the edge rather than by containment: spans are per-module
+// 1-based, so a line number alone is not an address, and the caret projection
+// was answering `src/synth_proposer.mn:733` with `scan_number` from
+// `src/lexer.mn`.
+//
+// The cell's DECLS ride out with its path and span. Dropping them made
+// every consumer that wanted a module's own content re-derive it from
+// text — which is how 52 dead imports sat unseen: a grep cannot tell a
+// used name from one named in a comment, and the graph can.
 fn collect_module_cells(i, n) with Memory + Alloc + GraphRead + !Mutate = if i >= n {
   []
 } else {
   match graph_node_body(i) {
-    NModule(m) => // The cell's DECLS ride out with its path and span. Dropping them made
-    // every consumer that wanted a module's own content re-derive it from
-    // text — which is how 52 dead imports sat unseen: a grep cannot tell a
-    // used name from one named in a comment, and the graph can.
-    [(m.path, m.span, m.decls)] ++ collect_module_cells(i + 1, n),
+    NModule(m) => [(i, m.path, m.span, m.decls)] ++ collect_module_cells(i + 1, n),
     _ => collect_module_cells(i + 1, n),
   }
 }
 
 fn module_paths() with Memory + Alloc + GraphRead + !Mutate = map(
   (c) => match c {
-    (p, _s, _d) => p,
+    (_h, p, _s, _d) => p,
   },
   module_cells()
 )
+
+// The module handle a path names — the inverse of `module_name_of_handle`,
+// read from the same deduped cells, so it lands on the JUDGED generation's
+// node rather than the trial's shadow. `None` when the weave holds no such
+// module: the caller refuses rather than guessing, and the answer is an
+// Option rather than a 0 sentinel because the link root is itself a module
+// node and 0 is a handle it can legitimately hold.
+//
+// This is what makes `mentl <file>:<line>` an address at all. A node's module
+// is stamped at its mint (`spine_put_module`, read back by `graph_module_of`),
+// so naming the file resolves ONCE here and every downstream comparison is a
+// word compare against that handle — never a path re-matched per candidate,
+// and never span CONTAINMENT, which stopped being able to answer the question
+// the moment each module's spans became its own 1-based coordinates.
+// LAST wins, matching `module_cells`' own dedup-to-latest: the cells arrive in
+// mint order and the final generation is the judged one.
+fn module_handle_of_path(path: String) with Memory + Alloc + GraphRead + !Mutate =
+  fold(None, module_handle_pick(path), module_cells())
+
+fn module_handle_pick(path: String, acc, c) with Memory + Alloc = match c {
+  (h, p, _s, _d) => if p == path { Some(h) } else { acc },
+}
 
 // The total source the medium processed for this entry — the SUM of every
 // module's own extent. A graph read, so it is DETERMINISTIC: unlike a wall
@@ -1465,7 +1500,7 @@ fn module_paths() with Memory + Alloc + GraphRead + !Mutate = map(
 fn weave_line_extent() with Memory + Alloc + GraphRead + !Mutate = fold(
   0,
   (acc, c) => match c {
-    (_p, s, _d) => match s {
+    (_h, _p, s, _d) => match s {
       Span(sl, _sc, el, _ec) => acc + (el - sl),
     },
   },

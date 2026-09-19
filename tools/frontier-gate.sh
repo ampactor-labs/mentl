@@ -1896,6 +1896,28 @@ for i in "${!compilers[@]}"; do
   else
     fail "doc projection (errors=$derr; see $dir/doc.err; got: $(printf '%s' "$dout" | head -3))"
   fi
+  # An address is (MODULE, line, col) — and until 2026-09-19 the module half
+  # was dropped for the judgment. The source slice was read by (file, line)
+  # while the graph node was resolved by LINE ALONE over the whole weave's
+  # span index, so whichever module owned that line number won. Since each
+  # module's spans became its own 1-based coordinates, every module in the
+  # link holds an entry for every line number it reaches, and the line rule's
+  # widest-node pick answered with a stranger. Measured on the wheel:
+  # `mentl src/synth_proposer.mn:733` rendered `scan_number`'s type, effects,
+  # ownership and Lede from `src/lexer.mn`, and its own Why line said
+  # `at synth_proposer:733`. The fixture is that collision in six lines —
+  # helper.mn's line 4 is the widest decl on any line 4 in the weave, so it
+  # wins the rule unless the module is read. RED against the prior pin:
+  # `entry_at_four`'s source line beside `helper_at_four`'s type and prose.
+  admemo="$ROOT/tests/frontier/address-module-demo"
+  adout=$(cd "$admemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$admemo" --dir /tmp "$compiler" addr.mn:4 2>"$dir/addr-module.err")
+  if printf '%s' "$adout" | grep -q "of 'entry_at_four'" \
+     && printf '%s' "$adout" | grep -q '(n: Int own' \
+     && ! printf '%s' "$adout" | grep -q 'helper_at_four'; then
+    pass "cursor-address carries its module (line 4 is the entry's own decl, not the widest stranger's)"
+  else
+    fail "cursor-address module identity (got: $(printf '%s' "$adout" | head -3); see $dir/addr-module.err)"
+  fi
   fdemo="$ROOT/tests/frontier/propose-fan-demo"
   # The FIELD form (`mentl <file>:0`): the whole absence field ranked and
   # rendered — both holes with their Propose facets (the tie teaching), the

@@ -823,17 +823,31 @@ and this is the STATE.
   judged inside a checkpoint on the ONE live graph now; the width returns at
   Phase 9.2's deterministic handle partition and atomic join writes, as a
   `~> Schedule` decision, never a constant.
-- **The caret projection DROPS MODULE IDENTITY — a live silent wrong at the
-  medium's own felt surface** (measured 2026-09-19). `mentl <file>:<line>` reads
-  the SOURCE by (file, line) and the GRAPH NODE by line ALONE, so on a
-  multi-module link whichever module owns that line number is judged instead:
-  `src/synth_proposer.mn:733` renders `segment_verify`'s source beside
-  `scan_number`'s type, effects, ownership, Lede and Why, and `src/lower.mn:733`
-  does the same, because `src/lexer.mn:733` owns that line. Every aspect agrees
-  with itself, which is what makes it unnoticeable. This is §11's POSITIONS face
-  with a second witness — Landing 1's leaked candidate diagnostic attributed to
-  `strings:0:0-0:0` — and it is demo-blocking by Arc E's own terminal gate
-  ("eight-aspect projections at the caret"). `Hβ.cursor.address-drops-module-identity`.
+- **The caret projection DROPPED MODULE IDENTITY — measured and CLOSED the same
+  day** (2026-09-19). `mentl <file>:<line>` read the SOURCE by (file, line) and
+  the GRAPH NODE by line ALONE, so on a multi-module link whichever module owned
+  that line number was judged instead: `src/synth_proposer.mn:733` rendered
+  `segment_verify`'s source beside `scan_number`'s type, effects, ownership,
+  Lede and Why, and `src/lower.mn:733` did the same, because `src/lexer.mn:733`
+  owns that line. Every aspect agreed with itself, which is what made it
+  unnoticeable, and it was demo-blocking by Arc E's own terminal gate
+  ("eight-aspect projections at the caret"). The address narrows the span index
+  to the addressed module before the three-case line rule runs; the module
+  handle comes from `collect_module_cells`, which was standing on it at every
+  step of its own walk and dropping it — the defect `driver_module_ast`'s
+  comment had already confessed. `Hβ.cursor.address-drops-module-identity`
+  carries the record, and the same root at the DIAGNOSTIC surface (Landing 1's
+  candidate leak to `strings:0:0-0:0`) is now its own named peer rather than a
+  second witness riding this one.
+  **THE FINDING WORTH CARRYING FORWARD is what the fix EXPOSED**, because it is
+  §11's POSITIONS face saying the same thing twice: with the strangers gone, the
+  module NODE won the covering case at every line no decl reaches, and one layer
+  over, `module_path_of_span` answers "which module is this span in?" by
+  containment over NModule spans — which stopped being able to answer once each
+  module's spans became its own 1-based coordinates. A position that is not
+  module-qualified is not an address, and the medium held three machines that
+  believed otherwise. Two are closed; the third
+  (`Hβ.cursor.module-of-a-span-is-containment`) dies with the proximity rank.
 - **Incrementality is not a cached cursor yet, and the precise shape is
   sharper than "epoch is a counter"** (corrected 2026-09-19). Epoch IS used as
   an invalidation key: `project_queue_merger` (oracle.mn) memoizes the project

@@ -419,7 +419,7 @@ fn module_decls_of(ref cells, ref target, ref ast) with Memory + Alloc = if len(
   ast
 } else {
   match cells[0] {
-    (path, _span, decls) => if path == target { decls } else { module_decls_of(rest(cells), target, ast) },
+    (_h, path, _span, decls) => if path == target { decls } else { module_decls_of(rest(cells), target, ast) },
   }
 }
 

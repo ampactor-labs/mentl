@@ -540,14 +540,25 @@ fn filter_at_position(items, handle) with Memory + Alloc = match items {
   },
 }
 
-// filter_by_module — items owned by this module path, read LIVE at the
-// filter: module-of-position is the NModule span containment the graph
-// already carries (module_path_of_span over the item's mint span), never
-// a field snapshotted at item construction (the Universal Audit — the
-// stored module_path was a copy of a live fact).
-fn filter_by_module(items, module_path) with Memory + Alloc + GraphRead = match items {
+// Keeps the queue items this module owns, reading each item's module LIVE
+// from the node it already points at.
+//
+// Module-of-position is the module STAMPED ON THE ITEM'S OWN NODE at its mint
+// (`graph_module_of`), never a field snapshotted at item construction (the
+// Universal Audit — the stored module_path was a copy of a live fact).
+//
+// It read `module_path_of_span(parse_span_of(qitem_position(h)))`: a handle
+// turned into a span so the span could be matched back to a module by
+// CONTAINMENT over every NModule node. The item was holding the handle the
+// whole time, and the containment answer stopped being reliable the moment
+// each module's spans became its own 1-based coordinates — an NModule span
+// covers lines 1..N of its file, so every module long enough to reach the
+// line contains it and the first in mint order wins. `graph_module_of` is the
+// column that ends that question, and its own comment calls this read its
+// "O(1) destiny".
+fn filter_by_module(items, module_path) with Memory + Alloc + GraphRead + !Mutate = match items {
   [] => [],
-  [h, ...t] => if module_path_of_span(parse_span_of(qitem_position(h))) == module_path {
+  [h, ...t] => if module_name_of_handle(graph_module_of(qitem_position(h))) == module_path {
     [h] ++ filter_by_module(t, module_path)
   } else {
     filter_by_module(t, module_path)

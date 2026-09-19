@@ -28,8 +28,9 @@
 
 ---
 
-`Hβ.cursor.address-drops-module-identity` — OPEN, BORN 2026-09-19, and it is a
-LIVE SILENT WRONG at the medium's primary felt surface. `mentl <file>:<line>`
+`Hβ.cursor.address-drops-module-identity` — **CLOSED 2026-09-19, born the same
+day**, and it was a LIVE SILENT WRONG at the medium's primary felt surface.
+`mentl <file>:<line>`
 reads the SOURCE SLICE by (file, line) and the GRAPH NODE by **line alone**, so
 on a multi-module link whichever module owns that line number is judged instead.
 Measured at one line across three files:
@@ -58,12 +59,78 @@ correctly and the fifth (`synthesize_ctor_call_node`) rendered a foreign one —
 so the author is told their prose is wrong when it is right, or right when it is
 wrong, at whichever lines collide. A verification surface that lies makes the
 law unusable, not merely inconvenient.
-THE FIX IS A READ, not a new fact: the module is already a spine column
-(`spine_put_module`, `cur_module`, graph.mn), so the address path can carry the
-module it was handed rather than dropping it between the source read and the
-node read. CLOSE: a fixture addressing a known line in a NON-entry module
-asserts that module's own judgment, seen wrong against the current pin first;
-and the `strings:0:0` attribution stops being constructible.
+THE FIX WAS A READ, not a new fact, exactly as the open entry predicted — but
+the read it needed was the one the enumeration was throwing away. The module is
+stamped at every mint (`spine_put_module`, read back by `graph_module_of`), so
+what the address lacked was only the addressed FILE's own module handle.
+`collect_module_cells` was standing on it — the walk's index IS the NModule
+node's handle — and dropped it, which `driver_module_ast`'s comment had already
+confessed in its own words: *"discards the minted handle — reading the node
+instead of re-filtering is the O(1) form once the mint keeps an edge to it."*
+So the cell is `(handle, path, span, decls)` now (thirteen destructures, one
+coordinated edit), `module_handle_of_path` is its first consumer, and
+`address_project` narrows the span index to the addressed module ONCE before
+the three-case line rule runs. Filtering at the index rather than threading a
+module parameter into `address_case_a`/`find_tightest`/`address_case_c` is what
+makes the foreign answer unsayable in all three cases instead of refused in
+each.
+TWO THINGS THE BUILD FOUND THAT THE DESIGN DID NOT NAME. (1) The module NODE is
+itself an entry in its own span index, and its span is the whole file, so once
+the strangers were gone it won the COVERING case at every line no decl reaches:
+`src/synth_proposer.mn:733`, a comment line, answered with the module's own
+placeholder Why. It is excluded from the filter — "the file contains your line"
+is the one thing an address never needed to be told, and the whole-file reading
+already has its own spelling (`mentl <file>:0`, which takes a different branch).
+Case (c) then answers with the nearest real node, which for a comment line is
+the decl its prose attaches to. (2) `module_path_of_span` (graph.mn) is the same
+defect one layer over and is now named rather than inherited — see
+`Hβ.cursor.module-of-a-span-is-containment` below.
+GATE: `tests/frontier/address-module-demo` (six lines, two modules, the helper's
+line 4 deliberately the widest decl on any line 4 in the weave) — seen RED
+against pin `92a8d732`, green through the wheel that closed it. The
+`strings:0:0` attribution is the other witness of the same root and keeps its
+own entry below; this peer closes the CARET half only.
+
+`Hβ.synth.leaked-diagnostic-lands-in-a-stranger` — OPEN, BORN 2026-09-19 from
+Landing 1's record. A candidate judged inside a segment can raise a diagnostic
+whose span belongs to no module the developer opened: the nullary-constructor
+defect reported `E_TypeMismatch` at `strings:0:0-0:0` while the candidate
+rendered as a bare `??`, which is exactly why a mint that had always been
+ill-typed stayed invisible. That is the same root the caret half just closed —
+a coordinate that is not module-qualified — read at the DIAGNOSTIC surface
+rather than the address surface, and `report_at` already takes a module name
+(`diag_report_at(diag, module_name_of_handle(graph_module_of(h)))`, types.mn),
+so a report whose handle is known can name its module. The open question is the
+reports raised where no handle is in hand — a zero span is a report that never
+had an address, not one that lost it.
+CLOSE: a fixture whose refuted candidate raises a located diagnostic, asserting
+the report names the module the candidate was judged in; and a `0:0-0:0` span
+reaching a user-facing report becomes a refusal rather than a coordinate.
+
+`Hβ.cursor.module-of-a-span-is-containment` — OPEN, BORN 2026-09-19 out of the
+address fix. `module_path_of_span` (graph.mn) answers "which module is this span
+in?" by scanning every node for an NModule whose span CONTAINS it. That was
+right while spans were offsets into one concatenated weave. It is not right now:
+each module's spans are its own 1-based coordinates, so an NModule span covers
+lines 1..N of its own file and EVERY module long enough to reach a line contains
+that line — the first in mint order wins. `graph_module_of`'s own comment
+already calls the column read "the O(1) destiny" of this scan.
+ONE READER WAS CONVERTED because it was holding the handle the whole time:
+`filter_by_module` (oracle.mn) did `module_path_of_span(parse_span_of(
+qitem_position(h)))`, turning a handle into a span so the span could be matched
+back to a module; it reads `graph_module_of(qitem_position(h))` now.
+THREE READERS REMAIN and they take SPANS, not handles: `same_module` and
+`transitive_dep` (cursor.mn), both under `scope_distance_decay` — the proximity
+family `Hβ.synth.proximity-compares-across-modules` already owns. That peer's
+rank fix threads handles through the decay, and this scan dies with it.
+WHAT IS MEASURED AND WHAT IS NOT, kept apart on purpose: the containment
+mechanism and the per-module 1-based spans are both read from the artifact; that
+`same_module` therefore answers TRUE for two spans in genuinely different
+modules is a DERIVATION from those two facts, not a measurement, because the
+decay is not reachable from user code. CLOSE: a rank fixture whose caret and
+candidate sit in different modules at a line both files reach, asserting the
+cross-module weight rather than the same-module one — seen RED first, which is
+also what turns the derivation into a measurement.
 
 `Hβ.graph.mutation-delta-is-write-only` — OPEN, BORN 2026-09-19. `graph_mutated(Int,
 Mutation)` (types.mn) carries `MSetNode(Int, GNode)` — *(handle, prior value)* —

@@ -1,0 +1,6 @@
+import helper
+
+// The entry's own line 4 — a narrower decl at the same line number.
+fn entry_at_four(n) with Pure = n + 1
+
+fn main() = entry_at_four(1)

@@ -35,6 +35,69 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-19 · pin dda49fd201194e86 (CLEAN m2 == m3) · THE ADDRESS CARRIES ITS
+  MODULE. `mentl <file>:<line>` read the SOURCE SLICE by (file, line) and the
+  GRAPH NODE by **line alone**, over a span index holding every node in the
+  link. Since each module's spans became its own 1-based coordinates, every
+  module in the weave holds an entry for every line number it reaches, so the
+  three-case line rule's widest-node pick answered with whichever module's node
+  happened to be widest. Measured on the wheel at one line across three files:
+  `src/synth_proposer.mn:733` rendered its own source line beside
+  `scan_number`'s type, effects, ownership and Lede from `src/lexer.mn`, and
+  its Why line said `at synth_proposer:733`; `src/lower.mn:733` gave the same
+  foreign judgment. Every aspect agreed with itself, which is exactly what made
+  it unnoticeable, and it is demo-blocking by Arc E's own terminal gate
+  ("eight-aspect projections at the caret").
+  **THE FIX IS A READ, and the fact was being dropped by the walk standing on
+  it.** The module is stamped at every mint (`spine_put_module`, read back by
+  `graph_module_of`), so the only thing missing was the addressed FILE's own
+  module handle — and `collect_module_cells` was iterating `i` over the NModule
+  nodes, minting `(path, span, decls)` and discarding the handle that `i` IS.
+  `driver_module_ast`'s comment had already confessed it in its own words
+  ("discards the minted handle — reading the node instead of re-filtering is
+  the O(1) form once the mint keeps an edge to it"). The cell is
+  `(handle, path, span, decls)` now — thirteen destructures across graph,
+  driver, query and main, one coordinated edit — `module_handle_of_path` is its
+  first consumer, and `address_project` narrows the span index to the addressed
+  module ONCE before the line rule runs. Narrowing at the INDEX rather than
+  threading a module parameter into `address_case_a`/`find_tightest`/
+  `address_case_c` is what makes the foreign answer unsayable in all three
+  cases instead of refused in each.
+  **TWO THINGS THE BUILD FOUND THAT THE DESIGN HAD NOT NAMED**, both the same
+  law one layer over. (1) The module NODE is an entry in its own span index and
+  its span is the whole file, so with the strangers gone it won the COVERING
+  case at every line no decl reaches — `src/synth_proposer.mn:733`, a comment
+  line, answered with the module's own placeholder Why. It is excluded: "the
+  file contains your line" is the one thing an address never needed to be told,
+  and the whole-file reading already has its own spelling (`mentl <file>:0`,
+  which takes a different branch). Case (c) then answers with the nearest real
+  node, which for a comment line is the decl its prose attaches to. (2)
+  `module_path_of_span` answers module-of-a-span by CONTAINMENT over NModule
+  spans — right while spans were weave offsets, unreliable now that an NModule
+  span covers lines 1..N of its own file. One reader was converted because it
+  had the handle all along (`filter_by_module`, oracle.mn, was turning a handle
+  into a span so the span could be matched back to a module); the three that
+  take spans belong to the proximity rank and are banked as
+  `Hβ.cursor.module-of-a-span-is-containment`.
+  **FOUR FACES OF ONE ROOT, now separately named** — a position that is not
+  module-qualified is not an address. The caret (closed here), the diagnostic
+  (`Hβ.synth.leaked-diagnostic-lands-in-a-stranger`, Landing 1's candidate leak
+  to `strings:0:0-0:0`, banked rather than left riding this entry), the span
+  (`Hβ.cursor.module-of-a-span-is-containment`), and the Reason
+  (`Hβ.why.reason-span-is-a-weave-coordinate`, still the declared XRED on the
+  why-coordinates leg). §11's POSITIONS face has a census now, not an anecdote.
+  **GATE, RED FIRST**: `tests/frontier/address-module-demo` — six lines, two
+  modules, the helper's line 4 deliberately the widest decl on any line 4 in
+  the weave, so it wins the rule unless the module is read. RED against pin
+  `92a8d732`, green through this one; frontier 389 → 390.
+  **THE LANDING'S OWN DISCIPLINE**: two ratchets rose from this hand and were
+  driven back rather than raised — authored `ref` 739 → 741 (two markers the
+  grade already infers) and effectful lambdas 365 → 367 (two anonymous stages),
+  both dissolved into named partial applications under the Stage Law. Board:
+  verify green, census 0, comment-refs 0, march CLEAN, frontier 390/0/2,
+  proof-exactness 9/0, crown 62/0, effect identity, instrument, threads.
+  Cost: m3 leg 8.28s wall · 976MB peak RSS.
+
 - 2026-09-19 · pin 92a8d732e9a254c7 (UNMOVED) · THE REALIZATIONS LAND IN THE
   ARTIFACT. CLEAN m2 == m3 at the same sha as the entry below it — prose is
   graph content that attaches as a Reason edge and does not alter the emitted

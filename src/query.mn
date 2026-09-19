@@ -505,7 +505,7 @@ fn import_rows_join(cells, acc, cell) with GraphRead + Memory + Alloc + !Mutate 
   acc ++ import_rows_for(cell, cells)
 
 fn import_rows_for(cell, cells) with GraphRead + Memory + Alloc + !Mutate = match cell {
-  (path, extent, _) => map(import_verdict(path, extent, cells), import_edges_of(cell)),
+  (_h, path, extent, _) => map(import_verdict(path, extent, cells), import_edges_of(cell)),
 }
 
 // The per-edge verdict: the importing module, the path it names, and whether
@@ -520,7 +520,7 @@ fn import_is_used(imported: String, extent, cells, i) with GraphRead + Memory + 
   false
 } else {
   match cells[i] {
-    (p, _, _) => if module_tail_eq(p, imported) {
+    (_h, p, _, _) => if module_tail_eq(p, imported) {
       any_name_referenced_in(module_declared_names(cells[i]), extent, 0)
     } else {
       import_is_used(imported, extent, cells, i + 1)
@@ -537,7 +537,7 @@ fn last_segment(s: String) with Memory + Alloc = match split("/", s) {
 }
 
 fn import_edges_of(cell) with Memory + Alloc = match cell {
-  (_, _, decls) => fold([], import_edge_join, decls),
+  (_, _, _, decls) => fold([], import_edge_join, decls),
 }
 
 fn import_edge_join(acc, d) with Memory + Alloc = match d {
@@ -549,7 +549,7 @@ fn import_edge_join(acc, d) with Memory + Alloc = match d {
 // four claim kinds register_one_op weighs: fns, types with their ctors,
 // effects with their ops, handlers.
 fn module_declared_names(cell) with Memory + Alloc = match cell {
-  (_, _, decls) => fold([], decl_names_join, decls),
+  (_, _, _, decls) => fold([], decl_names_join, decls),
 }
 
 fn decl_names_join(acc, d) with Memory + Alloc = acc ++ decl_names_of(d)
@@ -624,7 +624,7 @@ fn decl_ref_rows_join(acc, cell) with GraphRead + Memory + Alloc + !Mutate =
   acc ++ decl_ref_rows_for(cell)
 
 fn decl_ref_rows_for(cell) with GraphRead + Memory + Alloc + !Mutate = match cell {
-  (path, _, decls) => fold([], decl_ref_row_join(path), decls),
+  (_h, path, _, decls) => fold([], decl_ref_row_join(path), decls),
 }
 
 fn decl_ref_row_join(path: String, acc, d) with GraphRead + Memory + Alloc + !Mutate =
@@ -668,7 +668,7 @@ fn reach_report(cells) = {
 }
 
 fn ur_cell_decls(acc, cell) with Memory + Alloc = match cell {
-  (path, _, ds) => acc ++ map((d) => (path, d), ds),
+  (_h, path, _, ds) => acc ++ map((d) => (path, d), ds),
 }
 
 // name -> decl index, every declared name (a ctor or an op leads to its
@@ -745,7 +745,7 @@ fn orphan_rows_join(acc, cell) with GraphRead + Memory + Alloc + !Mutate =
   acc ++ orphan_rows_for(cell)
 
 fn orphan_rows_for(cell) with GraphRead + Memory + Alloc + !Mutate = match cell {
-  (path, _, decls) => fold([], orphan_row_join(path), decls),
+  (_h, path, _, decls) => fold([], orphan_row_join(path), decls),
 }
 
 fn orphan_row_join(path: String, acc, d) with GraphRead + Memory + Alloc + !Mutate = {
@@ -804,7 +804,7 @@ fn effect_rows_join(acc, cell) with GraphRead + Memory + Alloc + !Mutate =
   acc ++ effect_rows_for(cell)
 
 fn effect_rows_for(cell) with GraphRead + Memory + Alloc + !Mutate = match cell {
-  (path, _, decls) => fold([], effect_row_join(path), decls),
+  (_h, path, _, decls) => fold([], effect_row_join(path), decls),
 }
 
 fn effect_row_join(path: String, acc, d) with GraphRead + Memory + Alloc + !Mutate = match d {
