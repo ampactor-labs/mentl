@@ -1427,6 +1427,12 @@ fn address_case_c(ref spans, gline, i, n, best) with Memory + Alloc = if i >= n 
 }
 
 // ─── the terse render — facet-silence at the terminal
+// One refusal, rendered: the name the medium would not offer and the Why it
+// kept for it.
+fn print_refusal(pair) = match pair {
+  (name, reason) => print("  · refused {name} — {show_reason(reason)}\n"),
+}
+
 fn render_at(view, h, pspan, target: String) = match view {
   CursorView(kind, propose, _topology, row, trace, verify, teach, why) => {
     // The register-gated lede — the read side of the comment weave the
@@ -1464,6 +1470,16 @@ fn render_at(view, h, pspan, target: String) = match view {
           print("  {show_divergence(divergence)}\n")
         },
       },
+    }
+    // THE REFUSALS, at the surface that shows the proposals. The Proposal
+    // has carried `rejected` since it was a pair of lists — every name the
+    // medium considered and would not offer, each with its Why — and this
+    // surface rendered none of them, so the audit trail existed and nobody
+    // could read it. A candidate the developer cannot see refused is a
+    // guess they cannot audit; that sentence was written for the row prune
+    // and applies to the surface just as hard.
+    match propose {
+      Proposal(pj) => each(print_refusal, pj.rejected),
     }
     match row {
       EfRow([], [], EtClosed) => (),

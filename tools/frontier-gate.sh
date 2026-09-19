@@ -1928,6 +1928,26 @@ for i in "${!compilers[@]}"; do
   else
     fail "cursor-address propose (got: $pout; see $dir/propose-at.err)"
   fi
+  # ── THE HOLE IS A TERM CELL ────────────────────────────────────────
+  # `none_of() -> Option(a)` at an `Option(Int)` hole: one type under
+  # unification, two shapes under a structural comparison. RED against the
+  # boot in the sharpest way available — the boot LEAKED an E_TypeMismatch
+  # from its own candidate exploration to a span in an unrelated module
+  # (`strings:0:0-0:0`) and then proposed a bare `??`, which was the
+  # ill-typed `Some()` a nullary-constructor-as-call always produced. The
+  # contract here is all three halves at once: the polymorphic vocabulary
+  # candidate is PROVEN, the nullary constructor is a VALUE rendered by its
+  # own name, and the refusal that remains carries the medium's own words.
+  tcell="$ROOT/tests/frontier/mn-hole-is-a-term-cell.mn"
+  tcout=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-hole-is-a-term-cell.mn:23:38 2>"$dir/term-cell.err")
+  tcerr=$(grep -c ' error: ' "$dir/term-cell.err" || true)
+  if [ "$tcerr" = 0 ] && printf '%s' "$tcout" | grep -q 'none_of()' \
+     && printf '%s' "$tcout" | grep -q '^  None  — ' \
+     && ! printf '%s' "$tcout" | grep -q '^  ??  — lookup'; then
+    pass "the hole is a term cell (the unify admits what a shape compare hid)"
+  else
+    fail "the hole is a term cell (errors=$tcerr; got: $(printf '%s' "$tcout" | head -5); see $dir/term-cell.err)"
+  fi
   # ── the COMPUTED question — one arm of Divergence per fixture ──────
   # A tie used to end in one fixed sentence ("one more constraint … collapses
   # it"), the same words at every tie, which is a placeholder wearing a

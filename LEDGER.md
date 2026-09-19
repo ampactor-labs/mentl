@@ -35,6 +35,69 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-19 · pin 92a8d732e9a254c7 · THE HOLE IS A TERM CELL. CLEAN m2 == m3,
+  census 0, 413,159 lines, m3 leg 8.45s / 971MB; frontier 389/0/2, verify
+  green.
+  **THE PROPOSER WAS HANDED A COPY OF THE HOLE'S TYPE WHERE IT SHOULD HAVE
+  BEEN HANDED THE HOLE.** `propose_at` (cursor.mn) held the handle and passed
+  `ty_of_kind(h, k)`; that read is where the handle dies — `NFree(_) =>
+  TVar(handle)` keeps it, `NBound(ty) => ty` discards it. So `candidate_proven`
+  had no cell to bind and instantiated the target FRESH, under a comment
+  reading *"so the proof never binds the hole's live frontier"* — a sentence
+  that presents as a safeguard and describes the defect, because with a fresh
+  copy the candidate is never checked against the hole at all. `Context` now
+  carries the HANDLE (its fourth field was the hole's SPAN — a coordinate
+  copied beside the very handle that gives it live, §11's POSITIONS face at one
+  site); type and span are reads of it; `candidate_proven` unifies the
+  candidate's cell with the hole's inside the segment the trail already
+  brackets. `unify` (infer.mn) already existed. One edge where three copies
+  were. **No new Reason constructor**, and that was a plan item refuted by the
+  artifact: the bind is rolled back with the segment, so a minted Reason would
+  have had zero readers — the candidate's own Reason rides the unify instead.
+  **WHAT THE COPY WAS HIDING.** `vocabulary_ret_matches` decided admission by
+  name and ground shape — a weaker second copy of the union-find — and was
+  unsound in the direction that costs the developer: `none_of() -> Option(a)`
+  at an `Option(Int)` hole is ONE type under unification and two shapes under
+  a structural compare. DELETED. Its replacement is not a better comparison
+  but a sound INDEX: `heads_may_unify` asks only *could* these unify, which
+  head constructors decide, and unification stays the decider in the segment.
+  Sound means it hides nothing — and it is strictly more permissive, since a
+  refined alias peels, so a `-> Seven` fn now reaches an `Int` hole where
+  name-equality refused it outright.
+  **A DEFECT THAT HAD ALWAYS BEEN HERE AND COULD NOT BE SEEN.** Every nullary
+  constructor candidate was minted as a CALL — `None()`, a zero-arg
+  application of a non-function, ill-typed by construction. Invisible because
+  the mismatch leaked out of the candidate's judgment to a span in an
+  UNRELATED MODULE (`strings:0:0-0:0`) while the candidate still rendered as a
+  bare `??`. The scheme already distinguishes nullary from fielded and the
+  constructor filter already reads that fact, so the fix is a read; the
+  renderer gained the arm that prints a bare name. This is the "just-built
+  ultimate form finds the next non-ultimate fundamental" law running exactly
+  as written — the form stayed, the fundamental moved.
+  **A REFUTED BRANCH'S FACTS NO LONGER REACH THE ROOT.** The copy-era join
+  replayed every branch proven-or-not, benign only while a pre-filter
+  guaranteed nothing could fail to type. A refused candidate's mismatch is the
+  SEARCH finding a dead branch, never the developer's program being wrong. The
+  refusal is not dropped — it becomes the verdict's Why, rendered from the
+  DiagKind's own message rather than the banked line (the line carries
+  whatever module the judgment was standing in, which is how the foreign span
+  escaped). **And the address surface now renders `rejected` at all**: it never
+  had, so every refusal the medium computed — the row prunes among them — has
+  existed unread since the field was born.
+  **MEASURED:** the seven propose fixtures answer with verdicts UNCHANGED —
+  the cheap oracle the design predicted, since where the hole's cell is
+  already bound the unify peels an alias and writes nothing — each gaining the
+  refusal lines it had always earned. Frontier 388 → 389. The anonymity
+  ratchet caught two lambdas this landing added; they were dissolved into
+  named partial applications rather than the ceiling being raised.
+  **NOT CLOSED, named:** `Some(??)` is refused because a hole in an argument
+  is a PARTIAL APPLICATION under Mentl's own law, so it does not inhabit the
+  target — correct, and the reach it costs is the recursive nested fill
+  (`Hβ.synth.vocabulary-arg-holes`). `none_of()` beside `None` classifies as
+  SHAPE where they denote the same value, because the denotation walk reads
+  literals and a nullary constructor is not one — born here as
+  `Hβ.synth.denotation-of-a-nullary-constructor`.
+
 - 2026-09-19 · pin ce92136c0499a9c4 · THE FAN STOPS COPYING THE GRAPH (Arc O1
   — the trail segment). CLEAN m2 == m3, census 0, 411,748 lines, m3 leg
   14.59s / 969MB peak; frontier 388/0/2, proof-exactness 9/0, crown 62/0,

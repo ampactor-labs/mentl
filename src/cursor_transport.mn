@@ -299,9 +299,16 @@ fn apply_teach_suggestion(teach) with PatchWrite + Memory + Alloc = match teach 
 // renderer is the formatter projection (Hβ.felt.candidate-render-is-format),
 // unreached while the enumerators seed literals.
 fn render_candidate_source(node) with GraphRead + Memory + !Mutate + Alloc = match node {
-  N(_, _, h) => match callee_name_of(node) {
+  N(body, _, h) => match callee_name_of(node) {
     Some(name) => "{name}()",
-    None => render_literal_source(h),
+    None => // A BARE NAME renders as itself. A nullary constructor is a value, not
+    // a call (SYNTAX: `let nothing = None`), so the candidate node is a
+    // VarRef — and without this arm it fell to the literal renderer and
+    // printed `??`, which is the medium showing a proposal it cannot name.
+    match body {
+      NExpr(VarRef(name)) => name,
+      _ => render_literal_source(h),
+    },
   },
 }
 

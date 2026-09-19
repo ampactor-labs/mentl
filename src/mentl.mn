@@ -83,9 +83,9 @@ type Explanation = Explanation(String, String, String, Option(Patch), Reason)
 // ALLOWED row refused, each refusal keeping its Why (PLAN §5: the row pruning
 // IS the second moat, and a pruned candidate the developer cannot see is a
 // guess they cannot audit).
-type Context = Context([(String, Binding, Reason, SchemeKind)], EffRow, String, Span)
+type Context = Context([(String, Binding, Reason, SchemeKind)], EffRow, String, Int)
 
-// scope bindings (the Env's own entries), the LIVE active-effect row, the enclosing decl's name ("" at top level — the vocabulary excludes candidates whose free-name closure reaches it: proposing the hole's own enclosing fn, or anything that transitively calls it, is nontermination by construction), and the HOLE'S OWN SPAN — the position the proposals are for, the ranker's nearness anchor (candidate_rank reads decl and use nearness against it).
+// scope bindings (the Env's own entries), the LIVE active-effect row, the enclosing decl's name ("" at top level — the vocabulary excludes candidates whose free-name closure reaches it: proposing the hole's own enclosing fn, or anything that transitively calls it, is nontermination by construction), and the HOLE'S OWN HANDLE — the cell the proposals are for. The fourth field was the hole's SPAN, a coordinate copied beside the very handle that gives it live, and the copy was load-bearing in the worst way: with only a span the proof gate had no cell to bind, so it instantiated a FRESH target and called that safety. The handle carries the span (parse_span_of), the type (ty_of_kind over its live kind), and the union-find root every candidate must agree with. One edge where three copies were.
 // The full Boolean row reaches synth — not a
 // flattened positive [EffName]. So `!E` (the
 // negative capability, PLAN §4⑥) is readable at
@@ -115,9 +115,14 @@ effect Teach {
 // enumerate_inhabitants (multi-shot raw). Any proposer — enumerative,
 // SMT, LLM, user — plugs in as a handler. The compiler verifies.
 effect Synth {
-  // the verdict with its Why + row-rejected vocabulary with theirs
-  synth_propose(Ty, EffRow, Context) -> Proposal
-  verify_candidate(Candidate, Ty) -> Bool
+  // the verdict with its Why + row-rejected vocabulary with theirs.
+  // The target TYPE is not a parameter: the Context carries the hole's
+  // handle, and a type read from that handle is the same fact one
+  // dereference away. Passing it separately was a copy that could drift
+  // from the cell it described — and did, for exactly as long as the
+  // proof gate compared candidates against it instead of against the cell.
+  synth_propose(EffRow, Context) -> Proposal
+  verify_candidate(Candidate, Int) -> Bool
 }
 
 // Default Teach handler — the substrate's self-projection. Reads the graph through

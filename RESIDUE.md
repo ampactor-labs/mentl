@@ -28,6 +28,26 @@
 
 ---
 
+`Hβ.synth.denotation-of-a-nullary-constructor` — OPEN, BORN 2026-09-19 at the
+landing that made the hole a term cell, and found by that landing's own gate
+reading wrong. At an `Option(Int)` hole the two proven survivors are
+`none_of()` — a zero-arg fn whose body is `None` — and `None` itself. They
+DENOTE THE SAME VALUE, so `Divergence`'s precedence says the question is which
+name carries the intent (`DivName`); the medium answers SHAPE instead. The
+mechanism is exact: `candidate_denotation` (synth_proposer.mn) follows a
+zero-arg call to its callee's body and then asks `node_const`, which reads a
+LITERAL. A nullary constructor is a value and not a literal, so the walk
+answers unread and the classifier falls through to its last arm. The fix is
+not a special case at the classifier — it is the question `node_const` cannot
+answer: what is the denotation of a constructor value? A nullary ctor is a tag
+with no payload, so it has a perfectly good constant denotation (its tag), and
+the honest form extends the constant read to cover it rather than teaching the
+classifier about constructors. That also generalizes: `Some(0)` and a fn
+returning `Some(0)` denote the same value, which the same read answers once
+payloads compare structurally (`Hβ.eq.polymorphic-sum-payload-is-pointer-eq`
+closed the equality half on 2026-09-18). CLOSE: the two survivors above
+classify as `DivName` and the fixture asserts that line.
+
 `Hβ.lower.schedule-specialized-callee` — OPEN, and BORN HERE 2026-09-19 after
 living for months as a forward reference: `PLAN.md §5.R` band E cites it and
 `docs/SYNTAX.md` §`><` names it as the answer to caller-selectable fanout
@@ -1491,14 +1511,16 @@ was the COPY: each candidate judged in its own graph instance binding its own
 fresh handle. The copy is deleted — `segment_verify` judges every candidate
 inside `graph_push_checkpoint` + `heap_mark` + `world_top` … rollback on the
 ONE live graph, so two candidates now share every pre-checkpoint cell and the
-trail records their binds in one place. The diff is STILL empty, for the
-remaining reason: `candidate_proven` never unifies the candidate's cell with
-the HOLE's, so two segments write no common cell to differ at. The hole's
-cell is bound to the enclosing fn's return cell at inference (infer.mn), so
-on every existing fixture that unify peels an alias and writes nothing —
-which is exactly why it is safe to add and why its RED-first gate must be a
-fixture where it genuinely binds (a `TVar` target, or a lambda candidate).
-With it, the divergence is the first differing bind among handles below the
+trail records their binds in one place. THE UNIFY LANDED 2026-09-19 (pin
+92a8d732): `candidate_proven` unifies the candidate's cell with the HOLE's
+inside the segment, so two segments can now write a common cell. The diff is
+STILL empty on the demo fixtures, and the reason is the one that made the
+unify safe to land: the hole's cell is bound to the enclosing fn's return
+cell at inference (infer.mn), so on every existing fixture the unify peels an
+alias and writes nothing at all. A trail diff needs a hole whose cell is
+genuinely FREE at propose time and two candidates that force it differently —
+which is the fixture this peer still owes, not a mechanism it still lacks.
+With one, the divergence is the first differing bind among handles below the
 checkpoint's `next`, with `graph_compress_row`'s path-compression writes
 filtered out — those are optimization, not meaning, and order-dependent.
 In-segment fresh handles still collide numerically after rollback, which is

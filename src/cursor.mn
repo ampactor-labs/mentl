@@ -518,7 +518,7 @@ fn cursor_view_of(handle) with GraphRead + EnvRead + Memory + Alloc + Intern + D
       // 1. Graph + Env (Query)
       ((_, k)) => k,
       // 2. Handlers (Propose) — Synth's MultiShot
-      ((h, k)) => propose_at(h, k),
+      ((h, _)) => propose_at(h),
       // 3. Five verbs (Topology)
       ((h, _)) => pipe_context_of_handle(h),
       // 4. Boolean row (Unlock)
@@ -687,10 +687,10 @@ fn pipe_position_in(target, body) with Memory + Alloc = match body {
 // float-evidence call-convention gap (an f64-arg candidate ctor through an
 // all-i32 $ft — the named peer Hβ.emit.float-evidence-ft, first fired by
 // the first float-position projection ever taken).
-fn propose_at(h, k) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnostic + GraphWrite + Synth + !Mutate = if authored_hole(h) {
+fn propose_at(h) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnostic + GraphWrite + Synth + !Mutate = if authored_hole(h) {
   let ctx = mentl_context_at(h)
   match ctx {
-    Context(_, allowed, _, _) => synth_propose(ty_of_kind(h, k), allowed, ctx),
+    Context(_, allowed, _, _) => synth_propose(allowed, ctx),
   }
 } else {
   Proposal({rejected: [], verdict: VNone})
@@ -705,14 +705,11 @@ fn propose_at(h, k) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnos
 // fn, the node's own row stands and the name is "".
 fn mentl_context_at(handle) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnostic + GraphWrite + !Mutate = match env_snapshot() {
   Env(scope_bindings) => match graph_chase(handle) {
-    GNode(kind, _) => {
-      let hole_span = parse_span_of(handle)
-      match enclosing_fn_decl_at(handle) {
-        Some(decl) => match decl {
-          (fname, effs) => Context(scope_bindings, build_declared_row(effs), fname, hole_span),
-        },
-        None => Context(scope_bindings, row_of_kind(kind), "", hole_span),
-      }
+    GNode(kind, _) => match enclosing_fn_decl_at(handle) {
+      Some(decl) => match decl {
+        (fname, effs) => Context(scope_bindings, build_declared_row(effs), fname, handle),
+      },
+      None => Context(scope_bindings, row_of_kind(kind), "", handle),
     },
   },
 }

@@ -2180,9 +2180,22 @@ landed in 5–10; this phase is the finish that makes it FELT.
   and forking UNIFORMLY, which waits on the e-graph yielding CLASSES so a
   form-variant never forks at all. The width returns at 9.2 as a
   `~> Schedule` decision. Sequential is now a PROPERTY of the segment walk
-  rather than a constant, which is why the fan's own trail is readable and
-  why `Hβ.synth.divergence-from-the-trail`'s remaining blocker is the UNIFY,
-  not the copy.
+  rather than a constant, which is why the fan's own trail is readable.
+  **THE HOLE BECAME A TERM CELL 2026-09-19 (pin 92a8d732)** — the sentence
+  this section opens with stopped being a design statement. `propose_at` was
+  handing the proposer a COPY of the hole's type (`ty_of_kind` keeps the
+  handle on `NFree` and discards it on `NBound`), so the proof gate had no
+  cell to bind and instantiated the target fresh; `Context` carries the
+  handle now and `candidate_proven` unifies. What the copy hid, measured:
+  a hand-rolled return-type matcher refused `none_of() -> Option(a)` at an
+  `Option(Int)` hole — one type under unification — and every nullary
+  constructor candidate was minted as a CALL (`None()`), ill-typed by
+  construction, its mismatch leaking to a span in an unrelated module while
+  the candidate rendered as a bare `??`. The matcher is deleted in favour of
+  a SOUND index (`heads_may_unify`, which can hide nothing), and refusals
+  now render at the address surface, which they never had. `Hβ.synth.
+  divergence-from-the-trail`'s remaining owing is a FIXTURE — a hole whose
+  cell is genuinely free at propose time — not a mechanism.
   **A SIXTH WAS FOUND AND CLOSED 2026-09-18, and it was the one that touched
   the developer: the ANSWER was a LIST.** `Proposals([(Node, Reason)],
   [(String, Reason)])` made six surfaces re-derive the verdict from `len`,
