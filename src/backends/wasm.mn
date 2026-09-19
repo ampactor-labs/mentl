@@ -918,8 +918,11 @@ fn emit_module(lowered) = {
       // allocates through the shared cell; a thread-free module owns a
       // self-contained defined memory, plain bump, no thread-spawn import.
       // The `<|`/`><` ownership discrimination at the module-image altitude.
-      let threaded = ls_find_str_local(wasi_ops, "spawn_task", 0) >= 0
-      emit_memory_decl(threaded, ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0)
+      let spawns = ls_find_str_local(wasi_ops, "spawn_task", 0) >= 0
+      // The socket seam's own proof, read from the module's ops beside the
+      // spawn proof rather than inferred from it (see emit_memory_decl).
+      let socketed = ls_find_str_local(wasi_ops, "sock_accept", 0) >= 0
+      emit_memory_decl(spawns, spawns || socketed, ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0)
       // The image bracket's globals (arena 2a) — demand-gated on the
       // pair's own performs, the spawn-cell precedent: a module that
       // never brackets carries none. Depth (nesting), mark (the
@@ -986,7 +989,7 @@ fn emit_module(lowered) = {
       // and every resume flag-arm call the same fn).
       if yield_seen > 0 { emit_redrive_fns(table_fn_names) }
       emit_init_lets(value_lets)
-      emit_start(top_fn_names, value_lets, main_param_count(), yield_seen, threaded)
+      emit_start(top_fn_names, value_lets, main_param_count(), yield_seen, spawns)
       emit_footer()
     },
   }
@@ -2622,16 +2625,29 @@ fn emit_wasi_args_at_widths(args, preprs, i) = if i >= len(args) {
   emit_wasi_args_at_widths(args, preprs, i + 1)
 }
 
-fn emit_memory_decl(threaded, wants_rmw) = {
-  // The memory's OWNERSHIP follows the module's own proof. A spawning
-  // module IMPORTS the shared image (the wasi-threads convention: the
-  // host creates one memory at the declared type and links it into every
-  // instance, root and spawned alike — a DEFINED memory is per-instance,
-  // so a child of a defining module would read a fresh zeroed image) and
-  // re-exports it for the preview1 ABI (the p1 host locates guest memory
-  // through the "memory" export). A thread-free module owns a
-  // self-contained defined memory and ships NO thread-spawn import —
-  // nothing to satisfy, any preview1 host runs it.
+fn emit_memory_decl(spawns, imports_image, wants_rmw) = {
+  // The memory's OWNERSHIP follows the module's own proof, and there are
+  // TWO proofs, because two different consumers need the host to hold the
+  // image. This read used to be ONE — "does it spawn?" — with the import
+  // decision proxied through it, and the proxy broke the moment the last
+  // spawn left the wheel: `mentl space` emitted a DEFINED memory and the
+  // runner refused it ("the socket seam needs a guest that imports its
+  // shared memory"), because a trampoline module cannot share a memory the
+  // guest defines.
+  //
+  //   SPAWNS       — the wasi-threads convention: the host creates one
+  //                  memory and links it into every instance, root and
+  //                  spawned alike (a DEFINED memory is per-instance, so a
+  //                  child of a defining module reads a fresh zeroed
+  //                  image). This is what needs the thread-spawn import.
+  //   SOCKET SEAM  — the runner builds a trampoline module over the SAME
+  //                  memory to serve the five socket-facing p1 entries, and
+  //                  it can only do that for a memory the host owns.
+  //
+  // Either proof imports the image and re-exports it for the preview1 ABI
+  // (the p1 host locates guest memory through the "memory" export). A
+  // module with neither owns a self-contained defined memory and ships no
+  // thread-spawn import — nothing to satisfy, any preview1 host runs it.
   //
   // Initial = max = 65536 pages (4GB, the wasm32 ceiling — the proven
   // size). 32768 initial silently starved a wheel-scale compile: the
@@ -2641,10 +2657,18 @@ fn emit_memory_decl(threaded, wants_rmw) = {
   // operands (2026-07-09; three probe cycles found no corruption because
   // there was none). Shared requires a max; initial == max means the line
   // never moves under any instance.
-  if threaded {
+  if spawns {
     wat_emit("  (import \"wasi\" \"thread-spawn\" (func $wasi_thread_spawn (param i32) (result i32)))\n")
+  } else {
+    ()
+  }
+  if imports_image {
     wat_emit("  (import \"env\" \"memory\" (memory 65536 65536 shared))\n")
     wat_emit("  (export \"memory\" (memory 0))\n")
+  } else {
+    wat_emit("  (memory (export \"memory\") 65536 65536 shared)\n")
+  }
+  if spawns {
     // The task-invocation fn type — the 0-arg closure protocol (record as
     // __state, word result). A dedicated name: the $ftN family is
     // projected from the program's own call vectors, so a hand-emitted
@@ -2652,7 +2676,7 @@ fn emit_memory_decl(threaded, wants_rmw) = {
     // collection; wat2wasm dedups structurally at the binary layer.
     wat_emit("  (type $ft_task (func (param i32) (result i32)))\n")
   } else {
-    wat_emit("  (memory (export \"memory\") 65536 65536 shared)\n")
+    ()
   }
   // Bump heap starts at 1MB. The 64KB..1MB region holds static
   // string data (W5) and can accommodate future static tables. In a
@@ -2693,7 +2717,7 @@ fn emit_memory_decl(threaded, wants_rmw) = {
   // thread-free module bumps the per-instance global. Emitted directly (not
   // through a `~>` perform) because a body-emitting perform trips the
   // evidence-dispatch seam today.
-  if threaded {
+  if spawns {
     wat_emit("  (func $alloc (param $size i32) (result i32)(local $ptr i32)(local $new i32)(block $won (loop $retry (local.set $ptr (i32.atomic.load (i32.const 64)))(local.set $new (i32.add (local.get $ptr)(i32.and (i32.add (local.get $size)(i32.const 7))(i32.const -8))))(if (i32.lt_u (local.get $new)(local.get $ptr))(then (unreachable)))(br_if $won (i32.eq (i32.atomic.rmw.cmpxchg (i32.const 64)(local.get $ptr)(local.get $new))(local.get $ptr)))(br $retry)))(local.get $ptr))\n")
   } else {
     wat_emit("  (func $alloc (param $size i32) (result i32)(local $ptr i32)(local.set $ptr (global.get $heap_ptr))(global.set $heap_ptr (i32.add (local.get $ptr)(i32.and (i32.add (local.get $size)(i32.const 7))(i32.const -8))))(local.get $ptr)(br_if 0 (i32.ge_u (global.get $heap_ptr)(local.get $ptr)))(unreachable))\n")
@@ -2701,7 +2725,7 @@ fn emit_memory_decl(threaded, wants_rmw) = {
   // heap_mark reads the live heap line. The strategy owns WHERE the line
   // lives (per-instance global vs shared cell), so the read is a fn beside
   // $alloc and every heap_mark call site stays strategy-invariant.
-  if threaded {
+  if spawns {
     wat_emit("  (func $heap_mark_impl (result i32)(i32.atomic.load (i32.const 64)))\n")
   } else {
     wat_emit("  (func $heap_mark_impl (result i32)(global.get $heap_ptr))\n")
@@ -2716,7 +2740,7 @@ fn emit_memory_decl(threaded, wants_rmw) = {
   // A dedicated fn, never inline: the fill needs a temporary for the mark,
   // and the callers' scratch locals may be live (the wrong-scratch class).
   // The reset writes the line where the strategy keeps it.
-  if threaded {
+  if spawns {
     wat_emit("  (func $heap_reset_impl (param $mark i32)(local.get $mark)(i32.const 0)(i32.atomic.load (i32.const 64))(local.get $mark)(i32.sub)(memory.fill)(i32.atomic.store (i32.const 64)(local.get $mark)))\n")
   } else {
     wat_emit("  (func $heap_reset_impl (param $mark i32)(local.get $mark)(i32.const 0)(global.get $heap_ptr)(local.get $mark)(i32.sub)(memory.fill)(global.set $heap_ptr (local.get $mark)))\n")
@@ -2771,7 +2795,7 @@ fn emit_memory_decl(threaded, wants_rmw) = {
   // leaning on the allocator's virginity contract. Emitted only for a
   // spawning module (Law 7 — thread-free modules are byte-identical).
   //
-  if threaded {
+  if spawns {
     wat_emit("  (func $spawn_task_impl (param $clo i32) (result i32)(local $t i32)(local.set $t (call $alloc (i32.const 12)))(i32.store offset=0 (local.get $t)(local.get $clo))(i32.store offset=4 (local.get $t)(i32.const 0))(if (i32.lt_s (call $wasi_thread_spawn (local.get $t))(i32.const 0))(then (unreachable)))(local.get $t))\n")
     wat_emit("  (func $join_task_impl (param $t i32) (result i32)(block $done (loop $wait (br_if $done (i32.eq (i32.atomic.load (i32.add (local.get $t)(i32.const 4)))(i32.const 1)))(drop (memory.atomic.wait32 (i32.add (local.get $t)(i32.const 4))(i32.const 0)(i64.const -1)))(br $wait)))(i32.load offset=8 (local.get $t)))\n")
   }

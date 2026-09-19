@@ -118,7 +118,6 @@ effect Synth {
   // the verdict with its Why + row-rejected vocabulary with theirs
   synth_propose(Ty, EffRow, Context) -> Proposal
   verify_candidate(Candidate, Ty) -> Bool
-  enumerate_inhabitants(Ty, EffRow, Context) -> [Node]
 }
 
 // Default Teach handler — the substrate's self-projection. Reads the graph through

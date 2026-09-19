@@ -1062,7 +1062,11 @@ record_pattern_open_max: 0
 # payload types, and the emit that used them could not see what the graph had
 # proven; the grounded read replaces both, so the lambda goes with the
 # re-derivation it served. The reward shape again.
-effectful_lambda_max: 366
+# 366 -> 365 at the segment-walk landing: the fan's spawn lambda
+# (`() => candidate_judge(…) ~> graph_handler(…)`) went with the copy. A
+# candidate is judged inline inside a checkpoint now, so there is no thunk
+# to hand a task.
+effectful_lambda_max: 365
 
 # 2026-08-07: the USE-AFTER-MOVE ratchet (PLAN §11 Phase 4.1,
 # Hβ.own.use-after-move) — RETIRED 2026-09-15, BY BEING SATISFIED. This key
@@ -1154,11 +1158,17 @@ desugar_vocabulary: 41
 # ref_span_line) and its private span_in deleted into the census's own site
 # line and site_in — four borrow markers gone with the duplicate code that
 # carried them. A consolidation pays this ceiling directly.
-authored_own_max: 67
+# 2026-09-18 · 67 -> 63 · the fan's copy machinery took four `own` markers
+# with it (`fan_blocks`/`fan_spawn`/`fan_join`'s accumulators and
+# `keep_proven`'s). A judgment on the live graph accumulates nothing to own.
+authored_own_max: 63
 # 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
 # primitive's deletion — the honest grade needs no marker where there is no
 # second copy to annotate.
-authored_ref_max: 744
+# 2026-09-18: 744 -> 739. Five borrow markers rode the fan's walkers
+# (`ref candidates`, `ref recs`, `ref cands`, `ref verdicts`) and the
+# banded-mint arms. Deleted with what they annotated.
+authored_ref_max: 739
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the

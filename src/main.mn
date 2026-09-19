@@ -179,7 +179,7 @@ fn dispatch_invocation(verb) = {
     VWith(hname, target) => with_run(hname, target),
     VWelcome => welcome_run(),
   }
-} ~> env_handler(make_list(0), 0, env_index_new()) ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink ~> diagnostics_handler
+} ~> env_handler(make_list(0), 0, env_index_new()) ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler
 
 // ─── edit_run — canonical Web IDE (browser-WASM; per IE walkthrough)
 //
@@ -442,7 +442,7 @@ fn march_run() = {
       }
     }
   }
-} ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+} ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
 
 // The canonical stdin chain with the streaming sink; the census count
 // reads INSIDE the same install (the count and the counter are one
@@ -955,7 +955,7 @@ fn doc_render_line(name: String, h) = {
 // wires) — its handler body crosses out of the medium into the host
 // process boundary, named Hβ.cli.process-exec-wire.
 fn compile_run(target) = {
-  compile(target) ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  compile(target) ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
   // The dispatch exit-code contract: main's value IS the process exit.
   // Refusal paths already exit nonzero through the gate; success is 0.
   0
@@ -964,7 +964,7 @@ fn compile_run(target) = {
 // `mentl resume <image>` — the compile projection re-entered from a
 // persisted image (pipeline.mn resume_image); same outer belt as compile.
 fn resume_run(img) = {
-  resume_image(img) ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  resume_image(img) ~> wat_stdout ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
   0
 }
 
@@ -974,7 +974,7 @@ fn resume_run(img) = {
 // handler chain — wat_stdout for emit + wasi_filesystem (stdin via fd 0
 // goes through the same handler) + the substrate stack.
 fn compile_stdin_run() = {
-  compile_stdin() ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  compile_stdin() ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
   0
 }
 
@@ -1015,7 +1015,7 @@ fn argv_wire(words) = fold("", (acc, w) => "{acc}{w}\0", words)
 fn run_run(target, args) = {
   compile(target)
   process_exec(argv_wire([target] ++ args))
-} ~> process_host ~> wat_to_host ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+} ~> process_host ~> wat_to_host ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
 
 // ─── check_run — diagnostics; no emit
 //
@@ -1737,7 +1737,7 @@ fn test_run(target_opt) = {
 }
 
 fn test_check_run(entry_module) =
-  pipeline_check(entry_module) ~> assert_reporter ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  pipeline_check(entry_module) ~> assert_reporter ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
 
 // ─── The battery: `mentl test <dir>` ────────────────────────────────────
 // The micro battery IS the medium reading its own gates: glob the directory,
@@ -1943,7 +1943,7 @@ handler assert_reporter with passed = 0, failed = 0 {
 // Walks the ~> chain; collects effect rows transitively; emits
 // AuditReport. Per DESIGN §9.1 + traces/a-day §1400.
 fn audit_run(target) = {
-  audit(target) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> verify_ledger ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  audit(target) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> verify_ledger ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
   0
 }
 
@@ -1952,7 +1952,7 @@ fn audit_run(target) = {
 // `mentl query <module> "<question>"` — read-only query against
 // the substrate. Per traces/a-day §0800 + DESIGN §8 mentl query.
 fn query_run(target, question) =
-  query(target, question) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  query(target, question) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
 
 // ─── with_run — the universal escape hatch (env_lookup resolution)
 //
@@ -2052,7 +2052,7 @@ fn repl_eval_line(line) = if byte_len(line) == 0 {
 // itself — a write followed by the live read is unfalsifiable, and it is
 // the same `<~` the cursor session runs (draw the edge, re-project).
 fn new_project(name) = {
-  scaffold_project(name) ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink
+  scaffold_project(name) ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
   0
 }
 

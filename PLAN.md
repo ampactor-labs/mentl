@@ -817,9 +817,12 @@ and this is the STATE.
   Rung 3 whole is the dissolution.
 - **The judgment is ONE pass** (2026-09-17 — the trial/final tower deleted,
   `LEDGER.md` carries the numbers). The planned layer sweep and its block fan
-  went with it; `judge_window = 1` survives only at its one reader, the
-  ??-fan (synth_proposer.mn), serialized since 2026-08-07 until Phase 9.2's
-  deterministic handle partition and atomic join writes.
+  went with it, and `judge_window` followed it out on 2026-09-19: its last
+  reader, the ??-fan, stopped copying the graph, so the constant that paced
+  a spawn has no successor rather than a serialized life. A candidate is
+  judged inside a checkpoint on the ONE live graph now; the width returns at
+  Phase 9.2's deterministic handle partition and atomic join writes, as a
+  `~> Schedule` decision, never a constant.
 - **Incrementality is not a cached cursor yet:** `epoch` is a mutation
   counter, not an invalidation key — nothing derives "what changed" from it;
   the warm start restores an image and re-derives the compile over it (§5.O).
@@ -1241,11 +1244,17 @@ form the whole time. The arcs, in order:
   (9.2 + 10.1's keystone) are ONE representation change. A handle that is
   `(arena, offset)` makes the arena real, makes the partition deterministic
   without planning, and deletes the counting pass — three named peers, one
-  cut. It also deletes the slack machinery the prediction needs:
-  `mint_overflow_quota = 64`, `graph_mint_plan`/`graph_mint_seal`, and the
-  measured *"324 over-measure stmts, every delta 1 or 2"* residue — which is
-  itself the tell, because a count that is *almost* right is a PREDICTION of
-  the final's minting, not a measurement of it. Handle-uniformity survives:
+  cut. The slack machinery this entry once listed as part of that cut —
+  `mint_overflow_quota = 64`, `graph_mint_plan`/`graph_mint_seal` — is
+  ALREADY GONE (2026-09-19), and the reason corrects the entry rather than
+  merely dating it: once the ??-fan stopped copying the graph, `mint_limit`
+  was zero at all eleven `graph_handler` installs, so the banded partition
+  was a FALSE BRANCH that every single mint paid for, not machinery a
+  prediction needed. The measured *"324 over-measure stmts, every delta 1 or
+  2"* residue was the tell all along, because a count that is *almost* right
+  is a PREDICTION of the final's minting, not a measurement of it. What
+  `(arena, offset)` still owns is the counting pass and the deterministic
+  partition. Handle-uniformity survives:
   a packed `(arena << K) | offset` is still one word, so §5.U's
   memcpy-serializability is untouched.
 
@@ -2143,6 +2152,25 @@ landed in 5–10; this phase is the finish that makes it FELT.
   oracle — at a width set by the `judge_window` constant, where the
   language's own `~> Schedule` is read live at every other fanout. The
   crown jewel is the one place Mentl does not solve Mentl.
+  **THREE OF THE FIVE CLOSED 2026-09-19 (pin 7c9dc538), and the measurement
+  that closed them was the fan's own constant.** `judge_window` was 1 and the
+  block walk spawned exactly one task per block and joined it immediately, so
+  the isolation was guarding a concurrency that was switched off. A candidate
+  is judged inside `graph_push_checkpoint` + `heap_mark` + `world_top` … 
+  rollback on the ONE live graph now — the triple `try_each_annotation`
+  already owned, whose own comment called it *"the synth fan's exact shape"* —
+  so the isolated per-candidate instance, the empty `graph_handler` that made
+  a sibling's proof invisible, and the direct `spawn_task` at a constant width
+  are all deleted, along with the banded partition that existed only to
+  number them. TWO STAND, and they are the two that need other arcs:
+  generate-then-filter (narrowed for the REFINEMENT arm by the Domain read,
+  pin 2f6ddeac; the rest of the eight arms still judge after constructing),
+  and forking UNIFORMLY, which waits on the e-graph yielding CLASSES so a
+  form-variant never forks at all. The width returns at 9.2 as a
+  `~> Schedule` decision. Sequential is now a PROPERTY of the segment walk
+  rather than a constant, which is why the fan's own trail is readable and
+  why `Hβ.synth.divergence-from-the-trail`'s remaining blocker is the UNIFY,
+  not the copy.
   **A SIXTH WAS FOUND AND CLOSED 2026-09-18, and it was the one that touched
   the developer: the ANSWER was a LIST.** `Proposals([(Node, Reason)],
   [(String, Reason)])` made six surfaces re-derive the verdict from `len`,
@@ -2257,8 +2285,9 @@ landed in 5–10; this phase is the finish that makes it FELT.
   memcpy-serializable image, and `persist = memcpy` is BUILT (§7), so an
   exploration suspends and resumes across runs and machines while every peer
   synthesizer is a within-process search. The fan is written
-  `(c) >< (c) ~> Schedule` so width is a handler decision and `judge_window`
-  dissolves; and the answer is never a LIST — unique survivor fills, and
+  `(c) >< (c) ~> Schedule` so width is a handler decision — `judge_window`
+  has dissolved, and the sequence-fanout form the fan needs is
+  `Hβ.lower.schedule-specialized-callee`; and the answer is never a LIST — unique survivor fills, and
   multiple meanings ask the one question, because a list is the medium
   admitting it does not know.
 

@@ -161,29 +161,6 @@ handler synth_default {
     // caller's checkpoint still isolates the binds.
     resume(candidate_proven(node, target_ty)),
   },
-  enumerate_inhabitants(target_ty, allowed_effects, context) => {
-    let enriched = enumerate_typed(target_ty, allowed_effects, context)
-    // THE FAN VERIFIES FIRST (fan_verify — candidates as spawned branch
-    // cursors; the arm's performs resolve OUTER, so the fan plan runs at
-    // the root exactly as intended), then the per-proven resume fan
-    // walks the precomputed verdicts: resume is context-bound to arms
-    // (SYNTAX §resume), so the yield stays here while the proof work
-    // rides the threads.
-    let verdicts = fan_verify(enriched, target_ty)
-    fn yield_from(i) = if i >= len(enriched) {
-      resume([])
-    } else {
-      match list_index(enriched, i) {
-        EnrichedCandidate(c) => if verdicts[i] {
-          resume([c.node])
-          yield_from(i + 1)
-        } else {
-          yield_from(i + 1)
-        },
-      }
-    }
-    yield_from(0)
-  },
 }
 
 // ─── enumerate_typed — type-directed candidate enumeration ──────────
@@ -644,19 +621,6 @@ fn enumerate_tuple_candidates(elems, context) with Alloc + Memory + GraphWrite =
   buf
 }
 
-// ─── THE FAN (Arc 1) — candidates as spawned branch cursors ─────────
-//
-// The fused oracle's second workload: every candidate verifies as a
-// REAL task over the shared image — the judgment's bracket, a candidate
-// body. THE ISOLATION LAW: the sequential form was bind→rollback, net
-// ZERO shared writes, so each task verifies against a FRESH
-// INSTANTIATION of the target in its own planned band (the
-// value-boundary law at the hole: the constraint is a published scheme;
-// candidates are its callers) — race-free by construction, numbering a
-// pure function of candidate order. The join replays each task's facts
-// record in candidate order (branch_join whole): the fork triple never
-// covered env/diag/verify state, so byte-identity with the sequential
-// walk means replaying its debris exactly, proven or not.
 // DONE-CRITERION (Programming by Navigation — Lubin, Ziegler & Chasins,
 // PLDI 2025, defs 3.5–3.6, under the 2025-10-09 errata's covering
 // reading): the fan offers ONLY candidates that lead to a valid
@@ -668,78 +632,80 @@ fn enumerate_tuple_candidates(elems, context) with Alloc + Memory + GraphWrite =
 // impossible, op. cit. §8). An EMPTY fan is Fail-Fast's theorem: no
 // valid completion exists from here — a teachable refusal, never a
 // shrug.
-let candidate_band = 2048
-
-fn fan_verify(candidates, target_ty) = {
-  let n = len(candidates)
-  if n == 0 {
-    []
-  } else {
-    let top = graph_next()
-    let fan_end = top + n * (candidate_band + mint_overflow_quota)
-    // Pre-open the fan's pages at the ROOT (a branch never opens a
-    // band), and seal past the whole fan after the join so no later
-    // root mint reuses a discarded band's stale cells (virginity).
-    graph_mint_plan(fan_end)
-    let base = env_base_view()
-    let seed = consume_base()
-    let gseed = graph_branch_seed()
-    let iseed = intern_seed()
-    let verdicts = fan_blocks(candidates, target_ty, base, seed, gseed, iseed, top, n, 0, [])
-    graph_mint_seal(fan_end)
-    verdicts
-  }
+// ─── THE SEGMENT WALK — candidates judged on the ONE live graph ──────
+//
+// Every candidate is judged inside the fork TRIPLE — checkpoint, world top,
+// judge, rollback, restore — over the graph the cursor is already sitting
+// in. The copy this replaces spawned each candidate as a task against a
+// FRESH graph instance seeded from four root views inside a pre-planned
+// `n × (2048 + 64)`-handle band, and the measurement that condemned it is
+// that its in-flight window was 1: one task spawned per block and joined
+// immediately, so the isolation machinery was protecting against a
+// concurrency that was switched off. It bought nothing and cost four
+// things — a fact proven in one branch was invisible to the next, the
+// hole's own cell was unreachable, the image paid ~10.5k planned handles
+// per five-survivor propose, and the trail recorded the binds in an
+// instance no diff could read.
+//
+// THE ORDER IS LOAD-BEARING. The world is restored before the facts are
+// replayed, because the replay re-performs `env_extend` and `diag_report`
+// and those must resolve to the ROOT chain. The rollback comes first for
+// the same reason: a replay must not run while the candidate's own graph
+// writes are still live.
+//
+// The candidates are minted BEFORE any checkpoint (the arm reads the mint
+// frontier at
+// the arm's head, ahead of enumeration), so `graph_rollback`'s MFreshNode
+// shrink never un-allocates the node being judged.
+fn segment_verify(candidates, target_ty) = if len(candidates) == 0 {
+  []
+} else {
+  let base = env_base_view()
+  let seed = consume_base()
+  let iseed = intern_seed()
+  candidates |> map(judge_in_segment(target_ty, base, seed, iseed))
 }
 
-// The fan's in-flight window — a scheduling constant, never a semantics
-// input: the banded partition makes every branch's bytes a pure function
-// of source and plan, so any width must produce identical output.
-// SERIALIZED AT 1 since 2026-08-07: with live row cells in published
-// schemes, sibling branches of one shared forward callee JOIN one cell
-// concurrently and the un-CAS'd read-modify-write garbles the edge list.
-// Width returns at Phase 9.2 as a `~> Schedule` read (PLAN §11.1 — the
-// constant dissolves; a handler decides the width) on atomic join writes.
-let judge_window = 1
-
-// Blocks of judge_window, joined in candidate order — completion order
-// never matters; the replay stream is byte-identical to the sequential
-// walk at any block size.
-fn fan_blocks(ref candidates, target_ty, base, seed, gseed, iseed, top, n, b, own acc) = if b >= n {
-  acc
-} else {
-  let hi = if b + judge_window < n { b + judge_window } else { n }
-  let recs = fan_spawn(candidates, target_ty, base, seed, gseed, iseed, top, n, b, hi, [])
-  fan_blocks(candidates, target_ty, base, seed, gseed, iseed, top, n, hi, fan_join(recs, 0, acc))
-}
-
-fn fan_spawn(ref candidates, target_ty, base, seed, gseed, iseed, top, n, j, hi, own recs) = if j >= hi {
-  recs
-} else {
-  match candidates[j] {
-    EnrichedCandidate(c) => {
-      let node = c.node
-      let cb = top + j * candidate_band
-      let ch = top + n * candidate_band + j * mint_overflow_quota
-      let range = (cb, cb + candidate_band, ch)
-      // The task mirrors the root's OUTER shape (spawn_block's law): an
-      // arm's performs resolve outer to its install, so renders chase
-      // outside the bracket onto this empty dispatch-graph instance.
-      let rec =
-        spawn_task(() => candidate_judge(node, target_ty, base, seed, gseed, iseed, range) ~> graph_handler([], 0, 0, 0, [], 0, 0))
-      fan_spawn(candidates, target_ty, base, seed, gseed, iseed, top, n, j + 1, hi, push(recs, rec))
-    },
-  }
-}
-
-fn fan_join(ref recs, j, own acc) = if j >= len(recs) {
-  acc
-} else {
-  match join_task(recs[j]) {
+fn judge_in_segment(target_ty, base, seed, iseed, candidate) = {
+  let cp = graph_push_checkpoint()
+  let w = world_top()
+  let outcome = segment_judge(candidate_node(candidate), target_ty, base, seed, iseed)
+  graph_rollback(cp)
+  world_restore(w)
+  match outcome {
     (proven, inner) => {
       branch_join(inner)
-      fan_join(recs, j + 1, push(acc, proven))
+      proven
     },
   }
+}
+
+// The candidate's judgment under the segment bracket — the branch chain
+// minus its graph copy. The facts are read INSIDE, where the per-segment
+// ledgers are still installed, and replayed by the caller once the graph
+// and world are the root's again.
+fn segment_judge(node, target_ty, base, seed, iseed) = {
+  let body = () => {
+    consume_seed(seed)
+    let proven = candidate_proven(node, target_ty)
+    let vdebt = verify_debt()
+    let clog = consume_log()
+    let pubs = env_publishes()
+    let dfacts = diag_lines_taken()
+    (proven, (pubs, dfacts, vdebt, clog))
+  }
+  segment_bracket(body, base, iseed)
+}
+
+fn keep_survivors(candidates, verdicts) with Memory + Alloc =
+  candidates |> enumerate |> filter(verdict_at(verdicts)) |> map(indexed_value)
+
+fn verdict_at(verdicts, indexed) with Memory + Alloc = match indexed {
+  (i, _) => verdicts[i],
+}
+
+fn indexed_value(indexed) with Memory + Alloc = match indexed {
+  (_, v) => v,
 }
 
 // The candidate's task body under the judgment's own bracket
@@ -765,29 +731,6 @@ fn candidate_proven(node, target_ty) = {
   }
 }
 
-fn candidate_judge(node, target_ty, base, seed, gseed, iseed, range) = {
-  let body = () => {
-    consume_seed(seed)
-    match node {
-      N(_, _, _) => {
-        let proven = candidate_proven(node, target_ty)
-        let vdebt = verify_debt()
-        let clog = consume_log()
-        let pubs = env_publishes()
-        let dfacts = diag_lines_taken()
-        (proven, (pubs, dfacts, vdebt, clog))
-      },
-    }
-  }
-  branch_bracket(body, base, gseed, iseed, range)
-}
-
-fn keep_proven(ref cands, ref verdicts, i, own out) = if i >= len(cands) {
-  out
-} else {
-  keep_proven(cands, verdicts, i + 1, if verdicts[i] { push(out, cands[i]) } else { out })
-}
-
 // ─── Verification — the fan gates every candidate ───────────────────
 //
 // The kernel's proof gate, fanned: candidates verify as spawned branch
@@ -803,9 +746,13 @@ fn keep_proven(ref cands, ref verdicts, i, own out) = if i >= len(cands) {
 // FORCED: extract-then-prove would optimize a program that may be
 // inadmissible. What reaches the user is therefore proven AND
 // extraction-optimal, never merely proven.
-fn verify_each_enriched(candidates, target_ty, cand_start) with GraphRead + GraphWrite + LookupTy + Memory + Alloc + EnvRead + EnvWrite + Consume + Verify + Intern + WASI + WasiThreads + BranchEnv + BranchDiag + Diagnostic + !Mutate = {
-  let verdicts = fan_verify(candidates, target_ty)
-  let survivors = keep_proven(candidates, verdicts, 0, [])
+// The declared row lost `WasiThreads` and `BranchDiag` at the segment walk,
+// and that loss IS the measurement: nothing spawns a task any more, so the
+// judgment no longer reaches the threading vocabulary at all. The medium
+// named it (`T_OverDeclared`) the moment the fan went.
+fn verify_each_enriched(candidates, target_ty, cand_start) with GraphRead + GraphWrite + LookupTy + Memory + Alloc + EnvRead + EnvWrite + Consume + Verify + Intern + WASI + BranchEnv + Diagnostic + !Mutate = {
+  let verdicts = segment_verify(candidates, target_ty)
+  let survivors = keep_survivors(candidates, verdicts)
   // The form half — only over what the fan minted (the range keeps a
   // cursor-position fan from re-saturating the whole session graph).
   saturate_range(cand_start, graph_next())

@@ -1675,18 +1675,6 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
   )
 }
 
-// A spawned branch cursor's private overflow band above its seed — the
-// synth fan's spawn reads it (synth_proposer). This was also the planned
-// level-set sweep's per-stmt band, where bases were prefix sums of a trial's
-// measured mint counts so that a parallel walk could reproduce sequential
-// handle numbering; that sweep is deleted with the second pass, because the
-// count it prefix-summed was the trial's whole product and the numbering it
-// planned is a flattening §10.1's `(arena, offset)` law unflattens. The
-// quota's own measurement stands: a stmt's mints run 1–2 over its measure
-// (2026-07-26, whole self-compile), so 64 is a 32× margin and a band-crossing
-// hits the unseeded guard loudly instead of a neighbor's cells.
-let mint_overflow_quota = 64
-
 // THE BRANCH BRACKET — the ??-fan's candidate branches run this
 // eleven-handler bracket over the shared image; the judgment's own stmt
 // branches ran it too until the planned layer sweep went with the second
@@ -1722,13 +1710,29 @@ let mint_overflow_quota = 64
 // source and the plan, independent of execution order: the fan
 // reproduces these bytes at any K. Trail and checkpoints are
 // branch-local; binds land in shared cells the plan partitioned.
-fn branch_bracket(body, base, gseed, iseed, range) = match base {
-  (bb, bc, bi) => match gseed {
-    (gspine, gopen, gspan) => match iseed {
-      (ib, ie, ic) => match range {
-        (mb, mc, bh) => body() ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi) ~> graph_handler(gspine, gopen, mb, mc, gspan, bh, bh + mint_overflow_quota) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
-      },
-    },
+// ─── The SEGMENT bracket — the same chain, on the LIVE graph ─────────
+//
+// Every handler the deleted branch bracket installed EXCEPT `graph_handler`, so the
+// body's graph performs resolve OUTER to the root's own instance and the
+// judgment happens on the one live graph. Isolation is the caller's fork
+// triple (`graph_push_checkpoint` + `world_top` … rollback + restore), the
+// same triple `try_each_annotation` has run at the annotation gradient all
+// along — its own comment names this site as its shape.
+//
+// The fresh ledgers stay, and that is the point of keeping the chain: the
+// triple covers graph, heap and world ONLY, while a candidate's judgment
+// also enters env scopes, accrues verify debt, tags allocations and reports
+// diagnostics — none of it trailed. Those ride per-segment instances and
+// the caller reads their facts before replaying, exactly as the copy did.
+//
+// What this DELETES is the graph copy: a candidate no longer judges against
+// a fresh instance seeded from four root views inside a pre-planned band, so
+// a fact proven in one segment is visible to the next, the hole's own cell
+// is reachable, and the trail records the segment's binds where a diff can
+// read them.
+fn segment_bracket(body, base, iseed) = match base {
+  (bb, bc, bi) => match iseed {
+    (ib, ie, ic) => body() ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
   },
 }
 

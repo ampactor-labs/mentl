@@ -2205,22 +2205,6 @@ effect GraphWrite {
   // whole. N notes would re-open the window a reader could observe half a
   // table through, which is the time-varying read this column exists to end.
   graph_sigs_publish([(String, EmitSig)])
-  // The deterministic handle partition (the planned mint): the final pass
-  // pre-assigns each stmt a dense range of handles sized by the trial's
-  // measured mint counts, so numbering is a pure function of the source —
-  // the parallel fan must reproduce it exactly. plan(top) seeds the open
-  // space above every planned base (the overflow target); at(base, limit)
-  // continues minting at base with limit as the ceiling (a mint at the
-  // ceiling jumps to the open space and clears the limit — the decl
-  // finishes deterministically above the plan); seal() resumes sequential
-  // minting at the high-water mark.
-  graph_mint_plan(Int)
-  // seal takes the WALK's threaded ending frontier: branch instances'
-  // overflow mints land above the plan in THEIR state, invisible to the
-  // root's own mint_high — sealing at the root's view alone parked
-  // `next` below the branches' overflow mints and every post-seal mint
-  // would collide with them.
-  graph_mint_seal(Int)
 }
 
 // ─── Diagnostics as a graph projection (SYNTAX.md §Diagnostic catalog) ──

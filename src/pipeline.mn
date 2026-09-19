@@ -124,7 +124,7 @@ import oracle
 // (§2 cached-cursor mode), and cross-run skip is the image-persist
 // peer (Hβ.persist.module-image-cache).
 fn infer_context(body) =
-  body() ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new()) ~> graph_handler([], 0, 0, 0, [], 0, 0) ~> mutate_sink ~> diagnostics_handler ~> intern_table
+  body() ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new()) ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler ~> intern_table
 
 // The LOWERING/EMIT stack's one home — infer_context's peer on the far side
 // of the cursor. Every route that lowers installs exactly this: string_table

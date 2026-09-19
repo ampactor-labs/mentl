@@ -28,6 +28,36 @@
 
 ---
 
+`Hβ.lower.schedule-specialized-callee` — OPEN, and BORN HERE 2026-09-19 after
+living for months as a forward reference: `PLAN.md §5.R` band E cites it and
+`docs/SYNTAX.md` §`><` names it as the answer to caller-selectable fanout
+inside a reusable helper, while this catalog — the one home — did not carry it
+at all. A peer that exists only in the documents that POINT at it is the
+hidden-gap law violated one level up.
+THE SHAPE. `><` is a SYNTACTIC N-ary construct: the parser builds a
+`FanoutExpr` from branches written on the page, so its width is a property of
+the source text. A candidate list is a RUNTIME sequence whose length is
+whatever the enumerator proved, and there is no surface form for "fan this
+sequence." That is why the ??-fan reached for `spawn_task` directly and why
+`judge_window` existed at all — a constant standing in for a width the
+language could not say. The missing form is the sequence fanout: a `><` over a
+runtime sequence, lowered to the same `run_fanout_thunks` machinery
+(lower.mn) the syntactic form already uses, with the strategy read LIVE from
+the enclosing `~> Schedule` install (`Seq | Thread | Simd | Gpu`) exactly as
+SYNTAX says every fanout reads it.
+WHY IT CANNOT BE A HELPER TODAY, which is the peer's whole content: the
+schedule resolves at the fanout's own install site, never across a call
+boundary, so a `><` inside a reusable fn is permanently `Seq` while its name
+promises otherwise — the same measurement that dissolved `parallel_map`
+(`Hβ.prelude.parallel-map-dissolves-into-schedule`). A callee specialized on
+its caller's installed schedule is what makes the reusable form honest.
+CLOSE: `segment_verify` (synth_proposer.mn) is written as a fanout over its
+candidate sequence under `~> Schedule`, the width is a handler decision at the
+propose site, and a width-8 fixture proves m3 == m4 — determinism under any
+width is a TRUST law, not fixpoint hygiene. DEP: 9.2's deterministic handle
+partition and atomic join writes, because concurrent segments over one graph
+need `(arena, offset)` cells before two branches may write at once.
+
 `Hβ.lower.closure-continuation-partial-are-one-record` — NAMED 2026-09-09 by
 the same interrogation. The reification landing routed a bare name into the
 PARTIAL path, which is right relative to what is there, and what is there is
@@ -645,6 +675,21 @@ than pasted. Its own destiny is `mentl verify` owning the suite and the
 stamp being a graph fact about the pin instead of a file. Until then
 `state.sh` prints the four as explicitly unstamped, because a blank you
 can see is worth more than a silence.
+A FIFTH, MEASURED 2026-09-19 AND WORSE THAN THE FOUR, because it reads
+like a channel while being a constant. Every provenance block march has
+ever written carries `micros+census: NOT RUN (run tools/verify.sh)` —
+every one, at every pin, back to the first. The line is
+`${MARCH_VERIFY:-NOT RUN …}` (march.sh) and **`MARCH_VERIFY` has no
+writer anywhere in the tree**, so the slot has never once held a
+verdict. Meanwhile verify.sh stamps `.build/gate/verify.green` keyed to
+the exact boot it measured — the fact the slot wants exists, one
+directory over, and the block cannot see it. This is NOT patched here,
+deliberately: march.sh and verify.sh are both condemned by `mentl verify`
+owning the suite (`boot/board.mn` written at repin), and improving a
+structure a named peer sentences to deletion is Anchor 2's roadmap face.
+It is named so the replacement inherits the requirement: every board line
+is a READ of the gate's own stamp, and a slot no writer feeds is a
+compile error, not a default string.
 
 `Hβ.repr.option-of-word-niche` — NAMED 2026-08-18, by the landing that
 made the cost real. `base_digit(base, byte)` answers IS-this-a-digit and
@@ -1440,15 +1485,25 @@ the proposition the developer never stated. Its SOURCE today is each
 survivor's own live reads: the callee's declared row from the env entry the
 vocabulary enumerator admitted it through, the callee's body for a denotation.
 PLAN §11.1's form reads it from the TRAIL — the earliest cell where two
-branches bound differently — and that is not reachable yet for a measured
-reason, not a preference: each candidate is judged in a COPIED graph instance
-(`candidate_proven`, synth_proposer.mn) binding its own fresh handle, so a
-trail diff over the demo fixtures is EMPTY, and in-segment handles collide
-numerically after rollback. It becomes reachable with Arc O1's sequential
-trail segment over ONE graph (`graph_push_checkpoint` + `heap_mark` +
-`world_top`, the triple `try_each_annotation` already owns), where the
-divergence is the first differing bind with `graph_compress_row`'s
-path-compression writes filtered out — those are optimization, not meaning.
+branches bound differently. THE BLOCKER THIS ENTRY NAMED IS GONE AND THE
+REMAINING ONE IS NARROWER (2026-09-19, pin 7c9dc538). It said the obstacle
+was the COPY: each candidate judged in its own graph instance binding its own
+fresh handle. The copy is deleted — `segment_verify` judges every candidate
+inside `graph_push_checkpoint` + `heap_mark` + `world_top` … rollback on the
+ONE live graph, so two candidates now share every pre-checkpoint cell and the
+trail records their binds in one place. The diff is STILL empty, for the
+remaining reason: `candidate_proven` never unifies the candidate's cell with
+the HOLE's, so two segments write no common cell to differ at. The hole's
+cell is bound to the enclosing fn's return cell at inference (infer.mn), so
+on every existing fixture that unify peels an alias and writes nothing —
+which is exactly why it is safe to add and why its RED-first gate must be a
+fixture where it genuinely binds (a `TVar` target, or a lambda candidate).
+With it, the divergence is the first differing bind among handles below the
+checkpoint's `next`, with `graph_compress_row`'s path-compression writes
+filtered out — those are optimization, not meaning, and order-dependent.
+In-segment fresh handles still collide numerically after rollback, which is
+why the diff stays restricted to pre-checkpoint cells until `(arena, offset)`
+gives an in-segment cell its own identity.
 WHAT DOES NOT CHANGE when it lands: the four arms, their precedence, and their
 voice. Only which cell the classifier is handed. CLOSE: the fan runs as trail
 segments, the row and value arms read the diverging CELL's own Reason rather
@@ -1724,7 +1779,9 @@ trial/final vocabulary gone (`infer_program_once` is the judgment;
 `layers` / `bases` plumbing, the planned layer sweep, the block fan, the
 fingerprint render and the movers probes deleted — 32 fns the medium's own
 `unreachable` facet now names on demand; `judge_window` moved to its one
-reader, the ??-fan). MEASURED on the march: m3 leg **10.31s / 941MB** (the
+reader, the ??-fan — and died there on 2026-09-19 when that reader stopped
+copying the graph, so the constant has no successor at all). MEASURED on the
+march: m3 leg **10.31s / 941MB** (the
 two-pass wheel: 15.0s / 2,334MB — −60% peak, −31% wall); the WAT 409,812 →
 402,974 lines; infer.mn −971 lines net. The wheel's judgment sits under the
 signed-2GB warm line for the first time, which is what makes
@@ -1751,9 +1808,13 @@ DEFECT THAT EXISTED INDEPENDENTLY is closed by construction: there is no
 `~> diag_quiet` pass left to mute anything.
 
 WHAT STANDS OPEN, named: `(arena, offset)` — the handle unflattening this
-entry designed — did NOT have to land for the pass to go; the plan machinery
-(`graph_mint_plan`/`graph_mint_seal`, `mint_overflow_quota`) survives at
-the ??-fan's spawn and dies with 9.2's partition. `Hβ.perf.per-decl-arena`
+entry designed — did NOT have to land for the pass to go. The plan machinery
+(`graph_mint_plan`/`graph_mint_seal`, `mint_overflow_quota`) is DELETED as of
+2026-09-19, and not by the partition this entry expected to kill it: when the
+??-fan stopped copying the graph, `mint_limit` read zero at all eleven
+`graph_handler` installs, so the banded partition was an unreachable branch
+every mint was paying for. What `(arena, offset)` still owns is the counting
+pass and 9.2's determinism. `Hβ.perf.per-decl-arena`
 (4.3) resumes on the 941MB judgment, ~98% of it scratch.
 
 `Hβ.perf.cost-ratchet-reads-the-image` — THE BOARD POLICES COST WITH A HOST

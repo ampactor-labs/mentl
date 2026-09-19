@@ -35,6 +35,113 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-19 · pin ce92136c0499a9c4 · THE FAN STOPS COPYING THE GRAPH (Arc O1
+  — the trail segment). CLEAN m2 == m3, census 0, 411,748 lines, m3 leg
+  14.59s / 969MB peak; frontier 388/0/2, proof-exactness 9/0, crown 62/0,
+  verify green.
+  **THE PIN MOVED ONCE MORE BEFORE THE COMMIT, AND THE LINE THAT EXISTS TO
+  CATCH THAT CAUGHT IT.** The arc first pinned at 7c9dc538 (TRANSITION m3 ==
+  m4). On the board after it, verify's `pin freshness` read *"boot is BEHIND
+  current source (7c9dc538 vs m2 ce92136c)"* while every other gate printed
+  green — `Hβ.march.boot-drifts-behind-clean-landings` firing on the first
+  board after the drift it was written for. MEASURED before repinning,
+  because a stale pin can equally mean a LOST EDIT: the emitted function set
+  is identical at 5,103 both sides; the first diverging handle is
+  48389/48390 in the `graph_handler` arm region, with every handle below it
+  matching and every one above shifted by exactly one, so the older source
+  minted ONE MORE node; and normalizing `_<digits>` to `_N` across both whole
+  WATs makes them BYTE-IDENTICAL. Same program, handle numbering alone. The
+  pin had been taken one mint before the last edit over the source — which is
+  the cadence law's own fine print: *verify once, board once, repin once*
+  holds only when the repin is the LAST act over the source. Everything below
+  is that arc, re-pinned CLEAN at the wheel the committed source compiles to
+  and re-boarded whole against it.
+  **THE COPY'S OWN CONSTANT CONDEMNED IT.** `judge_window = 1`, and `fan_blocks`
+  spawned exactly `hi - b` = ONE task per block and joined it immediately — so
+  the fan was already sequential and its isolation machinery was protecting
+  against a concurrency that was switched off. A fresh graph instance per
+  candidate, seeded from four root views, inside a pre-planned
+  `n × (2048 + 64)`-handle band, bought nothing and cost four things: a fact
+  proven in one branch was invisible to the next; the hole's own cell could
+  never be touched, which is exactly why the hole is not a term cell; the image
+  paid ~10.5k planned handles per five-survivor propose; and the trail recorded
+  every bind inside an instance no diff could read, which is why the computed
+  question landed sourced from each survivor's live reads rather than from the
+  trail (`Hβ.synth.divergence-from-the-trail`).
+  **THE REPLACEMENT WAS ALREADY IN THE TREE, ALREADY NAMED.**
+  `try_each_annotation` (mentl.mn) has run `graph_push_checkpoint` +
+  `heap_mark` + `world_top` … rollback over the live graph at the annotation
+  gradient all along, and its own comment calls that shape *"the synth fan's
+  exact shape."* `segment_bracket` is the branch chain MINUS `graph_handler`:
+  the triple covers graph, heap and world ONLY, while a candidate's judgment
+  also enters env scopes, accrues verify debt, tags allocations and reports
+  diagnostics — none of it trailed — so those ride per-segment ledgers and the
+  caller replays them. THE ORDER IS LOAD-BEARING: rollback, restore the world,
+  THEN replay, because a replay re-performs `env_extend` and `diag_report` and
+  must resolve to the root chain, and must not run while the candidate's own
+  graph writes are still live.
+  **A PREDICTION THAT MEASURED FALSE, recorded as such.** The plan said the
+  replay semantics would change and must be re-banked RED first. Measured: all
+  five propose fixtures (the fill with its Reason, and one per `Divergence`
+  arm) and the Field line's `pending proof(s)` count are byte-for-byte what the
+  copy produced. Keeping the fresh ledgers while deleting only the graph
+  instance preserved them exactly.
+  **AND EVERYTHING THAT EXISTED ONLY FOR THE COPY WENT WITH IT.** The banded
+  partition became a FALSE BRANCH the moment the fan left: `mint_limit` is zero
+  at all eleven `graph_handler` installs, so the overflow test in both mint
+  arms, the per-branch private band, `graph_mint_plan`/`graph_mint_seal`,
+  `mint_overflow_quota`, the `mint_limit > 0` skip in `graph_compress_row`, and
+  three handler state fields were unreachable code that every single mint paid
+  for. The handler is `graph_handler(spine, spine_open, span_index)` now — 7
+  params to 3, uniform across all eleven sites. MEASURED: peak RSS on the m3
+  leg 1,002,156 KB → 946,100 KB, which is from just OVER
+  `selfcompile_peak_kb_max` to comfortably under it. Three ceilings fell with
+  it and are held: own 67 → 63, ref 744 → 739, effectful-lambda 366 → 365 (the
+  fan's spawn thunk).
+  **ONE WALL, AND IT BELONGED TO SOMETHING ELSE — the form stayed, the
+  fundamental moved.** With the wheel's last reachable `spawn_task` deleted,
+  `mentl space` stopped serving and the runner said why: *"the socket seam
+  needs a guest that imports its shared memory."* The emit read ONE proof —
+  `threaded = wasi_ops has spawn_task` — for a decision TWO consumers depend
+  on, and proxying the second through the first held only while the wheel
+  happened to spawn. A SPAWNING module needs the host to own the image because
+  a defined memory is per-instance and a child would read a fresh zeroed one; a
+  module using the SOCKET SEAM needs it because the runner builds a trampoline
+  module over the SAME memory to serve the five socket-facing p1 entries and
+  cannot share a memory the guest defines. `emit_memory_decl(spawns,
+  imports_image, wants_rmw)` reads both proofs from the module's own ops, and
+  the entire m2/m3 diff of this TRANSITION is the three emitted lines that
+  changes.
+  **A COST REGRESSION WAS CHASED AND MEASURED TO BE A PHANTOM.** The m3 leg
+  read 13.7s against 8.67s at the prior pin — a 60% regression on its face. The
+  pre-change tree was stashed and marched: 14.42s. The machine is slower than
+  when 8.67s was recorded, and the change is a small improvement against its
+  own baseline. Recorded because the reflex it rewards is the right one: a
+  bisect against the unfixed tree, not a hunt for a mechanism. **The cost line
+  is comparable only within one session's machine state** — the forensic law
+  about probes being comparable only within one binary, read one layer up.
+  **A BOARD SLOT THAT WAS NEVER A CHANNEL, found while filling it.** The
+  provenance block this landing wrote reads `micros+census: NOT RUN (run
+  tools/verify.sh)`, and so does every block march has ever written, at every
+  pin, back to the first: the line is `${MARCH_VERIFY:-NOT RUN …}` and
+  `MARCH_VERIFY` has no writer anywhere in the tree, while verify.sh stamps
+  `.build/gate/verify.green` keyed to the exact boot it measured. A default
+  string that has never been displaced is not a blank you can see — it is a
+  measurement channel that was never connected, which is tripwire 4's own
+  class one layer down. It is NOT patched: march.sh and verify.sh are both
+  condemned by `mentl verify` owning the suite, and the requirement is
+  recorded at `Hβ.tools.gate-stamp-is-uniform` so the replacement inherits it
+  — every board line a READ of the gate's own stamp, a slot no writer feeds a
+  compile error rather than a default.
+  **NOT CLOSED, and named rather than implied:** the unify that would make the
+  hole a real term cell is NOT in this landing (the segment makes it safe; the
+  fixture where it genuinely binds is its RED-first gate), and without it a
+  trail diff over the demo fixtures still measures empty. Fork-only-at-
+  disjunction waits on fusing the e-graph so enumeration yields CLASSES; the
+  width waits on `~> Schedule` with atomic join writes (9.2); lemma sharing —
+  promoting a branch-independent fact below the checkpoint — is what the
+  segment makes POSSIBLE and is not built.
+
 - 2026-09-18 · pin df79c2f3585451a7 · THE PAYLOAD IS READ AT ITS INSTANTIATION.
   TRANSITION m3 == m4 at 412,993 wat lines (+3,660, 0.9% — the twinned
   helpers), CLEAN at the pin, census 0, m3 leg 8.67s / 975MB; frontier 388/0/2,
