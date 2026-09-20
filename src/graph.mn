@@ -1478,6 +1478,102 @@ fn module_handle_pick(path: String, acc, c) with Memory + Alloc = match c {
   (h, p, _s, _d) => if p == path { Some(h) } else { acc },
 }
 
+// The path a module HANDLE names — `module_handle_of_path` read the other
+// way, over the same cells, so the two directions cannot disagree.
+fn module_path_of_handle(mh) with Memory + Alloc + GraphRead + !Mutate =
+  fold("", module_path_pick(mh), module_cells())
+
+// `mh: Int` is the Intent Boundary carrying the eq PROOF, not decoration:
+// the fold's accumulator leaves `mh` a bare variable at emit, so `h == mh`
+// falls to a one-word compare and `T_EqTypeUnprovable` says so — right for
+// a handle by luck, an address lie by construction. The sibling
+// `module_handle_pick` annotates `path: String` for the same reason.
+fn module_path_pick(mh: Int, acc, c) with Memory + Alloc = match c {
+  (h, p, _s, _d) => if h == mh { p } else { acc },
+}
+
+// ─── Import reachability — can module A see module B's names? ────────
+//
+// THE ONE HOME for a question two readers ask of the same edges: the
+// cursor's proximity rank (is the target's module depended on by the
+// caret's?) and the comment-reference gate (may this prose name that
+// decl?). It lived in cursor.mn, which imports infer, so the gate could
+// not reach it — and a gate that cannot ask the question answers the
+// wrong one: resolution fell back to the whole link's FLATTENED env,
+// where a name resolves whether or not the module writing it can reach
+// that name. Measured 2026-09-20: 0 unresolved on the entry link against
+// 57 per module. It is homed here beside `module_path_of_span` for the
+// reason that comment already gives — graph.mn is the DAG bottom, so
+// every reader imports it.
+//
+// A HANDLE-facing entry, because that is what callers hold: a node's
+// module is stamped at its mint, so both sides arrive as handles and the
+// same-module case is one word compare with no path materialized at all.
+fn module_reaches(from_mh, target_mh) with GraphRead + Alloc + Memory + !Mutate = if from_mh == target_mh {
+  true
+} else {
+  module_imports(module_path_of_handle(from_mh), module_path_of_handle(target_mh), [])
+}
+
+// Does module `from` import `target` (transitively)? Reads the live
+// ImportStmt edges in `from`'s NModule decls; the `seen` accumulator
+// breaks import cycles. The module graph IS graph content — no side-ledger.
+fn module_imports(from, target, seen) with GraphRead + Alloc + Memory + !Mutate = if from == "" || contains_path(seen, from) {
+  false
+} else {
+  let direct = module_import_paths(from)
+  if contains_path(direct, target) { true } else { any_imports(direct, target, [from] ++ seen) }
+}
+
+fn any_imports(paths, target, seen) with GraphRead + Alloc + Memory + !Mutate = if len(paths) == 0 {
+  false
+} else if module_imports(last(paths), target, seen) {
+  true
+} else {
+  any_imports(drop_last(paths), target, seen)
+}
+
+fn contains_path(paths, target) with Memory + Alloc = if len(paths) == 0 {
+  false
+} else if last(paths) == target {
+  true
+} else {
+  contains_path(drop_last(paths), target)
+}
+
+// The direct import paths declared in module `path`'s NModule decls.
+fn module_import_paths(path) with GraphRead + !Mutate + Alloc + Memory = {
+  let snapshot = graph_snapshot()
+  match snapshot {
+    Graph(next, _spans) => scan_module_imports(path, 0, next),
+  }
+}
+
+fn scan_module_imports(path, i, n) with GraphRead + !Mutate + Alloc + Memory = if i >= n {
+  []
+} else {
+  match graph_node_body(i) {
+    NModule(m) => if m.path == path { import_paths_of_decls(m.decls) } else { scan_module_imports(path, i + 1, n) },
+    _ => scan_module_imports(path, i + 1, n),
+  }
+}
+
+fn import_paths_of_decls(decls) with Alloc + Memory = decls |> filter_map_imports
+
+fn filter_map_imports(decls) with Alloc + Memory = if len(decls) == 0 {
+  []
+} else {
+  let head_imports = match node_body_of(last(decls)) {
+    NStmt(ImportStmt(p)) => [p],
+    _ => [],
+  }
+  head_imports ++ filter_map_imports(drop_last(decls))
+}
+
+fn node_body_of(node) with Pure = match node {
+  N(body, _, _) => body,
+}
+
 // The total source the medium processed for this entry — the SUM of every
 // module's own extent. A graph read, so it is DETERMINISTIC: unlike a wall
 // clock it can be ratcheted, and a landing that makes the medium process more

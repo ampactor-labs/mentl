@@ -503,7 +503,25 @@ fn crc_judge_dollars(ref dollars, i, ref lvix, ref cdix) = if i >= len(dollars) 
         match smap_get(lvix, name) {
           Some(_) => true,
           None => match smap_get(cdix, name) {
-            Some(_) => true,
+            Some(dh) => // A DECL HIT IS NOT YET A REFERENCE. `cdix` indexes every decl
+            // in the weave, so a bare `Some` answers "this name exists
+            // somewhere in the link" — and the link flattens every module
+            // into one env, which is a different question from the one
+            // SYNTAX asks. A backticked name is *a resolvable EDGE the Why
+            // engine walks*; an edge that exists only because two modules
+            // were laid side by side is a NAME LOOKUP wearing an edge's
+            // name, which is the re-derivation this gate exists to catch,
+            // one layer above the prose it polices.
+            //
+            // So ask reachability: the referent's module must BE the
+            // comment's own or be imported by it. Measured at the landing —
+            // the entry link answered 0 while the modules answered 57, and
+            // the 57 were real: references crossing an import edge the
+            // wrong way, one naming a DELETED decl, and English words in
+            // backticks. The report one branch down already read the
+            // comment's module from `h` for its own span; the hit test was
+            // the half that ignored it.
+            module_reaches(graph_module_of(h), graph_module_of(dh)),
             None => false,
           },
         }

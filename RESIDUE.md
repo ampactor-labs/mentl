@@ -229,6 +229,44 @@ a record's own fields raises nothing (`/tmp` fixture, 2026-09-20), so SYNTAX
 §Comments' claim that backticked params resolve through the enclosing decl's
 binders is TRUE, and `crc_fn_scopes` is why. The 57 are none of them a scope
 miss at the decl layer.
+**THE ROOT IS COVERAGE, NOT RESOLUTION — measured 2026-09-20 and it refutes
+this entry's own first reading, which the build was already half-way through.**
+A two-module fixture settles it: `leaf.mn` carries a comment naming both a decl
+in the module that IMPORTS it and a name that exists NOWHERE. Addressing
+`leaf.mn:3` — which makes leaf the ENTRY — reports both. `check top.mn`, where
+leaf is merely imported, reports NEITHER, and neither do `compile` or `verify`.
+A name that exists nowhere going unreported rules resolution out entirely: the
+gate judges ONLY THE ENTRY MODULE'S COMMENTS.
+The mechanism is deliberate and, for a user verb, right: `crc_judge_dollars`
+calls `graph_module_enter(graph_module_of(h))` before reporting, and the
+register suppresses a diagnostic whose module is not the scope's target — put
+there after lib prose reached a user's stderr, as its own comment records.
+Nobody compiling their file wants the prelude's prose warnings.
+**THE TRAP IS THAT THE MAINTAINER HAS NO UNSUPPRESSED VIEW, AND THE ONE
+UNSUPPRESSED COMPILE HAS NO MODULES.** `tools/verify.sh` greps
+`.build/m2cache/m2.err`, and `.build/m2cache/wheel.mn` is the whole wheel
+CONCATENATED INTO ONE FILE — 255 `import` lines inside a single module. One
+module means `graph_module_of` is uniform and every name is local, so a
+cross-module reference problem is UNCONSTRUCTIBLE there. `comment-refs: 0` was
+not a measurement that happened to read zero; it was a measurement that could
+not read anything else. The per-module 57 is the same fact from the other side:
+checking module X makes X the entry, and X's link contains only what X imports.
+SO THE REMAINING BUILD IS A SPLIT, and it is the Carried-Truth shape rather
+than a second walk: `crc_walk` already computes the misses as `[(handle, name)]`
+before `crc_judge_dollars` filters and reports them. Lift that list to a pure
+projection with no reporting; the user verb stays its scoped consumer, and the
+maintainer's read — a `census_sites`-shaped bound in `src/board.mn`, which
+`mentl verify` already renders WITH located sites — takes the whole list
+unsuppressed. One computation, two readers at two scopes, which is what the
+register was reaching for when it reached for suppression instead.
+THE FIRST READING WAS NOT WASTED and is kept because it is true and now
+LANDED: resolution was flattened as well, and a decl hit in `cdix` answered
+"this name exists somewhere in the link" where SYNTAX asks whether an EDGE
+exists. `module_reaches` is homed in graph.mn (the DAG bottom, beside
+`module_path_of_span`, for the reason that comment already gives) and the hit
+test asks it. It was invisible in measurement only because the suppression sits
+in front of it — correct, and masked.
+
 THE BUILD IS NOT "RUN THE CHECK PER-MODULE" — that is 20 compiles to answer a
 question ONE pass already has the facts for, which is the re-derivation this
 entry convicts, re-committed at the gate layer. `comment_refs_check` takes the

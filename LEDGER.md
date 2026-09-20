@@ -35,6 +35,59 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-20 · pin 9b6b5a7c6373050c (CLEAN m2 == m3) · IMPORT REACHABILITY GETS
+  ONE HOME, AND THE PROBE THAT DROVE IT REFUTED THE LANDING'S OWN PREMISE.
+  `module_imports` — transitive, cycle-safe, reading live `ImportStmt` edges —
+  lived in `cursor.mn`, which imports `infer`, so the comment-reference gate
+  could not reach it. Resolution therefore fell back to the link's FLATTENED
+  env, where `smap_get(cdix, name)` answers *"this name exists somewhere in the
+  link"* while SYNTAX asks whether an EDGE exists. The family is homed in
+  `graph.mn` beside `module_path_of_span` — the DAG bottom, which is the reason
+  that comment already gives — with `module_reaches(from_h, target_h)` as the
+  handle-facing entry, because a node's module is stamped at its mint and both
+  sides arrive as handles. Per-module count 57 → 58: one more reference that
+  had resolved only through flattening.
+  **THE PREMISE WAS WRONG AND A TWO-MODULE FIXTURE SAID SO, mid-build.** This
+  entry's plan was "the scope is flattened, make resolution module-aware." The
+  probe: `leaf.mn` carries a comment naming a decl in the module that IMPORTS
+  it, plus a name that exists NOWHERE. Addressing `leaf.mn:3` — making leaf the
+  ENTRY — reports both. `check top.mn`, where leaf is merely imported, reports
+  NEITHER, and neither do `compile` or `verify`. **A name that exists nowhere
+  going unreported rules resolution out entirely**: the gate judges only the
+  entry module's comments.
+  The mechanism is deliberate and right for a user verb —
+  `graph_module_enter(graph_module_of(h))` before the report, and the register
+  suppresses a diagnostic whose module is not the target's, put there after lib
+  prose reached a user's stderr. **The trap is that the maintainer has no
+  unsuppressed view, and the one unsuppressed compile has no modules:**
+  `tools/verify.sh` greps `.build/m2cache/m2.err`, and `.build/m2cache/wheel.mn`
+  is the whole wheel CONCATENATED INTO ONE FILE — 255 `import` lines inside a
+  single module, where `graph_module_of` is uniform and a cross-module problem
+  is unconstructible. `comment-refs: 0` was not a measurement that read zero; it
+  was one that could not read anything else.
+  WHAT IS LANDED IS THE RESOLUTION HALF, and it is correct though currently
+  masked by that suppression — which is itself worth writing down, because a
+  fix whose effect is invisible in the measurement that motivated it is exactly
+  the shape that gets reverted by the next reader. WHAT IS BANKED is the
+  coverage half, and it is a SPLIT rather than a second walk: `crc_walk` already
+  computes the misses as `[(handle, name)]` before `crc_judge_dollars` filters
+  and reports them, so lifting that list to a pure projection gives the user
+  verb its scoped consumer and the maintainer a `census_sites`-shaped bound in
+  `src/board.mn` that `mentl verify` already renders with located sites. One
+  computation, two readers at two scopes — which is what the register reached
+  for when it reached for suppression instead.
+  AND THE EQ RATCHET CAUGHT THE LANDING, which is the gate earning its keep on
+  its author: `unprovable-comparison` rose 60 → 61, because the new fold's
+  `module_path_pick` left its handle a bare variable at emit, so `h == mh` fell
+  to a one-word compare — right for a handle by luck, an address lie by
+  construction. `mh: Int` is the Intent Boundary carrying the proof (the
+  sibling `module_handle_pick` annotates `path: String` for exactly this), and
+  the count went back to 60. PLAN §9's pointer-eq-on-names class, met in the
+  wild by the instrument built for it.
+  Board: crown / proof-exactness / effect-identity green, frontier 390/0/2,
+  census 0, micros 149/149. `Hβ.voice.comment-ref-gate-reads-the-flattened-link`
+  carries the whole record including the 57's three classes.
+
 - 2026-09-20 · pin 91f63a22cd1c6aec (CLEAN m2 == m3, sha unmoved — prose is
   graph content and does not reach the WAT) · THE COMMENT-REF GATE READS THE
   FLATTENED LINK, and the way it was found is the entry's point. Morgan:

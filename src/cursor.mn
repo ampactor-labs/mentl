@@ -400,68 +400,10 @@ fn transitive_dep(caret_span, target_span) with GraphRead + !Mutate + Memory + A
   if caret_mod == target_mod { false } else { module_imports(caret_mod, target_mod, []) }
 }
 
-// module_path_of_span lives in graph.mn (DAG-homed beside parse_span_of:
-// oracle reads it too, and both import graph).
+// module_path_of_span and the import-reachability family both live in
+// graph.mn (DAG-homed beside parse_span_of: oracle reads the first, the
+// comment-reference gate reads the second, and every reader imports graph).
 //
-// Does module `from` import `target` (transitively)? Reads the live
-// ImportStmt edges in `from`'s NModule decls; the `seen` accumulator
-// breaks import cycles. The module graph IS graph content — no side-ledger.
-fn module_imports(from, target, seen) with GraphRead + Alloc + Memory + !Mutate = if from == "" || contains_path(seen, from) {
-  false
-} else {
-  let direct = module_import_paths(from)
-  if contains_path(direct, target) { true } else { any_imports(direct, target, [from] ++ seen) }
-}
-
-fn any_imports(paths, target, seen) with GraphRead + Alloc + Memory + !Mutate = if len(paths) == 0 {
-  false
-} else if module_imports(last(paths), target, seen) {
-  true
-} else {
-  any_imports(drop_last(paths), target, seen)
-}
-
-// The direct import paths declared in module `path`'s NModule decls.
-fn module_import_paths(path) with GraphRead + !Mutate + Alloc + Memory = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => scan_module_imports(path, 0, next),
-  }
-}
-
-fn scan_module_imports(path, i, n) with GraphRead + !Mutate + Alloc + Memory = if i >= n {
-  []
-} else {
-  match graph_node_body(i) {
-    NModule(m) => if m.path == path { import_paths_of_decls(m.decls) } else { scan_module_imports(path, i + 1, n) },
-    _ => scan_module_imports(path, i + 1, n),
-  }
-}
-
-fn import_paths_of_decls(decls) with Alloc + Memory = decls |> filter_map_imports
-
-fn filter_map_imports(decls) with Alloc + Memory = if len(decls) == 0 {
-  []
-} else {
-  let head_imports = match node_body_of(last(decls)) {
-    NStmt(ImportStmt(p)) => [p],
-    _ => [],
-  }
-  head_imports ++ filter_map_imports(drop_last(decls))
-}
-
-fn node_body_of(node) with Pure = match node {
-  N(body, _, _) => body,
-}
-
-fn contains_path(paths, target) with Memory + Alloc = if len(paths) == 0 {
-  false
-} else if last(paths) == target {
-  true
-} else {
-  contains_path(drop_last(paths), target)
-}
-
 // ─── Argmax with default ────────────────────────────────────────────
 //
 // Per the cursor walkthrough §3: the no-candidates case is "fully annotated";
