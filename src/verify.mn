@@ -866,12 +866,8 @@ handler verify_smt with witnesses = [], debt = [] {
 // list, read live — the cursor's projection of what the solver established
 // and what it could not. (Surpasses Dafny/F*: the witness is a walkable Reason
 // edge, not a separate counterexample dump.)
-fn verify_residual(ref debt, ref witnesses) with Memory + Alloc = debt ++ map(
-  (w) => match w {
-    (modh, span, pred, model) => (modh, span, pred, VerifyWitness(model)),
-  },
-  witnesses
-)
+fn verify_residual(ref debt, ref witnesses) with Memory + Alloc =
+  debt ++ map({ (modh, span, pred, model) => (modh, span, pred, VerifyWitness(model)) }, witnesses)
 
 fn predicate_to_smt_lib(ref pred) with Memory + Alloc + GraphRead + Diagnostic + Intern =
   "(assert {predicate_to_smt(pred)})\n(check-sat)"

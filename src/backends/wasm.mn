@@ -446,19 +446,10 @@ fn string_bucket_scan(ref bucket, s: String, i) with Memory = if i >= len(bucket
 // references, never operated on) stay at the floor, which the word protocol
 // keeps correct; (3) the worthy candidates ARE the twin set, seeded into
 // spec_registry and emitted as the same records under the spec_pairs state.
-fn spec_find_rec(recs, target: String) with Memory + Alloc = find(
-  (r) => match r {
-    (n, _p, _b, _f) => n == target,
-  },
-  recs
-)
+fn spec_find_rec(recs, target: String) with Memory + Alloc =
+  find({ (n, _p, _b, _f) => n == target }, recs)
 
-fn spec_demand_named(ds, m: String) with Memory + Alloc = any(
-  (d) => match d {
-    (dm, _b, _p, _e) => dm == m,
-  },
-  ds
-)
+fn spec_demand_named(ds, m: String) with Memory + Alloc = any({ (dm, _b, _p, _e) => dm == m }, ds)
 
 // A site becomes a candidate when ANY quantified var lands wide — the exact
 // root-keyed substitution answers each var through its own pair (word-bound
@@ -677,7 +668,7 @@ fn spec_rec_name_seen(ref recs, ref m: String, i) with Memory = if i >= len(recs
 }
 
 fn spec_rec_names(spec_recs) -> [String] with Memory + Alloc = map(
-  (rp) => match rp {
+  {
     (rec2, _p, _e, _base) => match rec2 {
       (m, _ps, _b, _f) => m,
     },
@@ -831,13 +822,11 @@ fn emit_module(lowered) = {
   // the nested twin via the active enc, no body rewriting). Names derive from
   // the FULL rec set so nested twins ride the table/idx/closure surfaces.
   let spec_recs = flatten(map(
-    (d) => match d {
+    {
       (m, base, pairs, enc) => match spec_find_rec(fn_records, base) {
         Some(rec) => match rec {
           (_n, ps, body, f) => [((m, ps, body, f), pairs, enc, base)] ++ map(
-            (nr) => match nr {
-              (nn, nps, nbody, nf) => ((spec_mangle(nn, enc), nps, nbody, nf), pairs, enc, nn),
-            },
+            { (nn, nps, nbody, nf) => ((spec_mangle(nn, enc), nps, nbody, nf), pairs, enc, nn) },
             collect_fn_emit_records(body)
           ),
         },
@@ -869,12 +858,7 @@ fn emit_module(lowered) = {
   // the symbol's face", with no second rule about what absence means for
   // every reader to learn.
   graph_sigs_publish(emit_sig_pairs_base(fn_records) ++ emit_sig_pairs_spec(spec_recs))
-  let wide_fn_names = sig_wide_names(map(
-    (r) => match r {
-      (nm, _, _, _) => nm,
-    },
-    fn_records
-  ))
+  let wide_fn_names = sig_wide_names(map({ (nm, _, _, _) => nm }, fn_records))
   let spec_wide = sig_wide_names(spec_names)
   // The fold-leaf collection — the base tree once, then each twin's body
   // under its own bracket, so a twin's show/hash on substituted types
@@ -958,7 +942,7 @@ fn emit_module(lowered) = {
       // $wf$ word-face wrapper under the same install (its table slot speaks the
       // word-arity face like every other wide fn).
       each(
-        (rp) => match rp {
+        {
           (rec2, pairs, enc, _base) => {
             // The twin's emission is a region too: pairs/enc live OUTSIDE the
             // mark (allocated with spec_recs above), the registry commit stores
@@ -1152,7 +1136,7 @@ handler string_literal_collector with buf = make_list(16), count = 0, next_offse
 // along without joining the key; a site walked twice (a twin's second
 // emission) registers once, with the depth its own node carries.
 handler state_slots_collector with buf = make_list(8), count = 0 {
-  visit_state_slot(slot, depth) => if any(((s, _)) => s == slot, slice(buf, 0, count)) {
+  visit_state_slot(slot, depth) => if any({ (s, _) => s == slot }, slice(buf, 0, count)) {
     resume()
   } else {
     let extended = list_extend_to(buf, count + 1)
@@ -1444,9 +1428,11 @@ fn walk_lemit_expr(expr) = match expr {
     // both through the same channels (the one decider multishot_ops_of;
     // its emit twin reads it identically).
     each(
-      ((op, _)) => {
-        visit_yield()
-        visit_string(op)
+      {
+        (op, _) => {
+          visit_yield()
+          visit_string(op)
+        },
       },
       multishot_ops_of(hname)
     )
@@ -1502,7 +1488,7 @@ fn walk_lemit_list_loop(exprs, i) = if i >= len(exprs) {
 // structural — nothing to collect. The let-IS-match dissolution routes
 // destructure-let bodies through arms, so this descent is load-bearing.
 fn walk_lemit_arms(arms) = each(
-  (arm) => match arm {
+  {
     (pat, body) => {
       walk_lemit_pat(pat)
       walk_lemit_expr(body)
@@ -1523,19 +1509,9 @@ fn walk_lemit_pat(pat) = match pat {
   LPLit(LString(s)) => visit_string(s),
   LPLit(_) => (),
   LPCon(_, _, pairs) => each(walk_lemit_pat, pat_of_pairs(pairs)),
-  LPTuple(elems) => each(
-    (e) => match e {
-      (_, sp) => walk_lemit_pat(sp),
-    },
-    elems
-  ),
+  LPTuple(elems) => each({ (_, sp) => walk_lemit_pat(sp) }, elems),
   LPList(prefix, _, _) => each(walk_lemit_pat, prefix),
-  LPRecord(fs, _) => each(
-    (f) => match f {
-      (_, _, sp) => walk_lemit_pat(sp),
-    },
-    fs
-  ),
+  LPRecord(fs, _) => each({ (_, _, sp) => walk_lemit_pat(sp) }, fs),
   LPAlt(branches) => each(walk_lemit_pat, branches),
   LPAs(_, inner) => walk_lemit_pat(inner),
   _ => (),
@@ -1584,7 +1560,7 @@ fn emit_delay_shift(line) = {
 // slots inited to 0.0 while an integer IIR stays "i32". Carried-Truth: the
 // graph proved the feedback's type; the emit reads it, never fabricates.
 fn state_slot_globals(slots) = flat_map(
-  ((h, depth)) => map((name) => (name, repr_wat(repr_of(lookup_ty(h)))), delay_slot_names(h, depth)),
+  { (h, depth) => map((name) => (name, repr_wat(repr_of(lookup_ty(h)))), delay_slot_names(h, depth)) },
   slots
 )
 
@@ -1593,14 +1569,16 @@ fn state_slot_globals(slots) = flat_map(
 // depth-N line means its first N ticks read zeros. v1 single-threaded
 // scope; LF.M migrates to per-handler-state offsets.
 fn emit_state_globals(slots) = each(
-  ((name, rw)) => {
-    wat_emit("  (global $")
-    wat_emit(name)
-    wat_emit(" (mut ")
-    wat_emit(rw)
-    wat_emit(") (")
-    wat_emit(rw)
-    wat_emit(".const 0))\n")
+  {
+    (name, rw) => {
+      wat_emit("  (global $")
+      wat_emit(name)
+      wat_emit(" (mut ")
+      wat_emit(rw)
+      wat_emit(") (")
+      wat_emit(rw)
+      wat_emit(".const 0))\n")
+    },
   },
   state_slot_globals(slots)
 )
@@ -1673,7 +1651,7 @@ fn emit_redrive_fns(emitted_names) with WasmOut + EnvRead + Memory + Alloc + Str
   // the redrive iff its arm fns are in the emitted set.
   let live = filter(
     (hname) => all(
-      ((op, _arity)) => name_seen_at(emitted_names, arm_fn_name(hname, op), 0, len(emitted_names)),
+      { (op, _arity) => name_seen_at(emitted_names, arm_fn_name(hname, op), 0, len(emitted_names)) },
       multishot_ops_of(hname)
     ),
     hnames
@@ -1711,27 +1689,29 @@ fn emit_one_redrive(hname) = {
   wat_emit("    (block $rdone (loop $rdrive\n")
   wat_emit("      (global.get $yield_flag)(i32.eqz)(br_if $rdone)\n")
   each(
-    ((op, arity)) => {
-      wat_emit("      (global.get $yield_op)(i32.const ")
-      wat_emit(int_to_str(string_offset(op)))
-      wat_emit(")(i32.eq)\n")
-      wat_emit("      (if (then\n")
-      wat_emit("        (i32.const 0)(global.set $yield_flag)\n")
-      wat_emit("        (global.get $yield_k)(local.set $k)\n")
-      // The arm's record is the driver's OWN $__state — both callers already
-      // pass it (the install boundary passes its bracket's record; an arm's
-      // flag-check passes its own __state). The old global re-read was the
-      // Carried-Truth re-derivation of a value in hand.
-      wat_emit("        (local.get $__state)(local.get $k)\n")
-      emit_driver_arg_loads(arity, 0)
-      wat_emit("        (call $op_")
-      wat_emit(hname)
-      wat_emit("_")
-      wat_emit(op)
-      wat_emit(")\n")
-      wat_emit("        (local.set $acc)\n")
-      wat_emit("        (br $rdrive)\n")
-      wat_emit("      ))\n")
+    {
+      (op, arity) => {
+        wat_emit("      (global.get $yield_op)(i32.const ")
+        wat_emit(int_to_str(string_offset(op)))
+        wat_emit(")(i32.eq)\n")
+        wat_emit("      (if (then\n")
+        wat_emit("        (i32.const 0)(global.set $yield_flag)\n")
+        wat_emit("        (global.get $yield_k)(local.set $k)\n")
+        // The arm's record is the driver's OWN $__state — both callers already
+        // pass it (the install boundary passes its bracket's record; an arm's
+        // flag-check passes its own __state). The old global re-read was the
+        // Carried-Truth re-derivation of a value in hand.
+        wat_emit("        (local.get $__state)(local.get $k)\n")
+        emit_driver_arg_loads(arity, 0)
+        wat_emit("        (call $op_")
+        wat_emit(hname)
+        wat_emit("_")
+        wat_emit(op)
+        wat_emit(")\n")
+        wat_emit("        (local.set $acc)\n")
+        wat_emit("        (br $rdrive)\n")
+        wat_emit("      ))\n")
+      },
     },
     multishot_ops_of(hname)
   )
@@ -1816,7 +1796,7 @@ fn emit_k_compose_pair() with WasmOut = {
 // stride 1 (the carrier). tag_word = pack_tag(0, 1): the flat tag (0) with the
 // byte stride-code (1). The bytes now begin at +8, not +4.
 fn emit_string_data(entries) = each(
-  (entry) => match entry {
+  {
     (s, offset) => {
       wat_emit("  (data (i32.const ")
       wat_emit(int_to_str(offset))
@@ -1856,7 +1836,7 @@ fn extract_top_fn_name(stmt) with Pure = match stmt {
 // (global $<name>) declaration and an init-before-main write ($__init_lets).
 // ONE projection over lowered's direct children feeds both consumers
 // (declaration + init) — never two walks of one tree.
-fn collect_top_value_lets(stmts) = stmts |> map((stmt) => match stmt {
+fn collect_top_value_lets(stmts) = stmts |> map({
   LLet(_, _, LMakeClosure(_, _, _)) => [],
   LLet(_, _, LMakeContinuation(_, _, _, _, _)) => [],
   LLet(_, name, init) => [(name, init)],
@@ -2034,7 +2014,7 @@ fn emit_fn_refs(names, wide_names) = each(
 // `(global.get $<name>_idx)` to get the i32 table index — no list
 // lookup needed at emit time. One global per top-level function.
 fn emit_fn_index_globals(names, base_idx) = each(
-  (indexed) => match indexed {
+  {
     (i, name) => {
       wat_emit("  (global $")
       wat_emit(name)
@@ -2083,10 +2063,12 @@ fn emit_fn_index_globals(names, base_idx) = each(
 // half (VarRef → LGlobal → `(global.get $<name>)`) always existed. One
 // mutable global per top-level value let, zero-initialized; $__init_lets
 // writes the real value before main runs.
-fn emit_top_let_globals(value_lets) = value_lets |> each(((name, _)) => {
-  wat_emit("  (global $")
-  wat_emit(name)
-  wat_emit(" (mut i32) (i32.const 0))\n")
+fn emit_top_let_globals(value_lets) = value_lets |> each({
+  (name, _) => {
+    wat_emit("  (global $")
+    wat_emit(name)
+    wat_emit(" (mut i32) (i32.const 0))\n")
+  },
 })
 
 // ─── The rooted-image persist substrate (§4④: persist = memcpy) ─────
@@ -2146,13 +2128,13 @@ fn image_global_slots(state_slots, value_lets, yield_seen) = {
   } else {
     []
   }
-  [("heap_ptr", "i32"), ("arena_ptr", "i32"), ("world_g", "i32"), ("tid_g", "i32")] ++ yq ++ state_slot_globals(state_slots) ++ map(((name, _)) => (name, "i32"), value_lets)
+  [("heap_ptr", "i32"), ("arena_ptr", "i32"), ("world_g", "i32"), ("tid_g", "i32")] ++ yq ++ state_slot_globals(state_slots) ++ map({ (name, _) => (name, "i32") }, value_lets)
 }
 
 fn emit_globals_pair(slots) = {
   wat_emit("  (func $globals_save (param $dst i32)\n")
   each(
-    (iv) => match iv {
+    {
       (i, sl) => match sl {
         (name, rw) => {
           wat_emit("    (")
@@ -2170,7 +2152,7 @@ fn emit_globals_pair(slots) = {
   wat_emit("  )\n")
   wat_emit("  (func $globals_restore (param $src i32)\n")
   each(
-    (iv) => match iv {
+    {
       (i, sl) => match sl {
         (name, rw) => {
           wat_emit("    (global.set $")
@@ -2242,7 +2224,7 @@ fn emit_init_lets(value_lets) = if len(value_lets) > 0 {
   wat_emit(" (local $callee_closure i32)")
   wat_emit(" (local $alloc_size i32)")
   wat_emit(" (local $loop_i i32)")
-  emit_named_locals(walk_locals_list(map(((_, init)) => init, value_lets), []), [])
+  emit_named_locals(walk_locals_list(map({ (_, init) => init }, value_lets), []), [])
   wat_emit("\n")
   wat_emit(emit_init_lets_body(value_lets))
   wat_emit("    (i32.const 0)\n  )\n")
@@ -2268,7 +2250,7 @@ fn emit_init_lets_loop(ref value_lets, i, n) = if i >= n {
 }
 
 fn emit_static_top_closures(top_names, all_names, base_slot) = each(
-  (indexed) => match indexed {
+  {
     (i, name) => {
       let fn_idx = fn_table_idx(all_names, name)
       let addr = heap_base() + (base_slot + i) * 8
@@ -2879,7 +2861,7 @@ fn emit_wide_wrapper(record) = match record {
       wat_emit(name)
       wat_emit(" (param $__state i32)")
       each(
-        (indexed) => match indexed {
+        {
           (i, _) => {
             wat_emit(" (param $wp")
             wat_emit(int_to_str(i))
@@ -2891,7 +2873,7 @@ fn emit_wide_wrapper(record) = match record {
       wat_emit(" (result i32) (local $wf_f64 f64) (local $wf_cell i32)\n")
       wat_emit("    (local.get $__state)\n")
       each(
-        (indexed) => match indexed {
+        {
           (i, _p) => {
             wat_emit("    (local.get $wp")
             wat_emit(int_to_str(i))
@@ -3176,16 +3158,23 @@ fn walk_locals_expr(expr, acc) = match expr {
     let r = llet_repr(h, inner)
     walk_locals_expr(inner, [local_wat_name(name, r) ++ " " ++ repr_wat(r)] ++ acc)
   },
-  LMakeClosure(_, _, captures) => // The FN body is a boundary (its locals are its own) — but the CAPTURES
+  LMakeClosure(h, _, captures) => // The FN body is a boundary (its locals are its own) — but the CAPTURES
   // evaluate in the ENCLOSING frame at the mint (a partial's supplied arg
   // may be a call minting a result local here). Lambda captures are bare
   // LLocal/LUpval reads contributing no locals, so walking them is
   // byte-identical for the existing paths.
-  walk_locals_list(captures, acc),
-  LMakeContinuation(_, _, _, _, _) => // resume_fn boundary — its locals are its own (H7)
+  //
+  // `mkclo_local(h)` is the record pointer's own slot, declared here and
+  // read at the emit. The sentence above says the captures "contribute no
+  // locals", and that WAS the whole bug: a capture which is itself a
+  // closure contributes the most important one — a place to keep the outer
+  // record while the inner is built.
+  [mkclo_local(h) ++ " i32"] ++ walk_locals_list(captures, acc),
+  LMakeContinuation(h, _, captures, _, _) => // resume_fn boundary — its locals are its own (H7)
   // The resume invocation: its two bracket locals + whatever the delegated
-  // LCall shape mints (staging locals) — mirror-true to the emit arm.
-  acc,
+  // LCall shape mints (staging locals) — mirror-true to the emit arm, which
+  // means its record slot too: the head IS the closure head.
+  [mkclo_local(h) ++ " i32"] ++ walk_locals_list(captures, acc),
   LResumeK(h, k, v) => walk_locals_expr(
     LCall(h, k, [v]),
     ["__rk_wprev_{int_to_str(h)} i32"] ++ (["__rk_val_{int_to_str(h)} i32"] ++ acc)
@@ -3527,7 +3516,7 @@ fn tail_expr_repr(expr) = match expr {
 // the header and the call sites cannot differ — there is one vector and both
 // read it (the deciding lives in emitted_sig_of_record, once).
 fn emit_params(names, preprs) = each(
-  (indexed) => match indexed {
+  {
     (i, name) => {
       // `_` is not a name — it is the absence of one. A wildcard param binds
       // nothing and is never referenced, so it gets a UNIQUE WAT identifier
@@ -3717,7 +3706,7 @@ fn emit_wasi_thread_start(has_lets) = {
 // - 9 deferred-by-omission: closes #145 in this commit alongside the
 //   lower-side threading.
 fn emit_state_init_writes(state_local, inits, base_idx) = each(
-  (indexed) => match indexed {
+  {
     (i, init) => {
       wat_emit("(local.get $")
       wat_emit(state_local)
@@ -3901,7 +3890,7 @@ fn emit_expr(expr) = match expr {
         wat_emit(cname2)
         wat_emit(")\n")
         each(
-          (indexed) => match indexed {
+          {
             (i, a) => {
               emit_expr(a)
               let declared = list_index(param_reprs, i)
@@ -4024,16 +4013,28 @@ fn emit_expr(expr) = match expr {
     // this site.
     let nc = len(captures_exprs)
     let size = 8 + 4 * nc
-    emit_alloc(size, "state_tmp")
+    // THE RECORD POINTER PARKS IN A PER-HANDLE LOCAL, never the shared
+    // `$state_tmp`, and the reason was measured rather than foreseen: a
+    // capture that is ITSELF a closure re-enters this very arm and
+    // overwrites the scratch, so the outer mint's closing read handed back
+    // the INNER record. `fn f(p, x) = p(x) + 1` with
+    // `let g = f((n) => n * 2)` answered `g(4) == 8` — `p(4)`, the capture
+    // called in the callee's place — at exit 0 with ZERO diagnostics,
+    // because `g` WAS the lambda. `LCall` already carries this exact fix
+    // one arm over (`$call_<h>`, Hβ.emit.lcall-per-handle-state-scratch);
+    // the mint is the same class, and a second site of one shape is the
+    // census law's stop.
+    let rec_local = mkclo_local(h)
+    emit_alloc(size, rec_local)
     // Store the table index at offset 0 (the nested twin's index when the
     // active bracket names one — spec_closure_name).
-    wat_emit("    (local.get $state_tmp)\n")
+    wat_emit("    (local.get ${rec_local})\n")
     wat_emit("    (global.get $")
     wat_emit(spec_closure_name(fn_name))
     wat_emit("_idx)\n")
     wat_emit("    (i32.store offset=0)\n")
     // Store capture count at offset 4 — the fence.
-    wat_emit("    (local.get $state_tmp)\n")
+    wat_emit("    (local.get ${rec_local})\n")
     wat_emit("    (i32.const ")
     wat_emit(int_to_str(nc))
     wat_emit(") (i32.store offset=4)\n")
@@ -4053,15 +4054,15 @@ fn emit_expr(expr) = match expr {
       selfnm => {
         wat_emit("    (local.set $")
         wat_emit(local_wat_name(selfnm, RI32))
-        wat_emit(" (local.get $state_tmp))\n")
+        wat_emit(" (local.get ${rec_local}))\n")
       },
     }
     // Store each capture at offset 8 + 4*i.
-    emit_capture_stores(captures_exprs, 0)
+    emit_capture_stores(captures_exprs, 0, rec_local)
     // Result: closure pointer on stack.
-    wat_emit("    (local.get $state_tmp)\n")
+    wat_emit("    (local.get ${rec_local})\n")
   },
-  LMakeContinuation(_h, LFn(resume_fn_name, _arity, _param_names, _body, _row, _fence), captures_exprs, state_idx, ret_slot) => {
+  LMakeContinuation(h, LFn(resume_fn_name, _arity, _param_names, _body, _row, _fence), captures_exprs, state_idx, ret_slot) => {
     // H7 — the multi-shot continuation record, CLOSURE-IDENTICAL HEAD
     // (band B k1): the k is CALLED through the same W7 convention every
     // closure takes (park as __state, LUpval reads captures at 8+4*i), so
@@ -4088,41 +4089,45 @@ fn emit_expr(expr) = match expr {
     let nc = len(captures_exprs)
     // head (8) + captures + [state_idx, ret, world].
     let size = 8 + 4 * nc + 12
-    emit_alloc(size, "state_tmp")
+    // Per-handle, for the reason the closure arm above measured: the head
+    // IS the closure head, so it inherits the clobber too — a continuation
+    // capturing a closure would return the capture.
+    let rec_local = mkclo_local(h)
+    emit_alloc(size, rec_local)
     // table index at 0 — the closure head (twin-redirected under a bracket).
-    wat_emit("    (local.get $state_tmp)\n")
+    wat_emit("    (local.get ${rec_local})\n")
     wat_emit("    (global.get $")
     wat_emit(spec_closure_name(resume_fn_name))
     wat_emit("_idx)\n")
     wat_emit("    (i32.store offset=0)\n")
     // capture count at 4 — the SAME slot every closure carries.
-    wat_emit("    (local.get $state_tmp)\n")
+    wat_emit("    (local.get ${rec_local})\n")
     wat_emit("    (i32.const ")
     wat_emit(int_to_str(nc))
     wat_emit(") (i32.store offset=4)\n")
     // captures at 8 + 4*i — where LUpval reads (base_i 0 = offset 8).
-    emit_capture_stores(captures_exprs, 0)
+    emit_capture_stores(captures_exprs, 0, rec_local)
     // The metadata tail.
     let state_idx_offset = 8 + 4 * nc
-    wat_emit("    (local.get $state_tmp)\n")
+    wat_emit("    (local.get ${rec_local})\n")
     wat_emit("    (i32.const ")
     wat_emit(int_to_str(state_idx))
     wat_emit(") (i32.store offset=")
     wat_emit(int_to_str(state_idx_offset))
     wat_emit(")\n")
-    wat_emit("    (local.get $state_tmp)\n")
+    wat_emit("    (local.get ${rec_local})\n")
     wat_emit("    (i32.const ")
     wat_emit(int_to_str(ret_slot))
     wat_emit(") (i32.store offset=")
     wat_emit(int_to_str(state_idx_offset + 4))
     wat_emit(")\n")
-    wat_emit("    (local.get $state_tmp)\n")
+    wat_emit("    (local.get ${rec_local})\n")
     wat_emit("    (global.get $world_g)\n")
     wat_emit("    (i32.store offset=")
     wat_emit(int_to_str(state_idx_offset + 8))
     wat_emit(")\n")
     // Result: continuation pointer on stack.
-    wat_emit("    (local.get $state_tmp)\n")
+    wat_emit("    (local.get ${rec_local})\n")
   },
   LYield(h, op_name, args, k_expr) => // band B k1/M1.4 — the MultiShot unwind. The REAL form (k = the reified
   // remainder record): park k in $yield_k, the op's args (if any) as the
@@ -6917,10 +6922,16 @@ fn emit_unaryop_for(h, op) = match op {
 
 // Emit the stores for each capture in the closure record.
 // Captures are indexed from 0; each stored at offset 8 + 4*i.
-fn emit_capture_stores(captures, base_i) = each(
-  (indexed) => match indexed {
+// The per-handle local a record mint parks its pointer in — one home, so
+// the emit and `walk_locals_expr`'s declaration cannot name it differently
+// (which is a wat_asm error rather than a silent wrong, but only because
+// the assembler is outside the medium).
+fn mkclo_local(h) = "mkclo_{int_to_str(h)}"
+
+fn emit_capture_stores(captures, base_i, rec_local: String) = each(
+  {
     (i, capture) => {
-      wat_emit("    (local.get $state_tmp)\n")
+      wat_emit("    (local.get ${rec_local})\n")
       emit_expr(capture)
       // A wide capture crosses into the word-slot record by reference (§5.U):
       // the slot stores the address of its spilled bytes; LUpval derefs.
@@ -7864,7 +7875,7 @@ fn literal_stride_class(h) = match fold_strip(lookup_ty(h)) {
 }
 
 fn emit_list_stores(elems, base_idx) = each(
-  (indexed) => match indexed {
+  {
     (i, elem) => {
       wat_emit("    (local.set $callee_closure)\n")
       wat_emit("    (local.get $__state)\n")

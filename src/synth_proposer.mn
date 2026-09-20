@@ -424,9 +424,8 @@ fn context_target_ty(context) with GraphRead + Memory + Alloc = match context_ho
 // vocabulary plus the shape enumerators). The ORDER is the only thing
 // rank decides; a constraint-tie still teaches (the render's collapse
 // line is unchanged — rank is a prior, never a guess).
-fn rank_sort(hole_span, cands) with GraphRead + EnvRead + !Mutate + Memory + Alloc = cands |> map((c) => (rank_of(c, hole_span), c)) |> fold([], rank_insert) |> map((rc) => match rc {
-  (_, c) => c,
-})
+fn rank_sort(hole_span, cands) with GraphRead + EnvRead + !Mutate + Memory + Alloc =
+  cands |> map((c) => (rank_of(c, hole_span), c)) |> fold([], rank_insert) |> map({ (_, c) => c })
 
 fn rank_insert(sorted, rc) with Memory + Alloc = match sorted {
   [] => [rc],
@@ -1017,12 +1016,8 @@ fn node_span(node) with Pure = match node {
 //    in the candidate record — the node's own GNode reason is only its
 //    mint-span record — so dropping the pair dropped the Why from every
 //    rendered survivor.
-fn map_to_proposals(enriched) with Alloc + Memory = map(
-  (candidate) => match candidate {
-    EnrichedCandidate(c) => (c.node, c.reason),
-  },
-  enriched
-)
+fn map_to_proposals(enriched) with Alloc + Memory =
+  map({ EnrichedCandidate(c) => (c.node, c.reason) }, enriched)
 
 // ─── The verdict — computed ONCE, where the survivors are known ──────
 //
@@ -1273,12 +1268,8 @@ fn synth_holes_loop(i, n, buf) with Memory + Alloc + GraphWrite = if i >= n {
 // A record literal's carrier is the parser's (name, value) pair list —
 // bare holes lost the names (the converged judge's catch); each demanded
 // field keeps its name with a hole as its value.
-fn synth_record_holes_for(fields) with Memory + Alloc + GraphWrite = map(
-  (f) => match f {
-    (fname, _) => (fname, synth_hole_node()),
-  },
-  fields
-)
+fn synth_record_holes_for(fields) with Memory + Alloc + GraphWrite =
+  map({ (fname, _) => (fname, synth_hole_node()) }, fields)
 
 // ─── Composition with cursor_default + delta_default ────────────────
 //

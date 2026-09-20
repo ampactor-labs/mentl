@@ -242,14 +242,8 @@ fn inf_add_row_unified(row) = {
     match row {
       EfRow(np, _, _) => match inf_current_row() {
         EfRow(cp, _, _) => each(
-          (e) => match e {
-            EParameterized(n, args_b) => match find(
-              (c) => match c {
-                EParameterized(cn, _) => cn == n,
-                _ => false,
-              },
-              cp
-            ) {
+          {
+            EParameterized(n, args_b) => match find({ EParameterized(cn, _) => cn == n, _ => false }, cp) {
               Some(EParameterized(_, args_a)) => // Row-side args are EffArg (EAType-wrapped) — unwrap to the Ty
               // lists unify_instance_args joins; feeding the wrappers minted
               // garbage nodes and joined those instead of the elements.
@@ -1950,7 +1944,7 @@ fn infer_stmt(ref node) = match node {
 // bind them in env, enter `InferCtx` for row accumulation, infer body,
 // exit (which binds the row), generalize, re-extend env with scheme.
 fn held_has_poly(held, name: String) = any(
-  (p) => match p {
+  {
     (d, _, _) => match d {
       TPolyRecursionSignature(owner, _) => owner == name,
       _ => false,
@@ -1959,12 +1953,7 @@ fn held_has_poly(held, name: String) = any(
   held
 )
 
-fn held_has_error(held) = any(
-  (p) => match p {
-    (d, _, _) => diag_severity(d) == SError,
-  },
-  held
-)
+fn held_has_error(held) = any({ (d, _, _) => diag_severity(d) == SError }, held)
 
 fn replay_one(p) = match p {
   (d, line, dmod) => diag_report(d, line, dmod),
@@ -2181,15 +2170,7 @@ fn rebind_recheck(name: String, q, ty0, span: ValidSpan) = {
   }
   env_extend(
     name,
-    Frozen(
-      map(
-        (pr) => match pr {
-          (_, fresh) => fresh,
-        },
-        mapping
-      ),
-      ty2
-    ),
+    Frozen(map({ (_, fresh) => fresh }, mapping), ty2),
     Located(span, Declared(name)),
     FnScheme
   )
@@ -2953,7 +2934,7 @@ fn call_is_alloc_returning(func) = match func {
 // flow (the modal frontier's admit-through-instantiation face) and
 // pass this ground check.
 fn check_instance_args(effs, span: ValidSpan) = each(
-  (eff) => match eff {
+  {
     (ename, _negated, _conn) => match ename {
       EParameterized(h, args) => match env_lookup(intern_name_of(h)) {
         Some(entry) => match entry {
@@ -4070,12 +4051,14 @@ fn row_cap_form(row) with GraphRead + Memory + Alloc + WASI = match chase_row_de
 
 fn fn_arg_component_meet(aps, pps, aret, pret, span: ValidSpan) = {
   each(
-    ((ap, pp)) => unify_types(
-      param_ty(ap),
-      param_ty(pp),
-      span,
-      Inferred("a fn argument's param meets the declared param")
-    ),
+    {
+      (ap, pp) => unify_types(
+        param_ty(ap),
+        param_ty(pp),
+        span,
+        Inferred("a fn argument's param meets the declared param")
+      ),
+    },
     zip(aps, pps)
   )
   unify_types(aret, pret, span, Inferred("a fn argument's return meets the declared return"))
@@ -4446,7 +4429,7 @@ fn residual_with_config_args(resid_h, config, right) = match right {
 }
 
 fn any_arg_labeled(ref args) = any(
-  (a) => match a {
+  {
     N(abody, _, _) => match abody {
       NExpr(LabeledArg(_, _)) => true,
       _ => false,
@@ -4574,13 +4557,7 @@ fn handler_payload_ty(ty) = match ty {
 
 // The type args of a parameterized effect's payload (EAType only; a scalar
 // effect arg like Sample(44100) carries no type).
-fn eparam_arg_tys(args) = flatten(map(
-  (arg) => match arg {
-    EAType(t) => [t],
-    _ => [],
-  },
-  args
-))
+fn eparam_arg_tys(args) = flatten(map({ EAType(t) => [t], _ => [] }, args))
 
 // EVERY performed instance of effect `ename` in a row, each as the nominal type
 // `TName(E, [a1..an])` (so unify walks it position-wise). A multi-payload effect
@@ -4595,7 +4572,7 @@ fn instances_in_row(row, ename) = match row {
 fn instances_in_names(names, ename: String) = {
   let enh = intern_str(ename)
   list_to_flat(flatten(map(
-    (n) => match n {
+    {
       EParameterized(nm, args) => if nm == enh { [TName(ename, eparam_arg_tys(args))] } else { [] },
       ENamed(_) => [],
       EPure => // EffName is ENamed | EParameterized | EPure — TOTAL. EPure carries no
@@ -5657,7 +5634,7 @@ fn infer_record_field_values(fields) = if len(fields) == 0 {
 }
 
 fn build_record_field_types(fields) = map(
-  (fld) => match fld {
+  {
     (name, value) => match value {
       N(_, _, vh) => (name, TVar(vh)),
     },
@@ -5694,18 +5671,13 @@ fn merge_override_fields(base_fields, overrides) = fold(
   overrides
 )
 
-fn reject_field(fields, target) = filter(
-  (f) => match f {
-    (n, _) => n != target,
-  },
-  fields
-)
+fn reject_field(fields, target) = filter({ (n, _) => n != target }, fields)
 
 // H4.1 projection — pull the value handles out of a record-field list
 // for region-join lookup. Field names aren't needed for region
 // tracking; only the per-value handles matter.
 fn record_field_handles(fields) = map(
-  (fld) => match fld {
+  {
     (_, value) => match value {
       N(_, _, vh) => vh,
     },
@@ -6175,13 +6147,8 @@ fn enforce_alt_binding_law(branch_binds, span: ValidSpan) = match branch_binds {
   [first, ...rest] => each(
     (bi) => if alt_same_name_set(first, bi) {
       each(
-        (p) => match p {
-          (n, ty_i) => match find(
-            (q) => match q {
-              (m, _) => m == n,
-            },
-            first
-          ) {
+        {
+          (n, ty_i) => match find({ (m, _) => m == n }, first) {
             Some(q0) => match q0 {
               (_, ty_0) => unify_types(ty_0, ty_i, span, Located(span, Inferred("alternation common type"))),
             },
@@ -6197,17 +6164,7 @@ fn enforce_alt_binding_law(branch_binds, span: ValidSpan) = match branch_binds {
   ),
 }
 
-fn alt_same_name_set(a, b) = len(a) == len(b) && all(
-  (p) => match p {
-    (n, _) => any(
-      (q) => match q {
-        (m, _) => m == n,
-      },
-      b
-    ),
-  },
-  a
-)
+fn alt_same_name_set(a, b) = len(a) == len(b) && all({ (n, _) => any({ (m, _) => m == n }, b) }, a)
 
 // pat_binders — the names a pattern binds (pure structural walk).
 // Wildcards and literals bind nothing; a PList rest name binds
@@ -6220,12 +6177,7 @@ fn pat_binders(ref pat) = match pat {
   PCon(_, subs) => flat_map(pat_binders, subs),
   PTuple(subs) => flat_map(pat_binders, subs),
   PList(subs, rest) => flatten([flat_map(pat_binders, subs), plist_rest_binders(rest)]),
-  PRecord(flds, rest) => flatten([flat_map(
-    (fld) => match fld {
-      (_, sub) => pat_binders(sub),
-    },
-    flds
-  ), plist_rest_binders(rest)]),
+  PRecord(flds, rest) => flatten([flat_map({ (_, sub) => pat_binders(sub) }, flds), plist_rest_binders(rest)]),
   PAlt(branches) => // Branch 0 carries the whole alternation's binder set (infer's law).
   // Read through len/list_index — total over every representation — so
   // this walk runs identically under a boot whose list-pattern emit
@@ -6240,7 +6192,7 @@ fn plist_rest_binders(rest) = match rest {
 }
 
 fn build_pat_record_field_specs(flds, span: ValidSpan) = map(
-  (fld) => match fld {
+  {
     (name, _) => {
       let h = mint(Inferred("record pattern field"))
       (name, TVar(h))
@@ -6250,7 +6202,7 @@ fn build_pat_record_field_specs(flds, span: ValidSpan) = map(
 )
 
 fn infer_pat_record_subs(flds, specs, span: ValidSpan) = each(
-  (pair) => match pair {
+  {
     ((_, sub_pat), (_, ty)) => match ty {
       TVar(h) => infer_pat(sub_pat, h, span),
       _ => (),
@@ -6303,7 +6255,7 @@ fn bind_pcon_subpats(params, sub_pats, span: ValidSpan, reason, ctor_name) = {
     report(EConstructorArity(ctor_name, len(params), len(sub_pats), span))
   }
   each(
-    (pair) => match pair {
+    {
       (param, sub_pat) => {
         let sub_h = mint(VarLookup(ctor_name, reason))
         graph_bind(sub_h, param_ty(param), Located(span, VarLookup(ctor_name, reason)))
@@ -6417,12 +6369,7 @@ fn arms_total_variants(arms) = if len(arms) == 0 {
 
 // Wildcard detection: PWild or PVar at the top level catches
 // everything the prior arms don't.
-fn arms_have_wildcard(arms) = any(
-  (arm) => match arm {
-    (pat, _body) => pat_has_wildcard(pat),
-  },
-  arms
-)
+fn arms_have_wildcard(arms) = any({ (pat, _body) => pat_has_wildcard(pat) }, arms)
 
 fn pat_has_wildcard(pat) = match pat {
   PWild => true,
@@ -6483,7 +6430,7 @@ fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, res
 fn bind_arm_args(args, params, op_name, span: ValidSpan) = {
   if len(args) != len(params) { report(EHandlerArmArity(op_name, len(params), len(args), span)) }
   each(
-    (pair) => match pair {
+    {
       (name, param) => {
         let h = mint(Located(span, LetBinding(name, Declared(op_name))))
         graph_bind(h, param_ty(param), Located(span, Declared(op_name)))
@@ -6523,7 +6470,7 @@ fn op_instance_ty(row) = match row {
 
 fn op_instance_in_names(names) = {
   let insts = flatten(map(
-    (n) => match n {
+    {
       EParameterized(nm, args) => [TName(intern_name_of(nm), eparam_arg_tys(args))],
       ENamed(_) => [],
       EPure => [],
@@ -6945,17 +6892,8 @@ fn chase_edges_deep(ref vs: [Int], acc, d) = match vs {
 }
 
 fn chase_eff_names(names, d) = map(
-  (e) => match e {
-    EParameterized(n, args) => EParameterized(
-      n,
-      map(
-        (ea) => match ea {
-          EAType(t2) => EAType(chase_deep_at(t2, d)),
-          other => other,
-        },
-        args
-      )
-    ),
+  {
+    EParameterized(n, args) => EParameterized(n, map({ EAType(t2) => EAType(chase_deep_at(t2, d)), other => other }, args)),
     other => other,
   },
   names
@@ -6965,12 +6903,7 @@ fn map_chase_ty(tys, d) = map((t) => chase_deep_at(t, d), tys)
 
 fn chase_params(params, d) = map((p) => param_with_ty(p, chase_deep_at(param_ty(p), d)), params)
 
-fn chase_fields(fields, d) = map(
-  (fld) => match fld {
-    (name, ty) => (name, chase_deep_at(ty, d)),
-  },
-  fields
-)
+fn chase_fields(fields, d) = map({ (name, ty) => (name, chase_deep_at(ty, d)) }, fields)
 
 // H6: exhaustive Ty enumeration. Scalars have no free handles;
 // aggregates recurse; TVar IS a free handle; TRecordOpen's row
@@ -7029,9 +6962,7 @@ fn free_in_list(tys) = tys |> map(free_in_ty) |> flatten
 
 fn free_in_params(params) = params |> map((p) => free_in_ty(param_ty(p))) |> flatten
 
-fn free_in_fields(fields) = fields |> map((fld) => match fld {
-  (_, ty) => free_in_ty(ty),
-}) |> flatten
+fn free_in_fields(fields) = fields |> map({ (_, ty) => free_in_ty(ty) }) |> flatten
 
 // A row's free variable is its open tail — the same first-class graph
 // node a type variable is. Effect-polymorphism IS value-polymorphism over
@@ -7081,7 +7012,7 @@ fn free_in_edges(ref vs: [Int]) = match vs {
 
 // The free type vars inside an effect-row's parameterized payloads
 // (Iterate(a) ⇒ a's free vars). Bare ENamed effects carry none.
-fn free_in_eff_names(names) = names |> map((n) => match n {
+fn free_in_eff_names(names) = names |> map({
   ENamed(_) => [],
   EPure => // the identity carries no free vars
   [],
@@ -7377,12 +7308,7 @@ fn subst_list(tys, mapping) = map((t) => subst_ty(t, mapping), tys)
 fn subst_params(params, mapping) =
   map((p) => param_with_ty(p, subst_ty(param_ty(p), mapping)), params)
 
-fn subst_fields(fields, mapping) = map(
-  (fld) => match fld {
-    (name, ty) => (name, subst_ty(ty, mapping)),
-  },
-  fields
-)
+fn subst_fields(fields, mapping) = map({ (name, ty) => (name, subst_ty(ty, mapping)) }, fields)
 
 // Substitution over the row domain — the open tail var is replaced by its
 // fresh instance from the same mapping subst_ty reads. Row handles and type
@@ -7486,14 +7412,12 @@ fn find_mapping_from(mapping, id, i, n) = if i >= n {
 
 // Registration — ADT constructors, effect ops, handlers
 fn mint_param_placeholders(params, owner_name) = map(
-  (indexed) => match indexed {
-    (idx, _) => mint(FnParam(owner_name, idx, Inferred("param of '{owner_name}'"))),
-  },
+  { (idx, _) => mint(FnParam(owner_name, idx, Inferred("param of '{owner_name}'"))) },
   enumerate(params)
 )
 
 fn mint_params(params, owner_name) = map(
-  (indexed) => match indexed {
+  {
     (idx, p) => {
       let name = param_name(p)
       let h = mint(FnParam(owner_name, idx, Inferred("param of '{owner_name}'")))
@@ -7621,12 +7545,7 @@ fn register_type_constructors(type_name, variants) = {
       // node-kind (is_row_handle). qhandles keeps ALL — params AND row vars — so
       // every ctor scheme quantifies (and instantiate freshens) the stored-function
       // rows.
-      let all_handles = map(
-        (pair) => match pair {
-          (_, h) => h,
-        },
-        qmap
-      )
+      let all_handles = map({ (_, h) => h }, qmap)
       let param_handles = filter((h) => !is_row_handle(h), all_handles)
       let result_ty = TName(type_name, map(TVar, param_handles))
       let qhandles = all_handles
@@ -7660,7 +7579,7 @@ fn register_type_constructors(type_name, variants) = {
           Frozen(qhandles, result_ty),
           Declared(type_name),
           TypeVariants(map(
-            (ix) => match ix {
+            {
               (tag_id, v) => match v {
                 (cn, _, _) => (tag_id, cn, list_index(converted, tag_id)),
               },
@@ -7670,7 +7589,7 @@ fn register_type_constructors(type_name, variants) = {
         )
       }
       each(
-        (indexed) => match indexed {
+        {
           (tag_id, variant) => register_one_variant(
             type_name,
             result_ty,
@@ -7900,12 +7819,8 @@ fn is_record_ty(ty) with Pure = match ty {
   _ => false,
 }
 
-fn build_ctor_params(field_types, base_idx) = map(
-  (indexed) => match indexed {
-    (i, ty) => mk_param("_{int_to_str(base_idx + i)}", ty),
-  },
-  enumerate(field_types)
-)
+fn build_ctor_params(field_types, base_idx) =
+  map({ (i, ty) => mk_param("_{int_to_str(base_idx + i)}", ty) }, enumerate(field_types))
 
 fn register_effect_ops(effect_name, params, ops) = {
   // Register the effect name itself with its op names.
@@ -7917,7 +7832,7 @@ fn register_effect_ops(effect_name, params, ops) = {
   // TTuple([Int])), the one home every authored `Sample(44100)`
   // instance judges its args against; a bare effect publishes the
   // empty tuple. The formerly-empty tuple here was a placeholder.
-  let op_names = map(((n, _, _, _)) => n, ops)
+  let op_names = map({ (n, _, _, _) => n }, ops)
   env_extend(
     effect_name,
     Frozen([], TTuple(map(param_ty, params))),
@@ -7991,9 +7906,8 @@ fn quantify_effect_ops_loop(ops, qmap, i) = if i >= len(ops) {
   }
 }
 
-fn effect_type_vars(ops) = ops |> map((op) => match op {
-  (_, ptys, rty, _) => flatten(map(free_in_ty, ptys)) ++ free_in_ty(rty),
-}) |> flatten
+fn effect_type_vars(ops) =
+  ops |> map({ (_, ptys, rty, _) => flatten(map(free_in_ty, ptys)) ++ free_in_ty(rty) }) |> flatten
 
 // VARIANCE at the op's result. A parameter's unannotated fn-type row is a
 // VAR on purpose — the effect-polymorphic flow channel `map`'s function
@@ -8425,7 +8339,7 @@ fn bind_handler_config_params(config_tparams, hname) = each(
 )
 
 fn bind_handler_state_names(state_binds, hname, span: ValidSpan) = each(
-  (p) => match p {
+  {
     (name, ih) => env_extend(name, Frozen([], TVar(ih)), Located(span, LetBinding(name, Declared(hname))), FnScheme),
   },
   state_binds
@@ -8509,15 +8423,7 @@ fn classify_fixpoint(stmts) = {
   // list_index(decls, i) would be O(N²) per round (§5.O: read a flat array O(1),
   // never re-walk a spine). Both decls and the entries are flat hereafter.
   let decls = list_to_flat(collect_fn_decls_list(stmts, []))
-  classify_rounds(
-    decls,
-    list_to_flat(map(
-      (nb) => match nb {
-        (n, _) => (n, UZero),
-      },
-      decls
-    ))
-  )
+  classify_rounds(decls, list_to_flat(map({ (n, _) => (n, UZero) }, decls)))
 }
 
 fn classify_rounds(decls, entries) = {
@@ -9089,7 +8995,7 @@ fn predicate_of_assert_arg(args) with Memory + Alloc =
 // TParam's fifth slot, read by resolve_call_args at every install that
 // omits the field (SYNTAX §«Default parameter values»).
 fn mint_handler_config_tparams(config, hname, base_idx) = map(
-  (indexed) => match indexed {
+  {
     (i, p) => {
       let idx = base_idx + i
       let h = mint(FnParam(hname, idx, Inferred("config-param of '{hname}'")))
@@ -9102,26 +9008,12 @@ fn mint_handler_config_tparams(config, hname, base_idx) = map(
 // Utilities
 fn infer_expr_list(ref nodes) = each(infer_expr, nodes)
 
-fn collect_handles(ref nodes) = map(
-  (node) => match node {
-    N(_, _, h) => h,
-  },
-  nodes
-)
+fn collect_handles(ref nodes) = map({ N(_, _, h) => h }, nodes)
 
-fn collect_tvar_types(ref nodes) = map(
-  (node) => match node {
-    N(_, _, h) => TVar(h),
-  },
-  nodes
-)
+fn collect_tvar_types(ref nodes) = map({ N(_, _, h) => TVar(h) }, nodes)
 
-fn unify_list_elems(elems, target_h, span: ValidSpan) = each(
-  (elem) => match elem {
-    N(_, _, eh) => unify(eh, target_h, span, ListElement(Inferred("list element"))),
-  },
-  elems
-)
+fn unify_list_elems(elems, target_h, span: ValidSpan) =
+  each({ N(_, _, eh) => unify(eh, target_h, span, ListElement(Inferred("list element"))) }, elems)
 
 // Each string-interpolation fragment binds to the canonical String
 // alias node directly;
@@ -9165,7 +9057,7 @@ fn mint_concat_cells(n, span: ValidSpan, acc) = if n <= 0 {
 }
 
 fn check_splice_flow_labels(fragments, span: ValidSpan) = each(
-  (frag) => match frag {
+  {
     N(body, fspan, fh) => match body {
       NExpr(LitString(_)) => // literal part: always Public, no IFC check
       (),

@@ -35,6 +35,96 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-20 · pin 91f63a22cd1c6aec (CLEAN m2 == m3) · THE FUNCTION LITERAL IS
+  AN ARM LIST. Morgan asked *"should lambda even exist in Mentl?"*, and the
+  medium's own census answered before the design did: of 515 lambda sites,
+  **197 (38%) were `(x) => match x { … }`** and 57 more a single tuple pattern
+  in param position — half the corpus paying a wrapper to reach a form the
+  language already had, while SYNTAX conceded the point in prose (*"Match arms
+  ARE pattern-dispatched lambdas — the syntactic unity reflects semantic
+  unity"*) and the parser charged for it anyway. That sentence is a MECHANISM
+  now: `{ p => b, … }` IS a function, `match` is that function applied, and one
+  `parse_match_arms` serves both.
+  **THE BUILD WAS SMALLER THAN THE DESIGN, because the desugar and its inverse
+  both already existed for ONE arm.** `((a, b)) => e` has parsed since birth as
+  `LambdaExpr([__dpN], MatchExpr(VarRef(__dpN), [(pat, body)]))` — a one-param
+  lambda whose body is a one-arm match on its own param — and `mentl fmt`
+  already inverted it. So the literal is THAT GRAPH WITH N ARMS: nothing in
+  `types.mn`, `infer.mn`, `lower.mn` or the projections changed, and
+  `project_lambda_fn` consumed the node already. Governing Principle 1 decided
+  the rest — if two spellings are one graph, which reaches the page is the
+  FORMATTER's call, so fmt PRODUCES the literal and converting the corpus was
+  one `mentl fmt` rather than 254 edits. The wheel fell 61,338 → 60,989 lines.
+  **THE BOOTSTRAP CONSTRAINT IS WHY THIS TOOK TWO PINS, and it is worth
+  writing down because it is not a mistake to avoid but a shape to plan for:**
+  the pinned boot cannot parse a form it predates, so the wheel's own source
+  could not carry an arm list until a boot that understood one was pinned. The
+  first sweep was run before that and every swept file stopped compiling. The
+  ladder is: land the compiler change with the source UNSWEPT, repin, sweep
+  with the new boot, repin again.
+  **THREE THINGS THE BUILD MEASURED RATHER THAN ASSUMED.** (1) The
+  discrimination cannot speculatively parse a pattern: `parse_pat`'s miss arm
+  REPORTS, so trying and backing off would narrate a diagnostic at every block
+  opening with an ident. `pat_prefix_end` answers *"could a pattern end here,
+  followed by `=>`?"* as a STRUCTURED token scan — one atom, joined onward only
+  by `@` or `|` — which is also what keeps `{ setup()` newline `(x) => run(x) }`
+  the block it is; measured first, zero sites in src/ or lib/ open a brace on a
+  paren-lambda. (2) The two fresh-param prefixes are not a naming preference:
+  `dp_prefix` licenses `format.mn` to render a param back in PARAM POSITION,
+  sound only because `expr_to_pat` made the pattern, and `expr_to_pat` answers
+  `PWild` for a literal and for a constructor call — so an arm list minted
+  under it would have rendered `{ 0 => 1 }` as `(0) => 1`, a WILDCARD, with
+  nothing to say it had. `al_prefix` makes that unsayable, and fmt's own second
+  render is what would otherwise have found it in production. (3) The quiet
+  gate refused the landing for six authored `ref` markers; dropping all six
+  left the wheel compiling clean AND the emit BYTE-IDENTICAL (`m2 == m3` at the
+  same boot sha), so they were semantically inert and the ratchet was right —
+  *teach it, do not annotate around it* is not a slogan, it is a measurement.
+  **TWO SILENT WRONGS THE PROBES FOUND AND CLOSED, both predating the literal
+  and both found only because the literal made anyone look.** A BRACE BODY
+  DISCARDED ITS POSTFIX APPLICATION: `fn main() = { let g = inc; g }(1)` ran to
+  exit 0 with ZERO diagnostics, because `parse_body`'s brace path reached only
+  the BINARY operator loop and a call is postfix — the application was parsed
+  and thrown away. `postfix_loop` runs before `binop_loop` now
+  (`tests/syntax/brace-body-applied.mn`, seen RED at exit 0). And A CLOSURE
+  CAPTURED INSIDE A CLOSURE RETURNED THE CAPTURE: `fn f(p, x) = p(x) + 1` with
+  `let g = f((n) => n * 2)` answered `g(4) == 8` — `p(4)`, the capture called
+  where the callee belonged — because both record mints parked the pointer in
+  the shared `$state_tmp`, so building a capture that is itself a closure
+  re-entered the arm and overwrote it. The emit named its own root in ONE read
+  of the WAT. `LCall` had carried the per-handle fix (`$call_<h>`) since #115;
+  the mint is the same class, which is the census law's stop rather than a
+  third site (`tests/syntax/partial-captures-a-function.mn`, seen RED at 17).
+  This one is the more instructive: it broke SYNTAX's own headline partial-
+  application example for every function-valued field, and the plain lambda
+  failed identically, so it was never about the new form at all.
+  **THE CENSUS WAS RE-FOUNDED IN THE SAME LANDING**, and it had to be: after
+  the sweep the anonymity shapes would have convicted a form carrying no param
+  list at all — the census reporting a lambda the source does not contain,
+  which is the Carried-Truth violation at the doc layer inside the instrument
+  that exists to catch it. `lambda_is_written_as_a_mint` excludes the arm-list
+  shape, so what the count convicts is a REFERENCE WRITTEN AS A MINT, a number
+  that can reach zero. **AND ONE GATE WAS UPDATED RATHER THAN OBEYED:**
+  frontier's `fmt destructure re-sugar` asserted `((a, b)) =>` and went RED,
+  because a sole-param destructure now renders `{ (a, b) => … }`. The
+  INVARIANT it exists for — the minted machine name must never reach the page —
+  held harder (an arm list has no param name at all); only the canonical
+  spelling moved, so only the spelling moved there.
+  ALSO STRUCK: SYNTAX's `.field` accessor (`filter(.age > 18)`), canonical in
+  three places and measured NOT TO PARSE (`P_UnexpectedToken: .`), with zero
+  uses anywhere in the tree. It closes by DELETION and on its merits — a field
+  is not a decl, so `.name` would be a THIRD way to reach a function value
+  beside reference-with-holes and the arm list.
+  Board: crown green, proof-exactness green, effect-identity green, frontier
+  390/0/2, census 0, micros 149/149, comment-refs 0.
+  Remaining, in positive form: the multi-param lambda
+  (`Hβ.syntax.multi-param-lambda-is-a-reference`), the `() =>` thunk
+  (`Hβ.syntax.handler-chain-is-a-value`), and the sole-param lambda whose body
+  is not a match — expressible as `{ x => x + 1 }` but not converted, because
+  the degenerate single-`PVar` arm should DESUGAR AWAY at parse rather than
+  compile to a one-arm match. `(params) => body` is deleted when those three
+  are, not before.
+
 - 2026-09-20 · pin d706ad6d2825a925 (CLEAN m2 == m3) · THE BOARD NAMES WHERE,
   AND GIT IS THE WHEN. Two corrections to the landing one pin earlier, both
   from Morgan's question *"isn't what changed handled by git?"*

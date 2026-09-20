@@ -634,12 +634,7 @@ fn mark_tail_last_in(stmts) with Memory + Alloc = {
   }
 }
 
-fn mark_tail_arms(arms) with Memory + Alloc = map(
-  (arm) => match arm {
-    (pat, body) => (pat, mark_tail(body)),
-  },
-  arms
-)
+fn mark_tail_arms(arms) with Memory + Alloc = map({ (pat, body) => (pat, mark_tail(body)) }, arms)
 
 // True when the row carries no effect names — the callee performs
 // nothing, so no handler evidence is needed at the call site.
@@ -984,8 +979,8 @@ fn scheme_ref_fun_arity(name) = match env_lookup(name) {
 // this construction stays single-run and behaviorally gated.
 fn project_lambda_fn(origin, cap_pairs) = match graph_node_body(origin) {
   NExpr(LambdaExpr(params, body_node)) => {
-    let cap_names = map(((n, _)) => n, cap_pairs)
-    let cap_handles = map(((_, h)) => h, cap_pairs)
+    let cap_names = map({ (n, _) => n }, cap_pairs)
+    let cap_handles = map({ (_, h) => h }, cap_pairs)
     let param_names_list = lower_param_names(params)
     ls_enter_frame("", param_names_list, param_handles_of(origin, params), cap_names, cap_handles)
     lower_frame_fence_push()
@@ -1013,8 +1008,8 @@ fn project_lambda_fn(origin, cap_pairs) = match graph_node_body(origin) {
 // column (named in the stamp), so the seam is explicit until it lands.
 fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body(origin) {
   NStmt(FnStmt(_name, params, _ret_ann, _effs, body_node)) => {
-    let cap_names = map(((n, _)) => n, cap_pairs)
-    let cap_handles = map(((_, h)) => h, cap_pairs)
+    let cap_names = map({ (n, _) => n }, cap_pairs)
+    let cap_handles = map({ (_, h) => h }, cap_pairs)
     let base_param_names = lower_param_names(params)
     let param_names_list =
       if bind_h == "" { base_param_names } else { base_param_names ++ ["__k", "__hrec"] }
@@ -1052,8 +1047,8 @@ fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body
 // sites keep the boundary destructure and the capture machinery that
 // feed the columns.
 fn project_thunk_fn(thunk_name, thunk_row, cap_pairs, branch_node, result_h, carrier_h, shared_input) = {
-  let cap_names = map(((n, _)) => n, cap_pairs)
-  let cap_handles = map(((_, h)) => h, cap_pairs)
+  let cap_names = map({ (n, _) => n }, cap_pairs)
+  let cap_handles = map({ (_, h) => h }, cap_pairs)
   ls_enter_frame("", [], [], cap_names, cap_handles)
   lower_frame_fence_push()
   let inner = match shared_input {
@@ -1323,12 +1318,7 @@ fn usage_is_marked(u) = match u {
 }
 
 fn collect_free_vars_of_decl(decls, name: String) = {
-  let hits = filter(
-    (nb) => match nb {
-      (n, _) => n == name,
-    },
-    decls
-  )
+  let hits = filter({ (n, _) => n == name }, decls)
   if len(hits) == 0 {
     []
   } else {
@@ -1342,7 +1332,7 @@ fn collect_free_vars_of_decl(decls, name: String) = {
 // ask each for a MultiShot-graded op. Runs once at lower_program, before any
 // body lowers.
 fn program_may_yield(stmts) = any(
-  (node) => match node {
+  {
     N(body, _, _) => match body {
       NStmt(EffectDeclStmt(ename, _, _)) => effect_has_multishot_op(ename),
       _ => false,
@@ -1369,11 +1359,7 @@ fn program_may_yield(stmts) = any(
 // fixpoint (the A.6 m3 leg's alloc trap; the fixpoint oracle caught what
 // the census structurally could not).
 fn eff_names_of(names) = flatten(map(
-  (name) => match name {
-    ENamed(h) => [intern_name_of(h)],
-    EParameterized(h, _) => [intern_name_of(h)],
-    EPure => [],
-  },
+  { ENamed(h) => [intern_name_of(h)], EParameterized(h, _) => [intern_name_of(h)], EPure => [] },
   names
 ))
 
@@ -1664,7 +1650,7 @@ fn installed_handled_ename(handler_body) = {
 
 // One base per top-level fn: (name, own-leaf, sorted callees, sorted handled).
 fn collect_fn_bases(stmts) = flatten(map(
-  (stmt) => match stmt {
+  {
     N(sb, _, _) => match sb {
       NStmt(FnStmt(name, _, _, _, body_node)) => match flow_edges(body_node) {
         (callees, handled) => [(name, own_dispatched_row(name), set_canonicalize(callees), set_canonicalize(handled))],
@@ -1722,7 +1708,7 @@ fn resolve_callee_indices(idx, callees) = flatten(map(
 fn indexed_bases(bases) = {
   let idx = build_base_index(bases)
   map(
-    (b) => match b {
+    {
       (name, own_effs, callees, handled) => (name, own_effs, resolve_callee_indices(idx, callees), handled),
     },
     bases
@@ -1731,7 +1717,7 @@ fn indexed_bases(bases) = {
 
 // One monotone round over rows-only (base order): row = (own ∪ ⋃ callee rows) − handled.
 fn escaping_round(ibases, cur) = map(
-  (b) => match b {
+  {
     (_, own_effs, callee_idxs, handled) => {
       let propagated = flatten(map((ci) => list_index(cur, ci), callee_idxs))
       set_difference(set_canonicalize(names_concat(own_effs, propagated)), handled)
@@ -1770,24 +1756,12 @@ fn escaping_fixpoint(ibases, cur, iters) = if iters >= 32 {
 fn compute_escaping_rows(stmts) = {
   let bases = collect_fn_bases(stmts)
   let ibases = indexed_bases(bases)
-  let seed = map(
-    (b) => match b {
-      (_, own_effs, _, handled) => set_difference(set_canonicalize(own_effs), handled),
-    },
-    ibases
-  )
+  let seed =
+    map({ (_, own_effs, _, handled) => set_difference(set_canonicalize(own_effs), handled) }, ibases)
   let final_rows = escaping_fixpoint(ibases, seed, 0)
   // The name-keyed view the ls_escaping_of consumer reads — rebuilt ONCE
   // at the end, never per round.
-  zip(
-    map(
-      (b) => match b {
-        (n, _, _, _) => n,
-      },
-      bases
-    ),
-    final_rows
-  )
+  zip(map({ (n, _, _, _) => n }, bases), final_rows)
 }
 
 // ─── Lexical handler resolution (lower-phase, install-handle-bearing) ──
@@ -2997,7 +2971,7 @@ fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
     // serialized). The spawn handles bind as let-locals so the joins
     // read them after every spawn has launched.
     let spawn_lets = map(
-      (indexed) => match indexed {
+      {
         (i, branch) => match branch {
           ScheduledBoundary(thunk, _, _, thread_ticket_h, _) => LLet(
             thread_ticket_h,
@@ -3014,7 +2988,7 @@ fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
       enumerate(branches)
     )
     let joins = map(
-      (indexed) => match indexed {
+      {
         (i, branch) => match branch {
           ScheduledBoundary(_, result_h, carrier_h, thread_ticket_h, _) => {
             let joined = lower_perform_dispatch(
@@ -3062,7 +3036,7 @@ fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
   // real at the fanout layer.
   {
     let spawn_lets = map(
-      (indexed) => match indexed {
+      {
         (i, branch) => match branch {
           ScheduledBoundary(thunk, _, _, _, persist_ticket_h) => LLet(
             persist_ticket_h,
@@ -3079,7 +3053,7 @@ fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
       enumerate(branches)
     )
     let joins = map(
-      (indexed) => match indexed {
+      {
         (i, branch) => match branch {
           ScheduledBoundary(_, result_h, carrier_h, _, persist_ticket_h) => {
             let joined = lower_perform_dispatch(
@@ -3107,7 +3081,7 @@ fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
 // machinery used here is the same machinery that lowers user-
 // written lambdas; compiler-synthesized thunks reuse it.
 fn synthesize_diverge_thunks(parent_handle, input_h, input_local_name, branch_nodes, boundaries, base_idx) = map(
-  (indexed) => match indexed {
+  {
     (i, branch_node) => match branch_node {
       N(_, _, branch_h) => match fanout_boundary_at(boundaries, base_idx + i, branch_h) {
         Ok(boundary) => match boundary {
@@ -3539,7 +3513,7 @@ fn lower_match_arms(scrut_h, arms) = {
   // is per-value, never per-arm).
   let srep = seq_pat_rep(scrut_h)
   map(
-    (arm) => match arm {
+    {
       (pat, body) => {
         let cp = ls_push_scope()
         bind_pat_locals(pat, lookup_ty(scrut_h))
@@ -3654,12 +3628,7 @@ fn bind_pat_rest(rest) = match rest {
   },
 }
 
-fn bind_pat_locals_fields(flds) = each(
-  (fld) => match fld {
-    (_, sub_pat) => bind_pat_locals(sub_pat, TVar(0)),
-  },
-  flds
-)
+fn bind_pat_locals_fields(flds) = each({ (_, sub_pat) => bind_pat_locals(sub_pat, TVar(0)) }, flds)
 
 // ─── the sequence-representation chase ──────────────────────────────
 //
@@ -3818,19 +3787,9 @@ fn lower_pat_typed(pat, ty, srep) = match pat {
 // RecordSchemeKind (nominal_record_fields — the one channel's fourth
 // reader). None = genuinely unresolved (the floor's honest input).
 fn record_pat_full_fields(ty) with GraphRead + EnvRead + Memory + Alloc = match tuple_pat_strip(ty) {
-  TRecord(full) => Some(map(
-    (f) => match f {
-      (n, _) => n,
-    },
-    full
-  )),
+  TRecord(full) => Some(map({ (n, _) => n }, full)),
   TName(nm, _) => match nominal_record_fields(nm) {
-    Some(declared) => Some(map(
-      (f) => match f {
-        (n, _) => n,
-      },
-      declared
-    )),
+    Some(declared) => Some(map({ (n, _) => n }, declared)),
     None => None,
   },
   _ => None,
@@ -3841,7 +3800,7 @@ fn record_pat_full_fields(ty) with GraphRead + EnvRead + Memory + Alloc = match 
 // name the receiver lacks keeps the pattern-index fallback (infer
 // already reported it).
 fn lower_pat_record_fields_full(flds, full_names) = map(
-  (indexed) => match indexed {
+  {
     (i, fld) => match fld {
       (name, sub_pat) => {
         let fi = name_index_in(full_names, name, 0)
@@ -4012,7 +3971,7 @@ fn lower_pat(pat) = match pat {
 // IS the byte offset (`4 * index`) per `LMakeRecord`'s untagged layout.
 // No tag prefix to skip — offset 0 is the first field.
 fn lower_pat_record_fields(flds, base) = map(
-  (indexed) => match indexed {
+  {
     (i, fld) => match fld {
       (name, sub_pat) => (name, (base + i) * 4, lower_pat(sub_pat)),
     },
@@ -4552,7 +4511,7 @@ fn k2_spine_in_args(args, i) = if i >= len(args) {
 // residency reads the parked __kr local. One environment, four read kinds.
 fn k_sub_for(subs, node) = match node {
   N(_, _, h) => {
-    let hits = filter(((ph, _)) => ph == h, subs)
+    let hits = filter({ (ph, _) => ph == h }, subs)
     if len(hits) == 0 {
       None
     } else {
@@ -4661,7 +4620,7 @@ fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
   ContinuationEdge(resume_input_h, answer_h, continuation_h, disc, world) => {
     let hole = k_hole_name(ph)
     let free_names =
-      free_vars_merge(map(((_, n)) => n, outer_holes), collect_free_vars(body_node, [hole]))
+      free_vars_merge(map({ (_, n) => n }, outer_holes), collect_free_vars(body_node, [hole]))
     match resolve_captures_outer(free_names, ph) {
       (captures_names, captures_exprs, captures_handles) => {
         // Parent-before-child note order — the tree order every
@@ -4674,7 +4633,7 @@ fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
         graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkK, name: "__k_{int_to_str(ph)}", origin: ph, params: [(hole, Some(lookup_ty(resume_input_h)))], ret: Some(lookup_ty(answer_h))})
         ls_enter_frame("", [hole], [resume_input_h], captures_names, captures_handles)
         lower_frame_fence_push()
-        let subs = map(((p, n)) => (p, k_hole_read(p, n)), outer_holes) ++
+        let subs = map({ (p, n) => (p, k_hole_read(p, n)) }, outer_holes) ++
         // drift-audit: ignore — one-shot env build, no loop
         [(ph, LLocal(resume_input_h, hole))]
         let subs2 = match k_spine_next(body_node, subs) {
@@ -4844,12 +4803,7 @@ fn k2_floor_guard(e, terminus) = match e {
   LMatch(h, s, arms) => LMatch(
     h,
     k2_floor_guard(s, false),
-    map(
-      (arm) => match arm {
-        (pat, body) => (pat, k2_floor_guard(body, terminus)),
-      },
-      arms
-    )
+    map({ (pat, body) => (pat, k2_floor_guard(body, terminus)) }, arms)
   ),
   LHandleWith(h, b, hn, hname, inits, an) => {
     // A4 — the install crossing COMPOSES. An install is TRANSPARENT to the
@@ -4939,12 +4893,7 @@ fn k2_floor_list(es) = map((x) => k2_floor_guard(x, false), es)
 // Block statements: only the LAST carries the terminus flag through.
 fn k2_floor_last(stmts, terminus) = {
   let n = len(stmts)
-  map(
-    (ix) => match ix {
-      (i, s) => k2_floor_guard(s, if i == n - 1 { terminus } else { false }),
-    },
-    enumerate(stmts)
-  )
+  map({ (i, s) => k2_floor_guard(s, if i == n - 1 { terminus } else { false }) }, enumerate(stmts))
 }
 
 // The loud floor: park width-honest, trap at a raised flag, else the value.
@@ -5050,12 +4999,7 @@ fn resume_upd_pair(upd, fields) =
 // a closure. Returns -1 when name is not in fields
 // (productive-under-error).
 fn resolve_state_slot_offset(name: String, fields) = {
-  let hits = filter(
-    (indexed) => match indexed {
-      (_, field) => field == name,
-    },
-    enumerate(fields)
-  )
+  let hits = filter({ (_, field) => field == name }, enumerate(fields))
   if len(hits) == 0 {
     0 - 1
   } else {
@@ -5271,12 +5215,7 @@ fn lower_expr_list(nodes) = map(lower_expr, nodes)
 // sorted-by-name (parser invariant); position IS layout. The lowered
 // list is in field-name sort order — emit reads it as the byte
 // layout directly, no per-field lookup.
-fn lower_record_field_values(flds) = map(
-  (fld) => match fld {
-    (_, value) => lower_expr(value),
-  },
-  flds
-)
+fn lower_record_field_values(flds) = map({ (_, value) => lower_expr(value) }, flds)
 
 // {...base, f: v} — lower a non-destructive record update. The result
 // record's field set is read LIVE from the inferred type at `handle`
@@ -5295,7 +5234,7 @@ fn lower_record_update(handle, base, overrides) = {
   match base {
     N(_, _, bh) => {
       let field_exprs = map(
-        (rf) => match rf {
+        {
           (fname, _) => match find_override(overrides, fname) {
             Some(v) => lower_expr(v),
             None => LFieldLoad(handle, LLocal(bh, tmp), FByName(fname)),
@@ -6040,26 +5979,14 @@ fn holes_filter(pairs, uni, acc, i) = if i >= len(pairs) {
 // f64 runtime call the flat case does. `seen` guards recursive ADTs.
 fn ty_has_wide_seq(t, seen) = match fold_strip(t) {
   TList(e) => stride_of(seq_elem_face(e)) >= 8 || ty_has_wide_seq(e, seen),
-  TRecord(fields) => any(
-    (f) => match f {
-      (_n, fty) => ty_has_wide_seq(fty, seen),
-    },
-    fields
-  ),
-  TRecordOpen(fields, _) => any(
-    (f) => match f {
-      (_n, fty) => ty_has_wide_seq(fty, seen),
-    },
-    fields
-  ),
+  TRecord(fields) => any({ (_n, fty) => ty_has_wide_seq(fty, seen) }, fields),
+  TRecordOpen(fields, _) => any({ (_n, fty) => ty_has_wide_seq(fty, seen) }, fields),
   TTuple(elems) => any((x) => ty_has_wide_seq(x, seen), elems),
   TName(name, _) => if ls_find_str_local(seen, name, 0) >= 0 {
     false
   } else {
     any(
-      (s) => match s {
-        (_tag, payloads) => any((p) => ty_has_wide_seq(p, [name] ++ seen), payloads),
-      },
+      { (_tag, payloads) => any((p) => ty_has_wide_seq(p, [name] ++ seen), payloads) },
       variant_specs_of(name)
     )
   },
@@ -6286,26 +6213,13 @@ fn spec_resolve_build(t) with LookupTy + Memory + Alloc + GraphRead = match t {
   TTuple(es) => TTuple(map(spec_resolve, es)),
   TFun(ps, r, eff) => TFun(map((p) => param_with_ty(p, spec_resolve(param_ty(p))), ps), spec_resolve(r), eff),
   TName(n, args) => TName(n, map(spec_resolve, args)),
-  TRecord(fs) => TRecord(map(
-    (f) => match f {
-      (n, ft) => (n, spec_resolve(ft)),
-    },
-    fs
-  )),
+  TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_resolve(ft)) }, fs)),
   TRecordOpen(fs, v) => // The row var read through the same live channel as every other var: when
   // the site closed it, that record IS the resolved receiver and the open
   // form is gone. Anything else keeps the open form with resolved fields.
   match lookup_ty(v) {
     TRecord(full) => TRecord(full),
-    _ => mk_record_open(
-      map(
-        (f) => match f {
-          (n, ft) => (n, spec_resolve(ft)),
-        },
-        fs
-      ),
-      v
-    ),
+    _ => mk_record_open(map({ (n, ft) => (n, spec_resolve(ft)) }, fs), v),
   },
   TRefined(b, p) => TRefined(spec_resolve(b), p),
   TAlias(n, i) => TAlias(n, spec_resolve(i)),
@@ -6397,12 +6311,7 @@ fn spec_pairs_walk_fields(fs, ifs, acc) with Memory + Alloc + GraphRead = if len
 } else {
   match fs[0] {
     (n, ft) => {
-      let acc2 = match find(
-        (g) => match g {
-          (gn, _) => field_name_eq(gn, n),
-        },
-        ifs
-      ) {
+      let acc2 = match find({ (gn, _) => field_name_eq(gn, n) }, ifs) {
         Some(g) => match g {
           (_, gt) => spec_pairs_walk(ft, gt, acc),
         },
@@ -6571,12 +6480,7 @@ fn spec_scan_expr(expr, acc) with Memory + Alloc = match expr {
   // exactly as a field-load receiver does.
   {
     let acc2 = spec_scan_arms(arms, spec_scan_expr(s, acc))
-    if any(
-      (arm) => match arm {
-        (p, _) => lowpat_has_tuple(p),
-      },
-      arms
-    ) {
+    if any({ (p, _) => lowpat_has_tuple(p) }, arms) {
       match acc2 {
         (s2, o) => (s2, [lexpr_handle(s)] ++ o),
       }
@@ -6610,12 +6514,7 @@ fn lowpat_has_tuple(pat) with Memory + Alloc = match pat {
   LPAs(_, inner) => lowpat_has_tuple(inner),
   LPCon(_, _, pairs) => any(lowpat_has_tuple, pat_of_pairs(pairs)),
   LPUnresolvedCon(_, subs) => any(lowpat_has_tuple, subs),
-  LPRecord(fbs, _) => any(
-    (f) => match f {
-      (_, _, sp) => lowpat_has_tuple(sp),
-    },
-    fbs
-  ),
+  LPRecord(fbs, _) => any({ (_, _, sp) => lowpat_has_tuple(sp) }, fbs),
   LPList(subs, _, _) => any(lowpat_has_tuple, subs),
   LPAlt(branches) => any(lowpat_has_tuple, branches),
   LPVar(_) => false,

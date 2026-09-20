@@ -1069,12 +1069,8 @@ fn intent_id_eq(a, b) with Pure = match a {
 // length is bounded by user-declared intent count (small N typical),
 // so the simple form is honest. Substrate idiom (list_extend_to +
 // counter) reserved for genuinely-large N — this is not it.
-fn intents_without(intents, id) with Alloc + Memory = filter(
-  (intent) => match intent {
-    (head_id, _) => !intent_id_eq(head_id, id),
-  },
-  intents
-)
+fn intents_without(intents, id) with Alloc + Memory =
+  filter({ (head_id, _) => !intent_id_eq(head_id, id) }, intents)
 
 // ─── mentl_voice_default — Interact handler ───────────────────────────
 //

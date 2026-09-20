@@ -693,8 +693,8 @@ fn audit_walk(debt, tights, i, fns) with GraphRead + EnvRead + LookupTy + Memory
         }
       }
       let extent = Span(decl_start_line(handle), 0, extent_end, 0)
-      let pending = filter(((_modh, dspan, _, _)) => span_overlaps(extent, dspan), debt)
-      let mine = filter(((_, _, tname, _, _)) => tname == name, tights)
+      let pending = filter({ (_modh, dspan, _, _) => span_overlaps(extent, dspan) }, debt)
+      let mine = filter({ (_, _, tname, _, _) => tname == name }, tights)
       [build_audit_report(name, handle, lookup_ty(handle), pending, mine)] ++ audit_walk(debt, tights, i + 1, fns)
     },
   }
@@ -863,7 +863,7 @@ handler fresh_for_query with next_display = 0 {
 // dropping non-fn nodes. The ONE cursor walk over the module's fn decls;
 // audit and teach are two projections of it (Carried-Truth: the walk lived
 // twice, byte-identical but for the projection — one home now).
-fn map_fn_stmts(ast, project) = ast |> map((node) => match node {
+fn map_fn_stmts(ast, project) = ast |> map({
   N(body, _, handle) => match body {
     NStmt(FnStmt(name, _, _, _, _)) => [project(name, handle)],
     _ => [],
@@ -877,9 +877,7 @@ fn map_fn_stmts(ast, project) = ast |> map((node) => match node {
 fn render_gradients(gradients: [(String, Option(AnnotationSuggestion))]) = if len(gradients) == 0 {
   "All functions are at maximum annotation density.\n"
 } else {
-  gradients |> map((entry) => match entry {
-    (name, result) => render_gradient_line(name, result),
-  }) |> str_concat_all
+  gradients |> map({ (name, result) => render_gradient_line(name, result) }) |> str_concat_all
 }
 
 // The name pin is an Intent Boundary at the line's ONE mint (spec_mangle's
@@ -1014,7 +1012,7 @@ fn severance_unlocks(severable) = severable |> fold(
 //
 // Positional destructure — provable with no type flow, where a
 // record field read floors in a map lambda (see build_audit_report).
-fn render_audit(entries) = entries |> map((report) => match report {
+fn render_audit(entries) = entries |> map({
   (fn_name, more_severable, row_str, severable, unlocks, referenced_by, pipe_chains, loop_costume, anon_shapes, drift_shapes, pending, tightens) => audit_report_lines(
     fn_name,
     row_str,
@@ -1124,8 +1122,9 @@ fn audit_report_lines(fn_name: String, row_str: String, severable, unlocks, more
   } else {
     "  pending: {int_to_str(len(pending))} undischarged proof obligation(s) — the field ranks them\n"
   }
-  let tighten_section =
-    tightens |> map(((declared, proven, _, _, _)) => "  tighten: with {show_effrow(declared)} — body proves {show_effrow(proven)} (mentl tighten authors the patch)\n") |> str_concat_all
+  let tighten_section = tightens |> map({
+    (declared, proven, _, _, _) => "  tighten: with {show_effrow(declared)} — body proves {show_effrow(proven)} (mentl tighten authors the patch)\n",
+  }) |> str_concat_all
   "{header}{severance_section}{refs_section}{verb_section}{iter_section}{anon_section}{drift_section}{pending_section}{tighten_section}"
 }
 
@@ -1232,7 +1231,7 @@ fn render_orphan_rows(rows) with Memory + Alloc =
 fn render_query_result(result) = match result {
   QRType(ty, reason) => "→ {show_type(ty)}\n  Reason: {show_reason(reason)}",
   QRIntent(effs) => {
-    let terms = effs |> map((entry) => match entry {
+    let terms = effs |> map({
       (name, negated, conn) => {
         let sign = if negated { "!" } else { "" }
         let symbol = match conn {

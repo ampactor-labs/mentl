@@ -178,12 +178,7 @@ handler affine_ledger with used = [], used_sites = [], branches = [], fn_saved =
 
 // The declared-own projection: names only (the gate reports at the
 // CAPTURE site's span; the name carries the teaching).
-fn declared_own_names(ref declared) with Memory + Alloc = map(
-  (entry) => match entry {
-    (name, _) => name,
-  },
-  declared
-)
+fn declared_own_names(ref declared) with Memory + Alloc = map({ (name, _) => name }, declared)
 
 // The double-consume message's one mint, String-pinned (the comment at
 // the consume arm carries the why).
@@ -430,12 +425,8 @@ let region_buckets_program = 65536
 
 let region_buckets_branch = 1024
 
-fn region_on_stack(ref stack, rid) with Memory + Alloc = any(
-  (r) => match r {
-    Region(rid_on_stack, _) => rid_on_stack == rid,
-  },
-  stack
-)
+fn region_on_stack(ref stack, rid) with Memory + Alloc =
+  any({ Region(rid_on_stack, _) => rid_on_stack == rid }, stack)
 
 // H4.1: join field regions with current region — returns the MAX
 // (innermost) region_id. Untagged fields (scalars, never alloc'd)
@@ -465,12 +456,7 @@ fn parallel_collision_msg(name: String) with Memory + Alloc =
   "'{name}' consumed in two parallel branches"
 
 fn find_first_span(ref sites, ref name: String) with Alloc + Memory = {
-  let hits = filter(
-    (entry) => match entry {
-      (entry_name, _) => entry_name == name,
-    },
-    sites
-  )
+  let hits = filter({ (entry_name, _) => entry_name == name }, sites)
   if len(hits) == 0 {
     span_zero()
   } else {

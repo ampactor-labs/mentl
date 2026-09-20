@@ -538,7 +538,7 @@ fn hover_from_reason(reason) with Memory + Alloc + GraphRead + !Mutate + Intern 
 // CompletionItems. SIdent slots become items (label = ident,
 // kind=14 = Keyword as v1 placeholder). Other slot kinds skipped.
 fn completion_items_from_slots(slots) with Alloc + Memory = flatten(map(
-  (s) => match s {
+  {
     SIdent(name) => [CompletionItem(name, "", 14)],
     SType(_) => [],
     SRow(_) => [],
@@ -554,7 +554,7 @@ fn completion_items_from_slots(slots) with Alloc + Memory = flatten(map(
 // code_actions_from_slots — project VoiceLine slots to LSP
 // CodeActions. SLit slots carrying suggestion text become actions.
 fn code_actions_from_slots(slots) with Alloc + Memory = flatten(map(
-  (s) => match s {
+  {
     SLit(text) => [CodeAction(text, "")],
     SIdent(_) => [],
     SType(_) => [],

@@ -2063,8 +2063,30 @@ fn parse_primary(ref tokens, pos, slot) = {
 // at let-bind AND param-bind; no new infer/lower path, no TParam shape change.
 //
 // A unique parameter name for a desugared destructure slot — keyed on the
-// pattern's fresh handle so it never collides with a source name.
-fn fresh_param_name(span: ValidSpan) = "__dp{int_to_str(fresh_handle(span))}"
+// pattern's fresh handle so it never collides with a source name. The two
+// prefixes are the one home of their spelling; `format.mn` reads
+// `dp_prefix` back through `is_dp_name`.
+let dp_prefix = "__dp"
+
+let al_prefix = "__al"
+
+fn fresh_param_name(span: ValidSpan) = "{dp_prefix}{int_to_str(fresh_handle(span))}"
+
+// A fresh param under a caller-chosen PREFIX. The two surfaces that mint
+// one differ in what the name PROMISES, and conflating them is a silent
+// wrong rather than a naming preference. `dp_prefix` says "this param
+// came from a PATTERN IN PARAM POSITION", which licenses `format.mn`'s
+// `dp_match_arm` to render it back there — sound only because
+// `expr_to_pat` produced the pattern, and `expr_to_pat` answers PWild for
+// a literal and for a constructor call. `al_prefix` carries ARBITRARY arm
+// patterns, so the same render would turn `{ 0 => 1 }` into `(0) => 1` —
+// a WILDCARD — with nothing anywhere to say it had. Distinct prefixes
+// make that unsayable; fmt's own second render is what would otherwise
+// have found it in production.
+fn fresh_param_under(prefix: String, span: ValidSpan) = {
+  let nm = "{prefix}{int_to_str(fresh_handle(span))}"
+  (nm, TParam(nm, TVar(fresh_handle(span)), Unmarked, Unmarked, None))
+}
 
 // Convert a parsed expr (a lambda param, already parsed as an expression) to a
 // pattern: a record/tuple/list literal IS the corresponding destructure
@@ -2094,12 +2116,7 @@ fn expr_to_pat(e) = match e {
 // Record literal fields `[(name, value_node)]` → pattern fields
 // `[(name, sub_pat)]` — the value node's pattern (field punning `{x}` parses
 // as `x: x`, so the sub-pat is the value's pattern).
-fn record_fields_to_pat(flds) = map(
-  (f) => match f {
-    (nm, v) => (nm, expr_to_pat(v)),
-  },
-  flds
-)
+fn record_fields_to_pat(flds) = map({ (nm, v) => (nm, expr_to_pat(v)) }, flds)
 
 // A param drawn from a Pat: PVar is the bare-name degenerate (no desugar);
 // any destructure pattern yields a fresh-named param plus the prepend-let
@@ -2107,13 +2124,13 @@ fn record_fields_to_pat(flds) = map(
 fn pat_param_and_let(pat, span: ValidSpan) = match pat {
   PVar(nm) => (TParam(nm, TVar(fresh_handle(span)), Unmarked, Unmarked, None), None),
   PWild => (TParam("_", TVar(fresh_handle(span)), Unmarked, Unmarked, None), None),
-  _ => {
-    let fresh = fresh_param_name(span)
-    let param = TParam(fresh, TVar(fresh_handle(span)), Unmarked, Unmarked, None)
-    // reuse as the absent-annotation sentinel (byte-identical)
-    let vref = nexpr(VarRef(fresh), span)
-    let bind = nstmt(LetStmt(pat, vref, vref), span)
-    (param, Some(bind))
+  _ => match fresh_param_under(dp_prefix, span) {
+    (fresh, param) => {
+      // reuse as the absent-annotation sentinel (byte-identical)
+      let vref = nexpr(VarRef(fresh), span)
+      let bind = nstmt(LetStmt(pat, vref, vref), span)
+      (param, Some(bind))
+    },
   },
 }
 
@@ -2357,11 +2374,141 @@ fn parse_list_elems(ref tokens, pos, own buf, count) = {
   }
 }
 
-// Disambiguate `{`: record literal vs block. Per SYNTAX.md, after the
-// opening brace + whitespace, an identifier token followed by `:` (typed
-// field) or `,`/`}` (puned field) signals a record literal.
-// Anything else is a block. Lookahead is bounded to two tokens past
-// the brace — no backtracking, no ambiguity that escapes the parser.
+// ─── The arm-list discrimination ────────────────────────────────────
+//
+// `{ p => b, … }` is the FUNCTION LITERAL (SYNTAX §«Function literals»):
+// a function is MINTED with an arm list, and the graph it builds is the
+// one the destructuring desugar already builds — a one-param lambda whose
+// body matches that param. So the literal adds a spelling and no node,
+// and `parse_arm_list` reuses `parse_match_arms` verbatim.
+//
+// The question the brace has to answer is "could a PATTERN end here,
+// followed by `=>`?", and it has to answer it WITHOUT parsing one:
+// `parse_pat`'s miss arm reports `PUnexpectedToken`, so a speculative
+// parse would narrate a diagnostic for every block that merely opens with
+// an ident. `pat_prefix_end` is that question as a token scan.
+//
+// It is STRUCTURED, not greedy, and that is what makes it sound: a
+// pattern is ONE atom — an ident (optionally applied), a literal, or a
+// balanced group — joined to further atoms only by `@` (as-pattern) or
+// `|` (alternation). Two ADJACENT atoms are never a pattern, so a block
+// whose statement chain happens to reach a lambda (`{ setup()` newline
+// `(x) => run(x) }`) stops at the second atom and reads as the block it
+// is. Measured before it was written: zero sites in src/ or lib/ open a
+// brace on a paren-lambda, and every `{`-then-`(tuple) =>` in the tree is
+// a match arm list, which is the same shape by construction.
+fn pat_prefix_end(tokens, pos) = {
+  let one = pat_atom_end(tokens, pos)
+  if one == pos {
+    pos
+  } else {
+    let q = skip_ws(tokens, one)
+    if at(tokens, q, TPipe) || at(tokens, q, TAt) {
+      pat_prefix_end(tokens, skip_ws(tokens, q + 1))
+    } else {
+      one
+    }
+  }
+}
+
+// One pattern atom, or `pos` unmoved when the token cannot open one.
+fn pat_atom_end(tokens, pos) = match kind_at(tokens, pos) {
+  TIdent(_) => {
+    let p1 = skip_ws(tokens, pos + 1)
+    if at(tokens, p1, TLParen) { skip_group(tokens, p1, 0) } else { pos + 1 }
+  },
+  TIntLit(_) => pos + 1,
+  TFloatLit(_) => pos + 1,
+  TStringPart(_) => pos + 1,
+  TTrue => pos + 1,
+  TFalse => pos + 1,
+  TLParen => skip_group(tokens, pos, 0),
+  TLBracket => skip_group(tokens, pos, 0),
+  TLBrace => skip_group(tokens, pos, 0),
+  _ => pos,
+}
+
+// Past a balanced group opening AT `pos`. `TStringSplice` opens a brace
+// level of its own (a `{expr}` splice closes on TRBrace, SYNTAX §Token
+// enumeration), so an interpolating string inside the group cannot hand
+// the scan an unmatched closer. TEof ends the walk rather than looping —
+// a broken input diagnoses at the parse, never here.
+fn skip_group(tokens, pos, depth) = match kind_at(tokens, pos) {
+  TEof => pos,
+  TLParen => skip_group(tokens, pos + 1, depth + 1),
+  TLBracket => skip_group(tokens, pos + 1, depth + 1),
+  TLBrace => skip_group(tokens, pos + 1, depth + 1),
+  TStringSplice => skip_group(tokens, pos + 1, depth + 1),
+  TRParen => if depth <= 1 { pos + 1 } else { skip_group(tokens, pos + 1, depth - 1) },
+  TRBracket => if depth <= 1 { pos + 1 } else { skip_group(tokens, pos + 1, depth - 1) },
+  TRBrace => if depth <= 1 { pos + 1 } else { skip_group(tokens, pos + 1, depth - 1) },
+  _ => skip_group(tokens, pos + 1, depth),
+}
+
+// The literal, built as the shape it already is: a fresh `al_prefix` param
+// and a match on it. `parse_match_arms` consumes the closing brace, so the
+// form and `match`'s own arms have one parser between them.
+fn parse_arm_list(tokens, pos, start_span: ValidSpan) = {
+  let buf = make_list(4)
+  match parse_match_arms(tokens, pos, buf, 0) {
+    (final_buf, final_count, p) => match fresh_param_under(al_prefix, start_span) {
+      (fresh, param) => {
+        let arms = slice(final_buf, 0, final_count)
+        let body = nexpr(MatchExpr(nexpr(VarRef(fresh), start_span), arms), start_span)
+        (nexpr(LambdaExpr([param], body), lambda_span(start_span, body)), p)
+      },
+    },
+  }
+}
+
+// The literal READ BACK — the arms of a lambda that IS one, or None.
+// Its home is here rather than at either reader because two of them ask
+// the same question of one shape: `format.mn` renders the literal back
+// (Governing Principle 1 — which spelling reaches the page is the
+// formatter's decision, so fmt does not merely permit the form, it
+// PRODUCES it and converting a corpus is one `mentl fmt`), and
+// `query.mn`'s anonymity census must NOT convict it, because a literal
+// is a genuine MINT — pattern dispatch no reference-with-a-hole can
+// express — where the conviction that can reach zero is a reference
+// WRITTEN as a mint.
+//
+// Recognition is the shape itself: a sole param, a body that matches
+// exactly that param, and the param NOT free in any arm. The last
+// condition is load-bearing rather than defensive — a param an arm body
+// reads is still bound by the head, and dropping the binder would unbind
+// it. `free_vars_match_arms` already binds each arm's own pattern, so
+// the question is asked of the one walk that answers it.
+//
+// There is NO carve-out for the param-position destructure, and that is
+// a decision rather than an omission: `((a, b)) => e` is a CASE of the
+// arm list, and this arc deletes `(params) => body` at its end, so fmt
+// manufacturing more of the doomed spelling would be the sweep running
+// backwards. `resugar_head` keeps every MULTI-param lambda (`(a, (b, c))
+// => e` has two params and never reaches here) and every `fn` decl,
+// whose pattern param is a different surface.
+fn arm_list_of(params, body) = if len(params) != 1 {
+  None
+} else {
+  let nm = param_name(params[0])
+  match body {
+    N(b, _, _) => match b {
+      NExpr(MatchExpr(scrut, arms)) => match scrut {
+        N(sb, _, _) => match sb {
+          NExpr(VarRef(snm)) => if snm == nm && !free_vars_contains(free_vars_match_arms(arms, []), nm) { Some(arms) } else { None },
+          _ => None,
+        },
+      },
+      _ => None,
+    },
+  }
+}
+
+// Disambiguate `{`: arm list vs record literal vs block. Per SYNTAX.md,
+// after the opening brace + whitespace, a pattern-shaped prefix followed
+// by `=>` signals the function literal; an identifier token followed by
+// `:` (typed field) or `,`/`}` (puned field) signals a record literal.
+// Anything else is a block. The lookahead never backtracks and never
+// reports — no ambiguity escapes the parser.
 fn parse_brace_expr(ref tokens, pos, start_span) = {
   let p = skip_ws(tokens, pos)
   // A record literal opens with an ident-shaped field name (incl. the
@@ -2375,6 +2522,8 @@ fn parse_brace_expr(ref tokens, pos, start_span) = {
     // §«Record update»). The leading spread is unambiguous: a block
     // never opens with `...`.
     parse_record_update(tokens, p, start_span)
+  } else if at(tokens, pat_prefix_end(tokens, p), TFatArrow) {
+    parse_arm_list(tokens, p, start_span)
   } else if is_param_name_tok(tokens, p) {
     let p2 = skip_ws(tokens, p + 1)
     match kind_at(tokens, p2) {
@@ -2831,8 +2980,32 @@ fn parse_body(ref tokens, pos) = {
     // into binop_loop to absorb the chain while keeping the brace-
     // context diagnostics parse_block_expr_checked emits. Converges
     // the brace path to the seed's "route through parse_expr ALWAYS".
-    match parse_block_expr_checked(tokens, p + 1, span_at(tokens, p)) {
-      (block, p_block) => binop_loop(tokens, block, p_block, 1, FreeExpr),
+    //
+    // The arm-list literal is consulted FIRST, and the reason is that
+    // `pat_prefix_end` has to have ONE home: a body slot is the only
+    // place a brace opens an expression without passing through
+    // `parse_brace_expr`, and leaving it out here would have priced the
+    // literal a pair of parens at every fn body — ceremony the page
+    // pays for a discrimination the parser already knows how to make.
+    // The result still feeds binop_loop, so `{ arms } ~> h` absorbs its
+    // chain exactly as a block body does.
+    //
+    // And the result goes through `postfix_loop` before `binop_loop`,
+    // which closes a SILENT WRONG this arc's probe found rather than
+    // introduced: `fn main() = { let g = inc; g }(1)` ran to exit 0 with
+    // zero diagnostics, because the brace path reached only the BINARY
+    // loop and a call suffix is postfix — so the application was parsed
+    // and discarded. Measured on a block body, which is how far it
+    // predates the literal; the literal is what made anyone look.
+    let p_in = skip_ws(tokens, p + 1)
+    match if at(tokens, pat_prefix_end(tokens, p_in), TFatArrow) {
+      parse_arm_list(tokens, p_in, span_at(tokens, p))
+    } else {
+      parse_block_expr_checked(tokens, p + 1, span_at(tokens, p))
+    } {
+      (braced, p_braced) => match postfix_loop(tokens, braced, p_braced, FreeExpr) {
+        (applied, p_applied) => binop_loop(tokens, applied, p_applied, 1, FreeExpr),
+      },
     }
   } else {
     // SYNTAX.md «Function declarations»: braces are required EXACTLY when the

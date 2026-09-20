@@ -1581,6 +1581,19 @@ effectful-lambda convictions ratcheted). **2.4** diverge-shared-memory-row
 recovered into RESIDUE. **2.5** census shapes + ratchet (`eta_max: 29`,
 `effectful_lambda_max: 394`). Full mechanics: `LEDGER.md`.
 
+**THE ANONYMITY TIER WAS RE-FOUNDED 2026-09-20 and the correction is the
+transferable half.** It convicted every `LambdaExpr`, and a third of what it
+counted was PATTERN DISPATCH — which the medium has no second way to write,
+so the count could not reach zero and a ratchet on an unreachable floor
+measures nothing. With the arm-list literal (SYNTAX §«Function literals») the
+same sites carry no param list at all, so counting them as lambdas would have
+been the census reporting a form the source does not contain — the
+Carried-Truth violation at the doc layer, inside the instrument that exists to
+catch it. `lambda_is_written_as_a_mint` excludes the shape; what the tier
+convicts now is a REFERENCE WRITTEN AS A MINT, which is a number that can
+reach zero. A census shape is a CLAIM about what should not exist, and a shape
+that convicts the only available spelling is claiming the language is wrong.
+
 ### Phase 3 · The surface IS SYNTAX — ✅ WHOLE 2026-08-07
 
 All items landed: **3.1** N-ary law (FanoutExpr carrier; `><` parses N-ary).

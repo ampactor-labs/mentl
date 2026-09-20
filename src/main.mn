@@ -645,12 +645,7 @@ fn tighten_run(target_opt) = {
   infer_context(() => match driver_entry_with_ranges(entry_module) {
     (_ast, ranges) => {
       let cands = tightenables()
-      let authorable = filter(
-        (c) => match c {
-          (_, used, _, _, _) => row_is_authorable(used),
-        },
-        cands
-      )
+      let authorable = filter({ (_, used, _, _, _) => row_is_authorable(used) }, cands)
       if len(authorable) == 0 {
         print_string("mentl tighten: nothing to tighten ({int_to_str(len(cands))} over-declared, none authorable)\n")
         0
@@ -729,7 +724,7 @@ fn every_eff_arg_authorable(args, i) = if i >= len(args) {
 // one open file at a time (read on path change, write on leave).
 fn apply_tightenings(cands) = {
   let located = flatten(map(
-    (c) => match c {
+    {
       (declared, used, name, span, dmod) => // The candidate CARRIES its module, so the patch knows which file to
       // open without a containment scan placing a line in a range. The path
       // is the module's own; the span is already the developer's line.
@@ -1151,8 +1146,10 @@ fn render_field(target: String, fstart, nlines) = {
 // Reason (the Why-walk's edge). Ledger order IS accrual order ≈ source
 // order.
 fn field_pending(debt, fstart, nlines) with Memory + Alloc = filter(
-  ((_modh, dspan, _, _)) => match dspan {
-    Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
+  {
+    (_modh, dspan, _, _) => match dspan {
+      Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
+    },
   },
   debt
 )
@@ -1176,8 +1173,10 @@ fn render_pending_tier(pending, target: String, fstart, i) = if i >= len(pending
 // decl sits in the file's range: the declared row, the proven row, and
 // the standing patch invitation (`mentl tighten` authors it).
 fn field_tightenables(cands, fstart, nlines) with Memory + Alloc = filter(
-  ((_, _, _, tspan, _)) => match tspan {
-    Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
+  {
+    (_, _, _, tspan, _) => match tspan {
+      Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
+    },
   },
   cands
 )
@@ -1436,12 +1435,7 @@ fn address_bound(h) with GraphRead = match graph_chase(h) {
   _ => false,
 }
 
-fn span_pick_of(ref spans, h) with Memory + Alloc = match find(
-  (e) => match e {
-    (_, eh) => eh == h,
-  },
-  spans
-) {
+fn span_pick_of(ref spans, h) with Memory + Alloc = match find({ (_, eh) => eh == h }, spans) {
   Some(e) => match e {
     (s, _) => Some((s, h)),
   },
@@ -1508,9 +1502,7 @@ fn render_at(view, h, pspan, target: String) = match view {
         VAsk(divergence, survivors) => {
           print("Propose: {int_to_str(len(survivors))} proven survivors — a tie:\n")
           each(
-            (pair) => match pair {
-              (node, reason) => print("  {render_candidate_source(node)}  — {show_reason(reason)}\n"),
-            },
+            { (node, reason) => print("  {render_candidate_source(node)}  — {show_reason(reason)}\n") },
             survivors
           )
           print("  {show_divergence(divergence)}\n")

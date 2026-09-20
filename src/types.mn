@@ -3834,13 +3834,7 @@ fn show_pred_operand(handle) with GraphRead + Alloc + Memory = match graph_node_
   NExpr(CallExpr(callee, args)) => // The canonical refinement vocabulary is call-shaped (len(self),
   // abs(x)) — render the call rather than a placeholder; an exotic
   // callee degrades through show_callee_name's own sentinel.
-  "{show_callee_name(callee)}({show_list(
-    args,
-    (a) => match a {
-      N(_, _, ah) => show_pred_operand(ah),
-    },
-    ", "
-  )})",
+  "{show_callee_name(callee)}({show_list(args, { N(_, _, ah) => show_pred_operand(ah) }, ", ")})",
   _ => "<expr>",
 }
 
@@ -3981,12 +3975,8 @@ fn query_flow_label(ref ty) with GraphRead + Memory + Alloc + EnvRead = match ty
   TReprPin(_, base) => base |> query_flow_label,
   TList(elem) => elem |> query_flow_label,
   TTuple(elems) => elems |> map(query_flow_label) |> fold(Public, flow_label_join),
-  TRecord(fields) => fields |> map((f) => match f {
-    (_, fty) => query_flow_label(fty),
-  }) |> fold(Public, flow_label_join),
-  TRecordOpen(fields, _) => fields |> map((f) => match f {
-    (_, fty) => query_flow_label(fty),
-  }) |> fold(Public, flow_label_join),
+  TRecord(fields) => fields |> map({ (_, fty) => query_flow_label(fty) }) |> fold(Public, flow_label_join),
+  TRecordOpen(fields, _) => fields |> map({ (_, fty) => query_flow_label(fty) }) |> fold(Public, flow_label_join),
   TCont(input, answer, _, _) => flow_label_join(query_flow_label(input), query_flow_label(answer)),
   TInt => Public,
   TFloat => Public,

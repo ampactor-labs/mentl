@@ -96,6 +96,45 @@ fluency parsing as ordinary expressions with the general diagnostic teaching the
 arm list (the turbofish precedent, no bespoke recognizer); `mentl doc` lists
 every function value, which is the felt proof.
 
+**THE LITERAL LANDED 2026-09-20 and the build was SMALLER than the design,
+because the desugar and its inverse both already existed for ONE arm.**
+`((a, b)) => e` has parsed since birth as `LambdaExpr([__dpN],
+MatchExpr(VarRef(__dpN), [(pat, body)]))` — a one-param lambda whose body is a
+one-arm match on its own param — and `mentl fmt` already inverted it. So the
+arm list is THAT GRAPH WITH N ARMS: nothing in `types.mn`, `infer.mn`,
+`lower.mn` or the projections changed, `parse_arm_list` reuses
+`parse_match_arms` verbatim, and `project_lambda_fn` consumed the node
+already. Governing Principle 1 then decides the rest — if the two spellings are
+one graph, which reaches the page is the FORMATTER's call, so fmt PRODUCES the
+literal and the corpus conversion is one `mentl fmt` rather than 254 edits.
+Two things the build measured rather than assumed. **The discrimination cannot
+speculatively parse**: `parse_pat`'s miss arm reports, so trying a pattern and
+backing off would narrate a diagnostic at every block opening with an ident —
+`pat_prefix_end` answers "could a pattern end here, followed by `=>`?" as a
+STRUCTURED token scan (one atom, joined onward only by `@` or `|`), which is
+also what keeps `{ setup()` newline `(x) => run(x) }` the block it is. And the
+two fresh-param prefixes are **not** a naming preference: `dp_prefix` licenses
+`format.mn` to render a param back in PARAM POSITION, sound only because
+`expr_to_pat` made the pattern, and `expr_to_pat` answers `PWild` for a literal
+and for a constructor call — so an arm list minted under it would have rendered
+`{ 0 => 1 }` as `(0) => 1`, a wildcard, with nothing to say it had. `al_prefix`
+makes that unsayable. fmt's own second render is what would otherwise have
+found it in production.
+THE CENSUS WAS RE-FOUNDED IN THE SAME LANDING, and it had to be: after the
+sweep the anonymity shapes would have convicted a form carrying no param list
+at all — the census reporting a lambda the source does not contain, which is
+the doc-layer Carried-Truth violation one layer down. `lambda_is_written_as_a_mint`
+excludes the arm-list shape, so what the count convicts is a REFERENCE WRITTEN
+AS A MINT, which is a number that can reach zero.
+REMAINING, and it is the honest half rather than the easy half: the
+MULTI-PARAM lambda (`Hβ.syntax.multi-param-lambda-is-a-reference`), the `() =>`
+thunk (`Hβ.syntax.handler-chain-is-a-value`), and the sole-param lambda whose
+body is not a match (`(x) => x + 1`, expressible as `{ x => x + 1 }` but not
+converted, because the degenerate single-`PVar` arm should DESUGAR AWAY at
+parse rather than compile to a one-arm match — the node saved is the whole
+reason to do it, and it is a parse simplification this landing did not carry).
+`(params) => body` is deleted when those three are, not before.
+
 `Hβ.emit.param-list-is-not-a-product` — **RETRACTED 2026-09-20, the same day it
 was banked, by the artifact.** It claimed a defect: `(a, b) => a * b` emits a
 flat `$ft3` while `((a, b)) => a * b` allocates a tuple and passes one word —
@@ -121,7 +160,11 @@ WHAT SURVIVES, and it makes the arm-list arc SMALLER rather than larger: all
 57 `((a,b)) => …` — so the literal is a one-param dispatch exactly as a match's
 arms are, and no arity semantics are touched at all.
 
-`Hβ.syntax.field-accessor-documented-never-built` — OPEN, BORN 2026-09-20,
+`Hβ.syntax.field-accessor-documented-never-built` — **CLOSED 2026-09-20 by the
+deletion its own close condition named**: the three `.field` examples left
+SYNTAX §«Partial application» with the measurement recorded beside them, and
+the accessor is not built. The entry stands because the reason it is refused
+outlives it. BORN the same day,
 and it CLOSES BY DELETION rather than by building. SYNTAX presents
 `filter(.age > 18)` and `map(.name)` as canonical in §«Partial application» —
 the very illustration of "the hole is keyed by IDENTITY". Measured: the form
@@ -133,6 +176,26 @@ AND UNDER THE ARM-LIST FORM IT IS REFUSED ON ITS MERITS, not merely unbuilt: a
 field is not a decl, so `.name` would be a THIRD way to mint a function beside
 reference-with-holes and the arm list. `{ st => st.name }` says it with the one
 literal. CLOSE: the examples leave SYNTAX; the accessor is not built.
+
+`Hβ.syntax.multi-param-lambda-is-a-reference` — OPEN, BORN 2026-09-20 as the
+arm list's honest remainder. The literal takes ONE parameter (the value its
+arms match), so `(a, b) => a * b` is not expressible as one and did not
+convert. That is not a gap in the literal; it is the other operation. A
+multi-param anonymous function is a REFERENCE the author declined to make —
+`fold(0, (acc, x) => acc + x, xs)` is `fold(0, add, xs)` — which is rule 1 of
+§2's two operations and needs no new form at all.
+NOT YET MEASURED, and the entry says so rather than guessing: the census
+counted `(x) => match x` (197), `((a,b)) => …` (57), `(x) => f(cfg, x)` (102),
+small-body (131) and thunks (27) — it never split the remainder by ARITY, so
+how many multi-param lambdas are genuinely un-nameable is an open count. The
+suspicion worth testing is that nearly all are `fold`/`zip_with` accumulators
+whose named form already exists in the prelude.
+THE TRAP TO AVOID is uncurrying them into a tuple-taking literal: `{ (a, b) =>
+a * b }` is a function of a PAIR, a different type, and the retracted
+`Hβ.emit.param-list-is-not-a-product` entry below is the record of that exact
+mistake being caught before it became a build.
+CLOSE: every surviving multi-param lambda is either a named decl or a
+reference with holes, and `(params) => body` is deleted with the other two.
 
 `Hβ.syntax.handler-chain-is-a-value` — OPEN, BORN 2026-09-20 out of the thunk
 census. 27 of the wheel's lambdas are `() =>` and 23 of those go to

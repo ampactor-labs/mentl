@@ -516,21 +516,21 @@ fn cursor_view_of(handle) with GraphRead + EnvRead + Memory + Alloc + Intern + D
     let pos = (handle, kind)
     match pos <| (
       // 1. Graph + Env (Query)
-      ((_, k)) => k,
+      { (_, k) => k },
       // 2. Handlers (Propose) — Synth's MultiShot
-      ((h, _)) => propose_at(h),
+      { (h, _) => propose_at(h) },
       // 3. Five verbs (Topology)
-      ((h, _)) => pipe_context_of_handle(h),
+      { (h, _) => pipe_context_of_handle(h) },
       // 4. Boolean row (Unlock)
-      ((_, k)) => row_of_kind(k),
+      { (_, k) => row_of_kind(k) },
       // 5. Ownership-as-effect (Trace)
-      ((_, k)) => ownership_of_kind(k),
+      { (_, k) => ownership_of_kind(k) },
       // 6. Refinement (Verify)
-      ((h, _)) => verify_pending_at(h),
+      { (h, _) => verify_pending_at(h) },
       // 7. Continuous gradient (Teach)
-      ((h, _)) => teach_gradient(h),
+      { (h, _) => teach_gradient(h) },
       // 8. HM live + Reasons (Why)
-      ((h, _)) => teach_why(h)
+      { (h, _) => teach_why(h) }
     ) {
       (query, propose, topology, row, trace, verify, teach, why) => CursorView(query, propose, topology, row, trace, verify, teach, why),
     }
@@ -768,4 +768,4 @@ fn verify_pending_at(handle) with Verify + GraphRead + Memory + Alloc + !Mutate 
 }
 
 fn filter_by_span(target, debt) with Memory + Alloc =
-  filter(((_m, debt_span, _, _)) => span_overlaps(target, debt_span), debt)
+  filter({ (_m, debt_span, _, _) => span_overlaps(target, debt_span) }, debt)

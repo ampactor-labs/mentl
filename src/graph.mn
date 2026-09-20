@@ -1453,12 +1453,8 @@ fn collect_module_cells(i, n) with Memory + Alloc + GraphRead + !Mutate = if i >
   }
 }
 
-fn module_paths() with Memory + Alloc + GraphRead + !Mutate = map(
-  (c) => match c {
-    (_h, p, _s, _d) => p,
-  },
-  module_cells()
-)
+fn module_paths() with Memory + Alloc + GraphRead + !Mutate =
+  map({ (_h, p, _s, _d) => p }, module_cells())
 
 // The module handle a path names — the inverse of `module_name_of_handle`,
 // read from the same deduped cells, so it lands on the JUDGED generation's
@@ -1541,12 +1537,7 @@ effect LookupTy {
 // by root handle — tiny, and maximally shared: every word instantiation IS
 // the floor emission ([Int], String, records — byte-identical, Law 7); only
 // a genuinely wide var mints a twin ($min$sp2 = min with its one var at f64).
-fn spec_pairs_find(pairs, root) with Memory + Alloc = match find(
-  (p) => match p {
-    (v, _) => v == root,
-  },
-  pairs
-) {
+fn spec_pairs_find(pairs, root) with Memory + Alloc = match find({ (v, _) => v == root }, pairs) {
   Some(p) => match p {
     (_, t) => Some(t),
   },
@@ -1594,12 +1585,7 @@ fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
     eff
   ),
   TName(n, args) => TName(n, map((x) => spec_subst_pairs(x, pairs), args)),
-  TRecord(fs) => TRecord(map(
-    (f) => match f {
-      (n, ft) => (n, spec_subst_pairs(ft, pairs)),
-    },
-    fs
-  )),
+  TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs)),
   TRecordOpen(fs, v) => // A row var is a var, and the site that closed it proved the WHOLE field
   // set. Substituting the known fields' types while keeping `v` verbatim
   // discarded that proof, and the discard is what the wrong-slot class was
@@ -1609,15 +1595,7 @@ fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
   // downstream reads the full sorted set.
   match spec_pairs_find(pairs, graph_chase_handle(v)) {
     Some(closed) => closed,
-    None => mk_record_open(
-      map(
-        (f) => match f {
-          (n, ft) => (n, spec_subst_pairs(ft, pairs)),
-        },
-        fs
-      ),
-      v
-    ),
+    None => mk_record_open(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs), v),
   },
   TRefined(b, p) => TRefined(spec_subst_pairs(b, pairs), p),
   TAlias(n, i) => TAlias(n, spec_subst_pairs(i, pairs)),

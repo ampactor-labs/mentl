@@ -254,11 +254,10 @@ fn node_arm_at(n, slot) with Memory = {
   load_i32(record + 8 + 4 * load_i32(record + 4) + 4 * (base + slot))
 }
 
-fn ev_declaring_node(top, target, slot) with Memory =
-  match world_declaring_from(top, target, slot) {
-    0 => {
-      store_i32(0, target)
-      load_i32(0 - 1)
-    },
-    node => node,
-  }
+fn ev_declaring_node(top, target, slot) with Memory = match world_declaring_from(top, target, slot) {
+  0 => {
+    store_i32(0, target)
+    load_i32(0 - 1)
+  },
+  node => node,
+}

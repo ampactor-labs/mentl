@@ -1790,8 +1790,19 @@ for i in "${!compilers[@]}"; do
   # its authored pattern, never the desugared __dp<handle> machine form
   # (seen RED on the pre-resugar wheel: the fan's labeled branches baked
   # minted names and the labels migrated one arm per pass).
-  if ! grep -q '__dp' "$fdemo2/rich.mn" && grep -q '((a, b)) =>' "$fdemo2/rich.mn"; then
-    pass "fmt re-sugars the destructure lambda (no __dp in the canonical page)"
+  #
+  # THE SPELLING WAS REWRITTEN 2026-09-20, the law updated rather than
+  # obeyed. This leg asserted `((a, b)) =>` — the param-position form —
+  # and went RED the day the arm-list literal landed, because a
+  # sole-param destructure now renders `{ (a, b) => … }` (SYNTAX
+  # §«Function literals»: a function is MINTED with an arm list, and the
+  # param-position spelling is a CASE of it that retires with
+  # `(params) => body`). The INVARIANT the leg exists for is untouched
+  # and in fact held harder: the minted machine name must never reach
+  # the page, and the arm list carries no param name at all. Only the
+  # canonical spelling moved, so only the spelling moves here.
+  if ! grep -q '__dp' "$fdemo2/rich.mn" && grep -q '{ (a, b) =>' "$fdemo2/rich.mn"; then
+    pass "fmt renders the destructure as an arm list (no minted name on the canonical page)"
   else
     fail "fmt destructure re-sugar (see $fdemo2/rich.mn)"
   fi

@@ -245,12 +245,14 @@ spawn_task(priority = 5, config = current, timeout_ms = 5000)   // all labeled
 A parameter product may be constructed with a **hole** — a field left unsupplied. The result is not an error; it is a **value**: the function *awaiting* that field. This is partial application, and it is not a distinct feature — it is the product node-kind constructed with one field absent.
 
 ```
-let adults = filter(.age > 18)        // xs is a hole → adults : [Person] -> [Person]
-adults(users)                          // fill the hole → the filtered list
-adults(new_signups)                    // reuse — a hole-product is a first-class value
+let adults = filter({ p => p.age > 18 })   // xs is a hole → adults : [Person] -> [Person]
+adults(users)                              // fill the hole → the filtered list
+adults(new_signups)                        // reuse — a hole-product is a first-class value
 ```
 
-**The hole is keyed by IDENTITY, never by position.** `filter(.age > 18)` leaves *the parameter `xs`* unfilled — "the parameter `xs`," not "slot 2." When exactly one field is a hole, it is unambiguous. When several are, the hole is named explicitly with `??` at the field it marks:
+*(This section's headline example was `filter(.age > 18)` until 2026-09-20, and the bare `.field` accessor it spelled **does not parse and never did** — measured: `P_UnexpectedToken` at the `.`, then `E_MissingVariable: age`. Nothing in the tree used it, nothing implemented it, and the spec was teaching it as the canonical form in three places. It is struck rather than built, because a field is not a declaration, so `.name` would be a THIRD way to reach a function value beside reference and mint — the one thing §«Function literals» says there is not. `Hβ.syntax.field-accessor-documented-never-built` closes by this deletion.)*
+
+**The hole is keyed by IDENTITY, never by position.** `filter({ p => p.age > 18 })` leaves *the parameter `xs`* unfilled — "the parameter `xs`," not "slot 2." When exactly one field is a hole, it is unambiguous. When several are, the hole is named explicitly with `??` at the field it marks:
 
 ```
 between(??, 100)      // the FIRST field is the hole: (x) => between(x, 100)
@@ -262,8 +264,8 @@ clamp(0, ??, 255)     // the MIDDLE field is the hole: (x) => clamp(0, x, 255)
 **The `|>` pipe is hole-completion, not a rewrite.** `x |> f(a)` fills `f(a)`'s remaining hole with `x`:
 
 ```
-users |> filter(.age > 18)            // fills xs → equals filter(.age > 18, users)
-users |> filter(.age > 18) |> map(.name) |> sort
+users |> filter({ p => p.age > 18 })              // fills xs → equals filter({ … }, users)
+users |> filter({ p => p.age > 18 }) |> map({ p => p.name }) |> sort
 ```
 
 The pipe's type rule (§«`|>` — converge») requires `right : A -> B` — a product with exactly one hole — and a partial application *is* exactly that. So the pipe is not a syntactic append; it is the product's one remaining hole filled by the piped value. This is why the five verbs compose: every stage is a product pre-filled with its configuration, its data field a hole the pipe completes. A stage with more than one hole must name the pipe's target with `??` (`x |> clamp(0, ??, 255)`); a stage with none is a complete value and `E_PipeIntoComplete` teaches the missing hole.
@@ -371,15 +373,43 @@ Mutual recursion: nested fns may reference each other — the compiler hoists th
 
 ---
 
-## Anonymous functions (lambdas)
+## Function literals — the arm list
+
+Surfaces primitives **#2** (pattern dispatch, the handler's own shape) and **#8** (HM inference: a literal's parameter type is inferred from the arms).
+
+**A function value is reached by exactly TWO operations, because the kernel has exactly two** (`PLAN.md §2` — draw an edge, project):
+
+1. **REFERENCE** an existing function, with the fields it is not yet given left as holes — `f`, `f(cfg)`, `f(a, ??, c)` (§«Partial application — the product with a hole»). An edge to a node that exists.
+2. **MINT** a new one, with an **ARM LIST** — `{ pattern => body, … }`.
 
 ### Canonical form
 
 ```
-(params) => body
+{ pattern => body, ... }
 ```
 
-One syntax for all anonymous functions. `(` opens the parameter list; `)` closes it; `=>` separates params from body; body is one expression OR one brace-block. `fn` keyword is reserved for named declarations only — it does NOT appear in lambda syntax.
+The braces ARE the literal; there is no head, because there is nothing for a head to say that the patterns do not. Arms separate with commas, trailing comma allowed, exactly as `match`'s arms do — they are parsed by the same function, because they are the same thing.
+
+```
+xs |> map({ Some(v) => v, None => 0 })
+weights |> filter({ (name, w) => w > 0 })
+{ Leaf => 3, Node(n) => n * 2, _ => 7 }
+```
+
+**`match` is the arm list APPLIED.** `match scrut { arms }` and `{ arms }(scrut)` are the same graph and the same value — one form names its argument at the site, the other leaves it to the caller. This is why the medium needs no separate lambda: pattern dispatch was always the mint, and a binder wrapping it was the wrapper.
+
+**The literal takes exactly ONE parameter** — the value its arms match. Several arguments are a product the arms destructure (`{ (a, b) => a + b }` takes a pair), which is the parameter-list-as-product rule (§«Labeled call arguments») read at the literal.
+
+**A brace opens a literal when a PATTERN ends at a `=>`.** That question is answered by a bounded token scan, never by parsing a pattern speculatively and never by layout: one pattern atom — an ident (optionally applied), a literal, or a balanced group — joined to further atoms only by `@` or `|`. Two adjacent atoms are never a pattern, so `{ setup()` newline `(x) => run(x) }` is the block it looks like. Record literal and block discrimination are unchanged and follow (§«Records», §«Function declarations»).
+
+### The residue — `(params) => body`
+
+The binder form still parses, and it is the last of the line that retired `perform`, `handle`, `capability`, the turbofish and `|x|`. `mentl fmt` no longer writes it wherever the arm list expresses the same graph — a sole-parameter lambda, including the param-position destructure `((a, b)) => e`, renders as its arms — so what survives on the page is the honest remainder:
+
+- **multi-parameter** (`(a, b) => a * b`) — the arm list is one-parameter, so these retire by becoming REFERENCES (`fold(0, add, xs)`), which is rule 1 and needs no new form. `Hβ.syntax.multi-param-lambda-is-a-reference`.
+- **the zero-argument thunk** (`() => e`) — retires into a named handler chain rather than into a literal. `Hβ.syntax.handler-chain-is-a-value`.
+
+Both are named in positive form with their measured counts in `RESIDUE.md`; neither is a second minting form, and no third is being held open.
 
 ### Examples
 
@@ -389,24 +419,24 @@ One syntax for all anonymous functions. `(` opens the parameter list; `)` closes
 () => { let x = compute(); x + 1 }
 ```
 
-**Single argument:**
+**Single argument — the arm list, the canonical form:**
 ```
-(x) => x + 1
-(_) => 42              // argument ignored (PWild pattern)
+{ x => x + 1 }
+{ _ => 42 }                                // argument ignored (PWild pattern)
 ```
 
-**Multiple arguments:**
+**Multiple arguments** (the residue above — a reference is the ultimate form):
 ```
 (a, b) => a * b
 (a, _) => a            // second ignored
 (_, _) => 0            // all ignored
 ```
 
-**Destructuring patterns in param position:**
+**Destructuring — an ordinary arm pattern, with no param position to nest in:**
 ```
-({name, age}) => greet(name)              // record destructure
-((a, b)) => a + b                          // tuple destructure (outer = param list; inner = tuple pattern)
-([h, ...t]) => process(h, t)               // list destructure
+{ {name, age} => greet(name) }             // record destructure
+{ (a, b) => a + b }                        // tuple destructure
+{ [h, ...t] => process(h, t) }             // list destructure
 ```
 
 **Block body:**
@@ -427,10 +457,10 @@ Identical to named-fn bodies (§"Function declarations"): the brace requirement 
 ### Inline higher-order use
 
 ```
-map((x) => x + 1, xs)
-fold(0, (acc, x) => acc + x, xs)
-filter((x) => x > 0, xs)
-zip_with((a, b) => a * b, xs, ys)
+map({ x => x + 1 }, xs)
+filter({ x => x > 0 }, xs)
+fold(0, (acc, x) => acc + x, xs)           // two parameters — a reference is the ultimate form
+zip_with((a, b) => a * b, xs, ys)          // likewise
 ```
 
 ### Returned closures
@@ -440,9 +470,11 @@ fn compose(f, g) = (x) => g(f(x))
 fn id(x) with Pure = x
 ```
 
-### Match arms share the lambda syntax
+### Match arms ARE the literal — the sentence that became a mechanism
 
-Match arms are `pattern => body`. **Match arms ARE pattern-dispatched lambdas** — same separator, same body discipline. The syntactic unity reflects semantic unity.
+This section used to read: *"Match arms are `pattern => body`. **Match arms ARE pattern-dispatched lambdas** — same separator, same body discipline. The syntactic unity reflects semantic unity."* That was a remark about RESEMBLANCE, and the medium's own census priced it: **197 of 515 lambda sites (38%) were `(x) => match x { … }`**, with 57 more a single tuple pattern in param position — half the corpus paying a wrapper to reach a form the language already had, and this document conceding the point in prose while the parser charged for it.
+
+It is a mechanism now: an arm list IS a function, `match` is that function applied, and one `parse_match_arms` serves both. The unity is not reflected; it is the same node.
 
 ### Rejected forms
 

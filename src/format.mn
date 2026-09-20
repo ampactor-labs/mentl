@@ -136,19 +136,19 @@ fn render_node_at(handle) = {
   let pos = (body, handle, ctx)
   match pos <| (
     // 1. tokens
-    ((b, _, _)) => render_body_tokens(b),
+    { (b, _, _) => render_body_tokens(b) },
     // 2. indent (canonical)
-    ((b, _, c)) => render_indent_for(b, c),
+    { (b, _, c) => render_indent_for(b, c) },
     // 3. line break
-    ((b, _, _)) => render_line_break_after(b),
+    { (b, _, _) => render_line_break_after(b) },
     // 4. the one comment, read live from the weave
-    ((_, h, _)) => render_comment_at(h),
+    { (_, h, _) => render_comment_at(h) },
     // 5. span (debug only)
-    ((_, _, _)) => "",
+    { (_, _, _) => "" },
     // 6. reason (debug)
-    ((_, h, _)) => render_reason_at(h),
+    { (_, h, _) => render_reason_at(h) },
     // 7. sibling glue
-    ((_, _, c)) => render_sibling_separator(c)
+    { (_, _, c) => render_sibling_separator(c) }
   ) {
     (tokens, indent, line_break, comment, span, reason, sibling) => assemble_render(tokens, indent, line_break, comment, span, reason, sibling),
   }
@@ -481,11 +481,27 @@ fn render_expr_tokens(e) with GraphRead + Memory + Alloc + !Mutate + Intern = ma
   // fmt census's blocker 5: a third of parser.mn's prose was
   // body-interior).
   "\{\n{indent_block("{render_block_stmts(stmts, 0)}{render_grouped_body(final)}")}\n\}",
-  LambdaExpr(params, body) => match resugar_head(params, body) {
-    Some(pair) => match pair {
-      (plist, inner) => "({plist}) => {render_grouped_body(inner)}",
+  LambdaExpr(params, body) => match arm_list_of(params, body) {
+    Some(arms) => // The literal renders as the arms alone — the head it would
+    // otherwise carry is the wrapper this form exists to delete, and
+    // `match`'s own renderer is the one that draws arms. Inline when it
+    // fits, because the commonest literal is one short destructuring arm
+    // and spending six lines on `map({ (name, _) => name }, xs)` would
+    // trade a wrapper for a worse page.
+    {
+      let one_line = "\{ {render_arm_list_inline(arms, 0)} \}"
+      if !str_contains(one_line, "\n") && fits_inline(one_line) {
+        one_line
+      } else {
+        "\{\n{indent_block(strip_trailing_nl(render_match_arms(arms, 0)))}\n\}"
+      }
     },
-    None => "({render_param_list(params)}) => {render_grouped_body(body)}",
+    None => match resugar_head(params, body) {
+      Some(pair) => match pair {
+        (plist, inner) => "({plist}) => {render_grouped_body(inner)}",
+      },
+      None => "({render_param_list(params)}) => {render_grouped_body(body)}",
+    },
   },
   MakeRecordExpr(fields) => "\{{render_field_inits(fields, 0)}\}",
   NamedRecordExpr(tname, fields) => "{tname}\{{render_field_inits(fields, 0)}\}",
@@ -660,7 +676,7 @@ fn resugar_walk(ref params, i, body, acc) with GraphRead + Memory + Alloc + !Mut
   let sep = if i == 0 { "" } else { ", " }
   let p = params[i]
   let nm = param_name(p)
-  if byte_len(nm) >= 4 && str_slice(nm, 0, 4) == "__dp" {
+  if is_dp_name(nm) {
     match dp_match_arm(body, nm) {
       Some(arm) => match arm {
         (pat, inner) => resugar_walk(params, i + 1, inner, "{acc}{sep}{render_pat_tokens(pat)}"),
@@ -669,6 +685,24 @@ fn resugar_walk(ref params, i, body, acc) with GraphRead + Memory + Alloc + !Mut
     }
   } else {
     resugar_walk(params, i + 1, body, "{acc}{sep}{render_one_param(p)}")
+  }
+}
+
+// A name the PARAM-POSITION desugar minted rather than an author wrote —
+// `parser.mn`'s `dp_prefix` is the spelling's one home and this reads it
+// back. The arm-list literal's own prefix never answers true here, which
+// is the whole point of their being two (parser.mn `fresh_param_under`).
+fn is_dp_name(nm) =
+  byte_len(nm) >= byte_len(dp_prefix) && str_slice(nm, 0, byte_len(dp_prefix)) == dp_prefix
+
+// The arms on ONE line — the literal's inline layout. A trailing comma is
+// the multi-line form's separator discipline, not the inline one's.
+fn render_arm_list_inline(arms, i) with GraphRead + Memory + Alloc + !Mutate + Intern = if i >= len(arms) {
+  ""
+} else {
+  let sep = if i == 0 { "" } else { ", " }
+  match arms[i] {
+    (pat, body) => "{sep}{render_pat_tokens(pat)} => {render_grouped_body(body)}{render_arm_list_inline(arms, i + 1)}",
   }
 }
 

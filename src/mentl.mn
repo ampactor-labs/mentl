@@ -369,11 +369,7 @@ fn try_each_annotation(handle, candidates, base_ty) = {
     heap_reset(mark)
     world_restore(w)
     (ann, ok)
-  }) |> filter((pair) => match pair {
-    (_, ok) => ok,
-  }) |> map((pair) => match pair {
-    (ann, _) => (ann, unlock_capability(ann)),
-  })
+  }) |> filter({ (_, ok) => ok }) |> map({ (ann, _) => (ann, unlock_capability(ann)) })
 }
 
 // Speculative apply: compute the narrowed type/row, graph_bind it, and
@@ -592,12 +588,7 @@ fn find_by_priority(proven, priorities) = {
 }
 
 fn find_annotation(proven, target) = {
-  let hits = filter(
-    (pair) => match pair {
-      (ann, _) => annotation_eq(ann, target),
-    },
-    proven
-  )
+  let hits = filter({ (ann, _) => annotation_eq(ann, target) }, proven)
   if len(hits) == 0 { None } else { Some(head(hits)) }
 }
 
@@ -795,15 +786,19 @@ fn teach_session(handle) with Teach + GraphRead + Memory + Alloc = match graph_c
   GNode(kind, _) => {
     let span = caret_span_from_handle(handle)
     let pos = (handle, kind, span)
-    match pos <| (((h, k, sp)) => match k {
-      NBound(ty) => teach_here("at handle", sp, ty),
-      _ => (),
-    }, ((h, _, _)) => teach_gradient(h), ((h, _, _)) => teach_why(h), ((h, _, sp)) => teach_error("E_Position", sp, Inferred("teach_session inquiry")), ((_, k, _)) => match k {
-      NBound(ty) => match annotation_inferred_for(ty) {
-        Some(ann) => teach_unlock(ann),
-        None => CMemoize,
+    match pos <| ({
+      (h, k, sp) => match k {
+        NBound(ty) => teach_here("at handle", sp, ty),
+        _ => (),
       },
-      _ => CMemoize,
+    }, { (h, _, _) => teach_gradient(h) }, { (h, _, _) => teach_why(h) }, { (h, _, sp) => teach_error("E_Position", sp, Inferred("teach_session inquiry")) }, {
+      (_, k, _) => match k {
+        NBound(ty) => match annotation_inferred_for(ty) {
+          Some(ann) => teach_unlock(ann),
+          None => CMemoize,
+        },
+        _ => CMemoize,
+      },
     }) {
       (_, gradient, why, _, _) => TeachSession(gradient, why),
     }

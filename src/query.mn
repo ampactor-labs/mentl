@@ -352,22 +352,15 @@ fn chase_list_deep(ref tys) with Memory + Alloc + GraphRead = map(chase_type_dee
 fn chase_params_deep(ref params) with !Mutate =
   map((p) => param_with_ty(p, chase_type_deep(param_ty(p))), params)
 
-fn chase_fields_deep(ref fields) with Memory + Alloc + GraphRead = map(
-  (field) => match field {
-    (name, ty) => (name, chase_type_deep(ty)),
-  },
-  fields
-)
+fn chase_fields_deep(ref fields) with Memory + Alloc + GraphRead =
+  map({ (name, ty) => (name, chase_type_deep(ty)) }, fields)
 
 // Collect all env entries whose type still chases to a free `TVar`.
 // Returned by `QUnresolved` — the set of names with incomplete types
 // after inference, in env order (the reversing walk was the
 // param-render-reversed class's fourth face).
-fn find_unresolved(ref entries) with GraphRead + WASI + Memory + Alloc + !Mutate = entries |> filter((entry) => match entry {
-  (_, scheme, _, _) => has_free_tvar(judgment_ty(scheme)),
-}) |> map((entry) => match entry {
-  (name, scheme, _, _) => (name, judgment_ty(scheme), []),
-})
+fn find_unresolved(ref entries) with GraphRead + WASI + Memory + Alloc + !Mutate =
+  entries |> filter({ (_, scheme, _, _) => has_free_tvar(judgment_ty(scheme)) }) |> map({ (name, scheme, _, _) => (name, judgment_ty(scheme), []) })
 
 fn has_free_tvar(ref ty) with GraphRead + Memory + Alloc = match ty {
   TVar(h) => match graph_chase(h) {
@@ -557,18 +550,8 @@ fn decl_names_join(acc, d) with Memory + Alloc = acc ++ decl_names_of(d)
 fn decl_names_of(d) with Memory + Alloc = match d {
   N(NStmt(s), _, _) => match s {
     FnStmt(n, _, _, _, _) => [n],
-    TypeDefStmt(n, ctors) => [n] ++ map(
-      (c) => match c {
-        (cn, _, _) => cn,
-      },
-      ctors
-    ),
-    EffectDeclStmt(n, _, ops) => [n] ++ map(
-      (o) => match o {
-        (on, _, _, _) => on,
-      },
-      ops
-    ),
+    TypeDefStmt(n, ctors) => [n] ++ map({ (cn, _, _) => cn }, ctors),
+    EffectDeclStmt(n, _, ops) => [n] ++ map({ (on, _, _, _) => on }, ops),
     HandlerDeclStmt(n, _, _, _, _) => [n],
     _ => [],
   },
@@ -946,7 +929,7 @@ fn site_in(ref acc, ref m: String, ref sp, i) with Memory + Alloc = if i >= len(
 // the syntactic shapes read the body alone.
 fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutate + Alloc + Memory = match shape {
   CsAnonymous => match body {
-    NExpr(LambdaExpr(_, _)) => true,
+    NExpr(LambdaExpr(params, lbody)) => lambda_is_written_as_a_mint(params, lbody),
     _ => false,
   },
   CsVerb(k) => match body {
@@ -961,7 +944,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
     _ => false,
   },
   CsEffectfulLambda => match body {
-    NExpr(LambdaExpr(params, lbody)) => !lambda_is_eta(params, lbody) && lambda_carries_row(h),
+    NExpr(LambdaExpr(params, lbody)) => lambda_is_written_as_a_mint(params, lbody) && !lambda_is_eta(params, lbody) && lambda_carries_row(h),
     _ => false,
   },
   CsIterationCostume => match body {
@@ -1402,12 +1385,7 @@ fn expr_child_handles(e) with Alloc + Memory = match e {
   MatchExpr(scrut, arms) => // an arm's BODY is a child node — dropping the arms left the
   // projection partial and tree containment blind below any match
   // (the enclosing-decl guard's measured hole).
-  [node_handle(scrut)] ++ map(
-    (arm) => match arm {
-      (_, b) => node_handle(b),
-    },
-    arms
-  ),
+  [node_handle(scrut)] ++ map({ (_, b) => node_handle(b) }, arms),
   ResumeExpr(v, updates) => // A resume-with update is the parser's {name, init} record — the handle
   // lives on its init edge (record_field_handle's exact sibling).
   [node_handle(v)] ++ map(record_field_handle, updates),
@@ -1531,6 +1509,24 @@ fn param_plus_one(a, b, pnames) with GraphRead = match graph_node_body(node_hand
 fn list_contains_str(xs, target: String) with Pure = match xs {
   [] => false,
   [h, ...t] => if h == target { true } else { list_contains_str(t, target) },
+}
+
+// THE ANONYMITY CENSUS COUNTS A REFERENCE WRITTEN AS A MINT, and this
+// predicate is where that sentence becomes a measurement. The medium has
+// two operations on a function value (PLAN §2): REFERENCE an existing one
+// with a hole, or MINT one with an arm list. A lambda whose whole body is
+// pattern dispatch is the SECOND — no reference-with-a-hole expresses it,
+// so convicting it made the count a number that could not reach zero, and
+// a ratchet on an unreachable floor measures nothing.
+//
+// It is also what the page now says. The arm-list literal (SYNTAX
+// §«Function literals») renders with no param list at all, so counting
+// `{ Leaf => 3, Node(n) => n }` as a LAMBDA would be the census reporting
+// a form the source does not contain — the doc-layer Carried-Truth
+// violation, one layer down.
+fn lambda_is_written_as_a_mint(params, lbody) with GraphRead + Alloc + Memory = match arm_list_of(params, lbody) {
+  Some(_) => false,
+  None => true,
 }
 
 // The eta test reads the body's OWN shape: exactly CallExpr(VarRef(g),

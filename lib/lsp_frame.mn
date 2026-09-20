@@ -181,7 +181,7 @@ fn write_lsp_frame(body) with Memory + Alloc + WASI = {
   // interpolation is live (SYNTAX §Strings). Content-Length is protocol-
   // FUNCTIONAL, so the seed-compiled frame must carry the length — the `{x}`
   // splice form lands when the seed's TStringPart lexer interpolates.
-  let hdr = "Content-Length: " ++ int_to_str(body_len) ++ "\n\n"
+  let hdr = "Content-Length: " ++ int_to_str(body_len) ++ "\r\n\r\n"
   print_string(hdr)
   print_string(body)
   ()

@@ -316,12 +316,7 @@ fn driver_check(ref entry_module) with Memory + Alloc + ImageAlloc + Filesystem 
 // the two build paths read one input.
 fn driver_canonical_order(modules) with Memory + Alloc = {
   let keyed = map((m) => (driver_module_order_key(module_path_of(m)), m), modules)
-  map(
-    (pair) => match pair {
-      (_, m) => m,
-    },
-    driver_sort_keyed(keyed)
-  )
+  map({ (_, m) => m }, driver_sort_keyed(keyed))
 }
 
 // src/ ranks before lib/ (the blob's find order); within a rank, the path's
@@ -351,12 +346,8 @@ fn driver_insert_keyed(pair, sorted) with Memory + Alloc = if len(sorted) == 0 {
 
 // A module's weave range off the fold's own map — homed beside the fold
 // that mints it; at_run and the session read it through this same edge.
-fn range_of_module(ref ranges, ref target) with Memory + Alloc = find(
-  (r) => match r {
-    (m, _, _) => m == target,
-  },
-  ranges
-)
+fn range_of_module(ref ranges, ref target) with Memory + Alloc =
+  find({ (m, _, _) => m == target }, ranges)
 
 // The tree's identity as a value — the resident session's staleness
 // read: each WOVEN module's (path hash, byte length, content hash),
@@ -474,7 +465,7 @@ fn driver_entry_with_ranges(ref entry_module) with Memory + Alloc + ImageAlloc +
       // module's decls out of the weave by span containment — has no work
       // left, and rehome_seam_comments goes with it: the parser attaches
       // comments within ONE module now, so no comment can cross a seam.
-      let ast = infer_modules_converged(map(((m, _p, text)) => (m, text), mods))
+      let ast = infer_modules_converged(map({ (m, _p, text) => (m, text) }, mods))
       (ast, mods)
     },
   }
@@ -496,9 +487,8 @@ let warm_entry = [""]
 
 let warm_asts = [[]]
 
-fn warm_program() with Memory + Alloc = list_index(warm_asts, 0) |> map((pr) => match pr {
-  (_, ss) => ss,
-}) |> flatten
+fn warm_program() with Memory + Alloc =
+  list_index(warm_asts, 0) |> map({ (_, ss) => ss }) |> flatten
 
 // ─── The ONE tree scan ────────────────────────────────────────────────
 // Discovery walks the DAG once; then ONE content pass per module yields
@@ -526,12 +516,7 @@ fn driver_tree_scan(ref entry_module) with Memory + Alloc + Filesystem + Intern 
   )
 }
 
-fn scan_pairs(ref scan) with Memory + Alloc = map(
-  (t) => match t {
-    (m, h, _) => (m, h),
-  },
-  scan
-)
+fn scan_pairs(ref scan) with Memory + Alloc = map({ (m, h, _) => (m, h) }, scan)
 
 // The cache path is keyed by ENTRY alone — the weave's state lives in
 // the manifest INSIDE the image, so a changed tree still finds its old
@@ -646,12 +631,7 @@ fn module_bucket(ref cells, r) with Memory + Alloc = match r {
   (m, p, _text) => (p, module_decls_of(cells, m, [])),
 }
 
-fn assoc_stmts(ref pairs, name: String) with Memory + Alloc = match find(
-  (pr) => match pr {
-    (m, _) => m == name,
-  },
-  pairs
-) {
+fn assoc_stmts(ref pairs, name: String) with Memory + Alloc = match find({ (m, _) => m == name }, pairs) {
   Some(pr) => match pr {
     (_, ss) => ss,
   },
@@ -698,16 +678,11 @@ fn driver_incremental() with Memory + Alloc + ImageAlloc + Cast + Persist + WASI
     // unchanged module contributes its restored (already-inferred)
     // bucket, a cone module its fresh one — lower and emit see the whole
     // weave either way.
-    let merged = scan |> map((t) => match t {
+    let merged = scan |> map({
       (m, _, _) => (m, if module_in(cone, m) { assoc_stmts(fresh, m) } else { assoc_stmts(old_asts, m) }),
     })
     driver_warm_persist(entry, merged, cur_pairs)
-    flatten(map(
-      (pr) => match pr {
-        (_, ss) => ss,
-      },
-      merged
-    ))
+    flatten(map({ (_, ss) => ss }, merged))
   }
 }
 
@@ -715,18 +690,10 @@ fn driver_incremental() with Memory + Alloc + ImageAlloc + Cast + Persist + WASI
 // the manifest never saw it. A VANISHED module needs no arm of its own:
 // whoever imported it changed by text (the dropped import), and a module
 // nothing imports is not in the DAG at all.
-fn changed_modules(ref old_pairs, ref cur_pairs) with Memory + Alloc = cur_pairs |> filter((pr) => match pr {
-  (m, h) => manifest_hash_of(old_pairs, m) != h,
-}) |> map((pr) => match pr {
-  (m, _) => m,
-})
+fn changed_modules(ref old_pairs, ref cur_pairs) with Memory + Alloc =
+  cur_pairs |> filter({ (m, h) => manifest_hash_of(old_pairs, m) != h }) |> map({ (m, _) => m })
 
-fn manifest_hash_of(ref pairs, name: String) with Memory + Alloc = match find(
-  (pr) => match pr {
-    (m, _) => m == name,
-  },
-  pairs
-) {
+fn manifest_hash_of(ref pairs, name: String) with Memory + Alloc = match find({ (m, _) => m == name }, pairs) {
   Some(pr) => match pr {
     (_, h) => h,
   },
@@ -738,16 +705,9 @@ fn manifest_hash_of(ref pairs, name: String) with Memory + Alloc = match find(
 // the cone in the scan's canonical (deps-first) order so re-derivation
 // reads every re-judged dep before its importer.
 fn downstream_closure(ref scan, changed) with Memory + Alloc = {
-  let dag = map(
-    (t) => match t {
-      (m, _, deps) => (m, deps),
-    },
-    scan
-  )
+  let dag = map({ (m, _, deps) => (m, deps) }, scan)
   let cone = closure_fix(dag, changed)
-  scan |> map((t) => match t {
-    (m, _, _) => m,
-  }) |> filter((m) => module_in(cone, m))
+  scan |> map({ (m, _, _) => m }) |> filter((m) => module_in(cone, m))
 }
 
 fn closure_fix(ref dag, cone) with Memory + Alloc = {
@@ -802,9 +762,7 @@ fn driver_check_entry(ref entry_module) with Memory + Alloc + ImageAlloc + Files
   // entry reached by one spelling and collected under its resolved path is
   // the same module, and a spelling-compare here would judge it twice.
   let entry_path = driver_module_path(entry_module)
-  entry_module |> driver_collect_dag_with_deps |> filter((m_with_deps) => match m_with_deps {
-    (m, _) => module_path_of(m) != entry_path,
-  }) |> driver_partition_layers |> each((layer) => each(driver_check_module, layer))
+  entry_module |> driver_collect_dag_with_deps |> filter({ (m, _) => module_path_of(m) != entry_path }) |> driver_partition_layers |> each((layer) => each(driver_check_module, layer))
   // Parse + infer the entry ONCE; its AST is what compile lowers live.
   // An unreadable entry REPORTS, never parses emptiness — the silent
   // form answered zero fns at exit 0 on every analysis verb whenever
@@ -867,26 +825,18 @@ fn driver_partition_layers(ref modules_with_deps) with Memory + Alloc =
 fn driver_partition_peel(ref remaining, ref processed: [String], ref layers_rev: [[ModuleEntry]]) with Memory + Alloc = if len(remaining) == 0 {
   reverse(layers_rev)
 } else {
-  let layer_pairs = filter(
-    (m_with_deps) => match m_with_deps {
-      (_, deps) => all((d) => contains_module(processed, d), deps),
-    },
-    remaining
-  )
+  let layer_pairs =
+    filter({ (_, deps) => all((d) => contains_module(processed, d), deps) }, remaining)
   if len(layer_pairs) == 0 {
     // Cycle or unsatisfiable dep — process remaining sequentially
     // as a final layer to surface diagnostics at driver_check_module.
-    let leftover = map(((m, _)) => m, remaining)
+    let leftover = map({ (m, _) => m }, remaining)
     reverse([leftover] ++ layers_rev)
   } else {
-    let layer_entries = map(((m, _)) => m, layer_pairs)
+    let layer_entries = map({ (m, _) => m }, layer_pairs)
     let layer_paths = map(module_path_of, layer_entries)
-    let next_remaining = filter(
-      (m_with_deps) => match m_with_deps {
-        (m, _) => !contains_module(layer_paths, module_path_of(m)),
-      },
-      remaining
-    )
+    let next_remaining =
+      filter({ (m, _) => !contains_module(layer_paths, module_path_of(m)) }, remaining)
     let next_processed = processed ++ layer_paths
     driver_partition_peel(next_remaining, next_processed, [layer_entries] ++ layers_rev)
   }
