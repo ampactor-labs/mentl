@@ -85,30 +85,41 @@ It is invisible to `mentl doc`, unreachable by `mentl why <name>`, and no
 backticked reference can resolve to it. It is the one construct whose only
 handle is a coordinate, and §11's POSITIONS face is that coordinates rot under
 editing.
-DEP: `Hβ.emit.param-list-is-not-a-product` below — the arm list cannot subsume
-both `(a,b)` spellings while one is flat arity and the other boxes.
+NO DEP — and the entry below records why the one it was given was retracted.
+Every site the arm list targets is ONE-param already (197 `(x) => match x`, 57
+`((a,b)) => …`), so the literal is a one-param dispatch exactly as a match's
+arms are, and no arity semantics are touched. Multi-param lambdas are a
+different family and belong to the HOLE half of the rule, not this one.
 CLOSE: the arm list parses as a value; the 254 wrapper sites dissolve and the
 board's anonymity bound measures the fall; `(params) => body` is deleted, stale
 fluency parsing as ordinary expressions with the general diagnostic teaching the
 arm list (the turbofish precedent, no bespoke recognizer); `mentl doc` lists
 every function value, which is the felt proof.
 
-`Hβ.emit.param-list-is-not-a-product` — OPEN, BORN 2026-09-20, the keystone
-under the entry above and the measurement that refuted its first reading.
-SYNTAX declares the parameter list IS a positional product (§L1 *"tuple =
-positional product"*; §"Labeled call arguments" *"the parameter list AS a
-product node-kind"*). The artifact implements two different things: `(a, b) =>
-a * b` emits `(type $ft3 (func (param i32)(param i32)(param i32)(result i32)))`
-while `((a, b)) => a * b` allocates a tuple and passes one — 13 WAT lines and
-one function type apart on a four-line probe.
-WHY IT IS A DEFECT AND NOT A DETAIL: flat arity is a REPRESENTATION decision on
-a product, `repr_of`'s own business, and §5.U's law is that the surface never
-carries a representation decision. The double-paren carries exactly that today,
-which is why 57 sites pay it to write the honest form. It is also why the
-57-site destructuring family and the 197-site match family cannot merge.
-CLOSE: both spellings emit byte-identical WAT — a fixture asserting it, RED
-against pin `abe0334e` by the divergence above; flat arity becomes a `repr` pin
-on the parameter product; the surface stops forking.
+`Hβ.emit.param-list-is-not-a-product` — **RETRACTED 2026-09-20, the same day it
+was banked, by the artifact.** It claimed a defect: `(a, b) => a * b` emits a
+flat `$ft3` while `((a, b)) => a * b` allocates a tuple and passes one word —
+13 WAT lines apart — where SYNTAX §L1 declares the parameter list IS a
+positional product, so (the entry reasoned) the surface was carrying a
+representation decision §5.U forbids.
+**THE USE SITES REFUTE IT.** Every one of the 57 double-paren lambdas receives
+a TUPLE, because that is what the idiom is for: `flat_map(((h, depth)) => …,
+slots)` over a list of pairs, `any(((s, _)) => s == slot, …)` over a buffer of
+pairs (`backends/wasm.mn`). A one-param function of a pair and a two-param
+function are DIFFERENT TYPES, and the 13 lines are two different things
+compiled correctly. Collapsing them would break `map` over pairs — the medium's
+own arity diagnostic (*"function arity mismatch: 1 param(s) vs 2 param(s)"*) is
+right, not lagging.
+A fixture asserting the collapse was written, seen RED in the battery, and
+DELETED rather than left standing — a banked hypothesis is worse than none, and
+this one would have licensed a build that broke every pair-consuming HOF in the
+wheel. §L1's "positional product" is true in the sense it was written for
+(construction by identity — labels, defaults, holes), and false in the sense
+this entry read into it (arity is not real). Nothing here needs building.
+WHAT SURVIVES, and it makes the arm-list arc SMALLER rather than larger: all
+254 sites the arm list targets are already ONE-param — 197 `(x) => match x` and
+57 `((a,b)) => …` — so the literal is a one-param dispatch exactly as a match's
+arms are, and no arity semantics are touched at all.
 
 `Hβ.syntax.field-accessor-documented-never-built` — OPEN, BORN 2026-09-20,
 and it CLOSES BY DELETION rather than by building. SYNTAX presents
