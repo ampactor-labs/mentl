@@ -206,12 +206,48 @@ SWEEP: the ratchet moves 0 → 57 and each reference is re-pointed at something
 its own module reaches or written as prose. That is a landing, not a rider —
 the three this session authored are fixed at the pin that names this entry, and
 the other 54 predate it.
-CLOSE: the comment-ref count is taken per-module, its ceiling walks to zero, and
-a reference that resolves only through the flattened link is the same refusal as
-one that resolves nowhere. Its deeper form retires with
-`Hβ.driver.link-is-reachability` (Arc D), where the demanded set is read from
-import edges rather than a flat env — at which point "resolves in the link" and
-"resolves from here" stop being two different questions.
+THE 57 ARE THREE CLASSES, sampled 2026-09-20 rather than assumed, and every
+one is a genuine finding — which is what says the gate's RULE is right and only
+its SCOPE is wrong:
+1. **BACKWARDS CROSS-MODULE** — a real decl the writing module cannot reach:
+   graph.mn naming `project_queue_merger` (oracle.mn), `lsp_adapter` (lsp.mn),
+   `driver_module_ast` (driver.mn); lower.mn naming `wat_emit` / `WasmOut` /
+   `emit_module` (backends/wasm.mn). Each importer imports the commenter, so
+   the edge runs the wrong way. Either the prose drops its backticks or the
+   claim was never an edge.
+2. **A RETIRED DECL** — types.mn's `Domain` comment names `ty_lo`, which no
+   longer exists. This is the gate doing its whole job: Carried-Truth rot in
+   prose, a reference to something deleted, invisible for as long as the count
+   read the flattened link.
+3. **AN ENGLISH WORD IN BACKTICKS** — `message` in "the operands its message
+   needs", `kind` in "the legacy `kind` string position", plus `v`, `next`,
+   `fns`. Not references at all, and the `kind` one is doubly convicted:
+   SYNTAX forbids lifecycle vocabulary ("legacy") outright.
+MEASURED SEPARATELY, so the fix is not mistaken for a wider one: PARAMS AND
+FIELDS ALREADY RESOLVE. A probe whose comments backtick a fn's own params and
+a record's own fields raises nothing (`/tmp` fixture, 2026-09-20), so SYNTAX
+§Comments' claim that backticked params resolve through the enclosing decl's
+binders is TRUE, and `crc_fn_scopes` is why. The 57 are none of them a scope
+miss at the decl layer.
+THE BUILD IS NOT "RUN THE CHECK PER-MODULE" — that is 20 compiles to answer a
+question ONE pass already has the facts for, which is the re-derivation this
+entry convicts, re-committed at the gate layer. `comment_refs_check` takes the
+pass's parse range and resolves against `cdix` (every decl in the weave) and
+`lvix`; the REPORT beside it already reads the comment's own module from the
+commented handle — its own comment says so, *"the report is about the module
+the COMMENT lives in … read it from the commented node's own handle"* — after
+lib prose leaked into a user's stderr. So the identity is threaded and only the
+HIT TEST ignores it. The cut: `cdix` carries each referent's module handle, and
+the test becomes *is the referent's module the comment's own, or in its import
+closure?* One pass, one walk, the same cost.
+CLOSE: `mentl check src/main.mn` reports what the per-module sweep reports,
+because they have become the same question; the 57 are re-pointed or written as
+prose; and the count leaves `tools/verify.sh`'s grep for a bound in
+`src/board.mn` with its justification beside it (task #4's absorption — a
+census shape the one judged graph carries, not a stderr scrape). Its deeper
+form retires with `Hβ.driver.link-is-reachability` (Arc D), where the demanded
+set is read from import edges rather than a flat env — at which point "resolves
+in the link" and "resolves from here" stop being two different questions.
 
 `Hβ.syntax.multi-param-lambda-is-a-reference` — OPEN, BORN 2026-09-20 as the
 arm list's honest remainder. The literal takes ONE parameter (the value its
