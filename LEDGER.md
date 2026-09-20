@@ -35,6 +35,48 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-20 · pin 91f63a22cd1c6aec (CLEAN m2 == m3, sha unmoved — prose is
+  graph content and does not reach the WAT) · THE COMMENT-REF GATE READS THE
+  FLATTENED LINK, and the way it was found is the entry's point. Morgan:
+  *"seems like you're underutilizing Mentl."* The landing one pin earlier had
+  been driven with grep, sed, `run-micro.sh` and hand-read WAT, and its
+  comments had been checked by RE-READING them — which SYNTAX §Comments and
+  CLAUDE ⟳ (6) both forbid in the same words, *verify it by PROJECTING, never
+  by re-reading*, for exactly the reason that landed: the author is the last
+  one who can see it.
+  ONE `mentl src/parser.mn:2489` REPORTED FIVE UNRESOLVED COMMENT REFERENCES
+  at a pin whose board had printed `comment-refs: 0` minutes before. Three
+  were that session's own — comments moved out of format.mn into parser.mn
+  with their backticks intact, pointing at `dp_match_arm`, `resugar_head` and
+  `is_dp_name`, none of which parser.mn can reach, because format.mn imports
+  parser and not the reverse.
+  MEASURED, both links, the same tree: `mentl check src/main.mn` — the
+  whole-entry link `tools/verify.sh` greps — answers **0**; each module on its
+  own answers **57** (graph 13, lower 13, types 9, infer 6, pipeline 5,
+  oracle 3, board 2, parser 2, and one each in cursor / cursor_transport /
+  own / query). The link flattens every module into ONE env, so a backticked
+  name resolves whether or not the writing module can reach it. SYNTAX calls a
+  backticked name *"a resolvable EDGE the Why engine walks"*; an edge that
+  exists only in a flattened env is a NAME LOOKUP wearing an edge's name — the
+  Carried-Truth violation one layer above the prose this gate polices.
+  IT IS §11 TRIPWIRE 4 IN ITS WORSE FORM. *A gate that stops being reported
+  stops being run* — but this one WAS reported, every landing, as zero.
+  Nothing written was false; the measurement was scoped and the scope was
+  invisible, which is the crown's eleven quiet entries with a number attached
+  to make them look answered.
+  THE THREE ARE FIXED at this pin, re-pointed or written as prose that does
+  not pose as a reference. The other 54 and the gate's relocation into the
+  per-module sweep verify already runs are
+  `Hβ.voice.comment-ref-gate-reads-the-flattened-link` — a landing, not a
+  rider, because the ratchet moves 0 → 57 the moment the scope is corrected.
+  ALSO RECORDED, because it is the transferable half: `mentl <file:line>` at
+  the new decl renders `params: List(TParam) ref — inferred`, which states at
+  the address what the previous pin had proved the long way (six authored
+  `ref` markers dropped, emit byte-identical). The medium answers the
+  ownership question directly; the emit diff was the confirmation, not the
+  instrument. Board: crown / proof-exactness / effect-identity green,
+  frontier 390/0/2, census 0.
+
 - 2026-09-20 · pin 91f63a22cd1c6aec (CLEAN m2 == m3) · THE FUNCTION LITERAL IS
   AN ARM LIST. Morgan asked *"should lambda even exist in Mentl?"*, and the
   medium's own census answered before the design did: of 515 lambda sites,

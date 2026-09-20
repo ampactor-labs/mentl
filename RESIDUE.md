@@ -177,6 +177,42 @@ field is not a decl, so `.name` would be a THIRD way to mint a function beside
 reference-with-holes and the arm list. `{ st => st.name }` says it with the one
 literal. CLOSE: the examples leave SYNTAX; the accessor is not built.
 
+`Hβ.voice.comment-ref-gate-reads-the-flattened-link` — OPEN, BORN 2026-09-20,
+and it was found by USING THE MEDIUM after a landing that had not — Morgan's
+*"seems like you're underutilizing Mentl"*. One `mentl src/parser.mn:2489`
+reported five unresolved comment references at a pin whose board had just gone
+green with **`comment-refs: 0`**.
+MEASURED, both links, the same tree: `mentl check src/main.mn` (the whole-entry
+link, which is what `tools/verify.sh` greps out of `.build/m2cache/m2.err`)
+answers **0**. Checking each module on its own answers **57** — graph.mn 13,
+lower.mn 13, types.mn 9, infer.mn 6, pipeline.mn 5, oracle.mn 3, board.mn 2,
+parser.mn 2, and one each in cursor / cursor_transport / own / query.
+THE ROOT IS NOT THE COUNT, it is what resolution reads. The link flattens every
+module into ONE env, so a backticked name resolves whether or not the writing
+module can reach it. Three of the five at parser.mn pointed at `format.mn`
+decls — and format.mn imports parser, not the reverse, so those references
+crossed an import edge BACKWARDS and resolved only through the flattening.
+SYNTAX calls a backticked name *"a resolvable EDGE the Why engine walks"*; an
+edge that exists only in a flattened env is a NAME LOOKUP wearing an edge's
+name, which is the Carried-Truth violation this very gate exists to catch, one
+layer up from the prose it polices.
+IT IS ALSO §11 TRIPWIRE 4 EXACTLY — *a gate that stops being reported stops
+being run* — in its worse form: the gate WAS reported, every landing, as zero.
+Nothing written was false; the measurement was scoped and the scope was
+invisible. That is the crown's eleven quiet entries with a number attached.
+DEP: none for the gate; it folds into the per-module sweep verify ALREADY runs
+(`solo_violations_max`), so counting there is a few lines. The cost is the
+SWEEP: the ratchet moves 0 → 57 and each reference is re-pointed at something
+its own module reaches or written as prose. That is a landing, not a rider —
+the three this session authored are fixed at the pin that names this entry, and
+the other 54 predate it.
+CLOSE: the comment-ref count is taken per-module, its ceiling walks to zero, and
+a reference that resolves only through the flattened link is the same refusal as
+one that resolves nowhere. Its deeper form retires with
+`Hβ.driver.link-is-reachability` (Arc D), where the demanded set is read from
+import edges rather than a flat env — at which point "resolves in the link" and
+"resolves from here" stop being two different questions.
+
 `Hβ.syntax.multi-param-lambda-is-a-reference` — OPEN, BORN 2026-09-20 as the
 arm list's honest remainder. The literal takes ONE parameter (the value its
 arms match), so `(a, b) => a * b` is not expressible as one and did not

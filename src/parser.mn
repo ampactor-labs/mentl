@@ -2064,8 +2064,12 @@ fn parse_primary(ref tokens, pos, slot) = {
 //
 // A unique parameter name for a desugared destructure slot — keyed on the
 // pattern's fresh handle so it never collides with a source name. The two
-// prefixes are the one home of their spelling; `format.mn` reads
-// `dp_prefix` back through `is_dp_name`.
+// prefixes are the one home of their spelling; the formatter reads
+// `dp_prefix` back when it decides whether a param may render in param
+// position. That reader lives in format.mn, which imports THIS module and
+// is not importable from here — so it is named in prose rather than
+// backticked, because a reference that resolves only through the link's
+// flattened env is the rot the backtick gate exists to catch.
 let dp_prefix = "__dp"
 
 let al_prefix = "__al"
@@ -2075,8 +2079,8 @@ fn fresh_param_name(span: ValidSpan) = "{dp_prefix}{int_to_str(fresh_handle(span
 // A fresh param under a caller-chosen PREFIX. The two surfaces that mint
 // one differ in what the name PROMISES, and conflating them is a silent
 // wrong rather than a naming preference. `dp_prefix` says "this param
-// came from a PATTERN IN PARAM POSITION", which licenses `format.mn`'s
-// `dp_match_arm` to render it back there — sound only because
+// came from a PATTERN IN PARAM POSITION", which licenses the formatter's
+// one-arm destructure render (format.mn) — sound only because
 // `expr_to_pat` produced the pattern, and `expr_to_pat` answers PWild for
 // a literal and for a constructor call. `al_prefix` carries ARBITRARY arm
 // patterns, so the same render would turn `{ 0 => 1 }` into `(0) => 1` —
@@ -2483,9 +2487,10 @@ fn parse_arm_list(tokens, pos, start_span: ValidSpan) = {
 // a decision rather than an omission: `((a, b)) => e` is a CASE of the
 // arm list, and this arc deletes `(params) => body` at its end, so fmt
 // manufacturing more of the doomed spelling would be the sweep running
-// backwards. `resugar_head` keeps every MULTI-param lambda (`(a, (b, c))
-// => e` has two params and never reaches here) and every `fn` decl,
-// whose pattern param is a different surface.
+// backwards. The formatter's param-position render keeps every
+// MULTI-param lambda (`(a, (b, c)) => e` has two params, so `len(params)
+// != 1` refuses it here) and every `fn` decl, whose pattern param is a
+// different surface.
 fn arm_list_of(params, body) = if len(params) != 1 {
   None
 } else {
