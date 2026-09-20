@@ -35,6 +35,71 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-20 · pin d706ad6d2825a925 (CLEAN m2 == m3) · THE BOARD NAMES WHERE,
+  AND GIT IS THE WHEN. Two corrections to the landing one pin earlier, both
+  from Morgan's question *"isn't what changed handled by git?"*
+  **THE PEER BANKED YESTERDAY WAS WRONG IN ITS CLOSE CONDITION.**
+  `Hβ.verify.board-is-not-yet-a-value` read *"the board is written at repin as
+  a value the next run reads"* — a MATERIALIZED VIEW stored where a derivation
+  belonged, which is the disease §11's "one law, four faces" convicts,
+  proposed by the entry that exists to delete it. A board is a pure function of
+  (source, wheel); git holds both and `persist = memcpy` already holds the
+  judgment. The question's other half answers from the catalog: git answering
+  "what changed" is not a boundary to respect but an OPEN `!Outside` this repo
+  already named — `Hβ.query.generation-operand`, *"GIT REMAINS THE OUTSIDE TIME
+  ORACLE."* So the form is the generation operand: the projection takes a WHEN,
+  git supplies the sha, the image supplies the judgment, the trail's
+  `(handle, prior)` is the diff. Nothing new is stored. The one exception is
+  recorded rather than smuggled: COST is not a pure function of source, which
+  is why `boot/PROVENANCE.md` holds peak RSS and wall time and holds nothing
+  else.
+  **AND THE HALF THAT NEEDED NO HISTORY AT ALL SHIPPED.** A breached bound
+  named a number; it names its SITES now — module and span, from the list
+  `census_sites` already built and `verify_run` threw away. Seen RED by
+  under-setting the wildcard-zero ceiling 9 → 7: nine located sites printed
+  under the breach, across `backends/wasm`, `format`, `infer` ×2, `oracle` ×2,
+  `parser`, `query`, `types`. A count tells a developer a number rose; a site
+  list tells them where to look.
+  **THE `Standing` ARM HELD A COPY FOR ONE DAY AND IT IS DELETED.** It was
+  `Within(Int) | Over(Int)`, and the Int was `len` of a list the same walk
+  returned — the Carried-Truth violation committed inside the module written to
+  end it. It carries `[(String, Span)]` on both arms now and reads the count
+  live.
+  **A DEFECT IN THE VERB'S OWN LANDING, found by pointing it at a stranger's
+  program.** On a three-line file the board answers *"1 wildcard-zero arm(s) —
+  within 9"* and *"5 effectful lambda(s) — within 367"*, then *"12 bound(s)
+  hold"* — both ceilings are MENTL'S residue, so for any other corpus they are
+  a pass that means nothing said in a verdict's voice; and the five lambdas are
+  not in the file, because `census_sites` walks the whole weave and silently
+  includes `lib`'s. The roster already contains the distinction that fixes it:
+  the ZERO-held bounds are universal invariants, the COUNTDOWNS are this
+  corpus's own. `Hβ.verify.bounds-are-the-wheels-not-the-targets`.
+  **AND THE LAMBDA IS ANSWERED, MEASURED, BANKED.** Morgan asked whether
+  `(params) => body` should exist. Classified from the medium's own 515-site
+  census — a grep said 687 because a regex cannot tell a match arm from a
+  lambda, which is the finding: `(x) => match x` 197 (38%), `((a,b)) =>` 57
+  (11%), pass-through call 102 (20%), small expression 131 (25%), thunk 27
+  (5%). An independent classifier over its own 390-site corpus agrees: 43% open
+  with `match` on their own parameter. **Half the corpus is pattern dispatch
+  wearing a binder**, paying a wrapper to reach a form SYNTAX already claims it
+  has (*"match arms ARE pattern-dispatched lambdas"*). The form, forced by §2's
+  two operations: REFERENCE an existing function with a HOLE, MINT a new one
+  with an ARM LIST, and there is no third — `(params) => body` being the third.
+  Beside it, measured: a lambda is addressable by POSITION and not by NAME (its
+  Why line reads `lambda, at lede:12`; invisible to `mentl doc`; no backtick
+  resolves to it), the `.field` accessor SYNTAX calls canonical has zero uses
+  and does not parse, and `(a,b) =>` emits a 3-param `$ft3` where `((a,b)) =>`
+  boxes a tuple — 13 WAT lines apart on a four-line probe, though SYNTAX
+  declares them one product. Four peers carry it:
+  `Hβ.syntax.function-literal-is-an-arm-list`,
+  `Hβ.emit.param-list-is-not-a-product` (its keystone DEP),
+  `Hβ.syntax.field-accessor-documented-never-built` (closes by DELETION), and
+  `Hβ.syntax.handler-chain-is-a-value` (23 of the 27 thunks exist because a
+  `~>` chain has no name).
+  Board: verify green, census 0, comment-refs 0, march CLEAN, frontier 390/0/2,
+  proof-exactness 9/0, crown 62/0, effect identity, instrument, threads.
+  Cost: m3 leg 8.25s · 975MB peak.
+
 - 2026-09-19 · pin abe0334ee840c5ff (CLEAN m2 == m3) · THE BOARD BEGINS
   DISSOLVING INTO THE MEDIUM. `mentl verify` lands as `mentl march`'s sibling:
   the wheel's standing bounds on its own source, read off ONE judged graph.

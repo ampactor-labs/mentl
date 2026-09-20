@@ -1,10 +1,11 @@
 // board.mn — the medium's standing verdict on its own source.
 //
-// A BOARD LINE is a named invariant of the wheel, the bound it may not
-// cross, and the count the medium reads for it live. Every line's count
-// comes from `census_sites` — the same walk `mentl query <file> "census
-// <shape>"` projects — so the board asks the medium a question the medium
-// already answers, and nothing between the two re-derives it.
+// A BOARD LINE is a named invariant of the wheel, the bound it may not cross,
+// and the SITES the medium finds for it live. Every line's sites come from
+// `census_sites` — the same walk `mentl query <file> "census <shape>"`
+// projects — so the board asks the medium a question the medium already
+// answers, and nothing between the two re-derives it. The count is `len` of
+// that list and is never stored beside it.
 //
 // WHAT THIS REPLACES, and why the replacement is the point rather than the
 // tidying. The bounds lived in `tools/verify-baseline.txt`: 1,695 lines
@@ -36,25 +37,43 @@ import query
 // report, and a bound with no shape is the text file this replaces.
 type Bound = Bound({ceiling: Int, shape: CensusShape})
 
-// What the medium found when it looked. The count rides BOTH arms because
-// a board that only speaks when it fails cannot show a countdown moving,
-// and the falling number is the whole reason these lines exist.
-type Standing = Within(Int) | Over(Int)
+// What the medium found when it looked: the SITES, not a count of them.
+//
+// This arm carried an `Int` for one day and the Int was a COPY — `census_sites`
+// returns the located list and the count is `len` of it, so storing the number
+// beside the list it came from is the Carried-Truth violation this module was
+// written to end, committed inside the module that ends it. The list rides both
+// arms because a board that only speaks when it fails cannot show a countdown
+// moving, and the falling number is the whole reason these lines exist.
+//
+// It is also what lets a breach say WHICH — a bound that reports "367, was 365"
+// tells the developer a number rose; a bound that names its sites tells them
+// where to look, from a list the walk already built and the verb used to throw
+// away.
+type Standing = Within([(String, Span)]) | Over([(String, Span)])
 
 // The roster, complete by construction: a shape absent here is not measured,
 // which is visible, where a shape measured against a missing bound would be
 // a silent pass. Each entry's prose is its justification — the `why` the old
 // file kept 1,669 lines away from the number it belonged to.
 fn board_bounds() with Memory + Alloc = [
-  // Zero because a named fn hidden behind a lambda has no decl to carry its
-  // row, and the row is what the whole effect algebra reads. Retires when
-  // the shape is a refusal rather than a count.
+  // Zero because an eta-wrapper is a REFERENCE written as a MINT: the name it
+  // wraps already exists, so the lambda re-mints what a handle would have
+  // carried. Retires when the shape is a refusal rather than a count.
   Bound({ceiling: 0, shape: CsEta}),
-  // The one line here that is genuinely a COUNTDOWN rather than a held zero:
-  // every effectful lambda is a row denied its decl home, and each one the
-  // Stage Law dissolves into a named partial application lowers it. It has
-  // fallen at every landing that touched it and rises only when a hand
-  // writes an anonymous stage.
+  // The one line here that is genuinely a COUNTDOWN rather than a held zero.
+  //
+  // ITS CONVICTION IS RE-FOUNDED, and the text it replaces was mine from one
+  // pin ago: "every effectful lambda is a row denied its decl home." That is
+  // REFUTED at the artifact — `mentl <file>:<line>` at a lambda renders its
+  // row, so the row has a home; what it lacks is a NAME, and the address
+  // surface reaches it either way. The honest conviction is narrower and can
+  // actually reach zero: a REFERENCE WRITTEN AS A MINT. Measured over this
+  // very census, half these sites are `(x) => match x { … }` — pattern
+  // dispatch paying a wrapper to reach the arm list the language already has
+  // (`Hβ.syntax.function-literal-is-an-arm-list`) — and 102 more are a call
+  // whose params pass straight through, which is a hole. Neither is anonymity;
+  // both are a mint where an edge belonged.
   //
   // 365 -> 367 at this verb's own landing, and the raise is recorded HERE
   // rather than argued in a file the number could drift from. Both are
@@ -104,19 +123,19 @@ fn board_bounds() with Memory + Alloc = [
   Bound({ceiling: 0, shape: CsEnvFrame})
 ]
 
-// The board: every bound answered by one live count.
+// The board: every bound answered by one live walk.
 //
-// The count is `len(census_sites(shape))` — the walk's own result, not a
-// number recovered from its rendering. That distinction is the landing: the
-// old path ran this same walk, printed "N site(s)", and then asked a regex
-// what N was, so a change to the SENTENCE could break the GATE. Nothing here
-// can drift from the walk, because there is nothing between them.
+// The answer is `census_sites(shape)` — the walk's own result, not a number
+// recovered from its rendering. That distinction is the landing: the old path
+// ran this same walk, printed "N site(s)", and then asked a regex what N was,
+// so a change to the SENTENCE could break the GATE. Nothing here can drift
+// from the walk, because there is nothing between them.
 fn board_read() with GraphRead + !Mutate + Alloc + Memory = board_bounds() |> map(bound_standing)
 
 fn bound_standing(b) with GraphRead + !Mutate + Alloc + Memory = match b {
   Bound(r) => {
-    let n = len(census_sites(r.shape))
-    (b, if n > r.ceiling { Over(n) } else { Within(n) })
+    let sites = census_sites(r.shape)
+    (b, if len(sites) > r.ceiling { Over(sites) } else { Within(sites) })
   },
 }
 
@@ -126,10 +145,19 @@ fn bound_standing(b) with GraphRead + !Mutate + Alloc + Memory = match b {
 fn board_line(entry) with Memory + Alloc = match entry {
   (b, standing) => match b {
     Bound(r) => match standing {
-      Within(n) => "  · {int_to_str(n)} {census_label(r.shape)} — within {int_to_str(r.ceiling)}\n",
-      Over(n) => "  ✗ {int_to_str(n)} {census_label(r.shape)} — ROSE past {int_to_str(r.ceiling)}\n",
+      Within(sites) => "  · {int_to_str(len(sites))} {census_label(r.shape)} — within {int_to_str(r.ceiling)}\n",
+      Over(sites) => // A breach names WHERE, because the number alone is the one thing the
+      // developer cannot act on. The sites come from the same walk that
+      // decided the breach — one read, no second question.
+      "  ✗ {int_to_str(len(sites))} {census_label(r.shape)} — ROSE past {int_to_str(r.ceiling)}\n{board_sites(sites)}",
     },
   },
+}
+
+fn board_sites(sites) with Memory + Alloc = sites |> map(board_site_line) |> str_concat_all
+
+fn board_site_line(site) with Memory + Alloc = match site {
+  (module, span) => "      {module}:{show_span(span)}\n",
 }
 
 fn board_breached(entry) with Pure = match entry {

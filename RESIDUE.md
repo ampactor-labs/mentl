@@ -28,6 +28,118 @@
 
 ---
 
+`Hβ.verify.bounds-are-the-wheels-not-the-targets` — OPEN, BORN 2026-09-20, a
+defect in `mentl verify`'s own landing one pin earlier, found by pointing the
+verb at a stranger's program instead of the wheel.
+MEASURED on a three-line file (`type T = A | B | C` · one `match` with a
+wildcard · `main`): the board answers *"1 wildcard-zero arm(s) — within 9"* and
+*"5 effectful lambda(s) — within 367"*, then *"12 bound(s) hold."* Both
+ceilings are MENTL'S OWN RESIDUE — nine documented sentinels in the wheel, 367
+lambdas in the wheel — so for any other corpus they are a pass that means
+nothing, printed with the same voice as a real verdict. And the five lambdas
+are not in the file at all: `census_sites` walks the whole judged weave, so a
+user program's board silently includes `lib`'s.
+THE DISTINCTION THE ROSTER ALREADY CONTAINS, and the fix reads off it: the
+ZERO-held bounds (failure-mask, print-in-report, flag-as-int, parallel-arrays,
+vtable-record, env-frame, underscore-retain, eta, record-pattern-open) are
+UNIVERSAL — they are armed-in-waiting invariants that hold of any program, and
+`board.mn`'s own header says a zero is a proof waiting for its `DiagKind`. The
+COUNTDOWN bounds (367, 21, 9) are this corpus's residue and belong to it.
+Judging a stranger by them is the ratchet mistaking itself for a law.
+CLOSE: the census scopes to the target's own modules (the module column
+`Hβ.cursor.address-drops-module-identity` just made readable is the same fact
+one layer over); universal bounds judge any target; corpus bounds are read from
+the target's own source, so the wheel's live in the wheel and a project
+declares its own or gets a report rather than a verdict.
+
+`Hβ.syntax.function-literal-is-an-arm-list` — OPEN, BORN 2026-09-20 from
+Morgan's question: *should lambda even exist in Mentl?* Measured before
+answered, and the measurement answers it.
+CLASSIFIED FROM THE MEDIUM'S OWN CENSUS SITE LIST (515 sites; a grep cannot do
+this job and said 687, because a regex cannot tell a match arm from a lambda —
+which is itself the finding): `(x) => match x { … }` 197 (38%); `((a,b)) => …`
+57 (11%); `(x) => f(cfg, x)` 102 (20%); small expression body 131 (25%); `() =>`
+thunk 27 (5%). An independent classifier over its own 390-site corpus agrees on
+the shape: 168 of 390 (43%) open with `match` on their own parameter. Beside
+it: 87.4% of lambdas are direct HOF arguments and exactly THREE in the wheel are
+let-bound or returned; `??` holes exist at 11 sites against 52 lambdas that
+literally qualify, so partial application is ~4.7× under-used.
+**SO HALF THE CORPUS IS PATTERN DISPATCH WEARING A BINDER**, paying a wrapper to
+reach a form the language already has — and SYNTAX has already conceded the
+point in its own words: *"Match arms ARE pattern-dispatched lambdas — the
+syntactic unity reflects semantic unity."* That sentence is a remark about
+resemblance today. It should be a mechanism.
+THE FORM, forced by §2's two operations rather than chosen: a function value
+arises by REFERENCE (name a decl, pre-fill fields — `f`, `f(cfg)`,
+`f(a, ??, c)`; an edge to a node that exists) or by MINT (an ARM LIST,
+`{ p => b, … }`, patterns matching the parameter product). There is no third,
+and `(params) => body` is the third — rule 2 with mandatory parens around an
+irrefutable pattern, the redundant form Governing Principle 2 rejects, last of
+the line that retired `perform`, `handle`, `capability`, the turbofish and
+`|x|`. Under it `match scrut { … }` is the arm list APPLIED; `{ x => e }` is
+today's `(x) => e`; `{ () => e }` is the thunk, `()` an ordinary `PLit`.
+ONE MEASURED ARGUMENT THAT IS NOT ABOUT REDUNDANCY: a lambda is addressable by
+POSITION but not by NAME. `mentl lede.mn:12` renders its type, row and lede,
+and its Why line reads `lambda, at lede:12` — the Reason has no name to give.
+It is invisible to `mentl doc`, unreachable by `mentl why <name>`, and no
+backticked reference can resolve to it. It is the one construct whose only
+handle is a coordinate, and §11's POSITIONS face is that coordinates rot under
+editing.
+DEP: `Hβ.emit.param-list-is-not-a-product` below — the arm list cannot subsume
+both `(a,b)` spellings while one is flat arity and the other boxes.
+CLOSE: the arm list parses as a value; the 254 wrapper sites dissolve and the
+board's anonymity bound measures the fall; `(params) => body` is deleted, stale
+fluency parsing as ordinary expressions with the general diagnostic teaching the
+arm list (the turbofish precedent, no bespoke recognizer); `mentl doc` lists
+every function value, which is the felt proof.
+
+`Hβ.emit.param-list-is-not-a-product` — OPEN, BORN 2026-09-20, the keystone
+under the entry above and the measurement that refuted its first reading.
+SYNTAX declares the parameter list IS a positional product (§L1 *"tuple =
+positional product"*; §"Labeled call arguments" *"the parameter list AS a
+product node-kind"*). The artifact implements two different things: `(a, b) =>
+a * b` emits `(type $ft3 (func (param i32)(param i32)(param i32)(result i32)))`
+while `((a, b)) => a * b` allocates a tuple and passes one — 13 WAT lines and
+one function type apart on a four-line probe.
+WHY IT IS A DEFECT AND NOT A DETAIL: flat arity is a REPRESENTATION decision on
+a product, `repr_of`'s own business, and §5.U's law is that the surface never
+carries a representation decision. The double-paren carries exactly that today,
+which is why 57 sites pay it to write the honest form. It is also why the
+57-site destructuring family and the 197-site match family cannot merge.
+CLOSE: both spellings emit byte-identical WAT — a fixture asserting it, RED
+against pin `abe0334e` by the divergence above; flat arity becomes a `repr` pin
+on the parameter product; the surface stops forking.
+
+`Hβ.syntax.field-accessor-documented-never-built` — OPEN, BORN 2026-09-20,
+and it CLOSES BY DELETION rather than by building. SYNTAX presents
+`filter(.age > 18)` and `map(.name)` as canonical in §«Partial application» —
+the very illustration of "the hole is keyed by IDENTITY". Measured: the form
+does not parse (`P_UnexpectedToken: .`), and a full search of `src/**` +
+`lib/**` finds ZERO uses; what the wheel writes instead is eight explicit
+`(x) => x.field` lambdas. A documented-but-absent form is the promise the
+verb-lag list exists to prevent, one section over.
+AND UNDER THE ARM-LIST FORM IT IS REFUSED ON ITS MERITS, not merely unbuilt: a
+field is not a decl, so `.name` would be a THIRD way to mint a function beside
+reference-with-holes and the arm list. `{ st => st.name }` says it with the one
+literal. CLOSE: the examples leave SYNTAX; the accessor is not built.
+
+`Hβ.syntax.handler-chain-is-a-value` — OPEN, BORN 2026-09-20 out of the thunk
+census. 27 of the wheel's lambdas are `() =>` and 23 of those go to
+`infer_context` / `compile_context`, whose whole body is `body() ~> <nine
+handlers>`. The thunk exists because a `~>` CHAIN HAS NO NAME: the only way to
+hand a body to a fixed handler stack is to suspend it, and hand-inlining the
+chain instead is the move that decl's own comment says seven routes already
+paid for.
+SYNTAX's own argument decides it one section over: *"an effect row is a
+first-class kernel value, so naming a row is what `type` already does — there
+is no separate `capability` keyword."* A handler composition is a value by the
+same reasoning, and naming one should need no new form. With it the site reads
+`e ~> infer_ctx`, the thunk is gone, and the wrapper fn is gone with it. It also
+serves 9.2, where the fan wants `(c) >< (c) ~> Schedule` at a width a handler
+decides.
+CLOSE: a named handler chain installs as one `~>` edge; the `*_context`
+wrappers and their thunks delete; the board's anonymity bound falls by 23.
+
 `Hβ.verify.board-is-not-yet-a-value` — OPEN, BORN 2026-09-19 with `mentl
 verify`. The verb reads the twelve census bounds off ONE judged graph and
 REFUSES on a breach, which is the count half. What it does not yet do is
@@ -37,15 +149,32 @@ transcripts, or a shell diffing two renderings — the same text-comparison the
 march's own `diff -q m2.wat m3.wat` performs one altitude up.
 WHY THAT MATTERS BEYOND TIDINESS: a board line and the oracle's teaching
 question are the SAME operation — a projection over two universes at an
-address, answering what differs. §11's own table says so. A board stored as a
-value at each pin makes "what changed since the last pin" a read, and the
-`Mutation` payload the graph already computes and discards
-(`Hβ.graph.mutation-delta-is-write-only`) is the same delta one layer down.
-Until then the board can say a bound rose and cannot say WHICH SITE is new,
-though `census_sites` returns exactly that list and the verb throws it away.
-CLOSE: the board is written at repin as a value the next run reads; a breach
-names the new sites rather than the new number; and the comparison is a diff of
-values, never of rendered strings.
+address, answering what differs. §11's own table says so.
+**THE CLOSE CONDITION WRITTEN HERE AT BIRTH WAS WRONG, CORRECTED 2026-09-20 BY
+MORGAN'S QUESTION — "isn't what changed handled by git?"** It read: *"the board
+is written at repin as a value the next run reads."* That is a MATERIALIZED
+VIEW stored where a derivation belonged — the exact disease §11's "one law,
+four faces" convicts, proposed by the entry that exists to delete it. A board
+is a pure function of (source, wheel); git holds both, and `persist = memcpy`
+already holds the judgment. A second store beside the image is a copy of a fact
+two artifacts already carry.
+AND THE QUESTION'S OTHER HALF ANSWERS ITSELF FROM THE CATALOG: git answering
+"what changed" is not a division of labour to respect, it is an OPEN `!Outside`
+this file already names — `Hβ.query.generation-operand`, *"GIT REMAINS THE
+OUTSIDE TIME ORACLE — an !Outside the docs never named."* So the right form is
+the generation operand: the projection takes a WHEN, git supplies the sha and
+the pin chain, the persisted image supplies the judgment, and the trail's
+`(handle, prior)` delta is the diff
+(`Hβ.graph.mutation-delta-is-write-only`). Nothing new is stored.
+ONE EXCEPTION, and it is why `boot/PROVENANCE.md` already holds what it holds:
+COST is not a pure function of source. Peak RSS and wall time depend on the
+machine, so they are measurements that must be recorded; every census count is
+a derivation that must not be.
+CLOSE: `mentl verify` takes a generation operand and reads the image that
+generation's pin names; the comparison is a diff of VALUES, never of rendered
+strings; and — needing no history at all — **a breached bound NAMES ITS SITES**
+rather than its number, since `census_sites` already returns the located list
+and `verify_run` discards it.
 
 `Hβ.verify.bounds-outside-the-graph-stay-in-bash` — OPEN, BORN 2026-09-19, the
 honest remainder of the same landing, named so nothing inherits it silently.
