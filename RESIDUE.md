@@ -28,6 +28,73 @@
 
 ---
 
+`Hβ.oracle.ranked-queue-is-a-second-frontier` — OPEN, BORN 2026-09-21, found by
+pointing the medium's own reachability facet at the medium.
+`mentl query src/main.mn unreachable` named `ic_compile_loop` (src/pipeline.mn)
+as a fn decl the entry cannot reach, and it had ZERO callers anywhere in the
+tree. It was also the ONLY install site of the `project_queue_merger` handler,
+so an entire subsystem hung off a function nobody called: **25 unreached decls
+in src/oracle.mn** — `project_queue`, `candidates_at`, `proven_to_item`,
+`compute_priority`, `tier_of_annotation`, `intent_weight_at`,
+`surface_area_at`, `locality_at`, `oracle_ic_fixpoint`, `empty_queue`,
+`silence_predicate_oracle`, `priority_lt` / `priority_gt` / `priority_eq`,
+`tier_lt` / `tier_eq` / `tier_rank`, `qitem_position`, `qitem_impact`,
+`sort_by_priority`, `merge_by_impact`, `filter_at_position`,
+`filter_by_module`, `filter_by_locality`, `handle_distance` — and **9 in
+src/voice.mn** (`render_voiceline`, `render_slots`, `render_slot`,
+`render_modifier`, `tentacle_to_form_kind`, `with_tentacle`, `voice_queue_walk`,
+`fold_queue_items`, `tier_to_tentacle`). 25 of oracle's 37 decls; the facet's
+new per-module ratio is what made that legible in one read.
+THE DEAD ROOT IS DELETED at this pin, with the measurement in the comment that
+replaced it. THE REST IS THIS PEER, and it is a deletion rather than a wiring
+because the subsystem is SUPERSEDED, not merely unused: PLAN §11.1 re-founded
+the oracle as inference with a term-sorted unknown — propagation before
+enumeration, forking only where meanings genuinely conflict — and a
+project-wide queue that re-runs the proposer at every position and sorts by a
+hand-tuned intent × surface-area × locality priority is precisely the
+generate-then-filter shape that re-founding names and refutes. The LIVE ranked
+absence field is the frontier (`mentl <file>:0`, the MCP `frontier` tool's own
+subject). Two homes for one projection; the dead one is the design that lost.
+WHAT THE DELETION MUST CARRY: `OracleQuery`'s four ops, the `QueueItem` type,
+the `project_queue_merger` handler, and `silence_predicate` (src/voice.mn) —
+whose silence rule ("Mentl is silent only when the project queue is empty")
+must be re-expressed against the frontier before its caller at voice:1177
+loses it, or the voice loses its silence gate rather than its dead queue.
+
+`Hβ.effects.reachable-perform-with-no-install-compiles` — OPEN, BORN 2026-09-21,
+MEASURED while deleting the peer above.
+With `ic_compile_loop` removed, `project_queue_merger` has NO install site
+anywhere in the tree, and `silence_predicate` (src/voice.mn) — reachable, called
+from a handler arm at voice:1177 — performs `query_project_queue`. **`mentl check
+src/main.mn` passes with zero diagnostics.** A reachable perform of an effect no
+handler anywhere absorbs compiles clean and would trap at runtime.
+This is the sibling of `Hβ.effects.root-gate-credits-an-install-that-had-not-
+opened` (PLAN §11 6.3) and strictly worse than it: there the gate credited an
+install whose extent had not opened; here it credits an install that does not
+exist. §0's first property is that nothing executes unproven, and the executable
+root gate is where that promise is kept, so this is the promise's own boundary.
+THE FIX is the gate reading the install CHAIN rather than the declared set: a
+performed name is discharged by an install that reaches it, which is an edge the
+`~>` chain already draws. The RED-first fixture is a three-line program that
+performs an op whose handler is declared and never installed.
+
+`Hβ.verify.smt-lowering-built-and-never-run` — OPEN, BORN 2026-09-21, from the
+same facet read.
+Fourteen decls in src/verify.mn are unreached and they are one coherent piece —
+the whole SMT-LIB lowering: `predicate_to_smt_lib`, `predicate_to_smt`,
+`smt_cmp_op`, `smt_logop`, `handle_to_smt`, `body_to_smt`, `smt_call`,
+`smt_arg_terms`, `smt_binop`, `smt_unop`, `smt_binop_sym`, plus `domain_hi`,
+`max_of_lit`, `verify_residual`. That is `Hβ.verify.smt-handler-swap`'s
+machinery (PLAN Phase 8.3) standing in the tree with no caller, no gate, and no
+run — so the medium carries an SMT backend that has never once executed while
+the plan sequences it as unbuilt. A capability nothing exercises is a claim, not
+a capability.
+THE DECISION IS NOT DEFERRED, it is stated: this is kept ONLY if Phase 8.3's
+landing wires it behind `~> verify_smt` with a certificate CHECKER inside the
+medium (the solver outside, the check in — the peer's own law) and a gate that
+has been seen RED. If that landing writes its own lowering instead, these
+fourteen go in the same commit. Either way the count moves; it does not sit.
+
 `Hβ.verify.bounds-are-the-wheels-not-the-targets` — OPEN, BORN 2026-09-20, a
 defect in `mentl verify`'s own landing one pin earlier, found by pointing the
 verb at a stranger's program instead of the wheel.

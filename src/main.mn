@@ -147,41 +147,39 @@ fn main(argv) = match parse_cli_args(argv) {
 // shared-image/shared-cell shape for parallelism it never performs. A
 // schedule installs lexically at the fanout it schedules — SYNTAX §`><`:
 // no Schedule installed → Seq, the invisible default.
-fn dispatch_invocation(verb) = {
-  match verb {
-    VEdit(target) => edit_run(target),
-    VDoc(target) => doc_run(target),
-    VServe => serve_run(),
-    VSpace => space_run(),
-    VTighten(target) => tighten_run(target),
-    VFmt(target) => fmt_run(target),
-    VCompile(target) => compile_run(target),
-    VResume(img) => resume_run(img),
-    VCompileStdin => // The bare invocation forks on the ONE substrate fact that
-    // distinguishes intent: fd 0's filetype. A pipe or file IS the
-    // compile-stdin contract (`mentl < wheel.mn` — the fixpoint path,
-    // untouched); a terminal is a human with no program yet — project
-    // the welcome instead of hanging on a read that never comes.
-    // (Landed as the second rung of a two-step ladder: the ops' import
-    // tables crossed on the prior pin, so this generation's boot
-    // lowers the call it is about to execute.)
-    if stdin_is_tty() { welcome_run() } else { compile_stdin_run() },
-    VRun(target, args) => run_run(target, args),
-    VCheck(target) => check_run(target),
-    VAt(target, line, col) => at_run(target, line, col),
-    VTest(target) => test_run(target),
-    VAudit(target) => audit_run(target),
-    VQuery(target, q) => query_run(target, q),
-    VTeach(target) => teach_run(target),
-    VRepl => repl_run(),
-    VMarch => march_run(),
-    VVerify(target) => verify_run(target),
-    VMcp => mcp_run(session_at_read),
-    VSession => session_run(session_at_read),
-    VNew(name) => new_project(name),
-    VWith(hname, target) => with_run(hname, target),
-    VWelcome => welcome_run(),
-  }
+fn dispatch_invocation(verb) = match verb {
+  VEdit(target) => edit_run(target),
+  VDoc(target) => doc_run(target),
+  VServe => serve_run(),
+  VSpace => space_run(),
+  VTighten(target) => tighten_run(target),
+  VFmt(target) => fmt_run(target),
+  VCompile(target) => compile_run(target),
+  VResume(img) => resume_run(img),
+  VCompileStdin => // The bare invocation forks on the ONE substrate fact that
+  // distinguishes intent: fd 0's filetype. A pipe or file IS the
+  // compile-stdin contract (`mentl < wheel.mn` — the fixpoint path,
+  // untouched); a terminal is a human with no program yet — project
+  // the welcome instead of hanging on a read that never comes.
+  // (Landed as the second rung of a two-step ladder: the ops' import
+  // tables crossed on the prior pin, so this generation's boot
+  // lowers the call it is about to execute.)
+  if stdin_is_tty() { welcome_run() } else { compile_stdin_run() },
+  VRun(target, args) => run_run(target, args),
+  VCheck(target) => check_run(target),
+  VAt(target, line, col) => at_run(target, line, col),
+  VTest(target) => test_run(target),
+  VAudit(target) => audit_run(target),
+  VQuery(target, q) => query_run(target, q),
+  VTeach(target) => teach_run(target),
+  VRepl => repl_run(),
+  VMarch => march_run(),
+  VVerify(target) => verify_run(target),
+  VMcp => mcp_run(session_at_read),
+  VSession => session_run(session_at_read),
+  VNew(name) => new_project(name),
+  VWith(hname, target) => with_run(hname, target),
+  VWelcome => welcome_run(),
 } ~> env_handler(make_list(0), 0, env_index_new()) ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler
 
 // ─── edit_run — canonical Web IDE (browser-WASM; per IE walkthrough)
@@ -555,7 +553,20 @@ fn fmt_run(target) = {
     // home, never the raw argv string carried past it.
     let entry_module = path_to_module(target)
     let path = driver_module_path(entry_module)
-    let ast = driver_check_entry(entry_module)
+    // THE WEAVE, scoped to the entry — the same `driver_entry_with_ranges`
+    // that `check`, the address, `audit`, `teach` and the resident session
+    // read. fmt was the LAST verb on the solo entry route every other verb
+    // had already left, and that route's distinguishing property was an
+    // omission: it never installed a diagnostic scope, so it fell to
+    // `diagnostics_handler`'s default `ScopeAll` and narrated every
+    // dependency at a developer who had named one file. The
+    // measurement: `mentl check` on a one-function file printed one line and
+    // `mentl fmt` on the same file printed every prelude `T_OverDeclared` and
+    // `E_MissingVariable` in the tree. One question — whose diagnostics does
+    // this verb show? — answered in two places, the second by not answering.
+    let ast = match driver_entry_with_ranges(entry_module) {
+      (ast_all, _ranges) => driver_module_ast(ast_all, entry_module),
+    }
     // The verb writes its own FIXPOINT: render once, re-parse, render
     // again — a mid-line prose attach moves to its line-start home in
     // the first render and is stable from the second, so the WRITTEN

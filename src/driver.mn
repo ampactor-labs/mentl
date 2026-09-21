@@ -282,13 +282,6 @@ fn driver_check_module(ref entry) with Memory + Alloc + ImageAlloc + WASI + EnvR
 fn driver_check(ref entry_module) with Memory + Alloc + ImageAlloc + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + LookupTy + Verify + Intern + Cast + WASI + Consume + DiagRegister + RegionTrack =
   entry_module |> driver_collect_dag_with_deps |> driver_partition_layers |> each((layer) => each(driver_check_module, layer))
 
-// driver_check_entry — the compile path's check: infer every DEP of the
-// entry (each installs into env_handler), then parse+infer the ENTRY
-// ITSELF exactly ONCE and hand its inferred AST back so compile lowers
-// the SAME graph it proved. The entry is never re-read or re-inferred
-// downstream (Carried-Truth: compile's old second fs_read + frontend +
-// re-judgment was the canonical re-derivation this deletes — the entry
-// is parsed+typed here, once, and lowered live).
 // The COMPILE form of the entry read: an executable IS the one-namespace
 // concatenation of its dep DAG — deps first, post-order, entry last — the
 // exact form the wheel's own build proves daily (`find src lib | xargs
@@ -395,7 +388,13 @@ fn module_identity(r) with Memory + Alloc + Filesystem = match r {
 // computes this same filter and holds it in its decls field, but
 // discards the minted handle — reading the node instead of
 // re-filtering is the O(1) form once the mint keeps an edge to it.
-fn driver_module_ast(ref ast, ref ranges, ref target) with Memory + Alloc + GraphRead + !Mutate =
+// The RANGES parameter was carried here at every call site and never read:
+// the decls come from the module's own NModule node (`module_cells`), which
+// is the whole point of the read below, so the weave's line ranges had
+// nothing left to answer once the span-containment cut was deleted. A
+// parameter nothing reads is a fact re-supplied at four sites to be dropped
+// at one — Carried-Truth with the arrow reversed.
+fn driver_module_ast(ref ast, ref target) with Memory + Alloc + GraphRead + !Mutate =
   module_decls_of(module_cells(), target, ast)
 
 // A module's own top-level nodes, READ from its NModule node — which holds
@@ -767,27 +766,6 @@ fn rederive_cone(ref cone) with Memory + Alloc + ImageAlloc + WASI + Filesystem 
   },
   cone
 )
-
-fn driver_check_entry(ref entry_module) with Memory + Alloc + ImageAlloc + Filesystem + WASI + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + Intern + Cast + Consume + RegionTrack = {
-  // Check the deps DAG (every module the entry imports) — not the entry.
-  // "Not the entry" is an IDENTITY question, so it is asked of the path: the
-  // entry reached by one spelling and collected under its resolved path is
-  // the same module, and a spelling-compare here would judge it twice.
-  let entry_path = driver_module_path(entry_module)
-  entry_module |> driver_collect_dag_with_deps |> filter({ (m, _) => module_path_of(m) != entry_path }) |> driver_partition_layers |> each((layer) => each(driver_check_module, layer))
-  // Parse + infer the entry ONCE; its AST is what compile lowers live.
-  // An unreadable entry REPORTS, never parses emptiness — the silent
-  // form answered zero fns at exit 0 on every analysis verb whenever
-  // the path had no mount route (measured: `mentl audit <abs-path>`
-  // from outside the repo printed nothing and exited clean).
-  let path = driver_module_path(entry_module)
-  if fs_exists(path) {
-    infer_modules_converged([(entry_module, fs_read_file(path))])
-  } else {
-    report(EMissingModule(entry_module, path, span_zero()))
-    []
-  }
-}
 
 // Walk the post-order DAG and pair each module with its in-DAG deps.
 // In-DAG: dep PATHS that appear among the collected modules (filters

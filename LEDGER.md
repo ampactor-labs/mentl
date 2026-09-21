@@ -35,6 +35,138 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-21 · pin 11aaa07d3c448207 (CLEAN m2 == m3) · THE MEDIUM AUDITED
+  ITSELF AND SIX FINDINGS WERE ONE LAW — *a fact with two homes, or a fact
+  restated where an edge already carried it*. The transferable half is not the
+  count; it is that **every finding came from a verb, and none of them needed
+  a new instrument.** They needed the instruments to be RUN.
+
+  **`mentl audit src/main.mn` had never been run on the wheel.** It answered
+  303 lines, and 122 of them were `severable:` lines carrying exactly TWO
+  distinct facts — 98 × *"Network — unlocks Sandbox"*, 24 × *"Network + Alloc
+  — …"* — because nothing in the module performs Network and a MODULE-level
+  truth was re-derived and re-printed once per function. Forty percent of a
+  projection restating one edge, burying the 55 lines that were findings (25
+  iteration-shape, 17 anonymity, 10 pending, 2 drift-shape, 1 verb-shape).
+  The fix is the law: an effect is severable module-wide exactly when NO
+  function reaches it, which is the INTERSECTION of the functions' candidates
+  — one read at the widest node that proves it. A function's line now carries
+  only its DELTA above that. Measured after: **303 → 210 lines, 122 → 26
+  severance lines (2 module + 24 real deltas)**, and the entry tuple went 12
+  fields → 10 because `more_severable` and `unlocks` were folds of a list the
+  entry already carried. The unnamed remainder (*"+77 more provable, no
+  capability named yet"*, whose per-function number varied 60–78 and taught
+  nothing) is one module line now, and phrased as what it actually is: a gap
+  in the capability MAP, not in the developer's code.
+
+  **`mentl query src/main.mn unreachable` answered 276 in one flat list, and
+  202 of them were not dead code at all.** They sat in modules where NOTHING
+  is reached — prelude 33, combinators 27, dsp/cfc 25, ml/tensor 19,
+  dsp/signal 19, math 15, lists 15 — the library surface a program links. The
+  other 74 sat inside modules the entry runs through every time. Handed one
+  list of 276 a reader acts on neither. The distinguishing fact is a RATIO the
+  walk already held, and no path convention decides it — not `src/` vs `lib/`,
+  which is a directory habit the graph knows nothing about. The facet
+  partitions on it now: **11 modules carrying dead weight with their ratios
+  (`oracle — 25 of 37 unreached`), 12 linked whole at one line each.**
+
+  **That partition is what made the next finding legible in one read.**
+  `ic_compile_loop` (src/pipeline.mn) had ZERO callers and was the ONLY install
+  site of `project_queue_merger` — so 25 oracle decls and 9 voice decls hung
+  off a function nobody called. Its own comment said *"`mentl edit` IS this
+  loop running"*; `mentl edit` routes through `edit_run`, nowhere near it. The
+  subsystem is SUPERSEDED, not merely unused: PLAN §11.1 re-founded the oracle
+  as inference with a term-sorted unknown, and a project-wide queue that
+  re-runs the proposer at every position and sorts by a hand-tuned intent ×
+  surface-area × locality priority is exactly the generate-then-filter shape
+  that re-founding refutes. The live ranked absence field is the frontier
+  (`mentl <file>:0`). Two homes, and the dead one is the design that lost. The
+  root is deleted here with its measurement in the comment that replaced it;
+  `Hβ.oracle.ranked-queue-is-a-second-frontier` carries the rest.
+
+  **AND DELETING THE ROOT MEASURED A LIVE DEFECT.** With it gone,
+  `project_queue_merger` has NO install site anywhere, while `silence_predicate`
+  (src/voice.mn) is reachable, is called from a handler arm at voice:1177, and
+  performs `query_project_queue`. **`mentl check src/main.mn` passes with zero
+  diagnostics.** A reachable perform of an effect no handler absorbs compiles
+  clean. That is strictly worse than
+  `Hβ.effects.root-gate-credits-an-install-that-had-not-opened`, which at least
+  credited an install whose extent had not opened — here the install does not
+  exist, and §0's first property is the one failing.
+  `Hβ.effects.reachable-perform-with-no-install-compiles` carries it.
+
+  **`mentl check src/main.mn` answered ONE diagnostic on 3,056 decls** —
+  `E_RedundantBraces` in `dispatch_invocation`, the wheel's own verb dispatch —
+  so the wheel was one form away from its own formatter's fixpoint. Probed
+  first (an unbraced `match … { arms } ~> handler` runs correctly: `~>` is the
+  loosest operator and governs the whole match), then stripped. **The wheel's
+  source now carries zero diagnostics.**
+
+  **`fmt` was the last verb on a retired route, and the route's distinguishing
+  property was an omission.** `driver_check_entry` had exactly one caller;
+  every other verb had moved to `driver_entry_with_ranges`, whose own comments
+  documented the migration. It never installed a diagnostic scope, so it fell
+  to `diagnostics_handler`'s default `ScopeAll`: `mentl check` on a
+  one-function file printed one line and `mentl fmt` on the same file printed
+  every prelude `T_OverDeclared` and `E_MissingVariable` in the tree. One
+  question — whose diagnostics does this verb show? — answered in two places,
+  the second by not answering. fmt is on the weave route and
+  `driver_check_entry` is deleted. `driver_module_ast` lost its `ranges`
+  parameter in the same pass: carried at four call sites, read at none.
+
+  **The Why chain had two renderers.** `src/mentl.mn` held `render_why` /
+  `render_why_at` / `render_leaf` / `indent_for` — a structural indent dump of
+  constructor names — and `mentl why` never called them. The live one is
+  `render_why_hops` (src/main.mn), which renders file:line through the range
+  map, each hop's phrase, the binding's literal value read live from
+  `node_const`, and the author's attached `//` lede. Only one was being
+  improved, and it was not the dead one. `teach_session` went with it: its own
+  comment called it *"the same `<|` shape as cursor.mn's eight-aspect fanout"*,
+  which is the SHIPPED address surface — so it was a narrower copy with three
+  arms missing, reachable from nothing. Eleven decls, zero outside readers.
+
+  **THE SCAFFOLD LAYER, same law.** `tools/verify-baseline.txt` held **646
+  lines — 38% of the file** — for twelve keys with ZERO readers: `eta_max`,
+  `effectful_lambda_max`, `record_pattern_open_max`, `wildcard_zero_max`,
+  `failure_mask_max`, `print_in_report_max`, `wildcard_fabricates_max`,
+  `underscore_retain_max`, `flag_as_int_max`, `parallel_arrays_max`,
+  `vtable_record_max`, `env_frame_max`. They moved to `src/board.mn` a landing
+  earlier and `verify.sh` delegates the board to `mentl verify`; the old home
+  simply stayed. `tools/movers-hist.py` had zero references anywhere, for an
+  instrument deleted on 2026-09-17. And **`tools/ide-gate.sh` was invoked by
+  NOTHING** — not `state.sh`, not a hook, not `tools/ci/run-board.sh` — while
+  PLAN §11 Arc E names `ide-gate green` as the Space spine's terminal bar and
+  §11.2 asserted the session *"verified green across Node and headless
+  Chrome"*. Tripwire 4 on the arc the plan calls the production target, with
+  the green claim already written over it. It is on the board now and measured
+  GREEN: leg 1's five surfaces pass, leg 2 skips loudly without chrome, and
+  §11.2 says so instead of claiming it. `str_join_lines` became
+  `str_join_indented` — it joins AND indents, its name said half, and the half
+  it hid printed this landing's own nested render as a staircase (module rows
+  at 2, 4, 4; decls at 6, 8, 8).
+
+  **THE COST LINE ROSE AS AN EXPLICIT ACT, and the raise is not the finding.**
+  The march refused the repin at 1,000,064 KB against a 1,000,000 ceiling — then
+  the SAME BYTES, minutes earlier, had read 999,400. Two min-of-3 readings of
+  identical source, 664 KB apart (0.066%), straddling the ceiling: the gate had
+  started deciding by noise, which is the instrument being read as a verdict.
+  Ceiling 1,000,000 → 1,010,000, ~15× the measured spread, with the argument
+  written beside the number in a file whose whole purpose is that pairing — and
+  it had been the one bare number in it. The creep underneath (993,832 →
+  996,920 → 998,596 → ~1,000,000 across four pins, none about memory) is the
+  per-decl arena's absence; 98% of the judgment's heap is scratch nothing
+  reclaims. This number's next move should be DOWN.
+
+  **THE BOARD:** m2 == m3 CLEAN, census 0, 418,119 lines; wheel 61,207 →
+  61,136; m3 leg 9.81s / 977MB. crown green · proof-exactness green ·
+  effect-identity green · frontier 390 pass / 0 red / 2 expected-red · ide
+  green (leg 1; leg 2 skipped). Two frontier legs went RED on the severance
+  rename and both were LAW-UPDATED rather than obeyed — the invariant each
+  guards is unchanged and was re-verified by hand (`allocates` is still never
+  offered Alloc severance; `quiet : Pure` still earns it), only the spelling
+  moved, and the resident-session leg now asserts `severs module-wide: Alloc`,
+  which is a stronger claim than the one it replaced.
+
 - 2026-09-21 · pin ded01c552408c82f (CLEAN m2 == m3) · THE CLASS-BOUND
   ABSORPTION WAS BUILT, REFUSED BY THE MARCH, AND REVERTED — and the refusal is
   the entry, because the artifact said no to a design the artifact had already

@@ -90,6 +90,17 @@ if [ "${1:-}" != "--quick" ]; then
   gate "EFFECT IDENTITY (Fail ≠ Abort)"                                  bash tools/effect-identity-gate.sh
   gate "INSTRUMENT (can the board go RED?)"                              bash tools/instrument-gate.sh
   gate "THREADS (is the concurrency width what the source says?)"        bash tools/thread-gate.sh
+  # THE STANDING CURSOR'S OWN TERMINAL GATE, and it was not on this board.
+  # PLAN §11 Arc E names `ide-gate green Node + headless Chrome` as the bar the
+  # whole Space spine is measured against, and §11.2 asserts the resident
+  # session is "verified green across Node and headless Chrome
+  # (tools/ide-gate.sh)" — while NOTHING invoked the script: not this file, not
+  # a hook, not tools/ci/run-board.sh. Tripwire 4 exactly ("a gate that stops
+  # being reported stops being run"), standing on the arc the plan calls the
+  # production target, with a green claim already written over it. Its leg 2
+  # skips loudly without chrome, which is the honest shape for a board that
+  # runs on machines that may not have one.
+  gate "IDE (the resident session — node twin + headless browser)"       bash tools/ide-gate.sh
 
   if [ "$reds" -eq 0 ]; then
     echo "▸ THE BOARD IS WHOLE — every gate green."

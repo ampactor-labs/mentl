@@ -1699,10 +1699,15 @@ for i in "${!compilers[@]}"; do
   # offered "proven zero allocation"; a pure fn still earns the offer.
   # The reached set reads the CHASED row (row_names was a top-link read
   # and a chained row hid its deeper presents — measured on the wheel).
+  # The assertion anchors on the CLAIM (`Alloc — unlocks Real-time safe`), not on
+  # the section keyword, because the keyword moved: severance reads at the
+  # MODULE now and a function's own line carries only its delta above it
+  # (`severs beyond the module:`), so `severable:` no longer appears per fn.
+  # The invariant is unchanged and is what this leg is for.
   cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-audit-severance-honest.mn" | wt_run "$compiler" audit - > "$dir/audit-sev.out" 2>/dev/null
-  if grep -A1 '^allocates :' "$dir/audit-sev.out" | grep -q 'severable:.*Alloc'; then
+  if grep -A1 '^allocates :' "$dir/audit-sev.out" | grep -q 'Alloc — unlocks Real-time safe'; then
     fail "audit-severance-honest (an allocating row was offered Alloc severance)"
-  elif grep -A1 '^quiet :' "$dir/audit-sev.out" | grep -q 'severable:.*Alloc'; then
+  elif grep -A1 '^quiet :' "$dir/audit-sev.out" | grep -q 'Alloc — unlocks Real-time safe'; then
     pass "audit-severance-honest (Alloc never offered on an allocating row; the pure control keeps it)"
   else
     fail "audit-severance-honest (the pure control lost its true severance offer)"
@@ -2211,6 +2216,10 @@ for i in "${!compilers[@]}"; do
   printf 'fn double(x) = x * 2\n\nfn main() = double(21)\n' > "$ses_dir/main.mn"
   "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ses_dir::." --dir "$ROOT::/mentl-home" "$compiler" mcp \
     < "$ROOT/tests/frontier/mcp-resident-session.jsonl" >"$ses_dir/out.jsonl" 2>"$ses_dir/err.log"
+  # The audit assertion reads `severs module-wide:` — severance is a MODULE
+  # fact now, and this two-fn fixture is Pure throughout, so the whole module
+  # severs Alloc and the projection says it ONCE instead of repeating it on
+  # `double` and again on `main`.
   if [ "$(grep -c 'session: graph resident' "$ses_dir/err.log")" = "1" ] \
      && grep -q '"tools":\[{"name":"propose"' "$ses_dir/out.jsonl" \
      && grep -q '"name":"query"' "$ses_dir/out.jsonl" \
@@ -2221,7 +2230,7 @@ for i in "${!compilers[@]}"; do
      && grep -q 'declared as main' "$ses_dir/out.jsonl" \
      && grep -q 'Query: fn double' "$ses_dir/out.jsonl" \
      && grep -q 'double : Pure' "$ses_dir/out.jsonl" \
-     && grep -q 'severable:' "$ses_dir/out.jsonl" \
+     && grep -q 'severs module-wide: Alloc' "$ses_dir/out.jsonl" \
      && grep -qE 'annotation density|→ add' "$ses_dir/out.jsonl" \
      && ! grep -q 'iterate : ' "$ses_dir/out.jsonl" \
      && grep -q 'PROVEN — every claim discharged' "$ses_dir/out.jsonl"; then

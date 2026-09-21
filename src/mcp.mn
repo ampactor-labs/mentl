@@ -453,7 +453,7 @@ fn session_current(ast, ranges, manifest) = if len(ranges) == 0 {
         eprint_string("session: tree moved — re-derived {int_to_str(len(r2))} modules; the graph is current\n")
         // The bank re-hashes over the NEW range map (r2's paths), not
         // cand — cand was hashed over the old module set.
-        (driver_module_ast(full, r2, "main"), r2, driver_manifest(r2), 1)
+        (driver_module_ast(full, "main"), r2, driver_manifest(r2), 1)
       },
     }
   }
@@ -550,7 +550,7 @@ fn session_run(at_read) = {
             eprint_string("mentl session: graph resident on 127.0.0.1:7377 — read verbs answer live; every other verb falls back cold through the shim\n")
             session_sock_loop(
               lfd,
-              driver_module_ast(ast, ranges, "main"),
+              driver_module_ast(ast, "main"),
               ranges,
               driver_manifest(ranges),
               at_read,
@@ -656,13 +656,7 @@ fn mcp_run(at_read) = {
           // scope), never the whole weave's prelude/lib fns. The banked
           // manifest is the tree identity this derivation answered;
           // session_current compares against it per message.
-          mcp_loop(
-            driver_module_ast(ast, ranges, "main"),
-            ranges,
-            driver_manifest(ranges),
-            at_read,
-            session_current
-          )
+          mcp_loop(driver_module_ast(ast, "main"), ranges, driver_manifest(ranges), at_read, session_current)
         },
       }
     } else {

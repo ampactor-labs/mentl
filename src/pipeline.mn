@@ -115,8 +115,10 @@ import oracle
 // bracket (handler state is per-install).
 //
 // IC.4: compile / check route through driver_compile_entry /
-// driver_entry_with_ranges when invoked with an entry-MODULE name
-// (driver_check survives on the ic_compile_loop path alone). The
+// driver_entry_with_ranges when invoked with an entry-MODULE name;
+// `driver_check` is the LSP and cursor transport's per-module walk
+// (src/lsp.mn, src/cursor_transport.mn — a transport opens one
+// document, not a weave). The
 // single-source entry compile/check_source remain for tests that
 // pass a raw source string. The
 // driver path reads module sources via FS and infers each in
@@ -151,7 +153,7 @@ fn emit_context(body) =
 fn compile_context(body) = infer_context(() => emit_context(body))
 
 fn compile(entry_module) = compile_context(() => {
-  // driver_check_entry infers the deps DAG + the entry ONCE and returns
+  // `driver_compile_entry` infers the deps DAG + the entry ONCE and returns
   // the entry's already-typed AST — compile lowers that live graph, no
   // second fs_read / re-judgment (Carried-Truth: the entry
   // is proven once and read live, never re-derived).
@@ -553,10 +555,10 @@ fn query(entry_module, question) = infer_context(() => {
   // RESIDENT SESSION (the image as the session's own memory, no swap —
   // the named peer carries the measured constraints); fresh derivation
   // here IS the sound form for a per-process verb.
-  // The WEAVE judgment (driver_entry_with_ranges — the one discovery
-  // home): the former driver_check_entry route judged each dep module
-  // SOLO without its layer's vocabulary (the per-module-env-overlay
-  // residue), so every query ran over a partially-broken env.
+  // The WEAVE judgment — `driver_entry_with_ranges` is the ONE discovery
+  // home, because a module judged SOLO is judged without its layer's
+  // vocabulary (the per-module-env-overlay residue) and every query over
+  // it runs against a partially-broken env.
   match driver_entry_with_ranges(entry_module) {
     (_ast, ranges) => match range_of_module(ranges, entry_module) {
       None => {
@@ -632,25 +634,27 @@ handler tighten_collector with found = [] {
 fn analyze_fns(entry_module, projection) = infer_context(() => {
   // "-" is the stdin contract (self-contained source, the bare
   // compile's own path); anything else derives THE WEAVE — the same
-  // driver_entry_with_ranges the check verb, the address, and the
+  // `driver_entry_with_ranges` the check verb, the address, `fmt`, and the
   // resident session read — and scopes to the entry's own decls
-  // (driver_module_ast, the session's scoping read). The former route
-  // (driver_check_entry) was a SECOND discovery: per-module solo
-  // checks judged without their layer's vocabulary (the
-  // per-module-env-overlay residue) — measured 2026-07-30 flooding
+  // (`driver_module_ast`, the session's scoping read). A SECOND discovery
+  // route is what this replaced, and what it cost is why there is exactly
+  // one: per-module solo checks judged without their layer's vocabulary
+  // (the per-module-env-overlay residue), measured 2026-07-30 flooding
   // E_MissingVariable on True/len/list_index from any out-of-tree
   // directory and accruing junk debt the session leg's cold side then
-  // reported as the fixture's own.
+  // reported as the fixture's own. `fmt` was the last verb on it and
+  // carried a second cost: the route installed no diagnostic scope, so it
+  // narrated every dependency at a developer who had named one file.
   let ast = if entry_module == "-" {
     read_stdin() |> infer_program_converged
   } else {
     match driver_entry_with_ranges(entry_module) {
-      (ast_all, ranges) => driver_module_ast(ast_all, ranges, entry_module),
+      (ast_all, _ranges) => driver_module_ast(ast_all, entry_module),
     }
   }
   projection(ast) |> print_string
 } ~>
-// driver_check_entry's fs_read — handled in-chain, as compile/check do.
+// The weave's own fs_read — handled in-chain, as compile/check do.
 // tighten_collector banks the judgment's T_OverDeclared rows so the
 // audit projection can speak them per decl — the collector sits INSIDE
 // the infer_context body chain, where the judgment's performs reach it.
@@ -714,33 +718,34 @@ fn audit(entry_module) = analyze_fns(entry_module, audit_project)
 // site (Hβ.lower.schedule-specialized-callee). Render targets attach
 // via `~>` to the per-module wat output. Drift 6 erasure.
 //
-// ─── ic_compile_loop — `<~` feedback closing on queue stability ───────
+// THE DEAD ROOT OF THE RANKED-QUEUE ORACLE WAS HERE, and its sentence was
+// the tell: "`mentl edit` IS this loop running." It was not. The decl —
+// ic_compile_loop, unbackticked because it no longer resolves — had ZERO
+// callers, measured by `mentl query src/main.mn unreachable` which named it
+// before anything else did; and `mentl edit` routes through `edit_run` / `mentl_edit_session`,
+// nowhere near it. It was also the ONLY install site of `project_queue_merger`,
+// so an entire subsystem hung off a function nobody called: 25 oracle decls
+// (the priority-queue machine — `project_queue`, `compute_priority`, the
+// `priority_*` / `tier_*` orders, `sort_by_priority`, `merge_by_impact`, the
+// `filter_by_*` family, `handle_distance`) and 9 in voice, all unreachable.
 //
-// Build IS the `<~` loop closing at fixpoint (PLAN §2). Every source
-// change bumps the graph epoch at the outermost commit (graph_mutated,
-// graph.mn); project_queue_merger re-projects the oracle queue live
-// (memoized by that epoch — one re-projection per real change); the
-// cursor surfaces the highest-priority residue. The cycle converges when
-// the projection stops changing — the project at the gradient's top.
+// The subsystem it rooted is SUPERSEDED, not merely unused: PLAN §11.1
+// re-founded the oracle as inference with a term-sorted unknown — propagation
+// before enumeration, forking only at genuine disjunction — and a project-wide
+// queue that re-runs the proposer at every position and sorts by a hand-tuned
+// intent × surface-area × locality priority is exactly the generate-then-filter
+// shape that re-founding names and refutes. The LIVE ranked absence field is
+// the frontier (`mentl <file>:0`). Two homes for one projection, and the dead
+// one was the superseded design. `Hβ.oracle.ranked-queue-is-a-second-frontier`
+// carries the deletion of the rest.
 //
-// `<~` runs under IC — the Iterate-class context SYNTAX.md §`<~`
-// requires (an iteration-resume effect, not a Mutate event). The graph
-// epoch IS the one cache; there is no separate cache layer. project_-
-// queue_merger handles the OracleQuery ops the surfaces (voice) perform.
+// One thing that deletion must answer, measured here and not guessed: with
+// this root gone, `project_queue_merger` has NO install site anywhere, and
+// `mentl check src/main.mn` still passes — while `silence_predicate`
+// (src/voice.mn, reachable, called from a handler arm at voice:1177) performs
+// `query_project_queue`. A reachable perform with zero handlers compiles
+// clean. `Hβ.effects.reachable-perform-with-no-install-compiles` carries it.
 //
-// This composition exhibits ALL FIVE verbs at the project level:
-//   |>  source through infer_program_converged |> ... |> emit
-//   <|  source borrowed to four surface projections (cursor_session)
-//   ><  multi-module parallel composition
-//   ~>  handler stack — diagnostics outermost, project_queue_merger
-//        projecting the queue over the checked program
-//   <~  IC fixpoint closing on queue stability (memoized by graph epoch)
-//
-// `mentl edit` IS this loop running. There is no separate `compile`
-// — the edit IS the compile IS the projection IS the loop closing.
-fn ic_compile_loop(initial_entry) =
-  initial_entry |> driver_check ~> project_queue_merger <~ accumulate(empty_queue())
-
 // The env substrate — buffer, index, resolve, dedup, and env_handler —
 // lives in src/env.mn now (PLAN §11 Phase 3.5, the handler seam: the
 // install chain in infer names the handler, so the declaration lives
@@ -907,13 +912,14 @@ fn join_unlock_labels(labels) with Memory + Alloc = if len(labels) == 0 {
 // field is independently introspectable; the record shape lets new
 // metadata land additively (per CLAUDE.md insight 9).
 //
-// Fields (sorted alphabetically per parser invariant):
-//   fn_name     — the function's identifier
-//   reached     — effects the body actually performs ([EffName])
-//   row_str     — pre-rendered row for terminal output
-//   severable   — effects NOT in body that could be added as !E
-//                 ([EffName], each unlocking capabilities)
-//   unlocks     — capabilities gained from severing every severable
+// Fields:
+//   fn_name        — the function's identifier
+//   row_str        — pre-rendered row for terminal output
+//   severable_all  — every effect NOT in the body, provable as `!E`
+//                    ([EffName]). The named subset, its unlocks and the
+//                    unnamed remainder are FOLDS of this list, asked at the
+//                    render where the module's own severance is subtracted
+//                    first — `audit_severable` is the one accessor.
 //
 // A TUPLE, not a record: render_audit reads these fields inside a map
 // lambda, and a structural record's fields floor "field offset
@@ -934,10 +940,13 @@ fn build_audit_report(fn_name, handle, ty, pending, tightens) = {
   // count (true, and honest about carrying no teaching yet). A constant
   // three-name line was what the hardcoded vocabulary could say; this is
   // the read ranked by what it buys.
+  // The entry carries the CANDIDATES and nothing derived from them. The
+  // named subset, its unlocks and the unnamed remainder's count were three
+  // fields here, each a fold over this one list, each re-read at the render
+  // that could have folded it — Carried-Truth inside the verb that projects
+  // it. One list; `severance_named` / `severance_unlocks` / `len` answer the
+  // three questions where they are asked.
   let severable_all = severance_candidates(reached)
-  let severable = severable_all |> filter((e) => len(capabilities_for_severance(e)) > 0)
-  let unlocks = severance_unlocks(severable)
-  let more_severable = len(severable_all) - len(severable)
   // The comment-reference edges' reverse read: which comments point here.
   let referenced_by = graph_comment_refs_of(handle) |> map(comment_owner)
   // The verb-shape read (oracle's pipe_shape_of): single-use let-chains
@@ -946,8 +955,52 @@ fn build_audit_report(fn_name, handle, ty, pending, tightens) = {
   // an incremented index is the loop in recursion's costume — iteration
   // is topology (|> stages, <~ cycles, derived folds), and the audit
   // names the costume where it stands.
-  (fn_name, more_severable, show_effrow(body_row), severable, unlocks, referenced_by, pipe_shape_of(handle), recursion_shape_of(handle), anonymity_shape_of(handle), drift_shapes_of(handle), pending, tightens)
+  (fn_name, show_effrow(body_row), severable_all, referenced_by, pipe_shape_of(handle), recursion_shape_of(handle), anonymity_shape_of(handle), drift_shapes_of(handle), pending, tightens)
 }
+
+// The severable candidates a report entry carries — the one field every
+// severance question folds, named so the ten-wide destructure has one home.
+fn audit_severable(entry) = match entry {
+  (_, _, sev, _, _, _, _, _, _, _) => sev,
+}
+
+// THE SEVERANCE OF A MODULE — the fact at the widest node that proves it.
+//
+// An effect is severable module-wide exactly when NO function in the module
+// reaches it, which is the INTERSECTION of the functions' own candidates. It
+// was rendered per function instead, and the wheel measured what that costs:
+// `mentl audit src/main.mn` printed 303 lines of which 122 were `severable:`
+// lines carrying exactly TWO distinct facts — 98 saying `Network`, 24 saying
+// `Network + Alloc` — because nothing in the module performs Network and the
+// module-level truth was re-derived and re-printed once per function. Forty
+// percent of a projection spent restating one edge, burying the 55 lines that
+// were findings.
+//
+// So the module's severance is read ONCE here, and a function's own line
+// carries only what the module's fact does not already prove. A developer
+// reading `severs module-wide: Network` learns the whole module is
+// sandboxable — which 98 repetitions of that sentence actively hid.
+fn module_severance(entries) with Memory + Alloc = match entries {
+  [] => [],
+  [first, ...more] => more |> fold(audit_severable(first), intersect_severance),
+}
+
+fn intersect_severance(acc, entry) with Memory + Alloc =
+  acc |> filter({ e => name_in_list(audit_severable(entry), e) })
+
+// A function's own severance ABOVE its module's — the delta, which is the
+// only part of its candidate set that is news.
+fn severance_beyond(module_sev, sev) with Memory + Alloc =
+  sev |> filter({ e => not_in_names(module_sev, e) })
+
+fn not_in_names(names, target: EffName) with Memory + Alloc = !name_in_list(names, target)
+
+// The candidates whose absence buys a NAMED capability — the teaching half.
+// The rest are true and carry nothing to act on, so they ride as one count
+// at the module, where they describe the capability MAP's gap rather than
+// the developer's code.
+fn severance_named(sev) with Memory + Alloc + Intern =
+  sev |> filter({ e => len(capabilities_for_severance(e)) > 0 })
 
 // Severance candidates: every effect DECLARED in scope that the body
 // does not reach — adding `!E` for each is provable and unlocks what
@@ -1012,22 +1065,45 @@ fn severance_unlocks(severable) = severable |> fold(
 //
 // Positional destructure — provable with no type flow, where a
 // record field read floors in a map lambda (see build_audit_report).
-fn render_audit(entries) = entries |> map({
-  (fn_name, more_severable, row_str, severable, unlocks, referenced_by, pipe_chains, loop_costume, anon_shapes, drift_shapes, pending, tightens) => audit_report_lines(
-    fn_name,
-    row_str,
-    severable,
-    unlocks,
-    more_severable,
-    referenced_by,
-    pipe_chains,
-    loop_costume,
-    anon_shapes,
-    drift_shapes,
-    pending,
-    tightens
-  ),
-}) |> str_concat_all
+fn render_audit(entries) = {
+  let module_sev = module_severance(entries)
+  let fn_lines = entries |> map({
+    (fn_name, row_str, severable, referenced_by, pipe_chains, loop_costume, anon_shapes, drift_shapes, pending, tightens) => audit_report_lines(
+      fn_name,
+      row_str,
+      severance_beyond(module_sev, severable),
+      referenced_by,
+      pipe_chains,
+      loop_costume,
+      anon_shapes,
+      drift_shapes,
+      pending,
+      tightens
+    ),
+  }) |> str_concat_all
+  "{render_module_severance(module_sev)}{fn_lines}"
+}
+
+// The module's own two lines, read once from the intersection above: what
+// the whole module severs and what that buys, then the capability map's gap
+// — effects every body provably never reaches that no capability names. The
+// second line is a statement about the MEDIUM, not about the code, which is
+// why it belongs here once and nowhere per function.
+fn render_module_severance(module_sev) with Memory + Alloc + Intern + GraphRead = {
+  let named = severance_named(module_sev)
+  let unnamed = len(module_sev) - len(named)
+  let named_line = if len(named) == 0 {
+    ""
+  } else {
+    "severs module-wide: {show_list(named, show_eff_name, " + ")} — unlocks {show_list(severance_unlocks(named), show_capability, ", ")}\n"
+  }
+  let unnamed_line = if unnamed == 0 {
+    ""
+  } else {
+    "  {int_to_str(unnamed)} declared effect(s) sever module-wide with no capability named — naming one unlocks it everywhere\n"
+  }
+  "{named_line}{unnamed_line}"
+}
 
 // The String pins are Intent Boundaries (spec_mangle's law): inside the
 // map lambda the splices judged datum-last while the tuple elements were
@@ -1040,25 +1116,18 @@ fn drift_note_fold(acc, pair) = match pair {
   (shape, n) => if n == 0 { acc } else { "{acc}{int_to_str(n)} {census_label(shape)}; " },
 }
 
-fn audit_report_lines(fn_name: String, row_str: String, severable, unlocks, more_severable, referenced_by: [String], pipe_chains, loop_costume, anon_shapes, drift_shapes, pending, tightens) = {
+fn audit_report_lines(fn_name: String, row_str: String, beyond, referenced_by: [String], pipe_chains, loop_costume, anon_shapes, drift_shapes, pending, tightens) = {
   let header = "{fn_name} : {row_str}\n"
-  // The teaching tier leads; the remainder is counted, never listed —
-  // a fn that reaches nothing can prove the absence of every effect in
-  // scope, and enumerating seventy is noise where the ranked few teach.
-  let more_note = if more_severable == 0 {
+  // Only the DELTA above the module's own severance, and only its teaching
+  // half. A fn that severs exactly what its module severs says nothing here,
+  // because the module line already said it — and the unnamed remainder is
+  // the capability map's gap, reported at the module where it is one fact
+  // instead of a per-function number nobody can act on.
+  let named_beyond = severance_named(beyond)
+  let severance_section = if len(named_beyond) == 0 {
     ""
   } else {
-    " (+{int_to_str(more_severable)} more provable, no capability named yet)"
-  }
-  let severance_section = if len(severable) > 0 {
-    "  severable: {show_list(severable, show_eff_name, " + ")} — unlocks {show_list(unlocks, show_capability, ", ")}{more_note}\n"
-  } else if more_severable > 0 {
-    // Provable, but nothing in the capability map names what it buys —
-    // still the developer's fact, so the tier says it rather than going
-    // silent (the capability map's growth is the named remainder).
-    "  severable: {int_to_str(more_severable)} declared effect(s) this body never reaches — provable as !E, no capability named yet\n"
-  } else {
-    ""
+    "  severs beyond the module: {show_list(named_beyond, show_eff_name, " + ")} — unlocks {show_list(severance_unlocks(named_beyond), show_capability, ", ")}\n"
   }
   let refs_section = if len(referenced_by) == 0 {
     ""
@@ -1169,7 +1238,7 @@ fn import_row_is_dead(row) with Pure = match row {
 }
 
 fn render_import_rows(rows) with Memory + Alloc =
-  "→ {int_to_str(len(rows))} import edge(s); {int_to_str(count(import_row_is_dead, rows))} bring nothing the importing module references\n{str_join_lines(map(render_import_row, rows))}"
+  "→ {int_to_str(len(rows))} import edge(s); {int_to_str(count(import_row_is_dead, rows))} bring nothing the importing module references\n{str_join_indented(map(render_import_row, rows))}"
 
 // The declared names rendered as the roster's dead half. The header states
 // the whole roster so the count reads against it; the body names only what
@@ -1187,15 +1256,91 @@ fn unref_row_is_dead(row) with Pure = match row {
 
 // The transitive face: a row's third field is reached-from-entry, so the
 // same zero test names the fns the entry cannot reach.
-fn render_unreach_rows(rows) with Memory + Alloc =
-  "→ {int_to_str(len(rows))} fn decl(s); {int_to_str(count(unref_row_is_dead, rows))} the entry cannot reach\n{str_join_lines(map(render_unreach_row, filter(unref_row_is_dead, rows)))}"
+// THE FACET ANSWERED TWO DIFFERENT QUESTIONS IN ONE FLAT LIST, and the
+// measurement is why it is split. `mentl query src/main.mn unreachable`
+// answered 276 fn decls, and 202 of them sat in modules where NOTHING is
+// reached — prelude, combinators, dsp/*, ml/*, math, lists, strings: the
+// library surface a program LINKS and does not call, which is not dead code
+// and never was. The other 74 sat inside modules the entry runs through every
+// time, which IS dead code and is the whole finding. Handed one list of 276,
+// a reader acts on neither.
+//
+// The distinguishing fact is a RATIO this walk already holds. A module whose
+// unreached count equals its total is surface; a module with reached decls
+// standing beside unreached ones is carrying weight. No path convention
+// decides it — not `src/` versus `lib/`, which is a directory habit the graph
+// knows nothing about — the reachability walk does, from edges it already has.
+fn render_unreach_rows(rows) with Memory + Alloc = {
+  let groups = unreach_groups(rows)
+  let carrying = groups |> filter(group_carries_dead)
+  let surface = groups |> filter(group_is_surface)
+  let dead_n = count(unref_row_is_dead, rows)
+  let header = "→ {int_to_str(len(rows))} fn decl(s); {int_to_str(dead_n)} the entry cannot reach\n"
+  let carrying_section = if len(carrying) == 0 {
+    ""
+  } else {
+    "\nDEAD — in modules the entry reaches:\n{carrying |> map(render_carrying_group) |> str_concat_all}"
+  }
+  let surface_section = if len(surface) == 0 {
+    ""
+  } else {
+    "\nSURFACE — {int_to_str(len(surface))} module(s) linked whole and never called into:\n{surface |> map(render_surface_group) |> str_concat_all}"
+  }
+  "{header}{carrying_section}{surface_section}"
+}
 
-fn render_unreach_row(row) with Pure = match row {
-  (m, name, _) => "  UNREACHABLE  {m} -> {name}",
+// Each line arrives whole, newline included, and concatenates — never through
+// `str_join_indented`, which is for flat rows under one header. Over a nested
+// render its two-space step compounds: the module rows printed at 2, 4, 4 and
+// their decls at 6, 8, 8, which is what the first run of this projection did
+// and what renamed that helper.
+fn render_carrying_group(g) with Memory + Alloc = match g {
+  (m, total, dead) => "  {m} — {int_to_str(len(dead))} of {int_to_str(total)} unreached\n{dead |> map(render_unreach_name) |> str_concat_all}",
+}
+
+fn render_unreach_name(name: String) with Memory + Alloc = "      {name}\n"
+
+fn render_surface_group(g) with Memory + Alloc = match g {
+  (m, total, _) => "  {m} — all {int_to_str(total)}\n",
+}
+
+// One pass over the rows, which arrive in module order because the cells do.
+// `last` / `drop_last` are the snoc end's O(1) reads, so extending the open
+// group costs nothing per row (SYNTAX §Vocabulary — the names say which end).
+fn unreach_groups(rows) with Memory + Alloc = rows |> fold([], unreach_group_add)
+
+fn unreach_group_add(acc, row) with Memory + Alloc = match row {
+  (m, name, hit) => if len(acc) == 0 {
+    [(m, 1, unreach_dead_one(name, hit))]
+  } else {
+    match last(acc) {
+      (gm, total, dead) => if same_module_path(gm, m) {
+        drop_last(acc) ++ [(gm, total + 1, dead ++ unreach_dead_one(name, hit))]
+      } else {
+        acc ++ [(m, 1, unreach_dead_one(name, hit))]
+      },
+    }
+  },
+}
+
+// The `: String` pins are the Intent Boundary the either-operand law asks
+// for: both operands arrive free out of a tuple destructure, and a bare `==`
+// on an unproven operand word-floors to pointer-eq — every group would open
+// fresh and the roster would read one module per decl.
+fn same_module_path(a: String, b: String) with Memory + Alloc = a == b
+
+fn unreach_dead_one(name, hit) with Memory + Alloc = if hit == 0 { [name] } else { [] }
+
+fn group_carries_dead(g) with Memory + Alloc = match g {
+  (_, total, dead) => len(dead) > 0 && len(dead) < total,
+}
+
+fn group_is_surface(g) with Memory + Alloc = match g {
+  (_, total, dead) => len(dead) > 0 && len(dead) == total,
 }
 
 fn render_unref_rows(rows) with Memory + Alloc =
-  "→ {int_to_str(len(rows))} declared name(s); {int_to_str(count(unref_row_is_dead, rows))} that nothing outside their own declaration references\n{str_join_lines(map(render_unref_row, filter(unref_row_is_dead, rows)))}"
+  "→ {int_to_str(len(rows))} declared name(s); {int_to_str(count(unref_row_is_dead, rows))} that nothing outside their own declaration references\n{str_join_indented(map(render_unref_row, filter(unref_row_is_dead, rows)))}"
 
 // Each effect with how many of its ops anything performs. A handler ARM is
 // not a perform — it is the promise's other half — so k/n reads as "how
@@ -1215,7 +1360,7 @@ fn perform_row_is_partial(row) with Pure = match row {
 }
 
 fn render_perform_rows(rows) with Memory + Alloc =
-  "→ {int_to_str(len(rows))} effect(s); {int_to_str(count(perform_row_is_partial, rows))} with ops nothing performs\n{str_join_lines(map(render_perform_row, filter(perform_row_is_partial, rows)))}"
+  "→ {int_to_str(len(rows))} effect(s); {int_to_str(count(perform_row_is_partial, rows))} with ops nothing performs\n{str_join_indented(map(render_perform_row, filter(perform_row_is_partial, rows)))}"
 
 // A declaration nothing references, carrying prose that explains how it is
 // used. The bytes are the weight of the belief; the zero is the graph
@@ -1226,7 +1371,7 @@ fn render_orphan_row(row) with Memory + Alloc = match row {
 }
 
 fn render_orphan_rows(rows) with Memory + Alloc =
-  "→ {int_to_str(len(rows))} declaration(s) explained at length and referenced by nothing\n{str_join_lines(map(render_orphan_row, rows))}"
+  "→ {int_to_str(len(rows))} declaration(s) explained at length and referenced by nothing\n{str_join_indented(map(render_orphan_row, rows))}"
 
 fn render_query_result(result) = match result {
   QRType(ty, reason) => "→ {show_type(ty)}\n  Reason: {show_reason(reason)}",
@@ -1270,21 +1415,29 @@ fn render_query_result(result) = match result {
   QRDecls(sites) => // The decls column's projection — the oracle queue's own seed set,
   // rendered located so the seed is inspectable at the CLI.
   "→ {int_to_str(len(sites))} judged decl(s){render_census_sites(sites)}",
-  QRModules(paths) => "→ {int_to_str(len(paths))} module(s) in the weave\n  {str_join_lines(paths)}",
+  QRModules(paths) => "→ {int_to_str(len(paths))} module(s) in the weave\n  {str_join_indented(paths)}",
   QRImports(rows) => render_import_rows(rows),
   QRUnreferenced(rows) => render_unref_rows(rows),
   QRUnreachable(rows) => render_unreach_rows(rows),
   QRPerforms(rows) => render_perform_rows(rows),
   QROrphanClaims(rows) => render_orphan_rows(rows),
   QRCost(mods, lines, nodes) => "→ {int_to_str(mods)} module(s) · {int_to_str(lines)} source line(s) · {int_to_str(nodes)} node(s) minted",
-  QRWhere(lines, sites) => "→ {str_join_lines(lines)}{render_where_sites(sites)}",
+  QRWhere(lines, sites) => "→ {str_join_indented(lines)}{render_where_sites(sites)}",
   QRError(msg) => "error: {msg}",
 }
 
-fn str_join_lines(lines) with Pure = match lines {
+// It JOINS AND INDENTS — every element after the first lands two spaces in —
+// and the name said only the first half until a nested render read as a
+// staircase (module rows at 2, 4, 4; their decls at 6, 8, 8). A helper whose
+// name hides half of what it does is the representation lying, one layer up
+// from the list_head/list_tail pair that read the snoc end until `last` and
+// `drop_last` replaced them (SYNTAX §Vocabulary). The callers
+// that want the indent name it; a caller that wants whole lines concatenates
+// them itself.
+fn str_join_indented(lines) with Pure = match lines {
   [] => "",
   [one] => one,
-  [h, ...t] => "{h}\n  {str_join_lines(t)}",
+  [h, ...t] => "{h}\n  {str_join_indented(t)}",
 }
 
 // The site badges: the schedule word at the fanout's own line —

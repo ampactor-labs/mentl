@@ -869,6 +869,42 @@ and this is the STATE.
   desugar-introduced names, and row/handler/type obligations; the prelude should
   become a frozen image slice, not a reparsed text prefix. A bare program's line
   floor is useful only when this reachability law is true.
+- **A REACHABLE PERFORM WITH NO INSTALL ANYWHERE COMPILES CLEAN** — measured
+  2026-09-21 and open. `silence_predicate` (src/voice.mn) is reachable, is
+  called from a handler arm at voice:1177, and performs `query_project_queue`;
+  the only handler that ever absorbed it was installed by a function with zero
+  callers, now deleted. `mentl check src/main.mn` passes with zero diagnostics.
+  This is strictly worse than
+  `Hβ.effects.root-gate-credits-an-install-that-had-not-opened` (6.3), which
+  credited an install whose extent had not opened — here the install does not
+  exist. §0's first property is that nothing executes unproven, and the
+  executable root gate is exactly where that promise is kept, so this is the
+  promise failing at its own boundary.
+  `Hβ.effects.reachable-perform-with-no-install-compiles` carries it.
+- **THE MEDIUM'S OWN PROJECTIONS WENT UNASKED, and asking them was the whole
+  audit of 2026-09-21.** Six findings, one law — *a fact with two homes, or a
+  fact restated where an edge already carried it* — and every one was found by
+  a verb, not a grep. `mentl audit src/main.mn` (never run before): 303 lines,
+  of which 122 were `severable:` lines carrying TWO distinct facts, because a
+  module-level truth was re-derived per function; severance reads at the module
+  now and a function's line carries only its delta (303 → 210, the 56 real
+  findings no longer buried). `mentl query <entry> unreachable`: 276 decls in
+  one flat list, of which 202 sat in modules where NOTHING is reached — library
+  surface a program links, not dead code — and 74 sat inside modules the entry
+  runs through; the facet partitions on that ratio now, which is how the dead
+  ranked-queue oracle became legible in one read. `mentl check src/main.mn`
+  answered ONE diagnostic on 3,056 decls — `E_RedundantBraces` in the wheel's
+  own `dispatch_invocation` — so the wheel was not at its own formatter's
+  fixpoint; it is now, and the wheel's source carries zero diagnostics.
+  Beside them: `fmt` was the last verb on a solo entry route that installed no
+  diagnostic scope (it narrated every dependency at a developer who named one
+  file) and is on the weave route with `driver_check_entry` deleted; the Why
+  chain had two renderers, the dead one the worse form, and one is gone;
+  `tools/verify-baseline.txt` held 646 lines — 38% — as a second home for the
+  twelve bounds that moved to `src/board.mn`, read by nothing, and they are
+  gone. **The transferable half is the method, not the count: the verbs
+  answered in minutes what hand-reading had not asked in weeks, which is §0's
+  fifth property working — and it only works when someone runs them.**
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -887,13 +923,14 @@ in `RESIDUE.md` does not exist. §11 names the peers each phase touches.
 
 ```
 # ── the BOOT ERA (post-first-light, 2026-07-10): boot/mentl.wasm IS the compiler ──
-bash tools/state.sh            # THE BOARD, ground FIRST: git → verify → march → frontier → proof-exactness → crown → effect-identity, one scoreboard; --quick = verify only
+bash tools/state.sh            # THE BOARD, ground FIRST: git → verify → march → frontier → proof-exactness → crown → effect-identity → instrument → threads → ide, one scoreboard; --quick = verify only
 mentl verify [path]            # THE BOARD, in the medium: the standing bounds on its own source, read off ONE judged graph (src/board.mn carries each bound WITH its justification); a breach REFUSES, an unread or unclean weave refuses rather than measuring less
 bash tools/verify.sh           # the floor the verb has not absorbed: micros through the exec seam, the sha chain, the world outside the graph — STAMPED green (unchanged tree answers in ms; FORCE_VERIFY=1 re-runs)
 bash tools/march-gate.sh --micros   # rungs + battery through boot's wheel-emitted m2 (reads the shared .build/m2cache)
 bash tools/march.sh            # THE RATCHET: boot→m2→m3, ASSERTS m2 == m3; on m2 ≠ m3 runs m4 ITSELF and rules TRANSITION (re-pin from m3) vs BROKEN
 bash tools/frontier-gate.sh    # scheduled matrix + ?? authoring workflows (--compiler fresh for the current wheel)
 bash tools/proof-exactness-gate.sh  # hole refuses · debt surfaces · suspension runs
+bash tools/ide-gate.sh         # the resident session: the node twin over ide/wheel-worker.js, then headless Chrome over `mentl space` (leg 2 skips loudly without chrome)
 bash tools/doc-truth.sh        # the docs' checkable claims vs the artifact: PROVENANCE sha == boot sha, ledger head pin, named commands exist (runs inside verify — prose gets a mechanical floor)
 mentl space                    # mentl edit in the browser (localhost:7378/ide/) — SERVED BY THE WHEEL (src/main.mn space_run; tools/runner owns the tcplisten seam)
 #   (the seed + --from-seed are deleted, 7401c4b; the cold ladder lives at tag first-light)
@@ -2384,7 +2421,17 @@ landed in 5–10; this phase is the finish that makes it FELT.
   legibility derived. The Resident Space Session (`ide/wheel-worker.js`,
   `ide/test-shim.mjs`, `ide/index.html`) hosts the living graph over shared
   WebAssembly memory with sub-50ms address projections and delta updates,
-  verified green across Node and headless Chrome (`tools/ide-gate.sh`).
+  measured by `tools/ide-gate.sh` — **which nothing invoked until 2026-09-21**,
+  not `state.sh`, not a hook, not `tools/ci/run-board.sh`, while this sentence
+  read "verified green across Node and headless Chrome" and Arc E named
+  `ide-gate green` as the Space spine's terminal bar. Tripwire 4 on the arc
+  this plan calls the production target, with the green claim already written
+  over it. The gate is ON THE BOARD now, so the claim is a measurement: leg 1
+  (the node twin over `ide/wheel-worker.js` — stub-spawn RED control,
+  compile-stdin through real spawned tasks, the address CursorView, the `??`
+  Propose socket, resident navigation, resident delta+propose) is GREEN; leg 2
+  (headless Chrome over `mentl space`) SKIPS loudly where chrome is absent,
+  and a board that has only ever run leg 1 has not measured the browser.
   Every reader-facing page leads with the person at
   the keyboard; the docs themselves pass the source standard.
 - **11.3 · DONE, measured.** The seven statements run as gates, each

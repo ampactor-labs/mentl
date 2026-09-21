@@ -462,9 +462,32 @@
 > did Claude or Morgan perform that the medium could have performed? What is
 > the SMALLEST capability that lets the medium do it next time? Build it in
 > the same arc when it is in reach; name it as a peer when it is not. The
-> scaffolds' own written destinies — march → `mentl march`, drift-audit →
-> `mentl audit`, state.sh → state-as-projection, the fmt/tighten batch loop —
-> are the standing queue: ABSORPTION into verbs, never deletion of a safeguard.
+> scaffolds' own written destinies — verify.sh's remaining grep legs →
+> `mentl verify`, state.sh → state-as-projection, doc-truth → the comment-ref
+> gate generalized to doc anchors, the fmt/tighten batch loop — are the
+> standing queue: ABSORPTION into verbs, never deletion of a safeguard. Two
+> have LANDED and are struck from that queue rather than left standing beside
+> their verbs: march → `mentl march` and drift-audit → `mentl audit` (ten
+> drift modes are census shapes with per-fn audit tiers, and their bash rows
+> retired with each). A scaffold whose verb exists is a SECOND HOME, and this
+> list saying otherwise was the doc-layer instance of the very disease —
+> corrected 2026-09-21, the same audit that found `tools/verify-baseline.txt`
+> holding 646 dead lines beside `src/board.mn`, a movers-hist.py scaffold for
+> an instrument deleted four days earlier (named without its path here on
+> purpose — doc-truth reads this file for RUNNABLE command citations, and a
+> deleted tool is history, not a command), and `tools/ide-gate.sh` — PLAN §11
+> Arc E's own terminal bar — invoked by NOTHING while §11.2 called it green.
+>
+> **THE FIRST MOVE OF AN AUDIT IS A VERB, and the 2026-09-21 session is the
+> measurement.** `mentl audit`, `mentl query <entry> unreachable`, and
+> `mentl check` on the wheel's own source found, in minutes, six things no
+> amount of hand-reading had asked about in weeks: a projection restating one
+> module-level fact 122 times, 74 dead compiler decls inside a 276-row answer
+> nobody could act on, a whole superseded subsystem hanging off a function with
+> zero callers, two Why renderers with the dead one the worse form, a verb left
+> behind on a retired route, and the wheel one `E_RedundantBraces` away from its
+> own formatter's fixpoint. None of it needed a new instrument. It needed the
+> instruments to be RUN (PLAN §7 carries the full record).
 >
 > **THE WORKING DISCIPLINE, paid for 2026-07-25 (Morgan's cut caught both)
 > — and it binds WHOEVER PROPOSES (Claude today, any intelligence behind
