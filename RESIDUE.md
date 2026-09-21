@@ -28,6 +28,124 @@
 
 ---
 
+`Hβ.viz.severance-map` — OPEN, BORN 2026-09-21, the visualization frontier pick,
+chosen from a survey of the field rather than from taste. Full argument and the
+three-colour law: `PLAN.md §11` Arc G. Summary of why it is the one: `!E` is the
+only fact in software visualization that is binary, verifiable and consequential
+— everything else renders a quantity or a possibility, and only impossibility
+converts into a decision. Siblings, which are the same fact at the two altitudes
+that keep a visualization alive: `Hβ.viz.ambient-world-gutter` (Aquascope's
+hollow-vs-filled glyph over rows — hollow `E` = required, filled = granted, a
+hollow with no filled counterpart IS the refusal, drawn), `Hβ.viz.negative-space-
+diff` (a PR's absence delta — *lost `!Alloc` at audio_stage* — monotone the right
+way, where every security tool today diffs findings and gets quieter as its
+analysis degrades), `Hβ.viz.why-walk-elides-trivial-hops` (Pernosco's copy-skip,
+applied to the Reason chain's `Unified(R, R)` noise).
+THE HONEST BLOCKER is named in the arc and repeated here so it cannot be lost:
+the verdict is only as sound as `Hβ.effects.sound-neg-under-poly`, whose modal
+world-index is open. The map renders THREE states — provably absent / present /
+not yet provable — with the third counted and ratcheting. A two-colour map is
+the lie.
+
+`Hβ.syntax.positive-row-is-authored-by-hand` — OPEN, BORN 2026-09-21, MEASURED.
+132 signatures declare four effects, 155 declare five, and a tail runs 13, 14,
+16, 17 (four), 18, 19. Every name in a declared row is a hand-copy of a fact
+inference computed — SYNTAX's own words are that the declared row is "a
+CONSTRAINT verified against the row inferred from the body" — so a wide row is a
+re-derivation, is not intent under the Intent Boundary Rule, and buries the one
+`!E` worth reading.
+STEP ONE IS LANDED AND MEASURED: `CsWideRow` counts signatures past
+`wide_row_width` (eight, read off the corpus's own gap), `src/board.mn` bounds
+it, seen RED at 18 against its measured 19 — and the count moved **19 → 12** in
+the same landing by naming the capability seven of them shared (`type Judging`,
+src/driver.mn). The remaining twelve are emit, cursor, infer and synth_proposer:
+four more unnamed capabilities, each one landing.
+STEP TWO IS THIS PEER: the positive row becomes INFERRED AND PROJECTED, and only
+negations, instance pins and genuine narrowings are authored, so `with !Alloc +
+!Thread` is the normal signature and the full row is read at the address surface
+beside repr width and resume cardinality. The migration is the medium's own —
+`mentl tighten` already authors row patches — and the count reaching zero is
+what retires the board line.
+
+`Hβ.march.determinism-is-never-probed` — OPEN, BORN 2026-09-21, MEASURED.
+`march.sh --fixpoint` forces the m4 leg on a clean run, and **nothing invokes
+it**: not `state.sh`, not a hook, not `tools/ci/run-board.sh`; the only matches
+in the tree are comments in `frontier-gate.sh` describing what the fixpoint is
+blind to. The last twelve pins are all CLEAN, so the leg has not run in at least
+twelve landings.
+WHAT IS AND IS NOT AT RISK, stated so this is not mistaken for a soundness
+scare: on a clean march m4 is DEDUCTIVELY REDUNDANT — if `m2 == m3`
+byte-for-byte then m3 *is* m2, so `m4 = m3(src) = m2(src) = m3` follows. What
+does NOT follow, and what `--fixpoint` alone would test, is DETERMINISM: the
+same wasm, on the same input, producing the same bytes. Nothing on the board
+checks it.
+THE FIX is a cadence, not a per-landing cost: run the leg every Nth pin or on
+demand, and report it in `state.sh`'s STAMPS block so its absence is a VISIBLE
+BLANK rather than a flag nobody passes. This is `tripwire 4` one layer down —
+a leg that only runs on failure has never been exercised on success — and it is
+the same shape as `tools/ide-gate.sh` being off the board while §11.2 called it
+green.
+
+`Hβ.cli.two-operations` — OPEN, BORN 2026-09-21, and the idea is older than the
+measurement: drift mode 38 already says *"`mentl <tentacle>` as a CLI verb —
+tentacles fire AT-CURSOR, not as subcommands"*, and `mentl why`, `mentl where`
+and `mentl verify` ship as verbs anyway, with a hand-written carve-out in
+`tools/drift-patterns.tsv` excusing them. The catalog names the law and the
+artifact drifted from it.
+THE FORM, and it is the kernel's own shape: **two operations, because the kernel
+has two.** `mentl <address> [question]` is PROJECT — read the graph at a
+position, every tentacle an aspect of that one read. `mentl <action>` is DRAW AN
+EDGE — `run`, `compile`, `fmt`, `tighten`, `new`. Everything else is an argument
+to one of those. Under it, `why` / `where` / `variants` / `census` /
+`unreachable` / `smt` / `decls` / `modules` / `imports` / `performs` /
+`orphan-claims` / `cost` are not verbs at all — they are questions at an
+address, which is exactly what `mentl query <file> <question>` already is, and
+`mentl why <file> <name>` is that same read with a name instead of a line. So
+the collapse is literal: **`query` and the address are the same verb.**
+MEASURED: `mentl help` lists 24 verbs; the honest surface is nine — project,
+run, compile, fmt, tighten, new, space, march, verify — with the other fifteen
+becoming arguments. The count is the gate: a verb roster that shrinks while the
+questions grow is the CLI teaching the kernel instead of hiding it.
+
+`Hβ.docs.laws-and-casebook` — OPEN, BORN 2026-09-21.
+`CLAUDE.md` is roughly a hundred lines of actual METHOD wrapped in five hundred
+lines of CASEBOOK — the measurements that earned each law. Both are valuable and
+the interleaving is the cost: every session pays full freight for the archive to
+reach the imperative. The `⚖` section already says a law is alive and a lesson
+lands inside the law it sharpens; what it does not yet say is that the EVIDENCE
+for a law and the law itself are different read-paths with different cadences.
+THE SPLIT: **LAWS** — imperative, current, short, read every session — and
+**CASEBOOK** — why each exists, with its measurement and its kills, read when
+challenging a law (which `⚖` explicitly licenses). The contract stays three
+documents; the casebook is to `CLAUDE.md` what `LEDGER.md` is to `PLAN.md`, and
+it left for the same reason.
+NOT DONE IN THE LANDING THAT NAMED IT, deliberately: the `@`-imports at the head
+of `CLAUDE.md` are load-bearing (they are what makes "read all three" mechanical
+rather than trusted), so the split has to preserve them, and a restructure of the
+file that governs the restructure deserves its own march rather than riding an
+arc. The same split applies one document over: `docs/SYNTAX.md`'s normative
+grammar is PROJECTABLE from the parser's own precedence table and `TokenKind`
+roster (`Hβ.syntax.normative-grammar-is-projectable`), leaving prose to carry
+only the rationale — which is the half a projection cannot hold.
+
+`Hβ.syntax.normative-grammar-is-projectable` — OPEN, BORN 2026-09-21.
+`docs/SYNTAX.md` does three jobs — normative spec, dated design archive with
+retractions, and teaching document — and the first is the one the medium should
+be answering. The tells are already written INTO the document: its diagnostic
+catalog says outright that the tables are "worked EXAMPLES, not the source of
+truth" and points at `mentl diagnostics` as the live catalog, which is the ONE
+item on its own lag list; and its token table carries a hand-maintained
+"Checksum: 63 variants" that the document itself calls "the hand-maintained
+stand-in for `mentl audit` until the cursor projects it". So the only readable
+catalog is the one the doc tells you not to trust, and the only cardinality
+guarantee is a number a human keeps.
+THE FORM: `mentl doc --syntax` (or the address surface at a grammar node)
+renders the precedence table, the `TokenKind` roster with its real cardinality,
+and the `DiagKind` catalog with each constructor's applicability — from the
+artifact. The checksum stops being maintained because it stops being written.
+`Hβ.diag.catalog-as-projection` (band L) is the diagnostic half of exactly this
+and should land as one arc with it.
+
 `Hβ.parser.refine-stmt-frees-are-empty` — OPEN, BORN 2026-09-21, found because
 a dead-code facet named a live function dead.
 

@@ -440,6 +440,14 @@ if [ "$FIXPOINT" = 1 ] && [ "$m3rc" = 0 ] && [ "$m4done" = 0 ]; then
     gen "$OUT/m3.wasm" "$OUT/m4.wat" "$OUT/m4.err"; m4rc=$?
     if [ "$m4rc" = 0 ] && diff -q "$OUT/m3.wat" "$OUT/m4.wat" >/dev/null 2>&1; then
       echo "✓✓ FIRST LIGHT: m3 == m4 (fixed point)"
+      # STAMP THE DETERMINISM PROBE so state.sh can report it, and so its
+      # ABSENCE is a visible blank rather than a flag nobody passes. On a clean
+      # march m4 is deductively redundant (m2 == m3 means m3 IS m2, so m4 == m3
+      # follows); what this leg alone tests is that the same wasm on the same
+      # input emits the same bytes. Keyed to the boot sha it measured, exactly
+      # as the frontier stamp is, so a repin invalidates it by construction.
+      mkdir -p .build/gate
+      sha256sum boot/mentl.wasm 2>/dev/null | awk '{print $1}' > .build/gate/fixpoint-stamp
     else
       echo "· m3 ≠ m4 ($(diff "$OUT/m3.wat" "$OUT/m4.wat" 2>/dev/null | grep -c '^[<>]') diff lines; m4 exit=$m4rc)"
       fixok=0

@@ -1622,6 +1622,8 @@ fn census_shape_of(arg) with Memory + Alloc = if arg == "anonymous" {
   Some(CsDefaultParam)
 } else if arg == "declared-row-hof" {
   Some(CsDeclaredRowHof)
+} else if arg == "wide-row" {
+  Some(CsWideRow)
 } else if arg == "record-pattern" {
   Some(CsRecordPattern)
 } else if arg == "record-pattern-open" {

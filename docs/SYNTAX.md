@@ -1365,6 +1365,51 @@ A row that resolves to `Pure` (everything subtracted out) is `W_CapabilityEmpty`
 (the alias adds no constraint — drop it); a row referencing an undeclared effect
 surfaces `E_MissingVariable` at the unresolved name.
 
+### A SIGNATURE IS NOT AN INVENTORY — name the capability, author the negation
+
+**The measurement that makes this a rule rather than a preference (2026-09-21).**
+The wheel's own declared-row distribution is 132 signatures at four effects and
+155 at five — then a tail at 13, 14, 16, 17 (four of them), 18 and **nineteen**.
+A nineteen-name `with` clause breaks three laws at once, and they are this
+document's own:
+
+1. **It is a re-derivation.** §«With-clauses for effects» says the declared row
+   is *a CONSTRAINT verified against the row inferred from the body* — so every
+   name is a hand-copy of a fact inference computed. Widening one leaf edits
+   every signature above it. That is the Carried-Truth Law violated at the
+   surface, in the surface that exists to express it.
+2. **It is not intent.** The Intent Boundary Rule reserves annotations for
+   DECISIONS — a refinement, an ownership marker, a representation pin.
+   `with Memory + Alloc` on a body that obviously allocates is dictation.
+3. **It buries the signal.** `!E` is the crown. In a nineteen-name row the one
+   negation worth reading is a needle in a haystack the author typed.
+
+**The form, and it needs no new syntax.** A row is a type-level value, so a
+capability is a `type` alias (above), and the alias is transparent — the checked
+row is identical, nothing proven is lost. The wheel's own worst seven signatures
+shared a sixteen-name core that had never been named; `type Judging = …` gave it
+one, and they became:
+
+```
+fn driver_check_module(ref entry) with Judging = …
+fn driver_entry_scoped(ref m, scope) with Judging + Filesystem = …
+fn driver_compile_entry(ref m) with Judging + Filesystem + Persist + Fail = …
+```
+
+What survives on the page is what a reader should read: `+ Filesystem` where a
+pass touches disk, `+ Persist` where it writes an image, `+ Fail` where it can
+refuse. `+ Intern` was never a decision. `mentl verify` bounds the shape
+(`CsWideRow`, `src/board.mn`), so this is a count that must fall rather than a
+style note that can be ignored.
+
+**The endpoint, which takes the count to zero:** the POSITIVE row is inferred
+and PROJECTED, and only negations, instance pins and genuine narrowings are
+authored — `with !Alloc + !Thread` as the normal signature, shorter *and* the
+part worth reading, with the full positive row available at the address surface
+the way `repr` width and resume cardinality already are. The peer is
+`Hβ.syntax.positive-row-is-authored-by-hand`; the migration is the medium's own
+work, since `mentl tighten` already authors row patches.
+
 **Dissolved:** the `capability` keyword and the `TCapability` token. `capability X
 = <row>` was structurally `type X = <row>` (the doc's own prior admission, peer
 `Hβ.types.capability-as-row-alias`) — a row is a type-level value, so naming one IS

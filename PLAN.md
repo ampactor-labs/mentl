@@ -113,6 +113,35 @@ kernel; the oracle is incremental-computation plus one cached value; even
   graph. Temporal: continuations, no types. Rust: ownership, no effect row.
   Effect-TS: effects, hostile host. Solid: feedback, no proof. **Mentl is the
   convergence point — the body none of them had.**
+- **AND VALIDATED FROM OUTSIDE BY WHAT THE FIELD CANNOT DO** (surveyed
+  2026-09-21). Two findings, both load-bearing, both citable.
+  **(a) The soundiness ceiling.** Nearly every tool that reasons about a whole
+  codebase is downstream of a call graph RECOVERED BY PARSING, and that
+  recovery is measurably lossy: median recall **0.884** for static call-graph
+  construction on real Java programs against a dynamic oracle (Sui et al., ICSE
+  2020); **13 static analysis tools missed 61% of dynamically-executed
+  methods** across 1,000 Android apps, whose authors wrote *"a high level of
+  precision in call graph construction is a synonym for a high level of
+  unsoundness"* (ISSTA 2024); and the field formally conceded the position as
+  **"soundiness"** — sound on ordinary control flow, deliberately unsound on
+  reflection, dynamic loading, `eval` and native code. Mentl's edge is DRAWN by
+  inference, not guessed by a parser, and `!Outside` means there is no dynamic
+  escape hatch to be unsound about: handler dispatch is itself graph content
+  resolved through the live world chain. Every recall number above becomes 1.0
+  — **not by a better algorithm, by a different substrate**, which is the
+  shortest true statement of this project's advantage.
+  **(b) The decidability line, which has a funded competitor sitting on the
+  wrong side of it.** Google's Capslock answers "what can this dependency do?"
+  for Go and ships into `deps.dev`. Its own caveats document concedes that
+  reflection, `cgo`, assembly, `go:linkname`, `os/exec` and `plugin` collapse
+  to `ARBITRARY_EXECUTION`, and that reported call chains *"may not necessarily
+  occur in practice"* — and **nowhere does it claim that absence of a reported
+  capability is a guarantee, because it cannot.** Capslock can say *"I found a
+  path to NETWORK."* It cannot say *"there is no path."* WASI's component model
+  gets capability typing, but DECLARED, at the host boundary, whole-module.
+  `!E` under polymorphism, transitively, per-instance is the only thing in that
+  survey on the other side of the line — which makes §0's property (2) not
+  merely Mentl's most underrated arm but its most defensible one.
 
 ---
 
@@ -906,6 +935,38 @@ and this is the STATE.
   answered in minutes what hand-reading had not asked in weeks, which is §0's
   fifth property working — and it only works when someone runs them.**
 
+- **`m3 == m4` HAS NOT BEEN MEASURED IN AT LEAST TWELVE PINS, and the reason
+  it does not matter is worth stating so nobody re-discovers the gap as a
+  scare.** `march.sh` asserts **m2 == m3**, which IS the fixed point in the
+  boot era because boot is itself wheel-emitted. The m4 leg exists as the
+  ARBITER ON FAILURE: when m2 ≠ m3 the march generates m4 itself and rules
+  TRANSITION (m3 == m4, re-pin from m3) vs BROKEN. On a CLEAN march m4 is
+  deductively redundant — if `m2 == m3` byte-for-byte then m3 *is* m2, so
+  `m4 = m3(src) = m2(src) = m3` follows.
+  What m4 would actually test on a clean run is **determinism itself** — same
+  wasm, same input, same bytes — which does NOT follow, and which
+  `march.sh --fixpoint` exists to check. Measured 2026-09-21: **nothing
+  invokes that flag.** Not `state.sh`, not a hook, not `tools/ci/run-board.sh`;
+  the only matches are comments in `frontier-gate.sh` describing what the
+  fixpoint is blind to. The last twelve pins are all CLEAN. So this is the
+  ide-gate shape one layer down — **a leg that only runs on failure has never
+  been exercised on success** — and `Hβ.march.determinism-is-never-probed`
+  carries it.
+- **A SIGNATURE CAN BE AN INVENTORY, and it is now a number.** The wheel's
+  declared-row distribution is 132 signatures at four effects and 155 at five
+  — then a tail at 13, 14, 16, 17 (four), 18 and NINETEEN. A nineteen-name
+  `with` clause breaks the law it is written in: SYNTAX says the declared row
+  is "a CONSTRAINT verified against the row inferred from the body", so every
+  name is a hand-copy of a computed fact, widening one leaf edits seven
+  signatures, and the one `!E` worth reading is buried in a list the author
+  typed. `CsWideRow` counts it (`> wide_row_width`, eight), `src/board.mn`
+  bounds it, and the first landing moved it **19 → 12** by naming the
+  capability seven of them shared (`type Judging`, src/driver.mn). The
+  remainder are emit, cursor, infer and synth_proposer — four more unnamed
+  capabilities. The deeper retirement, which takes it to zero, is
+  `Hβ.syntax.positive-row-is-authored-by-hand`: author the negations, the
+  pins and the genuine narrowings; infer and PROJECT the positive row.
+
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
 
@@ -1576,6 +1637,78 @@ form the whole time. The arcs, in order:
   transport. Struck as ALREADY LANDED: stride carrier (pin 7db29195),
   monomorphization face, uniform twinning with the f64-state guard,
   annotated-[Float] breadth end to end.
+- **Arc G · THE SEVERANCE MAP — the page that makes the thesis watchable.**
+  The module/decl tree banded by capability; select a subtree and it states
+  the MINIMAL SUFFICIENT capability set with the cut line where the `~>`
+  install goes. It reads what this landing already sharpened — severance at
+  the module node with per-function deltas (`module_severance`,
+  src/pipeline.mn) — plus the handler install chain and `mentl query <f>
+  performs`. No new substrate; it is a projection of something already proven,
+  which is `!Outside` stated as a product decision.
+  **WHY THIS ONE, argued from a survey of the field rather than from taste**
+  (2026-09-21). It is the only fact in software visualization that is BINARY,
+  VERIFIABLE and CONSEQUENTIAL: everything else renders a quantity (complexity,
+  coupling, hotness) or a possibility (this path MAY be tainted), and
+  impossibility is the only shape that converts into a decision — *sandbox it /
+  ship it / let the agent run unattended*. It is legible in one glance to
+  someone who has never heard of an effect system: green band cannot, red band
+  can. And the demo is thirty seconds — a module banded green with `!Network`
+  proven, one networking call added, **the band turns red and the compile
+  refuses with the Reason naming the call.** That is §0 rendered as an EVENT
+  instead of a claim, which is the exact thing whose absence killed Eve (its
+  founder's own post-mortem: *"there's no real great way to quantify the
+  benefits of a language before it's been fully realized"*). The Severance Map
+  is that quantification, available before the language is finished.
+  **THE THREE-COLOUR LAW, non-negotiable.** The verdict is only as sound as
+  the crown under polymorphism, and `Hβ.effects.sound-neg-under-poly`'s modal
+  world-index is OPEN (§4③, §6.3). Shipping a two-colour proof UI over a
+  partially-proven mechanism is precisely the "prose calls a permanent cost
+  deliberate" failure `CLAUDE.md` names. So the map renders **provably absent /
+  present / NOT YET PROVABLE**, the third band is visible and COUNTED, and that
+  count is a board bound ratcheting to zero as band A lands. A two-colour map
+  is the lie; the three-colour map is the instrument.
+  **THE FALSIFIABLE TEST, stated so it can fail:** if a module ever renders
+  green while performing the effect, the crown is unsound and the map is worse
+  than nothing. That is the right property for it to have — a visualization
+  that can be wrong in a way that matters is one that is saying something.
+  **THE DELIVERY SHAPE IS NOT A DESTINATION.** The field's empirical record is
+  brutal and specific: 62% of the complete SOFTVIS/VISSOFT corpus (387 papers,
+  181 analysed) has no evaluation or only anecdotal evidence, median 13
+  participants, 3% industrial; average tool lifespan **3.7 years**; CodeSee
+  shut down, Sourcetrail archived — and Sourcetrail's archive note names the
+  real killer, *"growing difficulties keeping up with evolving dependencies for
+  multiple programming languages and build systems"*, which is a cost Mentl
+  does not have because the compiler IS the index. The survivors are gutters,
+  hovers and exit codes: the Dafny gutter, Flowistry's fade, CodeQL's path. So
+  the map ships as three faces of one fact — **the PAGE sells it, the GUTTER
+  keeps it alive, the EXIT CODE makes it matter**: (i) the page in `space`;
+  (ii) an always-on ambient-world gutter at the caret, stealing Aquascope's
+  hollow-vs-filled glyph (hollow `E` = this expression REQUIRES it, filled =
+  the ambient world grants it, and a hollow glyph with no filled counterpart IS
+  the refusal, drawn before the call is finished); (iii) the NEGATIVE-SPACE
+  DIFF in CI — a PR whose right column is the absence delta (*lost `!Alloc` at
+  audio_stage*, *gained Network reachability in parser/*). That third one is
+  monotone the right way, where every security tool today diffs FINDINGS and
+  therefore gets quieter as its analysis gets worse.
+  **TWO ARCHITECTURAL STEALS, both from proof UIs rather than from
+  visualization tools.** From **Lean's InfoView/ProofWidgets**: widgets do not
+  parse the prover's output, they hold an RPC handle into the elaborator's live
+  state, and graphical manipulations translate BACK into source steps. That is
+  `one graph, two operations` at the UI layer — the widget PROJECTS, the
+  gesture DRAWS AN EDGE — and `space` should be held to that contract and
+  nothing weaker. From **Pernosco**: click a value → backward explanation with
+  trivial hops AUTO-ELIDED; the Why chain needs that on day one, and §11
+  already names the noise (`Unified(R, R)` duplicating subtrees).
+  **THE ONE NEGATIVE RESULT TO INTERNALISE**, because it is aimed straight at
+  this arc: Darklang's projectional editor was rated by its own users *"between
+  'Ok I guess' and 'probably the worst part of Darklang'"* and removed, and
+  JetBrains says the same from the vendor side — MPS's usability cost is
+  mitigated only by EMULATING parser-based editing. **The projection must never
+  take the keyboard away.** Mentl is structurally safe here (layout is
+  projection, the parser has one precedence table, text is the input) and is
+  one design decision away from that grave.
+  Peers: `Hβ.viz.severance-map`, `Hβ.viz.ambient-world-gutter`,
+  `Hβ.viz.negative-space-diff`, `Hβ.viz.why-walk-elides-trivial-hops`.
 
 **CADENCE LAW (paid for twice):** one landing = build the WHOLE arc → verify
 once → board once → repin once. A march sweep per micro-edit spends the

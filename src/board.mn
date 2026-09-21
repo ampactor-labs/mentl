@@ -126,7 +126,35 @@ fn board_bounds() with Memory + Alloc = [
   Bound({ceiling: 0, shape: CsVtableRecord}),
   // Drift mode 2 — scope as a parent-pointer frame stack. Env lookup is an
   // effect op; a frame walk is that op re-implemented where the handler was.
-  Bound({ceiling: 0, shape: CsEnvFrame})
+  Bound({ceiling: 0, shape: CsEnvFrame}),
+  // THE SECOND LINE ON THIS ROSTER THAT IS A REAL COUNTDOWN, and it was an
+  // OPINION until it was a number.
+  //
+  // A signature past `wide_row_width` names more effects than a reader can
+  // hold — nineteen, at the worst site on this wheel. The conviction is not
+  // that long rows are ugly. It is that each one is a capability nobody
+  // named: SYNTAX's §«Named effect rows» already provides the form, so a
+  // 17-name row becoming `with Judging + !Network` retires a site while
+  // losing no proven fact. Under it sits the deeper claim — that the
+  // POSITIVE row should be inferred and projected, and only negations, pins
+  // and genuine narrowings authored — at which point the count reaches zero
+  // and this line deletes itself like every other one here is supposed to.
+  //
+  // It was seen RED at 18 against its measured 19 before it was trusted,
+  // which is the only reason it is on the board: a bound nobody has watched
+  // fail is a decoration (§9.11). Then it MOVED in the same landing, 19 → 12,
+  // and the move is the argument rather than the number. Seven of the
+  // nineteen were the same sixteen-name core spelled seven times — the
+  // whole-program judgment's capability, which had no name. `type Judging =
+  // …` (src/driver.mn) gave it one, and the seven signatures became
+  // `with Judging`, `+ Filesystem`, `+ Persist`, `+ Fail` — every remaining
+  // name a decision a reader should read. No proven fact was lost; a row
+  // alias is transparent, so the checked row is identical.
+  //
+  // The remaining twelve are emit, cursor, infer and synth_proposer, whose
+  // cores differ from this one and from each other — each is its own unnamed
+  // capability, and naming them is what walks this to zero.
+  Bound({ceiling: 12, shape: CsWideRow})
 ]
 
 // The board: every bound answered by one live walk.

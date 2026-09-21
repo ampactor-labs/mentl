@@ -33,6 +33,14 @@ import imap
 // through show_pipe_kind — the one glyph projection, never a second
 // table), and iteration-shape (CsIterationCostume — the audit tier's
 // detector living HERE, the census its home, the audit a reader).
+// The width past which a declared row stops being an annotation and starts
+// being an inventory. EIGHT, and the number is a reading rather than a taste:
+// the wheel's own distribution is 132 signatures at four effects and 155 at
+// five — the normal case by an order of magnitude — with nothing between nine
+// and twelve except three lone sites, and then a tail at 13/14/16/17/18/19.
+// Eight sits in the gap the corpus itself left.
+let wide_row_width = 8
+
 type CensusShape
   = CsAnonymous
   | CsVerb(PipeKind)
@@ -62,6 +70,31 @@ type CensusShape
   // generalized surface parameter, because their carriers differ.
   | CsDefaultParam
   | CsDeclaredRowHof
+  // A SIGNATURE THAT IS A MANIFEST — a declared row past the width where a
+  // reader can hold it, which on this wheel means past EIGHT names.
+  //
+  // MEASURED 2026-09-21 over src/: 132 fns declare four effects and 155
+  // declare five, which is a type annotation; then a tail runs 13, 14, 16,
+  // 17 (four of them), 18 and NINETEEN. A nineteen-name `with` clause is not
+  // an annotation, it is an inventory, and three things are wrong with it at
+  // once. It is a RE-DERIVATION: SYNTAX says the declared row is "a
+  // CONSTRAINT verified against the row inferred from the body", so every
+  // name is a hand-copy of a fact the graph computed, and widening one leaf
+  // edits seventeen signatures. It is not INTENT: the Intent Boundary Rule
+  // reserves annotations for decisions, and `with Memory + Alloc` on a body
+  // that obviously allocates is dictation. And it BURIES THE SIGNAL, which
+  // is the part that matters — `!E` is the crown, and the one negation worth
+  // reading is a needle in a haystack the author typed themselves.
+  //
+  // WHAT THE COUNT IS FOR, so the bound is not mistaken for a style rule:
+  // every site here is a capability that has not been NAMED. SYNTAX's own
+  // §«Named effect rows» already has the form (`type Judging = GraphRead +
+  // EnvRead + …`), so a 17-name row falling to `with Judging + !Network` is
+  // this count going down by one without losing a single proven fact. The
+  // deeper retirement is authoring only the negations and pins and letting
+  // the positive row be inferred and projected — `Hβ.syntax.positive-row-is-
+  // authored-by-hand` — at which point this shape reaches zero and deletes.
+  | CsWideRow
   // The second declared-surface shape, and it counts EXPOSURE rather than
   // style: a record pattern's field offsets are resolvable only when the
   // receiver's full sorted field set is known, and a row-polymorphic
@@ -943,6 +976,10 @@ fn census_label(shape) with Pure = match shape {
   CsVtableRecord => "vtable-record literal(s)",
   CsDefaultParam => "default-valued parameter(s)",
   CsDeclaredRowHof => "fn(s) with a declared row that call a parameter",
+  CsWideRow => // The width is NOT spelled here. `wide_row_width` is the one home, and a
+  // label that recited it would be the copy this whole roster exists to
+  // convict — in the label of a shape whose subject is hand-copied rows.
+  "signature(s) whose declared row is an inventory — a capability with no name yet",
   CsRecordPattern => "record pattern(s)",
   CsRecordPatternOpen => "record pattern(s) over an open-row receiver",
 }
@@ -1191,6 +1228,12 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
     } else {
       subtree_calls_param(node_handle(fbody), map(param_name, params), 64)
     },
+    _ => false,
+  },
+  CsWideRow => // The declared clauses are `FnStmt`'s own field — the row is read where
+  // the signature holds it, never re-parsed from the page.
+  match body {
+    NStmt(FnStmt(_, _, _, effs, _)) => len(effs) > wide_row_width,
     _ => false,
   },
   CsRecordPattern => // Both spellings of one shape, read where the pattern lives: a

@@ -76,8 +76,28 @@ else
   echo "              bash tools/frontier-gate.sh  ·  the pre-commit perimeter refuses a"
   echo "              wheel commit without it, so this blank is a landing you cannot make"
 fi
-echo "    crown · proof-exactness · effect-identity · instrument · threads: no stamp"
-echo "              kept — running them is the only way to know (Hβ.tools.gate-stamp-is-uniform)"
+echo "    crown · proof-exactness · effect-identity · instrument · threads · ide: no"
+echo "              stamp kept — running them is the only way to know (Hβ.tools.gate-stamp-is-uniform)"
+# DETERMINISM IS NOT ON THIS BOARD, and saying so is the whole point of the line.
+# `march.sh` asserts m2 == m3, which IS the fixed point in the boot era. On a
+# CLEAN march the m4 leg is deductively redundant — if m2 == m3 byte-for-byte
+# then m3 IS m2, so m4 = m3(src) = m2(src) = m3 follows. What does NOT follow is
+# that the same wasm on the same input produces the same bytes, and
+# `--fixpoint` is the only thing that tests it. Measured 2026-09-21: nothing
+# invoked that flag, and the last twelve pins were all CLEAN — so the leg had
+# not run in twelve landings. Tripwire 4 one layer down: a leg that only runs on
+# FAILURE has never been exercised on SUCCESS. It is reported here rather than
+# run here, because a determinism probe is a cadence (every Nth pin, or on
+# demand) and not a per-landing cost — and an unreported absence is how the
+# crown went eleven entries unmentioned.
+det=$(cat .build/gate/fixpoint-stamp 2>/dev/null)
+if [ -n "$boot_sha" ] && [ "$det" = "$boot_sha" ]; then
+  echo "    determinism: m3 == m4 confirmed at this boot (${boot_sha:0:12})"
+else
+  echo "    determinism: NOT PROBED at this boot — m2 == m3 is the fixpoint and holds;"
+  echo "              this is the separate question of whether the same wasm on the same"
+  echo "              input emits the same bytes. bash tools/march.sh --fixpoint"
+fi
 
 echo "▸ VERIFY (micros + census — stamped)"
 bash tools/verify.sh || exit 1

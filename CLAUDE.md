@@ -68,6 +68,33 @@
 > read the source — **never trust that you have "absorbed" a paragraph.** Until
 > `mentl audit` is real and makes the wrong move *unsayable* (`PLAN.md §0`), YOU
 > are `mentl audit`, by hand, every turn.
+>
+> **MECHANISM BEATS INSTRUCTION, MEASURED 2026-09-21 AND NOT CLOSE.** Across one
+> full audit landing the GATES caught roughly thirty errors — the comment-ref
+> ratchet refused twenty-five backticked names for things just deleted, the
+> drift-audit hook BLOCKED a commit over one word, the census ratchets refused
+> four counts, the march refused two pins. The PROSE above caught zero that a
+> gate did not. That is not an argument for less prose; it is the ordering rule
+> for every lesson that arrives from here on: **a law that CAN become a gate
+> must, and prose is for the ones that cannot.** A census shape, a ratchet, a
+> refusing diagnostic and a hook are all cheaper than a paragraph and none of
+> them can be absorbed instead of obeyed. When a session ends with a new
+> conviction, the first question is not "where does this go in the docs" but
+> "what would refuse it," and the doc entry is the residue of that question.
+>
+> **AND THE REASON PROSE CANNOT BE TRUSTED IS NOW MEASURED IN THIS REPO'S OWN
+> VOICE.** The audit found confident, well-argued, carefully-hedged comments
+> describing architecture that is not there: *"`mentl edit` IS this loop
+> running"* over a function with zero callers; *"this fn is the terminal read
+> every voice surface shares"* over a renderer nothing calls; *"every effect row
+> is a re-derivation"* refuted by the artifact one pin later. Every one was
+> written by an intelligence that writes exactly the way this file writes, with
+> the same cadence of conviction. **Fluency and correctness are independent
+> variables in that intelligence's output** — a paragraph can be internally
+> consistent, appropriately qualified, persuasive, and simply false about the
+> code beside it. This is the empirical content of "interrogate, don't absorb,"
+> and it is why the answer has to be mechanical rather than a resolution to try
+> harder.
 
 ## ⚖ The law is ALIVE — update it, consolidate it, count its kills ⚖
 
@@ -391,7 +418,17 @@
 >   hypothesis is worse than none. (4) Count the KILLS: every theory a
 >   measurement destroys is progress and gets recorded as such — twelve
 >   dead labels turned "durable state torn" into "the slots buffer aliases
->   the env state," each kill one probe. (5) A correctness invariant held
+>   the env state," each kill one probe. **The kills belong in the LANDING
+>   RECORD, not only in the session** (2026-09-21): the SMT pointer-render
+>   bug killed two hypotheses before its fix — the `ref` markers, where the
+>   numbers MOVED between builds and stayed wrong (which is what named the
+>   value a heap pointer rather than a literal), then a float-payload-
+>   across-a-call shape, refuted at a two-variant probe that came back
+>   correct. Reporting only the fix would have banked a confident wrong
+>   story about a bug the fix had partly closed by accident; writing the
+>   kills down is what made the THIRD hypothesis good, because the shape of
+>   what was eliminated was visible. A landing that reports a fix and no
+>   kills is either lucky or unexamined. (5) A correctness invariant held
 >   by ACCIDENT (zero-reads true only because monotonic allocation never
 >   reuses wasm's zero-init pages) is a bug the first new capability
 >   exposes — name the accident, then make it a CONTRACT at the one writer
@@ -518,7 +555,19 @@
 > before its landing closes it becomes a diagnostic, a query facet, or a
 > verb report — or its projection is a named peer. Deleting an instrument
 > without banking its projection discards a measurement channel the dig
-> paid to open. (4) **A verb can write its own fixpoint**: fmt renders,
+> paid to open. **The converse is the stronger half and it was measured
+> 2026-09-21: LEGIBILITY IS AN ERROR-DETECTION MECHANISM, not hygiene.**
+> src/verify.mn's SMT-LIB serializer — fourteen carefully-written decls —
+> was WRONG for as long as it had no caller, and was CORRECT within an hour
+> of being given one, because its first execution printed
+> `(- 66664 686237016)` where the prose render of the same handles said
+> `0.0 - 1.0`. Nothing found it by reading it; the projection found it by
+> running it. So the rule for dead-but-designed code is neither "delete it"
+> nor "leave it": **give it a projection**, because a projection is the
+> cheapest possible test and the only one that costs nothing to keep. The
+> corollary a reviewer should apply to any unreached machinery: *what would
+> looking at this cost, and what would it have caught?* (4) **A verb can
+> write its own fixpoint**: fmt renders,
 > re-parses, re-renders and writes the SECOND render — one invocation is
 > idempotent by construction; any verb whose output feeds its own reader
 > can carry the same internal loop. (5) **The uniform pass beats the

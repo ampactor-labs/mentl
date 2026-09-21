@@ -35,6 +35,139 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-21 · pin 6fef1076400e389d (CLEAN m2 == m3) · THE SESSION'S LESSONS
+  LAND AS A GATE, NOT AS PROSE — and the count is the argument.
+
+  **MEASURED ACROSS THE AUDIT LANDINGS:** the GATES caught roughly thirty
+  errors. The comment-ref ratchet refused 25 backticked names for things just
+  deleted. The drift-audit hook BLOCKED a commit over one word (`until`, in a
+  past-tense sentence — a false positive, rephrased rather than suppressed).
+  The census ratchets refused four counts. The march refused two pins, once on
+  a cost ceiling that had started deciding by noise. **The prose caught zero
+  that a gate did not.** That is not an argument for less prose; it is the
+  ordering rule for every lesson from here: *a law that CAN become a gate must,
+  and prose is for the ones that cannot.* It is now written into
+  `CLAUDE.md`'s interrogate-don't-absorb law, where the claim it makes
+  concrete already lived.
+
+  **`CsWideRow` IS THAT RULE APPLIED TO THE MOST CONTESTABLE OPINION IN THE
+  AUDIT.** "Long effect rows are bad" is taste until it is a number. The
+  measurement: 132 signatures declare four effects, 155 declare five — then a
+  tail at 13, 14, 16, 17 (four of them), 18 and NINETEEN. The objection is
+  structural, and it is this document's own law three times over: SYNTAX says
+  the declared row is *"a CONSTRAINT verified against the row inferred from the
+  body"*, so every name is a hand-copy of a computed fact (Carried-Truth, in
+  the surface that exists to express it); the Intent Boundary Rule reserves
+  annotations for DECISIONS, and `with Memory + Alloc` on a body that
+  obviously allocates is dictation; and `!E` is the crown, so the one negation
+  worth reading is a needle in a haystack the author typed. I paid the tax
+  myself twice in one session, widening two signatures purely because a callee
+  said so.
+
+  The shape is a census now (`> wide_row_width`, eight — read off the gap the
+  corpus itself left between five and thirteen), bounded in `src/board.mn`,
+  **seen RED at 18 against its measured 19** before it was trusted.
+
+  **THEN IT FELL, 19 → 12, IN THE SAME LANDING, AND THE FALL IS THE POINT.**
+  Seven of the nineteen were the same sixteen-name core spelled seven times —
+  the whole-program judgment's capability, which had never been named.
+  SYNTAX's §«Named effect rows» already had the form (a row is a type-level
+  value, so naming one IS a type alias), and a probe confirmed an alias works
+  in a `with` clause end to end before anything was edited. `type Judging = …`
+  (src/driver.mn) names it, and the seven became `with Judging`,
+  `+ Filesystem`, `+ Persist`, `+ Fail` — every surviving name a decision a
+  reader should read. `+ Intern` was never a decision. A row alias is
+  transparent, so the checked row is identical and no proven fact moved. The
+  remaining twelve are emit, cursor, infer and synth_proposer: four more
+  unnamed capabilities, each its own landing, with
+  `Hβ.syntax.positive-row-is-authored-by-hand` as the retirement that takes
+  the count to zero.
+
+  **METHOD, folded INSIDE the laws each lesson sharpens** — never appended,
+  per `⚖`'s own rule that appended sections are the doc-layer accretion
+  disease. Three: *mechanism beats instruction*, with the count above, landing
+  in the law that says discipline cannot enforce itself — plus the
+  uncomfortable half, that the comments this audit refuted were written by
+  something that writes exactly the way these docs write, so **fluency and
+  correctness are independent variables** in that intelligence's output, which
+  is the empirical content of "interrogate, don't absorb". *Legibility is an
+  error-detection mechanism, not hygiene*, landing in the probe-graduates law:
+  the SMT serializer was wrong for as long as it had no caller and correct
+  within an hour of getting one, so the rule for dead-but-designed code is
+  neither delete nor leave — **give it a projection**, the cheapest possible
+  test. *The kills belong in the landing record*, landing in the forensic
+  laws: reporting only a fix banks a confident wrong story about a bug the fix
+  partly closed by accident.
+
+  **SUBSTANCE.** §1 gains the external validation, from a survey of the field
+  rather than from self-assessment: the **soundiness ceiling** (median
+  call-graph recall 0.884 against a dynamic oracle, ICSE 2020; 13 static tools
+  missing 61% of dynamically-executed methods, ISSTA 2024, whose authors wrote
+  that precision in call-graph construction "is a synonym for a high level of
+  unsoundness"; the field's own formal concession, "soundiness") — against
+  which Mentl's edge is DRAWN, not guessed, so every recall number becomes 1.0
+  *by substrate rather than by algorithm*. And the **decidability line**:
+  Google's Capslock answers "what can this dependency do?" for Go, ships into
+  deps.dev, and its own caveats concede that reflection, cgo, assembly and
+  `linkname` collapse to `ARBITRARY_EXECUTION` and that **absence is never a
+  guarantee** — it can say *"I found a path"*, never *"there is no path."*
+  §7 gains the determinism gap: `m2 == m3` IS the fixpoint and m4 is
+  DEDUCTIVELY redundant on a clean march (m2 == m3 means m3 *is* m2, so
+  m4 = m3(src) = m2(src) = m3), but what does NOT follow is that the same wasm
+  on the same input emits the same bytes — and `--fixpoint`, the only thing
+  that tests it, is invoked by nothing, with the last twelve pins all CLEAN.
+  Tripwire 4 one layer down. `state.sh` reports it as a VISIBLE BLANK now and
+  `march.sh` stamps it when the leg runs.
+  §11 gains **Arc G, the Severance Map** — the capability boundary drawn as a
+  proof, chosen over nine alternatives because `!E` is the only fact in
+  software visualization that is binary, verifiable and consequential, and
+  impossibility is the only shape that converts into a decision. Its demo is
+  thirty seconds and answers what killed Eve (*"no real great way to quantify
+  the benefits of a language before it's been fully realized"*). **The
+  three-colour law is non-negotiable**: provably absent / present / NOT YET
+  PROVABLE, the third counted and ratcheting, because shipping a two-colour
+  proof UI over an open modal world-index is exactly the "prose calls a
+  permanent cost deliberate" failure this file's sibling warns about. Delivery
+  is page + gutter + exit code, because the field's record is unambiguous that
+  destinations die (62% of the SOFTVIS/VISSOFT corpus lacks strong evaluation;
+  average tool lifespan 3.7 years; CodeSee shut down; Sourcetrail archived over
+  "keeping up with evolving dependencies for multiple languages" — a cost the
+  compiler-as-index does not have) and gutters live. Two steals recorded:
+  **Lean's widget+RPC contract** (a widget holds a handle into live elaborator
+  state and gestures translate BACK to source — one graph, two operations, at
+  the UI layer) and **Pernosco's copy-skip** for the Why chain's `Unified(R,R)`
+  noise. One warning recorded: **Darklang's projectional editor** was rated by
+  its own users "between 'Ok I guess' and 'probably the worst part of
+  Darklang'" and removed, and MPS names the same cost from the vendor side —
+  *the projection must never take the keyboard away.*
+
+  **SURFACE.** SYNTAX gains the row law with `Judging` as its worked example,
+  stated where it belongs: in §«Named effect rows», beside the form that
+  already existed and had not been used.
+
+  **SIX PEERS BANKED:** `Hβ.viz.severance-map` (+ `.ambient-world-gutter`,
+  `.negative-space-diff`, `.why-walk-elides-trivial-hops`),
+  `Hβ.syntax.positive-row-is-authored-by-hand`,
+  `Hβ.march.determinism-is-never-probed`, `Hβ.cli.two-operations` (drift mode
+  38 already named this and the artifact drifted from it: `mentl help` lists 24
+  verbs where the kernel has two operations, and `query` and the address are
+  the same verb), `Hβ.docs.laws-and-casebook`,
+  `Hβ.syntax.normative-grammar-is-projectable`.
+
+  **ONE THING THIS LANDING GOT WRONG AND THE GATE CAUGHT:** a march was
+  interrupted after it repinned boot and before it wrote PROVENANCE, leaving
+  the artifact correct (boot == m2 == the current source's fixpoint) and the
+  RECORD stale. `doc-truth` refused the commit and named both halves — the
+  PROVENANCE head sha and the ledger's head pin. The fix was not to hand-write
+  the block, which the file's own law forbids (nobody retypes a measurement),
+  but to re-run the march so it wrote its own. **A gate that refuses a commit
+  over a stale record is the whole thesis working on the smallest possible
+  scale.**
+
+  **THE BOARD:** m2 == m3 CLEAN, census 0, 419,267 lines, 9.94s / 978MB.
+  crown · proof-exactness · effect-identity green; frontier 390 pass / 0 red /
+  2 expected-red; wide-row 12 within 12.
+
 - 2026-09-21 · pin ab1de5f0df8043e2 (CLEAN m2 == m3) · THE SUPERSEDED ORACLE IS
   DELETED WHOLE, AND WIRING ITS NEIGHBOUR FOUND TWO SILENT WRONGS. The previous
   pin deleted the dead root and banked the rest; this one takes the rest, and
