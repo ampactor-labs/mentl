@@ -26,7 +26,7 @@ reachable rungs of exactly this; they are ordered so each lands whole on its own
 
 ### 1. ★ OPENING MOVE — `refs of` computes every span and throws them away; grep stays the session's caller-finder
 
-**Current form:** `mentl query <target> "refs of NAME"` walks the live weave and
+**Current form:** `mentl <target> refs of NAME` walks the live weave and
 collects the span of every `VarRef` (src/query.mn:336-345, `refs_of_name` /
 `collect_var_ref_spans` — "the inbound use-edge set, read live. No AST side-index"),
 then the render discards all of it: src/pipeline.mn:1251 `QRRefs(spans) => "→
@@ -45,7 +45,7 @@ away" (the propose-facet fix, pin 17d1c3be). Same disease, refs facet.
 **Smallest complete landing:** render `QRRefs` as one `file:line` per span through the
 range map (the render is the whole change; the collection is done), plus the
 declaration site marked. Gate: a frontier leg asserting the span list on a two-module
-fixture. Then `mentl query src/main.mn "refs of spec_resolve"` — the DAG compile pulls
+fixture. Then `mentl src/main.mn refs of spec_resolve` — the DAG compile pulls
 the whole wheel — replaces development grep with a graph read.
 
 **Named?** New. `Hβ.query.comment-prose-search` (named-residue index) covers PROSE
@@ -283,7 +283,7 @@ format-lift backlog by construction (verify.sh:94-95 "the formatter erases them 
 construction"); the fmt SUMMIT (whole-wheel fmt → canonical source) + the tighten
 multi-line patcher retire the classes. Nothing new; listed because it is the felt
 face of self-exemplification and the summit's blocker ladder is already measured
-(§11's fmt entry). One added observation: `mentl doc voice.mn` printed nothing for a
+(§11's fmt entry). One added observation: `mentl voice.mn doc` printed nothing for a
 commented file while teach/query answered — worth a probe when col 4's doc work
 opens (unverified root; noted, not diagnosed).
 

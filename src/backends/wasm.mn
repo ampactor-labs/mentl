@@ -3016,7 +3016,7 @@ fn emit_fn_body(name, param_names, body, captures_count) = {
   // Every LLet in the body declares a function-level local so
   // (local.set $<name>) / (local.get $<name>) validate.
   // Hβ.emit.reason-chain-comments: SourceMap-style annotation at fn
-  // boundary. Why-engine consumers (`mentl query --why`, browser
+  // boundary. Why-engine consumers (`mentl <file> why NAME`, browser
   // inspector, terminal trace) read these to walk from WAT back to
   // source. Per PLAN §2: emit's per-
   // handle output IS the graph's Reason projected as bytes; the

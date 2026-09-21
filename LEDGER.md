@@ -30,10 +30,82 @@
 >
 > **Its own destiny is deletion.** Every line here is a projection the medium
 > should make of its own history — `Hβ.query.generation-operand`: every
-> projection takes a WHEN. Until `mentl why --at <sha>` exists, git is the
+> projection takes a WHEN. Until `mentl <file> why NAME --at <sha>` exists, git is the
 > outside time oracle and this file is its prose shadow.
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
+
+- 2026-09-21 · pin 268b9ce49de42fc6 (CLEAN m2 == m3) · THE ADDRESS IS THE VERB —
+  the CLI's read surface collapses to the kernel's own two operations.
+
+  ▶ THE LAW, and the catalog was already carrying it. Drift mode 38 has said
+  since 2026-05 that *"`mentl <tentacle>` as a CLI verb — tentacles fire
+  AT-CURSOR, not as subcommands"* is drift, and `mentl why`, `mentl where` and
+  `mentl query` shipped as verbs anyway behind a hand-written carve-out in
+  `tools/drift-patterns.tsv` excusing them as "project-action peer transports."
+  A catalog that names a law and then writes itself the exception is the law
+  not being enforced, for eighteen months.
+
+  ▶ THE MEASUREMENT THAT MADE IT A DELETION rather than a rename, taken before
+  a line changed: `mentl why <f> <n>` and `mentl query <f> "why <n>"` produce
+  BYTE-IDENTICAL output, and so do the `where` pair. Reading the builders says
+  why — `why_verb_args` took a path and a name and **re-serialized its own
+  proof into the string `"why {name}"`** for the question grammar to classify
+  again. The shell tokenized, the CLI concatenated, the grammar re-tokenized,
+  and the quotes a caller had to write were the invoice. `VQuery` carries
+  `[String]` now; `parse_query_words` is the grammar and `parse_query_string`
+  survives as the one-line adapter for the MCP wire, whose question genuinely
+  arrives as a string.
+
+  ▶ THE SECOND DELETION fell out of the same boundary. `Option(String)` came
+  off every target field: `edit`, `doc`, `test`, `tighten`, `verify`, `teach`
+  and `--with` each carried their own `Some(t) => t, None => "main"` arm —
+  one default with seven homes, and a nullable target flowing through all of
+  them. `target_at` resolves it once at the grammar, which is the only
+  boundary that sees the whole invocation, and a missing target is now
+  unrepresentable on BOTH halves of the ADT where the comment had only ever
+  claimed it for the required half.
+
+  ▶ WHAT SHIPPED. `mentl <file>` projects a module — the most obvious
+  invocation in the whole surface, which answered *"unrecognized or
+  under-specified command"* before this landing. `mentl <file> <question…>`
+  is the read, unquoted. Seven words left the verb table (`query`, `why`,
+  `where`, `check`, `audit`, `doc`, `teach`) and `verify` joined them as a
+  named projection; the catalog projects both tables, so the help opens with
+  the read instead of a flat column of twenty-four words.
+
+  ▶ THE ORDER IS A DECISION, recorded as one: the address comes FIRST, with no
+  exception, and `mentl check <file>` is a teaching refusal that prints the
+  corrected line (the `perform` / `handle` / turbofish precedent — one general
+  diagnostic, no bespoke recognizer). Accepting both spellings would have been
+  two forms for one read, and the one that keeps the address in front is the
+  one a developer can live in: the address stays put while the question
+  changes, so the loop is an edit of the last word, not a retype of the middle.
+
+  ▶ THE GATE. Drift 38's regex generalized to the whole read class and its
+  carve-out deleted; a BARE question does not fire, because the address
+  defaults. **Seen RED at 9 hits across the tree, driven to CLEAN** — and that
+  is how the tree's own prose got trued, this file included: a recorded command
+  you can no longer run is a record that has rotted.
+
+  ▶ TWO LEGS THE SWEEP MISSED, and both are the same lesson. The frontier gate
+  went **24 RED** on the first march: the census child's invocation lives
+  inside a single-quoted `bash -c` (`"$CENSUS_ART" query "$DOC" "census $q"`)
+  where no prefix regex found it, and the resident session speaks a
+  tab-separated wire (`audit\tmain\t`) that is the SAME grammar in another
+  transport and therefore needed the same word order. A textual sweep cannot
+  see an invocation it cannot lex; the gate could, which is why the gate ran
+  before the commit. 390 pass / 0 red after.
+
+  ▶ AND A DISCOVERY WHILE MEASURING, banked rather than chased:
+  `Hβ.link.manifest-and-blob-emit-differently`. Checking whether the blob link
+  is archaeology meant compiling the wheel BOTH ways on one tree —
+  **427,159 lines through the manifest against 419,190 through the blob, both
+  exit 0, ~equal function counts, the difference inside bodies.** `m2 == m3`
+  has only ever judged the blob; the link every ordinary `mentl compile` takes
+  has no fixpoint at all. The first attempt to correct that peer asserted the
+  opposite premise off a fresh build against a CACHED build of older source,
+  which is not a comparison — the third look was the first measurement.
 
 - 2026-09-21 · pin 6fef1076400e389d (CLEAN m2 == m3) · THE SESSION'S LESSONS
   LAND AS A GATE, NOT AS PROSE — and the count is the argument.
@@ -208,14 +280,14 @@
   **THE DEAD SMT SERIALIZER WAS WIRED, NOT DELETED, AND THAT DECISION PAID
   IMMEDIATELY.** Fourteen decls in src/verify.mn rendered SMT-LIB and nothing
   called them. Deleting designed work is destruction; leaving it is a claim.
-  The third option is a PROJECTION: `mentl query <file> "smt"` renders every
+  The third option is a PROJECTION: `mentl <file> smt` renders every
   undischarged obligation as an SMT-LIB assertion — ONE read (`verify_debt()`),
   two renders, the prose one for a person and this one for a solver, which is
   exactly what Phase 8.3's `~> verify_smt` will hand Z3.
   Its first execution, on the wheel's own
   `type Sample = Float where 0.0 - 1.0 <= self && self <= 1.0`, printed
   `(assert (and (<= (- 66664 686234536) self) (<= self 1.0)))`. The decisive
-  comparison was one command: `mentl query <file> "verification"` renders the
+  comparison was one command: `mentl <file> verification` renders the
   SAME predicate from the SAME handles and said `0.0 - 1.0 <= self && …`, so
   the graph was sound and the serializer was not. **Two hypotheses died
   first.** The four `ref` markers on the smt helpers were dropped: the numbers
@@ -263,7 +335,7 @@
   count; it is that **every finding came from a verb, and none of them needed
   a new instrument.** They needed the instruments to be RUN.
 
-  **`mentl audit src/main.mn` had never been run on the wheel.** It answered
+  **`mentl src/main.mn audit` had never been run on the wheel.** It answered
   303 lines, and 122 of them were `severable:` lines carrying exactly TWO
   distinct facts — 98 × *"Network — unlocks Sandbox"*, 24 × *"Network + Alloc
   — …"* — because nothing in the module performs Network and a MODULE-level
@@ -309,7 +381,7 @@
   **AND DELETING THE ROOT MEASURED A LIVE DEFECT.** With it gone,
   `project_queue_merger` has NO install site anywhere, while `silence_predicate`
   (src/voice.mn) is reachable, is called from a handler arm at voice:1177, and
-  performs `query_project_queue`. **`mentl check src/main.mn` passes with zero
+  performs `query_project_queue`. **`mentl src/main.mn check` passes with zero
   diagnostics.** A reachable perform of an effect no handler absorbs compiles
   clean. That is strictly worse than
   `Hβ.effects.root-gate-credits-an-install-that-had-not-opened`, which at least
@@ -317,7 +389,7 @@
   exist, and §0's first property is the one failing.
   `Hβ.effects.reachable-perform-with-no-install-compiles` carries it.
 
-  **`mentl check src/main.mn` answered ONE diagnostic on 3,056 decls** —
+  **`mentl src/main.mn check` answered ONE diagnostic on 3,056 decls** —
   `E_RedundantBraces` in `dispatch_invocation`, the wheel's own verb dispatch —
   so the wheel was one form away from its own formatter's fixpoint. Probed
   first (an unbraced `match … { arms } ~> handler` runs correctly: `~>` is the
@@ -546,7 +618,7 @@
   with their backticks intact, pointing at `dp_match_arm`, `resugar_head` and
   `is_dp_name`, none of which parser.mn can reach, because format.mn imports
   parser and not the reverse.
-  MEASURED, both links, the same tree: `mentl check src/main.mn` — the
+  MEASURED, both links, the same tree: `mentl src/main.mn check` — the
   whole-entry link `tools/verify.sh` greps — answers **0**; each module on its
   own answers **57** (graph 13, lower 13, types 9, infer 6, pipeline 5,
   oracle 3, board 2, parser 2, and one each in cursor / cursor_transport /
@@ -1419,7 +1491,7 @@
   its handler) is written as prose. The resolver is unchanged: a plain
   name written by the program's own literals is a reference by the
   judgment's stated law, and a one-letter coincidence is not a rule. (5)
-  `mentl audit lib/strings.mn` convicted the encoder's two byte walks as
+  `mentl lib/strings.mn audit` convicted the encoder's two byte walks as
   index-threaded self-calls (the loop in recursion's costume); `fold` walks
   a String's bytes (probe: `"ab"` sums to 195), so `str_escape` is a pure
   count-fold plus a `ByteSink` handler whose write cursor is handler state,
@@ -1502,7 +1574,7 @@
   m4 trap's root was `free_vars_stmt` answering `[]` for `HandlerDeclStmt`
   (arm references never reached the callee-first DAG); the parser walks
   arms now. SAME LANDING, the medium doing more of its own work: `mentl
-  query <entry> unreachable` (the transitive face of `unreferenced` — built
+  <entry> unreachable` (the transitive face of `unreferenced` — built
   because the dead-fn census was a grep over m3.wat; it names 277 fn decls
   on the wheel), a lambda's span is its whole extent so `mentl <file:line>`
   reaches it and its Lede speaks (binop spans likewise run left through
@@ -1514,7 +1586,7 @@
   handle's module; the field-offset floor speaks on the driver path (all
   four wheel floors); `region_index` consolidated into the word-keyed
   `wmap` primitive. Gates seen RED first: lede.mn:12 (no Lede at the
-  lambda's line), `mentl doc lede` (152 errors), `unreachable` naming the
+  lambda's line), `mentl lede doc` (152 errors), `unreachable` naming the
   32 before their deletion.
 - 2026-09-16 · pin e0b380878e8ef756 · THE BATTERY STOPPED COMPILING WHAT THE
   MEDIUM HAD ALREADY COMPILED. CLEAN m2 == m3, census 0, 16.17s, 2342MB peak,
@@ -2751,7 +2823,7 @@
   one shape: a declaration nothing references, carrying prose that explains
   how it is used. The prose is the evidence — someone wrote down a belief
   the graph disagrees with — and every one cost a hand read.
-  ▶ THE VERB: `mentl query <file> "orphan-claims"` reports the structural
+  ▶ THE VERB: `mentl <file> orphan-claims` reports the structural
   conjunction, zero outside references AND 240+ bytes of attached comment,
   read live through graph_comment_at (a comment is graph content, so this
   needed no new column).
@@ -2868,7 +2940,7 @@
   never performed. Every one cost a hand read, because `unreferenced`
   reports bare NAMES and telling an op from a fn from a type meant opening
   each site. That reading is the part of the loop that was still me.
-  ▶ THE VERB: `mentl query <file> "performs"` groups declared ops by the
+  ▶ THE VERB: `mentl <file> performs` groups declared ops by the
   effect that declares them and answers k/n per roster. Same two columns as
   the two facets before it — the decls the weave carries, the refs column —
   restricted to EffectDeclStmt and counted per op.
@@ -3030,7 +3102,7 @@
 - 2026-09-04 · pin 46ad0838189effcc · A WRITE-ONLY HANDLER IN THE EMIT
   CHAIN OF EVERY ROUTE. CLEAN m2 == m3 at 418607 lines, census 0; micros
   148/148. Wheel 59378 → 59296 lines.
-  ▶ THE HARVEST, and how it was read. `mentl query "unreferenced"` named
+  ▶ THE HARVEST, and how it was read. `mentl <file> unreferenced` named
   eleven lowercase declarations in the compiler's own modules. Each was
   read AT ITS SITE before anything was touched — a report is a reading, not
   a delete list, which is the caveat the imports facet earned one pin back
@@ -3088,7 +3160,7 @@
 
 - 2026-09-04 · pin 1ff3393b59c62018 · THE MEDIUM FINDS ITS OWN DEAD
   DECLARATIONS. CLEAN m2 == m3 at 419046 lines, census 0; micros 148/148.
-  ▶ THE VERB: `mentl query <file> "unreferenced"` answers, for every name
+  ▶ THE VERB: `mentl <file> unreferenced` answers, for every name
   the weave declares, how many of its reference sites lie outside its own
   declaration. Zero is the finding. It is the import read one altitude
   down and turned around: that one asks whether any name an edge BRINGS is
@@ -3167,7 +3239,7 @@
 
 - 2026-09-04 · pin 9109e063bf2b1726 · THE MEDIUM FINDS ITS OWN DEAD IMPORTS.
   CLEAN m2 == m3 at 417769 lines, census 0; micros 148/148, frontier 374/0.
-  ▶ THE VERB: `mentl query <file> "imports"` answers every import edge in the
+  ▶ THE VERB: `mentl <file> imports` answers every import edge in the
   weave with whether the imported module brings any name the importing one
   references. Every term was already in the graph — module_cells gives each
   module its path, span and decls; an ImportStmt among those decls IS the
@@ -3304,7 +3376,7 @@
   it lies about, because nothing reads it. comment-refs gates backticked
   NAMES resolving; it cannot gate a sentence whose subject no longer runs.
   The deletion test SYNTAX states for comments has no mechanical form yet.
-  ▶ AND WHAT IT COULD NOT ANSWER: `mentl query "refs of NAME"` answers one
+  ▶ AND WHAT IT COULD NOT ANSWER: `mentl <file> refs of NAME` answers one
   name at a time and there is no all-names facet, so the census ran as a
   shell loop over grep. That absence is the finding — a dead-code
   projection is the medium's own `refs` verb folded over its decls column,
@@ -4042,7 +4114,7 @@
   skipped a site with no single-line with-clause and said so); what is
   missing is the resolution check.
   ▶ HOW IT WAS FOUND: by asking the medium instead of reading its source.
-  `mentl audit src/lexer.mn` named the tightenable site and offered the
+  `mentl src/lexer.mn audit` named the tightenable site and offered the
   patch; running the verb produced the defect. Nine iterations of this
   loop used `check`, `query` and `test` and never `audit` or `tighten`,
   which is why a fabricating authoring verb sat unmeasured.
@@ -4257,7 +4329,7 @@
   arm is written out rather than merged so the day that changes is a day
   someone chose.
   ▶ THE MARK IS OBSERVABLE, which is what makes this more than vocabulary.
-  `mentl query "type pick"` reads `{ zeta: Int | {  } assumed }` on a
+  `mentl <file> type pick` reads `{ zeta: Int | {  } assumed }` on a
   declared `...` with no closed partner and `{ handle: Int | { region_id:
   Int } }` unmarked on findtag, whose residual comes from the closed-side
   writer. Both were read off the same two commands before the build, where
@@ -6162,7 +6234,7 @@
   cannot express `--profile=perfmap` — the "ceremony one layer down"
   CLAUDE.md ⟳ calls a confession. `MENTL_WT_EXTRA` now appends
   word-split extra runner flags in wt-env.sh, so
-  `MENTL_WT_EXTRA=--profile=perfmap perf record -g -- mentl check <f>`
+  `MENTL_WT_EXTRA=--profile=perfmap perf record -g -- mentl <f> check`
   resolves guest symbols through the installed verb. Empty by default,
   so every gate and march runs byte-identical flags — verified both
   ways at this pin.
@@ -6195,7 +6267,7 @@
   a curve a 7.7× range destroyed — a fit is a hypothesis until it
   predicts a point OUTSIDE the range it was fitted on, and §5.O's
   measure-don't-read-code law now carries that corollary.
-  ▶ THE BUILD. `mentl query <file> "cost"` reports modules linked,
+  ▶ THE BUILD. `mentl <file> cost` reports modules linked,
   source lines processed, and nodes minted — the weave's own NModule
   cells and `graph_next()`, never a clock. That distinction is the
   point: a wall time is a HOST fact that varies per run, so it can be
@@ -6227,7 +6299,7 @@
 - 2026-08-17 · ▶▶▶ THE MEDIUM CAN SHOW ITS OWN DAG, AND THE HAND WALK IT
   RETIRED FOUND THE REAL LAW (pin 86ddf00ac4 — CLEAN m2 == m3, re-pinned
   from m2 per march.sh, 411660 lines, census 0; m3 leg 17.76s wall ·
-  2225MB peak RSS). `mentl query <file> "modules"` projects the weave's
+  2225MB peak RSS). `mentl <file> modules` projects the weave's
   module set from the NModule cells `driver_entry_with_ranges` already
   mints per range — the same cells `module_path_of_span` narrows by
   containment, read whole instead. A graph read, not a second walk of
@@ -7441,7 +7513,7 @@
 
 - 2026-08-08 · ▶▶▶ THE BARE WHY VERB (pin bd96e9334f5e — CLEAN
   m2 == m3, census 0): SYNTAX's verb-lag list retires its first name.
-  `mentl why <path> <name>` is why_verb_args routing to the query
+  `mentl <path> why <name>` is why_verb_args routing to the query
   facet's Reason-chain walk — three lines mirroring where's shape;
   the lag list shrinks to diagnostics + verify (10.3's remaining
   absorptions), and the where leg's conjunction gains the why assert,
@@ -8636,7 +8708,7 @@
 - 2026-08-06 · ▶▶▶ THE MEDIUM COUNTS ITS OWN SHAPES — Phase 0.3's
   structural census lands as a query facet (pin 43cc582afdf7 — CLEAN
   m2 == m3 at 334,486 lines, census 0, crown 8/8, frontier 333/0 with
-  the new leg green). `mentl query <file> "census <shape>"`:
+  the new leg green). `mentl <file> census <shape>`:
   CensusShape = CsAnonymous | CsVerb(PipeKind), classified at the
   grammar's one boundary through show_pipe_kind (the glyph roster
   appears exactly where the external string enters), the walk mirroring
@@ -9761,7 +9833,7 @@
 - 2026-07-30 · ▶▶ THE CHECK VERB WAS TELLING THE TRUTH — the audit's F6
   probed instead of believed, and its "false diagnostics" were real
   (pin ec04f745). Morgan's cut ("make the engine meet the surface")
-  aimed at F6: `mentl check <file>` reportedly emits false diagnostics
+  aimed at F6: `mentl <file> check` reportedly emits false diagnostics
   on a weave-clean file, which is why a 103-row regex catalog stands in
   as the write-time discipline and 136 ignore-markers live in the
   source. FIRST FINDING, and it inverts the premise: the diagnostics

@@ -2214,15 +2214,20 @@ checked mechanically: `tools/doc-truth.sh` reads the names below and fails on
 any *other* verb the docs name. The list shrinks as verbs land; it never grows
 silently.
 
-- **`mentl diagnostics`** — the live catalog projected from the `DiagKind`
+- **`diagnostics`** — the live catalog projected from the `DiagKind`
   constructors, so the tables in this file stop being a hand-kept second home.
+  It is a QUESTION, named here the way it will be asked: `mentl <file>
+  diagnostics`, never a verb.
 
-*(`mentl verify` LANDED 2026-09-19 and left this list — the medium's standing
-bounds on its own source, each bound and its justification in `src/board.mn`
-where `mentl why` walks them. It absorbs the census half of `tools/verify.sh`;
-the legs that measure the world outside the graph — the micro battery's exec
-seam, the march's peak RSS, the scaffold count — remain the script's, named
-rather than silently inherited.)*
+*(The list names questions and actions, not verbs, because as of 2026-09-21
+**the read has no verb**: the shell surface is `mentl <address> [question]`,
+the address first, and `query` / `why` / `where` were deleted as three names
+for one read. `mentl verify` LANDED 2026-09-19 and left this list — the
+medium's standing bounds on its own source, each bound and its justification in
+`src/board.mn`, walkable with `mentl src/board.mn why <bound>`. It absorbs the
+census half of `tools/verify.sh`; the legs that measure the world outside the
+graph — the micro battery's exec seam, the march's peak RSS, the scaffold count
+— remain the script's, named rather than silently inherited.)*
 
 ## Authority
 

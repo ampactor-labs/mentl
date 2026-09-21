@@ -1,5 +1,5 @@
 // The prelude floor's own fixture: a program that asks the medium for
-// nothing. Whatever `mentl query mn-bare-floor.mn "cost"` reports is the
+// nothing. Whatever `mentl mn-bare-floor.mn cost` reports is the
 // vocabulary the medium processes before it can compile a constant —
 // 6307 source lines at the pin that measured it, for a program of one.
 //

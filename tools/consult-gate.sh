@@ -68,9 +68,9 @@ case "${1:-}" in
 mentl-first: edit to $rel refused — the medium has not been asked about this
 file in this session. Ask it first, then edit:
 
-  mentl check $rel      diagnostics, the cheapest consult
-  mentl audit $rel      rows, severances, iteration shapes, drift shapes
-  mentl query $rel "type NAME"
+  mentl $rel check      diagnostics, the cheapest consult
+  mentl $rel audit      rows, severances, iteration shapes, drift shapes
+  mentl $rel type NAME
   mentl $rel:<line>     the node at a position
 
 A verb that answers WITH ERRORS still satisfies this — the requirement is

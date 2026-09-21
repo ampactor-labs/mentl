@@ -739,6 +739,6 @@ fn show_capability(cap) = match cap {
 // vocabulary — teach_ic_loop, the TeachSession type, caret_span_from_handle,
 // annotation_inferred_for — went with it, likewise unbackticked.
 //
-// Measured by the medium on itself: `mentl query src/main.mn unreachable`
+// Measured by the medium on itself: `mentl src/main.mn unreachable`
 // named all eleven, in one read, at the moment the facet was asked.
 

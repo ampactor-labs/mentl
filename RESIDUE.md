@@ -69,6 +69,71 @@ THE LESSON IS THE ORDER, and it belongs to whoever reads this next: removing a
 stale reason is not permission to act. It is permission to go looking for the
 real one.
 
+AND THE SAME DAY IT WENT LOOKING AGAIN, because the entry above still rested on
+an unmeasured premise: it treats the blob link as the wheel's build path and
+the manifest as the fixture path, without ever having compiled the wheel both
+ways. The first attempt at correcting it asserted the opposite premise — *"the
+wheel self-compiles through the manifest, so the blob is seed-era archaeology"*
+— on a comparison of a fresh manifest build against a CACHED blob build of
+OLDER source, which is not a comparison at all.
+
+MEASURED PROPERLY, one tree, both links, 2026-09-21:
+
+    mentl compile src/main.mn          exit 0   427,159 lines   14,599,688 B
+    wt_wheel lib src | boot/mentl.wasm exit 0   419,190 lines   14,373,309 B
+
+**The two links disagree by 7,969 lines and 226KB on the same source, and both
+exit clean.** The function sets are the same size — 5,193 against 5,194 — and
+the names that appear on one side only are handle-numbered (`diverge_N_H`,
+`__k_N`), which is walk order, not content; `data`, `type`, `global` and
+`import` counts differ by 3, 1, 3 and 0. So the extra 1.6% is INSIDE FUNCTION
+BODIES: the same program, the same functions, measurably more emitted code
+through one link than the other.
+
+WHICH MAKES THE REAL GAP BIGGER THAN A MISSING BATTERY MODE. `m2 == m3` has
+only ever been asserted for the BLOB link. The manifest link — the one every
+ordinary `mentl compile <file>` takes, the one a user's program rides — has
+never been marched, so the fixpoint says nothing about it, and the agreement
+contract in `verify.sh` compares the two links on FIXTURES while the wheel's
+own two builds of ITSELF were never compared until this line was written.
+`Hβ.link.manifest-and-blob-emit-differently` carries it, and the order holds a
+second time: the stale reason was real, the first replacement for it was a
+guess, and only the third look measured anything.
+
+`Hβ.link.manifest-and-blob-emit-differently` — OPEN, BORN 2026-09-21, measured
+in the entry above and stated here so it has one home. The wheel compiles
+itself two ways and the two ways do not agree: 427,159 lines through the
+manifest (`mentl compile src/main.mn`), 419,190 through the blob (`wt_wheel lib
+src` piped to boot), same tree, both exit 0, ~equal function counts, the
+difference inside bodies. `m2 == m3` has only ever judged the blob.
+THE QUESTION, in positive form: **which link is correct, and why does the other
+one emit 1.6% more?** Two readings, neither probed: the blob is ONE module, so
+one `reachable_from_main` prunes across the whole concatenation, while the
+manifest prunes per module and keeps what a module exports but main never
+reaches; or the manifest's per-module judgment specializes twins the flat link
+shares. The cheap probe is a name-matched body diff on one divergent function
+through `tools/emit-diff.py`, which is exactly the instrument for it and has
+never been pointed here.
+WHY IT MATTERS BEYOND TIDINESS: the manifest link is the one a USER's program
+takes. The fixpoint proves the medium reproduces itself through a path no user
+invokes, and the path every user invokes has no fixpoint at all. Closing it is
+either a march leg over the manifest link or a proof that the two links are
+extensionally equal — and the second is the stronger claim, so it is the one to
+attempt first.
+
+`Hβ.cli.stdin-is-an-address-for-some-questions` — OPEN, BORN 2026-09-21, found
+by probing the collapsed surface rather than by reading it. `-` is the stdin
+address, and `mentl - teach` and `mentl - audit` both answer, while
+`mentl - check` refuses with *"module source not found: - (expected at
+lib/-.mn)"*. The asymmetry PREDATES the collapse (the same refusal answers
+`mentl check -` through the old boot), so it is not the grammar's: `teach` and
+`audit` route through the stdin-aware discovery and `check` routes through
+`pipeline_check`, which resolves its target as a module path with no stdin arm.
+THE FORM: stdin is an address like any other, so every question reaches it
+through the one resolution. The fix is at the resolver, not at `check` — a
+per-question stdin arm would be the same fact in N homes, which is the shape
+this whole surface was just collapsed to avoid.
+
 `Hβ.viz.severance-map` — OPEN, BORN 2026-09-21, the visualization frontier pick,
 chosen from a survey of the field rather than from taste. Full argument and the
 three-colour law: `PLAN.md §11` Arc G. Summary of why it is the one: `!E` is the
@@ -127,26 +192,58 @@ a leg that only runs on failure has never been exercised on success — and it i
 the same shape as `tools/ide-gate.sh` being off the board while §11.2 called it
 green.
 
-`Hβ.cli.two-operations` — OPEN, BORN 2026-09-21, and the idea is older than the
-measurement: drift mode 38 already says *"`mentl <tentacle>` as a CLI verb —
-tentacles fire AT-CURSOR, not as subcommands"*, and `mentl why`, `mentl where`
-and `mentl verify` ship as verbs anyway, with a hand-written carve-out in
-`tools/drift-patterns.tsv` excusing them. The catalog names the law and the
-artifact drifted from it.
-THE FORM, and it is the kernel's own shape: **two operations, because the kernel
-has two.** `mentl <address> [question]` is PROJECT — read the graph at a
-position, every tentacle an aspect of that one read. `mentl <action>` is DRAW AN
-EDGE — `run`, `compile`, `fmt`, `tighten`, `new`. Everything else is an argument
-to one of those. Under it, `why` / `where` / `variants` / `census` /
+`Hβ.cli.two-operations` — CLOSED 2026-09-21, the day it was born, and the idea
+was older than either: drift mode 38 already said *"`mentl <tentacle>` as a CLI
+verb — tentacles fire AT-CURSOR, not as subcommands"*, while `mentl why`,
+`mentl where` and `mentl query` shipped as verbs anyway behind a hand-written
+carve-out in `tools/drift-patterns.tsv` excusing them. The catalog named the
+law and then wrote itself the exception.
+
+THE FORM, and it is the kernel's own shape: **two operations, because the
+kernel has two.** `mentl <address> [question]` is PROJECT; `mentl <action>` is
+DRAW AN EDGE. Under it, `why` / `where` / `variants` / `census` /
 `unreachable` / `smt` / `decls` / `modules` / `imports` / `performs` /
-`orphan-claims` / `cost` are not verbs at all — they are questions at an
-address, which is exactly what `mentl query <file> <question>` already is, and
-`mentl why <file> <name>` is that same read with a name instead of a line. So
-the collapse is literal: **`query` and the address are the same verb.**
-MEASURED: `mentl help` lists 24 verbs; the honest surface is nine — project,
-run, compile, fmt, tighten, new, space, march, verify — with the other fifteen
-becoming arguments. The count is the gate: a verb roster that shrinks while the
-questions grow is the CLI teaching the kernel instead of hiding it.
+`orphan-claims` / `cost` were never verbs — they are questions at an address,
+which is exactly what `query` already was. So the collapse was literal:
+**`query` and the address are the same verb**, and the word was ceremony.
+
+WHAT LANDED. `mentl <file>` projects the module (it answered *"unrecognized or
+under-specified command"* before, so the most obvious invocation in the whole
+surface was the one that did not work); `mentl <file>:<line>[:<col>]` is
+unchanged; `mentl <file> <question…>` is the read, with the question carried as
+the WORDS the shell already split. Seven verbs left the table — `query`, `why`,
+`where`, `check`, `audit`, `doc`, `teach` — and `verify` joined them as a named
+projection. The catalog projects both tables, so the help opens with the read
+instead of a flat column of twenty-four words.
+
+THE DELETION IT PAID FOR, which is why this was a Carried-Truth landing and not
+a rename. `why_verb_args` and `where_verb_args` each took a path and a name,
+**re-serialized their own proof into the string `"why NAME"`, and handed it to
+the question grammar to classify again** — the shell tokenized, the CLI
+concatenated, the grammar re-tokenized, and the quotes a caller had to write
+(`mentl query f "why unify"`) were the invoice. `VQuery` carries `[String]`
+now. Beside it, `Option(String)` came off every target field: five runners each
+carried their own `None => "main"` arm, one default with five homes, and
+`target_at` resolves it once at the grammar — the one boundary that sees the
+whole invocation. A missing target is unrepresentable on both halves of the
+ADT now, where it had been unrepresentable only on the required half.
+
+THE ORDER IS A DECISION AND IS RECORDED AS ONE: the address comes FIRST, with
+no exception, and `mentl check <file>` is a teaching refusal that prints the
+corrected line. Allowing both spellings would have been two forms for one read
+— Governing Principle 2 at the shell — and the one that keeps the address in
+front is the one a developer can live in: the address stays put while the
+question changes, so the loop is an edit of the last word rather than a retype
+of the middle. The retired spelling teaches through the general diagnostic
+exactly as `perform`, `handle` and the turbofish do.
+
+THE GATE IS THE CATALOG, not a count. Drift 38's regex now fires on any read
+verb standing before a target (`\bmentl\s+(check|audit|doc|teach|verify|why|
+where|query|type|census|decls|refs|flow|…)\s+<target>`) and its carve-out is
+deleted; a bare question does not fire, because the address defaults. Seen RED
+at 9 hits across the tree and driven to CLEAN in the same landing — which is
+also how the tree's own prose got trued, LEDGER and RESIDUE included: a
+recorded command you can no longer run is a record that has rotted.
 
 `Hβ.docs.laws-and-casebook` — OPEN, BORN 2026-09-21.
 `CLAUDE.md` is roughly a hundred lines of actual METHOD wrapped in five hundred
@@ -180,7 +277,7 @@ item on its own lag list; and its token table carries a hand-maintained
 stand-in for `mentl audit` until the cursor projects it". So the only readable
 catalog is the one the doc tells you not to trust, and the only cardinality
 guarantee is a number a human keeps.
-THE FORM: `mentl doc --syntax` (or the address surface at a grammar node)
+THE FORM: `mentl <file> doc --syntax` (or the address surface at a grammar node)
 renders the precedence table, the `TokenKind` roster with its real cardinality,
 and the `DiagKind` catalog with each constructor's applicability — from the
 artifact. The checksum stops being maintained because it stops being written.
@@ -221,7 +318,7 @@ calls a function declared AFTER it.
 `Hβ.verify.smt-operand-read-must-be-inline` — OPEN (the SITE is fixed; the
 CLASS is not), BORN 2026-09-21, found by giving a dead serializer a projection.
 
-WHAT WIRING IT FOUND. `mentl query <file> "smt"` renders every undischarged
+WHAT WIRING IT FOUND. `mentl <file> smt` renders every undischarged
 obligation as SMT-LIB through src/verify.mn's serializer — fourteen decls that
 had never run (`Hβ.verify.smt-lowering-built-and-never-run`, closed by this
 facet). Its first execution, on the wheel's own
@@ -229,7 +326,7 @@ facet). Its first execution, on the wheel's own
 `(assert (and (<= (- 66664 686234536) self) (<= self 1.0)))`. The OUTER `1.0`
 was right and the nested operands were pointers.
 
-THE DECISIVE COMPARISON, one command: `mentl query <file> "verification"`
+THE DECISIVE COMPARISON, one command: `mentl <file> verification`
 renders the SAME predicate from the SAME handles and answered
 `0.0 - 1.0 <= self && self <= 1.0`. So the graph is sound and the serializer
 was the defect — which is the only reason the rest of this entry is worth
@@ -331,8 +428,8 @@ loses it, or the voice loses its silence gate rather than its dead queue.
 MEASURED while deleting the peer above.
 With `ic_compile_loop` removed, `project_queue_merger` has NO install site
 anywhere in the tree, and `silence_predicate` (src/voice.mn) — reachable, called
-from a handler arm at voice:1177 — performs `query_project_queue`. **`mentl check
-src/main.mn` passes with zero diagnostics.** A reachable perform of an effect no
+from a handler arm at voice:1177 — performs `query_project_queue`. **`mentl src/main.mn
+check` passes with zero diagnostics.** A reachable perform of an effect no
 handler anywhere absorbs compiles clean and would trap at runtime.
 This is the sibling of `Hβ.effects.root-gate-credits-an-install-that-had-not-
 opened` (PLAN §11 6.3) and strictly worse than it: there the gate credited an
@@ -356,7 +453,7 @@ run — so the medium carries an SMT backend that has never once executed while
 the plan sequences it as unbuilt. A capability nothing exercises is a claim, not
 a capability.
 THE DECISION WAS NOT DEFERRED AND IT WAS TAKEN THE SAME DAY: the serializer
-is WIRED, not deleted. `mentl query <file> "smt"` renders every undischarged
+is WIRED, not deleted. `mentl <file> smt` renders every undischarged
 obligation as an SMT-LIB assertion — one read (`verify_debt()`), two projections,
 the prose one for a person and this one for a solver — so Phase 8.3's handler
 swap arrives with its serializer already exercised instead of re-derived.
@@ -418,7 +515,7 @@ today's `(x) => e`; `{ () => e }` is the thunk, `()` an ordinary `PLit`.
 ONE MEASURED ARGUMENT THAT IS NOT ABOUT REDUNDANCY: a lambda is addressable by
 POSITION but not by NAME. `mentl lede.mn:12` renders its type, row and lede,
 and its Why line reads `lambda, at lede:12` — the Reason has no name to give.
-It is invisible to `mentl doc`, unreachable by `mentl why <name>`, and no
+It is invisible to `mentl doc`, unreachable by `mentl <name> why`, and no
 backticked reference can resolve to it. It is the one construct whose only
 handle is a coordinate, and §11's POSITIONS face is that coordinates rot under
 editing.
@@ -519,7 +616,7 @@ and it was found by USING THE MEDIUM after a landing that had not — Morgan's
 *"seems like you're underutilizing Mentl"*. One `mentl src/parser.mn:2489`
 reported five unresolved comment references at a pin whose board had just gone
 green with **`comment-refs: 0`**.
-MEASURED, both links, the same tree: `mentl check src/main.mn` (the whole-entry
+MEASURED, both links, the same tree: `mentl src/main.mn check` (the whole-entry
 link, which is what `tools/verify.sh` greps out of `.build/m2cache/m2.err`)
 answers **0**. Checking each module on its own answers **57** — graph.mn 13,
 lower.mn 13, types.mn 9, infer.mn 6, pipeline.mn 5, oracle.mn 3, board.mn 2,
@@ -615,7 +712,7 @@ lib prose leaked into a user's stderr. So the identity is threaded and only the
 HIT TEST ignores it. The cut: `cdix` carries each referent's module handle, and
 the test becomes *is the referent's module the comment's own, or in its import
 closure?* One pass, one walk, the same cost.
-CLOSE: `mentl check src/main.mn` reports what the per-module sweep reports,
+CLOSE: `mentl src/main.mn check` reports what the per-module sweep reports,
 because they have become the same question; the 57 are re-pointed or written as
 prose; and the count leaves `tools/verify.sh`'s grep for a bound in
 `src/board.mn` with its justification beside it (task #4's absorption — a
@@ -1622,9 +1719,9 @@ throwing its intermediate away. Sequenced with the reachability link
 work, whose progress it is the natural way to read.
 
 `Hβ.verify.comment-ref-ratchet-is-dark` — MEASURED 2026-08-18, one
-fact and no cause. `mentl check src/lexer.mn` reported
+fact and no cause. `mentl src/lexer.mn check` reported
 `W_CommentRefUnresolved` on `scan_number`'s comment (backticked
-`base`), and `mentl query src/main.mn "type base"` answered *not
+`base`), and `mentl src/main.mn type base` answered *not
 found* — so the reference resolves nowhere in the whole-wheel link
 either. Yet `comment_refs_max: 0` holds and the census stderr the
 ratchet reads (`.build/m2cache/m2.err`, 60,989 bytes) carries **zero**
@@ -1656,7 +1753,7 @@ that. Recorded because the shape recurs: a rise adjacent to someone
 else's landing reads as theirs, and the stash is cheap.
 
 `Hβ.teach.severance-vocabulary-from-link` — STAMPED 2026-08-08 (found
-by asking the medium its own next move: `mentl teach src/main.mn`
+by asking the medium its own next move: `mentl src/main.mn teach`
 narrated the IDENTICAL suggestion — "add with !IO" — for every fn
 including the TCP server loop). TRACED: teach's severance candidates
 come from the FIXED Annotation ADT (mentl.mn's eight variants;
@@ -2825,8 +2922,8 @@ lists 1). Every one is a fn that declares a row and calls one of its own
 parameters — the complete set whose judgment changes when the
 declaration stops being vacuous. Fewer will actually refuse, since a
 callback already within the declared cap stays admitted.
-The instrument is the medium's own: `mentl query <file> "census
-declared-row-hof"`, the twenty-second census shape, which reads both
+The instrument is the medium's own: `mentl <file> census
+declared-row-hof`, the twenty-second census shape, which reads both
 facts where the graph holds them — the signed clauses are FnStmt's own
 field, the call is the weave's tree edge walked to the callee's VarRef.
 A grep could not have answered it (a param MENTIONED is transport; only
@@ -4220,7 +4317,7 @@ instead of by it. Falsified two ways before trusting: it fails against the
 flip build (the same trap) and fails against a deliberately wrong
 expectation.
 ▶ THE BANKED PROBE RAN AND ANSWERED (2026-08-18), through the medium's
-own projection rather than an eprint. `mentl query "type pick"` on the
+own projection rather than an eprint. `mentl <file> type pick` on the
 two repros: findtag reads
 `-> Option({ handle: Int | { region_id: Int } })` — the residual is
 LEARNED and non-empty, so the layout is proven and both `t.handle` and
@@ -4483,13 +4580,13 @@ move, including a lib/ file and a tests/ fixture.
 `Hβ.audit.at-the-edit-is-image-gated` — THE SELF-BUILD RATCHET'S OWN NEXT
 STEP, PRICED AND REFUSED. Measured 2026-08-18 at pin 567a96659693.
 ▶ THE CASE FOR IT is the strongest this loop has: over ten iterations the
-assistant hand-read source to find what `mentl audit <file>` says in one
+assistant hand-read source to find what `mentl <file> audit` says in one
 command — tightenables, iteration-shapes, drift shapes, unresolved
 comment refs, per-fn rows — and ran the verb once, late, by accident.
 Every hand-read was a confession. The obvious absorption is the
 PostToolUse drift-audit calling the medium's own verb, so the finding
 arrives at the EDIT rather than at the commit.
-▶ THE PRICE REFUTES IT, on the largest module: `mentl audit src/infer.mn`
+▶ THE PRICE REFUTES IT, on the largest module: `mentl src/infer.mn audit`
 costs **4.91 s and 776964 KB**; `tools/drift-audit.sh src/infer.mn` costs
 **0.07 s and 3780 KB**. Seventy times the wall, two hundred times the
 memory, per edit — and the memory floor is the same one the concurrency
@@ -4821,7 +4918,7 @@ handler.
 ▶ ARMS ALREADY CHARGE. `tests/crown/leak-arm-adds-row` refuses on the
 same shape one layer over, so this is not "the tee never adds" — it is
 the init specifically sitting off whatever channel the arms ride.
-▶ AND THE HANDLER'S TYPE HAS NOWHERE TO PUT IT: `mentl query "type hf"`
+▶ AND THE HANDLER'S TYPE HAS NOWHERE TO PUT IT: `mentl <file> type hf`
 projects `Handler(F)` — the effect HANDLED, with no row for what the
 handler performs. SYNTAX's tee rule is
 `row(expr ~> h) = row(expr) - handled(h) + row(h)`, and the `+ row(h)`
@@ -4892,7 +4989,7 @@ and, on a failure where the expectation exceeds 125 and the run returned 1,
 says that the 1 is the channel and not the program. The hazard was
 prospective and silent; it is now loud at the only place an author looks.
 
-`Hβ.query.type-of-a-lambda-parameter` — `mentl query <file> "type NAME"`
+`Hβ.query.type-of-a-lambda-parameter` — `mentl <file> type NAME`
 reaches top-level names and fn parameters and answers `not found: tag`
 for a lambda's parameter (measured 2026-08-18 on
 tests/micros/mn-findtag.mn, whose `find((tag) => tag.handle == h, tags)`
@@ -5315,7 +5412,7 @@ the PARALLEL path's full price for none of its benefit, which is a cost
 `Hβ.perf.compile-is-quadratic-in-modules`, asserting a fitted `0.062·N +
 0.0064·N²` and convicting the env. THAT IS REFUTED and the name is
 retired. The fit had four points spanning N=7..22 and it OVERFIT: it
-predicts `mentl check src/main.mn` (N=54) at 22.0s, and the measurement
+predicts `mentl src/main.mn check` (N=54) at 22.0s, and the measurement
 is 12.05s. The banked probe that killed it is the one that entry itself
 named — separate module COUNT from total DAG LINES — run with the
 `modules` facet supplying each entry's set.
@@ -5373,7 +5470,7 @@ the build. Do NOT optimise the per-module constant first — it is the
 term that stops mattering.
 
 `Hβ.query.module-dag-facet` — RESOLVED 2026-08-17 at the same pin.
-`mentl query <file> "modules"` projects the weave's NModule cells. Kept
+`mentl <file> modules` projects the weave's NModule cells. Kept
 as a record of the shape: the absence was found by the mentl-first hook
 refusing a hand read, the answer was hand-rolled in shell that session,
 and the verb replaced it the same day with its count verified against
@@ -5381,7 +5478,7 @@ that walk (canon 7, lower 22, both matching).
 
 `Hβ.query.cost-facet` — RESOLVED 2026-08-17, pin 42a4cc445d, and it
 landed DETERMINISTIC rather than as the wall-clock report this entry
-originally asked for. `mentl query <file> "cost"` reports modules linked,
+originally asked for. `mentl <file> cost` reports modules linked,
 source lines processed and nodes minted, all graph reads. The correction
 is the useful part and it generalises: a host measurement can only ever
 be REPORTED, because it varies per run; a graph fact can be RATCHETED.
@@ -6046,7 +6143,7 @@ spawn(7)`):
     fully readable at this phase, unlike pre-register.
   · at the CALL the same name types against `() -> t with r` — the OP's
     parameter, which is where `Int vs () -> t...` comes from.
-  · in the FINAL env, `mentl query <the user's own file> "type spawn"`
+  · in the FINAL env, `mentl <the user's own file> type spawn`
     answers `(_0: () -> t with r) -> ThreadHandle with Thread(...)`.
     The projection reports the library op's signature for a name the
     file itself declares.
@@ -6283,8 +6380,8 @@ carrying the board's ONLY frontier red UNBANKED, which is the naming law
 violated: a gap not in this file does not exist, and this one has been red
 since 2026-09-06. Measured both ways today — frontier reads 373 pass / 1 red
 on the NEW boot (c1481440) and 373/1 on the OLD (8aeca3c8), same red, so it
-is standing, not a repin regression; and `mentl why
-tests/frontier/mn-where-badges.mn gain` answers `at 2729:1-2729:15` for a
+is standing, not a repin regression; and `mentl tests/frontier/mn-where-badges.mn
+why gain` answers `at 2729:1-2729:15` for a
 name on line 8 of a 24-line file.
 THE DEFECT IS THE REPRESENTATION, not the renderer. `Located(Span, Reason)`
 stores a COORDINATE beside the very handle that could answer it, and a bare
@@ -6324,7 +6421,7 @@ through show_reason — which would add a fourth O(nodes) scan per rendered
 Reason node and call the re-derivation fixed.
 RE-MEASURED 2026-09-15 (pin 21696779): **THE LINE HALF IS FIXED AND THIS
 ENTRY'S OWN MEASUREMENT HAD ROTTED.** The `at 2729:1-2729:15` above is
-history — `mentl why tests/frontier/mn-where-badges.mn gain` now answers
+history — `mentl tests/frontier/mn-where-badges.mn why gain` now answers
 `at 8:1-8:15`, the developer's own line, because the weave went away and
 every module starts at line 1 (types.mn's seam-render comment records
 module_seams / seams_walk / span_render_local / seam_of_line DELETED, and
@@ -7080,7 +7177,7 @@ construction sites; the 26 match arms that destructure it are invisible
 because a pattern binds through PCon, not VarRef — and for an ADT
 constructor the arms are the MORE important half, they are the
 exhaustiveness surface. Both are why an ADT-walk census still needs a
-grep confession. Smaller sibling: `mentl query "type NAME"` on an ADT
+grep confession. Smaller sibling: `mentl <file> type NAME` on an ADT
 answers "declared as NAME" without projecting its variants, and nothing
 projects the module import graph though the driver holds it as NModule
 nodes with ranges.
@@ -8449,7 +8546,7 @@ call boundary (the parallel_map dissolution's law,
 `Hβ.prelude.parallel-map-dissolves-into-schedule`), so the enclosing
 chain IS the whole truth — lower's ambient-stack read
 (lower_fanout_schedule, lower.mn:1620) and the weave walk answer
-identically by that law. SURFACE: `mentl where <file> <name>` riding
+identically by that law. SURFACE: `mentl <file> where <name>` riding
 the query spine exactly as the census did — a QWhere Question
 variant, the arm in query_default, the CLI verb mapping through the
 query invocation; a `><`-site's badge addresses by name of the
@@ -8675,7 +8772,7 @@ quantified-param landing is not an independent conviction and its
 honest half — the published row — is the row class already; escape
 stays the DEP below). The stamp as banked, correction folded in: MEASURED BASES, both true, name the base when
 citing either: the weave census counts 555 anonymous fns on the wheel
-link (`mentl query src/main.mn "census anonymous"`, read this day);
+link (`mentl src/main.mn census anonymous`, read this day);
 §11's 490-of-3,469 counted EMITTED fns (2026-08-05 harvest) — the two
 differ because emitted fns dedup and prune. Text-shape approximation:
 ~136 of the 555 are ETA-WRAPPERS (108 unary `(x) => f(x)`, 17 binary,
@@ -10735,7 +10832,7 @@ blindness threw away:
     module is this line in?" about a value that should never have lost
     the answer.
 MEASURED SYMPTOM, the one that surfaced it: on a SEVEN-LINE file
-`mentl why addr.mn double` answers `at 2726:1-2726:21`, because
+`mentl addr.mn why double` answers `at 2726:1-2726:21`, because
 show_reason renders the raw weave span while the refs facet three lines
 away answers `addr:7`. Every felt surface goes through show_reason — LSP
 hover, the cursor view's Why line, the type facet's Reason — so §0's

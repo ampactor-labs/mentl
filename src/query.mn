@@ -143,7 +143,7 @@ type Question
   // TName, and the row's absent set — to classify NAME's FlowLabel without any
   // new graph state. The security classification IS already in the type;
   // this is the projection that names it. Novel: no other language exposes
-  // IFC as a read of its existing type system. `mentl query flow key` answers
+  // IFC as a read of its existing type system. `mentl <file> flow key` answers
   // "what does the graph already know about key's sensitivity?"
   | QHandlerProvider(String)
   | QFlowOf(String)
@@ -204,7 +204,7 @@ type QueryResult
   // The handle knows its module; the collector was discarding it.
   | QRRefs([(String, Span)])
   | QRVerifyDebt([(Int, Span, Predicate, Reason)])
-  // THE SAME OBLIGATIONS, PROJECTED AS SMT-LIB — `mentl query <f> "smt"`.
+  // THE SAME OBLIGATIONS, PROJECTED AS SMT-LIB — `mentl <f> smt`.
   // One read (`verify_debt()`), two renders: `QRVerifyDebt` speaks the
   // predicate in the medium's own voice for a person, and this one speaks it
   // in the solver's, which is exactly what Phase 8.3's handler swap will
@@ -212,7 +212,7 @@ type QueryResult
   //
   // It exists because the serializer did, unreached: fourteen decls in
   // src/verify.mn rendered a complete SMT-LIB assertion and NOTHING called
-  // them — `mentl query src/main.mn unreachable` named the whole family.
+  // them — `mentl src/main.mn unreachable` named the whole family.
   // A serializer with no caller is a claim, not a capability; giving it a
   // projection is what turns it back into one, and it means 8.3 arrives with
   // this half already exercised instead of re-derived.
@@ -708,7 +708,7 @@ fn reach_report(cells) = {
 // `span_valid` as dead code.
 //
 // MEASURED 2026-09-21, and the measurement is a warning about this whole
-// facet's genre: `mentl query src/main.mn unreachable` listed
+// facet's genre: `mentl src/main.mn unreachable` listed
 // `types -> span_valid`, which is the predicate of
 // `type ValidSpan = Span where span_valid(self)` — the Intent Boundary type
 // the wheel annotates with everywhere. Deleting it on this facet's word would

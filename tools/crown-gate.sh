@@ -10,7 +10,7 @@
 #   sound-*  MUST NOT (the gate must not over-reject)
 #
 # Compiler-under-test: $GATE_WASM (default the keyed boot->m2 artifact), or point
-# MENTL_BOOT at any wheel. Pre-L1 shape of `mentl verify --crown`.
+# MENTL_BOOT at any wheel. Pre-L1 shape of `mentl verify`'s crown leg.
 set -u
 cd "$(dirname "$0")/.." || exit 2
 source "$(dirname "$0")/wt-env.sh"

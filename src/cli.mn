@@ -6,25 +6,27 @@
 // dispatch (running the proven verb is the entry's own job).
 import strings
 
-// ─── EntryVerb ADT — the verb carries its target where required ───────
+// ─── EntryVerb ADT — every variant carries the address it acts on ─────
 //
-// Each variant IS the entry-handler, structured. A target-requiring verb
-// (Compile/Run/Check/Audit/Query) carries its module name as a NON-OPTION
-// field — so "compile with no target" is unrepresentable; no `""` sentinel
-// can flow downstream (Anchor 2: the illegal state is deleted at the type
-// level, not fabricated and re-checked). Verbs with an optional target
-// (Edit/Doc/Teach/Test) carry an Option; verbs with none (Serve/Repl) carry
-// nothing. Dispatch matches the ADT structurally — never a string re-compare
-// (drift 8): parse_cli_args proved the verb, and dispatch reads that proof.
+// Each variant IS the entry-handler, structured. A target is a plain module
+// name on EVERY variant that has one — never an Option — because the ADDRESS
+// DEFAULTS AT THE GRAMMAR, which is the one boundary that can see the whole
+// invocation. `mentl doc` means the project's entry exactly as ls means
+// here; `target_at` resolves that once and downstream never asks again.
+// It used to be an `Option` and five runners each carried the same
+// `None => "main"` arm — one default with five homes, the Carried-Truth Law
+// at the entry surface, and the illegal state (`""`, a missing target) was
+// only ever unrepresentable on the required half. It is unrepresentable on
+// both halves now. Dispatch matches the ADT structurally — never a string
+// re-compare (drift 8): `parse_cli_args` proved the verb, dispatch reads
+// that proof.
 type EntryVerb
-  // target optional → default "main"
-  = VEdit(Option(String))
-  | VDoc(Option(String))
+  = VEdit(String)
+  | VDoc(String)
   | VServe
   | VSpace
-  | VTighten(Option(String))
+  | VTighten(String)
   | VFmt(String)
-  // target REQUIRED — carried non-optionally
   | VCompile(String)
   // a persisted image path — the file IS the argument
   | VResume(String)
@@ -35,29 +37,55 @@ type EntryVerb
   | VCheck(String)
   // the cursor-address form — `mentl lib/tutorial/09-all.mn:40:20`: target, line, col (0 = whole-line). Drift-38's endpoint: the address IS the surface; verbs are transports
   | VAt(String, Int, Int)
-  | VTest(Option(String))
+  | VTest(String)
   | VAudit(String)
-  // target, question — both required
-  | VQuery(String, String)
-  | VTeach(Option(String))
+  // the address and the question's WORDS — the shell already split them, so
+  // the grammar carries the split. It carried one re-joined String until
+  // 2026-09-21 and the question grammar split it again: the shell tokenized,
+  // the CLI concatenated, the query grammar re-tokenized, and the quotes a
+  // caller had to write (`mentl query f "why unify"`) were the invoice.
+  | VQuery(String, [String])
+  | VTeach(String)
   | VRepl
   // the medium judges its own generation
   | VMarch
-  | VVerify(Option(String))
+  | VVerify(String)
   // the gate on MCP stdio — agents propose, nothing executes unproven
   | VMcp
   | VSession
   // project name — required
   | VNew(String)
-  // handler name, optional target
-  | VWith(String, Option(String))
+  // handler name, then the address it installs over
+  | VWith(String, String)
   // bare tty invocation / `mentl help` —
   // the directory PROJECTION, never a hang
   | VWelcome
 
 type EntryHandlerInvocation = Invocation(EntryVerb) | ParseError(String)
 
-// ─── The verb table — ONE home the parser AND the help project ────────
+// ─── The two tables — the kernel's two operations, at the shell ───────
+//
+// The kernel has two operations (`PLAN.md §2` — draw an edge, project), so
+// the surface has two shapes and no third:
+//
+//   mentl <address> [question…]   PROJECT — read the graph at a position
+//   mentl <action> [args…]        DRAW AN EDGE — run, compile, fmt, new
+//
+// An ADDRESS is a directory, a module, a file, a `file:line`, or a
+// `file:line:col`; the question is the words after it, and with no question
+// the address projects itself. So "query" is not a verb — it is the ABSENCE
+// of one, and "why" and "where" were the same read a third and fourth time:
+// each took a path and a name, re-serialized its own proof into the string
+// "why NAME", and handed it to the question grammar to classify again.
+// Three verbs, one read, measured byte-identical before the deletion.
+//
+// A question NAMES a projection (check, audit, doc, teach, verify) or it is a
+// facet of the query grammar (why, where, census, decls, … — the question
+// grammar classifies it). Both reach an address; neither is a verb.
+// `VerbSpec` carries the action rows, `QuestionSpec` the named projections,
+// and the catalog projects both — so the help a developer reads shows the
+// kernel's own two operations instead of hiding them behind twenty-four
+// words.
 //
 // A VerbSpec carries the verb's name, its argument hint (for the help line),
 // the BUILDER that projects argv → the typed Invocation (or a ParseError that
@@ -73,9 +101,10 @@ type EntryHandlerInvocation = Invocation(EntryVerb) | ParseError(String)
 // runner arm in dispatch_invocation.
 type VerbSpec = VerbSpec(String, String, ([String]) -> EntryHandlerInvocation, String)
 
-// req_target — the shared shape of the target-REQUIRED verbs (compile / run /
-// check / audit): argv[2] resolved to a module, or a ParseError that names the
-// verb and shows its usage. `mk` builds the variant from the resolved module.
+// req_target — the shape of an action whose address is REQUIRED (`compile`):
+// argv[2] resolved to a module, or a ParseError that names the verb and shows
+// its usage. `mk` builds the variant from the resolved module. An edge needs
+// something to be drawn on; a READ does not, because its address defaults.
 fn req_target(argv, mk, msg) with Memory + Alloc =
   if len(argv) >= 3 { Invocation(mk(path_to_module(argv[2]))) } else { ParseError(msg) }
 
@@ -87,33 +116,41 @@ fn run_verb_args(a) with Memory + Alloc = if len(a) >= 3 {
   ParseError("run needs a target: mentl run <path> [args…]")
 }
 
+// A named projection: the word, the builder that takes the resolved ADDRESS
+// and returns the verb, and the help line. It needs no argument hint and can
+// raise no ParseError, because its one argument is the address the grammar
+// already resolved — `target_at` defaults it to the project, so a question
+// always has something to be about.
+type QuestionSpec = QuestionSpec(String, (String) -> EntryVerb, String)
+
+fn question_specs() with Memory + Alloc = [QuestionSpec("check", VCheck, "diagnostics only, no emit"), QuestionSpec("audit", VAudit, "the capability set + severance unlocks"), QuestionSpec("doc", VDoc, "documentation projection"), QuestionSpec("teach", VTeach, "the gradient narrated"), QuestionSpec(
+  "verify",
+  VVerify,
+  "the standing bounds the medium keeps on its own source — a rise REFUSES"
+)]
+
+// ask_at — the ONE read: an address, and the words asked of it. No words is
+// the address projecting itself (the whole-module read `mentl <file>:0`
+// already served, now reachable by naming the file). A named projection
+// builds its own verb; anything else is the query grammar's, carried as the
+// WORDS the shell split rather than a string it would have to split again.
+fn ask_at(target, words) with Memory + Alloc = if len(words) == 0 {
+  Invocation(VAt(target, 0, 0))
+} else {
+  match find({ QuestionSpec(n, _, _) => n == words[0] }, question_specs()) {
+    Some(QuestionSpec(_, build, _)) => Invocation(build(target)),
+    None => Invocation(VQuery(target, words)),
+  }
+}
+
 // The verbs, in help-presentation order (the parser matches by name, so order
 // here is the human's reading order, never the dispatch order). A `""` hint is
 // a no-argument verb.
-fn where_verb_args(a) with Memory + Alloc = if len(a) >= 4 {
-  Invocation(VQuery(path_to_module(a[2]), "where {a[3]}"))
-} else {
-  ParseError("where needs a target and a name: mentl where <path> <name>")
-}
-
-// The bare why verb (SYNTAX's lag list, first name retired): the same
-// Reason-chain walk the query facet serves, surfaced as its own verb.
-fn why_verb_args(a) with Memory + Alloc = if len(a) >= 4 {
-  Invocation(VQuery(path_to_module(a[2]), "why {a[3]}"))
-} else {
-  ParseError("why needs a target and a name: mentl why <path> <name>")
-}
-
 fn verb_specs() with Memory + Alloc = [VerbSpec(
   "run",
   "<path> [args…]",
   run_verb_args,
   "compile, prove, execute (a hole or refuted claim REFUSES)"
-), VerbSpec(
-  "check",
-  "<path>",
-  (a) => req_target(a, VCheck, "check needs a target: mentl check <path>"),
-  "diagnostics only, no emit"
 ), VerbSpec(
   "compile",
   "<path>",
@@ -131,38 +168,9 @@ fn verb_specs() with Memory + Alloc = [VerbSpec(
 ), VerbSpec(
   "edit",
   "[path]",
-  (a) => Invocation(VEdit(optional_target(a, 2))),
+  (a) => Invocation(VEdit(target_at(a, 2, "main"))),
   "the cursor session (eight aspects + proven proposals)"
-), VerbSpec(
-  "audit",
-  "<path>",
-  (a) => req_target(a, VAudit, "audit needs a target: mentl audit <path>"),
-  "the capability set + severance unlocks"
-), VerbSpec(
-  "query",
-  "<path> <question>",
-  (a) => if len(a) >= 4 {
-    Invocation(VQuery(path_to_module(a[2]), a[3]))
-  } else {
-    ParseError("query needs a target and a question: mentl query <path> <question>")
-  },
-  "why / type / effects / ownership, walked to your words"
-), VerbSpec(
-  "where",
-  "<path> <name>",
-  where_verb_args,
-  "derived badges — repr width, resume cardinality, fanout schedules"
-), VerbSpec("why", "<path> <name>", why_verb_args, "the Reason chain walked to root"), VerbSpec(
-  "teach",
-  "[path]",
-  (a) => Invocation(VTeach(optional_target(a, 2))),
-  "the gradient narrated"
-), VerbSpec(
-  "doc",
-  "[path]",
-  (a) => Invocation(VDoc(optional_target(a, 2))),
-  "documentation projection"
-), VerbSpec("test", "[path]", (a) => Invocation(VTest(optional_target(a, 2))), "the test chain"), VerbSpec(
+), VerbSpec("test", "[path]", (a) => Invocation(VTest(target_at(a, 2, "test"))), "the test chain"), VerbSpec(
   "new",
   "<name>",
   (a) => if len(a) >= 3 { Invocation(VNew(a[2])) } else { ParseError("new needs a name: mentl new <name>") },
@@ -180,7 +188,7 @@ fn verb_specs() with Memory + Alloc = [VerbSpec(
 ), VerbSpec(
   "tighten",
   "[path]",
-  (a) => Invocation(VTighten(optional_target(a, 2))),
+  (a) => Invocation(VTighten(target_at(a, 2, "main"))),
   "apply the first proven row tightening — the medium authors, you accept"
 ), VerbSpec(
   "fmt",
@@ -197,11 +205,6 @@ fn verb_specs() with Memory + Alloc = [VerbSpec(
   (a) => Invocation(VMarch),
   "judge the wheel: emit, compare against the last generation, verdict"
 ), VerbSpec(
-  "verify",
-  "[path]",
-  (a) => Invocation(VVerify(optional_target(a, 2))),
-  "the standing bounds the medium keeps on its own source — a rise REFUSES"
-), VerbSpec(
   "mcp",
   "",
   (a) => Invocation(VMcp),
@@ -210,23 +213,18 @@ fn verb_specs() with Memory + Alloc = [VerbSpec(
   "--with",
   "<handler> [path]",
   (a) => if len(a) >= 3 {
-    Invocation(VWith(a[2], optional_target(a, 3)))
+    Invocation(VWith(a[2], target_at(a, 3, "main")))
   } else {
     ParseError("--with needs a handler: mentl --with <handler> [path]")
   },
   "install any handler over any verb"
 ), VerbSpec("help", "", (a) => Invocation(VWelcome), "this projection")]
 
-// find_verb — the name → spec projection over the table (names are unique, so
-// either end serves; last/drop_last is the O(1) snoc walk). None when no match.
-fn find_verb(name, specs) with Memory + Alloc = if len(specs) == 0 {
-  None
-} else {
-  let spec = last(specs)
-  match spec {
-    VerbSpec(n, _, _, _) => if n == name { Some(spec) } else { find_verb(name, drop_last(specs)) },
-  }
-}
+// find_verb — the name → spec projection over the action table. The prelude's
+// own `find` IS this walk; a hand-rolled `last`/`drop_last` recursion stood
+// here and was one more index-threaded self-call in a module whose whole
+// subject is not re-deriving what already exists.
+fn find_verb(name, specs) with Memory + Alloc = find({ VerbSpec(n, _, _, _) => n == name }, specs)
 
 // ─── argv parsing ─────────────────────────────────────────────────
 //
@@ -246,14 +244,37 @@ fn parse_cli_args(argv) with Memory + Alloc = if len(argv) < 2 {
     Some(addr) => match addr {
       (target, line, col) => Invocation(VAt(path_to_module(target), line, col)),
     },
-    None => // The verb ladder is ONE table projection now (verb_specs): normalize the
-    // help aliases to the canonical name, find the spec, run its builder. An
-    // unknown name is the honest ParseError — never a fabricated fallback.
+    None => // Then the ACTIONS — the edges the shell can draw. Normalize the help
+    // aliases to the canonical name, find the spec, run its builder.
     {
       let name = if mode == "-h" || mode == "--help" { "help" } else { mode }
       match find_verb(name, verb_specs()) {
         Some(VerbSpec(_, _, build, _)) => build(argv),
-        None => ParseError("unrecognized or under-specified command: " ++ mode),
+        None => // Not an action, so it is a READ, and the only question is whose
+        // address. A named projection standing alone asks about the project
+        // (`mentl verify`, `mentl check` — the address defaults exactly as
+        // ls defaults to here); anything else IS the address, and the words
+        // after it are the question. There is no unrecognized-command arm
+        // left to write: an address that resolves to nothing refuses by
+        // NAMING what it could not read, which teaches where a roster of
+        // twenty-four words could only list itself.
+        match find({ QuestionSpec(n, _, _) => n == mode }, question_specs()) {
+          Some(QuestionSpec(_, build, _)) => if len(argv) > 2 {
+            // The address comes FIRST, with no exception, because the
+            // alternative is two spellings of one read — and the one that
+            // keeps the address in front is the one a developer can live in:
+            // the address stays put while the question changes, so the loop is
+            // an edit of the last word rather than a retype of the middle.
+            // The retired spelling teaches through the general diagnostic
+            // exactly as the perform keyword, the handle keyword and the
+            // turbofish do (SYNTAX §«Invoking effect operations»): no bespoke
+            // recognizer that half-works, one refusal that says the form.
+            ParseError("the address comes first — try `mentl " ++ argv[2] ++ " " ++ mode ++ "`")
+          } else {
+            Invocation(build("main"))
+          },
+          None => ask_at(path_to_module(mode), drop(2, argv)),
+        },
       }
     },
   }
@@ -303,12 +324,14 @@ fn addr_int_loop(ref s, i, end, acc) with Memory + Alloc = if i >= end {
   if ch >= 48 && ch <= 57 { addr_int_loop(s, i + 1, end, acc * 10 + (ch - 48)) } else { None }
 }
 
-// optional_target — for verbs where target is optional (edit / doc
-// / teach / test). Returns Some(module-name) when present; None
-// otherwise. Strips src/ / lib/ prefixes + .mn suffix per
-// path_to_module.
-fn optional_target(argv, idx) with Memory + Alloc =
-  if len(argv) > idx { Some(path_to_module(argv[idx])) } else { None }
+// target_at — the address at `idx`, or the default when the invocation named
+// none. THE DEFAULT RESOLVES HERE, once: five runners each carried their own
+// `None => "main"` arm behind an `Option`, which is one fact with five homes
+// and a nullable target flowing through every one of them. The grammar is the
+// only boundary that sees the whole invocation, so it is the only place the
+// default belongs.
+fn target_at(argv, idx, fallback) with Memory + Alloc =
+  if len(argv) > idx { path_to_module(argv[idx]) } else { fallback }
 
 // path_to_module — accept either a module name ("main") or a file
 // path ("src/main.mn"). Strip "src/" or "lib/" prefix and ".mn"

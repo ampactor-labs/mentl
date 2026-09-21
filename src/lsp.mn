@@ -456,7 +456,7 @@ fn handle_did_open(params) = {
 // the file:// scheme (uri_to_path) and the .mn suffix; driver_module_path
 // re-adds .mn and resolves it (its DIRECT-read arm accepts an absolute or
 // relative path as itself), so an editor's file://<abs>/foo.mn reaches foo.mn
-// from any directory — the same resolver `mentl check <path>` rides.
+// from any directory — the same resolver `mentl <path> check` rides.
 fn uri_to_module(uri) with Memory + Alloc = match uri_to_path(uri) {
   Path(p) => if ends_with(p, ".mn") { str_slice(p, 0, byte_len(p) - 3) } else { p },
 }

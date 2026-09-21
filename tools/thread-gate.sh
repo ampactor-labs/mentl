@@ -140,8 +140,8 @@ with open(sys.argv[1], "w") as f:
     f.write("\n".join(f"fn f{i}(x) = x + {i}" for i in range(n)))
     f.write("\nfn main() = f0(1) + f%d(2)\n" % (n - 1))
 PY
-one_c=$(clones "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$T" --dir "$ROOT::/mentl-home" "$BOOT" check "$T/one.mn")
-many_c=$(clones "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$T" --dir "$ROOT::/mentl-home" "$BOOT" check "$T/many.mn")
+one_c=$(clones "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$T" --dir "$ROOT::/mentl-home" "$BOOT" "$T/one.mn" check)
+many_c=$(clones "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$T" --dir "$ROOT::/mentl-home" "$BOOT" "$T/many.mn" check)
 delta=$((many_c - one_c))
 BASELINE="$ROOT/tools/verify-baseline.txt"
 want=$(grep -E '^judge_spawn_delta_max:' "$BASELINE" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')

@@ -164,7 +164,7 @@ if C=$(wt_m2_ensure); then
   man_bad=0
   for sf in tests/syntax/*.mn; do
     [[ -e "$sf" ]] || continue
-    mout=$(wt_run --dir . "$C/m2.wasm" check "$sf" 2>&1 | grep -cE ' error: ' || true)
+    mout=$(wt_run --dir . "$C/m2.wasm" "$sf" check 2>&1 | grep -cE ' error: ' || true)
     if [[ "$mout" -gt 0 ]]; then
       say "✗ syntax(manifest) $(basename "$sf" .mn): $mout diagnostic(s) the blob link never sees"
       man_bad=$((man_bad+1))
@@ -247,7 +247,7 @@ if C=$(wt_m2_ensure); then
     fi
     rout=$(tools/run-micro.sh "$rf" "$rwant" "${RTLIBS[@]}" 2>/dev/null | grep -E '^(PASS|FAIL)' | tail -1)
     [[ "$rout" == PASS* ]] || { say "✗ row $r: ${rout:-no output}"; rm_bad=$((rm_bad+1)); continue; }
-    rproj=$(wt_run --dir . "$C/m2.wasm" query "$rf" "type pick" 2>/dev/null)
+    rproj=$(wt_run --dir . "$C/m2.wasm" "$rf" type pick 2>/dev/null)
     # Three states, not two. A remainder is PROVEN (rendered as its fields),
     # ASSUMED (rendered with the mark), or genuinely FREE — and the third was
     # invisible while absorb_into_residual stamped `[] assumed` onto cells that
@@ -264,7 +264,7 @@ if C=$(wt_m2_ensure); then
       free:*) say "✗ row $r: declares a free remainder, projection shows it resolved"; rm_bad=$((rm_bad+1)) ;;
     esac
   done
-  ctl=$(wt_run --dir . "$C/m2.wasm" query tests/micros/mn-findtag.mn "type pick" 2>/dev/null)
+  ctl=$(wt_run --dir . "$C/m2.wasm" tests/micros/mn-findtag.mn type pick 2>/dev/null)
   case "$ctl" in
     *assumed*) say "✗ row control: findtag's proven residual is marked assumed"; rm_bad=$((rm_bad+1)) ;;
     *region_id*) ;;
@@ -335,7 +335,7 @@ if C=$(wt_m2_ensure); then
   # `mentl verify` links through the real import DAG and runs ScopeAll, so the
   # medium's own board sees every module's prose — the reader the driver's
   # hardcoded narrowing had left with no way to ask.
-  crefs=$(wt_run --dir . "$C/m2.wasm" verify src/main.mn 2>&1 >/dev/null | grep -cE 'W_CommentRefUnresolved')
+  crefs=$(wt_run --dir . "$C/m2.wasm" src/main.mn verify 2>&1 >/dev/null | grep -cE 'W_CommentRefUnresolved')
   cmax=$(grep -E '^comment_refs_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
   say "· comment-refs: $crefs unresolved — the medium's verdict on its own prose"
   if [[ -n "$cmax" && "$crefs" -gt "$cmax" ]]; then
@@ -492,7 +492,7 @@ if C=$(wt_m2_ensure); then
   fsbp=0
   for impl in fs_exists_impl fs_read_file_impl fs_write_file_impl fs_mkdir_impl \
               fs_open_impl fs_create_impl fs_close_impl fs_unlink_impl fs_rename_impl; do
-    n=$(wt_run --dir . "$C/m2.wasm" query src/main.mn "refs of $impl" 2>/dev/null \
+    n=$(wt_run --dir . "$C/m2.wasm" src/main.mn refs of "$impl" 2>/dev/null \
         | grep -oE '^  at [a-z_/]+:' | grep -vcE '^  at (pipeline|io):' || true)
     fsbp=$((fsbp + n))
   done
@@ -552,7 +552,7 @@ if C=$(wt_m2_ensure); then
   # rather than reporting twelve confident zeros — the vacuity it was caught
   # committing on its first run, which is `Hβ.query.unreadable-source-refusal`
   # at a second surface.
-  bout=$(wt_run --dir . "$C/m2.wasm" verify src/main.mn 2>/dev/null)
+  bout=$(wt_run --dir . "$C/m2.wasm" src/main.mn verify 2>/dev/null)
   brc=$?
   printf '%s\n' "$bout" | sed -n 's/^  /· board /p'
   if [[ "$brc" -ne 0 ]]; then
@@ -573,11 +573,11 @@ if C=$(wt_m2_ensure); then
   # defined in a module M never imports but another module's closure
   # carries) needs env-entry module attribution — the named deeper
   # instrument.
-  mmiss=$(wt_run --dir . "$C/m2.wasm" check src/main.mn 2>&1 >/dev/null | grep -cE 'E_MissingVariable' || true)
+  mmiss=$(wt_run --dir . "$C/m2.wasm" src/main.mn check 2>&1 >/dev/null | grep -cE 'E_MissingVariable' || true)
   say "· manifest: $mmiss missing name(s) on the wheel's own DAG judgment"
   if [[ "$mmiss" -gt 0 ]]; then
     say "✗ MANIFEST: a name resolves in the blob but not the import DAG — a module"
-    say "  is missing an import edge (the canon.mn class). Probe: mentl check src/main.mn"
+    say "  is missing an import edge (the canon.mn class). Probe: mentl src/main.mn check"
     fail=1
   fi
 else

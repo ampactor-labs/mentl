@@ -875,7 +875,7 @@ check_and_execute() {
   local check_out="$dir/$label.check.out" check_err="$dir/$label.check.err"
   local normalized="$dir/$label.check.normalized" rc
 
-  wt_run --dir "$ROOT" "$compiler" check "$EDIT_TARGET" > "$check_out" 2> "$check_err"
+  wt_run --dir "$ROOT" "$compiler" "$EDIT_TARGET" check > "$check_out" 2> "$check_err"
   rc=$?
   normalize_errors "$check_err" > "$normalized"
   if [ "$patched" -eq 1 ] && [ "$rc" -eq 0 ] && [ ! -s "$normalized" ]; then
@@ -1023,7 +1023,7 @@ run_census() {
           # wheel-scale — was indistinguishable from a shape that is genuinely
           # missing, and the judge below then blamed the shape. A diagnostic
           # whose NAME can lie is the class this gate exists to catch.
-          wt_run --dir "$CENSUS_ROOT" "$CENSUS_ART" query "$DOC" "census $q" \
+          wt_run --dir "$CENSUS_ROOT" "$CENSUS_ART" "$DOC" census "$q" \
             > "$CENSUS_DIR/census-$ln-$$.out" 2> "$CENSUS_DIR/census-$ln-$$.err" \
             || printf "%s\n" "$?" > "$CENSUS_DIR/census-$ln-$$.rc"' census-child
   for spec in '|>:10' '<|:11' '><:12' '~>:13' 'anonymous:14' '<~:15' 'eta:24' 'effectful-lambda:25' 'iteration:26' 'wildcard-zero:27' 'failure-mask:28' 'print-in-report:31' 'wildcard-fabricates:32' 'underscore-retain:33' 'flag-as-int:34' 'parallel-arrays:35' 'parallel-arrays:37' 'vtable-record:36' 'env-frame:38' 'default-param:39' 'record-pattern:40' 'record-pattern-open:40' 'declared-row-hof:41'; do
@@ -1045,7 +1045,7 @@ run_census() {
   [ "$ok" = 1 ] && pass "structural census: all twenty-two shapes count their own site (|> <| >< ~> <~ anonymous eta effectful-lambda iteration wildcard-zero failure-mask print-in-report wildcard-fabricates underscore-retain flag-as-int parallel-arrays-both-faces vtable-record env-frame default-param record-pattern record-pattern-open declared-row-hof)"
   # The audit's drift tier (5.6's absorbed modes read per fn): the eight
   # specimen fns each carry their shape line. Born with the tier.
-  ad_n=$(wt_run --dir "$ROOT" "$compiler" audit "$doc" 2>/dev/null | grep -c "drift-shape:")
+  ad_n=$(wt_run --dir "$ROOT" "$compiler" "$doc" audit 2>/dev/null | grep -c "drift-shape:")
   if [ "$ad_n" = "10" ]; then
     pass "audit drift tier: the ten specimen fns each carry their shape line (env-frame joined)"
   else
@@ -1055,7 +1055,7 @@ run_census() {
   # entry that never joined the weave refuses the question — nonzero
   # exit, NO confident answer over the empty weave (the census printed
   # "0 sites" for an unmounted file until this leg's law landed).
-  wt_run --dir "$ROOT" "$compiler" query no-such-source-anywhere.mn "census anonymous" > "$dir/census-missing.out" 2>/dev/null
+  wt_run --dir "$ROOT" "$compiler" no-such-source-anywhere.mn census anonymous > "$dir/census-missing.out" 2>/dev/null
   mrc=$?
   if [ "$mrc" -ne 0 ] && ! grep -q "anonymous fn" "$dir/census-missing.out"; then
     pass "unreadable-entry refusal: the query refuses (exit=$mrc), no answer over the empty weave"
@@ -1072,7 +1072,7 @@ run_lsp_hover() {
   # (1) MECHANISM — run the frontend, read the live type. A driverless read would
   #     project nothing; a real function type here is the graph populated + read.
   local qout="$dir/lsp-query.out" qerr="$dir/lsp-query.err"
-  wt_run --dir "$ROOT" "$compiler" query "$doc" "type double" > "$qout" 2> "$qerr"
+  wt_run --dir "$ROOT" "$compiler" "$doc" type double > "$qout" 2> "$qerr"
   if grep -q '\->' "$qout"; then
     pass "$label lsp graph-population mechanism (query 'type double' -> a function type)"
   else
@@ -1526,10 +1526,10 @@ for i in "${!compilers[@]}"; do
   # use counts (the NStmt blanket blindness), and neither clean own-caller
   # is falsely convicted. Pre-fix: 2 false T_OwnUnconsumed and the three
   # badges inverted.
-  ug_chk=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-usage-grade.mn" 2>&1)
+  ug_chk=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-usage-grade.mn" check 2>&1)
   ug_false=$(printf '%s' "$ug_chk" | grep -c 'T_OwnUnconsumed')
-  ug_fin=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-usage-grade.mn" "type finish" 2>/dev/null)
-  ug_stmt=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-usage-grade.mn" "type stmt_use" 2>/dev/null)
+  ug_fin=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-usage-grade.mn" type finish 2>/dev/null)
+  ug_stmt=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-usage-grade.mn" type stmt_use 2>/dev/null)
   if [ "$ug_false" = "0" ] \
     && printf '%s' "$ug_fin" | grep -q 'xs: [^,]* own — inferred' \
     && printf '%s' "$ug_fin" | grep -q 'c: [^)]* ref — inferred' \
@@ -1620,7 +1620,7 @@ for i in "${!compilers[@]}"; do
   # bind always sticks. The fix returns row_subsumes(body_row, narrowing)
   # from the apply — the fn-finalize gate's own engine. The control leg
   # keeps the TRUE proposal alive.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-teach-alloc-honest.mn" | wt_run "$compiler" teach - > "$dir/teach-alloc.out" 2>/dev/null
+  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-teach-alloc-honest.mn" | wt_run "$compiler" - teach > "$dir/teach-alloc.out" 2>/dev/null
   # Judge main's OWN line: teach projects every fn in the linked blob, and
   # the runtime's non-allocating fns legitimately earn !Alloc lines.
   if grep '^main:' "$dir/teach-alloc.out" | grep -q '!Alloc'; then
@@ -1628,7 +1628,7 @@ for i in "${!compilers[@]}"; do
   else
     pass "teach-alloc-honest (no !Alloc proposal on an allocating body)"
   fi
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-teach-pure-control.mn" | wt_run "$compiler" teach - > "$dir/teach-pure.out" 2>/dev/null
+  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-teach-pure-control.mn" | wt_run "$compiler" - teach > "$dir/teach-pure.out" 2>/dev/null
   if grep '^main:' "$dir/teach-pure.out" | grep -q '!Alloc'; then
     pass "teach-pure-control (a non-allocating body still unlocks !Alloc)"
   else
@@ -1643,7 +1643,7 @@ for i in "${!compilers[@]}"; do
   # and the winner exposes the ranking. Bare link on purpose — the
   # prelude's Alloc prevalence would hand the rich-label ladder the win
   # before generics are consulted.
-  wt_run "$compiler" teach - < "$ROOT/tests/frontier/mn-teach-prevalence.mn" > "$dir/teach-prev.out" 2>/dev/null
+  wt_run "$compiler" - teach < "$ROOT/tests/frontier/mn-teach-prevalence.mn" > "$dir/teach-prev.out" 2>/dev/null
   if grep '^main:' "$dir/teach-prev.out" | grep -q '!Common'; then
     pass "teach tie-ranking: prevalence beats enumeration order (!Common over !Rare)"
   else
@@ -1704,7 +1704,7 @@ for i in "${!compilers[@]}"; do
   # MODULE now and a function's own line carries only its delta above it
   # (`severs beyond the module:`), so `severable:` no longer appears per fn.
   # The invariant is unchanged and is what this leg is for.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-audit-severance-honest.mn" | wt_run "$compiler" audit - > "$dir/audit-sev.out" 2>/dev/null
+  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-audit-severance-honest.mn" | wt_run "$compiler" - audit > "$dir/audit-sev.out" 2>/dev/null
   if grep -A1 '^allocates :' "$dir/audit-sev.out" | grep -q 'Alloc — unlocks Real-time safe'; then
     fail "audit-severance-honest (an allocating row was offered Alloc severance)"
   elif grep -A1 '^quiet :' "$dir/audit-sev.out" | grep -q 'Alloc — unlocks Real-time safe'; then
@@ -1716,7 +1716,7 @@ for i in "${!compilers[@]}"; do
   # The verb-shape tier (audit): a 2-step single-use let-chain invites the
   # |> pipe; a twice-used name (`<|` territory) and a one-step let (the
   # law's own exception) stay silent — both faces asserted.
-  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-audit-pipe-shape.mn" | wt_run "$compiler" audit - > "$dir/audit-pipe.out" 2>/dev/null
+  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-audit-pipe-shape.mn" | wt_run "$compiler" - audit > "$dir/audit-pipe.out" 2>/dev/null
   if grep -A4 '^chained :' "$dir/audit-pipe.out" | grep -q 'verb-shape: 2-step'; then
     if grep -A4 '^forked :' "$dir/audit-pipe.out" | grep -q 'verb-shape' \
        || grep -A4 '^single :' "$dir/audit-pipe.out" | grep -q 'verb-shape'; then
@@ -1746,7 +1746,7 @@ for i in "${!compilers[@]}"; do
   else
     fail "tighten authoring (exit=$trc; see $dir/tighten.out)"
   fi
-  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp "$compiler" check over.mn) >/dev/null 2>&1
+  (cd "$tdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$tdemo" --dir /tmp "$compiler" over.mn check) >/dev/null 2>&1
   if [ $? -eq 0 ]; then
     pass "tighten result checks clean (fresh process)"
   else
@@ -1905,7 +1905,7 @@ for i in "${!compilers[@]}"; do
   # E_MissingVariable noise from the prelude and rendered nothing of its
   # own (RED 2026-09-17). Contract: no diagnostics, each decl with its type,
   # the decl's prose as its lede.
-  dout=$(cd "$ldemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ldemo" --dir /tmp "$compiler" doc lede 2>"$dir/doc.err")
+  dout=$(cd "$ldemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ldemo" --dir /tmp "$compiler" lede doc 2>"$dir/doc.err")
   derr=$(grep -c ' error: ' "$dir/doc.err" || true)
   if [ "$derr" = 0 ] && printf '%s' "$dout" | grep -q '^compute : ' && printf '%s' "$dout" | grep -q 'The outer prose'; then
     pass "doc projection (decls with types and ledes, no diagnostics)"
@@ -2043,7 +2043,7 @@ for i in "${!compilers[@]}"; do
   fi
   # The register's other face: the user's OWN narration still renders,
   # exactly once, and never silently — scoping is a register, not a mute.
-  wout=$(cd "$fdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo" --dir /tmp "$compiler" check scope-own.mn 2>&1)
+  wout=$(cd "$fdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo" --dir /tmp "$compiler" scope-own.mn check 2>&1)
   wcount=$(printf '%s' "$wout" | grep -c 'E_RedundantBraces' || true)
   if [ "$wcount" -eq 1 ]; then
     pass "render register (the user's own warning survives, once)"
@@ -2058,7 +2058,7 @@ for i in "${!compilers[@]}"; do
   # audit_walk incident's minimal form — zero diagnostics, a runtime
   # flat_fill trap). Through the one judge the forward reference
   # resolves the callee's FINAL scheme and the check REFUSES.
-  fwd_out=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" check tests/frontier/mn-check-forward-order.mn 2>&1)
+  fwd_out=$(cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" tests/frontier/mn-check-forward-order.mn check 2>&1)
   fwd_rc=$?
   fwd_count=$(printf '%s' "$fwd_out" | grep -Fc 'E_TypeMismatch error: (Int, String) vs List(Byte)' || true)
   if [ "$fwd_rc" -ne 0 ] && [ "$fwd_count" -ge 1 ]; then
@@ -2091,11 +2091,11 @@ for i in "${!compilers[@]}"; do
   for _ in $(seq 1 60); do
     # Direct redirect, never command substitution — $(...) strips the
     # trailing newline and a one-byte "divergence" fails the byte oracle.
-    bash -c "exec 3<>/dev/tcp/127.0.0.1/${sess_port} 2>/dev/null && printf 'audit\tmain\t\n' >&3 && cat <&3" > "$dir/session-resident.txt" 2>/dev/null
+    bash -c "exec 3<>/dev/tcp/127.0.0.1/${sess_port} 2>/dev/null && printf 'main\taudit\t\n' >&3 && cat <&3" > "$dir/session-resident.txt" 2>/dev/null
     [ -s "$dir/session-resident.txt" ] && break
     sleep 1
   done
-  (cd "$sessdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" audit main 2>/dev/null) > "$dir/session-cold.txt"
+  (cd "$sessdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" main audit 2>/dev/null) > "$dir/session-cold.txt"
   if [ -s "$dir/session-resident.txt" ] && cmp -s "$dir/session-resident.txt" "$dir/session-cold.txt"; then
     pass "session resident audit (byte-equal to the cold verb)"
   else
@@ -2503,7 +2503,7 @@ for i in "${!compilers[@]}"; do
   qodir="$dir/qorder"
   mkdir -p "$qodir"
   printf 'fn pair(alpha: Int, beta: String) = alpha\n\nfn main() = pair(1, "x")\n' > "$qodir/main.mn"
-  qo_out=$(cd "$qodir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$qodir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query main.mn "type of pair" 2>/dev/null)
+  qo_out=$(cd "$qodir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$qodir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" main.mn type of pair 2>/dev/null)
   if printf '%s' "$qo_out" | grep -q 'alpha: Int.*beta: String'; then
     pass "query speaks declaration order (alpha before beta)"
   else
@@ -2552,7 +2552,7 @@ for i in "${!compilers[@]}"; do
   lcdir="$dir/local-span"
   mkdir -p "$lcdir"
   printf 'fn main() = {\n  let x: Int = "hi"\n  len(x)\n}\n' > "$lcdir/main.mn"
-  lc_out=$(cd "$lcdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$lcdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check main.mn 2>&1)
+  lc_out=$(cd "$lcdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$lcdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" main.mn check 2>&1)
   lc_n=$(printf '%s' "$lc_out" | grep -c 'E_TypeMismatch')
   # The assertion names the MODULE as well as the line (2026-09-15). It read
   # `at 2:` and broke the day the diagnostic render gained its module half —
@@ -2714,7 +2714,7 @@ for i in "${!compilers[@]}"; do
   # leg passes an absolute path, so the render carries one), so the
   # assertion names the BASENAME — the fixture's identity, invariant to
   # how the gate happens to address it.
-  ou_chk=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-own-unconsumed.mn" 2>&1)
+  ou_chk=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-own-unconsumed.mn" check 2>&1)
   ou_n=$(printf '%s' "$ou_chk" | grep -c 'T_OwnUnconsumed')
   if [ "$ou_n" = "1" ] && printf '%s' "$ou_chk" | grep -q "mn-own-unconsumed:10:1"; then
     pass "own-unconsumed: the dropped own narrates, the transferred own stays silent"
@@ -2726,7 +2726,7 @@ for i in "${!compilers[@]}"; do
   # The audit convicts a self-call threading an incremented index (the
   # loop in recursion's costume) and stays SILENT on the vocabulary form
   # — both faces asserted, plus the fixture still runs.
-  it_audit=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" audit "$ROOT/tests/frontier/mn-audit-iteration-shape.mn" 2>/dev/null)
+  it_audit=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-audit-iteration-shape.mn" audit 2>/dev/null)
   it_fire=$(printf '%s' "$it_audit" | sed -n '/^walk_costume/,/^stage_clean/p' | grep -c 'iteration-shape')
   it_quiet=$(printf '%s' "$it_audit" | sed -n '/^stage_clean/,/^main/p' | grep -c 'iteration-shape')
   if [ "$it_fire" = "1" ] && [ "$it_quiet" = "0" ]; then
@@ -2739,7 +2739,7 @@ for i in "${!compilers[@]}"; do
   # The audit convicts the eta-wrapper (the named fn already exists) and
   # the effectful lambda (the row deserves a decl home), and stays
   # SILENT on the pure-local vocabulary — all three faces asserted.
-  an_audit=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" audit "$ROOT/tests/frontier/mn-anonymity-tier.mn" 2>/dev/null)
+  an_audit=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-anonymity-tier.mn" audit 2>/dev/null)
   an_eta=$(printf '%s' "$an_audit" | sed -n '/^wraps/,/^ticks/p' | grep -c 'eta-wrapper')
   an_rowed=$(printf '%s' "$an_audit" | sed -n '/^ticks/,/^pure_vocab/p' | grep -c 'effectful lambda')
   an_quiet=$(printf '%s' "$an_audit" | sed -n '/^pure_vocab/,/^main/p' | grep -c 'anonymity:')
@@ -2755,18 +2755,18 @@ for i in "${!compilers[@]}"; do
   # the medium narrates from facts the graph already proves.
   wdoc="$ROOT/tests/frontier/mn-where-badges.mn"
   w_ok=1
-  w_repr=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" gain 2>/dev/null)
+  w_repr=$(wt_run --dir "$ROOT" "$compiler" "$wdoc" where gain 2>/dev/null)
   printf '%s' "$w_repr" | grep -q 'gain : Float @ f64 (inferred)' || { w_ok=0; fail "where repr badge (got: $w_repr)"; }
-  w_card=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" tick 2>/dev/null)
+  w_card=$(wt_run --dir "$ROOT" "$compiler" "$wdoc" where tick 2>/dev/null)
   printf '%s' "$w_card" | grep -q 'resume Int ->1 answer' || { w_ok=0; fail "where cardinality badge (got: $w_card)"; }
-  w_sched=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" fanned 2>/dev/null)
+  w_sched=$(wt_run --dir "$ROOT" "$compiler" "$wdoc" where fanned 2>/dev/null)
   printf '%s' "$w_sched" | grep -q '>< \[Thread\] at' || { w_ok=0; fail "where schedule badge (got: $w_sched)"; }
-  w_seq=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" bare 2>/dev/null)
+  w_seq=$(wt_run --dir "$ROOT" "$compiler" "$wdoc" where bare 2>/dev/null)
   printf '%s' "$w_seq" | grep -q '>< \[Seq\] at' || { w_ok=0; fail "where seq-default badge (got: $w_seq)"; }
   # The bare why verb (SYNTAX's lag list, first name retired): the
   # Reason-chain walk as its own verb. Born RED 2026-08-08 (the prior
   # boot answered unknown-verb).
-  wy_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" why "$wdoc" gain 2>/dev/null)
+  wy_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$wdoc" why gain 2>/dev/null)
   printf '%s' "$wy_out" | grep -q 'let gain' || { w_ok=0; fail "why verb (got: $wy_out)"; }
   # AT THE DEVELOPER'S COORDINATES. `gain` is line 8 of a 24-line fixture,
   # so a weave coordinate is unmistakable here — born RED 2026-09-06, when
@@ -2808,7 +2808,7 @@ for i in "${!compilers[@]}"; do
   # The capability-at-tee badge (§11 6.3's felt face): the install line
   # names the handler and the effect set its arms absorb, from the
   # graph's own facts. Born RED 2026-08-08 (the boot lacked the facet).
-  w_tee=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" handled 2>/dev/null)
+  w_tee=$(wt_run --dir "$ROOT" "$compiler" "$wdoc" where handled 2>/dev/null)
   printf '%s' "$w_tee" | grep -q '~> ticker absorbs Tick at' || { w_ok=0; fail "where tee badge (got: $w_tee)"; }
   [ "$w_ok" = 1 ] && pass "where: repr, cardinality, schedule, and tee badges narrate (output, never input)"
 
@@ -2817,7 +2817,7 @@ for i in "${!compilers[@]}"; do
   # closed the second-weaker-copy gap. The RUN half is the banked peer
   # Hβ.lower.list-rest-binding-runtime's gate (the fixture's own header
   # carries the expected value for that day).
-  lp_chk=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-lambda-list-param.mn" 2>&1)
+  lp_chk=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-lambda-list-param.mn" check 2>&1)
   lp_n=$(printf '%s' "$lp_chk" | grep -cE 'P_(Unexpected|Expected)Token|E_.* error')
   if [ "$lp_n" = "0" ]; then
     pass "lambda list-pattern param: ([h, ...t]) => parses and checks clean"
@@ -2888,7 +2888,7 @@ for i in "${!compilers[@]}"; do
   # refusal carries T_PolyRecursionSignature naming the fn. Born RED
   # 2026-08-07 (bare E_OccursCheck, no narration); retargeted to the
   # K-exhausted floor the day the fragment landed.
-  pt_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-poly-teach.mn" 2>&1)
+  pt_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-poly-teach.mn" check 2>&1)
   if printf '%s' "$pt_out" | grep -q "E_OccursCheck" && printf '%s' "$pt_out" | grep -q "T_PolyRecursionSignature.*'bad'"; then
     pass "poly teach: the K-exhausted refusal carries the signature narration naming bad"
   else
@@ -2939,7 +2939,7 @@ for i in "${!compilers[@]}"; do
   # answered "error: unknown query: decls". The fixture's three decls
   # (lines 7/9/11) must be listed located; the retired whole-handle
   # NBound walk seeded every fn-typed MENTION alongside its decl.
-  df_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-decls-facet.mn" "decls" 2>/dev/null)
+  df_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-decls-facet.mn" decls 2>/dev/null)
   if printf '%s' "$df_out" | grep -q "judged decl" && printf '%s' "$df_out" | grep -q "mn-decls-facet:7" && printf '%s' "$df_out" | grep -q "mn-decls-facet:9" && printf '%s' "$df_out" | grep -q "mn-decls-facet:11"; then
     pass "decls facet: the column lists the fixture's three decls (7/9/11)"
   else
@@ -2953,8 +2953,8 @@ for i in "${!compilers[@]}"; do
   # 2026-08-08: the boot's TFun arm read the row alone, so `flow getpw`
   # on a `-> Vault` source answered Public while `flow pw` answered
   # Secret; the return-label join closes it.
-  fl_val=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-flow-refined-source.mn" "flow pw" 2>/dev/null)
-  fl_fn=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-flow-refined-source.mn" "flow getpw" 2>/dev/null)
+  fl_val=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-flow-refined-source.mn" flow pw 2>/dev/null)
+  fl_fn=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-flow-refined-source.mn" flow getpw 2>/dev/null)
   if printf '%s' "$fl_val" | grep -q "Secret" && printf '%s' "$fl_fn" | grep -q "Secret"; then
     pass "flow facet: refined source labels Secret at value AND fn altitude"
   else
@@ -2969,8 +2969,8 @@ for i in "${!compilers[@]}"; do
   # splice fragment to String, so the label read classified Public and
   # the obligation silently discharged — the leak checked CLEAN on the
   # pre-fix pin; the fix reads through the wrapper to the inner node.
-  ifc_leak=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-splice-leak.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
-  ifc_sound=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-splice-sound.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
+  ifc_leak=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-ifc-splice-leak.mn" check 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
+  ifc_sound=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-ifc-splice-sound.mn" check 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
   if [ "$ifc_leak" -ge 1 ] && [ "$ifc_sound" -eq 0 ]; then
     pass "dcc gate: classified splice refuses ($ifc_leak), public splice accepts"
   else
@@ -2990,7 +2990,7 @@ for i in "${!compilers[@]}"; do
   # body — where the pre-diagnostic meet silently dropped the negation
   # and licensed the perform (born RED 2026-08-08: the performing body
   # checked CLEAN on the pre-fix pin).
-  rc_n=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-row-contradiction.mn" 2>&1 >/dev/null | grep -c "E_DeclaredRowContradiction" || true)
+  rc_n=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-row-contradiction.mn" check 2>&1 >/dev/null | grep -c "E_DeclaredRowContradiction" || true)
   if [ "$rc_n" -ge 2 ]; then
     pass "row contradiction: both decls refuse at the clause ($rc_n reports)"
   else
@@ -3003,7 +3003,7 @@ for i in "${!compilers[@]}"; do
   # value identity, so the absent survives as a REFINEMENT and only the
   # same-instance decl reports. Born RED against the boot (2 reports:
   # the refined clause falsely convicted beside the true contradiction).
-  ir_n=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-instance-refinement-clause.mn" 2>&1 >/dev/null | grep -c "E_DeclaredRowContradiction" || true)
+  ir_n=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-instance-refinement-clause.mn" check 2>&1 >/dev/null | grep -c "E_DeclaredRowContradiction" || true)
   if [ "$ir_n" -eq 1 ]; then
     pass "instance refinement clause: the distinct absent survives, the same-instance reports ($ir_n report)"
   else
@@ -3014,7 +3014,7 @@ for i in "${!compilers[@]}"; do
   # renders each pending obligation LOCATED with its predicate — a count
   # alone is not an instrument. Born with the facet 2026-08-08 (the
   # pre-facet render was the bare count line).
-  dbt=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-debt-facet.mn" "verification" 2>/dev/null)
+  dbt=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-debt-facet.mn" verification 2>/dev/null)
   if printf '%s' "$dbt" | grep -q "obligations pending" && printf '%s' "$dbt" | grep -q "mn-debt-facet:"; then
     pass "debt facet: pending obligations render located with their predicates"
   else
@@ -3028,7 +3028,7 @@ for i in "${!compilers[@]}"; do
   # cannot link lib, so the real-vocabulary crucible lives here; the
   # self-contained sounds live in tests/crown/). Probed 1 mismatch
   # against the boot before the leg was written.
-  tn_n=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-thread-negation.mn" 2>&1 | grep -cE 'E_EffectMismatch')
+  tn_n=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-thread-negation.mn" check 2>&1 | grep -cE 'E_EffectMismatch')
   if [ "$tn_n" -ge 1 ]; then
     pass "thread negation: !Thread refuses the transitive spawn on the real vocabulary"
   else
@@ -3039,7 +3039,7 @@ for i in "${!compilers[@]}"; do
   # projection, retired): the type's constructors with arities, read
   # from the env's ConstructorScheme registry. Born RED 2026-08-08
   # (the prior boot answered unknown-query).
-  vr_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-usage-grade.mn" "variants Option" 2>/dev/null)
+  vr_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-usage-grade.mn" variants Option 2>/dev/null)
   if printf '%s' "$vr_out" | grep -q "None/0" && printf '%s' "$vr_out" | grep -q "Some/1"; then
     pass "variants facet: the ADT roster projects (None/0, Some/1)"
   else
@@ -3054,7 +3054,7 @@ for i in "${!compilers[@]}"; do
   # (the prior boot answered unknown-query). The fixture imports nothing
   # of its own, so the answer is the prelude floor plus itself, and the
   # named members pin that it is the real set and not a bare number.
-  md_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-usage-grade.mn" "modules" 2>/dev/null)
+  md_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-usage-grade.mn" modules 2>/dev/null)
   if printf '%s' "$md_out" | grep -q "module(s) in the weave" \
      && printf '%s' "$md_out" | grep -q "prelude" \
      && printf '%s' "$md_out" | grep -q "threading"; then
@@ -3161,7 +3161,7 @@ for i in "${!compilers[@]}"; do
   # nothing, so it links the encoder for no reason at all — the same
   # sentence as the line above, and the same peer takes it back.
   cost_ceiling=2822
-  ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
+  ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-bare-floor.mn" cost 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then
     pass "cost facet + prelude floor: $ct_lines source line(s) within the $cost_ceiling ceiling (monotone DOWN)"
@@ -3206,7 +3206,7 @@ for i in "${!compilers[@]}"; do
   # checked CLEAN. Lives here rather than tests/crown/ because the crown's
   # stdin harness links no lib and FeedbackSpec's constructors are prelude
   # vocabulary — mn-thread-negation.mn's precedent.
-  fb_n=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-feedback-negation.mn" 2>&1 | grep -cE 'E_EffectMismatch')
+  fb_n=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-feedback-negation.mn" check 2>&1 | grep -cE 'E_EffectMismatch')
   if [ "$fb_n" -ge 1 ]; then
     pass "feedback negation: !E refuses the effect performed inside the recurrence"
   else
@@ -3256,7 +3256,7 @@ for i in "${!compilers[@]}"; do
   #
   # lib/** JOINED THE SWEEP 2026-08-16, and the extension is the reason it
   # had to: src/** was at the 0 ceiling and green while lib/** carried 20
-  # unresolved names — `mentl check lib/dsp/signal.mn` named four of them
+  # unresolved names — `mentl lib/dsp/signal.mn check` named four of them
   # on its first run. The wheel's own link resolves every name whether or
   # not the module declared the dep (concatenation hides it), and no
   # oracle judged a lib-rooted link at all, so the count was invisible to
@@ -3282,7 +3282,7 @@ for i in "${!compilers[@]}"; do
         SV_ROOT="$ROOT" xargs -0 -n 1 -P "${FRONTIER_POOL:-$(nproc)}" bash -c '
           source "$SV_ROOT/tools/wt-env.sh" >/dev/null 2>&1
           h=$(printf %s "$1" | cksum | cut -d" " -f1)
-          n=$(wt_run --dir "$SV_ROOT" --dir /tmp --dir "$SV_ROOT::/mentl-home" "$SEED_ART" check "$1" 2>&1 | grep -cE "E_MissingVariable")
+          n=$(wt_run --dir "$SV_ROOT" --dir /tmp --dir "$SV_ROOT::/mentl-home" "$SEED_ART" "$1" check 2>&1 | grep -cE "E_MissingVariable")
           printf "%s\n" "$n" > "$SV_POOL_DIR/$h"' sv-child
   sv_landed=$(find "$sv_pool_dir" -type f 2>/dev/null | wc -l)
   if [ "$sv_landed" != "${#sv_specs[@]}" ]; then

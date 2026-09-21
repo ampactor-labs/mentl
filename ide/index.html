@@ -566,7 +566,7 @@ function surfaceParse(src){
 
 /* ── the eight-aspect projection — honest per facet ─────────────────────
    REAL surface reads are shown plainly; facets that need the compiler's
-   inferred graph (mentl where / mentl why) are marked as named-future. */
+   inferred graph (the `where` and `why` questions at an address) are marked as named-future. */
 const VERB_SHAPE = {
   "|>": "sequential — A then B, each value used once",
   "<|": "divergent — one input fans to parallel branches (borrowed)",
@@ -593,7 +593,7 @@ function projectAspects(parse, off, diags){
   // 1 Graph
   F.push({k:"graph", label:"graph", door:false,
     v: t ? `<code>${esc(t.text)}</code> · ${t.kind}` : stub("—"),
-    future:true, futureNote:"the live node & handle — mentl where"});
+    future:true, futureNote:"the live node & handle — mentl FILE where NAME"});
   // 2 Handler / Propose — aspect 2's tentacle is Propose (propose_at is its cursor
   //   arm), so the ring labels it by that tentacle name.
   const hd = d && d.kind === "handler" ? d : null;
@@ -609,12 +609,12 @@ function projectAspects(parse, off, diags){
   F.push({k:"row", label:"row", door:true, doorTo:"pledger",
     v: d && d.row ? `<span style="color:var(--mag-b)">${esc(d.row)}</span> <span class="subtle">declared</span>` :
        (d ? stub("Pure (none declared)") : stub("—")),
-    future: !(d&&d.row), futureNote:"the inferred row from the body's op-sites — mentl where"});
+    future: !(d&&d.row), futureNote:"the inferred row from the body's op-sites — mentl FILE where NAME"});
   // 5 Ownership
   const ownTok = t && (t.kind==="disc" && (t.text==="own"||t.text==="ref"));
   F.push({k:"own", label:"own/ref",
     v: ownTok ? `<span style="color:var(--mag-b)">${esc(t.text)}</span> — ${t.text==="own"?"consumes (use-count 1)":"borrows (use-count 2+)"}` : stub("inferred from use-count"),
-    future:!ownTok, futureNote:"own/ref graded from use-count — mentl where"});
+    future:!ownTok, futureNote:"own/ref graded from use-count — mentl FILE where NAME"});
   // 6 Refinement
   F.push({k:"ref", label:"refine",
     v: d && d.refined ? `<span style="color:var(--verm-b)">${esc(d.refined)}</span>` :
@@ -629,7 +629,7 @@ function projectAspects(parse, off, diags){
   const dg = diags && diags.find(x => x.line === line && !FORMAT_LIFTABLE.has(x.code));
   F.push({k:"why", label:"why", door: !!dg, doorTo:"plens",
     v: dg ? `<span style="color:var(--sky-b)">${esc(dg.code)}</span> ${esc(dg.msg).slice(0,60)} <span class="subtle">(a diagnostic here)</span>` : stub("walk the Reason chain"),
-    future: !dg, futureNote:"the Reason edge back to the mint — mentl why"});
+    future: !dg, futureNote:"the Reason edge back to the mint — mentl FILE why NAME"});
   return { facets:F, token:t, line };
 }
 
@@ -1100,7 +1100,7 @@ function renderWavefront(){
   const holes = (PARSE?.holes||[]).length;
   wf.innerHTML =
     `<div class="wf-seg"><span class="lbl">why</span>
-       <span class="wf-gate">provenance ink — the Reason chain walks with <b>mentl why</b>; the thread surface is the named remainder</span></div>` +
+       <span class="wf-gate">provenance ink — the Reason chain walks with <b>mentl FILE why NAME</b>; the thread surface is the named remainder</span></div>` +
     `<div class="wf-seg"><span class="lbl">realities</span>
        <span class="wf-gate">${holes?`${holes} hole${holes>1?"s":""} — `:""}the ??-fan's proven survivors land here; the substrate is live, the scrub surface is the named remainder</span></div>` +
     `<div class="wf-seg"><span class="lbl">trail</span>

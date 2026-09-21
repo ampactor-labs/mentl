@@ -49,9 +49,9 @@ ck() { # name, actual, wanted
 
 cd "$T"
 # check's exit code IS the diagnostic ledger, read live.
-m check missing >/dev/null 2>&1; ck "check <missing module> refuses" "$?" "1"
-m check typeerr >/dev/null 2>&1; ck "check <type error> refuses"     "$?" "1"
-m check ok      >/dev/null 2>&1; ck "check <clean> accepts"          "$?" "0"
+m missing check >/dev/null 2>&1; ck "check <missing module> refuses" "$?" "1"
+m typeerr check >/dev/null 2>&1; ck "check <type error> refuses"     "$?" "1"
+m ok check      >/dev/null 2>&1; ck "check <clean> accepts"          "$?" "0"
 
 # The emit refuses on an ARMED class (diag_refuses; E_MissingModule armed
 # 2026-07-17 because its census on the wheel is 0).
@@ -65,8 +65,8 @@ m compile missing >/dev/null 2>&1;          ck "  and exits nonzero"            
 # one layer up — a board that measures nothing while still being reported — so
 # it is pinned here rather than remembered. A target that never joined the weave
 # REFUSES; the wheel itself still answers with real counts.
-m verify missing >/dev/null 2>&1; ck "verify <unread weave> refuses" "$?" "1"
-bl=$(cd "$ROOT" && m verify src/main.mn 2>/dev/null | grep -c 'within\|ROSE')
+m missing verify >/dev/null 2>&1; ck "verify <unread weave> refuses" "$?" "1"
+bl=$(cd "$ROOT" && m src/main.mn verify 2>/dev/null | grep -c 'within\|ROSE')
 if [ "$bl" -gt 0 ]; then echo "  ✓ verify still measures the wheel: $bl bound(s)"; else echo "  ✗ verify measured nothing on the wheel — the board is vacuous"; fail=1; fi
 
 # NEGATIVE CONTROL — the gate must not pass by refusing everything.

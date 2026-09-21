@@ -226,7 +226,7 @@ fn mcp_tools_result() = JObj([("tools", JArr([JObj([("name", JStr("propose")), (
   ("type", JStr("string")),
   // drift-audit: ignore — prose inside a JSON string literal (the audit's string-literal blindness)
   ("description", JStr("The question, e.g. 'type main' or 'why double'."))
-]))])), ("required", JArr([JStr("question")]))]))]), JObj([("name", JStr("at")), ("description", JStr("Project the eight aspects at an address in the resident project's entry file — the same read `mentl main.mn:L:C` serves: the node's type at the span, its effect row, ownership, pending obligations, the proposal fan at a ??, and the Why chain. line counts from 1; col defaults to 1.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([("line", JObj([("type", JStr("integer"))])), ("col", JObj([("type", JStr("integer"))]))])), ("required", JArr([JStr("line")]))]))]), JObj([("name", JStr("audit")), ("description", JStr("Project every entry-file function's effect-row truth from the resident graph — the row each body reaches, which effects are severable (!E provable — the named effect provably never performed), and the capabilities each severance unlocks. The same read `mentl audit main` serves, answered live from the session's one derivation. No arguments.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))]), JObj([("name", JStr("teach")), ("description", JStr("Project each entry-file function's next annotation from the gradient — the one input that would unlock capabilities (an effect severance, a refinement, a representation pin). The same read `mentl teach main` serves, answered live. No arguments.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))]), JObj([("name", JStr("frontier")), ("description", JStr("Project the entry file's whole ranked absence field from the resident graph — the oracle's frontier, the gradient's argmax uncollapsed. Every authored ?? hole first, each carrying its proven-survivor fan and tie-teaching; then the annotation-gradient positions. The same read `mentl main.mn:0` serves. Answer it, act on the head position, and ask again — the session re-derives as the tree moves. No arguments.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))])]))])
+]))])), ("required", JArr([JStr("question")]))]))]), JObj([("name", JStr("at")), ("description", JStr("Project the eight aspects at an address in the resident project's entry file — the same read `mentl main.mn:L:C` serves: the node's type at the span, its effect row, ownership, pending obligations, the proposal fan at a ??, and the Why chain. line counts from 1; col defaults to 1.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([("line", JObj([("type", JStr("integer"))])), ("col", JObj([("type", JStr("integer"))]))])), ("required", JArr([JStr("line")]))]))]), JObj([("name", JStr("audit")), ("description", JStr("Project every entry-file function's effect-row truth from the resident graph — the row each body reaches, which effects are severable (!E provable — the named effect provably never performed), and the capabilities each severance unlocks. The same read `mentl main audit` serves, answered live from the session's one derivation. No arguments.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))]), JObj([("name", JStr("teach")), ("description", JStr("Project each entry-file function's next annotation from the gradient — the one input that would unlock capabilities (an effect severance, a refinement, a representation pin). The same read `mentl main teach` serves, answered live. No arguments.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))]), JObj([("name", JStr("frontier")), ("description", JStr("Project the entry file's whole ranked absence field from the resident graph — the oracle's frontier, the gradient's argmax uncollapsed. Every authored ?? hole first, each carrying its proven-survivor fan and tie-teaching; then the annotation-gradient positions. The same read `mentl main.mn:0` serves. Answer it, act on the head position, and ask again — the session re-derives as the tree moves. No arguments.")), ("inputSchema", JObj([("type", JStr("object")), ("properties", JObj([]))]))])]))])
 
 // tools/call — the gate's propose plus the resident session's reads. A
 // verdict is a SUCCESSFUL tool result whether the gate proved or refused
@@ -604,9 +604,14 @@ fn session_argv(line) = {
   ["mentl"] ++ trimmed
 }
 
-// The session serves the READS over the resident entry — at (the
-// eight-aspect address and the line-0 field), query, audit, teach —
-// through the SAME projections the cold verbs run. Everything else is
+// The session serves the READS over the resident entry — the address
+// (the eight-aspect projection and the line-0 field), the question, audit
+// and teach — through the SAME projections the cold reads run. The wire
+// is tab-separated and carries the SAME grammar the terminal parses, so
+// it takes the SAME order: the address first, then the question
+// (`main<TAB>audit<TAB>`). One grammar, two transports, one word order —
+// a wire that took its own order would be the second home this whole
+// surface was collapsed to delete. Everything else is
 // the MISS sentinel: writers and process-level verbs are cold by
 // design, and a target other than the resident entry re-derives cold
 // rather than answering about the wrong graph.
@@ -614,17 +619,16 @@ fn session_answer(line, ast, ranges, at_read) = match parse_cli_args(session_arg
   ParseError(msg) => "session: {msg}\n",
   Invocation(verb) => match verb {
     VAt(target, l, c) => if target == "main" { str_concat_all(at_read(ranges, l, c)) } else { "MENTL-SESSION-MISS\n" },
-    VQuery(target, q) => if target == "main" {
-      "{render_query_result(ask(parse_query_string(q)))}\n"
+    VQuery(target, words) => if target == "main" {
+      "{render_query_result(ask(parse_query_words(words)))}\n"
     } else {
       "MENTL-SESSION-MISS\n"
     },
     VAudit(target) => if target == "main" { audit_project(ast) } else { "MENTL-SESSION-MISS\n" },
-    VTeach(target) => // A bare `teach` means "teach HERE" — the resident entry is here.
-    match target {
-      Some(m) => if m == "main" { teach_project(ast) } else { "MENTL-SESSION-MISS\n" },
-      None => teach_project(ast),
-    },
+    VTeach(target) => // A bare `teach` means "teach HERE", and the grammar already resolved
+    // that: an absent address defaults to the project, so the resident entry
+    // IS "main" and the Option this arm used to unwrap has no second case.
+    if target == "main" { teach_project(ast) } else { "MENTL-SESSION-MISS\n" },
     _ => // drift-audit: ignore — the wildcard IS the policy (cold-only verbs answer MISS by design; a new verb defaults to the cold path, never to a wrong resident answer)
     "MENTL-SESSION-MISS\n",
   },

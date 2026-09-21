@@ -4,7 +4,7 @@
 // verify_ledger is the substrate-level Verify handler. It accumulates
 // every obligation (span, predicate, reason) without solving — code
 // compiles; obligations are visible, countable, queryable via
-// `mentl query verification`. Real solving is a sibling handler
+// `mentl <file> verification`. Real solving is a sibling handler
 // (verify_smt, dispatching to Z3 / cvc5 / Bitwuzla) installed by
 // post-cascade Arc F.1; the swap surface IS the thesis. Source
 // unchanged across the swap; the ~> chain names which handler
@@ -904,7 +904,7 @@ fn smt_logop(ref op, ref a, ref b) with GraphRead + Memory + Alloc + Diagnostic 
 // live node — the AST-in-graph fabric makes every sub-node a resolvable handle.
 // THE `body_to_smt(graph_node_body(h))` SPLIT WAS THE DEFECT, and the probe
 // that found it is worth more than the fix. Wiring this serializer to a
-// projection (`mentl query <f> "smt"`) ran it for the first time, and on the
+// projection (`mentl <f> smt`) ran it for the first time, and on the
 // wheel's own `type Sample = Float where 0.0 - 1.0 <= self && …` it rendered
 // `(- 66664 686237016)` where `show_predicate` — reading THE SAME predicate
 // handles — rendered `0.0 - 1.0`. So the graph was sound and the serializer

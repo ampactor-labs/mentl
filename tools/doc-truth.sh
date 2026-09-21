@@ -109,7 +109,13 @@ done
 # `mentl verify` likewise. The verb list is READ FROM THE MEDIUM — `mentl
 # help` is the one home, so no second list can drift from it (a hand-kept
 # roster here would be the very disease this check exists to catch).
-verbs=$(mentl help 2>/dev/null | grep -oE '^  mentl [a-z]+' | awk '{print $2}' | sort -u)
+# TWO tables since 2026-09-21, because the kernel has two operations: the
+# ACTION rows read `  mentl <name>` and the QUESTION rows read `  mentl <file>
+# <name>`. Both are served words, so both are read here — a check that saw
+# only the action column would fail every doc naming `check` or `verify` the
+# moment those moved behind the address.
+verbs=$( { mentl help 2>/dev/null | grep -oE '^  mentl [a-z]+' | awk '{print $2}'
+           mentl help 2>/dev/null | grep -oE '^  mentl <file> [a-z]+' | awk '{print $3}'; } | sort -u)
 if [ -z "$verbs" ]; then
   echo "doc-truth: could not read the verb table from 'mentl help' — the check cannot fail, so it fails"
   fail=1
@@ -125,7 +131,9 @@ else
   # (SYNTAX §"Verbs this document declares that the CLI has not yet grown"),
   # never an invisible promise. Any verb outside both the served set and that
   # list fails. The list shrinks as verbs land.
-  declared=$(awk '/^## Verbs this document declares/{f=1;next} f&&/^## /{exit} f' docs/SYNTAX.md | grep -oP '^- \*\*`mentl \K[a-z]+')
+  # The lag list names QUESTIONS and ACTIONS, not verbs, so the bullet reads
+  # `- **\`name\`**` — the same shape the surface itself took.
+  declared=$(awk '/^## Verbs this document declares/{f=1;next} f&&/^## /{exit} f' docs/SYNTAX.md | grep -oP '^- \*\*`(mentl )?\K[a-z]+')
   for v in $( { printf '%s' "$plan_present"; cat README.md CLAUDE.md docs/SYNTAX.md 2>/dev/null; } | grep -hoP '`mentl \K[a-z]+(?![a-z./:_-])' | sort -u); do
     printf '%s\n' "$verbs" | grep -qx "$v" && continue
     printf '%s\n' "$declared" | grep -qx "$v" && continue
@@ -171,7 +179,7 @@ done
 # the graph held 63, and src/lexer.mn carried a THIRD copy saying 64. The
 # third copy is deleted; a count has one home and this check keeps it honest.
 declared_tokens=$(grep -oE 'Checksum: [0-9]+ variants' docs/SYNTAX.md | grep -oE '[0-9]+' | head -1)
-graph_tokens=$(mentl query src/types.mn "variants of TokenKind" 2>/dev/null | grep -cE '^(→|[[:space:]])[[:space:]]*T[A-Za-z]+/[0-9]+$')
+graph_tokens=$(mentl src/types.mn variants of TokenKind 2>/dev/null | grep -cE '^(→|[[:space:]])[[:space:]]*T[A-Za-z]+/[0-9]+$')
 if [ -z "$declared_tokens" ] || [ "$graph_tokens" -eq 0 ]; then
   echo "doc-truth: the TokenKind checksum could not be read from both homes — the check cannot fail, so it fails"
   fail=1

@@ -701,7 +701,7 @@ fn render_for_tentacle(situation) with Alloc + Memory = match situation {
 // was right and the object it named was never there: the queue's handler
 // (project_queue_merger, in the now-deleted src/oracle.mn) was installed only
 // by a function with zero callers, so nothing here ever ran, and
-// `mentl query src/main.mn unreachable` named the whole family in one read.
+// `mentl src/main.mn unreachable` named the whole family in one read.
 //
 // The ranked queue is ALSO the superseded design — PLAN §11.1 re-founded the
 // oracle as inference with a term-sorted unknown, and the live ranked absence
@@ -950,7 +950,7 @@ fn emitted_artifact_path(fh) with Memory + Alloc = match fh {
 // not fill space).
 //
 // THAT IS WHAT IT IS FOR, AND NOBODY CALLS IT — measured 2026-09-21 by
-// `mentl query src/main.mn unreachable`. The sentence that stood here said
+// `mentl src/main.mn unreachable`. The sentence that stood here said
 // "the slots a hover should show are NO LONGER computed then discarded —
 // this fn is the terminal read every voice surface shares", and the graph
 // refutes the second half: zero references. The `propose` arm below builds a

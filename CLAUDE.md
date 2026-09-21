@@ -479,12 +479,17 @@
 > is the developer's own intent-prose alone (SYNTAX §«What a comment TRENDS
 > TO» carries the surface law; the deletion test names the missing verb).
 >
-> **THE VERB MAP — the grep's Mentl-native twin, so the confession is never
+> **THE ADDRESS MAP — the grep's Mentl-native twin, so the confession is never
 > re-paid** (2026-09-17: a dead-fn census was grepped out of m3.wat while
-> `mentl query src/main.mn unreferenced` had named the same fns since
+> `mentl src/main.mn unreferenced` had named the same fns since
 > 2026-09-04; the transitive facet it lacked, `unreachable`, was built the
-> same day instead of grepping again). Before any grep/awk over source:
-> `mentl query <entry> unreferenced` (one hop) · `unreachable` (transitive
+> same day instead of grepping again). **There is no read VERB to remember —
+> the shell surface is `mentl <address> [question]`, the address first,
+> because the kernel has two operations and reading is one of them**
+> (2026-09-21: `why`, `where` and `query` were three names for one read and
+> are deleted; a read verb standing before its address is drift 38). Before
+> any grep/awk over source:
+> `mentl <entry> unreferenced` (one hop) · `unreachable` (transitive
 > from main, fn decls — partitioned into modules CARRYING dead weight, with
 > their reached/unreached ratio, and modules the entry links WHOLE and never
 > calls into) · `refs of NAME` · `census <shape>` · `decls` ·
@@ -495,7 +500,7 @@
 > graph — a breach refuses); `mentl
 > <file:line>` (the line's ROOT — widest node) and `<file:line:col>` (the
 > TIGHTEST node — a `??`, a lambda's param) for the eight-aspect read with
-> the Lede; `mentl why/where <file> <name>`; `mentl doc <module>` for the
+> the Lede; `mentl <file> why NAME` / `mentl <file> where NAME`; `mentl <module> doc` for the
 > decl roster with types and ledes. A question none of these answers is
 > the facet to grow — in the same landing, never a grep absorbed into habit.
 >
@@ -520,7 +525,7 @@
 > Arc E's own terminal bar — invoked by NOTHING while §11.2 called it green.
 >
 > **THE FIRST MOVE OF AN AUDIT IS A VERB, and the 2026-09-21 session is the
-> measurement.** `mentl audit`, `mentl query <entry> unreachable`, and
+> measurement.** `mentl audit`, `mentl <entry> unreachable`, and
 > `mentl check` on the wheel's own source found, in minutes, six things no
 > amount of hand-reading had asked about in weeks: a projection restating one
 > module-level fact 122 times, 74 dead compiler decls inside a 276-row answer
@@ -592,7 +597,7 @@
 > satisfy the check whose whole purpose is keeping references real. Point it at
 > something that resolves, or say it without posing as a reference. The
 > verification is the same as everywhere else here: ask the medium
-> (`mentl <file:line>`, `mentl doc <module>`) what the prose says, because the
+> (`mentl <file:line>`, `mentl <module> doc`) what the prose says, because the
 > author is the last one who can see it.
 >
 > **Medium-authored change is the PREFERRED form wherever a verb exists** —

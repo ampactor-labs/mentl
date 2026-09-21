@@ -278,11 +278,11 @@ at the keyboard, and the developer they become.
 
 ```
 mentl run <path>        compile, prove, execute (a hole or refuted claim REFUSES)
-mentl check <path>      diagnostics only, no emit
+mentl <path> check      diagnostics only, no emit
 mentl compile <path>    emit WAT to stdout
 mentl edit [path]       the cursor session — eight aspects + proven proposals
 mentl <file>:<line>     project a position: type, effects, ownership, why
-mentl audit <path>      the capability set + severance unlocks
+mentl <path> audit      the capability set + severance unlocks
 mentl fmt <path>        canonical layout (the shape on the page is the graph)
 mentl mcp               the gate on MCP stdio — agents propose, nothing executes unproven
 mentl new <name>        write <name>.mn here

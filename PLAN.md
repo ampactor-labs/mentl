@@ -902,7 +902,7 @@ and this is the STATE.
   2026-09-21 and open. `silence_predicate` (src/voice.mn) is reachable, is
   called from a handler arm at voice:1177, and performs `query_project_queue`;
   the only handler that ever absorbed it was installed by a function with zero
-  callers, now deleted. `mentl check src/main.mn` passes with zero diagnostics.
+  callers, now deleted. `mentl src/main.mn check` passes with zero diagnostics.
   This is strictly worse than
   `Hβ.effects.root-gate-credits-an-install-that-had-not-opened` (6.3), which
   credited an install whose extent had not opened — here the install does not
@@ -913,15 +913,15 @@ and this is the STATE.
 - **THE MEDIUM'S OWN PROJECTIONS WENT UNASKED, and asking them was the whole
   audit of 2026-09-21.** Six findings, one law — *a fact with two homes, or a
   fact restated where an edge already carried it* — and every one was found by
-  a verb, not a grep. `mentl audit src/main.mn` (never run before): 303 lines,
+  a verb, not a grep. `mentl src/main.mn audit` (never run before): 303 lines,
   of which 122 were `severable:` lines carrying TWO distinct facts, because a
   module-level truth was re-derived per function; severance reads at the module
   now and a function's line carries only its delta (303 → 210, the 56 real
-  findings no longer buried). `mentl query <entry> unreachable`: 276 decls in
+  findings no longer buried). `mentl <entry> unreachable`: 276 decls in
   one flat list, of which 202 sat in modules where NOTHING is reached — library
   surface a program links, not dead code — and 74 sat inside modules the entry
   runs through; the facet partitions on that ratio now, which is how the dead
-  ranked-queue oracle became legible in one read. `mentl check src/main.mn`
+  ranked-queue oracle became legible in one read. `mentl src/main.mn check`
   answered ONE diagnostic on 3,056 decls — `E_RedundantBraces` in the wheel's
   own `dispatch_invocation` — so the wheel was not at its own formatter's
   fixpoint; it is now, and the wheel's source carries zero diagnostics.
@@ -985,7 +985,8 @@ in `RESIDUE.md` does not exist. §11 names the peers each phase touches.
 ```
 # ── the BOOT ERA (post-first-light, 2026-07-10): boot/mentl.wasm IS the compiler ──
 bash tools/state.sh            # THE BOARD, ground FIRST: git → verify → march → frontier → proof-exactness → crown → effect-identity → instrument → threads → ide, one scoreboard; --quick = verify only
-mentl verify [path]            # THE BOARD, in the medium: the standing bounds on its own source, read off ONE judged graph (src/board.mn carries each bound WITH its justification); a breach REFUSES, an unread or unclean weave refuses rather than measuring less
+mentl [path] verify            # THE BOARD, in the medium: the standing bounds on its own source, read off ONE judged graph (src/board.mn carries each bound WITH its justification); a breach REFUSES, an unread or unclean weave refuses rather than measuring less
+mentl <address> [question]     # THE READ, and there is no verb for it: `mentl <file>` projects the module, `mentl <file>:41:9` the node, `mentl <file> check` / `audit` / `doc` / `teach` / `verify` the named projections, and `mentl <file> why NAME` / `type NAME` / `census <shape>` / `decls` / `unreachable` the facets. An address with no question projects itself; a question with no address asks about the project
 bash tools/verify.sh           # the floor the verb has not absorbed: micros through the exec seam, the sha chain, the world outside the graph — STAMPED green (unchanged tree answers in ms; FORCE_VERIFY=1 re-runs)
 bash tools/march-gate.sh --micros   # rungs + battery through boot's wheel-emitted m2 (reads the shared .build/m2cache)
 bash tools/march.sh            # THE RATCHET: boot→m2→m3, ASSERTS m2 == m3; on m2 ≠ m3 runs m4 ITSELF and rules TRANSITION (re-pin from m3) vs BROKEN
@@ -1518,7 +1519,7 @@ form the whole time. The arcs, in order:
   against the two-pass wheel's 15.0s / 2,334MB, WAT 409,812 → 402,974
   lines, and the trial/final vocabulary, the movers instrument, the planned
   sweep, the block fan and the fingerprint render are deleted (the medium's
-  own `mentl query src/main.mn unreachable` names dead fns now — the facet
+  own `mentl src/main.mn unreachable` names dead fns now — the facet
   was built because the census that found them was a grep). The refused
   cut's exact question — *how does a declared-row gate on a row-polymorphic
   HOF discharge in one pass?* — resolved without loosening: a gate defers
@@ -1642,7 +1643,7 @@ form the whole time. The arcs, in order:
   the MINIMAL SUFFICIENT capability set with the cut line where the `~>`
   install goes. It reads what this landing already sharpened — severance at
   the module node with per-function deltas (`module_severance`,
-  src/pipeline.mn) — plus the handler install chain and `mentl query <f>
+  src/pipeline.mn) — plus the handler install chain and `mentl <f>
   performs`. No new substrate; it is a projection of something already proven,
   which is `!Outside` stated as a product decision.
   **WHY THIS ONE, argued from a survey of the field rather than from taste**
@@ -1729,7 +1730,7 @@ opens by naming the priority served.
 
 All four oracles landed: **0.1** board_verdicts() at pin time (`NOT RUN` visible,
 red refuses). **0.2** doc-truth checks verb namespace against `mentl help`.
-**0.3** structural census (`mentl query <file> "census <shape>"` — anonymous +
+**0.3** structural census (`mentl <file> census <shape>` — anonymous +
 verb glyphs + declared-surface shapes; roster at seventeen shapes). **0.4** the
 SYNTAX conformance battery (`tests/syntax/`, run by the medium's `test` verb
 through verify). Full mechanics: `LEDGER.md`.
@@ -2213,7 +2214,7 @@ The spine root finishes. Order inside the phase is the dependency order.
 ### Phase 7 · `!Flow` — the crown applied to data flow
 
 *(The phase's felt walk ran 2026-08-08 through the shim + fresh m2. The
-projection layer is real end-to-end — `mentl query <f> "flow NAME"` →
+projection layer is real end-to-end — `mentl <f> flow NAME` →
 QFlowOf → query_flow_label → predicate_flow_label — and the walk's one
 find landed: the TFun arm read the ROW alone, so a `-> Vault` source
 (`Vault = String where classified(self)`) answered Public while the
@@ -2355,7 +2356,7 @@ first-class — DONE statement (2) whole.
   `why`/`diagnostics`/`verify`/`at` here), the shim dissolves into real
   `mentl run`/`asm`, wt-env.sh dies with it. `LEDGER.md` and `RESIDUE.md`
   begin dissolving into projections (`Hβ.query.generation-operand` —
-  `mentl why --at <sha>`; the frontier ranking IS the residue index).
+  `mentl <file> why NAME --at <sha>`; the frontier ranking IS the residue index).
   Terminal gate: DONE statement (7) — every lever inside, and the two
   named residual Outsides (external SMT if it persists; the intent space,
   permanently) stated as exactly what they are.

@@ -10,23 +10,21 @@
 // module skip is the §4④ image-persist peer
 // (Hβ.persist.module-image-cache), never a side-file serializer.
 //
-// CLI canonical vocabulary (per the CLI vocabulary walkthrough):
+// THE SURFACE IS THE KERNEL'S TWO OPERATIONS — the grammar and its reasons
+// live in `cli.mn`; the catalog the developer reads projects the same two
+// tables, so this list is the shape, never a third copy of the roster:
 //
-//   mentl                       → bare: the directory PROJECTION on a tty;
-//                                 a pipe/file on fd 0 compiles stdin
-//   mentl edit [path] [--port=N] → canonical Web IDE (browser-WASM holographic)
-//   mentl doc [path]             → documentation projection (F.1 substrate)
-//   mentl serve                  → LSP transport on stdio
-//   mentl compile <path>         → emit WAT to stdout
-//   mentl run <path>             → compile; the shim executes (WASI has no exec)
-//   mentl check <path>           → diagnostics; no emit
-//   mentl test [path]            → test handler chain
-//   mentl audit <path>           → capability set + severance suggestions
-//   mentl query <path> <q>       → structured ad-hoc query
-//   mentl teach [path]           → terminal voice surface; gradient narration
-//   mentl repl                   → line REPL over current env
-//   mentl new <name>             → write <name>.mn here (one file; imports are the manifest)
-//   mentl --with <handler>       → universal escape hatch; resolves by env_lookup
+//   mentl                        → bare: the directory PROJECTION on a tty;
+//                                  a pipe/file on fd 0 compiles stdin
+//   mentl <file>[:line[:col]] [q] → PROJECT — the address, and what you ask
+//                                  of it: check · audit · doc · teach ·
+//                                  verify · why NAME · type NAME · census …
+//   mentl <action> [args…]       → DRAW AN EDGE — run · compile · fmt ·
+//                                  tighten · new · resume · test · march,
+//                                  plus the transports (edit · space ·
+//                                  session · serve · repl · mcp) and
+//                                  `--with <handler>`, the escape hatch that
+//                                  resolves by env_lookup
 //
 // Drift 38 (mascot-as-tentacle-prefix per CLAUDE.md red-flag table):
 // project-action verbs are canonical (the binary IS named Mentl;
@@ -193,12 +191,7 @@ fn dispatch_invocation(verb) = match verb {
 //
 // Browser-WASM transport (per IE §0): same kernel, different transport
 // adapter. Named follow-up: Hμ.cursor.transport.browser-wasm.
-fn edit_run(target_opt) = {
-  let entry_module = match target_opt {
-    Some(t) => t,
-    None => // default project entry
-    "main",
-  }
+fn edit_run(entry_module) = {
   // The session's final TransportState is a record pointer, not an exit
   // code (main's result IS the process exit); the chain is a statement —
   // its value drops — and a completed session exits 0.
@@ -646,31 +639,25 @@ fn count_comment_tokens(ref tokens, i, acc) with Memory = if i >= len(tokens) {
 // analysis layer's own machinery, installable by the CLI chains here
 // AND the resident session's bracket in mcp.mn; imports flow
 // main → mcp → pipeline, so pipeline is the one visible home.)
-fn tighten_run(target_opt) = {
-  let entry_module = match target_opt {
-    Some(t) => t,
-    None => "main",
-  }
-  infer_context(() => match driver_entry_with_ranges(entry_module) {
-    (_ast, ranges) => {
-      let cands = tightenables()
-      let authorable = filter({ (_, used, _, _, _) => row_is_authorable(used) }, cands)
-      if len(authorable) == 0 {
-        print_string("mentl tighten: nothing to tighten ({int_to_str(len(cands))} over-declared, none authorable)\n")
-        0
-      } else {
-        // Batch-apply: every proposal was computed against the CURRENT
-        // (wider) declarations, so a batch member's row is never too
-        // narrow — at worst it leaves slack a tightened callee exposes,
-        // which the NEXT run's re-judgment catches (the ratchet
-        // converges). Per file, patch bottom-up so line offsets hold.
-        let n = apply_tightenings(authorable)
-        print_string("tighten: {int_to_str(n)} of {int_to_str(len(authorable))} authorable applied — the medium authored these; verify with a fresh check + the gates\n")
-        if n > 0 { 0 } else { 1 }
-      }
-    },
-  } ~> tighten_collector ~> wasi_filesystem ~> mentl_default)
-}
+fn tighten_run(entry_module) = infer_context(() => match driver_entry_with_ranges(entry_module) {
+  (_ast, ranges) => {
+    let cands = tightenables()
+    let authorable = filter({ (_, used, _, _, _) => row_is_authorable(used) }, cands)
+    if len(authorable) == 0 {
+      print_string("mentl tighten: nothing to tighten ({int_to_str(len(cands))} over-declared, none authorable)\n")
+      0
+    } else {
+      // Batch-apply: every proposal was computed against the CURRENT
+      // (wider) declarations, so a batch member's row is never too
+      // narrow — at worst it leaves slack a tightened callee exposes,
+      // which the NEXT run's re-judgment catches (the ratchet
+      // converges). Per file, patch bottom-up so line offsets hold.
+      let n = apply_tightenings(authorable)
+      print_string("tighten: {int_to_str(n)} of {int_to_str(len(authorable))} authorable applied — the medium authored these; verify with a fresh check + the gates\n")
+      if n > 0 { 0 } else { 1 }
+    }
+  },
+} ~> tighten_collector ~> wasi_filesystem ~> mentl_default)
 
 // Authorable = the proven row RENDERS AS SOURCE THE PARSER READS BACK. A
 // self-authoring verb has exactly one soundness property, and this is it:
@@ -900,11 +887,7 @@ fn mentl_lsp_session() = lsp_session()
 // per F.1 §13 file-creation order). Today this routes through
 // mentl_default + diagnostics for the projection-only mode; the
 // dedicated doc_handler is gated.
-fn doc_run(target_opt) = {
-  let entry_module = match target_opt {
-    Some(t) => t,
-    None => "main",
-  }
+fn doc_run(entry_module) = {
   // The same one-namespace weave check reads (driver_entry_with_ranges):
   // this verb ran driver_check's per-module walk until 2026-09-17, so the
   // prelude's own body missed the vocabulary its layer supplies and every
@@ -1544,7 +1527,7 @@ fn render_at(view, h, pspan, target: String) = match view {
     }
     match teach {
       None => (),
-      Some(_) => print("Teach: an annotation here would unlock a capability — `mentl teach` names it\n"),
+      Some(_) => print("Teach: an annotation here would unlock a capability — `mentl {target} teach` names it\n"),
     }
     print("Why: ")
     render_why_hops(why_expand(why, 0), target, 0)
@@ -1770,34 +1753,26 @@ fn addr_newline_at(ref s, i, n) with Memory =
 // handler (timing). Execution of the test fns reaches the process boundary
 // (Hβ.cli.process-exec-wire, shared with run); the check + reporter chain
 // is the structural form, real now.
-fn test_run(target_opt) = {
-  let entry_module = match target_opt {
-    Some(t) => t,
-    None => // default test entry module
-    "test",
-  }
-  // A DIRECTORY target is the BATTERY: every .mn inside is a self-describing
-  // gate (its first comment declares `// expect: N` — the expectation lives
-  // ON the artifact, SYNTAX §Comments), compiled IN THIS PROCESS with a
-  // fresh handler chain per micro (handler state initializes at install —
-  // per-micro isolation is the install itself), each WAT written to
-  // .build/test/, and a manifest printed for the shim's exec loop (WASI has
-  // no process-spawn; the shim owns exec — the one seam). One process
-  // replaces one wasmtime invocation per micro.
-  // The directory probe and the battery run in the SAME handler extent the
-  // single-file sibling installs — the fs probe itself is a WasiFilesystem
-  // op, so the bracket must cover the scrutinee too. This install was
-  // MISSING (the battery's fs/console ops ran as null-state singletons,
-  // reading the null page as their state — tolerated by accident until the
-  // SingletonUninstalled guard refused it); test_check_run keeps its own
-  // inner chain, which shadows these installs for its extent, unchanged.
-  {
-    match fs_list_dir_impl(entry_module) {
-      Some(names) => battery_run(entry_module, names),
-      None => test_check_run(entry_module),
-    }
-  } ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler
-}
+//
+// A DIRECTORY target is the BATTERY: every .mn inside is a self-describing
+// gate (its first comment declares `// expect: N` — the expectation lives
+// ON the artifact, SYNTAX §Comments), compiled IN THIS PROCESS with a
+// fresh handler chain per micro (handler state initializes at install —
+// per-micro isolation is the install itself), each WAT written to
+// .build/test/, and a manifest printed for the shim's exec loop (WASI has
+// no process-spawn; the shim owns exec — the one seam). One process
+// replaces one wasmtime invocation per micro.
+// The directory probe and the battery run in the SAME handler extent the
+// single-file sibling installs — the fs probe itself is a WasiFilesystem
+// op, so the bracket must cover the scrutinee too. This install was
+// MISSING (the battery's fs/console ops ran as null-state singletons,
+// reading the null page as their state — tolerated by accident until the
+// SingletonUninstalled guard refused it); test_check_run keeps its own
+// inner chain, which shadows these installs for its extent, unchanged.
+fn test_run(entry_module) = match fs_list_dir_impl(entry_module) {
+  Some(names) => battery_run(entry_module, names),
+  None => test_check_run(entry_module),
+} ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler
 
 fn test_check_run(entry_module) =
   pipeline_check(entry_module) ~> assert_reporter ~> stdout_console ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
@@ -2010,12 +1985,12 @@ fn audit_run(target) = {
   0
 }
 
-// ─── query_run — structured ad-hoc query
+// ─── query_run — the address, and what was asked of it
 //
-// `mentl query <module> "<question>"` — read-only query against
-// the substrate. Per traces/a-day §0800 + DESIGN §8 mentl query.
-fn query_run(target, question) =
-  query(target, question) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
+// `mentl <module> <question…>` — the read, with no verb in front of it,
+// because the address IS the verb (`cli.mn` carries the grammar's reasons).
+fn query_run(target, words) =
+  query(target, words) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
 
 // ─── verify_run — the medium judges its own source (`mentl verify`)
 //
@@ -2046,11 +2021,7 @@ fn query_run(target, question) =
 // "nothing was measured" (§11 tripwire 4 — a gate that stops being reported
 // stops being run; a gate that measures nothing has stopped being run while
 // still being reported).
-fn verify_run(target_opt) = infer_context(() => {
-  let entry_module = match target_opt {
-    Some(t) => t,
-    None => "main",
-  }
+fn verify_run(entry_module) = infer_context(() => {
   // SCOPE ALL, because this is the BOARD — the medium's standing bounds on
   // its own source, not a user reading one file. Every other entry narrows to
   // the module the user named so a compile never buries them in prelude
@@ -2109,11 +2080,7 @@ fn print_board_line(entry) = print_string(board_line(entry))
 // Resolution of the handle into the install site is the named peer
 // Hβ.cli.user-defined-entry-handler-resolution — the env overlay it
 // reads is the per-module env the driver populates (driver IC.3 chase).
-fn with_run(handler_name, target_opt) = {
-  let entry_module = match target_opt {
-    Some(t) => t,
-    None => "main",
-  }
+fn with_run(handler_name, entry_module) = {
   pipeline_check(entry_module)
   match env_lookup(handler_name) {
     None => eprint_string("mentl --with: no handler named {handler_name} in the checked env\n"),
@@ -2129,11 +2096,7 @@ fn with_run(handler_name, target_opt) = {
 // Bare `mentl` defaults here per EH. Gradient narration; one
 // suggestion per turn; Mentl's voice in the terminal for
 // vim/helix/terminal-only users.
-fn teach_run(target_opt) = {
-  let entry_module = match target_opt {
-    Some(t) => t,
-    None => "main",
-  }
+fn teach_run(entry_module) = {
   // teach reaches inference — the core installs as the one bracket (this
   // chain was the eighth found missing the analysis handlers, by design
   // pass not by trap; query_default's env_lookup / env_snapshot resolve
@@ -2167,7 +2130,7 @@ fn repl_eval_line(line) = if byte_len(line) == 0 {
   ""
 } else {
   infer_program_converged(line)
-  render_query_result(ask(parse_query_string("type main")))
+  render_query_result(ask(parse_query_words(["type", "main"])))
 }
 
 // ─── new — the welcome's own WRITE
@@ -2239,12 +2202,33 @@ fn print_error_and_help(msg) = {
   2
 }
 
-// The verb catalog — ONE surface projected from the verb table, so the help a
-// user reads can never disagree with the parser that reads them. The bare
-// `mentl` line (the directory projection, not a named verb) frames the list;
-// every verb line is verb_specs()[i] rendered uniformly.
+// The catalog — ONE surface projected from the two tables, so the help a
+// developer reads can never disagree with the grammar that reads them. It
+// opens with the READ, because the read is the medium: an address, then what
+// you want to know about it. `question_lines` renders the named projections
+// from `question_specs`; the query grammar's facets follow as the words they
+// are; `catalog_lines` renders the edges from `verb_specs`.
+//
+// It listed twenty-four verbs in one flat column until 2026-09-21 — `why`,
+// `where` and `query` among them, three names for one read — and a roster
+// that long teaches nothing but itself. Two shapes, because the kernel has
+// two operations.
 fn verb_catalog() with Memory + Alloc =
-  "the verbs:\n  mentl                          — project this directory (a pipe compiles stdin)\n" ++ catalog_lines(verb_specs(), 0, len(verb_specs()), "") ++ "\na target is a module name or a file path, from any directory.\n" ++ "the surface: PLAN.md §11 (the production bar) · docs/SYNTAX.md (the language)\n"
+  "the read — an address, then what you want to know:\n  mentl                          — project this directory (a pipe compiles stdin)\n  mentl <file>                   — project that module\n  mentl <file>:<line>[:<col>]    — project that line, or that node\n" ++ question_lines(question_specs(), 0, len(question_specs()), "") ++ "  mentl <file> why <name>        — the Reason chain walked to root\n  mentl <file> where <name>      — derived badges: repr width, resume cardinality, schedule\n  mentl <file> <question>        — type · effects · ownership · refs · census · decls · flow\n\nthe edges — what the medium writes:\n" ++ catalog_lines(verb_specs(), 0, len(verb_specs()), "") ++ "\nan address is a module name or a file path, from any directory; a question\nwith no address asks about the project.\nthe surface: PLAN.md §11 (the production bar) · docs/SYNTAX.md (the language)\n"
+
+// One line per named projection, in the address-first form the grammar takes.
+fn question_lines(specs, i, n, acc) with Memory + Alloc = if i >= n {
+  acc
+} else {
+  match specs[i] {
+    QuestionSpec(name, _, desc) => question_lines(
+      specs,
+      i + 1,
+      n,
+      acc ++ "  " ++ pad_right("mentl <file> " ++ name, 31) ++ "— " ++ desc ++ "\n"
+    ),
+  }
+}
 
 // One catalog line per spec: `  mentl <name> <hint>` padded to a column, then
 // `— <desc>`. The `++` accumulator IS the O(1) concat rope (§4①), not a loop
@@ -2294,7 +2278,7 @@ fn project_directory() = {
     each(
       (n) => {
         let stem = str_slice(n, 0, byte_len(n) - 3)
-        print_string("  {n}  →  mentl run {stem} · mentl edit {stem} · mentl check {stem}\n")
+        print_string("  {n}  →  mentl {stem} · mentl {stem} check · mentl run {stem}\n")
       },
       sources
     )

@@ -2,7 +2,7 @@
 //
 // A BOARD LINE is a named invariant of the wheel, the bound it may not cross,
 // and the SITES the medium finds for it live. Every line's sites come from
-// `census_sites` — the same walk `mentl query <file> "census <shape>"`
+// `census_sites` — the same walk `mentl <file> census <shape>`
 // projects — so the board asks the medium a question the medium already
 // answers, and nothing between the two re-derives it. The count is `len` of
 // that list and is never stored beside it.

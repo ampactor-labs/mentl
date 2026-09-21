@@ -45,8 +45,8 @@ import verify
 // that judges needs exactly it.
 //
 // IT WAS WRITTEN OUT LONGHAND AT SEVEN SIGNATURES, and the census that named
-// the shape is what made that countable: `mentl query <file> "census
-// wide-row"` found nineteen signatures declaring more than eight effects, of
+// the shape is what made that countable: `mentl <file> census wide-row`
+// found nineteen signatures declaring more than eight effects, of
 // which seven were this same core spelled again — the widest at NINETEEN
 // names. That is not a type annotation, it is an inventory, and it violates
 // the law it is written in: SYNTAX says a declared row is "a CONSTRAINT
@@ -67,7 +67,7 @@ type Judging = Memory + Alloc + ImageAlloc + WASI + EnvRead + EnvWrite + GraphRe
 
 // Resolve a module name to a file path — four homes, tried in order:
 //   the DIRECT read (an arg naming an existing file resolves as itself —
-//     `mentl check foo` beside foo.mn in ANY directory; `sub/thing` and
+//     `mentl foo check` beside foo.mn in ANY directory; `sub/thing` and
 //     absolute paths ride the same read),
 //   `src/{name}.mn` then `lib/{name}.mn` (the repo layout),
 //   `/mentl-home/{src,lib}/{name}.mn` — the well-known guest path when

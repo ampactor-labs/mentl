@@ -5,7 +5,7 @@
 # (boot/mentl.wasm — the fixpoint compiler, provenance in
 # boot/PROVENANCE.md). Never a copy, never a version: the pin IS the
 # release, so every `tools/march.sh` re-pin is instantly the global CLI
-# with zero sync. The shim preopens the caller's cwd (so `mentl check foo`
+# with zero sync. The shim preopens the caller's cwd (so `mentl foo check`
 # works beside foo.mn in any directory) and maps the repo to the
 # well-known guest path /mentl-home (so user projects' vocabulary imports —
 # and their transitive substrate imports — resolve with zero

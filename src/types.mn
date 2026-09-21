@@ -792,7 +792,7 @@ type NodeKind
   //      brands values at the type level; the type checker refuses to pass SecretKey
   //      where Bytes is expected. Nominal branding IS the flow label.
   // FlowLabel (below) remains as a pure lattice for use in annotations and the
-  // mentl-voice projection (`mentl query flow name`) — a read over the type the graph
+  // mentl-voice projection (`mentl <file> flow name`) — a read over the type the graph
   // already holds, not a new graph dimension.
   | NErrorHole(Reason)
 

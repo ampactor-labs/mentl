@@ -544,7 +544,7 @@ fn compile_source(source) =
 
 fn check_source(source) = infer_context(() => source |> infer_program_converged ~> mentl_default)
 
-fn query(entry_module, question) = infer_context(() => {
+fn query(entry_module, words) = infer_context(() => {
   // COLD by the swap-crossing law (Hβ.session.resident-verbs — the
   // measured refutation is in the §7 ledger): a mid-verb image restore
   // kills every pre-swap heap value — the caller's own argv strings,
@@ -567,11 +567,11 @@ fn query(entry_module, question) = infer_context(() => {
         // the census printed "0 sites" for a file the judge could not
         // read). Productive-under-error stays for JUDGED files; a
         // missing entry refuses the question itself.
-        eprint_string("mentl query: no source to project — {entry_module} never joined the weave\n")
+        eprint_string("mentl: no source to project — {entry_module} never joined the weave\n")
         1
       },
       Some(_) => {
-        let q = parse_query_string(question)
+        let q = parse_query_words(words)
         ask(q) |> render_query_result |> println
         0
       },
@@ -719,7 +719,7 @@ fn audit(entry_module) = analyze_fns(entry_module, audit_project)
 // THE DEAD ROOT OF THE RANKED-QUEUE ORACLE WAS HERE, and its sentence was
 // the tell: "`mentl edit` IS this loop running." It was not. The decl —
 // ic_compile_loop, unbackticked because it no longer resolves — had ZERO
-// callers, measured by `mentl query src/main.mn unreachable` which named it
+// callers, measured by `mentl src/main.mn unreachable` which named it
 // before anything else did; and `mentl edit` routes through `edit_run` / `mentl_edit_session`,
 // nowhere near it. It was also the ONLY install site of the queue merger, so
 // an entire subsystem hung off a function nobody called: 25 decls in
@@ -741,7 +741,7 @@ fn audit(entry_module) = analyze_fns(entry_module, audit_project)
 //
 // One thing that deletion answered, measured at the moment the root went and
 // recorded before the rest followed it: with the root gone the queue merger
-// had NO install site anywhere, `mentl check src/main.mn` still passed, and
+// had NO install site anywhere, `mentl src/main.mn check` still passed, and
 // `silence_predicate` (src/voice.mn) — reachable, called from a handler arm —
 // still performed query_project_queue. A reachable perform with zero handlers
 // compiles clean. `Hβ.effects.reachable-perform-with-no-install-compiles`
@@ -971,7 +971,7 @@ fn audit_severable(entry) = match entry {
 // An effect is severable module-wide exactly when NO function in the module
 // reaches it, which is the INTERSECTION of the functions' own candidates. It
 // was rendered per function instead, and the wheel measured what that costs:
-// `mentl audit src/main.mn` printed 303 lines of which 122 were `severable:`
+// `mentl src/main.mn audit` printed 303 lines of which 122 were `severable:`
 // lines carrying exactly TWO distinct facts — 98 saying `Network`, 24 saying
 // `Network + Alloc` — because nothing in the module performs Network and the
 // module-level truth was re-derived and re-printed once per function. Forty
@@ -1266,7 +1266,7 @@ fn unref_row_is_dead(row) with Pure = match row {
 // The transitive face: a row's third field is reached-from-entry, so the
 // same zero test names the fns the entry cannot reach.
 // THE FACET ANSWERED TWO DIFFERENT QUESTIONS IN ONE FLAT LIST, and the
-// measurement is why it is split. `mentl query src/main.mn unreachable`
+// measurement is why it is split. `mentl src/main.mn unreachable`
 // answered 276 fn decls, and 202 of them sat in modules where NOTHING is
 // reached — prelude, combinators, dsp/*, ml/*, math, lists, strings: the
 // library surface a program LINKS and does not call, which is not dead code
@@ -1543,48 +1543,62 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVUnknownVerb
 }
 
-fn parse_query_string(q) = {
-  // split returns a slice VIEW; the list-pattern match assumes the flat
-  // [len][elems] contract, so flatten once before matching (§7 face 13)
+// The grammar reads WORDS, because that is what a question is. The terminal
+// hands them already split (`mentl src/infer.mn why unify` — argv IS the
+// split), so the CLI no longer joins them for this fn to split again.
+fn parse_query_words(ws) = {
+  // A caller's list may be a slice VIEW; the list-pattern match assumes the
+  // flat [len][elems] contract, so flatten once before matching (§7 face 13)
   // — and read words ONCE, never re-split per arm (Carried-Truth).
-  let words = list_to_flat(split(" ", q))
+  let words = list_to_flat(ws)
   match words {
-    [] => QUnknown(q),
-    [w0] => build_question(classify_query_verb(w0), "", q),
-    [w0, w1] => build_question(classify_query_verb(w0), w1, q),
-    _ => build_question(classify_query_verb(query_head(words)), query_last(words), q),
+    [] => QUnknown(""),
+    [w0] => build_question(classify_query_verb(w0), "", words),
+    [w0, w1] => build_question(classify_query_verb(w0), w1, words),
+    _ => build_question(classify_query_verb(query_head(words)), query_last(words), words),
   }
 }
+
+// The adapter for a transport whose question genuinely arrives as ONE string:
+// the MCP wire carries a line, so the split happens once, here, at that
+// boundary. `parse_query_words` stays the grammar's one home.
+fn parse_query_string(q) with Memory + Alloc = parse_query_words(split(" ", q))
 
 // build_question — pair the classified verb with its argument. Nullary verbs
 // (unresolved/verification) ignore the arg; unary verbs carry it. A verb whose
 // arity its arg cannot satisfy projects to QUnknown(raw) — the honest unknown.
-fn build_question(verb, arg, raw) with Memory + Alloc = match verb {
-  QVUnresolved => QUnresolved,
-  QVVerification => QVerifyDebt,
-  QVType => QTypeOf(arg),
-  QVEffects => QEffects(arg),
-  QVOwnership => QOwnership(arg),
-  QVWhy => QWhy(arg),
-  QVRefs => QRefsOf(arg),
-  QVProvider => QHandlerProvider(arg),
-  QVFlow => QFlowOf(arg),
-  QVCensus => match census_shape_of(arg) {
-    Some(shape) => QCensus(shape),
-    None => QUnknown(raw),
-  },
-  QVWhere => QWhere(arg),
-  QVDecls => QDecls,
-  QVVariants => QVariants(arg),
-  QVModules => QModules,
-  QVImports => QImports,
-  QVUnreferenced => QUnreferenced,
-  QVUnreachable => QUnreachable,
-  QVPerforms => QPerforms,
-  QVOrphanClaims => QOrphanClaims,
-  QVCost => QCost,
-  QVSmt => QSmt,
-  QVUnknownVerb => QUnknown(raw),
+// `raw` is the question's WORDS, re-joined only to be READ BACK to the person
+// who asked: the byte-sequence survives as a display projection, never as the
+// carrier (`PLAN.md §5.O` — a name's ultimate representation is a word).
+fn build_question(verb, arg, words) with Memory + Alloc = {
+  let raw = join(" ", list_to_flat(words))
+  match verb {
+    QVUnresolved => QUnresolved,
+    QVVerification => QVerifyDebt,
+    QVType => QTypeOf(arg),
+    QVEffects => QEffects(arg),
+    QVOwnership => QOwnership(arg),
+    QVWhy => QWhy(arg),
+    QVRefs => QRefsOf(arg),
+    QVProvider => QHandlerProvider(arg),
+    QVFlow => QFlowOf(arg),
+    QVCensus => match census_shape_of(arg) {
+      Some(shape) => QCensus(shape),
+      None => QUnknown(raw),
+    },
+    QVWhere => QWhere(arg),
+    QVDecls => QDecls,
+    QVVariants => QVariants(arg),
+    QVModules => QModules,
+    QVImports => QImports,
+    QVUnreferenced => QUnreferenced,
+    QVUnreachable => QUnreachable,
+    QVPerforms => QPerforms,
+    QVOrphanClaims => QOrphanClaims,
+    QVCost => QCost,
+    QVSmt => QSmt,
+    QVUnknownVerb => QUnknown(raw),
+  }
 }
 
 // The shape classifier at the grammar's one boundary: a named judgment
