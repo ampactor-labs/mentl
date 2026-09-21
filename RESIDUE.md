@@ -108,6 +108,50 @@ proof. The order holds a third time: the stale reason was real, the first
 replacement was a guess, the second was a measurement of the wrong thing, and
 only the fourth probe answered the question.
 
+`Hβ.infer.tail-call-row-joins-three-times` — OPEN, BORN 2026-09-21, and it was
+found by a probe aimed at something else, which is why it is its own entry
+rather than a paragraph inside that one.
+
+MEASURED, twelve lines, no wheel edit, reproducible in ten seconds. Four
+functions, each declaring `with Memory + Alloc`, each calling the same
+`int_to_str`, differing ONLY in where the call sits:
+
+    fn tail(n)    with Memory + Alloc = int_to_str(n)
+    fn operand(n) with Memory + Alloc = int_to_str(n) ++ "x"
+    fn bound(n)   with Memory + Alloc = { let s = int_to_str(n)  s }
+    fn branch(n)  with Memory + Alloc = if n > 0 { int_to_str(n) } else { "" }
+
+`mentl pos.mn effects <name>` answers:
+
+    tail     → Alloc + Memory + Memory + Alloc + Memory + Alloc
+    operand  → Alloc + Memory
+    bound    → Alloc + Memory
+    branch   → Alloc + Memory
+
+**The row is joined THREE TIMES when the body IS the call, and once in every
+other position.** The tell that this is not simply "more contributions": the
+operand form has strictly MORE contributions (the call AND `++`) and answers
+correctly, so the count runs the wrong way for that reading.
+
+WHAT IT IS NOT, because both were probed before this entry was written. It is
+not the link (it reproduces identically through the manifest on a
+single-module program). It is not `union_row`, which is `name_set_union` and
+is a real set union keyed on `eff_name_handle`. So either the three joins
+carry names with DIFFERENT intern handles — the pointer-eq-on-names class
+PLAN §9 catalogues, which `EffName`-is-a-handle (§11 6.1) was supposed to have
+closed — or the present set is fine and `show_effrow` is inlining a CHAIN of
+tail row vars, which would make the visible duplication a render of the very
+open tail the sibling peer counts. **Those two readings are distinguishable by
+one probe that does not exist yet: the row's names WITH their handles.** The
+medium projects the spellings and not the key it compares on, which is the
+missing facet and the reason this entry stops here rather than guessing.
+
+AND IT IS NOT THE FREE-ROW CONVICTION EITHER, measured rather than assumed:
+`mentl pos.mn census free-row-callee` convicts 41 sites, **zero of them in
+pos.mn**. The tripled row and the ungrounded row co-occur in the wheel and are
+two different facts; merging them is the "do NOT crown the next thing you see"
+failure, and the count is what stopped it.
+
 `Hβ.link.manifest-and-blob-emit-differently` — OPEN, BORN 2026-09-21, measured
 in the entry above and stated here so it has one home. The wheel compiles
 itself two ways and the two ways do not agree: 427,159 lines through the
@@ -208,7 +252,22 @@ instead. **The two counts are NOT the same number and neither is wrong**:
 judged weave — recorded together so the next reader does not try to reconcile
 them. Zero is this peer retired.
 
-THE OPEN QUESTION, stated so the next session starts where this one stopped:
+THE OPEN QUESTION, and the first two answers to it are REFUTED (2026-09-21,
+same day, before either could be believed). It is **not the module boundary**:
+of the first convicted sites read, `int_to_str` is cross-module from its caller
+and `show_hash_ty` is declared at `src/backends/wasm.mn:275`, the SAME module
+as the call at :291 — both convicted. And it is **not the absence of a
+declaration**: both carry an authored `with` clause, so a declared row is
+reaching lower with a tail nothing grounds, which is the sharper form of the
+question and was invisible while "cross-module" looked plausible.
+
+THE PROBE THAT WOULD HAVE ANSWERED IT IS BLOCKED BY A PEER BANKED THE SAME
+DAY. "One address projection per link" needs the blob link to be an address,
+and `mentl - type int_to_str` answers *"module source not found: -"* —
+`Hβ.cli.stdin-is-an-address-for-some-questions`, now blocking the probe it was
+banked beside. That peer is the DEP, and it is small: stdin is an address like
+any other, resolved at the one resolver.
+
 **why does the weave leave a row free where the flat judgment grounds it?**
 Both links judge the same declarations; the difference is that the blob is one
 module and the manifest walks an import DAG in dependency layers. The next
