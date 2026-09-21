@@ -160,16 +160,62 @@ every callee's resume cardinality; the manifest judges through the weave and
 provably unreachable on this workload, because a wheel carrying all 727 of
 them emits the same bytes as one carrying none of them.
 
-**THE GAP, restated in positive form and now worth more than when it was
-mis-stated:** the callee's cardinality IS in the graph — the weave judged that
-module — and the emitter re-derives it conservatively instead of reading it
-live. That is the Carried-Truth Law at the emit boundary, and the price is
-727 unreachable `(unreachable)` guards and ~8,000 lines of dead emitted code
-on every multi-module compile, which is the link every user's program takes.
-The fix is a read, not a pass: carry the cardinality across the weave edge.
-The gate writes itself — the two links' outputs converge to byte-identity as
-the floors fall, so `blob == manifest` is the ratchet, and it can be watched
-going from 7,969 lines apart to zero.
+PROBES 5–7 — THE ROOT, three more censuses through an instrumented `lower`,
+each one narrowing the last. `can_yield`'s three arms: the callee type is NOT
+the variable (`_ => true`, callee not a `TFun`: **1,527 blob / 1,533
+manifest** — identical), it is the ROW (`row_may_multishot`: **154 / 856**).
+`row_may_multishot`'s three tails: not the names, not `EtAll` (0 / 1), the
+OPEN TAIL (`EtOpen`: **258 / 1,838**). And `edges_may_multishot`'s own arms:
+every firing is the `None` arm, and the node the edge chases to is
+**`NRowFree` — an unbound row variable: 153 blob / 856 manifest.**
+
+THE CHAIN, whole: 727 extra `multishot yield floor` guards ← 702 extra
+`can_yield` ROW verdicts ← 1,580 extra `EtOpen` tail chases ← 703 extra edges
+chasing to an unbound row variable. Two hypotheses died on the way and both
+are worth the line: the name-keyed escaping-row ledger (refuted — `flow`
+never fires) and the callee's TYPE failing to resolve across the weave
+(refuted — the `nonfun` arm is flat). The obvious reading died too, at probe
+3: a two-module program and its one-file twin emit byte-identical WAT, so "a
+module edge exists" plants nothing.
+
+**SO THE GAP IS NOT THE EMITTER'S, and the sentence that stood here said it
+was.** It read: *"the callee's CARDINALITY is in the graph and the emitter
+re-derives it conservatively."* The emitter re-derives nothing — it asks the
+row, correctly, and the row cannot answer. What the weave declines to ground
+is the ROW ITSELF, and the price is ~8,000 dead emitted lines on every
+multi-module compile.
+
+**AND IT IS NOT `Hβ.infer.forward-hof-row-underpublish` EITHER, which this
+entry claimed for one draft.** That peer is RESOLVED (2026-08-11, pin
+c6eb188e1d37) and its mechanism was different in kind: `merge_chased_row`
+DISCARDING accumulated presents when a chase terminated at a cross-sort free
+cell — a row that was ground and then lost. This is a row never ground at
+all. Attributing a fresh measurement to the nearest resolved peer is the
+"do NOT crown the next thing you see" failure one namespace over, and it is
+recorded because the name was already typed before the entry was read.
+
+**THE INSTRUMENT LANDED RATHER THAN BEING DELETED INTO MEMORY** (the
+probe-graduation law, `CLAUDE.md ⟳`). The eprint censuses that found this are
+gone; what replaces them is `census free-row-callee` — `CsFreeRowCallee`, a
+call whose callee's row tail survives `resolve_row` still free — and a
+`src/board.mn` bound at its measured **1,041**, seen RED at 1,040 (exit 1,
+sites named) before it was trusted. The first draft of that gate was a
+line-count delta between the two builds ratcheted in `tools/march.sh`, which
+is the symptom diffed in bash; Morgan's *"can't wait till march.sh is actually
+part of the medium"* landed mid-build and is why the number is a graph read
+instead. **The two counts are NOT the same number and neither is wrong**:
+856 counts chase EVENTS inside one lower run, 1,041 counts CALL SITES on the
+judged weave — recorded together so the next reader does not try to reconcile
+them. Zero is this peer retired.
+
+THE OPEN QUESTION, stated so the next session starts where this one stopped:
+**why does the weave leave a row free where the flat judgment grounds it?**
+Both links judge the same declarations; the difference is that the blob is one
+module and the manifest walks an import DAG in dependency layers. The next
+probe is a NAMED site — take one of the 1,041 (`mentl src/main.mn census
+free-row-callee` prints them all with spans), ask the medium for that callee's
+type through each link, and read which one carries the free tail. That is one
+address projection per link, not a rebuild.
 
 `Hβ.cli.stdin-is-an-address-for-some-questions` — OPEN, BORN 2026-09-21, found
 by probing the collapsed surface rather than by reading it. `-` is the stdin

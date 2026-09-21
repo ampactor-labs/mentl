@@ -154,7 +154,32 @@ fn board_bounds() with Memory + Alloc = [
   // The remaining twelve are emit, cursor, infer and synth_proposer, whose
   // cores differ from this one and from each other — each is its own unnamed
   // capability, and naming them is what walks this to zero.
-  Bound({ceiling: 12, shape: CsWideRow})
+  Bound({ceiling: 12, shape: CsWideRow}),
+  // THE ONE BOUND ON THIS BOARD MINTED FROM A PRICE RATHER THAN A PRINCIPLE,
+  // and the price was measured before the bound existed. The wheel compiles
+  // itself through two links — the blob (every file concatenated, one module,
+  // one whole-program judgment) and the manifest (the import DAG, which is
+  // what every user's program takes) — and the manifest emits 7,969 MORE
+  // lines for the same tree. Four censuses through an instrumented lower
+  // reduced that to one fact: 727 extra `multishot yield floor` guards ← 702
+  // extra `can_yield` ROW verdicts ← 1,580 extra `EtOpen` tail chases ← 703
+  // extra edges chasing to `NRowFree`.
+  //
+  // NEITHER LINK IS WRONG, which is why this is a ratchet and not a refusal
+  // class: a manifest-built wheel emits output byte-identical to a blob-built
+  // one, so the two compilers are extensionally equal and every one of those
+  // floors is provably unreachable. The blob link simply PROVES MORE. This
+  // counts what the weave declines to ground, and the cost is ~8,000 dead
+  // emitted lines on the link a user actually takes.
+  //
+  // 1,041 at its birth, and the number is NOT the probe's 856 — that counted
+  // chase EVENTS inside one lower run, this counts CALL SITES on the judged
+  // weave. Two instruments, two denominators, one fact; recording both is how
+  // the next reader avoids reconciling numbers that were never the same.
+  // Zero is the weave grounding every row the flat judgment grounds; the
+  // record, and the open question of WHY it does not, live at
+  // `Hβ.link.manifest-and-blob-emit-differently`.
+  Bound({ceiling: 1041, shape: CsFreeRowCallee})
 ]
 
 // The board: every bound answered by one live walk.

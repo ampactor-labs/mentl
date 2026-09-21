@@ -35,6 +35,70 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-21 · pin 0e039fcb0e7f306a (CLEAN m2 == m3) · THE MEDIUM MEASURES THE
+  LINK DIVERGENCE ITSELF — `CsFreeRowCallee`, the first census shape minted
+  from an emit PRICE rather than from a drift silhouette.
+
+  ▶ THE ROOT, reached by seven censuses through an instrumented `lower`, each
+  narrowing the last and two hypotheses dying on the way. `can_yield`'s arms:
+  the callee TYPE is not the variable (`nonfun`: 1,527 blob / 1,533 manifest —
+  flat), it is the ROW (154 / 856). `row_may_multishot`'s tails: not the
+  names, not `EtAll` (0 / 1), the OPEN TAIL (`EtOpen`: 258 / 1,838).
+  `edges_may_multishot`: every firing is the `None` arm and the node chased to
+  is **`NRowFree` — an unbound row variable, 153 / 856.** Dead on the way: the
+  name-keyed escaping-row ledger (the `flow` arm never fires) and the callee's
+  type failing to resolve across the weave. Dead one probe earlier: "a module
+  edge plants a floor" — a two-module program and its one-file twin emit
+  byte-identical WAT.
+
+  ▶ NEITHER LINK IS WRONG, and the entry that opened this said one had "no
+  fixpoint at all." A manifest-built wheel emits output byte-identical to a
+  blob-built one, so the two compilers are extensionally equal and all 727
+  extra floors are provably unreachable. **The blob link PROVES MORE** — one
+  module, one whole-program judgment that grounds every callee row, where the
+  weave leaves row variables free. The price is ~8,000 dead emitted lines on
+  every multi-module compile, which is the link a user's program takes.
+
+  ▶ AND IT IS NOT `Hβ.infer.forward-hof-row-underpublish`, which this arc
+  claimed for one draft before reading that peer's own entry: that one is
+  RESOLVED (pin c6eb188e1d37) and its mechanism was `merge_chased_row`
+  DISCARDING accumulated presents — a row ground and then lost. This is a row
+  never ground. Attributing a fresh measurement to the nearest resolved peer
+  is "do NOT crown the next thing you see" one namespace over.
+
+  ▶ THE INSTRUMENT GRADUATED rather than being deleted into memory
+  (`CLAUDE.md ⟳`). The eprint censuses are gone; `mentl <file> census
+  free-row-callee` replaces them — a call whose callee's row tail survives
+  `resolve_row` still free — with a `src/board.mn` bound at its measured
+  **1,041**, seen RED at 1,040 (exit 1, sites named) before it was trusted.
+  The two counts are deliberately both recorded and are NOT the same number:
+  856 counts chase EVENTS inside one lower run, 1,041 counts CALL SITES on the
+  judged weave.
+
+  ▶ THE FIRST DRAFT OF THE GATE WAS THROWN AWAY, and that is the transferable
+  half. It was a line-count delta between the two builds, ratcheted in
+  `tools/march.sh` — the symptom, diffed in bash. Morgan's *"can't wait till
+  march.sh is actually part of the medium you run instead of a damn .sh"*
+  landed mid-build, and the correction was not stylistic: the delta is a
+  shadow of a fact the medium already judges, so ratcheting the shadow would
+  have been a second home for it. The root is a graph read, so the gate is a
+  graph read.
+
+  ▶ AND THE QUIET GATE CAUGHT THE LANDING'S OWN HAND. The new walker was
+  written `fn row_edges_carry_free(ref vs: [Int])`, copied from the sibling it
+  mirrors — and the ratchet refused the pin: *authored ref rose 729 -> 730 —
+  the inference failed somewhere; teach it, do not annotate around it.* It had
+  not failed; the marker was decoration, and dropping it (with the `[Int]`
+  base-type annotation SYNTAX does not want either) checks clean. A ratchet
+  that fires on the commit that adds the marker is the cheapest possible
+  moment to learn it.
+
+  ▶ THE OPEN QUESTION, banked so the next session starts where this one
+  stopped: **why does the weave leave a row free where the flat judgment
+  grounds it?** The next probe is a named site — the census prints all 1,041
+  with spans — asked through each link. One address projection per link, not
+  a rebuild.
+
 - 2026-09-21 · pin 268b9ce49de42fc6 (CLEAN m2 == m3) · THE ADDRESS IS THE VERB —
   the CLI's read surface collapses to the kernel's own two operations.
 

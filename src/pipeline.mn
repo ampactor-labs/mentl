@@ -1642,6 +1642,8 @@ fn census_shape_of(arg) with Memory + Alloc = if arg == "anonymous" {
   Some(CsRecordPattern)
 } else if arg == "record-pattern-open" {
   Some(CsRecordPatternOpen)
+} else if arg == "free-row-callee" {
+  Some(CsFreeRowCallee)
 } else {
   match find(
     (k) => show_pipe_kind(k) == arg,

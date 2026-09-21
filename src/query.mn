@@ -95,6 +95,28 @@ type CensusShape
   // the positive row be inferred and projected — `Hβ.syntax.positive-row-is-
   // authored-by-hand` — at which point this shape reaches zero and deletes.
   | CsWideRow
+  // A CALL whose callee's row tail is still a FREE ROW VARIABLE after
+  // resolution — the one shape on this roster minted from an EMIT price
+  // rather than from a silhouette, and the price was paid before the shape
+  // existed. The wheel compiles itself two ways: the BLOB link (every file
+  // concatenated, one module, one whole-program judgment) and the MANIFEST
+  // link (the import DAG — what every user's program takes). Same tree, both
+  // clean, and the manifest emits 7,969 MORE lines. Four censuses through an
+  // instrumented lower reduced that to one fact: 727 extra `multishot yield
+  // floor` guards ← 702 extra `can_yield` ROW verdicts ← 1,580 extra `EtOpen`
+  // tail chases ← 703 extra edges chasing to `NRowFree`. A callee whose row
+  // nothing grounds cannot be proven MultiShot-free, so lower plants a floor
+  // it does not need.
+  //
+  // NEITHER LINK IS WRONG — a manifest-built wheel emits output byte-identical
+  // to a blob-built one, so the two compilers are extensionally equal and the
+  // floors are provably unreachable. The blob link simply PROVES MORE. What
+  // this shape counts is therefore not a defect in the emit; it is the weave
+  // declining to ground a row the flat judgment grounds, priced at ~8,000 dead
+  // emitted lines per multi-module compile. Zero is the weave grounding every
+  // row the flat link does; the record, and the open question of WHY it does
+  // not, live at `Hβ.link.manifest-and-blob-emit-differently`.
+  | CsFreeRowCallee
   // The second declared-surface shape, and it counts EXPOSURE rather than
   // style: a record pattern's field offsets are resolvable only when the
   // receiver's full sorted field set is known, and a row-polymorphic
@@ -982,6 +1004,33 @@ fn census_label(shape) with Pure = match shape {
   "signature(s) whose declared row is an inventory — a capability with no name yet",
   CsRecordPattern => "record pattern(s)",
   CsRecordPatternOpen => "record pattern(s) over an open-row receiver",
+  CsFreeRowCallee => "call(s) whose callee's row nothing grounds — each one a yield floor lower cannot prove away",
+}
+
+// The callee's row tail, read LIVE off the judged node. `resolve_row` follows
+// every bound row edge first, so a tail that survives it is genuinely free —
+// not merely open. A non-fn callee is silent: a shape that convicted every
+// unresolved node would be counting the judgment's own scratch.
+fn callee_row_tail_is_free(h) with GraphRead + !Mutate + Alloc + Memory = match graph_chase(h) {
+  GNode(NBound(TFun(_, _, row)), _) => match resolve_row(row) {
+    EfRow(_, _, t) => match t {
+      EtOpen(vs) => row_edges_carry_free(vs),
+      _ => false,
+    },
+  },
+  _ => false,
+}
+
+// Structural over the edge list, mirroring `edges_may_multishot` — the twin
+// this shape exists to price, and the two walk the same edges for opposite
+// reasons: that one asks whether a floor is NEEDED, this one counts the
+// places nobody can answer.
+fn row_edges_carry_free(vs) with GraphRead + !Mutate + Alloc + Memory = match vs {
+  [] => false,
+  [v, ...rest] => match graph_chase(v) {
+    GNode(NRowFree(_), _) => true,
+    _ => row_edges_carry_free(rest),
+  },
 }
 
 fn census_sites(shape) with GraphRead + !Mutate + Alloc + Memory = match graph_snapshot() {
@@ -1234,6 +1283,14 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   // the signature holds it, never re-parsed from the page.
   match body {
     NStmt(FnStmt(_, _, _, effs, _)) => len(effs) > wide_row_width,
+    _ => false,
+  },
+  CsFreeRowCallee => // The CALLEE's node, not the call's: the row belongs to the thing being
+  // called, and the call site is only where the cost lands.
+  match body {
+    NExpr(CallExpr(f, _)) => match f {
+      N(_, _, fh) => callee_row_tail_is_free(fh),
+    },
     _ => false,
   },
   CsRecordPattern => // Both spellings of one shape, read where the pattern lives: a
