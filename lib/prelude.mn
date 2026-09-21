@@ -135,6 +135,22 @@ fn iterate_from(xs, i, n) with Memory + Iterate = if i < n {
 
 fn iterate(xs) with Iterate + Alloc + Memory = iterate_from(list_to_flat(xs), 0, len(xs))
 
+// The range producer — every handle-walk's source. Yields lo, lo + 1, …,
+// hi - 1 without materializing a list (`range_inclusive` builds one), so a
+// walk over the graph's quarter-million handles allocates nothing per
+// element and every collector above it — `filter_collector`, `fold_handler`,
+// `each_handler` — serves unchanged. The self-call threading `lo + 1` is the
+// substrate's one index loop, exactly as `iterate_from` is for lists: the
+// loop lives here once, and a walk written as `{ iterate_range(0, n) …
+// result() } ~> collector` is a fold, not an index-threaded self-call of
+// its own (the shape `mentl audit` convicts across the wheel).
+fn iterate_range(lo, hi) with Iterate = if lo < hi {
+  yield(lo)
+  iterate_range(lo + 1, hi)
+} else {
+  ()
+}
+
 // ─── Collection Operations (single fused handlers on Iterate) ────────
 // One handler per `~>` install: transform + materialize fused into
 // ONE state record.  The substrate-honest form per the eight interrogations:
@@ -281,9 +297,7 @@ fn fold(init, f, xs) = {
   result()
 } ~> fold_handler(f, init)
 
-fn each(f, xs) = {
-  iterate(xs)
-} ~> each_handler(f)
+fn each(f, xs) = iterate(xs) ~> each_handler(f)
 
 fn any(pred, xs) = {
   iterate(xs)

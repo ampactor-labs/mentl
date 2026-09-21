@@ -495,7 +495,10 @@
 > calls into) · `refs of NAME` · `census <shape>` · `decls` ·
 > `modules` / `imports` / `performs` / `orphan-claims` · `smt` (every
 > undischarged obligation as an SMT-LIB assertion — what Phase 8.3's solver
-> swap will be handed, readable today); `mentl verify`
+> swap will be handed, readable today) · `cost` (the judgment's heap ranked
+> BY DECLARATION — the instrument that named 40% of the heap in two lines on
+> its first run, 2026-09-21; a peak-RSS rise is attributed here, never
+> guessed); `mentl verify`
 > (the standing bounds on a program's own source, read off one judged
 > graph — a breach refuses); `mentl
 > <file:line>` (the line's ROOT — widest node) and `<file:line:col>` (the
@@ -643,10 +646,18 @@
 8. **String-keyed** — `mode == 0/1/2`; every flag is an ADT
 9. **Deferred-by-omission** — claiming done while sub-handles uncommitted
 
-(`tools/drift-audit.sh` runs as a PostToolUse hook and catches these + the
-extended catalog, e.g. drift 38: `mentl <tentacle>` as a CLI verb — tentacles
-fire AT-CURSOR, not as subcommands. A flag = a named drift = the law violated;
-rewrite in residue form inline.)
+(`tools/drift-audit.sh` runs as a PostToolUse hook on every `.mn` edit —
+wired by `.claude/settings.json` through `tools/audit-on-edit.sh`; measured
+UNWIRED on 2026-09-21, when the session's hook configuration was `{}` and this
+sentence had been true nowhere — and catches these + the extended catalog,
+e.g. drift 38: `mentl <tentacle>` as a CLI verb — tentacles fire AT-CURSOR,
+not as subcommands. A flag = a named drift = the law violated; rewrite in
+residue form inline. Beside it, `tools/mentl-first.sh` is the PreToolUse hook
+on Bash: grep/rg/sed/awk are REFUSED, and so is any `mentl` invocation piped
+into a filter — the medium's projection first, read WHOLE (Morgan's standing
+rule, 2026-09-21, after a session in which `| grep -v` hid the gate refusing
+the author's own comments). A question the medium cannot answer is the facet
+to grow, never a hand tool to reach for.)
 
 ---
 

@@ -50,7 +50,6 @@ import strings
 // Three ops:
 //   format_program — render the whole AST as canonical String
 //   format_at_handle — render one node + canonical-spaced surroundings
-//   format_chain — render a single |> / ~> / <| / >< / <~ chain
 //
 // Resume cardinality is INFERRED from arm body structure per Phase B
 // substrate (CLAUDE.md ⌁ Mentl's anchor — interrogation #2).
@@ -58,7 +57,6 @@ import strings
 effect Format {
   format_program([Node]) -> String
   format_at_handle(Int) -> String
-  format_chain(Node) -> String
 }
 
 // ─── format_default — canonical render handler ──────────────────────
@@ -83,7 +81,6 @@ effect Format {
 handler format_default {
   format_program(ast) => resume(render_program(ast)),
   format_at_handle(handle) => resume(render_node_at(handle)),
-  format_chain(chain_node) => resume(render_chain_node(chain_node)),
 }
 
 // ─── THE THREE IMPLEMENTATIONS, as plain fns ────────────────────────
@@ -154,112 +151,21 @@ fn render_node_at(handle) = {
   }
 }
 
-// ─── render_chain_node — render one verb-chain ────────────────────
+// ─── Canonical layout constant (SYNTAX.md §1185) ────────────────────
 //
-// Distinguishes the five verb-classes; each gets canonical layout
-// per SYNTAX.md §342-389. `<|` opens-tuple-on-same-line with branches
-// indented. `><` alone-on-line at indented center between paren-
-// pipelines. `<~` indented center, optionally inline. `|>` and `~>`
-// at left edge with stages on indented lines.
-fn render_chain_node(chain_node) = {
-  let kind = ast_kind_of(chain_node)
-  // ast_kind_of projects the NodeBody altitude — the Expr sits one
-  // constructor in (NExpr(PipeExpr(..))); the bare-Expr arms never
-  // matched and every chain fell to the non-chain render (order-masked;
-  // the order-independent judge named it, 2026-07-25).
-  let rendered = match kind {
-    NExpr(PipeExpr(PForward, l, r)) => // |>
-    // `<|`/`><` are ONE PFanout; the formatter projects the glyph from
-    // the ownership aspect — FanShare → `<|`, FanDistribute → `><` (the
-    // surface keeps both authored glyphs as intent).
-    render_converge_chain(l, r),
-    NExpr(PipeExpr(PFanout(FanShare), l, r)) => // <|
-    render_diverge_chain(l, r),
-    NExpr(FanoutExpr(branches)) => // >< — the N-ary carrier
-    render_compose_chain(branches),
-    NExpr(PipeExpr(PTee, l, r)) => // ~>
-    render_tee(l, r),
-    NExpr(PipeExpr(PFeedback, l, r)) => // <~
-    render_feedback_chain(l, r),
-    _ => render_non_chain(chain_node),
-  }
-  rendered
-}
-
-// ─── Canonical layout constants (SYNTAX.md §1185) ───────────────────
-//
-// 2-space indent for left-edge verbs (|>, ~>, <|).
-// 4-space indent for indented-center convergent verbs (><, <~).
-// Tabs convert to spaces at format time.
+// 2-space indent for left-edge verbs; tabs convert to spaces at format
+// time. The 4-space indented-center constant left with the chain-layout
+// family it served: five verb renderers reached only through a `Format`
+// op nothing performed, deleted 2026-09-21 — the redundant-brace lift had
+// been built into that family's tee renderer first, and the page did not
+// move, which is how a renderer with no performer announces itself.
 fn left_edge_indent() with Pure = 2
-
-fn indented_center() with Pure = 4
 
 // The fanout kind as a top-level value: the N-ary carrier has no verb
 // VALUE in its match (the kind is the census/glyph key, not a field),
 // so arms that need its precedence or glyph read this one binding —
 // constructed once, never per render call (the row stays alloc-free).
 let fanout_distribute_kind = PFanout(FanDistribute)
-
-// ─── Render a |> chain — sequential left-edge ───────────────────────
-//
-// canonical layout per SYNTAX.md §342-346:
-//
-//   input
-//     |> stage_a
-//     |> stage_b
-//
-// Input on its own line at base indent; |> at base + 2; stages on
-// the same line as their |>. The chain reads top-to-bottom = data flow.
-//
-// A chain-position operand below every operator's precedence (the lambda,
-// prec 0 — its body extends maximally rightward) re-wraps, or the re-parse
-// absorbs the verb into the body (the recurrence `((prev) => …) <~ delay(1)`
-// rendered bare read back as `delay(1)(prev)` — an application). One read
-// of the ONE table, shared by every chain renderer's head.
-fn render_chain_pos(node) =
-  if expr_prec_of(node) < 1 { parenthesize(render_chain_node(node)) } else { render_chain_node(node) }
-
-fn render_converge_chain(left, right) = {
-  let left_str = render_chain_pos(left)
-  let right_str = render_chain_pos(right)
-  "{left_str}\n{spaces(left_edge_indent())}|> {right_str}"
-}
-
-fn render_diverge_chain(input, branches_tuple) = {
-  let input_str = render_chain_node(input)
-  // The right operand is the branch-tuple NODE; render_branch_tuple eats
-  // the element LIST (the converged judge caught the node passed whole).
-  // A non-tuple right operand is a single branch, rendered as one chain.
-  match branches_tuple {
-    N(bkind, _, _) => {
-      let branches = match bkind {
-        NExpr(MakeTupleExpr(elems)) => render_branch_tuple(elems),
-        _ => "{spaces(indented_center())}{render_chain_node(branches_tuple)},",
-      }
-      "{input_str}\n{spaces(left_edge_indent())}<| (\n{branches}\n{spaces(left_edge_indent())})"
-    },
-  }
-}
-
-// ─── Render a >< fanout — parallel composition, N-ary ───────────────
-//
-// Canonical per SYNTAX.md §><:
-//
-//   (pipeline_a)
-//       ><
-//   (pipeline_b)
-//       ><
-//   (pipeline_c)
-//
-// Each branch parenthesized at base indent; >< alone on its line at
-// indented center (4-space) between consecutive branches. The carrier
-// is FanoutExpr's branch LIST (the N-ary law) — the render walks it.
-fn render_compose_chain(branches) = match branches {
-  [] => "",
-  [one] => parenthesize(render_chain_node(one)),
-  [h, ...t] => "{parenthesize(render_chain_node(h))}\n{spaces(indented_center())}><\n{render_compose_chain(t)}",
-}
 
 // A named row renders as its authored signed triples: the first term
 // bare, each subsequent led by its connective glyph, negation as `!` —
@@ -287,51 +193,6 @@ fn render_fanout_inline(branches) = match branches {
   [h, ...t] => "{render_operand(h, pipe_prec(fanout_distribute_kind), false)} >< {render_fanout_inline(t)}",
 }
 
-// ─── Render a ~> chain — handler-attach ────────────────────────────
-//
-// One PTee node; layout is the formatter's projection of the LHS
-// shape (layout is never semantics — SYNTAX.md §~>). A chain body
-// earns the block layout, ~> on its own line at left-edge indent:
-//
-//   source
-//     |> lex
-//     |> parse
-//     ~> env_handler          // governs the whole prior chain
-//     ~> diagnostics_handler  // outermost — sandbox boundary
-//
-// A single-stage body renders inline — same tree, same scope:
-//
-//   (try_fn()) ~> catch_abort
-fn render_tee(body, handler_expr) = {
-  let body_str = render_chain_pos(body)
-  let handler_str = render_chain_pos(handler_expr)
-  let hc = graph_comment_at(node_handle(handler_expr))
-  match ast_kind_of(body) {
-    NExpr(PipeExpr(_, _, _)) => "{body_str}\n{spaces(left_edge_indent())}~> {handler_str}",
-    _ => if hc == "" {
-      "{body_str} ~> {handler_str}"
-    } else {
-      "{body_str}\n{spaces(left_edge_indent())}~> {handler_str}"
-    },
-  }
-}
-
-// ─── Render a <~ chain — feedback / iterative ──────────────────────
-//
-// Canonical per SYNTAX.md §483-489:
-//
-//   signal
-//       <~ delay(3)
-//
-// <~ at indented center (4-space) with the FeedbackSpec on the same
-// line. Requires iterative context (Sample / Tick / Clock / IC handler
-// installed upstream); without it, parser rejects with E_FeedbackNoContext.
-fn render_feedback_chain(input, spec) = {
-  let input_str = render_chain_pos(input)
-  let spec_str = render_chain_pos(spec)
-  "{input_str}\n{spaces(indented_center())}<~ {spec_str}"
-}
-
 // ─── Multi-source format — map over an AST list ─────────────────────
 //
 // The DELETED format_pair (binary special-case) was erased per
@@ -350,9 +211,9 @@ fn render_feedback_chain(input, spec) = {
 // own shape, none of them a mechanism. They are deleted with the effect,
 // whose name goes unbackticked here because it no longer resolves.
 //
-// THE PROPERTY THEY DESCRIBED IS REAL AND IS BUILT — just not here: `fmt`
-// writes its own fixpoint in one invocation by rendering, re-parsing and
-// writing the SECOND render (`fmt_run`, src/main.mn), which is the idempotence
+// THE PROPERTY THEY DESCRIBED IS REAL AND IS BUILT — just not here: the fmt
+// verb writes its own fixpoint in one invocation by rendering, re-parsing and
+// writing the SECOND render (fmt_run, src/main.mn), which is the idempotence
 // this loop only asserted. A verb whose output feeds its own reader carries
 // the loop internally; it does not need a `<~` wrapper nobody calls.
 //
@@ -557,7 +418,7 @@ fn render_stmt_tokens(s) with GraphRead + Memory + Alloc + !Mutate + Intern = ma
       "{lhead}\n{indent_block(lv)}"
     }
   },
-  TypeDefStmt(name, variants) => "type {name}{render_variants(variants, 0)}",
+  TypeDefStmt(name, variants) => "type {name}{render_variants(name, variants)}",
   EffectDeclStmt(name, params, ops) => // Op param NAMES are parse-consumed (the ADT stores types only), and
   // bare types parse in op position — the render is the parse's inverse
   // over what the graph carries. The instance params render through the
@@ -731,13 +592,34 @@ fn dp_match_arm(body, nm) with Memory + Alloc = match ast_kind_of(body) {
 // operator — re-wraps in the parens the parse consumed. Without this,
 // (a + b) * c re-rendered as a + b * c: both typecheck, only behavior
 // tells — the fmt gate runs the program pre/post and compares exits.
-fn render_operand(child, parent_prec, is_right) with GraphRead + Memory + Alloc + !Mutate + Intern = {
+fn render_operand(child0, parent_prec, is_right) with GraphRead + Memory + Alloc + !Mutate + Intern = {
+  let child = operand_body(child0)
   let cp = expr_prec_of(child)
   if cp < parent_prec || cp == parent_prec && is_right {
     "({render_tokens_for(child)})"
   } else {
     render_tokens_for(child)
   }
+}
+
+// The E_RedundantBraces lift at OPERAND position — the one place a
+// brace-block reaches an operator, and the wheel authors it on purpose at
+// the tee (`{ body } ~> h`, the sub-scope installed under a handler). A
+// stmt-less block with no prose of its own IS its final expression — the
+// sentence `render_grouped_body` states for body-lead positions — and the
+// operand's precedence check then parenthesizes the final exactly when the
+// braces were doing that work. The parser reported this shape redundant
+// while the render kept it, so `mentl fmt` could not lift the one
+// diagnostic the wheel's own weave still carried (`each`, lib/prelude), and
+// the two projections disagreed on one page. A block carrying statements or
+// prose keeps its braces: they are the scope, or the anchor.
+fn operand_body(node) with Memory + GraphRead = match ast_kind_of(node) {
+  NExpr(BlockExpr(stmts, final)) => if len(stmts) == 0 && graph_comment_at(node_handle(node)) == "" {
+    operand_body(final)
+  } else {
+    node
+  },
+  _ => node,
 }
 
 fn expr_prec_of(node) with Pure = match ast_kind_of(node) {
@@ -957,13 +839,30 @@ fn render_let_ann(ann) with GraphRead + Memory + Alloc + !Mutate + Intern = matc
   "",
 }
 
-// A commented variant set renders VERTICAL (prose above each variant,
+// A nominal record — SYNTAX §«Nominal record types»' `type X = {…}` — parses
+// as ONE variant named for its type carrying ONE record type
+// (`parse_type_decl`), and renders back as the record: the parse's inverse,
+// so `type X = X({…})` and `type X = {…}` are one graph and one page. Any
+// other set: commented variants render VERTICAL (prose above each variant,
 // `=`/`|` leading); a prose-free set keeps the inline ` | ` join.
-fn render_variants(ref variants, i) with GraphRead + Memory + Alloc + !Mutate + Intern = if variants_carry_prose(variants, 0) {
-  "\n{indent_block(render_variants_vertical(variants, 0))}"
-} else {
-  let inline = " = {render_variants_inline(variants, i)}"
-  if fits_inline(inline) { inline } else { "\n{indent_block(render_variants_vertical(variants, 0))}" }
+fn render_variants(name, variants) with GraphRead + Memory + Alloc + !Mutate + Intern = match nominal_record_of(name, variants) {
+  Some(rec) => " = {render_type_tokens(rec)}",
+  None => if variants_carry_prose(variants, 0) {
+    "\n{indent_block(render_variants_vertical(variants, 0))}"
+  } else {
+    let inline = " = {render_variants_inline(variants, 0)}"
+    if fits_inline(inline) { inline } else { "\n{indent_block(render_variants_vertical(variants, 0))}" }
+  },
+}
+
+// The record type a single same-named variant carries; None for every
+// other variant set.
+fn nominal_record_of(name: String, variants) with Memory + Alloc = match variants {
+  [(vname, [body], _)] => match body {
+    TRecord(_) => if vname == name { Some(body) } else { None },
+    _ => None,
+  },
+  _ => None,
 }
 
 fn variants_carry_prose(ref variants, i) with Memory + GraphRead = if i >= len(variants) {
@@ -1407,18 +1306,6 @@ fn any_child_is(target, nodes) with Memory + Alloc = if len(nodes) == 0 {
 } else {
   any_child_is(target, drop_last(nodes))
 }
-
-fn render_branch_tuple(branches) = if len(branches) == 0 {
-  ""
-} else {
-  let head = last(branches)
-  let tail = drop_last(branches)
-  let head_str = render_chain_node(head)
-  let head_line = spaces(indented_center()) ++ head_str ++ ","
-  if len(tail) == 0 { head_line } else { head_line ++ "\n" ++ render_branch_tuple(tail) }
-}
-
-fn render_non_chain(node) = render_node_at(node_handle(node))
 
 // String intent boundaries: the seven-fan's tuple elements reach here as
 // free vars (the branch returns don't ground the destructure), and `++`

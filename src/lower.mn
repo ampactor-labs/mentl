@@ -1028,9 +1028,8 @@ fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body
       }
     }
     let bind_disc = if bind_h == "" { OneShot } else { MultiShot }
-    let lo_body = k2_guard(mark_tail({
-      lower_body_reified(body_node)
-    } ~> arm_state_ctx(bind_fields, bind_disc, bind_h)))
+    let lo_body =
+      k2_guard(mark_tail(lower_body_reified(body_node) ~> arm_state_ctx(bind_fields, bind_disc, bind_h)))
     lower_frame_fence_pop()
     ls_exit_frame()
     Some(LFn(fn_name, len(param_names_list), param_names_list, [lo_body], mk_ef_pure(), len(cap_pairs)))
@@ -4077,9 +4076,8 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // AND its representation via current_resume_discipline().
   //
   // Hβ.lower.tail-call-mark-pass — handler arm body is in tail; k2_guard floors off-spine boundaries (M1.3)
-  let lo_body = k2_guard(mark_tail({
-    lower_expr(arm.body)
-  } ~> arm_state_ctx(captures_names, disc, discriminator)))
+  let lo_body =
+    k2_guard(mark_tail(lower_expr(arm.body) ~> arm_state_ctx(captures_names, disc, discriminator)))
   // The value-holes drain at the arm's own name — an arm hole pairs with
   // the entry reachability names (its container lowers to ""), so a
   // never-installed handler's arm hole never over-refuses (measured on

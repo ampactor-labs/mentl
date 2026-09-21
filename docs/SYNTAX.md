@@ -245,14 +245,18 @@ spawn_task(priority = 5, config = current, timeout_ms = 5000)   // all labeled
 A parameter product may be constructed with a **hole** — a field left unsupplied. The result is not an error; it is a **value**: the function *awaiting* that field. This is partial application, and it is not a distinct feature — it is the product node-kind constructed with one field absent.
 
 ```
-let adults = filter({ p => p.age > 18 })   // xs is a hole → adults : [Person] -> [Person]
-adults(users)                              // fill the hole → the filtered list
-adults(new_signups)                        // reuse — a hole-product is a first-class value
+let adults = filter(.age > 18)        // xs is a hole → adults : [Person] -> [Person]
+adults(users)                          // fill the hole → the filtered list
+adults(new_signups)                    // reuse — a hole-product is a first-class value
 ```
 
-*(This section's headline example was `filter(.age > 18)` until 2026-09-20, and the bare `.field` accessor it spelled **does not parse and never did** — measured: `P_UnexpectedToken` at the `.`, then `E_MissingVariable: age`. Nothing in the tree used it, nothing implemented it, and the spec was teaching it as the canonical form in three places. It is struck rather than built, because a field is not a declaration, so `.name` would be a THIRD way to reach a function value beside reference and mint — the one thing §«Function literals» says there is not. `Hβ.syntax.field-accessor-documented-never-built` closes by this deletion.)*
+**The accessor — `.field` is the hole with a field read, and it is rule 1, never a third mint.** `.age` is `??.age`: the field projection with its receiver unsupplied, punned to the field alone exactly as `{name}` puns `{name: name}` (§«Records»). A field projection is a product — (receiver, name) — and a product with a hole is the function awaiting that field, so `.age : {age: a, ...} -> a` needs no new theory and no new operation: it is REFERENCE with a hole (§«Function literals», rule 1), an edge to a projection the graph already holds.
 
-**The hole is keyed by IDENTITY, never by position.** `filter({ p => p.age > 18 })` leaves *the parameter `xs`* unfilled — "the parameter `xs`," not "slot 2." When exactly one field is a hole, it is unambiguous. When several are, the hole is named explicitly with `??` at the field it marks:
+**A hole is filled by the first thing outward that can fill it.** When it IS a call's argument, the call's product carries it and the call is the suspension (`clamp(0, ??, 255)`). When it sits in a `|>` stage, the pipe's datum fills it (`x |> .name` is `x.name`; `x |> .age > 18` is `x.age > 18`). Otherwise it climbs the expression it sits in — operands, field reads, indexes — to the innermost enclosing call ARGUMENT, which closes into a one-parameter function, every hole in that argument the same parameter: `filter(.age > 18)` is `filter({ p => p.age > 18 })`, one graph, and `mentl fmt` writes the accessor; `filter(.age > 18 && .active)` reads one person; `map(.name |> upper, xs)` closes at `map`'s argument, because the hole is the pipe's DATUM there, not its stage. A hole inside a nested call's argument closes at that inner argument — `filter(len(.name) > 3)` hands `len` a function and refuses as the type error it is; the arm list says the wider extent, `filter({ p => len(p.name) > 3 })`. The climb never leaves a function body: an arm list or `fn` body with no call argument between it and the hole does not silently become a function OF the hole (`{ p => .x + 1 }` does not mean `{ p => { h => h.x + 1 } }`; the arm's own parameter is what `p.x` reads). A hole none of these reach is the authored hole — productive, proposed into, never executable (below).
+
+*(These examples were struck on 2026-09-20 — "does not parse, zero uses, and a third way to mint a function" — and restored on 2026-09-21 by ruling. The spec is the manifest and is not cut to the lathe's shape; the objection was wrong on its merits, because the accessor is the hole with a field read and not a mint; and the filling rule above is the one paragraph ADDED in restoring the section — the reading these examples force, stated so the parser can be turned to it without a second decision. The lathe is turned in `Hβ.syntax.field-accessor-is-built`.)*
+
+**The hole is keyed by IDENTITY, never by position.** `filter(.age > 18)` leaves *the parameter `xs`* unfilled — "the parameter `xs`," not "slot 2." When exactly one field is a hole, it is unambiguous. When several are, the hole is named explicitly with `??` at the field it marks:
 
 ```
 between(??, 100)      // the FIRST field is the hole: (x) => between(x, 100)
@@ -264,8 +268,8 @@ clamp(0, ??, 255)     // the MIDDLE field is the hole: (x) => clamp(0, x, 255)
 **The `|>` pipe is hole-completion, not a rewrite.** `x |> f(a)` fills `f(a)`'s remaining hole with `x`:
 
 ```
-users |> filter({ p => p.age > 18 })              // fills xs → equals filter({ … }, users)
-users |> filter({ p => p.age > 18 }) |> map({ p => p.name }) |> sort
+users |> filter(.age > 18)            // fills xs → equals filter(.age > 18, users)
+users |> filter(.age > 18) |> map(.name) |> sort
 ```
 
 The pipe's type rule (§«`|>` — converge») requires `right : A -> B` — a product with exactly one hole — and a partial application *is* exactly that. So the pipe is not a syntactic append; it is the product's one remaining hole filled by the piped value. This is why the five verbs compose: every stage is a product pre-filled with its configuration, its data field a hole the pipe completes. A stage with more than one hole must name the pipe's target with `??` (`x |> clamp(0, ??, 255)`); a stage with none is a complete value and `E_PipeIntoComplete` teaches the missing hole.
@@ -1433,8 +1437,17 @@ handler:
 
 ```
 let result = { let x = setup(); work(x) } ~> state_handler
-let log    = { work() } ~> bounded_log("INFO")
+let log    = work() ~> bounded_log("INFO")
 ```
+
+The braces are the sub-scope's own — they exist when the body introduces
+statements. `{ work() } ~> h` is the same graph as `work() ~> h` (the tee is
+the loosest operator), so it is the redundant form §«Redundant braces» names,
+and `mentl fmt` lifts it at the tee exactly as it does at a body lead. (This
+example carried the braced spelling until 2026-09-21, when the wheel's own
+`each` was the one `E_RedundantBraces` left in its weave and the formatter
+could not lift it because it agreed with this example rather than with the
+rule.)
 
 (There is no keyword install spelling — `handle` is not a keyword
 (§«Installation»); handler state and arms live at the handler *declaration*,
@@ -1806,6 +1819,16 @@ Layout is never semantics. The precedence table alone draws the
 tree; the formatter projects the canonical shape at save. Nothing
 below is parser-enforced — it is what `mentl fmt` writes.
 
+**LATHE LAG, measured 2026-09-21:** the live render writes a verb chain
+INLINE — `a |> f |> g ~> h` on one line, breaking only where an operand
+carries attached prose — and the wheel's 60,000 lines, at their own
+formatter's fixpoint, hold ZERO lines beginning with `|>`. The vertical
+stacking below was implemented once, by a chain-render family reached only
+through a `Format` op nothing performed; it was deleted the day this was
+measured. This section is the canon and the formatter is behind it — the
+render grows the layout below (`Hβ.fmt.chain-canon-is-inline-on-the-page`
+is the lag, not a decision).
+
 ### Sequential verbs at LEFT EDGE
 
 `|>` and `~>` sit at the left edge of the code's enclosing indent. Each stage on its own indented line:
@@ -1869,7 +1892,7 @@ The parser accepts any whitespace; the precedence table alone draws the tree (ch
 
 **Render rule** (canonical):
 - The formatter renders code in canonical 2-space / 4-space form on save.
-- The `Format` effect at `src/format.mn` declares `format_program` / `format_at_handle` / `format_chain` ops; `format_default` is the canonical handler.
+- The `Format` effect at `src/format.mn` declares `format_program` / `format_at_handle`; `format_default` is the canonical handler. (A third op, `format_chain`, carried a second chain renderer — five verb-layout functions — that nothing ever performed; deleted 2026-09-21 when the redundant-brace lift was found to have been applied to it instead of to the live operand render.)
 - `mentl edit` (built-in) auto-formats continuously — keystroke triggers parse → format → render. The developer never sees badly-indented code because the medium normalizes before display.
 - The LSP transport (external editors via VS Code / vim / Emacs) provides format-on-save through the same `format_default` handler, different transport.
 - Tabs in the on-disk file are converted to spaces at the next save; the renderer's indent-width preference is per-developer (editor setting), but the file on disk is canonical for L1 byte-identity and version-control determinism.

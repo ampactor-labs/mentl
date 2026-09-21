@@ -352,7 +352,7 @@ fn attach_comment_weave(ref tokens, h_from) with GraphRead + GraphWrite + Memory
 // token's end line for the trailing test. The run is a NOMINAL record —
 // the brand pins the element type at every generic reader (the bsearch
 // walkers compile once; an open element row floored their field reads).
-type CwRun = CwRun({end_line: Int, run_span: Span, start_line: Int, text: String, trailing: Bool})
+type CwRun = {end_line: Int, run_span: Span, start_line: Int, text: String, trailing: Bool}
 
 fn cw_collect_runs(ref tokens, i, prev_line, acc) -> [CwRun] with Memory + Alloc = if i >= len(tokens) {
   acc
@@ -3137,9 +3137,21 @@ fn parse_pat_record_fields(ref tokens, pos) = {
     ([], None, p + 1)
   } else if at_ellipsis(tokens, p) {
     let name_pos = skip_ws(tokens, p + 3)
-    let rest_name = ident_at(tokens, name_pos)
-    let p_after_name = skip_ws(tokens, name_pos + 1)
-    ([], Some(rest_name), expect(tokens, p_after_name, TRBrace))
+    // The ANONYMOUS rest — `{name, ...}` — is SYNTAX's own match example
+    // (`{name: "Morgan", ...} => …`) and the pun a reader writes when it
+    // wants a field and nothing else. It is `..._` with the `_` unwritten:
+    // presence without a bind. This arm read a NAME unconditionally, took
+    // the `}` as it, and then could not find the `}` — every `{path, ...}`
+    // in the wheel narrated `P_ExpectedToken` and parsed by recovery
+    // (measured 2026-09-21, thirteen sites, all typed correctly by the
+    // recovery, none clean).
+    if at(tokens, name_pos, TRBrace) {
+      ([], Some("_"), name_pos + 1)
+    } else {
+      let rest_name = ident_at(tokens, name_pos)
+      let p_after_name = skip_ws(tokens, name_pos + 1)
+      ([], Some(rest_name), expect(tokens, p_after_name, TRBrace))
+    }
   } else {
     let name = ident_at(tokens, p)
     let p1 = p + 1
@@ -3187,8 +3199,6 @@ fn parse_pat_list_args(ref tokens, pos) = {
     ([], None, p + 1)
   } else if at_ellipsis(tokens, p) {
     let name_pos = skip_ws(tokens, p + 3)
-    let rest_name = ident_at(tokens, name_pos)
-    let p_after_name = skip_ws(tokens, name_pos + 1)
     // `..._` accepts any remaining tail WITHOUT binding it — but the rest
     // slot carries TWO facts: PRESENCE (the predicate: length ≥ prefix,
     // never exact) and the BIND name. Mapping "_" to None destroyed
@@ -3196,8 +3206,16 @@ fn parse_pat_list_args(ref tokens, pos) = {
     // walk_locals on every multi-element list (faces 12-14; the seed had
     // the same conflation, independently rationalized). Presence always
     // survives here; the bind side skips "_" (bind_pat_rest's law).
-    let rest = Some(rest_name)
-    ([], rest, expect(tokens, p_after_name, TRBracket))
+    // The anonymous `[a, ...]` is `..._` with the `_` unwritten — the same
+    // surface as the record rest (SYNTAX: "List rest uses the same `...rest`
+    // surface as record rest"), read here the same way.
+    if at(tokens, name_pos, TRBracket) {
+      ([], Some("_"), name_pos + 1)
+    } else {
+      let rest_name = ident_at(tokens, name_pos)
+      let p_after_name = skip_ws(tokens, name_pos + 1)
+      ([], Some(rest_name), expect(tokens, p_after_name, TRBracket))
+    }
   } else {
     match parse_pat(tokens, p) {
       (pat, p2) => {

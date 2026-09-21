@@ -35,6 +35,211 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-21 · pin 4824ccc48f3504e8 (CLEAN m2 == m3) · A SITE IS A HANDLE —
+  THE CENSUS, THE REFS, THE DECLS, THE BADGES AND THE BOARD CARRY NODES, AND
+  A POSITION PROJECTS FROM THE NODE'S OWN COLUMNS.
+
+  ▶ THE DEFECT THAT NAMED THE LANDING. A cell-convicting census shape
+  (`CsFreeRowVar`, built to read the free row variables the judgment leaves
+  unbound) rendered its first eleven sites at `tuples:72:1-75:2`,
+  `tuples:243:1-246:2`, … — addresses inside a 39-line module — because a
+  site was a PAIR read from two unrelated columns: `graph_module_of(i)` (the
+  birth module, correct) beside `span_of_node_raw(i)` (the type cell's Reason
+  `Located`, a coordinate COPIED at bind time from whatever the binder was
+  judging). On a parse-born node the two agreed by accident; on a cell minted
+  during inference they did not. Closed by deletion: every walk answers
+  HANDLES (`census_walk`, `refs_of_name`, `decl_handles`, `fanout_sites`, the
+  board's `Standing`), `site_of(h)` reads `graph_module_of` beside
+  `graph_span_of` — the spans column the parser wrote at the same mint it
+  entered the module under — and a cell with no parse position renders as
+  `#handle — reason` instead of borrowing one. `span_of_node_raw`,
+  `decl_site_of` and `census_site_span` are gone. The same root one layer
+  over: the deferred row gate reported `show_list`'s over-declaration at
+  `tuples:3912` for a types.mn decl, because it carried a span and re-derived
+  the module; it carries the decl's HANDLE now and reports through
+  `report_at(h, …)`. `import tuples` left src/main.mn — the imports facet had
+  called it DEAD and no site referenced its three fns.
+
+  ▶ THE MEASUREMENT THAT MADE THE SHAPE A READ RATHER THAN A BOUND. On the
+  manifest link `CsFreeRowVar` convicts 101 cells: 44 the per-use
+  instantiation of a quantified row, 38 the row of a call to a closure
+  PARAMETER inside a HOF, 7 the HOF's own declared-row cell, 4 record rows, 4
+  stored-function rows, 2 declarations, 2 argument edges — 89 of 101 a
+  signature's own quantified row or a copy of it, the only spelling row
+  polymorphism has. A bound on that count would convict the language, so none
+  is placed; the countdown that can reach zero reads the quantifier
+  (`sig_owns`), and that shape is the peer's next form.
+
+  ▶ THREE SHAPES BORN, ONE WIDENED, ONE RAISED — AND THE RAISE IS THE
+  FINDING. `CsIterationCostume` (the index-threaded self-call, Morgan's
+  standing rule against it) bounded at 480: eleven walks in query.mn and
+  graph.mn became `fold`/`any`/`find`/`filter` stages over the new prelude
+  producer `iterate_range(lo, hi)` (484 → 480, the producer itself being
+  one). `CsAuditSilenced` — a `// drift-audit: ignore` marker, counted on the
+  comments column — 136, each a bash pattern left imprecise, retiring as the
+  pattern absorbs into a structural shape. `CsWildcardDestructure` — a
+  product destructured by position with two or more slots discarded, Morgan's
+  screenshot of `HandlerDeclStmt(n, _, _, _, _)` — 732 across every match and
+  let; the zero is the Stmt/Expr rosters carrying RECORDS
+  (`Hβ.types.constructor-payloads-are-records`). `CsWildcardFabricates` 21 →
+  65 because `_ => []` joined the roster (the fabricated absence over a
+  load-bearing ADT, found where it had hidden that a `let`, a refinement and
+  an alias declare names). And `CsFreeRowCallee` 1,048 → 1,051: every fold
+  written against the iteration count is a call to a row-polymorphic HOF
+  whose row THIS link leaves free, so one ratchet fell and the other rose for
+  the same edits. Two ratchets pulling against each other is the measurement
+  that the weave under-grounds rows the flat link grounds — one judgment's
+  order-dependence wearing a "two links" costume — and Morgan's ruling is the
+  peer: `Hβ.link.the-flat-judgment-ends`. The manifest becomes THE judgment
+  the march asserts; the blob survives only as what `mentl -` means.
+
+  ▶ THE ZERO-HELD BOUND CAUGHT THE AUTHOR'S OWN SILENT WRONG.
+  `CsRecordPatternOpen` rose to 14 on the way here: fourteen `{path, ...}`
+  puns over the module cell, every one inside a lambda under `any`/`find`,
+  and the binary built from them TRAPPED in `cost` and printed nothing in
+  `doc` — the neighbouring-field read
+  (`Hβ.infer.record-row-vars-are-not-unioned`, still owed its fixture),
+  measured on the wheel's own code the day it was written. The provable form
+  today is the nominal record (`type ModuleCell = {decls, handle, path,
+  span}`) with annotated projections (`cell_path(c: ModuleCell)`); the count
+  came back to zero and stays there.
+
+  ▶ FOUR KILLS ON THE WAY, EACH BY THE ARTIFACT. (1) The first
+  `CsWildcardDestructure` measured ZERO — it walked `NPat` nodes, and a
+  pattern is a VALUE on its match or let, not a node the weave visits; the
+  shape reads `MatchExpr` arms and `LetStmt` patterns and answers 732. (2)
+  The redundant-brace lift was put into `render_tee` and the page did not
+  move: `render_tee` and the five verb renderers behind it hung off
+  `format_chain`, a `Format` op nothing performed. The family is deleted
+  (−130 lines in format.mn) and the lift lives at `render_operand`, which
+  every operand passes through — prelude's `each` was the wheel's one
+  `E_RedundantBraces` and the medium re-rendered it itself. The
+  `unreachable` facet had counted the family reached, through an arm of an op
+  nobody performs, which is its own finding. (3) The m2 census route trapped
+  silently (exit 134) and was read as a defect in the shape; it was a
+  GENERATION artifact — m2 was compiled by boot's OLD parser, which
+  parse-recovered `{path, ...}` into garbage, and the m3 built by hand
+  answered. (4) SYNTAX's `{name, ...}` / `[h, ..._]` anonymous rest had never
+  parsed (`P_ExpectedToken: expected }, found =>`): `parse_pat_record_fields`
+  and `parse_pat_list_args` read a name after `...` unconditionally. Fixed in
+  both; the source no longer needs the form, so the pin is CLEAN rather than
+  a TRANSITION.
+
+  ▶ THE HOOKS WERE `{}`. CLAUDE.md said the drift audit "runs as a
+  PostToolUse hook"; the session's hook configuration was empty and
+  `.claude/` was gitignored, so the claim held nowhere. `.claude/settings.json`
+  is versioned now: `tools/audit-on-edit.sh` runs the drift audit on every
+  `.mn` edit, and `tools/mentl-first.sh` REFUSES grep/rg/sed/awk and any
+  `mentl` answer piped into a filter — Morgan's standing rule, after
+  `| grep -v` hid four `W_CommentRefUnresolved`, a `T_OverDeclared` and the
+  `tuples:3912` misattribution from the author's own read. Its first refusals
+  were of this session's own commands.
+
+  ▶ THE BOARD AT THE PIN, AND THE ONE RED. Crown, proof-exactness and
+  effect-identity green; frontier 389 pass / 1 red / 2 expected-red on the
+  first march, the red being the prelude floor — a bare program links 2,835
+  source lines against a 2,822 ceiling, because `iterate_range` landed in
+  prelude and every program links prelude whole. Raised to 2,835 with its
+  justification in the gate's own record (the third capability in a row from
+  lib/; the same peer, `Hβ.driver.link-is-reachability`, takes it back) and
+  the march re-run: 390 pass / 0 red / 2 expected-red at the block that
+  ships, m3 leg 8.96s wall, 975MB peak RSS; WAT 420,984 → 419,447 lines.
+
+  ▶ THREE RULINGS FROM MORGAN, RECORDED WHERE THEY BIND. "Keep the braces
+  off": SYNTAX's install example is `work() ~> bounded_log("INFO")` and the
+  formatter lifts the braces at the tee as at a body lead. "Layout is lathe
+  lag": the vertical chain canon and the body-beneath-its-signature form
+  stand as the manifest; the render is behind them and grows them
+  (`Hβ.fmt.chain-canon-is-inline-on-the-page`,
+  `Hβ.fmt.fn-body-beneath-its-signature`). "`.field` gets built": the
+  accessor examples struck one pin ago are restored verbatim, the strike's
+  "third way to mint" refuted — `.age` is `??.age`, reference with a hole —
+  and the one paragraph added is the filling rule the examples force, put to
+  Morgan as the design sentence it is (`Hβ.syntax.field-accessor-is-built`
+  supersedes `Hβ.syntax.field-accessor-documented-never-built`).
+
+  ▶ THE TAIL THAT BECAME THE FINDING: THE PIN WAS BEHIND ITS OWN SOURCE, AND
+  CLOSING THAT GAP FOUND 40% OF THE JUDGMENT IN ONE TWO-LINE FUNCTION. The
+  pre-commit hook's fmt gate re-rendered the wheel after the march, so the
+  committed source and the pin disagreed. The one formatter lag behind it —
+  a nominal record rendering as its constructor form, `type X = X({…})`
+  where SYNTAX writes `type X = {…}` — was a fifteen-line fix in
+  `render_variants` (`nominal_record_of` is the parse's inverse). The march
+  then REFUSED the repin: the m3 leg's peak rose 998,948 → 1,073,332 KB
+  against a 1,010,000 ceiling, and every re-read agreed. Attributing 76MB to
+  fifteen lines took ELEVEN KILLS, each one probe: (1) the nested
+  list-of-tuple-of-list pattern — the index form measured the same; (2) the
+  string equality — dropped, same; (3) the helper's body — stubbed to `None`,
+  same; (4) a flat-buffer doubling threshold — HEAD's wheel plus one trivial
+  decl measured 999,032 KB, so no; (5) the effect-op argument — replaced by a
+  literal, same; (6) the callee's identity — `render_expr_tokens` cost 228MB
+  where `render_body_tokens` cost 341MB, so any hub member pays; (7) the
+  stored-row fold walking a DAG as a tree — a per-write memo measured +2.4MB
+  and saved nothing, and is deleted; (8) the row bind's occurs check, (9) its
+  join and flatten, (10) the finalize's flatten, (11) the row unify's resolve
+  and canonical halves — a probe compiler printing heap deltas at every one
+  of those sites found nothing above 2MB while the decl spent 341MB.
+
+  ▶ THE INSTRUMENT THAT ENDED THE GUESSING. `mentl <file> cost` now ranks the
+  judgment's heap BY DECLARATION: `judge_stmt_one` notes `heap_mark()`'s
+  advance across `infer_stmt` on the graph beside the decl
+  (`graph_judged_note`, the decls column's cost sibling), and the question
+  renders the sixteen heaviest with their names and addresses. Its first
+  reading: `render_pred_node` at format:980, two lines, 341,805,272 B —
+  40% of the whole judgment — and 266MB on HEAD, so the edit had added 76MB
+  to a function it never touched. Two more probe compilers bracketed the fn
+  judgment's phases (`body=341771304`, every other phase under 20KB) and
+  then the saturated call's phases (`expected=170266312`: the TYPE bind of
+  the expected `TFun` carrying the callee's row). The only allocating
+  operation in that arm is the occurs check, whose row-edge recursion had no
+  visited set and re-walked every PATH to the render family's shared row
+  variables. With `seen` threaded through the family: 1,307,192 B, the m3
+  leg 1,069,472 → 925,780 KB (below the prior pin), 10.7 → 8.6s wall, the
+  judgment line 630,818,368 → 474,553,088 B, and `selfcompile_peak_kb_max`
+  LOWERED 1,010,000 → 936,000 with its reason — the first time that ceiling
+  moved down.
+
+  ▶ THE RULING, AND WHY THE FIX IS THE STOP-GAP. Morgan: *"flatten" /
+  "memoize" / "cache" are words to be careful with*; the e-graph is the same
+  disease; rows as propagated cells come first. The walk existed because a
+  row variable is a VALUE carrying an edge list, and that value forces eleven
+  compensations — `flatten_row_stored` (a materialized view written at every
+  bind), `resolve_row` (re-folded at every read), the five recursive readers,
+  `graph_finalize_row`, `graph_compress_row`, `group_completion_fold`,
+  `row_without_self`, `row_keep_completion`, `merge_chased_row`, lower's
+  `escaping_fixpoint` — every one a re-derivation of the names a row carries.
+  The visited set is the traversal's own bookkeeping, not a cache, and it is
+  headed as the form the rows landing deletes. Three read-only audits then
+  asked the same question of the whole wheel and returned 116 sites in seven
+  families of the one law; `Hβ.audit.re-derivation-census-2026-09-21` banks
+  them and `Hβ.effects.rows-are-propagated-cells` carries the first landing's
+  build-ready design. The fmt sweep through the candidate compiler landed
+  fifteen files' nominal records and three tee-brace lifts the old boot's
+  render could not reach, so the pin IS the fixpoint of the committed source.
+
+  ▶ THE GATE REFUSED ITS AUTHOR, FOUR TIMES, ON THE FIRST BOARD OF THE FIXED
+  TREE (2026-09-22), and every refusal was inside the tail's own additions.
+  (1) comment-refs 0 → 1: the header on `occurs_in` backticked `seen`, a
+  parameter that belongs to `occurs_in_seen` — the reference now names the
+  function that carries it. (2) unprovable comparisons 55 → 57:
+  `nominal_record_of` compared a variant's name against an unpinned `name`
+  and `judged_insert_desc` compared bytes read off a quantified tuple — both
+  address compares, PLAN §9's pointer-eq-on-names class in the author's own
+  hand; `name: String` and `row: (Int, Int)` carry the proof and the count is
+  55 again. (3) authored `ref` 721 → 728: the visited-set rewrite arrived with
+  seven new markers (the `_seen` twins and three helpers), each a read the
+  grade infers. Every authored `ref` in the occurs family — eighteen, the
+  fifteen inherited ones included — and the four on the formatter's and the
+  instrument's helpers are deleted, twenty-two in all; `check` is clean
+  without them, the count is 706, and the ceiling follows it down. (4) `CsFreeRowCallee` 1,051 → 1,052: the cost row
+  rendered `{int_to_str(bytes)}`, a call whose callee's row this link leaves
+  free; SYNTAX's splice `{bytes}` on the pinned pair dispatches at lower and
+  the call is gone. The board holds 17 bounds again; the march that ships is
+  CLEAN at 421,305 WAT lines, m3 leg 12.75s wall, 926,484 KB peak — inside
+  the lowered 936,000 ceiling. Each refusal was the instrument built in this
+  arc catching the arc's own author, which is the only evidence a gate can
+  give that it measures anything.
+
 - 2026-09-21 · pin 347d98e865bd3aec (CLEAN m2 == m3) · THE ROW FACET RESOLVES
   ITS EDGES, AND THE ANSWER IS ONE CELL.
 

@@ -79,10 +79,15 @@ effect InferCtx {
   // still an open chain at decl exit (a cycle's non-last member — the
   // callee roots it charged resolve only when the cycle's last member
   // cuts) parks here and drains at the pass tail, where every chain has
-  // closed. Per-pass by construction: each pass installs its own
-  // infer_ctx, so a trial's parked gates die with the trial's bracket.
-  defer_row_gate((String, EffRow, Bool, Int, Span, [Int]))
-  drain_row_gates() -> [(String, EffRow, Bool, Int, Span, [Int])]
+  // closed. The tuple is (name, declared row, has_pure, the row cell, THE
+  // DECL NODE, the signature's own frees). The node, not its span: a parked
+  // gate fires at the pass tail under whatever module is ambient THEN, and
+  // a coordinate copied at decl exit cannot say which file it came from —
+  // measured 2026-09-21 as `show_list … at tuples:3912`, a line in a
+  // 39-line module. `enforce_row_gate` reads the span off the node and
+  // reports AT it (`report_at`), so the module is the node's own column.
+  defer_row_gate((String, EffRow, Bool, Int, Int, [Int]))
+  drain_row_gates() -> [(String, EffRow, Bool, Int, Int, [Int])]
   // The binding group in judgment — PARSE truth (scc_groups), set by the
   // trial around each cycle's walk. ONE consumer: the declared-row
   // deferral (a cycle member's gate parks until the pass tail, where
@@ -1667,10 +1672,17 @@ fn enter_module_of(ref node) = match node {
 
 // This was stmt_measure_one, which also returned (name, handles minted) —
 // the count the deleted second pass prefix-summed into planned handle bases.
-// A judgment mints what it mints; nothing plans it any more.
+// A judgment mints what it mints; nothing plans it any more. What it COSTS
+// is noted beside the decl (`graph_judged_note`): the heap line's advance
+// across `infer_stmt`, exact on the monotone bump image, ranked by
+// `mentl <file> cost`. It exists because a fifteen-line render edit raised
+// the self-compile's judgment heap by 76MB and nothing in the medium could
+// say which decl paid it (2026-09-21).
 fn judge_stmt_one(ref node) = {
   enter_module_of(node)
+  let line = heap_mark()
   infer_stmt(node)
+  graph_judged_note(node_handle(node), heap_mark() - line)
 }
 
 // The stmt's declared name — the layer projection's index key. A stmt with
@@ -1678,19 +1690,24 @@ fn judge_stmt_one(ref node) = {
 // no key; missing edges DEGRADE TO SOURCE ORDER (equal depths walk in
 // source order), never reorder a dependent before its dependency.
 fn stmt_decl_name(ref node) = match node {
-  N(body, _, _) => match body {
-    NStmt(FnStmt(name, _, _, _, _)) => name,
-    NStmt(TypeDefStmt(name, _)) => name,
-    NStmt(EffectDeclStmt(name, _, _)) => name,
-    NStmt(HandlerDeclStmt(name, _, _, _, _)) => name,
-    NStmt(LetStmt(pat, _, _)) => match pat {
-      PVar(name) => name,
-      _ => // drift-audit: ignore — the documented no-key contract (a destructured let contributes no index entry; equal depths keep source order)
-      "",
-    },
-    _ => // drift-audit: ignore — the documented no-key contract (an unnamed stmt contributes no index entry; equal depths keep source order)
+  N(body, _, _) => body_decl_name(body),
+}
+
+// The same key read off a BODY — the form a handle's reader takes
+// (`graph_node_body`), so the cost facet names a decl without rebuilding
+// its node.
+fn body_decl_name(body) = match body {
+  NStmt(FnStmt(name, _, _, _, _)) => name,
+  NStmt(TypeDefStmt(name, _)) => name,
+  NStmt(EffectDeclStmt(name, _, _)) => name,
+  NStmt(HandlerDeclStmt(name, _, _, _, _)) => name,
+  NStmt(LetStmt(pat, _, _)) => match pat {
+    PVar(name) => name,
+    _ => // drift-audit: ignore — the documented no-key contract (a destructured let contributes no index entry; equal depths keep source order)
     "",
   },
+  _ => // drift-audit: ignore — the documented no-key contract (an unnamed stmt contributes no index entry; equal depths keep source order)
+  "",
 }
 
 // ─── The stmt-layer index — decl name → stmt position ───────────────────
@@ -2544,9 +2561,9 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
             // is safe, and at the tail — is the signature question, and that
             // is where `sig_frees` is read.
             if row_gate_unresolved(row_handle, []) && group_member(name) {
-              defer_row_gate((name, declared_row, has_pure, row_handle, span, sig_frees))
+              defer_row_gate((name, declared_row, has_pure, row_handle, handle, sig_frees))
             } else {
-              enforce_row_gate(name, declared_row, has_pure, row_handle, span)
+              enforce_row_gate(name, declared_row, has_pure, row_handle, handle)
             }
           }
           env_scope_exit()
@@ -2757,7 +2774,13 @@ fn pin_scalar_or_keep(barg, darg) = match darg {
   darg,
 }
 
-fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: ValidSpan) = {
+// `h` is the DECL NODE. The span is its column read and every report is AT
+// the node (`report_at`), so a gate that parks and fires at the pass tail
+// names the module the decl lives in, never the one the drain happened to
+// leave in force — the census's own fourth-machine error at the diagnostic
+// surface, closed the same day (2026-09-21).
+fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, h) = {
+  let span = graph_span_of(h)
   let bound = graph_chase(row_handle)
   match bound {
     GNode(NRowBound(raw_row), _) => {
@@ -2782,7 +2805,7 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
         if row_subsumes(declared_row, body_row) {
           ()
         } else {
-          report(TOverDeclared(declared_row, body_row, name, span))
+          report_at(h, TOverDeclared(declared_row, body_row, name, span))
         }
         // THE PROOF IS THE INTERFACE (the settled publish law, landed
         // WITH the union and THE FLAT-CELL LAW — the census proved the
@@ -2809,9 +2832,9 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
         }
       } else {
         if has_pure {
-          report(EPurityViolated(body_row, span))
+          report_at(h, EPurityViolated(body_row, span))
         } else {
-          report(EEffectMismatch(declared_row, body_row, span))
+          report_at(h, EEffectMismatch(declared_row, body_row, span))
         }
       }
     },
@@ -2853,7 +2876,7 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
     if row_subsumes(declared_row, mk_ef_pure()) {
       ()
     } else {
-      report(TOverDeclared(declared_row, mk_ef_pure(), name, span))
+      report_at(h, TOverDeclared(declared_row, mk_ef_pure(), name, span))
     },
   }
 }
@@ -2874,10 +2897,10 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
 // impossible by construction, the park/drain machinery deletes whole.
 fn drain_deferred_row_gates() = each(
   (g) => match g {
-    (name, declared_row, has_pure, row_handle, span, sig_frees) => if row_gate_unresolved(row_handle, sig_frees) {
+    (name, declared_row, has_pure, row_handle, h, sig_frees) => if row_gate_unresolved(row_handle, sig_frees) {
       defer_row_gate(g)
     } else {
-      enforce_row_gate(name, declared_row, has_pure, row_handle, span)
+      enforce_row_gate(name, declared_row, has_pure, row_handle, h)
     },
   },
   drain_row_gates()
@@ -2912,7 +2935,7 @@ fn assert_gates_walk(gs) = if len(gs) == 0 {
   ()
 } else {
   match last(gs) {
-    (name, declared_row, has_pure, row_handle, span, _sig_frees) => enforce_row_gate(name, declared_row, has_pure, row_handle, span),
+    (name, declared_row, has_pure, row_handle, h, _sig_frees) => enforce_row_gate(name, declared_row, has_pure, row_handle, h),
   }
   assert_gates_walk(drop_last(gs))
 }
@@ -8474,9 +8497,7 @@ fn classify_rounds(decls, entries) = {
   // arm-internal-perform gap; the draw_op_edges precedent). The recursion
   // threads evidence through its own calls.
   let idx = smap_build(entries)
-  let next = list_to_flat({
-    classify_grade_all(decls, 0)
-  } ~> summaries_frozen(idx))
+  let next = list_to_flat(classify_grade_all(decls, 0) ~> summaries_frozen(idx))
   if usage_entries_eq(entries, next, 0) { next } else { classify_rounds(decls, next) }
 }
 

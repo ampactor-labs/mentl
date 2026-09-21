@@ -161,9 +161,7 @@ fn mcp_judge(source, wat_path) = compile_context(() => {
         if fd == 0 {
           0
         } else {
-          {
-            emit_module(lowered)
-          } ~> wat_to_file(fd)
+          emit_module(lowered) ~> wat_to_file(fd)
           fs_close(fd)
           1
         }
@@ -540,26 +538,24 @@ fn session_run(at_read) = {
     // trapped at its own dispatch (ev_declaring_node, i32.const 100524 =
     // Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
     // cost nothing on the path that reports no project.
-    infer_context(() => {
-      if !fs_exists(driver_module_path("main")) {
-        eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
-        1
-      } else {
-        match driver_entry_with_ranges("main") {
-          (ast, ranges) => {
-            eprint_string("mentl session: graph resident on 127.0.0.1:7377 — read verbs answer live; every other verb falls back cold through the shim\n")
-            session_sock_loop(
-              lfd,
-              driver_module_ast(ast, "main"),
-              ranges,
-              driver_manifest(ranges),
-              at_read,
-              session_current
-            )
-          },
-        }
-        0
+    infer_context(() => if !fs_exists(driver_module_path("main")) {
+      eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
+      1
+    } else {
+      match driver_entry_with_ranges("main") {
+        (ast, ranges) => {
+          eprint_string("mentl session: graph resident on 127.0.0.1:7377 — read verbs answer live; every other verb falls back cold through the shim\n")
+          session_sock_loop(
+            lfd,
+            driver_module_ast(ast, "main"),
+            ranges,
+            driver_manifest(ranges),
+            at_read,
+            session_current
+          )
+        },
       }
+      0
     } ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
   }
 }

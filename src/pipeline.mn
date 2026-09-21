@@ -150,13 +150,11 @@ fn emit_context(body) =
 // lower and installing an emit stack over them would be inert ceremony.
 fn compile_context(body) = infer_context(() => emit_context(body))
 
-fn compile(entry_module) = compile_context(() => {
-  // `driver_compile_entry` infers the deps DAG + the entry ONCE and returns
-  // the entry's already-typed AST — compile lowers that live graph, no
-  // second fs_read / re-judgment (Carried-Truth: the entry
-  // is proven once and read live, never re-derived).
-  entry_module |> driver_compile_entry |> compile_remainder
-} ~>
+// `driver_compile_entry` infers the deps DAG + the entry ONCE and returns
+// the entry's already-typed AST — compile lowers that live graph, no
+// second fs_read / re-judgment (Carried-Truth: the entry
+// is proven once and read live, never re-derived).
+fn compile(entry_module) = compile_context(() => entry_module |> driver_compile_entry |> compile_remainder ~>
 // The emit SINK is the caller's install, never this chain's: compile_run
 // streams to stdout (wat_stdout), run_run streams to the executor
 // (wat_to_host) — one compile graph, the handler swap IS the verb. A sink
@@ -506,9 +504,8 @@ fn resume_image(img_path) = compile_context(() => {
   compile_remainder(warm_program())
 } ~> wat_stdout ~> persist_to_disk ~> fail_exit ~> wasi_filesystem)
 
-fn compile_stdin() = compile_context(() => {
-  read_stdin() |> infer_program_converged |> compile_remainder
-} ~> wat_stdout ~> wasi_filesystem)
+fn compile_stdin() =
+  compile_context(() => read_stdin() |> infer_program_converged |> compile_remainder ~> wat_stdout ~> wasi_filesystem)
 
 // pipeline_check returns its own ERROR COUNT, because it owns the handler that
 // does the counting (the diagnostics_handler at the foot of this chain).
@@ -583,25 +580,23 @@ fn refuse_unreadable(entry_module) with WASI + Memory + Alloc = {
   1
 }
 
-fn query(entry_module, words) = infer_context(() => {
-  // COLD by the swap-crossing law (Hβ.session.resident-verbs — the
-  // measured refutation is in the §7 ledger): a mid-verb image restore
-  // kills every pre-swap heap value — the caller's own argv strings,
-  // the chain's own handler records — and survives only by allocation
-  // coincidence. The warm form for the projection verbs is the
-  // RESIDENT SESSION (the image as the session's own memory, no swap —
-  // the named peer carries the measured constraints); fresh derivation
-  // here IS the sound form for a per-process verb.
-  // `entry_ast` is the ONE discovery home — the weave for a module, stdin
-  // for `-`, and the same refusal for an address that produced neither.
-  match entry_ast(entry_module) {
-    None => refuse_unreadable(entry_module),
-    Some(_) => {
-      let q = parse_query_words(words)
-      ask(q) |> render_query_result |> println
-      0
-    },
-  }
+// COLD by the swap-crossing law (Hβ.session.resident-verbs — the
+// measured refutation is in the §7 ledger): a mid-verb image restore
+// kills every pre-swap heap value — the caller's own argv strings,
+// the chain's own handler records — and survives only by allocation
+// coincidence. The warm form for the projection verbs is the
+// RESIDENT SESSION (the image as the session's own memory, no swap —
+// the named peer carries the measured constraints); fresh derivation
+// here IS the sound form for a per-process verb.
+// `entry_ast` is the ONE discovery home — the weave for a module, stdin
+// for `-`, and the same refusal for an address that produced neither.
+fn query(entry_module, words) = infer_context(() => match entry_ast(entry_module) {
+  None => refuse_unreadable(entry_module),
+  Some(_) => {
+    let q = parse_query_words(words)
+    ask(q) |> render_query_result |> println
+    0
+  },
 } ~>
 // the derivation's fs_read — handled in-chain, as compile/check do
 wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry)
@@ -654,20 +649,19 @@ handler tighten_collector with found = [] {
 // load → project → print skeleton lived twice, byte-identical but for
 // the projection (Carried-Truth: one home now). query stays separate:
 // it ASKS a question, not a per-fn walk.
-fn analyze_fns(entry_module, projection) = infer_context(() => {
-  // `entry_ast` is the ONE discovery home (its own comment carries why
-  // there is exactly one, and why `-` is an address). This verb held that
-  // arm alone and so was the only surface stdin could reach; it reads the
-  // shared one now — and gains the refusal it never had, where an
-  // unreadable address used to project an empty walk as though it were an
-  // answer.
-  match entry_ast(entry_module) {
-    None => refuse_unreadable(entry_module),
-    Some(ast) => {
-      projection(ast) |> print_string
-      0
-    },
-  }
+//
+// `entry_ast` is the ONE discovery home (its own comment carries why
+// there is exactly one, and why `-` is an address). This verb held that
+// arm alone and so was the only surface stdin could reach; it reads the
+// shared one now — and gains the refusal it never had, where an
+// unreadable address used to project an empty walk as though it were an
+// answer.
+fn analyze_fns(entry_module, projection) = infer_context(() => match entry_ast(entry_module) {
+  None => refuse_unreadable(entry_module),
+  Some(ast) => {
+    projection(ast) |> print_string
+    0
+  },
 } ~>
 // The weave's own fs_read — handled in-chain, as compile/check do.
 // tighten_collector banks the judgment's T_OverDeclared rows so the
@@ -1217,15 +1211,24 @@ fn audit_report_lines(fn_name: String, row_str: String, beyond, referenced_by: [
 }
 
 // Query rendering — delegates to query.mn for Question parsing.
-// A census site speaks the developer's FILE and line, and both halves come
-// from the graph: the span is the node's own coordinate, the module is the
-// column's. This is what span_render_local produced by scanning every
-// module's range for one containing a weave line — one read now, no scan.
-fn render_census_sites(ref sites) with GraphRead + Memory + Alloc =
+// A census site is a NODE, and this line is its projection — `site_address`
+// reads the module and the span from the node's own columns at the moment
+// of rendering, or names a cell by its handle and reason when it has no
+// position. The (module, span) pair this took was a copy made at the walk,
+// and a copy is where `tuples:72:1-75:2` came from.
+fn render_census_sites(ref sites) with GraphRead + !Mutate + Memory + Alloc + Intern =
   sites |> map(census_site_line) |> str_concat_all
 
-fn census_site_line(site) with Memory + Alloc = match site {
-  (path, s) => "\n  at {path}:{show_span(s)}",
+fn census_site_line(h) with GraphRead + !Mutate + Memory + Alloc + Intern =
+  "\n  at {site_address(h)}"
+
+// The judgment's heaviest decls — bytes of judgment heap each, the decl's
+// name read off its handle's body, its address off its columns.
+fn render_judged_rows(rows) with GraphRead + !Mutate + Memory + Alloc + Intern =
+  rows |> map(judged_row_line) |> str_concat_all
+
+fn judged_row_line(row: (Int, Int)) with GraphRead + !Mutate + Memory + Alloc + Intern = match row {
+  (h, bytes) => "\n  {bytes} B  {body_decl_name(graph_node_body(h))} at {site_address(h)}",
 }
 
 // One line per undischarged obligation: the predicate the graph holds,
@@ -1457,7 +1460,7 @@ fn render_query_result(result) = match result {
   QRUnreachable(rows) => render_unreach_rows(rows),
   QRPerforms(rows) => render_perform_rows(rows),
   QROrphanClaims(rows) => render_orphan_rows(rows),
-  QRCost(mods, lines, nodes) => "→ {int_to_str(mods)} module(s) · {int_to_str(lines)} source line(s) · {int_to_str(nodes)} node(s) minted",
+  QRCost(mods, lines, nodes, judged) => "→ {int_to_str(mods)} module(s) · {int_to_str(lines)} source line(s) · {int_to_str(nodes)} node(s) minted{render_judged_rows(judged)}",
   QRWhere(lines, sites) => "→ {str_join_indented(lines)}{render_where_sites(sites)}",
   QRError(msg) => "error: {msg}",
 }
@@ -1479,11 +1482,9 @@ fn str_join_indented(lines) with Pure = match lines {
 // The site badges: the schedule word at the fanout's own line —
 // `>< [Thread] at file:line` — the exact fact lower reads ambiently,
 // projected statically (the where stamp's exactness law).
-fn render_where_sites(sites) with GraphRead + Memory + Alloc = render_where_sites_from(sites)
-
-fn render_where_sites_from(sites) with Memory + Alloc = match sites {
+fn render_where_sites(sites) with GraphRead + !Mutate + Memory + Alloc + Intern = match sites {
   [] => "",
-  [(word, s), ...t] => "\n  >< [{word}] at {show_span(s)}{render_where_sites_from(t)}",
+  [(word, h), ...t] => "\n  >< [{word}] at {site_address(h)}{render_where_sites(t)}",
 }
 
 // show_flow_label — defined in types.mn alongside flow_label_join/flow_le.
@@ -1679,6 +1680,12 @@ fn census_shape_of(arg) with Memory + Alloc = if arg == "anonymous" {
   Some(CsRecordPatternOpen)
 } else if arg == "free-row-callee" {
   Some(CsFreeRowCallee)
+} else if arg == "free-row-var" {
+  Some(CsFreeRowVar)
+} else if arg == "audit-silenced" {
+  Some(CsAuditSilenced)
+} else if arg == "wildcard-destructure" {
+  Some(CsWildcardDestructure)
 } else {
   match find(
     (k) => show_pipe_kind(k) == arg,

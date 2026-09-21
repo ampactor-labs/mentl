@@ -1,5 +1,10 @@
 /target
-.claude/
+# Session-local state stays out; the hook configuration is versioned — it is
+# the mechanism (mentl-first, audit-on-edit) that every session must carry,
+# and an ignored `.claude/` was why CLAUDE.md's "runs as a hook" claim held
+# nowhere (measured 2026-09-21: the session's hooks were `{}`).
+.claude/*
+!.claude/settings.json
 .agents/
 CLAUDE.md
 .env

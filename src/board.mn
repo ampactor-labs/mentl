@@ -35,7 +35,7 @@ import query
 // One measured invariant: the shape the medium counts and the count it may
 // not exceed. The two fields are inseparable — a shape with no bound is a
 // report, and a bound with no shape is the text file this replaces.
-type Bound = Bound({ceiling: Int, shape: CensusShape})
+type Bound = {ceiling: Int, shape: CensusShape}
 
 // What the medium found when it looked: the SITES, not a count of them.
 //
@@ -50,7 +50,7 @@ type Bound = Bound({ceiling: Int, shape: CensusShape})
 // tells the developer a number rose; a bound that names its sites tells them
 // where to look, from a list the walk already built and the verb used to throw
 // away.
-type Standing = Within([(String, Span)]) | Over([(String, Span)])
+type Standing = Within([Int]) | Over([Int])
 
 // The roster, complete by construction: a shape absent here is not measured,
 // which is visible, where a shape measured against a missing bound would be
@@ -94,6 +94,14 @@ fn board_bounds() with Memory + Alloc = [
   // A record pattern whose receiver row never closes reads a field offset
   // the graph cannot prove. `T_FieldOffsetUnprovable` reports that class at
   // the receiver now; this line retires when that diagnostic arms.
+  //
+  // SEEN RED AT 14 on 2026-09-21, and it was right: fourteen `{path, ...}`
+  // puns over the module cell, all inside lambdas under `any`/`find`, and
+  // the binary built from them trapped in `cost` and printed nothing in
+  // `doc` — the neighbouring-field read, measured. The zero here is what
+  // caught it; the readers went through closed projections (`cell_path`)
+  // and the count came back to zero. The pun returns when the row union
+  // lands (`Hβ.infer.record-row-vars-are-not-unioned`).
   Bound({ceiling: 0, shape: CsRecordPatternOpen}),
   // Drift mode 10 — the nine survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
@@ -109,7 +117,14 @@ fn board_bounds() with Memory + Alloc = [
   // Drift mode 10's typed face: a wildcard arm minting `Forall`, a bare
   // `TVar`, `"Pure"` or `""` is a fabricated judgment, and a fabricated
   // judgment is indistinguishable downstream from a proven one.
-  Bound({ceiling: 21, shape: CsWildcardFabricates}),
+  //
+  // 21 → 65 on 2026-09-21, and the rise is the roster WIDENING, not the
+  // wheel worsening: `_ => []` joined it — "this kind carries nothing", the
+  // fabricated absence over a load-bearing ADT, found where it had hidden
+  // that a `let`, a refinement and an alias declare names (so an import
+  // used only for one of them read as dead). Forty-four such arms stood the
+  // day the roster grew; each retires by enumeration.
+  Bound({ceiling: 65, shape: CsWildcardFabricates}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -189,17 +204,67 @@ fn board_bounds() with Memory + Alloc = [
   //
   // Stability was traded for correspondence, deliberately. A ceiling that
   // rises with honest growth is worse than one that falls — and the honest
-  // countdown is the 135 ungrounded ROWS behind these sites, which wants the
-  // free VARIABLE as its key: every sampled site in `backends/wasm` lands on
-  // ONE cell (109302), so this is far fewer defects than sites.
-  // `Hβ.query.census-keyed-by-the-fact-not-the-site` is that form, and until
-  // it exists this line prices the extent rather than the cause.
+  // countdown wants the free VARIABLE as its key: every sampled site in
+  // `backends/wasm` lands on ONE cell (109302), so this is far fewer causes
+  // than sites. THAT SHAPE EXISTS NOW (`CsFreeRowVar`, a census read) AND IT
+  // IS NOT A BOUND, for a reason the measurement supplied: on the manifest
+  // link it convicts 101 cells, and 89 of them are a signature's own
+  // quantified row or its per-use instantiation — the only spelling row
+  // polymorphism has, so a ratchet on it would convict the language. The
+  // countdown that can reach zero is the cells NO scheme quantifies, and
+  // that shape reads the quantifier (`sig_owns` is where the wheel draws the
+  // line). Until it is built this line prices the extent, and the extent is
+  // the true cost: one floor per call.
+  //
+  // 1,047 — one site fell when the decls facet stopped projecting each
+  // handle to a (module, span) pair at collection time: that `map` was a
+  // convicted call, and it is deleted with the projection it made (a site
+  // is a handle now, projected at the render). The ceiling follows the
+  // count down; it never leads it.
+  //
+  // 1,051 — RAISED, and the reason is the whole argument for ending the
+  // flat judgment. Eleven index-threaded self-calls in query.mn and graph.mn
+  // became `fold`/`any`/`find`/`filter` stages (Morgan's standing rule: what
+  // can be a verb chain is one), and every one of those stages is a call to
+  // a row-polymorphic HOF whose row THIS link leaves free — so the iteration
+  // count fell and this count rose, for the same edits. Two ratchets pulling
+  // against each other is the measurement that the weave under-grounds rows
+  // the flat link grounds; the cause is one judgment's order-dependence,
+  // and the fix is there, never in writing fewer folds.
+  // `Hβ.link.manifest-and-blob-emit-differently` is where this number falls.
   //
   // None of these is the probe's 856, which counted chase EVENTS inside one
   // lower run. Four instruments, four denominators, one fact; recording all
   // of them is how the next reader avoids reconciling numbers that were
   // never the same.
-  Bound({ceiling: 1048, shape: CsFreeRowCallee})
+  Bound({ceiling: 1051, shape: CsFreeRowCallee}),
+  // 480 — the imperative loop in recursion's costume, counted across the
+  // whole wheel and bounded for the first time 2026-09-21 (Morgan: "anytime
+  // there is anything that could be written with the five topological
+  // operators, do it"). The shape existed; nothing refused the next one.
+  // The producer that dissolves the family is `iterate_range` (prelude): a
+  // handle walk is `{ iterate_range(0, n) … result() } ~> collector`, and
+  // eleven such walks in query.mn and graph.mn became folds the day this
+  // bound was born (484 → 480 net, because the producer itself is one).
+  // Every fold written against this number raises `CsFreeRowCallee` by one
+  // — the two ratchets measure one defect, and it is
+  // `Hβ.link.manifest-and-blob-emit-differently`'s: the flat judgment's end.
+  Bound({ceiling: 480, shape: CsIterationCostume}),
+  // 136 — a gate told to look away, counted on the comments column. Each
+  // marker is a bash pattern left imprecise (the control-keyword rule inside
+  // a Reason string, the accumulator rule on a bounded stack push); the
+  // count falls as each pattern is absorbed into a census shape that reads
+  // structure instead of text (Phase 5.6's motion), and its zero is an
+  // audit that needs no exemptions.
+  Bound({ceiling: 136, shape: CsAuditSilenced}),
+  // 732 — a product destructured by position with two or more slots
+  // discarded (`FnStmt(n, _, _, _, _)`, `(_h, p, _s, _d)`), counted on
+  // every match and let across the wheel the day Morgan's screenshot named
+  // it (2026-09-21). The zero is the Stmt and Expr rosters carrying RECORDS,
+  // so a reader puns the field it wants by name; each constructor moved
+  // there retires every one of its destructures at once. The census
+  // convicts its own `LetStmt(p, _, _)` arm, and should.
+  Bound({ceiling: 732, shape: CsWildcardDestructure})
 ]
 
 // The board: every bound answered by one live walk.
@@ -221,7 +286,7 @@ fn bound_standing(b) with GraphRead + !Mutate + Alloc + Memory = match b {
 // One line, in the medium's voice: the shape, what it found, and — when the
 // bound is breached — the fact that a count rose rather than a rule fired,
 // which is the honest description of what a ratchet knows.
-fn board_line(entry) with Memory + Alloc = match entry {
+fn board_line(entry) with GraphRead + !Mutate + Memory + Alloc + Intern = match entry {
   (b, standing) => match b {
     Bound(r) => match standing {
       Within(sites) => "  · {int_to_str(len(sites))} {census_label(r.shape)} — within {int_to_str(r.ceiling)}\n",
@@ -233,11 +298,11 @@ fn board_line(entry) with Memory + Alloc = match entry {
   },
 }
 
-fn board_sites(sites) with Memory + Alloc = sites |> map(board_site_line) |> str_concat_all
+fn board_sites(sites) with GraphRead + !Mutate + Memory + Alloc + Intern =
+  sites |> map(board_site_line) |> str_concat_all
 
-fn board_site_line(site) with Memory + Alloc = match site {
-  (module, span) => "      {module}:{show_span(span)}\n",
-}
+fn board_site_line(h) with GraphRead + !Mutate + Memory + Alloc + Intern =
+  "      {site_address(h)}\n"
 
 fn board_breached(entry) with Pure = match entry {
   (_b, standing) => match standing {

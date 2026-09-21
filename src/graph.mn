@@ -283,7 +283,7 @@ fn poly_teach_line(owner: String, reason) with Memory + Alloc =
 // over the SHARED spine with a private planned range — the root install is
 // bare and the defaults are the empty graph. Handler state records live in
 // shared heap; the install chain stays per-instance, correctly private.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [] {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], judged_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [] {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -706,6 +706,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // same handle, readers dedup by handle).
   resume() with decls_col = push(decls_col, decl_handle),
   graph_decls_at() => resume(decls_col),
+  graph_judged_note(h, bytes) => // The decls column's cost sibling — the same append-only telemetry
+  // contract (not trail-backed; one note per judged decl).
+  resume() with judged_col = push(judged_col, (h, bytes)),
+  graph_judged_at() => resume(judged_col),
   graph_hole_note(h) => // The value-holes column's pending half: lower's authored-hole arm is
   // the one writer (value-position is a lowering decision); the pair
   // lands at the next entry drain.
@@ -1003,7 +1007,11 @@ fn merge_row(ref names, ref absents, ref row) with Memory + Alloc = match row {
 // fold's cost is paid once per write, never per read). Free edges
 // survive into the residual; EtAll absorbs; masks filter under the
 // reading law — the same arithmetic merge_row states one level up.
-// Mechanism-layer: state-passed, structural, zero ops.
+// Mechanism-layer: state-passed, structural, zero ops. This fold recurses
+// through bound edges too, and it was memoized for one march on the
+// suspicion that it walked the render cycle's row DAG as a tree; measured
+// at the judgment line, the memo cost 2.4MB and saved nothing — the tree
+// walk that paid was the occurs check's (occurs_in's header), never this.
 fn flatten_row_stored(ref spine, mint_bound, row) with !Mutate = match row {
   EfRow(p, a, t) => match t {
     EtOpen(vs) => match flatten_row_edges(spine, mint_bound, vs, (p, a, [], false)) {
@@ -1065,11 +1073,40 @@ fn graph_node_at(ref spine, mint_bound, idx) with Memory + Alloc + Cast = if idx
 // admits infinite types. Every current Ty variant is named; any
 // future variant fails to compile until its containment semantics
 // are decided explicitly.
-fn occurs_in(spine, mint_bound, handle, ref ty) with !Mutate = match ty {
-  TInt => false,
-  TFloat => false,
-  TUnit => false,
-  TByte => false,
+//
+// THE WALK IS A REACHABILITY QUERY OVER A DAG, AND IT CARRIES ITS VISITED
+// SET (2026-09-21). Var roots are shared: a cycle's every member binds a
+// TFun whose row edges reach the same hub vars, so a walk that descends
+// each edge afresh visits a hub once PER PATH. Measured on the wheel with
+// `mentl <file> cost`: ONE type bind of a two-line render fn's call —
+// `expected` in infer_call_saturated, the TFun carrying the callee's row —
+// allocated 170MB in this check, two such binds 341MB, 40% of the whole
+// judgment's heap, and a fifteen-line edit elsewhere in the cycle added
+// 76MB to that one decl. A root explored once answers every later path at
+// once, so every arm of `occurs_in_seen` threads the visited set (lazy: the
+// empty list until the first root is marked, so a bind whose type reaches no
+// var pays nothing).
+fn occurs_in(spine, mint_bound, handle, ty) with !Mutate = match occurs_in_seen(spine, mint_bound, handle, ty, []) {
+  (occ, _) => occ,
+}
+
+fn seen_has(seen, r) with Memory + Alloc = if len(seen) == 0 {
+  false
+} else {
+  match wmap_get(seen, r) {
+    Some(_) => true,
+    None => false,
+  }
+}
+
+fn seen_mark(seen, r) with Memory + Alloc =
+  wmap_add(if len(seen) == 0 { wmap_new(256) } else { seen }, r, 1)
+
+fn occurs_in_seen(spine, mint_bound, handle, ty, seen) with !Mutate = match ty {
+  TInt => (false, seen),
+  TFloat => (false, seen),
+  TUnit => (false, seen),
+  TByte => (false, seen),
   TVar(id) => // The leaf answers "does handle occur in the type GRAPH reachable from
   // here" — three tiers, each a hole the selfapply fixture found trapping
   // the compiler (f(f) spun chase_deep/subst_ty to stack exhaustion with
@@ -1084,87 +1121,106 @@ fn occurs_in(spine, mint_bound, handle, ref ty) with !Mutate = match ty {
   // recursion always bottoms out (chase_deep's depth tripwire is the
   // belt behind this suspender).
   if id == handle {
-    true
+    (true, seen)
   } else {
     let root = chase_handle(spine, mint_bound, id, 0)
     if root == handle {
-      true
+      (true, seen)
+    } else if seen_has(seen, root) {
+      (false, seen)
     } else {
+      let marked = seen_mark(seen, root)
       match chase_node(spine, mint_bound, root, 0) {
-        GNode(NBound(inner), _) => occurs_in(spine, mint_bound, handle, inner),
-        GNode(NRecordRowBound(fields, _), _) => occurs_in_fields(spine, mint_bound, handle, fields),
-        _ => false,
+        GNode(NBound(inner), _) => occurs_in_seen(spine, mint_bound, handle, inner, marked),
+        GNode(NRecordRowBound(fields, _), _) => occurs_in_fields_seen(spine, mint_bound, handle, fields, marked),
+        _ => (false, marked),
       }
     }
   },
-  TList(elem) => occurs_in(spine, mint_bound, handle, elem),
-  TTuple(elems) => occurs_in_list(spine, mint_bound, handle, elems),
-  TFun(params, ret, eff) => occurs_in_params(spine, mint_bound, handle, params) || occurs_in(spine, mint_bound, handle, ret) || occurs_in_row(spine, mint_bound, handle, eff),
-  TName(_, args) => occurs_in_list(spine, mint_bound, handle, args),
-  TRecord(fields) => occurs_in_fields(spine, mint_bound, handle, fields),
-  TRecordOpen(fields, v) => if v == handle || occurs_in_fields(spine, mint_bound, handle, fields) {
-    true
+  TList(elem) => occurs_in_seen(spine, mint_bound, handle, elem, seen),
+  TTuple(elems) => occurs_in_list_seen(spine, mint_bound, handle, elems, seen),
+  TFun(params, ret, eff) => match occurs_in_params_seen(spine, mint_bound, handle, params, seen) {
+    (true, s1) => (true, s1),
+    (false, s1) => match occurs_in_seen(spine, mint_bound, handle, ret, s1) {
+      (true, s2) => (true, s2),
+      (false, s2) => occurs_in_row_seen(spine, mint_bound, handle, eff, s2),
+    },
+  },
+  TName(_, args) => occurs_in_list_seen(spine, mint_bound, handle, args, seen),
+  TRecord(fields) => occurs_in_fields_seen(spine, mint_bound, handle, fields, seen),
+  TRecordOpen(fields, v) => if v == handle {
+    (true, seen)
   } else {
-    let vroot = chase_handle(spine, mint_bound, v, 0)
-    if vroot == handle {
-      true
-    } else {
-      match chase_node(spine, mint_bound, vroot, 0) {
-        GNode(NRecordRowBound(rest, _), _) => occurs_in_fields(spine, mint_bound, handle, rest),
-        _ => false,
-      }
+    match occurs_in_fields_seen(spine, mint_bound, handle, fields, seen) {
+      (true, s1) => (true, s1),
+      (false, s1) => {
+        let vroot = chase_handle(spine, mint_bound, v, 0)
+        if vroot == handle {
+          (true, s1)
+        } else if seen_has(s1, vroot) {
+          (false, s1)
+        } else {
+          let marked = seen_mark(s1, vroot)
+          match chase_node(spine, mint_bound, vroot, 0) {
+            GNode(NRecordRowBound(rest, _), _) => occurs_in_fields_seen(spine, mint_bound, handle, rest, marked),
+            _ => (false, marked),
+          }
+        }
+      },
     }
   },
-  TRefined(base, _) => occurs_in(spine, mint_bound, handle, base),
-  TCont(input, answer, _, world) => occurs_in(spine, mint_bound, handle, input) || occurs_in(spine, mint_bound, handle, answer) || occurs_in_row(spine, mint_bound, handle, world),
-  TAlias(_, inner) => occurs_in(spine, mint_bound, handle, inner),
-  TReprPin(_, base) => occurs_in(spine, mint_bound, handle, base),
+  TRefined(base, _) => occurs_in_seen(spine, mint_bound, handle, base, seen),
+  TCont(input, answer, _, world) => match occurs_in_seen(spine, mint_bound, handle, input, seen) {
+    (true, s1) => (true, s1),
+    (false, s1) => match occurs_in_seen(spine, mint_bound, handle, answer, s1) {
+      (true, s2) => (true, s2),
+      (false, s2) => occurs_in_row_seen(spine, mint_bound, handle, world, s2),
+    },
+  },
+  TAlias(_, inner) => occurs_in_seen(spine, mint_bound, handle, inner, seen),
+  TReprPin(_, base) => occurs_in_seen(spine, mint_bound, handle, base, seen),
 }
 
-fn occurs_in_params(spine, mint_bound, handle, ref params) with !Mutate = {
+fn occurs_in_params_seen(spine, mint_bound, handle, params, seen) with !Mutate = {
   let flat = list_to_flat(params)
-  occurs_in_params_loop(spine, mint_bound, handle, flat, 0, len(flat))
+  occurs_in_params_loop(spine, mint_bound, handle, flat, 0, len(flat), seen)
 }
 
-fn occurs_in_params_loop(spine, mint_bound, handle, ref params, i, n) with !Mutate = if i >= n {
-  false
+fn occurs_in_params_loop(spine, mint_bound, handle, params, i, n, seen) with !Mutate = if i >= n {
+  (false, seen)
 } else {
-  let ty = param_ty(list_index(params, i))
-  if occurs_in(spine, mint_bound, handle, ty) {
-    true
-  } else {
-    occurs_in_params_loop(spine, mint_bound, handle, params, i + 1, n)
+  match occurs_in_seen(spine, mint_bound, handle, param_ty(list_index(params, i)), seen) {
+    (true, s1) => (true, s1),
+    (false, s1) => occurs_in_params_loop(spine, mint_bound, handle, params, i + 1, n, s1),
   }
 }
 
-fn occurs_in_list(spine, mint_bound, handle, ref tys) with !Mutate = {
+fn occurs_in_list_seen(spine, mint_bound, handle, tys, seen) with !Mutate = {
   let flat = list_to_flat(tys)
-  occurs_in_list_loop(spine, mint_bound, handle, flat, 0, len(flat))
+  occurs_in_list_loop(spine, mint_bound, handle, flat, 0, len(flat), seen)
 }
 
-fn occurs_in_list_loop(spine, mint_bound, handle, ref tys, i, n) with !Mutate = if i >= n {
-  false
+fn occurs_in_list_loop(spine, mint_bound, handle, tys, i, n, seen) with !Mutate = if i >= n {
+  (false, seen)
 } else {
-  if occurs_in(spine, mint_bound, handle, list_index(tys, i)) {
-    true
-  } else {
-    occurs_in_list_loop(spine, mint_bound, handle, tys, i + 1, n)
+  match occurs_in_seen(spine, mint_bound, handle, list_index(tys, i), seen) {
+    (true, s1) => (true, s1),
+    (false, s1) => occurs_in_list_loop(spine, mint_bound, handle, tys, i + 1, n, s1),
   }
 }
 
-fn occurs_in_fields(spine, mint_bound, handle, ref fields) with !Mutate = {
+fn occurs_in_fields_seen(spine, mint_bound, handle, fields, seen) with !Mutate = {
   let flat = list_to_flat(fields)
-  occurs_in_fields_loop(spine, mint_bound, handle, flat, 0, len(flat))
+  occurs_in_fields_loop(spine, mint_bound, handle, flat, 0, len(flat), seen)
 }
 
-fn occurs_in_fields_loop(spine, mint_bound, handle, ref fields, i, n) with !Mutate = if i >= n {
-  false
+fn occurs_in_fields_loop(spine, mint_bound, handle, fields, i, n, seen) with !Mutate = if i >= n {
+  (false, seen)
 } else {
   match list_index(fields, i) {
-    (_, ty) => if occurs_in(spine, mint_bound, handle, ty) {
-      true
-    } else {
-      occurs_in_fields_loop(spine, mint_bound, handle, fields, i + 1, n)
+    (_, ty) => match occurs_in_seen(spine, mint_bound, handle, ty, seen) {
+      (true, s1) => (true, s1),
+      (false, s1) => occurs_in_fields_loop(spine, mint_bound, handle, fields, i + 1, n, s1),
     },
   }
 }
@@ -1179,49 +1235,66 @@ fn occurs_in_fields_loop(spine, mint_bound, handle, ref fields, i, n) with !Muta
 // ONE triple, one walk: the names on both fields plus the tail var —
 // the three vars-of-a-row walks (free/occurs/subst) agree by having
 // one shape to agree about.
-fn occurs_in_row(spine, mint_bound, handle, ref eff) with !Mutate = match eff {
-  EfRow(p, a, t) => if occurs_in_eff_names(spine, mint_bound, handle, p) {
-    true
-  } else {
-    if occurs_in_eff_names(spine, mint_bound, handle, a) {
-      true
-    } else {
-      match t {
+fn occurs_in_row(spine, mint_bound, handle, eff) with !Mutate = match occurs_in_row_seen(spine, mint_bound, handle, eff, []) {
+  (occ, _) => occ,
+}
+
+fn occurs_in_row_seen(spine, mint_bound, handle, eff, seen) with !Mutate = match eff {
+  EfRow(p, a, t) => match occurs_in_eff_names_seen(spine, mint_bound, handle, p, seen) {
+    (true, s1) => (true, s1),
+    (false, s1) => match occurs_in_eff_names_seen(spine, mint_bound, handle, a, s1) {
+      (true, s2) => (true, s2),
+      (false, s2) => match t {
         EtOpen(vs) => // A BOUND edge hides structure the write would embed: subst_row's
         // merge arm traverses into the binding, so the cycle guard must
         // reach the same leaves through EVERY edge (the trio law over
         // rows — any edge occurring is the row occurring). Structural
         // walk — the mechanism layer's own discipline.
-        occurs_in_edges(spine, mint_bound, handle, vs),
-        _ => false,
-      }
-    }
+        occurs_in_edges_seen(spine, mint_bound, handle, vs, s2),
+        _ => (false, s2),
+      },
+    },
   },
 }
 
-fn occurs_in_edges(spine, mint_bound, handle, ref vs: [Int]) with !Mutate = match vs {
-  [] => false,
+// The edge walk marks each edge's ROOT: the hub vars a cycle's every member
+// reaches are explored once here, which is where the tree walk paid per path.
+fn occurs_in_edges_seen(spine, mint_bound, handle, vs: [Int], seen) with !Mutate = match vs {
+  [] => (false, seen),
   [v, ...rest] => {
     let r = chase_handle(spine, mint_bound, v, 0)
-    let here = if v == handle || r == handle {
-      true
+    if v == handle || r == handle {
+      (true, seen)
+    } else if seen_has(seen, r) {
+      occurs_in_edges_seen(spine, mint_bound, handle, rest, seen)
     } else {
-      match chase_node(spine, mint_bound, r, 0) {
+      let marked = seen_mark(seen, r)
+      let here = match chase_node(spine, mint_bound, r, 0) {
         GNode(kind, _) => match edge_row_of(kind) {
-          Some(inner) => occurs_in_row(spine, mint_bound, handle, inner),
-          None => false,
+          Some(inner) => occurs_in_row_seen(spine, mint_bound, handle, inner, marked),
+          None => (false, marked),
         },
       }
+      match here {
+        (true, s1) => (true, s1),
+        (false, s1) => occurs_in_edges_seen(spine, mint_bound, handle, rest, s1),
+      }
     }
-    if here { true } else { occurs_in_edges(spine, mint_bound, handle, rest) }
   },
 }
 
-fn occurs_in_record_fields(spine, mint_bound, handle, ref fields) with !Mutate = if len(fields) == 0 {
-  false
+fn occurs_in_record_fields(spine, mint_bound, handle, fields) with !Mutate = match occurs_in_record_fields_seen(spine, mint_bound, handle, fields, []) {
+  (occ, _) => occ,
+}
+
+fn occurs_in_record_fields_seen(spine, mint_bound, handle, fields, seen) with !Mutate = if len(fields) == 0 {
+  (false, seen)
 } else {
   match last(fields) {
-    (_, ty) => occurs_in(spine, mint_bound, handle, ty) || occurs_in_record_fields(spine, mint_bound, handle, drop_last(fields)),
+    (_, ty) => match occurs_in_seen(spine, mint_bound, handle, ty, seen) {
+      (true, s1) => (true, s1),
+      (false, s1) => occurs_in_record_fields_seen(spine, mint_bound, handle, drop_last(fields), s1),
+    },
   }
 }
 
@@ -1235,41 +1308,47 @@ fn record_row_tail_is(tail, handle) with Pure = match tail {
   RowContinues(v) => v == handle,
 }
 
-fn occurs_in_eff_names(spine, mint_bound, handle, ref names) with !Mutate = {
+fn occurs_in_eff_names_seen(spine, mint_bound, handle, names, seen) with !Mutate = {
   let flat = list_to_flat(names)
-  occurs_in_eff_names_loop(spine, mint_bound, handle, flat, 0, len(flat))
+  occurs_in_eff_names_loop(spine, mint_bound, handle, flat, 0, len(flat), seen)
 }
 
-fn occurs_in_eff_names_loop(spine, mint_bound, handle, ref names, i, n) with !Mutate = if i >= n {
-  false
+fn occurs_in_eff_names_loop(spine, mint_bound, handle, names, i, n, seen) with !Mutate = if i >= n {
+  (false, seen)
 } else {
-  let occ = match list_index(names, i) {
-    ENamed(_) => false,
-    EPure => false,
-    EParameterized(_, args) => occurs_in_eff_args(spine, mint_bound, handle, args),
+  let step = match list_index(names, i) {
+    ENamed(_) => (false, seen),
+    EPure => (false, seen),
+    EParameterized(_, args) => occurs_in_eff_args_seen(spine, mint_bound, handle, args, seen),
   }
-  if occ { true } else { occurs_in_eff_names_loop(spine, mint_bound, handle, names, i + 1, n) }
+  match step {
+    (true, s1) => (true, s1),
+    (false, s1) => occurs_in_eff_names_loop(spine, mint_bound, handle, names, i + 1, n, s1),
+  }
 }
 
-fn occurs_in_eff_args(spine, mint_bound, handle, ref args) with !Mutate = {
+fn occurs_in_eff_args_seen(spine, mint_bound, handle, args, seen) with !Mutate = {
   let flat = list_to_flat(args)
-  occurs_in_eff_args_loop(spine, mint_bound, handle, flat, 0, len(flat))
+  occurs_in_eff_args_loop(spine, mint_bound, handle, flat, 0, len(flat), seen)
 }
 
-fn occurs_in_eff_args_loop(spine, mint_bound, handle, ref args, i, n) with !Mutate = if i >= n {
-  false
+fn occurs_in_eff_args_loop(spine, mint_bound, handle, args, i, n, seen) with !Mutate = if i >= n {
+  (false, seen)
 } else {
-  let occ = match list_index(args, i) {
-    EAInt(_) => false,
-    EAFloat(_) => false,
-    EAString(_) => false,
-    EAType(ty) => occurs_in(spine, mint_bound, handle, ty),
-    EANode(_) => false,
+  let step = match list_index(args, i) {
+    EAInt(_) => (false, seen),
+    EAFloat(_) => (false, seen),
+    EAString(_) => (false, seen),
+    EAType(ty) => occurs_in_seen(spine, mint_bound, handle, ty, seen),
+    EANode(_) => (false, seen),
     EAEffect(_) => // interned identities — no embedded Ty, nothing to occur in
-    false,
-    EACon(_) => false,
+    (false, seen),
+    EACon(_) => (false, seen),
   }
-  if occ { true } else { occurs_in_eff_args_loop(spine, mint_bound, handle, args, i + 1, n) }
+  match step {
+    (true, s1) => (true, s1),
+    (false, s1) => occurs_in_eff_args_loop(spine, mint_bound, handle, args, i + 1, n, s1),
+  }
 }
 
 // Trail buffer — flat array + length counter
@@ -1400,64 +1479,88 @@ fn scan_for_enclosing_module(target, i, n) with GraphRead + !Mutate = if i >= n 
 // it — the same law driver_collect_visit's visited set keys on, and the same
 // one the census dedup needed. LAST wins, matching env_snapshot's dedup-to-
 // latest for the same reason: the final generation is the judged one.
-fn module_cells() with Memory + Alloc + GraphRead + !Mutate = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => dedup_module_cells(collect_module_cells(0, next), []),
-  }
+fn module_cells() with Memory + Alloc + GraphRead + !Mutate = match graph_snapshot() {
+  Graph(next, _spans) => {
+    let cells = {
+      iterate_range(0, next)
+      result()
+    } ~> fold_handler(module_cell_join, [])
+    dedup_module_cells(cells)
+  },
 }
 
-// Keep the LAST cell for a path by skipping any that a later one supersedes.
-// The walk is handle-ascending, so the last cell is the FINAL generation's —
-// the judged one, whose decls are the nodes the returned ast actually holds.
-// Keeping the first would hand every consumer the trial's shadow tree.
-fn dedup_module_cells(ref cells, acc) with Memory + Alloc = if len(cells) == 0 {
-  acc
-} else {
-  match cells[0] {
-    (_h, path, _s, _d) => dedup_module_cells(
-      rest(cells),
-      if cell_path_in(rest(cells), path, 0) { acc } else { push(acc, cells[0]) }
-    ),
-  }
-}
+// Keep the LAST cell for a path: the walk is handle-ascending, so the last
+// cell is the FINAL generation's — the judged one, whose decls are the nodes
+// the returned ast actually holds. A fold over the REVERSED cells keeps the
+// first of each path it meets and the outer reverse restores mint order; the
+// membership test is `any` over the kept cells' paths. (It was an
+// index-threaded walk with a second index-threaded membership scan.)
+fn dedup_module_cells(cells) with Memory + Alloc =
+  cells |> reverse |> fold([], dedup_cell_join) |> reverse
 
-fn cell_path_in(ref acc, ref path: String, i) with Memory + Alloc = if i >= len(acc) {
-  false
-} else {
-  match acc[i] {
-    (_h, p, _s, _d) => if p == path { true } else { cell_path_in(acc, path, i + 1) },
-  }
-}
+fn dedup_cell_join(acc, c) with Memory + Alloc =
+  if any({ a => cell_path(a) == cell_path(c) }, acc) { acc } else { push(acc, c) }
 
-// Every NModule node in the weave, as `(handle, path, span, decls)`.
+// THE CELL'S PROJECTIONS — one home each, a field read on the ANNOTATED
+// receiver. A reader wants one field, and SYNTAX's pun for that is
+// `{path, ...}`; but an open-row record pattern's offsets are provable only
+// when the receiver's whole field set is known, and at an interior site — a
+// lambda's parameter under `any`/`find` — the pattern's row variable is
+// never unioned with the element type
+// (`Hβ.infer.record-row-vars-are-not-unioned`), so the emit finds an offset
+// from the pattern's own set and reads a NEIGHBOURING field. Measured
+// 2026-09-21 on the first cut of this record: fourteen `{path, ...}` sites,
+// and the board's own `record pattern(s) over an open-row receiver — within
+// 0` refused them; a second cut bound every field in a closed pattern over a
+// bare parameter and the same bound refused those four too — the receiver
+// was still a variable at the read. The Intent Boundary `c: ModuleCell` is
+// what the bound's own comment prescribes, and with it the read is a plain
+// field access on a known nominal type. The pun returns when the union
+// lands; it is the lathe that is behind, not the spec.
+fn cell_path(c: ModuleCell) with Pure = c.path
+
+fn cell_decls(c: ModuleCell) with Pure = c.decls
+
+fn cell_span(c: ModuleCell) with Pure = c.span
+
+fn cell_handle(c: ModuleCell) with Pure = c.handle
+
+// Every NModule node in the weave, as a RECORD: `{decls, handle, path, span}`
+// — the module node's own `{decls, path, span}` with its handle spread in.
+// A reader puns the fields it wants (`{path, ...}`, `{path, decls, ...}`);
+// nothing is read by position, and nothing is discarded with a `_` (the
+// four-tuple this replaced was destructured `(_h, p, _s, _d)` at nine sites,
+// which is position-as-identity — SYNTAX §«Labeled call arguments»: the
+// field's NAME is the key, the order a projection).
 //
-// The HANDLE leads because it is the module's identity and the other three
-// are projections of the node it names — this walk is standing on it at `i`
-// and used to drop it, which `driver_module_ast`'s own comment had already
-// confessed ("discards the minted handle — reading the node instead of
-// re-filtering is the O(1) form once the mint keeps an edge to it"). Its
+// The HANDLE rides because it is the module's identity and the other three
+// are projections of the node it names — the walk used to drop it, which
+// driver_module_ast's own comment had already confessed ("discards the
+// minted handle — reading the node instead of re-filtering is the O(1) form
+// once the mint keeps an edge to it"). Its
 // first consumer is `module_handle_of_path`, which is what lets an address
 // name a module by the edge rather than by containment: spans are per-module
 // 1-based, so a line number alone is not an address, and the caret projection
-// was answering `src/synth_proposer.mn:733` with `scan_number` from
-// `src/lexer.mn`.
+// was answering `src/synth_proposer.mn:733` with the lexer's scan_number
+// from `src/lexer.mn`.
 //
 // The cell's DECLS ride out with its path and span. Dropping them made
 // every consumer that wanted a module's own content re-derive it from
 // text — which is how 52 dead imports sat unseen: a grep cannot tell a
 // used name from one named in a comment, and the graph can.
-fn collect_module_cells(i, n) with Memory + Alloc + GraphRead + !Mutate = if i >= n {
-  []
-} else {
-  match graph_node_body(i) {
-    NModule(m) => [(i, m.path, m.span, m.decls)] ++ collect_module_cells(i + 1, n),
-    _ => collect_module_cells(i + 1, n),
-  }
+// The cell is NOMINAL — a brand over the module node's own three fields plus
+// its handle — so a reader's parameter can be annotated `c: ModuleCell` and
+// every field read on it is provable (SYNTAX §«Nominal record types»).
+type ModuleCell = {decls: [Node], handle: Int, path: String, span: Span}
+
+// One fold over the handle range, total over the node kinds by enumeration:
+// a seventh kind is the reader's decision, never a silent skip.
+fn module_cell_join(acc, h) with Memory + Alloc + GraphRead + !Mutate = match graph_node_body(h) {
+  NModule(m) => push(acc, ModuleCell{decls: m.decls, handle: h, path: m.path, span: m.span}),
+  NExpr(_) | NStmt(_) | NPat(_) | NHole(_) | NTypeAnn(_) => acc,
 }
 
-fn module_paths() with Memory + Alloc + GraphRead + !Mutate =
-  map({ (_h, p, _s, _d) => p }, module_cells())
+fn module_paths() with Memory + Alloc + GraphRead + !Mutate = map(cell_path, module_cells())
 
 // The module handle a path names — the inverse of `module_name_of_handle`,
 // read from the same deduped cells, so it lands on the JUDGED generation's
@@ -1477,9 +1580,8 @@ fn module_paths() with Memory + Alloc + GraphRead + !Mutate =
 fn module_handle_of_path(path: String) with Memory + Alloc + GraphRead + !Mutate =
   fold(None, module_handle_pick(path), module_cells())
 
-fn module_handle_pick(path: String, acc, c) with Memory + Alloc = match c {
-  (h, p, _s, _d) => if p == path { Some(h) } else { acc },
-}
+fn module_handle_pick(path: String, acc, c) with Memory + Alloc =
+  if cell_path(c) == path { Some(cell_handle(c)) } else { acc }
 
 // The path a module HANDLE names — `module_handle_of_path` read the other
 // way, over the same cells, so the two directions cannot disagree.
@@ -1491,9 +1593,8 @@ fn module_path_of_handle(mh) with Memory + Alloc + GraphRead + !Mutate =
 // falls to a one-word compare and `T_EqTypeUnprovable` says so — right for
 // a handle by luck, an address lie by construction. The sibling
 // `module_handle_pick` annotates `path: String` for the same reason.
-fn module_path_pick(mh: Int, acc, c) with Memory + Alloc = match c {
-  (h, p, _s, _d) => if h == mh { p } else { acc },
-}
+fn module_path_pick(mh: Int, acc, c) with Memory =
+  if cell_handle(c) == mh { cell_path(c) } else { acc }
 
 // ─── Import reachability — can module A see module B's names? ────────
 //
@@ -1594,10 +1695,8 @@ fn node_body_of(node) with Pure = match node {
 // what "total source" meant all along; it is only now that the two differ.
 fn weave_line_extent() with Memory + Alloc + GraphRead + !Mutate = fold(
   0,
-  (acc, c) => match c {
-    (_h, _p, s, _d) => match s {
-      Span(sl, _sc, el, _ec) => acc + (el - sl),
-    },
+  (acc, c) => match cell_span(c) {
+    Span(sl, _sc, el, _ec) => acc + (el - sl),
   },
   module_cells()
 )

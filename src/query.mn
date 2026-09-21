@@ -103,7 +103,7 @@ type CensusShape
   // link (the import DAG — what every user's program takes). Same tree, both
   // clean, and the manifest emits 7,969 MORE lines. Four censuses through an
   // instrumented lower reduced that to one fact: 727 extra `multishot yield
-  // floor` guards ← 702 extra `can_yield` ROW verdicts ← 1,580 extra `EtOpen`
+  // floor` guards ← 702 extra can_yield ROW verdicts ← 1,580 extra `EtOpen`
   // tail chases ← 703 extra edges chasing to `NRowFree`. A callee whose row
   // nothing grounds cannot be proven MultiShot-free, so lower plants a floor
   // it does not need.
@@ -117,6 +117,57 @@ type CensusShape
   // row the flat link does; the record, and the open question of WHY it does
   // not, live at `Hβ.link.manifest-and-blob-emit-differently`.
   | CsFreeRowCallee
+  // A ROW VARIABLE THE JUDGMENT LEFT UNBOUND — the first shape on this
+  // roster that convicts a CELL rather than a piece of source.
+  //
+  // The entry beside it said a free row var "is not a node the weave walks",
+  // and that was backwards. Every handle owns one slot in each of the twelve
+  // columns of `SpinePage`, and the census walks EVERY handle, then reads
+  // the program column alone: a cell with no AST face answers `NHole(0)`
+  // there and every shape falls through. The node was always walked; the
+  // walk asked one column of it. This arm asks the nodes column.
+  //
+  // It is a READ, not a bound, and the measurement says why. On the wheel's
+  // manifest link the day it was built: 101 cells — 44 the per-use
+  // instantiation of a quantified row (`instantiate inst`), 38 the row of a
+  // call to a closure PARAMETER inside a HOF body (the calls to try_fn,
+  // catch_fn and test_fn), 7 the HOF's own declared-row cell (`and_then`,
+  // the five prelude handlers, try_with_abort_catch), 4 record rows, 4 stored-
+  // function rows, 2 declarations, 2 argument edges. So 89 of 101 are a
+  // signature's OWN quantified row or a copy of it — the only spelling row
+  // polymorphism has — and a count that convicts it cannot reach zero; a
+  // ratchet on it would measure nothing (Phase 2's re-founding law). What it
+  // answers is the question `CsFreeRowCallee` raised: that shape counts the
+  // SITES paying for a cause, and this one shows the cause, of which only the
+  // cells no scheme quantifies are a countdown. The bound is the shape that
+  // reads the quantifier, and `sig_owns` is where the wheel already draws
+  // that line.
+  //
+  // It also found the defect it was built to find, one layer over: the
+  // census rendered these cells at `tuples:72:1-75:2`, an address inside a
+  // 39-line file, because a site was (birth module, Reason span) — two
+  // columns read as one coordinate. A site is a handle now, its position a
+  // projection, and a cell projects as its handle beside its reason rather
+  // than as a coordinate it never had.
+  | CsFreeRowVar
+  // A GATE TOLD TO LOOK AWAY. A comment carrying "drift-audit: ignore" is a
+  // marker the bash audit honours by skipping the line, and every one is a
+  // confession that a pattern is imprecise — the control-keyword rule
+  // matching a Reason's rendering string, the wildcard rule matching an
+  // enumerated else — written where the gate should have been sharpened. A
+  // comment is graph content, so the count is a census, and its zero is
+  // every pattern precise enough to need no exemption. Morgan's suspicion
+  // on 2026-09-21, made a number the board can hold.
+  | CsAuditSilenced
+  // A PRODUCT DESTRUCTURED BY POSITION WITH TWO OR MORE SLOTS DISCARDED —
+  // `HandlerDeclStmt(n, _, _, _, _)`, `(_h, p, _s, _d)`. Position is an
+  // identity the reader has to decode, and a discard spelled as a binder
+  // (`_h`) is a discard. The form is a record punned by the field wanted
+  // (`{path, ...}`): SYNTAX §«Labeled call arguments» — the field's NAME is
+  // the key, the order a projection. Counted on the pattern node; its zero
+  // is every multi-field constructor carrying a record, which is the Stmt
+  // and Expr rosters' own next form. Morgan's screenshot, 2026-09-21.
+  | CsWildcardDestructure
   // The second declared-surface shape, and it counts EXPOSURE rather than
   // style: a record pattern's field offsets are resolvable only when the
   // receiver's full sorted field set is known, and a row-polymorphic
@@ -220,14 +271,14 @@ type QueryResult
   | QREffects(EffRow)
   | QROwnership([TParam])
   | QRWhy(Reason)
-  // The refs sites as (module, span) PAIRS — the same shape the census and
-  // decls facets already answer in. This facet was the last holdout carrying
+  // THE REFS SITES ARE NODES. A site was a (module, span) pair here for one
+  // landing, and a pair is a copy of two column reads made at collection
+  // time — the handle already carries both, and carrying the handle is what
+  // lets the render read them live (`site_address`). Before the pair it was
   // a BARE span, and a bare span is not an address: `at 3090:3` names a line
-  // in no file, so reading it costs a grep to find out whose line it is (paid
-  // twice in one session). Worse, the dedup compared bare spans, so two refs
-  // at one line:col in DIFFERENT modules were one entry by construction.
-  // The handle knows its module; the collector was discarding it.
-  | QRRefs([(String, Span)])
+  // in no file, and the dedup compared two modules' line 42 as one site.
+  // A handle is the medium's address; module and span are its projection.
+  | QRRefs([Int])
   | QRVerifyDebt([(Int, Span, Predicate, Reason)])
   // THE SAME OBLIGATIONS, PROJECTED AS SMT-LIB — `mentl <f> smt`.
   // One read (`verify_debt()`), two renders: `QRVerifyDebt` speaks the
@@ -245,14 +296,17 @@ type QueryResult
   | QRHandlerProvider(Option(String))
   // IFC projection — the FlowLabel the type already proves
   | QRFlowLabel(FlowLabel, Reason)
-  // census label + the located sites (count = len)
-  // the sites as (module, span) PAIRS: a local span names a line, and the
-  // module names whose line it is — the two halves the weave used to fuse
-  // into one global coordinate and three readers had to take apart again.
-  | QRCensus(String, [(String, Span)])
-  // the judged decl sites (count = len)
-  // (module, span) pairs, for the same reason the census carries them.
-  | QRDecls([(String, Span)])
+  // census label + the convicted NODES (count = len). Each site is a handle;
+  // `site_address` projects it — module:span when the node was born at
+  // parse, the handle beside its reason when it is a cell with no source
+  // position. The (module, span) pair this carried rendered `tuples:72:1-75:2`
+  // for a cell born under one module with a Reason copied from another: two
+  // columns read as one coordinate, in a 39-line file. The handle cannot
+  // fabricate an address, because it IS one.
+  | QRCensus(String, [Int])
+  // the judged decl handles (count = len), projected at the render like the
+  // census sites — `decl_handles` is the decls column read, nothing between.
+  | QRDecls([Int])
   // the weave's module paths, in weave order (count = len)
   | QRModules([String])
   // (importing module, imported path, is any name it brings referenced here)
@@ -262,10 +316,14 @@ type QueryResult
   | QRUnreachable([(String, String, Int)])
   | QRPerforms([(String, String, Int, Int)])
   | QROrphanClaims([(String, String, Int)])
-  // modules linked, source lines processed, nodes minted
-  | QRCost(Int, Int, Int)
-  // the derived badges (plain lines) + fanout sites as (schedule, span)
-  | QRWhere([String], [(String, Span)])
+  // modules linked, source lines processed, nodes minted, and the judgment's
+  // heaviest decls as (handle, bytes of judgment heap) — the judged-cost
+  // column ranked, `judged_top` deep. The instrument PLAN §5.O's arena
+  // thesis wants (98% of the judgment's heap is scratch — WHOSE?) and the
+  // one that names which decl a peak-RSS rise belongs to.
+  | QRCost(Int, Int, Int, [(Int, Int)])
+  // the derived badges (plain lines) + fanout sites as (schedule, node)
+  | QRWhere([String], [(String, Int)])
   // THE ROW AS STRUCTURE, not as spelling — every name beside the INTERN
   // HANDLE the algebra actually compares on, plus the tail and each of its
   // edges. `effects` renders `eff_name_str`, a display projection; two names
@@ -398,7 +456,7 @@ handler query_default {
     // edit set, and a rename needs the module half — an edit set that names
     // lines without naming files edits nothing.
     resume(QRRefs(refs_of_name(name))),
-    QDecls => resume(QRDecls(map(decl_site_of, decl_handles()))),
+    QDecls => resume(QRDecls(decl_handles())),
     QVerifyDebt => {
       let debt = verify_debt()
       resume(QRVerifyDebt(debt))
@@ -437,7 +495,7 @@ handler query_default {
     QUnreachable => resume(QRUnreachable(reach_report(module_cells()))),
     QPerforms => resume(QRPerforms(effect_report(module_cells()))),
     QOrphanClaims => resume(QROrphanClaims(orphan_claim_report(module_cells()))),
-    QCost => resume(QRCost(len(module_cells()), weave_line_extent(), graph_next())),
+    QCost => resume(QRCost(len(module_cells()), weave_line_extent(), graph_next(), judged_ranked())),
     QUnknown(q) => resume(QRError("unknown query: {q}")),
   },
 }
@@ -545,39 +603,18 @@ fn walk_chain(handle, depth) with Memory + Alloc + GraphRead = if depth > 50 || 
 // that column — O(refs), never O(graph) — and walks it from the TAIL
 // because the column prepends (newest first): oldest-first preserves
 // the scan-era answer order and its first-seen span dedup.
-fn refs_of_name(name) with GraphRead + !Mutate + Alloc + Memory = {
-  let hs = graph_refs_at(name)
-  collect_ref_sites(hs, len(hs) - 1, make_list(0))
-}
-
-fn collect_ref_sites(ref hs, i, acc) with GraphRead + Memory + Alloc + !Mutate = if i < 0 {
-  acc
-} else {
-  // A zero span is a synthetic mint (a pre-registration ghost),
-  // not a source site — the located answer skips it. A site already
-  // collected is the SAME source site re-minted by a later judgment
-  // generation (the converged rounds re-parse; one reference
-  // rendered four times before this dedup) — the reference's
-  // identity is its source location, so it enters once. The RAW read
-  // (the 2.0 walk law at its sibling): a noted ref's span is its OWN
-  // parse site, never the union-find root's reason — the chased read
-  // greened only because VarRef roots happened to retain Located
-  // reasons, an accident-invariant this swap retires.
-  //
-  // A SOURCE LOCATION IS (MODULE, SPAN), NOT A SPAN. The handle carries
-  // its module — graph_module_of is the same read decl_site_of makes for
-  // the decls column — and this collector was dropping it, which made the
-  // dedup below compare two different files' line 42 as one site. The
-  // identity the comment above claims is only an identity once the module
-  // is in it.
-  let sp = span_of_node_raw(hs[i])
-  let m = module_name_of_handle(graph_module_of(hs[i]))
-  if sp == span_zero() || site_in(acc, m, sp, 0) {
-    collect_ref_sites(hs, i - 1, acc)
-  } else {
-    collect_ref_sites(hs, i - 1, push(acc, (m, sp)))
-  }
-}
+// A reference with no position is a synthetic mint (a pre-registration
+// ghost), not a source site — the located answer drops it. A reference at a
+// position already collected is the SAME source site minted again, and a
+// reference's identity is its source location, so it enters once. The
+// position is the node's OWN — the spans column the parser wrote at the mint
+// — never a Reason's copy of a coordinate: the Reason read greened only while
+// VarRef roots happened to retain a Located, and it is the read that
+// rendered a census site inside a file that has no such line. Three stages
+// where an index-threaded walk stood: the column prepends, so `reverse` is
+// oldest-first, the order the answer has always rendered in.
+fn refs_of_name(name) with GraphRead + !Mutate + Alloc + Memory =
+  graph_refs_at(name) |> reverse |> filter({ h => graph_span_of(h) != span_zero() }) |> dedup_sites
 
 // ─── The import edges, read for what they actually carry ────────────
 //
@@ -618,29 +655,25 @@ fn import_report(cells) with GraphRead + Memory + Alloc + !Mutate =
 fn import_rows_join(cells, acc, cell) with GraphRead + Memory + Alloc + !Mutate =
   acc ++ import_rows_for(cell, cells)
 
-fn import_rows_for(cell, cells) with GraphRead + Memory + Alloc + !Mutate = match cell {
-  (_h, path, extent, _) => map(import_verdict(path, extent, cells), import_edges_of(cell)),
-}
+fn import_rows_for(cell, cells) with GraphRead + Memory + Alloc + !Mutate =
+  map(import_verdict(cell_path(cell), cell_span(cell), cells), import_edges_of(cell_decls(cell)))
 
 // The per-edge verdict: the importing module, the path it names, and whether
 // anything that path brings is referenced here.
 fn import_verdict(path: String, extent, cells, imported) with GraphRead + Memory + Alloc + !Mutate =
-  (path, imported, import_is_used(imported, extent, cells, 0))
+  (path, imported, import_is_used(imported, extent, cells))
 
 // Does the named module bring any name this extent references? A module the
 // weave does not carry answers False for its edge — never a fabricated True
-// that would hide a real dead import.
-fn import_is_used(imported: String, extent, cells, i) with GraphRead + Memory + Alloc + !Mutate = if i >= len(cells) {
-  false
-} else {
-  match cells[i] {
-    (_h, p, _, _) => if module_tail_eq(p, imported) {
-      any_name_referenced_in(module_declared_names(cells[i]), extent, 0)
-    } else {
-      import_is_used(imported, extent, cells, i + 1)
-    },
-  }
-}
+// that would hide a real dead import. `any` over the module cells: the one
+// whose path carries the imported tail decides, and a weave holds one cell
+// per path.
+fn import_is_used(imported: String, extent, cells) with GraphRead + Memory + Alloc + !Mutate = any(
+  {
+    c => module_tail_eq(cell_path(c), imported) && any_name_referenced_in(declared_names(cell_decls(c)), extent),
+  },
+  cells
+)
 
 // An import names a PATH (`dsp/clock`); a module cell names its resolved
 // file. They agree on the last segment, which is the module's identity.
@@ -650,51 +683,53 @@ fn last_segment(s: String) with Memory + Alloc = match split("/", s) {
   segs => if len(segs) == 0 { s } else { last(list_to_flat(segs)) },
 }
 
-fn import_edges_of(cell) with Memory + Alloc = match cell {
-  (_, _, _, decls) => fold([], import_edge_join, decls),
-}
+fn import_edges_of(decls) with Memory + Alloc = fold([], import_edge_join, decls)
 
 fn import_edge_join(acc, d) with Memory + Alloc = match d {
   N(NStmt(ImportStmt(p)), _, _) => push(acc, p),
   _ => acc,
 }
 
-// The names a module DECLARES, read from its own decl list — the same
-// four claim kinds register_one_op weighs: fns, types with their ctors,
-// effects with their ops, handlers.
-fn module_declared_names(cell) with Memory + Alloc = match cell {
-  (_, _, _, decls) => fold([], decl_names_join, decls),
-}
+// The names a decl list DECLARES — every statement kind's own, enumerated
+// in `stmt_declared_names`.
+fn declared_names(decls) with Memory + Alloc = fold([], decl_names_join, decls)
 
 fn decl_names_join(acc, d) with Memory + Alloc = acc ++ decl_names_of(d)
 
+// Every statement kind, enumerated: the `_ => []` that stood here said a
+// `let`, a refinement and an alias declare nothing, so an import used only
+// for one of those read as dead and a name bound only by one read as
+// unreferenced — the fabricated absence over a load-bearing ADT, and the
+// case H6 exhaustiveness exists for: a new statement kind is now a compile
+// refusal here, never a silent nothing. (`FnStmt(n, _, _, _, _)` is the
+// positional destructure `CsWildcardDestructure` counts; it retires when
+// the Stmt roster carries records, which is that census's zero.)
 fn decl_names_of(d) with Memory + Alloc = match d {
-  N(NStmt(s), _, _) => match s {
-    FnStmt(n, _, _, _, _) => [n],
-    TypeDefStmt(n, ctors) => [n] ++ map({ (cn, _, _) => cn }, ctors),
-    EffectDeclStmt(n, _, ops) => [n] ++ map({ (on, _, _, _) => on }, ops),
-    HandlerDeclStmt(n, _, _, _, _) => [n],
-    _ => [],
-  },
-  _ => [],
+  N(NStmt(s), _, _) => stmt_declared_names(s),
+  N(NExpr(_), _, _) | N(NPat(_), _, _) | N(NHole(_), _, _) | N(NModule(_), _, _) | N(NTypeAnn(_), _, _) => [],
+}
+
+fn stmt_declared_names(s) with Memory + Alloc = match s {
+  FnStmt(n, _, _, _, _) => [n],
+  HandlerDeclStmt(n, _, _, _, _) => [n],
+  TypeDefStmt(n, ctors) => [n] ++ map({ (cn, _, _) => cn }, ctors),
+  EffectDeclStmt(n, _, ops) => [n] ++ map({ (on, _, _, _) => on }, ops),
+  LetStmt(pat, _, _) => pat_binders(pat),
+  RefineStmt(n, _, _) => [n],
+  AliasStmt(n, _) => [n],
+  RowAliasStmt(n, _) => [n],
+  ExprStmt(_) => [],
+  ImportStmt(_) => [],
 }
 
 // Is any of `names` referenced from within `extent`? The refs column is
-// name-keyed, so this is one O(1) probe per name plus its own sites.
-fn any_name_referenced_in(names, extent, i) with GraphRead + Memory + Alloc + !Mutate = if i >= len(names) {
-  false
-} else if refs_inside(graph_refs_at(names[i]), extent, 0) {
-  true
-} else {
-  any_name_referenced_in(names, extent, i + 1)
-}
+// name-keyed, so this is one O(1) probe per name plus its own sites — an
+// `any` over the names, where an index-threaded self-call stood.
+fn any_name_referenced_in(names, extent) with GraphRead + Memory + Alloc + !Mutate =
+  any({ n => refs_inside(graph_refs_at(n), extent) }, names)
 
-fn refs_inside(hs, extent, i) with GraphRead + Memory + Alloc + !Mutate = if i >= len(hs) {
-  false
-} else {
-  let sp = span_of_node_raw(hs[i])
-  if sp != span_zero() && span_overlaps(extent, sp) { true } else { refs_inside(hs, extent, i + 1) }
-}
+fn refs_inside(hs, extent) with GraphRead + Memory + Alloc + !Mutate =
+  any({ h => graph_span_of(h) != span_zero() && span_overlaps(extent, graph_span_of(h)) }, hs)
 
 // ─── The declarations, read for what actually reaches them ──────────
 //
@@ -727,9 +762,8 @@ fn unreferenced_report(cells) with GraphRead + Memory + Alloc + !Mutate =
 fn decl_ref_rows_join(acc, cell) with GraphRead + Memory + Alloc + !Mutate =
   acc ++ decl_ref_rows_for(cell)
 
-fn decl_ref_rows_for(cell) with GraphRead + Memory + Alloc + !Mutate = match cell {
-  (_h, path, _, decls) => fold([], decl_ref_row_join(path), decls),
-}
+fn decl_ref_rows_for(cell) with GraphRead + Memory + Alloc + !Mutate =
+  fold([], decl_ref_row_join(cell_path(cell)), cell_decls(cell))
 
 fn decl_ref_row_join(path: String, acc, d) with GraphRead + Memory + Alloc + !Mutate =
   acc ++ map(decl_ref_verdict(path, decl_extent(d)), decl_names_of(d))
@@ -763,11 +797,10 @@ fn decl_handle(d) with Pure = match d {
 // read, not this walk's.
 fn reach_report(cells) = {
   let decls = list_to_flat(fold([], ur_cell_decls, cells))
-  let n = len(decls)
-  let idx = ur_index(decls, 0, n, smap_new())
+  let idx = ur_index(decls)
   match smap_get(idx, "main") {
     None => [],
-    Some(_) => ur_rows(decls, ur_walk(decls, idx, ["main"] ++ refine_roots(decls), smap_new()), 0, n, []),
+    Some(_) => ur_rows(decls, ur_walk(decls, idx, ["main"] ++ refine_roots(decls), smap_new())),
   }
 }
 
@@ -829,18 +862,17 @@ fn handle_var_names(h) with GraphRead + Memory + Alloc = {
   here ++ (body_child_handles(body) |> map(handle_var_names) |> flatten)
 }
 
-fn ur_cell_decls(acc, cell) with Memory + Alloc = match cell {
-  (_h, path, _, ds) => acc ++ map((d) => (path, d), ds),
-}
+fn ur_cell_decls(acc, cell) with Memory + Alloc =
+  acc ++ map({ d => (cell_path(cell), d) }, cell_decls(cell))
 
 // name -> decl index, every declared name (a ctor or an op leads to its
-// declaring node, which has no frees — a harmless leaf).
-fn ur_index(ref decls, i, n, idx) with Memory + Alloc = if i >= n {
-  idx
-} else {
-  match decls[i] {
-    (_, d) => ur_index(decls, i + 1, n, fold(idx, (m, name) => smap_add(m, name, i), decl_names_of(d))),
-  }
+// declaring node, which has no frees — a harmless leaf). The index is the
+// decl's POSITION in the flat list, which `enumerate` carries beside each
+// entry; the fold threads the map.
+fn ur_index(decls) with Memory + Alloc = fold(smap_new(), ur_index_join, enumerate(decls))
+
+fn ur_index_join(idx, indexed) with Memory + Alloc = match indexed {
+  (i, (_path, d)) => fold(idx, (m, name) => smap_add(m, name, i), decl_names_of(d)),
 }
 
 // The worklist: pop a name, mark it, push the frees of its declaration.
@@ -857,21 +889,19 @@ fn ur_walk(ref decls, idx, work, reached) with Memory + Alloc = match work {
   },
 }
 
-fn ur_rows(ref decls, reached, i, n, acc) with Memory + Alloc = if i >= n {
-  acc
-} else {
-  match decls[i] {
-    (path, d) => match d {
-      N(NStmt(FnStmt(name, _, _, _, _)), _, _) => {
-        let hit = match smap_get(reached, name) {
-          Some(_) => 1,
-          None => 0,
-        }
-        ur_rows(decls, reached, i + 1, n, push(acc, (path, name, hit)))
-      },
-      _ => ur_rows(decls, reached, i + 1, n, acc),
+fn ur_rows(decls, reached) with Memory + Alloc = fold([], ur_row_join(reached), decls)
+
+fn ur_row_join(reached, acc, entry) with Memory + Alloc = match entry {
+  (path, d) => match d {
+    N(NStmt(FnStmt(name, _, _, _, _)), _, _) => {
+      let hit = match smap_get(reached, name) {
+        Some(_) => 1,
+        None => 0,
+      }
+      push(acc, (path, name, hit))
     },
-  }
+    _ => acc,
+  },
 }
 
 // ─── The claims prose makes that the refs column refutes ─────────────
@@ -906,9 +936,8 @@ fn orphan_claim_report(cells) with GraphRead + Memory + Alloc + !Mutate =
 fn orphan_rows_join(acc, cell) with GraphRead + Memory + Alloc + !Mutate =
   acc ++ orphan_rows_for(cell)
 
-fn orphan_rows_for(cell) with GraphRead + Memory + Alloc + !Mutate = match cell {
-  (_h, path, _, decls) => fold([], orphan_row_join(path), decls),
-}
+fn orphan_rows_for(cell) with GraphRead + Memory + Alloc + !Mutate =
+  fold([], orphan_row_join(cell_path(cell)), cell_decls(cell))
 
 fn orphan_row_join(path: String, acc, d) with GraphRead + Memory + Alloc + !Mutate = {
   let prose = graph_comment_at(decl_handle(d))
@@ -955,7 +984,7 @@ fn orphan_prose_floor() with Pure = 240
 // shape visible in one read: k/n says at a glance whether a surface is
 // whole, half-wired, or dead.
 //
-// The count is per-op and the same one `unreferenced` uses — reference
+// The count is per-op and the same one the unreferenced facet uses — reference
 // sites outside the declaration's own extent — so a handler ARM does not
 // count as a perform, which is exactly right: an arm is the promise's
 // other half, not its consumer.
@@ -965,9 +994,8 @@ fn effect_report(cells) with GraphRead + Memory + Alloc + !Mutate =
 fn effect_rows_join(acc, cell) with GraphRead + Memory + Alloc + !Mutate =
   acc ++ effect_rows_for(cell)
 
-fn effect_rows_for(cell) with GraphRead + Memory + Alloc + !Mutate = match cell {
-  (_h, path, _, decls) => fold([], effect_row_join(path), decls),
-}
+fn effect_rows_for(cell) with GraphRead + Memory + Alloc + !Mutate =
+  fold([], effect_row_join(cell_path(cell)), cell_decls(cell))
 
 fn effect_row_join(path: String, acc, d) with GraphRead + Memory + Alloc + !Mutate = match d {
   N(body, sp, _) => match body {
@@ -987,8 +1015,29 @@ fn op_is_performed(extent, op) with GraphRead + Memory + Alloc + !Mutate = match
 // within the declaration's own extent. A spanless site proves nothing about
 // where it is, so it never counts as an outside reader.
 fn ref_is_outside(extent, site) with GraphRead + Memory + Alloc + !Mutate = {
-  let sp = span_of_node_raw(site)
+  let sp = graph_span_of(site)
   sp != span_zero() && !span_overlaps(extent, sp)
+}
+
+// ─── The judged-cost column's projection — the heaviest judgments ────
+//
+// judged_ranked — the (handle, bytes) rows `judge_stmt_one` noted, the
+// `judged_top` heaviest first. The fold keeps its accumulator bounded at
+// `judged_top`, so ranking N decls costs N insertions into a list that
+// never exceeds sixteen — never a sort of the whole column.
+let judged_top = 16
+
+fn judged_ranked() with GraphRead + Memory + Alloc = fold([], judged_rank_insert, graph_judged_at())
+
+fn judged_rank_insert(acc, row) with Memory + Alloc = take(judged_top, judged_insert_desc(acc, row))
+
+fn judged_insert_desc(acc, row: (Int, Int)) with Memory + Alloc = match row {
+  (_, bytes) => match acc {
+    [] => [row],
+    [top, ...more] => match top {
+      (_, top_bytes) => if bytes > top_bytes { [row] ++ acc } else { [top] ++ judged_insert_desc(more, row) },
+    },
+  },
 }
 
 // ─── The decls column's projection — one home, two readers ──────────
@@ -1050,6 +1099,9 @@ fn census_label(shape) with Pure = match shape {
   CsRecordPattern => "record pattern(s)",
   CsRecordPatternOpen => "record pattern(s) over an open-row receiver",
   CsFreeRowCallee => "call(s) whose callee's row nothing grounds — each one a yield floor lower cannot prove away",
+  CsFreeRowVar => "row variable(s) the judgment left unbound — the cause the call-site count pays for",
+  CsAuditSilenced => "comment(s) telling the drift audit to look away — each one a pattern left imprecise",
+  CsWildcardDestructure => "product pattern(s) discarding two or more slots by position — a record punned by name is the form",
 }
 
 // A name beside the key the algebra compares it on. `eff_name_str` is the
@@ -1124,7 +1176,7 @@ fn callee_row_tail_is_free(h) with GraphRead + !Mutate + Alloc + Memory = match 
   _ => false,
 }
 
-// Structural over the edge list, mirroring `edges_may_multishot` — the twin
+// Structural over the edge list, mirroring lower's edges_may_multishot — the twin
 // this shape exists to price, and the two walk the same edges for opposite
 // reasons: that one asks whether a floor is NEEDED, this one counts the
 // places nobody can answer.
@@ -1136,54 +1188,65 @@ fn row_edges_carry_free(vs) with GraphRead + !Mutate + Alloc + Memory = match vs
   },
 }
 
-fn census_sites(shape) with GraphRead + !Mutate + Alloc + Memory = match graph_snapshot() {
-  Graph(next, _) => census_walk(shape, 0, next, make_list(0)),
+fn census_sites(shape) with GraphRead + !Mutate + Alloc + Memory =
+  matching_handles(shape) |> dedup_sites
+
+// Every handle the shape convicts, in mint order: the Iterate range over
+// the graph's handles — the producer `map` and `filter` stand on — under
+// the collector `filter` itself installs. This was an index-threaded
+// self-call over `0..next`, the loop in recursion's costume that
+// `mentl audit` convicts across the wheel's own source; the instrument
+// that counts a shape should not be the last place the shape survives.
+fn matching_handles(shape) with GraphRead + !Mutate + Alloc + Memory = match graph_snapshot() {
+  Graph(next, _) => {
+    iterate_range(0, next)
+    result()
+  } ~> filter_collector({ h => census_matches(shape, h, graph_node_body(h)) }),
 }
 
-// The weave walk's span is the node's OWN (raw) reason — the parse site.
-// span_of_handle CHASES to the union-find root, which conflates a node's
-// identity with its type-class representative: a `<~` node's chase lands
-// on the continuation-boundary cell (bound with a bare Inferred), answers
-// span_zero, and the census skipped every feedback site as synthetic —
-// the 2.0 dig's true root, found after the eq itself measured TRUE
-// (3 vs 3) on the pair the divergence hypothesis had accused.
-fn span_of_node_raw(handle) with GraphRead + !Mutate + Memory + Alloc =
-  span_of_reason(graph_reason_at(handle))
+// A SITE IS A NODE; ITS POSITION IS A PROJECTION OF IT. The two halves of a
+// source location — which module, which span — are two columns the parser
+// wrote in ONE act (`parse_one_module` enters the module, then every node
+// it mints is span-indexed under it), so read from the node's own columns
+// they agree by construction. Read from anywhere else they need not: the
+// census took the module from the birth column and the span from the type
+// cell's Reason — a `Located` copied at bind time from whatever the binder
+// was judging — and printed `tuples:72:1-75:2`, prelude's `and_then` span
+// under a 39-line module's name. Nothing was wrong with either fact; the
+// PAIR was a fabrication, and it took a shape that convicts cells to expose
+// it, because a parse-born node's Reason usually copies its own span and
+// the two reads usually agreed by accident.
+//
+// A node born at parse has a position; a cell minted by inference does not,
+// and the spans column says so (span_zero) rather than lending it one.
+fn site_of(h) with GraphRead + !Mutate + Memory + Alloc = (graph_module_of(h), graph_span_of(h))
 
-// The dedup key is (MODULE, span), not the span alone. It was the span alone
-// while spans were offsets into ONE concatenated weave, where a coordinate was
-// globally unique by construction. The per-module parse makes every file start
-// at line 1, so two modules genuinely share a line 10 and span-keyed dedup
-// silently DROPS the second site — measured the day the parse moved: the verb
-// census missed its own fixture's `|>` because a lib module had already
-// claimed that line. The pair is unique again for the reason the coordinate
-// used to be, and now it says so instead of relying on it.
-fn census_walk(shape, i, n, acc) with GraphRead + Memory + Alloc + !Mutate = if i >= n {
-  acc
-} else {
-  if census_matches(shape, i, graph_node_body(i)) {
-    let sp = span_of_node_raw(i)
-    // A MODULE'S IDENTITY IS ITS PATH, never the node that represents it —
-    // the same law driver_collect_visit's visited set already keys on. The
-    // trial and the final each parse, so each mints its OWN NModule node for
-    // the same file: keying the dedup on the HANDLE made one site read as two
-    // (measured: every census count exactly DOUBLED, types:3748 four times).
-    let m = module_name_of_handle(graph_module_of(i))
-    if sp == span_zero() || site_in(acc, m, sp, 0) {
-      census_walk(shape, i + 1, n, acc)
-    } else {
-      census_walk(shape, i + 1, n, push(acc, (m, sp)))
-    }
+// The address surface's own form: `module:span` for a node with a position,
+// the handle beside its reason for a cell — the reason is the one fact a
+// cell carries about where it came from ("effects of 'and_then'"), and it
+// is the truth the coordinate was standing in for.
+fn site_address(h) with GraphRead + !Mutate + Memory + Alloc + Intern = match site_of(h) {
+  (m, sp) => if sp == span_zero() {
+    "#{int_to_str(h)} — {show_reason(graph_reason_at(h))}"
   } else {
-    census_walk(shape, i + 1, n, acc)
-  }
+    "{module_name_of_handle(m)}:{show_span(sp)}"
+  },
 }
 
-fn site_in(ref acc, ref m: String, ref sp, i) with Memory + Alloc = if i >= len(acc) {
-  false
-} else {
-  match acc[i] {
-    (am, asp) => if am == m && asp == sp { true } else { site_in(acc, m, sp, i + 1) },
+// Sites dedup by PROJECTED position: two nodes at one source position are
+// one site (a desugar's twin, a re-mint), while a cell — no position — is
+// its own site, because its handle is the only identity it has. The key was
+// (module PATH, span) while the trial and final each minted their own
+// NModule for one file; there is one judgment now, so the module HANDLE is
+// the key, an O(1) compare where the path was a byte scan. A fold with an
+// `any` membership test, not an index walk over the accumulator.
+fn dedup_sites(hs) with GraphRead + !Mutate + Alloc + Memory =
+  fold(make_list(0), (acc, h) => if site_in(acc, h) { acc } else { push(acc, h) }, hs)
+
+fn site_in(ref acc, h) with GraphRead + !Mutate + Memory + Alloc = {
+  let s = site_of(h)
+  match s {
+    (_, sp) => sp != span_zero() && any({ a => site_of(a) == s }, acc),
   }
 }
 
@@ -1388,15 +1451,40 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
     NStmt(FnStmt(_, _, _, effs, _)) => len(effs) > wide_row_width,
     _ => false,
   },
-  CsFreeRowCallee => // THE CALL SITE, reading the CALLEE's node — the same handle `can_yield`
-  // is handed, so this shape and the decision it prices read one row.
+  CsFreeRowVar => // The node's own cell, read through the nodes column rather than the
+  // program one. `h` was always a parameter here; the body argument beside
+  // it is a convenience for the AST shapes that hardened into a limit, and
+  // this arm is the proof it was only ever that.
+  match graph_chase(h) {
+    GNode(NRowFree(_), _) => true,
+    _ => false,
+  },
+  CsAuditSilenced => // The comments column — a third column this walk reads, after the
+  // program and the nodes: the marker is prose on whatever node the
+  // exempted line belongs to.
+  str_contains(graph_comment_at(h), "drift-audit: ignore"),
+  CsWildcardDestructure => // Patterns are VALUES on their nodes — a match arm's `(Pat, Node)`, a
+  // let's binder — never nodes of their own (the first draft read the
+  // `NPat` column and counted zero), so the read is over the match and the
+  // let, recursing into every sub-pattern. It convicts its own
+  // `LetStmt(p, _, _)` arm below, and should: that count's zero is the
+  // Stmt roster carrying records. A shape test's `_ => false` is the total
+  // answer (a new node kind is not this shape), unlike a `_ => []` over
+  // what a kind DECLARES, which the fabricates roster now counts.
+  match body {
+    NExpr(MatchExpr(_, arms)) => any({ (p, _) => pattern_discards_by_position(p) }, arms),
+    NStmt(LetStmt(p, _, _)) => pattern_discards_by_position(p),
+    _ => false,
+  },
+  CsFreeRowCallee => // THE CALL SITE, reading the CALLEE's node — the same handle lower's
+  // can_yield is handed, so this shape and the decision it prices read one row.
   //
   // IT WAS MOVED TO THE DECLARATION AND MOVED BACK, and the round trip is
   // the reason the correspondence is written here rather than assumed. The
   // bound breached on its own next landing (1041 -> 1045) because four
   // helper fns were added with no row changing, which looked like a count
-  // measuring code volume rather than a defect — a thermometer where
-  // `board_bounds` asks for a countdown. So it was re-keyed onto `FnStmt`.
+  // measuring code volume rather than a defect — a thermometer where the
+  // board asks for a countdown. So it was re-keyed onto `FnStmt`.
   //
   // That read a DIFFERENT NODE. A decl's own graph node, the env's
   // generalized scheme, and the callee handle at a call site are three rows,
@@ -1662,10 +1750,37 @@ fn any_wildcard_fabricates(arms, i, n) with Memory + GraphRead = if i >= n {
   }
 }
 
-fn wildcard_body_fabricates(b) with GraphRead = match b {
+// A constructor or tuple pattern whose slots include two or more discards —
+// the bare `_` and the binder that spells one (`_h`, `_s`). One discard is a
+// field the arm does not need; two is a position the reader has to count.
+fn pattern_discards_by_position(p) with Memory + Alloc = match p {
+  PCon(_, slots) => count(slot_is_discard, slots) >= 2 || any(pattern_discards_by_position, slots),
+  PTuple(slots) => count(slot_is_discard, slots) >= 2 || any(pattern_discards_by_position, slots),
+  PList(slots, _) => any(pattern_discards_by_position, slots),
+  PRecord(fields, _) => any({ (_, sub) => pattern_discards_by_position(sub) }, fields),
+  PAlt(alts) => any(pattern_discards_by_position, alts),
+  PAs(_, inner) => pattern_discards_by_position(inner),
+  PVar(_) => false,
+  PWild => false,
+  PLit(_) => false,
+}
+
+fn slot_is_discard(p) with Memory = match p {
+  PWild => true,
+  PVar(n) => byte_len(n) > 0 && byte_at(n, 0) == 95,
+  _ => false,
+}
+
+fn wildcard_body_fabricates(b) with Memory + GraphRead = match b {
   N(nb, _, _) => match nb {
     NExpr(LitString(s)) => // drift-audit: ignore — the census DETECTOR reading the drifted literal from the weave, not an effect-name dispatch
     s == "" || s == "Pure",
+    NExpr(MakeListExpr(elems)) => // `_ => []` — "this kind declares nothing / carries nothing", which is
+    // the fabricated absence over a load-bearing ADT: a new declaration
+    // kind silently declares no names (measured on `decl_names_of`,
+    // 2026-09-21, whose `_ => []` hid that a `let`, a refinement and an
+    // alias declare names too). Joined the roster the day it was found.
+    len(elems) == 0,
     NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
       NExpr(VarRef(cn)) => cn == "Forall" || cn == "TVar",
       _ => false,
@@ -2133,7 +2248,7 @@ fn fanout_sites(h, tees) with GraphRead + EnvRead + !Mutate + Alloc + Memory = {
   let body = graph_node_body(h)
   match body {
     NExpr(PipeExpr(PTee, l, r)) => fanout_sites(node_handle(l), [tee_handler_name(r)] ++ tees),
-    NExpr(FanoutExpr(branches)) => [(schedule_word(tees), span_of_node_raw(h))] ++ fanout_sites_list(branches, tees),
+    NExpr(FanoutExpr(branches)) => [(schedule_word(tees), h)] ++ fanout_sites_list(branches, tees),
     NExpr(LambdaExpr(_, lb)) => // the frame fence, statically mirrored
     fanout_sites(node_handle(lb), []),
     NStmt(FnStmt(_, _, _, _, fb)) => fanout_sites(node_handle(fb), []),
@@ -2156,11 +2271,11 @@ fn fanout_sites_children(hs, tees) with GraphRead + EnvRead + !Mutate + Alloc + 
 // absorbs — the modality as a DERIVED badge (output, never input),
 // read from the graph's own facts: the install node, the handler's
 // arms, each arm op's EffectOpScheme ename.
-fn fn_tee_lines(name: String) with GraphRead + EnvRead + !Mutate + Alloc + Memory = match graph_snapshot() {
+fn fn_tee_lines(name: String) with GraphRead + EnvRead + !Mutate + Alloc + Memory + Intern = match graph_snapshot() {
   Graph(next, _) => find_fn_tees(name, 0, next),
 }
 
-fn find_fn_tees(name: String, i, n) with GraphRead + EnvRead + !Mutate + Alloc + Memory = if i >= n {
+fn find_fn_tees(name: String, i, n) with GraphRead + EnvRead + !Mutate + Alloc + Memory + Intern = if i >= n {
   []
 } else {
   match graph_node_body(i) {
@@ -2169,16 +2284,13 @@ fn find_fn_tees(name: String, i, n) with GraphRead + EnvRead + !Mutate + Alloc +
   }
 }
 
-fn tee_lines(h) with GraphRead + EnvRead + !Mutate + Alloc + Memory = {
+fn tee_lines(h) with GraphRead + EnvRead + !Mutate + Alloc + Memory + Intern = {
   let body = graph_node_body(h)
   match body {
     NExpr(PipeExpr(PTee, l, r)) => {
       let hn = tee_handler_name(r)
-      let line = if hn == "" {
-        []
-      } else {
-        ["~> {hn} absorbs {handler_absorbs_str(hn)} at {show_span(span_of_node_raw(h))}"]
-      }
+      let line =
+        if hn == "" { [] } else { ["~> {hn} absorbs {handler_absorbs_str(hn)} at {site_address(h)}"] }
       line ++ tee_lines(node_handle(l))
     },
     NExpr(LambdaExpr(_, lb)) => tee_lines(node_handle(lb)),
@@ -2187,7 +2299,7 @@ fn tee_lines(h) with GraphRead + EnvRead + !Mutate + Alloc + Memory = {
   }
 }
 
-fn tee_lines_children(hs) with GraphRead + EnvRead + !Mutate + Alloc + Memory = match hs {
+fn tee_lines_children(hs) with GraphRead + EnvRead + !Mutate + Alloc + Memory + Intern = match hs {
   [] => [],
   [ch, ...rest] => tee_lines(ch) ++ tee_lines_children(rest),
 }
@@ -2300,11 +2412,6 @@ fn ops_contain(ops, target: String, i, n) with Memory = if i >= n {
 // span_of_handle — the node's source span, read live from its Reason chain
 // (the parser/infer wrote Located(span, _) at the node). One graph_chase, the
 // span peeled from the located reason — no parallel span-index re-lookup.
-// A decl's site: its own module beside its own span, both read from the
-// graph rather than reconstructed from a coordinate.
-fn decl_site_of(handle) with GraphRead + !Mutate + Memory + Alloc =
-  (module_name_of_handle(graph_module_of(handle)), span_of_handle(handle))
-
 fn span_of_handle(handle) with GraphRead + !Mutate + Memory + Alloc = match graph_chase(handle) {
   GNode(_, reason) => span_of_reason(reason),
 }

@@ -112,8 +112,7 @@ type InterrogationVerdict
   | VerdictInvites(AnnotationSuggestion)
 
 // ─── Per-position report — one record-shape (drift 7 closure) ──────
-type InterrogationReport
-  = InterrogationReport({gradient_v: InterrogationVerdict, graph_v: InterrogationVerdict, handle: Int, handler_v: InterrogationVerdict, ownership_v: InterrogationVerdict, reason_v: InterrogationVerdict, refinement_v: InterrogationVerdict, row_v: InterrogationVerdict, span: Span, verb_v: InterrogationVerdict})
+type InterrogationReport = {gradient_v: InterrogationVerdict, graph_v: InterrogationVerdict, handle: Int, handler_v: InterrogationVerdict, ownership_v: InterrogationVerdict, reason_v: InterrogationVerdict, refinement_v: InterrogationVerdict, row_v: InterrogationVerdict, span: Span, verb_v: InterrogationVerdict}
 
 // graph handle the report attaches to
 //

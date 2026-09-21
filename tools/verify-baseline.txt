@@ -957,7 +957,18 @@ frontier_expected_red: eq-in-arm-pointer
 # 2026-09-21: 60 -> 58. Two left with src/oracle.mn — a whole module deleted
 # takes its unprovable compares with it, which is the cheapest way this
 # counter ever falls and the least instructive: the class is unchanged.
-eq_type_unprovable_max: 58
+# 2026-09-21 (the site-is-a-handle landing): 58 -> 55, and this fall is the
+# instructive kind. Measured by compiling the prior pin's source with THIS
+# boot beside the current tree — one judge, two sources — and comparing the
+# sites by operator and emitting fn: `module_decls_of` and its `$spli000`
+# twin compared an untyped `target` against a cell's path and now compare
+# `cell_path(c: ModuleCell)` against `target: String`; `site_in` compared a
+# generic pair and now compares `site_of(h)`, a `(Int, Span)`. Three
+# comparisons PROVEN by reading through a typed projection — the countdown's
+# own mechanism, "name the type at its Intent Boundary" — not by deleting
+# code. The eleven lambda sites renumber between generations and pair one to
+# one; none entered or left.
+eq_type_unprovable_max: 55
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
@@ -1038,7 +1049,22 @@ authored_own_max: 63
 # oracle's deletion; four more were dropped from the SMT helpers while
 # refuting them as a cause of the pointer-render defect — they were not the
 # cause, and they were also not needed, which is the grade doing its job.
-authored_ref_max: 729
+# 2026-09-21 (the site-is-a-handle landing): 729 -> 721. Eight borrow markers
+# left with the declarations that carried them — the five chain renderers
+# behind the `format_chain` op nothing performed, `collect_module_cells` and
+# `cell_path_in` (the module cell became a nominal record with projections),
+# and `span_of_node_raw`'s readers (a site is a handle now, so nothing
+# borrows a span to pair with a module). Deleted with what they annotated,
+# never retired by the grade; the ceiling follows the count down.
+# 2026-09-22 · 721 -> 706 · the gate refused its author: the occurs family's
+# visited-set rewrite arrived with seven NEW markers (the `_seen` twins and
+# three helpers, every one a read the grade infers), and the count rose to
+# 728. The fix deleted every authored `ref` in that family — eighteen, the
+# fifteen it inherited included — plus the four on the formatter's and the
+# cost instrument's helpers, twenty-two in all; `mentl src/main.mn check` is
+# clean without them, which is the Hylo bar measured rather than felt. The
+# ceiling follows the count down.
+authored_ref_max: 706
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1078,7 +1104,18 @@ authored_ref_max: 729
 # §5.O's own accounting — and a ceiling that only ever rises to meet a breach
 # has stopped ratcheting. Raising it is an explicit in-commit act, which is
 # what this paragraph is; the next move on this line should be down.
-selfcompile_peak_kb_max: 1010000
+#
+# AND IT WENT DOWN (2026-09-21, the same day): 1,010,000 -> 936,000. The
+# breach that refused a repin at 1,069,472 KB was a fifteen-line render edit,
+# and attributing it built the instrument this file never had — `mentl <file>
+# cost` ranks the judgment's heap by decl — which named ONE two-line function
+# in format.mn's render cycle carrying 341MB, 40% of the whole judgment. The
+# cause was the occurs check walking a DAG of shared row vars as a tree, once
+# per path (graph.mn, occurs_in's header). With a visited set the m3 leg
+# measures 925,780 KB against the prior pin's 998,948, and this ceiling is set
+# ~1% over that reading, the same jitter margin as before. The arena's fall is
+# still owed on top of this one.
+selfcompile_peak_kb_max: 936000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

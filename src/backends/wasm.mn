@@ -1420,9 +1420,7 @@ fn walk_lemit_expr(expr) = match expr {
     // op THIS handler answers cannot reach it: the world_push is below.
     // The span comes off the install's own node — the reason the graph
     // already carries, never a coordinate re-derived here.
-    {
-      walk_lemit_list(inits)
-    } ~> preinstall_init_scope(hname, reason_span_or_zero(graph_reason_at(ih)))
+    walk_lemit_list(inits) ~> preinstall_init_scope(hname, reason_span_or_zero(graph_reason_at(ih)))
     // band B k1: a MultiShot-armed install carries the driver loop, which
     // reads the yield globals and compares the interned op keys — register
     // both through the same channels (the one decider multishot_ops_of;

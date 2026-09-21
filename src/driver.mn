@@ -434,12 +434,12 @@ fn driver_module_ast(ref ast, ref target) with Memory + Alloc + GraphRead + !Mut
 // — reading the node instead of re-filtering is the O(1) form once the mint
 // keeps an edge to it." The mint keeps it now. The whole-ast fallback stands
 // for a target that is not a woven module (the stdin/blob path).
-fn module_decls_of(ref cells, ref target, ref ast) with Memory + Alloc = if len(cells) == 0 {
-  ast
-} else {
-  match cells[0] {
-    (_h, path, _span, decls) => if path == target { decls } else { module_decls_of(rest(cells), target, ast) },
-  }
+// `target: String` is the Intent Boundary carrying the eq proof for
+// `path == target` (the same annotation `module_handle_pick` carries, for
+// the same reason); the cell is a record and `find` is the first-match walk.
+fn module_decls_of(ref cells, ref target: String, ref ast) with Memory + Alloc = match find({ c => cell_path(c) == target }, cells) {
+  Some(c) => cell_decls(c),
+  None => ast,
 }
 
 // THE RENDER SCOPE IS THE CALLER'S DECISION, NOT THIS MECHANISM'S. It was

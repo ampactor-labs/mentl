@@ -123,8 +123,7 @@ fn default_cadence() with Memory + Alloc = CadDebounced(250)
 //
 // Drift 5 + Drift 7 closure: caret + cursor + cadence + buffer fold
 // into ONE record. No parallel arrays of {names, spans, ...}.
-type TransportState
-  = TransportState({cadence: Cadence, caret: Caret, cursor: Cursor, last_render: Reason, session_id: Int})
+type TransportState = {cadence: Cadence, caret: Caret, cursor: Cursor, last_render: Reason, session_id: Int}
 
 // user's text-attention
 //

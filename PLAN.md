@@ -877,6 +877,62 @@ and this is the STATE.
   module-qualified is not an address, and the medium held three machines that
   believed otherwise. Two are closed; the third
   (`Hβ.cursor.module-of-a-span-is-containment`) dies with the proximity rank.
+  **A FOURTH was found and closed 2026-09-21, the inverse of the three:** the
+  census did not derive a module from a span, it PAIRED a module with a span
+  from two unrelated columns — the node's birth module beside its type cell's
+  Reason `Located`, a coordinate copied at bind time — and printed
+  `tuples:72:1-75:2`, prelude's `and_then` span under a 39-line module's name.
+  It surfaced only when a census shape first convicted CELLS (`CsFreeRowVar`),
+  because on parse-born nodes the two reads agree by accident. A site is a
+  HANDLE now; `site_of` projects module and span from the node's own columns,
+  written in one parse act, and a cell projects as its handle beside its
+  reason. `span_of_node_raw` is deleted; every source-shape count held. The
+  diagnostic register held the same machine: the deferred declared-row gate
+  carried `(name, row, has_pure, cell, SPAN, frees)` and reported under
+  whatever module was ambient when the gates drained — `show_list … at
+  tuples:3912`, a line in a 39-line module. It carries the decl NODE now and
+  reports AT it (`report_at`). Both were hidden by the same habit: the
+  narration that named them was being piped through `grep -v`.
+- **THE WHEEL KEEPS THREE NEW NUMBERS ON ITS OWN SHAPE (2026-09-21), each a
+  countdown on the board with its justification beside it (src/board.mn):**
+  **480** index-threaded self-calls (the loop in recursion's costume — the
+  shape existed and nothing refused the next one; `iterate_range` in the
+  prelude is the producer that dissolves the family, and eleven walks became
+  folds the day the bound was born), **732** positional destructures
+  discarding two or more slots (`HandlerDeclStmt(n, _, _, _, _)` — the zero is
+  the Stmt/Expr rosters carrying records), and **136** `// drift-audit:
+  ignore` exemptions (each a bash pattern left imprecise). Beside them, the
+  fabricates roster grew `_ => []` and rose 21 → 65 by widening: the wildcard
+  had been saying a `let`, a refinement and an alias declare nothing, so two
+  imports read as dead that were alive.
+- **THE JUDGMENT HAS A PER-DECL INSTRUMENT, AND ITS FIRST READING NAMED 40% OF
+  THE HEAP IN TWO LINES (2026-09-21).** `mentl <file> cost` ranks the
+  judgment's heap by declaration (`judge_stmt_one` notes the heap line's
+  advance beside the decl). A fifteen-line formatter edit had raised the
+  self-compile's peak 76MB and refused the repin; eleven kills by probe found
+  nothing, and the instrument's first run found `render_pred_node`
+  (format.mn, two lines) at 341,805,272 B: the occurs check re-walking every
+  PATH to the render cycle's shared row variables at one type bind. A visited
+  set took it to 1.3MB and the peak ratchet DOWN for the first time
+  (1,010,000 → 936,000 KB). **The walk is a symptom.** A row variable is a
+  VALUE carrying an edge list, and that value forces eleven compensations —
+  the write-time fold, the read-time re-fold, five recursive readers, the
+  finalize, the compression, the completion fold, the cycle cut, the pruning
+  fold, lower's escaping fixpoint — each a re-derivation of the names a row
+  carries. Morgan's ruling: *"flatten" / "memoize" / "cache" are words to be
+  careful with*; the e-graph (`saturate_pass` re-sweeping every handle per
+  round) is the same disease; rows as propagated cells come first. Three
+  read-only audits then measured the whole wheel against that law: 116 sites
+  in seven families (`Hβ.audit.re-derivation-census-2026-09-21`), and the
+  first landing's design is `Hβ.effects.rows-are-propagated-cells` — §11's
+  "one law, four faces" has a fifth face, ROWS, and it goes first.
+- **THE HOOKS CLAUDE.md DESCRIBED WERE NOT WIRED** — measured 2026-09-21: the
+  session's hook configuration was `{}`, `.claude/` was gitignored, and
+  "`tools/drift-audit.sh` runs as a PostToolUse hook" ran nowhere. It runs now
+  (`tools/audit-on-edit.sh`), beside `tools/mentl-first.sh`, the PreToolUse
+  hook on Bash that refuses grep/rg/sed/awk and any `mentl` output piped into
+  a filter; `.claude/settings.json` is versioned. The first thing each refused
+  was its author.
 - **Incrementality is not a cached cursor yet, and the precise shape is
   sharper than "epoch is a counter"** (corrected 2026-09-19). Epoch IS used as
   an invalidation key: `project_queue_merger` (oracle.mn) memoizes the project
@@ -1284,6 +1340,17 @@ oracle is what they add up to:
   UNDER EDITING, which the resident session depends on them not doing.
 - **THE FAN** (11.1): the context re-judged per candidate instead of judged
   once and read live.
+- **ROWS** (added 2026-09-21, and it goes FIRST by Morgan's ruling): a row
+  variable stored as a VALUE with an edge list, folded into a stored copy at
+  every bind (`flatten_row_stored`) and re-folded at every read
+  (`resolve_row`), with five more readers each walking the same DAG —
+  measured at 40% of the judgment's heap in one two-line function. The form
+  is a CELL whose reading is propagated forward along reverse edges at the
+  write, read in one hop: `Hβ.effects.rows-are-propagated-cells`. The same
+  machinery, one sort over, is the SCHEMES face's own fix (a `frees` set
+  propagated at the bind makes the quantifier a read and the occurs check a
+  membership test), and one altitude up it is the e-graph's (a rewrite fires
+  at the write through the parents column, never by re-sweeping the program).
 **THE SUM:** the oracle's central waste — every branch re-judging the whole
 context — IS rung 3, not a consequence of it; the teaching tie-break needs
 "what distinguishes these survivors", which is a provenance DIFF, cheap over
@@ -1629,7 +1696,12 @@ form the whole time. The arcs, in order:
   monomorphization doing exactly what it landed to do. The guard the page
   still needs is the OPEN-ROW one:
   `Hβ.infer.record-row-vars-are-not-unioned` is live, silent, and reads a
-  neighbouring field (tests/repro-wf/open-row-interior-site.mn). Terminal:
+  neighbouring field. (This sentence cited
+  tests/repro-wf/open-row-interior-site.mn as its witness until 2026-09-21;
+  no such file exists in the tree — the same phantom-witness class the demo
+  guard above recorded. The fixture is owed; the claim stands on the
+  measured `T_FieldOffsetUnprovable` floors the wheel's own compile
+  narrates.) Terminal:
   ide-gate green Node + headless Chrome, session alive across actions,
   eight-aspect projections at the caret.
 - **Arc F · Proof faces on the page, repriced.** `!Flow` sink-sensitivity
@@ -1744,7 +1816,7 @@ residual at install read. Terminal: crown 8/8, frontier 332/0, census 0. Records
 
 ### Phase 2 · Every judgment reads the graph, never a proxy — ✅ WHOLE 2026-08-07
 
-All items landed: **2.0** `==` coherent with match (span_of_node_raw — no chase).
+All items landed: **2.0** `==` coherent with match (the node's own span — no chase).
 **2.1** extraction-is-the-emit-cursor (e-graph born in prescribed form; synth's
 stored rank deleted into rank_of). **2.2** shape-keyed judgment tier (334 lines
 lighter; `check_branch_is_stage` deleted). **2.3** anonymity tier (eta-wrapper,

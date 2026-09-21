@@ -949,8 +949,7 @@ type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm | EfkK
 // learn, where None is a fact the type states and the reader floors on. The
 // ONE projection that must not vary by reader (the ABI) is settled once into
 // the sigs column at the emit boundary.
-type EmitFnEntry
-  = EmitFnEntry({caps: [(String, Int)], fence: Int, kind: EmitFnKind, name: String, origin: Int, params: [(String, Option(Ty))], ret: Option(Ty)})
+type EmitFnEntry = {caps: [(String, Int)], fence: Int, kind: EmitFnKind, name: String, origin: Int, params: [(String, Option(Ty))], ret: Option(Ty)}
 
 // The snapshot carries exactly what its consumers read: the mint bound
 // and the span index. The node cells are NOT here — they live in the
@@ -1194,8 +1193,7 @@ type CursorView
 // files and finding out at the type error which one you missed. Three hand
 // copies of one type is the Carried-Truth Law at the declaration layer; the
 // name is its one home, and the next column is one line.
-type SpinePage
-  = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
+type SpinePage = {bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]}
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) with Memory = count_lines_from(s, byte_len(s), 0, 0)
@@ -1787,7 +1785,7 @@ type Domain
 // Rejections sit beside the verdict rather than inside it: a lone survivor
 // coexists with three row-refused names, and the refusal teaches either way,
 // so repeating the list per arm would be the same fact in three homes.
-type Proposal = Proposal({rejected: [(String, Reason)], verdict: Verdict})
+type Proposal = {rejected: [(String, Reason)], verdict: Verdict}
 
 // A fill arrives WITH its reason because the constructor holds no other
 // shape — the render cannot drop what the type does not let it separate.
@@ -2069,6 +2067,9 @@ effect GraphRead {
   // retire onto this O(bucket) read.
   graph_refs_at(String) -> [Int]
   graph_decls_at() -> [Int]
+  // The judged-cost column's read: (decl handle, bytes of judgment heap)
+  // in judgment order — `mentl <file> cost` ranks it.
+  graph_judged_at() -> [(Int, Int)]
   // The value-holes column's read: (hole handle, entry name) pairs — the
   // executable gate's whole input (lowering-is-a-column (ii), the first
   // walker swap; the four-fn LowExpr walk retired onto this read).
@@ -2137,6 +2138,12 @@ effect GraphWrite {
   // graph_decls_at (the oracle queue's seed). Judgment rounds re-note,
   // so readers dedup by handle.
   graph_decl_note(Int)
+  // The judged-cost column — the decls column's sibling carrying what each
+  // judgment COST: `judge_stmt_one`, the one place a decl is judged, notes
+  // (its node handle, the heap line's advance across `infer_stmt`). Exact
+  // on the monotone bump image, never a sample; the read face is
+  // graph_judged_at.
+  graph_judged_note(Int, Int)
   // The value-holes column's writes: lower's authored-hole arm NOTES the
   // surviving hole (value-position is a lowering decision — a consumed
   // call-arg/pipe hole never reaches that arm), and each constructed
@@ -3426,7 +3433,7 @@ fn diag_report_at(diag, dmod) with Diagnostic + GraphRead + Memory + Alloc + Int
 // module — a defect in the caller. Answering with an empty name would hand
 // every downstream reader a file called nothing and make the defect invisible,
 // which is the wildcard-fabrication the census convicts.
-fn module_name_of_handle(h) with GraphRead + Memory + Alloc = match graph_node_body(h) {
+fn module_name_of_handle(h) with GraphRead + Memory = match graph_node_body(h) {
   NModule(m) => m.path,
   _ => {
     load_i32(0 - 1)

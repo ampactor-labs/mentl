@@ -102,7 +102,7 @@ type ProposerKind
 // to a literal's made-up 0.3) and rode stale when extraction swapped
 // the node — `rank_of` now reads the LIVE node at sort time, once per
 // candidate, through the same env/refs reads the gradient owns.
-type EnrichedCandidate = EnrichedCandidate({node: Node, origin: ProposerKind, reason: Reason})
+type EnrichedCandidate = {node: Node, origin: ProposerKind, reason: Reason}
 
 // AST fragment
 //
@@ -355,21 +355,17 @@ fn vocabulary_call_candidate(name, row, allowed_row) with GraphRead + GraphWrite
 // nothing).
 fn candidate_rank(name, decl_reason, hole_span) with GraphRead + !Mutate + Alloc + Memory = {
   let decl_near = scope_distance_decay(hole_span, caret_span_from_reason(decl_reason))
-  // The sites carry their module now, and destructuring them SURFACES a
-  // defect this fold has always had: scope_distance_decay compares two line
-  // coordinates, so a use in ANOTHER file scored as though it sat that many
-  // lines from the hole — a ref at line 12 of any module read as maximally
-  // near. Behaviour is preserved here rather than quietly re-ranked, because
-  // the honest fix needs the HOLE's module and a span is not an address
-  // (Hβ.synth.proximity-compares-across-modules; it closes with the same
-  // positions-are-handles work the Why chain waits on).
-  let use_near = fold(
-    0.0,
-    (acc, s) => match s {
-      (_, sp) => acc + scope_distance_decay(hole_span, sp),
-    },
-    refs_of_name(name)
-  )
+  // A use is a NODE now, and a node carries its module, so the defect this
+  // fold has always had is one read from its fix: scope_distance_decay
+  // compares two line coordinates, so a use in ANOTHER file scores as though
+  // it sat that many lines from the hole — a ref at line 12 of any module
+  // reads as maximally near. Behaviour is preserved here rather than quietly
+  // re-ranked, because a rank change wants its own fixtures
+  // (Hβ.synth.proximity-compares-across-modules); what that landing needs is
+  // `graph_module_of` on the use beside the hole's own module, and nothing
+  // is standing in front of it any more.
+  let use_near =
+    fold(0.0, (acc, h) => acc + scope_distance_decay(hole_span, graph_span_of(h)), refs_of_name(name))
   0.5 + decl_near + use_near
 }
 
@@ -883,9 +879,7 @@ fn indexed_value(indexed) with Memory + Alloc = match indexed {
 // the type-admission verdict — read from the medium's own voice instead of
 // re-derived by a comparison beside it.
 fn candidate_proven(node, hole_h, reason) = {
-  {
-    infer_expr(node)
-  } ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
+  infer_expr(node) ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
   match node {
     N(_, span, h) => {
       unify(hole_h, h, span, reason)

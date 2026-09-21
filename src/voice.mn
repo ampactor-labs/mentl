@@ -94,7 +94,7 @@ type EnvEntry = EnvEntry(String, Binding, Reason, SchemeKind)
 // it here. Mentl's Unlock tentacle reads this to surface "this
 // handler is why `Alloc` is absorbed here."
 // Primitive: #2 + #4.
-type HandlerEntry = HandlerEntry({absorbs: EffRow, install_reason: Reason, install_span: Span, name: String})
+type HandlerEntry = {absorbs: EffRow, install_reason: Reason, install_span: Span, name: String}
 
 // Every speak op receives a Situation. All 13 fields are load-bearing.
 // No external state consulted — stateless-per-turn except
@@ -105,8 +105,7 @@ type HandlerEntry = HandlerEntry({absorbs: EffRow, install_reason: Reason, insta
 // turn.
 // Primitives: #1 (graph), #2 (handlers_installed), #4 (rows),
 // #5 (ownership), #6 (refinements), #7 (gradient_next), #8 (reason).
-type Situation
-  = Situation({env_snapshot: [EnvEntry], facts: TopicFacts, gradient_next: Option(AnnotationSuggestion), handle: Option(Int), handlers_installed: [HandlerEntry], ownership_at_topic: Option(Ownership), prior_turn_tentacle: Option(Tentacle), prior_turn_topic: Option(Topic), reason_at_topic: Option(Reason), refinements: [Predicate], register: Register, row_at_topic: Option(EffRow), row_declared: Option(EffRow), tentacle: Tentacle, topic: Topic})
+type Situation = {env_snapshot: [EnvEntry], facts: TopicFacts, gradient_next: Option(AnnotationSuggestion), handle: Option(Int), handlers_installed: [HandlerEntry], ownership_at_topic: Option(Ownership), prior_turn_tentacle: Option(Tentacle), prior_turn_topic: Option(Topic), reason_at_topic: Option(Reason), refinements: [Predicate], register: Register, row_at_topic: Option(EffRow), row_declared: Option(EffRow), tentacle: Tentacle, topic: Topic}
 
 // differs from row_at_topic → subsumption diag
 //
@@ -131,7 +130,7 @@ type Situation
 // row_declared) are NOT duplicated here — those stay on Situation
 // and silence_predicate reads them directly. TopicFacts holds only
 // the three truly-new computations.
-type TopicFacts = TopicFacts({error_code_at: Option(String), is_hole: Bool, nested_call_depth: Int})
+type TopicFacts = {error_code_at: Option(String), is_hole: Bool, nested_call_depth: Int}
 
 // TentPropose → TopicHandle(h): handle_is_hole(h)
 //
@@ -217,7 +216,7 @@ type VoiceLine = Silence | VoiceLine(Tentacle, FormKind, [Slot], Modifier)
 // keeps the last N turns, older entries drop. Ring size is a
 // handler-install parameter, not a substrate constant (configured
 // at handler install per H3.1 parameterized effects).
-type TurnRecord = TurnRecord({line: VoiceLine, span_at: Span, tentacle: Tentacle, topic: Topic})
+type TurnRecord = {line: VoiceLine, span_at: Span, tentacle: Tentacle, topic: Topic}
 
 // Path wraps a String. Nominal — distinguishes file-system paths from
 // arbitrary strings at the type layer. Construction is explicit:
@@ -847,15 +846,15 @@ fn compose_propose_situation(target_handle, target_reason, prior_turn) with Memo
 // rather than a fabricated Reason. QRError → AnsSilence: an ill-posed or
 // unprovable question is a valid Silence (voice.mn:265). H6 exhaustive over
 // QueryResult's 15 variants — no wildcard.
-fn query_result_to_answer(result) with Memory + Alloc = match result {
+fn query_result_to_answer(result) with GraphRead + !Mutate + Memory + Alloc = match result {
   QRType(ty, reason) => AnsType(ty, reason),
   QRWhy(reason) => AnsReason(reason),
-  QRRefs(sites) => // refs-of carries (module, span) sites now, so it drops its module half at
-  // exactly the boundary the census and decls arms below drop theirs, and for
+  QRRefs(sites) => // refs-of carries NODES, and this boundary projects each one to its own
+  // span — the same projection the census and decls arms below make, for
   // the same reason: AnsRefs is the caret's carrier and the caret already
-  // knows its file. The TERMINAL is where the module was needed and where it
-  // now survives (pipeline.mn's site line).
-  AnsRefs(map(census_site_span, sites), Inferred("refs-of: {int_to_str(len(sites))} reference(s)")),
+  // knows its file. The TERMINAL is where the module is needed and where it
+  // is read (pipeline.mn's site line, through `site_address`).
+  AnsRefs(map(graph_span_of, sites), Inferred("refs-of: {int_to_str(len(sites))} reference(s)")),
   QRVerifyDebt(debt) => AnsDebt(debt, Inferred("verify-debt: {int_to_str(len(debt))} obligation(s)")),
   QRSmt(debt) => // The SMT projection rides AnsDebt too — it is the SAME bank, and the
   // voice answers with the obligations, not with the text a render made of
@@ -867,14 +866,14 @@ fn query_result_to_answer(result) with Memory + Alloc = match result {
   // rule: computed, never dropped to Silence). AnsRefs carries SPANS, so
   // the module half drops here and only here: this answer is consumed by
   // readers that already know the file they asked about.
-  AnsRefs(map(census_site_span, sites), Inferred("census: {int_to_str(len(sites))} {label}")),
+  AnsRefs(map(graph_span_of, sites), Inferred("census: {int_to_str(len(sites))} {label}")),
   QRDecls(sites) => // The decls column's sites ride AnsRefs like the census — same shape,
   // so the module half drops at the same boundary and for the same reason.
-  AnsRefs(map(census_site_span, sites), Inferred("decls: {int_to_str(len(sites))} judged decl(s)")),
+  AnsRefs(map(graph_span_of, sites), Inferred("decls: {int_to_str(len(sites))} judged decl(s)")),
   QRWhere(_, sites) => // The where badges' site list rides AnsRefs like the census; the
   // badge lines render at the CLI (the terminal projection's home).
   AnsRefs(site_spans(sites), Inferred("where: {int_to_str(len(sites))} fanout site(s)")),
-  QRCost(_m, _l, _n) => // The cost figures render at the CLI; the caret has no site to visit.
+  QRCost(_m, _l, _n, _j) => // The cost figures render at the CLI; the caret has no site to visit.
   AnsSilence,
   QRModules(paths) => // The module set is a COUNT with no spans of its own — the weave's
   // NModule cells carry each module's range, not a site the caret visits.
@@ -906,9 +905,9 @@ fn query_result_to_answer(result) with Memory + Alloc = match result {
   QRError(_) => AnsSilence,
 }
 
-fn site_spans(sites) with Memory + Alloc = match sites {
+fn site_spans(sites) with GraphRead + !Mutate + Memory + Alloc = match sites {
   [] => [],
-  [(_, s), ...t] => [s] ++ site_spans(t),
+  [(_, h), ...t] => [graph_span_of(h)] ++ site_spans(t),
 }
 
 // ─── Live forensic-result projections — the run ops read the graph ────
@@ -918,10 +917,6 @@ fn site_spans(sites) with Memory + Alloc = match sites {
 // obligation (span, predicate, reason) is the refinement the path could not
 // discharge statically: ERefinementRejected IS its canonical DiagKind. The
 // audit findings are the same obligations — the forensic surface is one read.
-fn census_site_span(site) with Pure = match site {
-  (_m, s) => s,
-}
-
 fn diagnostics_from_debt(debt) with Alloc + Memory = if len(debt) == 0 {
   []
 } else {

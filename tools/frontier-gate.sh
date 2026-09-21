@@ -3160,7 +3160,17 @@ for i in "${!compilers[@]}"; do
   # shape tier convicted the index-threaded form). A bare program formats
   # nothing, so it links the encoder for no reason at all — the same
   # sentence as the line above, and the same peer takes it back.
-  cost_ceiling=2822
+  # 2835 (2026-09-21): ROSE 2822 → 2835, a capability of the same class and
+  # the third in a row from lib/. `iterate_range(lo, hi)` landed in
+  # lib/prelude.mn beside `iterate` — the Iterate producer for a HANDLE walk,
+  # so a walk over the graph's handles is `{ iterate_range(0, n) … result() }
+  # ~> collector` rather than an index-threaded self-call of its own
+  # (Morgan's standing rule, and the shape `mentl audit` convicts across the
+  # wheel: eleven such walks in query.mn and graph.mn became folds the day it
+  # landed, `CsIterationCostume` bounded at 480 on the board). A bare program
+  # walks no graph and links the producer for no reason at all — the same
+  # sentence as the two lines above, and the same peer takes it back.
+  cost_ceiling=2835
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-bare-floor.mn" cost 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

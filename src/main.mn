@@ -95,8 +95,6 @@ import math
 
 import net
 
-import tuples
-
 import cli
 
 // The verb grammar — EntryVerb, the VerbSpec table, parse_cli_args and
@@ -908,9 +906,8 @@ fn doc_run(entry_module) = {
 // type is the judgment's, the prose is the graph's.
 fn doc_render(entry_module: String, cells) = each(doc_render_cell(entry_module), cells)
 
-fn doc_render_cell(entry_module: String, cell) = match cell {
-  (_h, path, _, decls) => if path == entry_module { each(doc_render_decl, decls) } else { () },
-}
+fn doc_render_cell(entry_module: String, cell) =
+  if cell_path(cell) == entry_module { each(doc_render_decl, cell_decls(cell)) } else { () }
 
 fn doc_render_decl(d) = match d {
   N(NStmt(FnStmt(name, _, _, _, _)), _, h) => doc_render_line(name, h),
@@ -1862,9 +1859,7 @@ fn battery_compile(src, stem) = compile_context(() => {
       let exit = if nholes > 0 || refused > 0 {
         -1
       } else {
-        {
-          emit_module(lowered)
-        } ~> wat_to_host
+        emit_module(lowered) ~> wat_to_host
         process_exec(argv_wire([stem]))
       }
       // THE CLASSES, never the rendered lines. A line banked during emit
@@ -2021,37 +2016,36 @@ fn query_run(target, words) =
 // "nothing was measured" (§11 tripwire 4 — a gate that stops being reported
 // stops being run; a gate that measures nothing has stopped being run while
 // still being reported).
-fn verify_run(entry_module) = infer_context(() => {
-  // SCOPE ALL, because this is the BOARD — the medium's standing bounds on
-  // its own source, not a user reading one file. Every other entry narrows to
-  // the module the user named so a compile never buries them in prelude
-  // narration; the board is the one reader for which that narrowing is the
-  // defect, and while it inherited the narrowing the comment-reference count
-  // could only ever see the entry module's prose (measured 2026-09-20:
-  // 0 on the entry link against 58 across the modules).
-  match driver_entry_scoped(entry_module, ScopeAll) {
-    (_ast, ranges) => match range_of_module(ranges, entry_module) {
-      None => {
-        eprint_string("mentl verify: no source to judge — {entry_module} never joined the weave\n")
-        1
-      },
-      Some(_) => // AND THE WEAVE MUST HAVE JUDGED CLEAN, which is the same vacuity one
-      // layer in and the instrument gate is what found it: a module whose own
-      // file loads but whose IMPORT does not still joins the weave, so the
-      // arm above admits it, the census walks a graph missing that module's
-      // content, and every bound reads a number too small to breach. It
-      // answered "12 bound(s) hold" for a program the driver had just
-      // refused. A partial measurement is worse than none because it looks
-      // like one, so the board reads the judgment's own error count and
-      // declines to measure rather than measuring less.
-      if diag_errors() > 0 {
-        eprint_string("mentl verify: {entry_module} did not judge clean — a board over a refused weave measures a program nobody has\n")
-        1
-      } else {
-        verify_board(entry_module)
-      },
+//
+// SCOPE ALL, because this is the BOARD — the medium's standing bounds on
+// its own source, not a user reading one file. Every other entry narrows to
+// the module the user named so a compile never buries them in prelude
+// narration; the board is the one reader for which that narrowing is the
+// defect, and while it inherited the narrowing the comment-reference count
+// could only ever see the entry module's prose (measured 2026-09-20:
+// 0 on the entry link against 58 across the modules).
+fn verify_run(entry_module) = infer_context(() => match driver_entry_scoped(entry_module, ScopeAll) {
+  (_ast, ranges) => match range_of_module(ranges, entry_module) {
+    None => {
+      eprint_string("mentl verify: no source to judge — {entry_module} never joined the weave\n")
+      1
     },
-  }
+    Some(_) => // AND THE WEAVE MUST HAVE JUDGED CLEAN, which is the same vacuity one
+    // layer in and the instrument gate is what found it: a module whose own
+    // file loads but whose IMPORT does not still joins the weave, so the
+    // arm above admits it, the census walks a graph missing that module's
+    // content, and every bound reads a number too small to breach. It
+    // answered "12 bound(s) hold" for a program the driver had just
+    // refused. A partial measurement is worse than none because it looks
+    // like one, so the board reads the judgment's own error count and
+    // declines to measure rather than measuring less.
+    if diag_errors() > 0 {
+      eprint_string("mentl verify: {entry_module} did not judge clean — a board over a refused weave measures a program nobody has\n")
+      1
+    } else {
+      verify_board(entry_module)
+    },
+  },
 } ~> stdout_console ~> wasi_filesystem ~> mentl_default)
 
 fn verify_board(entry_module: String) = {

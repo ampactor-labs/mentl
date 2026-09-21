@@ -180,13 +180,202 @@ on its own next landing, 1041 -> 1045, with no row changed); a ceiling on the
 CAUSE would only fall.
 
 THE FORM: a census keyed by the FACT rather than the node that exhibits it —
-here, the set of distinct free row variables the weave leaves unbound, each
-listed with the count of sites paying for it. The walk cannot express it
-today because `census_sites` convicts NODES and a free row var is not a node
-the weave walks, so the shape needs a fold that accumulates keys rather than
-a predicate that answers per node. Every ratchet with this problem gets it at
-once: the drift shapes count sites too, and a repeated cause is invisible in
-all of them.
+here, the set of distinct free row variables the weave leaves unbound.
+
+THE SENTENCE THAT STOOD HERE WAS REFUTED THE SAME DAY, and the refutation is
+the landing. It said the walk "cannot express it today because `census_sites`
+convicts NODES and a free row var is not a node the weave walks." A free row
+var IS a node — every handle owns a slot in each of `SpinePage`'s twelve
+columns, and `census_walk` visits every handle `0..graph_next()`; it read the
+program column alone, so a cell with no AST face answered `NHole(0)` and fell
+through every shape. `CsFreeRowVar` reads the nodes column (one `graph_chase`,
+`NRowFree`), and the shape convicts cells with no new walk.
+
+WHAT IT MEASURED, and why it is a READ and not the bound this entry was born
+asking for. Manifest link, 2026-09-21: **101 cells** — 44 the per-use
+instantiation of a quantified row (`instantiate inst → fresh …`), 38 the row of
+a call to a closure PARAMETER inside a HOF body (`call to 'try_fn'`), 7 the
+HOF's own declared-row cell (`and_then`, the five prelude handlers,
+`try_with_abort_catch`), 4 record rows, 4 stored-function rows, 2 declarations,
+2 argument edges. **89 of 101 are a signature's own quantified row or a copy of
+it** — the only spelling row polymorphism has — so a bound on this count would
+convict the language (Phase 2's re-founding law) and none is placed. The
+countdown that can reach zero is the cells NO scheme quantifies; that shape
+reads the quantifier, and `sig_owns` (infer.mn) is where the wheel already
+draws the line. Building it is the next form of this peer.
+
+AND THE SHAPE FOUND A DEFECT ONE LAYER OVER, which it took a cell-convicting
+shape to expose: the census rendered its first eleven cells at
+`tuples:72:1-75:2`, `tuples:243:1-246:2` … — addresses inside a 39-line file —
+because a site was (birth-module column, type cell's Reason `Located`), two
+facts read as one coordinate. Closed the same day: a site is a HANDLE
+(`census_walk`, `refs_of_name`, `decl_handles`, `fanout_sites` and the board's
+`Standing` all carry nodes), its position projects from the node's OWN columns
+(`site_of`: `graph_module_of` beside `graph_span_of`, written in one parse
+act), and a cell projects as `#handle — reason` (`site_address`). Every
+source-shape count held byte-for-byte across the cut; `span_of_node_raw`,
+`decl_site_of` and `census_site_span` are deleted. The record is under
+`Hβ.cursor.module-of-a-span-is-containment` as that family's fourth machine.
+
+`Hβ.link.the-flat-judgment-ends` — OPEN, RULED 2026-09-21 (Morgan: "the flat
+judgement… end it"), and it is the form `Hβ.link.manifest-and-blob-emit-
+differently` was circling. The wheel judges itself two ways — the BLOB
+(`wt_wheel lib src` piped to the compiler: every file concatenated, one
+module, one whole-program judgment) and the MANIFEST (`mentl compile
+src/main.mn`: the import DAG, what every user's program takes) — and they do
+not agree: the same row resolves `tail closed` under the flat link and `tail
+open` under the DAG, and the DAG pays 1,051 yield floors the flat link proves
+away. Two feed orders producing two proofs of one program is an
+ORDER-DEPENDENCE in ONE judgment wearing a "two links" costume, and a march
+(`m2 == m3`) that asserts the fixpoint over the blob is asserting it over a
+judgment no user ever runs. THE FORM: the manifest is the judgment; the march
+and `wt_m2_ensure` compile `src/main.mn` through the DAG; the blob path
+survives only as what `mentl -` means for a single piped program. The 1,051
+then stops being "the weave declining to ground a row the flat judgment
+grounds" and becomes a re-derivation inside the one judgment (interrogation
+1: the graph already grounded the callee's row; the weave discards it at the
+module edge and re-infers it free) — which is where `CsFreeRowCallee` falls,
+and the reason `CsIterationCostume` and it pull against each other today
+(every fold written against the one raises the other by exactly one). CLOSE:
+the march judges the DAG and `m2 == m3` holds there; the board's callee
+count measured against the DAG's grounding, falling.
+
+`Hβ.syntax.field-accessor-is-built` — OPEN, RULED 2026-09-21, superseding
+`Hβ.syntax.field-accessor-documented-never-built` (which "closed by deletion"
+— the spec cut to the lathe's shape, which is the one move the three-document
+contract forbids; Morgan's ruling: "`.field` gets built"). The bare accessor
+`filter(.age > 18)` was SYNTAX's own headline example of partial application;
+it was struck on 2026-09-20 because it did not parse. The spec is the
+manifest, so the section is restored to the design AS WRITTEN — recovered
+from git, not re-invented — and the parser is turned to it. THE FORM, derived
+from law already on the page rather than chosen: the accessor is the HOLE with
+a field read — `.age` is `??.age`, its receiver unsupplied, punned to the field
+the way `{name}` puns `{name: name}` — so it is REFERENCE with a hole (rule 1
+of §«Function literals»), never a third mint; the prior entry's refusal read
+"a field is not a decl", and the answer is that the accessor references the
+field PROJECTION, an edge the graph already holds. THE SCOPE the examples
+force (`filter(.age > 18)` is well-typed only as `{ p => p.age > 18 }`), stated
+as one rule for every hole: a hole is filled by the first thing outward that
+can fill it — a call whose ARGUMENT it is carries it in its product (today's
+`clamp(0, ??, 255)`); a `|>` whose STAGE contains it fills it with the datum
+(`x |> .name` is `x.name`); otherwise it climbs the expression it sits in to
+the innermost enclosing call ARGUMENT, which closes into a one-parameter
+function, every hole in that argument the same parameter, and the climb never
+leaves a function body; a hole none of these reach is the authored hole —
+productive, refused at emit. THE MECHANISM IS A HANDLER, which is why the rule
+costs nothing to state: the parser performs `open_hole()` at the accessor, a
+`HoleScope` handler installed over each call argument and each `|>` stage
+answers with that scope's one fresh `__h` name (the innermost install wins,
+which IS the innermost-argument rule) and records that a hole opened, so the
+scope wraps its expression in the lambda on the way out; a barrier handler at
+every parser entry and at every function body answers None, and the accessor
+mints the authored hole there. Infer, lower and the projections see an
+ordinary `LambdaExpr` with a `__h`-prefixed param — the `__dp`/`al_`
+precedent — and `mentl fmt` renders that param's field reads back as the
+accessor, the same way it renders the destructure and the arm list. SYNTAX §«Partial
+application» carries the rule; it is the one sentence ADDED in restoring the
+section, the reading the examples force, and it is put to Morgan as such.
+WHAT THE BUILD MEASURES FIRST: whether any `??` in the wheel or the fixtures
+sits inside an argument's expression without being the argument, because the
+rule turns that shape from a refusal into a suspension (the proof-exactness
+gate's hole-refuses leg and the frontier's hole workflows declare their shapes;
+a census shape over holes is the read to grow if none answers). CLOSE: the
+restored section; a RED-first fixture per example it gives (`filter(.age >
+18)`, `map(.name)`, the pipe form, the same-parameter two-hole argument, the
+nested-call refusal teaching the arm list); the parser passing them; and
+`mentl fmt` writing the accessor where a one-arm literal is one field read on
+its parameter, the arm-list precedent (one graph, the formatter's spelling).
+
+`Hβ.fmt.fn-body-beneath-its-signature` — OPEN, LATHE LAG, 2026-09-21. SYNTAX
+§«Function declarations» draws a multi-line body BENEATH its signature —
+`fn chase_node(ref nodes, handle, depth) with !Mutate =` on its own line, the
+`if` indented under it — and the formatter writes `… !Mutate = if depth > 100
+{` on the signature line, burying the declaration under the first line of its
+body (Morgan's screenshot: "the function declaration with all its parameters
+and annotations on that one line, and the if on the line beneath it"). A
+literal `= {` on every multi-line body would collide with the redundant-brace
+rule (braces are the block literal, keyed on statements, never line count),
+so the canon's form is the newline-and-indent, with the brace appearing
+exactly when the body has a `let`. CLOSE: the fn-decl render emits `=\n` +
+the indented body whenever the rendered body is multi-line and not a block,
+the fmt gate's idempotence leg over it seen RED first, and `mentl fmt`
+re-rendering the wheel in its own landing — the sweep touches every
+multi-line function and is one reviewable diff.
+
+`Hβ.types.constructor-payloads-are-records` — OPEN, BORN 2026-09-21 from
+Morgan's screenshot of `HandlerDeclStmt(n, _, _, _, _)` ("all the `_` in this
+image"). A multi-field constructor destructured by position is
+position-as-identity at the pattern layer — the reader decodes which slot is
+which — and every unused slot is a `_` (or a `_h` spelling one). SYNTAX
+§«Labeled call arguments»: the field's NAME is the key, the order a
+projection. THE FORM: `Stmt` and `Expr` constructors carry RECORDS and a
+reader puns the fields it wants. MEASURED: `CsWildcardDestructure` counts
+**732** such patterns across the wheel (every match and let, recursing into
+sub-patterns), bounded on the board; each constructor moved to a record
+retires all of its destructures at once, and the census convicts its own
+`LetStmt(p, _, _)` arm until then. The first record — the module cell — is
+the worked example and its record is the caution: the pun `{path, ...}` is
+SYNTAX's form and the board's zero-held `record pattern(s) over an open-row
+receiver` refused it fourteen times, correctly, because at an interior site
+the pattern's row var is never unioned with the element type
+(`Hβ.infer.record-row-vars-are-not-unioned`, still owed its fixture) and the
+binary built from the puns read a NEIGHBOURING FIELD — `cost` trapped, `doc`
+printed nothing. The provable form today is the nominal record (`type
+ModuleCell = {…}`) with an annotated receiver and a field read (`fn
+cell_path(c: ModuleCell) = c.path`); the pun returns when the union lands.
+CLOSE: the rosters carry records; the count reaches zero.
+
+`Hβ.audit.exemptions-absorb` — OPEN, BORN 2026-09-21 (Morgan: "I just saw a
+`// drift-audit: ignore` and I'm suspicious"). The marker tells the bash
+audit to skip a line, and every one is a pattern left imprecise: the
+control-keyword rule matching "return of" inside a Reason's rendering string,
+the accumulator rule on a bounded stack push, the literal rule on a census
+DETECTOR reading the drifted literal. `CsAuditSilenced` counts them on the
+comments column — **136** — and the board bounds it; each marker retires
+with its pattern's absorption into a census shape that reads structure
+instead of text (Phase 5.6's standing motion), and the zero is an audit that
+needs no exemptions.
+
+`Hβ.cursor.field-form-traps-on-the-wheel` — OPEN, MEASURED 2026-09-21 while
+reading the wheel's own absence field to size the accessor build. `mentl
+src/main.mn:0` answers *"Field: 8 hole(s), 13 pending proof(s), 94
+tightening(s), 1276 gradient position(s) in main"*, renders the first hole's
+header at `main:416:84`, and exits 134 with an EMPTY stderr. Two defects in
+one read. (1) Line 416 of src/main.mn is
+`print_string("march: the judgment REFUSES — …")` — no `??` anywhere on it,
+and `mentl src/main.mn:416:84` projects that call — so the field is counting a
+SYNTHESIZED `NHole` (a desugar's own mint) as an authored hole; the frontier's
+field legs pass because their fixtures carry only authored holes. (2) The fan
+over the wheel's vocabulary at that cell traps, and the trap says nothing: the
+exit is 134 and no backtrace reaches stderr, which is the silent-floor class
+§7 names (a trap nobody was told about is not a refusal). The wheel-scale
+field is the demo surface §11 Arc E calls the terminal bar, and it has never
+been run on the wheel. CLOSE: the field enumerates authored holes only (the
+`NHole` reason distinguishes a `THole` mint from a desugar's), the wheel's
+field renders end to end, and a trap on the address surface carries its site.
+
+`Hβ.fmt.chain-canon-is-inline-on-the-page` — OPEN, BORN 2026-09-21, found by
+the redundant-brace lift. SYNTAX §«Canonical layout» prescribes vertical
+chains — `|>`/`~>` at the left edge one stage per line, `><` alone at indented
+center — and says the section "is what `mentl fmt` writes." The live render
+(`render_operand` under the `PipeExpr` arm of the token renderer, format.mn)
+writes a chain INLINE and breaks only where the right operand carries attached
+prose; the wheel, at its own formatter's fixpoint, holds zero lines beginning
+with `|>` across 60,000. The vertical layout WAS implemented — `render_chain_node`
+and its five verb renderers — behind `format_chain`, a `Format` op with a
+declaration, a handler arm and no performer anywhere, which is how the first
+draft of the lift went into `render_tee` and the page did not move. The family
+is deleted (−130 lines); the `unreachable` facet had counted it reached through
+the arm of an op nobody performs, which is its own finding (an arm's callees
+are reachable only if the op is; `performs` knows the op count, `unreachable`
+does not read it). THIS IS LATHE LAG, NOT A DECISION (Morgan's ruling,
+2026-09-21): SYNTAX is the manifest, the vertical canon stands, and the render
+grows it — a chain that does not fit the width stacks exactly as the canon
+draws it, `|>`/`~>` at the left edge one stage per line, `><` alone at
+indented center; `fits_inline` already breaks calls and `if` at 100 columns
+and is the threshold to reuse. CLOSE: the render grows the layout; the fmt
+gate's idempotence leg over a fixture whose chain exceeds the width, seen RED
+first; the medium then re-renders the wheel.
 
 `Hβ.voice.effects-render-hides-an-open-tail` — OPEN, BORN 2026-09-21, and its
 cost is already on the record above. `show_effrow` renders a row's present set
@@ -848,22 +1037,31 @@ WHAT SURVIVES, and it makes the arm-list arc SMALLER rather than larger: all
 57 `((a,b)) => …` — so the literal is a one-param dispatch exactly as a match's
 arms are, and no arity semantics are touched at all.
 
-`Hβ.syntax.field-accessor-documented-never-built` — **CLOSED 2026-09-20 by the
-deletion its own close condition named**: the three `.field` examples left
-SYNTAX §«Partial application» with the measurement recorded beside them, and
-the accessor is not built. The entry stands because the reason it is refused
-outlives it. BORN the same day,
-and it CLOSES BY DELETION rather than by building. SYNTAX presents
+`Hβ.syntax.field-accessor-documented-never-built` — **SUPERSEDED 2026-09-21 by
+`Hβ.syntax.field-accessor-is-built` (Morgan's ruling: "`.field` gets built"),
+its refusal REFUTED there.** It read: *"CLOSED 2026-09-20 by the deletion its
+own close condition named: the three `.field` examples left SYNTAX §«Partial
+application» with the measurement recorded beside them, and the accessor is
+not built. The entry stands because the reason it is refused outlives it."*
+The reason does not outlive it — the accessor is the HOLE with a field read,
+reference-with-a-hole, and cutting the spec to the lathe's shape is the one
+move the three-document contract forbids. The measurement it recorded stands
+and is why the parser is being turned rather than the examples re-argued: BORN
+2026-09-20, it CLOSED BY DELETION rather than by building. SYNTAX presents
 `filter(.age > 18)` and `map(.name)` as canonical in §«Partial application» —
 the very illustration of "the hole is keyed by IDENTITY". Measured: the form
 does not parse (`P_UnexpectedToken: .`), and a full search of `src/**` +
 `lib/**` finds ZERO uses; what the wheel writes instead is eight explicit
 `(x) => x.field` lambdas. A documented-but-absent form is the promise the
 verb-lag list exists to prevent, one section over.
-AND UNDER THE ARM-LIST FORM IT IS REFUSED ON ITS MERITS, not merely unbuilt: a
-field is not a decl, so `.name` would be a THIRD way to mint a function beside
-reference-with-holes and the arm list. `{ st => st.name }` says it with the one
-literal. CLOSE: the examples leave SYNTAX; the accessor is not built.
+AND UNDER THE ARM-LIST FORM IT WAS CALLED REFUSED ON ITS MERITS: "a field is
+not a decl, so `.name` would be a THIRD way to mint a function beside
+reference-with-holes and the arm list; `{ st => st.name }` says it with the one
+literal." That argument is wrong at its premise — `.name` mints nothing. It is
+`??.name`, the field PROJECTION (an edge the graph already holds) with its
+receiver left as the hole, which is rule 1's reference-with-a-hole and not a
+mint at all. The successor entry carries the form. (Its own close condition,
+"the examples leave SYNTAX; the accessor is not built", is the move reversed.)
 
 `Hβ.voice.comment-ref-gate-reads-the-flattened-link` — OPEN, BORN 2026-09-20,
 and it was found by USING THE MEDIUM after a landing that had not — Morgan's
@@ -1228,6 +1426,21 @@ decay is not reachable from user code. CLOSE: a rank fixture whose caret and
 candidate sit in different modules at a line both files reach, asserting the
 cross-module weight rather than the same-module one — seen RED first, which is
 also what turns the derivation into a measurement.
+THE FOURTH MACHINE, FOUND AND CLOSED 2026-09-21, is the inverse of the other
+three: they derived a module FROM a span by containment; the census PAIRED a
+module with a span from two unrelated columns — `graph_module_of(i)` (the birth
+column, correct) beside `span_of_node_raw(i)` (the type cell's Reason `Located`,
+a coordinate COPIED at bind time from whatever the binder was judging) — and
+printed the pair as an address. On a parse-born node the two reads agreed by
+accident (a node's Reason usually copies its own span); on a cell minted during
+inference they did not, and `tuples:72:1-75:2` — prelude's `and_then` span under
+a 39-line module's name — was the first census line a cell-convicting shape
+produced. Closed by deletion: a site is the HANDLE, `site_of(h)` reads
+`graph_module_of` beside `graph_span_of` (the spans column the parser wrote at
+the same mint it entered the module under, so they agree by construction), and
+a node with no position projects as its handle beside its reason instead of
+borrowing one. `span_of_node_raw` is gone; `refs_inside`, `ref_is_outside`, the
+where badges and the tee lines read the column too.
 
 `Hβ.graph.mutation-delta-is-write-only` — OPEN, BORN 2026-09-19. `graph_mutated(Int,
 Mutation)` (types.mn) carries `MSetNode(Int, GNode)` — *(handle, prior value)* —
@@ -3123,9 +3336,13 @@ reference at line 12 of an unrelated file scores as maximally near the hole and
 lifts vocabulary that is nowhere near the caret. Surfaced 2026-09-12 by
 destructuring the (module, span) sites the refs facet now carries; behaviour was
 preserved rather than quietly re-ranked, because the honest fix needs the HOLE's
-module and a span is not an address. CLOSE CONDITION: rides positions-are-handles
-with the Why chain's own coordinate work — the gradient's first real ranking
-signal should not be a coincidence of line numbering.
+module and a span is not an address. ITS DEPENDENCY IS DISCHARGED (2026-09-21):
+`refs_of_name` answers HANDLES now, the fold reads `graph_span_of(h)` from each,
+and `graph_module_of(h)` beside the hole's own module is the whole of what the
+rank needs — nothing stands in front of it. CLOSE CONDITION: the rank change
+itself, with its fixture (caret and candidate in different modules at a line both
+files reach, asserting the cross-module weight, seen RED first) — the gradient's
+first real ranking signal should not be a coincidence of line numbering.
 
 `Hβ.infer.declared-row-vacuous-against-a-free-body-row` — **STAMPED
 2026-08-18, and the fork it was banked as is ANSWERED.** Morgan's
@@ -11601,3 +11818,250 @@ allocation is the BUILD (map over eff names, tail_set_union), not the
 visit. Land order, both halves together or neither (the half-step law,
 paid for twice more here): visitor-quantifier + publish-Live +
 subst-shares-the-edge, judged by census 0, the movers line, and m3 == m4.
+
+`Hβ.effects.rows-are-propagated-cells` — OPEN, designed 2026-09-21, the
+FIRST landing of the re-derivation queue by Morgan's ruling (*"flatten" /
+"memoize" / "cache" are words to be careful with; the e-graph is the same
+disease; rows as propagated cells first*). THE DEFECT: a row variable is a
+VALUE `EfRow(present, absent, EtOpen([edge handles]))`, and that value forces
+eleven compensations, each a re-derivation of the names a row carries —
+`flatten_row_stored` (graph.mn: a materialized view folded at every bind,
+its own header calling this "the fold's cost is paid once per write"),
+`resolve_row` / `resolve_row_compress` (effects.mn:372/430: re-folded at
+every read, 13 + 6 sites, `row_subsumes` folding both rows per gate),
+`occurs_in_edges` / `free_in_edges` / `subst_edges_build` / lower's
+`effects_of_edges` / `edges_may_multishot` (five more recursive walks of the
+same DAG), `graph_finalize_row`, `graph_compress_row`,
+`group_completion_fold`, `row_without_self`, `row_keep_completion`,
+`merge_chased_row`, and lower's `escaping_fixpoint` (32 rounds re-walking
+every fn's escaping row). MEASURED: `mentl <file> cost` named
+`render_pred_node` (format.mn, two lines) at 341,805,272 B — 40% of the
+whole judgment's heap — the occurs walk re-walking every path to the render
+cycle's shared row vars at ONE type bind (`expected` in
+`infer_call_saturated`, 170MB per bind, probe-bracketed). THE FORM: a row
+variable is a CELL. Equality unions roots. Caller→callee is a directed FLOW
+edge (the directional-edge law the code states). The names at a cell are a
+join-lattice value PROPAGATED forward along reverse edges at the write; a
+read is one hop. Representation (types.mn): `RowEdge = {src, inst}` (`inst`
+the quantified-payload-var → fresh-var mapping of an instantiation edge, `[]`
+on a flow edge) and `RowCell = {bound, own_p, own_a, own_all, edges, deps,
+full_p, full_a, full_all, frees}`; `NRowCell` and `NRowAlias(root)` replace
+`NRowFree`/`NRowBound` as STORED kinds, while `graph_chase` PROJECTS the old
+shape (`NRowBound(EfRow(full_p, full_a, tail))` with `tail` = `EtAll` /
+`EtOpen(frees)` / `EtClosed`; `NRowFree` for an unbound cell) so the ~100
+reader sites keep compiling and every recursive fold collapses to depth one
+(a projected tail lists only UNBOUND cells). Ops: `graph_bind_row` = TEACH
+own fields + LINK each tail edge + propagate; `graph_row_link(h, src, inst)`
+(dedup by pair; `deps(src) += h`; self-link is a no-op — R ∪ R = R, the
+least solution the cycle cut computed by hand); `graph_row_union(a, b)`
+(alias b's root to a's, merge, re-link deps); `graph_row_cell(h)` the raw
+read; `graph_finalize_row` and `graph_compress_row` DELETED. Propagation:
+`recompute(h)`: `full_p' = own_p ∪ ⋃ rename(full_p(src), inst) ∖ own_a`,
+`full_a' = own_a ∪ ⋃ full_a(src)`, `full_all' = own_all ∨ ⋁ full_all(src)`,
+`frees' = ⋃ (bound(src) ? frees(src) : {root(src)})`; GROWTH events (teach,
+link, all) run a worklist over `deps` until nothing changes (cycles converge
+— mutual recursion needs no completion fold); SHRINK events (an unbound cell
+binds; `own_a` grows on a cell with deps) reset the dependent cone's
+`full_*` to own-only and re-run the worklist — the least fixed point, paid
+only on the rare shrink. Every cell write is trailed (`MSetRow`), the cone
+included; `deps` rides inside the record and rolls back with it. The
+declared-row gate PARKS ON the cells in `frees(row) ∖ sig_frees` and is
+re-checked by the shrink event on exactly those cells (`drain_deferred_row_gates`'s
+per-group re-check of every parked gate deleted; the pass-tail assert stays).
+SITE BY SITE: the frame (`infer_ctx`) drops `accumulated_row` and the
+per-effect stack rebuild — `inf_add_row` is `graph_bind_row(frame.row_handle,
+…)`, `inf_current_row` the projection, `inf_exit_fn` binds every unbound
+above-ceiling non-signature edge to Pure (what "drops as pure" meant);
+`unify_row_canonical` keeps its case analysis over projections, `bind_edges_to`
+keeps teaching per edge, the identical/shared-edge cases become
+`graph_row_union`; `diff_row` unchanged in shape (the mask is the fresh
+cell's `own_a`); `resolve_row` is the one-hop read; `row_gate_unresolved` =
+`frees ∖ sig_frees ≠ []`; `generalize_pair`/`free_in_row` read payload vars
+of `full_p ∪ full_a` (row-sort roots never quantified, as :6632 already
+says); `instantiate`/`subst_row` mints ONE fresh cell per quantified-payload
+instantiation with an `inst` edge to the callee's cell (the correspondence-
+edge mint) or shares the cell when the mapping is empty; `occurs_in_row_seen`
+reads payload types over the edge cells' `full_*` with no edge recursion;
+`chase_node`'s single-edge chain arm goes with `merge_chased_row`; row
+aliases (`type X = <row>`) resolve to a ROW CELL once at registration and a
+declared row LINKS to it (`row_alias_triples`/`leaf_row_of`'s by-name
+re-expansion deleted); lower's `escaping_round`/`escaping_fixpoint`/`esc_rows`
+/`ls_register_escaping` DELETE into the fn's cell read at the seam;
+`effects_of_edges`/`edges_may_multishot` become one-hop reads; the name sets
+become handle-keyed merges on `eff_name_handle` (`name_set_canonicalize`'s
+O(n²) at every `ef_make` deleted); the `row` facet renders `own` beside
+`full`. GATES: crown 62/0; frontier 0 red (`mn-cycle-charge-freeze`,
+`mn-two-tail-accumulation`, the multieffect-leak fixture,
+`mn-feedback-transport`); micros 149/149; syntax 17/17; census 0;
+comment-refs 0; march CLEAN or TRANSITION; and the measurement: `mentl
+src/main.mn cost` with no decl above 5MB, the m3 leg's `heap:` line below
+474,553,088 B, `selfcompile_peak_kb_max` lowered again with its reason, m3
+wall down. One new frontier fixture RED-first: a three-member cycle whose
+last member's `~>` subtraction must mask a name the first performs, with a
+declared-`!E` refusal twin. CLOSE: the eleven compensations deleted, the
+gates green, the numbers written into the ledger, the type-side visited set
+in `occurs_in` handed to the SCHEMES landing to delete.
+
+`Hβ.audit.re-derivation-census-2026-09-21` — OPEN, the bank of three
+read-only Opus audits run the day of the rows ruling, one question over the
+whole wheel: where is a fact the graph holds computed, copied, snapshotted,
+folded, cached, or re-derived by walking? 116 rows, deduplicated into SEVEN
+FAMILIES of the one law, queued by measured cost. Every row is a site;
+"home" is where the fact's one edge belongs. Families A–G are landings, in
+order, after the rows landing above (A). Rows already covered by a named
+peer cite it.
+▶ A · ROWS — the peer above, plus its audit-found siblings: `row_subsumes`
+folds both rows per gate (effects:832-833); `unify_row` two compress folds
+per unify (:893); `residual_with_config_args` folds the residual once per arm
+(infer:4471/4491); the frame stack rebuilt `drop_last(stack) ++ [updated]` on
+EVERY effect added (infer:167/184); `name_set_canonicalize`/`name_set_is_dedup`
+/`name_set_prefix_*` O(n²) at every `ef_make` (effects:1205-1274, its own
+comment: "millions of times per pass"); `edges_keep_completion`'s `any` scan
+per edge (:796); `row_alias_triples`/`leaf_row_of` by-name re-expansion with
+a string `seen` scan (:241-279); `drain_deferred_row_gates` re-checking every
+parked gate per group (infer:2898, "CONDEMNED FORM (D4)"); `group_completion_fold`
+re-finalizing every member (:1603); lower's `escaping_round`/`escaping_fixpoint`
+per-round re-walk (lower:1718-1752) and `esc_rows`/`ls_register_escaping`
+name-keyed snapshot ("computed ONCE (the cached cursor)", :5399/5310).
+▶ B · SCHEMES AND TYPES — the resolved form and the free-var set re-derived
+at every read. `chase_deep_at`/`chase_changes`/`chase_deep_build` (infer:6741
+/6748/6851): O(paths), recursion through bound vars with no visited set;
+`subst_ty`/`subst_changes`/`subst_ty_build` (:7182/7187/7313): the clone per
+polymorphic reference (`Hβ.infer.instantiate-shares-never-clones`);
+`judgment_ty`/`judgment_pair` (:6685/6693): `generalize_pair` re-run at every
+read of a `Live(h)`; `generalize_pair` (:6604): a fresh `chase_deep` copy +
+three `free_in_*` walks + O(n²) `unique`, self-marked CONDEMNED at :6590;
+`free_in_ty` family (:6976/7005/7059): O(paths), no visited set;
+`signature_free_roots` (:7107); the gate's `sig_frees` banked as a VALUE in
+the gate tuple (:2551→:2564, read at :2900); `branch_replay_one` (:1898)
+re-deriving the quantifier from the frozen type; fourteen `Frozen(...)`
+publish sites (:768, :774, :848, :849, :854, :2037, :2407, :6066, :6150,
+:6178, :6305, :7643, :8098, :8195); `find_mapping` linear per TVar leaf
+(:7467); `spec_subst_pairs` at EVERY `lookup_ty` while pairs are set, no
+visited set, no depth bound (graph:1757/1824); `spec_pairs_walk` (lower:6237)
+and `spec_resolve` (:6136, once 362MB); `eq_/show_/hash_operand_contrib`
+`chase_deep(lookup_ty(h))` per fold operand (wasm:6120/6625/6800);
+`occurs_in_params_seen`/`_list_seen`/`_fields_seen` `list_to_flat` copies at
+every walk entry (graph:1184/1198/1212); prelude's `unique` O(n²) (prelude:362).
+HOME: type cells with a PARENTS column and a `frees` set propagated at the
+bind (the rows machinery one sort over) — occurs becomes membership,
+generalize a read, every `Frozen` a `Live(h)`. Peer: `Hβ.infer.schemes-are-edges`.
+▶ C · THE E-GRAPH — `saturate_pass`/`apply_rules_from` sweep every handle
+`0..graph_next()` per round until no rule fires (egraph:292/312);
+`extract_chase` follows canon chains to depth 1000 with no compression
+(:47); `is_pure`/`body_is_pure` recursion with no visited set (:75/82);
+`rewrite_to` draws an unreasoned edge (:115, `Hβ.egraph.canon-edge-carries-reason`).
+The class table is already absent (`graph_canon_set/at` is a spine column):
+what is re-derived is "which nodes can fire". HOME: a rewrite fires at the
+WRITE (mint/bind) and when an operand's canon moves, through the parents
+column; `find` compresses; purity is the node's row column
+(`Hβ.egraph.per-expr-effect-row`).
+▶ D · NAMES AND POSITIONS — parent, module, declaration, reference by scan or
+by string. PARENT by scan: `scan_for_render_parent` O(nodes) per rendered
+node, O(n²) per `fmt` (format:1267/1274, "the parent IS an edge");
+`enclosing_fn_decl_at`/`enclosing_fn_scan` (cursor:667/671);
+`pipe_context_of_handle`/`scan_for_pipe_parent` (cursor:577/584);
+`node_contains_handle` no visited set (query:1914); `crc_scope_at` per
+comment (infer:374, once 83% of the compile); `crc_walk` (:416). MODULE by
+scan or string: `module_path_of_span`/`scan_for_enclosing_module` O(next)
+per call (graph:1448/1455) used by cursor's `same_module`/`transitive_dep`
+(cursor:387/390); `module_cells`/`dedup_module_cells`/`dedup_cell_join`
+O(next)+O(m²) by path string per call (graph:1481/1497/1500) behind
+`module_handle_of_path`/`module_path_of_handle`/`weave_line_extent`
+(:1579/1587/1695); `module_imports`/`module_import_paths`/`scan_module_imports`
+O(next) per module per hop, called per comment-ref hit (:1624/1648/1655,
+infer:552); `contains_path` (:1639); `debt_in_scope` comparing module NAMES
+(verify:798); `keyword_kind` 17 string compares per token (lexer:44).
+DECLARATION/REFERENCE by name: `refs_col` keyed by NAME (graph:702,
+`Hβ.query.refs-reads-edges-not-occurrences`); `stmt_frees`/`stmt_frees_walk`
++ `layer_name_index`/`scc_edge_one` (infer:1112/1332/1113/1399);
+`group_member` by string (:207); `lit_vocab_build` over every node (:314);
+`usage_summary_lookup` by name beside its O(1) twin (:8459);
+`finalize_continuation_boundaries(0, graph_next())` scanning every handle
+(:4309); `env_snapshot`/`env_dedup_latest` copies and the env's by-name index
+(env:238-251/178, :44-83, "CONDEMNED FAMILY (D6)"); `env_publishes` copy
+(:259); synth's `reaches_decl`/`fn_body_by_name`/`fn_body_scan` whole-graph
+name scan per node per vocabulary entry (synth:439/461/468,
+`Hβ.synth.vocabulary-reach-index`); `candidate_rank` re-deriving refs and
+proximity per candidate (:356/368); `ur_index`/`ur_walk` name→position
+(query:872/874/879); `import_is_used`/`any_name_referenced_in` O(modules²…)
+(:671/673/728); `fn_fanout_sites`/`find_fn_fanouts`, `fn_tee_lines`/`find_fn_tees`
+(:2234/2238/2274/2278); `handler_providing_op`/`scan_handler_for_op`
+(:2429/2433); `comment_ref_owners` pair list (graph:442/444/72);
+`resume_bind_assoc` (lower:1232); `collect_free_vars_of_decl` (:1319).
+POSITIONS: the `(span, handle)` log as a second materialization of the spans
+column (graph:676/693); `spans_of_module`+`address_resolve`+`find_tightest`+
+`span_pick_of`+`address_case_c` copying the whole index and scanning it four
+times per address (main:1277-1344, once 131s per call); `binding_ledes`'s
+unfiltered `address_case_a` per Why hop (:1693); `QTypeAt`/`name_at_span`
+over the unfiltered index (query:370/2456); `handle_at_span`/`scan_for_span`
+(cursor:496/503); `cw_scan_index`'s whole-weave copy per parse (parser:340/
+343/411, once 98%); `source_slice`/`nth_line_offset` re-reading the file per
+render (main:1587/1611). SETS by scan: `dedup_sites`/`site_in` two column
+reads per pair, 17× per board (query:1243/1246); `dedup_handles`/`handle_in`
+(:1055/1066); `board_read`/`bound_standing` 17 full walks + 17 dedups per
+board (board:277/281); `matching_handles` one walk per shape (query:1200).
+HOME: a parent column written at construction; the module column (exists)
+plus a modules registry column; refs keyed by the DECL HANDLE
+(`graph_ref_note(decl_handle, use_handle)` — `env_lookup` already found it);
+one census walk bumping every shape (`roster_bump`, query:1710); per-module
+ordered ranges on the spans column, no log.
+▶ E · LOWER AND EMIT — six whole-tree walks in `emit_module`
+(`collect_fn_emit_records`, `spec_demands_of`, `collect_fold_tys_list`,
+`project_emit_state`, `collect_top_value_lets`, `collect_call_vectors_list`;
+wasm:811/818/868/882/935/2311) plus the gate's duplicate walk
+(`report_unhandled_effects`, pipeline:274, `Hβ.lower.double-walk-and-dead-fields`);
+`string_literal_collector`/`string_entry_exists` O(S²) `str_eq` at the write
+side of a bucket-indexed table (wasm:1121/1165); `reach_has`/`reach_enqueue`
+O(U²) (lower:5661/5891, `Hβ.lower.reach-edge-on-node`); `dedup_fn_records`/
+`fn_record_verdict` O(U²) with deep `==` (wasm:1910-1943); `dedup_names`/
+`name_seen_at` (:1872/1855); `spec_candidates_fix` re-scanning each accepted
+body (:487-532); `spec_buf_demanded`/`spec_buf_base_count` O(D²) (:540-556,
+once 7.95%); `spec_target_name`/`spec_closure_name` re-deriving family B per
+reference emission (:378-395); `emit_distinct_fold_leaves` O(T²) (:5341);
+`spec_recs_dedup` O(n²) scans over O(n²) copies (:650); `state_slots_collector`
+a slice per visit (:1138); `emit_redrive_fns` `env_snapshot` per handler
+(:1638); `fn_table_idx` searched not carried (:1994/2250); `column_value_holes`
+rebuilding the reach set (lower:5938); `spec_entry_seed` second walk (:5755);
+`spec_pairs_walk_fields` by name (:6307); `graph_emitfn_at` name index
+"MATERIALIZED ON DEMAND" (graph:758-798); `graph_sigs_publish`/`sigs_col`
+name-keyed freeze (:799-808, wasm:841-860); `emitted_sig_of_symbol` by name
+(wasm:737); `classify_rounds`/`usage_entries_eq` re-grading every decl per
+round + `smap_build` per round (infer:8493-8515, lower:1251,
+`Hβ.infer.grade-is-join-and-mode`); `effect_ops_substrate_grounded`/
+`handlers_absorbing` `env_snapshot` copies per diagnostic (pipeline:380/423).
+HOME: `Hβ.lower.lowering-is-a-column` — one walk with N drains; handle-keyed
+sets (`wmap`); the twin's target as a column on the reference node; the
+grade as a delta worklist over call edges.
+▶ F · TIME — `driver_incremental` re-runs saturate/lower/reach/gate/emit
+over a restored image (driver:690-711, 3.8s of 5.75s, its own comment
+confessing it); `driver_tree_scan` re-hashing every module every warm start
+(:544-557, `Hβ.driver.staleness-is-a-poll-not-an-edge`); `closure_fix`
+re-folding the whole module DAG per round (:753-768); `assoc_stmts`/
+`manifest_hash_of` O(m²) (:674/736); `contains_module`/`driver_partition_peel`
+(:828-861); `mutate_sink`/`lsp_adapter` dropping every `graph_mutated` delta
+(graph:880, lsp:656, `Hβ.graph.mutation-delta-is-write-only`);
+`cursor_argmax_compute`/`score_all_positions` re-scoring every position per
+keystroke (cursor:202/296/299, `Hβ.cursor.cached-argmax-keyed-by-epoch-and-caret`).
+HOME: the delta as a subscription; lowering persisted as columns so the warm
+start reads what it restored; §5.O's gate: change nothing, compile again,
+measure.
+▶ G · PROVENANCE — `show_reason`'s `Unified(a, b)` arm walks the Reason DAG
+as a tree with no bound and no visited set (types:3868 — the 341MB shape at
+the render); `why_expand` rebuilds the tree (query:2516); obligations stored
+as `(modh, span, predicate, reason)` and re-associated by span overlap
+(verify:43, cursor:705/710); `score_one_position` wrapping a copied
+coordinate (cursor:314); `query_result_to_answer` dropping the handle
+(voice:857-875). HOME: Reason as edges between cells; the handle as the
+address everywhere a span is copied.
+▶ ALREADY ULTIMATE, so the queue does not re-litigate them: `graph_canon_set/at`,
+`graph_module_of`, `graph_span_of`, `parse_span_of`, `graph_ref_note`'s
+O(1) prepend (wrong key only), `wmap_*`, `image_header` (the image is the
+wire), `chase_handle`, the trail and checkpoint, the spine page, the call
+charge taking the callee's row verbatim, `site_of`/`site_address`,
+`judged_ranked`, `heads_may_unify`, `segment_verify` reading its bases once,
+`variant_named_specs_at`, `spine_put_bind/dispatch/slots/install`. Two
+scope items were stale rather than hits: `src/oracle.mn` and
+`project_queue_merger` no longer exist; `fan_verify`/`candidate_judge` are
+`segment_verify`/`judge_in_segment` now, and what they re-judge per
+candidate is family D's `reaches_decl` and `candidate_rank`, not the judgment.
