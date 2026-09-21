@@ -15,8 +15,8 @@
 #          wt_wheel <src|lib> [src|lib] > f   # canonical wheel input (find-order)
 #
 # The four constants — WT, WT_RUN_FLAGS, W2W, WT_WABT — are the single source of
-# truth. Override the binary via WASMTIME_BIN. Nothing here re-derives; every
-# helper is a projection of the four constants.
+# truth. Point WT at another build via MENTL_RUNNER. Nothing here re-derives;
+# every helper is a projection of the four constants.
 
 # The threads/shared-memory/tail-call quartet is load-bearing: the wheel's
 # modules use wasi-threads shared memory (the wasi_thread_spawn substrate) and
@@ -27,12 +27,31 @@
 # once at source time so both run (validated 2026-07-23: wheel self-compile
 # byte-identical and battery 113/113 through BOTH binaries —
 # Hβ.ops.wasmtime-runner-migration step 1).
-WT="${WASMTIME_BIN:-$HOME/.wasmtime/bin/wasmtime}"
-if "$WT" run -W shared-memory=y /nonexistent.wasm 2>&1 | grep -q "unknown -W"; then
-  WT_RUN_FLAGS=(-W threads=y -W tail-call=y -S threads=y)
-else
-  WT_RUN_FLAGS=(-W threads=y -W shared-memory=y -W tail-call=y -S threads=y)
+# THE EMBEDDED RUNNER IS THE ENGINE — the only one. The wasmtime CLI was a
+# dead end twice over: measured 2026-09-06, the same spawning module answers
+# exit 60 through wasmtime 36's CLI and `Error: the -Sthreads flag is no
+# longer supported` through 47's; and since the wheel performs the exec seam
+# (2026-09-17) every Mentl module imports `mentl_host`, which no CLI defines
+# — 36's `-W unknown-imports-trap` is applied after its wasi-threads shim has
+# already instantiated, so the boot cannot even start there. tools/runner
+# registers wasi.thread-spawn itself, creates the shared memory, executes
+# the streamed WAT of `mentl run` and the battery, and owns the listening
+# socket (`-S tcplisten=`, the p1 socket protocol lib/net.mn speaks — the
+# CLI's legacy tcplisten, served by the runner; Hβ.ops.runner-owns-the-p1-socket).
+# There is no fallback engine to fall back to, so a missing runner REFUSES
+# here, loudly, with the build command — never a silent downgrade.
+#
+# One capability the runner drops: `-D coredump=` is parsed and ignored, so a
+# trapped m3 leg writes no coredump for the autopsy. Named here rather than
+# discovered at the next trap.
+_wt_runner="${MENTL_RUNNER:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/runner/target/release/mentl-runner}"
+if [ ! -x "$_wt_runner" ]; then
+  echo "wt-env: no runner at $_wt_runner — build it: cargo build --release --manifest-path tools/runner/Cargo.toml" >&2
+  return 2 2>/dev/null || exit 2
 fi
+WT="$_wt_runner"
+WT_RUN_FLAGS=(-W threads=y -W tail-call=y)
+WT_ENGINE="runner"
 # MENTL_WT_EXTRA — extra runner flags, word-split, appended to every wt_run and
 # every shim invocation. It exists for ONE thing the canonical flags cannot
 # express and the shim therefore could not reach: attaching a profiler.
@@ -58,6 +77,33 @@ MENTL_RT_LIBS=(lib/memory.mn lib/strings.mn lib/lists.mn lib/prelude.mn)
 # stdout/stderr pass through untouched, so callers pipe the wheel in and capture
 # the WAT out exactly as before.
 wt_run() { "$WT" run "${WT_RUN_FLAGS[@]}" "$@"; }
+
+# wt_battery <compiler.wasm> <fixture-dir> [label] — the fixture battery,
+# judged BY THE MEDIUM: `mentl test <dir>` compiles every fixture in one
+# process, runs each through the runner's exec seam, and prints one verdict
+# line per fixture (PASS / REFUSE / FAIL… / NOEXPECT). This helper reads the
+# verdict and holds the two halves of the contract a crashed verb cannot
+# print: the exit is 0 AND every fixture the directory holds was judged
+# (`mentl test` once died at fixture 118 of 149 and a gate that counted
+# FAIL lines said green). The tests/micros loop this replaced spawned an
+# assembler and a runtime per fixture (3N processes, ~71s); the medium's
+# own verdict takes ~12s. Dissolves with this file at `mentl verify`.
+wt_battery() {
+  local compiler="$1" dir="$2" label="${3:-$2}" out rc want seen bad
+  out=$(wt_run --dir . "$compiler" test "$dir" 2>/dev/null); rc=$?
+  want=$(ls "$dir"/*.mn 2>/dev/null | wc -l)
+  seen=$(printf '%s\n' "$out" | grep -cE '^(PASS|REFUSE|FAIL[A-Za-z()]*|NOEXPECT) ' || true)
+  bad=$(printf '%s\n' "$out" | grep -cE '^(FAIL[A-Za-z()]*|NOEXPECT) ' || true)
+  if [ "$rc" -eq 0 ] && [ "$bad" -eq 0 ] && [ "$seen" -eq "$want" ]; then
+    echo "✓ battery $label: $seen/$want fixture contracts hold (compiled, run and judged by the medium)"
+    return 0
+  fi
+  echo "✗ battery $label: exit=$rc, $bad broken contract(s), $seen/$want fixtures judged"
+  printf '%s\n' "$out" | grep -E '^(FAIL[A-Za-z()]*|NOEXPECT) ' | head -12
+  [ "$rc" -ne 0 ] && echo "  the verb itself failed — rerun it without 2>/dev/null and read the trap."
+  [ "$seen" -lt "$want" ] && echo "  it stopped early: everything after the last judged fixture went unchecked."
+  return 1
+}
 
 # wt_asm <in.wat> <out.wasm> — assemble WAT→WASM under the canonical flags.
 # Returns wat2wasm's own exit code; caller redirects stderr as it likes.
@@ -134,10 +180,31 @@ wt_state_key() {  # the gate-relevant tree state, hashed. Over-inclusion is a
   # green for a tree whose battery had grown — measured 2026-08-18 by
   # mutating a syntax fixture and reading the same hash back. The comment
   # above already named it: under-inclusion is the bug.
+  # AND THE SCRIPTS ENTER WITHOUT THEIR PROSE (2026-09-15). "Over-inclusion is
+  # a spurious re-run" was written by someone not paying for it: these four
+  # scripts are hashed WHOLE, so adding a COMMENT to verify.sh or a note to
+  # verify-baseline.txt is indistinguishable from moving a threshold, and it
+  # discards a twelve-minute measurement of the compiler's behaviour. It did
+  # exactly that four times in one landing, which is the cadence law broken by
+  # the gate rather than by the hand. A `#` line cannot change what bash
+  # executes and a comment in the baseline cannot change a ceiling, so they are
+  # stripped before hashing — the key reads the CONTRACT (`name: value` lines,
+  # executable lines) and not the prose about it. This is the Carried-Truth Law
+  # at the gate layer: a measurement is re-derived only when its inputs changed,
+  # and prose is not an input.
+  # WHOLE-LINE COMMENTS ONLY, and the first draft of this got it wrong in the
+  # direction the comment above forbids. Stripping TRAILING `#` truncates
+  # `${#arr[@]}` and `${x#prefix}` mid-expression, so two behaviourally
+  # different lines would hash the SAME — under-inclusion, the actual bug,
+  # introduced while fixing over-inclusion. A line that is nothing but a
+  # comment has no such hazard. Fixtures and the wheel stay WHOLE, because a
+  # `.mn` comment IS graph content (SYNTAX §Comments) and can change a verdict.
   { wt_wheel lib src
     cat boot/mentl.wasm tests/micros/*.mn tests/syntax/*.mn tests/rows/*.mn \
-        tests/floors/*.mn tools/verify.sh tools/run-micro.sh \
-        tools/wt-env.sh tools/verify-baseline.txt 2>/dev/null
+        tests/floors/*.mn 2>/dev/null
+    sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' \
+        tools/verify.sh tools/run-micro.sh tools/wt-env.sh \
+        tools/verify-baseline.txt 2>/dev/null
     printf '%s' "${WT_RUN_FLAGS[*]}"
   } | sha256sum | cut -d' ' -f1
 }

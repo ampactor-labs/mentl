@@ -7,6 +7,24 @@
 # correct code, the source coheres, and the medium's verdict on its own source
 # never gets worse.
 #
+# ── WHERE THE CENSUS BOUNDS WENT ─────────────────────────────────────────
+# Twelve keys left this file: eta_max, effectful_lambda_max,
+# record_pattern_open_max, wildcard_zero_max, failure_mask_max,
+# print_in_report_max, wildcard_fabricates_max, underscore_retain_max,
+# flag_as_int_max, parallel_arrays_max, vtable_record_max, env_frame_max.
+# They live in src/board.mn now, each bound beside the justification that
+# argues it, where `mentl why` can walk the pair and `mentl verify` reads the
+# count off the one judged graph instead of grepping a number out of prose.
+#
+# They had been dead here for a landing: verify.sh delegates the board to
+# `mentl verify`, so nothing read these keys, and 646 lines — 38% of this
+# file — stood as a second home for bounds that had moved. That is the
+# Carried-Truth Law at the gate layer, inside the file whose whole job is
+# holding one number per invariant. The keys that remain are the ones with a
+# live reader: what the medium cannot yet measure about itself, or what is
+# not a census at all (peak RSS, the frontier's expected-red roster, the
+# authored-marker counts, the desugar vocabulary contract).
+#
 # ── THE CENSUS, RE-FOUNDED (2026-07-16) ──────────────────────────────────
 # The paragraph that stood here said: "an informational SHADOW, enforced
 # NOWHERE (Morgan, 2026-06-22) ... the disposable seed's weaker inference lags,
@@ -657,7 +675,59 @@ comment_refs_max: 0
 # query.mn and pipeline.mn. Same family as the three facet landings before
 # it, and the same non-constant per-fn cost — what moves a scheme is
 # forward reference, not count. No condemned machinery touched.
-movers_max: 474
+#
+# 474 → 476 at the signature-column landing (2026-09-07): the same family
+# again, and the same per-fn cost. The arc added ~15 fns across types.mn,
+# env.mn, lower.mn and wasm.mn (the enumeration entry's edge producers, the
+# settled-ABI readers, and the lambdas the anonymity tier asked be given decl
+# homes) while DELETING the param-width ladder and the 30-arm
+# find_local_handle_expr family. What moves a scheme is forward reference,
+# not count, so a net line-count fall does not imply a mover fall. NO
+# CONDEMNED MACHINERY WAS TOUCHED — the two-pass tower is untouched by this
+# landing, which only changed where emit reads a width from. The number goes
+# to zero at rung 3's dissolution, whose real DEP this landing was built to
+# remove (`Hβ.infer.live-cells-need-one-settled-signature`).
+# 2026-09-07: 476 -> 435 at the module-blind-parse landing. Not a movers fix;
+# the per-module parse changes what the trial and final each see, and the
+# class fell out. The condemned pass still owns the rest.
+# 2026-09-15 · 435 -> 433 · at the diagnostic-address landing (d8d86cf5), which
+# was not about movers at all — diag_line took a module param and
+# diag_report_at was born, and two schemes stopped diverging. The FELL notice
+# fired on that run and was MISSED, because the run's output was read through a
+# `grep ✗` filter: the same defect this session has been documenting in the
+# gates, committed by the reader instead of the gate. Read the whole verdict.
+# AND IT CORROBORATES THE REPRICING ABOVE: movers moves on incidental
+# decl-shape changes and did not move at all when liveness shipped (470 → 470,
+# infer.mn:1054). It is a size gauge for the condemned pass, not a road to
+# zero — deleting the pass is what reaches 0
+# (`Hβ.infer.judge-once-per-scc`).
+# 2026-09-17: 433 -> RETIRED, by the entry's own words — "deleting the pass
+# is what reaches 0." The second judgment is deleted (infer_program_once is
+# the one walk), so there is no trial for a final to override, no line for a
+# gauge to read, and no key: a ratchet held at zero over a deleted instrument
+# is a mute gate. The regrowth alarm is structural — a second pass would
+# have to be written back into infer.mn.
+
+# THE UNPROVABLE-FIELD-OFFSET CENSUS — the wheel's own count of reachable
+# field accesses whose slot the graph could not prove. Each one is an
+# `(unreachable)` the emit writes into the shipping module, and until
+# 2026-09-15 each one was written and never SAID: `mentl check` passed, the
+# compile exited 0, and the program trapped at the instruction that admits
+# it. Four of them rode the wheel. One was the unconditional else-branch of
+# emitfns_index_build, and the march found it the only way a silent floor is
+# ever found — the m4 leg died at a bare `wasm trap: unreachable` with no
+# diagnostic anywhere in the run.
+#
+# This is a ratchet toward an ARMING, not a standing tolerance. E_FieldOffset
+# Unprovable is declared and reported but NOT in diag_refuses, because that
+# licence is a wheel census of ZERO (types.mn states it: "the medium never
+# violates it on ITSELF, so enforcing it on everyone cannot refuse the
+# medium"). Each of the four is a receiver whose row never closed —
+# emitfns_index_build's `col` reads List({ name: String | r }) in the full
+# wheel though the op that fills it declares EmitFnEntry, which is the
+# Carried-Truth Law at the element type. Drive them to zero, then arm, then
+# this line and the pre-arm fixture both retire.
+field_offset_unprovable_max: 4
 
 # The effect seam: filesystem impl calls outside the handler that owns them.
 # MEASURED 24 before this landing and 13 after (both read from the artifact,
@@ -702,7 +772,46 @@ movers_max: 474
 # WASI while the capability the handler names is Filesystem, so
 # `with !Filesystem` went on holding over routes that created, wrote,
 # renamed and unlinked files.
-fs_impl_bypass_max: 8
+# 2026-09-07: 8 -> 0. driver_manifest hashed each module by RE-READING its
+# file; the text rides the entry now, so it hashes what it was handed and the
+# last filesystem calls outside the handler that owns them are gone.
+#
+# 2026-09-12 · 0 -> 9 · AND THE ZERO WAS NOT A MEASUREMENT. This gate counts
+# by parsing the refs answer for '^  at <module>:', and at pin 0268bb1e
+# (2026-09-08, "the parse enters the module") the refs facet was downgraded to
+# render a BARE span — `at 3090:3` — in the very commit where its census and
+# debt siblings GAINED module_name_of_handle. A bare span cannot match
+# [a-z_/]+, so from 09-08 the count was structurally zero: not clean, BLIND.
+# It read green for four days. This is §11 tripwire 4 in its second form —
+# the first was a gate that stopped being REPORTED, this is one that stopped
+# being ABLE TO ANSWER — and it was found only because refs-of was given its
+# module back (the same landing as this line).
+#
+# The 9 it sees, triaged at the artifact, every one a site where a declared
+# `!Filesystem` would falsely prove absence over a real file operation:
+#   persist:162  the persist_to_disk handler's OWN arm — legitimate; this
+#                allowlist (pipeline|io) predates that handler's landing.
+#   persist:152  persist_write — real, already named Hβ.persist.branch-world-tag
+#   persist:93   image_resume reads the wire past the op — real
+#   main:1732 ×4 battery_libs concatenates four lib sources directly — real
+#   main:1866   the micro battery reads each fixture directly — real
+#   dsp/cfc:270 read_recording, a library reaching the substrate — real
+# Eight real bypasses accumulated while nobody could see them. The ceiling is
+# the MEASUREMENT, not a tolerance: it is monotone down from here and the
+# landing that drives it to zero is the next filesystem-seam arc. Raising it
+# again requires the same enumeration this entry carries.
+# 2026-09-17: 9 -> 8. persist's write became ONE operation with one home —
+# "this path ends up holding exactly these bytes, or it does not exist" is a
+# single filesystem question, so fs_write_image_impl (lib/io.mn) owns the
+# open/write/write/close/unlink rather than persist reaching past the seam five
+# times for it. The reach that remains there is the image READ, and the arc
+# that drives this to zero is the layering one the bypasses all share: the
+# Filesystem effect is declared in src/types.mn, so a lib/ module cannot
+# perform it and still compile standalone. Move the decl to io.mn beside its
+# impls and every one of these becomes an op the handler can see.
+# Held at the measured 7 the landing after — the board read 7 the night the
+# entry above was written and the ceiling was left at 8 to spare a gate cycle.
+fs_impl_bypass_max: 7
 
 # 2026-08-07: the PER-MODULE ratchet (PLAN §11 Phase 3.5's first half) —
 # E_MissingVariable across every src module's SOLO check, monotone DOWN.
@@ -726,6 +835,24 @@ fs_impl_bypass_max: 8
 # ZERO IS THE FLOOR AND THE CONTRACT: every module's solo check resolves
 # every name through its own declared imports. Per §11 3.5 this gates
 # the drift-catalog retirement.
+# INTERROGATED 2026-09-15 and KEPT — the measurement is recorded so the
+# next session does not re-derive it. The day E_UseAfterMove was armed and
+# use_after_move_max retired, this key was the obvious next candidate: it
+# reads ZERO, and the thing it counts (E_MissingVariable) is ALREADY in
+# diag_refuses, which looks exactly like a counter standing beside a proof.
+# It is not. E_MissingVariable refuses the program the wheel actually
+# LINKS — one concatenated blob in which every name resolves whether or
+# not its module declared the dep. This sweep checks each module ALONE,
+# which is a judgment the wheel never performs on itself, so the zero here
+# is not a held invariant but a genuine measurement of something otherwise
+# unobserved. That is §11 tripwire (3) — the board is blind to what the
+# wheel never does — and lib/** joining the sweep in 2026-08-16 found 20
+# unresolved names the very first run, which is the proof that retiring it
+# would delete a real channel rather than a duplicate. Its honest
+# retirement is the per-module env overlay (§7: "CLOSED at entry, OPEN
+# per-module … the overlay is the stamped second half",
+# Hβ.driver.per-module-env-overlay), after which the link itself judges
+# per module and the sweep has nothing left to discover.
 solo_violations_max: 0
 
 # 2026-08-07: the ANONYMITY ratchet (PLAN §11 Phase 2.5, second half) —
@@ -757,7 +884,80 @@ solo_violations_max: 0
 # Ratcheted 29 → 28 at the trio deletion (pin 54c97b0f7220): oracle's
 # `(pos) => candidates_at(pos)` eta-wrapper became the ??-suspension
 # `candidates_at(performed, ??)` — the Stage-Law form, no wrapper at all.
-eta_max: 28
+# 2026-09-08: 28 -> 11. Seventeen eta-wrappers deleted — each was
+# `(x) => f(x)` around a plain top-level fn, so the name was passed bare.
+# The remaining ELEVEN were not style, they were BLOCKED: a bare non-fn
+# binding used as a function value compiled with ZERO diagnostics and then
+# either trapped or emitted `(global.get $<name>)` for a global that did not
+# exist, the assembler objecting first.
+# 2026-09-09: 11 -> 3, in TWO landings, because the boot compiles m2 and the
+# wheel cannot write a form the boot does not carry (measured: bundling both
+# made m2 fail to assemble at wat:99217). The fix landed first
+# (Hβ.emit.nonfn-binding-as-function-value — a bare name is the parameter
+# product with every field a hole, so it reifies through the partial mint),
+# then the eight unblocked wrappers came out against the new boot: four
+# constructor wrappers in cli.mn, three `map((v) => TVar(v), …)` in infer.mn,
+# and `map((h) => interrogate_at(h))` in eight_loop.mn.
+# 2026-09-10: 3 -> 0, at pin f862677e5959751a. The last three were one shape
+# and a different blocker: `map((x) => process(x), buffer)` three times in
+# lib/dsp/processors.mn, where `process` is declared by lowpass, biquad AND
+# envelope. A reified op resolved its handler from the live world chain by
+# HANDLER name, so an ambiguous op had no single name to resolve and no
+# single arm to call. The one-walk collapse keys that walk on the OP, so
+# ambiguity stopped being fatal and the three wrappers came out bare — a
+# CONSEQUENCE of the walk, never a target, and specifically not the
+# rewrite-as-named-wrappers move that would have laundered the same
+# redundancy past this very count.
+# ZERO IS NOT A RESTING PLACE, it is a refuse-contract: the next eta-wrapper
+# to appear in the wheel raises this and the gate refuses the pin. What the
+# count MEANS at zero is that no named fn in the wheel hides behind a lambda
+# that only forwards to it.
+frontier_expected_red: why-coordinates
+# 2026-09-18: `==` on an operand whose type is still a variable at emit (a
+# handler arm over quantified op parameters — no call-site twin reaches it)
+# emits i32.eq on two heap addresses; tests/frontier/mn-eq-in-arm-pointer.mn
+# answers 1 for two byte-equal Strings with no diagnostic. Declared RED the day
+# it was measured; retires when the eq leaf refuses the unresolved operand
+# (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq) and the gate SAYS so.
+frontier_expected_red: eq-in-arm-pointer
+# 2026-09-18: `eq-polymorphic-sum` was declared RED here for one landing and
+# RETIRED by proof in the next — the whole life of an expected-red entry, in a
+# day. It read: `==` on a POLYMORPHIC sum compares its payload by ADDRESS,
+# because `fold_sig` folded `TName(n, args)` to the bare name so one
+# `$eq_nOption` served every instantiation, and `variant_specs_of` answered
+# with the constructor's DECLARED payload type. The sig folds its arguments
+# now and the specs ground them, so the leaf calls its argument's own helper;
+# the gate's other direction refused the stale declaration the moment it
+# passed, which is what that contract is for.
+
+# 2026-09-18: THE UNPROVABLE-COMPARISON census (T_EqTypeUnprovable, the
+# field-offset floor's sibling): a `==`/`!=`/`<`… whose operand type is still a
+# variable at emit falls to a one-word compare, right for a word and an address
+# lie for anything else. The first form wrote a trap and the wheel compiled by
+# it died compiling the wheel (m4 exit 134): the wheel carries 56 of these,
+# measured on the m3 leg the day the class was born — 15 at authored spans
+# (word and handle membership, two `<` on Option payloads, and Strings compared
+# by interned address, e.g. in_owner_names) and 41 on synthesized nodes at span
+# 0, unattributed until the report carries the nearest authored span.
+# Countdown to 0 (twins reaching the site; an Intent Boundary naming the type
+# where the polymorphism is over words); at 0 the class arms and the
+# eq-in-arm-pointer leg turns green by proving its arm. A RISE is a new
+# address compare entering the wheel.
+# 56 -> 60 at pin 8798566e: the Domain walk (verify.mn) is new generic
+# code, and EVERY generic comparison in this wheel lands in this class, because
+# a word-repr instantiation mints no twin (spec_enc_is_floor skips an all-word
+# key) so the floor body compares two type vars. Measured by diffing the site
+# names: `bound_admits_lo`, `bound_admits_hi`, `int_same`, `int_max`, `int_min`
+# entered; `lo_best`, `hi_best`, `lo_hull`, `hi_hull` left, because four
+# near-identical bound-combiners collapsed into one meet and one join
+# parameterized by the comparator. The rise is +4 rather than +6 for that
+# reason, and it is a rise the countdown cannot avoid by writing less code —
+# only by the twin reaching word-typed instantiations, which is step (2) of
+# Hβ.emit.eq-on-unresolved-operand-is-pointer-eq.
+# 2026-09-21: 60 -> 58. Two left with src/oracle.mn — a whole module deleted
+# takes its unprovable compares with it, which is the cheapest way this
+# counter ever falls and the least instructive: the class is unchanged.
+eq_type_unprovable_max: 58
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
@@ -768,75 +968,6 @@ eta_max: 28
 # complete pattern over an open row is structurally identical to a partial
 # one. Seen RED by falsification: removing one annotation moves the count
 # 0 → 1 with the site located. Class: Hβ.lower.record-pattern-param-receiver.
-record_pattern_open_max: 0
-# 2026-08-11 holes-column landing: +2 — hole_pairs_into/holes_pend_without's
-# pairing folds perform Alloc; the tier's conviction is correct vocabulary.
-# Re-based 385 → 387 at the delay-depth read (2026-08-12). The landing's
-# emit added three convicted lambdas and the tier's remedy took one back:
-# the shift step became the NAMED emit_shift_pair, so its row has a decl
-# home and zip_with carries it. The remaining two are the delay line's
-# own map/flat_map callbacks, and BOTH remedies are blocked by measured
-# lathe-lag, not by taste — a named fn cannot take the tuple-pattern
-# parameter SYNTAX §Pattern syntax promises it ("patterns appear in ...
-# function parameters"; the parser refused it this landing), and
-# partial application, which SYNTAX §«Partial application» declares a
-# first-class value, checks clean and then emits a return_call whose
-# arity mismatches (expected [i32, i32], got [i32] — wat2wasm refuses).
-# Both are named: Hβ.parser.named-fn-tuple-param and
-# Hβ.emit.partial-application-arity. Either one landing retires both
-# convictions without a lambda being renamed. The next legal move is DOWN.
-# 385 → 384 at the concat-spine deletion (2026-08-16): the worthiness
-# witness carried `any((e) => spec_tuple_elem_wide_pair(e, pairs), es)`,
-# and the fn it called went with the gate, so the conviction died with
-# the code rather than by a rename. The two delay-line callbacks above
-# are still the standing pair.
-# 384 → 385 at the compile-context collapse (2026-09-01). infer_context takes a
-# thunk, so composing the two stacks costs exactly one lambda —
-# `() => emit_context(body)` inside compile_context — and there is no third
-# form: the delay is what puts the body under the installs. The first shape of
-# this landing wrapped every route in its own `emit_context(() => ...)` and the
-# tier convicted it at +7, correctly; collapsing to one context fn paid six of
-# those back. What the +1 buys is six deleted copies of an eight-handler chain
-# and 494 fewer emitted wat lines.
-# 385 → 384 at the dead-import deletion (2026-09-04), the same cause: one
-# fewer module in the link is one fewer effectful lambda on it.
-# 384 → 385 at the medium's own tightening run (2026-09-04). `mentl tighten
-# main` authored 174 row narrowings across 27 files and one lambda's row
-# became visible to the tier as a result — the count is the tier telling the
-# truth about a tree the medium wrote, not a lambda anyone typed. The other
-# two ratchets this run tripped were fixed rather than raised: the ref
-# markers came off the guard's own fns, written by the same copy-the-
-# surrounding-style reflex the quiet gate exists to catch.
-effectful_lambda_max: 385
-
-# 2026-08-07: the USE-AFTER-MOVE ratchet (PLAN §11 Phase 4.1,
-# Hβ.own.use-after-move) — T_UseAfterMove narrations on the wheel's own
-# compile. BORN AT ZERO (measured at the landing on both march legs: the
-# ledger's borrow leg now consults the used-set, and the wheel never
-# reads a moved own). Zero is the floor and the arming licence: the
-# class arms (joins diag_refuses) only while the wheel's census holds 0,
-# after the E_OwnershipViolation-precedent falsification pass. A rise is
-# the wheel reading a moved own — a real use-after-free the moment §5.O
-# layer 3's arena makes Consume reclaim.
-use_after_move_max: 0
-
-# 2026-08-17: THE SCAFFOLD RATCHET (CLAUDE.md ⟳). tools/loop-prompt.md is
-# imperative prose telling an agent how to behave — the one thing PLAN §0
-# proves cannot enforce itself, which is the whole argument for `mentl audit`.
-# So the loop is a scaffold, and what is ratcheted is how much of it is still
-# NOT the medium's: the distinct tools/*.sh scripts the prompt must name to run
-# one iteration. Seeded from this turn's read: heavy-lock.sh (the resource
-# lease, retired by a `~> Schedule` handler), state.sh (retired by
-# state-as-projection), march.sh (retired by `mentl march` growing the ladder
-# and repin verdict — Hβ.tools.march-transition-native; the verb already
-# exists, so this one is genuinely reducible now).
-#
-# It falls ONLY when a verb actually replaces a script. Rewording cannot move
-# it, which is exactly why this is the metric and a line count is not — a line
-# count would reward compressing the prose instead of absorbing the work. At
-# ZERO the medium runs its own loop and tools/loop-prompt.md is DELETED, not
-# archived. The obsolescence list it enforces includes the bash scaffolds, the
-# loop prompt, and the assistant.
 loop_scaffold_refs_max: 3
 
 # 2026-08-07: the QUIET gate (§4⑤'s Hylo bar as a banked ceiling, PLAN
@@ -859,10 +990,55 @@ loop_scaffold_refs_max: 3
 # desugar path, a rise is a new mint nobody reviewed. Measured 44 with
 # str_literal_5 (an identity relic) already deleted out of it; the spliced
 # names were shown compiler-synthesized, so the literal scan sees all of it.
-desugar_vocabulary: 43
+# 2026-09-10 · 43 -> 44 · RE-DERIVED, and the seed follows the set because
+# the set is what the emit actually mints. The world-chain walk's minted trio
+# changed shape: `ev_perform_node` and the effect-only `world_find_from` are
+# DELETED and `ev_declaring_node`, `world_declaring_from` and `node_arm_at`
+# replace them — two names out, three in, because asking whether a handler
+# DECLARES an op (rather than merely covering its effect) is one read the old
+# pair had no home for. The +1 is that read.
+# 2026-09-11 · 44 -> 41 · RE-DERIVED, and the seed follows again — the same
+# trio, one generation later, going the other way. `ev_declaring_node`,
+# `world_declaring_from` and `node_arm_at` left the desugar vocabulary at pin
+# 0e79bdbd, when the world-chain walk moved OUT of lib/memory.mn and into the
+# emitted preamble beside $world_push: emit stopped minting their names as
+# demands, so they stopped being a name-keyed contract with lib/ at all. The
+# contract breach was real and this baseline move was MISSED at that landing —
+# found here by the gate, bisected to that pin, and the set diffed to exactly
+# those three. 41 SURVIVES the crossing-generation deletion that follows the
+# next repin: the three fns still sitting in lib/memory.mn are already out of
+# the intersection, so removing them moves nothing. The number falls to zero
+# when Hβ.driver.link-is-reachability lands and an emit-minted name demands
+# its defining module the way an import does.
+desugar_vocabulary: 41
 
-authored_own_max: 83
-authored_ref_max: 813
+# 2026-09-11 · 812 -> 811 · the gate's own DOWN arm, held. Bisected with the
+# gate's regex to pin 0bd0525e, and the retired marker is `ref strict` in
+# pipeline.mn — it did not become unnecessary, its FUNCTION was deleted with
+# the dispatch-tier residue. That still counts: a borrow nobody authors is a
+# borrow the inference no longer has to be told about, however it left.
+# 2026-09-12 · 811 -> 807 · the refs facet's two renderers (render_ref_spans,
+# ref_span_line) and its private span_in deleted into the census's own site
+# line and site_in — four borrow markers gone with the duplicate code that
+# carried them. A consolidation pays this ceiling directly.
+# 2026-09-18 · 67 -> 63 · the fan's copy machinery took four `own` markers
+# with it (`fan_blocks`/`fan_spawn`/`fan_join`'s accumulators and
+# `keep_proven`'s). A judgment on the live graph accumulates nothing to own.
+authored_own_max: 63
+# 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
+# primitive's deletion — the honest grade needs no marker where there is no
+# second copy to annotate.
+# 2026-09-18: 744 -> 739. Five borrow markers rode the fan's walkers
+# (`ref candidates`, `ref recs`, `ref cands`, `ref verdicts`) and the
+# banded-mint arms. Deleted with what they annotated.
+# 2026-09-21: 739 -> 737. Two borrow markers left with the decls that carried
+# them — `driver_check_entry`'s own `ref entry_module`, and the `ref ranges`
+# on driver_module_ast, a parameter four call sites supplied and nothing read.
+# 2026-09-21 (second landing): 737 -> 729. Four left with the ranked-queue
+# oracle's deletion; four more were dropped from the SMT helpers while
+# refuting them as a cause of the pointer-render defect — they were not the
+# cause, and they were also not needed, which is the grade doing its job.
+authored_ref_max: 729
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -877,361 +1053,50 @@ authored_ref_max: 813
 # failure-mask and print-in-report seed at their measured ZERO — a bug
 # is zero or blocking, and a print inside report(...) corrupts WAT
 # stdout (§9's bug list); zero is the floor and the contract.
-wildcard_zero_max: 9
-failure_mask_max: 0
-print_in_report_max: 0
+# ── the SELF-COMPILE's PEAK RSS (tools/march.sh, the m3 leg under GNU time) ─
+# The one line in this file that was a bare number with no argument beside it,
+# in the file whose whole point is that a bound and its justification live
+# together. Written 2026-09-21, when the gate started deciding by noise.
+#
+# THE MEASUREMENT THAT FORCED THE RAISE, and it is about the INSTRUMENT, not
+# about a landing: two marches of BYTE-IDENTICAL source, minutes apart, took
+# min-of-3 readings of 999,400 KB and 1,000,064 KB. A 664 KB spread — 0.066% —
+# straddling a ceiling of 1,000,000. The march already re-measures three times
+# and convicts on the minimum, and even the minimum flipped. A gate whose
+# verdict changes without its subject changing is not measuring its subject.
+# So the headroom is set from the jitter: 1,010,000 is ~1% over the highest
+# min-of-3 reading and ~15x the observed spread, which still convicts any real
+# regression (a judgment regression is tens of MB — the second pass was 1.3 GB)
+# while refusing to convict the instrument.
+#
+# THE RAISE IS NOT THE FINDING. The number has gone 993,832 -> 996,920 ->
+# 998,596 -> ~1,000,000 across four pins, and NONE of those landings was about
+# memory. That creep is the per-decl arena's absence (PLAN §5.O layer 3,
+# Hβ.perf.per-decl-arena): 98% of the judgment's heap is scratch that nothing
+# reclaims, so every landing that mints a little more pays it forever. This
+# ceiling's job is to FALL when the arena lands — by roughly two thirds, per
+# §5.O's own accounting — and a ceiling that only ever rises to meet a breach
+# has stopped ratcheting. Raising it is an explicit in-commit act, which is
+# what this paragraph is; the next move on this line should be down.
+selfcompile_peak_kb_max: 1010000
 
-# 2026-08-08 (same day, the fourth shape's enforcement): wildcard-
-# fabricates — a wildcard arm minting Forall / TVar / "Pure" / "" —
-# seeds at the measured 21 on the wheel link (pin 8f11d81b61d4's fresh
-# m2), the typed siblings of the zero row. Seen RED at 20 before this
-# ceiling. Monotone DOWN: each site named away is a variant enumerated
-# or a sentinel documented; a rise is a new silent absorber. The four
-# mode-10 typed bash rows retire in the same commit (the mode-33
-# precedent, fourth application).
-wildcard_fabricates_max: 21
-
-# 2026-08-08 (the fifth shape): underscore-retain — a let binder keeping
-# a leading underscore, an unused value renamed instead of deleted —
-# BORN AT ZERO on the wheel link (pin 54bf749eab9f's fresh m2). Seen RED
-# at -1 before this floor. Zero is the floor and the contract; mode 15's
-# bash row retires in the same commit (the mode-33 precedent, fifth
-# application).
-underscore_retain_max: 0
-
-# 2026-08-08 (the sixth shape): flag-as-int — a BEq compare of
-# mode/token_kind/scheme_kind against an int literal, either operand
-# order — BORN AT ZERO on the wheel link (pin c7cf09a15a00's fresh m2).
-# Seen RED at -1 before this floor. The three mode-8 bash rows retire in
-# the same commit (the mode-33 precedent, sixth application).
-flag_as_int_max: 0
-
-# 2026-08-08 (the seventh shape): parallel-arrays — the ONE-ARM MATCH
-# destructuring a tuple into first-two _h binders (desugar_block turns
-# every destructuring let into exactly that at parse, so this IS the
-# weave shape of both spellings; the mode-7 anchor: ctor payloads
-# legitimately carry _h, the paired tuple bind convicts) — BORN AT ZERO
-# on the wheel link (pin 74b43c43e00d's fresh m2). Seen RED at -1
-# before this floor. The let-tuple bash row retires in the same commit;
-# mode 7's param-adjacency row stays (distinct shape).
-parallel_arrays_max: 0
-
-# 2026-08-08 (the eighth shape): vtable-record — a record field named
-# fn_*/handler_* holding a lambda, in literal or nominal costume (the
-# honest anchor: a closure record with honest field names is the unified
-# each's own design and stays silent) — BORN AT ZERO on the wheel link
-# (pin aa581cb8839b's fresh m2). Seen RED at -1 before this floor. Mode
-# 1's bash row retires in the same commit (the mode-33 precedent,
-# eighth application).
-vtable_record_max: 0
-
-# 2026-08-09: mode 2 (env-frame) absorbed as CsEnvFrame — the tenth
-# shape. The five frame-stack family names (parent_env/env_stack/
-# push_frame/pop_frame/env_chain) declared, called, or bound, read from
-# the weave. Born at ZERO on the wheel link (text preview + first
-# census run both 0); env lookup is an effect op, never a parent walk.
-env_frame_max: 0
-
-# The battery's expectations live ON the micros themselves (`// expect: N`,
-# each file's first line) — verify.sh and march-gate --micros both read that
-# header; no registry here (a `micro:NAME=EXIT` list once documented below
-# was a second home that stayed empty for its whole life — deleted 2026-07-24).
-# STEP 0 (repr_of): the representation-class read's width arithmetic round-trips
-# through the seed (5-arm Repr ADT, exhaustive 4/8/16 width match — never == 4).
-# The value gate (repr_of(TFloat) == RF64) lands with STEP 1's first caller,
-# when the seed catches up to the wheel — peer Hβ.repr.read-value-gate.
-# STEP 2 (structural fold): a product `==` is a CALL to the generated recursive
-# $eq_<sig> helper (field-wise deep eq at canonical width-summed offsets,
-# recursing for nested products) — dissolving the loud emit_eq_deep_unsupported
-# floor. The real `a == b` on records can't round-trip the seed yet (its eq
-# floor lags the wheel; mentl2 also traps upstream on a bare record literal —
-# the ev-slot seam, PLAN §7), so this gate proves the fold's CONTROL SHAPE
-# (per-field eq + AND conjunction + recursion). The direct record-`==` value
-# gate lands when the seed catches up — peer Hβ.eq.fold-seed-value-gate.
-# W02 (the structural fold's SUM leaf): the wheel's eq is now TOTAL over all five
-# node-kinds — emit_one_eq_sum_helper (src/backends/wasm.mn) generates the
-# per-variant tag-then-payload $eq_n<Name> helper, variant specs read live from
-# the env's ConstructorScheme (variant_specs_of). The micro proves the helper's
-# control shape (sentinel-guard + tag-compare + payload conjunction) end-to-end
-# through the seed in ADT-construction + match constructs; the DIRECT `a == b` on
-# ADTs awaits the seed catching up (peer Hβ.eq.fold-sum-seed-value-gate). Exit 60.
-# STEP 3 (multi-shot producer): the wheel's ResumeExpr now reads the op's proven
-# cardinality LIVE (current_resume_discipline, the deleted write-only resume_kinds
-# ledger) and mints the dormant LMakeContinuation for MultiShot arms — the
-# unified heap record's fifth role, capturing live locals + derive_ev_slots, its
-# fn_ptr the synthesized $__k_<arm>_<site> resumption fn (lower_resume_snapshot as
-# prologue). The OneShot floor (~85%, every ev*/eq micro) stays BYTE-IDENTICAL
-# (Law 7 — proven: 7/7 green, census stable). The MultiShot VALUE gate
-# (tests/micros/mn-multishot.mn: a two-resume arm → exit 30 not 10) needs the
-# PRODUCER in the compiler that compiles it; the disposable seed lags it (TESTED:
-# seed compiles the arm OneShot → exit 10, the documented pre-producer state), so
-# the value gate lands when the seed's lower catches up to the wheel's producer —
-# peer Hβ.seed.multishot-producer (NOT enforced here; the .mn leads, the seed
-# follows). STEP 5 (TCont arity + world-index) closes cross-context resume safety.
-# STEP 4 (parallel topology): `<|` and `><` collapsed to ONE PFanout verb
-# (ownership-discriminated; the duplicate PDiverge/PCompose nodes+paths dissolved
-# — Carried-Truth). A verb draws an edge; it does NOT schedule — the hardwired
-# inf_add_row(Thread) is DELETED (effects_of(fanout) = ⋃ branch rows), and the
-# execution strategy (Seq default / Thread / Simd / Gpu) is read LIVE from the
-# `~>` chain at lower (lower_fanout_schedule via resolve_in_stack). The NET-NEW
-# DEFAULT — a bare `><`/`<|` with no scheduler runs SEQUENTIAL, inline, tupled in
-# source order — the behavior change this micro VERIFIES (was E_HandlerUninstallable
-# under the old Thread inject). VALUE gate round-trips the seed: dbl(7)=14 >< dbl(8)=16
-# → 30. The `~> Thread` schedule (spawn-ALL-then-join-ALL in source order over the
-# strategy-neutral thunks) is structurally landed but needs the wasi-threads runtime
-# to run end-to-end — peer Hβ.lower.fanout-thread-value-gate (NOT forced; Law 7 — a
-# schedule the gate can't verify deterministically is never claimed). Unsurpassable
-# follow-ups: Hβ.lower.fanout-simd-lane-cashout (reads STEP 1 v128), fanout-gpu-
-# backend-handler, fanout-durable-persist-handler (reads STEP 3).
-# `<|` branch applications carry the exact result handles inference minted.
-# This covers named/inline effect evidence under an ambiguous handler set.
-# Non-word branch results keep their f64 call, tuple-store, pattern-load, and
-# local widths; the accepted single-branch surface still produces a tuple.
-# STEP 5 (TCont world-index): TCont(Ty, ResumeDiscipline) → TCont(Ty,
-# ResumeDiscipline, EffRow) — the ONE coordinated breaking arity change (the
-# unpatchability theorem: swap the representation, never patch). The third field
-# is the effect-WORLD the continuation was frozen under — the modal-effect
-# lexical-capability set, !E lifted to the TIME axis (§4③ frontier lands here).
-# unify's TCont arm now compares the discipline (disciplines_compatible:
-# OneShot/MultiShot distinct, Either flexes) AND unifies the world-rows
-# (unify_row) → E_ResumeWorldMismatch, the diagnostic the prior 2-arg form
-# DROPPED. All ~14 wheel destructure sites + the seed's $ty_make_tcont
-# (arity-3 + $ty_tcont_world) + the 6 classify/scheme/render seed-test calls
-# moved in lock-step (the directive's one mandatory coordinated seed edit; the
-# seed builds + classify_{oneshot,multishot,either} PASS world-typed). This gate
-# proves the world-index is INERT on the well-typed single-world OneShot path
-# (Law 7 — every ev*/eq micro byte-identical, the new unify arm never spuriously
-# fires): a OneShot Ask handler whose continuation is TCont(Int, OneShot, {Ask})
-# compiles diags=0 and resume(41)+1 → 42. The CROSS-WORLD value gate (two
-# continuations frozen under different handler-sets meeting at a persist/resume
-# boundary → E_ResumeWorldMismatch) needs STEP 3's persist resume-catcher to
-# construct the boundary — peer Hβ.types.resume-world-mismatch-value-gate (NOT
-# forced; Law 7 — a path the gate cannot construct deterministically is never
-# claimed). The world-CAPTURE plumbing is live: infer's inf_current_row()
-# already projects the ambient row at the suspend point, ready to fill the field
-# at the producer's mint — peer Hβ.infer.tcont-world-capture-at-reify.
-# W03 (the structural fold's SHOW leaf): to_string on an AGGREGATE is now a CALL
-# to the generated recursive $show_<sig> helper (emit_fold_show_helpers,
-# src/backends/wasm.mn) — the SHOW leaf, sibling of the eq leaf ($eq_<sig>). It
-# folds the proven five-node-kind shape into a String via str_concat (product →
-# "{name: …}", tuple → "(…)", list → "[…]", sum → "Ctor(…)"), each field/payload/
-# element re-entering the leaf, the runtime renderers ($int_to_str/$float_to_str/
-# $str_concat) called via the W7 (__state, args) convention the eq leaf calls
-# $str_eq with. fold_strip / fold_sig (the fold's shared strip+signature) moved to
-# their Carried-Truth home (types.mn) — eq / show / compare / hash read ONE
-# structural name. The DIRECT to_string(record)=="{…}" needs the seed's show
-# generator + the string runtime (the libless harness links neither), so the gate
-# proves the show fold's CONTROL SHAPE (per-field render + separator-join + open/
-# close delimiter assembly + recursion into nested aggregates) self-containedly —
-# peer Hβ.fold.show-seed-value-gate. Exit 40.
-# A2 (Hβ.lower.tuple-as-product): a tuple IS a positional product — construction
-# and match-bind read ONE width-summed offset fold (emit_field_stores_acc + the
-# width-summed LPTuple carrying (offset, elem_ty, sub_pat)). This gate round-trips
-# the SEED for the all-i32 case (offsets reduce to 4*i, byte-identical to the old
-# $alloc_tuple, Law 7) — flat (a,b,c) + nested ((x,y),z) match-bind AGREE with
-# construction. The TUPLE-INDEX `t[i]` (LFieldLoad at tuple_elem_offset) and the
-# f64-tuple/variant-f64/float-convert round-trips are WHEEL-LEADS (the seed lacks
-# tuple-index, f64, and the LConvert intrinsic): mn-tuple-f64 / mn-variant-f64 /
-# mn-float-convert document them, their value-gates landing when the seed catches
-# up (peers Hβ.seed.tuple-product / .variant-payload-repr / .float-convert). Exit 90.
-# W14 (e-graph: union-find as fabric edge + congruence-closed saturation): the
-# rw snoc-list side-ledger (linear rw_lookup, re-appended every pass — the O(N²)
-# OOM) is DELETED; equivalence is ONE fabric edge — the canonical pointer
-# co-indexed by handle (graph_canon_set/at, the TVar union-find precedent), chased
-# live by egraph_extract. Two properties: (1) EFFECT-GATED absorb — x*0 ≡ 0 fires
-# only when x's inferred row subsumes EfPure (is_pure reads effs_at LIVE, not AST
-# shape); (2) CONGRUENCE CLOSURE — rules read operands THROUGH egraph_extract, so
-# a≡b ⇒ f(a)≡f(b) with no congruence table. Idempotent edges (rewrite_to reads the
-# current edge first) make saturation converge — the OOM cannot recur. The seed
-# lags the canon-weave graph ops + effs_at, so the gate proves the saturation
-# SEMANTICS arithmetically (pure-vs-effectful absorb + congruent f(a)==f(b)) —
-# peer Hβ.egraph.saturate-seed-value-gate. Exit 70 (gate1 30 + congruent 40).
-# W13 (Schedule Persist arm): parallelism and durable execution are the SAME arm
-# (PLAN §4④) — the `~> Persist` fanout schedule emits persist_branch(thunk) per
-# branch (checkpoint to disk + run, accumulate) + join_persist(i) (collect in
-# source order); a crashed/forked branch re-runs from its memcpy'd thunk record.
-# The seed lags the Schedule::Persist lowering arm AND the continuation-record
-# layout the disk round-trip reads (TESTED: the direct op-call form traps in the
-# seed's closure-header read), so the gate proves the checkpoint-then-run +
-# source-order-join CONTROL SHAPE arithmetically — the result is IDENTICAL to the
-# inline `><` (durability is value-invisible). The disk memcpy round-trip is gated
-# runnably by mn-persist.mn — peer Hβ.lower.fanout-persist-seed-value-gate. Exit 30.
-# W13 (Schedule Simd arm): a `><` fanout of f32 branches under `~> Simd` packs the
-# branch results into v128 lanes (run_fanout_thunks Simd → LSimdLanes; emit_simd_
-# lanes → f32x4.replace_lane i per lane over a zeroed v128.const f32x4 base), so the
-# fanout's VALUE is one v128 the lane ops (emit_binop_v128: f32x4.add/mul) process
-# four-at-once — the value layer's RV128 repr meeting the parallel verb at the SPACE
-# axis. The thunks are the SAME strategy-neutral closures Seq/Thread call — only the
-# COLLECTOR differs (lanes vs tuple). The seed lags v128 (RV128 repr) + the new
-# LSimdLanes node, so the gate proves the lane-pack + lane-op CONTROL SHAPE
-# arithmetically (per-lane add visiting every lane once in position order, witnessed
-# by r3-r0); the f32x4.replace_lane WAT form is validated to assemble (wat2wasm) —
-# peer Hβ.lower.fanout-simd-seed-value-gate. Exit 90 (head 33 + lanes-in-order 57).
-
-# W25 / A4-domains — autodiff + DSP-character as algebraic-effect HANDLERS, both
-# seed-runnable (Int scalars; the float tensor/waveshaping gradient is STEP 1's
-# separate repr gap). mn-autodiff: d/dx x^2 at 3 = 6 via a Compute effect whose
-# compute_tape handler records the forward input + a backward fold reads it —
-# the autodiff topology of lib/ml/autodiff.mn (the multishot deepening is the
-# named peer Hβ.ml.autodiff-as-multishot). mn-distort: the SAME `~> distort`
-# chain under hard_clip vs gain2 = two characters from one source (the lib's
-# spectral_flux_distort / warm_distort / fold_distort topology) — clip(25)=10 +
-# gain2(4)=8 = 18. Proves handler=character: the DSP transfer function is a
-# `~>` install edge, never a hardcoded function (surpassing every fixed-transfer
-# DSP framework). The bound-`<~` IIR (mn-feedback-iir) is .mn-leads (the seed
-# closures the LF.B lambda; the wheel inlines it), so it is NOT in the run-set.
-# Fold's accumulator is carried through handler config, state, resume update,
-# result(), and the higher-order lambda argument. This is the direct regression
-# for the multi-payload Iterate/fold_handler seam: [[1], [2,3]] flattens to
-# [1,2,3], so first+last exits 4. Requires the standard runtime/prelude linked
-# by verify.sh.
-
-# W15 + W16 (the parameter list IS a positional product — SYNTAX.md §«Labeled
-# call arguments», §«Defaults...as a product node-kind», §«Anonymous functions»).
-# ONE product machinery unifies record-literal field-construction and call-arg
-# construction (surpassing Swift/Python's bolt-on labeled args + ML/Rust's
-# separate param-pattern grammar). W15: a labeled `f(c = 3, 1)` arg is a
-# LabeledArg(name, value) node; resolve_call_args (types.mn — the ONE read both
-# infer + lower call, identical positional order by construction) reorders by
-# field name and fills absent fields with their param defaults; the old lower-
-# only trailing-default fill (lower_args_with_defaults / callee_params_of /
-# lower_default_fills) DISSOLVED into it (less code, one home). W16: a
-# destructure param `((a,b)) => …`/`({x,y}) => …` desugars at fn entry to a
-# fresh-named param + a `let <pat> = <fresh>` prepended to the body — byte-
-# identical to a destructuring let, the SAME match projection desugar_block
-# gives (no TParam shape change, no new infer/lower path; expr_to_param deleted).
-# Both DIRECT value gates are .mn-LEADS (the disposable seed's parser lags
-# resolve_call_args AND the param desugar — TESTED: the seed parses `y = 3`
-# positionally and traps, and traps on a direct destructure param), so they land
-# when the seed catches up (peers Hβ.seed.labeled-args-resolution /
-# Hβ.seed.param-as-pattern). mn-labeled-args proves the resolver's reorder
-# CONTROL SHAPE (labeled skip-over + positional-fill-next-free + default-for-
-# absent) self-containedly through the seed: positional order [1, 200, 3] →
-# 1*1 + 200*0 + 3*10 = 31. mn-param-destructure proves param-bind == let-bind:
-# the fn body IS the prepend-let the param desugar emits, binding a tuple
-# positionally → 7*1 + 5*10 = 57.
-# W17 parser-truth: the `-> RetTy` annotation PINS (NTypeAnn minted live,
-# infer_fn unifies the authored Ty against the inferred body return —
-# E_TypeMismatch on violation). ret-pin proves the agreeing path (annotation
-# present + matches) compiles byte-identically; expect-recover proves the
-# productive-under-error expect (narrate P_ExpectedToken + recover at pos on
-# mismatch, advance on match) two-branch control shape.
-# W21 + W22 + W23 (B13-ownership-refinement): the dormant-but-built type machinery
-# is WIRED into infer_fn (Carried-Truth — read live what is already inferred).
-# W21: infer_ownership runs at every FnStmt body (use-count 0/1/2+ → Unmarked/Own/
-# Ref, written back into the fn's TFun node, read live by lower's Consume-elision +
-# affine_ledger); check_ref_escape walks return positions (E_OwnershipViolation on
-# escape). W22: infer_refinement_narrowing writes the per-program-point narrowing
-# edge (graph_narrow_set, a co-indexed weave like canon) at index sites under a
-# proven path; lower_index_runtime reads graph_narrow_at LIVE → list_index_proven
-# elision; verify-SMT renders the REAL float (not "0.0"), DELETES the `_ => "true"`
-# fabrication (→ E_VerifyUnencodable, never a silent SAT), and verify_debt projects
-# SmtUnknown debt + SmtSat witnesses (no resume([]) drop). W23: a parameterized
-# effect arg is the constant-folded projection of its operand node; a non-literal
-# (`Clock(monotonic)`) is EANode(handle) resolved live (EEffArgNotLiteral deleted);
-# eff_arg_eq's EAFloat arm now compares REAL values (Sample(44.1)==Sample(44.1),
-# the prior `false` fabrication deleted) + eff_arg_lt orders floats by value. The
-# DIRECT value gates are .mn-LEADS (the disposable seed lacks the narrowing weave,
-# the affine_ledger-at-fn-body, the SMT install, and the EANode row-equality path),
-# so each proves its CONTROL SHAPE self-containedly through the seed (the established
-# proxy discipline, mn-struct-eq-sum precedent): mn-ownership-infer — use-count
-# classification + affine double-consume caught (exit 60); mn-refine-narrow —
-# narrow-then-elide dispatch + sound float render + unencodable-not-SAT (exit 60);
-# mn-effarg-node — Int args distinct / Float args equal+distinct / EANode handle
-# identity (exit 60). Peers when the seed catches up: Hβ.seed.ownership-inference-
-# at-fn-body, Hβ.seed.narrowing-weave, Hβ.seed.verify-smt-install,
-# Hβ.seed.effarg-node-row-equality.
-# W26+W27 (felt-IC + Carried-Truth deletions): three new paths gated as
-# seed-runnable proxies (the established discipline — the live wheel forms read
-# the one graph / fs, which the libless WASI-free micro harness cannot run, so
-# each gate exercises the DECISION the wheel now makes).
-# - mn-intent-from-node (W27): the intent_index side-ledger + graph_index_intent
-#   op + find_intent scan are DELETED; QIntentOf / oracle intent_weight read the
-#   FnStmt's effs LIVE via graph_node_body (Carried-Truth, LESS code). Seed peer:
-#   Hβ.seed.intent-from-node-live. Exit 80.
-# - mn-ic-epoch-fixpoint (W26): the dead reason_chain_stable is DELETED; the IC
-#   `<~` fixpoint converges on GRAPH-EPOCH stability (revision = epoch, one
-#   number — surpassing Salsa red-green dirty-bits). Seed peer:
-#   Hβ.seed.ic-epoch-fixpoint. Exit 42.
-# Fix B (captured-lambda ev-slot PLACE/READ unification): a captured lambda
-# performing a threaded effect at own-row index 0 inside a fn whose row carries
-# it at index 1. Before the fix the in-lambda READ used the enclosing fn's row
-# (offset 12) → wrong dispatch (47); the fix reads the lambda's own row
-# (offset 8 = the PLACE slot) → 79. Two Zzz handlers force the ev-slot path.
-# The f64 representation gradient's seed-runnable floor: 2.5 * 2.0 >= 4.9 → 3
-# (the i32-floor of floats gives 0). Real f64 literal + f64.mul + f64.ge + if
-# through the seed. The mix-with-f64-params form (mn-float-arith.mn) is the
-# m2-lead peer — it traps through the seed, needing the wheel's f64 call
-# convention (Hβ.seed.float-gradient).
-# Fail and Abort are distinct declaration identities. Each opposite handler is
-# deliberately installed inside the matching one; exit 81 proves neither op
-# cross-routes through the other effect's install.
-# SYNTAX §Indexing made executable: an out-of-range list index TRAPS (134),
-# never reads adjacent memory. The raw tag-0 load was silent-wrong until
-# 2026-07-18; the checked entry + short-circuit && landed together (the
-# eager i32.and ran every guarded read — set_insert / cache_filter_loop /
-# register_one_variant all read one-past under their own guards).
-# 2026-08-07: the PEAK ratchet (§5.O cost-on-the-board; the arena's build
-# step 0, Hβ.perf.per-decl-arena). The march's m3 leg — the wheel
-# compiling the wheel — runs under GNU time; the peak RSS checks here and
-# a breach refuses the REPIN (seen RED at ceiling 1: exit 1, boot
-# restored). Measured at the instrumentation landing, two runs on fixed
-# input (pin 6cd6281a971f): 1,743,320 KB and 1,742,764 KB (±0.03%);
-# ceiling = measured + ~5% noise headroom. The arena's win lands as this
-# number FALLING — the working set collapsing to one decl's live set —
-# and the §5.O prose's stale "~694MB peak" is corrected by this read:
-# the self-compile peaks at ~1.7GB today.
-# Raised 1,830,000 → 2,250,000 at the row-half landing (fixed input, the
-# wheel; the ratchet refused twice and the raise is the measured verdict,
-# component-attributed): published schemes now carry LIVE row edges (the
-# snapshot root closing — movers 678 → 453, false T_OverDeclared dead),
-# and the substrate weighs +265 MB (kept edges + generalize-at-prereg;
-# variant run 2,080,964 KB) plus +106 MB for the cross-group gate
-# re-parks (full fix 2,187,468 KB m3 / 2,178,968 m4). The two-site
-# compression swap measured VACUOUS (unresolved chains have nothing to
-# fold), so this is representation weight, not re-walk waste. The
-# reclaimers are named: the per-decl arena (4.3, columns-first) and rung
-# 3's endpoint (the second pass deletes). The next legal move stays DOWN.
-# Raised 2,250,000 → 2,400,000 at the reverse-edge column (§11 5.5's
-# first column; fixed input, the wheel — measured 2,337,908 KB, the
-# ratchet seen RED refusing the repin at the old ceiling): every judged
-# VarRef notes name → handle into the graph's refs column (tuple +
-# singleton + concat cell per note, ~36 B × ~2.4e6 notes across
-# judgment rounds — linear, wall flat at 17.1s). The column is what
-# retires the O(graph) refs scan and the O(graph²) dependents walk;
-# its reclaimer is the same per-decl arena / rung-3 pair as above
-# (one judgment round = one note set). The next legal move stays DOWN.
-# Raised 2,400,000 → 2,410,000 (2026-08-08) — a NOISE-BAND correction,
-# not growth headroom, from a fixed-input band measurement: three m3
-# legs on the unchanged tree read 2,293,120 / 2,293,412 / 2,293,268 KB
-# (±150 KB — the leg is tightly reproducible), while the session's
-# landing marches read 2,383,340 / 2,392,684 / 2,398,768 on trees
-# differing by ~20-50 source lines. The signal is STEPPED: two modes
-# ~105 MB apart (the bump image's growth-chunk quantum), and small
-# source deltas hop a chunk and back. A ceiling 1,232 KB above the high
-# mode refuses on the next hop — variance, not growth — which blinds
-# the ratchet to what it exists to catch. 2,410,000 sits just above the
-# measured high mode: the next chunk (~2,500,000) still refuses, so
-# REAL growth is caught at the same sensitivity. The arena (4.3,
-# columns-first) remains the named reclaimer of the LEVEL; the next
-# legal move stays DOWN.
-# 2026-08-11 the step-(i) column vocabulary (ninth through eleventh:
-# dispatch-tier, state-slot-home, install-shape): each column costs one
-# word per spine slot — the arc's own §5.O price, "each page grows by
-# that many words per slot"; measured 2441448KB at the eleventh.
-# 2026-08-12 the delay-line + peel-fix landings combined: measured
-# 2471324KB, 1.3MB over the prior line — two wheel-growing landings'
-# additive footprint inside the day's observed run variance.
-# 2026-08-17: the singleton judge block stopped spawning a task per branch
-# (Hβ.infer.serialized-judge-still-spawns). 433 guest threads went to zero
-# and their per-branch brackets with them; the m3 leg measured 2174492KB
-# against 2298592KB the pin before, so the ceiling was cut to 2250000.
-# 2250000 → 2310000 the same day, and this is a CORRECTION, not a
-# regression: 2250000 was set from ONE reading. Three consecutive pins of
-# materially the same wheel read 2298592, 2174492 and 2256804KB — ~120MB
-# of run-to-run variance — so the tighter line was measuring noise and
-# refused a clean fixpoint on its next run. The ceiling now sits just above
-# the highest of the three. A ratchet set inside its own measurement's
-# variance is not a ratchet; it is a coin flip that blocks good work.
-selfcompile_peak_kb_max: 2310000
-lists_movers_max: 6
+# ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
+# Guest OS threads the compile creates, counted at clone/clone3, as the
+# DELTA between a 61-declaration program and a 1-declaration one. The delta
+# and not an absolute: wasmtime's own host threads are identical in both and
+# cancel, while guest layer-branch spawns scale with the branch count — so
+# this ratchet measures US and stays true across runner upgrades, where an
+# absolute ceiling would go red on somebody else's implementation detail.
+#
+# The line above ratcheted the MEMORY the 433-thread defect cost. Nothing
+# ratcheted the threads themselves, which is why judge_window = 1 could sit
+# beside a spawn-per-branch for ten days with the whole board green — the
+# gate that would have caught it on day one is this one, and it did not
+# exist. Zero is the honest floor today (measured: 5 clones at 1 decl, 5 at
+# 61, both host overhead) because a singleton judge block runs BrDirect.
+#
+# WHEN PHASE 9.2 RESTORES judge_window = 8 THIS IS RE-BASELINED, NOT DELETED:
+# the number becomes the width the parallel walk is supposed to have, and the
+# gate goes on answering the same question one octave up. Seen RED at ceiling
+# -1 before it was trusted.
+judge_spawn_delta_max: 0

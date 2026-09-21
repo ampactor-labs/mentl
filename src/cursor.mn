@@ -46,8 +46,6 @@ import effects
 
 import mentl
 
-import oracle
-
 import query
 
 import verify
@@ -246,6 +244,28 @@ fn enumerate_hole_positions() with GraphRead + Alloc + Memory + !Mutate = match 
   Graph(next, _spans) => filter(authored_hole, range(0, next)),
 }
 
+// The name a ZERO-ARG call candidate calls, or None for every other shape.
+// One home for a read the proposer and the transport both make — the
+// transport to render the candidate as source, the proposer to ask the
+// callee's own row and body what the candidate means. An arg-bearing call
+// answers None because nothing downstream can yet say what its arguments
+// are (`Hβ.synth.vocabulary-arg-holes` is where they start being sayable).
+fn callee_name_of(node) with Memory + Alloc = match node {
+  N(body, _, _) => match body {
+    NExpr(CallExpr(callee, args)) => if len(args) == 0 {
+      match callee {
+        N(cb, _, _) => match cb {
+          NExpr(VarRef(name)) => Some(name),
+          _ => None,
+        },
+      }
+    } else {
+      None
+    },
+    _ => None,
+  },
+}
+
 // A gradient position IS a fn declaration — the teach verb's own scope
 // (map_fn_stmts feeds FnStmt handles). The kind gate runs BEFORE the
 // teach read: the ungated walk asked teach_gradient about every cell in
@@ -255,7 +275,7 @@ fn enumerate_hole_positions() with GraphRead + Alloc + Memory + !Mutate = match 
 // rendered as the entry's own line 1 — the C1c-era virgin-walk residue,
 // closed here by the chased-kind filter it named).
 fn enumerate_gradient_positions() with GraphRead + Teach + Alloc + Memory + !Mutate = match graph_snapshot() {
-  Graph(next, _spans) => filter((i) => gradient_position(i), range(0, next)),
+  Graph(next, _spans) => filter(gradient_position, range(0, next)),
 }
 
 fn gradient_position(i) with GraphRead + Teach = match graph_node_body(i) {
@@ -378,68 +398,10 @@ fn transitive_dep(caret_span, target_span) with GraphRead + !Mutate + Memory + A
   if caret_mod == target_mod { false } else { module_imports(caret_mod, target_mod, []) }
 }
 
-// module_path_of_span lives in graph.mn (DAG-homed beside parse_span_of:
-// oracle reads it too, and both import graph).
+// module_path_of_span and the import-reachability family both live in
+// graph.mn (DAG-homed beside parse_span_of: oracle reads the first, the
+// comment-reference gate reads the second, and every reader imports graph).
 //
-// Does module `from` import `target` (transitively)? Reads the live
-// ImportStmt edges in `from`'s NModule decls; the `seen` accumulator
-// breaks import cycles. The module graph IS graph content — no side-ledger.
-fn module_imports(from, target, seen) with GraphRead + Alloc + Memory + !Mutate = if from == "" || contains_path(seen, from) {
-  false
-} else {
-  let direct = module_import_paths(from)
-  if contains_path(direct, target) { true } else { any_imports(direct, target, [from] ++ seen) }
-}
-
-fn any_imports(paths, target, seen) with GraphRead + Alloc + Memory + !Mutate = if len(paths) == 0 {
-  false
-} else if module_imports(last(paths), target, seen) {
-  true
-} else {
-  any_imports(drop_last(paths), target, seen)
-}
-
-// The direct import paths declared in module `path`'s NModule decls.
-fn module_import_paths(path) with GraphRead + !Mutate + Alloc + Memory = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => scan_module_imports(path, 0, next),
-  }
-}
-
-fn scan_module_imports(path, i, n) with GraphRead + !Mutate + Alloc + Memory = if i >= n {
-  []
-} else {
-  match graph_node_body(i) {
-    NModule(m) => if m.path == path { import_paths_of_decls(m.decls) } else { scan_module_imports(path, i + 1, n) },
-    _ => scan_module_imports(path, i + 1, n),
-  }
-}
-
-fn import_paths_of_decls(decls) with Alloc + Memory = decls |> filter_map_imports
-
-fn filter_map_imports(decls) with Alloc + Memory = if len(decls) == 0 {
-  []
-} else {
-  let head_imports = match node_body_of(last(decls)) {
-    NStmt(ImportStmt(p)) => [p],
-    _ => [],
-  }
-  head_imports ++ filter_map_imports(drop_last(decls))
-}
-
-fn node_body_of(node) with Pure = match node {
-  N(body, _, _) => body,
-}
-
-fn contains_path(paths, target) with Memory + Alloc = if len(paths) == 0 {
-  false
-} else if last(paths) == target {
-  true
-} else {
-  contains_path(drop_last(paths), target)
-}
-
 // ─── Argmax with default ────────────────────────────────────────────
 //
 // Per the cursor walkthrough §3: the no-candidates case is "fully annotated";
@@ -494,21 +456,21 @@ fn cursor_view_of(handle) with GraphRead + EnvRead + Memory + Alloc + Intern + D
     let pos = (handle, kind)
     match pos <| (
       // 1. Graph + Env (Query)
-      ((_, k)) => k,
+      { (_, k) => k },
       // 2. Handlers (Propose) — Synth's MultiShot
-      ((h, k)) => propose_at(h, k),
+      { (h, _) => propose_at(h) },
       // 3. Five verbs (Topology)
-      ((h, _)) => pipe_context_of_handle(h),
+      { (h, _) => pipe_context_of_handle(h) },
       // 4. Boolean row (Unlock)
-      ((_, k)) => row_of_kind(k),
+      { (_, k) => row_of_kind(k) },
       // 5. Ownership-as-effect (Trace)
-      ((_, k)) => ownership_of_kind(k),
+      { (_, k) => ownership_of_kind(k) },
       // 6. Refinement (Verify)
-      ((h, _)) => verify_pending_at(h),
+      { (h, _) => verify_pending_at(h) },
       // 7. Continuous gradient (Teach)
-      ((h, _)) => teach_gradient(h),
+      { (h, _) => teach_gradient(h) },
       // 8. HM live + Reasons (Why)
-      ((h, _)) => teach_why(h)
+      { (h, _) => teach_why(h) }
     ) {
       (query, propose, topology, row, trace, verify, teach, why) => CursorView(query, propose, topology, row, trace, verify, teach, why),
     }
@@ -665,13 +627,13 @@ fn pipe_position_in(target, body) with Memory + Alloc = match body {
 // float-evidence call-convention gap (an f64-arg candidate ctor through an
 // all-i32 $ft — the named peer Hβ.emit.float-evidence-ft, first fired by
 // the first float-position projection ever taken).
-fn propose_at(h, k) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnostic + GraphWrite + Synth + !Mutate = if authored_hole(h) {
+fn propose_at(h) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnostic + GraphWrite + Synth + !Mutate = if authored_hole(h) {
   let ctx = mentl_context_at(h)
   match ctx {
-    Context(_, allowed, _, _) => synth_propose(ty_of_kind(h, k), allowed, ctx),
+    Context(_, allowed, _, _) => synth_propose(allowed, ctx),
   }
 } else {
-  Proposals([], [])
+  Proposal({rejected: [], verdict: VNone})
 }
 
 // Synth's Context reads LIVE from the graph the cursor sits in — never
@@ -683,14 +645,11 @@ fn propose_at(h, k) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnos
 // fn, the node's own row stands and the name is "".
 fn mentl_context_at(handle) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnostic + GraphWrite + !Mutate = match env_snapshot() {
   Env(scope_bindings) => match graph_chase(handle) {
-    GNode(kind, _) => {
-      let hole_span = parse_span_of(handle)
-      match enclosing_fn_decl_at(handle) {
-        Some(decl) => match decl {
-          (fname, effs) => Context(scope_bindings, build_declared_row(effs), fname, hole_span),
-        },
-        None => Context(scope_bindings, row_of_kind(kind), "", hole_span),
-      }
+    GNode(kind, _) => match enclosing_fn_decl_at(handle) {
+      Some(decl) => match decl {
+        (fname, effs) => Context(scope_bindings, build_declared_row(effs), fname, handle),
+      },
+      None => Context(scope_bindings, row_of_kind(kind), "", handle),
     },
   },
 }
@@ -749,4 +708,4 @@ fn verify_pending_at(handle) with Verify + GraphRead + Memory + Alloc + !Mutate 
 }
 
 fn filter_by_span(target, debt) with Memory + Alloc =
-  filter(((debt_span, _, _)) => span_overlaps(target, debt_span), debt)
+  filter({ (_m, debt_span, _, _) => span_overlaps(target, debt_span) }, debt)

@@ -1,0 +1,22 @@
+// expect: 12
+// A BRACE BODY CARRIES ITS POSTFIX SUFFIX — measured red, and the red was
+// silent: `fn main() = { let g = inc; g }(1)` ran to exit 0 with ZERO
+// diagnostics, because `parse_body`'s brace path reached only the BINARY
+// operator loop and a call is a POSTFIX suffix. The application was
+// parsed and discarded.
+//
+// It predates the arm-list literal — the second `main` half below is a
+// plain BLOCK body, which is the spelling the defect was measured on —
+// and the literal is only what made anyone apply a brace in body
+// position and look. `postfix_loop` now runs before `binop_loop`, so
+// both halves carry their argument.
+fn inc(x) = x + 1
+
+fn dispatch() = { 1 => 10, _ => 0 }(1)
+
+fn through_block() = {
+  let g = inc
+  g
+}(1)
+
+fn main() = dispatch() + through_block()

@@ -1,0 +1,34 @@
+// `==` over a POLYMORPHIC sum, proven to the bottom. This fixture was born RED
+// on 2026-09-18 and turned green the same day by proof, which is the whole
+// life of an expected-red entry and worth keeping visible.
+//
+// WHAT IT CAUGHT: two structurally equal `Some(BInt(7))` answered UNEQUAL, and
+// the emitted helper said why — `$eq_nOption`, ONE helper for every
+// instantiation, loading `Some`'s payload at offset 4 and comparing it with
+// `(i32.eq)`. Two reads dropped a proof the graph held. `fold_sig` rendered
+// `TName(n, args)` as the bare name, where `TList` / `TTuple` / `TRecord` all
+// fold their payloads, so `Option(Boxed)` and `Option(Int)` shared one helper
+// that could not know which it served; and `variant_specs_of` answered with
+// the constructor's DECLARED payload type — the quantified var — which
+// `emit_field_eq`'s last arm turned into a word compare with no diagnostic.
+//
+// It was invisible to `T_EqTypeUnprovable`, whose whole census held unchanged
+// across the discovery: that diagnostic reports at an AUTHORED comparison
+// whose operand type is a variable, and here the authored operands are proven
+// `Option(Boxed)` on both sides. The unprovable operand lives inside a
+// GENERATED leaf, where no authored span points.
+//
+// The control is the point of the shape: the monomorphic `BInt(7) == BInt(7)`
+// was RIGHT on the same run, because there every declared payload is ground.
+// So the exit NAMES which halves are broken rather than merely failing —
+// measured 6 before the fix (wrapped int 2 + wrapped text 4), 0 after.
+// expect: 0
+
+type Boxed = BInt(Int) | BText(String)
+
+fn main() = {
+  let control = if BInt(7) == BInt(7) { 0 } else { 1 }
+  let wrapped = if Some(BInt(7)) == Some(BInt(7)) { 0 } else { 2 }
+  let text = if Some(BText("ab")) == Some(BText(str_concat("a", "b"))) { 0 } else { 4 }
+  control + wrapped + text
+}

@@ -1,6 +1,17 @@
 #!/usr/bin/env bash
 # tools/oracle-selftest.sh — the oracle-selftest loop, v1.
 #
+# RUN BY HAND, NOT BY THE BOARD, and that is a statement about this file's
+# destiny rather than a permission. Nothing invokes it — not tools/state.sh,
+# not a hook, not tools/ci/run-board.sh — which was measured 2026-09-21 in
+# the same audit that found tools/ide-gate.sh off the board while PLAN called
+# it green. The difference is that ide-gate is a CONTRACT (a terminal bar a
+# phase is measured against) and belongs on the board, while this is an
+# INSTRUMENT: it runs the proposer over a corpus and BANKS crucibles, so a
+# failure is a find rather than a refusal and a board that refused on it would
+# be refusing on discovery. Its destiny is absorption — `mentl test` growing
+# the propose-over-a-corpus leg — not a board row.
+#
 # The medium is its own test generator: its Synth proposer generates the program
 # variations (PLAN §11 col 2, "the oracle IS the test generator"). This loop drives that
 # through the ADDRESS/edit transport over a corpus of hand-authored skeletons —

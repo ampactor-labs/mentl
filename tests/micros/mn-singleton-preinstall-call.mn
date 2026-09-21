@@ -9,9 +9,15 @@
 // runtime early() finds the state global still 0 and refuses at the
 // site (exit 134). On the pre-guard wheel this ran SILENTLY WRONG —
 // the arm read its `n` field from the null page and wrote the state
-// update back (the address-12 corruption class). The STATELESS twin
-// has no belt, so its root-reaching escape refuses at compile instead
-// (tests/frontier/mn-effect-escaped-install.mn).
+// update back (the address-12 corruption class). The STATELESS twin's
+// root-reaching escape refuses too, at its DISPATCH rather than at
+// compile (tests/frontier/mn-effect-escaped-install.mn, re-banked
+// 2026-09-11): the uniform world bracket leaves a dead extent with no
+// world to run an arm under, so the walk refuses where the old
+// stateless licence direct-called. A STATIC verdict there is band A's
+// install identity — the row cannot see a closed extent, and the
+// executable gate clears the effect because the handler is installed
+// somewhere.
 
 effect Counter {
   bump() -> Int

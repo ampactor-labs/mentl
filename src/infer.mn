@@ -81,8 +81,8 @@ effect InferCtx {
   // cuts) parks here and drains at the pass tail, where every chain has
   // closed. Per-pass by construction: each pass installs its own
   // infer_ctx, so a trial's parked gates die with the trial's bracket.
-  defer_row_gate((String, EffRow, Bool, Int, Span))
-  drain_row_gates() -> [(String, EffRow, Bool, Int, Span)]
+  defer_row_gate((String, EffRow, Bool, Int, Span, [Int]))
+  drain_row_gates() -> [(String, EffRow, Bool, Int, Span, [Int])]
   // The binding group in judgment — PARSE truth (scc_groups), set by the
   // trial around each cycle's walk. ONE consumer: the declared-row
   // deferral (a cycle member's gate parks until the pass tail, where
@@ -242,14 +242,8 @@ fn inf_add_row_unified(row) = {
     match row {
       EfRow(np, _, _) => match inf_current_row() {
         EfRow(cp, _, _) => each(
-          (e) => match e {
-            EParameterized(n, args_b) => match find(
-              (c) => match c {
-                EParameterized(cn, _) => cn == n,
-                _ => false,
-              },
-              cp
-            ) {
+          {
+            EParameterized(n, args_b) => match find({ EParameterized(cn, _) => cn == n, _ => false }, cp) {
               Some(EParameterized(_, args_a)) => // Row-side args are EffArg (EAType-wrapped) — unwrap to the Ty
               // lists unify_instance_args joins; feeding the wrappers minted
               // garbage nodes and joined those instead of the elements.
@@ -328,33 +322,55 @@ fn comment_refs_check(ref stmts, parse_start, parse_end) = {
 // this decl's start to the next decl's start (the last runs open) — the
 // stmt list is consecutive, so the pair of starts IS the extent, no
 // re-measure of the body.
+// EACH SCOPE CARRIES ITS MODULE, and the extent stops at its module's edge.
+// A decl's extent is "from my span to the NEXT decl's", which was true while
+// spans were offsets into one weave and became a cross-file claim the moment
+// every module started at line 1 again: the last decl of module A ran to the
+// FIRST LINE OF MODULE B, so its extent was inverted and matched nothing,
+// while B's early decls sat inside A's range by pure line-number coincidence.
+// Measured 2026-09-20 — seven comment references to a fn's own PARAMS went
+// unresolved (cdix, effs, sig_frees, used_sites among them — named here as
+// prose, since from THIS scope they are other functions' binders) because the
+// interior comment looked up a scope by containment alone and found the wrong
+// file's, or none. This is `Hβ.cursor.module-of-a-span-is-containment` — the
+// third machine PLAN §7 names — meeting the prose gate.
 fn crc_fn_scopes(ref stmts, i, acc) = if i >= len(stmts) {
   acc
 } else {
   let node = list_index(stmts, i)
   match node {
     N(_, sp, h) => match sp {
-      Span(sl, sc, _, _) => {
+      Span(sl, sc, el, ec) => {
+        let mh = graph_module_of(h)
+        // The next decl bounds this one only when it is the same module's;
+        // otherwise the decl's OWN end is the honest edge.
         let ext = if i + 1 < len(stmts) {
           match list_index(stmts, i + 1) {
-            N(_, nsp, _) => match nsp {
-              Span(nl, nc, _, _) => Span(sl, sc, nl, nc),
+            N(_, nsp, nh) => if graph_module_of(nh) == mh {
+              match nsp {
+                Span(nl, nc, _, _) => Span(sl, sc, nl, nc),
+              }
+            } else {
+              Span(sl, sc, el, ec)
             },
           }
         } else {
-          Span(sl, sc, 1000000000, 1)
+          Span(sl, sc, el, ec)
         }
-        crc_fn_scopes(stmts, i + 1, push(acc, (ext, comment_locals(h))))
+        crc_fn_scopes(stmts, i + 1, push(acc, (mh, ext, comment_locals(h))))
       },
     },
   }
 }
 
-fn crc_scope_at(ref scopes, csp, i) = if i >= len(scopes) {
+// A position is not an address until it is module-qualified, so the lookup
+// matches the MODULE first and the containment second — the same correction
+// the caret projection took at `Hβ.cursor.address-drops-module-identity`.
+fn crc_scope_at(ref scopes, cmod: Int, csp, i) = if i >= len(scopes) {
   []
 } else {
   match list_index(scopes, i) {
-    (sp, names) => if span_contains(sp, csp) { names } else { crc_scope_at(scopes, csp, i + 1) },
+    (mh, sp, names) => if mh == cmod && span_contains(sp, csp) { names } else { crc_scope_at(scopes, cmod, csp, i + 1) },
   }
 }
 
@@ -397,7 +413,8 @@ fn crc_walk(h, n, ref cdix, ref scopes, dollars) = if h >= n {
 } else {
   let t = graph_comment_at(h)
   let d2 = if byte_len(t) > 0 {
-    let locals = comment_locals(h) ++ crc_scope_at(scopes, graph_comment_span_at(h), 0)
+    let locals =
+      comment_locals(h) ++ crc_scope_at(scopes, graph_module_of(h), graph_comment_span_at(h), 0)
     crc_scan(t, 0, byte_len(t), h, cdix, locals, dollars)
   } else {
     dollars
@@ -509,7 +526,25 @@ fn crc_judge_dollars(ref dollars, i, ref lvix, ref cdix) = if i >= len(dollars) 
         match smap_get(lvix, name) {
           Some(_) => true,
           None => match smap_get(cdix, name) {
-            Some(_) => true,
+            Some(dh) => // A DECL HIT IS NOT YET A REFERENCE. `cdix` indexes every decl
+            // in the weave, so a bare `Some` answers "this name exists
+            // somewhere in the link" — and the link flattens every module
+            // into one env, which is a different question from the one
+            // SYNTAX asks. A backticked name is *a resolvable EDGE the Why
+            // engine walks*; an edge that exists only because two modules
+            // were laid side by side is a NAME LOOKUP wearing an edge's
+            // name, which is the re-derivation this gate exists to catch,
+            // one layer above the prose it polices.
+            //
+            // So ask reachability: the referent's module must BE the
+            // comment's own or be imported by it. Measured at the landing —
+            // the entry link answered 0 while the modules answered 57, and
+            // the 57 were real: references crossing an import edge the
+            // wrong way, one naming a DELETED decl, and English words in
+            // backticks. The report one branch down already read the
+            // comment's module from `h` for its own span; the hit test was
+            // the half that ignored it.
+            module_reaches(graph_module_of(h), graph_module_of(dh)),
             None => false,
           },
         }
@@ -517,6 +552,14 @@ fn crc_judge_dollars(ref dollars, i, ref lvix, ref cdix) = if i >= len(dollars) 
       if hit {
         ()
       } else {
+        // The report is about the module the COMMENT lives in, not whichever
+        // one this whole-weave walk happened to leave in force. Read it from
+        // the commented node's own handle — the same read every judgment does
+        // at its stmt — or the register scopes lib prose into the user's
+        // stderr (measured: eight W_CommentRefUnresolved lines from `last`,
+        // `join_loop` and `str_contains` reaching a caret projection on one
+        // eight-line file).
+        graph_module_enter(graph_module_of(h))
         report(WCommentRefUnresolved(comment_owner(h), raw, graph_comment_span_at(h)))
       }
       crc_judge_dollars(dollars, i + 1, lvix, cdix)
@@ -832,6 +875,16 @@ fn pre_register_stmt(seen, ref node) = match node {
         seen
       },
       None => {
+        // ONE NAME, TWO KINDS, judged at the fn's own write: effects register
+        // before this fold, so an op of the same name is already in the env
+        // and this declaration would silently WIN (every call then reaches
+        // the fn, the linked module's own calls of its op mistyped — measured
+        // 2026-09-17 as E_TypeMismatch noise inside threading.mn, exit 0,
+        // WAT emitted). register_one_op's arm covers the other order.
+        match env_lookup(name) {
+          Some((_, _, EffectOpScheme(prior_effect, _, _, _))) => report(EFnShadowsOp(name, prior_effect, span)),
+          _ => (),
+        }
         pre_register_fn_sig(name, params, ret_ann, handle, span)
         smap_add(seen, name, 1)
       },
@@ -892,7 +945,7 @@ fn pre_register_handler_sig(hname, config, state, arms) = {
     state
   )
   let inst_vars = mint_instance_vars(ename, effect_instance_arity(ename), 0)
-  let inst_ty = TName(ename, map((v) => TVar(v), inst_vars))
+  let inst_ty = TName(ename, map(TVar, inst_vars))
   let inst_h = mint(Inferred("effect '{ename}' instance"))
   graph_bind(inst_h, inst_ty, Inferred("effect '{ename}' instance"))
   let handler_ty = TName("Handler", [inst_ty])
@@ -1005,25 +1058,21 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
   }
 }
 
-// ─── Order-independent verdicts (Hβ.infer.order-independent-verdicts) ───
-// A forward reference reads whatever the env holds at the call site: under
-// one pass that is the LOOSE pre-registered scheme, so a caller's verdict
-// depends on source ORDER. The pair closes the class: the TRIAL pass runs
-// the whole walk with diagnostics absorbed — its one product is the env
-// holding every fn's FINAL scheme — and the FINAL pass re-judges fresh
-// nodes with every reference, forward included, resolving those finals.
-// (The pair is the condemned CADENCE, not the closure: order-independence
-// closes structurally at rung 3 — live cells + decl→site propagation —
-// and the second pass DELETES; PLAN's resolved design D5/D8.)
-// Two passes of one walk, sharing one graph and one env (pass-2 entries
-// shadow; pass-1 handles stay live under them). The trial skips the prose
-// gate (comment_refs_check judges once, in the reporting pass); the final
-// skips fn PRE-registration — the env already holds the truth, and
-// infer_fn's unbound-handle arm self-registers monomorphic recursion. The
-// duplicate-fn refusal already lives in the registration walk's own
-// seen-set (the incremental cursor's landing), so re-registration is
-// clean by construction.
-fn infer_program_trial(stmts) = {
+// ─── THE ONE JUDGMENT (Hβ.infer.judge-once-per-scc) ─────────────────────
+// One parse, one walk, callee-first by binding group, diagnostics shipping.
+// This was the TRIAL of a two-pass tower, and the tower's own comment named
+// the reason for the second pass: a forward reference under one pass reads
+// the loose pre-registered scheme, so a verdict could depend on source
+// order. The DAG walk below is the structural answer — callee-first order
+// resolves every acyclic forward reference before its caller judges, and
+// the cycle discipline judges each SCC as one unit — so what the second
+// pass was actually supplying was measured, not assumed (2026-09-15): its
+// handle numbering (a planned prefix-sum the parallel sweep needed), and a
+// quantified view of every row var for the declared-row gate, which the
+// gate now derives from its own signature. Both products replaced, the
+// pass deletes; its price was 67% of the judgment's heap and the 5% that
+// kept the wheel above the warm-start line.
+fn infer_program_once(stmts, parse_end) = {
   register_primitives()
   pre_register_decls(stmts)
   // The completion prune's boundary: everything below this frontier is a
@@ -1057,57 +1106,21 @@ fn infer_program_trial(stmts) = {
   // collection, two readers).
   let frees_all = stmt_frees(stmts)
   let name_idx = layer_name_index(map(stmt_decl_name, stmts), 0, smap_new())
-  let layers = stmt_layers_ast(frees_all, name_idx)
   let groups = scc_groups(frees_all, name_idx)
-  let rows = trial_group_walk(stmts, groups, make_list(len(stmts)), 0)
+  trial_group_walk(stmts, groups, 0)
   finalize_continuation_boundaries(0, graph_next())
   assert_row_gates_drained()
-  (rows, layers, summ)
-} ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~>
-// The trial is a WORLD of its own: fresh analysis ledgers absorb its
-// verify obligations and ownership/region facts, dying with the
-// bracket — without them the trial's undischarged debt accrued into
-// the SHARED verify ledger and the final judgment reported doubled
-// V_Pending (the capability-hole leg caught the leak as one
-// unexpected obligation).
-affine_ledger ~> region_tracker ~> verify_ledger
+  // The prose gate judges here, on the one generation of comment cells the
+  // parse minted — [0, parse_end) is exactly that generation.
+  comment_refs_check(stmts, 0, parse_end)
+} ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
 
-// round_prints — each named stmt's published scheme, fingerprinted.
-// Rendered after the trial and after the final; a disagreement names a
-// mover — an OVERRIDE (the final's answer ships regardless), never a
-// verification verdict. The whole channel retires with the second pass
-// at rung 3.
-fn round_prints(ref rows) = round_prints_walk(rows, 0, make_list(len(rows)))
-
-// The print computation sits one fn over as the CROSSING form: the
-// branch-stack wrong-end fix rides this same landing, but the m2 leg
-// judges under the PINNED boot's old judge, which still mis-brackets a
-// nested alternative in a consuming arm — the fix cannot accept its own
-// natural shape until a fixed judge is pinned (the world_top crossing
-// law at the ownership layer). The generation after this pin inlines
-// the if/match here and this fn dissolves.
-fn row_print(name) = if name == "" {
-  ""
-} else {
-  match env_lookup(name) {
-    Some((sch, _, _)) => sch |> judgment_ty |> ty_fingerprint,
-    None => "",
-  }
-}
-
-fn round_prints_walk(ref rows, i, own out) = if i >= len(rows) {
-  out
-} else {
-  match rows[i] {
-    (name, _) => round_prints_walk(rows, i + 1, list_set(out, i, row_print(name))),
-  }
-}
-
-fn prints_equal(ref a, ref b) = if len(a) != len(b) { false } else { prints_equal_walk(a, b, 0) }
-
-fn prints_equal_walk(ref a, ref b, i) =
-  if i >= len(a) { true } else if a[i] == b[i] { prints_equal_walk(a, b, i + 1) } else { false }
-
+// No private ledgers. The trial installed its own affine_ledger /
+// region_tracker / verify_ledger so its undischarged debt would die with
+// its bracket instead of doubling the final's V_Pending. One judgment has
+// nothing to double: its obligations ARE the program's, and they land in
+// the pipeline's ambient ledgers where every reader expects them.
+//
 // frontend — lex |> parse, the judgment's input boundary
 fn frontend(source) = source |> lex |> parse_program
 
@@ -1119,7 +1132,7 @@ fn frontend(source) = source |> lex |> parse_program
 // ops carry arms (a partial-effect handler leaves zero fn slots; a perform
 // through one is a garbage dispatch — the tighten_collector constraint).
 handler diag_quiet {
-  diag_report(d, _line) => resume(),
+  diag_report(d, _line, _dmod) => resume(),
   diag_errors() => resume(0),
   diag_refusals() => resume(0),
 }
@@ -1130,8 +1143,8 @@ handler diag_quiet {
 // any in-branch diag_errors/diag_refusals read with branch-local truth.
 // diag_lines_taken hands the whole fact set to the join.
 handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals = 0 {
-  diag_report(diag, line) => // The banked fact carries the DIAG STRUCTURALLY beside the rendered
-  // line — the join re-performs diag_report(diag, line) into the root
+  diag_report(diag, line, dmod) => // The banked fact carries the DIAG STRUCTURALLY beside the rendered
+  // line — the join re-performs diag_report(diag, line, dmod) into the root
   // chain, so every Diagnostic forwarder (tighten_collector, the mcp
   // bank) sees a branch report exactly as a live one, and the root's
   // scope register / tally read the diag itself. The old bank kept only
@@ -1141,7 +1154,7 @@ handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals 
   // judges through the branch bracket).
   {
     let iserr = diag_severity(diag) == SError
-    let grown = list_set(list_extend_to(lines, count + 1), count, (diag, line))
+    let grown = list_set(list_extend_to(lines, count + 1), count, (diag, line, dmod))
     if iserr {
       if diag_refuses(diag) {
         resume() with lines = grown, count = count + 1, errors = errors + 1, refusals = refusals + 1
@@ -1161,7 +1174,7 @@ handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals 
 // capture handler hands the driver its held list through this op, the
 // diag_lines_taken precedent one bracket over.
 effect PolyCapture {
-  poly_captured() -> [(DiagKind, String)]
+  poly_captured() -> [(DiagKind, String, String)]
 }
 
 // The speculative judgment's diag CAPTURE: an attempt runs under it so
@@ -1172,10 +1185,64 @@ effect PolyCapture {
 // driver replays the held list outward on accept or drops it for the
 // honest re-run.
 handler poly_capture with held = [] {
-  diag_report(diag, line) => resume() with held = push(held, (diag, line)),
+  diag_report(diag, line, dmod) => resume() with held = push(held, (diag, line, dmod)),
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
   poly_captured() => resume(held),
+}
+
+// A single source IS a module — stdin's, the REPL line's, the march blob's.
+// There is no unattributed parse and therefore no absent case for any reader
+// to carry: the column is total because entering a module is what parsing is.
+fn infer_program_converged(src) = {
+  enter_link_root()
+  infer_modules_converged([("<stdin>", src)])
+}
+
+// ─── The per-module parse — one text per module, never one weave ─────────
+// THE ROOT the module-blind parse compensated for five ways (the out-of-band
+// range map, NModule minted after the fact from that map, rehome_seam_comments
+// whose own comment said "the parser cannot see seams", module_path_of_span's
+// containment scan, and the seam-render family). The driver used to
+// concatenate the dep DAG into ONE text, so every node was born in the weave's
+// coordinate space unattributed and five machines existed to put back what
+// that threw away.
+//
+// One-namespace judgment never required one TEXT, only one ENV. So: parse each
+// module on its own, concatenate the DECL LISTS, judge as one program. Spans
+// are local from birth because each lex starts at line 1, and the module is on
+// the node because the parse runs inside it.
+//
+// The NModule node is minted BEFORE its own parse so it can be entered, then
+// its body is re-registered with the decls that parse returned — exactly the
+// decls, with no span-containment filter, because there is no weave to cut.
+// The LINK'S OWN module, entered before anything else can mint or report.
+// Without it the window between graph install and the first per-file parse
+// has no module in force — discovery's E_MissingModule fires there — and the
+// readers would each need a "which file, if any" arm, which is the absent
+// case this column exists to not have. The link is a module: it is the
+// program the developer asked for, and the per-file parses enter their own
+// inside it.
+fn enter_link_root() = {
+  let rspan = Span(1, 0, 1, 0)
+  match mint_node(NModule({decls: [], path: "<link>", span: rspan}), rspan) {
+    N(_, _, h) => graph_module_enter(h),
+  }
+}
+
+fn parse_modules(ref mods) = mods |> map(parse_one_module) |> flatten
+
+fn parse_one_module(m) = match m {
+  (path, text) => {
+    let mspan = Span(1, 0, count_lines(text) + 2, 0)
+    let mh = match mint_node(NModule({decls: [], path: path, span: mspan}), mspan) {
+      N(_, _, h) => h,
+    }
+    graph_module_enter(mh)
+    let stmts = lex(text) |> parse_program
+    graph_register_node(mh, NModule({decls: stmts, path: path, span: mspan}))
+    stmts
+  },
 }
 
 // THE ONE JUDGE (Hβ.infer.order-independent-verdicts): every judgment
@@ -1218,240 +1285,51 @@ handler poly_capture with held = [] {
 // The tax is measured — PLAN §5.O's cost law carries the curve.
 // Broken judgment → diagnostic, never a crawl; the fixpoint oracle
 // arbitrates behind it.
-// ONE LEX PER COMPILE. The two PARSES are load-bearing and stay: the final
-// walks a FRESH generation of nodes, which is exactly what `pstart` below
-// reads as its lower bound, so parsing once and judging the same tree twice
-// would collapse the boundary the tower is built on. The two LEXES were never
-// load-bearing — a token is a value, it mints nothing, and lexing the same
-// bytes twice is the Carried-Truth violation with no compensating structure.
-// This is not an improvement to the condemned tower (Anchor 2): its judgment,
-// its cadence and its two generations are untouched, and when rung 3 deletes
-// the second pass this seam simply loses a caller.
-fn infer_program_converged(src) = {
-  let toks = lex(src)
-  match {
-    toks |> parse_program |> infer_program_trial
-  } ~> diag_quiet {
-    (rows, layers, summ) => {
-      let flat_rows = list_to_flat(rows)
-      let prints = round_prints(flat_rows)
-      // The final's parse START, captured before its own parse: the
-      // crc walk's lower bound, so the backtick judge reads only THIS
-      // pass's comment cells.
-      let pstart = graph_next()
-      let out = toks |> parse_program |> infer_program_final(flat_rows, layers, pstart, summ)
-      // The divergence read: the final's publishes are the env's latest
-      // entries, so re-rendering the same names compares the two passes.
-      // Nothing refuses on a mismatch — the final's answer already
-      // shipped — which is why this is a count driven to zero, not a
-      // gate.
-      let prints2 = round_prints(flat_rows)
-      // The arena census (Hβ.perf.per-decl-arena 2a-ii, the corrected DEP
-      // chain's named next landing): the accumulated image-classified byte
-      // count, read from the extent-delta account the image_enter/exit
-      // brackets feed. Same maintainer channel and scope law as the movers
-      // line — unscoped compiles (march / census / battery) keep it, a
-      // user-target verb's ScopeAt quiets it. 2b's image/scratch boundary
-      // fixes itself from this measured number, never from a claim.
-      match diag_scope_of() {
-        ScopeAll => eprint_string("image: {int_to_str(image_bytes())} image-classified byte(s)\n"),
-        _ => (),
-      }
-      if prints_equal(prints, prints2) {
-        ()
-      } else {
-        // The movers report is the MAINTAINER'S instrument — it rides the
-        // register's scope read, so the march / census / battery (never
-        // scoped) keep every line, and a user-target verb's ScopeAt
-        // quiets the ~21-line block that opened every hello-world's
-        // stderr (six audit reports converged on the channel). The block
-        // is never about the user's file, so it has no per-span case; a
-        // divergence a user must see surfaces as a diagnostic through
-        // diag_report, never through this channel.
-        match diag_scope_of() {
-          ScopeAll => {
-            eprint_string("judgment: {int_to_str(movers_count(flat_rows, prints, prints2, 0))} scheme(s) moved between the trial and the final — movers:{movers_line(flat_rows, prints, prints2, 0, 0)}\n")
-            movers_diff(flat_rows, prints, prints2, 0, 0)
-          },
-          _ => (),
-        }
-      }
-      out
+// ONE LEX, ONE PARSE, ONE JUDGMENT. The second parse existed so the second
+// pass could walk a fresh generation of nodes; the second pass existed to
+// re-judge with planned handle numbering and every scheme already
+// published. Neither is needed by a callee-first walk whose declared-row
+// gate reads its own signature (infer_program_once), so the driver is the
+// walk plus the two cost lines the board reads.
+//
+// The cost lines are the maintainer's instrument and ride the register's
+// scope read: unscoped compiles (march / census / battery) print them, a
+// user-target verb's ScopeModule quiets them. `image` is the classified
+// byte count the arena's boundary fixes itself from; `heap` is the
+// judgment's high-water — EXACT, because the bump image is monotonic and
+// the judgment never resets it, where peak RSS measured 33MB of kernel
+// jitter across byte-identical runs (Hβ.perf.cost-ratchet-reads-the-image).
+// The `passes:` line and the movers report both measured the second pass
+// and go with it; the movers ratchet reads zero because there is nothing
+// left for a scheme to move between.
+fn infer_modules_converged(ref mods) = {
+  let stmts = parse_modules(mods)
+  let parse_end = graph_next()
+  infer_program_once(stmts, parse_end)
+  match diag_scope_of() {
+    ScopeAll => {
+      eprint_string("image: {int_to_str(image_bytes())} image-classified byte(s)\n")
+      eprint_string("heap: {int_to_str(heap_mark())} byte(s) at the judgment's high-water line\n")
     },
+    _ => (),
   }
-}
-
-// The TOTAL, beside the capped display: the sixteen-slot line names the
-// CLASS, and its cap hid the magnitude — a family that saturates the
-// slots reads the same as one that fills them exactly (measured: the
-// solo self-recursive family filled all sixteen on every weave, so a
-// new mover in user code was invisible behind known lib movers). The
-// count is what the ratchet reads when this channel goes zero-tolerance
-// — and zero RETIRES the second pass outright: a vacuous final that
-// survives is the rounds regrown at cadence two.
-fn movers_count(ref rows, ref prev_prints, ref cur_prints, i) = if i >= len(rows) {
-  0
-} else {
-  match rows[i] {
-    (name, _) => if name != "" && cur_prints[i] != prev_prints[i] {
-      1 + movers_count(rows, prev_prints, cur_prints, i + 1)
-    } else {
-      movers_count(rows, prev_prints, cur_prints, i + 1)
-    },
-  }
-}
-
-// The movers report names its residue: which schemes the final OVERRODE
-// against the trial's publish (first sixteen — the class is what
-// matters, not the tail). Retires with the channel at rung 3 (D8).
-fn movers_line(ref rows, ref prev_prints, ref cur_prints, i, shown) = if i >= len(rows) || shown >= 16 {
-  ""
-} else {
-  match rows[i] {
-    (name, _) => if name != "" && cur_prints[i] != prev_prints[i] {
-      " {name}{movers_line(rows, prev_prints, cur_prints, i + 1, shown + 1)}"
-    } else {
-      movers_line(rows, prev_prints, cur_prints, i + 1, shown)
-    },
-  }
-}
-
-// The divergence render — the first movers' trial and final fingerprints verbatim.
-// The fingerprints are alpha-normalized total renders (ty_fingerprint),
-// so the A/B byte-diff IS the flipping component; four movers bound the
-// stderr budget (one flipping component repeats across the family).
-fn movers_diff(ref rows, ref prev_prints, ref cur_prints, i, shown) = if i >= len(rows) || shown >= 4 {
-  ()
-} else {
-  match rows[i] {
-    (name, _) => if name != "" && cur_prints[i] != prev_prints[i] {
-      {
-        eprint_string("convergence: flip {name}\n  A: {prev_prints[i]}\n  B: {cur_prints[i]}\n")
-        eprint_string(probe_tail_why(name))
-        probe_entry_hist(name)
-        eprint_string("  re-read: {row_print(name)}\n")
-        movers_diff(rows, prev_prints, cur_prints, i + 1, shown + 1)
-      }
-    } else {
-      movers_diff(rows, prev_prints, cur_prints, i + 1, shown)
-    },
-  }
-}
-
-// Graduated probe (⟳(3) — the movers channel's diagnosis probe): the
-// mover's published row-tail cell and the REASON on it — the Why
-// engine naming whoever bound a published cell between the trial and
-// final fingerprints. Retires with its channel at rung 3 (D8). Its
-// first firing killed the attractor theory (the
-// flips were a monotone front) and named the SCC-chain remainder.
-fn probe_tail_why(ref name) = match env_lookup(name) {
-  None => "  why: no env entry\n",
-  Some((sch, _, _)) => match judgment_ty(sch) {
-    TFun(_, _, row) => match row {
-      EfRow(_, _, tail) => match tail {
-        EtOpen(vs) => "  tail v{int_to_str(last(vs))} ({int_to_str(len(vs))} edge(s)): {show_reason(graph_reason_at(last(vs)))}\n",
-        EtClosed => "  tail closed on the scheme face\n",
-        EtAll => "  tail all on the scheme face\n",
-      },
-    },
-    _ => "  scheme not TFun-rooted\n",
-  },
-}
-
-// The flip's entry HISTORY — every env generation of the mover, index
-// + row-tail letter (o = open var, c = closed, a = all, ? = not
-// TFun-rooted): the A-vs-B histories discriminate a STALE entry
-// surfacing (an old index answering) from an OPEN publish appending
-// (a channel still unpinned). Movers only; the walk is one env
-// snapshot, and it dies with the channel at rung 3.
-fn probe_entry_hist(ref name) = match env_snapshot() {
-  Env(entries) => eprint_string("  env-hist{entry_hist_line(entries, name, 0, 0, "")}\n"),
-}
-
-fn entry_hist_line(ref entries, ref name, i, count, acc) = if i >= len(entries) {
-  " n={int_to_str(count)}{acc}"
-} else {
-  match entries[i] {
-    (en, sch, _, _) => if en == name {
-      entry_hist_line(entries, name, i + 1, count + 1, "{acc} @{int_to_str(i)}:{tail_letter(sch)}")
-    } else {
-      entry_hist_line(entries, name, i + 1, count, acc)
-    },
-  }
-}
-
-fn tail_letter(ref sch) = match judgment_ty(sch) {
-  TFun(_, _, row) => match row {
-    EfRow(_, _, tail) => match tail {
-      EtOpen(_) => "o",
-      EtClosed => "c",
-      EtAll => "a",
-    },
-  },
-  _ => "?",
+  stmts
 }
 
 // Every stmt's free-name list, collected once from the parse tree.
+// THE FREES ARE THE CALL DAG, WHOLE. Every reference is an edge here because
+// collect_free_vars walks the source itself — which is why a statement kind
+// that answers [] in that walk is a decl with no callees as far as the
+// judgment's order can tell (the handler-arm hole, closed 2026-09-17).
+// Free names that key no decl (lib vocabulary, locals) drop through the
+// index miss. scc_groups is the one reader: Tarjan over these edges gives
+// the binding groups the walk judges callee-first, each cycle as one unit.
 fn stmt_frees(ref stmts) = stmt_frees_walk(stmts, make_list(len(stmts)), 0)
 
 fn stmt_frees_walk(ref stmts, own out, i) = if i >= len(stmts) {
   out
 } else {
   stmt_frees_walk(stmts, list_set(out, i, list_to_flat(collect_free_vars(stmts[i], []))), i + 1)
-}
-
-// The stmt-layer projection over PARSE truth. Free names that key no
-// decl (lib vocabulary, locals) answer depth 0 through the index miss.
-// This is the DAG the fan's frozen bases require complete: every
-// reference IS an edge here, because collect_free_vars walks the
-// source itself. The frees ARE the call DAG, WHOLE — depth = 1 + max
-// over every referenced decl's depth, both directions, by memoized
-// descent (a backward-only pass dropped forward edges, and closure
-// then climbed one caller layer per pass — the rounds-era resolution
-// front, measured 2026-07-30). A cycle contributes no edge from an
-// on-stack callee: the SCC's members take depths from their acyclic
-// callees and judge together as one binding group (the cycle
-// discipline — where the rounds once iterated the cycle's rows).
-fn stmt_layers_ast(ref frees_all, ref name_idx) = {
-  let n = len(frees_all)
-  match layers_dfs_all(frees_all, name_idx, make_list(n), make_list(n), 0) {
-    (depths, _) => depths,
-  }
-}
-
-// state[i]: 0 unvisited · 1 on the walk stack · 2 done (depths[i] final).
-fn layers_dfs_all(ref frees_all, ref name_idx, own depths, own state, i) = if i >= len(frees_all) {
-  (depths, state)
-} else {
-  match layers_dfs(frees_all, name_idx, depths, state, i) {
-    (d2, s2) => layers_dfs_all(frees_all, name_idx, d2, s2, i + 1),
-  }
-}
-
-fn layers_dfs(ref frees_all, ref name_idx, own depths, own state, i) = if state[i] != 0 {
-  (depths, state)
-} else {
-  match layers_frees_max(frees_all, name_idx, depths, list_set(state, i, 1), frees_all[i], 0, 0) {
-    (d2, s2, best) => (list_set(d2, i, best), list_set(s2, i, 2)),
-  }
-}
-
-fn layers_frees_max(ref frees_all, ref name_idx, own depths, own state, ref frees, j, best) = if j >= len(frees) {
-  (depths, state, best)
-} else {
-  match smap_get(name_idx, frees[j]) {
-    None => layers_frees_max(frees_all, name_idx, depths, state, frees, j + 1, best),
-    Some(k) => if state[k] == 1 {
-      layers_frees_max(frees_all, name_idx, depths, state, frees, j + 1, best)
-    } else {
-      match layers_dfs(frees_all, name_idx, depths, state, k) {
-        (d2, s2) => {
-          let cand = d2[k] + 1
-          layers_frees_max(frees_all, name_idx, d2, s2, frees, j + 1, if cand > best { cand } else { best })
-        },
-      }
-    },
-  }
 }
 
 // ─── Binding groups — Tarjan SCCs over the same frees DAG ───────────────
@@ -1547,217 +1425,13 @@ fn scc_pop(st, v, own members) = match st {
 
 fn imin(a, b) = if a < b { a } else { b }
 
-// ─── ty_fingerprint — the alpha-normalized deterministic scheme render ──
-//
-// Two passes' judgments of one fn agree exactly when their schemes are
-// alpha-equal — but the var HANDLES are fresh per pass, so structural ==
-// can never say so. The fingerprint renders a type with vars numbered by
-// first occurrence (the alpha normal form), chasing bound vars live, so
-// equal judgments print equal strings across passes (the trial-vs-final
-// divergence read). Scope, stated honestly: rows render by interned
-// name handle (stable per process), EANode effect args and refinement
-// predicates render opaque (their nodes re-mint per pass; a false AGREE
-// there is backstopped by the march's m3 == m4 oracle, never a false
-// mover). Emission dispatches on reprs, structure, and rows — all
-// inside the fingerprint. The channel DELETES at the resolved design's
-// D8 (residue index): with the second pass gone there are no two
-// judgments left to compare.
-fn ty_fingerprint(ty) with GraphRead + Memory + Alloc = match fp_ty(ty, smap_new(), 0) {
-  (s, _, _) => s,
-}
-
-fn fp_ty(ty, map, n) with GraphRead + Memory + Alloc = match ty {
-  TInt => ("i", map, n),
-  TFloat => ("f", map, n),
-  TUnit => ("u", map, n),
-  TByte => ("b", map, n),
-  TList(el) => match fp_ty(el, map, n) {
-    (s, m2, n2) => ("l{s}", m2, n2),
-  },
-  TTuple(els) => match fp_ty_list(els, map, n) {
-    (s, m2, n2) => ("t({s})", m2, n2),
-  },
-  TFun(params, ret, row) => match fp_params(params, map, n) {
-    (ps, m2, n2) => match fp_ty(ret, m2, n2) {
-      (rs, m3, n3) => match fp_row(row, m3, n3) {
-        (es, m4, n4) => ("fn({ps})->{rs}!{es}", m4, n4),
-      },
-    },
-  },
-  TVar(h) => match graph_chase(h) {
-    GNode(NBound(inner), _) => fp_ty(inner, map, n),
-    _ => fp_var(h, map, n),
-  },
-  TName(name, args) => match fp_ty_list(args, map, n) {
-    (s, m2, n2) => ("N{name}({s})", m2, n2),
-  },
-  TRecord(fields) => match fp_fields(fields, map, n) {
-    (s, m2, n2) => ("r\{{s}\}", m2, n2),
-  },
-  TRecordOpen(fields, rv) => match fp_fields(fields, map, n) {
-    (s, m2, n2) => match fp_var(rv, m2, n2) {
-      (vs, m3, n3) => ("ro\{{s}|{vs}\}", m3, n3),
-    },
-  },
-  TRefined(base, _) => // The predicate's nodes re-mint per round — render the base plus an
-  // opaque refinement marker (Verify-side, emission-blind).
-  match fp_ty(base, map, n) {
-    (s, m2, n2) => ("&{s}", m2, n2),
-  },
-  TCont(r, ans, disc, row) => match fp_ty(r, map, n) {
-    (rs, m2, n2) => match fp_ty(ans, m2, n2) {
-      (as_, m3, n3) => {
-        let ds = match disc {
-          OneShot => "1",
-          MultiShot => "*",
-          Either => "e",
-          Abandon => "a",
-        }
-        match fp_row(row, m3, n3) {
-          (es, m4, n4) => ("k({rs}->{ds}{as_}!{es})", m4, n4),
-        }
-      },
-    },
-  },
-  TAlias(name, inner) => match fp_ty(inner, map, n) {
-    (s, m2, n2) => ("A{name}={s}", m2, n2),
-  },
-  TReprPin(r, base) => // The pin is emission-load-bearing (repr dispatch) — render it.
-  match fp_ty(base, map, n) {
-    (s, m2, n2) => ("p{repr_wat(r)}={s}", m2, n2),
-  },
-}
-
-fn fp_var(h, map, n) with Memory + Alloc = {
-  let key = int_to_str(h)
-  match smap_get(map, key) {
-    Some(ord) => ("%{int_to_str(ord)}", map, n),
-    None => ("%{int_to_str(n)}", smap_add(map, key, n), n + 1),
-  }
-}
-
-fn fp_ty_list(ref tys, map, n) with GraphRead + Memory + Alloc = fp_ty_list_walk(tys, 0, "", map, n)
-
-fn fp_ty_list_walk(ref tys, i, acc, map, n) with GraphRead + Memory + Alloc = if i >= len(tys) {
-  (acc, map, n)
+// The judgment's walk — binding groups in callee-first order, each a
+// singleton judged once or a CYCLE judged as ONE unit.
+fn trial_group_walk(ref stmts, ref groups, g) = if g >= len(groups) {
+  ()
 } else {
-  match fp_ty(tys[i], map, n) {
-    (s, m2, n2) => fp_ty_list_walk(tys, i + 1, "{acc}{s},", m2, n2),
-  }
-}
-
-fn fp_params(ref params, map, n) with GraphRead + Memory + Alloc =
-  fp_params_walk(params, 0, "", map, n)
-
-fn fp_params_walk(ref params, i, acc, map, n) with GraphRead + Memory + Alloc = if i >= len(params) {
-  (acc, map, n)
-} else {
-  match params[i] {
-    TParam(pname, pty, _, resolved, _) => {
-      let os = match resolved {
-        Own => "o",
-        Ref => "r",
-        Unmarked => "",
-      }
-      match fp_ty(pty, map, n) {
-        (s, m2, n2) => fp_params_walk(params, i + 1, "{acc}{pname}:{os}{s},", m2, n2),
-      }
-    },
-  }
-}
-
-fn fp_fields(ref fields, map, n) with GraphRead + Memory + Alloc =
-  fp_fields_walk(fields, 0, "", map, n)
-
-fn fp_fields_walk(ref fields: [(String, Ty)], i, acc: String, map, n) with GraphRead + Memory + Alloc = if i >= len(fields) {
-  (acc, map, n)
-} else {
-  match fields[i] {
-    (fname, fty) => match fp_ty(fty, map, n) {
-      (s, m2, n2) => fp_fields_walk(fields, i + 1, "{acc}{fname}:{s},", m2, n2),
-    },
-  }
-}
-
-// Rows render by interned name handle — stable within one process, which
-// is the loop's whole lifetime. A row's name sets are DEDUPED at birth
-// and deliberately ORDERLESS (effects.mn's own law: no algebra consumer
-// reads an order, so ef_make imposes none) — but a fingerprint is an
-// EQUALITY WITNESS, so this render is the one consumer that needs
-// determinism, and it pays for it here, per render, exactly as fp_var
-// alpha-numbers vars: names render in ascending handle order (measured
-// 2026-07-30: walk_lemit/walk_lemit_top fingerprinted one SET in two
-// storage orders and oscillated the cone to the round bound forever).
-// The row fingerprints its RESOLUTION, never its raw face: a var tail's
-// BINDING is row content (the reading law folds it in), so a raw-face
-// walk was bound-content-blind — a stmt whose row tail got taught
-// between rounds fingerprinted stable, the final skipped its
-// re-judgment, and the stale publish carried the taught mess as its
-// face (measured: infer_context's maskless GraphRead/Intern face with a
-// prior round's tail). resolve_row applies the masks as it folds, so
-// the fingerprint moves exactly when the row's MEANING moves.
-fn fp_row(row, map, n) with GraphRead + Memory + Alloc = match resolve_row(row) {
-  EfRow(present, absent, tail) => {
-    let ps = fp_names(present)
-    let as_ = fp_names(absent)
-    match tail {
-      EtClosed => ("{ps}-{as_}.", map, n),
-      EtAll => ("{ps}-{as_}!", map, n),
-      EtOpen(vs) => match fp_edges(vs, "", map, n) {
-        (es, m2, n2) => ("{ps}-{as_}{es}", m2, n2),
-      },
-    }
-  },
-}
-
-// The tail edges into the fingerprint — alpha-numbered through the same
-// map every var rides, so edge identity renders stably per render.
-// Structural walk (the row walks stay off the Iterate vocabulary).
-fn fp_edges(ref vs: [Int], s, map, n) = match vs {
-  [] => (s, map, n),
-  [v, ...rest] => match fp_var(v, map, n) {
-    (vstr, m2, n2) => fp_edges(rest, "{s}{vstr}", m2, n2),
-  },
-}
-
-// Selection by ascending handle — handles are unique after the dedup
-// (one entry per handle; bare/instance collisions upgraded in place),
-// sets are ≤16 names, zero allocation.
-fn fp_names(ref names) with Memory + Alloc = fp_names_from(names, 0 - 1)
-
-fn fp_names_from(ref names, last) with Memory + Alloc = {
-  let idx = fp_names_next_idx(names, last, 0, 0 - 1)
-  if idx < 0 {
-    ""
-  } else {
-    let s = match names[idx] {
-      ENamed(h) => int_to_str(h),
-      EParameterized(h, _) => "{int_to_str(h)}(_)",
-      EPure => "",
-    }
-    "{s}+{fp_names_from(names, eff_name_handle(names[idx]))}"
-  }
-}
-
-fn fp_names_next_idx(ref names, last, i, best) with Memory = if i >= len(names) {
-  best
-} else {
-  let h = eff_name_handle(names[i])
-  let better = h > last && (best < 0 || h < eff_name_handle(names[best]))
-  fp_names_next_idx(names, last, i + 1, if better { i } else { best })
-}
-
-// The trial IS the sizing oracle: each stmt's row is its declared name and
-// its mint count — the graph_next delta around its inference, a fact the
-// graph already carries, read at the stmt boundary. The rows feed the
-// final pass's planned ranges (the deterministic handle partition,
-// types.mn's graph_mint_plan contract) and the stmt-layer projection.
-// The trial's walk — binding groups in topological order, rows written
-// positionally. A singleton judges as today; a CYCLE judges as ONE unit.
-fn trial_group_walk(ref stmts, ref groups, own rows, g) = if g >= len(groups) {
-  rows
-} else {
-  trial_group_walk(stmts, groups, trial_judge_group(stmts, sort(groups[g]), rows), g + 1)
+  trial_judge_group(stmts, sort(groups[g]))
+  trial_group_walk(stmts, groups, g + 1)
 }
 
 // A singleton judges once; a CYCLE iterates locally to its own fixpoint.
@@ -1805,7 +1479,7 @@ fn trial_group_walk(ref stmts, ref groups, own rows, g) = if g >= len(groups) {
 // code hid behind known lib movers — a gate that always fires). The
 // two pieces that fix it apply to every group; only the exit sweep is
 // genuinely multi-member work.
-fn trial_judge_group(ref stmts, members, own rows) = {
+fn trial_judge_group(ref stmts, members) = {
   // THE CYCLE DISCIPLINE (the schemes-are-edges arc's first rung, replacing
   // the refuted iteration direction whole — the vet's redirect executed):
   // monomorphic recursion by default, the signature price for polymorphic
@@ -1828,7 +1502,7 @@ fn trial_judge_group(ref stmts, members, own rows) = {
   // the re-aim it once served is deleted): the declared-row deferral,
   // which parks a cycle member's gate until its co-member chains close.
   set_group_members(map((j) => stmt_decl_name(stmts[j]), members))
-  let rows2 = group_judge_members(stmts, members, rows, 0)
+  group_judge_members(stmts, members, 0)
   set_group_members([])
   // The exit sweep is the one genuinely multi-member piece: it exists so
   // an EARLY member's scheme carries a LATE member's resolution. A
@@ -1851,7 +1525,6 @@ fn trial_judge_group(ref stmts, members, own rows) = {
   // run sequentially, so the parked set at exit IS this group's). The
   // pass tail demotes to the assert-empty belt.
   drain_deferred_row_gates()
-  rows2
 }
 
 fn group_mono_views(ref stmts, ref members, j) = if j >= len(members) {
@@ -1975,20 +1648,29 @@ fn group_final_publish(ref stmts, ref members, j) = if j >= len(members) {
   group_final_publish(stmts, members, j + 1)
 }
 
-fn group_judge_members(ref stmts, ref members, own rows, j) = if j >= len(members) {
-  rows
+fn group_judge_members(ref stmts, ref members, j) = if j >= len(members) {
+  ()
 } else {
-  let i = members[j]
-  group_judge_members(stmts, members, list_set(rows, i, stmt_measure_one(stmts[i])), j + 1)
+  judge_stmt_one(stmts[members[j]])
+  group_judge_members(stmts, members, j + 1)
 }
 
-// The ONE measure home: judge the stmt, return its sizing row — the
-// trial's sweep writes it at the stmt's position; the final's plan
-// prefix-sums it into the deterministic handle bases.
-fn stmt_measure_one(ref node) = {
-  let before = graph_next()
+// EVERY JUDGMENT RUNS INSIDE A MODULE. The stmt was attributed at its own
+// parse, so the fact is already on its handle — read it, never thread it.
+// Entering here means the type cells this judgment mints belong to the file
+// that caused them, and the diagnostics register can stamp a report with the
+// module it is about, which is what scopes narration now that spans are local
+// and a line range no longer distinguishes one file from another.
+fn enter_module_of(ref node) = match node {
+  N(_, _, h) => graph_module_enter(graph_module_of(h)),
+}
+
+// This was stmt_measure_one, which also returned (name, handles minted) —
+// the count the deleted second pass prefix-summed into planned handle bases.
+// A judgment mints what it mints; nothing plans it any more.
+fn judge_stmt_one(ref node) = {
+  enter_module_of(node)
   infer_stmt(node)
-  (stmt_decl_name(node), graph_next() - before)
 }
 
 // The stmt's declared name — the layer projection's index key. A stmt with
@@ -2028,374 +1710,13 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
   )
 }
 
-// The second judgment (retirement condition at the header above
-// infer_program_converged): everything here re-derives what the trial
-// already judged. Its non-redundant duties today are REPORTING (the
-// trial runs absorbed under diag_quiet) and the PLANNED mint (the
-// deterministic bands the fan rides); both move into the one remaining
-// pass when this one deletes at rung 3.
-fn infer_program_final(rows, layers, pstart, summ, stmts) = {
-  {
-    let parse_end = graph_next()
-    register_primitives()
-    refuse_duplicate_type_decls(stmts, 0, len(stmts), smap_new())
-    each(pre_register_alias, stmts)
-    each(pre_register_effect, stmts)
-    fold(smap_new(), pre_register_stmt_final, stmts)
-    // The final's own prereg ceiling (its prereg re-mints the skeletons).
-    set_mint_ceiling(graph_next())
-    // The summaries value arrives from the TRIAL's one classify (grades
-    // read arm structure — no pass changes them) and threads to every
-    // branch bracket — each branch installs its own resume_summaries_ctx
-    // over the same value (a fresh ctx would answer UZero for every
-    // grade and mis-tier dispatch), so a spawned cursor reads grades
-    // without reaching this ambient instance.
-    set_summaries(summ)
-    infer_stmt_list_planned(rows, layers, stmts, summ)
-    finalize_continuation_boundaries(0, graph_next())
-    assert_row_gates_drained()
-    comment_refs_check(stmts, pstart, parse_end)
-  } ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
-  stmts
-}
-
-// The deterministic handle partition: each stmt's mints land in a
-// pre-assigned dense range [base, base + count) — bases are prefix sums of
-// the trial's measured counts from the final's own post-prepass frontier,
-// so the numbering is a pure function of the source through the trial's
-// determinism (the parallel fan must reproduce it exactly, which is its
-// byte-equality gate). The walk proceeds LAYER BY LAYER — the execution
-// shape the fan parallelizes, with within-layer source order — and because
-// bases are pre-assigned by SOURCE order, the numbering is invariant to
-// the walk order: the fixpoint holding across this reordering IS the
-// order-independence proof. A stmt minting fewer than its measure leaves
-// virgin gap cells (absent by the column contract); one minting more
-// overflows to the open space above the plan (graph_fresh's overflow arm)
-// — both deterministic.
-// Each branch's private overflow band, above the plan. The measured
-// distribution (2026-07-26, the whole self-compile): 324 over-measure
-// stmts, every delta 1 or 2 — the fingerprint-blindness residue on the
-// convergence's carried counts — so 64 is a 32× margin, and a stmt
-// crossing its band hits the unseeded guard loudly instead of invading
-// its neighbor's. Banded overflow makes the WHOLE numbering — jumps
-// included — a pure function of the source and the plan: the keystone
-// property (deterministic handle partition) with no execution-order
-// input, which is exactly what lets the fan reproduce the sequential
-// bytes at any K.
-let mint_overflow_quota = 64
-
-fn infer_stmt_list_planned(rows, layers, stmts, summ) = {
-  let flat = list_to_flat(rows)
-  // The plan covers the ranges AND the overflow bands — one region,
-  // pre-opened whole, so no branch ever opens a page.
-  let start = graph_next()
-  let top0 = start + rows_total(flat, 0, 0)
-  let region_end = top0 + len(flat) * mint_overflow_quota
-  graph_mint_plan(region_end)
-  // The branch cursors' shared graph seed, read ONCE after the plan:
-  // the spine table is stable for the whole walk, and the span index
-  // is complete (graph_index_span is parse-only).
-  //
-  let gseed = graph_branch_seed()
-  let iseed = intern_seed()
-  let bases = rows_bases(flat, start)
-  planned_layer_sweep(
-    flat,
-    layers,
-    bases,
-    stmts,
-    summ,
-    start,
-    gseed,
-    iseed,
-    top0,
-    0,
-    flat_max(layers, 0, 0)
-  )
-  graph_mint_seal(region_end)
-}
-
-fn rows_total(ref rows, i, acc) = if i >= len(rows) {
-  acc
-} else {
-  match rows[i] {
-    (_, c) => rows_total(rows, i + 1, acc + c),
-  }
-}
-
-fn rows_bases(ref rows, start) = rows_bases_walk(rows, make_list(len(rows)), start, 0)
-
-fn rows_bases_walk(ref rows, own bases, base, i) = if i >= len(rows) {
-  bases
-} else {
-  match rows[i] {
-    (_, c) => rows_bases_walk(rows, list_set(bases, i, base), base + c, i + 1),
-  }
-}
-
-fn flat_max(ref xs, i, best) =
-  if i >= len(xs) { best } else { flat_max(xs, i + 1, if xs[i] > best { xs[i] } else { best }) }
-
-fn planned_layer_sweep(ref rows, ref layers, ref bases, ref stmts, summ, ceil, gseed, iseed, top0, l, maxl) = if l > maxl {
-  ()
-} else {
-  // The layer-start base capture: performed OUTSIDE any branch bracket,
-  // so the root env instance answers — every branch of this layer reads
-  // the same frozen extent (append-only buffer + frozen count = a true
-  // snapshot), which is exactly the visibility the fan's concurrent
-  // branches will have. Per-stmt replay keeps the sequential stderr and
-  // env byte-identical; the fan defers the same replay to this barrier.
-  //
-  let base = env_base_view()
-  let seed = consume_base()
-  planned_layer_stmts(rows, layers, bases, stmts, summ, ceil, gseed, iseed, l, 0, base, seed, top0)
-  planned_layer_sweep(rows, layers, bases, stmts, summ, ceil, gseed, iseed, top0, l + 1, maxl)
-}
-
-// THE FAN'S EXECUTION SHAPE, sequential form: judge every branch of the
-// layer first (each banks its facts under its own bracket), then join
-// them all IN STMT ORDER at the layer barrier. Same-layer visibility is
-// invariant between the interleaved and barrier forms — a branch reads
-// the FROZEN base, never a sibling's replay, and op-edge evolution
-// lands in the root for LATER layers only — so this restructure is
-// byte-identical by construction, and the fan's concurrent form changes
-// only WHO runs layer_judge_walk's iterations, never what the joins
-// replay.
-fn planned_layer_stmts(ref rows, ref layers, ref bases, ref stmts, summ, ceil, gseed, iseed, l, i, base, seed, top0) = {
-  let facts =
-    layer_judge_walk(rows, layers, bases, stmts, summ, ceil, gseed, iseed, l, 0, base, seed, top0, [])
-  layer_join_walk(facts, 0)
-}
-
-// The in-flight window — a scheduling constant, never a semantics
-// input BY DESIGN: the banded partition makes the emitted bytes a
-// pure function of source and plan, so any window size must produce
-// identical output, and the six-run-variance diff is the standing
-// instrument. THE K>1 DIG'S KILL LEDGER (2026-07-27, six probe
-// batteries — the bind census with per-branch band bounds, the
-// can_yield tail census, the reason census): SIX labels died to the
-// artifact. The prepass registrations were INNOCENT (op schemes are
-// fully quantified — register_one_op's qvars span params + ret +
-// row; the 101 prepass-band binds are each handler decl's OWN branch
-// binding its residual, layer-protected). The NFree/NRowFree publish
-// fallbacks were REAL shared cells (generalize now QUANTIFIES its
-// unresolved arms — callers freshen instead of teaching the decl
-// through the publish; Law-7 byte-identical on the wheel, m2 == m3).
-// Row path compression was the LARGEST shared-write class (1,463
-// foreign row binds per compile, every reason "row path compression"
-// — branches rebinding prior-generation chain cells as an
-// optimization) and it now rides its own op, graph_compress_row,
-// whose branch arm SKIPS (the root's sequential walks re-compress) —
-// measured innocent of the flip but a true determinism hazard closed.
-// THE RESIDUE, measured to its mechanism (the born-reason census —
-// each foreign row bind printed with the PREVIOUS binding's reason):
-// one shared row cell per mutual-recursion family (emit_expr's, the
-// walk_locals_pat/list_copy_into families) is SERIALLY REBOUND by
-// its same-layer caller branches — a born→why chain five deep, each
-// caller's call-edge unify graph_bind_row-ing an ALREADY-BOUND root
-// with its own re-teaching, so the surviving binding is whichever
-// branch ran last and lower's can_yield reads the schedule's pick
-// (the float-format trio's k2 wrap flip, two self-stable attractors,
-// census 0 in both). The rebind census RAN (9,676 per compile):
-// rebinding is pervasive and partly DELIBERATE — inf_exit_fn's
-// finalization overwrites the placeholder (1,982 as the rebinder,
-// 4,674 as the prior binding) — so the blanket never-rebind-a-bound-
-// root rule was REFUTED as the fix shape, and the lattice landed
-// instead: the teaching write on a bound row cell is a JOIN
-// (graph_bind_row's bound arm — row_join, fragments coexisting by
-// GRAPH identity; joins commute and idempote, so N caller branches
-// teaching one cell converge to the same value in ANY order — the
-// LVars/CALM law), the decl-exit REPLACE rides its own op
-// (graph_finalize_row: two algebras, two ops), and the foreign-share
-// ENTRY died at its root — the frozen-read instantiate
-// (subst_ty_build/subst_row_build: the mapping decides BEFORE any
-// live chase; the freeze exists so readers never read live; the one
-// scoped exception is the deliberately-unquantified miss — handler
-// config↔payload two-phase, mono self-entries). The join judge's
-// census on its own source is 0. The six-run variance diff stays the
-// standing instrument; FRAGX the standing collision census.
-// SERIALIZED AT 1 (2026-08-07, the row-half's precondition): the
-// window's K=8 safety rested on the two laws the schemes-are-edges
-// landing dissolves — the value-boundary law (published schemes free
-// of live vars) and the frozen-read instantiate (readers never read
-// live). With live row cells in published schemes, same-layer sibling
-// callers of one shared forward callee JOIN one cell concurrently and
-// the un-CAS'd read-modify-write garbles the edge list (measured: the
-// free_in_fields k2 staging flipping run-to-run; the trap-on-spawn
-// probe convicting the sweep). Window 1 keeps the machinery whole and
-// the branches non-overlapping — race-free over live cells. The
-// parallel form returns at Phase 9.2, where the deterministic handle
-// partition and ATOMIC join writes (the lattice law's implementation
-// half) are designed in.
-let judge_window = 1
-
-// THE FAN: every layer branch runs as a REAL task — a spawned
-// instance of the whole module over the shared image, its world born
-// empty and populated by the bracket's eleven-handler cursor, its
-// facts crossing back as one shared heap record at join. The window
-// spawns ahead up to judge_window tasks and joins IN STMT ORDER —
-// completion order never matters (join_task's atomic wait delivers
-// each branch's facts whole), so the replay stream is byte-identical
-// to the sequential walk by construction. Same-layer branches share
-// only frozen or partitioned state (the serialization note above
-// carries what happens when they stop being frozen): mint ranges and
-// overflow bands are disjoint, ledgers are branch-local, and the
-// intern is a read-only view. The task closure's captures reach
-// branch_judge as ordinary call arguments (the install-config-capture
-// class never fires on params).
-fn layer_judge_walk(ref rows, ref layers, ref bases, ref stmts, summ, ceil, gseed, iseed, l, i, base, seed, top0, own acc) = {
-  let idxs = layer_indices(layers, l, 0, [])
-  judge_blocks(rows, bases, stmts, summ, ceil, gseed, iseed, base, seed, top0, idxs, 0, acc)
-}
-
-fn layer_indices(ref layers, l, i, own out) = if i >= len(layers) {
-  out
-} else {
-  layer_indices(layers, l, i + 1, if layers[i] == l { push(out, i) } else { out })
-}
-
-// Block-wise concurrency: spawn a block of up to judge_window tasks,
-// then join the block in stmt order — at most judge_window instances
-// live at once, and the joins' replay stream is byte-identical to the
-// sequential walk at any block size (completion order never matters;
-// join_task's atomic wait delivers each branch's facts whole).
-fn judge_blocks(ref rows, ref bases, ref stmts, summ, ceil, gseed, iseed, base, seed, top0, ref idxs, b, own acc) = if b >= len(idxs) {
-  acc
-} else {
-  let hi = if b + judge_window < len(idxs) { b + judge_window } else { len(idxs) }
-  let recs =
-    spawn_block(rows, bases, stmts, summ, ceil, gseed, iseed, base, seed, top0, idxs, b, hi, [])
-  judge_blocks(
-    rows,
-    bases,
-    stmts,
-    summ,
-    ceil,
-    gseed,
-    iseed,
-    base,
-    seed,
-    top0,
-    idxs,
-    hi,
-    join_block(recs, 0, acc)
-  )
-}
-
-// A block member is either a task to join or a branch already judged.
-//
-// The SPAWN IS THE CONCURRENCY, NEVER THE SEMANTICS, and the artifact says so
-// at three places: branch_bracket (installed inside branch_judge, spawned or
-// not) carries the private env overlay and the deferred diagnostics; graph,
-// intern, the ledgers and the summaries "stay the root's live instances"; and
-// the `~> graph_handler` wrapper below exists ONLY because a spawned
-// instance's world is empty where the sequential form's render reads the
-// dispatch chain's own instance. So a block of ONE has nothing to gain from a
-// thread — it runs alone by definition — and it was paying a full OS thread
-// plus its bracket for that nothing, which measured as roughly half the
-// compile of `fn main() = 7` (433 threads, wasi_thread_start 48.45%
-// inclusive; Hβ.infer.serialized-judge-still-spawns).
-// The decision is by BLOCK SIZE, not by reading judge_window: at 1 every
-// block is a singleton and goes direct, and when Phase 9.2 restores K=8 the
-// full blocks spawn again with no edit here — a trailing singleton block
-// still going direct, which is correct and free.
-type BranchRec = BrDirect(a) | BrSpawned(b)
-
-fn spawn_block(ref rows, ref bases, ref stmts, summ, ceil, gseed, iseed, base, seed, top0, ref idxs, j, hi, own recs) = if j >= hi {
-  recs
-} else {
-  let i = idxs[j]
-  match rows[i] {
-    (_, count) => {
-      let range = (bases[i], bases[i] + count, top0 + i * mint_overflow_quota)
-      let solo = hi - j == 1 && len(recs) == 0
-      // The task body mirrors the root's OUTER shape: an arm's performs
-      // resolve outer to its install (R2), so diag_branch's renders
-      // chase OUTSIDE the bracket — sequentially they land on the
-      // dispatch chain's empty graph instance (whose density guard
-      // answers virgin t{h}@e0 for unminted-by-it handles); a spawned
-      // instance's world would be EMPTY there and the render died
-      // garbage (measured: show_handle's exhaustive else, the 6,444-line
-      // repro). The wrapper reproduces the root's answers byte-for-byte;
-      // the render-reads-the-guard's-fabrication class is named for its
-      // own landing (Hβ.diag.render-chases-wrong-instance).
-      let rec = if solo {
-        BrDirect(branch_judge(stmts[i], base, seed, summ, ceil, gseed, iseed, range))
-      } else {
-        BrSpawned(spawn_task(() => branch_judge(stmts[i], base, seed, summ, ceil, gseed, iseed, range) ~> graph_handler([], 0, 0, 0, [], 0, 0)))
-      }
-      spawn_block(
-        rows,
-        bases,
-        stmts,
-        summ,
-        ceil,
-        gseed,
-        iseed,
-        base,
-        seed,
-        top0,
-        idxs,
-        j + 1,
-        hi,
-        push(recs, rec)
-      )
-    },
-  }
-}
-
-fn join_block(ref recs, j, own acc) = if j >= len(recs) {
-  acc
-} else {
-  join_block(
-    recs,
-    j + 1,
-    push(
-      acc,
-      match recs[j] {
-        BrDirect(facts) => facts,
-        BrSpawned(t) => join_task(t),
-      }
-    )
-  )
-}
-
-fn layer_join_walk(ref facts, j) = if j >= len(facts) {
-  ()
-} else {
-  branch_join(facts[j])
-  layer_join_walk(facts, j + 1)
-}
-
-// The branch bracket (Phase C, C1c-2): one stmt judged under its own
-// cursor pair — env over the frozen layer-start base (private extends
-// die at the join; publishes replay through the root) and diagnostics
-// rendered at collect. Graph, intern, the ledgers, and the summaries
-// stay the root's live instances — the sequential form the fan's
-// per-thread tapes extend. Config args are frame locals by construction
-// (Hβ.lower.install-config-capture-read: a capture-referencing config
-// arg reads 0; params read true).
-fn branch_judge(stmt, base, seed, summ, ceil, gseed, iseed, range) = {
-  let body = () => {
-    set_summaries(summ)
-    // The branch's own infer_ctx is fresh — the pass's prereg ceiling
-    // re-arms here exactly as the summaries do, so the completion prune
-    // fires inside branch-judged finalizes too.
-    set_mint_ceiling(ceil)
-    consume_seed(seed)
-    infer_stmt(stmt)
-    let vdebt = verify_debt()
-    let clog = consume_log()
-    let pubs = env_publishes()
-    let dfacts = diag_lines_taken()
-    (pubs, dfacts, vdebt, clog)
-  }
-  branch_bracket(body, base, gseed, iseed, range)
-}
-
-// ONE chain, two workloads (Arc 1's factor): the judgment's stmt branches
-// and the ??-fan's candidate branches run the SAME eleven-handler bracket —
-// only the body differs. The uniform pass beats the per-site family.
+// THE BRANCH BRACKET — the ??-fan's candidate branches run this
+// eleven-handler bracket over the shared image; the judgment's own stmt
+// branches ran it too until the planned layer sweep went with the second
+// pass. The fan's parallel form returns at Phase 9.2 on the deterministic
+// handle partition with ATOMIC join writes — the lattice law that makes N
+// branches teaching one row cell converge in any order (graph_bind_row's
+// bound arm is a row JOIN; the decl-exit REPLACE is graph_finalize_row).
 // The bracket mirrors the ambient chain's order whole (the final's
 // trio innermost, then pipeline.mn's spine law — ledgers inside env
 // inside diagnostics): infer_ctx's frames and fresh_for_inference are
@@ -2424,13 +1745,29 @@ fn branch_judge(stmt, base, seed, summ, ceil, gseed, iseed, range) = {
 // source and the plan, independent of execution order: the fan
 // reproduces these bytes at any K. Trail and checkpoints are
 // branch-local; binds land in shared cells the plan partitioned.
-fn branch_bracket(body, base, gseed, iseed, range) = match base {
-  (bb, bc, bi) => match gseed {
-    (gspine, gopen, gspan) => match iseed {
-      (ib, ie, ic) => match range {
-        (mb, mc, bh) => body() ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi) ~> graph_handler(gspine, gopen, mb, mc, gspan, bh, bh + mint_overflow_quota) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
-      },
-    },
+// ─── The SEGMENT bracket — the same chain, on the LIVE graph ─────────
+//
+// Every handler the deleted branch bracket installed EXCEPT `graph_handler`, so the
+// body's graph performs resolve OUTER to the root's own instance and the
+// judgment happens on the one live graph. Isolation is the caller's fork
+// triple (`graph_push_checkpoint` + `world_top` … rollback + restore), the
+// same triple `try_each_annotation` has run at the annotation gradient all
+// along — its own comment names this site as its shape.
+//
+// The fresh ledgers stay, and that is the point of keeping the chain: the
+// triple covers graph, heap and world ONLY, while a candidate's judgment
+// also enters env scopes, accrues verify debt, tags allocations and reports
+// diagnostics — none of it trailed. Those ride per-segment instances and
+// the caller reads their facts before replaying, exactly as the copy did.
+//
+// What this DELETES is the graph copy: a candidate no longer judges against
+// a fresh instance seeded from four root views inside a pre-planned band, so
+// a fact proven in one segment is visible to the next, the hole's own cell
+// is reachable, and the trail records the segment's binds where a diff can
+// read them.
+fn segment_bracket(body, base, iseed) = match base {
+  (bb, bc, bi) => match iseed {
+    (ib, ie, ic) => body() ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
   },
 }
 
@@ -2463,8 +1800,8 @@ fn branch_replay_diags(ref dl, i) = if i >= len(dl) {
   ()
 } else {
   match dl[i] {
-    (d, l) => {
-      diag_report(d, l)
+    (d, l, dm) => {
+      diag_report(d, l, dm)
       branch_replay_diags(dl, i + 1)
     },
   }
@@ -2485,8 +1822,8 @@ fn branch_replay_verify(ref vdebt, i) = if i < 0 {
   ()
 } else {
   match vdebt[i] {
-    (span, pred, reason) => {
-      verify(span, pred, reason)
+    (modh, span, pred, reason) => {
+      verify(modh, span, pred, reason)
       branch_replay_verify(vdebt, i - 1)
     },
   }
@@ -2563,36 +1900,6 @@ fn branch_replay_one(name, scheme, reason, kind) = match scheme {
       },
       _ => env_extend(name, frozen, reason, kind),
     }
-  },
-}
-
-// Types, effects, and handlers re-register per pass (fresh entries shadow
-// pass-1's with deterministic identical tags; the handler arm re-runs the
-// armed state-shadow check the quiet trial absorbed). Fn signatures do
-// NOT: the env's latest entry per fn name IS pass 1's final scheme, which
-// every pass-2 reference — forward included — resolves. The seen-set
-// still refuses a true within-list duplicate.
-fn pre_register_stmt_final(seen, ref node) = match node {
-  N(body, span, _) => match body {
-    NStmt(FnStmt(name, _, _, _, _)) => match smap_get(seen, name) {
-      Some(_) => {
-        report(EDuplicateFnName(name, span))
-        seen
-      },
-      None => smap_add(seen, name, 1),
-    },
-    NStmt(TypeDefStmt(name, variants)) => {
-      register_type_constructors(name, variants)
-      seen
-    },
-    NStmt(HandlerDeclStmt(hname, _ename, config, state, arms)) => {
-      pre_register_handler_sig(hname, config, state, arms)
-      seen
-    },
-    _ => // EffectDeclStmt registered in the pre_register_effect phase — the
-    // final's handler sigs read a complete effect env regardless of
-    // source order.
-    seen,
   },
 }
 
@@ -2678,8 +1985,8 @@ fn infer_stmt(ref node) = match node {
 // bind them in env, enter `InferCtx` for row accumulation, infer body,
 // exit (which binds the row), generalize, re-extend env with scheme.
 fn held_has_poly(held, name: String) = any(
-  (p) => match p {
-    (d, _) => match d {
+  {
+    (d, _, _) => match d {
       TPolyRecursionSignature(owner, _) => owner == name,
       _ => false,
     },
@@ -2687,15 +1994,10 @@ fn held_has_poly(held, name: String) = any(
   held
 )
 
-fn held_has_error(held) = any(
-  (p) => match p {
-    (d, _) => diag_severity(d) == SError,
-  },
-  held
-)
+fn held_has_error(held) = any({ (d, _, _) => diag_severity(d) == SError }, held)
 
 fn replay_one(p) = match p {
-  (d, line) => diag_report(d, line),
+  (d, line, dmod) => diag_report(d, line, dmod),
 }
 
 fn replay_held(held) = each(replay_one, held)
@@ -2909,15 +2211,7 @@ fn rebind_recheck(name: String, q, ty0, span: ValidSpan) = {
   }
   env_extend(
     name,
-    Frozen(
-      map(
-        (pr) => match pr {
-          (_, fresh) => fresh,
-        },
-        mapping
-      ),
-      ty2
-    ),
+    Frozen(map({ (_, fresh) => fresh }, mapping), ty2),
     Located(span, Declared(name)),
     FnScheme
   )
@@ -3005,6 +2299,22 @@ fn infer_fn_speculative(name, params, body_node, ret_ann, effs, handle, span: Va
   }
 }
 
+// One note, narrated: the triple the guard could not raise itself. It is a
+// NAMED decl rather than a lambda at the drain because the row IS the whole
+// content of the fn — Diagnostics with nowhere to live is exactly what the
+// anonymity tier convicts, and the tier is right: this is a stage.
+fn report_guard_note(t) = match t {
+  (d, line, dmod) => diag_report(d, line, dmod),
+}
+
+// THE JUDGMENT BOUNDARY IS WHERE THE GUARD'S REFUSALS GET NARRATED. graph's
+// occurs write-guard cannot report where it stands — a diagnostic performed
+// inside an arm resolves OUTER of its own install and sails past any capture
+// bracket installed deeper, which is exactly where infer_fn_speculative
+// installs poly_capture. So the arm notes and the judgment's own tail drains,
+// in the BODY's world, one statement after the match that provoked them.
+// Every bracket that should see the refusal now does, the Mycroft retry among
+// them (Hβ.diag.an-arms-report-escapes-an-inner-capture).
 fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, poly_hint) = {
   // The decls column, first writer: the FnStmt node handle, noted per
   // judgment (rounds re-note; readers dedup by handle). The let and
@@ -3211,8 +2521,30 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
             // row-polymorphic call parked forever, the crown silently off
             // for exactly the shape the conservative reject exists for).
             // Non-members enforce eagerly, free tail and all.
-            if row_gate_unresolved(row_handle) && group_member(name) {
-              defer_row_gate((name, declared_row, has_pure, row_handle, span))
+            // The signature's own frees — the generalizer's partition, read
+            // here so the gate never mistakes this decl's row polymorphism
+            // (a function-typed param's row riding the body's tail) for a
+            // chain still open. A member whose only free var is its own
+            // param's row enforces eagerly, as non-members always did.
+            // DEEP-CHASED first, as generalize_pair does: the params here are live
+            // TVar(h) cells, and an unchased free_in_ty returns the cell handle —
+            // which chases to itself, never to the row var inside the TFun it is
+            // bound to. Measured 2026-09-17: the unchased set left all 13 gates
+            // unresolved, because ρ_pred was never in it.
+            let sig_frees = free_in_ty(chase_deep(TFun(inferred_params, pinned_ret, mk_ef_pure())))
+            // TWO QUESTIONS, and the first is asked with an EMPTY owned set on
+            // purpose. Whether a member's gate DEFERS is a write-safety
+            // question: enforce_row_gate finalizes the row, and a cycle
+            // member finalized before its last co-member cuts is the "81 early
+            // misfires" this comment already records — measured again
+            // 2026-09-17 as 13 → 39 when members with only their own frees
+            // were let through here (show_list finalized under the whole
+            // render SCC). So ANY free var parks a member. Whether a
+            // parked gate RESOLVES — at the group drain, where the write
+            // is safe, and at the tail — is the signature question, and that
+            // is where `sig_frees` is read.
+            if row_gate_unresolved(row_handle, []) && group_member(name) {
+              defer_row_gate((name, declared_row, has_pure, row_handle, span, sig_frees))
             } else {
               enforce_row_gate(name, declared_row, has_pure, row_handle, span)
             }
@@ -3228,6 +2560,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
       }
     },
   }
+  each(report_guard_note, graph_guard_drain())
 }
 
 // Deferral discriminator: the gate parks only when the body row is BOUND
@@ -3236,7 +2569,24 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
 // declared-row contract stands regardless of resolution lag — the
 // parse_effect_list_from flip's law; the pin itself is condemned at
 // the gate, its record there), and a resolved row gates now.
-fn row_gate_unresolved(row_handle) = match graph_chase(row_handle) {
+// UNRESOLVED means a free row var the SIGNATURE does not own. The body row of
+// a higher-order fn is open in its function-typed parameters' rows by
+// construction — `filter_list(lst, pred) with Memory + Alloc` judges to
+// `Memory + Alloc + ρ_pred`, and ρ_pred is the predicate parameter's own
+// row, read straight off the signature. That var is the decl's polymorphism, exactly the
+// partition generalize_pair draws ("a fn quantifies its SIGNATURE's frees
+// only … a free cell reachable only through the TOP row is never the decl's
+// polymorphism: it is a LIVE LINK"). This predicate used to call every free
+// var unresolved, so a cycle member whose only free var was its own param's
+// row deferred, never grounded (a param's row never does), and reached the
+// pass tail as an internal-invariant failure — thirteen of them, in the
+// trial, muted under diag_quiet on every compile, and the only reason the
+// two-pass wheel judged clean was that the final has no groups and so
+// enforced eagerly where the trial had parked. One pass cannot lean on
+// that: the gate makes the generalizer's distinction itself. `sig_frees` is
+// the signature's free handles; a free var in the tail that is one of them
+// is licensed, and any other is a chain still open.
+fn row_gate_unresolved(row_handle, ref sig_frees: [Int]) = match graph_chase(row_handle) {
   GNode(NRowBound(body_row), _) => // The COMPRESSING resolve: the re-park re-checks this predicate at
   // every later group event (the cross-group deferral), so each check
   // folding the same chain raw re-allocated the fold per event —
@@ -3244,20 +2594,34 @@ fn row_gate_unresolved(row_handle) = match graph_chase(row_handle) {
   // ride the one-hop web (the flat-cell law's read half; safe under
   // the serialized sweep, branch-guarded inside graph_compress_row).
   match resolve_row_compress(body_row) {
-    EfRow(_, _, EtOpen(vs)) => edges_any_free(vs),
+    EfRow(_, _, EtOpen(vs)) => edges_any_free_beyond(vs, sig_frees),
     _ => false,
   },
   _ => false,
 }
 
-// Any edge chasing to a free row cell — structural (off the Iterate
-// vocabulary, the row walks' discipline).
-fn edges_any_free(ref vs: [Int]) = match vs {
+// Any edge chasing to a free row cell the signature does not own —
+// structural (off the Iterate vocabulary, the row walks' discipline). The
+// ownership test is on the CHASED terminal: `sig_frees` holds the
+// signature's handles as free_in_ty collected them, and a tail var that
+// chases to one of those cells is that cell.
+fn edges_any_free_beyond(ref vs: [Int], ref sig_frees: [Int]) = match vs {
   [] => false,
-  [v, ...rest] => match graph_chase(v) {
-    GNode(NRowFree(_), _) => true,
-    _ => edges_any_free(rest),
+  [v, ...rest] => {
+    let r = graph_chase_handle(v)
+    match graph_chase(r) {
+      GNode(NRowFree(_), _) => if sig_owns(sig_frees, r) { edges_any_free_beyond(rest, sig_frees) } else { true },
+      _ => edges_any_free_beyond(rest, sig_frees),
+    }
   },
+}
+
+// Does the signature own this terminal cell? A named walk, not a lambda —
+// the read is GraphRead and a row denied its decl home is the anonymity
+// tier's own conviction.
+fn sig_owns(ref sig_frees: [Int], r) = match sig_frees {
+  [] => false,
+  [o, ...rest] => if graph_chase_handle(o) == r { true } else { sig_owns(rest, r) },
 }
 
 // The declared-row gate, one home for both firing sites (decl exit when
@@ -3510,7 +2874,7 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
 // impossible by construction, the park/drain machinery deletes whole.
 fn drain_deferred_row_gates() = each(
   (g) => match g {
-    (name, declared_row, has_pure, row_handle, span) => if row_gate_unresolved(row_handle) {
+    (name, declared_row, has_pure, row_handle, span, sig_frees) => if row_gate_unresolved(row_handle, sig_frees) {
       defer_row_gate(g)
     } else {
       enforce_row_gate(name, declared_row, has_pure, row_handle, span)
@@ -3519,32 +2883,36 @@ fn drain_deferred_row_gates() = each(
   drain_row_gates()
 )
 
-// B4's belt at the pass tail, refined by the row-channel stamp: gates
-// re-parked for CROSS-GROUP edges legitimately outlive every group
-// event and drain HERE, where the whole pass's chains have closed —
-// they enforce silently against closed truth. EInternalInvariant is
-// reserved for a gate STILL unresolved at the tail: a chain that
-// survived the entire pass names a genuinely missed channel (loud,
-// census-visible) and still enforces (the belt reports, never drops).
-// A named walk, not a fold lambda (the report's row would deny the
-// lambda a decl home).
+// The pass tail: every gate still parked enforces here. Gates re-parked for
+// CROSS-GROUP edges (a callee the DAG placed later — the desugar-hidden
+// names Arc D's reachability law absorbs) legitimately outlive every group
+// event and drain here, where the whole pass's chains have closed.
+//
+// THIS USED TO REPORT AN INTERNAL INVARIANT for a gate whose tail still held
+// a free row var, on the premise that "a chain surviving the whole pass
+// names a missed channel." Measured 2026-09-17 on the wheel, the premise is
+// false in one pass: at the tail every stmt is judged, so no unjudged
+// skeleton remains, and what survives is either the decl's own param row or
+// the FRESH row var of a callee instantiated in its body — free BY
+// CONSTRUCTION under the flow model (group_mono_views freshens rows per
+// use; a call flows into the fresh var and never binds it). `show_list`
+// showed both at once: its render param's row, licensed by the signature,
+// and a row var minted 9,500 handles later inside its body, never a
+// parameter of anything. 39 gates carried exactly that, and the two-pass
+// final had enforced all of them eagerly with those vars present — soundly,
+// because enforcement on an open tail WRITES the declared absences onto it
+// (the D2 arm), so every later instantiation is constrained. The report was
+// measuring the flow model, not a defect; it fired thirteen times per
+// compile in the old trial, under diag_quiet.
+// A named walk, not a fold lambda (enforce's row would deny the lambda a
+// decl home).
 fn assert_row_gates_drained() = assert_gates_walk(drain_row_gates())
 
 fn assert_gates_walk(gs) = if len(gs) == 0 {
   ()
 } else {
   match last(gs) {
-    (name, declared_row, has_pure, row_handle, span) => {
-      if row_gate_unresolved(row_handle) {
-        report(EInternalInvariant(
-          "a row gate for '{name}' is still unresolved at the pass tail — a chain survived the whole pass",
-          span
-        ))
-      } else {
-        ()
-      }
-      enforce_row_gate(name, declared_row, has_pure, row_handle, span)
-    },
+    (name, declared_row, has_pure, row_handle, span, _sig_frees) => enforce_row_gate(name, declared_row, has_pure, row_handle, span),
   }
   assert_gates_walk(drop_last(gs))
 }
@@ -3607,7 +2975,7 @@ fn call_is_alloc_returning(func) = match func {
 // flow (the modal frontier's admit-through-instantiation face) and
 // pass this ground check.
 fn check_instance_args(effs, span: ValidSpan) = each(
-  (eff) => match eff {
+  {
     (ename, _negated, _conn) => match ename {
       EParameterized(h, args) => match env_lookup(intern_name_of(h)) {
         Some(entry) => match entry {
@@ -4724,12 +4092,14 @@ fn row_cap_form(row) with GraphRead + Memory + Alloc + WASI = match chase_row_de
 
 fn fn_arg_component_meet(aps, pps, aret, pret, span: ValidSpan) = {
   each(
-    ((ap, pp)) => unify_types(
-      param_ty(ap),
-      param_ty(pp),
-      span,
-      Inferred("a fn argument's param meets the declared param")
-    ),
+    {
+      (ap, pp) => unify_types(
+        param_ty(ap),
+        param_ty(pp),
+        span,
+        Inferred("a fn argument's param meets the declared param")
+      ),
+    },
     zip(aps, pps)
   )
   unify_types(aret, pret, span, Inferred("a fn argument's return meets the declared return"))
@@ -5100,7 +4470,7 @@ fn residual_with_config_args(resid_h, config, right) = match right {
 }
 
 fn any_arg_labeled(ref args) = any(
-  (a) => match a {
+  {
     N(abody, _, _) => match abody {
       NExpr(LabeledArg(_, _)) => true,
       _ => false,
@@ -5115,7 +4485,7 @@ fn any_arg_labeled(ref args) = any(
 // collection the keep-set uses (signature_free_roots — one walk, the
 // trio discipline), filtered to the row sort the membership compares.
 fn config_row_roots(p) = match param_ty(p) {
-  TVar(h) => filter((r) => is_row_handle(r), signature_free_roots([h])),
+  TVar(h) => filter(is_row_handle, signature_free_roots([h])),
   _ => [],
 }
 
@@ -5228,13 +4598,7 @@ fn handler_payload_ty(ty) = match ty {
 
 // The type args of a parameterized effect's payload (EAType only; a scalar
 // effect arg like Sample(44100) carries no type).
-fn eparam_arg_tys(args) = flatten(map(
-  (arg) => match arg {
-    EAType(t) => [t],
-    _ => [],
-  },
-  args
-))
+fn eparam_arg_tys(args) = flatten(map({ EAType(t) => [t], _ => [] }, args))
 
 // EVERY performed instance of effect `ename` in a row, each as the nominal type
 // `TName(E, [a1..an])` (so unify walks it position-wise). A multi-payload effect
@@ -5249,7 +4613,7 @@ fn instances_in_row(row, ename) = match row {
 fn instances_in_names(names, ename: String) = {
   let enh = intern_str(ename)
   list_to_flat(flatten(map(
-    (n) => match n {
+    {
       EParameterized(nm, args) => if nm == enh { [TName(ename, eparam_arg_tys(args))] } else { [] },
       ENamed(_) => [],
       EPure => // EffName is ENamed | EParameterized | EPure — TOTAL. EPure carries no
@@ -6311,7 +5675,7 @@ fn infer_record_field_values(fields) = if len(fields) == 0 {
 }
 
 fn build_record_field_types(fields) = map(
-  (fld) => match fld {
+  {
     (name, value) => match value {
       N(_, _, vh) => (name, TVar(vh)),
     },
@@ -6348,18 +5712,13 @@ fn merge_override_fields(base_fields, overrides) = fold(
   overrides
 )
 
-fn reject_field(fields, target) = filter(
-  (f) => match f {
-    (n, _) => n != target,
-  },
-  fields
-)
+fn reject_field(fields, target) = filter({ (n, _) => n != target }, fields)
 
 // H4.1 projection — pull the value handles out of a record-field list
 // for region-join lookup. Field names aren't needed for region
 // tracking; only the per-value handles matter.
 fn record_field_handles(fields) = map(
-  (fld) => match fld {
+  {
     (_, value) => match value {
       N(_, _, vh) => vh,
     },
@@ -6829,13 +6188,8 @@ fn enforce_alt_binding_law(branch_binds, span: ValidSpan) = match branch_binds {
   [first, ...rest] => each(
     (bi) => if alt_same_name_set(first, bi) {
       each(
-        (p) => match p {
-          (n, ty_i) => match find(
-            (q) => match q {
-              (m, _) => m == n,
-            },
-            first
-          ) {
+        {
+          (n, ty_i) => match find({ (m, _) => m == n }, first) {
             Some(q0) => match q0 {
               (_, ty_0) => unify_types(ty_0, ty_i, span, Located(span, Inferred("alternation common type"))),
             },
@@ -6851,17 +6205,7 @@ fn enforce_alt_binding_law(branch_binds, span: ValidSpan) = match branch_binds {
   ),
 }
 
-fn alt_same_name_set(a, b) = len(a) == len(b) && all(
-  (p) => match p {
-    (n, _) => any(
-      (q) => match q {
-        (m, _) => m == n,
-      },
-      b
-    ),
-  },
-  a
-)
+fn alt_same_name_set(a, b) = len(a) == len(b) && all({ (n, _) => any({ (m, _) => m == n }, b) }, a)
 
 // pat_binders — the names a pattern binds (pure structural walk).
 // Wildcards and literals bind nothing; a PList rest name binds
@@ -6874,12 +6218,7 @@ fn pat_binders(ref pat) = match pat {
   PCon(_, subs) => flat_map(pat_binders, subs),
   PTuple(subs) => flat_map(pat_binders, subs),
   PList(subs, rest) => flatten([flat_map(pat_binders, subs), plist_rest_binders(rest)]),
-  PRecord(flds, rest) => flatten([flat_map(
-    (fld) => match fld {
-      (_, sub) => pat_binders(sub),
-    },
-    flds
-  ), plist_rest_binders(rest)]),
+  PRecord(flds, rest) => flatten([flat_map({ (_, sub) => pat_binders(sub) }, flds), plist_rest_binders(rest)]),
   PAlt(branches) => // Branch 0 carries the whole alternation's binder set (infer's law).
   // Read through len/list_index — total over every representation — so
   // this walk runs identically under a boot whose list-pattern emit
@@ -6894,7 +6233,7 @@ fn plist_rest_binders(rest) = match rest {
 }
 
 fn build_pat_record_field_specs(flds, span: ValidSpan) = map(
-  (fld) => match fld {
+  {
     (name, _) => {
       let h = mint(Inferred("record pattern field"))
       (name, TVar(h))
@@ -6904,7 +6243,7 @@ fn build_pat_record_field_specs(flds, span: ValidSpan) = map(
 )
 
 fn infer_pat_record_subs(flds, specs, span: ValidSpan) = each(
-  (pair) => match pair {
+  {
     ((_, sub_pat), (_, ty)) => match ty {
       TVar(h) => infer_pat(sub_pat, h, span),
       _ => (),
@@ -6957,7 +6296,7 @@ fn bind_pcon_subpats(params, sub_pats, span: ValidSpan, reason, ctor_name) = {
     report(EConstructorArity(ctor_name, len(params), len(sub_pats), span))
   }
   each(
-    (pair) => match pair {
+    {
       (param, sub_pat) => {
         let sub_h = mint(VarLookup(ctor_name, reason))
         graph_bind(sub_h, param_ty(param), Located(span, VarLookup(ctor_name, reason)))
@@ -7016,8 +6355,9 @@ fn infer_match_arm_iter(arms, scrut, result_h, span: ValidSpan, i, n) = if i >= 
 // Walk arms, gathering each PCon's tag_id (deduped via set_insert).
 // Non-PCon arms (wildcards, vars, lits) contribute no tag. The seed's
 // transfer is structural (the fold chain absorbs it) — an authored `own`
-// here claimed a consume the callee's param product cannot see (fold's
-// `f` is a param callee, product unreadable → the seed reads), and the
+// here claimed a consume the callee's param product cannot see (`fold`'s
+// function parameter is a param callee, product unreadable → the seed
+// reads), and the
 // grade now says so (§11 4.2's one wheel narration; band H's bar is
 // fewer authored markers, not more).
 fn collect_arm_tags(arms, init) = fold(
@@ -7070,12 +6410,7 @@ fn arms_total_variants(arms) = if len(arms) == 0 {
 
 // Wildcard detection: PWild or PVar at the top level catches
 // everything the prior arms don't.
-fn arms_have_wildcard(arms) = any(
-  (arm) => match arm {
-    (pat, _body) => pat_has_wildcard(pat),
-  },
-  arms
-)
+fn arms_have_wildcard(arms) = any({ (pat, _body) => pat_has_wildcard(pat) }, arms)
 
 fn pat_has_wildcard(pat) = match pat {
   PWild => true,
@@ -7136,7 +6471,7 @@ fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, res
 fn bind_arm_args(args, params, op_name, span: ValidSpan) = {
   if len(args) != len(params) { report(EHandlerArmArity(op_name, len(params), len(args), span)) }
   each(
-    (pair) => match pair {
+    {
       (name, param) => {
         let h = mint(Located(span, LetBinding(name, Declared(op_name))))
         graph_bind(h, param_ty(param), Located(span, Declared(op_name)))
@@ -7176,7 +6511,7 @@ fn op_instance_ty(row) = match row {
 
 fn op_instance_in_names(names) = {
   let insts = flatten(map(
-    (n) => match n {
+    {
       EParameterized(nm, args) => [TName(intern_name_of(nm), eparam_arg_tys(args))],
       ENamed(_) => [],
       EPure => [],
@@ -7598,17 +6933,8 @@ fn chase_edges_deep(ref vs: [Int], acc, d) = match vs {
 }
 
 fn chase_eff_names(names, d) = map(
-  (e) => match e {
-    EParameterized(n, args) => EParameterized(
-      n,
-      map(
-        (ea) => match ea {
-          EAType(t2) => EAType(chase_deep_at(t2, d)),
-          other => other,
-        },
-        args
-      )
-    ),
+  {
+    EParameterized(n, args) => EParameterized(n, map({ EAType(t2) => EAType(chase_deep_at(t2, d)), other => other }, args)),
     other => other,
   },
   names
@@ -7618,12 +6944,7 @@ fn map_chase_ty(tys, d) = map((t) => chase_deep_at(t, d), tys)
 
 fn chase_params(params, d) = map((p) => param_with_ty(p, chase_deep_at(param_ty(p), d)), params)
 
-fn chase_fields(fields, d) = map(
-  (fld) => match fld {
-    (name, ty) => (name, chase_deep_at(ty, d)),
-  },
-  fields
-)
+fn chase_fields(fields, d) = map({ (name, ty) => (name, chase_deep_at(ty, d)) }, fields)
 
 // H6: exhaustive Ty enumeration. Scalars have no free handles;
 // aggregates recurse; TVar IS a free handle; TRecordOpen's row
@@ -7682,9 +7003,7 @@ fn free_in_list(tys) = tys |> map(free_in_ty) |> flatten
 
 fn free_in_params(params) = params |> map((p) => free_in_ty(param_ty(p))) |> flatten
 
-fn free_in_fields(fields) = fields |> map((fld) => match fld {
-  (_, ty) => free_in_ty(ty),
-}) |> flatten
+fn free_in_fields(fields) = fields |> map({ (_, ty) => free_in_ty(ty) }) |> flatten
 
 // A row's free variable is its open tail — the same first-class graph
 // node a type variable is. Effect-polymorphism IS value-polymorphism over
@@ -7734,7 +7053,7 @@ fn free_in_edges(ref vs: [Int]) = match vs {
 
 // The free type vars inside an effect-row's parameterized payloads
 // (Iterate(a) ⇒ a's free vars). Bare ENamed effects carry none.
-fn free_in_eff_names(names) = names |> map((n) => match n {
+fn free_in_eff_names(names) = names |> map({
   ENamed(_) => [],
   EPure => // the identity carries no free vars
   [],
@@ -7847,9 +7166,31 @@ fn subst_changes(ty, mapping) = match ty {
   TFloat => false,
   TUnit => false,
   TByte => false,
-  TVar(id) => match graph_chase(id) {
-    GNode(NBound(_), _) => true,
-    _ => find_mapping(mapping, graph_chase_handle(id)) >= 0,
+  TVar(id) => // THE CHECK CHASES, SO THE BUILD CAN SHARE. This answered TRUE for every
+  // bound var — "an NBound var inlines its binding (always differs)" — and
+  // in a JUDGED decl most vars are bound, so check-then-build was here but
+  // never got to answer no: every polymorphic reference rebuilt the callee's
+  // whole type tree. That is Hβ.infer.instantiate-shares-never-clones, whose
+  // cost the docs place on the ALLOCATION channel rather than time.
+  // Following the edge and asking whether the CONTENT changes is the same
+  // question asked where the answer lives: a bound cell holding no mapped
+  // var answers false and its entire subtree SHARES; only a path that
+  // actually reaches a quantified var rebuilds, and it rebuilds exactly as
+  // before. Privacy is untouched — the mapping still decides first, so a
+  // quantified var freshens per use.
+  // Answering by the mapping ALONE is the opposite error and was measured on
+  // the way here: a quantified var sitting BEHIND a binding goes unseen,
+  // never freshens, and polymorphism severs silently.
+  // Termination is the occurs invariant's — graph_bind refuses a type cell
+  // containing itself; the row sort's benign self-loops go through
+  // subst_row_changes, not this walk.
+  if find_mapping(mapping, graph_chase_handle(id)) >= 0 {
+    true
+  } else {
+    match graph_chase(id) {
+      GNode(NBound(inner), _) => subst_changes(inner, mapping),
+      _ => false,
+    }
   },
   TList(elem) => subst_changes(elem, mapping),
   TTuple(elems) => subst_list_changes(elems, mapping, 0, len(elems)),
@@ -8008,12 +7349,7 @@ fn subst_list(tys, mapping) = map((t) => subst_ty(t, mapping), tys)
 fn subst_params(params, mapping) =
   map((p) => param_with_ty(p, subst_ty(param_ty(p), mapping)), params)
 
-fn subst_fields(fields, mapping) = map(
-  (fld) => match fld {
-    (name, ty) => (name, subst_ty(ty, mapping)),
-  },
-  fields
-)
+fn subst_fields(fields, mapping) = map({ (name, ty) => (name, subst_ty(ty, mapping)) }, fields)
 
 // Substitution over the row domain — the open tail var is replaced by its
 // fresh instance from the same mapping subst_ty reads. Row handles and type
@@ -8117,14 +7453,12 @@ fn find_mapping_from(mapping, id, i, n) = if i >= n {
 
 // Registration — ADT constructors, effect ops, handlers
 fn mint_param_placeholders(params, owner_name) = map(
-  (indexed) => match indexed {
-    (idx, _) => mint(FnParam(owner_name, idx, Inferred("param of '{owner_name}'"))),
-  },
+  { (idx, _) => mint(FnParam(owner_name, idx, Inferred("param of '{owner_name}'"))) },
   enumerate(params)
 )
 
 fn mint_params(params, owner_name) = map(
-  (indexed) => match indexed {
+  {
     (idx, p) => {
       let name = param_name(p)
       let h = mint(FnParam(owner_name, idx, Inferred("param of '{owner_name}'")))
@@ -8232,7 +7566,7 @@ fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
   } else {
     apply_refinement_constraint(inner, value_handle, span)
   },
-  TRefined(_, pred) => verify(span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
+  TRefined(_, pred) => verify(graph_module_current(), span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
   _ => (),
 }
 
@@ -8252,14 +7586,9 @@ fn register_type_constructors(type_name, variants) = {
       // node-kind (is_row_handle). qhandles keeps ALL — params AND row vars — so
       // every ctor scheme quantifies (and instantiate freshens) the stored-function
       // rows.
-      let all_handles = map(
-        (pair) => match pair {
-          (_, h) => h,
-        },
-        qmap
-      )
+      let all_handles = map({ (_, h) => h }, qmap)
       let param_handles = filter((h) => !is_row_handle(h), all_handles)
-      let result_ty = TName(type_name, map((h) => TVar(h), param_handles))
+      let result_ty = TName(type_name, map(TVar, param_handles))
       let qhandles = all_handles
       // THE GROUPING IS CARRIED, NEVER RE-DERIVED: the type's own env entry
       // holds its variant specs — minted here where the list is already in
@@ -8291,7 +7620,7 @@ fn register_type_constructors(type_name, variants) = {
           Frozen(qhandles, result_ty),
           Declared(type_name),
           TypeVariants(map(
-            (ix) => match ix {
+            {
               (tag_id, v) => match v {
                 (cn, _, _) => (tag_id, cn, list_index(converted, tag_id)),
               },
@@ -8301,7 +7630,7 @@ fn register_type_constructors(type_name, variants) = {
         )
       }
       each(
-        (indexed) => match indexed {
+        {
           (tag_id, variant) => register_one_variant(
             type_name,
             result_ty,
@@ -8531,12 +7860,8 @@ fn is_record_ty(ty) with Pure = match ty {
   _ => false,
 }
 
-fn build_ctor_params(field_types, base_idx) = map(
-  (indexed) => match indexed {
-    (i, ty) => mk_param("_{int_to_str(base_idx + i)}", ty),
-  },
-  enumerate(field_types)
-)
+fn build_ctor_params(field_types, base_idx) =
+  map({ (i, ty) => mk_param("_{int_to_str(base_idx + i)}", ty) }, enumerate(field_types))
 
 fn register_effect_ops(effect_name, params, ops) = {
   // Register the effect name itself with its op names.
@@ -8548,7 +7873,7 @@ fn register_effect_ops(effect_name, params, ops) = {
   // TTuple([Int])), the one home every authored `Sample(44100)`
   // instance judges its args against; a bare effect publishes the
   // empty tuple. The formerly-empty tuple here was a placeholder.
-  let op_names = map(((n, _, _, _)) => n, ops)
+  let op_names = map({ (n, _, _, _) => n }, ops)
   env_extend(
     effect_name,
     Frozen([], TTuple(map(param_ty, params))),
@@ -8622,13 +7947,13 @@ fn quantify_effect_ops_loop(ops, qmap, i) = if i >= len(ops) {
   }
 }
 
-fn effect_type_vars(ops) = ops |> map((op) => match op {
-  (_, ptys, rty, _) => flatten(map(free_in_ty, ptys)) ++ free_in_ty(rty),
-}) |> flatten
+fn effect_type_vars(ops) =
+  ops |> map({ (_, ptys, rty, _) => flatten(map(free_in_ty, ptys)) ++ free_in_ty(rty) }) |> flatten
 
 // VARIANCE at the op's result. A parameter's unannotated fn-type row is a
-// VAR on purpose — the effect-polymorphic flow channel `map`'s `f` needs,
-// and masking it convicted 297 wheel sites in one march. A RESULT is the
+// VAR on purpose — the effect-polymorphic flow channel `map`'s function
+// parameter needs, and masking it convicted 297 wheel sites in one march.
+// A RESULT is the
 // other direction: nothing flows in, so a var there is not a channel but an
 // unstated promise, and the arm that produces the value teaches the
 // declaration its row instead of meeting it. Measured 2026-08-18: a closure
@@ -8812,7 +8137,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, span: ValidSpan) =
   // and again at re-generalization after the arms.
   let ename = derive_handler_ename(arms, hname)
   let inst_vars = mint_instance_vars(ename, effect_instance_arity(ename), 0)
-  let inst_ty = TName(ename, map((v) => TVar(v), inst_vars))
+  let inst_ty = TName(ename, map(TVar, inst_vars))
   let inst_h = mint(Inferred("effect '{ename}' instance"))
   graph_bind(inst_h, inst_ty, Inferred("effect '{ename}' instance"))
   let handler_ty = TName("Handler", [inst_ty])
@@ -8879,7 +8204,8 @@ fn register_handler(hname, ename_parsed, config, state, arms, span: ValidSpan) =
   let s_h = mint(Inferred("handler result of '{hname}'"))
   // Accumulate the arms' residual row R into r_handle: inferring each arm
   // body under this row scope routes every effect it performs (incl. a call
-  // to a config arg `f`) into r_handle via inf_add_effect/inf_add_row. On
+  // to a function-valued config arg) into r_handle via inf_add_effect/
+  // inf_add_row. On
   // exit, r_handle binds to R — the row `~> h` adds to the caller.
   inf_enter_fn(r_handle, s_h, span, [])
   // EVERYTHING THE INSTALL EVALUATES BELONGS INSIDE THIS SCOPE — the config
@@ -9054,7 +8380,7 @@ fn bind_handler_config_params(config_tparams, hname) = each(
 )
 
 fn bind_handler_state_names(state_binds, hname, span: ValidSpan) = each(
-  (p) => match p {
+  {
     (name, ih) => env_extend(name, Frozen([], TVar(ih)), Located(span, LetBinding(name, Declared(hname))), FnScheme),
   },
   state_binds
@@ -9138,15 +8464,7 @@ fn classify_fixpoint(stmts) = {
   // list_index(decls, i) would be O(N²) per round (§5.O: read a flat array O(1),
   // never re-walk a spine). Both decls and the entries are flat hereafter.
   let decls = list_to_flat(collect_fn_decls_list(stmts, []))
-  classify_rounds(
-    decls,
-    list_to_flat(map(
-      (nb) => match nb {
-        (n, _) => (n, UZero),
-      },
-      decls
-    ))
-  )
+  classify_rounds(decls, list_to_flat(map({ (n, _) => (n, UZero) }, decls)))
 }
 
 fn classify_rounds(decls, entries) = {
@@ -9718,7 +9036,7 @@ fn predicate_of_assert_arg(args) with Memory + Alloc =
 // TParam's fifth slot, read by resolve_call_args at every install that
 // omits the field (SYNTAX §«Default parameter values»).
 fn mint_handler_config_tparams(config, hname, base_idx) = map(
-  (indexed) => match indexed {
+  {
     (i, p) => {
       let idx = base_idx + i
       let h = mint(FnParam(hname, idx, Inferred("config-param of '{hname}'")))
@@ -9731,26 +9049,12 @@ fn mint_handler_config_tparams(config, hname, base_idx) = map(
 // Utilities
 fn infer_expr_list(ref nodes) = each(infer_expr, nodes)
 
-fn collect_handles(ref nodes) = map(
-  (node) => match node {
-    N(_, _, h) => h,
-  },
-  nodes
-)
+fn collect_handles(ref nodes) = map({ N(_, _, h) => h }, nodes)
 
-fn collect_tvar_types(ref nodes) = map(
-  (node) => match node {
-    N(_, _, h) => TVar(h),
-  },
-  nodes
-)
+fn collect_tvar_types(ref nodes) = map({ N(_, _, h) => TVar(h) }, nodes)
 
-fn unify_list_elems(elems, target_h, span: ValidSpan) = each(
-  (elem) => match elem {
-    N(_, _, eh) => unify(eh, target_h, span, ListElement(Inferred("list element"))),
-  },
-  elems
-)
+fn unify_list_elems(elems, target_h, span: ValidSpan) =
+  each({ N(_, _, eh) => unify(eh, target_h, span, ListElement(Inferred("list element"))) }, elems)
 
 // Each string-interpolation fragment binds to the canonical String
 // alias node directly;
@@ -9794,7 +9098,7 @@ fn mint_concat_cells(n, span: ValidSpan, acc) = if n <= 0 {
 }
 
 fn check_splice_flow_labels(fragments, span: ValidSpan) = each(
-  (frag) => match frag {
+  {
     N(body, fspan, fh) => match body {
       NExpr(LitString(_)) => // literal part: always Public, no IFC check
       (),
@@ -9814,7 +9118,12 @@ fn check_splice_flow_labels(fragments, span: ValidSpan) = each(
 fn splice_flow_check(h, fspan: ValidSpan) = match graph_chase(h) {
   GNode(NBound(ty), _) => {
     let label = query_flow_label(ty)
-    verify(fspan, PFlowLe(label, Public), Located(fspan, Inferred("ifc: string splice flow label")))
+    verify(
+      graph_module_current(),
+      fspan,
+      PFlowLe(label, Public),
+      Located(fspan, Inferred("ifc: string splice flow label"))
+    )
   },
   _ => // unresolved: open-world default = Public, no check needed
   (),

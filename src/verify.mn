@@ -34,13 +34,13 @@ import io
 // the swap targets the undecidable arm; the decidable arm here stays
 // load-bearing across the swap.
 handler verify_ledger with debt = [] {
-  verify(span, predicate, reason) => match predicate_decide(predicate) {
+  verify(modh, span, predicate, reason) => match predicate_decide(predicate) {
     Some(true) => resume(),
     Some(false) => {
       report_refinement_rejected(predicate, span, reason)
       resume()
     },
-    None => resume() with debt = [(span, predicate, reason)] ++ debt,
+    None => resume() with debt = [(modh, span, predicate, reason)] ++ debt,
   },
   verify_debt() => resume(debt),
   verify_reset() => resume() with debt = [],
@@ -250,7 +250,7 @@ fn ty_lo_at(handle) with GraphRead + Memory + Alloc = match graph_chase(handle) 
 
 fn ty_lo(ty) with GraphRead + Memory + Alloc = match ty {
   TAlias(_, inner) => ty_lo(inner),
-  TRefined(base, pred) => lo_best(ty_lo(base), pred_lo(pred)),
+  TRefined(base, pred) => lo_best(ty_lo(base), domain_lo(pred_domain(pred))),
   TReprPin(_, base) => // A width pin narrows representation, never value bounds.
   ty_lo(base),
   TVar(h) => // A type-slot VAR carries the handle; the bound is the CELL's live
@@ -266,37 +266,242 @@ fn ty_lo(ty) with GraphRead + Memory + Alloc = match ty {
   _ => None,
 }
 
-// Either source may carry the bound; the tighter (larger) lower bound wins.
-fn lo_best(ea, eb) with Memory + Alloc = match ea {
+// Either source may carry the bound; the tighter (larger) lower bound wins,
+// which is the meet with the larger-of-two pick.
+fn lo_best(ea, eb) with Memory + Alloc = bound_meet(int_max, ea, eb)
+
+// The domain a TYPE states about its inhabitants — the same walk `ty_lo`
+// makes, answering the whole fact instead of one end. An alias is transparent,
+// a refinement meets its base with its predicate's reading, a width pin
+// narrows representation and never values, and a var reads the cell live.
+fn ty_domain(ty) with GraphRead + Memory + Alloc = match ty {
+  TAlias(_, inner) => ty_domain(inner),
+  TRefined(base, pred) => domain_meet(ty_domain(base), pred_domain(pred)),
+  TReprPin(_, base) => ty_domain(base),
+  TVar(h) => ty_domain_at(h),
+  _ => dom_top(),
+}
+
+fn ty_domain_at(handle) with GraphRead + Memory + Alloc = match graph_chase(handle) {
+  GNode(kind, _) => match kind {
+    NBound(ty) => ty_domain(ty),
+    _ => dom_top(),
+  },
+}
+
+// ── The DOMAIN read — what a predicate states about `self` ───────────
+//
+// The whole fact, in one walk: both ends of what a refinement admits, read
+// together. A walk that answers one end alone forces any consumer wanting the
+// other to grow a mirror family beside it — two walks over one fact, the
+// parallel-arrays drift at the function layer. `ty_lo` is this read projected
+// through `domain_lo`, and the bound-meet is `domain_meet` at the domain
+// altitude.
+//
+// It is an OVER-approximation by contract (Domain, types.mn): the reader may
+// decide what to construct from it, never what to admit.
+fn pred_domain(pred) with GraphRead + Memory + Alloc = match pred {
+  PTrue => dom_top(),
+  PCompare(op, lh, rh) => compare_domain(op, lh, rh),
+  PAnd(a, b) => domain_meet(pred_domain(a), pred_domain(b)),
+  POr(a, b) => domain_join(pred_domain(a), pred_domain(b)),
+  PNot(_) => // The complement of a range is two rays, which DRange cannot hold; the
+  // top is the honest superset rather than a bound that would cut inhabitants.
+  dom_top(),
+  PBoolNode(_) => DUndecided,
+  PPatternMatch(_, _) => DUndecided,
+  PFlowLe(_, _) => // A flow obligation constrains WHERE a value may go, never which values it
+  // may be — the domain is untouched, which is a reading, not a gap.
+  dom_top(),
+  PWithSelf(_, inner) => pred_domain(inner),
+}
+
+fn dom_top() with Memory + Alloc = DRange(None, None)
+
+fn is_self_node(handle) with GraphRead + Memory + Alloc = match graph_node_body(handle) {
+  NExpr(VarRef(name)) => name == "self",
+  _ => false,
+}
+
+// One comparison, read from whichever side `self` stands on: the other side
+// must fold to a ground constant, or the fragment stops (DUndecided) rather
+// than guessing.
+fn compare_domain(op, lh, rh) with GraphRead + Memory + Alloc = if is_self_node(lh) {
+  match node_const(rh) {
+    Some(v) => self_op_const(op, v),
+    None => DUndecided,
+  }
+} else if is_self_node(rh) {
+  match node_const(lh) {
+    Some(v) => self_op_const(flip_cmp(op), v),
+    None => DUndecided,
+  }
+} else {
+  DUndecided
+}
+
+// `n < self` read from self's side is `self > n`. Identity on anything that is
+// not a comparison is correct because the one reader answers DUndecided there.
+fn flip_cmp(op) with Pure = match op {
+  BLt => BGt,
+  BGt => BLt,
+  BLe => BGe,
+  BGe => BLe,
+  _ => op,
+}
+
+// `self OP v`. The strict bounds step by one, which is why DRange is integral;
+// a non-Int operand answers DUndecided for the ordering ops and still answers
+// exactly for equality, where no predecessor is needed.
+fn self_op_const(op, v) with Memory + Alloc = match op {
+  BEq => DFinite([v]),
+  BNe => // The complement of one point is not a range; top is the honest superset.
+  dom_top(),
+  BLt => match v {
+    LVInt(n) => DRange(None, Some(n - 1)),
+    _ => DUndecided,
+  },
+  BLe => match v {
+    LVInt(n) => DRange(None, Some(n)),
+    _ => DUndecided,
+  },
+  BGt => match v {
+    LVInt(n) => DRange(Some(n + 1), None),
+    _ => DUndecided,
+  },
+  BGe => match v {
+    LVInt(n) => DRange(Some(n), None),
+    _ => DUndecided,
+  },
+  _ => // An arithmetic operator in a comparison slot states nothing this
+  // fragment can read.
+  DUndecided,
+}
+
+// MEET — both predicates hold, so the truth is the intersection. An unreadable
+// side yields to the readable one: the intersection is a SUBSET of either side,
+// so keeping the decided side stays the over-approximation the contract
+// requires, and nothing real is cut.
+fn domain_meet(a, b) with Memory + Alloc = match a {
+  DUndecided => b,
+  DFinite(vs) => match b {
+    DUndecided => a,
+    DFinite(ws) => DFinite(vs |> filter(lit_in(??, ws))),
+    DRange(lo, hi) => DFinite(vs |> filter(lit_in_range(??, lo, hi))),
+  },
+  DRange(la, ha) => match b {
+    DUndecided => a,
+    DFinite(ws) => DFinite(ws |> filter(lit_in_range(??, la, ha))),
+    DRange(lb, hb) => DRange(bound_meet(int_max, la, lb), bound_meet(int_min, ha, hb)),
+  },
+}
+
+// JOIN — either predicate may hold, so the truth is the union and the reading
+// must COVER it. Two ranges give their hull; two finite sets give their
+// concatenation, which is exact; anything mixed or unreadable widens to the
+// top, because a bound that cannot cover the union would cut inhabitants.
+fn domain_join(a, b) with Memory + Alloc = match a {
+  DUndecided => dom_top(),
+  DFinite(vs) => match b {
+    DFinite(ws) => DFinite(vs ++ ws),
+    DRange(_, _) => dom_top(),
+    DUndecided => dom_top(),
+  },
+  DRange(la, ha) => match b {
+    DRange(lb, hb) => DRange(bound_join(int_min, la, lb), bound_join(int_max, ha, hb)),
+    DFinite(_) => dom_top(),
+    DUndecided => dom_top(),
+  },
+}
+
+fn lit_same(a, b) with Memory + Alloc = match litval_eq(a, b) {
+  Some(x) => x,
+  None => false,
+}
+
+fn lit_in(v, ws) with Memory + Alloc = ws |> any(lit_same(v, ??))
+
+// A value outside the range is cut; a value the integral range cannot speak
+// about is KEPT, because the meet may only over-approximate.
+fn lit_in_range(v, lo, hi) with Memory + Alloc = match v {
+  LVInt(n) => bound_admits_lo(lo, n) && bound_admits_hi(hi, n),
+  _ => true,
+}
+
+fn bound_admits_lo(lo, n) with Pure = match lo {
+  Some(l) => n >= l,
+  None => true,
+}
+
+fn bound_admits_hi(hi, n) with Pure = match hi {
+  Some(h) => n <= h,
+  None => true,
+}
+
+// Two ways to combine a pair of bounds, and only two: under a MEET an open
+// side yields to the closed one, because a constraint that says nothing cannot
+// loosen a constraint that says something; under a JOIN an open side absorbs,
+// because a union with an unbounded set is unbounded. Which END is being
+// combined is the comparator, not a flag — the four near-identical combiners
+// this replaces differed by one glyph each and were a family where a pair of
+// higher-order reads belongs.
+fn bound_meet(pick, ea, eb) with Memory + Alloc = match ea {
   Some(a) => match eb {
-    Some(b) => if a < b { Some(b) } else { Some(a) },
-    None => Some(a),
+    Some(b) => Some(pick(a, b)),
+    None => ea,
   },
   None => eb,
 }
 
-// The lower bound a type-level predicate states about `self`:
-// `n <= self` / `n < self` with a ground left operand. Operands are
-// node handles (the refinement's own parse nodes).
-fn pred_lo(pred) with GraphRead + Memory + Alloc = match pred {
-  PCompare(op, lh, rh) => match graph_node_body(rh) {
-    NExpr(VarRef(rname)) => if rname == "self" {
-      match node_const(lh) {
-        Some(LVInt(n)) => match op {
-          BLe => Some(n),
-          BLt => Some(n + 1),
-          _ => None,
-        },
-        _ => None,
-      }
-    } else {
-      None
-    },
-    _ => None,
+fn bound_join(pick, ea, eb) with Memory + Alloc = match ea {
+  Some(a) => match eb {
+    Some(b) => Some(pick(a, b)),
+    None => None,
   },
-  PAnd(a, b) => lo_best(pred_lo(a), pred_lo(b)),
-  PWithSelf(_, inner) => pred_lo(inner),
-  _ => None,
+  None => None,
+}
+
+fn int_max(a, b) with Pure = if a > b { a } else { b }
+
+fn int_min(a, b) with Pure = if a < b { a } else { b }
+
+// The bounds a domain states, for the readers that want one end. A finite set
+// bounds itself; a member the integral bound cannot speak about leaves the end
+// open rather than inventing one.
+fn domain_lo(d) with Memory + Alloc = match d {
+  DRange(lo, _) => lo,
+  DFinite(vs) => if vs |> all(is_lv_int) { vs |> fold(None, min_of_lit) } else { None },
+  DUndecided => None,
+}
+
+fn domain_hi(d) with Memory + Alloc = match d {
+  DRange(_, hi) => hi,
+  DFinite(vs) => if vs |> all(is_lv_int) { vs |> fold(None, max_of_lit) } else { None },
+  DUndecided => None,
+}
+
+fn is_lv_int(v) with Pure = match v {
+  LVInt(_) => true,
+  _ => false,
+}
+
+// The guard above admits only integral members, so the other arm carries the
+// accumulator untouched rather than inventing a bound for a value it cannot
+// read.
+fn min_of_lit(acc, v) with Memory + Alloc = match v {
+  LVInt(n) => match acc {
+    Some(a) => if n < a { Some(n) } else { Some(a) },
+    None => Some(n),
+  },
+  _ => acc,
+}
+
+fn max_of_lit(acc, v) with Memory + Alloc = match v {
+  LVInt(n) => match acc {
+    Some(a) => if n > a { Some(n) } else { Some(a) },
+    None => Some(n),
+  },
+  _ => acc,
 }
 
 // Bind the refinement's `self` to the value node being refined. A predicate's
@@ -566,29 +771,31 @@ fn report_verify_debt(debt) = if len(debt) == 0 {
   // hello-world, the audit's measured flood) stay the census
   // channel's. ScopeAll keeps every line; the SUMMARY count still
   // reports through diag_report in every scope.
-  debt_lines(debt, module_seams(), diag_scope_of(), 0)
+  debt_lines(debt, diag_scope_of(), 0)
   report(VPending(len(debt), span_zero()))
 }
 
-fn debt_lines(ref debt, ref seams, ref scope, i) = if i >= len(debt) {
+// The seams argument is GONE with the weave: the span is already the
+// developer's own coordinate, so there is no offset to subtract and no
+// containment scan to run. The module rides the obligation, so scoping is a
+// name compare instead of a line-range test that two files could both pass.
+fn debt_lines(ref debt, ref scope, i) = if i >= len(debt) {
   ()
 } else {
   match debt[i] {
-    (dspan, pred, _) => if debt_span_in_scope(dspan, scope) {
-      eprint_string("verify: pending {classify_predicate(pred)} {show_predicate(pred)} at {span_render_local(seams, dspan)}\n")
+    (modh, dspan, pred, _) => if debt_in_scope(modh, scope) {
+      eprint_string("verify: pending {classify_predicate(pred)} {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(dspan)}\n")
     } else {
       ()
     },
   }
-  debt_lines(debt, seams, scope, i + 1)
+  debt_lines(debt, scope, i + 1)
 }
 
-fn debt_span_in_scope(ref dspan, ref scope) with Pure = match scope {
+fn debt_in_scope(modh, ref scope) with GraphRead + Memory + Alloc = match scope {
   ScopeAll => true,
   ScopeNone => false,
-  ScopeAt(sstart, snlines) => match dspan {
-    Span(sl, _, _, _) => sl >= sstart && sl < sstart + snlines,
-  },
+  ScopeModule(name) => module_name_of_handle(modh) == name,
 }
 
 fn classify_predicate(pred) with Pure = match pred {
@@ -612,7 +819,7 @@ effect SmtSolver {
 }
 
 handler verify_smt with witnesses = [], debt = [] {
-  verify(span, predicate, reason) => match predicate_decide(predicate) {
+  verify(modh, span, predicate, reason) => match predicate_decide(predicate) {
     Some(true) => resume(),
     Some(false) => {
       report_refinement_rejected(predicate, span, reason)
@@ -629,14 +836,14 @@ handler verify_smt with witnesses = [], debt = [] {
       SmtUnsat => resume(),
       SmtSat(counterexample) => {
         report_refinement_rejected(predicate, span, reason)
-        resume() with witnesses = [(span, predicate, counterexample)] ++ witnesses
+        resume() with witnesses = [(modh, span, predicate, counterexample)] ++ witnesses
       },
       SmtUnknown => // SmtUnknown is a GENUINELY undischarged obligation — accrue it as
       // pending debt (never silently resume, which would discharge an
       // obligation the solver could not prove; the no-silent-fallback law
       // at the proof gate). It lives in the SAME debt ledger verify_ledger
       // keeps, so verify_debt projects it live.
-      resume() with debt = [(span, predicate, reason)] ++ debt,
+      resume() with debt = [(modh, span, predicate, reason)] ++ debt,
     },
   },
   verify_debt() => // verify_debt projects the SMT handler's residual LIVE (Carried-Truth — the
@@ -659,12 +866,8 @@ handler verify_smt with witnesses = [], debt = [] {
 // list, read live — the cursor's projection of what the solver established
 // and what it could not. (Surpasses Dafny/F*: the witness is a walkable Reason
 // edge, not a separate counterexample dump.)
-fn verify_residual(ref debt, ref witnesses) with Memory + Alloc = debt ++ map(
-  (w) => match w {
-    (span, pred, model) => (span, pred, VerifyWitness(model)),
-  },
-  witnesses
-)
+fn verify_residual(ref debt, ref witnesses) with Memory + Alloc =
+  debt ++ map({ (modh, span, pred, model) => (modh, span, pred, VerifyWitness(model)) }, witnesses)
 
 fn predicate_to_smt_lib(ref pred) with Memory + Alloc + GraphRead + Diagnostic + Intern =
   "(assert {predicate_to_smt(pred)})\n(check-sat)"
@@ -699,17 +902,25 @@ fn smt_logop(ref op, ref a, ref b) with GraphRead + Memory + Alloc + Diagnostic 
 // level and nested call arg — is resolved via graph_node_body and rendered
 // uniformly, never a second node-destructure path). Follow the edge, read the
 // live node — the AST-in-graph fabric makes every sub-node a resolvable handle.
-fn handle_to_smt(handle) with GraphRead + Memory + Alloc + Diagnostic + Intern =
-  body_to_smt(graph_node_body(handle))
-
-// Render a NodeBody as an SMT term. Every node-kind that can appear in a
-// refinement-predicate operand is enumerated; a genuinely non-encodable shape
-// raises E_VerifyUnencodable (Located) and renders the unsat-forcing sentinel
-// `false` — NEVER a fabricated `true` (a `true` fallback in a PROOF GATE claims
-// proof of the unprovable — the most dangerous silent fallback in the compiler;
-// the no-silent-fallback law, deleted not wrapped). A call's args are HANDLES
-// (the AST-in-graph fabric), mapped through handle_to_smt — no i/n index loop.
-fn body_to_smt(body) with GraphRead + Memory + Alloc + Diagnostic + Intern = match body {
+// THE `body_to_smt(graph_node_body(h))` SPLIT WAS THE DEFECT, and the probe
+// that found it is worth more than the fix. Wiring this serializer to a
+// projection (`mentl query <f> "smt"`) ran it for the first time, and on the
+// wheel's own `type Sample = Float where 0.0 - 1.0 <= self && …` it rendered
+// `(- 66664 686237016)` where `show_predicate` — reading THE SAME predicate
+// handles — rendered `0.0 - 1.0`. So the graph was sound and the serializer
+// was not, which the comparison settled in one command.
+//
+// The second number MOVED between two builds of identical source (686234536 →
+// 686237016), which is what named it: a heap POINTER printed through the
+// `LitInt` arm, not a stored literal. The difference from the working sibling
+// is that `show_pred_operand` matches `graph_node_body(handle)` INLINE while
+// this passed the NodeBody across a call boundary first — so the float
+// variant's payload arrived as a word and matched the wrong arm. Dropping the
+// four `ref` markers first REFUTED the borrow-marker hypothesis (the numbers
+// moved but stayed wrong), which is the only reason this one is trustworthy.
+//
+// The one read, inline, exactly as the sibling does it.
+fn handle_to_smt(handle) with GraphRead + Memory + Alloc + Diagnostic + Intern = match graph_node_body(handle) {
   NExpr(LitInt(n)) => int_to_str(n),
   NExpr(LitFloat(f)) => float_to_str(f),
   NExpr(LitString(s)) => "\"{s}\"",
@@ -724,11 +935,20 @@ fn body_to_smt(body) with GraphRead + Memory + Alloc + Diagnostic + Intern = mat
   },
 }
 
+// Every node-kind that can appear in a refinement-predicate operand is
+// enumerated above; a genuinely non-encodable shape raises
+// E_VerifyUnencodable (Located) and renders the unsat-forcing sentinel
+// `false` — NEVER a fabricated `true` (a `true` fallback in a PROOF GATE
+// claims proof of the unprovable — the most dangerous silent fallback in the
+// compiler; the no-silent-fallback law, deleted not wrapped). A call's args
+// are HANDLES (the AST-in-graph fabric), mapped through handle_to_smt — no
+// i/n index loop.
+//
 // A call renders as `(fname arg…)` with every arg resolved through its handle
 // (the operand-Node channel PCompare already uses); the fname is the callee's
 // name read live from its node body, or the unencodable sentinel if it is not a
 // bare name reference.
-fn smt_call(ref callee, ref args) with GraphRead + Memory + Alloc + Diagnostic + Intern = match callee {
+fn smt_call(callee, args) with GraphRead + Memory + Alloc + Diagnostic + Intern = match callee {
   N(cbody, _, _) => {
     let fname = match cbody {
       NExpr(VarRef(n)) => n,
@@ -743,7 +963,7 @@ fn smt_call(ref callee, ref args) with GraphRead + Memory + Alloc + Diagnostic +
 
 // Each arg is a handle — map through handle_to_smt and join (map/fold, never an
 // imperative i/n counter; Anchor 6).
-fn smt_arg_terms(ref args) with GraphRead + Memory + Alloc + Diagnostic + Intern = fold(
+fn smt_arg_terms(args) with GraphRead + Memory + Alloc + Diagnostic + Intern = fold(
   "",
   (acc, arg) => match arg {
     N(_, _, h) => "{acc} {handle_to_smt(h)}",
@@ -751,13 +971,13 @@ fn smt_arg_terms(ref args) with GraphRead + Memory + Alloc + Diagnostic + Intern
   args
 )
 
-fn smt_binop(ref op, ref l, ref r) with GraphRead + Memory + Alloc + Diagnostic + Intern = match l {
+fn smt_binop(op, l, r) with GraphRead + Memory + Alloc + Diagnostic + Intern = match l {
   N(_, _, lh) => match r {
     N(_, _, rh) => "({smt_binop_sym(op)} {handle_to_smt(lh)} {handle_to_smt(rh)})",
   },
 }
 
-fn smt_unop(ref op, ref x) with GraphRead + Memory + Alloc + Diagnostic + Intern = match x {
+fn smt_unop(op, x) with GraphRead + Memory + Alloc + Diagnostic + Intern = match x {
   N(_, _, xh) => match op {
     UNot => "(not {handle_to_smt(xh)})",
     UNeg => "(- {handle_to_smt(xh)})",

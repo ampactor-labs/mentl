@@ -78,17 +78,14 @@ type Explanation = Explanation(String, String, String, Option(Patch), Reason)
 //
 // reason_chain: the Why chain
 //
-// The propose projection: every PROVEN survivor as (Node, Reason), and every
-// vocabulary candidate the ALLOWED row refused as (name, Reason) — the
-// rejection keeps its Why (PLAN §5: retain the rejection reasons; the row
-// pruning IS the second moat, and a pruned candidate the developer cannot
-// see is a guess they cannot audit).
-type Proposals = Proposals([(Node, Reason)], [(String, Reason)])
+// The propose projection is `Proposal` (types.mn), beside the `Domain` its
+// value question carries: one VERDICT plus every vocabulary candidate the
+// ALLOWED row refused, each refusal keeping its Why (PLAN §5: the row pruning
+// IS the second moat, and a pruned candidate the developer cannot see is a
+// guess they cannot audit).
+type Context = Context([(String, Binding, Reason, SchemeKind)], EffRow, String, Int)
 
-// survivors, rejected
-type Context = Context([(String, Binding, Reason, SchemeKind)], EffRow, String, Span)
-
-// scope bindings (the Env's own entries), the LIVE active-effect row, the enclosing decl's name ("" at top level — the vocabulary excludes candidates whose free-name closure reaches it: proposing the hole's own enclosing fn, or anything that transitively calls it, is nontermination by construction), and the HOLE'S OWN SPAN — the position the proposals are for, the ranker's nearness anchor (candidate_rank reads decl and use nearness against it).
+// scope bindings (the Env's own entries), the LIVE active-effect row, the enclosing decl's name ("" at top level — the vocabulary excludes candidates whose free-name closure reaches it: proposing the hole's own enclosing fn, or anything that transitively calls it, is nontermination by construction), and the HOLE'S OWN HANDLE — the cell the proposals are for. The fourth field was the hole's SPAN, a coordinate copied beside the very handle that gives it live, and the copy was load-bearing in the worst way: with only a span the proof gate had no cell to bind, so it instantiated a FRESH target and called that safety. The handle carries the span (parse_span_of), the type (ty_of_kind over its live kind), and the union-find root every candidate must agree with. One edge where three copies were.
 // The full Boolean row reaches synth — not a
 // flattened positive [EffName]. So `!E` (the
 // negative capability, PLAN §4⑥) is readable at
@@ -118,10 +115,14 @@ effect Teach {
 // enumerate_inhabitants (multi-shot raw). Any proposer — enumerative,
 // SMT, LLM, user — plugs in as a handler. The compiler verifies.
 effect Synth {
-  // proven survivors with their Whys + row-rejected vocabulary with theirs
-  synth_propose(Ty, EffRow, Context) -> Proposals
-  verify_candidate(Candidate, Ty) -> Bool
-  enumerate_inhabitants(Ty, EffRow, Context) -> [Node]
+  // the verdict with its Why + row-rejected vocabulary with theirs.
+  // The target TYPE is not a parameter: the Context carries the hole's
+  // handle, and a type read from that handle is the same fact one
+  // dereference away. Passing it separately was a copy that could drift
+  // from the cell it described — and did, for exactly as long as the
+  // proof gate compared candidates against it instead of against the cell.
+  synth_propose(EffRow, Context) -> Proposal
+  verify_candidate(Candidate, Int) -> Bool
 }
 
 // Default Teach handler — the substrate's self-projection. Reads the graph through
@@ -368,11 +369,7 @@ fn try_each_annotation(handle, candidates, base_ty) = {
     heap_reset(mark)
     world_restore(w)
     (ann, ok)
-  }) |> filter((pair) => match pair {
-    (_, ok) => ok,
-  }) |> map((pair) => match pair {
-    (ann, _) => (ann, unlock_capability(ann)),
-  })
+  }) |> filter({ (_, ok) => ok }) |> map({ (ann, _) => (ann, unlock_capability(ann)) })
 }
 
 // Speculative apply: compute the narrowed type/row, graph_bind it, and
@@ -396,7 +393,7 @@ fn apply_annotation_tentatively(handle, ann, base_ty) = match ann {
     // carries this claim's discharge (band F's own path), so the apply
     // itself admits.
     let span = unwrap_source_span(sp)
-    verify(span, pred, Refinement(pred, PTrue))
+    verify(graph_module_current(), span, pred, Refinement(pred, PTrue))
     true
   },
   AOwn(_, _) => // parameter-level marker; type narrowing at call sites
@@ -470,8 +467,11 @@ fn catalog_handled_effects(handler_name) with Intern + Memory + EnvRead + !Mutat
 }
 
 // H5: capability unlocks for an annotation. !Alloc unlocks
-// CRealTime; !IO + Pure unlock CCompileTimeEval; etc. The list is
-// returned by render_audit's severance section.
+// CRealTime; !IO + Pure unlock CCompileTimeEval; etc. The list is what
+// `severance_named` filters on and `render_module_severance` spends: an
+// effect this map does not name severs just as provably and buys nothing
+// the audit can say, which is why the unnamed ones ride as one count at
+// the module — a gap in THIS function, not in the developer's code.
 fn capabilities_for_annotation(ann) with Memory + Alloc + Intern = match ann {
   APure(_) => [CMemoize, CCompileTimeEval, CParallelize],
   ARefined(_, _, _) => [],
@@ -591,12 +591,7 @@ fn find_by_priority(proven, priorities) = {
 }
 
 fn find_annotation(proven, target) = {
-  let hits = filter(
-    (pair) => match pair {
-      (ann, _) => annotation_eq(ann, target),
-    },
-    proven
-  )
+  let hits = filter({ (ann, _) => annotation_eq(ann, target) }, proven)
   if len(hits) == 0 { None } else { Some(head(hits)) }
 }
 
@@ -636,17 +631,6 @@ fn annotation_eq(a, b) with Pure = match a {
 // until leaf reasons (Declared, Unmarked, MissingVar) terminate. Depth-limited at 20.    // drift-audit: ignore — "cycles" referencing graph cycle detection, not deferred work
 fn why_from_handle(handle) = match graph_chase(handle) {
   GNode(_, reason) => why_expand(reason, 0),
-}
-
-fn teach_synthesize(hole_handle, context) = match graph_chase(hole_handle) {
-  GNode(kind, _) => match kind {
-    NBound(ty) => match context {
-      Context(_, allowed, _, _) => match synth_propose(ty, allowed, context) {
-        Proposals(survivors, _rejected) => if len(survivors) == 1 { Some(head(survivors)) } else { None },
-      },
-    },
-    _ => None,
-  },
 }
 
 // H6: exhaustive Ty enumeration. Only TFun carries an explicit
@@ -731,128 +715,30 @@ fn show_capability(cap) = match cap {
   CProvenAbsence(name) => "Proven absence of {name} (the transitive !{name})",
 }
 
-// render_why — Located-aware Why Engine renderer (I18)
-// teach_why returns a Reason DAG. render_why walks it, emitting
-// one indented line per structural frame. Located(span, inner)
-// produces `<line:col-line:col>` at its depth; structured variants
-// produce a short human label then recurse on inner reasons; leaf
-// variants terminate via show_reason.
+// THE SECOND WHY RENDERER AND THE SECOND POSITION FANOUT ARE DELETED HERE,
+// and what they were is worth one paragraph because a projection with two
+// homes is the Carried-Truth Law at the surface the medium exists to serve.
 //
-// This is the user-visible payoff of I13/I13.1: every unification,
-// instantiation, subsumption wrote a Located edge into the graph;
-// render_why chases them into readable coordinate trails. IDEs/LSP
-// consume this output as hover text; `mentl explain <handle>` dumps
-// it to stdout.
-fn indent_for(depth) = indent_for_loop(depth, "")
-
-fn indent_for_loop(n, acc) = if n <= 0 { acc } else { indent_for_loop(n - 1, acc ++ "  ") }
-
-fn render_why(reason) = render_why_at(reason, 0)
-
-fn render_why_at(reason, depth) = if depth > 20 {
-  "{indent_for(depth)}[depth limit reached]\n"
-} else {
-  match reason {
-    Located(span, inner) => "{indent_for(depth)}{show_span(span)}\n{render_why_at(inner, depth + 1)}",
-    Unified(a, b) => "{indent_for(depth)}unified:\n{render_why_at(a, depth + 1)}{indent_for(depth)}with:\n{render_why_at(b, depth + 1)}",
-    OpConstraint(op, l, r) => "{indent_for(depth)}op '{op}' constraint:\n{render_why_at(l, depth + 1)}{indent_for(depth)}versus:\n{render_why_at(r, depth + 1)}",
-    VarLookup(name, inner) => "{indent_for(depth)}var '{name}' lookup:\n{render_why_at(inner, depth + 1)}",
-    FnReturn(name, inner) => "{indent_for(depth)}return of '{name}':\n{render_why_at(inner, depth + 1)}",
-    FnParam(name, idx, inner) => "{indent_for(depth)}param '{name}' (#{int_to_str(idx)}):\n{render_why_at(inner, depth + 1)}",
-    MatchBranch(a, b) => "{indent_for(depth)}match branches:\n{render_why_at(a, depth + 1)}{indent_for(depth)}& \n{render_why_at(b, depth + 1)}",
-    ListElement(inner) => "{indent_for(depth)}list element:\n{render_why_at(inner, depth + 1)}",
-    IfBranch(inner) => "{indent_for(depth)}if branch:\n{render_why_at(inner, depth + 1)}",
-    LetBinding(name, inner) => "{indent_for(depth)}let '{name}':\n{render_why_at(inner, depth + 1)}",
-    Instantiation(name, inner) => "{indent_for(depth)}instantiation of '{name}':\n{render_why_at(inner, depth + 1)}",
-    InferredCallReturn(callee, inner) => "{indent_for(depth)}call to '{callee}':\n{render_why_at(inner, depth + 1)}",
-    InferredPipeResult(verb, inner) => "{indent_for(depth)}{verb} pipe:\n{render_why_at(inner, depth + 1)}",
-    Declared(_) => // Leaf variants — render via show_reason and terminate.
-    render_leaf(reason, depth),
-    Inferred(_) => render_leaf(reason, depth),
-    Fresh(_) => render_leaf(reason, depth),
-    MissingVar(_) => render_leaf(reason, depth),
-    Placeholder(_) => render_leaf(reason, depth),
-    BinOpPlaceholder(_) => render_leaf(reason, depth),
-    Refinement(_, _) => render_leaf(reason, depth),
-    UnifyFailed(_, _) => render_leaf(reason, depth),
-    FreshInContext(_, _) => render_leaf(reason, depth),
-    DefaultReason(_, _) => render_leaf(reason, depth),
-    VerifyWitness(_) => render_leaf(reason, depth),
-  }
-}
-
-fn render_leaf(reason, depth) = "{indent_for(depth)}{show_reason(reason)}\n"
-
-// teach_why_string ties the effect-returning teach_why to the pure
-// renderer. Callers (LSP hover, explain surface, Quick Fix surface)
-// invoke this directly.
-fn teach_why_string(handle) with GraphRead + Memory + Alloc + Intern =
-  render_why(why_from_handle(handle))
-
-// ─── teach_session — `<|` fanout over the five Teach-cluster ops ──────
+// Four decls named render_why, render_why_at, render_leaf and indent_for
+// walked a Reason DAG into an indented structural dump — no backticks on
+// those, because they no longer resolve and a reference that points nowhere
+// is the thing the comment-ref gate exists to refuse. `mentl why` never
+// called them: the live renderer is `render_why_hops` (src/main.mn), which walks
+// the same chain and renders file:line through the range map, each hop's
+// phrase, the binding's literal value read live from `node_const`, and the
+// author's attached `//` lede from `graph_comment_at`. One was a tree of
+// constructor names; the other speaks the developer's file back to them.
+// Two homes, and the dead one was the worse form — which is how a duplicate
+// always ends, because only one of them is being improved.
 //
-// The Teach effect declares five entry points (teach_here, teach_gradient,
-// teach_why, teach_error, teach_unlock). teach_session borrows a
-// position to all five branches simultaneously — output is the 5-tuple
-// the IDE renders as one panel ("everything Mentl knows to teach about
-// this position"). Same `<|` shape as cursor.mn's eight-aspect fanout,
-// scoped to the Teach cluster.
+// A decl named teach_session fanned a position across five Teach ops into a
+// 5-tuple "IDE panel", and its own comment said it was the "same `<|` shape
+// as cursor.mn's eight-aspect fanout". That fanout is the SHIPPED address
+// surface (`mentl <file:line>`), so this was a narrower copy of it with
+// three of the eight arms missing, reachable from nothing. Its private
+// vocabulary — teach_ic_loop, the TeachSession type, caret_span_from_handle,
+// annotation_inferred_for — went with it, likewise unbackticked.
 //
-// Drift refused: 1 (no dispatch table); 6 (five uniform branches; no
-// primitive special case); 7 (output 5-tuple, not parallel-arrays);
-// 9 (all five bodied here; no "later").
-fn teach_session(handle) with Teach + GraphRead + Memory + Alloc = match graph_chase(handle) {
-  GNode(kind, _) => {
-    let span = caret_span_from_handle(handle)
-    let pos = (handle, kind, span)
-    match pos <| (((h, k, sp)) => match k {
-      NBound(ty) => teach_here("at handle", sp, ty),
-      _ => (),
-    }, ((h, _, _)) => teach_gradient(h), ((h, _, _)) => teach_why(h), ((h, _, sp)) => teach_error("E_Position", sp, Inferred("teach_session inquiry")), ((_, k, _)) => match k {
-      NBound(ty) => match annotation_inferred_for(ty) {
-        Some(ann) => teach_unlock(ann),
-        None => CMemoize,
-      },
-      _ => CMemoize,
-    }) {
-      (_, gradient, why, _, _) => TeachSession(gradient, why),
-    }
-  },
-}
+// Measured by the medium on itself: `mentl query src/main.mn unreachable`
+// named all eleven, in one read, at the moment the facet was asked.
 
-type TeachSession = TeachSession(Option(AnnotationSuggestion), Reason)
-
-fn caret_span_from_handle(handle) with GraphRead + Memory + Alloc = match graph_chase(handle) {
-  GNode(_, reason) => match reason {
-    Located(sp, _) => sp,
-    _ => span_zero(),
-  },
-}
-
-fn annotation_inferred_for(ty) with Memory + Alloc = match ty {
-  TFun(_, _, _) => Some(APure(None)),
-  _ => None,
-}
-
-// ─── Multi-position teach — map over a handle list ───────────────────
-//
-// The DELETED teach_pair (binary special-case) was erased per
-// CLAUDE.md Anchor 6: callers compose
-// `map(teach_session, handles)` directly; teaching each handle on its
-// own core is a `><` fanout under its own `~> Thread` at the call site
-// (Hβ.lower.schedule-specialized-callee). Drift 6 erasure: small-arity
-// special-case removed.
-//
-// ─── teach_ic_loop — `<~` IC fixpoint on teach knowledge stability ────
-//
-// Teach loops until the project's knowledge base stops changing.
-// Every accepted gradient suggestion mutates the graph; IC invalidates;
-// teach re-projects; the loop converges when no Reason chain changes.
-// Per PLAN §2's cached cursor: build IS the <~ loop closing on
-// stability.
-//
-// `<~` requires iterative context — IC handler installed upstream.
-// accumulate(initial_handle) starts at the cursor's argmax and
-// IC-narrows toward proven-complete teach surface.
-fn teach_ic_loop(initial_handle) with Teach + IC + GraphRead + Memory + Alloc =
-  initial_handle |> teach_session ~> mentl_default <~ accumulate(initial_handle)

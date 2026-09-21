@@ -29,7 +29,9 @@ type EntryVerb
   // a persisted image path — the file IS the argument
   | VResume(String)
   | VCompileStdin
-  | VRun(String)
+  // target, then the program's own argv (everything after the target — the
+  // executor hands it to the program as its args, NUL-joined at the seam)
+  | VRun(String, [String])
   | VCheck(String)
   // the cursor-address form — `mentl lib/tutorial/09-all.mn:40:20`: target, line, col (0 = whole-line). Drift-38's endpoint: the address IS the surface; verbs are transports
   | VAt(String, Int, Int)
@@ -41,6 +43,7 @@ type EntryVerb
   | VRepl
   // the medium judges its own generation
   | VMarch
+  | VVerify(Option(String))
   // the gate on MCP stdio — agents propose, nothing executes unproven
   | VMcp
   | VSession
@@ -76,6 +79,14 @@ type VerbSpec = VerbSpec(String, String, ([String]) -> EntryHandlerInvocation, S
 fn req_target(argv, mk, msg) with Memory + Alloc =
   if len(argv) >= 3 { Invocation(mk(path_to_module(argv[2]))) } else { ParseError(msg) }
 
+// The run verb keeps everything after its target: those words are the
+// PROGRAM's argv, not the wheel's, and the executor passes them through.
+fn run_verb_args(a) with Memory + Alloc = if len(a) >= 3 {
+  Invocation(VRun(path_to_module(a[2]), drop(3, a)))
+} else {
+  ParseError("run needs a target: mentl run <path> [args…]")
+}
+
 // The verbs, in help-presentation order (the parser matches by name, so order
 // here is the human's reading order, never the dispatch order). A `""` hint is
 // a no-argument verb.
@@ -95,18 +106,18 @@ fn why_verb_args(a) with Memory + Alloc = if len(a) >= 4 {
 
 fn verb_specs() with Memory + Alloc = [VerbSpec(
   "run",
-  "<path>",
-  (a) => req_target(a, (t) => VRun(t), "run needs a target: mentl run <path>"),
+  "<path> [args…]",
+  run_verb_args,
   "compile, prove, execute (a hole or refuted claim REFUSES)"
 ), VerbSpec(
   "check",
   "<path>",
-  (a) => req_target(a, (t) => VCheck(t), "check needs a target: mentl check <path>"),
+  (a) => req_target(a, VCheck, "check needs a target: mentl check <path>"),
   "diagnostics only, no emit"
 ), VerbSpec(
   "compile",
   "<path>",
-  (a) => req_target(a, (t) => VCompile(t), "compile needs a target: mentl compile <path>"),
+  (a) => req_target(a, VCompile, "compile needs a target: mentl compile <path>"),
   "emit WAT to stdout"
 ), VerbSpec(
   "resume",
@@ -125,7 +136,7 @@ fn verb_specs() with Memory + Alloc = [VerbSpec(
 ), VerbSpec(
   "audit",
   "<path>",
-  (a) => req_target(a, (t) => VAudit(t), "audit needs a target: mentl audit <path>"),
+  (a) => req_target(a, VAudit, "audit needs a target: mentl audit <path>"),
   "the capability set + severance unlocks"
 ), VerbSpec(
   "query",
@@ -185,6 +196,11 @@ fn verb_specs() with Memory + Alloc = [VerbSpec(
   "",
   (a) => Invocation(VMarch),
   "judge the wheel: emit, compare against the last generation, verdict"
+), VerbSpec(
+  "verify",
+  "[path]",
+  (a) => Invocation(VVerify(optional_target(a, 2))),
+  "the standing bounds the medium keeps on its own source — a rise REFUSES"
 ), VerbSpec(
   "mcp",
   "",

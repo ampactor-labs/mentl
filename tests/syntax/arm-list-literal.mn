@@ -1,0 +1,24 @@
+// expect: 34
+// SYNTAX §«Function literals»: a function is MINTED with an ARM LIST.
+// `{ p => b, … }` is the literal — the same graph a one-param lambda
+// whose body matches that param already builds, so the form adds a
+// spelling and no node.
+//
+// RED before the parse case lands: `{ Leaf => 3, … }` reaches
+// parse_brace_expr, fails the record-literal discrimination (the first
+// token is a capitalized constructor followed by `=>`, not `:`/`,`/`}`)
+// and parses as a BLOCK — so the arms read as a match-less sequence and
+// the fixture does not compile at all.
+//
+// The three arms exercise the three pattern shapes the literal must
+// carry: a nullary constructor, a binding constructor pattern, and a
+// wildcard. `apply_twice` proves the literal is a VALUE — passed as an
+// argument, called twice — not a parse-site convenience.
+type Shape = Leaf | Node(Int) | Fork(Int, Int)
+
+fn apply_twice(f, a, b) = f(a) + f(b)
+
+fn main() = {
+  let weigh = { Leaf => 3, Node(n) => n * 2, _ => 7 }
+  apply_twice(weigh, Node(5), Leaf) + weigh(Fork(1, 2)) + weigh(Node(7))
+}

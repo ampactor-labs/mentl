@@ -33,6 +33,19 @@
 
 ## ⊜ Interrogate, don't absorb — the law that prevents the next re-grounding ⊜
 
+> **INTERROGATE THE CODE EXACTLY AS HARD AS THE DOCS** (Morgan, 2026-09-06).
+> The prose is not the only thing an intelligence wrote without being vetted
+> line by line — the ARTIFACT is too, and a structure's existence is not
+> evidence that it should exist. Read every function you touch the way you
+> read a claim: what is it compensating for, and would the finished medium
+> have it at all? The compensations do not announce themselves; they look like
+> competent code, they have careful comments, and their comments frequently
+> name the very defect they exist to paper over ("the parser cannot see
+> seams", "the freeze exists so readers never read live"). Read the comment as
+> a CONFESSION and follow it to the root. This is why a fix must never be
+> defined as ultimate-relative-to-what-is-there: that laundering is how one
+> unverified structure propagates its shape into everything built beside it.
+>
 > **These three docs are the current best answer, NOT authority.** At every claim
 > you read here or in `PLAN.md`/`SYNTAX.md`, ask: *is this the ultimate form, or
 > just the considered form?* The decisions in `PLAN.md §4` are resolved — but the
@@ -55,6 +68,33 @@
 > read the source — **never trust that you have "absorbed" a paragraph.** Until
 > `mentl audit` is real and makes the wrong move *unsayable* (`PLAN.md §0`), YOU
 > are `mentl audit`, by hand, every turn.
+>
+> **MECHANISM BEATS INSTRUCTION, MEASURED 2026-09-21 AND NOT CLOSE.** Across one
+> full audit landing the GATES caught roughly thirty errors — the comment-ref
+> ratchet refused twenty-five backticked names for things just deleted, the
+> drift-audit hook BLOCKED a commit over one word, the census ratchets refused
+> four counts, the march refused two pins. The PROSE above caught zero that a
+> gate did not. That is not an argument for less prose; it is the ordering rule
+> for every lesson that arrives from here on: **a law that CAN become a gate
+> must, and prose is for the ones that cannot.** A census shape, a ratchet, a
+> refusing diagnostic and a hook are all cheaper than a paragraph and none of
+> them can be absorbed instead of obeyed. When a session ends with a new
+> conviction, the first question is not "where does this go in the docs" but
+> "what would refuse it," and the doc entry is the residue of that question.
+>
+> **AND THE REASON PROSE CANNOT BE TRUSTED IS NOW MEASURED IN THIS REPO'S OWN
+> VOICE.** The audit found confident, well-argued, carefully-hedged comments
+> describing architecture that is not there: *"`mentl edit` IS this loop
+> running"* over a function with zero callers; *"this fn is the terminal read
+> every voice surface shares"* over a renderer nothing calls; *"every effect row
+> is a re-derivation"* refuted by the artifact one pin later. Every one was
+> written by an intelligence that writes exactly the way this file writes, with
+> the same cadence of conviction. **Fluency and correctness are independent
+> variables in that intelligence's output** — a paragraph can be internally
+> consistent, appropriately qualified, persuasive, and simply false about the
+> code beside it. This is the empirical content of "interrogate, don't absorb,"
+> and it is why the answer has to be mechanical rather than a resolution to try
+> harder.
 
 ## ⚖ The law is ALIVE — update it, consolidate it, count its kills ⚖
 
@@ -378,7 +418,17 @@
 >   hypothesis is worse than none. (4) Count the KILLS: every theory a
 >   measurement destroys is progress and gets recorded as such — twelve
 >   dead labels turned "durable state torn" into "the slots buffer aliases
->   the env state," each kill one probe. (5) A correctness invariant held
+>   the env state," each kill one probe. **The kills belong in the LANDING
+>   RECORD, not only in the session** (2026-09-21): the SMT pointer-render
+>   bug killed two hypotheses before its fix — the `ref` markers, where the
+>   numbers MOVED between builds and stayed wrong (which is what named the
+>   value a heap pointer rather than a literal), then a float-payload-
+>   across-a-call shape, refuted at a two-variant probe that came back
+>   correct. Reporting only the fix would have banked a confident wrong
+>   story about a bug the fix had partly closed by accident; writing the
+>   kills down is what made the THIRD hypothesis good, because the shape of
+>   what was eliminated was visible. A landing that reports a fix and no
+>   kills is either lucky or unexamined. (5) A correctness invariant held
 >   by ACCIDENT (zero-reads true only because monotonic allocation never
 >   reuses wasm's zero-init pages) is a bug the first new capability
 >   exposes — name the accident, then make it a CONTRACT at the one writer
@@ -429,13 +479,56 @@
 > is the developer's own intent-prose alone (SYNTAX §«What a comment TRENDS
 > TO» carries the surface law; the deletion test names the missing verb).
 >
+> **THE VERB MAP — the grep's Mentl-native twin, so the confession is never
+> re-paid** (2026-09-17: a dead-fn census was grepped out of m3.wat while
+> `mentl query src/main.mn unreferenced` had named the same fns since
+> 2026-09-04; the transitive facet it lacked, `unreachable`, was built the
+> same day instead of grepping again). Before any grep/awk over source:
+> `mentl query <entry> unreferenced` (one hop) · `unreachable` (transitive
+> from main, fn decls — partitioned into modules CARRYING dead weight, with
+> their reached/unreached ratio, and modules the entry links WHOLE and never
+> calls into) · `refs of NAME` · `census <shape>` · `decls` ·
+> `modules` / `imports` / `performs` / `orphan-claims` · `smt` (every
+> undischarged obligation as an SMT-LIB assertion — what Phase 8.3's solver
+> swap will be handed, readable today); `mentl verify`
+> (the standing bounds on a program's own source, read off one judged
+> graph — a breach refuses); `mentl
+> <file:line>` (the line's ROOT — widest node) and `<file:line:col>` (the
+> TIGHTEST node — a `??`, a lambda's param) for the eight-aspect read with
+> the Lede; `mentl why/where <file> <name>`; `mentl doc <module>` for the
+> decl roster with types and ledes. A question none of these answers is
+> the facet to grow — in the same landing, never a grep absorbed into habit.
+>
 > **The self-build audit runs at every landing:** which step of THIS landing
 > did Claude or Morgan perform that the medium could have performed? What is
 > the SMALLEST capability that lets the medium do it next time? Build it in
 > the same arc when it is in reach; name it as a peer when it is not. The
-> scaffolds' own written destinies — march → `mentl march`, drift-audit →
-> `mentl audit`, state.sh → state-as-projection, the fmt/tighten batch loop —
-> are the standing queue: ABSORPTION into verbs, never deletion of a safeguard.
+> scaffolds' own written destinies — verify.sh's remaining grep legs →
+> `mentl verify`, state.sh → state-as-projection, doc-truth → the comment-ref
+> gate generalized to doc anchors, the fmt/tighten batch loop — are the
+> standing queue: ABSORPTION into verbs, never deletion of a safeguard. Two
+> have LANDED and are struck from that queue rather than left standing beside
+> their verbs: march → `mentl march` and drift-audit → `mentl audit` (ten
+> drift modes are census shapes with per-fn audit tiers, and their bash rows
+> retired with each). A scaffold whose verb exists is a SECOND HOME, and this
+> list saying otherwise was the doc-layer instance of the very disease —
+> corrected 2026-09-21, the same audit that found `tools/verify-baseline.txt`
+> holding 646 dead lines beside `src/board.mn`, a movers-hist.py scaffold for
+> an instrument deleted four days earlier (named without its path here on
+> purpose — doc-truth reads this file for RUNNABLE command citations, and a
+> deleted tool is history, not a command), and `tools/ide-gate.sh` — PLAN §11
+> Arc E's own terminal bar — invoked by NOTHING while §11.2 called it green.
+>
+> **THE FIRST MOVE OF AN AUDIT IS A VERB, and the 2026-09-21 session is the
+> measurement.** `mentl audit`, `mentl query <entry> unreachable`, and
+> `mentl check` on the wheel's own source found, in minutes, six things no
+> amount of hand-reading had asked about in weeks: a projection restating one
+> module-level fact 122 times, 74 dead compiler decls inside a 276-row answer
+> nobody could act on, a whole superseded subsystem hanging off a function with
+> zero callers, two Why renderers with the dead one the worse form, a verb left
+> behind on a retired route, and the wheel one `E_RedundantBraces` away from its
+> own formatter's fixpoint. None of it needed a new instrument. It needed the
+> instruments to be RUN (PLAN §7 carries the full record).
 >
 > **THE WORKING DISCIPLINE, paid for 2026-07-25 (Morgan's cut caught both)
 > — and it binds WHOEVER PROPOSES (Claude today, any intelligence behind
@@ -462,7 +555,19 @@
 > before its landing closes it becomes a diagnostic, a query facet, or a
 > verb report — or its projection is a named peer. Deleting an instrument
 > without banking its projection discards a measurement channel the dig
-> paid to open. (4) **A verb can write its own fixpoint**: fmt renders,
+> paid to open. **The converse is the stronger half and it was measured
+> 2026-09-21: LEGIBILITY IS AN ERROR-DETECTION MECHANISM, not hygiene.**
+> src/verify.mn's SMT-LIB serializer — fourteen carefully-written decls —
+> was WRONG for as long as it had no caller, and was CORRECT within an hour
+> of being given one, because its first execution printed
+> `(- 66664 686237016)` where the prose render of the same handles said
+> `0.0 - 1.0`. Nothing found it by reading it; the projection found it by
+> running it. So the rule for dead-but-designed code is neither "delete it"
+> nor "leave it": **give it a projection**, because a projection is the
+> cheapest possible test and the only one that costs nothing to keep. The
+> corollary a reviewer should apply to any unreached machinery: *what would
+> looking at this cost, and what would it have caught?* (4) **A verb can
+> write its own fixpoint**: fmt renders,
 > re-parses, re-renders and writes the SECOND render — one invocation is
 > idempotent by construction; any verb whose output feeds its own reader
 > can carry the same internal loop. (5) **The uniform pass beats the
@@ -472,6 +577,23 @@
 > entry, deleting ~50 sites and covering every future construct by
 > construction. When the second site of a shape appears, design the pass
 > that makes ALL sites impossible — the census law's constructive half.
+> (6) **PROSE IN A `.mn` FILE IS GRAPH CONTENT — USE THE MECHANISM, and verify
+> it by PROJECTING, never by re-reading** (paid for 2026-09-19, caught by
+> Morgan). The first line is the LEDE the address surface renders, a backticked
+> identifier is a resolvable EDGE the Why engine walks, and a residue comment
+> names its retirement condition. Measured on that session's own landing: 17 of
+> 165 added comment lines carried a backticked reference, and every lede was a
+> HEADLINE — `mentl <file:line>` rendered `Lede: THE PROOF GATE, one home, and
+> the hole is a TERM CELL in it.` where a developer needed to be told what the
+> function IS. Paragraphs were written where the medium wanted edges. **And the
+> inversion that proves the mechanism was not being used:** when the
+> comment-ref gate refused a backticked name that resolved nowhere, the fix
+> taken was DELETING THE BACKTICKS — degrading a reference into prose to
+> satisfy the check whose whole purpose is keeping references real. Point it at
+> something that resolves, or say it without posing as a reference. The
+> verification is the same as everywhere else here: ask the medium
+> (`mentl <file:line>`, `mentl doc <module>`) what the prose says, because the
+> author is the last one who can see it.
 >
 > **Medium-authored change is the PREFERRED form wherever a verb exists** —
 > tighten-style batch authorship, gated by the board, approved by Morgan and
@@ -542,6 +664,9 @@ rewrite in residue form inline.)
 | "Look up X by name" (ledger / index / map) | If a `~>` edge or the env already connects it → re-derivation (Anchor 1); follow the edge, read the live node |
 | Presenting "Option A (ultimate) vs Option B (safer/lower-risk)" — to me OR to the user | The fork IS the drift; the thesis already answers it. Ultimate form wins; DECIDE it, don't outsource a thesis-answered call; never hedge the wheel against the seed |
 | "It's a big change, so later" / "today was good" | Forbidden. Keep going; report result + next move |
+| "This fixes the symptom / unblocks the path / is the smallest correct change" | **SUFFICIENT IS NOT ULTIMATE** (Morgan, 2026-09-06, after two non-ultimate builds in one session). A fix that works is not thereby the form. Ask what the thing WOULD be if nothing around it were assumed; sufficiency is the ultimate form's most convincing costume because it passes every test you thought to run |
+| Defining "ultimate" relative to the structures already there | **THE SURROUNDING CODE IS NOT A PREMISE.** Much of it was written by an intelligence nobody vets line-by-line, so an "ultimate given X" where X is unverified is X's drift laundered through your judgment. Verify X first, and ask whether X should exist — the ultimate form of a compensation is its DELETION |
+| Building the foundational-looking piece first because it is tractable | **HARDEST FIRST, no deferrals.** The easy piece is easy because it assumes the hard one's answer; build it first and you will build it twice. Name the hardest question, answer it, then everything downstream is forced |
 | "I'll improve/tune/ratchet the condemned meanwhile" — hygiene, caching, a better cadence on machinery a named peer sentences to deletion | Patching the CONDEMNED (Anchor 2's roadmap face, 2026-07-31). The deletion IS the work; only the oracles that arbitrate the replacement — the march, the ratchets, the divergence count — may touch it |
 | A standing per-run re-derivation wearing "verification"'s name (a second pass that narrates divergence and proceeds with its own answer) | An OVERRIDE, not a verification — a verifier refuses or the divergence is impossible. Verification happens ONCE: structurally per compile, whole-program at the march per landing (the trial/final lesson, 2026-07-31) |
 | "AI"/"agent"/"completion" in user-facing text | Substrate vocabulary: "medium proposes" / "cursor argmax" |

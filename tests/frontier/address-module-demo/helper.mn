@@ -1,0 +1,4 @@
+// A helper whose line 4 is deliberately the WIDEST decl on any line 4 in
+// this weave — so the line rule's widest-node pick lands on it unless the
+// address carries the module the developer named.
+fn helper_at_four(scale_factor_for_the_widest_line, another_wide_parameter) with Pure = scale_factor_for_the_widest_line * another_wide_parameter * 1.5

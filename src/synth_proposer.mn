@@ -88,13 +88,13 @@ type ProposerKind
   | ProposerSMT
   // wrap-handler suggestions per H5 AWrapHandler
   | ProposerHandlerCatalog
-  // user-supplied seeds via teach_synthesize
+  // seeds the developer supplies at the position
   | ProposerUser
 
 // ─── EnrichedCandidate — Candidate + provenance ────────────────────
 //
-// The Synth effect's `propose` returns [Node]; this file's chain
-// wraps each Node with its proposer of origin. Drift 7 closure: ONE
+// `synth_propose` answers with one Proposal; this file's chain carries
+// each candidate node with its proposer of origin until then. Drift 7 closure: ONE
 // record-shape, never parallel arrays. RANK IS A PROJECTION, NOT A
 // FIELD (Hβ.synth.rank-is-a-projection-not-a-field, resolved): the
 // stored cost field compared a measured proximity against invented
@@ -127,61 +127,48 @@ type EnrichedCandidate = EnrichedCandidate({node: Node, origin: ProposerKind, re
 // vocabulary. Each proposer emits CANDIDATES; the kernel's
 // verify_after_apply is the proof gate.
 handler synth_default {
-  synth_propose(target_ty, allowed_effects, context) => // The in-scope VOCABULARY first (PLAN §1's second moat: type-directed
-  // search over what is already in scope, pruned by the row at every
-  // step), then the shape enumerators; every candidate through the ONE
-  // proof gate. Row-rejected vocabulary keeps its Reasons.
-  // The candidate space's own frontier, read BEFORE any enumeration
-  // mints into it: the form half saturates exactly what the fan made
-  // (PLAN §5's fork/merge duality — the range is what keeps merging
-  // cheap at a cursor position).
-  match graph_next() {
-    cand_start => match enumerate_vocabulary_calls(target_ty, allowed_effects, context) {
-      (vocab, rejected) => {
-        let enriched = concat_candidates(vocab, enumerate_typed(target_ty, allowed_effects, context))
-        let verified = verify_each_enriched(enriched, target_ty, cand_start)
-        resume(Proposals(verified |> rank_sort(context_hole_span(context)) |> map_to_proposals, rejected))
+  synth_propose(allowed_effects, context) => // The TARGET is read from the hole's own cell, once, at entry — the
+  // Context carries the handle and the type is one dereference away.
+  // Threading it locally is a binding; carrying it across the op
+  // boundary was a copy.
+  match context_target_ty(context) {
+    target_ty => // The in-scope VOCABULARY first (PLAN §1's second moat: type-directed
+    // search over what is already in scope, pruned by the row at every
+    // step), then the shape enumerators; every candidate through the ONE
+    // proof gate. Row-rejected vocabulary keeps its Reasons.
+    // The candidate space's own frontier, read BEFORE any enumeration
+    // mints into it: the form half saturates exactly the range this propose
+    // minted (PLAN §5's fork/merge duality — the range is what keeps merging
+    // cheap at a cursor position).
+    match graph_next() {
+      cand_start => match enumerate_vocabulary_calls(target_ty, allowed_effects, context) {
+        (vocab, row_rejected) => {
+          let enriched = concat_candidates(vocab, enumerate_typed(target_ty, allowed_effects, context))
+          match verify_each_enriched(enriched, context_hole_handle(context), cand_start) {
+            (verified, type_rejected) => {
+              let survivors = verified |> rank_sort(context_hole_span(context)) |> map_to_proposals
+              // Both refusal channels, one list: the ROW pruned a candidate
+              // before it was ever judged, the CELL refused one that was.
+              // A developer auditing the proposal sees every name the medium
+              // considered and why each is not here.
+              resume(Proposal({rejected: row_rejected ++ type_rejected, verdict: verdict_of(survivors, target_ty, context)}))
+            },
+          }
+        },
       },
     },
   },
-  verify_candidate(candidate, target_ty) => // The real proof gate (PLAN.md §1: checkpoint -> INFER -> Verify ->
+  verify_candidate(candidate, hole_h) => // The real proof gate (PLAN.md §1: checkpoint -> INFER -> Verify ->
   // rollback). The candidate is a real minted node in the graph; run
-  // the SAME infer walk that types all source over it, read its
-  // handle's binding live (NBound = the apply succeeded), AND
-  // discharge the TARGET's refinement against the candidate — an
-  // NBound(TInt) alone proved only well-typedness, so every integer
-  // seed survived a `0 < self` target. The caller's checkpoint
-  // isolates this; rollback reverts the binds.
+  // the SAME infer walk that types all source over it, then UNIFY its
+  // cell with the hole's own, and discharge the hole's refinement
+  // against it — an NBound(TInt) alone proved only well-typedness, so
+  // every integer seed survived a `0 < self` target. The caller's
+  // checkpoint isolates this; rollback reverts the binds.
   match candidate {
-    Candidate(node, _) => // Through candidate_proven — the ONE definition, shared with the fan.
-    // This arm used to carry its own copy of the conjunction, and the copy
-    // had drifted: it passed the live target where the fan instantiates a
-    // fresh one, so a proof here could bind the hole's own frontier. The
-    // caller's checkpoint still isolates the binds.
-    resume(candidate_proven(node, target_ty)),
-  },
-  enumerate_inhabitants(target_ty, allowed_effects, context) => {
-    let enriched = enumerate_typed(target_ty, allowed_effects, context)
-    // THE FAN VERIFIES FIRST (fan_verify — candidates as spawned branch
-    // cursors; the arm's performs resolve OUTER, so the fan plan runs at
-    // the root exactly as intended), then the per-proven resume fan
-    // walks the precomputed verdicts: resume is context-bound to arms
-    // (SYNTAX §resume), so the yield stays here while the proof work
-    // rides the threads.
-    let verdicts = fan_verify(enriched, target_ty)
-    fn yield_from(i) = if i >= len(enriched) {
-      resume([])
-    } else {
-      match list_index(enriched, i) {
-        EnrichedCandidate(c) => if verdicts[i] {
-          resume([c.node])
-          yield_from(i + 1)
-        } else {
-          yield_from(i + 1)
-        },
-      }
-    }
-    yield_from(0)
+    Candidate(node, reason) => // Through candidate_proven — the ONE definition, shared with the
+    // segment walk.
+    resume(candidate_proven(node, hole_h, reason)),
   },
 }
 
@@ -212,7 +199,14 @@ fn enumerate_typed(target_ty, allowed_effects, context) with EnvRead + Memory + 
   TVar(_) => one_hole_candidate(context),
   TRecord(fields) => enumerate_records(fields, context),
   TRecordOpen(fields, rest) => enumerate_records(fields, context),
-  TRefined(base, _pred) => enumerate_typed(base, allowed_effects, context),
+  TRefined(_, _) => // The refinement is the strongest thing known about the hole, and this arm
+  // used to recurse on the BASE and drop it — the predicate sitting one field
+  // away while three integer seeds were minted for a type that admits one.
+  // The DOMAIN is that predicate read as inhabitants (verify.mn), so the seeds
+  // come FROM it and the ones it excludes are never constructed. The post-hoc
+  // gate stays: a domain over-approximates by contract, so it decides what to
+  // build and `refinement_admits` still decides what survives.
+  enumerate_domain(target_ty, allowed_effects, context),
   TAlias(_, inner) => enumerate_typed(inner, allowed_effects, context),
   TReprPin(_, base) => enumerate_typed(base, allowed_effects, context),
   TCont(_, _, _, _) => one_continuation_candidate(context),
@@ -248,13 +242,13 @@ fn concat_candidates(a: [EnrichedCandidate], b: [EnrichedCandidate]) -> [Enriche
 // (Hβ.synth.vocabulary-arg-holes); the reach walk's O(1) form is the
 // call-edge index (Hβ.synth.vocabulary-reach-index).
 fn enumerate_vocabulary_calls(target_ty, allowed_row, context) with GraphRead + WASI + GraphWrite + Intern + Alloc + Memory + !Mutate = match context {
-  Context(scope_bindings, _active, enclosing, hole_span) => fold(
+  Context(scope_bindings, _active, enclosing, _hole_h) => fold(
     ([], []),
     (acc, entry) => match acc {
       (accepted, rejected) => match entry {
         (name, scheme, reason, kind) => match kind {
           FnScheme => match judgment_ty(scheme) {
-            TFun(params, ret, row) => if len(params) == 0 && vocabulary_ret_matches(ret, target_ty) && !reaches_decl(name, enclosing, []) {
+            TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_decl(name, enclosing, []) {
               if row_subsumes(row, allowed_row) {
                 // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
                 (accepted ++ [vocabulary_call_candidate(name, row, allowed_row)], rejected)
@@ -278,17 +272,73 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context) with GraphRead + 
   ),
 }
 
-// Return-type match for the vocabulary: refined aliases match by their
-// declared identity (both anchors resolve through the SAME env alias —
-// the type-level proof); unaliased grounds match structurally.
-fn vocabulary_ret_matches(ret, target_ty) with Pure = match target_ty {
-  TAlias(tname, _) => match ret {
-    TAlias(rname, _) => rname == tname,
-    _ => false,
+// Answers whether two types COULD unify, from their head constructors alone —
+// the sound index that keeps the vocabulary from judging the whole prelude at
+// every hole. It never rejects a unifiable pair, so it can hide no survivor.
+//
+// PROPAGATION PRECEDES ENUMERATION (PLAN §11.1), and this is the sound
+// form of it at the vocabulary. The question a pre-filter may ask is not
+// "are these the same type" — that is unification's, and asking it here is
+// how the old matcher hid proven survivors — but "could these POSSIBLY
+// unify", which is decided by the head constructors alone: two types can
+// unify only if either side is still a variable, or their heads agree.
+// Unification remains the DECIDER inside the segment; this is the index
+// that keeps the medium from judging the whole prelude at every hole.
+//
+// Soundness is the whole property: this never rejects a unifiable pair, so
+// no survivor can be hidden by it. `[a]` against `[Int]` passes (heads
+// agree, the unify binds); `Option(a)` against `Option(Int)` passes; a
+// refined alias peels to its base, so `pure_seven() -> Seven` reaches an
+// `Int` hole and the refinement gate rules on the value — where the old
+// name-equality rule refused it outright.
+fn heads_may_unify(a, b) with Pure = match a {
+  TVar(_) => true,
+  TAlias(_, inner) => heads_may_unify(inner, b),
+  TRefined(inner, _) => heads_may_unify(inner, b),
+  _ => match b {
+    TVar(_) => true,
+    TAlias(_, inner) => heads_may_unify(a, inner),
+    TRefined(inner, _) => heads_may_unify(a, inner),
+    _ => same_head(a, b),
   },
-  _ => same_ground(ret, target_ty),
 }
 
+fn same_head(a, b) with Pure = match a {
+  TList(_) => match b {
+    TList(_) => true,
+    _ => false,
+  },
+  TName(an, _) => match b {
+    TName(bn, _) => an == bn,
+    _ => false,
+  },
+  TFun(_, _, _) => match b {
+    TFun(_, _, _) => true,
+    _ => false,
+  },
+  TTuple(_) => match b {
+    TTuple(_) => true,
+    _ => false,
+  },
+  TRecord(_) => match b {
+    TRecord(_) => true,
+    _ => false,
+  },
+  _ => same_ground(a, b),
+}
+
+// THE RETURN-TYPE EQUALITY MATCHER IS GONE, and what it was doing is the point.
+// It compared a callee's declared return against the target by name and
+// ground shape — a hand-rolled, weaker second copy of the union-find the
+// medium already owns — and it was UNSOUND in the direction that costs the
+// developer: a zero-arg `empty() -> [a]` at a `[Int]` hole is one type
+// under unification and two shapes under a structural compare, so a proven
+// survivor was never offered and the medium asked a question it could have
+// answered. The row prune stays (it is a real Boolean fact, cheap and
+// exact); type admission is now decided where it was always decided for
+// every other expression in the language — by unifying the candidate's own
+// cell with the hole's, inside the segment, with rollback. The proof
+// becomes the dispatch.
 fn vocabulary_call_candidate(name, row, allowed_row) with GraphRead + GraphWrite + Intern + !Mutate + Alloc + Memory =
   EnrichedCandidate({node: synth_node(CallExpr(synth_node(VarRef(name)), [])), origin: ProposerEnumerative, reason: Inferred("an in-scope call {name}() — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}")})
 
@@ -305,7 +355,21 @@ fn vocabulary_call_candidate(name, row, allowed_row) with GraphRead + GraphWrite
 // nothing).
 fn candidate_rank(name, decl_reason, hole_span) with GraphRead + !Mutate + Alloc + Memory = {
   let decl_near = scope_distance_decay(hole_span, caret_span_from_reason(decl_reason))
-  let use_near = fold(0.0, (acc, s) => acc + scope_distance_decay(hole_span, s), refs_of_name(name))
+  // The sites carry their module now, and destructuring them SURFACES a
+  // defect this fold has always had: scope_distance_decay compares two line
+  // coordinates, so a use in ANOTHER file scored as though it sat that many
+  // lines from the hole — a ref at line 12 of any module read as maximally
+  // near. Behaviour is preserved here rather than quietly re-ranked, because
+  // the honest fix needs the HOLE's module and a span is not an address
+  // (Hβ.synth.proximity-compares-across-modules; it closes with the same
+  // positions-are-handles work the Why chain waits on).
+  let use_near = fold(
+    0.0,
+    (acc, s) => match s {
+      (_, sp) => acc + scope_distance_decay(hole_span, sp),
+    },
+    refs_of_name(name)
+  )
   0.5 + decl_near + use_near
 }
 
@@ -338,8 +402,20 @@ fn rank_of(c, hole_span) with GraphRead + EnvRead + !Mutate + Alloc + Memory = m
   },
 }
 
-fn context_hole_span(context) with Pure = match context {
-  Context(_, _, _, hole_span) => hole_span,
+fn context_hole_handle(context) with Pure = match context {
+  Context(_, _, _, hole_h) => hole_h,
+}
+
+// The hole's span and the hole's type are both READS of its handle, never
+// fields beside it. parse_span_of and the live node kind answer each one
+// at the moment it is asked, so neither can describe a cell that has since
+// moved.
+fn context_hole_span(context) with GraphRead = parse_span_of(context_hole_handle(context))
+
+fn context_target_ty(context) with GraphRead + Memory + Alloc = match context_hole_handle(context) {
+  hole_h => match graph_chase(hole_h) {
+    GNode(kind, _) => ty_of_kind(hole_h, kind),
+  },
 }
 
 // rank_sort — survivors ordered by rank, highest first: each candidate's
@@ -348,9 +424,8 @@ fn context_hole_span(context) with Pure = match context {
 // vocabulary plus the shape enumerators). The ORDER is the only thing
 // rank decides; a constraint-tie still teaches (the render's collapse
 // line is unchanged — rank is a prior, never a guess).
-fn rank_sort(hole_span, cands) with GraphRead + EnvRead + !Mutate + Memory + Alloc = cands |> map((c) => (rank_of(c, hole_span), c)) |> fold([], (acc, rc) => rank_insert(acc, rc)) |> map((rc) => match rc {
-  (_, c) => c,
-})
+fn rank_sort(hole_span, cands) with GraphRead + EnvRead + !Mutate + Memory + Alloc =
+  cands |> map((c) => (rank_of(c, hole_span), c)) |> fold([], rank_insert) |> map({ (_, c) => c })
 
 fn rank_insert(sorted, rc) with Memory + Alloc = match sorted {
   [] => [rc],
@@ -460,6 +535,67 @@ fn enumerate_lambdas(params, ret, row, context) with Alloc + Memory + GraphWrite
   buf
 }
 
+// A refined target seeds from its DOMAIN rather than from the unrefined
+// floor. The rule is boundary-value analysis and it carries NO width
+// constant, which is the point: a threshold would be a number nobody can
+// derive, and the bounds plus the interior value nearest zero are three
+// deterministic reads that answer every shape.
+//
+//   `Int where 0 < self`        -> [1, ∞)   -> one seed, 1, and the two the
+//                                             floor would have minted are
+//                                             never constructed
+//   `Int where 0 <= self <= 1`  -> [0, 1]   -> two seeds, 0 and 1, exactly
+//                                             the inhabitants
+//   `Int where self == 7`       -> {7}      -> one seed, and it is the only
+//                                             value the type admits
+//   an unreadable predicate     -> the floor, and the gate still judges
+//
+// A domain that admits NOTHING is a finding, not an empty list: the
+// refinement is unsatisfiable and the medium should say so at the hole rather
+// than propose silence. That projection is named residue
+// (`Hβ.synth.empty-domain-teaches`), and until it lands the empty seed set
+// falls through to the vocabulary, which is honest but quiet.
+fn enumerate_domain(ty, allowed_effects, context) with GraphRead + Memory + Alloc + GraphWrite + !Mutate + EnvRead + WASI + LookupTy = {
+  let d = ty_domain(ty)
+  match d {
+    DFinite(vs) => vs |> map(lit_candidate),
+    DUndecided => enumerate_int_literals(context),
+    DRange(lo, hi) => match (lo, hi) {
+      (None, None) => enumerate_int_literals(context),
+      _ => domain_bounds_seeds(lo, hi) |> map(int_literal_candidate),
+    },
+  }
+}
+
+// The bounds themselves, plus the interior value nearest zero — deduped, so a
+// bound that IS that value yields one seed rather than two of it.
+fn domain_bounds_seeds(lo, hi) with Memory + Alloc = {
+  let ends = [] |> push_opt(lo) |> push_opt(hi)
+  match interior_near_zero(lo, hi) {
+    Some(z) => if ends |> any(int_same(z, ??)) { ends } else { ends ++ [z] },
+    None => ends,
+  }
+}
+
+fn push_opt(v, xs) with Memory + Alloc = match v {
+  Some(n) => xs ++ [n],
+  None => xs,
+}
+
+fn int_same(a, b) with Pure = a == b
+
+// Zero when the range admits it; otherwise the open end has no interior to
+// name and the closed end already seeded it.
+fn interior_near_zero(lo, hi) with Memory + Alloc =
+  if bound_admits_lo(lo, 0) && bound_admits_hi(hi, 0) { Some(0) } else { None }
+
+fn lit_candidate(v) with GraphRead + GraphWrite + !Mutate + Memory + Alloc = match v {
+  LVInt(n) => int_literal_candidate(n),
+  LVFloat(f) => float_literal_candidate(f),
+  LVString(s) => EnrichedCandidate({node: synthesize_string_literal_node(s), origin: ProposerEnumerative, reason: Inferred("the type's string inhabitants")}),
+  LVBool(b) => EnrichedCandidate({node: synth_node(LitBool(b)), origin: ProposerEnumerative, reason: Inferred("the type's boolean inhabitants")}),
+}
+
 fn enumerate_int_literals(context) with Alloc + Memory + GraphWrite = {
   // Literal seeds: 0, 1, -1. Three candidates per the Numerical
   // Survey discipline (least-trivial inhabitants of TInt).
@@ -561,22 +697,9 @@ fn enumerate_tuple_candidates(elems, context) with Alloc + Memory + GraphWrite =
   buf
 }
 
-// ─── THE FAN (Arc 1) — candidates as spawned branch cursors ─────────
-//
-// The fused oracle's second workload: every candidate verifies as a
-// REAL task over the shared image — the judgment's bracket, a candidate
-// body. THE ISOLATION LAW: the sequential form was bind→rollback, net
-// ZERO shared writes, so each task verifies against a FRESH
-// INSTANTIATION of the target in its own planned band (the
-// value-boundary law at the hole: the constraint is a published scheme;
-// candidates are its callers) — race-free by construction, numbering a
-// pure function of candidate order. The join replays each task's facts
-// record in candidate order (branch_join whole): the fork triple never
-// covered env/diag/verify state, so byte-identity with the sequential
-// walk means replaying its debris exactly, proven or not.
 // DONE-CRITERION (Programming by Navigation — Lubin, Ziegler & Chasins,
 // PLDI 2025, defs 3.5–3.6, under the 2025-10-09 errata's covering
-// reading): the fan offers ONLY candidates that lead to a valid
+// reading): the proposer offers ONLY candidates that reach a valid
 // completion (Strong Soundness — the proof gate) and cuts off NO
 // reachable completion (Strong Completeness — a covering condition,
 // never step enumeration), SCOPED to the decidable fragment
@@ -585,122 +708,209 @@ fn enumerate_tuple_candidates(elems, context) with Alloc + Memory + GraphWrite =
 // impossible, op. cit. §8). An EMPTY fan is Fail-Fast's theorem: no
 // valid completion exists from here — a teachable refusal, never a
 // shrug.
-let candidate_band = 2048
-
-fn fan_verify(candidates, target_ty) = {
-  let n = len(candidates)
-  if n == 0 {
-    []
-  } else {
-    let top = graph_next()
-    let fan_end = top + n * (candidate_band + mint_overflow_quota)
-    // Pre-open the fan's pages at the ROOT (a branch never opens a
-    // band), and seal past the whole fan after the join so no later
-    // root mint reuses a discarded band's stale cells (virginity).
-    graph_mint_plan(fan_end)
-    let base = env_base_view()
-    let seed = consume_base()
-    let gseed = graph_branch_seed()
-    let iseed = intern_seed()
-    let verdicts = fan_blocks(candidates, target_ty, base, seed, gseed, iseed, top, n, 0, [])
-    graph_mint_seal(fan_end)
-    verdicts
-  }
+// ─── THE SEGMENT WALK — candidates judged on the ONE live graph ──────
+//
+// Every candidate is judged inside the fork TRIPLE — checkpoint, world top,
+// judge, rollback, restore — over the graph the cursor is already sitting
+// in. The copy this replaces spawned each candidate as a task against a
+// FRESH graph instance seeded from four root views inside a pre-planned
+// `n × (2048 + 64)`-handle band, and the measurement that condemned it is
+// that its in-flight window was 1: one task spawned per block and joined
+// immediately, so the isolation machinery was protecting against a
+// concurrency that was switched off. It bought nothing and cost four
+// things — a fact proven in one branch was invisible to the next, the
+// hole's own cell was unreachable, the image paid ~10.5k planned handles
+// per five-survivor propose, and the trail recorded the binds in an
+// instance no diff could read.
+//
+// THE ORDER IS LOAD-BEARING. The world is restored before the facts are
+// replayed, because the replay re-performs `env_extend` and `diag_report`
+// and those must resolve to the ROOT chain. The rollback comes first for
+// the same reason: a replay must not run while the candidate's own graph
+// writes are still live.
+//
+// The candidates are minted BEFORE any checkpoint (the arm reads the mint
+// frontier at
+// the arm's head, ahead of enumeration), so `graph_rollback`'s MFreshNode
+// shrink never un-allocates the node being judged.
+fn segment_verify(candidates, hole_h) = if len(candidates) == 0 {
+  []
+} else {
+  let base = env_base_view()
+  let seed = consume_base()
+  let iseed = intern_seed()
+  candidates |> map(judge_in_segment(hole_h, base, seed, iseed))
 }
 
-// Blocks of judge_window, joined in candidate order — completion order
-// never matters; the replay stream is byte-identical to the sequential
-// walk at any block size (judge_blocks' law, second workload).
-fn fan_blocks(ref candidates, target_ty, base, seed, gseed, iseed, top, n, b, own acc) = if b >= n {
-  acc
-} else {
-  let hi = if b + judge_window < n { b + judge_window } else { n }
-  let recs = fan_spawn(candidates, target_ty, base, seed, gseed, iseed, top, n, b, hi, [])
-  fan_blocks(candidates, target_ty, base, seed, gseed, iseed, top, n, hi, fan_join(recs, 0, acc))
-}
-
-fn fan_spawn(ref candidates, target_ty, base, seed, gseed, iseed, top, n, j, hi, own recs) = if j >= hi {
-  recs
-} else {
-  match candidates[j] {
-    EnrichedCandidate(c) => {
-      let node = c.node
-      let cb = top + j * candidate_band
-      let ch = top + n * candidate_band + j * mint_overflow_quota
-      let range = (cb, cb + candidate_band, ch)
-      // The task mirrors the root's OUTER shape (spawn_block's law): an
-      // arm's performs resolve outer to its install, so renders chase
-      // outside the bracket onto this empty dispatch-graph instance.
-      let rec =
-        spawn_task(() => candidate_judge(node, target_ty, base, seed, gseed, iseed, range) ~> graph_handler([], 0, 0, 0, [], 0, 0))
-      fan_spawn(candidates, target_ty, base, seed, gseed, iseed, top, n, j + 1, hi, push(recs, rec))
-    },
-  }
-}
-
-fn fan_join(ref recs, j, own acc) = if j >= len(recs) {
-  acc
-} else {
-  match join_task(recs[j]) {
-    (proven, inner) => {
+// Judges one candidate inside its own trail segment and joins its facts to the
+// root only if it proved.
+//
+// A REFUTED BRANCH'S FACTS DO NOT REACH THE ROOT, and that changed here.
+// The copy-era join replayed every branch "proven or not", which was benign
+// only while a structural pre-filter guaranteed no candidate could fail to
+// type. With the hole a real cell, a refused candidate reports an ordinary
+// type mismatch — and that mismatch is the SEARCH discovering a dead
+// branch, never the developer's program being wrong. Replaying it would
+// make the proposer print errors about code nobody wrote. So the join is
+// the proven branch's alone; the refutation survives as the verdict.
+fn judge_in_segment(hole_h, base, seed, iseed, candidate) = {
+  let cp = graph_push_checkpoint()
+  let w = world_top()
+  let outcome =
+    segment_judge(candidate_node(candidate), hole_h, candidate_reason(candidate), base, seed, iseed)
+  graph_rollback(cp)
+  world_restore(w)
+  match outcome {
+    (proven, inner) => if proven {
       branch_join(inner)
-      fan_join(recs, j + 1, push(acc, proven))
+      (true, candidate_reason(candidate))
+    } else {
+      (false, refusal_reason(inner))
     },
   }
 }
 
-// The candidate's task body under the judgment's own bracket
-// (branch_bracket — one chain, two workloads). The nested trio mirrors
-// the sequential verify_candidate arm exactly (its own fresh session);
-// the target instantiates FRESH into this band, so the proof never
-// binds the hole's live frontier.
-// THE PROOF GATE, one home. §1's law is that any intelligence may propose
-// and nothing executes unproven, so what "proven" MEANS has to have exactly
-// one definition — and it had two. This body lived here and again in the
-// sequential verify_candidate arm, whose own comment said it "mirrors" this
-// one. It did not: this one instantiates the target FRESH so the proof never
-// binds the hole's live frontier, and the arm passed the live target
-// straight in. The dead copy was also the wrong copy, which is what a second
-// home always eventually becomes.
-fn candidate_proven(node, target_ty) = {
-  let tcopy = instantiate(Frozen(free_in_ty(target_ty), target_ty))
+// Renders why a segment refused its candidate, from the medium's own
+// `diag_message` rather than the banked line.
+//
+// A REFUSAL KEEPS ITS WHY, exactly as a row refusal always has. The branch
+// is rolled back and its diagnostics never reach the root, so without this
+// the medium would drop a candidate in silence — and a candidate the
+// developer cannot see refused is a guess they cannot audit (the same
+// sentence the row prune has carried since it was written). The medium's
+// OWN rendering of what went wrong is the reason; nothing is invented here.
+fn refusal_reason(inner) with GraphRead + Memory + Alloc + !Mutate + Intern = match inner {
+  (_, dfacts, _, _) => if len(dfacts) == 0 {
+    Inferred("the hole's refinement is not satisfied")
+  } else {
+    // The DIAGNOSTIC's own message, read from the structural DiagKind the
+    // bank carries beside the rendered line. The rendered line is the wrong
+    // source here: it is stamped with a module and span belonging to
+    // wherever the judgment happened to be standing, so a candidate refused
+    // at this hole would cite a coordinate in a file the developer never
+    // opened. The message is the part that is about the candidate.
+    match dfacts[0] {
+      (diag, _, _) => Inferred(diag_message(diag)),
+    }
+  },
+}
+
+// The candidate's judgment under the segment bracket — the branch chain
+// minus its graph copy. The facts are read INSIDE, where the per-segment
+// ledgers are still installed, and replayed by the caller once the graph
+// and world are the root's again.
+//
+// The diagnostic fact list is the TYPE-ADMISSION verdict, not merely
+// baggage for the replay: a candidate whose cell refuses the hole's says so
+// through the same report path every other expression uses, so an empty
+// list IS "this candidate unified". Reading the medium's own voice beats
+// any comparison standing beside it.
+fn segment_judge(node, hole_h, reason, base, seed, iseed) = {
+  let body = () => {
+    consume_seed(seed)
+    let admitted = candidate_proven(node, hole_h, reason)
+    let vdebt = verify_debt()
+    let clog = consume_log()
+    let pubs = env_publishes()
+    let dfacts = diag_lines_taken()
+    (admitted && len(dfacts) == 0, (pubs, dfacts, vdebt, clog))
+  }
+  segment_bracket(body, base, iseed)
+}
+
+fn keep_survivors(candidates, verdicts) with Memory + Alloc =
+  candidates |> enumerate |> filter(verdict_at(verdicts)) |> map(indexed_value)
+
+fn verdict_at(verdicts, indexed) with Memory + Alloc = match indexed {
+  (i, _) => match verdicts[i] {
+    (ok, _) => ok,
+  },
+}
+
+// The NAMED candidates a segment refused, each with the medium's own words
+// for why. A skeleton the enumerator built has no name to teach with —
+// callee_name_of answers None — so only vocabulary refusals surface, which
+// is the honest line: the developer can act on "empty() was refused
+// because …" and cannot act on "the one-element list shape was refused".
+fn named_refusals(candidates, verdicts) with Memory + Alloc =
+  candidates |> enumerate |> fold([], keep_named_refusal(verdicts))
+
+fn keep_named_refusal(verdicts, acc, indexed) with Memory + Alloc = match indexed {
+  (i, cand) => match verdicts[i] {
+    (ok, reason) => if ok {
+      acc
+    } else {
+      match candidate_head_name(candidate_node(cand)) {
+        Some(name) => // drift-audit: ignore — bounded by the candidate set, not a loop accumulator
+        acc ++ [(name, reason)],
+        None => acc,
+      }
+    },
+  },
+}
+
+fn indexed_value(indexed) with Memory + Alloc = match indexed {
+  (_, v) => v,
+}
+
+// Decides whether a candidate inhabits the hole: infer the candidate, `unify`
+// its cell with the hole's own, then discharge the hole's refinement against
+// what the cell now says.
+//
+// THE PROOF GATE, one home, and the hole is a TERM CELL in it.
+//
+// §1's law is that any intelligence may propose and nothing executes
+// unproven, so what "proven" MEANS has exactly one definition. It used to
+// instantiate the target FRESH — `instantiate(Frozen(free_in_ty(t), t))` —
+// and its comment called that "so the proof never binds the hole's live
+// frontier", which reads as a safeguard and was a description of the
+// defect: with a fresh copy there is no cell to bind, so the candidate was
+// never checked against the hole at all, only against a type-shaped
+// rumour of it. A `??` is a cell in the same union-find as every type
+// variable (PLAN §11.1), and this is where that stops being a design
+// sentence: infer the candidate, UNIFY its cell with the hole's, and let
+// the one machine answer. Safe by construction — the caller's segment
+// brackets this in graph_push_checkpoint + heap_mark + world_top and rolls
+// it back, so a bind made here is undone before the next candidate.
+//
+// The unify carries the CANDIDATE'S OWN Reason rather than a minted one:
+// the bind dies at rollback, so a fresh Reason constructor would have zero
+// readers, and the candidate already knows why it was proposed.
+//
+// PROVEN is now three conjuncts, and the first is new: the judgment raised
+// NOTHING. A candidate whose cell refuses the hole's reports a type
+// mismatch through the ordinary diagnostic path, so "no diagnostics" is
+// the type-admission verdict — read from the medium's own voice instead of
+// re-derived by a comparison beside it.
+fn candidate_proven(node, hole_h, reason) = {
   {
     infer_expr(node)
   } ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
   match node {
-    N(_, _, h) => verify_after_apply(h) && refinement_admits(tcopy, h),
+    N(_, span, h) => {
+      unify(hole_h, h, span, reason)
+      verify_after_apply(h) && refinement_admits(hole_ty_live(hole_h), h)
+    },
   }
 }
 
-fn candidate_judge(node, target_ty, base, seed, gseed, iseed, range) = {
-  let body = () => {
-    consume_seed(seed)
-    match node {
-      N(_, _, _) => {
-        let proven = candidate_proven(node, target_ty)
-        let vdebt = verify_debt()
-        let clog = consume_log()
-        let pubs = env_publishes()
-        let dfacts = diag_lines_taken()
-        (proven, (pubs, dfacts, vdebt, clog))
-      },
-    }
-  }
-  branch_bracket(body, base, gseed, iseed, range)
+// The hole's type AFTER the unify — read live, because the unify may have
+// bound it and the refinement must be discharged against what the cell now
+// says, never against what it said before the candidate arrived.
+fn hole_ty_live(hole_h) with GraphRead + Memory + Alloc = match graph_chase(hole_h) {
+  GNode(kind, _) => ty_of_kind(hole_h, kind),
 }
 
-fn keep_proven(ref cands, ref verdicts, i, own out) = if i >= len(cands) {
-  out
-} else {
-  keep_proven(cands, verdicts, i + 1, if verdicts[i] { push(out, cands[i]) } else { out })
-}
-
-// ─── Verification — the fan gates every candidate ───────────────────
+// ─── Verification — every candidate through the one gate ────────────
 //
-// The kernel's proof gate, fanned: candidates verify as spawned branch
-// cursors (fan_verify above); only proven survivors reach the user.
+// The kernel's proof gate: each candidate is judged in its own trail
+// segment over the ONE live graph, and only proven survivors reach the
+// user. (This block said "fanned: candidates verify as spawned branch
+// cursors" and named a fn deleted when the copy went — prose describing
+// machinery that no longer exists is the Carried-Truth Law at the comment
+// layer, and it is corrected here rather than dated.)
 // THE FORK/MERGE COMPOSITION, at its one seam (PLAN §5's optimality
-// half + the duality): the fan has just explored MEANING-space by
+// half + the duality): the segment walk has just explored MEANING space by
 // FORKING — candidates conflict, so each proved in its own rolled-back
 // world, and proof is a FILTER (admit / refuse). Every survivor is then
 // an equality CLASS, not one program, so the second half explores
@@ -710,13 +920,18 @@ fn keep_proven(ref cands, ref verdicts, i, own out) = if i >= len(cands) {
 // FORCED: extract-then-prove would optimize a program that may be
 // inadmissible. What reaches the user is therefore proven AND
 // extraction-optimal, never merely proven.
-fn verify_each_enriched(candidates, target_ty, cand_start) with GraphRead + GraphWrite + LookupTy + Memory + Alloc + EnvRead + EnvWrite + Consume + Verify + Intern + WASI + WasiThreads + BranchEnv + BranchDiag + Diagnostic + !Mutate = {
-  let verdicts = fan_verify(candidates, target_ty)
-  let survivors = keep_proven(candidates, verdicts, 0, [])
-  // The form half — only over what the fan minted (the range keeps a
+// The declared row lost `WasiThreads` and `BranchDiag` at the segment walk,
+// and that loss IS the measurement: nothing spawns a task any more, so the
+// judgment no longer reaches the threading vocabulary at all. The medium
+// named it (`T_OverDeclared`) the moment the spawn left.
+fn verify_each_enriched(candidates, hole_h, cand_start) with GraphRead + GraphWrite + LookupTy + Memory + Alloc + EnvRead + EnvWrite + Consume + Verify + Intern + WASI + BranchEnv + Diagnostic + !Mutate = {
+  let verdicts = segment_verify(candidates, hole_h)
+  let refusals = named_refusals(candidates, verdicts)
+  let survivors = keep_survivors(candidates, verdicts)
+  // The form half — only over the range this propose minted (it keeps a
   // cursor-position fan from re-saturating the whole session graph).
   saturate_range(cand_start, graph_next())
-  survivors |> map(extract_optimal) |> collapse_equivalent
+  (survivors |> map(extract_optimal) |> collapse_equivalent, refusals)
 }
 
 // THE FALSE TIE DISSOLVES (the duality's sharpest immediate
@@ -740,6 +955,32 @@ fn collapse_equivalent(cands) with Memory + Alloc = cands |> fold(
 
 fn candidate_node(candidate) with Pure = match candidate {
   EnrichedCandidate(c) => c.node,
+}
+
+// The candidate's own WHY, read where the bind needs one. The segment's
+// unify is rolled back, so minting a Reason for it would be a constructor
+// with no reader; the candidate already carries the answer.
+fn candidate_reason(candidate) with Pure = match candidate {
+  EnrichedCandidate(c) => c.reason,
+}
+
+// The NAME a refusal can teach with: the head of a call whatever its
+// arity, or a bare name. callee_name_of answers only for the zero-arg
+// form, which is right for its own reader (a vocabulary call) and wrong
+// here — a refused `MkBox(…)` is exactly the kind of refusal a developer
+// needs to see, and it has an arg. A skeleton with no head name teaches
+// nothing and stays out.
+fn candidate_head_name(node) with Memory + Alloc = match node {
+  N(body, _, _) => match body {
+    NExpr(CallExpr(callee, _)) => match callee {
+      N(cb, _, _) => match cb {
+        NExpr(VarRef(name)) => Some(name),
+        _ => None,
+      },
+    },
+    NExpr(VarRef(name)) => Some(name),
+    _ => None,
+  },
 }
 
 // A survivor's node, replaced by the cost-minimal member of its own
@@ -775,12 +1016,157 @@ fn node_span(node) with Pure = match node {
 //    in the candidate record — the node's own GNode reason is only its
 //    mint-span record — so dropping the pair dropped the Why from every
 //    rendered survivor.
-fn map_to_proposals(enriched) with Alloc + Memory = map(
-  (candidate) => match candidate {
-    EnrichedCandidate(c) => (c.node, c.reason),
+fn map_to_proposals(enriched) with Alloc + Memory =
+  map({ EnrichedCandidate(c) => (c.node, c.reason) }, enriched)
+
+// ─── The verdict — computed ONCE, where the survivors are known ──────
+//
+// Five surfaces used to re-derive it from `len(survivors)`, and the copies
+// disagreed: the address render dropped the lone survivor's Reason while
+// keeping every tie's, so the medium showed its reasoning exactly when it
+// was unsure and withheld it exactly when the developer was most likely to
+// take the fill on faith. `VFill` holds the Reason because the constructor
+// admits no other shape.
+fn verdict_of(survivors, target_ty, context) = match survivors {
+  [] => VNone,
+  [only] => match only {
+    (node, reason) => VFill(node, reason),
   },
-  enriched
-)
+  _ => VAsk(divergence_of(survivors, target_ty, context), survivors),
+}
+
+// WHERE the survivors diverge, in the precedence types.mn's `Divergence`
+// states. Every read is LIVE at question time — a callee's row from the very
+// env entry the vocabulary enumerator admitted it through, a denotation from
+// the callee's own body — so nothing rides on the candidate record and
+// nothing can go stale between the enumeration and the question.
+//
+// The nodes arrive RANK-SORTED, so a row split is reported as the top
+// survivor against the first one that may do something it may not.
+fn divergence_of(survivors, target_ty, context) = {
+  let nodes = map(proposal_node, survivors)
+  match first_row_split(context, nodes) {
+    Some(split) => match split {
+      (a, b) => DivRow(a, b),
+    },
+    None => {
+      let denotations = map(candidate_denotation([]), nodes)
+      if any(denotation_unread, denotations) {
+        // A survivor that is not a constant at all makes this a choice
+        // between structures, and the domain has nothing to say about it.
+        DivShape
+      } else if denotations_alike(denotations) {
+        DivName
+      } else {
+        DivValue(ty_domain(target_ty))
+      }
+    },
+  }
+}
+
+fn proposal_node(pair) with Pure = match pair {
+  (node, _) => node,
+}
+
+// Rows compare by MUTUAL subsumption — the crown's own algebra, never a
+// structural compare, because two spellings of one row are one row.
+fn first_row_split(context, nodes) = {
+  let rows = map(candidate_row(context), nodes)
+  let base = head(rows)
+  match find(row_differs(base), rest(rows)) {
+    Some(r) => Some((base, r)),
+    None => None,
+  }
+}
+
+fn row_differs(a, b) = !(row_subsumes(a, b) && row_subsumes(b, a))
+
+// A literal, a constructor, a lambda skeleton performs nothing by itself,
+// and Pure is that reading rather than a fallback. A call carries its
+// callee's declared row.
+fn candidate_row(context, node) = match callee_name_of(node) {
+  None => mk_ef_pure(),
+  Some(name) => scope_row_of(name, context),
+}
+
+// The callee's row, re-read from the scope the enumerator admitted this
+// candidate through — one home, read live, never carried on the candidate
+// record beside its rendered Reason text. The scan is by NAME and pays the
+// O(1) law's standing debt with every other env read (`Hβ.perf.env-o1-index`,
+// `Hβ.perf.name-is-handle`); it runs once per survivor of a tie.
+fn scope_row_of(name: String, context) = match context {
+  Context(scope_bindings, _, _, _) => match find(binding_is_named(name), scope_bindings) {
+    Some(entry) => match entry {
+      (_, scheme, _, _) => extract_row(judgment_ty(scheme)),
+    },
+    None => mk_ef_pure(),
+  },
+}
+
+fn binding_is_named(name: String, entry) = match entry {
+  (ename, _, _, _) => ename == name,
+}
+
+// What this candidate DENOTES, if the medium can read it: a literal denotes
+// itself, and a zero-arg call denotes whatever its callee's body denotes,
+// followed down the call chain (`seen` breaks a cycle the vocabulary's own
+// nontermination exclusion does not reach, since that exclusion is about the
+// HOLE's enclosing decl, not about the callees of a candidate).
+//
+// This read is why `7` and `pure_seven()` classify as one value with two
+// names. It is the shape of the e-graph rewrite that would MERGE them — a
+// Pure nullary fn inlined to its literal body — and when that rule lands the
+// two collapse into one class and extraction answers with a fill; until
+// then, asking which name carries the intent is the honest answer, not a
+// stand-in for one (`Hβ.synth.fan-extraction-needs-a-feeder`).
+fn candidate_denotation(seen, node) = match callee_name_of(node) {
+  Some(name) => if contains_name(seen, name) {
+    None
+  } else {
+    match fn_body_by_name(name) {
+      None => None,
+      Some(body) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
+      candidate_denotation([name] ++ seen, body),
+    }
+  },
+  None => node_const(node_handle(node)),
+}
+
+fn denotation_unread(d) with Pure = match d {
+  None => true,
+  Some(_) => false,
+}
+
+// Every survivor reading as one constant. The comparison is asked about the
+// LitValues THEMSELVES, never about the `Option` around them: a polymorphic
+// sum's payload compares by ADDRESS today, so `Some(x) == Some(y)` answers
+// false for structurally equal payloads — measured 2026-09-18, one
+// $eq_nOption helper serving every instantiation because `fold_sig` folds
+// `TName(n, args)` to the bare name and the declared payload type is the
+// quantified var (`Hβ.eq.polymorphic-sum-payload-is-pointer-eq`,
+// tests/frontier/mn-eq-polymorphic-sum.mn). LitValue's own payloads are
+// ground — Int, Float, String, Bool — so this compare is the total
+// structural one, and it stays right when that peer closes.
+//
+// The element pin is an Intent Boundary (the concat precedent above): the
+// list arrives through `map`, whose element identity the graph cannot prove
+// at the compare site, and the twin keys on what the author states once.
+fn denotations_alike(ds: [Option(LitValue)]) = match head(ds) {
+  None => false,
+  Some(first) => all(denotes_value(first), rest(ds)),
+}
+
+// The pins are the Intent Boundary the comparison needs: `denotes_value` is
+// partially applied into `all`, so the element identity the caller states
+// does not reach the closure's own parameters, and an unpinned `==` here
+// would fall to the word compare the unprovable-comparison census counts.
+// The author states the identity once; both operands are then ground and the
+// compare is the total structural one (PLAN's pointer-eq-on-names class, the
+// same remedy its own entry names).
+fn denotes_value(first: LitValue, d: Option(LitValue)) = match d {
+  None => false,
+  Some(v) => v == first,
+}
 
 // ─── Node synthesizers — per-shape AST construction ─────────────────
 //
@@ -816,8 +1202,29 @@ fn synthesize_tuple_node(elems) with GraphRead + GraphWrite + !Mutate + Memory +
 fn synthesize_record_node(fields) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
   synth_node(MakeRecordExpr(synth_record_holes_for(fields)))
 
-fn synthesize_ctor_call_node(name, scheme) with GraphRead + WASI + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(CallExpr(synth_node(VarRef(name)), synth_holes_for_scheme(scheme)))
+// Builds a constructor candidate: a bare `VarRef` when the scheme is nullary,
+// a `CallExpr` with one hole per field when it is not.
+//
+// A NULLARY CONSTRUCTOR IS A VALUE, NOT A CALL — and this read is the fix
+// for a defect that had always been here and could not be seen. The node
+// was minted as `CallExpr(VarRef(name), holes)` unconditionally, so `None`
+// became `None()`: a zero-arg application of something that is not a
+// function, ill-typed by construction. It stayed invisible because the
+// resulting mismatch leaked out of the candidate's own judgment and landed
+// at a span in an unrelated module, while the candidate still rendered as a
+// bare `??` — so the developer saw a foreign error and a proposal that was
+// never admissible. The hole becoming a real cell is what surfaced it: with
+// the candidate checked against the hole, the refusal became visible
+// instead of ambient.
+//
+// The distinguishing fact is one the scheme already carries and the
+// constructor filter already reads (nullary ctors carry TName directly;
+// fielded ones carry TFun(_, TName, _)), so this is a read, never a new
+// fact: SYNTAX's own surface says `let nothing = None`.
+fn synthesize_ctor_call_node(name, scheme) with GraphRead + WASI + GraphWrite + !Mutate + Memory + Alloc = match judgment_ty(scheme) {
+  TFun(params, _, _) => synth_node(CallExpr(synth_node(VarRef(name)), synth_holes_for(params))),
+  _ => synth_node(VarRef(name)),
+}
 
 // params arrive as the scheme's own [TParam] — LambdaExpr's exact
 // carrier; rebuilding name lists from them was the mismatch the
@@ -861,17 +1268,8 @@ fn synth_holes_loop(i, n, buf) with Memory + Alloc + GraphWrite = if i >= n {
 // A record literal's carrier is the parser's (name, value) pair list —
 // bare holes lost the names (the converged judge's catch); each demanded
 // field keeps its name with a hole as its value.
-fn synth_record_holes_for(fields) with Memory + Alloc + GraphWrite = map(
-  (f) => match f {
-    (fname, _) => (fname, synth_hole_node()),
-  },
-  fields
-)
-
-fn synth_holes_for_scheme(scheme) with GraphRead + WASI + GraphWrite + Memory + Alloc + !Mutate = match judgment_ty(scheme) {
-  TFun(params, _, _) => synth_holes_for(params),
-  _ => [],
-}
+fn synth_record_holes_for(fields) with Memory + Alloc + GraphWrite =
+  map({ (fname, _) => (fname, synth_hole_node()) }, fields)
 
 // ─── Composition with cursor_default + delta_default ────────────────
 //

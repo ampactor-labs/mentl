@@ -173,12 +173,7 @@ fn apply_connective(conn, acc, term) = match conn {
   EcInter => inter_row(acc, term),
 }
 
-fn has_pure_declared(effs) = any(
-  (eff) => match eff {
-    (name, _, _) => is_pure_eff_name(name),
-  },
-  effs
-)
+fn has_pure_declared(effs) = any({ (name, _, _) => is_pure_eff_name(name) }, effs)
 
 fn build_declared_row(effs) = build_row_seen(effs, [])
 

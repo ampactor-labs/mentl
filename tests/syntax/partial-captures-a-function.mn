@@ -1,0 +1,27 @@
+// expect: 19
+// A CLOSURE CAPTURED INSIDE A CLOSURE — measured wrong, silently, in the
+// spec's own headline feature.
+//
+// SYNTAX §«Partial application» writes `let adults = filter(.age > 18)`
+// and calls the result a first-class value. Supply the filled field a
+// FUNCTION and it was not: `fn f(p, x) = p(x) + 1` with
+// `let g = f((n) => n * 2)` answered `g(4) == 8` — `p(4)`, the capture
+// called where the callee belonged — at exit 0 with ZERO diagnostics,
+// because `g` WAS the lambda rather than the partial.
+//
+// The emit named its own root in one read: both record mints parked the
+// pointer in the shared `$state_tmp`, so building a capture that is
+// itself a closure re-entered the arm, overwrote the scratch, and the
+// outer mint's closing read handed back the inner record. `LCall` had
+// carried the per-handle fix (`$call_<h>`) since #115; the mint is the
+// same class, which is the census law's stop rather than a third site.
+//
+// The two halves below are the two spellings that reach it — an arm-list
+// literal and a plain lambda — because the defect was never about either.
+fn apply_then_inc(p, x) = p(x) + 1
+
+fn main() = {
+  let doubled = apply_then_inc({ n => n * 2 })
+  let negated = apply_then_inc((n) => 0 - n)
+  doubled(4) + negated(0 - 9)
+}

@@ -1,0 +1,27 @@
+// A field access whose offset the graph cannot prove is a REPORT, not a
+// silent trap. The receiver here is a quantified op parameter: the effect
+// declares note's argument as the type variable v (lowercase is the
+// declaration, SYNTAX's case rule), so the arm binds a universally
+// quantified value and there is no record shape to take a slot from.
+//
+// Before this class existed the compile said NOTHING. The emit wrote
+// (unreachable) into the module with a WAT comment naming the field, the
+// process exited 0, and the program traps at the instruction that admits
+// it. Measured against the pinned boot the day this landed: zero errors,
+// 4500 bytes of WAT, one floor inside them.
+//
+// That is the one promise this boundary exists for, inverted — nothing
+// executes unproven. The shipping wheel carried four of these, and the
+// march found one the only way a silent floor is ever found: a later
+// generation stepped on it and died at a bare wasm trap with no
+// diagnostic anywhere in the run.
+//
+// PRE-ARM CONTRACT (run_narration): the program COMPILES and the class
+// surfaces on stderr with no other error beside it. The class arms when
+// the wheel's own census of it reaches zero, and on that day this fixture
+// moves to run_refusal in the same commit.
+effect Col { note(v) -> Int }
+
+handler colh { note(v) => resume(v.zeta), }
+
+fn main() = note({alpha: 7, zeta: 9}) ~> colh

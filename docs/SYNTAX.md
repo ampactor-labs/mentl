@@ -245,12 +245,14 @@ spawn_task(priority = 5, config = current, timeout_ms = 5000)   // all labeled
 A parameter product may be constructed with a **hole** — a field left unsupplied. The result is not an error; it is a **value**: the function *awaiting* that field. This is partial application, and it is not a distinct feature — it is the product node-kind constructed with one field absent.
 
 ```
-let adults = filter(.age > 18)        // xs is a hole → adults : [Person] -> [Person]
-adults(users)                          // fill the hole → the filtered list
-adults(new_signups)                    // reuse — a hole-product is a first-class value
+let adults = filter({ p => p.age > 18 })   // xs is a hole → adults : [Person] -> [Person]
+adults(users)                              // fill the hole → the filtered list
+adults(new_signups)                        // reuse — a hole-product is a first-class value
 ```
 
-**The hole is keyed by IDENTITY, never by position.** `filter(.age > 18)` leaves *the parameter `xs`* unfilled — "the parameter `xs`," not "slot 2." When exactly one field is a hole, it is unambiguous. When several are, the hole is named explicitly with `??` at the field it marks:
+*(This section's headline example was `filter(.age > 18)` until 2026-09-20, and the bare `.field` accessor it spelled **does not parse and never did** — measured: `P_UnexpectedToken` at the `.`, then `E_MissingVariable: age`. Nothing in the tree used it, nothing implemented it, and the spec was teaching it as the canonical form in three places. It is struck rather than built, because a field is not a declaration, so `.name` would be a THIRD way to reach a function value beside reference and mint — the one thing §«Function literals» says there is not. `Hβ.syntax.field-accessor-documented-never-built` closes by this deletion.)*
+
+**The hole is keyed by IDENTITY, never by position.** `filter({ p => p.age > 18 })` leaves *the parameter `xs`* unfilled — "the parameter `xs`," not "slot 2." When exactly one field is a hole, it is unambiguous. When several are, the hole is named explicitly with `??` at the field it marks:
 
 ```
 between(??, 100)      // the FIRST field is the hole: (x) => between(x, 100)
@@ -262,8 +264,8 @@ clamp(0, ??, 255)     // the MIDDLE field is the hole: (x) => clamp(0, x, 255)
 **The `|>` pipe is hole-completion, not a rewrite.** `x |> f(a)` fills `f(a)`'s remaining hole with `x`:
 
 ```
-users |> filter(.age > 18)            // fills xs → equals filter(.age > 18, users)
-users |> filter(.age > 18) |> map(.name) |> sort
+users |> filter({ p => p.age > 18 })              // fills xs → equals filter({ … }, users)
+users |> filter({ p => p.age > 18 }) |> map({ p => p.name }) |> sort
 ```
 
 The pipe's type rule (§«`|>` — converge») requires `right : A -> B` — a product with exactly one hole — and a partial application *is* exactly that. So the pipe is not a syntactic append; it is the product's one remaining hole filled by the piped value. This is why the five verbs compose: every stage is a product pre-filled with its configuration, its data field a hole the pipe completes. A stage with more than one hole must name the pipe's target with `??` (`x |> clamp(0, ??, 255)`); a stage with none is a complete value and `E_PipeIntoComplete` teaches the missing hole.
@@ -371,15 +373,43 @@ Mutual recursion: nested fns may reference each other — the compiler hoists th
 
 ---
 
-## Anonymous functions (lambdas)
+## Function literals — the arm list
+
+Surfaces primitives **#2** (pattern dispatch, the handler's own shape) and **#8** (HM inference: a literal's parameter type is inferred from the arms).
+
+**A function value is reached by exactly TWO operations, because the kernel has exactly two** (`PLAN.md §2` — draw an edge, project):
+
+1. **REFERENCE** an existing function, with the fields it is not yet given left as holes — `f`, `f(cfg)`, `f(a, ??, c)` (§«Partial application — the product with a hole»). An edge to a node that exists.
+2. **MINT** a new one, with an **ARM LIST** — `{ pattern => body, … }`.
 
 ### Canonical form
 
 ```
-(params) => body
+{ pattern => body, ... }
 ```
 
-One syntax for all anonymous functions. `(` opens the parameter list; `)` closes it; `=>` separates params from body; body is one expression OR one brace-block. `fn` keyword is reserved for named declarations only — it does NOT appear in lambda syntax.
+The braces ARE the literal; there is no head, because there is nothing for a head to say that the patterns do not. Arms separate with commas, trailing comma allowed, exactly as `match`'s arms do — they are parsed by the same function, because they are the same thing.
+
+```
+xs |> map({ Some(v) => v, None => 0 })
+weights |> filter({ (name, w) => w > 0 })
+{ Leaf => 3, Node(n) => n * 2, _ => 7 }
+```
+
+**`match` is the arm list APPLIED.** `match scrut { arms }` and `{ arms }(scrut)` are the same graph and the same value — one form names its argument at the site, the other leaves it to the caller. This is why the medium needs no separate lambda: pattern dispatch was always the mint, and a binder wrapping it was the wrapper.
+
+**The literal takes exactly ONE parameter** — the value its arms match. Several arguments are a product the arms destructure (`{ (a, b) => a + b }` takes a pair), which is the parameter-list-as-product rule (§«Labeled call arguments») read at the literal.
+
+**A brace opens a literal when a PATTERN ends at a `=>`.** That question is answered by a bounded token scan, never by parsing a pattern speculatively and never by layout: one pattern atom — an ident (optionally applied), a literal, or a balanced group — joined to further atoms only by `@` or `|`. Two adjacent atoms are never a pattern, so `{ setup()` newline `(x) => run(x) }` is the block it looks like. Record literal and block discrimination are unchanged and follow (§«Records», §«Function declarations»).
+
+### The residue — `(params) => body`
+
+The binder form still parses, and it is the last of the line that retired `perform`, `handle`, `capability`, the turbofish and `|x|`. `mentl fmt` no longer writes it wherever the arm list expresses the same graph — a sole-parameter lambda, including the param-position destructure `((a, b)) => e`, renders as its arms — so what survives on the page is the honest remainder:
+
+- **multi-parameter** (`(a, b) => a * b`) — the arm list is one-parameter, so these retire by becoming REFERENCES (`fold(0, add, xs)`), which is rule 1 and needs no new form. `Hβ.syntax.multi-param-lambda-is-a-reference`.
+- **the zero-argument thunk** (`() => e`) — retires into a named handler chain rather than into a literal. `Hβ.syntax.handler-chain-is-a-value`.
+
+Both are named in positive form with their measured counts in `RESIDUE.md`; neither is a second minting form, and no third is being held open.
 
 ### Examples
 
@@ -389,24 +419,24 @@ One syntax for all anonymous functions. `(` opens the parameter list; `)` closes
 () => { let x = compute(); x + 1 }
 ```
 
-**Single argument:**
+**Single argument — the arm list, the canonical form:**
 ```
-(x) => x + 1
-(_) => 42              // argument ignored (PWild pattern)
+{ x => x + 1 }
+{ _ => 42 }                                // argument ignored (PWild pattern)
 ```
 
-**Multiple arguments:**
+**Multiple arguments** (the residue above — a reference is the ultimate form):
 ```
 (a, b) => a * b
 (a, _) => a            // second ignored
 (_, _) => 0            // all ignored
 ```
 
-**Destructuring patterns in param position:**
+**Destructuring — an ordinary arm pattern, with no param position to nest in:**
 ```
-({name, age}) => greet(name)              // record destructure
-((a, b)) => a + b                          // tuple destructure (outer = param list; inner = tuple pattern)
-([h, ...t]) => process(h, t)               // list destructure
+{ {name, age} => greet(name) }             // record destructure
+{ (a, b) => a + b }                        // tuple destructure
+{ [h, ...t] => process(h, t) }             // list destructure
 ```
 
 **Block body:**
@@ -427,10 +457,10 @@ Identical to named-fn bodies (§"Function declarations"): the brace requirement 
 ### Inline higher-order use
 
 ```
-map((x) => x + 1, xs)
-fold(0, (acc, x) => acc + x, xs)
-filter((x) => x > 0, xs)
-zip_with((a, b) => a * b, xs, ys)
+map({ x => x + 1 }, xs)
+filter({ x => x > 0 }, xs)
+fold(0, (acc, x) => acc + x, xs)           // two parameters — a reference is the ultimate form
+zip_with((a, b) => a * b, xs, ys)          // likewise
 ```
 
 ### Returned closures
@@ -440,9 +470,11 @@ fn compose(f, g) = (x) => g(f(x))
 fn id(x) with Pure = x
 ```
 
-### Match arms share the lambda syntax
+### Match arms ARE the literal — the sentence that became a mechanism
 
-Match arms are `pattern => body`. **Match arms ARE pattern-dispatched lambdas** — same separator, same body discipline. The syntactic unity reflects semantic unity.
+This section used to read: *"Match arms are `pattern => body`. **Match arms ARE pattern-dispatched lambdas** — same separator, same body discipline. The syntactic unity reflects semantic unity."* That was a remark about RESEMBLANCE, and the medium's own census priced it: **197 of 515 lambda sites (38%) were `(x) => match x { … }`**, with 57 more a single tuple pattern in param position — half the corpus paying a wrapper to reach a form the language already had, and this document conceding the point in prose while the parser charged for it.
+
+It is a mechanism now: an arm list IS a function, `match` is that function applied, and one `parse_match_arms` serves both. The unity is not reflected; it is the same node.
 
 ### Rejected forms
 
@@ -1333,6 +1365,51 @@ A row that resolves to `Pure` (everything subtracted out) is `W_CapabilityEmpty`
 (the alias adds no constraint — drop it); a row referencing an undeclared effect
 surfaces `E_MissingVariable` at the unresolved name.
 
+### A SIGNATURE IS NOT AN INVENTORY — name the capability, author the negation
+
+**The measurement that makes this a rule rather than a preference (2026-09-21).**
+The wheel's own declared-row distribution is 132 signatures at four effects and
+155 at five — then a tail at 13, 14, 16, 17 (four of them), 18 and **nineteen**.
+A nineteen-name `with` clause breaks three laws at once, and they are this
+document's own:
+
+1. **It is a re-derivation.** §«With-clauses for effects» says the declared row
+   is *a CONSTRAINT verified against the row inferred from the body* — so every
+   name is a hand-copy of a fact inference computed. Widening one leaf edits
+   every signature above it. That is the Carried-Truth Law violated at the
+   surface, in the surface that exists to express it.
+2. **It is not intent.** The Intent Boundary Rule reserves annotations for
+   DECISIONS — a refinement, an ownership marker, a representation pin.
+   `with Memory + Alloc` on a body that obviously allocates is dictation.
+3. **It buries the signal.** `!E` is the crown. In a nineteen-name row the one
+   negation worth reading is a needle in a haystack the author typed.
+
+**The form, and it needs no new syntax.** A row is a type-level value, so a
+capability is a `type` alias (above), and the alias is transparent — the checked
+row is identical, nothing proven is lost. The wheel's own worst seven signatures
+shared a sixteen-name core that had never been named; `type Judging = …` gave it
+one, and they became:
+
+```
+fn driver_check_module(ref entry) with Judging = …
+fn driver_entry_scoped(ref m, scope) with Judging + Filesystem = …
+fn driver_compile_entry(ref m) with Judging + Filesystem + Persist + Fail = …
+```
+
+What survives on the page is what a reader should read: `+ Filesystem` where a
+pass touches disk, `+ Persist` where it writes an image, `+ Fail` where it can
+refuse. `+ Intern` was never a decision. `mentl verify` bounds the shape
+(`CsWideRow`, `src/board.mn`), so this is a count that must fall rather than a
+style note that can be ignored.
+
+**The endpoint, which takes the count to zero:** the POSITIVE row is inferred
+and PROJECTED, and only negations, instance pins and genuine narrowings are
+authored — `with !Alloc + !Thread` as the normal signature, shorter *and* the
+part worth reading, with the full positive row available at the address surface
+the way `repr` width and resume cardinality already are. The peer is
+`Hβ.syntax.positive-row-is-authored-by-hand`; the migration is the medium's own
+work, since `mentl tighten` already authors row patches.
+
 **Dissolved:** the `capability` keyword and the `TCapability` token. `capability X
 = <row>` was structurally `type X = <row>` (the doc's own prior admission, peer
 `Hβ.types.capability-as-row-alias`) — a row is a type-level value, so naming one IS
@@ -1536,7 +1613,7 @@ fn lowpass_filter(samples: [Sample]) -> [Sample] with !Alloc =
 
 ### What a comment IS
 
-- **Pure prose, graph-attached.** Contiguous `//` lines concatenate to one String; a blank `//` line is a paragraph break. The comment attaches to the immediately-following declaration (`fn`/`type`/`effect`/`handler`/`let`), or — with none — to the enclosing block / the file's `Module` handle; a decl-boundary comment is **never dropped**, and an orphan with genuinely no home surfaces `P_OrphanDocstring` (gradient-narration), never a silent discard. An INTERIOR comment (inside a `{ }` body) attaches to the finest FOLLOWING node — the next statement, the final expr, or the block's own unit node when nothing follows — and a TRAILING same-line comment attaches BACKWARD to the node whose line it shares (same-line is structural: the comment token sits before any newline, one token of lookahead). Both are graph content in the same weave the decl comment fills, judged by the same backtick gate, and the address surface renders the attached prose's first line as the `Lede:` facet. The remaining layout-consumed positions are expression-interior (inside parens / argument lists / match-arm headers) — the named refinement `Hβ.parser.expr-interior-comment-attach`.
+- **Pure prose, graph-attached.** Contiguous `//` lines concatenate to one String; a blank `//` line is a paragraph break. The comment attaches to the immediately-following declaration (`fn`/`type`/`effect`/`handler`/`let`), or — with none — to the enclosing block / the file's `Module` handle; a decl-boundary comment is **never dropped**, and an orphan with genuinely no home surfaces `P_OrphanDocstring` (gradient-narration), never a silent discard. An INTERIOR comment (inside a `{ }` body) attaches to the finest FOLLOWING node — the next statement, the final expr, or the block's own unit node when nothing follows — and a TRAILING same-line comment attaches BACKWARD to the node whose line it shares (same-line is structural: the comment token sits before any newline, one token of lookahead). Both are graph content in the same weave the decl comment fills, judged by the same backtick gate, and the address surface renders the attached prose's first line as the `Lede:` facet. **Attachment is by SPAN, so an ANONYMOUS node is a home like any other**: a comment above a lambda inside an argument list attaches to the lambda (measured 2026-09-17 — `Lede:` at the lambda's address, its backticked params resolving through the enclosing decl's binders), and a lambda's span is its whole extent, head through body, so `mentl <file:line>` on the lambda's line reaches it (it used to be the head alone, and the line's widest-node rule reached a body sub-node instead — the address rule and the weave's rule are one question, and the span is the one fact both read). Expression-interior comments elsewhere (inside parens / match-arm headers) attach by the same span rule; `Hβ.parser.expr-interior-comment-attach` in `RESIDUE.md` names what the gate has and has not measured there.
 - **Register is a projection, not a delimiter.** How much surfaces — the one-line lede in `RTerse`, the full body in `RExplain` — is the gradient reading the comment's relevance at the cursor (the same gradient that drives every projection), NOT an author-chosen `//`-vs-`///` audience split. The author writes prose; the cursor decides what shows. First sentence = lede.
 - **Surfaces verbatim, rendered per target.** The substrate stores the raw String; render handlers interpret presentation — HTML `<code>` for `` `backticks` ``, terminal ANSI, markdown fence. `` `backticks` `` cross-reference identifiers; the author writes the reference, the handler resolves it.
 - **Code blocks compile via the same pipeline.** A comment containing Mentl source IS Mentl source — the compile verifies it; there is no separate doc-test category.
@@ -1701,6 +1778,25 @@ pointer-eq lying as structural equality is the silent fallback
 node-kinds** (the `Hβ.eq.structural-deep` peer is this general definition realized,
 not a carve-out); `str_eq` is the byte-sequence instance the surface `==` lowers
 to, never a developer-facing primitive.
+
+**TWO MEASURED HOLES IN THAT TOTALITY, both named rather than implied.** The
+paragraph above is the surface law and the lathe is not yet turned to all of
+it. (1) An operand whose type is still a VARIABLE at emit falls to a one-word
+compare — right for a word, an address lie for anything else — and says so as
+`T_EqTypeUnprovable` (`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq`).
+(2) A POLYMORPHIC sum compared its payload by ADDRESS — `Some(BInt(7)) ==
+Some(BInt(7))` was false while the monomorphic `BInt(7) == BInt(7)` was true —
+because the generated helper was keyed on the nominal name alone and the
+constructor's declared payload type is the quantified var. CLOSED the day it
+was measured (2026-09-18, `Hβ.eq.polymorphic-sum-payload-is-pointer-eq`): the
+sig folds its arguments so each instantiation names its own leaf, and the
+specs ground against them, so the payload recursion calls its own type's
+helper. `tests/frontier/mn-eq-polymorphic-sum.mn` holds the contract with its
+monomorphic control beside it. The entry stays written here because its
+blindness is the transferable half: (2) was invisible to (1)'s census, whose
+count held unchanged across the whole discovery, because the unprovable
+operand sat inside a generated leaf rather than at an authored comparison. A
+census that measures one surface does not see the same class one layer in.
 
 ---
 
@@ -2064,6 +2160,7 @@ token, so there is nothing to lift.*
 | `E_ZeroDelayFeedback` | `x <~ delay(0)` — a cycle with no delay: the prior would be the value being computed. ARMED (refuses the executable); one arm of the depth read, both the `delay` and `Delay` spellings | `MaybeIncorrect` | raise the delay to at least 1 |
 | `E_ComputedDelayDepth` | `x <~ delay(n - 1)` — the depth is a runtime value. A feedback line is a fixed set of declared slots, so an unreadable depth cannot be held, and the site would silently get one slot. ARMED, the sibling arm of the same read | `MaybeIncorrect` | write the depth as a literal, or hold the history yourself |
 | `E_OwnershipViolation`| `own` consumed twice / escapes ref scope      | `Unspecified`        | restructure to single-consume or use `ref`     |
+| `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident — the bump heap never frees — so it is a use-after-free the day §5.O layer 3's arena gives `Consume` a real reclaim | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
 | `E_HandlerUninstallable` | handler arms need effects context disallows | `MaybeIncorrect`   | widen ambient row or restructure handler       |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |
 | `E_ImportNameCollision` | two selective imports bind the same name    | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
@@ -2086,6 +2183,8 @@ token, so there is nothing to lift.*
 | Code                  | Trigger                                       | Applicability        | Action                                          |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
 | `T_OverDeclared`      | declared row wider than body uses             | `MachineApplicable`  | tighten the signature to unlock capabilities    |
+| `T_FieldOffsetUnprovable` | a reachable field access whose slot the graph cannot prove — the receiver's row never closed, so emit has no offset and writes `(unreachable)`. The diagnostic renders the selector and the receiver's own live type at the receiver's span. BORN 2026-09-15, and the shape of its birth is the lesson: the floor had been emitted since the offset read existed and was never REPORTED, so a program carrying one compiled clean, passed `mentl check`, and trapped at the instruction that admits it — §0's "nothing executes unproven" inverted at the one boundary that claimed it. Pre-arm (the wheel's own census is four); `tests/frontier/mn-field-offset-unprovable.mn` holds the contract and moves to a refusal in the commit that arms it | `MaybeIncorrect` | close the receiver's row — annotate it at its Intent Boundary, or give the call site a shape the twin can key on |
+| `T_EqTypeUnprovable` | a comparison (`==`, `!=`, `<`, …) whose operand type is still a variable at emit — no structure to read, so it falls to a one-word compare: value-equality for a word, an ADDRESS lie for anything else. The diagnostic carries the operator and the operand's live type at the operand's span. BORN 2026-09-18 as narration: a handler arm over quantified op parameters answered `"ab" != "ab"` (`tests/frontier/mn-eq-in-arm-pointer.mn`, declared red), and the wheel carries such compares itself — the trap form was refuted by the wheel dying on its own compile. Pre-arm; `eq_type_unprovable_max` in tools/verify-baseline.txt is the count's one home and the countdown, `T_FieldOffsetUnprovable`'s sibling on the same ladder. IT SEES ONE ALTITUDE ONLY, and the limit is measured rather than suspected: a polymorphic sum's payload compared by address inside a GENERATED leaf, where no authored comparison stands for this diagnostic to attach to, so the count held unchanged across that defect's whole discovery. That one is closed (`Hβ.eq.polymorphic-sum-payload-is-pointer-eq`); the altitude limit is not, and the generated leaf's own refusal is `Hβ.emit.generated-leaf-swallows-an-unresolved-payload` | `MaybeIncorrect` | prove the operand — give the call site a shape the twin can key on, or name the type at its Intent Boundary |
 | `T_Gradient`          | an annotation INPUT would narrow the cursor's projection | `MachineApplicable` | accept the suggestion to narrow             |
 | `W_Suggestion`        | probable Quick Fix available                  | `MaybeIncorrect`     | (Mentl-proposed)                                |
 | `W_RedundantWhere`    | `type X = Y where true` — vacuous predicate   | `MachineApplicable`  | drop the `where true`; alias is transparent     |
@@ -2117,8 +2216,13 @@ silently.
 
 - **`mentl diagnostics`** — the live catalog projected from the `DiagKind`
   constructors, so the tables in this file stop being a hand-kept second home.
-- **`mentl verify`** — the wheel's own Verify as a verb, absorbing
-  `tools/verify.sh` (`CLAUDE.md ⟳`: scaffolds dissolve into verbs).
+
+*(`mentl verify` LANDED 2026-09-19 and left this list — the medium's standing
+bounds on its own source, each bound and its justification in `src/board.mn`
+where `mentl why` walks them. It absorbs the census half of `tools/verify.sh`;
+the legs that measure the world outside the graph — the micro battery's exec
+seam, the march's peak RSS, the scaffold count — remain the script's, named
+rather than silently inherited.)*
 
 ## Authority
 
