@@ -71,8 +71,6 @@ import strings
 
 import io
 
-import oracle
-
 import egraph
 
 // ─── The Surface effect ─────────────────────────────────────────────

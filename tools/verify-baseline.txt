@@ -954,7 +954,10 @@ frontier_expected_red: eq-in-arm-pointer
 # reason, and it is a rise the countdown cannot avoid by writing less code —
 # only by the twin reaching word-typed instantiations, which is step (2) of
 # Hβ.emit.eq-on-unresolved-operand-is-pointer-eq.
-eq_type_unprovable_max: 60
+# 2026-09-21: 60 -> 58. Two left with src/oracle.mn — a whole module deleted
+# takes its unprovable compares with it, which is the cheapest way this
+# counter ever falls and the least instructive: the class is unchanged.
+eq_type_unprovable_max: 58
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
@@ -1031,7 +1034,11 @@ authored_own_max: 63
 # 2026-09-21: 739 -> 737. Two borrow markers left with the decls that carried
 # them — `driver_check_entry`'s own `ref entry_module`, and the `ref ranges`
 # on driver_module_ast, a parameter four call sites supplied and nothing read.
-authored_ref_max: 737
+# 2026-09-21 (second landing): 737 -> 729. Four left with the ranked-queue
+# oracle's deletion; four more were dropped from the SMT helpers while
+# refuting them as a cause of the pointer-render defect — they were not the
+# cause, and they were also not needed, which is the grade doing its job.
+authored_ref_max: 729
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the

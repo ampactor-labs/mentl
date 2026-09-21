@@ -902,17 +902,25 @@ fn smt_logop(ref op, ref a, ref b) with GraphRead + Memory + Alloc + Diagnostic 
 // level and nested call arg — is resolved via graph_node_body and rendered
 // uniformly, never a second node-destructure path). Follow the edge, read the
 // live node — the AST-in-graph fabric makes every sub-node a resolvable handle.
-fn handle_to_smt(handle) with GraphRead + Memory + Alloc + Diagnostic + Intern =
-  body_to_smt(graph_node_body(handle))
-
-// Render a NodeBody as an SMT term. Every node-kind that can appear in a
-// refinement-predicate operand is enumerated; a genuinely non-encodable shape
-// raises E_VerifyUnencodable (Located) and renders the unsat-forcing sentinel
-// `false` — NEVER a fabricated `true` (a `true` fallback in a PROOF GATE claims
-// proof of the unprovable — the most dangerous silent fallback in the compiler;
-// the no-silent-fallback law, deleted not wrapped). A call's args are HANDLES
-// (the AST-in-graph fabric), mapped through handle_to_smt — no i/n index loop.
-fn body_to_smt(body) with GraphRead + Memory + Alloc + Diagnostic + Intern = match body {
+// THE `body_to_smt(graph_node_body(h))` SPLIT WAS THE DEFECT, and the probe
+// that found it is worth more than the fix. Wiring this serializer to a
+// projection (`mentl query <f> "smt"`) ran it for the first time, and on the
+// wheel's own `type Sample = Float where 0.0 - 1.0 <= self && …` it rendered
+// `(- 66664 686237016)` where `show_predicate` — reading THE SAME predicate
+// handles — rendered `0.0 - 1.0`. So the graph was sound and the serializer
+// was not, which the comparison settled in one command.
+//
+// The second number MOVED between two builds of identical source (686234536 →
+// 686237016), which is what named it: a heap POINTER printed through the
+// `LitInt` arm, not a stored literal. The difference from the working sibling
+// is that `show_pred_operand` matches `graph_node_body(handle)` INLINE while
+// this passed the NodeBody across a call boundary first — so the float
+// variant's payload arrived as a word and matched the wrong arm. Dropping the
+// four `ref` markers first REFUTED the borrow-marker hypothesis (the numbers
+// moved but stayed wrong), which is the only reason this one is trustworthy.
+//
+// The one read, inline, exactly as the sibling does it.
+fn handle_to_smt(handle) with GraphRead + Memory + Alloc + Diagnostic + Intern = match graph_node_body(handle) {
   NExpr(LitInt(n)) => int_to_str(n),
   NExpr(LitFloat(f)) => float_to_str(f),
   NExpr(LitString(s)) => "\"{s}\"",
@@ -927,11 +935,20 @@ fn body_to_smt(body) with GraphRead + Memory + Alloc + Diagnostic + Intern = mat
   },
 }
 
+// Every node-kind that can appear in a refinement-predicate operand is
+// enumerated above; a genuinely non-encodable shape raises
+// E_VerifyUnencodable (Located) and renders the unsat-forcing sentinel
+// `false` — NEVER a fabricated `true` (a `true` fallback in a PROOF GATE
+// claims proof of the unprovable — the most dangerous silent fallback in the
+// compiler; the no-silent-fallback law, deleted not wrapped). A call's args
+// are HANDLES (the AST-in-graph fabric), mapped through handle_to_smt — no
+// i/n index loop.
+//
 // A call renders as `(fname arg…)` with every arg resolved through its handle
 // (the operand-Node channel PCompare already uses); the fname is the callee's
 // name read live from its node body, or the unencodable sentinel if it is not a
 // bare name reference.
-fn smt_call(ref callee, ref args) with GraphRead + Memory + Alloc + Diagnostic + Intern = match callee {
+fn smt_call(callee, args) with GraphRead + Memory + Alloc + Diagnostic + Intern = match callee {
   N(cbody, _, _) => {
     let fname = match cbody {
       NExpr(VarRef(n)) => n,
@@ -946,7 +963,7 @@ fn smt_call(ref callee, ref args) with GraphRead + Memory + Alloc + Diagnostic +
 
 // Each arg is a handle — map through handle_to_smt and join (map/fold, never an
 // imperative i/n counter; Anchor 6).
-fn smt_arg_terms(ref args) with GraphRead + Memory + Alloc + Diagnostic + Intern = fold(
+fn smt_arg_terms(args) with GraphRead + Memory + Alloc + Diagnostic + Intern = fold(
   "",
   (acc, arg) => match arg {
     N(_, _, h) => "{acc} {handle_to_smt(h)}",
@@ -954,13 +971,13 @@ fn smt_arg_terms(ref args) with GraphRead + Memory + Alloc + Diagnostic + Intern
   args
 )
 
-fn smt_binop(ref op, ref l, ref r) with GraphRead + Memory + Alloc + Diagnostic + Intern = match l {
+fn smt_binop(op, l, r) with GraphRead + Memory + Alloc + Diagnostic + Intern = match l {
   N(_, _, lh) => match r {
     N(_, _, rh) => "({smt_binop_sym(op)} {handle_to_smt(lh)} {handle_to_smt(rh)})",
   },
 }
 
-fn smt_unop(ref op, ref x) with GraphRead + Memory + Alloc + Diagnostic + Intern = match x {
+fn smt_unop(op, x) with GraphRead + Memory + Alloc + Diagnostic + Intern = match x {
   N(_, _, xh) => match op {
     UNot => "(not {handle_to_smt(xh)})",
     UNeg => "(- {handle_to_smt(xh)})",

@@ -9,6 +9,16 @@
 #   record <command>   a medium verb ran — mark every wheel path it named
 #   require <path>     about to write <path> — exit 2 unless it was marked
 #
+# OFF THE BOARD BY DESIGN, AND THE COST IS REAL. tools/state.sh does not run
+# this and must not: it is not a gate over the tree, it is a per-edit hook
+# with two entry points the Claude Code contract calls. But the wiring that
+# calls it lives in .claude/, which is gitignored — so on a FRESH CLONE this
+# file is present and inert, and the enforcement its own header calls "not an
+# enforcement" when it exists in one working copy is exactly what a new
+# checkout gets. Measured 2026-09-21 on a container clone: no .claude/ at all.
+# The absence is named here rather than discovered again; the fix is the hook
+# contract landing in the tracked tree, not this file moving to the board.
+#
 # THE LAW: an edit to src/**.mn or lib/**.mn is refused until a medium verb
 # has named that path this session. Any verb satisfies it — check, audit,
 # query, tighten, a cursor address — and one that answers WITH ERRORS still

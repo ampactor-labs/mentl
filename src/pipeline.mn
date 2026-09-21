@@ -64,8 +64,6 @@ import io
 
 import egraph
 
-import oracle
-
 // The spine — entry points as |> + ~> topology
 // Read top-to-bottom: source flows DOWN through `|>`; handlers wrap
 // OUTWARD through `~>`. Outermost handler is the sandbox boundary.
@@ -723,11 +721,13 @@ fn audit(entry_module) = analyze_fns(entry_module, audit_project)
 // ic_compile_loop, unbackticked because it no longer resolves — had ZERO
 // callers, measured by `mentl query src/main.mn unreachable` which named it
 // before anything else did; and `mentl edit` routes through `edit_run` / `mentl_edit_session`,
-// nowhere near it. It was also the ONLY install site of `project_queue_merger`,
-// so an entire subsystem hung off a function nobody called: 25 oracle decls
-// (the priority-queue machine — `project_queue`, `compute_priority`, the
-// `priority_*` / `tier_*` orders, `sort_by_priority`, `merge_by_impact`, the
-// `filter_by_*` family, `handle_distance`) and 9 in voice, all unreachable.
+// nowhere near it. It was also the ONLY install site of the queue merger, so
+// an entire subsystem hung off a function nobody called: 25 decls in
+// src/oracle.mn (the priority-queue machine — project_queue, compute_priority,
+// the priority_* / tier_* orders, sort_by_priority, merge_by_impact, the
+// filter_by_* family, handle_distance) and 9 in voice, all unreachable. None
+// of those names is backticked: the module is deleted and they resolve
+// nowhere, which is the difference between prose and a reference.
 //
 // The subsystem it rooted is SUPERSEDED, not merely unused: PLAN §11.1
 // re-founded the oracle as inference with a term-sorted unknown — propagation
@@ -739,12 +739,14 @@ fn audit(entry_module) = analyze_fns(entry_module, audit_project)
 // one was the superseded design. `Hβ.oracle.ranked-queue-is-a-second-frontier`
 // carries the deletion of the rest.
 //
-// One thing that deletion must answer, measured here and not guessed: with
-// this root gone, `project_queue_merger` has NO install site anywhere, and
-// `mentl check src/main.mn` still passes — while `silence_predicate`
-// (src/voice.mn, reachable, called from a handler arm at voice:1177) performs
-// `query_project_queue`. A reachable perform with zero handlers compiles
-// clean. `Hβ.effects.reachable-perform-with-no-install-compiles` carries it.
+// One thing that deletion answered, measured at the moment the root went and
+// recorded before the rest followed it: with the root gone the queue merger
+// had NO install site anywhere, `mentl check src/main.mn` still passed, and
+// `silence_predicate` (src/voice.mn) — reachable, called from a handler arm —
+// still performed query_project_queue. A reachable perform with zero handlers
+// compiles clean. `Hβ.effects.reachable-perform-with-no-install-compiles`
+// carries it; the predicate reads the gradient field now, so the wheel no
+// longer contains that shape, and the GATE that let it through still does.
 //
 // The env substrate — buffer, index, resolve, dedup, and env_handler —
 // lives in src/env.mn now (PLAN §11 Phase 3.5, the handler seam: the
@@ -1221,6 +1223,13 @@ fn render_debt_line(ob) with GraphRead + Memory + Alloc = match ob {
   (modh, s, pred, _) => "\n  {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(s)}",
 }
 
+fn render_smt_lines(obligations) with GraphRead + Memory + Alloc + Diagnostic + Intern =
+  obligations |> map(render_smt_line) |> str_concat_all
+
+fn render_smt_line(ob) with GraphRead + Memory + Alloc + Diagnostic + Intern = match ob {
+  (modh, s, pred, _) => "\n; {module_name_of_handle(modh)}:{show_span(s)}\n{predicate_to_smt_lib(pred)}",
+}
+
 // The import edges rendered as a verdict per edge. DEAD means the imported
 // module brings no name this one references — measured off the refs column,
 // not guessed from text, which is the whole reason the facet exists: a grep
@@ -1406,6 +1415,11 @@ fn render_query_result(result) = match result {
   // own lesson): each obligation located with its predicate, so the
   // discharge work has an instrument instead of a count.
   "→ {int_to_str(len(obligations))} verification obligations pending{render_debt_lines(obligations)}",
+  QRSmt(obligations) => // The same obligations in the solver's language, each assertion located
+  // so a discharged one can be walked back to the claim that raised it.
+  // `predicate_to_smt_lib` is verify.mn's own serializer — this render is
+  // its first reader, and Phase 8.3's handler swap is its second.
+  "→ {int_to_str(len(obligations))} obligation(s) as SMT-LIB{render_smt_lines(obligations)}",
   QRHandlerProvider(provider) => match provider {
     Some(name) => "→ handled by {name}",
     None => "→ no handler installed",
@@ -1480,6 +1494,7 @@ type QueryVerb
   | QVPerforms
   | QVOrphanClaims
   | QVCost
+  | QVSmt
   | QVUnknownVerb
 
 fn classify_query_verb(w: String) with Pure = if w == "type" {
@@ -1522,6 +1537,8 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVOrphanClaims
 } else if w == "cost" {
   QVCost
+} else if w == "smt" {
+  QVSmt
 } else {
   QVUnknownVerb
 }
@@ -1566,6 +1583,7 @@ fn build_question(verb, arg, raw) with Memory + Alloc = match verb {
   QVPerforms => QPerforms,
   QVOrphanClaims => QOrphanClaims,
   QVCost => QCost,
+  QVSmt => QSmt,
   QVUnknownVerb => QUnknown(raw),
 }
 

@@ -46,8 +46,6 @@ import effects
 
 import mentl
 
-import oracle
-
 import query
 
 import verify

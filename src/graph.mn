@@ -848,23 +848,26 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
 // of `graph_mutated` in the tree, which makes the effect write-only.
 //
 // This block used to say subscribers "are a handler-swap surface (the IC
-// loop's `project_queue_merger` re-projects on the bumped epoch, MV-LSP.push
+// loop's project_queue_merger re-projects on the bumped epoch, MV-LSP.push
 // streams diagnostics) … the IC loop swaps it for the oracle's
-// re-projection." Measured 2026-09-19: `project_queue_merger` contains ZERO
+// re-projection." Measured 2026-09-19: that handler contained ZERO
 // `graph_mutated` arms, and the only other arm in the tree is `lsp_adapter`'s,
 // which discards both arguments exactly as this one does. The comment
 // described an architecture the artifact does not have, which is the one
-// thing a comment must never do.
+// thing a comment must never do — and 2026-09-21 finished the sentence: the
+// whole ranked-queue oracle it named is DELETED, so those names are prose
+// here now and carry no backticks.
 //
 // WHAT IS ACTUALLY THROWN AWAY, and why it matters more than a dead event:
 // the write arms perform `graph_mutated(new_epoch, MSetNode(handle, old_node))`
 // — handle AND prior value, at nine sites, guarded so speculation never emits.
 // That payload is a DELTA between two images: exactly what an incremental
 // re-projection, a board comparing two pins, and a first-divergence question
-// each need. `project_queue_merger` instead POLLS `graph_epoch()` and
-// re-projects the WHOLE queue whenever it moved, collapsing a per-handle cone
-// to one boolean. The delta is computed (rollback needs it), performed across
-// an effect boundary, and discarded by everyone.
+// each need. The queue merger instead POLLED `graph_epoch()` and re-projected
+// the WHOLE queue whenever it moved, collapsing a per-handle cone to one
+// boolean — and it is deleted now, so the delta has no consumer at all rather
+// than a coarse one. It is still computed (rollback needs it), still performed
+// across an effect boundary, and still discarded by everyone.
 //
 // RETIREMENT: `Hβ.graph.mutation-delta-is-write-only`. This sink stays — a
 // chain with no subscriber must still be able to run — but it stops being the

@@ -140,6 +140,9 @@ type Question
   | QUnreachable
   | QPerforms
   | QOrphanClaims
+  // "smt" — every undischarged obligation rendered as an SMT-LIB assertion,
+  // the exact text Phase 8.3's `~> verify_smt` handler will hand a solver.
+  | QSmt
   // "cost" — what this question cost the medium, in the medium's own
   // facts: modules linked, source lines processed, nodes minted. A wall
   // clock is a HOST fact and varies per run, so it can be reported and
@@ -168,6 +171,19 @@ type QueryResult
   // The handle knows its module; the collector was discarding it.
   | QRRefs([(String, Span)])
   | QRVerifyDebt([(Int, Span, Predicate, Reason)])
+  // THE SAME OBLIGATIONS, PROJECTED AS SMT-LIB — `mentl query <f> "smt"`.
+  // One read (`verify_debt()`), two renders: `QRVerifyDebt` speaks the
+  // predicate in the medium's own voice for a person, and this one speaks it
+  // in the solver's, which is exactly what Phase 8.3's handler swap will
+  // hand to Z3/CVC5. The payload is identical because the FACT is.
+  //
+  // It exists because the serializer did, unreached: fourteen decls in
+  // src/verify.mn rendered a complete SMT-LIB assertion and NOTHING called
+  // them — `mentl query src/main.mn unreachable` named the whole family.
+  // A serializer with no caller is a claim, not a capability; giving it a
+  // projection is what turns it back into one, and it means 8.3 arrives with
+  // this half already exercised instead of re-derived.
+  | QRSmt([(Int, Span, Predicate, Reason)])
   | QRHandlerProvider(Option(String))
   // IFC projection — the FlowLabel the type already proves
   | QRFlowLabel(FlowLabel, Reason)
@@ -287,6 +303,11 @@ handler query_default {
       let debt = verify_debt()
       resume(QRVerifyDebt(debt))
     },
+    QSmt => // The same bank, handed to the render that speaks solver. Nothing is
+    // re-derived here and nothing may be: a second walk that collected the
+    // obligations again would be the violation this facet's own subject —
+    // the unreached serializer — was a symptom of.
+    resume(QRSmt(verify_debt())),
     QHandlerProvider(op_name) => // The handler stack IS graph content (PLAN §2 — "the handler chain IS
     // the capability stack"): each handler decl is a HandlerDeclStmt in the
     // weave whose arms name the ops it provides. Which handler provides OP is
@@ -646,8 +667,66 @@ fn reach_report(cells) = {
   let idx = ur_index(decls, 0, n, smap_new())
   match smap_get(idx, "main") {
     None => [],
-    Some(_) => ur_rows(decls, ur_walk(decls, idx, ["main"], smap_new()), 0, n, []),
+    Some(_) => ur_rows(decls, ur_walk(decls, idx, ["main"] ++ refine_roots(decls), smap_new()), 0, n, []),
   }
+}
+
+// A REFINEMENT PREDICATE IS A ROOT. Before it was one, this walk reported
+// `span_valid` as dead code.
+//
+// MEASURED 2026-09-21, and the measurement is a warning about this whole
+// facet's genre: `mentl query src/main.mn unreachable` listed
+// `types -> span_valid`, which is the predicate of
+// `type ValidSpan = Span where span_valid(self)` — the Intent Boundary type
+// the wheel annotates with everywhere. Deleting it on this facet's word would
+// have broken every `ValidSpan` in the tree. A dead-code report is a DELETION
+// INSTRUCTION, so under-reporting reachability is the one direction it may
+// never be wrong in, and it was.
+//
+// The root cause is one constructor: `free_vars_stmt` (src/parser.mn) answers
+// `RefineStmt(_, _, _) => []`, so a predicate's references reach nothing. That
+// is the SAME shape as the `HandlerDeclStmt => []` that took the single-pass
+// landing's m4 leg to a trap — one arm over in the same match —  and it is
+// still live for the judgment's own callee-first DAG ordering, where a
+// refinement calling a later-declared fn has no edge.
+// `Hβ.parser.refine-stmt-frees-are-empty` carries that half; this is the
+// facet's, fixed here because the facet is what people act on.
+//
+// SEEDED AS ROOTS rather than as edges from the type's uses, deliberately: a
+// `where` clause is discharged wherever its type is annotated, and the walk
+// cannot cheaply know where. Over-approximating is the safe direction for a
+// report whose output is "delete this".
+fn refine_roots(decls) with GraphRead + Memory + Alloc = decls |> map(refine_decl_names) |> flatten
+
+fn refine_decl_names(entry) with GraphRead + Memory + Alloc = match entry {
+  (_, d) => match d {
+    N(NStmt(RefineStmt(_, _, pred)), _, _) => predicate_names(pred),
+    _ => [],
+  },
+}
+
+// The names a Predicate references, walked through the handles it carries —
+// the AST lives in the graph, so the predicate holds edges and this follows
+// them rather than re-parsing anything.
+fn predicate_names(pred) with GraphRead + Memory + Alloc = match pred {
+  PTrue => [],
+  PCompare(_, l, r) => handle_var_names(l) ++ handle_var_names(r),
+  PAnd(a, b) => predicate_names(a) ++ predicate_names(b),
+  POr(a, b) => predicate_names(a) ++ predicate_names(b),
+  PNot(p) => predicate_names(p),
+  PBoolNode(h) => handle_var_names(h),
+  PPatternMatch(_, h) => handle_var_names(h),
+  PFlowLe(_, _) => [],
+  PWithSelf(_, inner) => predicate_names(inner),
+}
+
+fn handle_var_names(h) with GraphRead + Memory + Alloc = {
+  let body = graph_node_body(h)
+  let here = match body {
+    NExpr(VarRef(n)) => [n],
+    _ => [],
+  }
+  here ++ (body_child_handles(body) |> map(handle_var_names) |> flatten)
 }
 
 fn ur_cell_decls(acc, cell) with Memory + Alloc = match cell {
@@ -1459,10 +1538,18 @@ fn body_child_handles(body) with Alloc + Memory = match body {
 
 // ── the tier detectors — the census IS their home ────────────────────
 //
-// The audit tiers (oracle.mn: anonymity_shape_of per fn; pipeline.mn's
+// The audit tiers (`anonymity_shape_of` per fn, below; pipeline.mn's
 // renderer) READ these; the census counts them over the whole weave.
 // One detector, two projections — the per-fn narration and the
 // count+sites answer — never two classifiers (PLAN §11 Phase 2.5).
+//
+// THE FAMILY HAS ONE HOME AS OF 2026-09-21, and this comment named the
+// split it was living in: two of the audit's four shape reads
+// (`pipe_shape_of`, `anonymity_shape_of` with their ten helpers) lived in
+// src/oracle.mn, a module whose entire subject was the superseded
+// ranked-queue oracle, and whose other 25 decls were unreachable. They are
+// below, beside `drift_shapes_of` and `recursion_shape_of`, and oracle.mn is
+// deleted.
 //
 // ITERATION IS TOPOLOGY (Morgan's interrogation, 2026-07-30 — the law
 // SYNTAX declared at birth: no loop keywords; iteration is |> stages,
@@ -1477,6 +1564,129 @@ fn body_child_handles(body) with Alloc + Memory = match body {
 fn recursion_shape_of(fn_handle) with GraphRead + Alloc + Memory = match graph_node_body(fn_handle) {
   NStmt(FnStmt(name, params, _, _, body)) => self_call_increments(node_handle(body), name, params |> map(param_name)),
   _ => false,
+}
+
+// node_contains_handle — TREE containment: is `target` the node at
+// `h` or a descendant of it? The span form cannot answer this (decl
+// and body spans are head-anchored — the measured 2026-07-28 hole);
+// the tree IS the truth. Bounded by the subtree.
+fn node_contains_handle(h, target) with GraphRead + Alloc + Memory + !Mutate = if h == target {
+  true
+} else {
+  any((c) => node_contains_handle(c, target), body_child_handles(graph_node_body(h)))
+}
+
+// ── the verb-shape read — the topology the bindings already draw ─────
+//
+// SYNTAX ⌖: `|>` is NEVER optional on a chain — `y |> f |> g` over
+// `let x = f(y); g(x)`. The verb is a PROJECTION of use-count (the
+// same edge own/ref grades from): a let-bound name consumed EXACTLY
+// ONCE, by exactly the FOLLOWING statement, is a `|>` stage written as
+// a binding; a name used twice is `<|` territory and never fires; a
+// single step is the law's own exception (the pipe wins on CHAINS).
+// Counting walks the one total child projection — never a text scan.
+//
+// body_is_var — is this body exactly a VarRef of `name`? The counting
+// walk's leaf test as its own projection (a non-VarRef body is simply
+// not the name — the false arm is the predicate's definition).
+fn body_is_var(body, name: String) with Pure = match body {
+  NExpr(VarRef(n)) => n == name,
+  _ => false,
+}
+
+// count_var_uses — VarRef occurrences of `name` in the subtree at h.
+// An inner rebinding shadows and over-counts toward "more than one
+// use", which only SUPPRESSES an invite — conservative by construction.
+fn count_var_uses(h, name: String) with GraphRead + Alloc + Memory = {
+  let body = graph_node_body(h)
+  let here = if body_is_var(body, name) { 1 } else { 0 }
+  here + (body_child_handles(body) |> map((c) => count_var_uses(c, name)) |> fold(0, (a, x) => a + x))
+}
+
+// chain_scan — walk a block's statement spine (stmts ++ final): a
+// LetStmt(PVar) whose name has exactly one use, inside exactly the
+// next node, extends the current run; anything else flushes it. Runs
+// of length >= 2 are `|>` invites, reported as step counts.
+// The spine's links, then the runs — two stages, neither threading an
+// index through a self-call. A LINK is per-position (does stmt i feed
+// stmt i+1 exactly once?); the runs are a fold over those links
+// carrying (run, acc), flushing a run of >= 2 as one `|>` invite.
+fn chain_scan(nodes) with GraphRead + Alloc + Memory = match chain_links(nodes) |> fold(
+  (0, []),
+  (state, link) => match state {
+    (run, acc) => if link { (run + 1, acc) } else { (0, keep_run(run, acc)) },
+  }
+) {
+  (run, acc) => keep_run(run, acc),
+}
+
+// A run of two or more bindings IS the chain the pipe draws; one step is
+// the law's own exception.
+fn keep_run(run, acc) with Alloc + Memory = if run >= 2 { acc ++ [run] } else { acc }
+
+fn chain_links(nodes) with GraphRead + Alloc + Memory = if len(nodes) < 2 {
+  []
+} else {
+  range(0, len(nodes) - 1) |> map((i) => match graph_node_body(node_handle(nodes[i])) {
+    NStmt(LetStmt(PVar(name), _, _)) => let_feeds_next(name, nodes, i),
+    _ => false,
+  })
+}
+
+fn let_feeds_next(name: String, nodes, i) with GraphRead + Alloc + Memory =
+  count_var_uses(node_handle(nodes[i + 1]), name) == 1 && rest_uses(name, nodes, i + 2) == 0
+
+// The suffix's total use-count — a `|>` chain over the tail, not an
+// index threaded through a self-call (iteration is topology; this is
+// the tier's own neighbour, convicted by the tier it sits four lines
+// above).
+fn rest_uses(name: String, nodes, j) with GraphRead + Alloc + Memory =
+  nodes |> drop(j) |> map((n) => count_var_uses(node_handle(n), name)) |> sum
+
+// pipe_shape_of — the verb-shape read over a fn's body spine, the
+// audit tier's entry (build_audit_report reads it per fn).
+fn pipe_shape_of(fn_handle) with GraphRead + Alloc + Memory = match graph_node_body(fn_handle) {
+  NStmt(FnStmt(_, _, _, _, body)) => match graph_node_body(node_handle(body)) {
+    NExpr(BlockExpr(stmts, fin)) => chain_scan(stmts ++ [fin]),
+    _ => [],
+  },
+  _ => [],
+}
+
+// ── the anonymity read — the named stage in hiding ───────────────────
+//
+// INTENT IS LOSSLESS (PLAN §0; the stamp Hβ.audit.anonymity-tier): an
+// anonymous fn that already HAS a name (the eta-wrapper — its body is
+// exactly a named call over its own params, so the name exists and the
+// lambda hides it) or that CARRIES a row (a non-Pure lambda — the
+// effects deserve a decl home with a `with` clause) is intent
+// discarded at the site that knew it. The pure-local
+// immediately-consumed lambda is the vocabulary and stays silent —
+// `map((x) => x + 1, xs)` never narrates, whatever param it lands on.
+// The escape class is DEP `Hβ.infer.use-profile` (band N): until the
+// escape-bit lands, the read speaks the two classes it can prove.
+fn anonymity_shape_of(fn_handle) with GraphRead + !Mutate + Alloc + Memory = match graph_node_body(fn_handle) {
+  NStmt(FnStmt(_, _, _, _, body)) => lambda_shapes(node_handle(body), (0, 0)),
+  _ => (0, 0),
+}
+
+fn lambda_shapes(h, acc) with GraphRead + !Mutate + Alloc + Memory = {
+  let body = graph_node_body(h)
+  let here = match body {
+    NExpr(LambdaExpr(params, lbody)) => classify_lambda(h, params, lbody, acc),
+    _ => acc,
+  }
+  body_child_handles(body) |> fold(here, (a, c) => lambda_shapes(c, a))
+}
+
+fn classify_lambda(h, params, lbody, acc) with GraphRead + !Mutate + Alloc + Memory = match acc {
+  (eta, rowed) => if lambda_is_eta(params, lbody) {
+    (eta + 1, rowed)
+  } else if lambda_carries_row(h) {
+    (eta, rowed + 1)
+  } else {
+    acc
+  },
 }
 
 fn self_call_increments(h, name: String, pnames) with GraphRead + Alloc + Memory = {

@@ -35,6 +35,95 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-21 · pin ab1de5f0df8043e2 (CLEAN m2 == m3) · THE SUPERSEDED ORACLE IS
+  DELETED WHOLE, AND WIRING ITS NEIGHBOUR FOUND TWO SILENT WRONGS. The previous
+  pin deleted the dead root and banked the rest; this one takes the rest, and
+  what it cost to take is the entry.
+
+  **src/oracle.mn IS GONE** — 644 lines, of which 25 decls were unreachable and
+  12 were audit shape-detectors that had no business in a module about a queue.
+  The 12 (`pipe_shape_of`, `anonymity_shape_of` and their ten helpers) moved to
+  **src/query.mn**, beside `drift_shapes_of` and `recursion_shape_of`, which is
+  where the audit's other two shape reads already lived: the family had been
+  split across two modules, and query.mn's own comment said *"the audit tiers
+  (oracle.mn: anonymity_shape_of per fn)"* — naming the split while living in
+  it. Six modules dropped `import oracle`.
+
+  With it: `OracleQuery` and its four ops, `QueueItem`, `OraclePriority`,
+  `PriorityTier`, the `project_queue_merger` handler, voice's five
+  queue-projection decls (`voice_queue_walk`, `fold_queue_items`,
+  `tier_to_tentacle`, `with_tentacle`, `tentacle_to_form_kind`), the `IC`
+  effect, and **format's `format_ic_loop`** — which made the family visible:
+  FOUR `<~ accumulate` IC fixpoint loops, in four modules, each a one-line
+  written claim that *"build IS the `<~` loop closing"*, and NOT ONE of them
+  had a caller. The property they asserted is real and is built elsewhere —
+  `fmt` writes its own fixpoint by rendering, re-parsing and writing the
+  SECOND render — which is the difference between a mechanism and a sentence
+  about one.
+
+  **`silence_predicate` reads the field that existed for it.** It performed
+  `query_project_queue` against a handler nothing installed, so the rule had
+  never run. Its answer was already a `Situation` field — `gradient_next` —
+  which `compose_propose_situation` fills with `None` at every construction: a
+  fact with a home, a reader that went elsewhere, and a writer that dropped it.
+  The read is the field now and the row is Pure. The writer's half is
+  `Hβ.voice.situation-gradient-is-never-filled`, and it is not a small fix:
+  the arm cannot perform `teach_gradient` because an arm performs in the
+  INSTALL's world and `mentl_default` sits INSIDE `teach`'s chain, to the left
+  of the voice install — so the gradient must arrive WITH the `propose`.
+
+  **THE DEAD SMT SERIALIZER WAS WIRED, NOT DELETED, AND THAT DECISION PAID
+  IMMEDIATELY.** Fourteen decls in src/verify.mn rendered SMT-LIB and nothing
+  called them. Deleting designed work is destruction; leaving it is a claim.
+  The third option is a PROJECTION: `mentl query <file> "smt"` renders every
+  undischarged obligation as an SMT-LIB assertion — ONE read (`verify_debt()`),
+  two renders, the prose one for a person and this one for a solver, which is
+  exactly what Phase 8.3's `~> verify_smt` will hand Z3.
+  Its first execution, on the wheel's own
+  `type Sample = Float where 0.0 - 1.0 <= self && self <= 1.0`, printed
+  `(assert (and (<= (- 66664 686234536) self) (<= self 1.0)))`. The decisive
+  comparison was one command: `mentl query <file> "verification"` renders the
+  SAME predicate from the SAME handles and said `0.0 - 1.0 <= self && …`, so
+  the graph was sound and the serializer was not. **Two hypotheses died
+  first.** The four `ref` markers on the smt helpers were dropped: the numbers
+  MOVED (686234536 → 686237016) and stayed wrong — and that movement between
+  two builds of identical source is what named the value a heap POINTER rather
+  than a stored literal. Then the fix's own suggestion — *a sum with a Float
+  payload loses it across a call boundary* — was probed at a two-variant
+  `BFloat(Float) | BWord(Int)` and came back CORRECT (exit 42), so the class is
+  not that. The site is fixed (`handle_to_smt` matches `graph_node_body(h)`
+  INLINE, which is what the working sibling `show_pred_operand` always did) and
+  renders `(- 0.0 1.0)`; the CLASS is open and named, with the kill recorded
+  rather than a banked wrong decode.
+
+  **THEN THE FACET CALLED A LIVE FUNCTION DEAD.** `mentl query src/main.mn
+  unreachable` listed `types -> span_valid` — the predicate of
+  `type ValidSpan = Span where span_valid(self)`, the Intent Boundary type the
+  wheel annotates with throughout. Deleting it on the facet's word would have
+  broken every `ValidSpan` in the tree, and this landing was reading that list
+  to decide deletions. The root is one constructor: `free_vars_stmt` answers
+  `RefineStmt(_, _, _) => []`, **the same shape as the `HandlerDeclStmt => []`
+  that sent the single-pass landing's m4 leg into a trap, one arm over in the
+  same match, never fixed with it.** `reach_report` seeds every refinement
+  predicate's names as roots now — over-approximating deliberately, because a
+  dead-code report is a DELETION INSTRUCTION and under-reporting reachability
+  is the one direction it may never be wrong in. The judgment's half is
+  `Hβ.parser.refine-stmt-frees-are-empty`, left for a landing that can march it
+  alone: the predicate carries graph handles, so reading its names needs
+  GraphRead, and `free_vars_stmt` is the pure parse-time walk the callee-first
+  DAG ordering depends on.
+
+  **MEASURED:** unreachable 276 → 194 of 3,004 decls; compiler-side 74 → 18
+  (wasm 2, eight_loop 3, lower 5, types 1, verify 3, voice 4 — the last four
+  kept and named as `Hβ.voice.voiceline-renders-to-nobody`, a WIRING gap whose
+  deletion would delete the medium's own voice). m2 == m3 CLEAN, census 0,
+  419,165 lines, 9.81s / 975MB. crown · proof-exactness · effect-identity green,
+  frontier 390/0/2. `tools/consult-gate.sh` and `tools/oracle-selftest.sh` say
+  in their own headers why they are off the board — one is a per-edit hook
+  whose caller lives in gitignored `.claude/` (so a fresh clone gets it inert,
+  measured on this container), the other an instrument that BANKS crucibles,
+  where a board row would refuse on discovery.
+
 - 2026-09-21 · pin 11aaa07d3c448207 (CLEAN m2 == m3) · THE MEDIUM AUDITED
   ITSELF AND SIX FINDINGS WERE ONE LAW — *a fact with two homes, or a fact
   restated where an edge already carried it*. The transferable half is not the

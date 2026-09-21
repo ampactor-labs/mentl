@@ -24,8 +24,6 @@ import driver
 
 import strings
 
-import oracle
-
 import egraph
 
 // Topic is the focus of one voice turn. Caret-of-attention projects
@@ -387,23 +385,36 @@ effect Interact {
 }
 
 // silence_predicate — Mentl does NOT fill space to fill space. Silence is
-// the default; speaking is earned. Per insight #11 (CLAUDE.md / INSIGHTS
-// §"The Continuous Oracle IS Incremental Compilation Plus One Cached
-// Value", commit 636c365), silence is project-wide and READ from the one
-// oracle queue: Mentl is silent ONLY when the project queue is empty (the
-// gradient's top, the proven-complete state). There is no per-Topic ×
-// per-tentacle re-derivation — the queue IS the proof of worth-surfacing,
-// and voice_queue_walk projects it. silence_predicate performs
-// OracleQuery's query_project_queue and returns true (silence) iff the
-// queue is empty.
-fn silence_predicate(situation) with OracleQuery = {
-  let queue = query_project_queue()
-  match queue {
-    [] => // gradient at top — full silence
-    true,
-    [_, ..._] => // queue has items — Mentl surfaces something
-    false,
-  }
+// the default; speaking is earned, and what earns it is a PROVEN next move
+// at this position: the gradient's own answer. `Some(suggestion)` is the
+// medium having something it can show a proof for; `None` is the gradient's
+// top, which is silence.
+//
+// IT READ A QUEUE THAT WAS NEVER INSTALLED. This performed
+// query_project_queue (unbackticked: the op is deleted and resolves nowhere),
+// whose only handler was installed by a function with
+// zero callers — so on every path that reaches here the perform found no
+// handler at all, and the executable root gate cleared it anyway
+// (`Hβ.effects.reachable-perform-with-no-install-compiles`). A rule that
+// cannot run is not a rule, and the queue it asked is the ranked-queue
+// oracle the frontier superseded.
+//
+// The answer was already a FIELD on the Situation — `gradient_next`, which
+// exists for exactly this question and which `compose_propose_situation`
+// fills with `None` at every construction. So the fact had a home, a reader
+// that went elsewhere for it, and a writer that dropped it: three places to
+// be wrong about one thing. The read is the field now, and the row is Pure,
+// which is what a predicate over a value it was handed should always have
+// been. `Hβ.voice.situation-gradient-is-never-filled` carries the writer's
+// half — it cannot perform `teach_gradient` from inside `mentl_voice_default`
+// (an arm performs in the INSTALL's world, and `mentl_default` sits INSIDE
+// `teach`'s own chain, to the left of the voice install), so the gradient has
+// to arrive with the `propose` that asks for it.
+fn silence_predicate(situation) with Pure = match situation {
+  Situation(s) => match s.gradient_next {
+    None => true,
+    Some(_) => false,
+  },
 }
 
 // topic_equal / tentacle_equal DISSOLVED with observation_new_since_last_
@@ -417,17 +428,6 @@ fn silence_predicate(situation) with OracleQuery = {
 // Topology→FOffering, Unlock→FCapability, Trace→FRefutation,
 // Verify→FRefinement, Teach→FGradient, Why→FTrace. H6 discipline:
 // no wildcard arm; every Tentacle variant's mapping is named.
-fn tentacle_to_form_kind(tentacle) with Pure = match tentacle {
-  TentQuery => FFactual,
-  TentPropose => FOffering,
-  TentTopology => FOffering,
-  TentUnlock => FCapability,
-  TentTrace => FRefutation,
-  TentVerify => FRefinement,
-  TentTeach => FGradient,
-  TentWhy => FTrace,
-}
-
 // applicable_modifiers_for_tentacle — per MV §2.7.4, the per-tentacle
 // subset of Modifier instances RPlayful selects from. Returns
 // [Modifier] of concrete TailConsequence / EmphasisClose /
@@ -505,16 +505,6 @@ fn select_modifier(situation, register) with Memory + Alloc = match situation {
     RPlayful => pick_from_pool(s.tentacle, situation_hash(situation)),
     RExplain => pick_from_pool(s.tentacle, situation_hash(situation)),
   },
-}
-
-// with_tentacle — pure update of Situation's tentacle field. Used by
-// voice_queue_walk's fold to retarget the same Situation snapshot
-// at each of the 8 tentacles in turn. All other Situation fields
-// (topic, handle, env_snapshot, reasons, rows, ownership, refinements,
-// gradient_next, handlers_installed, prior_turn_topic, facts,
-// register) survive unchanged — only the tentacle perspective shifts.
-fn with_tentacle(situation, tentacle) with Memory + Alloc = match situation {
-  Situation(s) => Situation({env_snapshot: s.env_snapshot, facts: s.facts, gradient_next: s.gradient_next, handle: s.handle, handlers_installed: s.handlers_installed, ownership_at_topic: s.ownership_at_topic, prior_turn_tentacle: s.prior_turn_tentacle, prior_turn_topic: s.prior_turn_topic, reason_at_topic: s.reason_at_topic, refinements: s.refinements, register: s.register, row_at_topic: s.row_at_topic, row_declared: s.row_declared, tentacle: tentacle, topic: s.topic}),
 }
 
 // topic_ident_or_empty — pure projection of a Topic to its identifier
@@ -700,95 +690,28 @@ fn render_for_tentacle(situation) with Alloc + Memory = match situation {
   },
 }
 
-// The per-tentacle fold (the prior voice_lines_for / fold_tentacles_to_
-// voicelines / proof_derivable triple) is DISSOLVED. Insight #11 superseded
-// it: silence and worth-surfacing are not per-Topic × per-tentacle re-
-// derivations — they are the oracle QUEUE projected. voice_queue_walk
-// (below) IS the projector: each QueueItem already carries its
-// PriorityTier, and tier_to_tentacle reads the tentacle from it, so the
-// queue item IS the proven-worth-surfacing fact. There is no second
-// silence machinery to maintain — the queue-empty gate is the one silence
-// gate, and the tier→tentacle read is the one fold.
+// THE QUEUE-PROJECTION FAMILY IS DELETED — voice_queue_walk,
+// fold_queue_items, tier_to_tentacle, with_tentacle and
+// tentacle_to_form_kind, unbackticked because none of them resolve now.
 //
-// voice_queue_walk — queue-projection per insight #11. Queries the
-// project queue via OracleQuery (cursor-relevance filtered when the
-// situation has a cursor; project-wide otherwise); for each
-// QueueItem, dispatches to the per-tentacle render arm based on
-// tier_to_tentacle(item.impact.tier); accumulates VoiceLines.
+// Their prose is the record worth keeping. It read: *"silence and
+// worth-surfacing are not per-Topic × per-tentacle re-derivations — they are
+// the oracle QUEUE projected … There is no second silence machinery to
+// maintain — the queue-empty gate is the one silence gate."* The argument
+// was right and the object it named was never there: the queue's handler
+// (project_queue_merger, in the now-deleted src/oracle.mn) was installed only
+// by a function with zero callers, so nothing here ever ran, and
+// `mentl query src/main.mn unreachable` named the whole family in one read.
 //
-// Same machinery cursor-time MV + batch F.1: LSP picks the first
-// VoiceLine for the cursor surface; F.1 mentl doc renders all.
-// Surface-side cursor-relevance projection (cursor_relevant op) +
-// project-wide fallback (query_project_queue) compose at the
-// surface; voice_queue_walk just projects the queue items it
-// receives.
+// The ranked queue is ALSO the superseded design — PLAN §11.1 re-founded the
+// oracle as inference with a term-sorted unknown, and the live ranked absence
+// field is the frontier (`mentl <file>:0`). So the right silence gate is not
+// a second queue: it is `silence_predicate` reading the gradient's own answer
+// off `Situation.gradient_next`, which is what it does now.
 //
-// Per the realization-loop discipline (insight #12): this fn replaces
-// the prior fold-over-8-tentacles approach (artifact of the per-Topic
-// silence framing that insight #11 superseded). The new fold is over
-// the QUEUE; tentacles are VIEWS on queue items, not separate
-// handlers.
+// `render_for_tentacle` survives — it is the LIVE render, called from the
+// `propose` arm below.
 //
-// Renamed from `mentl_voice_default` 2026-04-24 (MV.2.e.scaffold) to
-// free that name for the actual `Interact` handler declared at
-// end-of-file. The handler internally folds the project queue via
-// this projector.
-fn voice_queue_walk(situation_seed) with OracleQuery + Memory + Alloc = match situation_seed {
-  Situation(s) => {
-    let queue_items = match s.handle {
-      None => query_project_queue(),
-      Some(h) => {
-        let local = cursor_relevant(h, 200)
-        match local {
-          [] => query_project_queue(),
-          [_, ..._] => local,
-        }
-      },
-    }
-    let n = len(queue_items)
-    fold_queue_items(situation_seed, queue_items, 0, n, make_list(n), 0)
-  },
-}
-
-// fold_queue_items — walk the queue items in priority order; per item,
-// retarget the Situation at the item's tentacle (per tier_to_tentacle
-// mapping) and call the per-tentacle render arm. Tail-recursive
-// accumulator pattern; flat-buffer-plus-counter substrate (Ω.3 —
-// list_extend_to + list_set + counter + slice).
-fn fold_queue_items(situation, items, i, n, acc, count) with Memory + Alloc = if i >= n {
-  slice(acc, 0, count)
-} else {
-  let item = list_index(items, i)
-  match item {
-    QueueItem(it) => match it.impact {
-      OraclePriority(p) => {
-        let tentacle = tier_to_tentacle(p.tier)
-        let situation_for_t = with_tentacle(situation, tentacle)
-        let voiceline = render_for_tentacle(situation_for_t)
-        let extended = list_extend_to(acc, count + 1)
-        let written = list_set(extended, count, voiceline)
-        fold_queue_items(situation, items, i + 1, n, written, count + 1)
-      },
-    },
-  }
-}
-
-// tier_to_tentacle — map a PriorityTier (per src/oracle.mn)
-// to the tentacle that renders it. H6 exhaustive over PriorityTier.
-//
-// - TBlocking → TentTrace (compile error; refutation form)
-// - TViolation → TentTrace (declared row contradicted; refutation)
-// - TPending → TentVerify (V_Pending refinement obligation)
-// - TUnlock → TentUnlock (capability available; the gradient surface)
-// - TStyle → TentTopology (topology nudge; FOffering / STYLE_NUDGE)
-fn tier_to_tentacle(tier) with Pure = match tier {
-  TBlocking => TentTrace,
-  TViolation => TentTrace,
-  TPending => TentVerify,
-  TUnlock => TentUnlock,
-  TStyle => TentTopology,
-}
-
 // ─── unimplemented_arm — sentinel for arms not yet in their batch ─────
 //
 // Per drift mode 9 (deferred-by-omission): every Interact arm in the
@@ -864,7 +787,7 @@ fn tentacle_for_question(question) with Pure = match question {
   QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QUnknown(_) => TentQuery,
   QOwnership(_) => TentTrace,
   QWhy(_) | QSubstChain(_) => TentWhy,
-  QVerifyDebt => TentVerify,
+  QVerifyDebt | QSmt => TentVerify,
 }
 
 // question_span — extract Span from Question. Only QTypeAt carries a
@@ -873,7 +796,7 @@ fn tentacle_for_question(question) with Pure = match question {
 // exhaustive over Question via pattern alternation.
 fn question_span(question) with Memory + Alloc = match question {
   QTypeAt(s) => s,
-  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QVerifyDebt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QUnknown(_) => span_zero(),
+  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QUnknown(_) => span_zero(),
 }
 
 // compose_propose_situation — sparse Situation for a propose gesture.
@@ -934,6 +857,11 @@ fn query_result_to_answer(result) with Memory + Alloc = match result {
   // now survives (pipeline.mn's site line).
   AnsRefs(map(census_site_span, sites), Inferred("refs-of: {int_to_str(len(sites))} reference(s)")),
   QRVerifyDebt(debt) => AnsDebt(debt, Inferred("verify-debt: {int_to_str(len(debt))} obligation(s)")),
+  QRSmt(debt) => // The SMT projection rides AnsDebt too — it is the SAME bank, and the
+  // voice answers with the obligations, not with the text a render made of
+  // them. Which language they are spoken in is the RENDER's decision
+  // (pipeline.mn), never a second answer shape here.
+  AnsDebt(debt, Inferred("smt: {int_to_str(len(debt))} obligation(s) as SMT-LIB")),
   QRCensus(label, sites) => // The census result is a forensic LIST the graph proved — the same
   // shape refs-of carries, so it rides AnsRefs (the §7 registry-trap
   // rule: computed, never dropped to Silence). AnsRefs carries SPANS, so
@@ -1019,8 +947,19 @@ fn emitted_artifact_path(fh) with Memory + Alloc = match fh {
 // SAME renderers the compiler reads. So LSP hover / inlay / doc and a compile
 // error are byte-identical projections of one graph (PLAN §0: one cursor
 // projection, surpassing every LSP). Silence renders empty (the medium does
-// not fill space). The slots a hover should show are NO LONGER computed then
-// discarded — this fn is the terminal read every voice surface shares.
+// not fill space).
+//
+// THAT IS WHAT IT IS FOR, AND NOBODY CALLS IT — measured 2026-09-21 by
+// `mentl query src/main.mn unreachable`. The sentence that stood here said
+// "the slots a hover should show are NO LONGER computed then discarded —
+// this fn is the terminal read every voice surface shares", and the graph
+// refutes the second half: zero references. The `propose` arm below builds a
+// VoiceLine and banks it in a TurnRecord; the LSP projects slots its own way
+// through `completion_items_from_slots` (src/lsp.mn); nothing renders a
+// VoiceLine to text. So the medium composes its own voice and never speaks
+// it. This is a WIRING gap, not dead code — deleting the renderer would
+// delete the voice — and it is named rather than quietly kept:
+// `Hβ.voice.voiceline-renders-to-nobody`.
 fn render_voiceline(line) with GraphRead + Memory + Alloc + !Mutate + Intern = match line {
   Silence => "",
   VoiceLine(_, _, slots, modif) => "{render_slots(slots)}{render_modifier(modif)}",

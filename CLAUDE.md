@@ -448,8 +448,12 @@
 > 2026-09-04; the transitive facet it lacked, `unreachable`, was built the
 > same day instead of grepping again). Before any grep/awk over source:
 > `mentl query <entry> unreferenced` (one hop) · `unreachable` (transitive
-> from main, fn decls) · `refs of NAME` · `census <shape>` · `decls` ·
-> `modules` / `imports` / `performs` / `orphan-claims`; `mentl verify`
+> from main, fn decls — partitioned into modules CARRYING dead weight, with
+> their reached/unreached ratio, and modules the entry links WHOLE and never
+> calls into) · `refs of NAME` · `census <shape>` · `decls` ·
+> `modules` / `imports` / `performs` / `orphan-claims` · `smt` (every
+> undischarged obligation as an SMT-LIB assertion — what Phase 8.3's solver
+> swap will be handed, readable today); `mentl verify`
 > (the standing bounds on a program's own source, read off one judged
 > graph — a breach refuses); `mentl
 > <file:line>` (the line's ROOT — widest node) and `<file:line:col>` (the

@@ -37,8 +37,6 @@ import strings
 
 import io
 
-import oracle
-
 import egraph
 
 // ─── LspMessage — incoming JSON-RPC message shape ─────────────────────

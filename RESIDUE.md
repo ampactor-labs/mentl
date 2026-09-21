@@ -28,6 +28,113 @@
 
 ---
 
+`Hβ.parser.refine-stmt-frees-are-empty` — OPEN, BORN 2026-09-21, found because
+a dead-code facet named a live function dead.
+
+`free_vars_stmt` (src/parser.mn) answers `RefineStmt(_, _, _) => []`, so a
+refinement predicate's references reach nothing. MEASURED: `mentl query
+src/main.mn unreachable` listed `types -> span_valid`, which is the predicate
+of `type ValidSpan = Span where span_valid(self)` — the Intent Boundary type
+the wheel annotates with throughout. A dead-code report is a DELETION
+INSTRUCTION, so acting on it would have broken every `ValidSpan` in the tree.
+
+IT IS THE SAME SHAPE AS A TRAP ALREADY PAID FOR, one arm over in the same
+match: `HandlerDeclStmt => []` in this function is what sent the single-pass
+landing's m4 leg into a trap, because arm references never reached the
+callee-first DAG (PLAN §11, Arc B′). `RefineStmt` was not fixed with it.
+
+WHAT IS FIXED AND WHAT IS NOT. The FACET is sound now — `reach_report`
+(src/query.mn) seeds every refinement predicate's names as roots, which
+over-approximates deliberately because that is the safe direction for a report
+whose output is "delete this", and `span_valid` left the dead list at the same
+measurement. The JUDGMENT is not: its callee-first ordering still has no edge
+from a refinement to the functions its predicate calls, so a predicate calling
+a later-declared fn has the ordering hazard the handler arms had.
+
+WHY IT WAS NOT FIXED AT THE ROOT HERE: the predicate carries graph HANDLES
+(`PCompare(BinOp, Int, Int)`), so reading its names needs `GraphRead`, and
+`free_vars_stmt` is a parse-time pure walk that the judgment's DAG ordering
+depends on. Widening its row is a real change with the judgment's own ordering
+downstream of it, and it belongs in a landing that can march it alone rather
+than riding an audit. The RED-first fixture is a refinement whose predicate
+calls a function declared AFTER it.
+
+`Hβ.verify.smt-operand-read-must-be-inline` — OPEN (the SITE is fixed; the
+CLASS is not), BORN 2026-09-21, found by giving a dead serializer a projection.
+
+WHAT WIRING IT FOUND. `mentl query <file> "smt"` renders every undischarged
+obligation as SMT-LIB through src/verify.mn's serializer — fourteen decls that
+had never run (`Hβ.verify.smt-lowering-built-and-never-run`, closed by this
+facet). Its first execution, on the wheel's own
+`type Sample = Float where 0.0 - 1.0 <= self && self <= 1.0`, printed
+`(assert (and (<= (- 66664 686234536) self) (<= self 1.0)))`. The OUTER `1.0`
+was right and the nested operands were pointers.
+
+THE DECISIVE COMPARISON, one command: `mentl query <file> "verification"`
+renders the SAME predicate from the SAME handles and answered
+`0.0 - 1.0 <= self && self <= 1.0`. So the graph is sound and the serializer
+was the defect — which is the only reason the rest of this entry is worth
+anything, because it ruled out the whole graph layer before any hypothesis.
+
+TWO KILLS, RECORDED AS SUCH. (1) The four `ref` markers on
+`smt_binop`/`smt_unop`/`smt_call`/`smt_arg_terms` were dropped first: the
+numbers MOVED (686234536 → 686237016) and stayed wrong, so the borrow markers
+were not it — and the movement between two builds of identical source is what
+named the value a heap POINTER rather than a stored literal. (2) The
+hypothesis the fix suggested — *a sum carrying a Float payload loses it when
+passed across a call boundary and matched there* — is REFUTED at a small
+shape: a two-variant `BFloat(Float) | BWord(Int)` round-trips identically
+inline and via a call (probe exit 42). So the class is NOT "float payload
+across a call", whatever it is.
+
+THE FIX AT THE SITE: `handle_to_smt` matches `graph_node_body(handle)` INLINE
+instead of handing the NodeBody to `body_to_smt`, which is exactly what the
+working sibling `show_pred_operand` (src/types.mn) does. Verified: the same
+obligation now renders `(- 0.0 1.0)`.
+
+WHAT IS OPEN is the class, and it is open honestly rather than closed by a
+site fix that happened to work. NodeBody is a wide sum; the refuted probe used
+two variants. The next probe is the same experiment at NodeBody's own arity
+and at the exact variant index of `LitFloat`, which decides between a
+wide-sum payload-width defect (`Hβ.emit.twin-state-width`'s neighbourhood) and
+something narrower. Until that runs, no site other than this one is claimed
+fixed and no site is claimed broken.
+
+`Hβ.voice.voiceline-renders-to-nobody` — OPEN, BORN 2026-09-21.
+`render_voiceline` / `render_slots` / `render_slot` / `render_modifier`
+(src/voice.mn) fold a VoiceLine's slots to text through the SAME canonical
+renderers the compiler reads (`show_type` / `show_effrow` / `show_reason` /
+`show_span`), which is PLAN §0's one-cursor-projection claim made concrete.
+NOTHING CALLS THEM. The `propose` arm builds a VoiceLine and banks it in a
+TurnRecord; src/lsp.mn projects slots its own way through
+`completion_items_from_slots`; no surface renders a VoiceLine to text. The
+medium composes its own voice and never speaks it.
+Its own comment claimed the opposite — *"this fn is the terminal read every
+voice surface shares"* — which is the shape this whole audit kept finding: a
+comment asserting a wiring the graph refutes. The comment is corrected; the
+wiring is this peer. It is a WIRING gap and not dead code, which is why the
+renderer stays: deleting it would delete the voice.
+
+`Hβ.voice.situation-gradient-is-never-filled` — OPEN, BORN 2026-09-21,
+measured while re-founding `silence_predicate`.
+`Situation` carries a `gradient_next: Option(AnnotationSuggestion)` field that
+exists for exactly one question — is there a proven next move here? —  and
+`compose_propose_situation` (src/voice.mn) fills it with `None` at every
+construction. So the field is a home with no writer, and until this pin its
+one reader went somewhere else entirely (a project queue with no installed
+handler). `silence_predicate` reads the field now and is Pure; with the
+writer still passing `None` the voice is SILENT, which is strictly better than
+the unhandled perform it replaced but is not the rule working.
+WHY THE WRITER CANNOT JUST PERFORM IT, stated so the fix is not re-attempted
+the wrong way: an arm performs in the INSTALL's world, and `mentl_default`
+(the Teach handler) is installed INSIDE `teach`'s own chain, to the LEFT of
+`~> mentl_voice_default` — so `teach_gradient` is unreachable from the voice
+arm by construction, and performing it there would mint exactly the defect
+`Hβ.effects.reachable-perform-with-no-install-compiles` names. The gradient
+has to arrive WITH the `propose` that asks for it: the performer holds it,
+the arm reads it. That is a signature change to the `propose` op and is the
+build.
+
 `Hβ.oracle.ranked-queue-is-a-second-frontier` — OPEN, BORN 2026-09-21, found by
 pointing the medium's own reachability facet at the medium.
 `mentl query src/main.mn unreachable` named `ic_compile_loop` (src/pipeline.mn)
@@ -89,11 +196,15 @@ machinery (PLAN Phase 8.3) standing in the tree with no caller, no gate, and no
 run — so the medium carries an SMT backend that has never once executed while
 the plan sequences it as unbuilt. A capability nothing exercises is a claim, not
 a capability.
-THE DECISION IS NOT DEFERRED, it is stated: this is kept ONLY if Phase 8.3's
-landing wires it behind `~> verify_smt` with a certificate CHECKER inside the
-medium (the solver outside, the check in — the peer's own law) and a gate that
-has been seen RED. If that landing writes its own lowering instead, these
-fourteen go in the same commit. Either way the count moves; it does not sit.
+THE DECISION WAS NOT DEFERRED AND IT WAS TAKEN THE SAME DAY: the serializer
+is WIRED, not deleted. `mentl query <file> "smt"` renders every undischarged
+obligation as an SMT-LIB assertion — one read (`verify_debt()`), two projections,
+the prose one for a person and this one for a solver — so Phase 8.3's handler
+swap arrives with its serializer already exercised instead of re-derived.
+Running it immediately found a silent wrong nobody could have found by reading
+it (`Hβ.verify.smt-operand-read-must-be-inline`), which is the argument for
+wiring over deleting stated as a measurement. CLOSED; what remains open is that
+class and 8.3's solver half.
 
 `Hβ.verify.bounds-are-the-wheels-not-the-targets` — OPEN, BORN 2026-09-20, a
 defect in `mentl verify`'s own landing one pin earlier, found by pointing the
