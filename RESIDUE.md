@@ -91,14 +91,22 @@ BODIES: the same program, the same functions, measurably more emitted code
 through one link than the other.
 
 WHICH MAKES THE REAL GAP BIGGER THAN A MISSING BATTERY MODE. `m2 == m3` has
-only ever been asserted for the BLOB link. The manifest link — the one every
+only ever been ASSERTED for the BLOB link; the manifest link — the one every
 ordinary `mentl compile <file>` takes, the one a user's program rides — has
-never been marched, so the fixpoint says nothing about it, and the agreement
-contract in `verify.sh` compares the two links on FIXTURES while the wheel's
-own two builds of ITSELF were never compared until this line was written.
-`Hβ.link.manifest-and-blob-emit-differently` carries it, and the order holds a
-second time: the stale reason was real, the first replacement for it was a
-guess, and only the third look measured anything.
+never been marched, and the agreement contract in `verify.sh` compares the two
+links on FIXTURES while the wheel's own two builds of ITSELF were never
+compared until this line was written.
+**AND THE VERY NEXT SENTENCE HERE SAID "so the fixpoint says nothing about
+it," WHICH THE ARTIFACT REFUTED FOUR PROBES LATER** — the manifest-built wheel
+emits byte-identical output to the blob-built one, so the medium does
+reproduce itself through either link and the fixpoint's SUBSTANCE covers both;
+what is untested is the LEG, not the property. The sentence is corrected here
+rather than deleted because it is the same move, one layer up, as the two it
+was itself correcting: a gap named from a count, before anything measured what
+the count meant. `Hβ.link.manifest-and-blob-emit-differently` carries the
+proof. The order holds a third time: the stale reason was real, the first
+replacement was a guess, the second was a measurement of the wrong thing, and
+only the fourth probe answered the question.
 
 `Hβ.link.manifest-and-blob-emit-differently` — OPEN, BORN 2026-09-21, measured
 in the entry above and stated here so it has one home. The wheel compiles
@@ -106,27 +114,69 @@ itself two ways and the two ways do not agree: 427,159 lines through the
 manifest (`mentl compile src/main.mn`), 419,190 through the blob (`wt_wheel lib
 src` piped to boot), same tree, both exit 0, ~equal function counts, the
 difference inside bodies. `m2 == m3` has only ever judged the blob.
-THE QUESTION, in positive form: **which link is correct, and why does the other
-one emit 1.6% more?** Two readings, neither probed: the blob is ONE module, so
-one `reachable_from_main` prunes across the whole concatenation, while the
-manifest prunes per module and keeps what a module exports but main never
-reaches; or the manifest's per-module judgment specializes twins the flat link
-shares. The cheap probe is a name-matched body diff on one divergent function
-through `tools/emit-diff.py`, which is exactly the instrument for it and has
-never been pointed here.
-WHY IT MATTERS BEYOND TIDINESS: the manifest link is the one a USER's program
-takes. The fixpoint proves the medium reproduces itself through a path no user
-invokes, and the path every user invokes has no fixpoint at all. Closing it is
-either a march leg over the manifest link or a proof that the two links are
-extensionally equal — and the second is the stronger claim, so it is the one to
-attempt first.
+THE QUESTION WAS ASKED WRONG AND THE ARTIFACT ANSWERED THE RIGHT ONE, same
+day, four probes. It read: *"which link is correct, and why does the other one
+emit 1.6% more?"* with two guesses beside it (`reachable_from_main` pruning
+across the concatenation; per-module twin specialization) and a plan ending
+*"either a march leg over the manifest link or a proof that the two links are
+extensionally equal — the second is the stronger claim, so it is the one to
+attempt first."* **The stronger claim is PROVEN, and neither guess was right,
+and "correct vs incorrect" was not the axis.**
+
+PROBE 1 — the per-function split. 287 common functions carry more lines in the
+manifest build, totalling **+7,337** (`emit_expr` +627, `show_reason` +286,
+`diag_message` +264, `walk_locals_expr` +220). Function COUNTS match (5,193 /
+5,192 by the splitter's reckoning), so nothing is being kept or pruned — the
+extra code is inside bodies that both builds have.
+
+PROBE 2 — one body, handle-normalized. Every inserted block is the same block:
+
+    (local.set $__kf_N) (global.get $yield_flag)
+    (if (result i32) (then
+      (unreachable) ;; multishot yield floor — off-spine perform /
+                    ;; off-spine k2 boundary / arm-state / re-yield (k2/k3)
+    ) (else (i32.const 0))) (drop) (local.get $__kf_N)
+
+It is `LYield(h, "", args, k)` — the empty-op form whose only emit site is
+`src/backends/wasm.mn` (the `op_name == ""` arm). **Floor census: 2,019 in the
+blob build, 2,746 in the manifest — 727 more, 36%.**
+
+PROBE 3 — the module boundary is NOT the variable. A two-module program and
+its one-file equivalent compile to BYTE-IDENTICAL WAT (2,467 lines, zero yield
+floors each). So "a module edge exists" does not plant a floor; whatever does
+needs the wheel's own scale or shape.
+
+PROBE 4 — THE DECIDER, and it is the strong claim. The manifest-built wheel
+was assembled and run on the wheel's own source: it emits **419,190 lines,
+byte-identical to what the blob-built wheel emits.** `man.wasm(wheel) ==
+blob.wasm(wheel)`, `cmp` clean.
+
+SO THE FIXPOINT IS NOT BROKEN AND THE ENTRY ABOVE OVERSTATED IT. The medium
+reproduces itself through EITHER link; the two compilers are extensionally
+equal on the workload that matters most. Neither link is *incorrect* — **the
+blob link PROVES MORE.** It is one module, so one whole-program judgment sees
+every callee's resume cardinality; the manifest judges through the weave and
+727 call sites fall back to the conservative off-spine floor. The floors are
+provably unreachable on this workload, because a wheel carrying all 727 of
+them emits the same bytes as one carrying none of them.
+
+**THE GAP, restated in positive form and now worth more than when it was
+mis-stated:** the callee's cardinality IS in the graph — the weave judged that
+module — and the emitter re-derives it conservatively instead of reading it
+live. That is the Carried-Truth Law at the emit boundary, and the price is
+727 unreachable `(unreachable)` guards and ~8,000 lines of dead emitted code
+on every multi-module compile, which is the link every user's program takes.
+The fix is a read, not a pass: carry the cardinality across the weave edge.
+The gate writes itself — the two links' outputs converge to byte-identity as
+the floors fall, so `blob == manifest` is the ratchet, and it can be watched
+going from 7,969 lines apart to zero.
 
 `Hβ.cli.stdin-is-an-address-for-some-questions` — OPEN, BORN 2026-09-21, found
 by probing the collapsed surface rather than by reading it. `-` is the stdin
 address, and `mentl - teach` and `mentl - audit` both answer, while
 `mentl - check` refuses with *"module source not found: - (expected at
 lib/-.mn)"*. The asymmetry PREDATES the collapse (the same refusal answers
-`mentl check -` through the old boot), so it is not the grammar's: `teach` and
+the same verb-first spelling through the old boot), so it is not the grammar's: `teach` and
 `audit` route through the stdin-aware discovery and `check` routes through
 `pipeline_check`, which resolves its target as a module path with no stdin arm.
 THE FORM: stdin is an address like any other, so every question reaches it

@@ -97,15 +97,38 @@
   see an invocation it cannot lex; the gate could, which is why the gate ran
   before the commit. 390 pass / 0 red after.
 
-  ▶ AND A DISCOVERY WHILE MEASURING, banked rather than chased:
+  ▶ AND A DISCOVERY WHILE MEASURING, then CHASED TO ITS ROOT the same day:
   `Hβ.link.manifest-and-blob-emit-differently`. Checking whether the blob link
   is archaeology meant compiling the wheel BOTH ways on one tree —
   **427,159 lines through the manifest against 419,190 through the blob, both
-  exit 0, ~equal function counts, the difference inside bodies.** `m2 == m3`
-  has only ever judged the blob; the link every ordinary `mentl compile` takes
-  has no fixpoint at all. The first attempt to correct that peer asserted the
-  opposite premise off a fresh build against a CACHED build of older source,
-  which is not a comparison — the third look was the first measurement.
+  exit 0, equal function counts, the difference inside bodies.** The first
+  attempt to correct that peer asserted the opposite premise off a fresh build
+  against a CACHED build of OLDER source, which is not a comparison at all.
+
+  ▶ FOUR PROBES, and the first framing of the question was wrong. (1) The
+  per-function split: 287 common functions carry +7,337 lines in the manifest
+  build (`emit_expr` +627, `show_reason` +286, `diag_message` +264). (2) One
+  body, handle-normalized: every inserted block is the SAME block — the
+  `LYield(h, "", …)` **multishot yield floor**, census **2,019 blob vs 2,746
+  manifest, 727 more**. (3) The module boundary is NOT the variable: a
+  two-module program and its one-file equivalent compile to BYTE-IDENTICAL WAT
+  with zero floors each, which refuted the obvious reading before it could be
+  believed. (4) THE DECIDER: the manifest-built wheel was assembled and run on
+  the wheel's own source, and emits **419,190 lines byte-identical to the
+  blob-built wheel's output**.
+
+  ▶ SO THE FIXPOINT IS NOT BROKEN, and "which link is correct" was the wrong
+  axis. The medium reproduces itself through EITHER link; the two compilers
+  are extensionally equal. **The blob link PROVES MORE** — one module, one
+  whole-program judgment that sees every callee's resume cardinality, where
+  the manifest judges through the weave and 727 call sites fall back to the
+  conservative off-spine floor. A wheel carrying all 727 emits the same bytes
+  as one carrying none, so they are provably unreachable here. The gap in
+  positive form is a READ, not a pass: the callee's cardinality is in the
+  graph and the emitter re-derives it conservatively — the Carried-Truth Law
+  at the emit boundary, priced at ~8,000 dead lines on every multi-module
+  compile. And the gate writes itself: `blob == manifest` is the ratchet, 
+  watchable from 7,969 lines apart down to zero.
 
 - 2026-09-21 · pin 6fef1076400e389d (CLEAN m2 == m3) · THE SESSION'S LESSONS
   LAND AS A GATE, NOT AS PROSE — and the count is the argument.
