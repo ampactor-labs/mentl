@@ -2042,7 +2042,14 @@ fn verify_run(target_opt) = infer_context(() => {
     Some(t) => t,
     None => "main",
   }
-  match driver_entry_with_ranges(entry_module) {
+  // SCOPE ALL, because this is the BOARD — the medium's standing bounds on
+  // its own source, not a user reading one file. Every other entry narrows to
+  // the module the user named so a compile never buries them in prelude
+  // narration; the board is the one reader for which that narrowing is the
+  // defect, and while it inherited the narrowing the comment-reference count
+  // could only ever see the entry module's prose (measured 2026-09-20:
+  // 0 on the entry link against 58 across the modules).
+  match driver_entry_scoped(entry_module, ScopeAll) {
     (_ast, ranges) => match range_of_module(ranges, entry_module) {
       None => {
         eprint_string("mentl verify: no source to judge — {entry_module} never joined the weave\n")

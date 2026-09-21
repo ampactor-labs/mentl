@@ -307,7 +307,16 @@ if C=$(wt_m2_ensure); then
   # the infer tail (W_CommentRefUnresolved, SYNTAX §Comments). This absorbed
   # tools/comment-audit.sh + comment-ratchet.sh whole: the medium is the
   # classifier now, and the count rides the census compile — zero extra passes.
-  crefs=$(grep -cE 'W_CommentRefUnresolved' "$C/m2.err")
+  # IT READS THE MANIFEST LINK, NOT THE BLOB, and that is the whole fix.
+  # This grepped "$C/m2.err" — the compile of .build/m2cache/wheel.mn, which
+  # is every module CONCATENATED INTO ONE FILE. One module means every name is
+  # local and a cross-module reference problem is UNCONSTRUCTIBLE, so the count
+  # was not a measurement that read zero; it was one that could not read
+  # anything else (measured 2026-09-20: 0 here against 58 across the modules).
+  # `mentl verify` links through the real import DAG and runs ScopeAll, so the
+  # medium's own board sees every module's prose — the reader the driver's
+  # hardcoded narrowing had left with no way to ask.
+  crefs=$(wt_run --dir . "$C/m2.wasm" verify src/main.mn 2>&1 >/dev/null | grep -cE 'W_CommentRefUnresolved')
   cmax=$(grep -E '^comment_refs_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
   say "· comment-refs: $crefs unresolved — the medium's verdict on its own prose"
   if [[ -n "$cmax" && "$crefs" -gt "$cmax" ]]; then

@@ -414,7 +414,19 @@ fn module_decls_of(ref cells, ref target, ref ast) with Memory + Alloc = if len(
   }
 }
 
-fn driver_entry_with_ranges(ref entry_module) with Memory + Alloc + ImageAlloc + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + Intern + Cast + WASI + Consume + RegionTrack = {
+// THE RENDER SCOPE IS THE CALLER'S DECISION, NOT THIS MECHANISM'S. It was
+// hardcoded here, so a user-target verb and the medium's own board got the
+// same narrowing whether or not they wanted it — and the board is exactly the
+// reader that must NOT be narrowed. The consequence was measured 2026-09-20:
+// the comment-reference count could only ever report the ENTRY module's prose,
+// so the only unsuppressed view left was the concatenated blob, which has no
+// modules and therefore no cross-module reference to find. A mechanism that
+// picks its readers' policy leaves one of them with no way to ask.
+// `Hβ.voice.comment-ref-gate-reads-the-flattened-link` carries the record.
+fn driver_entry_with_ranges(entry_module) with Memory + Alloc + ImageAlloc + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + Intern + Cast + WASI + Consume + RegionTrack =
+  driver_entry_scoped(entry_module, ScopeModule(entry_module))
+
+fn driver_entry_scoped(ref entry_module, dscope) with Memory + Alloc + ImageAlloc + Filesystem + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + Intern + Cast + WASI + Consume + RegionTrack = {
   // Discovery is a STRUCTURE read: the DAG walk parses each module only
   // for its imports, and the weave parse below re-reports every shape
   // with weave spans — so discovery narration is a duplicate in
@@ -458,7 +470,7 @@ fn driver_entry_with_ranges(ref entry_module) with Memory + Alloc + ImageAlloc +
       // named (types.mn DiagScope; errors always render). It scopes by MODULE
       // now rather than by a weave line range: spans are local from birth, so
       // every module starts at line 1 and a range no longer names a file.
-      diag_scope(ScopeModule(entry_module))
+      diag_scope(dscope)
       // The NModule nodes are minted BY the parse, each before its own module
       // is read, so every node is attributed at birth. What used to happen
       // here — minting them afterward from the range map and cutting each

@@ -322,33 +322,55 @@ fn comment_refs_check(ref stmts, parse_start, parse_end) = {
 // this decl's start to the next decl's start (the last runs open) — the
 // stmt list is consecutive, so the pair of starts IS the extent, no
 // re-measure of the body.
+// EACH SCOPE CARRIES ITS MODULE, and the extent stops at its module's edge.
+// A decl's extent is "from my span to the NEXT decl's", which was true while
+// spans were offsets into one weave and became a cross-file claim the moment
+// every module started at line 1 again: the last decl of module A ran to the
+// FIRST LINE OF MODULE B, so its extent was inverted and matched nothing,
+// while B's early decls sat inside A's range by pure line-number coincidence.
+// Measured 2026-09-20 — seven comment references to a fn's own PARAMS went
+// unresolved (cdix, effs, sig_frees, used_sites among them — named here as
+// prose, since from THIS scope they are other functions' binders) because the
+// interior comment looked up a scope by containment alone and found the wrong
+// file's, or none. This is `Hβ.cursor.module-of-a-span-is-containment` — the
+// third machine PLAN §7 names — meeting the prose gate.
 fn crc_fn_scopes(ref stmts, i, acc) = if i >= len(stmts) {
   acc
 } else {
   let node = list_index(stmts, i)
   match node {
     N(_, sp, h) => match sp {
-      Span(sl, sc, _, _) => {
+      Span(sl, sc, el, ec) => {
+        let mh = graph_module_of(h)
+        // The next decl bounds this one only when it is the same module's;
+        // otherwise the decl's OWN end is the honest edge.
         let ext = if i + 1 < len(stmts) {
           match list_index(stmts, i + 1) {
-            N(_, nsp, _) => match nsp {
-              Span(nl, nc, _, _) => Span(sl, sc, nl, nc),
+            N(_, nsp, nh) => if graph_module_of(nh) == mh {
+              match nsp {
+                Span(nl, nc, _, _) => Span(sl, sc, nl, nc),
+              }
+            } else {
+              Span(sl, sc, el, ec)
             },
           }
         } else {
-          Span(sl, sc, 1000000000, 1)
+          Span(sl, sc, el, ec)
         }
-        crc_fn_scopes(stmts, i + 1, push(acc, (ext, comment_locals(h))))
+        crc_fn_scopes(stmts, i + 1, push(acc, (mh, ext, comment_locals(h))))
       },
     },
   }
 }
 
-fn crc_scope_at(ref scopes, csp, i) = if i >= len(scopes) {
+// A position is not an address until it is module-qualified, so the lookup
+// matches the MODULE first and the containment second — the same correction
+// the caret projection took at `Hβ.cursor.address-drops-module-identity`.
+fn crc_scope_at(ref scopes, cmod: Int, csp, i) = if i >= len(scopes) {
   []
 } else {
   match list_index(scopes, i) {
-    (sp, names) => if span_contains(sp, csp) { names } else { crc_scope_at(scopes, csp, i + 1) },
+    (mh, sp, names) => if mh == cmod && span_contains(sp, csp) { names } else { crc_scope_at(scopes, cmod, csp, i + 1) },
   }
 }
 
@@ -391,7 +413,8 @@ fn crc_walk(h, n, ref cdix, ref scopes, dollars) = if h >= n {
 } else {
   let t = graph_comment_at(h)
   let d2 = if byte_len(t) > 0 {
-    let locals = comment_locals(h) ++ crc_scope_at(scopes, graph_comment_span_at(h), 0)
+    let locals =
+      comment_locals(h) ++ crc_scope_at(scopes, graph_module_of(h), graph_comment_span_at(h), 0)
     crc_scan(t, 0, byte_len(t), h, cdix, locals, dollars)
   } else {
     dollars

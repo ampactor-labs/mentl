@@ -35,6 +35,44 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-20 · pin d1b41672c3317ea0 (CLEAN m2 == m3) · THE COMMENT-REFERENCE
+  COUNT BECOMES A REAL MEASUREMENT, and the chain from "0" to an EARNED 0 ran
+  through three defects, each found by the fix for the one before it.
+  **(1) THE MECHANISM PICKED ITS READERS' POLICY.** `driver_entry_with_ranges`
+  hardcoded `diag_scope(ScopeModule(entry_module))`, so every caller got a user
+  verb's narrowing — including `mentl verify`, the medium's own board, which is
+  the one reader for which narrowing IS the defect. Scope is a parameter now
+  (`driver_entry_scoped`); the old entry delegates with the same value, so the
+  ten-plus call sites are untouched, and verify asks for `ScopeAll`.
+  **(2) THE ONLY UNSUPPRESSED COMPILE HAD NO MODULES.** `tools/verify.sh`
+  grepped `.build/m2cache/m2.err`, and `.build/m2cache/wheel.mn` is every module
+  CONCATENATED INTO ONE FILE — 255 `import` lines inside a single module, where
+  a cross-module reference problem is unconstructible. The leg reads the
+  manifest link through the verb now. It reported **7**, where the blob had
+  reported 0 and the per-module sweep 58 — and the gap between 58 and 7 is not
+  slack: a module checked alone links only what it imports, while the real link
+  plus the literal-vocabulary rule resolves what the program itself writes.
+  **(3) SCOPE LOOKUP WAS SPAN CONTAINMENT ACROSS EVERY MODULE.** Four of the
+  seven were references to a function's OWN PARAMETERS, unresolved in that
+  function's own comment. `crc_fn_scopes` builds a decl's extent as "my span to
+  the NEXT decl's" — true while spans were offsets into one weave, and a
+  cross-file claim the moment every module restarted at line 1: the last decl
+  of module A ran to the FIRST LINE of module B, inverted and matching nothing,
+  while B's early decls sat inside A's range by line-number coincidence. Scopes
+  carry their module and stop at its edge; `crc_scope_at` matches the module
+  first and containment second. This is `Hβ.cursor.module-of-a-span-is-
+  containment` — the third machine PLAN §7 names — meeting the prose gate, and
+  it is the same correction `Hβ.cursor.address-drops-module-identity` took at
+  the caret. 7 → 3.
+  THE LAST THREE WERE THIS LANDING'S OWN COMMENT, listing the unresolved names
+  as examples; from that scope they are other functions' binders, so they are
+  written as prose. That is the sanctioned fix and not the dodge SYNTAX names —
+  the dodge is de-backticking something that DOES resolve.
+  **The count is now 0 the way a count should be zero:** measured on the real
+  link, through real import edges, unsuppressed, with the module-aware
+  resolution from the prior pin behind it. Board: crown / proof-exactness /
+  effect-identity green, frontier 390/0/2, census 0.
+
 - 2026-09-20 · pin 9b6b5a7c6373050c (CLEAN m2 == m3) · IMPORT REACHABILITY GETS
   ONE HOME, AND THE PROBE THAT DROVE IT REFUTED THE LANDING'S OWN PREMISE.
   `module_imports` — transitive, cycle-safe, reading live `ImportStmt` edges —
