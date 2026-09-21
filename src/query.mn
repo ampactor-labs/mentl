@@ -152,6 +152,9 @@ type Question
   | QSubstChain(Int)
   // "effects of NAME"
   | QEffects(String)
+  // The same row `QEffects` spells, projected as the STRUCTURE the algebra
+  // reads: names with their intern handles, and the tail with its edges.
+  | QRowOf(String)
   // "ownership of NAME"
   | QOwnership(String)
   // "why NAME" — walks reason DAG
@@ -263,6 +266,22 @@ type QueryResult
   | QRCost(Int, Int, Int)
   // the derived badges (plain lines) + fanout sites as (schedule, span)
   | QRWhere([String], [(String, Span)])
+  // THE ROW AS STRUCTURE, not as spelling — every name beside the INTERN
+  // HANDLE the algebra actually compares on, plus the tail and each of its
+  // edges. `effects` renders `eff_name_str`, a display projection; two names
+  // that spell alike and key differently render identically there, and no
+  // surface showed the key.
+  //
+  // It was born because a measurement could not be decided without it
+  // (2026-09-21): a fn declaring `with Memory + Alloc` whose body IS a call
+  // projects `Alloc + Memory + Memory + Alloc + Memory + Alloc`, while the
+  // same call as an operand, a let-bound value or a branch arm projects two
+  // names. `union_row` IS a set union keyed on `eff_name_handle`, so either
+  // the joins carry different handles or the render is inlining a chain of
+  // tail vars — one fact apart, and unaskable. A medium that compares on a
+  // key it will not show is asking to be trusted.
+  // (present, absent, tail-description) — each name as (spelling, handle)
+  | QRRow([(String, Int)], [(String, Int)], String)
   | QRError(String)
 
 // The single-op effect that routes every forensic question through
@@ -322,6 +341,17 @@ handler query_default {
       Some(entry) => match entry {
         (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
           TFun(_, _, row) => resume(QREffects(row)),
+          _ => resume(QRError("{name} is not a function")),
+        },
+      },
+    },
+    QRowOf(name) => match env_lookup(name) {
+      None => resume(QRError("not found: {name}")),
+      Some(entry) => match entry {
+        (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
+          TFun(_, _, row) => match row {
+            EfRow(present, absent, tail) => resume(QRRow(map(name_with_handle, present), map(name_with_handle, absent), show_row_tail(tail))),
+          },
           _ => resume(QRError("{name} is not a function")),
         },
       },
@@ -1004,7 +1034,28 @@ fn census_label(shape) with Pure = match shape {
   "signature(s) whose declared row is an inventory — a capability with no name yet",
   CsRecordPattern => "record pattern(s)",
   CsRecordPatternOpen => "record pattern(s) over an open-row receiver",
-  CsFreeRowCallee => "call(s) whose callee's row nothing grounds — each one a yield floor lower cannot prove away",
+  CsFreeRowCallee => "fn(s) whose own row tail nothing grounds — every call to one pays a yield floor",
+}
+
+// A name beside the key the algebra compares it on. `eff_name_str` is the
+// display projection and `eff_name_handle` is the comparison; showing them
+// together is the whole content of the `row` facet.
+fn name_with_handle(n) with Intern + Memory + Alloc = (eff_name_str(n), eff_name_handle(n))
+
+// The tail, described rather than spelled: a CLOSED tail proves absence and
+// an open one is the chain that cannot, so the edge handles are the fact a
+// reader needs — `EtOpen` with two edges and `EtOpen` with one are different
+// answers to "can this row prove `!E`?" and `effects` renders both as silence.
+fn show_row_tail(t) with Memory + Alloc = match t {
+  EtClosed => "closed",
+  EtAll => "all",
+  EtOpen(vs) => "open({len(vs)}) edges {show_int_list(vs, 0, len(vs), "")}",
+}
+
+fn show_int_list(vs, i, n, acc: String) with Memory + Alloc = if i >= n {
+  acc
+} else {
+  show_int_list(vs, i + 1, n, "{acc}{if i > 0 { " " } else { "" }}{int_to_str(list_index(vs, i))}")
 }
 
 // The callee's row tail, read LIVE off the judged node. `resolve_row` follows
@@ -1285,12 +1336,21 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
     NStmt(FnStmt(_, _, _, effs, _)) => len(effs) > wide_row_width,
     _ => false,
   },
-  CsFreeRowCallee => // The CALLEE's node, not the call's: the row belongs to the thing being
-  // called, and the call site is only where the cost lands.
+  CsFreeRowCallee => // The DECLARATION, not the call site — corrected within the hour by the
+  // bound's own first breach. It convicted CALL SITES, so four helper fns
+  // added in the next landing raised it 1041 -> 1045 without a single row
+  // changing: the count was tracking how much code CALLS an ungrounded
+  // callee, which is code volume wearing a defect's name. A thermometer that
+  // only rises is not a countdown, and `board_bounds`' own prose says a
+  // ratchet that rises to meet each breach has stopped ratcheting.
+  //
+  // The ungrounded row belongs to the FUNCTION, is fixed at the function, and
+  // is counted once there. The number is then stable under call-site growth
+  // and falls only when a row actually grounds — and each site NAMES the decl
+  // whose row nothing closes, which is where the fix goes, rather than one of
+  // the hundred places that pay for it.
   match body {
-    NExpr(CallExpr(f, _)) => match f {
-      N(_, _, fh) => callee_row_tail_is_free(fh),
-    },
+    NStmt(FnStmt(_, _, _, _, _)) => callee_row_tail_is_free(h),
     _ => false,
   },
   CsRecordPattern => // Both spellings of one shape, read where the pattern lives: a

@@ -544,6 +544,45 @@ fn compile_source(source) =
 
 fn check_source(source) = infer_context(() => source |> infer_program_converged ~> mentl_default)
 
+// entry_ast — the judged source AT AN ADDRESS, whatever the address names.
+// `Some(ast)` when the address produced readable source; `None` when it did
+// not, which the caller refuses rather than answering over an empty weave.
+//
+// `-` IS AN ADDRESS. It names stdin — the bare compile's own path, a
+// self-contained source with no weave to derive — and the two-line arm that
+// says so lived inside `analyze_fns` alone until 2026-09-21, so `audit` and
+// `teach` could read stdin while `query` and `check` answered *"module source
+// not found: - (expected at lib/-.mn)"*. One fact, one home, and the readers
+// that did not share it were the ones that could not ask the blob link a
+// question at all — which is how this was found: a probe on the wheel's own
+// link divergence had nowhere to run.
+//
+// Anything else derives THE WEAVE — the same `driver_entry_with_ranges` the
+// check verb, the address, `fmt` and the resident session read. A SECOND
+// discovery route is what that replaced, and what it cost is why there is
+// exactly one: a module judged SOLO is judged without its layer's vocabulary
+// (the per-module-env-overlay residue), flooding `E_MissingVariable` on
+// `True`/`len` from any out-of-tree directory.
+fn entry_ast(entry_module) = if entry_module == "-" {
+  Some(read_stdin() |> infer_program_converged)
+} else {
+  match driver_entry_with_ranges(entry_module) {
+    (ast_all, ranges) => match range_of_module(ranges, entry_module) {
+      None => None,
+      Some(_) => Some(driver_module_ast(ast_all, entry_module)),
+    },
+  }
+}
+
+// The shared refusal: an address that produced no source refuses the question
+// itself rather than answering over an empty weave (the silent-fallback class
+// — the census once printed "0 sites" for a file the judge could not read).
+// Productive-under-error stays for JUDGED files.
+fn refuse_unreadable(entry_module) with WASI + Memory + Alloc = {
+  eprint_string("mentl: no source to project — {entry_module} never joined the weave\n")
+  1
+}
+
 fn query(entry_module, words) = infer_context(() => {
   // COLD by the swap-crossing law (Hβ.session.resident-verbs — the
   // measured refutation is in the §7 ledger): a mid-verb image restore
@@ -553,28 +592,14 @@ fn query(entry_module, words) = infer_context(() => {
   // RESIDENT SESSION (the image as the session's own memory, no swap —
   // the named peer carries the measured constraints); fresh derivation
   // here IS the sound form for a per-process verb.
-  // The WEAVE judgment — `driver_entry_with_ranges` is the ONE discovery
-  // home, because a module judged SOLO is judged without its layer's
-  // vocabulary (the per-module-env-overlay residue) and every query over
-  // it runs against a partially-broken env.
-  match driver_entry_with_ranges(entry_module) {
-    (_ast, ranges) => match range_of_module(ranges, entry_module) {
-      None => {
-        // The ENTRY never joined the weave (E_MissingModule already
-        // reported at the walk): there is no judged source to project,
-        // and a confident answer over the empty weave is the
-        // silent-fallback class (Hβ.query.unreadable-source-refusal —
-        // the census printed "0 sites" for a file the judge could not
-        // read). Productive-under-error stays for JUDGED files; a
-        // missing entry refuses the question itself.
-        eprint_string("mentl: no source to project — {entry_module} never joined the weave\n")
-        1
-      },
-      Some(_) => {
-        let q = parse_query_words(words)
-        ask(q) |> render_query_result |> println
-        0
-      },
+  // `entry_ast` is the ONE discovery home — the weave for a module, stdin
+  // for `-`, and the same refusal for an address that produced neither.
+  match entry_ast(entry_module) {
+    None => refuse_unreadable(entry_module),
+    Some(_) => {
+      let q = parse_query_words(words)
+      ask(q) |> render_query_result |> println
+      0
     },
   }
 } ~>
@@ -630,27 +655,19 @@ handler tighten_collector with found = [] {
 // the projection (Carried-Truth: one home now). query stays separate:
 // it ASKS a question, not a per-fn walk.
 fn analyze_fns(entry_module, projection) = infer_context(() => {
-  // "-" is the stdin contract (self-contained source, the bare
-  // compile's own path); anything else derives THE WEAVE — the same
-  // `driver_entry_with_ranges` the check verb, the address, `fmt`, and the
-  // resident session read — and scopes to the entry's own decls
-  // (`driver_module_ast`, the session's scoping read). A SECOND discovery
-  // route is what this replaced, and what it cost is why there is exactly
-  // one: per-module solo checks judged without their layer's vocabulary
-  // (the per-module-env-overlay residue), measured 2026-07-30 flooding
-  // E_MissingVariable on True/len/list_index from any out-of-tree
-  // directory and accruing junk debt the session leg's cold side then
-  // reported as the fixture's own. `fmt` was the last verb on it and
-  // carried a second cost: the route installed no diagnostic scope, so it
-  // narrated every dependency at a developer who had named one file.
-  let ast = if entry_module == "-" {
-    read_stdin() |> infer_program_converged
-  } else {
-    match driver_entry_with_ranges(entry_module) {
-      (ast_all, _ranges) => driver_module_ast(ast_all, entry_module),
-    }
+  // `entry_ast` is the ONE discovery home (its own comment carries why
+  // there is exactly one, and why `-` is an address). This verb held that
+  // arm alone and so was the only surface stdin could reach; it reads the
+  // shared one now — and gains the refusal it never had, where an
+  // unreadable address used to project an empty walk as though it were an
+  // answer.
+  match entry_ast(entry_module) {
+    None => refuse_unreadable(entry_module),
+    Some(ast) => {
+      projection(ast) |> print_string
+      0
+    },
   }
-  projection(ast) |> print_string
 } ~>
 // The weave's own fs_read — handled in-chain, as compile/check do.
 // tighten_collector banks the judgment's T_OverDeclared rows so the
@@ -1401,6 +1418,11 @@ fn render_query_result(result) = match result {
   QRUnresolved(entries) => "→ {int_to_str(len(entries))} unresolved entries",
   QRChain(hops) => "→ {int_to_str(len(hops))} hops in chain",
   QREffects(row) => "→ {show_effrow(row)}",
+  QRRow(present, absent, tail) => // The row as the algebra holds it: every name beside the intern handle
+  // `eff_name_handle` keys on, so a reader can see whether two names that
+  // SPELL alike also KEY alike. `effects` renders the spelling; this renders
+  // the comparison, which is the half a set union is decided by.
+  "→ present {int_to_str(len(present))}: {show_keyed_names(present, 0, len(present), "")}\n  absent {int_to_str(len(absent))}: {show_keyed_names(absent, 0, len(absent), "")}\n  tail {tail}",
   QROwnership(params) => "→ {int_to_str(len(params))} params",
   QRWhy(reason) => show_reason(reason),
   QRRefs(sites) => // The refs facet renders WHAT the graph computed, not just how much:
@@ -1476,6 +1498,7 @@ fn render_where_sites_from(sites) with Memory + Alloc = match sites {
 type QueryVerb
   = QVType
   | QVEffects
+  | QVRow
   | QVOwnership
   | QVWhy
   | QVRefs
@@ -1497,10 +1520,21 @@ type QueryVerb
   | QVSmt
   | QVUnknownVerb
 
+// One name beside its key, repeated — `Memory#41` reads as the pair it is.
+fn show_keyed_names(ns, i, n, acc: String) with Memory + Alloc = if i >= n {
+  acc
+} else {
+  match list_index(ns, i) {
+    (spelling, handle) => show_keyed_names(ns, i + 1, n, "{acc}{if i > 0 { " " } else { "" }}{spelling}#{int_to_str(handle)}"),
+  }
+}
+
 fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVType
 } else if w == "effects" {
   QVEffects
+} else if w == "row" {
+  QVRow
 } else if w == "ownership" {
   QVOwnership
 } else if w == "why" {
@@ -1577,6 +1611,7 @@ fn build_question(verb, arg, words) with Memory + Alloc = {
     QVVerification => QVerifyDebt,
     QVType => QTypeOf(arg),
     QVEffects => QEffects(arg),
+    QVRow => QRowOf(arg),
     QVOwnership => QOwnership(arg),
     QVWhy => QWhy(arg),
     QVRefs => QRefsOf(arg),

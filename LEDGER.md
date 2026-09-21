@@ -35,6 +35,72 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-21 · pin 50fe7ca7c697a4f9 (CLEAN m2 == m3) · STDIN BECOMES AN
+  ADDRESS, AND THE ROW GETS A PROJECTION OF THE KEY IT COMPARES ON — two
+  capabilities built because a probe could not run without them.
+
+  ▶ THE DISCOVERY HOME. The arm that says `-` means stdin lived inline in
+  `analyze_fns` alone, so `audit` and `teach` read stdin while `query` and
+  `check` answered *"module source not found: - (expected at lib/-.mn)"*. One
+  fact, one home, three readers that did not share it — and the readers left
+  out were exactly the ones that could not ask the blob link a question, which
+  is how it surfaced: a probe on the wheel's own link divergence had nowhere to
+  run. `entry_ast` is that home; `analyze_fns` also gains the refusal it never
+  had, where an unreadable address used to project an empty walk as an answer.
+
+  ▶ THE FACET. `mentl <file> row NAME` projects a row as the ALGEBRA holds it —
+  every name beside the `eff_name_handle` it keys on, plus the tail and its
+  edges — where `effects` renders `eff_name_str`, a display projection. It was
+  built because a measurement could not be decided without it.
+
+  ▶ AND IT REFUTED THE PEER COMMITTED AN HOUR EARLIER, which is the entry's
+  most useful half. `Hβ.infer.tail-call-row-joins-three-times` read a fn
+  declaring `with Memory + Alloc` rendering `Alloc + Memory + Memory + Alloc +
+  Memory + Alloc` as the row being joined three times, named two candidate
+  mechanisms, and said they were one probe apart. The probe:
+
+      tail     → present 2: Alloc#56 Memory#52   tail open(2) edges 13398 13938
+      operand  → present 2: Alloc#56 Memory#52   tail closed
+
+  **Identical present sets, identical handles, two names in both.** No
+  duplication, `name_set_union` never implicated, the intern-handle reading
+  dead. `show_effrow` inlines an open tail's edge contents into the same
+  `+`-joined sentence as the present set, so six names and two names render
+  byte-identically — the defect is the PROJECTION
+  (`Hβ.voice.effects-render-hides-an-open-tail`), and the real difference is
+  the last line alone: the tail position leaves the tail OPEN, every other
+  position closes it. Retracted in place as
+  `Hβ.infer.tail-position-leaves-the-row-tail-open`.
+
+  ▶ THE RETRACTION'S OWN LESSON, which is why it is written out rather than
+  quietly fixed: the wrong entry was reasoned carefully from a render, by a
+  reader holding this project's laws, and committed. What killed it was not a
+  better reading — it was giving the fact a projection. That is the `⟳` rule
+  with a price attached: **a probe must graduate, because the graph held this
+  the whole time and no surface showed it.**
+
+  ▶ AND THE BOUND FROM THE PRIOR PIN CAUGHT THIS LANDING, which is the second
+  instrument correcting its own author in one day. `CsFreeRowCallee` read
+  1,041 -> 1,045 because four helper fns were added — **not one row changed**.
+  It counted CALL SITES, so it was measuring how much code calls an ungrounded
+  callee: code volume wearing a defect's name, and `board_bounds`' own opening
+  says a ratchet that rises to meet each breach has stopped ratcheting. The
+  ungrounded row belongs to the FUNCTION and is fixed there, so it is counted
+  once there — **135 declarations**, stable under call-site growth, falling
+  only when a row actually grounds, and each site spanning the decl to fix
+  rather than one of the hundred places that pay for it. Seen RED at 134.
+
+  ▶ AND THE UNBLOCKED PROBE RAN, both links, same tree:
+  `BLOB → present 2 · tail open(2)` against
+  `MANIFEST → present 2 · tail open(2)` — **structurally identical**, handles
+  differing only because they are different judgments with their own intern
+  extents. So the callee's ROW is not what diverges between links; what
+  diverges is whether the weave GROUNDS its two tail edges. Both convicted
+  wheel callees carry the same `open(2)` shape. The open question is now one
+  facet increment from readable — each tail edge beside the node kind it
+  resolves to — with no hypothesis in between.
+
+
 - 2026-09-21 · pin 0e039fcb0e7f306a (CLEAN m2 == m3) · THE MEDIUM MEASURES THE
   LINK DIVERGENCE ITSELF — `CsFreeRowCallee`, the first census shape minted
   from an emit PRICE rather than from a drift silhouette.

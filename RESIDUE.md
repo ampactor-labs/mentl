@@ -108,49 +108,82 @@ proof. The order holds a third time: the stale reason was real, the first
 replacement was a guess, the second was a measurement of the wrong thing, and
 only the fourth probe answered the question.
 
-`Hβ.infer.tail-call-row-joins-three-times` — OPEN, BORN 2026-09-21, and it was
-found by a probe aimed at something else, which is why it is its own entry
-rather than a paragraph inside that one.
+`Hβ.infer.tail-position-leaves-the-row-tail-open` — OPEN, BORN 2026-09-21,
+and it REPLACES `Hβ.infer.tail-call-row-joins-three-times`, which was written
+an hour earlier, committed, pushed, and is WRONG. The retraction is the entry's
+most useful half, so it is kept rather than quietly rewritten.
 
-MEASURED, twelve lines, no wheel edit, reproducible in ten seconds. Four
-functions, each declaring `with Memory + Alloc`, each calling the same
-`int_to_str`, differing ONLY in where the call sits:
+WHAT THE RETRACTED ENTRY CLAIMED. A fn declaring `with Memory + Alloc` whose
+body IS a call projects `Alloc + Memory + Memory + Alloc + Memory + Alloc`
+through `mentl <file> effects`, while the same call as an operand, a let-bound
+value or a branch arm projects two names. It read that as the row being JOINED
+THREE TIMES, and named two candidate mechanisms: different intern handles (the
+pointer-eq-on-names class) or a render inlining a tail chain. It said the two
+were one probe apart and that the probe did not exist.
 
-    fn tail(n)    with Memory + Alloc = int_to_str(n)
-    fn operand(n) with Memory + Alloc = int_to_str(n) ++ "x"
-    fn bound(n)   with Memory + Alloc = { let s = int_to_str(n)  s }
-    fn branch(n)  with Memory + Alloc = if n > 0 { int_to_str(n) } else { "" }
+THE PROBE WAS BUILT AND BOTH HALVES OF THE CLAIM DIED. `mentl <file> row NAME`
+projects the row as the algebra holds it — every name beside the
+`eff_name_handle` it keys on, and the tail with its edges:
 
-`mentl pos.mn effects <name>` answers:
+    tail     → present 2: Alloc#56 Memory#52   tail open(2) edges 13398 13938
+    operand  → present 2: Alloc#56 Memory#52   tail closed
 
-    tail     → Alloc + Memory + Memory + Alloc + Memory + Alloc
-    operand  → Alloc + Memory
-    bound    → Alloc + Memory
-    branch   → Alloc + Memory
+**The present sets are identical, correct, and two names long in BOTH.** The
+handles match exactly. There is no duplication, `name_set_union` was never
+implicated, and the intern-handle reading is refuted. What differs is the last
+line and only the last line: **the tail position leaves the row's tail OPEN
+with two edges; the operand, let-bound and branch positions all close it.**
 
-**The row is joined THREE TIMES when the body IS the call, and once in every
-other position.** The tell that this is not simply "more contributions": the
-operand form has strictly MORE contributions (the call AND `++`) and answers
-correctly, so the count runs the wrong way for that reading.
+SO THE "TRIPLING" WAS THE RENDER, AND THAT IS THE DEFECT WORTH NAMING.
+`show_effrow` inlines an open tail's edge contents into the same `+`-joined
+sentence as the present set, so a 2-name row with 2 open edges carrying
+`Memory + Alloc` each renders as six names — **indistinguishable from a
+present set that actually holds six.** Two different structures, one rendering.
+That cost an hour, a committed peer and a wrong diagnosis, by a reader holding
+this project's own laws, and it is the sharpest argument in the tree for the
+`⟳` rule that a probe must GRADUATE into a projection: the fact was always in
+the graph and no surface showed it. `Hβ.voice.effects-render-hides-an-open-tail`
+is the render's own entry.
 
-WHAT IT IS NOT, because both were probed before this entry was written. It is
-not the link (it reproduces identically through the manifest on a
-single-module program). It is not `union_row`, which is `name_set_union` and
-is a real set union keyed on `eff_name_handle`. So either the three joins
-carry names with DIFFERENT intern handles — the pointer-eq-on-names class
-PLAN §9 catalogues, which `EffName`-is-a-handle (§11 6.1) was supposed to have
-closed — or the present set is fine and `show_effrow` is inlining a CHAIN of
-tail row vars, which would make the visible duplication a render of the very
-open tail the sibling peer counts. **Those two readings are distinguishable by
-one probe that does not exist yet: the row's names WITH their handles.** The
-medium projects the spellings and not the key it compares on, which is the
-missing facet and the reason this entry stops here rather than guessing.
+WHAT IS MEASURED AND STANDS:
+- The tail position produces `open(2)`; operand / bound / branch produce
+  `closed`. Four functions, one file, same callee, same declared row.
+- **Both convicted wheel callees carry the same shape** —
+  `int_to_str` → `present 2: Alloc#56 Memory#52 · tail open(2)`, and
+  `show_hash_ty` → `present 5 · tail open(2)`. So the free-row conviction and
+  this shape co-occur, where the retracted entry had measured them APART and
+  concluded they were unrelated. That conclusion was drawn from a census count
+  over a program too small to convict, which is the wrong instrument for the
+  question and is why the shape read is what settled it.
+- Handles are stable and shared across modules (`Memory#52` in `lib/strings`
+  and in `src/backends/wasm`), which independently closes the intern-extent
+  reading the link peer had floated.
 
-AND IT IS NOT THE FREE-ROW CONVICTION EITHER, measured rather than assumed:
-`mentl pos.mn census free-row-callee` convicts 41 sites, **zero of them in
-pos.mn**. The tripled row and the ungrounded row co-occur in the wheel and are
-two different facts; merging them is the "do NOT crown the next thing you see"
-failure, and the count is what stopped it.
+THE REMAINDER, stated as a question the instrument can now ask:
+**why does the tail position leave the tail open, and why do those edges
+ground in a nine-line program but not in the wheel?** The same callee
+(`int_to_str`) is convicted in the wheel and not in the reproducer, so
+conviction is not a property of the callee — it is whether the weave grounds
+those two edges, which is the original open question arriving at a shape that
+can be read directly instead of inferred from a count.
+
+`Hβ.voice.effects-render-hides-an-open-tail` — OPEN, BORN 2026-09-21, and its
+cost is already on the record above. `show_effrow` renders a row's present set
+and its open tail's edge contents into ONE `+`-joined sentence, so
+`EfRow([Alloc, Memory], [], EtOpen([e1, e2]))` where each edge carries
+`Memory + Alloc` prints `Alloc + Memory + Memory + Alloc + Memory + Alloc` —
+**byte-identical to what a genuinely six-name present set would print.** Two
+structures, one rendering, and the difference is exactly whether the row can
+prove `!E`.
+
+THE FORM: a row that cannot close says so. The `row` facet already shows it
+(`tail open(2) edges …` against `tail closed`), so the fact exists and the
+DEFAULT projection is the one hiding it — which is backwards, because
+`effects` is what a developer reads and `row` is what a compiler author
+reaches for. The endpoint is that `effects` renders the tail's status in its
+own voice (`Alloc + Memory + …` for an open tail, or the tail named), so a
+reader never has to know a second facet exists to learn whether the answer is
+complete. Until then `row` is the honest read and this entry is why.
 
 `Hβ.link.manifest-and-blob-emit-differently` — OPEN, BORN 2026-09-21, measured
 in the entry above and stated here so it has one home. The wheel compiles
@@ -261,12 +294,29 @@ declaration**: both carry an authored `with` clause, so a declared row is
 reaching lower with a tail nothing grounds, which is the sharper form of the
 question and was invisible while "cross-module" looked plausible.
 
-THE PROBE THAT WOULD HAVE ANSWERED IT IS BLOCKED BY A PEER BANKED THE SAME
-DAY. "One address projection per link" needs the blob link to be an address,
-and `mentl - type int_to_str` answers *"module source not found: -"* —
-`Hβ.cli.stdin-is-an-address-for-some-questions`, now blocking the probe it was
-banked beside. That peer is the DEP, and it is small: stdin is an address like
-any other, resolved at the one resolver.
+THE PROBE WAS BLOCKED, THE BLOCKER WAS BUILT, AND THE PROBE RAN. "One address
+projection per link" needs the blob link to be an ADDRESS, and
+`mentl - type int_to_str` answered *"module source not found: -"* —
+`Hβ.cli.stdin-is-an-address-for-some-questions`, blocking the probe it had been
+banked beside an hour earlier. The stdin arm lived inline in `analyze_fns`
+alone, so `audit` and `teach` reached stdin while `query` and `check` could
+not; `entry_ast` is the one home now and every reader shares it.
+
+THE ANSWER, both links, same tree, through the `row` facet:
+
+    BLOB      → present 2: Alloc#15 Memory#14   tail open(2) edges 128396 129205
+    MANIFEST  → present 2: Alloc#56 Memory#52   tail open(2) edges 7708 8248
+
+**Structurally identical.** Same present set, same two-edge open tail; the
+handles differ only because they are different judgments with their own intern
+extents, which is expected and is not the variable. So the callee's ROW is not
+what diverges between the links — **what diverges is whether the weave GROUNDS
+those two edges**, which `can_yield` reads as `NRowFree` and floors on.
+
+That is the question in its final form, and it is now one facet increment from
+readable: `row` shows the edge HANDLES but not what they chase to. The next
+probe is that column — each tail edge beside the node kind it resolves to —
+and it decides this peer without a single hypothesis in between.
 
 **why does the weave leave a row free where the flat judgment grounds it?**
 Both links judge the same declarations; the difference is that the blob is one

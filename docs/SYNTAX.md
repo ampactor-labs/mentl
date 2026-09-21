@@ -2219,6 +2219,16 @@ silently.
   It is a QUESTION, named here the way it will be asked: `mentl <file>
   diagnostics`, never a verb.
 
+*(`row` LANDED 2026-09-21 and never entered this list, because it was built in
+the landing that needed it: `mentl <file> row NAME` projects a row as the
+ALGEBRA holds it — every name beside the `eff_name_handle` it compares on, and
+the tail with its edges — where `effects` renders the spelling. It exists
+because a measurement could not be decided without it, and the measurement it
+settled had already produced one wrong, committed peer: a row rendering six
+names where it holds two, because `effects` inlines an open tail's contents
+into the same sentence as the present set. A medium that compares on a key it
+will not show is asking to be trusted.)*
+
 *(The list names questions and actions, not verbs, because as of 2026-09-21
 **the read has no verb**: the shell surface is `mentl <address> [question]`,
 the address first, and `query` / `why` / `where` were deleted as three names
