@@ -287,6 +287,63 @@ form retires with `Hβ.driver.link-is-reachability` (Arc D), where the demanded
 set is read from import edges rather than a flat env — at which point "resolves
 in the link" and "resolves from here" stop being two different questions.
 
+`Hβ.verify.class-bound-cannot-tally-in-the-arm` — OPEN, BORN 2026-09-21, and
+it is a REFUTATION of a build that was finished and working before the march
+killed it. Recorded because the refutation is the useful part.
+THE PLAN: four of `tools/verify.sh`'s legs are the same question — *how many
+diagnostics of class K did the judgment raise?* — and each answered it by
+grepping stderr, re-deriving a count the diagnostics handler had already seen.
+So the handler would tally per `diag_code`, `board.mn` would grow a `BClass`
+bound beside its `BShape` ones, and the greps would die. It was BUILT: the
+tally kept located SITES rather than a count (so a class bound names WHERE like
+every other line), `Bound` became a two-variant sum with one `Standing` between
+them, and `mentl verify` rendered 14 bounds, all holding.
+THE MARCH REFUSED IT. m2 compiled; m3 died at exit 134 — a trap — after 20,182
+of 417,863 lines, with the judgment complete and no diagnostic anywhere in the
+run. The stop point named the cause: emit died while generating
+`json_obj_get_loop`, which is one of the two functions the `T_EqTypeUnprovable`
+diagnostics name, so the trap was IN THE REPORT PATH.
+AND THE ARM'S OWN COMMENT HAD SAID SO, in the file, before the edit: *"this
+arm's remaining projections are pure ctor/string reads, so the arm's row
+carries no graph or intern demand and its residual stays clean through every
+install … An arm's performs resolve OUTER of its own install (the world law) …
+Arms buffer, tally, and print; the line arrives made."* The `diag_report` arm is
+deliberately ALLOCATION-FREE because its residual rides every install; tallying
+into an smap performs `Memory + Alloc`, and the row that had stayed clean
+through every bracket stopped being clean. I read that comment while writing the
+edit and added the allocation anyway — the confession named the defect and the
+defect was committed on top of it.
+WHAT THIS RULES OUT AND WHAT IT LEAVES. Any accumulation in the arm allocates
+(`push` as much as `smap_add`), so a growing per-class tally cannot live as
+diagnostics-handler state at all; `errors + 1` is fine precisely because an Int
+is not an allocation. Named Int counters per class would dodge it and are drift
+8 wearing a gate's costume. `report` itself already carries `Memory + Alloc +
+GraphRead + Intern`, so the BOUNDARY can afford what the arm cannot — but the
+state has to live somewhere the arm can reach, which is the knot.
+THE FORM THAT SURVIVES is the one this file already banked one entry down:
+comment-references do not need a tally, because `crc_walk` computes the misses
+as a list during infer and `crc_judge_dollars` filters and reports them. Lift
+that to a pure projection and the board reads the list directly — no handler
+state, no allocation in any arm, and the same one-computation-two-readers shape.
+A class whose diagnostics are raised at EMIT (`T_FieldOffsetUnprovable`,
+`T_EqTypeUnprovable`) has no such projection and keeps its leg in the script,
+for the separate reason below.
+CLOSE: the four legs leave `tools/verify.sh` — the two infer-time classes as
+projections the board reads, the two emit-time ones when `mentl verify` can
+measure a phase it does not currently run.
+
+`Hβ.verify.class-bounds-stop-at-the-judgment` — OPEN, BORN 2026-09-21 from the
+same build, and it is the cheaper half to state: a class bound can only see the
+phases the verb RUNS. Written and measured in one sitting —
+`T_FieldOffsetUnprovable` and `T_EqTypeUnprovable` both read **0** against real
+ceilings of 4 and 60, because they are raised during LOWER/EMIT and `mentl
+verify` judges without emitting. A bound that reads zero because nobody looked
+is strictly worse than the grep it replaced: it is the vacuity this verb was
+already caught by once, when an unread weave let it report *"12 bound(s) hold"*.
+The honest boundary is the entry rather than the bound.
+CLOSE: either `mentl verify` gains an emit-measuring leg whose cost is paid
+knowingly, or the two classes stay in the script and this entry says why.
+
 `Hβ.syntax.multi-param-lambda-is-a-reference` — OPEN, BORN 2026-09-20 as the
 arm list's honest remainder. The literal takes ONE parameter (the value its
 arms match), so `(a, b) => a * b` is not expressible as one and did not

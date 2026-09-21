@@ -35,6 +35,57 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-21 · pin ded01c552408c82f (CLEAN m2 == m3) · THE CLASS-BOUND
+  ABSORPTION WAS BUILT, REFUSED BY THE MARCH, AND REVERTED — and the refusal is
+  the entry, because the artifact said no to a design the artifact had already
+  warned about in writing.
+  THE PLAN was sound on its face: four of `tools/verify.sh`'s legs ask one
+  question — *how many diagnostics of class K did the judgment raise?* — and
+  each answered it by grepping stderr, re-deriving a count the diagnostics
+  handler had already seen. So the handler would tally per `diag_code`,
+  `board.mn` would grow a `BClass` bound beside its `BShape` ones, and four
+  greps would die. It was BUILT and it WORKED: the tally kept located SITES
+  rather than a count, so a class bound named WHERE like every other line;
+  `Bound` became a two-variant sum with one `Standing` between them; `mentl
+  verify` rendered 14 bounds, all holding.
+  **THE MARCH KILLED IT.** m2 compiled clean; m3 died at exit 134 — a trap —
+  after 20,182 of 417,863 lines, judgment complete, NO diagnostic anywhere in
+  the run. The stop point named the cause without a probe: emit died while
+  generating `json_obj_get_loop`, one of the exact two functions the
+  `T_EqTypeUnprovable` diagnostics name, so the trap was IN THE REPORT PATH.
+  **AND THE ARM'S OWN COMMENT HAD SAID SO, in the file, before the edit:**
+  *"this arm's remaining projections are pure ctor/string reads, so the arm's
+  row carries no graph or intern demand and its residual stays clean through
+  every install … An arm's performs resolve OUTER of its own install (the world
+  law) … Arms buffer, tally, and print; the line arrives made."* The
+  `diag_report` arm is deliberately ALLOCATION-FREE because its residual rides
+  every install; an smap tally performs `Memory + Alloc`. I read that comment
+  while writing the edit and added the allocation on top of it — CLAUDE.md's
+  "read the comment as a CONFESSION" inverted, the confession read and then
+  overruled.
+  WHAT IT RULES OUT: any accumulation in that arm allocates (`push` as much as
+  `smap_add`), so a growing per-class tally cannot be handler state there at
+  all — `errors + 1` is fine precisely because an Int is not an allocation, and
+  named Int counters per class would be drift 8 in a gate's costume. `report`
+  itself carries `Memory + Alloc + GraphRead + Intern`, so the BOUNDARY can
+  afford what the arm cannot; the state having to live where the arm can reach
+  it is the knot. `Hβ.verify.class-bound-cannot-tally-in-the-arm`.
+  A SECOND FINDING FELL OUT AND IS CHEAPER TO STATE: two of the four bounds
+  read **0** against real ceilings of 4 and 60, because
+  `T_FieldOffsetUnprovable` and `T_EqTypeUnprovable` are raised at LOWER/EMIT
+  and `mentl verify` judges without emitting. A bound that reads zero because
+  nobody looked is worse than the grep it replaces — the same vacuity this verb
+  was caught by once before, when an unread weave let it report "12 bound(s)
+  hold". `Hβ.verify.class-bounds-stop-at-the-judgment`.
+  WHAT LANDED instead is small and real: the anonymity ceiling follows its
+  measurement DOWN, 367 → 236. That is the arm-list literal's payoff, and it
+  had sat unread for a full landing because a ratchet only speaks when
+  breached — 131 sites below its own ceiling, invisible. The board reports the
+  counts it is WITHIN for exactly this reason, and nobody (me) was reading
+  them.
+  Board: verify green, crown / proof-exactness / effect-identity green,
+  frontier 390/0/2, census 0, 12 bound(s) hold.
+
 - 2026-09-20 · pin d1b41672c3317ea0 (CLEAN m2 == m3) · THE COMMENT-REFERENCE
   COUNT BECOMES A REAL MEASUREMENT, and the chain from "0" to an EARNED 0 ran
   through three defects, each found by the fix for the one before it.

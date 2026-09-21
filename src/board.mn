@@ -75,16 +75,22 @@ fn board_bounds() with Memory + Alloc = [
   // whose params pass straight through, which is a hole. Neither is anonymity;
   // both are a mint where an edge belonged.
   //
-  // 365 -> 367 at this verb's own landing, and the raise is recorded HERE
-  // rather than argued in a file the number could drift from. Both are
-  // STRUCTURAL, not authored anonymity: `infer_context` takes a THUNK, so
-  // every route that judges pays one lambda — and hand-inlining its chain
-  // instead is the move that decl's own comment says was already paid for by
-  // seven routes; and each `VerbSpec` carries the argument parser its table
-  // is built from, one per verb across twenty-five siblings. Adding a verb
-  // costs exactly two, which is the idiom's price and not a new drift. It
-  // falls again when a thunk-free install form exists for the one chain.
-  Bound({ceiling: 367, shape: CsEffectfulLambda}),
+  // IT HAS MOVED IN BOTH DIRECTIONS AND BOTH MOVES ARE RECORDED HERE, beside
+  // the number, rather than argued in a file the number could drift from.
+  // 365 -> 367 when this verb landed: `infer_context` takes a THUNK, so every
+  // route that judges pays one lambda, and each `VerbSpec` carries the
+  // argument parser its table is built from — structural, one per sibling,
+  // not authored anonymity. Then 367 -> 236, which is the arm-list literal's
+  // payoff read rather than assumed: the sweep converted the pattern-dispatch
+  // half of the corpus and the census stopped convicting a form that carries
+  // no param list at all, so 131 sites left the conviction honestly.
+  //
+  // The ceiling follows the measurement DOWN. A ratchet that only ever rises
+  // to meet a breach has stopped ratcheting, and this one sat 131 above its
+  // own subject for a full landing before anyone read the WITHIN line — which
+  // is the argument for a board that reports the counts it is inside, not
+  // only the ones it is over.
+  Bound({ceiling: 236, shape: CsEffectfulLambda}),
   // A record pattern whose receiver row never closes reads a field offset
   // the graph cannot prove. `T_FieldOffsetUnprovable` reports that class at
   // the receiver now; this line retires when that diagnostic arms.
