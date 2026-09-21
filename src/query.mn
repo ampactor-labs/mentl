@@ -349,8 +349,23 @@ handler query_default {
       None => resume(QRError("not found: {name}")),
       Some(entry) => match entry {
         (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
-          TFun(_, _, row) => match row {
-            EfRow(present, absent, tail) => resume(QRRow(map(name_with_handle, present), map(name_with_handle, absent), show_row_tail(tail))),
+          TFun(_, _, row) => // BOTH FORMS, because the difference between them IS the answer.
+          // The RAW row is what the scheme carries; the RESOLVED row is what
+          // `resolve_row` produces and what `can_yield` decides on. Rendering
+          // one is how this facet's own first reading went wrong inside an
+          // hour: raw showed `int_to_str` terminating at `row-bound(2n
+          // closed)` — fully grounded — while the census, reading resolved,
+          // convicted it. A projection that shows a different row than its
+          // consumer reads is the Carried-Truth violation inside the
+          // instrument built to find one.
+          match row {
+            EfRow(present, absent, tail) => match resolve_row(row) {
+              EfRow(rp, _, rtail) => resume(QRRow(
+                map(name_with_handle, present),
+                map(name_with_handle, absent),
+                "{show_row_tail(tail)}\n  resolved: {int_to_str(len(rp))} present · tail {show_row_tail(rtail)}"
+              )),
+            },
           },
           _ => resume(QRError("{name} is not a function")),
         },
@@ -1034,7 +1049,7 @@ fn census_label(shape) with Pure = match shape {
   "signature(s) whose declared row is an inventory — a capability with no name yet",
   CsRecordPattern => "record pattern(s)",
   CsRecordPatternOpen => "record pattern(s) over an open-row receiver",
-  CsFreeRowCallee => "fn(s) whose own row tail nothing grounds — every call to one pays a yield floor",
+  CsFreeRowCallee => "call(s) whose callee's row nothing grounds — each one a yield floor lower cannot prove away",
 }
 
 // A name beside the key the algebra compares it on. `eff_name_str` is the
@@ -1042,20 +1057,57 @@ fn census_label(shape) with Pure = match shape {
 // together is the whole content of the `row` facet.
 fn name_with_handle(n) with Intern + Memory + Alloc = (eff_name_str(n), eff_name_handle(n))
 
-// The tail, described rather than spelled: a CLOSED tail proves absence and
-// an open one is the chain that cannot, so the edge handles are the fact a
-// reader needs — `EtOpen` with two edges and `EtOpen` with one are different
-// answers to "can this row prove `!E`?" and `effects` renders both as silence.
-fn show_row_tail(t) with Memory + Alloc = match t {
+// The tail, described rather than spelled, and every edge RESOLVED rather
+// than merely numbered. A CLOSED tail proves absence; an open one is the
+// chain that cannot — and which of those an open tail IS depends entirely on
+// what its edges chase to, which is the one fact no surface showed.
+//
+// The edge handles alone were the first form of this, and they were not
+// enough: two rows both reading `open(2)` answer differently to "can this
+// prove `!E`?" depending on whether the edges land on a BOUND row (which
+// carries its own tail, so the question recurses) or on `NRowFree` (which
+// is the chain's end and grounds nothing). `can_yield` reads exactly that
+// distinction and floors on the second; a reader could not.
+//
+// Depth-bounded because a row edge may chase into another bound row, and a
+// projection that can hang is not a projection. Two levels answer the
+// question — deeper is the same question again and says so.
+fn show_row_tail(t) with GraphRead + !Mutate + Memory + Alloc = show_row_tail_at(t, 0)
+
+fn show_row_tail_at(t, depth) with GraphRead + !Mutate + Memory + Alloc = match t {
   EtClosed => "closed",
   EtAll => "all",
-  EtOpen(vs) => "open({len(vs)}) edges {show_int_list(vs, 0, len(vs), "")}",
+  EtOpen(vs) => "open({int_to_str(len(vs))}) {show_row_edges(vs, 0, len(vs), depth, "")}",
 }
 
-fn show_int_list(vs, i, n, acc: String) with Memory + Alloc = if i >= n {
+fn show_row_edges(vs, i, n, depth, acc: String) with GraphRead + !Mutate + Memory + Alloc = if i >= n {
   acc
 } else {
-  show_int_list(vs, i + 1, n, "{acc}{if i > 0 { " " } else { "" }}{int_to_str(list_index(vs, i))}")
+  let sep = if i > 0 { " " } else { "" }
+  show_row_edges(vs, i + 1, n, depth, "{acc}{sep}{show_row_edge(list_index(vs, i), depth)}")
+}
+
+// One edge: its handle, and the node it lands on. `ROW-FREE` is shouted
+// because it is the answer — the chain ends at a variable nothing bound, so
+// the row cannot prove the absence of anything, and every call to the fn
+// carrying it pays a yield floor.
+fn show_row_edge(v, depth) with GraphRead + !Mutate + Memory + Alloc = match graph_chase(v) {
+  GNode(kind, _) => "{int_to_str(v)}:{show_row_edge_kind(kind, depth)}",
+}
+
+fn show_row_edge_kind(kind, depth) with GraphRead + !Mutate + Memory + Alloc = match kind {
+  NRowFree(_) => "ROW-FREE",
+  NRowBound(inner) => if depth >= 2 {
+    "row-bound(…)"
+  } else {
+    match inner {
+      EfRow(p, _, t2) => "row-bound({int_to_str(len(p))}n {show_row_tail_at(t2, depth + 1)})",
+    }
+  },
+  NRecordRowBound(_, _) => "record-row-bound",
+  NBound(_) => "bound",
+  NFree(_) => "free",
+  NErrorHole(_) => "error-hole",
 }
 
 // The callee's row tail, read LIVE off the judged node. `resolve_row` follows
@@ -1336,21 +1388,35 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
     NStmt(FnStmt(_, _, _, effs, _)) => len(effs) > wide_row_width,
     _ => false,
   },
-  CsFreeRowCallee => // The DECLARATION, not the call site — corrected within the hour by the
-  // bound's own first breach. It convicted CALL SITES, so four helper fns
-  // added in the next landing raised it 1041 -> 1045 without a single row
-  // changing: the count was tracking how much code CALLS an ungrounded
-  // callee, which is code volume wearing a defect's name. A thermometer that
-  // only rises is not a countdown, and `board_bounds`' own prose says a
-  // ratchet that rises to meet each breach has stopped ratcheting.
+  CsFreeRowCallee => // THE CALL SITE, reading the CALLEE's node — the same handle `can_yield`
+  // is handed, so this shape and the decision it prices read one row.
   //
-  // The ungrounded row belongs to the FUNCTION, is fixed at the function, and
-  // is counted once there. The number is then stable under call-site growth
-  // and falls only when a row actually grounds — and each site NAMES the decl
-  // whose row nothing closes, which is where the fix goes, rather than one of
-  // the hundred places that pay for it.
+  // IT WAS MOVED TO THE DECLARATION AND MOVED BACK, and the round trip is
+  // the reason the correspondence is written here rather than assumed. The
+  // bound breached on its own next landing (1041 -> 1045) because four
+  // helper fns were added with no row changing, which looked like a count
+  // measuring code volume rather than a defect — a thermometer where
+  // `board_bounds` asks for a countdown. So it was re-keyed onto `FnStmt`.
+  //
+  // That read a DIFFERENT NODE. A decl's own graph node, the env's
+  // generalized scheme, and the callee handle at a call site are three rows,
+  // and they disagree: `mentl <file> row chase_deep` answers `tail closed`
+  // through the scheme while the decl-keyed census convicted it. Lower asks
+  // the third one, per call site, and emits a floor per call site — so the
+  // call-site count is not an inflated proxy for the defect, it IS the
+  // defect's extent, and it rising when code adds calls to an ungrounded
+  // callee is TRUE rather than noise.
+  //
+  // Stability lost to correctness, deliberately. The honest countdown here
+  // is the 135 ungrounded ROWS behind these sites, and that number wants the
+  // free variable as its key (every sampled site in `backends/wasm` lands on
+  // ONE cell, 109302) — which is a shape this walk cannot express, because
+  // the census convicts nodes and a free row var is not a node the weave
+  // walks. `Hβ.query.census-keyed-by-the-fact-not-the-site` is that form.
   match body {
-    NStmt(FnStmt(_, _, _, _, _)) => callee_row_tail_is_free(h),
+    NExpr(CallExpr(f, _)) => match f {
+      N(_, _, fh) => callee_row_tail_is_free(fh),
+    },
     _ => false,
   },
   CsRecordPattern => // Both spellings of one shape, read where the pattern lives: a

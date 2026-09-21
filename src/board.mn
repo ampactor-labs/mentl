@@ -172,24 +172,34 @@ fn board_bounds() with Memory + Alloc = [
   // counts what the weave declines to ground, and the cost is ~8,000 dead
   // emitted lines on the link a user actually takes.
   //
-  // 135 AT ITS SECOND BIRTH, and the first one is the lesson. It counted CALL
-  // SITES and read 1,041 — then the next landing added four helper functions
-  // and it read 1,045, with not one row having changed. A count that rises
-  // when code is added is measuring code volume wearing a defect's name, and
-  // this roster's own opening says a ratchet that rises to meet each breach
-  // has stopped ratcheting. The ungrounded row belongs to the FUNCTION and is
-  // fixed at the function, so it is counted once there: stable under call-site
-  // growth, falling only when a row actually grounds, and each site naming the
-  // decl to fix rather than one of the hundred places that pay for it.
+  // 1,048 — AND THE NUMBER MOVED TWICE BEFORE THIS LINE SETTLED, which is
+  // the part worth reading. Born at 1,041 keyed on CALL SITES, it breached on
+  // its own next landing at 1,045 because four helper fns were added with not
+  // one row changing. That looked like a count measuring code volume rather
+  // than a defect, so it was re-keyed onto the DECLARATION and read 135.
   //
-  // Neither number is the probe's 856, which counted chase EVENTS inside one
-  // lower run. Three instruments, three denominators, one fact; recording all
-  // of them is how the next reader avoids reconciling numbers that were never
-  // the same.
-  // Zero is the weave grounding every row the flat judgment grounds; the
-  // record, and the open question of WHY it does not, live at
-  // `Hβ.link.manifest-and-blob-emit-differently`.
-  Bound({ceiling: 135, shape: CsFreeRowCallee})
+  // The re-key was WRONG and the facet built the same hour proved it: a
+  // decl's own graph node, the env's generalized scheme, and the callee
+  // handle at a call site are THREE rows and they disagree — `mentl <file>
+  // row chase_deep` answers `tail closed` through the scheme while the
+  // decl-keyed census convicted it. `can_yield` asks the third, per call
+  // site, and emits a floor per call site. So the call-site count is not an
+  // inflated proxy for the defect; it IS the defect's extent, and its rising
+  // when code adds calls to an ungrounded callee is TRUE.
+  //
+  // Stability was traded for correspondence, deliberately. A ceiling that
+  // rises with honest growth is worse than one that falls — and the honest
+  // countdown is the 135 ungrounded ROWS behind these sites, which wants the
+  // free VARIABLE as its key: every sampled site in `backends/wasm` lands on
+  // ONE cell (109302), so this is far fewer defects than sites.
+  // `Hβ.query.census-keyed-by-the-fact-not-the-site` is that form, and until
+  // it exists this line prices the extent rather than the cause.
+  //
+  // None of these is the probe's 856, which counted chase EVENTS inside one
+  // lower run. Four instruments, four denominators, one fact; recording all
+  // of them is how the next reader avoids reconciling numbers that were
+  // never the same.
+  Bound({ceiling: 1048, shape: CsFreeRowCallee})
 ]
 
 // The board: every bound answered by one live walk.

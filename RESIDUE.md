@@ -167,6 +167,27 @@ conviction is not a property of the callee — it is whether the weave grounds
 those two edges, which is the original open question arriving at a shape that
 can be read directly instead of inferred from a count.
 
+`Hβ.query.census-keyed-by-the-fact-not-the-site` — OPEN, BORN 2026-09-21,
+and it is the honest countdown `CsFreeRowCallee` cannot currently be.
+
+That shape convicts CALL SITES because that is what `can_yield` asks and what
+lower emits a floor for, so the count is the defect's EXTENT and is correct.
+It is not the defect's CAUSE: every sampled convicted site in
+`src/backends/wasm.mn` resolves to the SAME unbound cell, `109302`, so 1,048
+sites and 135 declarations stand on a far smaller number of free row
+variables. A ceiling on the extent rises with honest code growth (it breached
+on its own next landing, 1041 -> 1045, with no row changed); a ceiling on the
+CAUSE would only fall.
+
+THE FORM: a census keyed by the FACT rather than the node that exhibits it —
+here, the set of distinct free row variables the weave leaves unbound, each
+listed with the count of sites paying for it. The walk cannot express it
+today because `census_sites` convicts NODES and a free row var is not a node
+the weave walks, so the shape needs a fold that accumulates keys rather than
+a predicate that answers per node. Every ratchet with this problem gets it at
+once: the drift shapes count sites too, and a repeated cause is invisible in
+all of them.
+
 `Hβ.voice.effects-render-hides-an-open-tail` — OPEN, BORN 2026-09-21, and its
 cost is already on the record above. `show_effrow` renders a row's present set
 and its open tail's edge contents into ONE `+`-joined sentence, so
@@ -301,6 +322,34 @@ projection per link" needs the blob link to be an ADDRESS, and
 banked beside an hour earlier. The stdin arm lived inline in `analyze_fns`
 alone, so `audit` and `teach` reached stdin while `query` and `check` could
 not; `entry_ast` is the one home now and every reader shares it.
+
+THE EDGE COLUMN LANDED AND THE ANSWER IS ONE CELL. `row` now resolves each
+tail edge to the node it lands on, and prints the RAW row beside the RESOLVED
+one. Four convicted functions in `backends/wasm`:
+
+    show_hash_ty        resolved: 5 present · tail open(1) 109302:ROW-FREE
+    show_node_of        resolved: 5 present · tail open(1) 109302:ROW-FREE
+    build_string_index  resolved: 2 present · tail open(1) 109302:ROW-FREE
+    string_index_add    resolved: 2 present · tail open(1) 109302:ROW-FREE
+
+**The same free row variable, in every one.** So the 1,048 convicted call
+sites are not 1,048 defects and the 135 ungrounded declarations behind them
+are not 135 — they are a much smaller number of unbound cells, shared. That
+is the first measurement in this arc that makes the fix sound small.
+
+AND THREE ROWS DISAGREE ABOUT ONE FUNCTION, which is the finding the facet
+was built to be able to see. A decl's own graph node, the env's GENERALIZED
+scheme, and the CALLEE HANDLE at a call site are three different rows:
+`mentl src/infer.mn row chase_deep` answers `tail closed` through the scheme
+while a decl-node-keyed census convicts it. `can_yield` asks the third. A
+reader asking "can this prove `!E`?" gets a different answer depending on
+which of the three they reach, and only one of them is the one lower acts on.
+
+ONE NAME IN THIS ENTRY WAS WRONG AND IS CORRECTED HERE: `int_to_str` was
+named as a convicted callee, identified by reading a column range off a
+census span. It resolves **closed** — `tail open(2) 7708:row-bound(2n closed)
+8248:row-bound(2n closed)`, fully grounded. The span was read, not asked, and
+the facet that can answer it did not exist yet.
 
 THE ANSWER, both links, same tree, through the `row` facet:
 

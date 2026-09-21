@@ -35,6 +35,49 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-21 · pin 347d98e865bd3aec (CLEAN m2 == m3) · THE ROW FACET RESOLVES
+  ITS EDGES, AND THE ANSWER IS ONE CELL.
+
+  ▶ `mentl <file> row NAME` prints each tail edge beside the node it lands on,
+  and the RAW row beside the RESOLVED one. Four convicted functions in
+  `src/backends/wasm.mn`:
+
+      show_hash_ty        resolved: 5 present · tail open(1) 109302:ROW-FREE
+      show_node_of        resolved: 5 present · tail open(1) 109302:ROW-FREE
+      build_string_index  resolved: 2 present · tail open(1) 109302:ROW-FREE
+      string_index_add    resolved: 2 present · tail open(1) 109302:ROW-FREE
+
+  **The same free row variable in every one.** So 1,048 convicted call sites
+  and the 135 declarations behind them stand on a much smaller number of
+  unbound cells — the first measurement in this arc that makes the fix look
+  small rather than vast.
+
+  ▶ THREE ROWS DISAGREE ABOUT ONE FUNCTION, and that is what the facet was
+  built to be able to see. A decl's own graph node, the env's GENERALIZED
+  scheme, and the CALLEE HANDLE at a call site are three different rows:
+  `mentl src/infer.mn row chase_deep` answers `tail closed` through the
+  scheme while a decl-node-keyed census convicts it. A reader asking "can this
+  prove `!E`?" gets a different answer depending which of the three they
+  reach, and only one is the one lower acts on.
+
+  ▶ WHICH REVERTED THE PRIOR PIN'S RE-KEY. `CsFreeRowCallee` had been moved
+  from call sites to declarations an hour earlier, against its own first
+  breach (1041 -> 1045 with no row changed). That read the WRONG NODE:
+  `can_yield` asks the callee handle at the call site and emits a floor per
+  call site, so the call-site count is not an inflated proxy — it IS the
+  defect's extent. Back to call sites at 1,048, seen RED at 1,047. The
+  stability given up is named rather than hidden: the countdown that only
+  falls wants the free VARIABLE as its key, which the census walk cannot
+  express because it convicts nodes and a free row var is not one
+  (`Hβ.query.census-keyed-by-the-fact-not-the-site`).
+
+  ▶ AND ONE NAME WAS WRONG THROUGHOUT THE ARC. `int_to_str` was called a
+  convicted callee in two commits and a peer, identified by reading a column
+  range off a census span rather than asking. It resolves CLOSED —
+  `row-bound(2n closed)` on both edges, fully grounded. The span was read, not
+  asked, and the facet that could answer it did not exist yet. That is the
+  whole argument for the facet in one line.
+
 - 2026-09-21 · pin 50fe7ca7c697a4f9 (CLEAN m2 == m3) · STDIN BECOMES AN
   ADDRESS, AND THE ROW GETS A PROJECTION OF THE KEY IT COMPARES ON — two
   capabilities built because a probe could not run without them.
