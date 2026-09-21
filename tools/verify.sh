@@ -104,14 +104,33 @@ if C=$(wt_m2_ensure); then
   #     with its repro rather than a fixture canonizing the wrong answer
   #     (§9.11's nine payload micros did exactly that).
   #
-  #     It RUNS each fixture rather than asking `mentl test` alone. Measured
-  #     the day this leg landed: `mentl test` reports each fixture's DECLARED
-  #     expectation beside its WAT and judges the compile side (FAILC on
-  #     errors, holes, armed refusals) — it does not execute, so a wrong
-  #     `// expect: N` passes it silently. The first draft of this leg read
-  #     only that verb, went green against a deliberately wrong expectation,
-  #     and was a gate that could not fail (Law 11). run-micro.sh is the
-  #     execution the micro loop above already uses.
+  #     IT RUNS EACH FIXTURE THROUGH THE BLOB LINK, and the reason recorded
+  #     here for years was the WRONG ONE. It read: "`mentl test` ... does not
+  #     execute, so a wrong `// expect: N` passes it silently. The first draft
+  #     read only that verb, went green against a deliberately wrong
+  #     expectation, and was a gate that could not fail (Law 11)." That was a
+  #     real measurement the day it was written. Then the wheel gained exec
+  #     and nothing came back to re-ask.
+  #     MEASURED 2026-09-21, both directions, because retracting a limitation
+  #     is a claim and Law 11 applies to it too:
+  #       `mentl test tests/syntax`  → PASS arm-list-literal: exit=34 (expected 34)
+  #       the same with the header edited to `// expect: 99` →
+  #                                    FAIL(run) arm-list-literal: exit=34 expected=99
+  #     The verb executes and it refuses a wrong expectation. The old reason
+  #     is dead.
+  #     THE REAL RETIREMENT CONDITION IS THE LINK, and it is why run-micro.sh
+  #     stays: this loop pipes RTLIBS concatenated — the BLOB link, which is
+  #     the wheel's own build path — while `mentl test <dir>` compiles each
+  #     fixture through its own imports, the MANIFEST link. The leg below
+  #     exists precisely to compare the two, so swapping this one onto the
+  #     verb would leave both halves reading the same link and quietly delete
+  #     the agreement contract. That swap was written and REVERTED on the day
+  #     this comment was corrected, which is the whole lesson: a stale reason
+  #     hides a live one, and removing the stale reason is not permission to
+  #     act — it is permission to look for the real one.
+  #     `Hβ.test.blob-link-has-no-verb` is the actual gap: the verb has no
+  #     blob-link battery, and when it grows one this loop dies for a reason
+  #     that is true.
   syn_n=0; syn_bad=0
   for sf in tests/syntax/*.mn; do
     [[ -e "$sf" ]] || continue

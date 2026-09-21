@@ -28,6 +28,47 @@
 
 ---
 
+`Hβ.test.blob-link-has-no-verb` — OPEN, BORN 2026-09-21, and it exists because
+a STALE LIMITATION hid a LIVE one for an unknown number of landings.
+
+WHAT THE COMMENT SAID. `tools/verify.sh`'s syntax-battery leg justified its
+per-fixture `run-micro.sh` loop with: *"`mentl test` … does not execute, so a
+wrong `// expect: N` passes it silently. The first draft read only that verb,
+went green against a deliberately wrong expectation, and was a gate that could
+not fail (Law 11)."* Every word was a real measurement on the day it was
+written.
+
+WHAT THE ARTIFACT SAYS NOW, measured in both directions because retracting a
+limitation is itself a claim: `mentl test tests/syntax` answers
+`PASS arm-list-literal: exit=34 (expected 34)` for all 17 fixtures — it
+EXECUTES — and with the header edited to `// expect: 99` it answers
+`FAIL(run) arm-list-literal: exit=34 expected=99`. It refuses a wrong
+expectation, which is the exact trap that killed the first draft. The wheel
+gained exec (`mentl run`, the in-process battery) and nothing came back to
+re-ask, so the scaffold outlived its reason.
+
+AND THEN THE STALE REASON HID THE REAL ONE, which is the transferable half.
+Acting on "the old reason is dead" by swapping the leg onto `wt_battery` was
+written, and REVERTED before it shipped, because the loop pipes `RTLIBS`
+concatenated — the **BLOB link**, the wheel's own build path — while
+`mentl test <dir>` compiles each fixture through its own imports, the
+**MANIFEST link**. The leg immediately below exists to compare the two, and
+that comparison has already caught a real defect (`labeled-args.mn` declared
+`fn spawn_task`, a `WasiThreads` op — unreachable through the manifest, silent
+through the blob for months). Swapping would have left both halves reading one
+link and deleted the agreement contract, as a caller change.
+
+THE GAP, in positive form: **the verb has no blob-link battery.** `mentl test`
+is manifest-only. When it grows a blob mode — the concatenated-stdin link the
+wheel's own build uses — the loop dies for a reason that is true, and
+`run-micro.sh` (the last of the three scripts `loop_scaffold_refs_max` counts)
+goes with it. The same applies to `tools/effect-identity-gate.sh`, whose single
+remaining call is a blob-link run of one fixture.
+
+THE LESSON IS THE ORDER, and it belongs to whoever reads this next: removing a
+stale reason is not permission to act. It is permission to go looking for the
+real one.
+
 `Hβ.viz.severance-map` — OPEN, BORN 2026-09-21, the visualization frontier pick,
 chosen from a survey of the field rather than from taste. Full argument and the
 three-colour law: `PLAN.md §11` Arc G. Summary of why it is the one: `!E` is the
