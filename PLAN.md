@@ -1351,6 +1351,16 @@ oracle is what they add up to:
   propagated at the bind makes the quantifier a read and the occurs check a
   membership test), and one altitude up it is the e-graph's (a rewrite fires
   at the write through the parents column, never by re-sweeping the program).
+  **THE QUEUE BEHIND IT IS BANKED BUILD-READY (2026-09-22), one peer per
+  family of the 116-site census** — types (`Hβ.infer.types-are-propagated-cells`),
+  the e-graph (`Hβ.egraph.rules-fire-at-the-write`), parents and modules
+  (`Hβ.graph.parent-and-module-columns-are-read`), references and positions
+  (`Hβ.graph.references-and-positions-are-columns`), lowering (the standing
+  `Hβ.lower.lowering-is-a-column`), time (`Hβ.driver.warm-start-reads-what-it-restored`)
+  and provenance (`Hβ.why.provenance-is-edges`) — each cut into an Opus
+  builder's brief in that order, rows first, and each arbitrated by `mentl
+  <file> cost`, the m3 leg's `heap:` line and the peak ratchet, all of which
+  must FALL.
 **THE SUM:** the oracle's central waste — every branch re-judging the whole
 context — IS rung 3, not a consequence of it; the teaching tie-break needs
 "what distinguishes these survivors", which is a provenance DIFF, cheap over

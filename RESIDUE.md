@@ -12400,3 +12400,113 @@ per-hop whole-graph scans are gone); the fan's candidate ranking measured
 unchanged on its fixtures. RETIRES when the five name→decl indexes, the
 three free-name re-collections, the string-keyed refs and the span log are
 gone.
+
+`Hβ.driver.warm-start-reads-what-it-restored` — OPEN, designed 2026-09-22
+(Landing 7 of the re-derivation queue, family F: TIME). A composition
+entry: three landings and one subscription, with §5.O's falsifiable gate
+as its whole verdict. Sequenced after Landings 3, 4 and 6.
+▶ THE FACT AND ITS COPIES. `driver_incremental` (driver.mn:690) restores
+an analyzed image and, with NOTHING changed, re-runs saturate, lower,
+reachability, the executable gate and emit over it — 3.8s of a 5.75s warm
+compile against a ~2.0s process floor, its own comment confessing
+"derivation and not delivery" and naming the form that ends it ("when the
+lowered form stops being a SECOND TREE and becomes graph columns … emit is
+a pure read of the image"). `driver_tree_scan` (:544) re-reads and
+re-hashes every module's TEXT on every warm start to ask whether anything
+moved (`Hβ.driver.staleness-is-a-poll-not-an-edge`); `changed_modules`/
+`manifest_hash_of` (:733/736) and `closure_fix`/`module_in` (:753/770)
+compare module PATH STRINGS pairwise, O(m²) per round of a fixpoint over
+the module DAG; `mutate_sink` and `lsp_adapter` discard the `(handle, prior
+value)` delta the trail computes at nine write sites
+(`Hβ.graph.mutation-delta-is-write-only`); `cursor_argmax_compute`
+re-scores every position per keystroke
+(`Hβ.cursor.cached-argmax-keyed-by-epoch-and-caret`).
+▶ THE FORM. (1) The re-derivation after restore goes to ZERO by
+construction, not by a stored projection: the canon relation is in the
+image because rules fired at the write (`Hβ.egraph.rules-fire-at-the-write`
+— no saturate pass exists to re-run); the lowering is columns in the image
+(`Hβ.lower.lowering-is-a-column`) and reachability an edge on the node
+(`Hβ.lower.reach-edge-on-node`), so emit and the executable gate are READS
+of the restored image; `warm_program()`'s re-derivation deletes one stage
+per landing and the "warm: inference restored — lowering and emit
+re-derive" line is retired when the last stage goes, never before. (2) The
+changed cone is HANDLE edges: the modules registry and the import edges
+(`Hβ.graph.parent-and-module-columns-are-read`) carry an IMPORTERS reverse
+column, so `downstream_closure` is a walk from the changed module handles
+over importers with a `wmap` visited set — `closure_fix`, `module_in`,
+`contains_module`, `manifest_hash_of` and `assoc_stmts`'s string finds
+delete; the manifest's per-module hash is a column on the module node
+(written at registration, compared by handle). (3) Staleness: the floor is
+the mtime probe (`fd_filestat`, the cheaper POLL its peer names), the form
+is notification — the resident session's host tells the driver which file
+moved and the driver invalidates that module's cone; a full re-hash of
+every module is neither. (4) The delta as a subscription: `graph_mutated`
+gains a subscriber handler that accumulates the touched handles of a
+judgment into a cone; the resident cursor re-projects that cone only, and
+`cursor_argmax` is keyed by (epoch, caret) as its peer already specifies —
+a caret move at a stable epoch recomputes, an edit re-scores the cone.
+▶ THE GATE, which is the landing: change nothing, compile again, measure —
+the warm wall approaches the process floor (5.75s today; the number the
+landing reports is read from `/usr/bin/time` on the warm run, never from
+this entry), and the warm emission is byte-identical to the cold one (the
+frontier's warm-start and warm-inc legs). Edit one module, compile again:
+only its cone re-derives, named on stderr as today. RETIRES when the
+warm-start re-derivation is gone and the cone is handle edges.
+
+`Hβ.why.provenance-is-edges` — OPEN, designed 2026-09-22 (Landing 8 of
+the re-derivation queue, family G: PROVENANCE). Absorbs
+`Hβ.why.reason-span-is-a-weave-coordinate`'s file half and closes it.
+Build-ready as a representation arc: 24 constructors and 157 `Located(`
+sites is the measured blast radius, so it is its own landing, never a
+rider.
+▶ THE FACT AND ITS COPIES. `Reason` (types.mn:1072) is a RECURSIVE VALUE
+TREE stored inline on every node (`GNode(NodeKind, Reason)`). `Unified(a, b)`
+embeds BOTH cells' whole reason trees into the unified node's, so a hub
+variable unified N times carries a reason of size Σ — the DAG stored as the
+tree it is not, and `show_reason`'s `Unified` arm (types.mn:3868) renders
+it with no bound and no visited set (the 341MB shape at the render, one
+altitude up from the occurs walk). `Located(Span, Reason)` copies a
+coordinate beside the very node that projects it (`graph_span_of`), a
+copy that rots under editing and never knew its file; `UnifyFailed(Ty, Ty)`
+snapshots two types that may since have resolved; `VarLookup(name, inner)`,
+`FnReturn`, `FnParam`, `Instantiation`, `InferredCallReturn` carry NAMES
+where the graph holds the declaration; `why_expand` (query.mn:2511) rebuilds
+the tree to depth 20 and returns the truncated remainder SILENTLY;
+obligations are stored as `(modh, span, predicate, reason)` and
+re-associated by span overlap (verify.mn:43); `AnsRefs` drops the handle
+(voice.mn:849–875).
+▶ THE FORM: A REASON'S SUB-REASONS ARE THE HANDLES OF THE NODES THAT JUSTIFY
+IT. Every arm that today embeds a `Reason` embeds an `Int` — the cell or
+node whose own reason column IS that sub-reason, read live: `Unified(Int,
+Int)`, `OpConstraint(String, Int, Int)`, `MatchBranch(Int, Int)`,
+`ListElement(Int)`, `IfBranch(Int)`, `LetBinding(String, Int)`,
+`InferredPipeResult(String, Int)`; the NAME-carrying arms carry the
+DECLARATION's handle instead, which Landing 5's decl index makes a fact
+(`VarLookup(Int)` — the reason of a reference is its declaration;
+`FnReturn(Int)`/`FnParam(Int, Int)`/`Instantiation(Int)`/
+`InferredCallReturn(Int)` — the callee's node, whose return cell and
+parameter cells carry their own reasons); `UnifyFailed(Int, Int)` names the
+two cells and the render reads their LIVE types. `Located` DELETES: a
+node's position is its own span column, and a cell minted during inference
+records the node it was minted FOR (`FreshInContext(Int, String)` already
+carries the handle; `Inferred(String)` gains one) — the Why render reads
+`site_of(h)` for module AND span, so the file half of the weave-coordinate
+peer closes by construction. `Reason` is then O(1) per node and
+non-recursive; the DAG is the graph. `show_reason`/`why_expand` become ONE
+bounded walk over handles with a visited set, whose register (lede or
+explain, SYNTAX §Comments) decides how many hops render — no tree is
+rebuilt and nothing is silently truncated, because a revisited handle
+renders as its address rather than as a copy. Obligations carry the value
+node's handle (`(h, predicate, reason)`), the debt facet reads `site_of(h)`,
+and `AnsRefs` carries handles. The first-divergence question of §11's fan
+becomes a diff over shared edges — the reason this face is in the queue at
+all.
+▶ GATES: Landing 1's whole; every `why` fixture byte-identical or better
+(`tests/frontier/mn-where-badges.mn why gain` answers its file AND line —
+the standing frontier red, `why coordinates are the developer's`, turns
+GREEN, which is the RED-first half already banked); the Why walk on a hub
+variable (`render_pred_node`'s row vars, `mentl src/format.mn why
+render_pred_node`) measured in `cost` before and after; the `V_Pending`
+debt facet's sites unchanged. RETIRES when no `Reason` arm embeds a
+`Reason`, no arm embeds a `Span`, and `frontier_expected_red` no longer
+lists the coordinates leg.
