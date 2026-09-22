@@ -12084,49 +12084,105 @@ whole occurs family (graph:1089–1352), which since 2026-09-21 carries a
 visited set — bookkeeping for a walk that should not exist. Fourteen
 `Frozen(qs, ty)` publishes snapshot the pair (infer:768, 774, 848, 849, 854,
 2037, 2407, 6066, 6150, 6178, 6305, 7643, 8098, 8195).
-▶ THE FORM: TWO SPINE COLUMNS, WRITTEN AT THE ONE WRITER. `parents_col`
-(per handle, `[Int]`): every cell whose binding references this cell as a
-leaf. `graph_bind(c, ty)` appends `c` to `parents(root(v))` for each leaf `v`
-of the VALUE `ty` — one walk over the value's own syntax (`ty_leaves`, the
-write's delivery, O(size of ty)), never through bindings; an alias bind
-`graph_bind(a, TVar(b))` is the same write with one leaf. `frees_col` (per
-handle, `[Int]` sorted by handle): the unbound roots the cell's binding still
-reaches. A free cell's frees are `{its root}`; at `graph_bind(c, ty)`,
-`frees(c) := ⋃ frees(root(v))` over the leaves, then the SHRINK propagates up
-`parents`: for every `p` reached through `parents*`, `frees(p) := (frees(p)
-∖ {c}) ∪ frees(c)`, a worklist until nothing changes — monotone, because a
-bind only removes `c` and adds the subset `c` stood for. Every column write
-is trailed (`Mutation` gains `MSetFrees(h, old)` and `MSetParents(h, old)`),
-so a checkpoint rollback restores the cone as it restores the node. Row-sort
+▶ THE FORM: TWO SPINE COLUMNS, WRITTEN AT EVERY BIND. `parents_col` (per
+handle, `[Int]`): every cell whose binding references this cell as a leaf.
+EVERY bind op writes it — `graph_bind(c, ty)`, `graph_bind_record_row(c,
+fields, tail)` (graph.mn:655–675, the cells the occurs walk descends at its
+`NRecordRowBound` arms, graph.mn:1135/1165 — a column written at `graph_bind`
+alone would blind the membership test to a cycle through a record residual,
+at the site the code itself calls the most dangerous in the compiler), and
+the RowCell's own writes for the row sort. `parents(root(v)) += c` for each
+leaf `v` of the VALUE bound — one walk over the value's own syntax
+(`ty_leaves`, the write's delivery, O(size of the value)), never through
+bindings; an alias bind `graph_bind(a, TVar(b))` is the same write with one
+leaf. `parents` is an OVER-APPROXIMATION: a REBIND (the prereg binds the
+FnStmt handle at infer.mn:1032 and `infer_fn` rebinds the same handle at
+:2411; the return cell at :1006/:2367) leaves the superseded leaves'
+entries standing, and a stale parent costs one recompute, never a wrong
+answer, because the recompute reads the LIVE binding. `frees_col` (per
+handle, sorted `[Int]`): the unbound roots the cell's binding still
+reaches — a free cell's frees are `{its root}`, and at every bind
+`frees(c) := ⋃ frees(root(v))` over the CURRENT binding's leaves. THE
+PROPAGATION IS THE ROWS LANDING'S SHRINK EVENT VERBATIM, not a monotone
+difference: a bind SUBSTITUTES rather than shrinks (binding `c` to
+`TList(TVar(fresh))` adds a var no ancestor held), and a rebind changes
+`frees(c)` arbitrarily, so the cone `parents*(c)` is reset and re-derived
+from each cone node's live binding by a worklist to the least fixed point.
+Every column write is trailed (`Mutation` gains `MSetFrees(h, old)` and
+`MSetParents(h, old)`), so a checkpoint rollback restores the cone as it
+restores the node. Both columns are LAZY — allocated on a page's first
+write, never in `spine_open_loop`'s eager twelve (graph.mn:128–134), which
+PLAN §11 already names as the per-decl banding's prerequisite. Row-sort
 frees stay in the RowCell (`Hβ.effects.rows-are-propagated-cells`, its
-`frees`) and are read from there in one hop; a fn cell's type-sort frees
-include the payload TVars of its row cell's `full_p ∪ full_a`, read at
-generalize through the row cell — an O(names) read of columns, never a
-walk. The sort filter (`is_row_handle`) stays a predicate on the handle.
-▶ THE READS THAT BECOME COLUMN READS — the deletion list. `occurs_in(h, ty)`
-is MEMBERSHIP: `h ∈ ⋃ frees(root(v))` over `ty`'s leaves; the occurs family
-and its visited set DELETE whole (`occurs_in_seen`, `seen_has`, `seen_mark`,
-the `_params/_list/_fields/_eff_names/_eff_args` `_seen`/`_loop` pairs,
+`frees`) and are read from there in one hop; the sort filter
+(`is_row_handle`) stays a predicate on the handle.
+▶ THE READS THAT BECOME COLUMN READS — the deletion list, corrected.
+`occurs_in(h, ty)` is `h ∈ leaves(ty) ∪ ⋃ frees(root(v))` — the raw and
+root compares (graph.mn:1123/1127) stay, because a rebind makes a
+self-reference on an ALREADY-BOUND cell reachable and a frees column holds
+only unbound roots; with that test the occurs family and its visited set
+DELETE whole (`occurs_in_seen`, `seen_has`, `seen_mark`, the
+`_params/_list/_fields/_eff_names/_eff_args` `_seen`/`_loop` pairs,
 `occurs_in_row`/`_seen`, `occurs_in_edges_seen`, `occurs_in_record_fields`/
-`_seen`, and `occurs_in_live`'s walk). `free_in_ty(ty)` is the leaf-fold over
-`frees_col`; `free_in_list/params/fields/record_row/record_tail/row/edges/
-eff_names/eff_arg` DELETE as recursive walkers, and what remains is
-`ty_leaves`, the one syntactic enumeration of a value. `generalize_pair(h)`
-= `(frees(h)` filtered by sort, joined with the row cell's payload frees,
-`TVar(h))` — the `chase_deep` copy and `unique` go; `judgment_ty(Live(h))`
-answers `TVar(h)` and a reader that needs the resolved VALUE calls
-`chase_deep` itself, the delivery it asked for; `signature_free_roots(cells)`
-= `⋃ frees(c)`; the gate reads `frees` at check time and the banked
-`sig_frees` slot deletes; `branch_replay_one` reads the column. Every
-`Frozen(qs, ty)` publish becomes `Live(h)` with `h` the decl's own cell — a
-declared signature is a BIND on that cell, not a value beside it — and
-`Binding` keeps only `Live(Int)` once the last `Frozen` reader goes;
-`judgment_pair(Live(h))` = `(frees(h), TVar(h))`. `spec_subst_pairs`
+`_seen`, and `occurs_in_live`'s walk). `free_in_ty(ty)` is the leaf-fold
+over BOTH columns (the type frees and, through each row cell, its row-sort
+frees — `signature_free_roots`, infer.mn:7107, returns both sorts on
+purpose: its subject is a HOF parameter's row var); the
+`free_in_list/params/fields/record_row/record_tail/row/edges/eff_names/
+eff_arg` walkers DELETE and what remains is `ty_leaves`. `generalize_pair(h)`
+= `(frees(h)` filtered by sort, `chase_deep(TVar(h)))` — the `unique` and
+the three walks go; THE DELIVERY STAYS INSIDE `judgment_ty`: `judgment_ty
+(Live(h)) = chase_deep(TVar(h))`, because ~28 consumers match the resolved
+STRUCTURE (`scheme_ref_fun_arity`, lower.mn:952–957, answers "not a
+function" for a `TVar`; `own_dispatched_row`, :1433–1435, would read an
+empty row; query.mn:2135/2160/2192/2198, infer.mn:2679/3005/5916/6570/
+7743/8654, mentl.mn:206, synth_proposer.mn:250/1094/1218, pipeline.mn:263,
+main.mn:922/1552) and `instantiate(Live(h))`'s mapping is keyed on the
+quantified roots (infer.mn:7152–7166), so a bare `TVar(h)` would SHARE the
+decl's cell at every call site — the severing class generalize_pair's own
+comment records (:6610–6630). What the landing wins there is the
+QUANTIFIER as a read; the resolved form remains the delivery it always was.
+THE GATE'S `sig_frees` IS NOT `frees(h)`: it is `free_in_ty(chase_deep(TFun(
+params, ret, mk_ef_pure())))` (infer.mn:2551) — the TOP ROW REPLACED BY PURE
+on purpose, so that a member's own top-row cell never counts as its
+signature's free. The column form is `⋃ frees(param cells ∪ {ret cell})`
+joined with THOSE cells' row-cell frees, the top-row cell excluded; read at
+`row_gate_unresolved` (:2563/:2900) instead of banked in the gate tuple,
+with a RED-first declared-row-gate fixture (the predicate whose
+mis-setting produced the single-pass cut's thirteen `E_InternalInvariant`
+refusals). `branch_replay_one` reads the column.
+`Frozen` → `Live` IS NOT A BLANKET RULE, AND THE FIRST DRAFT'S "FOURTEEN"
+WAS NOT THE SET. `Frozen([], …)` is a deliberate MONOMORPHIC posture, not a
+snapshot: the pattern binders (`infer_pat`'s `PVar`, infer.mn:6066; the
+record-rest, as-pattern and list-rest binders at :6150/6178/6305), every
+parameter (:7493) and the unsigned decl's self-view (:2407/2409, whose
+comment reads "HM's mono recursion, the inference-soundness floor") publish
+an EMPTY quantifier so that a self-call does not instantiate — a Live cell
+QUANTIFIES (generalize_pair's `NFree` arm, :6656–6663), so making those Live
+admits polymorphic recursion silently and dissolves 5.3's landed fragment;
+`branch_replay_one` states the law ("An EMPTY q is the deliberate
+mono/two-phase share and stays empty", :1896–1898). Of the rest, infer.mn:768/
+774 (`register_primitives`) publish `TFun` VALUES with no cell at all,
+:848/849/854 (`pre_register_alias`) publish nominal shapes for aliases that
+never unify, and `mycroft_prebind` (:2030–2037) publishes over FRESH assumed
+cells that are deliberately not the decl's. So the conversion is: a
+publish with NON-EMPTY quantifier whose type IS the decl's own judged cell
+becomes `Live(h)`; `Frozen([], …)` survives as the mono posture (or
+`Binding` gains `Mono(Int)`, which makes the posture legible); and the
+`Frozen` readers OUTSIDE infer — env.mn:94/307 ("Read through the BINDING,
+not through judgment_ty"), own.mn:690/691, types.mn:3520/3524/3959,
+lower.mn:6810 — are on the migration list by name. `spec_subst_pairs`
 (graph:1758) gains the depth bound and the check-then-build sharing
-`chase_deep_at` already has (a twin's substitution is a delivery whose walk
-shares every unmapped subtree); `find_mapping`'s linear probe becomes a
-sorted binary search or a `wmap` above a measured quantifier width, never a
-guess.
+`chase_deep_at` already has; `find_mapping`'s linear probe becomes a sorted
+binary search or a `wmap` above a measured quantifier width, never a guess.
+▶ KILLS (the adversarial review of 2026-09-22, each verified against the
+artifact before this entry was rewritten): the blanket `Frozen → Live` (F1.1,
+F1.2, F1.4); `judgment_ty(Live(h)) = TVar(h)` (F1.3, twenty-eight silent
+consumers); the monotone-difference propagation (F1.5, rebinds and
+substitution); the column written at `graph_bind` alone (F1.6, the record
+residual); membership without the raw/root compare (F1.7); `sig_frees =
+frees(h)` (F1.8, the pure-topped signature); eager columns and an
+unmeasured win stated as established (F1.9 — the `cost` gate decides).
 ▶ WHAT STAYS A DELIVERY, AND THE RUNG AFTER. `chase_deep` builds the resolved
 VALUE a consumer asked for (unify's structural walk, emit's repr read, the
 render): a value of size N costs N (PLAN §5.O), and its check-then-build
@@ -12172,56 +12228,106 @@ the cap (:47–52), under a comment that says "never a silent truncation";
 `is_pure` re-walks per firing (:75); `rewrite_to` draws an unreasoned edge
 (:115, `Hβ.egraph.canon-edge-carries-reason`); `saturate_range` re-saturates
 the fan's candidate range per fan (:278).
+▶ THE PREREQUISITE, WHICH THE FIRST DRAFT ASSERTED THE OPPOSITE OF: THE CANON
+COLUMN IS NOT TRAILED. `graph_canon_set`'s arm is `spine_put_canon` and
+`resume()` — no `trail_append`, no epoch, no `graph_mutated` — under a
+comment that says so ("No trail: saturation is a `|>` stage between infer
+and lower, before speculation, so rollback never touches it", graph.mn:445–
+459). Moving the firing INTO the judgment puts every canon write inside
+speculation — `segment_verify` judges each candidate in a checkpoint
+(synth_proposer.mn:900–928), and the Mycroft retry does the same — where an
+untrailed edge survives `graph_rollback` and, worse, `mint_fold`'s fresh
+literal (egraph.mn:243–249) is un-minted by `MFreshNode` rollback
+(graph.mn:683–685 decrements `next`) while the canon cell still points at
+that handle, which is then re-minted for something else: a miscompile
+channel inside the fan. So the FIRST step of this landing is `MSetCanon(h,
+old)` in `Mutation` (types.mn:970–978) and in both rollback arms, with a
+RED-first fixture: a canon edge drawn inside a checkpoint must be gone
+after rollback. Nothing below is built before that.
 ▶ THE FORM: THE OPTIMIZER IS A HANDLER ON THE GRAPH'S OWN WRITES. An
 `egraph_rules` handler installed over the judgment (parse through infer)
 intercepts three write ops, forwards each to the outer graph handler, then
 fires exactly the rules whose premise that write completed — an arm's
 performs resolve OUTER, so the rules' reads run against the live graph, and
-the pipeline's `|> saturate_pass` stage deletes because the relation is
-complete the moment the judgment is:
+the three saturate call sites (pipeline.mn:493, main.mn:1847, mcp.mn:156)
+delete because the relation is complete the moment the judgment is:
 (1) `graph_register_node(h, body)`: the PARENTS column is written —
 `parents(c) += h` for every `c ∈ body_child_handles(body)` (query.mn:1871
-moves to graph.mn as the ONE syntactic children enumeration, the same
-column Landing 2 writes for type-cell leaves; "the nodes that reference this
-node", one meaning for both) — then `fire(h)`: const-fold and the four
-identities can fire at the write, their premises being shapes and literals.
-(2) `graph_canon_set(from, to, reason)`: the write points at `root(to)`, so a
-chain never forms beyond a later root move and `extract_chase` is one hop —
-its 1000-cap becomes an `E_InternalInvariant` refusal (a cycle is a rule-set
-bug), never a returned handle; the Reason rides the edge (the canon column
-becomes (target, Reason), `rewrite_to(from, to, RuleFired(name))`); then
-`fire(p)` for every `p ∈ parents(from)` — congruence closure AS
+moves to graph.mn as the ONE syntactic children enumeration, made TOTAL
+first as `Hβ.graph.parent-and-module-columns-are-read` specifies; the same
+column Landing 2 writes for type-cell leaves) — then `fire(h)`: const-fold
+and the four identities can fire at the write, their premises being shapes
+and literals, and the ordering premise holds (recursive descent registers
+children before parents — `mint_node`, parser.mn:34–38; nothing outside
+egraph.mn reads `graph_canon_at`, so firing during the judgment perturbs
+no inference).
+(2) `graph_canon_set(from, to, reason)`: the write points at `root(to)` and
+the Reason rides the edge (the canon column becomes (target, Reason),
+`rewrite_to(from, to, RuleFired(name))`, `Hβ.egraph.canon-edge-carries-reason`);
+then `fire(p)` for every `p ∈ parents(from)` — congruence closure AS
 PROPAGATION: f(a) re-reads f(canon(a)) exactly when a's canon moved, never
-on a sweep, and a fold's minted literal (`mint_fold`) folds its parents
-transitively by the same event.
-(3) PURITY, the per-expr row: `rw_mul_absorb` needs the dropped operand's
-row, and today the substrate binds rows per FRAME (egraph.mn:70–74 confesses
-it; `Hβ.egraph.per-expr-effect-row`). With rows as cells the per-expr row is
-one cell and one edge: a CALL node's row is its own RowCell, bound to the
+on a sweep, and a fold's minted literal folds its parents transitively by
+the same event. READS STAY ONE HOP BY A REVERSE COLUMN, NOT BY DELETING
+`find`: a later root move (`canon_set(r, r')`) leaves every edge into `r`
+one hop short, and `parents_col` is the AST relation, not the canon one —
+so the canon column gains its members list (`canon_members(root)`, written
+at each edge), and a root move re-points every member at the write
+(union-by-members). `extract_chase` is then one read whose 1000-cap becomes
+an `E_InternalInvariant` refusal (a cycle is a rule-set bug), never a
+returned handle.
+(3) PURITY, the per-expr row — THIS LANDING'S OWN STEP, APPLIED AFTER
+`Hβ.effects.rows-are-propagated-cells` LANDS, never a change to that
+builder's brief: `rw_mul_absorb` needs the dropped operand's row, and the
+substrate binds rows per FRAME (egraph.mn:70–74 confesses it;
+`Hβ.egraph.per-expr-effect-row`). With rows as cells the per-expr row is one
+cell and one edge — a CALL node's row is its own RowCell, bound to the
 callee's instantiated row at the call charge, and the frame's cell LINKS to
-it (`inf_add_row` mints and links instead of teaching the frame directly);
-`effs_at(h)` reads that cell's projection, and a literal/var/binop needs no
-cell — `body_is_pure` over the syntax TREE stays (a tree has no revisits). An
+it (`inf_add_row` mints and links where the rows landing teaches the frame
+directly); `effs_at(h)` reads that cell's projection. `body_is_pure` stays
+for literal/var/binop, and NOT because "a tree has no revisits": this AST
+has shared children — an unannotated `let`'s annotation field IS its value
+node (parser.mn:2134–2135; query.mn:1845–1853 records the double-visit it
+caused), and `desugar_block` dissolves a `LetStmt` into a `MatchExpr` over
+the SAME value node while the dead `LetStmt` stays registered
+(parser.mn:2753–2766) — it stays because it descends `BinOpExpr` alone. An
 absorb instance whose dropped operand's cell is still unbound PARKS on that
 cell and fires at the cell's bind — the row landing's gate-parking, one
-consumer over. Soundness is unchanged: a rewrite fires only when its premise
-is WRITTEN, which is strictly later than the sweep could have read it.
+consumer over. Soundness is unchanged: a rewrite fires only when its
+premise is WRITTEN.
+(4) THE FAN'S FORM HALF: `saturate_range` runs today AFTER `segment_verify`,
+over the survivors' nodes, once every candidate has been judged and rolled
+back (synth_proposer.mn:921–928). With firing at the write, the shape rules
+fire at a candidate's CONSTRUCTION (before the checkpoint, so their edges
+persist), and the purity-gated rules fire inside the judgment and roll back
+with it — so the survivors' merge happens where the accepted fill is judged
+for keeps: that judgment's writes fire the rules, and `saturate_range`
+deletes because the accepted judgment IS the merge. The fan's frontier
+workflows and `tests/frontier/mn-fan-extraction-fires.mn` (red by
+construction until a feeder) are the gate.
 ▶ TERMINATION AND ROLLBACK. Every canon target is an existing subnode or a
 fresh literal — strictly cheaper by construction, which
 `Hβ.egraph.extraction-cost-composes-repr` keeps as the contract — so `fire`
 draws at most one edge per (node, rule) and the propagation along
 `parents` is bounded by the term's depth; `rewrite_to`'s idempotence stays.
-Canon writes are a trailed spine column already; parents writes trail
-(`MSetParents`), so a fan branch's checkpoint rollback restores the relation
-with the graph. Handle numbering moves (fold mints interleave with parse
-mints), so the first march is a TRANSITION the m4 leg arbitrates.
+Canon writes trail (`MSetCanon`, the prerequisite above); parents and
+members writes trail, so a fan branch's checkpoint rollback restores the
+relation with the graph. Handle numbering moves (fold mints interleave
+with parse mints), so the first march is a TRANSITION the m4 leg arbitrates.
 ▶ DELETIONS: `saturate_pass`, `saturate`, `saturate_until`, `saturate_range`,
-`saturate_range_until`, `apply_rules_from`, the pipeline's saturate stage,
-`extract_chase`'s loop (one hop + the invariant refusal), the `is_pure`
-conjunction wherever the per-expr cell answers. Not this landing:
-`Hβ.egraph.install-algebra` (waits on the modal world-index by its own
-sequencing) and `Hβ.verify.congruence-is-the-egraph` (Verify reading the
-canon weave — it gains a live relation to read the day this lands).
+`saturate_range_until`, `apply_rules_from`, the three saturate call sites,
+`extract_chase`'s loop (a one-hop read + the invariant refusal, once
+`canon_members` re-points at root moves), the `is_pure` conjunction wherever
+the per-expr cell answers. Not this landing: `Hβ.egraph.install-algebra`
+(waits on the modal world-index by its own sequencing) and
+`Hβ.verify.congruence-is-the-egraph` (Verify reading the canon weave — it
+gains a live relation to read the day this lands).
+▶ KILLS (the adversarial review of 2026-09-22, each verified against the
+artifact): "canon writes are a trailed spine column already" (F2.1 — the
+prerequisite above); `extract_chase`'s loop deletable with no canon reverse
+index (F2.2); one saturate call site (F2.3 — three); `saturate_range`
+deletable with nothing said about the survivors' merge (F2.4); clause (3)
+written as an edit to the in-flight rows brief (F2.5); "a tree has no
+revisits" (F2.6 — the annotation alias and the dissolved let).
 ▶ GATES: Landing 1's whole; the effect-gated absorb crucible (the fixture
 that refuses `x * 0` dropping an effectful `x` — RED-first against the prior
 boot if a deletion could loosen it); `tests/frontier/mn-fan-extraction-fires.mn`
@@ -12268,57 +12374,109 @@ comparing sites pairwise (`dedup_sites`/`site_in`, query.mn:1243/1246).
 `finalize_continuation_boundaries(0, graph_next())` (infer.mn:4309) scans
 every handle for the boundaries `graph_boundary_set` already wrote; `crc_walk`
 (:416) reads `graph_comment_at` at every handle to find the ones with prose.
-▶ THE FORM: TWO COLUMNS AND ONE WALK. (1) `parents_col`, written at
-`graph_register_node(h, body)` — `parents(c) += h` for every `c ∈
-body_child_handles(body)` (query.mn:1871 moves to graph.mn as the one
-children enumeration; the same column `Hβ.infer.types-are-propagated-cells`
-writes for type leaves and `Hβ.egraph.rules-fire-at-the-write` fires from —
-whichever of the three lands first writes the arm, the others read it). A
-tree node has at most one AST parent, so `graph_parent_of(h)` is one read:
+▶ THE FORM: TWO COLUMNS AND ONE WALK, WITH THE CHILDREN ENUMERATION MADE
+TOTAL FIRST. (0) `body_child_handles` (query.mn:1871) is NOT total: it
+answers `[]` for `NModule`/`NPat`/`NTypeAnn`, and `stmt_child_handles`
+(:1844–1864) lists only an `FnStmt`'s body — a type's constructor nodes and
+an effect's op nodes (`NTypeAnn`, minted at parser.mn:1054/1099/1179/1264)
+are children of nothing, and no top-level declaration has an edge to its
+module. Step one makes it total — `NModule` → its decls, `TypeDefStmt` → its
+constructor nodes, `EffectDeclStmt` → its ops, `HandlerDeclStmt` → its inits
+and arms, `FnStmt` → its parameter annotations and body, `LetStmt` → its
+pattern and its value ONCE (the unannotated let's annotation field IS the
+value node, parser.mn:2134–2135; listing it twice is the double-visit
+query.mn:1845–1853 records) — with a census fixture: every registered node
+except a module root has EXACTLY ONE live parent. That fixture is RED today
+for a second reason: `desugar_block` dissolves a `LetStmt` into a
+`MatchExpr` over the same value node and leaves the dead `LetStmt`
+registered (parser.mn:2753–2766), and `expr_to_pat` (:2095–2118) leaves
+parsed expression nodes registered and referenced by nothing. The parser
+CLEARS the registration of a node it dissolves (`graph_unregister_node(lh)`
+at the desugar — the weave already re-targets the let's comment to the
+match), so a live node has one live parent; an orphan has none and is
+harmless. (1) `parents_col`, written at `graph_register_node(h, body)` —
+`parents(c) += h` for every child (the same column
+`Hβ.infer.types-are-propagated-cells` writes for type leaves and
+`Hβ.egraph.rules-fire-at-the-write` fires from — whichever lands first
+writes the arm). `graph_parent_of(h)` is then one read:
 `render_context_at(h)` = `render_context_from_parent(h,
-graph_node_body(graph_parent_of(h)))`; `enclosing_fn_decl_at` and
-`pipe_context_of_handle` walk UP until an `FnStmt`/`PipeExpr` — O(depth);
-`node_contains_handle(h, target)` walks up from `target` to `h` or the root;
-the comment-ref scope is the enclosing fn's `comment_locals`, read by the
-same ascent from the comment's owner node, and `crc_fn_scopes` with its
-list deletes. (2) `modules_col`: an ordered registry of module handles
-written at the `NModule` registration (`graph_register_node` sees the body's
-constructor), keyed by path with LAST WINS at the write — the resident
-session re-registers a module on edit, and the registry's replacement IS the
-dedup `dedup_module_cells` re-derives on every read. `module_handle_of_path`
-is an smap read; `module_path_of_handle(mh)` is `graph_node_body(mh)`'s own
-path — the handle IS the node; `weave_line_extent` folds the registry
-(O(modules)); a module's IMPORTS are HANDLE edges resolved once at link
-(`graph_module_import(from_mh, to_mh)`, written where the driver resolves
-the import to a file — `driver_module_path`'s answer is a module handle the
-moment that module registers), so `module_reaches(from, to)` is a
-depth-first walk over handles with a `wmap` visited set and nothing ever
-compares a path string; `module_path_of_span`, `scan_for_enclosing_module`,
-`contains_path`, `dedup_module_cells`, `dedup_cell_join` and
-`scan_module_imports` DELETE, and cursor's `same_module`/`transitive_dep`
-take the caret's module HANDLE (the address carries it since
-`Hβ.cursor.address-drops-module-identity`) beside `graph_module_of(target)`.
-(3) ONE census walk: `board_read` runs `roster_bump` (query.mn:1710) once over
-the handle space, every shape bumped at every node, and each bound reads its
-own sites off that one answer — seventeen O(1) lookups where there were
-seventeen walks; sites are HANDLES, so `dedup_sites` becomes membership in
-a `wmap` keyed by handle (O(n)), or is not needed at all where a walk visits
-each handle once. `finalize_continuation_boundaries` reads the pending list
-its writer already keeps; `crc_walk` reads a comments registry (the handles
-`spine_put_comment` wrote) instead of asking every handle whether it has
-prose.
-▶ GATES: Landing 1's whole, plus the fmt idempotence sweep over the wheel
-(`mentl <file> fmt` twice on every module — the render-context read is what
-changes), the comment-ref count held at 0 (the scope ascent must resolve
-exactly what the list did — RED-first by breaking one scope), the caret
-projection fixtures (`mentl <file>:<line>:<col>` on a multi-module link,
-the address-drops-module class), `mentl <file> imports` unchanged on the
-wheel, and the board's seventeen counts byte-identical before and after
-(one walk answers what seventeen did). `cost` and the `heap:` line must
-not rise; `fmt` on infer.mn measured before and after is the wall-clock
-witness (O(n²) → O(n)). RETIRES when the five parent scans, the module
-dedup family, the span-containment module read and the per-bound census
-walks are gone; `Hβ.cursor.module-of-a-span-is-containment` closes with it.
+graph_node_body(graph_parent_of(h)))` (today's scan returns the LOWEST
+handle among three shapes, format.mn:1274–1296 — with the dead let cleared
+the two agree); `enclosing_fn_decl_at` and `pipe_context_of_handle` walk UP
+until an `FnStmt`/`PipeExpr` — O(depth); `node_contains_handle(h, target)`
+walks up from `target` with a visited set until `h` or a root; the
+comment-ref scope is the enclosing fn's `comment_locals` by the same
+ascent — and `crc_fn_scopes`/`crc_scope_at`'s EXTENT read (module,
+decl-start→next-decl-start, infer.mn:342–380, needed because a decl's
+recorded span is its HEAD) stays until step (0) is green, because a comment
+attached inside a type or effect declaration ascends to nothing before
+then. (2) `modules_col`: an ordered registry of module handles keyed by
+path with LAST WINS at the write. The `NModule` registers TWICE —
+`parse_one_module` mints it with `decls: []` (infer.mn:1243) and
+re-registers it with the parsed decls (:1248) — so the registry captures
+the module's mint range across the two events, `(mh + 1, graph_next())` at
+the second, the module node itself EXCLUDED (`spans_of_module` excludes it
+deliberately, main.mn:1315–1320, after the covering-case regression PLAN §7
+records). Last wins IS the dedup `dedup_module_cells` re-derives: the
+resident session re-registers a module on edit and `driver_incremental`
+re-parses a changed cone at higher handles (driver.mn:690–726), so the
+latest is the judged generation. `module_handle_of_path` is an smap read;
+`module_path_of_handle(mh)` is `graph_node_body(mh)`'s own path — the
+handle IS the node (today's fold over every cell, graph.mn:1588–1597, reads
+a field of the handle's own node); `weave_line_extent` folds the registry;
+a module's IMPORTS are HANDLE edges resolved at LINK, deferred until both
+modules have registered (an importee's handle does not exist until it
+registers; a module the weave does not carry gets no edge, which is the
+`false` `module_imports` answers today, graph.mn:1625), so
+`module_reaches(from, to)` is a depth-first walk over handles with a
+`wmap` visited set and nothing compares a path string;
+`module_path_of_span`, `scan_for_enclosing_module`, `contains_path`,
+`dedup_module_cells`, `dedup_cell_join` and `scan_module_imports` DELETE,
+and cursor's `same_module`/`transitive_dep` take the caret's module HANDLE
+(the address carries it since `Hβ.cursor.address-drops-module-identity`)
+beside `graph_module_of(target)`. A DEFECT THE WHEEL GATE CANNOT SEE
+closes with it: `scan_module_imports` takes the FIRST `NModule` of a path
+(graph.mn:1656–1663) while `module_handle_of_path` takes the LAST — under
+the resident session's generations the two already disagree. (3) ONE
+census walk: `board_read` runs the roster walk once over the handle space,
+every shape's predicate evaluated at every node (the predicates still run
+per (shape, node) — some are subtree walks, `recursion_shape_of`,
+query.mn:1905 — so the win is the sixteen redundant `iterate_range`/
+`graph_node_body` passes, not the predicates), collecting SITES per shape
+(`roster_bump`, :1710, returns counts; `Standing` carries sites, board.mn:53
+— a site-collecting sibling). `dedup_sites` keeps its KEY: it dedups by
+projected position `site_of(h) = (module, span)` on purpose ("two nodes at
+one source position are one site — a desugar's twin, a re-mint — while a
+cell with no position is its own site", query.mn:1222/1243–1251), so the
+`wmap` is keyed by that pair and a span-zero entry is never collapsed; a
+handle-keyed set would move seventeen counts. `finalize_continuation_
+boundaries` reads the pending list its writer already keeps; `crc_walk` is
+already bounded to `parse_start..parse_end` (infer.mn:304–312/416–428) —
+the comments registry (the handles `spine_put_comment` wrote) is a smaller
+win than "every handle", and still one.
+▶ GATES: Landing 1's whole, plus the one-live-parent census fixture (RED
+first at the dissolved let), the fmt idempotence sweep over the wheel
+(`mentl <file> fmt` twice on every module — the render-context read is
+what changes), the comment-ref count held at 0 (RED-first by breaking one
+scope), the caret projection fixtures (`mentl <file>:<line>:<col>` on a
+multi-module link), the board's seventeen counts byte-identical before and
+after (one walk, the same key), and `mentl <file> imports` gated on an
+ENUMERATED intended diff under the resident session (first-vs-last), not
+"unchanged". `cost` and the `heap:` line must not rise; `fmt` on infer.mn
+measured before and after is the wall-clock witness (O(n²) → O(n)).
+RETIRES when the five parent scans, the module dedup family, the
+span-containment module read and the per-bound census walks are gone;
+`Hβ.cursor.module-of-a-span-is-containment` closes with it.
+▶ KILLS (the adversarial review of 2026-09-22, verified against the
+artifact): "at most one AST parent" (F3.1 — the dissolved let, the
+orphans of `expr_to_pat`); a total children enumeration assumed (F3.2 —
+`NTypeAnn` children of nothing, decls with no module edge); `dedup_sites`
+keyed by handle (F3.3 — the key is the projected position, and a handle key
+moves seventeen counts); "seventeen O(1) lookups" (F3.4 — the predicates
+still run per node; `roster_bump` returns counts); the registry as one
+write event (F3.5 — two registrations; deferred import handles); imports
+"unchanged on the wheel" as a gate for a change the wheel cannot see (F3.6);
+`crc_walk` over every handle (F3.7 — already bounded to the parse range).
 
 `Hβ.graph.references-and-positions-are-columns` — OPEN, designed
 2026-09-22 (Landing 5 of the re-derivation queue, family D parts iii–v:
@@ -12354,52 +12512,97 @@ up to three times (:1344), `cw_scan_index` copies the whole log per parse
 (parser.mn:340/343 — once 98% of the self-compile), `handle_at_span`/
 `scan_for_span` (cursor.mn:496/503) scan every handle for a span, and
 `comment_ref_owners` (graph.mn:72) walks the pair list per referent.
-▶ THE FORM: THREE COLUMNS WRITTEN ONCE, AND RANGES INSTEAD OF A LOG.
-(1) THE DECL INDEX: `graph_decl_note(decl_handle)` already records every
-declaring node; the same write files each name the declaration BINDS
-(the decl's own name, a type's constructors, an effect's ops — the three
-arms `comment_decl_index` enumerates) into `decl_index: name → decl
-handle` (smap, last wins per link). `ur_index`, `comment_decl_index`,
-`layer_name_index`, `fn_body_by_name`/`fn_body_scan` and
-`handler_providing_op`/`scan_handler_for_op` DELETE into
-`graph_decl_of(name)`; a body is `graph_node_body(graph_decl_of(name))`.
-(2) REFS BY DECL HANDLE: `EnvEntry` carries the declaring node's handle
-(the fourteen publish sites know the decl they publish; a parameter or
-let binder carries its binder node), `infer_var_ref` notes
-`graph_ref_note(decl_handle, use_handle)`, `refs_col` re-keys onto a
-`wmap` by handle (`Hβ.query.refs-reads-edges-not-occurrences` closes),
-`refs of NAME` resolves the name ONCE through the decl index and reads;
+▶ THE FORM: THREE COLUMNS WRITTEN AT PARSE, AND RANGES INSTEAD OF A LOG.
+(1) THE DECL INDEX, FILED WHERE ALL SIX DECLARATION KINDS ARE VISIBLE: at
+the decl node's REGISTRATION in the parser — NOT at `graph_decl_note`,
+which fires during the judgment and has exactly three callers
+(`FnStmt` infer.mn:2341, `LetStmt` :1934, `HandlerDeclStmt` :1975; the
+`TypeDefStmt`/`EffectDeclStmt` arms of `infer_stmt` are `()`, :1968–1969),
+so a note-time index would hold no constructor and no op and refuse the
+comment-ref gate on every backticked one. The registration files each name
+the declaration BINDS (its own name, a type's constructors, an effect's
+ops — the three arms `comment_decl_index` enumerates at :390/391 with
+`ctor_index_add`/`op_index_add`) into `decl_index: name → decl handle`
+(smap, last wins per link; the module SCOPE stays at the hit —
+`module_reaches(graph_module_of(h), graph_module_of(dh))`, infer.mn:552 —
+never in the index). `ur_index`, `comment_decl_index`, `layer_name_index`,
+`fn_body_by_name`/`fn_body_scan` and `handler_providing_op`/
+`scan_handler_for_op` DELETE into `graph_decl_of(name)`; a body is
+`graph_node_body(graph_decl_of(name))`. `fn_body_scan` today returns the
+FIRST `FnStmt` of a name in weave order (synth_proposer.mn:468–475) and the
+index answers the LATEST generation — the right answer under the resident
+session, and a DIFFERENT one, so it carries a session fixture.
+(2) REFS BY DECL HANDLE: `EnvEntry` carries the declaring node's handle (a
+publisher knows the decl it publishes; a parameter or let binder carries
+its binder node), `infer_var_ref` notes `graph_ref_note(decl_handle,
+use_handle)`, `refs_col` re-keys onto a `wmap` by handle
+(`Hβ.query.refs-reads-edges-not-occurrences` closes), and `refs of NAME`
+resolves the name ONCE through the decl index and reads. This CHANGES
+answers wherever a name is shadowed — params and let binders publish under
+the same names as top-level decls (infer.mn:7493, :6501) — and that change
+is the peer's purpose: references to THAT DECL, not to a spelling. It is
+gated on an enumerated intended diff, never on byte-identity.
 `import_is_used(A, B)` is "some decl of B has a reference whose
-`graph_module_of` is A" — O(refs of B), no name in sight; `candidate_rank`
-reads proximity off `graph_module_of` and Landing 4's `module_reaches`.
-(3) THE FREES COLUMN: a declaration's free NAMES are computed once, at
-parse, where the binders are known (`stmt_frees_walk`'s walk runs at
-`graph_decl_note` time, its result a column on the decl node); the
-callee-first DAG (`scc_groups`), `reaches_decl` (a DFS over decl handles
-through the decl index, with a `wmap` visited set), `ur_walk` and the
-comment-ref scope read it. `comment_ref_owners` becomes a `wmap` column
-keyed by referent, written where the pair is noted.
+`graph_module_of` is A" — O(refs of B), no name in sight — and this too is
+a FIX rather than an equivalence: today `refs_inside` keeps a reference
+when `span_overlaps(extent, graph_span_of(h))` with `extent` the IMPORTING
+module's own span (query.mn:659/728–732), and every module's spans are
+1-based since the per-module parse, so a reference in ANY module at a line
+inside A's line count reads as inside A — `Hβ.cursor.module-of-a-span-is-
+containment` at the import gate, hiding dead imports. Its RED-first fixture
+is a dead import that reads used today. `candidate_rank` is NOT this
+landing's: `Hβ.synth.proximity-compares-across-modules` owns the
+module-aware re-rank with its own fixtures (synth_proposer.mn:356–370 says
+so), and this entry no longer proposes it.
+(3) THE FREES COLUMN, ALSO AT PARSE: a declaration's free NAMES are a
+parse-time fact (the binders are known there), and its first consumer —
+`stmt_frees`/`scc_groups`, which BUILD the callee-first order — runs before
+any decl is judged (infer.mn:1332–1338/1353), so the column is written at
+the decl node's registration, never at note time. `reaches_decl` (a DFS
+over decl handles through the decl index, with a `wmap` visited set),
+`ur_walk` and the comment-ref scope read it. `comment_ref_owners` becomes a
+`wmap` column keyed by referent, written where the pair is noted.
 (4) POSITIONS: the `(span, handle)` log DELETES and `Graph(next, spans)`
-loses its second field. A module's nodes are the CONTIGUOUS handle range
-its parse minted — the registry (Landing 4) records `(h_from, h_to)` at
-the `NModule` registration, which is what `attach_comment_weave`'s
-`h_from` already is — so `spans_of_module(mh)` is that range read through
-the spans column (no filter over other modules' spans, no copy),
-`address_resolve`'s three cases fold over the range once, `cw_scan_index`
-iterates the range instead of copying the whole log (its bsearch over runs
-stays), and `handle_at_span(mh, span)` walks the module's range only;
-positions copied beside a handle they describe are Landing 8's, and every
-`handle_at_span` call it deletes is a copy this landing need not serve.
-▶ GATES: Landing 1's whole; `mentl <file> refs of NAME`, `unreachable`,
-`imports`, `doc` and the comment-ref count (0) byte-identical before and
-after on the wheel (the columns must answer exactly what the scans did —
-each RED-first by breaking one write); the caret fixtures (`mentl
-<file>:<line>:<col>`) on a multi-module link; `mentl src/main.mn cost`
-and the m3 `heap:` line must FALL (the per-parse log copy and the
-per-hop whole-graph scans are gone); the fan's candidate ranking measured
-unchanged on its fixtures. RETIRES when the five name→decl indexes, the
-three free-name re-collections, the string-keyed refs and the span log are
-gone.
+loses its second field. CONTIGUITY HOLDS TODAY, verified: `parse_one_module`
+mints the module node, enters it, parses, and `parse_modules` maps
+sequentially (infer.mn:1238–1251); every parse-time mint goes through
+`fresh_handle`, the ONLY caller of `graph_index_span` (parser.mn:23–27);
+judgment-time mints are never span-indexed; `driver_incremental` re-parses
+a changed cone into fresh contiguous ranges. So a module's span-indexed
+nodes are exactly the range `(mh + 1, h_to)` — the module node EXCLUDED
+(`spans_of_module`'s `h != mh`, main.mn:1315–1320, after the covering-case
+regression PLAN §7 records; a range that starts at the registration's own
+handle re-admits it) — read through the spans column, SKIPPING span-zero
+cells (none exist inside a range today; `mint_fold`'s literals will, once
+`Hβ.egraph.rules-fire-at-the-write` lands; `synth_proposer.mn:1240/1245`
+mint span-indexed handles ABOVE every range at propose time, which the
+range read drops harmlessly). `spans_of_module(mh)` is that range with no
+filter and no copy, `address_resolve`'s three cases fold over it once, and
+`cw_scan_index` iterates it instead of copying the whole log — its
+`h < h_from` skip (parser.mn:407–413) is already this range read, `h_from`
+being `graph_next()` at `parse_program` entry (:533/537). `handle_at_span`
+is NOT on this list: `scan_for_span` compares REASON spans on purpose
+(cursor.mn:480–512 — swapping it for mint spans once sent thirteen edit
+fixtures red) and its callers hold no module handle; it is
+`Hβ.why.provenance-is-edges`', where the obligations it serves carry the
+handle.
+▶ GATES: Landing 1's whole; `unreachable`, `doc` and the comment-ref count
+(0) byte-identical before and after on the wheel (RED-first by breaking one
+write); `refs of NAME` and `imports` gated on their ENUMERATED intended
+diffs (shadowed names; the dead import the span overlap hid), each with its
+fixture; a resident-session fixture for `fn_body_by_name`'s generation; the
+caret fixtures (`mentl <file>:<line>:<col>`) on a multi-module link;
+`mentl src/main.mn cost` and the m3 `heap:` line must FALL (the per-parse
+log copy and the per-hop whole-graph scans are gone). RETIRES when the five
+name→decl indexes, the three free-name re-collections, the string-keyed
+refs and the span log are gone.
+▶ KILLS (the adversarial review of 2026-09-22, verified against the
+artifact): the decl index at `graph_decl_note` (F4.1 — three callers, no
+types or effects); the frees column at note time (F4.2 — consumed before
+judgment); `refs of NAME` byte-identical (F4.3 — shadowing); `imports`
+unchanged (F4.4 — the span-overlap defect); `candidate_rank` (F4.5 — its
+own peer); `fn_body_by_name` first-vs-latest (F4.6); the range starting at
+the module node (F4.7); `handle_at_span` as a log reader (F4.8).
 
 `Hβ.driver.warm-start-reads-what-it-restored` — OPEN, designed 2026-09-22
 (Landing 7 of the re-derivation queue, family F: TIME). A composition
