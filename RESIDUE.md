@@ -12065,3 +12065,171 @@ scope items were stale rather than hits: `src/oracle.mn` and
 `project_queue_merger` no longer exist; `fan_verify`/`candidate_judge` are
 `segment_verify`/`judge_in_segment` now, and what they re-judge per
 candidate is family D's `reaches_decl` and `candidate_rank`, not the judgment.
+
+`Hβ.infer.types-are-propagated-cells` — OPEN, designed 2026-09-22 while the
+rows builder ran: Landing 2 of the re-derivation queue (family B above),
+sequenced after `Hβ.effects.rows-are-propagated-cells`, whose worklist and
+cell discipline it reuses one sort over. Build-ready; the Opus brief is cut
+from this entry.
+▶ THE FACT AND ITS COPIES. A type cell (`NFree`/`NBound`) holds a Ty VALUE
+whose leaves are cells, and the two facts every reader wants — which unbound
+cells the type still reaches (its frees) and whether a given cell occurs in it
+— are re-derived by walking bound structure at every read: the `free_in_ty`
+family (infer:6976–7097, nine walkers), `signature_free_roots` (:7107) and the
+gate's `sig_frees` banked as a VALUE in the gate tuple (:2551/2564, read
+:2900), `generalize_pair` (:6604 — a `chase_deep` copy plus three walks plus
+an O(n²) `unique`) re-run at EVERY `judgment_ty(Live(h))` read (:6685) and
+inside `instantiate(Live(h))` (:7144), `branch_replay_one` (:1898), and the
+whole occurs family (graph:1089–1352), which since 2026-09-21 carries a
+visited set — bookkeeping for a walk that should not exist. Fourteen
+`Frozen(qs, ty)` publishes snapshot the pair (infer:768, 774, 848, 849, 854,
+2037, 2407, 6066, 6150, 6178, 6305, 7643, 8098, 8195).
+▶ THE FORM: TWO SPINE COLUMNS, WRITTEN AT THE ONE WRITER. `parents_col`
+(per handle, `[Int]`): every cell whose binding references this cell as a
+leaf. `graph_bind(c, ty)` appends `c` to `parents(root(v))` for each leaf `v`
+of the VALUE `ty` — one walk over the value's own syntax (`ty_leaves`, the
+write's delivery, O(size of ty)), never through bindings; an alias bind
+`graph_bind(a, TVar(b))` is the same write with one leaf. `frees_col` (per
+handle, `[Int]` sorted by handle): the unbound roots the cell's binding still
+reaches. A free cell's frees are `{its root}`; at `graph_bind(c, ty)`,
+`frees(c) := ⋃ frees(root(v))` over the leaves, then the SHRINK propagates up
+`parents`: for every `p` reached through `parents*`, `frees(p) := (frees(p)
+∖ {c}) ∪ frees(c)`, a worklist until nothing changes — monotone, because a
+bind only removes `c` and adds the subset `c` stood for. Every column write
+is trailed (`Mutation` gains `MSetFrees(h, old)` and `MSetParents(h, old)`),
+so a checkpoint rollback restores the cone as it restores the node. Row-sort
+frees stay in the RowCell (`Hβ.effects.rows-are-propagated-cells`, its
+`frees`) and are read from there in one hop; a fn cell's type-sort frees
+include the payload TVars of its row cell's `full_p ∪ full_a`, read at
+generalize through the row cell — an O(names) read of columns, never a
+walk. The sort filter (`is_row_handle`) stays a predicate on the handle.
+▶ THE READS THAT BECOME COLUMN READS — the deletion list. `occurs_in(h, ty)`
+is MEMBERSHIP: `h ∈ ⋃ frees(root(v))` over `ty`'s leaves; the occurs family
+and its visited set DELETE whole (`occurs_in_seen`, `seen_has`, `seen_mark`,
+the `_params/_list/_fields/_eff_names/_eff_args` `_seen`/`_loop` pairs,
+`occurs_in_row`/`_seen`, `occurs_in_edges_seen`, `occurs_in_record_fields`/
+`_seen`, and `occurs_in_live`'s walk). `free_in_ty(ty)` is the leaf-fold over
+`frees_col`; `free_in_list/params/fields/record_row/record_tail/row/edges/
+eff_names/eff_arg` DELETE as recursive walkers, and what remains is
+`ty_leaves`, the one syntactic enumeration of a value. `generalize_pair(h)`
+= `(frees(h)` filtered by sort, joined with the row cell's payload frees,
+`TVar(h))` — the `chase_deep` copy and `unique` go; `judgment_ty(Live(h))`
+answers `TVar(h)` and a reader that needs the resolved VALUE calls
+`chase_deep` itself, the delivery it asked for; `signature_free_roots(cells)`
+= `⋃ frees(c)`; the gate reads `frees` at check time and the banked
+`sig_frees` slot deletes; `branch_replay_one` reads the column. Every
+`Frozen(qs, ty)` publish becomes `Live(h)` with `h` the decl's own cell — a
+declared signature is a BIND on that cell, not a value beside it — and
+`Binding` keeps only `Live(Int)` once the last `Frozen` reader goes;
+`judgment_pair(Live(h))` = `(frees(h), TVar(h))`. `spec_subst_pairs`
+(graph:1758) gains the depth bound and the check-then-build sharing
+`chase_deep_at` already has (a twin's substitution is a delivery whose walk
+shares every unmapped subtree); `find_mapping`'s linear probe becomes a
+sorted binary search or a `wmap` above a measured quantifier width, never a
+guess.
+▶ WHAT STAYS A DELIVERY, AND THE RUNG AFTER. `chase_deep` builds the resolved
+VALUE a consumer asked for (unify's structural walk, emit's repr read, the
+render): a value of size N costs N (PLAN §5.O), and its check-then-build
+sharing is its form. `subst_ty` at instantiation is the same delivery — the
+mapped spine — and its ZERO-clone form is the next rung, not this landing:
+`Hβ.infer.schemes-are-edges` rung 3 whole, where every type constructor is a
+NODE (`NTyFun(params: [Int], ret: Int, row: Int)`, `NTyList(elem: Int)`, …)
+rather than a Ty value hanging off a cell; instantiation mints the
+signature's spine as fresh nodes with one `inst` edge per node to the decl's
+(the row landing's `RowEdge{src, inst}` one sort over); teaching propagates
+decl→instance along those edges; unify walks nodes — and `chase_deep`,
+`subst_ty`, `spec_subst_pairs`, `spec_pairs_walk` and `spec_resolve` delete
+whole. That rung touches every Ty consumer (H6 arms across infer, lower and
+emit) and stands on the two columns this landing writes and the parents
+column Landing 3 (the e-graph) shares, so it is sequenced after both. Naming
+it here is the sequencing, not a deferral of this landing's own deletions.
+▶ GATES: Landing 1's whole (check clean; march CLEAN or TRANSITION; crown
+62/0; frontier 0 red; micros 149/149; syntax 17/17; `mentl src/main.mn
+verify` 17 bounds), plus the occurs fixtures (`tests/frontier/mn-selfapply*`,
+the f(f) family) and the poly-recursion fixtures, each RED-first wherever a
+deletion could loosen it; `mentl <file> cost`'s top-16 and the m3 leg's
+`heap:` line must FALL (the visited-set walk and every generalize copy are
+gone); `authored_ref_max` and the unprovable-comparison count must not rise.
+RETIRES when the occurs family, the free_in walkers, the fourteen `Frozen`
+publishes and the banked `sig_frees` are gone and the columns are the only
+home; the entry then folds into `Hβ.infer.schemes-are-edges` as its landed
+rung.
+
+`Hβ.egraph.rules-fire-at-the-write` — OPEN, designed 2026-09-22 (Landing 3
+of the re-derivation queue, family C), Morgan's "the e-graph is the same
+disease" given its form. Sequenced after `Hβ.infer.types-are-propagated-cells`
+(they share `parents_col`) and on `Hβ.effects.rows-are-propagated-cells`'
+cells. Build-ready; the Opus brief is cut from this entry.
+▶ THE FACT AND ITS COPIES. A rewrite is a function of three facts the graph
+already holds: a node's BODY (written once, `graph_register_node`), its
+operands' CANON roots (written at `graph_canon_set`), and — for the one
+dropping rule — the dropped operand's PURITY (a row the judgment binds).
+`saturate_pass` re-derives "which nodes can fire" by sweeping EVERY handle
+`0..graph_next()` per pass until a pass draws nothing (egraph.mn:292/312):
+O(passes × nodes) reads for O(edges) facts. `extract_chase` follows canon
+chains to depth 1000 with no compression and returns the handle SILENTLY at
+the cap (:47–52), under a comment that says "never a silent truncation";
+`is_pure` re-walks per firing (:75); `rewrite_to` draws an unreasoned edge
+(:115, `Hβ.egraph.canon-edge-carries-reason`); `saturate_range` re-saturates
+the fan's candidate range per fan (:278).
+▶ THE FORM: THE OPTIMIZER IS A HANDLER ON THE GRAPH'S OWN WRITES. An
+`egraph_rules` handler installed over the judgment (parse through infer)
+intercepts three write ops, forwards each to the outer graph handler, then
+fires exactly the rules whose premise that write completed — an arm's
+performs resolve OUTER, so the rules' reads run against the live graph, and
+the pipeline's `|> saturate_pass` stage deletes because the relation is
+complete the moment the judgment is:
+(1) `graph_register_node(h, body)`: the PARENTS column is written —
+`parents(c) += h` for every `c ∈ body_child_handles(body)` (query.mn:1871
+moves to graph.mn as the ONE syntactic children enumeration, the same
+column Landing 2 writes for type-cell leaves; "the nodes that reference this
+node", one meaning for both) — then `fire(h)`: const-fold and the four
+identities can fire at the write, their premises being shapes and literals.
+(2) `graph_canon_set(from, to, reason)`: the write points at `root(to)`, so a
+chain never forms beyond a later root move and `extract_chase` is one hop —
+its 1000-cap becomes an `E_InternalInvariant` refusal (a cycle is a rule-set
+bug), never a returned handle; the Reason rides the edge (the canon column
+becomes (target, Reason), `rewrite_to(from, to, RuleFired(name))`); then
+`fire(p)` for every `p ∈ parents(from)` — congruence closure AS
+PROPAGATION: f(a) re-reads f(canon(a)) exactly when a's canon moved, never
+on a sweep, and a fold's minted literal (`mint_fold`) folds its parents
+transitively by the same event.
+(3) PURITY, the per-expr row: `rw_mul_absorb` needs the dropped operand's
+row, and today the substrate binds rows per FRAME (egraph.mn:70–74 confesses
+it; `Hβ.egraph.per-expr-effect-row`). With rows as cells the per-expr row is
+one cell and one edge: a CALL node's row is its own RowCell, bound to the
+callee's instantiated row at the call charge, and the frame's cell LINKS to
+it (`inf_add_row` mints and links instead of teaching the frame directly);
+`effs_at(h)` reads that cell's projection, and a literal/var/binop needs no
+cell — `body_is_pure` over the syntax TREE stays (a tree has no revisits). An
+absorb instance whose dropped operand's cell is still unbound PARKS on that
+cell and fires at the cell's bind — the row landing's gate-parking, one
+consumer over. Soundness is unchanged: a rewrite fires only when its premise
+is WRITTEN, which is strictly later than the sweep could have read it.
+▶ TERMINATION AND ROLLBACK. Every canon target is an existing subnode or a
+fresh literal — strictly cheaper by construction, which
+`Hβ.egraph.extraction-cost-composes-repr` keeps as the contract — so `fire`
+draws at most one edge per (node, rule) and the propagation along
+`parents` is bounded by the term's depth; `rewrite_to`'s idempotence stays.
+Canon writes are a trailed spine column already; parents writes trail
+(`MSetParents`), so a fan branch's checkpoint rollback restores the relation
+with the graph. Handle numbering moves (fold mints interleave with parse
+mints), so the first march is a TRANSITION the m4 leg arbitrates.
+▶ DELETIONS: `saturate_pass`, `saturate`, `saturate_until`, `saturate_range`,
+`saturate_range_until`, `apply_rules_from`, the pipeline's saturate stage,
+`extract_chase`'s loop (one hop + the invariant refusal), the `is_pure`
+conjunction wherever the per-expr cell answers. Not this landing:
+`Hβ.egraph.install-algebra` (waits on the modal world-index by its own
+sequencing) and `Hβ.verify.congruence-is-the-egraph` (Verify reading the
+canon weave — it gains a live relation to read the day this lands).
+▶ GATES: Landing 1's whole; the effect-gated absorb crucible (the fixture
+that refuses `x * 0` dropping an effectful `x` — RED-first against the prior
+boot if a deletion could loosen it); `tests/frontier/mn-fan-extraction-fires.mn`
+stays red-by-construction until a feeder (`Hβ.synth.fan-extraction-needs-a-feeder`)
+and is not this landing's; `cost` and the m3 `heap:` line must not rise (a
+rule fires once per premise instead of once per pass per node); the
+determinism probe (`bash tools/march.sh --fixpoint`) runs once, because
+firing at the write is the first time the relation's order is the write
+order rather than the sweep's. RETIRES when the sweep family is gone and the
+canon edge carries its Reason; `Hβ.egraph.per-expr-effect-row` and
+`Hβ.egraph.canon-edge-carries-reason` close with it.
