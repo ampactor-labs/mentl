@@ -11855,42 +11855,106 @@ own fields + LINK each tail edge + propagate; `graph_row_link(h, src, inst)`
 (dedup by pair; `deps(src) += h`; self-link is a no-op — R ∪ R = R, the
 least solution the cycle cut computed by hand); `graph_row_union(a, b)`
 (alias b's root to a's, merge, re-link deps); `graph_row_cell(h)` the raw
-read; `graph_finalize_row` and `graph_compress_row` DELETED. Propagation:
-`recompute(h)`: `full_p' = own_p ∪ ⋃ rename(full_p(src), inst) ∖ own_a`,
-`full_a' = own_a ∪ ⋃ full_a(src)`, `full_all' = own_all ∨ ⋁ full_all(src)`,
-`frees' = ⋃ (bound(src) ? frees(src) : {root(src)})`; GROWTH events (teach,
-link, all) run a worklist over `deps` until nothing changes (cycles converge
-— mutual recursion needs no completion fold); SHRINK events (an unbound cell
-binds; `own_a` grows on a cell with deps) reset the dependent cone's
-`full_*` to own-only and re-run the worklist — the least fixed point, paid
-only on the rare shrink. Every cell write is trailed (`MSetRow`), the cone
-included; `deps` rides inside the record and rolls back with it. The
-declared-row gate PARKS ON the cells in `frees(row) ∖ sig_frees` and is
-re-checked by the shrink event on exactly those cells (`drain_deferred_row_gates`'s
-per-group re-check of every parked gate deleted; the pass-tail assert stays).
+read; `graph_finalize_row` and `graph_compress_row` DELETED. Propagation,
+AS CORRECTED BY THE ADVERSARIAL REVIEW OF 2026-09-22 (the corrections were
+sent to the builder mid-flight; each is verified against the artifact):
+`recompute(h)`: `full_p' = own_p ∪ ((⋃ rename(full_p(src), inst)) ∖ own_a)`
+— `own_a` masks the EDGES' content and never `own_p` (`resolve_row` seeds
+`p := own_p` and masks only an edge's `cp`, effects.mn:374/411);
+`full_a' = own_a ∪ ⋃ full_a(src)` for the READING (the read's rule,
+`edge_content_into`, :411–412), while the TEACH of `own_a` follows
+`row_join`'s TAIL-CONDITIONAL rule exactly (:484–493: closed/closed drops
+both absent sets, closed/open keeps the open side's, open/open unions —
+load-bearing at the gate's D2 arm, infer.mn:2819–2832); every PRESENT merge
+is `frag_union` (fragment identity, :536–548 — same-name different-instance
+fragments COEXIST; a by-name union once cost 85 `E_TypeMismatch`), and only
+ABSENT sets are handle-keyed, because `name_set_union` is not commutative
+(:1314–1337, a held bare upgraded, the first of two instances kept) and a
+worklist over it would make the fixed point order-dependent, which m2 == m3
+cannot survive; `full_all' = own_all ∨ ⋁ full_all(src)`; `frees' = ⋃
+(bound(src) ? rename_roots(frees(src), inst) : {rename_root(root(src),
+inst)})` — the `inst` rename is what `subst_edge_build_into` does today
+(infer.mn:7424–7426, the fresh root pushed into the residual), and without
+it an instantiation's frees are the CALLEE's quantified roots (a spurious
+park at the gate; `bind_edges_to` binding the callee's cell — the FRAGX
+class). GROWTH events (teach, link, all) run a worklist over `deps` until
+nothing changes (cycles converge — mutual recursion needs no completion
+fold); SHRINK events (an unbound cell binds; `own_a` grows on a cell with
+deps) reset the dependent cone's `full_*` to own-only and re-run the
+worklist — the least fixed point, paid only on the shrink. The reading is
+SIBLING-ORDER-INDEPENDENT where today's fold is not (`edge_content_into`
+masks edge i's presents by `own_a ∪ ⋃_{j<i} ca_j`; with `e1 ↦ EfRow([],
+[E], closed)` and `e2 ↦ EfRow([E], [], closed)` today's answer depends on
+mint order, the cell's is `[E]` either way) — the better law, stated at
+`recompute` and pinned by a fixture, because NO crown crucible exercises a
+multi-edge tail with a mask (each carries one mask edge or a single-edge
+chain), so `crown 62/0` is not evidence for it. BOTH ENDPOINTS OF A LINK
+ARE TRAILED: `graph_row_link(h, src, inst)` writes `deps(src) += h` on the
+UPSTREAM cell, outside h's cone, and an untrailed upstream write lets
+`graph_rollback` reissue `h` to an unrelated cell that later growth on
+`src` propagates into — silent cross-candidate contamination in the fan;
+`∀ d ∈ deps(c). d < graph_next()` is an `E_InternalInvariant` at the link.
+CROSS-SORT EDGES STAY LIVE: `edge_row_of` (types.mn:666–673) makes a row
+edge to a TYPE cell bound to `TFun(_, _, frow)` row-bearing (the HOF param's
+cell, whose row lives inside the TFun once the caller binds it — the
+`Hβ.infer.forward-hof-row-underpublish` channel), and a type cell has no
+RowCell; so either a fn-typed type cell carries `row_deps` that
+`graph_bind` propagates to, or that arm keeps its read-time fold at
+projection — one of the two, named in the landing. `graph_chase_handle` on
+a row cell follows `NRowAlias(root)` ONLY — a flow edge is not an alias —
+and its four consumers are re-derived: the completion prune's ceiling test
+(effects.mn:793–794) becomes "keep the link if any free it reaches is below
+the ceiling", `edges_without_self` (:727–733) is the link's own no-op,
+`edges_any_free_beyond` (infer.mn:2628) reads `frees`, and
+`build_inst_mapping` (:7157) keys on the alias root. THE GATE ASKS TWO
+QUESTIONS WITH TWO OWNED SETS, as today: `row_gate_unresolved(row_handle,
+[])` decides whether a member DEFERS (infer.mn:2563 — any free var parks a
+member; relaxing it measured 13 → 39) and `row_gate_unresolved(row_handle,
+sig_frees)` whether a parked gate RESOLVES (:2900); parking a gate ON the
+cells in `frees(row) ∖ sig_frees` lets it fire EARLY at a shrink and is never
+its only wake, because THE PASS TAIL ENFORCES: `assert_row_gates_drained`
+calls `enforce_row_gate` on every still-parked gate (:2932–2941), and what
+reaches it is free BY CONSTRUCTION (a HOF param's row, a callee's
+freshened row var — 39 such gates on the wheel, :2914–2929), whose D2 arm
+WRITES the declared absences onto the open tail so every later
+instantiation is constrained (:2823–2832). The pass-tail walk stays whole;
+the per-group drain is measured before it is deleted (the D2 write's timing
+relative to later instantiations). Every cell write is trailed (`MSetRow`),
+the cone included; `deps` rides inside the record and rolls back with it.
 SITE BY SITE: the frame (`infer_ctx`) drops `accumulated_row` and the
 per-effect stack rebuild — `inf_add_row` is `graph_bind_row(frame.row_handle,
-…)`, `inf_current_row` the projection, `inf_exit_fn` binds every unbound
-above-ceiling non-signature edge to Pure (what "drops as pure" meant);
-`unify_row_canonical` keeps its case analysis over projections, `bind_edges_to`
-keeps teaching per edge, the identical/shared-edge cases become
-`graph_row_union`; `diff_row` unchanged in shape (the mask is the fresh
-cell's `own_a`); `resolve_row` is the one-hop read; `row_gate_unresolved` =
-`frees ∖ sig_frees ≠ []`; `generalize_pair`/`free_in_row` read payload vars
-of `full_p ∪ full_a` (row-sort roots never quantified, as :6632 already
-says); `instantiate`/`subst_row` mints ONE fresh cell per quantified-payload
-instantiation with an `inst` edge to the callee's cell (the correspondence-
-edge mint) or shares the cell when the mapping is empty; `occurs_in_row_seen`
-reads payload types over the edge cells' `full_*` with no edge recursion;
-`chase_node`'s single-edge chain arm goes with `merge_chased_row`; row
-aliases (`type X = <row>`) resolve to a ROW CELL once at registration and a
-declared row LINKS to it (`row_alias_triples`/`leaf_row_of`'s by-name
-re-expansion deleted); lower's `escaping_round`/`escaping_fixpoint`/`esc_rows`
-/`ls_register_escaping` DELETE into the fn's cell read at the seam;
-`effects_of_edges`/`edges_may_multishot` become one-hop reads; the name sets
-become handle-keyed merges on `eff_name_handle` (`name_set_canonicalize`'s
-O(n²) at every `ef_make` deleted); the `row` facet renders `own` beside
-`full`. GATES: crown 62/0; frontier 0 red (`mn-cycle-charge-freeze`,
+…)`, `inf_current_row` the projection; the COMPLETION PRUNE stays a
+PROJECTION-TIME FILTER on the published cell's frees (`row_keep_completion`,
+effects.mn:766–778, filters this decl's published VALUE and leaves the cell
+free for every other row that links it; `inf_exit_fn` runs per FRAME,
+lambdas included, infer.mn:127–153/3432/8283, so binding an above-ceiling
+free to Pure at a nested lambda's exit would be a GLOBAL write closing a
+channel the enclosing frame still holds — never a bind);
+`unify_row_canonical` keeps its case analysis over projections,
+`bind_edges_to` keeps teaching per edge, the identical/shared-edge cases
+become `graph_row_union`; `diff_row` unchanged in shape (the mask is the
+fresh cell's `own_a`); `resolve_row` is the one-hop read;
+`generalize_pair`/`free_in_row` read payload vars of `full_p ∪ full_a`
+(row-sort roots never quantified, as :6632 already says);
+`instantiate`/`subst_row` mints ONE fresh cell per (quantified root ×
+instantiation), matching `build_inst_mapping` (one mint per element of qs,
+infer.mn:7152–7166), each with an `inst` edge to the callee's cell (the
+correspondence-edge mint), or shares the cell when the mapping is empty;
+`occurs_in_row_seen` reads payload types over the edge cells' `full_*` with
+no edge recursion; `chase_node`'s single-edge chain arm goes with
+`merge_chased_row`; row aliases (`type X = <row>`) resolve to a ROW CELL
+once at registration and a declared row LINKS to it
+(`row_alias_triples`/`leaf_row_of`'s by-name re-expansion deleted); lower's
+`escaping_round`/`escaping_fixpoint`/`esc_rows`/`ls_register_escaping`
+DELETE into the fn's cell read at the seam; `effects_of_edges`/
+`edges_may_multishot` become one-hop reads; `name_set_canonicalize`'s O(n²)
+at every `ef_make` deletes for the ABSENT sets (sorted merges on
+`eff_name_handle`), the present sets keeping `frag_union`; the `row` facet
+renders `own` beside `full`; a PROPAGATION-STEP COUNTER in the graph
+handler's state is reported on the m3 leg beside `heap:` (a `deps` worklist
+that re-walks without allocating registers as ~0 in `cost`, and fan-in —
+every caller of `map` links prelude's `map` cell — is the risk the heap
+gate cannot see). GATES: crown 62/0; frontier 0 red (`mn-cycle-charge-freeze`,
 `mn-two-tail-accumulation`, the multieffect-leak fixture,
 `mn-feedback-transport`); micros 149/149; syntax 17/17; census 0;
 comment-refs 0; march CLEAN or TRANSITION; and the measurement: `mentl
@@ -12624,37 +12688,89 @@ value)` delta the trail computes at nine write sites
 (`Hβ.graph.mutation-delta-is-write-only`); `cursor_argmax_compute`
 re-scores every position per keystroke
 (`Hβ.cursor.cached-argmax-keyed-by-epoch-and-caret`).
-▶ THE FORM. (1) The re-derivation after restore goes to ZERO by
-construction, not by a stored projection: the canon relation is in the
-image because rules fired at the write (`Hβ.egraph.rules-fire-at-the-write`
-— no saturate pass exists to re-run); the lowering is columns in the image
+▶ THE FORM, AS CORRECTED BY THE ADVERSARIAL REVIEW OF 2026-09-22. (1) The
+DERIVATION after restore goes to zero as the stages become image content,
+and ONE EMISSION REMAINS: `compile_remainder` is `saturate_pass |>
+lower_program |> reachable_from_main |> executable_gate |> emit_module`
+(pipeline.mn:492–493); the canon relation is in the image once rules fire
+at the write (`Hβ.egraph.rules-fire-at-the-write`), the lowering is columns
 (`Hβ.lower.lowering-is-a-column`) and reachability an edge on the node
-(`Hβ.lower.reach-edge-on-node`), so emit and the executable gate are READS
-of the restored image; `warm_program()`'s re-derivation deletes one stage
-per landing and the "warm: inference restored — lowering and emit
-re-derive" line is retired when the last stage goes, never before. (2) The
-changed cone is HANDLE edges: the modules registry and the import edges
-(`Hβ.graph.parent-and-module-columns-are-read`) carry an IMPORTERS reverse
-column, so `downstream_closure` is a walk from the changed module handles
-over importers with a `wmap` visited set — `closure_fix`, `module_in`,
-`contains_module`, `manifest_hash_of` and `assoc_stmts`'s string finds
-delete; the manifest's per-module hash is a column on the module node
-(written at registration, compared by handle). (3) Staleness: the floor is
-the mtime probe (`fd_filestat`, the cheaper POLL its peer names), the form
-is notification — the resident session's host tells the driver which file
+(`Hβ.lower.reach-edge-on-node`), which covers the first three stages and the
+gate's real walk (`column_value_holes`, pipeline.mn:213 / lower.mn:5938,
+"rebuilding the reach set" — `report_unhandled_effects` itself is one
+`env_lookup` and one `resolve_row`, :261–264). Two things those peers do
+NOT cover and this entry names: `emit_module` still writes the bytes (a
+zero-change run re-produces last run's answer, which §5.O's own split calls
+derivation — the fourth peer is the emitted module as an image artifact
+keyed on the build key, or cone-scoped emission; until it lands the claim
+is "derivation to zero, one emission remains" and the process-floor claim
+is withdrawn), and TWIN EMISSION: `spec_candidates_fix` (backends/wasm.mn:
+487–532) is a worklist fixpoint over accepted specialization candidates
+re-scanning each accepted body, seeded from reachability, with the O(D²)
+`spec_buf_demanded`/`spec_buf_base_count` reads the census clocks at 7.95%
+— monomorphization demand is not a column and no named peer removes it
+(`Hβ.emit.total-monomorphization`'s remainder; named here so the warm path
+does not silently keep a fixpoint). `warm_program()`'s re-derivation
+deletes one stage per landing and the "warm: inference restored — lowering
+and emit re-derive" line is retired when the last stage goes, never before.
+(2) THE CHANGED CONE IS COMPUTED FROM THE NEW TEXT, AND THE REVERSE COLUMN
+IS A PROJECTION OF THE OLD ONE: `downstream_closure` walks `driver_tree_scan`'s
+DAG (driver.mn:747–751/544), whose deps are the CURRENT imports re-read
+from the module text; a restored graph's import edges are the persisted
+tree's, and they differ exactly where the cone matters — a module edited
+to ADD an import has no edge to its new dep in the restored graph, so a
+change to that dep never reaches it and a stale judgment stands
+(driver.mn:541–543 warns of precisely this). So the importers column
+replaces only the O(m²) string scans (`module_in`, `contains_module`,
+`manifest_hash_of`, `assoc_stmts`'s finds — driver.mn:736/757–770) AFTER
+the changed modules' NEW import headers are re-read and their edges patched;
+the source of truth for a changed module's deps is its text, and the
+vanished-module half needs no arm in either form (the importer's text
+changed, :730–732). The manifest's per-module hash is a column on the
+module node, compared by handle. (3) Staleness: the floor is the mtime
+probe (`fd_filestat`, the cheaper POLL its peer names), the form is
+notification — the resident session's host tells the driver which file
 moved and the driver invalidates that module's cone; a full re-hash of
-every module is neither. (4) The delta as a subscription: `graph_mutated`
-gains a subscriber handler that accumulates the touched handles of a
-judgment into a cone; the resident cursor re-projects that cone only, and
-`cursor_argmax` is keyed by (epoch, caret) as its peer already specifies —
-a caret move at a stable epoch recomputes, an edit re-scores the cone.
+every module is neither. (4) THE DELTA STREAM IS INCOMPLETE TODAY, NOT
+MERELY UNREAD: all nine `graph_mutated` performs are guarded by
+`len(checkpoint_stack) == 0` (graph.mn:375/385/493/545/557/610/626/651/672)
+and `graph_commit_checkpoint` (:839–848) drops the checkpoint WITHOUT
+REPLAYING the writes made inside it, so an accepted checkpoint — the
+Mycroft poly-recursion judgment commits at infer.mn:2297/2314 — fires
+nothing. A subscriber built on the stream would omit every decl judged
+that way. The form: emit the suppressed mutations at COMMIT (walk the trail
+segment `[target_idx, trail_len)`), so the cone is exact by handle; and the
+subscriber REPLACES `mutate_sink` at main's terminal chains (main.mn:177/
+964/1775), because the segment bracket installs `~> mutate_sink` INSIDE the
+judgment (infer.mn:1787) and a subscriber outside it never sees a
+candidate's writes — correct for candidates, so the replacement is at the
+terminal, never an addition. The resident session runs outside any
+checkpoint (no `graph_push_checkpoint` in mcp.mn), so it would see every
+write; but `session_current` re-derives the WHOLE weave on a manifest
+change and says so (mcp.mn:432–458, "the changed-cone form rides the
+fingerprint machinery when the session adopts it"), so "the resident
+cursor re-projects that cone only" is DEP-gated on that adoption — named
+here, not assumed. `cursor_argmax` is keyed by (epoch, caret) as its peer
+specifies — a caret move at a stable epoch recomputes, an edit re-scores
+the cone.
 ▶ THE GATE, which is the landing: change nothing, compile again, measure —
-the warm wall approaches the process floor (5.75s today; the number the
-landing reports is read from `/usr/bin/time` on the warm run, never from
-this entry), and the warm emission is byte-identical to the cold one (the
-frontier's warm-start and warm-inc legs). Edit one module, compile again:
-only its cone re-derives, named on stderr as today. RETIRES when the
-warm-start re-derivation is gone and the cone is handle edges.
+the warm wall falls to the one emission plus the process floor (5.75s
+today; the number the landing reports is read from `/usr/bin/time` on the
+warm run, never from this entry), and the warm emission is byte-identical
+to the cold one (the frontier's warm-start and warm-inc legs). Edit one
+module to ADD an import, compile again: the new dep's cone reaches it (the
+RED-first fixture for (2)). Judge a poly-recursive decl through its commit
+and read the delta (the RED-first fixture for (4)). RETIRES when the
+warm-start derivation is gone, the cone is handle edges patched from the
+new text, and the delta is complete at commit.
+▶ KILLS (the adversarial review of 2026-09-22): "re-derivation goes to
+zero by construction" (D1 — one emission remains; the process-floor claim
+withdrawn); twin emission uncovered (D2); the importers column as the
+source of truth for a changed module's deps (D3 — the new text is);
+`graph_mutated` as a complete stream (D4 — suppressed under checkpoints,
+never replayed at commit); the session's cone as this entry's (D5 —
+DEP-gated on the session adopting the changed-cone form); "the executable
+gate" as one unit (D6 — `column_value_holes` is the walk).
 
 `Hβ.why.provenance-is-edges` — OPEN, designed 2026-09-22 (Landing 8 of
 the re-derivation queue, family G: PROVENANCE). Absorbs
@@ -12678,38 +12794,82 @@ the tree to depth 20 and returns the truncated remainder SILENTLY;
 obligations are stored as `(modh, span, predicate, reason)` and
 re-associated by span overlap (verify.mn:43); `AnsRefs` drops the handle
 (voice.mn:849–875).
-▶ THE FORM: A REASON'S SUB-REASONS ARE THE HANDLES OF THE NODES THAT JUSTIFY
-IT. Every arm that today embeds a `Reason` embeds an `Int` — the cell or
-node whose own reason column IS that sub-reason, read live: `Unified(Int,
-Int)`, `OpConstraint(String, Int, Int)`, `MatchBranch(Int, Int)`,
-`ListElement(Int)`, `IfBranch(Int)`, `LetBinding(String, Int)`,
-`InferredPipeResult(String, Int)`; the NAME-carrying arms carry the
-DECLARATION's handle instead, which Landing 5's decl index makes a fact
-(`VarLookup(Int)` — the reason of a reference is its declaration;
-`FnReturn(Int)`/`FnParam(Int, Int)`/`Instantiation(Int)`/
-`InferredCallReturn(Int)` — the callee's node, whose return cell and
-parameter cells carry their own reasons); `UnifyFailed(Int, Int)` names the
-two cells and the render reads their LIVE types. `Located` DELETES: a
-node's position is its own span column, and a cell minted during inference
-records the node it was minted FOR (`FreshInContext(Int, String)` already
-carries the handle; `Inferred(String)` gains one) — the Why render reads
-`site_of(h)` for module AND span, so the file half of the weave-coordinate
-peer closes by construction. `Reason` is then O(1) per node and
-non-recursive; the DAG is the graph. `show_reason`/`why_expand` become ONE
-bounded walk over handles with a visited set, whose register (lede or
-explain, SYNTAX §Comments) decides how many hops render — no tree is
-rebuilt and nothing is silently truncated, because a revisited handle
-renders as its address rather than as a copy. Obligations carry the value
-node's handle (`(h, predicate, reason)`), the debt facet reads `site_of(h)`,
-and `AnsRefs` carries handles. The first-divergence question of §11's fan
-becomes a diff over shared edges — the reason this face is in the queue at
-all.
-▶ GATES: Landing 1's whole; every `why` fixture byte-identical or better
-(`tests/frontier/mn-where-badges.mn why gain` answers its file AND line —
-the standing frontier red, `why coordinates are the developer's`, turns
-GREEN, which is the RED-first half already banked); the Why walk on a hub
-variable (`render_pred_node`'s row vars, `mentl src/format.mn why
-render_pred_node`) measured in `cost` before and after; the `V_Pending`
-debt facet's sites unchanged. RETIRES when no `Reason` arm embeds a
-`Reason`, no arm embeds a `Span`, and `frontier_expected_red` no longer
-lists the coordinates leg.
+▶ THE FORM, AS CORRECTED BY THE ADVERSARIAL REVIEW OF 2026-09-22 — THE
+STRUCTURAL ARMS BECOME HANDLES; THE EVENT ARMS AND THE POSITIONS STAY
+VALUES, BECAUSE THE GRAPH DOES NOT HOLD WHAT THEY RECORD. Three facts the
+first draft got wrong: (i) `Located`'s span is the BIND-SITE span and is
+deliberately NOT the node's span column — graph.mn:1437–1442 says so ("a
+node's REASON span can be overwritten by a later bind … a patch target must
+read the weave, never the reason"), one handle is bound TWICE with two
+`Located` spans (the prereg at infer.mn:1032, `infer_fn` at :2411; the
+FRAGX line prints both, graph.mn:596), and `site_of(h)` cannot express two;
+(ii) the spans column is written at PARSE only (`graph_index_span`'s one
+caller is `fresh_handle`, parser.mn:23–25; `graph_fresh_ty`/`graph_fresh_row`
+write no span, graph.mn:356–388), so `graph_span_of` on every
+inference-minted cell reads a virgin cell, and two mint sites have no node
+to record at all — `diff_row`'s mask cell (effects.mn:652) and
+`build_inst_mapping`'s fresh cells (infer.mn:7152–7166); (iii) the reason
+slot is LAST-WRITE-WINS (`graph_bind` overwrites it, graph.mn:542 — the
+reason comments needed their own column, :401–407) and there is no
+non-chasing reader (`graph_chase` returns the TERMINAL's reason through
+`chase_node`/`merge_chased_row`, :890–921/975–992), so a Reason arm
+carrying a handle would render whatever bound that cell LAST — a Why chain
+that never existed, the defect relocated. So: the arms whose sub-reason is
+a LIVE STRUCTURAL FACT become handles — `VarLookup(Int)` (the declaration,
+which `Hβ.graph.references-and-positions-are-columns`' decl index makes a
+fact), `FnReturn(Int)`, `FnParam(Int, Int)`, `Instantiation(Int)`,
+`InferredCallReturn(Int)` (the callee's node), and `DefaultReason(String,
+Int)` (the parameter's declaration, whose span today is the DECLARATION
+site read from a CALL slot — the same bind-site-vs-node-site split); a new
+NON-CHASING `graph_reason_of(Int) -> Reason` op serves every Why hop. The
+EVENT arms keep their values: `Unified(Reason, Reason)` records the two
+sides AT the unification (or carries `(handle, epoch)` and renders as-of,
+once epochs are readable per write); `UnifyFailed(Ty, Ty)` KEEPS ITS
+SNAPSHOT — a failed unification is an event, productive-under-error keeps
+binding after it, `graph_bind_hole` may overwrite the cell (graph.mn:548–
+559), and diagnostics render after the judgment, so a live read would name
+a pair that never failed or a hole; for a refusal the snapshot is the
+Carried-Truth form, not its violation. `Located(Span, Reason)` keeps its
+Span (a per-bind position the graph holds nowhere else) and may lose only
+what its inner already is. What the landing DOES win: the sharing — a
+`Unified` whose two sides are the reasons of cells that are THEMSELVES
+handles no longer duplicates subtrees (the hub's Σ), `show_reason`/
+`why_expand` walk the mixed value/handle DAG with a visited set and a
+register-decided hop count (no depth-20 silent truncation: a revisited
+handle renders as its address), obligations carry the value node's handle
+beside the span they were minted with (`(h, span, predicate, reason)` —
+the debt facet reads `site_of(h)` when the handle has a parse span and the
+carried span otherwise), and `AnsRefs` carries handles. THE NESTED-REASON
+CONSUMERS, each of which changes with the arms: `reason_span_or_zero`
+(types.mn:1247, takes a Reason with no handle; graph.mn:596 twice),
+`caret_span_from_reason` (cursor.mn:335 — the CARET is not a graph node,
+`Caret(_, reason)`, so `Located` cannot delete for it), `reason_is_pinned`
+(cursor.mn:430 — `Located(_, Inferred(ctx))`, a two-level match on a
+string-contains, `Hβ.types.authorship-is-a-reason`'s own site), `show_reason`
+(types.mn:3855–3881, eleven recursive arms), `render_why_hops`/`reason_phrase`
+(main.mn:1660–1684), `why_expand` (query.mn:2511). The file half of
+`Hβ.why.reason-span-is-a-weave-coordinate` does NOT close by construction:
+it closes when every inference-time mint records the node it was minted
+FOR (`FreshInContext(Int, String)` already does; `Inferred(String)` gains a
+handle where one exists, and the two handle-less mint sites above are
+named residue), and the Why render reads `site_of` through THAT handle.
+▶ GATES: Landing 1's whole; every `why` fixture byte-identical or better,
+with `tests/frontier/mn-where-badges.mn why gain` (the standing frontier
+red, `why coordinates are the developer's`) turning GREEN only when the
+mint-for handle lands — until then it stays the declared red; a
+RED-first fixture that a `Why` hop through an aliased cell (`graph_bind(a,
+TVar(b))`) renders `a`'s own provenance, not `b`'s (the non-chasing read);
+a refusal fixture whose message is unchanged after a later unification of
+the same cells (the snapshot law); the Why walk on a hub variable
+(`mentl src/format.mn why render_pred_node`) measured in `cost` before
+and after; the `V_Pending` debt facet's sites unchanged. RETIRES when the
+structural arms carry handles, the render walks with a visited set, and
+the event arms are documented as events; `Placeholder(Span)` and
+`Located`'s Span are not on the retirement list.
+▶ KILLS (the adversarial review of 2026-09-22): "`Located` DELETES — a
+node's position is its own span column" (W1, the bind-site span; W2, no
+span on inference-minted cells); reason-as-live-handle over a
+last-write-wins slot with no non-chasing reader (W3, W4); `UnifyFailed`
+reading live types (W5 — the snapshot is right for a refusal); the two
+Span-embedding arms the first draft did not name (W6); the seven
+nested-Reason consumers (W7).
