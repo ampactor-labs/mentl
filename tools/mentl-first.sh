@@ -120,7 +120,11 @@ tools = re.compile(r"(^|[\s;|&(`])(grep|egrep|fgrep|rg|sed|awk|gawk)(\s|$)")
 # lives at /home/user/mentl, so the first form (`\bmentl\b`) refused
 # `cd /home/user/mentl && … | sort` and `cat …/mentl/… | tail`, commands
 # that never ran the medium at all (measured 2026-09-21, twice in one hour).
-filtered = re.compile(r"(^|[\s;|&(`])mentl\s[^|\n]*\|\s*(grep|egrep|fgrep|rg|head|tail|wc|cut|sort|uniq|sed|awk|less|more)\b")
+# The invocation's arguments END at a command separator: `command -v mentl &&
+# cat "$shim" | head` was refused (2026-09-22) because the span ran through the
+# `&&` into a pipe that reads a file, not the medium. `>&`, `&>` and `<&` are
+# redirections inside the invocation, so `mentl f check 2>&1 | tail` still is one.
+filtered = re.compile(r"(^|[\s;|&(`])mentl\s(?:[^|;&\n]|[<>]&|&>)*\|\s*(grep|egrep|fgrep|rg|head|tail|wc|cut|sort|uniq|sed|awk|less|more)\b")
 
 if filtered.search(cmd):
     sys.stderr.write(

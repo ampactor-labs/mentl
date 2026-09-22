@@ -38,6 +38,42 @@ mentl_arg_dir() {
   [ -e "\$p" ] || return 1
   ( cd "\$(dirname "\$p")" 2>/dev/null && pwd )
 }
+# MENTL_COMPILER — WHICH compiler answers. \`boot\` (the default) is the pinned
+# fixpoint; \`fresh\` is the compiler THIS checkout's source builds (the keyed
+# .build/m2cache, rebuilt under the heavy-run lease when the source has moved,
+# so an answer is never read from a compiler the tree has left behind); any
+# other value is a path to a module. A landing in flight is questioned through
+# its own compiler this way, not through a hand-assembled runner command — the
+# "ceremony one layer down" CLAUDE.md names. A non-boot compiler bypasses the
+# resident session, which serves the pin.
+mentl_compiler() {
+  case "\${MENTL_COMPILER:-boot}" in
+    boot) printf '%s' "\$MENTL_HOME/boot/mentl.wasm" ;;
+    fresh)
+      if [ ! -f boot/mentl.wasm ] || [ ! -d src ]; then
+        echo "mentl: MENTL_COMPILER=fresh answers from a checkout root, and \$PWD is not one" >&2
+        return 2
+      fi
+      if [ "\$(cat .build/m2cache/key 2>/dev/null)" != "\$(wt_m2_key)" ] || [ ! -s .build/m2cache/m2.wasm ]; then
+        bash "\$MENTL_HOME/tools/heavy-lock.sh" acquire >&2 || return 2
+        local rc=0
+        wt_m2_ensure > /dev/null || rc=\$?
+        bash "\$MENTL_HOME/tools/heavy-lock.sh" release >&2
+        if [ "\$rc" -ne 0 ]; then
+          echo "mentl: the fresh compile failed — read .build/m2cache/m2.err" >&2
+          return 2
+        fi
+      fi
+      printf '%s' "\$PWD/.build/m2cache/m2.wasm" ;;
+    *)
+      if [ ! -f "\$MENTL_COMPILER" ]; then
+        echo "mentl: no compiler module at \$MENTL_COMPILER" >&2
+        return 2
+      fi
+      printf '%s' "\$MENTL_COMPILER" ;;
+  esac
+}
+COMPILER="\$(mentl_compiler)" || exit \$?
 mentl_wasm() {
   local extra=()
   local a d
@@ -50,7 +86,7 @@ mentl_wasm() {
   done
   "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
     --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" "\${extra[@]}" \\
-    "\$MENTL_HOME/boot/mentl.wasm" "\$@"
+    "\$COMPILER" "\$@"
 }
 # `mentl run` is the WHEEL's verb: compile, stream the module to the runner
 # through the Process seam, execute it there, answer the program's own exit
@@ -67,7 +103,7 @@ if [ "\${1:-}" = "session" ]; then
   exec "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
     --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" \\
     -S "tcplisten=127.0.0.1:\${MENTL_SESSION_PORT:-7377}" \\
-    "\$MENTL_HOME/boot/mentl.wasm" session
+    "\$COMPILER" session
 fi
 # Resident-first: when a session lives, EVERY verb is offered to it —
 # a tab-joined argv line over /dev/tcp, the answer streamed back. The
@@ -87,7 +123,7 @@ mentl_session_try() {
   printf '%s' "\$out"
   return 0
 }
-if [ -n "\${1:-}" ]; then
+if [ -n "\${1:-}" ] && [ "\${MENTL_COMPILER:-boot}" = "boot" ]; then
   if mentl_session_try "\$@"; then exit 0; fi
 fi
 if [ "\${1:-}" = "space" ]; then
@@ -101,7 +137,7 @@ if [ "\${1:-}" = "space" ]; then
   exec "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
     --dir "\$MENTL_HOME::." --dir /tmp \\
     -S "tcplisten=127.0.0.1:\${MENTL_SPACE_PORT:-7378}" \\
-    "\$MENTL_HOME/boot/mentl.wasm" space
+    "\$COMPILER" space
 fi
 exec_rc=0
 mentl_wasm "\$@" || exec_rc=\$?
