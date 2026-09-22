@@ -663,11 +663,17 @@ sentence had been true nowhere — and catches these + the extended catalog,
 e.g. drift 38: `mentl <tentacle>` as a CLI verb — tentacles fire AT-CURSOR,
 not as subcommands. A flag = a named drift = the law violated; rewrite in
 residue form inline. Beside it, `tools/mentl-first.sh` is the PreToolUse hook
-on Bash: grep/rg/sed/awk are REFUSED, and so is any `mentl` invocation piped
-into a filter — the medium's projection first, read WHOLE (Morgan's standing
+on Bash AND on the Grep tool: grep/rg/sed/awk typed into Bash are REFUSED, so
+is any `mentl` invocation piped into a filter, and so is a Grep-tool search
+whose scope reaches `.mn` source or the medium's own output (`.wat`, `.err`,
+`.build/`) — the medium's projection first, read WHOLE (Morgan's standing
 rule, 2026-09-21, after a session in which `| grep -v` hid the gate refusing
-the author's own comments). A question the medium cannot answer is the facet
-to grow, never a hand tool to reach for.)
+the author's own comments). The Grep tool went around the Bash-only refusal
+for a day — some thirty searches over source in one dig, 2026-09-22 — because
+the rule was read as "don't type grep". It is "ask the medium and read what it
+says": an answer that comes back wrong or thin is a FINDING, fixed in the same
+landing, and a question the medium cannot answer is the facet to grow, never
+a hand tool to reach for.)
 
 ---
 

@@ -278,6 +278,16 @@ fi
 # ── m3: m2 compiles the wheel — THE GATE (the trapping lambda executes here) ──
 gen "$OUT/m2.wasm" "$OUT/m3.wat" "$OUT/m3.err"; m3rc=$?
 echo "m3: exit=$m3rc, $(wc -l < "$OUT/m3.wat" 2>/dev/null) lines, census=$(grep -cE 'E_[A-Za-z]+ error' "$OUT/m3.err" 2>/dev/null)"
+# The JUDGMENT'S own cost lines (image / heap / rows), which each leg prints on
+# the ScopeAll channel — surfaced here, side by side, so nobody searches a
+# leg's stderr for them. m2's lines are the PINNED algorithm judging this
+# source; m3's are this source judging itself, so the pair is the landing's
+# cost delta on identical input. (Added 2026-09-22, after a dig that fished
+# these three lines out of m3.err with a search tool a dozen times: a fact the
+# verb buries is a line the verb should print, CLAUDE.md ⟳.)
+for leg in m2 m3; do
+  grep -E '^(image|heap|rows): ' "$OUT/$leg.err" 2>/dev/null | while IFS= read -r l; do echo "· $leg judgment $l"; done
+done
 # ── the COST read + the peak ratchet (the self-compile's own footprint) ──
 # The m3 leg IS the self-compile (the wheel compiling the wheel); its
 # measured wall + peak RSS is the pin's cost line, and the peak checks
