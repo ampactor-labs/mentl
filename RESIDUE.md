@@ -12233,3 +12233,170 @@ firing at the write is the first time the relation's order is the write
 order rather than the sweep's. RETIRES when the sweep family is gone and the
 canon edge carries its Reason; `Hβ.egraph.per-expr-effect-row` and
 `Hβ.egraph.canon-edge-carries-reason` close with it.
+
+`Hβ.graph.parent-and-module-columns-are-read` — OPEN, designed 2026-09-22
+(Landing 4 of the re-derivation queue, family D parts i–ii: PARENT and
+MODULE by scan). Independent of Landings 2 and 3 except for one column they
+share; may run beside either. Build-ready; the Opus brief is cut from this
+entry.
+▶ THE FACT AND ITS COPIES. A node's PARENT is an edge the parser draws and
+nothing records, so five readers recover it by scanning the whole handle
+space for a body that references the target: `scan_for_render_parent`
+(format.mn:1274 — O(next) per rendered node, O(n²) per `fmt`, under a
+comment that says "the parent IS an edge, not a missing index"),
+`enclosing_fn_scan` (cursor.mn:671), `scan_for_pipe_parent` (cursor.mn:584),
+`node_contains_handle` (query.mn:1914 — descends the SUBTREE of `h` to find
+`target`, when the question is answered by walking UP from `target`), and
+`crc_fn_scopes`/`crc_scope_at` (infer.mn:365/374 — every fn's scope
+materialized as a `(module, extent, names)` list and re-scanned per
+comment, once 83% of a compile). A MODULE is a registered node, and every
+reader re-discovers the set by walking `0..next` for `NModule` bodies and
+deduplicating by path STRING: `module_cells`/`dedup_module_cells`/
+`dedup_cell_join` (graph.mn:1482–1502) behind `module_handle_of_path`
+(:1580, a fold over the cells), `module_path_of_handle` (:1588 — a fold over
+every module to read the path a HANDLE'S OWN BODY holds), `weave_line_extent`
+(:1696), `module_import_paths`/`scan_module_imports` (:1649/1656 — the whole
+handle space per module per import hop, called per comment-ref hit through
+`module_reaches`/`module_imports`, :1616/1625, with `contains_path` string
+membership as the visited set), and `module_path_of_span`/
+`scan_for_enclosing_module` (:1449/1456 — containment over spans that have
+been per-module 1-based coordinates since 2026-09-19, the third machine
+`Hβ.cursor.module-of-a-span-is-containment` names). The board runs the
+census walk SEVENTEEN times, once per bound (`board_read`/`bound_standing`,
+board.mn:277/279 over `census_sites`), and deduplicates each answer by
+comparing sites pairwise (`dedup_sites`/`site_in`, query.mn:1243/1246).
+`finalize_continuation_boundaries(0, graph_next())` (infer.mn:4309) scans
+every handle for the boundaries `graph_boundary_set` already wrote; `crc_walk`
+(:416) reads `graph_comment_at` at every handle to find the ones with prose.
+▶ THE FORM: TWO COLUMNS AND ONE WALK. (1) `parents_col`, written at
+`graph_register_node(h, body)` — `parents(c) += h` for every `c ∈
+body_child_handles(body)` (query.mn:1871 moves to graph.mn as the one
+children enumeration; the same column `Hβ.infer.types-are-propagated-cells`
+writes for type leaves and `Hβ.egraph.rules-fire-at-the-write` fires from —
+whichever of the three lands first writes the arm, the others read it). A
+tree node has at most one AST parent, so `graph_parent_of(h)` is one read:
+`render_context_at(h)` = `render_context_from_parent(h,
+graph_node_body(graph_parent_of(h)))`; `enclosing_fn_decl_at` and
+`pipe_context_of_handle` walk UP until an `FnStmt`/`PipeExpr` — O(depth);
+`node_contains_handle(h, target)` walks up from `target` to `h` or the root;
+the comment-ref scope is the enclosing fn's `comment_locals`, read by the
+same ascent from the comment's owner node, and `crc_fn_scopes` with its
+list deletes. (2) `modules_col`: an ordered registry of module handles
+written at the `NModule` registration (`graph_register_node` sees the body's
+constructor), keyed by path with LAST WINS at the write — the resident
+session re-registers a module on edit, and the registry's replacement IS the
+dedup `dedup_module_cells` re-derives on every read. `module_handle_of_path`
+is an smap read; `module_path_of_handle(mh)` is `graph_node_body(mh)`'s own
+path — the handle IS the node; `weave_line_extent` folds the registry
+(O(modules)); a module's IMPORTS are HANDLE edges resolved once at link
+(`graph_module_import(from_mh, to_mh)`, written where the driver resolves
+the import to a file — `driver_module_path`'s answer is a module handle the
+moment that module registers), so `module_reaches(from, to)` is a
+depth-first walk over handles with a `wmap` visited set and nothing ever
+compares a path string; `module_path_of_span`, `scan_for_enclosing_module`,
+`contains_path`, `dedup_module_cells`, `dedup_cell_join` and
+`scan_module_imports` DELETE, and cursor's `same_module`/`transitive_dep`
+take the caret's module HANDLE (the address carries it since
+`Hβ.cursor.address-drops-module-identity`) beside `graph_module_of(target)`.
+(3) ONE census walk: `board_read` runs `roster_bump` (query.mn:1710) once over
+the handle space, every shape bumped at every node, and each bound reads its
+own sites off that one answer — seventeen O(1) lookups where there were
+seventeen walks; sites are HANDLES, so `dedup_sites` becomes membership in
+a `wmap` keyed by handle (O(n)), or is not needed at all where a walk visits
+each handle once. `finalize_continuation_boundaries` reads the pending list
+its writer already keeps; `crc_walk` reads a comments registry (the handles
+`spine_put_comment` wrote) instead of asking every handle whether it has
+prose.
+▶ GATES: Landing 1's whole, plus the fmt idempotence sweep over the wheel
+(`mentl <file> fmt` twice on every module — the render-context read is what
+changes), the comment-ref count held at 0 (the scope ascent must resolve
+exactly what the list did — RED-first by breaking one scope), the caret
+projection fixtures (`mentl <file>:<line>:<col>` on a multi-module link,
+the address-drops-module class), `mentl <file> imports` unchanged on the
+wheel, and the board's seventeen counts byte-identical before and after
+(one walk answers what seventeen did). `cost` and the `heap:` line must
+not rise; `fmt` on infer.mn measured before and after is the wall-clock
+witness (O(n²) → O(n)). RETIRES when the five parent scans, the module
+dedup family, the span-containment module read and the per-bound census
+walks are gone; `Hβ.cursor.module-of-a-span-is-containment` closes with it.
+
+`Hβ.graph.references-and-positions-are-columns` — OPEN, designed
+2026-09-22 (Landing 5 of the re-derivation queue, family D parts iii–v:
+DECLARATION and REFERENCE by name, POSITIONS by log). Reads Landing 4's
+modules registry; otherwise independent. Build-ready; the Opus brief is cut
+from this entry.
+▶ THE FACT AND ITS COPIES. A reference resolves to a DECLARATION at
+`infer_var_ref` — `env_lookup` finds the binding — and the graph then files
+the reference under the NAME (`graph_ref_note(name, ref_handle)`,
+graph.mn:695–703, `refs_col` an smap by string), so `refs of NAME` answers
+by name, `import_is_used`/`any_name_referenced_in` (query.mn:671/673) ask
+whether any of a module's names appears in another module's text of
+references, and `candidate_rank` re-derives proximity per candidate
+(synth_proposer.mn:356/368). Name → declaring node is re-built by FIVE
+readers from the same statements: `ur_index` (query.mn:872, per
+`unreachable` query), `comment_decl_index` (infer.mn:383, per comment-ref
+check, with `ctor_index_add`/`op_index_add`), `layer_name_index` (:1113, per
+judgment), `fn_body_by_name`/`fn_body_scan` (synth_proposer.mn:461/468 — a
+WHOLE-GRAPH scan for an `FnStmt` of that name, per hop of `reaches_decl`'s
+closure walk, per candidate, per vocabulary entry), and
+`handler_providing_op`/`scan_handler_for_op` (query.mn:2429/2433). The FREE
+NAMES of a declaration — a parse-time fact — are re-collected by walking the
+body at every consumer: `stmt_frees`/`stmt_frees_walk` for the callee-first
+DAG (infer.mn:1112/1332), `collect_free_vars` inside `reaches_decl`
+(synth_proposer.mn:449) and `ur_walk` (query.mn:886), `comment_locals` for
+the comment-ref scope. POSITIONS: the parser writes every span TWICE — the
+spans spine column (`spine_put_span`, O(1) by handle) and an ordered
+`(span, handle)` log (`span_index`, graph.mn:688–693, the comment calling it
+"one write, two projections") — and every position query reads the LOG:
+`spans_of_module` filters the whole log by module per address
+(main.mn:1315), `address_resolve`'s three cases then scan the filtered copy
+up to three times (:1344), `cw_scan_index` copies the whole log per parse
+(parser.mn:340/343 — once 98% of the self-compile), `handle_at_span`/
+`scan_for_span` (cursor.mn:496/503) scan every handle for a span, and
+`comment_ref_owners` (graph.mn:72) walks the pair list per referent.
+▶ THE FORM: THREE COLUMNS WRITTEN ONCE, AND RANGES INSTEAD OF A LOG.
+(1) THE DECL INDEX: `graph_decl_note(decl_handle)` already records every
+declaring node; the same write files each name the declaration BINDS
+(the decl's own name, a type's constructors, an effect's ops — the three
+arms `comment_decl_index` enumerates) into `decl_index: name → decl
+handle` (smap, last wins per link). `ur_index`, `comment_decl_index`,
+`layer_name_index`, `fn_body_by_name`/`fn_body_scan` and
+`handler_providing_op`/`scan_handler_for_op` DELETE into
+`graph_decl_of(name)`; a body is `graph_node_body(graph_decl_of(name))`.
+(2) REFS BY DECL HANDLE: `EnvEntry` carries the declaring node's handle
+(the fourteen publish sites know the decl they publish; a parameter or
+let binder carries its binder node), `infer_var_ref` notes
+`graph_ref_note(decl_handle, use_handle)`, `refs_col` re-keys onto a
+`wmap` by handle (`Hβ.query.refs-reads-edges-not-occurrences` closes),
+`refs of NAME` resolves the name ONCE through the decl index and reads;
+`import_is_used(A, B)` is "some decl of B has a reference whose
+`graph_module_of` is A" — O(refs of B), no name in sight; `candidate_rank`
+reads proximity off `graph_module_of` and Landing 4's `module_reaches`.
+(3) THE FREES COLUMN: a declaration's free NAMES are computed once, at
+parse, where the binders are known (`stmt_frees_walk`'s walk runs at
+`graph_decl_note` time, its result a column on the decl node); the
+callee-first DAG (`scc_groups`), `reaches_decl` (a DFS over decl handles
+through the decl index, with a `wmap` visited set), `ur_walk` and the
+comment-ref scope read it. `comment_ref_owners` becomes a `wmap` column
+keyed by referent, written where the pair is noted.
+(4) POSITIONS: the `(span, handle)` log DELETES and `Graph(next, spans)`
+loses its second field. A module's nodes are the CONTIGUOUS handle range
+its parse minted — the registry (Landing 4) records `(h_from, h_to)` at
+the `NModule` registration, which is what `attach_comment_weave`'s
+`h_from` already is — so `spans_of_module(mh)` is that range read through
+the spans column (no filter over other modules' spans, no copy),
+`address_resolve`'s three cases fold over the range once, `cw_scan_index`
+iterates the range instead of copying the whole log (its bsearch over runs
+stays), and `handle_at_span(mh, span)` walks the module's range only;
+positions copied beside a handle they describe are Landing 8's, and every
+`handle_at_span` call it deletes is a copy this landing need not serve.
+▶ GATES: Landing 1's whole; `mentl <file> refs of NAME`, `unreachable`,
+`imports`, `doc` and the comment-ref count (0) byte-identical before and
+after on the wheel (the columns must answer exactly what the scans did —
+each RED-first by breaking one write); the caret fixtures (`mentl
+<file>:<line>:<col>`) on a multi-module link; `mentl src/main.mn cost`
+and the m3 `heap:` line must FALL (the per-parse log copy and the
+per-hop whole-graph scans are gone); the fan's candidate ranking measured
+unchanged on its fixtures. RETIRES when the five name→decl indexes, the
+three free-name re-collections, the string-keyed refs and the span log are
+gone.
