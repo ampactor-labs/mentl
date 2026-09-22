@@ -292,7 +292,17 @@
 >   ("default to refuted if uncertain"). A fresh mind does not share my
 >   accumulated fluency-bias — the highest-leverage anti-fluency tool, and a
 >   systematic proxy for the human-catches-the-drift loop (PLAN §0: prose can't
->   enforce itself). The old rule foreclosed this; embrace it.
+>   enforce itself). The old rule foreclosed this; embrace it. **MEASURED
+>   2026-09-22, and the number is the rule:** seven queue designs written from
+>   code reads in one afternoon, each fluent and file:line-cited, went to two
+>   read-only Opus refuters; they returned thirty-five findings with evidence,
+>   THREE designs REFUTED outright (a blanket `Frozen → Live` that admitted
+>   polymorphic recursion, an untrailed canon column moved inside speculation,
+>   a Why chain over a last-write-wins reason slot) and ten builder-blocking
+>   corrections caught for a build already in flight. Every one was verified
+>   against the artifact before the entry was rewritten. **A design is not
+>   build-ready until a refuter has failed to break it** — the review runs
+>   BEFORE the builder's brief is cut, never after.
 > - **Breadth / exhaustive coverage → WORKFLOW fan-out** (audits, multi-file
 >   sweeps, judge-panels of N independent approaches).
 > - **Synthesis stays INLINE** — agents inform the conclusion; I hold it.
