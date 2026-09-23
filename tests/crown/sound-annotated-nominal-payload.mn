@@ -1,0 +1,9 @@
+// CROWN — a nominal type with an unannotated fn payload named in a
+// parameter annotation as bare `Box`. Must accept.
+//
+// Accepted through the pinned boot (runs 3). The guard on implicit row
+// arguments: an authored name gets fresh ones.
+type Box = Box(() -> Int)
+fn quiet() = 3
+fn open_box(b: Box) = match b { Box(f) => f() }
+fn main() = open_box(Box(quiet))

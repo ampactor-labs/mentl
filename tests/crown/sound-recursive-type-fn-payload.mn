@@ -1,0 +1,10 @@
+// CROWN — a recursive type whose fn payload returns the type itself.
+// Must accept.
+//
+// Accepted through the pinned boot (runs 6). The guard on row parameters:
+// the occurrence of `Stream` inside its own declaration carries the same
+// parameters as the type.
+type Stream = SNil | SCons(Int, () -> Stream)
+fn count_down(n) = if n <= 0 { SNil } else { SCons(n, () => count_down(n - 1)) }
+fn total(s) = match s { SNil => 0, SCons(x, next) => x + total(next()) }
+fn main() = total(count_down(3))

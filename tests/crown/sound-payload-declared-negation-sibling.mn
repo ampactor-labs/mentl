@@ -1,0 +1,16 @@
+// CROWN — the same `!G`-annotated payload built with a PURE closure under
+// `with !E`, while an unrelated function builds it with a performing one.
+// `good` performs nothing. Must accept.
+//
+// Falsely refused through the pinned boot (measured 2026-09-23): the
+// annotation `!G` is read as the content "anything but G", so every reader
+// of every Box is charged the whole universe minus G.
+effect E { op() -> Int }
+effect G { gop() -> Int }
+type Box = Box(() -> Int with !G)
+fn loud() = op()
+fn quiet() = 3
+fn other() = match Box(loud) { Box(f) => f() }
+fn good() with !E = match Box(quiet) { Box(f) => f() }
+handler h { op() => resume(7) }
+fn main() = (good() + other()) ~> h

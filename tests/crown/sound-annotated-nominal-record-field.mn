@@ -1,0 +1,9 @@
+// CROWN — a nominal record with an unannotated fn field named in a
+// parameter annotation. Must accept.
+//
+// Accepted through the pinned boot (runs 3); the record face of
+// sound-annotated-nominal-payload.
+type Job = {run: () -> Int}
+fn quiet() = 3
+fn run_job(j: Job) = j.run()
+fn main() = run_job(Job{run: quiet})

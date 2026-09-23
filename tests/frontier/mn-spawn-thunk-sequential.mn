@@ -1,0 +1,12 @@
+// The sequential twin of mn-spawn-thunk-parallel: the schedule's arm CALLS
+// the task in the language. The contract is the refusal.
+//
+// Measured 2026-09-23 through the pinned boot: check clean as well, so the
+// gap is not only the host boundary — the task's row never reaches the
+// install's residual through the arm's state.
+effect E { op() -> Int }
+fn bad() with !E = {
+  let t = spawn(() => op())
+  thread_join(t)
+} ~> sequential_compose
+fn main() = 0

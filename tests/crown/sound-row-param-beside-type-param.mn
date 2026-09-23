@@ -1,0 +1,10 @@
+// CROWN — a type with a fn payload declared BEFORE a type parameter,
+// applied by annotation as `T(Int)`. Must accept.
+//
+// Accepted through the pinned boot (runs 7). The guard on row arguments
+// being their own kind of argument: an authored application names only the
+// type parameters.
+type T = F(() -> Int) | V(a)
+fn quiet() = 3
+fn get(t: T(Int)) = match t { F(f) => f(), V(n) => n }
+fn main() = get(V(4)) + get(F(quiet))

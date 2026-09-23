@@ -941,6 +941,11 @@ frontier_expected_red: record-rest-over-open
 # no frame (out-of-bounds fault in the initializer). Same retirement.
 frontier_expected_red: install-over-hof-param-payload
 frontier_expected_red: module-let-performs
+# 2026-09-23, the fourth refuter: a task handed to `spawn` performs E inside a
+# `!E` body and checks clean under BOTH schedules, so the gap is the task's row
+# never reaching the install, not only the host boundary. Same retirement.
+frontier_expected_red: spawn-thunk-parallel
+frontier_expected_red: spawn-thunk-sequential
 # 2026-09-23: AN INSTALL SOMEWHERE IS CREDITED FOR A PERFORM IT DOES NOT
 # COVER. `bad()` performs E under `~> h` on its left operand and through an
 # uncovered HOF call on its right; nothing declares a row, E reaches main's
@@ -1034,6 +1039,13 @@ crown_expected_red: leak-nested-type-payload
 crown_expected_red: leak-diverge-hof-param
 crown_expected_red: leak-fanout-hof-param
 crown_expected_red: leak-interpolation-allocates
+# 2026-09-23, the fourth refuter (v2's wheel-idioms review): a sealed HOF that
+# FORWARDS its parameter to another generic HOF; two instances of one op kept
+# by NAME so the second is dropped; and an annotated `!G` payload read as the
+# content "anything but G", which falsely refuses a pure sibling.
+crown_expected_red: leak-sealed-hof-forwards-param
+crown_expected_red: leak-op-param-two-instances
+crown_expected_red: sound-payload-declared-negation-sibling
 # 2026-09-18: `eq-polymorphic-sum` was declared RED here for one landing and
 # RETIRED by proof in the next — the whole life of an expected-red entry, in a
 # day. It read: `==` on a POLYMORPHIC sum compares its payload by ADDRESS,

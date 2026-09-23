@@ -1,0 +1,13 @@
+// CROWN — two independent callers of one generic HOF: one declares `!E`
+// and passes a pure closure, the other declares nothing and performs E.
+// Must accept.
+//
+// Accepted through the pinned boot (runs 10). The guard on bounds crossing
+// an instantiation: `g`'s negation must bind its own copy of `apply`'s
+// parameter, never `apply`'s declaration, or `h` would be refused.
+effect E { op() -> Int }
+fn apply(f) = f()
+fn g() with !E = apply(() => 3)
+fn h() = apply(() => op())
+handler hh { op() => resume(7) }
+fn main() = (g() + h()) ~> hh

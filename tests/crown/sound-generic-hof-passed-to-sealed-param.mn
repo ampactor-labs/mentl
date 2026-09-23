@@ -1,0 +1,13 @@
+// CROWN — a generic HOF passed BY NAME to a parameter sealed `!E`, and
+// called with a performing closure by an unrelated function. Nobody
+// declares a row. Must accept.
+//
+// Accepted through the pinned boot (runs 8); the use-cell face of
+// sound-generic-hof-two-callers.
+effect E { op() -> Int }
+fn apply(f) = f()
+fn strict2(h: (() -> Int) -> Int with !E) = 1
+fn g() = strict2(apply)
+fn k() = apply(() => op())
+handler hh { op() => resume(7) }
+fn main() = (g() + k()) ~> hh

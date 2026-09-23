@@ -1,0 +1,14 @@
+// CROWN — a constructor payload annotated `with !G`, holding a closure that
+// performs E, matched and called under `with !E`. Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot, for the wrong reason: the annotation is
+// read as CONTENT ("anything but G"), which is also what refuses the sound
+// sibling (sound-payload-declared-negation-sibling). The guard is that the
+// right reason still refuses this one.
+effect E { op() -> Int }
+effect G { gop() -> Int }
+type Box = Box(() -> Int with !G)
+fn loud() = op()
+fn bad() with !E = match Box(loud) { Box(f) => f() }
+handler h { op() => resume(7) }
+fn main() = bad() ~> h

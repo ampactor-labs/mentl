@@ -3074,6 +3074,16 @@ for i in "${!compilers[@]}"; do
   else
     fail "thread negation (mismatch=$tn_n — the transitive spawn passed a !Thread gate)"
   fi
+  # The task a spawn carries, under each schedule, inside a `!E` body whose
+  # thunk performs E — on the real vocabulary, for the same reason as the
+  # leg above. Both checked clean through the pinned boot (measured
+  # 2026-09-23 by the rows design's fourth refuter); declared RED by name
+  # until a closure handed to a schedule is charged
+  # (Hβ.effects.rows-are-propagated-cells).
+  for sp in parallel sequential; do
+    sp_n=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-spawn-thunk-$sp.mn" check 2>&1 | grep -cE 'E_EffectMismatch')
+    judge "spawn-thunk-$sp" "$([ "$sp_n" -ge 1 ] && echo 1 || echo 0)" "spawn thunk under the $sp schedule (mismatch=$sp_n)"
+  done
 
   # ─── The ADT-roster facet (`variants NAME` — the confessed missing
   # projection, retired): the type's constructors with arities, read

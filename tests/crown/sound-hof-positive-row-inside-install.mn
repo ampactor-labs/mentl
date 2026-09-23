@@ -1,0 +1,15 @@
+// CROWN — lib/search's try-with-catch shape: a HOF declared `with F` calls
+// one parameter inside an install and the other directly, and its caller's
+// closures perform E beyond F. The caller declares nothing. Must accept.
+//
+// Accepted through the pinned boot (runs 15). The guard on the HOF
+// convention: a declared positive row bounds the function's OWN effects,
+// never what its parameters do.
+effect E { op() -> Int }
+effect F { f_op() -> Int }
+handler absorb_f { f_op() => resume(0) }
+fn try_then(try_fn, catch_fn) with F = (try_fn() ~> absorb_f) + catch_fn()
+fn caller() = try_then(() => op(), () => op() + f_op())
+handler h { op() => resume(7) }
+handler hf { f_op() => resume(1) }
+fn main() = (caller() ~> h) ~> hf
