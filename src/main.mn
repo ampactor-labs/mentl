@@ -700,7 +700,7 @@ fn every_eff_authorable(effs, i) = if i >= len(effs) {
 fn eff_name_authorable(name) = match name {
   ENamed(_) => true,
   EPure => true,
-  EParameterized(_, args) => every_eff_arg_authorable(args, 0),
+  EParameterized{args} => every_eff_arg_authorable(args, 0),
 }
 
 fn every_eff_arg_authorable(args, i) = if i >= len(args) {
@@ -795,7 +795,7 @@ fn effarg_writable(a) with GraphRead + Memory + Alloc + !Mutate = match a {
 fn effname_writable(en) with GraphRead + Memory + Alloc + !Mutate = match en {
   ENamed(_) => True,
   EPure => True,
-  EParameterized(_, args) => all(effarg_writable, args),
+  EParameterized{args} => all(effarg_writable, args),
 }
 
 fn effrow_writable(r) with GraphRead + Memory + Alloc + !Mutate = match r {
@@ -926,13 +926,13 @@ fn doc_render_decl(d) = match d {
 // alias by what it stands for.
 fn doc_signature(body) = match body {
   NStmt(FnStmt{name}) => Some(doc_value_signature(name)),
-  NStmt(HandlerDeclStmt(name, _, _, _, _)) => Some(doc_value_signature(name)),
-  NStmt(LetStmt(N{body: NPat(PVar(name))}, _, _)) => Some(doc_value_signature(name)),
-  NStmt(TypeDefStmt(name, variants)) => Some("type {name} = {variants |> map({ (variant, _, _) => variant }) |> join(" | ")}"),
-  NStmt(EffectDeclStmt(name, _, ops)) => Some("effect {name} \{ {ops |> map({ (op, _, _, _) => op }) |> join(", ")} \}"),
-  NStmt(AliasStmt(name, ty)) => Some("type {name} = {show_type(ty)}"),
-  NStmt(RefineStmt(name, base, pred)) => Some("type {name} = {show_type(base)} where {show_predicate(pred)}"),
-  NStmt(RowAliasStmt(name, terms)) => Some("type {name} = {show_row_terms(terms)}"),
+  NStmt(HandlerDeclStmt{name}) => Some(doc_value_signature(name)),
+  NStmt(LetStmt{pat: N{body: NPat(PVar(name))}}) => Some(doc_value_signature(name)),
+  NStmt(TypeDefStmt{name, variants}) => Some("type {name} = {variants |> map({ (variant, _, _) => variant }) |> join(" | ")}"),
+  NStmt(EffectDeclStmt{name, ops}) => Some("effect {name} \{ {ops |> map({ (op, _, _, _) => op }) |> join(", ")} \}"),
+  NStmt(AliasStmt{name, ty}) => Some("type {name} = {show_type(ty)}"),
+  NStmt(RefineStmt{name, base, pred}) => Some("type {name} = {show_type(base)} where {show_predicate(pred)}"),
+  NStmt(RowAliasStmt{name, terms}) => Some("type {name} = {show_row_terms(terms)}"),
   _ => // A destructured let, an expression, an import: nothing the roster names.
   None,
 }
@@ -1094,7 +1094,7 @@ fn span_start_eq(ref a, ref b) with Pure = match a {
 // the converged rounds.
 fn field_ranked(handles, caret0) -> [(Float, Handle)] with GraphRead + Memory + Teach + Alloc + !Mutate = reverse(sort(map(
   (h) => match score_one_position(h, caret0) {
-    Cursor(_, _, sc) => (sc, h),
+    Cursor{impact: sc} => (sc, h),
   },
   handles
 )))
@@ -1573,12 +1573,12 @@ fn node_query_line(h, kind) with GraphRead + WASI + EnvRead + Memory + Alloc + I
     },
     None => show_type(ty_of_kind(h, kind)),
   },
-  NStmt(RefineStmt(name, base, pred)) => "{name} = {show_type(base)} where {show_predicate(pred)}",
-  NStmt(AliasStmt(name, ty)) => "{name} = {show_type(ty)}",
-  NStmt(TypeDefStmt(name, variants)) => "{name} — {int_to_str(len(variants))} variant(s)",
-  NStmt(EffectDeclStmt(name, _, ops)) => "effect {name} — {int_to_str(len(ops))} op(s)",
-  NStmt(HandlerDeclStmt(name, _, _, state, arms)) => "handler {name} — {int_to_str(len(arms))} arm(s), {int_to_str(len(state))} state field(s)",
-  NStmt(RowAliasStmt(name, _)) => "{name} — a named effect row",
+  NStmt(RefineStmt{name, base, pred}) => "{name} = {show_type(base)} where {show_predicate(pred)}",
+  NStmt(AliasStmt{name, ty}) => "{name} = {show_type(ty)}",
+  NStmt(TypeDefStmt{name, variants}) => "{name} — {int_to_str(len(variants))} variant(s)",
+  NStmt(EffectDeclStmt{name, ops}) => "effect {name} — {int_to_str(len(ops))} op(s)",
+  NStmt(HandlerDeclStmt{name, state, arms}) => "handler {name} — {int_to_str(len(arms))} arm(s), {int_to_str(len(state))} state field(s)",
+  NStmt(RowAliasStmt{name}) => "{name} — a named effect row",
   NHole(_) => // An UNDETERMINED hole never leaks the raw var — substrate
   // vocabulary at the exact moment the medium should ASK (§1's law: the
   // question beats the guess; the fan cannot enumerate an open type, so
@@ -1729,7 +1729,7 @@ fn span_line_of(ref s) with Pure = match s {
 }
 
 fn value_lede(sh) with GraphRead + Alloc + Memory = match graph_node_body(sh) {
-  NStmt(LetStmt(_, value, _)) => match value {
+  NStmt(LetStmt{value}) => match value {
     N{handle: vh} => match node_const(vh) {
       Some(LVInt(n)) => " = {int_to_str(n)}",
       Some(LVFloat(f)) => " = {float_to_str(f)}",
@@ -2074,7 +2074,7 @@ fn verify_board(entry_module: String) = {
   each(print_board_line, board)
   let breached = len(filter(board_breached, board))
   if breached > 0 {
-    print_string("verify: {int_to_str(breached)} bound(s) breached — a count the medium keeps about itself rose.\n")
+    print_string("verify: {int_to_str(breached)} bound(s) off their count — a count the medium keeps about itself moved and its ceiling did not.\n")
     1
   } else {
     print_string("verify: {int_to_str(len(board))} bound(s) hold.\n")
@@ -2235,7 +2235,7 @@ fn question_lines(specs, i, n, acc) with Memory + Alloc = if i >= n {
   acc
 } else {
   match specs[i] {
-    QuestionSpec(name, _, desc) => question_lines(
+    QuestionSpec{name, help: desc} => question_lines(
       specs,
       i + 1,
       n,
@@ -2251,7 +2251,7 @@ fn catalog_lines(specs, i, n, acc) with Memory + Alloc = if i >= n {
   acc
 } else {
   match specs[i] {
-    VerbSpec(name, hint, _, desc) => {
+    VerbSpec{name, hint, help: desc} => {
       let usage = if byte_len(hint) > 0 { name ++ " " ++ hint } else { name }
       catalog_lines(specs, i + 1, n, acc ++ "  mentl " ++ pad_right(usage, 25) ++ "— " ++ desc ++ "\n")
     },

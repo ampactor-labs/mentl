@@ -85,7 +85,7 @@ fn body_is_pure(handle) with GraphRead + LookupTy + Memory + Alloc = match graph
   NExpr(LitString(_)) => true,
   NExpr(LitBool(_)) => true,
   NExpr(VarRef(_)) => true,
-  NExpr(BinOpExpr(_, l, r)) => is_pure(node_handle(l)) && is_pure(node_handle(r)),
+  NExpr(BinOpExpr{left: l, right: r}) => is_pure(node_handle(l)) && is_pure(node_handle(r)),
   _ => false,
 }
 
@@ -121,7 +121,7 @@ fn rewrite_to(from, to) with GraphRead + GraphWrite = if graph_canon_at(from) ==
 
 // x + 0 ≡ x  and  0 + x ≡ x  — the survivor is kept, never gated.
 fn rw_add_identity(handle) with GraphRead + GraphWrite = match graph_node_body(handle) {
-  NExpr(BinOpExpr(BAdd, l, r)) => {
+  NExpr(BinOpExpr{op: BAdd, left: l, right: r}) => {
     let lh = egraph_extract(node_handle(l))
     let rh = egraph_extract(node_handle(r))
     if is_zero(rh) {
@@ -137,7 +137,7 @@ fn rw_add_identity(handle) with GraphRead + GraphWrite = match graph_node_body(h
 
 // x * 1 ≡ x  and  1 * x ≡ x  — survivor kept, never gated.
 fn rw_mul_identity(handle) with GraphRead + GraphWrite = match graph_node_body(handle) {
-  NExpr(BinOpExpr(BMul, l, r)) => {
+  NExpr(BinOpExpr{op: BMul, left: l, right: r}) => {
     let lh = egraph_extract(node_handle(l))
     let rh = egraph_extract(node_handle(r))
     if is_one(rh) {
@@ -155,7 +155,7 @@ fn rw_mul_identity(handle) with GraphRead + GraphWrite = match graph_node_body(h
 // when that operand is provably pure (the effect gate, read LIVE from the row).
 // The canonical target is the zero literal node, already in the fabric.
 fn rw_mul_absorb(handle) with GraphRead + GraphWrite + LookupTy + Memory + Alloc = match graph_node_body(handle) {
-  NExpr(BinOpExpr(BMul, l, r)) => {
+  NExpr(BinOpExpr{op: BMul, left: l, right: r}) => {
     let lh = egraph_extract(node_handle(l))
     let rh = egraph_extract(node_handle(r))
     if is_zero(rh) && is_pure(lh) {
@@ -171,7 +171,7 @@ fn rw_mul_absorb(handle) with GraphRead + GraphWrite + LookupTy + Memory + Alloc
 
 // x - 0 ≡ x — survivor kept, never gated. (0 - x is NOT x, so left only.)
 fn rw_sub_identity(handle) with GraphRead + GraphWrite = match graph_node_body(handle) {
-  NExpr(BinOpExpr(BSub, l, r)) => {
+  NExpr(BinOpExpr{op: BSub, left: l, right: r}) => {
     let rh = egraph_extract(node_handle(r))
     if is_zero(rh) { rewrite_to(handle, egraph_extract(node_handle(l))) } else { false }
   },
@@ -180,7 +180,7 @@ fn rw_sub_identity(handle) with GraphRead + GraphWrite = match graph_node_body(h
 
 // x / 1 ≡ x — survivor kept, never gated.
 fn rw_div_identity(handle) with GraphRead + GraphWrite = match graph_node_body(handle) {
-  NExpr(BinOpExpr(BDiv, l, r)) => {
+  NExpr(BinOpExpr{op: BDiv, left: l, right: r}) => {
     let rh = egraph_extract(node_handle(r))
     if is_one(rh) { rewrite_to(handle, egraph_extract(node_handle(l))) } else { false }
   },
@@ -222,7 +222,7 @@ fn fold_int(op, a, b) with Memory + Alloc = match op {
 }
 
 fn rw_const_fold(handle) with GraphRead + GraphWrite + Memory + Alloc = match graph_node_body(handle) {
-  NExpr(BinOpExpr(op, l, r)) => match const_int(egraph_extract(node_handle(l))) {
+  NExpr(BinOpExpr{op, left: l, right: r}) => match const_int(egraph_extract(node_handle(l))) {
     Some(a) => match const_int(egraph_extract(node_handle(r))) {
       Some(b) => match fold_int(op, a, b) {
         Some(v) => // Already folded to v on a prior pass? The current canonical

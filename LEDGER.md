@@ -35,6 +35,34 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-23 · pin b06287ca6b3f21cf (CLEAN m2 == m3, census 0, frontier 420/0/10,
+  crown 108/0/50, board 17/17 at their counts) · THE BOARD REFUSES SLACK.
+  (1) Named fields, second tier: `TName`, `TRecordOpen`, `TRefined`,
+  `TReprPin`, `TCont`, `TAlias`, `ConstructorScheme`, `HandlerKind`,
+  `EParameterized`, `NRecordRowBound`, `PendingContinuationBoundary`,
+  `Cursor`, `AnnotationSuggestion`, the Stmt family (`LetStmt`,
+  `TypeDefStmt`, `EffectDeclStmt`, `HandlerDeclStmt`, `RefineStmt`,
+  `AliasStmt`, `RowAliasStmt`), `BinOpExpr`, `PipeExpr`, `LabeledArg`,
+  `PCompare`, the LowIR carriers (`LLet`, `LDirectCall`, `LFn`, `LPCon`,
+  `LBinOp`, `LIf`, `LMakeClosure`, `LMakeContinuation`,
+  `ScheduledBoundary`), mentl's `Annotation`/`Context`, cli's specs and
+  voice's `VoiceLine`/`AnsType`; then `mentl fmt` over every file, no
+  pattern written by hand: 391 → 219, of which 158 are tuples. (2) The
+  first naming tried `HandlerDeclStmt(name: String, effect: String, …)`,
+  and `effect` is a keyword: the field parsed as a type, the variant
+  closed early, and ~200 errors followed about names that were never
+  missing. `field_name_at` says it once at the word and keeps parsing
+  (micro mn-field-name-keyword: 42 fresh, refused on the old boot). (3)
+  Reading the board whole found four ceilings above their counts (236/216,
+  467/462, 65/61, 9/7) — "the ceiling follows the count down" was prose.
+  `Standing` gained `Slack`, which refuses like `Over`; seen RED on the
+  effectful-lambda line before it was trusted. The board's reading became
+  one product (`Reading`: bound, sites, a nullary standing), and rendering
+  the count and label once took `CsFreeRowCallee` 1141 → 1139. (4) The
+  peak-RSS ceiling moved 1,011,000 → 1,021,000 KB: HEAD's source and this
+  tree through one boot read heap 529,875,960 → 530,101,848 B (+0.04%),
+  while three re-reads of one tree spread 7.8MB. The deterministic line is
+  the one to ratchet (`Hβ.tools.cost-ratchet-reads-the-heap-line`, named).
 - 2026-09-23 · pin 45fc255ef62f296c (CLEAN m2 == m3, census 0, frontier 420/0/10,
   crown 108/0/50, micros 155/155, board green) · EVERY ERROR REFUSES, AND
   WHAT THAT FOUND. Asking whether named constructor fields worked (they do —

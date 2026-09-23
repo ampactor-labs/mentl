@@ -93,7 +93,7 @@ fn cons_space(tail, head) = SCon(HCons, [head, tail])
 // where infer resolved it, and it takes any value here, so that one missing
 // name is one diagnostic and not two.
 fn con_space(name, subs) = match env_lookup(name) {
-  Some((binding, _, ConstructorScheme(tag, total))) => {
+  Some((binding, _, ConstructorScheme{tag, total})) => {
     let arity = len(callee_params(name))
     let v = Variant{arity: arity, name: name, tag: tag, total: total, ty: built_type(binding)}
     SCon(HVariant(v), at_arity(arity, subs))
@@ -114,7 +114,7 @@ fn built_type(binding) = match binding {
 
 fn result_type_name(ty) = match fold_strip(ty) {
   TFun{ret} => result_type_name(ret),
-  TName(name, _) => Some(name),
+  TName{name} => Some(name),
   _ => None,
 }
 

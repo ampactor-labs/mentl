@@ -185,7 +185,7 @@ handler interrogate_default {
           (_, k, r) => match k {
             NBound(_) => VerdictClears(r),
             NRowBound(_) => VerdictClears(r),
-            NRecordRowBound(_, _) => VerdictClears(r),
+            NRecordRowBound{} => VerdictClears(r),
             NAbsent => VerdictClears(r),
             NFree(_) => VerdictInvites(graph_invite_for(0, r)),
             NMaybeFree(_) => VerdictInvites(graph_invite_for(0, r)),
@@ -299,7 +299,7 @@ fn scan_for_tee_governing(target, i, n) with GraphRead + !Mutate = if i >= n {
   false
 } else {
   match graph_node_body(i) {
-    NExpr(PipeExpr(PTee, body, _handler)) => match body {
+    NExpr(PipeExpr{kind: PTee, left: body}) => match body {
       N{handle: bh} => if bh == target { true } else { scan_for_tee_governing(target, i + 1, n) },
     },
     _ => scan_for_tee_governing(target, i + 1, n),

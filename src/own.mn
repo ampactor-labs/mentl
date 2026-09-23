@@ -562,7 +562,7 @@ fn usage_of(ref name: String, ref node, mode) with Memory + Alloc + EnvRead + Gr
   N{body} => match body {
     NExpr(VarRef(n)) => if n == name { use_leaf(mode) } else { pair_zero() },
     NExpr(CallExpr(f, args)) => pair_seq(usage_of(name, f, MRead), usage_args(name, args, callee_borrow_params(f), 0)),
-    NExpr(BinOpExpr(_, l, r)) => pair_seq(usage_of(name, l, mode), usage_of(name, r, mode)),
+    NExpr(BinOpExpr{left: l, right: r}) => pair_seq(usage_of(name, l, mode), usage_of(name, r, mode)),
     NExpr(UnaryOpExpr(_, inner)) => usage_of(name, inner, mode),
     NExpr(IfExpr(c, t, e)) => // The condition is read to PICK the branch (⊗ before), and exactly
     // one branch runs (⊔ across) — the two laws the additive sum broke.
@@ -577,7 +577,7 @@ fn usage_of(ref name: String, ref node, mode) with Memory + Alloc + EnvRead + Gr
         _ => (UMany, r),
       },
     },
-    NExpr(PipeExpr(_, l, r)) => // The datum's true slot mode is the completed call's own param; the
+    NExpr(PipeExpr{left: l, right: r}) => // The datum's true slot mode is the completed call's own param; the
     // enclosing mode threads both sides (the ledger's borrow bracket at
     // the completed call is the runtime truth, and a divergence here
     // surfaces as an E_UseAfterMove refusal, which is now the arbiter —
@@ -607,9 +607,9 @@ fn usage_of(ref name: String, ref node, mode) with Memory + Alloc + EnvRead + Gr
     NExpr(LitBool(_)) => pair_zero(),
     NExpr(LitUnit) => pair_zero(),
     NExpr(ResumeExpr(v, _)) => usage_of(name, v, mode),
-    NExpr(LabeledArg(_, v)) => usage_of(name, v, mode),
+    NExpr(LabeledArg{value: v}) => usage_of(name, v, mode),
     NExpr(ExprPlaceholder) => pair_zero(),
-    NStmt(LetStmt(_, v, _)) => // The binding's value embeds under the binder — a consume-shape use.
+    NStmt(LetStmt{value: v}) => // The binding's value embeds under the binder — a consume-shape use.
     // The deleted additive count's `NStmt(_) => 0` blanket missed EVERY
     // statement-level use; the walk descends.
     usage_of(name, v, MConsume),
@@ -618,13 +618,13 @@ fn usage_of(ref name: String, ref node, mode) with Memory + Alloc + EnvRead + Gr
     // ruling); its capture-and-call usage stays uncounted — parity with
     // the deleted count, Ref-safe when it under-counts.
     pair_zero(),
-    NStmt(TypeDefStmt(_, _)) => pair_zero(),
-    NStmt(EffectDeclStmt(_, _, _)) => pair_zero(),
-    NStmt(HandlerDeclStmt(_, _, _, _, _)) => pair_zero(),
+    NStmt(TypeDefStmt{}) => pair_zero(),
+    NStmt(EffectDeclStmt{}) => pair_zero(),
+    NStmt(HandlerDeclStmt{}) => pair_zero(),
     NStmt(ImportStmt(_)) => pair_zero(),
-    NStmt(RefineStmt(_, _, _)) => pair_zero(),
-    NStmt(AliasStmt(_, _)) => pair_zero(),
-    NStmt(RowAliasStmt(_, _)) => pair_zero(),
+    NStmt(RefineStmt{}) => pair_zero(),
+    NStmt(AliasStmt{}) => pair_zero(),
+    NStmt(RowAliasStmt{}) => pair_zero(),
     NPat(_) => pair_zero(),
     NHole(_) => pair_zero(),
     NModule(_) => pair_zero(),
@@ -728,7 +728,7 @@ fn arg_slot_mode(ref arg, ref borrow_slots, i) = match arg {
       Some(ps) => if i < len(ps) { if param_borrows(list_index(ps, i)) { MRead } else { MConsume } } else { MConsume },
       None => MRead,
     },
-    NExpr(LabeledArg(label, v)) => match v {
+    NExpr(LabeledArg{label, value: v}) => match v {
       N{body: vb} => match vb {
         NExpr(VarRef(_)) => match borrow_slots {
           Some(ps) => if labeled_param_borrows(ps, label, 0) { MRead } else { MConsume },

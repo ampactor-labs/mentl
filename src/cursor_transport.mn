@@ -222,7 +222,7 @@ fn cursor_step(state) with Surface + GraphRead + CursorRead + !Mutate + Memory +
     // module-unqualified, so a hole's own span landed on a stranger's node in
     // another module the day the span became the node's own (2026-09-23).
     let view = match cursor {
-      Cursor(h, _, _) => cursor_at_handle(h),
+      Cursor{handle: h} => cursor_at_handle(h),
     }
     // Render through the installed transport handler.
     surface_render(cursor, view)
@@ -245,13 +245,13 @@ fn cursor_step(state) with Surface + GraphRead + CursorRead + !Mutate + Memory +
 // ─── Helpers ────────────────────────────────────────────────────────
 fn state_advance(state, latest_cursor) with Memory + Alloc = match state {
   TransportState(s) => match latest_cursor {
-    Cursor(_, reason, _) => TransportState({cadence: s.cadence, caret: s.caret, cursor: latest_cursor, last_render: reason, session_id: s.session_id + 1}),
+    Cursor{reason} => TransportState({cadence: s.cadence, caret: s.caret, cursor: latest_cursor, last_render: reason, session_id: s.session_id + 1}),
   },
 }
 
 fn state_with_render(state, cursor) with Memory + Alloc = match state {
   TransportState(s) => match cursor {
-    Cursor(_, reason, _) => TransportState({cadence: s.cadence, caret: s.caret, cursor: cursor, last_render: reason, session_id: s.session_id}),
+    Cursor{reason} => TransportState({cadence: s.cadence, caret: s.caret, cursor: cursor, last_render: reason, session_id: s.session_id}),
   },
 }
 
@@ -264,7 +264,7 @@ fn state_with_caret(state, new_caret) with Memory + Alloc = match state {
 // promote this to a handle-at-span op on GraphRead;
 // blocked on adding the op to graph.mn's effect declaration.
 fn apply_suggestion(cursor, view) with GraphRead + PatchWrite + Memory + !Mutate + Alloc = match cursor {
-  Cursor(handle, _, _) => match view {
+  Cursor{handle} => match view {
     CursorView(_, propose, _, _, _, _, teach, _) => // A hole accepts its PROPOSE survivor: the verdict says whether there
     // is one, and the accept path READS it rather than re-deriving it from
     // a survivor count. `VAsk` is the teaching TIE-BREAK — surface the
@@ -287,7 +287,7 @@ fn apply_suggestion(cursor, view) with GraphRead + PatchWrite + Memory + !Mutate
 fn apply_teach_suggestion(teach) with PatchWrite + Memory + Alloc = match teach {
   None => (),
   Some(suggestion) => match suggestion {
-    AnnotationSuggestion(_kind, ann_text, _unlocks, reason) => apply_patch_at_cursor(span_of_reason(reason), ann_text),
+    AnnotationSuggestion{annotation: ann_text, reason} => apply_patch_at_cursor(span_of_reason(reason), ann_text),
   },
 }
 
@@ -320,7 +320,7 @@ fn render_literal_source(h) with GraphRead + Alloc + Memory + !Mutate = match no
 
 // ─── Format / parse helpers per transport ──────────────────────────
 fn show_handle_label(cursor) with Memory + Alloc = match cursor {
-  Cursor(handle, _, _) => "handle={int_to_str(handle)}",
+  Cursor{handle} => "handle={int_to_str(handle)}",
 }
 
 fn show_node_kind(kind) with Pure = match kind {
@@ -328,7 +328,7 @@ fn show_node_kind(kind) with Pure = match kind {
   NFree(_) => "free",
   NRowBound(_) => "row-bound",
   NRowFree(_) => "row-free",
-  NRecordRowBound(_, _) => "record-row-bound",
+  NRecordRowBound{} => "record-row-bound",
   NMaybeFree(_) => "presence-free",
   NAbsent => "absent",
   NErrorHole(_) => "error-hole",
@@ -384,7 +384,7 @@ fn show_verify_count(preds) with Alloc + Memory =
 fn show_suggestion(opt) with Memory + Alloc = match opt {
   None => "(no next-step)",
   Some(suggestion) => match suggestion {
-    AnnotationSuggestion(_, ann_text, unlocks, _) => "add `{ann_text}` to unlock {int_to_str(len(unlocks))} capability(ies)",
+    AnnotationSuggestion{annotation: ann_text, unlocks} => "add `{ann_text}` to unlock {int_to_str(len(unlocks))} capability(ies)",
   },
 }
 

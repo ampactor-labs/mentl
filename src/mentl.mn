@@ -36,10 +36,10 @@ import query
 // coordinates, not 0:0-0:0.
 type Annotation
   = APure(Option(Span))
-  | ARefined(String, Predicate, Option(Span))
-  | AOwn(String, Option(Span))
-  | ARef(String, Option(Span))
-  | AWrapHandler(String, Int, Option(Span))
+  | ARefined(name: String, pred: Predicate, site: Option(Span))
+  | AOwn(name: String, site: Option(Span))
+  | ARef(name: String, site: Option(Span))
+  | AWrapHandler(handler_name: String, target: Int, site: Option(Span))
   // The general severance: !<name> for ANY name the link performs
   // (Hβ.teach.severance-vocabulary-from-link). The fixed
   // ANotAlloc/ANotIO/ANotNetwork trio is DELETED into it — known
@@ -83,7 +83,8 @@ type Explanation = Explanation(String, String, String, Option(Patch), Reason)
 // ALLOWED row refused, each refusal keeping its Why (PLAN §5: the row pruning
 // IS the second moat, and a pruned candidate the developer cannot see is a
 // guess they cannot audit).
-type Context = Context([(String, Binding, Reason, SchemeKind)], EffRow, String, Int)
+type Context
+  = Context(scope: [(String, Binding, Reason, SchemeKind)], row: EffRow, enclosing: String, hole: Int)
 
 // scope bindings (the Env's own entries), the LIVE active-effect row, the enclosing decl's name ("" at top level — the vocabulary excludes candidates whose free-name closure reaches it: proposing the hole's own enclosing fn, or anything that transitively calls it, is nontermination by construction), and the HOLE'S OWN HANDLE — the cell the proposals are for. The fourth field was the hole's SPAN, a coordinate copied beside the very handle that gives it live, and the copy was load-bearing in the worst way: with only a span the proof gate had no cell to bind, so it instantiated a FRESH target and called that safety. The handle carries the span (parse_span_of), the type (ty_of_kind over its live kind), and the union-find root every candidate must agree with. One edge where three copies were.
 // The full Boolean row reaches synth — not a
@@ -246,7 +247,7 @@ fn severance_negations(performed) = match performed {
   [p, ...rest] => match p {
     (n, _count) => match n {
       ENamed(_) => [ANotEffect(eff_name_str(n), None)] ++ severance_negations(rest),
-      EParameterized(_, _) => severance_negations(rest),
+      EParameterized{} => severance_negations(rest),
       EPure => severance_negations(rest),
     },
   },
@@ -296,10 +297,10 @@ fn to_annotation_suggestion(ann, anchor_reason) = AnnotationSuggestion(
 // match below is the only place the mapping lives.
 fn suggestion_kind_of(ann) with Pure = match ann {
   APure(_) => SuggestEffectRow,
-  ARefined(_, _, _) => SuggestRefinement,
-  AOwn(_, _) => SuggestOwnership,
-  ARef(_, _) => SuggestOwnership,
-  AWrapHandler(_, _, _) => SuggestEffectRow,
+  ARefined{} => SuggestRefinement,
+  AOwn{} => SuggestOwnership,
+  ARef{} => SuggestOwnership,
+  AWrapHandler{} => SuggestEffectRow,
   ANotEffect(_, _) => SuggestEffectRow,
 }
 
@@ -318,10 +319,10 @@ fn suggestion_reason(ann, anchor) = {
 
 fn annotation_source_span(ann) with Pure = match ann {
   APure(sp) => sp,
-  ARefined(_, _, sp) => sp,
-  AOwn(_, sp) => sp,
-  ARef(_, sp) => sp,
-  AWrapHandler(_, _, sp) => sp,
+  ARefined{site: sp} => sp,
+  AOwn{site: sp} => sp,
+  ARef{site: sp} => sp,
+  AWrapHandler{site: sp} => sp,
   ANotEffect(_, sp) => sp,
 }
 
@@ -387,7 +388,7 @@ fn apply_annotation_tentatively(handle, ann, base_ty) = match ann {
   // mint; identity is the intern handle from here on (EffName-is-a-
   // handle LANDED — comparisons are word i32.eq by type).
   narrow_row_proven(handle, base_ty, mk_ef_neg([ENamed(intern_str(name))]), sp),
-  ARefined(_, pred, sp) => {
+  ARefined{pred, site: sp} => {
     // Narrowing the type via refinement — perform verify against the
     // narrowed predicate. Ledger captures; rollback removes. The ledger
     // carries this claim's discharge (band F's own path), so the apply
@@ -396,10 +397,10 @@ fn apply_annotation_tentatively(handle, ann, base_ty) = match ann {
     verify(graph_module_current(), span, pred, Refinement(pred, PTrue))
     true
   },
-  AOwn(_, _) => // parameter-level marker; type narrowing at call sites
+  AOwn{} => // parameter-level marker; type narrowing at call sites
   true,
-  ARef(_, _) => true,
-  AWrapHandler(handler_name, _target, sp) => {
+  ARef{} => true,
+  AWrapHandler{handler_name, site: sp} => {
     // H5: speculatively narrow the row by subtracting the named
     // handler's absorbed effects. The catalog lookup tells us what
     // the handler handles; row arithmetic does the rest. The actual
@@ -459,7 +460,7 @@ fn catalog_handled_effects(handler_name) with Intern + Memory + EnvRead + !Mutat
   None => [],
   Some(entry) => match entry {
     (_scheme, _reason, kind) => match kind {
-      HandlerKind(_, _, _, arms) => // The handled effect is a live projection of the arms (§2), not a field.
+      HandlerKind{arms} => // The handled effect is a live projection of the arms (§2), not a field.
       [ENamed(intern_str(derive_handler_ename(arms, handler_name)))],
       _ => [],
     },
@@ -474,10 +475,10 @@ fn catalog_handled_effects(handler_name) with Intern + Memory + EnvRead + !Mutat
 // the module — a gap in THIS function, not in the developer's code.
 fn capabilities_for_annotation(ann) with Memory + Alloc + Intern = match ann {
   APure(_) => [CMemoize, CCompileTimeEval, CParallelize],
-  ARefined(_, _, _) => [],
-  AOwn(_, _) => [CDeterministicDrop, CZeroCopy],
-  ARef(_, _) => [],
-  AWrapHandler(_, _, _) => // unlocks depend on what's wrapped
+  ARefined{} => [],
+  AOwn{} => [CDeterministicDrop, CZeroCopy],
+  ARef{} => [],
+  AWrapHandler{} => // unlocks depend on what's wrapped
   [],
   ANotEffect(name, _) => // the general severance's unlock: the known names keep their rich
   // labels (Alloc → RealTime, IO → CompileTimeEval+Sandbox, Network →
@@ -503,7 +504,7 @@ fn capabilities_for_severance(name) = match name {
   } else {
     []
   },
-  EParameterized(_, _) => [],
+  EParameterized{} => [],
   EPure => // the identity severs no capability
   [],
 }
@@ -544,7 +545,7 @@ fn verify_after_apply(handle) = match graph_chase(handle) {
     NErrorHole(_) => false,
     NFree(_) => false,
     NRowBound(_) => false,
-    NRecordRowBound(_, _) => false,
+    NRecordRowBound{} => false,
     NRowFree(_) => false,
     NMaybeFree(_) => false,
     NAbsent => false,
@@ -604,20 +605,20 @@ fn annotation_eq(a, b) with Pure = match a {
     APure(_) => true,
     _ => false,
   },
-  ARefined(_, _, _) => match b {
-    ARefined(_, _, _) => true,
+  ARefined{} => match b {
+    ARefined{} => true,
     _ => false,
   },
-  AOwn(_, _) => match b {
-    AOwn(_, _) => true,
+  AOwn{} => match b {
+    AOwn{} => true,
     _ => false,
   },
-  ARef(_, _) => match b {
-    ARef(_, _) => true,
+  ARef{} => match b {
+    ARef{} => true,
     _ => false,
   },
-  AWrapHandler(_, _, _) => match b {
-    AWrapHandler(_, _, _) => true,
+  AWrapHandler{} => match b {
+    AWrapHandler{} => true,
     _ => false,
   },
   ANotEffect(an, _) => match b {
@@ -648,23 +649,23 @@ fn extract_row(ty) with Pure = match ty {
   TList(_) => mk_ef_pure(),
   TTuple(_) => mk_ef_pure(),
   TVar(_) => mk_ef_pure(),
-  TName(_, _) => mk_ef_pure(),
+  TName{} => mk_ef_pure(),
   TRecord(_) => mk_ef_pure(),
-  TRecordOpen(_, _) => mk_ef_pure(),
-  TRefined(_, _) => mk_ef_pure(),
-  TCont(_, _, _, world) => // resuming a continuation performs its frozen world (the TFun analog: extract_row(TFun) => row)
+  TRecordOpen{} => mk_ef_pure(),
+  TRefined{} => mk_ef_pure(),
+  TCont{world} => // resuming a continuation performs its frozen world (the TFun analog: extract_row(TFun) => row)
   world,
-  TAlias(_, inner) => extract_row(inner),
-  TReprPin(_, base) => extract_row(base),
+  TAlias{inner} => extract_row(inner),
+  TReprPin{inner: base} => extract_row(base),
 }
 
 // Map an annotation to the capability it unlocks: add this annotation, get this capability.
 fn unlock_capability(annotation) = match annotation {
   APure(_) => CMemoize,
-  ARefined(_, _, _) => CEliminateBoundsCheck,
-  AOwn(_, _) => CDeterministicDrop,
-  ARef(_, _) => CZeroCopy,
-  AWrapHandler(_, _, _) => // Wrapping a body in an absorbing handler CONTAINS the offending effect —
+  ARefined{} => CEliminateBoundsCheck,
+  AOwn{} => CDeterministicDrop,
+  ARef{} => CZeroCopy,
+  AWrapHandler{} => // Wrapping a body in an absorbing handler CONTAINS the offending effect —
   // the sandbox capability, the same family a proven !Network unlocks.
   CSandbox,
   ANotEffect(name, _) => CProvenAbsence(name),
@@ -698,10 +699,10 @@ fn catalog_summary(code) = match code {
 // Display — for driver rendering
 fn show_annotation(ann) = match ann {
   APure(_) => "with Pure",
-  ARefined(name, _, _) => "refined {name}",
-  AOwn(name, _) => "own {name}",
-  ARef(name, _) => "ref {name}",
-  AWrapHandler(name, _, _) => "wrap with {name}",
+  ARefined{name} => "refined {name}",
+  AOwn{name} => "own {name}",
+  ARef{name} => "ref {name}",
+  AWrapHandler{handler_name: name} => "wrap with {name}",
   ANotEffect(name, _) => "with !{name}",
 }
 

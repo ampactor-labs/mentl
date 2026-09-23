@@ -209,7 +209,7 @@ type Modifier
 // per MV §2.8).
 // Primitives: #2 (tentacle's resume discipline), #8 (Reason on every
 // non-Silence VoiceLine).
-type VoiceLine = Silence | VoiceLine(Tentacle, FormKind, [Slot], Modifier)
+type VoiceLine = Silence | VoiceLine(tentacle: Tentacle, form: FormKind, slots: [Slot], modifier: Modifier)
 
 // History feeds the silence predicate's is-this-new-since-last-turn
 // check. Bounded ring — the session
@@ -259,7 +259,7 @@ type CaretTarget = TargetHandle(Handle) | TargetSpan(Span) | TargetIdent(String)
 // Silence is a valid Answer when the question is ill-posed or
 // unprovable.
 type Answer
-  = AnsType(Ty, Reason)
+  = AnsType(ty: Ty, reason: Reason)
   | AnsRow(EffRow, Reason)
   // full Reason chain for QWhy
   | AnsReason(Reason)
@@ -607,7 +607,7 @@ fn render_unlock_arm(situation) with Memory + Alloc = match situation {
     let body = match s.gradient_next {
       None => [SLit("")],
       Some(suggestion) => match suggestion {
-        AnnotationSuggestion(_kind, ann_text, unlocks, _reason) => [SLit("Adding "), SAnnot(ann_text), SLit(" unlocks "), SCap(join_capability_labels(unlocks))],
+        AnnotationSuggestion{annotation: ann_text, unlocks} => [SLit("Adding "), SAnnot(ann_text), SLit(" unlocks "), SCap(join_capability_labels(unlocks))],
       },
     }
     VoiceLine(TentUnlock, FCapability, body, select_modifier(situation, s.register))
@@ -652,7 +652,7 @@ fn render_teach_arm(situation) with Memory + Alloc = match situation {
     let body = match s.gradient_next {
       None => [SLit("")],
       Some(suggestion) => match suggestion {
-        AnnotationSuggestion(_kind, ann_text, _unlocks, reason) => [SLit("Next: add "), SAnnot(ann_text), SLit(" on "), SSpan(suggestion_site_from_reason(reason))],
+        AnnotationSuggestion{annotation: ann_text, reason} => [SLit("Next: add "), SAnnot(ann_text), SLit(" on "), SSpan(suggestion_site_from_reason(reason))],
       },
     }
     VoiceLine(TentTeach, FGradient, body, select_modifier(situation, s.register))
@@ -971,7 +971,7 @@ fn emitted_artifact_path(fh) with Memory + Alloc = match fh {
 // `Hβ.voice.voiceline-renders-to-nobody`.
 fn render_voiceline(line) with GraphRead + Memory + Alloc + !Mutate + Intern = match line {
   Silence => "",
-  VoiceLine(_, _, slots, modif) => "{render_slots(slots)}{render_modifier(modif)}",
+  VoiceLine{slots, modifier: modif} => "{render_slots(slots)}{render_modifier(modif)}",
 }
 
 fn render_slots(slots) with GraphRead + Intern + Memory + Alloc + !Mutate =
@@ -1141,7 +1141,7 @@ handler mentl_voice_default with caret_now = Caret(0, Inferred("session start"))
   {
     let tentacle = match voiceline {
       Silence => TentQuery,
-      VoiceLine(t, _, _, _) => t,
+      VoiceLine{tentacle: t} => t,
     }
     let new_turn =
       TurnRecord({line: voiceline, span_at: span_zero(), tentacle: tentacle, topic: TopicHandle(0)})

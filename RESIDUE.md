@@ -2119,6 +2119,20 @@ bytes, which is the better k anyway) and did not paper it: this entry is the
 record, band A owns the fix, and the repro is two `addr` calls at different
 types in one body.
 
+`Hβ.tools.cost-ratchet-reads-the-heap-line` — NAMED 2026-09-23. The march
+prints two costs per leg: the judgment's heap at its high-water line, which
+is byte-deterministic (m2 and m3 of one source agree to the byte, and two
+sources differ by exactly what they allocate), and the process's peak RSS,
+which is not. The ratchet reads the second. Measured the day this was named:
+three re-reads of one tree spread 1,011,300 to 1,019,168 KB while the heap
+line said +225,888 bytes against HEAD, so the ceiling refused a landing for
+0.03% of noise and had to be raised by hand, the fourth such raise in one
+day. The form: the heap line gets the exact ratchet (a rise is a number a
+landing must attribute, the way the census bounds are), and the peak keeps a
+loose ceiling that only catches what the judgment's line cannot see (emit,
+the WAT buffer). Its home is `mentl verify` once it reads the march's cost
+lines; the march is the oracle that prints them today.
+
 `Hβ.tools.cost-ratchet-reads-one-sample` — RESOLVED 2026-09-07, the banked
 fix built as prescribed. `read_cost` (tools/march.sh) no longer convicts on
 one reading: a sample over the ceiling triggers two more m3 legs and the

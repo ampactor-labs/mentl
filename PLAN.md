@@ -902,7 +902,9 @@ and this is the STATE.
   prelude is the producer that dissolves the family, and eleven walks became
   folds the day the bound was born), **732** positional destructures
   discarding two or more slots (`HandlerDeclStmt(n, _, _, _, _)` — the zero is
-  the Stmt/Expr rosters carrying records), and **136** `// drift-audit:
+  every product carrying NAMED fields; two landings of named constructor
+  fields, each one fmt sweep, took it to 219 by 2026-09-23, the remainder
+  158 tuples whose form is a record), and **136** `// drift-audit:
   ignore` exemptions (each a bash pattern left imprecise). Beside them, the
   fabricates roster grew `_ => []` and rose 21 → 65 by widening: the wildcard
   had been saying a `let`, a refinement and an alias declare nothing, so two

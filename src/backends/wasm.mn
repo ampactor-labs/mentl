@@ -279,9 +279,9 @@ fn spec_is_agg(ty) with Pure = match ty {
   TList(TByte) => false,
   TList(_) => true,
   TTuple(_) => true,
-  TName(_, _) => true,
+  TName{} => true,
   TRecord(_) => true,
-  TRecordOpen(_, _) => true,
+  TRecordOpen{} => true,
   _ => false,
 }
 
@@ -294,9 +294,9 @@ fn show_node_of(h, x) with Memory + LookupTy + Alloc + WASI + GraphRead = {
     TFloat => LCall(h, LGlobal(h, "float_to_str"), [x]),
     TList(_) => x,
     TTuple(_) => x,
-    TName(_, _) => x,
+    TName{} => x,
     TRecord(_) => x,
-    TRecordOpen(_, _) => x,
+    TRecordOpen{} => x,
     _ => LCall(h, LGlobal(h, "int_to_str"), [x]),
   }
 }
@@ -318,9 +318,9 @@ fn hash_node_of(h, x) with Memory + LookupTy + Alloc + WASI + GraphRead = {
     },
     TFloat => LCall(h, LGlobal(h, "str_hash"), [LCall(h, LGlobal(h, "float_to_str"), [x])]),
     TTuple(_) => x,
-    TName(_, _) => x,
+    TName{} => x,
     TRecord(_) => x,
-    TRecordOpen(_, _) => x,
+    TRecordOpen{} => x,
     _ => x,
   }
 }
@@ -716,9 +716,9 @@ fn sig_repr_of_ty(slot) = match slot {
 
 fn sig_repr_of_present(ty) = match ty {
   TVar(h) => repr_of(lookup_ty(h)),
-  TAlias(_, inner) => sig_repr_of_present(inner),
-  TRefined(base, _) => sig_repr_of_present(base),
-  TReprPin(r, _) => r,
+  TAlias{inner} => sig_repr_of_present(inner),
+  TRefined{base} => sig_repr_of_present(base),
+  TReprPin{repr: r} => r,
   _ => repr_of(ty),
 }
 
@@ -1245,7 +1245,7 @@ fn register_show_literals_list(tys, seen) with EmitStringLiteralOp + EnvRead + A
 // registered (the join + the list-body's empty terminal). visit_string dedups
 // (string_entry_exists), so registering a literal twice is harmless.
 fn register_one_show_literals(ty) with EmitStringLiteralOp + EnvRead + Memory + Alloc + GraphRead = match fold_strip(ty) {
-  TName(_, _) => register_show_sum_literals(variant_named_specs_at(fold_strip(ty)), 0),
+  TName{} => register_show_sum_literals(variant_named_specs_at(fold_strip(ty)), 0),
   TList(_) => {
     visit_string("[")
     visit_string("]")
@@ -1347,12 +1347,12 @@ fn walk_lemit_expr(expr) = match expr {
   // all_fn_names exactly as the lower-baked calls did — byte parity).
   walk_lemit_expr(show_node_of(h, x)),
   LHash(h, x) => walk_lemit_expr(hash_node_of(h, x)),
-  LMakeClosure(_, LFn(name, _, _, body, _, _), captures) => {
+  LMakeClosure{lowfn: LFn{name, body}, captures} => {
     visit_fn(name)
     walk_lemit_list(body)
     walk_lemit_list(captures)
   },
-  LMakeContinuation(_, LFn(name, _, _, body, _, _), captures, _, _) => {
+  LMakeContinuation{resume_fn: LFn{name, body}, captures} => {
     visit_fn(name)
     walk_lemit_list(body)
     walk_lemit_list(captures)
@@ -1378,7 +1378,7 @@ fn walk_lemit_expr(expr) = match expr {
     visit_yield()
     walk_lemit_expr(k)
   },
-  LDeclareFn(LFn(name, _, _, body, _, _)) => {
+  LDeclareFn(LFn{name, body}) => {
     visit_fn(name)
     walk_lemit_list(body)
   },
@@ -1388,8 +1388,8 @@ fn walk_lemit_expr(expr) = match expr {
   LFeedbackPrior(_) => (),
   LGlobal(_, _) => (),
   LUpval(_, _) => (),
-  LLet(_, _, inner) => walk_lemit_expr(inner),
-  LBinOp(_, _, l, r) => {
+  LLet{value: inner} => walk_lemit_expr(inner),
+  LBinOp{left: l, right: r} => {
     walk_lemit_expr(l)
     walk_lemit_expr(r)
   },
@@ -1402,9 +1402,9 @@ fn walk_lemit_expr(expr) = match expr {
     walk_lemit_expr(f)
     walk_lemit_list(args)
   },
-  LDirectCall(_h, _fh, _n, _t, args) => walk_lemit_list(args),
+  LDirectCall{args} => walk_lemit_list(args),
   LReturn(_, inner) => walk_lemit_expr(inner),
-  LIf(_, c, t, e) => {
+  LIf{cond: c, then_body: t, else_body: e} => {
     walk_lemit_expr(c)
     walk_lemit_list(t)
     walk_lemit_list(e)
@@ -1513,7 +1513,7 @@ fn walk_lemit_arms(arms) = each(
 fn walk_lemit_pat(pat) = match pat {
   LPLit(LString(s)) => visit_string(s),
   LPLit(_) => (),
-  LPCon(_, _, pairs) => each(walk_lemit_pat, pat_of_pairs(pairs)),
+  LPCon{args: pairs} => each(walk_lemit_pat, pat_of_pairs(pairs)),
   LPTuple(elems) => each({ (_, sp) => walk_lemit_pat(sp) }, elems),
   LPList(prefix, _, _) => each(walk_lemit_pat, prefix),
   LPRecord(_, fs, _) => each({ (_, sp) => walk_lemit_pat(sp) }, fs),
@@ -1675,7 +1675,7 @@ fn ms_handler_names_at(entries, i, acc) = if i == 0 {
   match list_index(entries, i - 1) {
     (name, _scheme, _reason, kind) => {
       let acc2 = match kind {
-        HandlerKind(_row, _config, _state, _arms) => if len(multishot_ops_of(name)) > 0 && ls_find_str_local(acc, name, 0) < 0 {
+        HandlerKind{} => if len(multishot_ops_of(name)) > 0 && ls_find_str_local(acc, name, 0) < 0 {
           [name] ++ acc
         } else {
           acc
@@ -1830,8 +1830,8 @@ fn emit_string_bytes(s, i, n) = if i >= n {
 // fire visit_top_fn at the correct sites. Returns "" for non-binding
 // shapes (caller treats "" as no-op).
 fn extract_top_fn_name(stmt) with Pure = match stmt {
-  LLet(_, name, LMakeClosure(_, _, _)) => name,
-  LLet(_, name, LMakeContinuation(_, _, _, _, _)) => name,
+  LLet{name, value: LMakeClosure{}} => name,
+  LLet{name, value: LMakeContinuation{}} => name,
   _ => // drift-audit: ignore — "" = non-binding shape (caller treats "" as no-op)
   "",
 }
@@ -1842,9 +1842,9 @@ fn extract_top_fn_name(stmt) with Pure = match stmt {
 // ONE projection over lowered's direct children feeds both consumers
 // (declaration + init) — never two walks of one tree.
 fn collect_top_value_lets(stmts) = stmts |> map({
-  LLet(_, _, LMakeClosure(_, _, _)) => [],
-  LLet(_, _, LMakeContinuation(_, _, _, _, _)) => [],
-  LLet(_, name, init) => [(name, init)],
+  LLet{value: LMakeClosure{}} => [],
+  LLet{value: LMakeContinuation{}} => [],
+  LLet{name, value: init} => [(name, init)],
   _ => [],
 }) |> flatten
 
@@ -2359,7 +2359,7 @@ fn collect_call_vectors_arms_from(arms, acc, i) = if i >= len(arms) {
 fn collect_call_vectors_expr(expr, acc) = match expr {
   LShow(h, x) => collect_call_vectors_expr(show_node_of(h, x), acc),
   LHash(h, x) => collect_call_vectors_expr(hash_node_of(h, x), acc),
-  LDirectCall(_h, _fh, _n, _t, args) => collect_call_vectors_list(args, acc),
+  LDirectCall{args} => collect_call_vectors_list(args, acc),
   LCall(h, f, args) => collect_call_vectors_expr(
     f,
     collect_call_vectors_list(args, vec_push(args, repr_of(lookup_ty(h)), acc))
@@ -2375,16 +2375,16 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   // through call_indirect and need the type; the direct ones cost nothing to
   // include and the set is deduped. One arm, one rule.
   collect_call_vectors_list(args, vec_push(args, repr_of(lookup_ty(h)), acc)),
-  LLet(_h, _n, inner) => collect_call_vectors_expr(inner, acc),
-  LBinOp(_h, _op, l, r) => collect_call_vectors_expr(r, collect_call_vectors_expr(l, acc)),
+  LLet{value: inner} => collect_call_vectors_expr(inner, acc),
+  LBinOp{left: l, right: r} => collect_call_vectors_expr(r, collect_call_vectors_expr(l, acc)),
   LUnaryOp(_h, _op, i) => collect_call_vectors_expr(i, acc),
   LReturn(_h, i) => collect_call_vectors_expr(i, acc),
-  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f), caps) => collect_call_vectors_list(body, collect_call_vectors_list(caps, acc)),
-  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f), caps, _, _) => collect_call_vectors_list(body, collect_call_vectors_list(caps, acc)),
+  LMakeClosure{lowfn: LFn{body}, captures: caps} => collect_call_vectors_list(body, collect_call_vectors_list(caps, acc)),
+  LMakeContinuation{resume_fn: LFn{body}, captures: caps} => collect_call_vectors_list(body, collect_call_vectors_list(caps, acc)),
   LYield(_h, _op, args, k) => collect_call_vectors_expr(k, collect_call_vectors_list(args, acc)),
   LKExtend(_h, k) => collect_call_vectors_expr(k, acc),
-  LDeclareFn(LFn(_n, _a, _p, body, _r, _f)) => collect_call_vectors_list(body, acc),
-  LIf(_h, c, t, e) => collect_call_vectors_list(e, collect_call_vectors_list(t, collect_call_vectors_expr(c, acc))),
+  LDeclareFn(LFn{body}) => collect_call_vectors_list(body, acc),
+  LIf{cond: c, then_body: t, else_body: e} => collect_call_vectors_list(e, collect_call_vectors_list(t, collect_call_vectors_expr(c, acc))),
   LBlock(_h, stmts) => collect_call_vectors_list(stmts, acc),
   LMakeList(_h, es) => collect_call_vectors_list(es, acc),
   LMakeTuple(_h, es) => collect_call_vectors_list(es, acc),
@@ -2969,24 +2969,24 @@ fn fn_emit_records_arms(arms, i) = if i >= len(arms) {
 fn collect_fn_emit_records_expr(expr) = match expr {
   LShow(_h, x) => collect_fn_emit_records_expr(x),
   LHash(_h, x) => collect_fn_emit_records_expr(x),
-  LMakeClosure(_h, LFn(name, _arity, param_names, body, _row, fence), captures) => // The LowFn fence IS the body-context every fn shape carries: closures
+  LMakeClosure{lowfn: LFn{name, params: param_names, body, fence}, captures} => // The LowFn fence IS the body-context every fn shape carries: closures
   // pass their capture count, handler arm fns nstate+total_arms, plain fns
   // 0 — one rule, set at lower time, not re-derived per shape.
   {
     [(name, param_names, body, fence)] ++ collect_fn_emit_records(body) ++ collect_fn_emit_records(captures)
   },
-  LMakeContinuation(_h, LFn(name, _arity, param_names, body, _row, fence), captures, _, _) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body) ++ collect_fn_emit_records(captures),
+  LMakeContinuation{resume_fn: LFn{name, params: param_names, body, fence}, captures} => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body) ++ collect_fn_emit_records(captures),
   LYield(_h, _op, args, k) => collect_fn_emit_records(args) ++ collect_fn_emit_records_expr(k),
   LKExtend(_h, k) => collect_fn_emit_records_expr(k),
-  LDeclareFn(LFn(name, _arity, param_names, body, _row, fence)) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body),
-  LLet(_h, _n, inner) => collect_fn_emit_records_expr(inner),
-  LBinOp(_h, _op, l, r) => collect_fn_emit_records_expr(l) ++ collect_fn_emit_records_expr(r),
+  LDeclareFn(LFn{name, params: param_names, body, fence}) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body),
+  LLet{value: inner} => collect_fn_emit_records_expr(inner),
+  LBinOp{left: l, right: r} => collect_fn_emit_records_expr(l) ++ collect_fn_emit_records_expr(r),
   LUnaryOp(_h, _op, inner) => collect_fn_emit_records_expr(inner),
-  LDirectCall(_h, _fh, _n, _t, args) => collect_fn_emit_records(args),
+  LDirectCall{args} => collect_fn_emit_records(args),
   LCall(_h, f, args) => collect_fn_emit_records_expr(f) ++ collect_fn_emit_records(args),
   LTailCall(_h, f, args) => collect_fn_emit_records_expr(f) ++ collect_fn_emit_records(args),
   LReturn(_h, inner) => collect_fn_emit_records_expr(inner),
-  LIf(_h, c, t, e) => collect_fn_emit_records_expr(c) ++ collect_fn_emit_records(t) ++ collect_fn_emit_records(e),
+  LIf{cond: c, then_body: t, else_body: e} => collect_fn_emit_records_expr(c) ++ collect_fn_emit_records(t) ++ collect_fn_emit_records(e),
   LBlock(_h, stmts) => collect_fn_emit_records(stmts),
   LMakeList(_h, elems) => collect_fn_emit_records(elems),
   LMakeTuple(_h, elems) => collect_fn_emit_records(elems),
@@ -3159,14 +3159,14 @@ fn walk_locals_list(stmts, acc) = if len(stmts) == 0 {
 }
 
 fn walk_locals_expr(expr, acc) = match expr {
-  LLet(h, name, inner) => {
+  LLet{handle: h, name, value: inner} => {
     // The local's WIDTH: llet_repr — the ONE projection this decl and the
     // LLet store both read, so they cannot disagree. The NAME is
     // local_wat_name(name, r) — the repr decides the register name too.
     let r = llet_repr(h, inner)
     walk_locals_expr(inner, [local_wat_name(name, r) ++ " " ++ repr_wat(r)] ++ acc)
   },
-  LMakeClosure(h, _, captures) => // The FN body is a boundary (its locals are its own) — but the CAPTURES
+  LMakeClosure{handle: h, captures} => // The FN body is a boundary (its locals are its own) — but the CAPTURES
   // evaluate in the ENCLOSING frame at the mint (a partial's supplied arg
   // may be a call minting a result local here). Lambda captures are bare
   // LLocal/LUpval reads contributing no locals, so walking them is
@@ -3178,7 +3178,7 @@ fn walk_locals_expr(expr, acc) = match expr {
   // closure contributes the most important one — a place to keep the outer
   // record while the inner is built.
   [mkclo_local(h) ++ " i32"] ++ walk_locals_list(captures, acc),
-  LMakeContinuation(h, _, captures, _, _) => // resume_fn boundary — its locals are its own (H7)
+  LMakeContinuation{handle: h, captures} => // resume_fn boundary — its locals are its own (H7)
   // The resume invocation: its two bracket locals + whatever the delegated
   // LCall shape mints (staging locals) — mirror-true to the emit arm, which
   // means its record slot too: the head IS the closure head.
@@ -3199,10 +3199,10 @@ fn walk_locals_expr(expr, acc) = match expr {
   LDeclareFn(_) => // module-level fn declaration — its body has its own locals
   acc,
   LBlock(_h, stmts) => walk_locals_list(stmts, acc),
-  LIf(_h, c, t, e) => walk_locals_list(e, walk_locals_list(t, walk_locals_expr(c, acc))),
-  LBinOp(_h, _op, l, r) => walk_locals_expr(r, walk_locals_expr(l, acc)),
+  LIf{cond: c, then_body: t, else_body: e} => walk_locals_list(e, walk_locals_list(t, walk_locals_expr(c, acc))),
+  LBinOp{left: l, right: r} => walk_locals_expr(r, walk_locals_expr(l, acc)),
   LUnaryOp(_h, _op, inner) => walk_locals_expr(inner, acc),
-  LDirectCall(_h, _fh, _n, _t, args) => walk_locals_list(args, acc),
+  LDirectCall{args} => walk_locals_list(args, acc),
   LCall(h, f, args) => // $call_<h> parks the CALLEE RECORD pointer — a handle IS a word,
   // i32 invariantly; the call's RESULT rides the stack at the ft's
   // width, never through this scratch. One entry into the set (deduped).
@@ -3336,7 +3336,7 @@ fn walk_locals_arms(arms, acc) = if len(arms) == 0 {
 // loaded it f64-wide: the m3 assembly's 20-site local.set class.
 fn walk_locals_pat(pat, r, acc) = match pat {
   LPVar(name) => [local_wat_name(name, r) ++ " " ++ repr_wat(r)] ++ acc,
-  LPCon(_, _, pairs) => walk_locals_pat_con(ty_of_pairs(pairs), pat_of_pairs(pairs), acc),
+  LPCon{args: pairs} => walk_locals_pat_con(ty_of_pairs(pairs), pat_of_pairs(pairs), acc),
   LPUnresolvedCon(_, sub_pats) => // No declaration proves the payload tys — declare each sub-binder at the
   // word floor so the (dead — predicate false) arm body still assembles.
   fold(acc, (a, p) => walk_locals_pat(p, RI32, a), sub_pats),
@@ -3416,8 +3416,8 @@ fn pat_elem_repr(ty) with LookupTy + Memory + Alloc = match ty {
       t => pat_elem_repr(t),
     }
   },
-  TAlias(_, inner) => pat_elem_repr(inner),
-  TRefined(base, _) => pat_elem_repr(base),
+  TAlias{inner} => pat_elem_repr(inner),
+  TRefined{base} => pat_elem_repr(base),
   _ => repr_of(ty),
 }
 
@@ -3490,7 +3490,7 @@ fn body_result_repr(body) =
 fn tail_expr_repr(expr) = match expr {
   LReturn(_h, inner) => tail_expr_repr(inner),
   LBlock(_h, stmts) => if len(stmts) == 0 { RI32 } else { tail_expr_repr(list_index(stmts, len(stmts) - 1)) },
-  LIf(_h, _c, t, e) => // Both branches joined — the floor yields to either side's proof,
+  LIf{then_body: t, else_body: e} => // Both branches joined — the floor yields to either side's proof,
   // the same join the LIf emission declares (one width, two readers).
   repr_join(body_result_repr(t), body_result_repr(e)),
   LMatch(_h, _s, arms) => match_arms_repr(arms),
@@ -3505,7 +3505,7 @@ fn tail_expr_repr(expr) = match expr {
     IntToFloat => RF64,
     FloatToInt => RI32,
   },
-  LBinOp(_h, op, l, r) => match binop_kind(op) {
+  LBinOp{op, left: l, right: r} => match binop_kind(op) {
     BKArith => repr_join(tail_expr_repr(l), tail_expr_repr(r)),
     _ => RI32,
   },
@@ -3589,7 +3589,7 @@ fn emit_body_seq(stmts, i) = if i >= len(stmts) {
 // the arms enumerated here are the forms whose emission consumes its
 // own result (local.set / store / decl) or never falls through.
 fn lexpr_leaves_value(e) = match e {
-  LLet(_, _, _) => false,
+  LLet{} => false,
   LStateSlotStore(_, _, _, _) => false,
   LInvariantFailure(_, _) => false,
   LDeclareFn(_) => false,
@@ -3839,7 +3839,7 @@ fn emit_expr(expr) = match expr {
     wat_emit(spec_target_name(h, name))
     wat_emit(")\n")
   },
-  LLet(h, name, val) => {
+  LLet{handle: h, name, value: val} => {
     emit_expr(val)
     wat_emit("    (local.set $")
     wat_emit(local_wat_name(name, llet_repr(h, val)))
@@ -3856,7 +3856,7 @@ fn emit_expr(expr) = match expr {
     wat_emit(")\n")
     emit_wide_deref(repr_of(lookup_ty(h)))
   },
-  LBinOp(_h, op, l, r) => {
+  LBinOp{op, left: l, right: r} => {
     emit_expr(l)
     emit_expr(r)
     emit_binop_for(op, l, r)
@@ -3870,7 +3870,7 @@ fn emit_expr(expr) = match expr {
     emit_expr(inner)
     emit_unaryop_for(h, op)
   },
-  LDirectCall(h, fh, cname, tail, args) => {
+  LDirectCall{handle: h, callee: fh, name: cname, tail, args} => {
     // The direct native call — the dispatch gradient's cash-out for a
     // callee lower proved to be a top-level fn. Args emit at their PROVEN
     // widths (an f64 argument rides the stack as f64 — no spill cell, no
@@ -4005,7 +4005,7 @@ fn emit_expr(expr) = match expr {
     // drift-audit: ignore
     wat_emit("    (return)\n")
   },
-  LMakeClosure(h, LFn(fn_name, _arity, _param_names, _body, _row, _fence), captures_exprs) => {
+  LMakeClosure{handle: h, lowfn: LFn{name: fn_name}, captures: captures_exprs} => {
     // H1 closure-record layout (the unified handler state):
     //   offset 0: fn_ptr (i32) — table index into $fns
     //   offset 4: capture_count (i32)
@@ -4070,7 +4070,7 @@ fn emit_expr(expr) = match expr {
     // Result: closure pointer on stack.
     wat_emit("    (local.get ${rec_local})\n")
   },
-  LMakeContinuation(h, LFn(resume_fn_name, _arity, _param_names, _body, _row, _fence), captures_exprs, state_idx, ret_slot) => {
+  LMakeContinuation{handle: h, resume_fn: LFn{name: resume_fn_name}, captures: captures_exprs, state_index: state_idx, ret_slot} => {
     // H7 — the multi-shot continuation record, CLOSURE-IDENTICAL HEAD
     // (band B k1): the k is CALLED through the same W7 convention every
     // closure takes (park as __state, LUpval reads captures at 8+4*i), so
@@ -4203,7 +4203,7 @@ fn emit_expr(expr) = match expr {
       _ => wat_emit("    (i32.const 0)\n"),
     }
   },
-  LIf(_h, cond, then_body, else_body) => {
+  LIf{cond, then_body, else_body} => {
     // The if's result WIDTH is the branches' proven join, read live
     // from the tails (body_result_repr) — the i32 floor loses to any
     // proof (an f64-computing branch types the if f64); two DISAGREEING
@@ -5189,9 +5189,9 @@ fn emit_eq_for_ty(ty, neg) = match ty {
   // field's eq at the canonical width-summed offset, recursing for nested
   // products. The eq/hash-disagreement footgun is unsayable: ONE traversal.
   emit_eq_product_call(fold_sig(ty), neg),
-  TRecordOpen(fields, _) => emit_eq_product_call(fold_sig(ty), neg),
+  TRecordOpen{fields} => emit_eq_product_call(fold_sig(ty), neg),
   TTuple(elems) => emit_eq_product_call(fold_sig(ty), neg),
-  TName(_, _) => // Sum payload-ADT — per-variant tag-then-payload recursion via the generated
+  TName{} => // Sum payload-ADT — per-variant tag-then-payload recursion via the generated
   // $eq_n<Name> helper (the fifth leaf, reading the env's ConstructorScheme
   // variant payload types). A purely-nullary ADT folds to a tag i32.eq inside
   // the helper; a fielded ADT loads tags then recurses each payload.
@@ -5334,19 +5334,19 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
   LShow(_h, x) => collect_fold_tys_expr(x, fold_acc_show(acc, x)),
   LHash(_h, x) => collect_fold_tys_expr(x, fold_acc_hash(acc, x)),
   LCall(_h, f, args) => collect_fold_tys_expr(f, collect_fold_tys_list(args, acc)),
-  LDirectCall(_h, _fh, _n, _t, args) => collect_fold_tys_list(args, acc),
+  LDirectCall{args} => collect_fold_tys_list(args, acc),
   LTailCall(_h, f, args) => collect_fold_tys_expr(f, collect_fold_tys_list(args, acc)),
-  LBinOp(_h, op, l, r) => collect_fold_tys_expr(r, collect_fold_tys_expr(l, fold_trigger_binop(op, lexpr_handle(l), acc))),
+  LBinOp{op, left: l, right: r} => collect_fold_tys_expr(r, collect_fold_tys_expr(l, fold_trigger_binop(op, lexpr_handle(l), acc))),
   LResumeK(_h, k, v) => collect_fold_tys_expr(v, collect_fold_tys_expr(k, acc)),
-  LLet(_h, _n, inner) => collect_fold_tys_expr(inner, acc),
+  LLet{value: inner} => collect_fold_tys_expr(inner, acc),
   LUnaryOp(_h, _op, i) => collect_fold_tys_expr(i, acc),
   LReturn(_h, i) => collect_fold_tys_expr(i, acc),
-  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f), caps) => collect_fold_tys_list(body, collect_fold_tys_list(caps, acc)),
-  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f), caps, _, _) => collect_fold_tys_list(body, collect_fold_tys_list(caps, acc)),
+  LMakeClosure{lowfn: LFn{body}, captures: caps} => collect_fold_tys_list(body, collect_fold_tys_list(caps, acc)),
+  LMakeContinuation{resume_fn: LFn{body}, captures: caps} => collect_fold_tys_list(body, collect_fold_tys_list(caps, acc)),
   LYield(_h, _op, args, k) => collect_fold_tys_expr(k, collect_fold_tys_list(args, acc)),
   LKExtend(_h, k) => collect_fold_tys_expr(k, acc),
-  LDeclareFn(LFn(_n, _a, _p, body, _r, _f)) => collect_fold_tys_list(body, acc),
-  LIf(_h, c, t, e) => collect_fold_tys_list(e, collect_fold_tys_list(t, collect_fold_tys_expr(c, acc))),
+  LDeclareFn(LFn{body}) => collect_fold_tys_list(body, acc),
+  LIf{cond: c, then_body: t, else_body: e} => collect_fold_tys_list(e, collect_fold_tys_list(t, collect_fold_tys_expr(c, acc))),
   LBlock(_h, stmts) => collect_fold_tys_list(stmts, acc),
   LMakeList(_h, es) => collect_fold_tys_list(es, acc),
   LMakeTuple(_h, es) => collect_fold_tys_list(es, acc),
@@ -5558,7 +5558,7 @@ fn emit_hash_seq_body(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
 // a SEQUENCE-of-struct walks elements through its own recursive body
 // (emit_eq_leaf_seq). One generator per leaf family — divergence is unsayable.
 fn emit_one_eq_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy + GraphRead = match fold_strip(ty) {
-  TName(_, _) => emit_eq_leaf_sum(sig, fold_strip(ty)),
+  TName{} => emit_eq_leaf_sum(sig, fold_strip(ty)),
   TList(elem) => emit_eq_leaf_seq(sig, elem),
   _ => {
     wat_emit("  (func $eq_")
@@ -5767,9 +5767,9 @@ fn emit_field_eq(fty) = match fty {
     }
   },
   TRecord(_) => emit_field_product_eq(fold_sig(fty)),
-  TRecordOpen(_, _) => emit_field_product_eq(fold_sig(fty)),
+  TRecordOpen{} => emit_field_product_eq(fold_sig(fty)),
   TTuple(_) => emit_field_product_eq(fold_sig(fty)),
-  TName(_, _) => // A sum-typed field: insert __state under the pair and recurse into the
+  TName{} => // A sum-typed field: insert __state under the pair and recurse into the
   // variant's own generated $eq_n<Name> helper (same convention as a nested
   // product). Recursive ADTs descend the value at runtime — finite, the call
   // (never inline) is what makes a self-referential type well-founded.
@@ -5848,9 +5848,9 @@ fn emit_cmp_for_ty(op, ty) = match ty {
     },
   },
   TRecord(_) => emit_cmp_agg_call(fold_sig(ty), op),
-  TRecordOpen(_, _) => emit_cmp_agg_call(fold_sig(ty), op),
+  TRecordOpen{} => emit_cmp_agg_call(fold_sig(ty), op),
   TTuple(_) => emit_cmp_agg_call(fold_sig(ty), op),
-  TName(_, _) => emit_cmp_agg_call(fold_sig(ty), op),
+  TName{} => emit_cmp_agg_call(fold_sig(ty), op),
   TFloat => emit_binop_repr(op, RF64),
   _ => // Int / Unit / resolved-TVar / nullary-tag / fn-idx / cont-ptr — word compare.
   emit_binop_repr(op, RI32),
@@ -5899,7 +5899,7 @@ fn emit_cmp_sign_test(op) = {
 // compares tags first (sign of the tag difference), then the matched variant's
 // payload fields. One generator, two of the five leaves — divergence unsayable.
 fn emit_one_compare_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy + GraphRead = match fold_strip(ty) {
-  TName(_, _) => emit_one_compare_sum_helper(sig, fold_strip(ty)),
+  TName{} => emit_one_compare_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_cmp_leaf_seq(sig, elem),
   _ => {
     wat_emit("  (func $compare_")
@@ -6083,9 +6083,9 @@ fn emit_field_cmp(fty) = match fty {
     }
   },
   TRecord(_) => emit_field_agg_cmp(fold_sig(fty)),
-  TRecordOpen(_, _) => emit_field_agg_cmp(fold_sig(fty)),
+  TRecordOpen{} => emit_field_agg_cmp(fold_sig(fty)),
   TTuple(_) => emit_field_agg_cmp(fold_sig(fty)),
-  TName(_, _) => emit_field_agg_cmp(fold_sig(fty)),
+  TName{} => emit_field_agg_cmp(fold_sig(fty)),
   TFloat => // f64 sign: gt ⇒ 1, else lt ⇒ -1, else 0 — the word arm's shape at f64
   // width. The select consumes the pair TWICE (lt AND gt), so stash both
   // through the f64 scratch pair and re-reference; the bare-(f64.lt) form
@@ -6129,7 +6129,7 @@ fn emit_field_agg_cmp(sig) = {
 // ARE its product fields). Non-product types have no field set (empty).
 fn product_field_tys(ty) with Memory + Alloc = match fold_strip(ty) {
   TRecord(fields) => field_tys_of(fields, 0, len(fields)),
-  TRecordOpen(fields, _) => field_tys_of(fields, 0, len(fields)),
+  TRecordOpen{fields} => field_tys_of(fields, 0, len(fields)),
   TTuple(elems) => elems,
   _ => [],
 }
@@ -6165,7 +6165,7 @@ fn eq_operand_contrib(left_h, acc) =
 // dispatch sig identical types by invariant.
 fn eq_subtys(ty, seen, acc) = match fold_strip(ty) {
   TRecord(fields) => eq_subtys_fields(fields, 0, len(fields), seen, [ty] ++ acc),
-  TRecordOpen(fields, _) => eq_subtys_fields(fields, 0, len(fields), seen, [ty] ++ acc),
+  TRecordOpen{fields} => eq_subtys_fields(fields, 0, len(fields), seen, [ty] ++ acc),
   TTuple(elems) => eq_subtys_list(elems, 0, len(elems), seen, [ty] ++ acc),
   TList(elem) => // A structural-face list contributes ITSELF (its generated sequence
   // walker) plus its element's closure; word/byte/float faces ride the
@@ -6175,7 +6175,7 @@ fn eq_subtys(ty, seen, acc) = match fold_strip(ty) {
   } else {
     eq_subtys(elem, seen, acc)
   },
-  TName(_, _) => // The seen-set keys by the fold SIG, not by the type's name. The sig IS
+  TName{} => // The seen-set keys by the fold SIG, not by the type's name. The sig IS
   // the helper's identity, so keying by it terminates a recursive ADT
   // exactly as the name did — `Tree(Int)` reaching `Tree(Int)` is one sig —
   // while keeping `Option(Int)` and `Option(Boxed)` the two collections they
@@ -6239,7 +6239,7 @@ fn eq_subtys_variants(specs, i, n, seen, acc) = if i >= n {
 // s-expressions — the value, the field-loads, and the recursive show calls are
 // sub-expressions of the concat tree (correct stack discipline, no interleave).
 fn emit_one_show_helper(sig, ty) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = match fold_strip(ty) {
-  TName(_, _) => emit_one_show_sum_helper(sig, fold_strip(ty)),
+  TName{} => emit_one_show_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_one_show_list_helper(sig, elem),
   _ => emit_one_show_product_helper(sig, ty),
 }
@@ -6279,7 +6279,7 @@ fn emit_one_show_product_helper(sig, ty) with EnvRead + WasmOut + Memory + Alloc
 // parens+positional). Read from the proven node-kind.
 fn ty_is_record(ty) with Pure = match ty {
   TRecord(_) => true,
-  TRecordOpen(_, _) => true,
+  TRecordOpen{} => true,
   _ => false,
 }
 
@@ -6289,7 +6289,7 @@ fn ty_is_record(ty) with Pure = match ty {
 // the names show prints.
 fn show_named_fields(ty) with Memory + Alloc = match ty {
   TRecord(fields) => fields,
-  TRecordOpen(fields, _) => fields,
+  TRecordOpen{fields} => fields,
   TTuple(elems) => name_positional(elems, 0, len(elems)),
   _ => [],
 }
@@ -6341,9 +6341,9 @@ fn emit_show_field_render(off, r, fty) = match fty {
   TFloat => emit_show_call_field("float_to_str", off, r),
   TList(_) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   TRecord(_) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
-  TRecordOpen(_, _) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
+  TRecordOpen{} => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   TTuple(_) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
-  TName(_, _) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
+  TName{} => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   _ => // Int / Unit / resolved-TVar / closure / continuation — render the word.
   emit_show_call_field("int_to_str", off, r),
 }
@@ -6466,9 +6466,9 @@ fn emit_show_variant_payload_render(off, pty) = match pty {
   TFloat => emit_show_call_variant("float_to_str", off, pty),
   TList(_) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TRecord(_) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
-  TRecordOpen(_, _) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
+  TRecordOpen{} => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TTuple(_) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
-  TName(_, _) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
+  TName{} => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   _ => emit_show_call_variant("int_to_str", off, pty),
 }
 
@@ -6554,9 +6554,9 @@ fn emit_show_list_elem_render(elem) = match elem {
   TFloat => emit_show_call_listidx_deref("float_to_str"),
   TList(_) => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TRecord(_) => emit_show_call_listidx("show_{fold_sig(elem)}"),
-  TRecordOpen(_, _) => emit_show_call_listidx("show_{fold_sig(elem)}"),
+  TRecordOpen{} => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TTuple(_) => emit_show_call_listidx("show_{fold_sig(elem)}"),
-  TName(_, _) => emit_show_call_listidx("show_{fold_sig(elem)}"),
+  TName{} => emit_show_call_listidx("show_{fold_sig(elem)}"),
   _ => emit_show_call_listidx("int_to_str"),
 }
 
@@ -6609,7 +6609,7 @@ fn emit_show_concat_close() = wat_emit("    )\n")
 // runtime helper recurses the value).
 fn show_subtys(ty, seen, acc) = match fold_strip(ty) {
   TRecord(fields) => show_subtys_fields(fields, 0, len(fields), seen, [ty] ++ acc),
-  TRecordOpen(fields, _) => show_subtys_fields(fields, 0, len(fields), seen, [ty] ++ acc),
+  TRecordOpen{fields} => show_subtys_fields(fields, 0, len(fields), seen, [ty] ++ acc),
   TTuple(elems) => show_subtys_list(elems, 0, len(elems), seen, [ty] ++ acc),
   TList(TByte) => // text view (§4①): every render surface — the dispatch
   // (spec_is_agg), the product field, the list element, the variant
@@ -6622,7 +6622,7 @@ fn show_subtys(ty, seen, acc) = match fold_strip(ty) {
   // collector reads the same fact the dispatch reads.
   acc,
   TList(elem) => show_subtys(elem, seen, [ty] ++ acc),
-  TName(_, _) => // Keyed by the fold SIG, the helper's own identity — see eq_subtys.
+  TName{} => // Keyed by the fold SIG, the helper's own identity — see eq_subtys.
   if ls_find_str_local(seen, fold_sig(fold_strip(ty)), 0) >= 0 {
     acc
   } else {
@@ -6678,7 +6678,7 @@ fn show_operand_contrib(arg, acc) with LookupTy + Alloc + Memory + EnvRead + WAS
 // variant's payload. The FNV offset basis (2166136261) and prime (16777619)
 // are the SAME str_hash / hash_source share — one hash family, no divergence.
 fn emit_one_hash_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy + GraphRead = match fold_strip(ty) {
-  TName(_, _) => emit_one_hash_sum_helper(sig, fold_strip(ty)),
+  TName{} => emit_one_hash_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_hash_leaf_seq(sig, elem),
   _ => {
     wat_emit("  (func $hash_")
@@ -6792,9 +6792,9 @@ fn emit_field_hash(off, r, fty) = match fty {
     },
   },
   TRecord(_) => emit_field_hash_agg_call(off, fold_sig(fty)),
-  TRecordOpen(_, _) => emit_field_hash_agg_call(off, fold_sig(fty)),
+  TRecordOpen{} => emit_field_hash_agg_call(off, fold_sig(fty)),
   TTuple(_) => emit_field_hash_agg_call(off, fold_sig(fty)),
-  TName(_, _) => emit_field_hash_agg_call(off, fold_sig(fty)),
+  TName{} => emit_field_hash_agg_call(off, fold_sig(fty)),
   TFloat => // Float field: hash the decimal rendering of the loaded f64 (value-faithful).
   {
     wat_emit("(call $str_hash (call $float_to_str (f64.load offset=")
@@ -7238,7 +7238,7 @@ fn pat_always_matches(pat) = match pat {
   LPWild => true,
   LPVar(_) => true,
   LPLit(_) => false,
-  LPCon(_, _, _) => false,
+  LPCon{} => false,
   LPUnresolvedCon(_, _) => false,
   LPList(_, _, _) => false,
   LPTuple(ebs) => tuple_pats_always_match(ebs),
@@ -7339,7 +7339,7 @@ fn emit_pat_predicate_at(pat, path, path_len) = match pat {
       wat_emit(".eq)\n")
     },
   },
-  LPCon(_, tag, pairs) => if len(pairs) == 0 {
+  LPCon{tag, args: pairs} => if len(pairs) == 0 {
     // Nullary constructor IS its sentinel (HB) — direct compare.
     emit_scrut_at(path, path_len)
     wat_emit("    (i32.const ")
@@ -7517,7 +7517,7 @@ fn emit_pat_binds_at(pat, path, path_len, val_repr) = match pat {
   },
   LPWild => (),
   LPLit(_) => (),
-  LPCon(_, _, pairs) => emit_pat_con_subs_binds(ty_of_pairs(pairs), pat_of_pairs(pairs), 0, path, path_len),
+  LPCon{args: pairs} => emit_pat_con_subs_binds(ty_of_pairs(pairs), pat_of_pairs(pairs), 0, path, path_len),
   LPUnresolvedCon(_, sub_pats) => // Dead arm (predicate false) — bind each sub at the scrutinee root, word
   // floor: never executes, always assembles.
   each((p) => emit_pat_binds_at(p, path, path_len, RI32), sub_pats),
@@ -7725,7 +7725,7 @@ fn lowpat_has_binders(pat) = match pat {
   LPVar(_) => true,
   LPWild => false,
   LPLit(_) => false,
-  LPCon(_, _, pairs) => lowpats_have_binders(pat_of_pairs(pairs)),
+  LPCon{args: pairs} => lowpats_have_binders(pat_of_pairs(pairs)),
   LPUnresolvedCon(_, sub_pats) => lowpats_have_binders(sub_pats),
   LPTuple(ebs) => tuple_pats_have_binders(ebs),
   LPRecord(_, fbs, rest) => if any({ (_, sp) => lowpat_has_binders(sp) }, fbs) {

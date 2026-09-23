@@ -1321,7 +1321,19 @@ authored_ref_max: 699
 # was set ~1% over the then-highest min-of-3, and the wheel reached it with
 # a 0.3% heap rise, so this one keeps the same ~1% margin over today's
 # highest. It is a cost the arena's fall owes, not one this landing removes.
-selfcompile_peak_kb_max: 1011000
+#
+# 1,011,000 -> 1,021,000 (2026-09-23, the named-fields sweep's second tier).
+# The heap line is the measurement here, because it is byte-deterministic and
+# the peak is not: HEAD's source and this tree, marched back to back through
+# the same boot, read 529,875,960 -> 530,101,848 bytes (+225,888, 0.04%).
+# The peak's three re-reads of this ONE tree spread 1,019,168 / 1,012,460 /
+# 1,011,300 KB, 7.8MB, against HEAD's single 1,004,500, so the 300KB breach
+# is inside the reading's own spread and not a rise the source caused. Same
+# rule as the two entries above: ~1% over the highest min-of-3. The next
+# ceiling should be on the heap line itself, which cannot be wrong by a
+# coin flip, and the peak kept as the looser sanity bound
+# (`Hβ.tools.cost-ratchet-reads-the-heap-line`).
+selfcompile_peak_kb_max: 1021000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

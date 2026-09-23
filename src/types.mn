@@ -51,24 +51,24 @@ type Ty
   // handle into Graph
   | TVar(Int)
   // nominal type + type args (Bool lives here)
-  | TName(String, [Ty])
+  | TName(name: String, args: [Ty])
   // [(name, Ty)]
   | TRecord([(String, Ty)])
   // fields + row-variable handle
-  | TRecordOpen([(String, Ty)], Int)
+  | TRecordOpen(fields: [(String, Ty)], rest: Int)
   // refinement type (Verify discharges)
-  | TRefined(Ty, Predicate)
+  | TRefined(base: Ty, pred: Predicate)
   // the representation PIN (SYNTAX §"Representation-pinned alias" +
   // the bare-width param `s: f32`): a gradient INPUT wrapping the
   // value type — `type Cents = Int repr i64` widens the word floor,
   // `f32` narrows the float default. Transparent to unification
   // (representation is never identity); repr_of reads it as the
   // authored width.
-  | TReprPin(Repr, Ty)
+  | TReprPin(repr: Repr, inner: Ty)
   // handler continuation R -> S: resume input, answer, cardinality, and the effect-WORLD it was frozen under (the modal-effect lexical-capability set — !E lifted to the TIME axis; a persisted resume under a changed handler-set is a row unification -> E_ResumeWorldMismatch, never a silent memcpy'd miscompile)
-  | TCont(Ty, Ty, ResumeDiscipline, EffRow)
+  | TCont(input: Ty, answer: Ty, discipline: ResumeDiscipline, world: EffRow)
   // RN.1 — authored alias name (e.g. "Port") wrapping resolved type
-  | TAlias(String, Ty)
+  | TAlias(name: String, inner: Ty)
 
 // ─── Representation — the value-representation gradient (STEP 0) ─────
 // Repr is the SHARED READ all four deep axes ride: the cursor's answer
@@ -142,9 +142,9 @@ type EmitSig = ESig([Repr], Repr)
 // gradient-INPUT pins land — no arm fabricates them from the current Ty, so
 // the existing i32/f64 emit paths stay byte-identical (LAW 7).
 fn repr_of(ty) with Pure = match ty {
-  TAlias(_, inner) => repr_of(inner),
-  TRefined(base, _) => repr_of(base),
-  TReprPin(r, _) => // the authored width IS the answer — the pin is the STEP-1
+  TAlias{inner} => repr_of(inner),
+  TRefined{base} => repr_of(base),
+  TReprPin{repr: r} => // the authored width IS the answer — the pin is the STEP-1
   // gradient input this projection's own comment always named
   r,
   TFloat => // inferred default; STEP 1's `repr f32` pin yields RF32
@@ -163,13 +163,13 @@ fn repr_of(ty) with Pure = match ty {
   RI32,
   TVar(_) => // genuinely-unresolved handle — a 32-bit word
   RI32,
-  TName(_, _) => // variant pointer (Bool lives here — a tag is a word)
+  TName{} => // variant pointer (Bool lives here — a tag is a word)
   RI32,
   TRecord(_) => // record pointer
   RI32,
-  TRecordOpen(_, _) => // record pointer
+  TRecordOpen{} => // record pointer
   RI32,
-  TCont(_, _, _, _) => // continuation pointer
+  TCont{} => // continuation pointer
   RI32,
 }
 
@@ -188,9 +188,9 @@ fn repr_of_resolved(ty) with GraphRead = match ty {
     GNode(NBound(inner), _) => repr_of_resolved(inner),
     _ => RI32,
   },
-  TAlias(_, inner) => repr_of_resolved(inner),
-  TRefined(base, _) => repr_of_resolved(base),
-  TReprPin(r, _) => r,
+  TAlias{inner} => repr_of_resolved(inner),
+  TRefined{base} => repr_of_resolved(base),
+  TReprPin{repr: r} => r,
   _ => repr_of(ty),
 }
 
@@ -263,9 +263,9 @@ fn repr_wat(r) with Pure = match r {
 // (= Int) folds as Int; a `Sample` (= Float where ..) folds as Float. The
 // predicate is erased at runtime, so the leaf reads the underlying value.
 fn fold_strip(ty) with Pure = match ty {
-  TAlias(_, inner) => fold_strip(inner),
-  TRefined(base, _) => fold_strip(base),
-  TReprPin(_, base) => // Identity is the base's; the WIDTH rides repr_of's own TReprPin arm
+  TAlias{inner} => fold_strip(inner),
+  TRefined{base} => fold_strip(base),
+  TReprPin{inner: base} => // Identity is the base's; the WIDTH rides repr_of's own TReprPin arm
   // (annotation, not type — §4①). When a wide-int producer lands, band D's
   // fold_sig-reads-repr decision reopens here (a pinned-i64 field must not
   // share the i32 "i" helpers) — today RF64-on-Float is the one live pin
@@ -293,7 +293,7 @@ fn fold_sig(ty) with Memory = match fold_strip(ty) {
   TVar(_) => // unresolved handle — a word
   "i",
   TList(elem) => "l{fold_sig(elem)}",
-  TName(n, args) => // Nominal — the name carries identity, AND the arguments carry the rest of
+  TName{name: n, args} => // Nominal — the name carries identity, AND the arguments carry the rest of
   // it. This arm read `"n{n}"` and dropped `args` until 2026-09-18; its
   // comment said "name carries identity", which is true of a nullary nominal
   // type and false of an applied one. `Option(Int)`, `Option(String)` and
@@ -307,15 +307,15 @@ fn fold_sig(ty) with Memory = match fold_strip(ty) {
   if len(args) == 0 { "n{n}" } else { "n{n}{fold_sig_list(args, 0, len(args))}_" },
   TTuple(elems) => "t{fold_sig_list(elems, 0, len(elems))}_",
   TRecord(fs) => "r{fold_sig_fields(fs, 0, len(fs))}_",
-  TRecordOpen(fs, _) => "r{fold_sig_fields(fs, 0, len(fs))}_",
+  TRecordOpen{fields: fs} => "r{fold_sig_fields(fs, 0, len(fs))}_",
   TFun{} => // closure — folds at the function leaf
   "fn",
-  TCont(_, _, _, _) => // continuation pointer — a word here
+  TCont{} => // continuation pointer — a word here
   // fold_strip already removed TAlias/TRefined; reaching them is impossible.
   "k",
-  TAlias(_, inner) => fold_sig(inner),
-  TRefined(base, _) => fold_sig(base),
-  TReprPin(_, base) => fold_sig(base),
+  TAlias{inner} => fold_sig(inner),
+  TRefined{base} => fold_sig(base),
+  TReprPin{inner: base} => fold_sig(base),
 }
 
 fn fold_sig_list(elems, i, n) with Memory =
@@ -557,7 +557,7 @@ type SchemeKind
   // tag 0
   = FnScheme
   // tag 1
-  | ConstructorScheme(TagId, Int)
+  | ConstructorScheme(tag: TagId, total: Int)
   // (effect_name, providers, resume cardinality — the join over the providing
   // arms' grades). The providers are every arm that handles the op, as (handler
   // decl node, arm body node), drawn at registration. It held the FIRST handler's
@@ -570,7 +570,7 @@ type SchemeKind
   // tag 5 — [op_name: String]  (cache byte 5; byte 4 retired with the dissolved capability)
   | EffectDeclKind([String])
   // tag 6 — (residual_row_handle, config params [the fn-param carrier: name + default ride the TParam, names project via lower_param_names], state fields, arms). Typed payloads: a bare List here erased the element types the consumers prove (the 581a92f class), and the pattern-constraint unification surfaces the conflict as E_TypeMismatch at every destructure.
-  | HandlerKind(Int, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}])
+  | HandlerKind(residual: Int, config: [TParam], state: [{init: Node, name: String}], arms: [{args: [String], body: Node, op_name: String}])
   // tag 7 — parameter binding carries authored ownership at the env edge
   | ParamScheme(Ownership)
   // tag 8 — a named effect row (`type X = A + B`, SYNTAX §«Named effect
@@ -701,7 +701,7 @@ type EffName
   // handle with its bare ENamed, so
   // bare-name membership matches an
   // instance by one word compare.
-  | EParameterized(Int, [EffArg])
+  | EParameterized(name: Int, args: [EffArg])
   // the union identity — `with Pure` IS the
   // empty row, made an ADT variant (drift-3:
   // not a string key). build_declared_row   // drift-audit: ignore — describes the dissolution
@@ -781,7 +781,7 @@ type NodeKind
   // writer KNEW about everything past these fields. It lives in the ROW
   // SORT rather than as a Ty bound onto a row handle — that shortcut was
   // tried and the march broke on it, for the reason this kind exists.
-  | NRecordRowBound([(String, Ty)], RecordRowTail)
+  | NRecordRowBound(fields: [(String, Ty)], tail: RecordRowTail)
   // a record field's PRESENCE, undetermined — the cell a record update mints
   // for each field it writes, because the base may or may not carry it
   // (Rémy's presence variable). It resolves PRESENT by binding a type, like
@@ -885,7 +885,7 @@ type ExecutableBoundary
   // declarations have necessarily completed the op's cardinality join.
   | FanoutBoundary([BoundaryEdge])
   // resume input, answer, continuation, world
-  | PendingContinuationBoundary(Int, Int, Int, EffRow)
+  | PendingContinuationBoundary(input: Int, answer: Int, cont: Int, world: EffRow)
   | ContinuationBoundary(ContinuationEdge)
   // The interpolation's N−1 interior-concat cells, minted ONCE at the
   // judge (the concat-key dossier's settled design): a lower-time
@@ -1174,7 +1174,7 @@ type Caret = Caret(Handle, Reason)
 //
 // See PLAN §2's cursor table and
 // PLAN §2.
-type Cursor = Cursor(Handle, Reason, Float)
+type Cursor = Cursor(handle: Handle, reason: Reason, impact: Float)
 
 // SuggestionKind — exhaustive ADT for the axis of an annotation
 // suggestion. Drift 8 closure: never a string flag; always tagged
@@ -1190,7 +1190,7 @@ type SuggestionKind = SuggestEffectRow | SuggestOwnership | SuggestRefinement | 
 //   annotation  — literal source text to add (e.g., "with Pure")
 //   unlocks     — capability labels unlocked (e.g., ["CMemoize", "CCompileTimeEval"])
 //   reason      — why the suggestion is highest-leverage at the position
-type AnnotationSuggestion = AnnotationSuggestion(SuggestionKind, String, [String], Reason)
+type AnnotationSuggestion = AnnotationSuggestion(kind: SuggestionKind, annotation: String, unlocks: [String], reason: Reason)
 
 // PipeContext — surrounding pipe topology at a position.
 // CursorView.topology reads the context. Reuses existing PipeKind for
@@ -1471,7 +1471,7 @@ type Expr
   | LitBool(Bool)
   | LitUnit
   | VarRef(String)
-  | BinOpExpr(BinOp, Node, Node)
+  | BinOpExpr(op: BinOp, left: Node, right: Node)
   | UnaryOpExpr(UnaryOp, Node)
   | CallExpr(Node, [Node])
   // a `name = value` call argument (SYNTAX.md
@@ -1484,7 +1484,7 @@ type Expr
   // declared param names (one read, both infer + lower
   // see the identical order). The wrapper never reaches
   // infer_expr / lower_expr — it is resolved away first.
-  | LabeledArg(String, Node)
+  | LabeledArg(label: String, value: Node)
   // params, body
   | LambdaExpr([TParam], Node)
   | IfExpr(Node, Node, Node)
@@ -1540,7 +1540,7 @@ type Expr
   | ShowExpr(Node)
   | FieldExpr(Node, String)
   // |> <| ~> <~ (binary by nature; `<|` is input × branch-tuple)
-  | PipeExpr(PipeKind, Node, Node)
+  | PipeExpr(kind: PipeKind, left: Node, right: Node)
   // `><` — the N-ary fanout carrier (the N-ary law, PLAN §11 3.1 /
   // Hβ.parser.pcompose-nary): a `><` chain's branches are PEERS in a
   // LIST, never nested pairs, because the verb's result is a PRODUCT
@@ -1711,13 +1711,13 @@ type Stmt
   // three LetStmt mints, keeping handle numbering unshifted for every
   // unannotated let). Readers include the channel only when it is
   // NTypeAnn — infer's arm and stmt_child_handles both read it so.
-  = LetStmt(Node, Node, Node)
+  = LetStmt(pat: Node, value: Node, ann: Node)
   | FnStmt(name: String, params: [TParam], ret: Node, effs: [(EffName, Bool, EConn)], body: Node)
-  | TypeDefStmt(String, [(String, [TParam], Node)])
+  | TypeDefStmt(name: String, variants: [(String, [TParam], Node)])
   // name, then per variant its name and its fields — a constructor IS a
   // function, so its fields are the parameter list its scheme carries: named
   // when authored so (`Holds(level: Level)`), else named by position (`_0`)
-  | EffectDeclStmt(String, [TParam], [(String, [Ty], Ty, Node)])
+  | EffectDeclStmt(name: String, params: [TParam], ops: [(String, [Ty], Ty, Node)])
   // effect name, instance params, ops (each op is (op_name, param_tys,
   // ret_ty, comment-carrier); ResumeDiscipline is inferred at
   // handler-decl time from each arm body, not declared on the effect
@@ -1726,7 +1726,7 @@ type Stmt
   // same [TParam] product fn params and handler config ride; they
   // register as the effect's env scheme (the instance signature every
   // authored `Sample(44100)` judges against).
-  | HandlerDeclStmt(String, String, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}])
+  | HandlerDeclStmt(name: String, handles: String, config: [TParam], state: [{init: Node, name: String}], arms: [{args: [String], body: Node, op_name: String}])
   // handler name, effect name, config-params, state-fields, arms
   // config: [TParam] — the fn-param carrier (SYNTAX §«Handler
   //   declarations»: the config list IS a parameter product, so
@@ -1743,14 +1743,14 @@ type Stmt
   // config + state extracted at parse time; bound in arm scope at infer + lower
   | ExprStmt(Node)
   | ImportStmt(String)
-  | RefineStmt(String, Ty, Predicate)
+  | RefineStmt(name: String, base: Ty, pred: Predicate)
   // type X = T where P — nominal refinement
-  | AliasStmt(String, Ty)
+  | AliasStmt(name: String, ty: Ty)
   // type X = A + B — a named effect row (SYNTAX §«Named effect rows»):
   // the RHS is the with-clause's own signed-triple grammar, stored
   // verbatim (Hβ.types.named-effect-rows — one grammar, one
   // representation; expansion at build_declared_row, never in Ty)
-  | RowAliasStmt(String, [(EffName, Bool, EConn)])
+  | RowAliasStmt(name: String, terms: [(EffName, Bool, EConn)])
 
 // type X = T — transparent alias (no `where`, RHS a
 // single type-expression, not a record literal, not a
@@ -1915,7 +1915,7 @@ type Divergence
 type Predicate
   = PTrue
   // op over two operand node HANDLES — graph_node_body resolves each Expr live; the AST lives in the graph, the predicate carries the edge
-  | PCompare(BinOp, Int, Int)
+  | PCompare(op: BinOp, left: Int, right: Int)
   | PAnd(Predicate, Predicate)
   | POr(Predicate, Predicate)
   | PNot(Predicate)
@@ -3331,14 +3331,14 @@ fn show_type(ref ty) with GraphRead + !Mutate + Alloc + Memory + Intern = match 
   TTuple(elems) => "({show_list(elems, show_type, ", ")})",
   TFun{params, ret, row} => "({show_list(params, show_tparam, ", ")}) -> {show_type(ret)}{show_row_suffix(row)}",
   TVar(id) => show_handle(id),
-  TName(name, args) => "{name}{show_type_args(args)}",
+  TName{name, args} => "{name}{show_type_args(args)}",
   TRecord(fields) => "\{ {show_list(fields, show_field, ", ")} \}",
-  TRecordOpen(fields, v) => "\{ {show_list(fields, show_field, ", ")} | {show_handle(v)} \}",
-  TRefined(base, pred) => "{show_type(base)} where {show_predicate(pred)}",
-  TCont(input, answer, disc, world) => "Cont({show_type(input)} {show_discipline(disc)} {show_type(answer)}{show_row_suffix(world)})",
-  TAlias(name, _) => // RN.1 — show the alias name (intent), not the resolved type
+  TRecordOpen{fields, rest: v} => "\{ {show_list(fields, show_field, ", ")} | {show_handle(v)} \}",
+  TRefined{base, pred} => "{show_type(base)} where {show_predicate(pred)}",
+  TCont{input, answer, discipline: disc, world} => "Cont({show_type(input)} {show_discipline(disc)} {show_type(answer)}{show_row_suffix(world)})",
+  TAlias{name} => // RN.1 — show the alias name (intent), not the resolved type
   name,
-  TReprPin(r, base) => "{show_type(base)} repr {repr_wat(r)}",
+  TReprPin{repr: r, inner: base} => "{show_type(base)} repr {repr_wat(r)}",
 }
 
 // A residual bind, rendered with WHAT ITS WRITER KNEW. The fields alone
@@ -3361,7 +3361,7 @@ fn show_handle(h) with GraphRead + Memory + Alloc + !Mutate + Intern = {
   match node {
     GNode(NBound(ty), _) => show_type(ty),
     GNode(NRowBound(row), _) => show_effrow(row),
-    GNode(NRecordRowBound(fields, tail), _) => show_record_row_residual(fields, tail),
+    GNode(NRecordRowBound{fields, tail}, _) => show_record_row_residual(fields, tail),
     GNode(NFree(epoch), _) => "t{int_to_str(h)}@e{int_to_str(epoch)}",
     GNode(NRowFree(epoch), _) => "r{int_to_str(h)}@e{int_to_str(epoch)}",
     GNode(NMaybeFree(epoch), _) => "p{int_to_str(h)}@e{int_to_str(epoch)}?",
@@ -3435,7 +3435,7 @@ fn resolve_call_args(cname, args) with EnvRead + GraphRead + Memory + Alloc + Di
 // Unwrap a LabeledArg to its value node; a positional arg passes through.
 fn unwrap_labeled_arg(arg) with Pure = match arg {
   N{body} => match body {
-    NExpr(LabeledArg(_, v)) => v,
+    NExpr(LabeledArg{value: v}) => v,
     _ => arg,
   },
 }
@@ -3462,7 +3462,7 @@ fn place_labeled(params, args, i, slots, cname: String) with GraphRead + Memory 
   match arg {
     N{body, span: sp} => {
       let next = match body {
-        NExpr(LabeledArg(label, v)) => {
+        NExpr(LabeledArg{label, value: v}) => {
           let idx = param_index(params, label, 0)
           if idx < 0 {
             report(EUnknownArgLabel("no parameter named `{label}` on `{cname}`", sp))
@@ -3487,7 +3487,7 @@ fn place_positional(args, cur, slot, slots, n) = if cur >= len(args) {
   let arg = list_index(args, cur)
   match arg {
     N{body, span: aspan} => match body {
-      NExpr(LabeledArg(_, _)) => place_positional(args, cur + 1, slot, slots, n),
+      NExpr(LabeledArg{}) => place_positional(args, cur + 1, slot, slots, n),
       _ => {
         let free = next_free_slot(slots, slot, n)
         if free >= n {
@@ -3642,7 +3642,7 @@ fn show_divergence(d) with GraphRead + Memory + !Mutate + Alloc + Intern = match
 
 fn show_eff_name(ref name) with Intern + Memory + Alloc + GraphRead + !Mutate = match name {
   ENamed(h) => intern_name_of(h),
-  EParameterized(h, args) => "{intern_name_of(h)}({show_list(args, show_eff_arg, ", ")})",
+  EParameterized{name: h, args} => "{intern_name_of(h)}({show_list(args, show_eff_arg, ", ")})",
   EPure => // drift-audit: ignore — variant→surface-label render, not a name key
   // DISPLAY-TOTALITY, not a data-drop. The mentl voice must be TOTAL — it can
   // never crash while REPORTING a diagnostic (a renderer that traps mid-report
@@ -3685,7 +3685,7 @@ fn show_eff_arg(ref arg) with GraphRead + !Mutate + Alloc + Memory + Intern = ma
 
 fn show_predicate(ref pred) with GraphRead + Memory + Alloc = match pred {
   PTrue => "true",
-  PCompare(op, a, b) => "{show_pred_operand(a)} {show_cmp_op(op)} {show_pred_operand(b)}",
+  PCompare{op, left: a, right: b} => "{show_pred_operand(a)} {show_cmp_op(op)} {show_pred_operand(b)}",
   PAnd(a, b) => "{show_predicate(a)} && {show_predicate(b)}",
   POr(a, b) => "{show_predicate(a)} || {show_predicate(b)}",
   PNot(p) => "!{show_predicate(p)}",
@@ -3723,7 +3723,7 @@ fn show_pred_operand(handle) with GraphRead + Alloc + Memory = match graph_node_
   NExpr(UnaryOpExpr(UNot, inner)) => match inner {
     N{handle: ih} => "!{show_pred_operand(ih)}",
   },
-  NExpr(BinOpExpr(op, l, r)) => match l {
+  NExpr(BinOpExpr{op, left: l, right: r}) => match l {
     N{handle: lh} => match r {
       N{handle: rh} => "{show_pred_operand(lh)} {binop_to_str(op)} {show_pred_operand(rh)}",
     },
@@ -3804,13 +3804,13 @@ fn declaring_node(reason) = match reason {
 // the judgment keys its layer index on it, and every roster renders by it.
 fn body_decl_name(body) with Pure = match body {
   NStmt(FnStmt{name}) => name,
-  NStmt(TypeDefStmt(name, _)) => name,
-  NStmt(EffectDeclStmt(name, _, _)) => name,
-  NStmt(HandlerDeclStmt(name, _, _, _, _)) => name,
-  NStmt(RefineStmt(name, _, _)) => name,
-  NStmt(AliasStmt(name, _)) => name,
-  NStmt(RowAliasStmt(name, _)) => name,
-  NStmt(LetStmt(pat, _, _)) => match pat_of(pat) {
+  NStmt(TypeDefStmt{name}) => name,
+  NStmt(EffectDeclStmt{name}) => name,
+  NStmt(HandlerDeclStmt{name}) => name,
+  NStmt(RefineStmt{name}) => name,
+  NStmt(AliasStmt{name}) => name,
+  NStmt(RowAliasStmt{name}) => name,
+  NStmt(LetStmt{pat}) => match pat_of(pat) {
     PVar(name) => name,
     _ => // drift-audit: ignore — the documented no-key contract (a destructured let declares no single name)
     "",
@@ -3920,8 +3920,8 @@ fn show_list_from(ref items, ref render, ref sep, i, n) with !Mutate = if i >= n
 // GraphRead + EnvRead: predicate_flow_label follows PBoolNode handles into graph;
 // TName arm follows the type's env entry to read its predicate.
 fn query_flow_label(ref ty) with GraphRead + Memory + Alloc + EnvRead = match ty {
-  TRefined(base, pred) => flow_label_join(pred |> predicate_flow_label, query_flow_label(base)),
-  TName(name, _) => // Follow the type's env entry to its TypeDecl predicate — graph-native.
+  TRefined{base, pred} => flow_label_join(pred |> predicate_flow_label, query_flow_label(base)),
+  TName{name} => // Follow the type's env entry to its TypeDecl predicate — graph-native.
   // A nominal type with a refinement predicate (e.g. `type SecretKey = Bytes
   // where classified(self)`) carries its IFC classification in that predicate.
   // No string matching: the graph's env entry IS the source of truth.
@@ -3931,8 +3931,8 @@ fn query_flow_label(ref ty) with GraphRead + Memory + Alloc + EnvRead = match ty
     Some(entry) => match entry {
       (scheme, _, _) => match scheme {
         Frozen(_, ty) => match ty {
-          TAlias(_, TRefined(_, pred)) => predicate_flow_label(pred),
-          TRefined(_, pred) => predicate_flow_label(pred),
+          TAlias{inner: TRefined{pred}} => predicate_flow_label(pred),
+          TRefined{pred} => predicate_flow_label(pred),
           _ => // non-refined nominal: Public
           Public,
         },
@@ -3952,13 +3952,13 @@ fn query_flow_label(ref ty) with GraphRead + Memory + Alloc + EnvRead = match ty
   // getpw` on a `-> Secret where classified(self)` source answered
   // Public because this arm read the row alone).
   flow_label_join(query_flow_label(ret), row_flow_label(row)),
-  TAlias(_, inner) => inner |> query_flow_label,
-  TReprPin(_, base) => base |> query_flow_label,
+  TAlias{inner} => inner |> query_flow_label,
+  TReprPin{inner: base} => base |> query_flow_label,
   TList(elem) => elem |> query_flow_label,
   TTuple(elems) => elems |> map(query_flow_label) |> fold(Public, flow_label_join),
   TRecord(fields) => fields |> map({ (_, fty) => query_flow_label(fty) }) |> fold(Public, flow_label_join),
-  TRecordOpen(fields, _) => fields |> map({ (_, fty) => query_flow_label(fty) }) |> fold(Public, flow_label_join),
-  TCont(input, answer, _, _) => flow_label_join(query_flow_label(input), query_flow_label(answer)),
+  TRecordOpen{fields} => fields |> map({ (_, fty) => query_flow_label(fty) }) |> fold(Public, flow_label_join),
+  TCont{input, answer} => flow_label_join(query_flow_label(input), query_flow_label(answer)),
   TInt => Public,
   TFloat => Public,
   TUnit => Public,
@@ -3975,7 +3975,7 @@ fn query_flow_label(ref ty) with GraphRead + Memory + Alloc + EnvRead = match ty
 // H6: exhaustive over all 8 Predicate variants (7 + PFlowLe).
 fn predicate_flow_label(ref pred) with GraphRead + Memory + Alloc = match pred {
   PTrue => Public,
-  PCompare(_, _, _) => // numeric comparison: not a secrecy annotation
+  PCompare{} => // numeric comparison: not a secrecy annotation
   Public,
   PPatternMatch(_, _) => // match-narrowing: not a secrecy signal
   Public,

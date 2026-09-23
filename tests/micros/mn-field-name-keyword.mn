@@ -1,0 +1,14 @@
+// expect: 42
+// A keyword cannot name a field, and saying so is one diagnostic at the word
+// (`effect` is a keyword and cannot name a field). The declaration keeps
+// parsing past it, so the variant, its sibling and `main` are all still
+// there. Before, `effect: String` read as a type, the variant closed early,
+// and two hundred errors about names that were never missing followed.
+type Decl
+  = HandlerDecl(name: String, effect: String)
+  | Other
+
+fn main() = match HandlerDecl("h", "E") {
+  HandlerDecl{name} => len(name) + 41,
+  Other => 0,
+}

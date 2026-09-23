@@ -290,7 +290,7 @@ fn handle_hover(params) with Memory + Alloc + Interact + GraphRead + Intern = {
   let answer = consult(QTypeAt(span))
   match answer {
     AnsSilence => LspHoverResp(None),
-    AnsType(ty, reason) => LspHoverResp(Some(hover_from_type(ty, reason))),
+    AnsType{ty, reason} => LspHoverResp(Some(hover_from_type(ty, reason))),
     AnsRow(row, reason) => LspHoverResp(Some(hover_from_row(row, reason))),
     AnsReason(reason) => LspHoverResp(Some(hover_from_reason(reason))),
     AnsRefs(_, _) => LspHoverResp(None),
@@ -310,7 +310,7 @@ fn handle_completion(params) with Interact + Alloc + Memory = {
   focus(TargetSpan(span))
   match propose(TargetSpan(span)) {
     Silence => LspCompletionResp([]),
-    VoiceLine(_, _, slots, _) => LspCompletionResp(completion_items_from_slots(slots)),
+    VoiceLine{slots} => LspCompletionResp(completion_items_from_slots(slots)),
   }
 }
 
@@ -326,7 +326,7 @@ fn handle_code_action(params) with Interact + Alloc + Memory = {
   focus(TargetSpan(span))
   match propose(TargetSpan(span)) {
     Silence => LspCodeActionResp([]),
-    VoiceLine(_, _, slots, _) => LspCodeActionResp(code_actions_from_slots(slots)),
+    VoiceLine{slots} => LspCodeActionResp(code_actions_from_slots(slots)),
   }
 }
 
@@ -340,7 +340,7 @@ fn handle_diagnostic(params) with Memory + Alloc + Interact + GraphRead + Intern
   match consult(QVerifyDebt) {
     AnsDebt(debt, _) => LspDiagnosticResp(diagnostics_from_debt_lsp(debt, uri)),
     AnsSilence => LspDiagnosticResp([]),
-    AnsType(_, _) => LspDiagnosticResp([]),
+    AnsType{} => LspDiagnosticResp([]),
     AnsRow(_, _) => LspDiagnosticResp([]),
     AnsReason(_) => LspDiagnosticResp([]),
     AnsRefs(_, _) => LspDiagnosticResp([]),
@@ -384,7 +384,7 @@ fn handle_references(params) with Memory + Alloc + Interact + GraphRead + !Mutat
     Some(name) => match consult(QRefsOf(name)) {
       AnsRefs(spans, _) => LspReferencesResp(spans_to_locations(spans, uri)),
       AnsSilence => LspReferencesResp([]),
-      AnsType(_, _) => LspReferencesResp([]),
+      AnsType{} => LspReferencesResp([]),
       AnsRow(_, _) => LspReferencesResp([]),
       AnsReason(_) => LspReferencesResp([]),
       AnsDebt(_, _) => LspReferencesResp([]),

@@ -1151,7 +1151,7 @@ fn occurs_in_seen(spine, mint_bound, handle, ty, seen) with !Mutate = match ty {
       let marked = seen_mark(seen, root)
       match chase_node(spine, mint_bound, root, 0) {
         GNode(NBound(inner), _) => occurs_in_seen(spine, mint_bound, handle, inner, marked),
-        GNode(NRecordRowBound(fields, _), _) => occurs_in_fields_seen(spine, mint_bound, handle, fields, marked),
+        GNode(NRecordRowBound{fields}, _) => occurs_in_fields_seen(spine, mint_bound, handle, fields, marked),
         _ => (false, marked),
       }
     }
@@ -1165,22 +1165,22 @@ fn occurs_in_seen(spine, mint_bound, handle, ty, seen) with !Mutate = match ty {
       (false, s2) => occurs_in_row_seen(spine, mint_bound, handle, eff, s2),
     },
   },
-  TName(_, args) => occurs_in_list_seen(spine, mint_bound, handle, args, seen),
+  TName{args} => occurs_in_list_seen(spine, mint_bound, handle, args, seen),
   TRecord(fields) => occurs_in_fields_seen(spine, mint_bound, handle, fields, seen),
-  TRecordOpen(fields, v) => match occurs_in_fields_seen(spine, mint_bound, handle, fields, seen) {
+  TRecordOpen{fields, rest: v} => match occurs_in_fields_seen(spine, mint_bound, handle, fields, seen) {
     (true, s1) => (true, s1),
     (false, s1) => occurs_in_record_row_seen(spine, mint_bound, handle, v, s1),
   },
-  TRefined(base, _) => occurs_in_seen(spine, mint_bound, handle, base, seen),
-  TCont(input, answer, _, world) => match occurs_in_seen(spine, mint_bound, handle, input, seen) {
+  TRefined{base} => occurs_in_seen(spine, mint_bound, handle, base, seen),
+  TCont{input, answer, world} => match occurs_in_seen(spine, mint_bound, handle, input, seen) {
     (true, s1) => (true, s1),
     (false, s1) => match occurs_in_seen(spine, mint_bound, handle, answer, s1) {
       (true, s2) => (true, s2),
       (false, s2) => occurs_in_row_seen(spine, mint_bound, handle, world, s2),
     },
   },
-  TAlias(_, inner) => occurs_in_seen(spine, mint_bound, handle, inner, seen),
-  TReprPin(_, base) => occurs_in_seen(spine, mint_bound, handle, base, seen),
+  TAlias{inner} => occurs_in_seen(spine, mint_bound, handle, inner, seen),
+  TReprPin{inner: base} => occurs_in_seen(spine, mint_bound, handle, base, seen),
 }
 
 fn occurs_in_params_seen(spine, mint_bound, handle, params, seen) with !Mutate = {
@@ -1317,7 +1317,7 @@ fn occurs_in_record_row_seen(spine, mint_bound, handle, v, seen) with !Mutate = 
   } else {
     let marked = seen_mark(seen, vroot)
     match chase_node(spine, mint_bound, vroot, 0) {
-      GNode(NRecordRowBound(rest, tail), _) => match occurs_in_fields_seen(spine, mint_bound, handle, rest, marked) {
+      GNode(NRecordRowBound{fields: rest, tail}, _) => match occurs_in_fields_seen(spine, mint_bound, handle, rest, marked) {
         (true, s1) => (true, s1),
         (false, s1) => match tail {
           RowContinues(next) => occurs_in_record_row_seen(spine, mint_bound, handle, next, s1),
@@ -1346,7 +1346,7 @@ fn occurs_in_eff_names_loop(spine, mint_bound, handle, names, i, n, seen) with !
   let step = match list_index(names, i) {
     ENamed(_) => (false, seen),
     EPure => (false, seen),
-    EParameterized(_, args) => occurs_in_eff_args_seen(spine, mint_bound, handle, args, seen),
+    EParameterized{args} => occurs_in_eff_args_seen(spine, mint_bound, handle, args, seen),
   }
   match step {
     (true, s1) => (true, s1),
@@ -1793,8 +1793,8 @@ fn spec_record_row(known, v, pairs) with GraphRead + Memory + Alloc = {
     Some(TRecord(rem)) => TRecord(field_canonicalize(fields_present(known ++ rem))),
     Some(other) => other,
     None => match graph_chase(r) {
-      GNode(NRecordRowBound(more, RowContinues(next)), _) => spec_record_row(known ++ map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, more), next, pairs),
-      GNode(NRecordRowBound(more, RowClosed(_)), _) => TRecord(field_canonicalize(fields_present(known ++ map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, more)))),
+      GNode(NRecordRowBound{fields: more, tail: RowContinues(next)}, _) => spec_record_row(known ++ map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, more), next, pairs),
+      GNode(NRecordRowBound{fields: more, tail: RowClosed(_)}, _) => TRecord(field_canonicalize(fields_present(known ++ map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, more)))),
       _ => mk_record_open(known, v),
     },
   }
@@ -1824,7 +1824,7 @@ fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
       NErrorHole(_) => spec_pair_or_var(u, pairs),
       NRowBound(_) => // an EFFECT row — not in the pair space, which keys value shapes
       t,
-      NRecordRowBound(_, _) => // A RECORD row var is a quantified var like any other, and the site that
+      NRecordRowBound{} => // A RECORD row var is a quantified var like any other, and the site that
       // closed it proved the whole field set. Returning it verbatim left the
       // substitution unable to answer for the one var whose binding decides
       // every field offset, so the TRecordOpen arm below had to work around it
@@ -1843,9 +1843,9 @@ fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
     spec_subst_pairs(r, pairs),
     eff
   ),
-  TName(n, args) => TName(n, map((x) => spec_subst_pairs(x, pairs), args)),
+  TName{name: n, args} => TName(n, map((x) => spec_subst_pairs(x, pairs), args)),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs)),
-  TRecordOpen(fs, v) => // A row var is a var, and the site that closed it proved the WHOLE field
+  TRecordOpen{fields: fs, rest: v} => // A row var is a var, and the site that closed it proved the WHOLE field
   // set. Substituting the known fields' types while keeping `v` verbatim
   // discarded that proof, and the discard is what the wrong-slot class was
   // made of: the receiver stayed open in the twin, so the offset came from
@@ -1858,9 +1858,9 @@ fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
   // also had; an update's result knows a field its base may lack, and the
   // whole-record pairing dropped it.
   spec_record_row(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs), v, pairs),
-  TRefined(b, p) => TRefined(spec_subst_pairs(b, pairs), p),
-  TAlias(n, i) => TAlias(n, spec_subst_pairs(i, pairs)),
-  TCont(i, a, d, w) => TCont(spec_subst_pairs(i, pairs), spec_subst_pairs(a, pairs), d, w),
+  TRefined{base: b, pred: p} => TRefined(spec_subst_pairs(b, pairs), p),
+  TAlias{name: n, inner: i} => TAlias(n, spec_subst_pairs(i, pairs)),
+  TCont{input: i, answer: a, discipline: d, world: w} => TCont(spec_subst_pairs(i, pairs), spec_subst_pairs(a, pairs), d, w),
   _ => t,
 }
 
@@ -1891,7 +1891,7 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
         NAbsent => resume(TVar(h)),
         NErrorHole(_) => resume(spec_pair_or_var(h, spec_pairs)),
         NRowBound(_) => resume(TUnit),
-        NRecordRowBound(_, _) => resume(TUnit),
+        NRecordRowBound{} => resume(TUnit),
         NRowFree(_) => resume(TUnit),
       }
     } else {
@@ -1927,7 +1927,7 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
         resume(TVar(h)),
         NAbsent => resume(TVar(h)),
         NRowBound(_) => resume(TUnit),
-        NRecordRowBound(_, _) => resume(TUnit),
+        NRecordRowBound{} => resume(TUnit),
         NRowFree(_) => resume(TUnit),
       }
     },

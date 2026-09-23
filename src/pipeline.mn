@@ -431,7 +431,7 @@ fn absorb_scan(ref bindings, i, n, ename: String, own acc) = if i >= n {
   match list_index(bindings, i) {
     (hname, _, _, kind) => {
       let hit = match kind {
-        HandlerKind(_, _, _, arms) => handler_arms_touch(arms, 0, len(arms), ename),
+        HandlerKind{arms} => handler_arms_touch(arms, 0, len(arms), ename),
         _ => false,
       }
       // The flat env carries a handler at several layers (pre_register + the
@@ -903,7 +903,7 @@ fn render_gradient_line(name: String, result) = "{name}: {render_gradient_result
 fn render_gradient_result(result) = match result {
   None => "(no next-step annotation suggested)",
   Some(suggestion) => match suggestion {
-    AnnotationSuggestion(_kind, ann_text, unlocks, _reason) => "→ add {ann_text} to unlock {join_unlock_labels(unlocks)}",
+    AnnotationSuggestion{annotation: ann_text, unlocks} => "→ add {ann_text} to unlock {join_unlock_labels(unlocks)}",
   },
 }
 

@@ -37,20 +37,27 @@ import query
 // report, and a bound with no shape is the text file this replaces.
 type Bound = {ceiling: Int, shape: CensusShape}
 
-// What the medium found when it looked: the SITES, not a count of them.
+// Where a bound's count stands against its ceiling.
 //
-// This arm carried an `Int` for one day and the Int was a COPY — `census_sites`
-// returns the located list and the count is `len` of it, so storing the number
-// beside the list it came from is the Carried-Truth violation this module was
-// written to end, committed inside the module that ends it. The list rides both
-// arms because a board that only speaks when it fails cannot show a countdown
-// moving, and the falling number is the whole reason these lines exist.
+// SLACK IS A STANDING OF ITS OWN (2026-09-23). "The ceiling follows the count
+// down" was prose here for weeks, and the day the board was read whole four
+// ceilings sat above their counts — 236 over 216, 467 over 462, 65 over 61,
+// 9 over 7 — each licensing that many new sites nobody would see. A ceiling
+// above its count is a ratchet that has stopped ratcheting, so it refuses like
+// a breach does, and the fix is one number the line names.
+type Standing = Within | Over | Slack
+
+// One bound read: the bound, what the medium found when it looked — the SITES,
+// not a count of them — and where their count stands.
 //
-// It is also what lets a breach say WHICH — a bound that reports "367, was 365"
-// tells the developer a number rose; a bound that names its sites tells them
-// where to look, from a list the walk already built and the verb used to throw
-// away.
-type Standing = Within([Int]) | Over([Int])
+// The count is `len` of the sites and is never stored beside them: a reading
+// carried an `Int` for one day and the Int was a COPY of the list's length,
+// the Carried-Truth violation this module was written to end, committed inside
+// the module that ends it. The sites ride every reading because a board that
+// only speaks when it fails cannot show a countdown moving, and they are what
+// lets a breach say WHICH — "367, was 365" tells the developer a number rose;
+// the sites tell them where to look, from a list the walk already built.
+type Reading = Reading(bound: Bound, sites: [Int], standing: Standing)
 
 // The roster, complete by construction: a shape absent here is not measured,
 // which is visible, where a shape measured against a missing bound would be
@@ -90,7 +97,10 @@ fn board_bounds() with Memory + Alloc = [
   // own subject for a full landing before anyone read the WITHIN line — which
   // is the argument for a board that reports the counts it is inside, not
   // only the ones it is over.
-  Bound({ceiling: 236, shape: CsEffectfulLambda}),
+  //
+  // 216 — and it had sat twenty above its count again, the same slack the
+  // paragraph above names, until the board was read whole on 2026-09-23.
+  Bound({ceiling: 216, shape: CsEffectfulLambda}),
   // A record pattern whose receiver row never closes reads a field offset
   // the graph cannot prove. `T_FieldOffsetUnprovable` reports that class at
   // the receiver now; this line retires when that diagnostic arms.
@@ -106,8 +116,9 @@ fn board_bounds() with Memory + Alloc = [
   // Drift mode 10 — the nine survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
-  // is exactly why the bound is a count and not zero.
-  Bound({ceiling: 9, shape: CsWildcardZero}),
+  // is exactly why the bound is a count and not zero. Seven stand
+  // (2026-09-23); the ceiling follows them.
+  Bound({ceiling: 7, shape: CsWildcardZero}),
   // Drift mode 13 — a bug is zero or it is blocking; a masked failure is the
   // surrender-fallback Anchor 2 deletes rather than wraps.
   Bound({ceiling: 0, shape: CsFailureMask}),
@@ -123,8 +134,9 @@ fn board_bounds() with Memory + Alloc = [
   // fabricated absence over a load-bearing ADT, found where it had hidden
   // that a `let`, a refinement and an alias declare names (so an import
   // used only for one of them read as dead). Forty-four such arms stood the
-  // day the roster grew; each retires by enumeration.
-  Bound({ceiling: 65, shape: CsWildcardFabricates}),
+  // day the roster grew; each retires by enumeration. Sixty-one stand
+  // (2026-09-23); the ceiling follows them.
+  Bound({ceiling: 61, shape: CsWildcardFabricates}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -302,11 +314,15 @@ fn board_bounds() with Memory + Alloc = [
   // to `lower_body_reified` where it held one. Same defect, same counting
   // rule; no row among them is authored.
   //
+  // 1,139 — two fewer, the first fall on this line that no grounding caused:
+  // the board's own line render stopped spelling the count and the label once
+  // per standing and renders them once for all three (`board_line`).
+  //
   // None of these is the probe's 856, which counted chase EVENTS inside one
   // lower run. Four instruments, four denominators, one fact; recording all
   // of them is how the next reader avoids reconciling numbers that were
   // never the same.
-  Bound({ceiling: 1141, shape: CsFreeRowCallee}),
+  Bound({ceiling: 1139, shape: CsFreeRowCallee}),
   // 480 — the imperative loop in recursion's costume, counted across the
   // whole wheel and bounded for the first time 2026-09-21 (Morgan: "anytime
   // there is anything that could be written with the five topological
@@ -322,7 +338,11 @@ fn board_bounds() with Memory + Alloc = [
   // 467 — three index walks in the formatter's pattern and config renders
   // became `map`/`join` stages when the pattern render learned named fields
   // (2026-09-23). The ceiling follows the count down.
-  Bound({ceiling: 467, shape: CsIterationCostume}),
+  //
+  // 462 — the count had already fallen to it and the ceiling had not
+  // followed, which licenses five future loops nobody would see. Caught the
+  // same day by reading the board whole.
+  Bound({ceiling: 462, shape: CsIterationCostume}),
   // 136 — a gate told to look away, counted on the comments column. Each
   // marker is a bash pattern left imprecise (the control-keyword rule inside
   // a Reason string, the accumulator rule on a bounded stack push); the
@@ -345,7 +365,12 @@ fn board_bounds() with Memory + Alloc = [
   // `TParam` and coverage's `SCon`, then an fmt sweep, took 738 to 391 with
   // no pattern written by hand. The tuples are the largest remainder, and
   // their form is a record, not a name on a position.
-  Bound({ceiling: 391, shape: CsWildcardDestructure})
+  //
+  // 219 — the second tier, the same day: `TName`, `TRecordOpen`, `TCont`,
+  // `HandlerDeclStmt`, `LetStmt`, `HandlerKind`, `Cursor`, `LFn`,
+  // `ScheduledBoundary` and twenty more named, then one sweep. What is left
+  // is 158 tuples and 61 constructors with two sites or fewer apiece.
+  Bound({ceiling: 219, shape: CsWildcardDestructure})
 ]
 
 // The board: every bound answered by one live walk.
@@ -360,23 +385,44 @@ fn board_read() with GraphRead + !Mutate + Alloc + Memory = board_bounds() |> ma
 fn bound_standing(b) with GraphRead + !Mutate + Alloc + Memory = match b {
   Bound(r) => {
     let sites = census_sites(r.shape)
-    (b, if len(sites) > r.ceiling { Over(sites) } else { Within(sites) })
+    let n = len(sites)
+    Reading(b, sites, if n > r.ceiling { Over } else if n < r.ceiling { Slack } else { Within })
   },
 }
 
-// One line, in the medium's voice: the shape, what it found, and — when the
-// bound is breached — the fact that a count rose rather than a rule fired,
-// which is the honest description of what a ratchet knows.
-fn board_line(entry) with GraphRead + !Mutate + Memory + Alloc + Intern = match entry {
-  (b, standing) => match b {
-    Bound(r) => match standing {
-      Within(sites) => "  · {int_to_str(len(sites))} {census_label(r.shape)} — within {int_to_str(r.ceiling)}\n",
-      Over(sites) => // A breach names WHERE, because the number alone is the one thing the
-      // developer cannot act on. The sites come from the same walk that
-      // decided the breach — one read, no second question.
-      "  ✗ {int_to_str(len(sites))} {census_label(r.shape)} — ROSE past {int_to_str(r.ceiling)}\n{board_sites(sites)}",
-    },
-  },
+// One line, in the medium's voice: the shape, what it found, and where the
+// count stands against its bound. The count and the label render once; the
+// standing supplies only its words, because they are the one part that
+// differs — a rise and a fall are both "the number moved", said two ways.
+fn board_line(reading) with GraphRead + !Mutate + Memory + Alloc + Intern = match reading {
+  Reading{bound: Bound(r), sites, standing} => "  {standing_mark(standing)} {int_to_str(len(sites))} {census_label(r.shape)} — {standing_words(standing)} {int_to_str(r.ceiling)}{standing_hint(standing)}\n{breach_sites(standing, sites)}",
+}
+
+fn standing_mark(standing) with Pure = match standing {
+  Within => "·",
+  Over => "✗",
+  Slack => "✗",
+}
+
+fn standing_words(standing) with Pure = match standing {
+  Within => "within",
+  Over => "ROSE past",
+  Slack => "FELL below",
+}
+
+fn standing_hint(standing) with Pure = match standing {
+  Slack => " — lower the ceiling to the count",
+  Within => "",
+  Over => "",
+}
+
+// A breach names WHERE, because the number alone is the one thing the
+// developer cannot act on. The sites come from the same walk that decided it —
+// one read, no second question. A fall needs no list: its fix is the number.
+fn breach_sites(standing, sites) with GraphRead + !Mutate + Memory + Alloc + Intern = match standing {
+  Over => board_sites(sites),
+  Within => "",
+  Slack => "",
 }
 
 fn board_sites(sites) with GraphRead + !Mutate + Memory + Alloc + Intern =
@@ -385,9 +431,8 @@ fn board_sites(sites) with GraphRead + !Mutate + Memory + Alloc + Intern =
 fn board_site_line(h) with GraphRead + !Mutate + Memory + Alloc + Intern =
   "      {site_address(h)}\n"
 
-fn board_breached(entry) with Pure = match entry {
-  (_b, standing) => match standing {
-    Within(_) => false,
-    Over(_) => true,
-  },
+fn board_breached(reading) with Pure = match reading {
+  Reading{standing: Within} => false,
+  Reading{standing: Over} => true,
+  Reading{standing: Slack} => true,
 }

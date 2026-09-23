@@ -190,7 +190,7 @@ handler synth_default {
 // candidates whose tentative apply doesn't unify under the
 // allowed_effects row.
 fn enumerate_typed(target_ty, allowed_effects, context) with EnvRead + Memory + Alloc + GraphRead + WASI + GraphWrite + LookupTy = match target_ty {
-  TName(name, args) => enumerate_constructors(name, args, context),
+  TName{name, args} => enumerate_constructors(name, args, context),
   TFun{params, ret, row} => enumerate_lambdas(params, ret, row, context),
   TInt => enumerate_int_literals(context),
   TByte => enumerate_int_literals(context),
@@ -198,8 +198,8 @@ fn enumerate_typed(target_ty, allowed_effects, context) with EnvRead + Memory + 
   TUnit => one_unit_candidate(context),
   TVar(_) => one_hole_candidate(context),
   TRecord(fields) => enumerate_records(fields, context),
-  TRecordOpen(fields, rest) => enumerate_records(fields, context),
-  TRefined(_, _) => // The refinement is the strongest thing known about the hole, and this arm
+  TRecordOpen{fields, rest} => enumerate_records(fields, context),
+  TRefined{} => // The refinement is the strongest thing known about the hole, and this arm
   // used to recurse on the BASE and drop it — the predicate sitting one field
   // away while three integer seeds were minted for a type that admits one.
   // The DOMAIN is that predicate read as inhabitants (verify.mn), so the seeds
@@ -207,9 +207,9 @@ fn enumerate_typed(target_ty, allowed_effects, context) with EnvRead + Memory + 
   // gate stays: a domain over-approximates by contract, so it decides what to
   // build and `refinement_admits` still decides what survives.
   enumerate_domain(target_ty, allowed_effects, context),
-  TAlias(_, inner) => enumerate_typed(inner, allowed_effects, context),
-  TReprPin(_, base) => enumerate_typed(base, allowed_effects, context),
-  TCont(_, _, _, _) => one_continuation_candidate(context),
+  TAlias{inner} => enumerate_typed(inner, allowed_effects, context),
+  TReprPin{inner: base} => enumerate_typed(base, allowed_effects, context),
+  TCont{} => one_continuation_candidate(context),
   TList(elem) => // A byte-element list IS String (the canonical alias's inner) — a
   // String-typed hole proposes string literals, never list literals.
   match seq_elem_face(elem) {
@@ -242,7 +242,7 @@ fn concat_candidates(a: [EnrichedCandidate], b: [EnrichedCandidate]) -> [Enriche
 // (Hβ.synth.vocabulary-arg-holes); the reach walk's O(1) form is the
 // call-edge index (Hβ.synth.vocabulary-reach-index).
 fn enumerate_vocabulary_calls(target_ty, allowed_row, context) with GraphRead + WASI + GraphWrite + Intern + Alloc + Memory + !Mutate = match context {
-  Context(scope_bindings, _active, enclosing, _hole_h) => fold(
+  Context{scope: scope_bindings, enclosing} => fold(
     ([], []),
     (acc, entry) => match acc {
       (accepted, rejected) => match entry {
@@ -293,12 +293,12 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context) with GraphRead + 
 // name-equality rule refused it outright.
 fn heads_may_unify(a, b) with Pure = match a {
   TVar(_) => true,
-  TAlias(_, inner) => heads_may_unify(inner, b),
-  TRefined(inner, _) => heads_may_unify(inner, b),
+  TAlias{inner} => heads_may_unify(inner, b),
+  TRefined{base: inner} => heads_may_unify(inner, b),
   _ => match b {
     TVar(_) => true,
-    TAlias(_, inner) => heads_may_unify(a, inner),
-    TRefined(inner, _) => heads_may_unify(a, inner),
+    TAlias{inner} => heads_may_unify(a, inner),
+    TRefined{base: inner} => heads_may_unify(a, inner),
     _ => same_head(a, b),
   },
 }
@@ -308,8 +308,8 @@ fn same_head(a, b) with Pure = match a {
     TList(_) => true,
     _ => false,
   },
-  TName(an, _) => match b {
-    TName(bn, _) => an == bn,
+  TName{name: an} => match b {
+    TName{name: bn} => an == bn,
     _ => false,
   },
   TFun{} => match b {
@@ -399,7 +399,7 @@ fn rank_of(c, hole_span) with GraphRead + EnvRead + !Mutate + Alloc + Memory = m
 }
 
 fn context_hole_handle(context) with Pure = match context {
-  Context(_, _, _, hole_h) => hole_h,
+  Context{hole: hole_h} => hole_h,
 }
 
 // The hole's span and the hole's type are both READS of its handle, never
@@ -1089,7 +1089,7 @@ fn candidate_row(context, node) = match callee_name_of(node) {
 // O(1) law's standing debt with every other env read (`Hβ.perf.env-o1-index`,
 // `Hβ.perf.name-is-handle`); it runs once per survivor of a tie.
 fn scope_row_of(name: String, context) = match context {
-  Context(scope_bindings, _, _, _) => match find(binding_is_named(name), scope_bindings) {
+  Context{scope: scope_bindings} => match find(binding_is_named(name), scope_bindings) {
     Some(entry) => match entry {
       (_, scheme, _, _) => extract_row(judgment_ty(scheme)),
     },

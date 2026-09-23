@@ -63,7 +63,7 @@ fn predicate_decide(ref pred) with GraphRead + Memory + Alloc = predicate_decide
 // so `self` is undecidable). PWithSelf(sh, inner) rebinds it over inner.
 fn predicate_decide_at(ref pred, self_h) with GraphRead + Memory + Alloc = match pred {
   PTrue => Some(true),
-  PCompare(op, l, r) => compare_decide_at(op, l, r, self_h),
+  PCompare{op, left: l, right: r} => compare_decide_at(op, l, r, self_h),
   PAnd(a, b) => and_decide(predicate_decide_at(a, self_h), predicate_decide_at(b, self_h)),
   POr(a, b) => or_decide(predicate_decide_at(a, self_h), predicate_decide_at(b, self_h)),
   PNot(inner) => not_decide(predicate_decide_at(inner, self_h)),
@@ -118,7 +118,7 @@ fn node_const_at(handle, self_h) with GraphRead + Memory + Alloc = match graph_n
   NExpr(LitString(s)) => Some(LVString(s)),
   NExpr(LitBool(b)) => Some(LVBool(b)),
   NExpr(VarRef(name)) => resolve_self_operand(name, self_h),
-  NExpr(BinOpExpr(op, l, r)) => match l {
+  NExpr(BinOpExpr{op, left: l, right: r}) => match l {
     N{handle: lh} => match r {
       N{handle: rh} => litval_arith_opt(op, node_const_at(lh, self_h), node_const_at(rh, self_h)),
     },
@@ -165,7 +165,7 @@ fn node_lo_tr(handle, self_h) with GraphRead + Memory + Alloc = match graph_node
   NExpr(IfExpr(_, t, e)) => lo_join(node_lo_tr(node_handle(t), self_h), node_lo_tr(node_handle(e), self_h)),
   NExpr(MatchExpr(_, arms)) => arms_lo(arms, self_h, 0, None),
   NExpr(BlockExpr(_, final_expr)) => node_lo_tr(node_handle(final_expr), self_h),
-  NExpr(BinOpExpr(op, l, r)) => match op {
+  NExpr(BinOpExpr{op, left: l, right: r}) => match op {
     BAdd => lo_add(node_lo_op(node_handle(l), self_h), node_lo_op(node_handle(r), self_h)),
     _ => None,
   },
@@ -177,7 +177,7 @@ fn node_lo_tr(handle, self_h) with GraphRead + Memory + Alloc = match graph_node
 // its chased type is its OWN producer's fact and reads soundly.
 fn node_lo_op(handle, self_h) with GraphRead + Memory + Alloc = match graph_node_body(handle) {
   NExpr(LitInt(n)) => Some(n),
-  NExpr(BinOpExpr(op, l, r)) => match op {
+  NExpr(BinOpExpr{op, left: l, right: r}) => match op {
     BAdd => lo_add(node_lo_op(node_handle(l), self_h), node_lo_op(node_handle(r), self_h)),
     _ => ty_lo_at(handle),
   },
@@ -249,9 +249,9 @@ fn ty_lo_at(handle) with GraphRead + Memory + Alloc = match graph_chase(handle) 
 }
 
 fn ty_lo(ty) with GraphRead + Memory + Alloc = match ty {
-  TAlias(_, inner) => ty_lo(inner),
-  TRefined(base, pred) => lo_best(ty_lo(base), domain_lo(pred_domain(pred))),
-  TReprPin(_, base) => // A width pin narrows representation, never value bounds.
+  TAlias{inner} => ty_lo(inner),
+  TRefined{base, pred} => lo_best(ty_lo(base), domain_lo(pred_domain(pred))),
+  TReprPin{inner: base} => // A width pin narrows representation, never value bounds.
   ty_lo(base),
   TVar(h) => // A type-slot VAR carries the handle; the bound is the CELL's live
   // fact, one chase away (Carried-Truth). The decl's own TFun carries
@@ -275,9 +275,9 @@ fn lo_best(ea, eb) with Memory + Alloc = bound_meet(int_max, ea, eb)
 // a refinement meets its base with its predicate's reading, a width pin
 // narrows representation and never values, and a var reads the cell live.
 fn ty_domain(ty) with GraphRead + Memory + Alloc = match ty {
-  TAlias(_, inner) => ty_domain(inner),
-  TRefined(base, pred) => domain_meet(ty_domain(base), pred_domain(pred)),
-  TReprPin(_, base) => ty_domain(base),
+  TAlias{inner} => ty_domain(inner),
+  TRefined{base, pred} => domain_meet(ty_domain(base), pred_domain(pred)),
+  TReprPin{inner: base} => ty_domain(base),
   TVar(h) => ty_domain_at(h),
   _ => dom_top(),
 }
@@ -302,7 +302,7 @@ fn ty_domain_at(handle) with GraphRead + Memory + Alloc = match graph_chase(hand
 // decide what to construct from it, never what to admit.
 fn pred_domain(pred) with GraphRead + Memory + Alloc = match pred {
   PTrue => dom_top(),
-  PCompare(op, lh, rh) => compare_domain(op, lh, rh),
+  PCompare{op, left: lh, right: rh} => compare_domain(op, lh, rh),
   PAnd(a, b) => domain_meet(pred_domain(a), pred_domain(b)),
   POr(a, b) => domain_join(pred_domain(a), pred_domain(b)),
   PNot(_) => // The complement of a range is two rays, which DRange cannot hold; the
@@ -520,7 +520,7 @@ fn subst_self(pred, value_handle) with Memory + Alloc = PWithSelf(value_handle, 
 // exists to refuse. Transparent aliases recurse; an unrefined target
 // admits by type alone.
 fn refinement_admits(ty, value_handle) with GraphRead + Memory + Alloc = match ty {
-  TAlias(aname, inner) => // A candidate whose INFERRED type is the SAME refined alias is admitted
+  TAlias{name: aname, inner} => // A candidate whose INFERRED type is the SAME refined alias is admitted
   // by TYPED IDENTITY — which proves the callee's DECLARATION, never its
   // discharge. The layering is deliberate, each proof question at its one
   // home: the callee's return obligation lives in the ledger AT ITS decl
@@ -535,7 +535,7 @@ fn refinement_admits(ty, value_handle) with GraphRead + Memory + Alloc = match t
   } else {
     refinement_admits(inner, value_handle)
   },
-  TRefined(base, pred) => refinement_admits(base, value_handle) && match predicate_decide(subst_self(pred, value_handle)) {
+  TRefined{base, pred} => refinement_admits(base, value_handle) && match predicate_decide(subst_self(pred, value_handle)) {
     Some(decided) => decided,
     None => false,
   },
@@ -551,7 +551,7 @@ fn refinement_admits(ty, value_handle) with GraphRead + Memory + Alloc = match t
 // `0 <= self` return, measured 2026-07-30). A computation raises; the
 // ground fold and the interval fragment prove the provable.
 fn value_flows_class(value_handle) with GraphRead = match graph_node_body(value_handle) {
-  NExpr(BinOpExpr(_, _, _)) => false,
+  NExpr(BinOpExpr{}) => false,
   NExpr(UnaryOpExpr(_, _)) => false,
   _ => true,
 }
@@ -560,7 +560,7 @@ fn value_flows_class(value_handle) with GraphRead = match graph_node_body(value_
 // read live through the chase after the candidate's infer pass.
 fn inferred_alias_name(value_handle) with GraphRead = match graph_chase(value_handle) {
   GNode(kind, _) => match kind {
-    NBound(TAlias(aname, _)) => aname,
+    NBound(TAlias{name: aname}) => aname,
     _ => // drift-audit: ignore — "" IS the documented no-alias sentinel this projection's one caller compares against (an alias name is never empty)
     "",
   },
@@ -803,7 +803,7 @@ fn classify_predicate(pred) with Pure = match pred {
   PNot(_) => "negation",
   PAnd(_, _) => "conjunction",
   POr(_, _) => "disjunction",
-  PCompare(_, _, _) => "comparison",
+  PCompare{} => "comparison",
   PBoolNode(_) => "graph-deferred",
   PPatternMatch(_, _) => "match-narrowing",
   PFlowLe(_, _) => // IFC: always decides at compile time via flow_le
@@ -874,7 +874,7 @@ fn predicate_to_smt_lib(ref pred) with Memory + Alloc + GraphRead + Diagnostic +
 
 fn predicate_to_smt(ref pred) with GraphRead + Memory + Alloc + Diagnostic + Intern = match pred {
   PTrue => "true",
-  PCompare(op, l, r) => "({smt_cmp_op(op)} {handle_to_smt(l)} {handle_to_smt(r)})",
+  PCompare{op, left: l, right: r} => "({smt_cmp_op(op)} {handle_to_smt(l)} {handle_to_smt(r)})",
   PAnd(a, b) => smt_logop("and", a, b),
   POr(a, b) => smt_logop("or", a, b),
   PNot(inner) => "(not {predicate_to_smt(inner)})",
@@ -927,7 +927,7 @@ fn handle_to_smt(handle) with GraphRead + Memory + Alloc + Diagnostic + Intern =
   NExpr(LitBool(b)) => if b { "true" } else { "false" },
   NExpr(VarRef(name)) => name,
   NExpr(CallExpr(callee, args)) => smt_call(callee, args),
-  NExpr(BinOpExpr(op, l, r)) => smt_binop(op, l, r),
+  NExpr(BinOpExpr{op, left: l, right: r}) => smt_binop(op, l, r),
   NExpr(UnaryOpExpr(op, x)) => smt_unop(op, x),
   _ => {
     report(EVerifyUnencodable(span_zero()))

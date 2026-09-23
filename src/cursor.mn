@@ -290,7 +290,7 @@ fn score_one_position(handle: Handle, caret) with GraphRead + Memory + Teach + !
     // suggestion-less position stays gate-zero.
     hole_gate(handle),
     Some(suggestion) => match suggestion {
-      AnnotationSuggestion(_kind, _ann, unlocks, _reason) => len(unlocks),
+      AnnotationSuggestion{unlocks} => len(unlocks),
     },
   }
   let target_span = caret_span_of_handle(handle)
@@ -420,8 +420,8 @@ fn reason_is_pinned(reason) with Memory + Alloc = match reason {
 fn reduce_max_by_score(scored) with Alloc + Memory = reduce(
   scored,
   (best, candidate) => match candidate {
-    Cursor(_, _, c_impact) => match best {
-      Cursor(_, _, b_impact) => if c_impact > b_impact { candidate } else { best },
+    Cursor{impact: c_impact} => match best {
+      Cursor{impact: b_impact} => if c_impact > b_impact { candidate } else { best },
     },
   }
 )
@@ -517,7 +517,7 @@ fn ty_of_kind(handle, kind) with Memory + Alloc = match kind {
   NBound(ty) => ty,
   NFree(_) => TVar(handle),
   NRowBound(_) => TVar(handle),
-  NRecordRowBound(_, _) => TVar(handle),
+  NRecordRowBound{} => TVar(handle),
   NRowFree(_) => TVar(handle),
   NMaybeFree(_) => TVar(handle),
   NAbsent => TVar(handle),
@@ -580,7 +580,7 @@ fn scan_for_pipe_parent(target, i, n) with GraphRead + !Mutate + Memory + Alloc 
 // Is `target` a stage of the PipeExpr at this weave entry? Project the
 // PipeKind verb and which side the target sits on. Non-pipe bodies → NoPipe.
 fn pipe_position_in(target, body) with Memory + Alloc = match body {
-  NExpr(PipeExpr(verb, left, right)) => match left {
+  NExpr(PipeExpr{kind: verb, left, right}) => match left {
     N{handle: lh} => match right {
       N{handle: rh} => if lh == target { StartingPipe } else if rh == target { InsidePipe(verb) } else { NoPipe },
     },
@@ -617,7 +617,7 @@ fn pipe_position_in(target, body) with Memory + Alloc = match body {
 fn propose_at(h) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnostic + GraphWrite + Synth + !Mutate = if authored_hole(h) {
   let ctx = mentl_context_at(h)
   match ctx {
-    Context(_, allowed, _, _) => synth_propose(allowed, ctx),
+    Context{row: allowed} => synth_propose(allowed, ctx),
   }
 } else {
   Proposal({rejected: [], verdict: VNone})

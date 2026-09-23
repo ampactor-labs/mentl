@@ -336,7 +336,7 @@ fn render_expr_tokens(e) with Rendering + !Mutate = match e {
   LitBool(b) => if b { "true" } else { "false" },
   LitUnit => "()",
   VarRef(name) => name,
-  BinOpExpr(op, l, r) => {
+  BinOpExpr{op, left: l, right: r} => {
     let rc = graph_comment_at(node_handle(r))
     if rc == "" {
       "{render_operand(l, binop_prec(op), false)} {binop_to_str(op)} {render_operand(r, binop_prec(op), true)}"
@@ -353,10 +353,10 @@ fn render_expr_tokens(e) with Rendering + !Mutate = match e {
       "{render_tokens_for(callee)}(\n{indent_block(render_arg_lines(args, 0))}\n)"
     }
   },
-  LabeledArg(label, v) => "{label} = {render_tokens_for(v)}",
+  LabeledArg{label, value: v} => "{label} = {render_tokens_for(v)}",
   FieldExpr(recv, field) => "{render_tokens_for(recv)}.{field}",
   IndexExpr(recv, idx) => "{render_tokens_for(recv)}[{render_tokens_for(idx)}]",
-  PipeExpr(verb, l, r) => {
+  PipeExpr{kind: verb, left: l, right: r} => {
     let rc = graph_comment_at(node_handle(r))
     if rc == "" {
       "{render_operand(l, pipe_prec(verb), false)} {show_pipe_kind(verb)} {render_operand(r, pipe_prec(verb), true)}"
@@ -463,18 +463,18 @@ fn render_stmt_tokens(s) with Rendering + !Mutate = match s {
     NExpr(LitUnit) => "",
     _ => render_grouped_body(e),
   },
-  AliasStmt(name, ty) => "type {name} = {render_type_tokens(ty)}",
-  RowAliasStmt(name, effs) => "type {name} = {render_row_triples(effs, 0)}",
-  LetStmt(pat, value, ann) => render_let_head(render_pat_tokens(pat), render_let_ann(ann), value),
-  TypeDefStmt(name, variants) => "type {name}{render_variants(name, variants)}",
-  EffectDeclStmt(name, params, ops) => // Op param NAMES are parse-consumed (the ADT stores types only), and
+  AliasStmt{name, ty} => "type {name} = {render_type_tokens(ty)}",
+  RowAliasStmt{name, terms: effs} => "type {name} = {render_row_triples(effs, 0)}",
+  LetStmt{pat, value, ann} => render_let_head(render_pat_tokens(pat), render_let_ann(ann), value),
+  TypeDefStmt{name, variants} => "type {name}{render_variants(name, variants)}",
+  EffectDeclStmt{name, params, ops} => // Op param NAMES are parse-consumed (the ADT stores types only), and
   // bare types parse in op position — the render is the parse's inverse
   // over what the graph carries. The instance params render through the
   // same product projection the handler head uses (format∘parse
   // identity over SYNTAX §«Parameterized effect»).
   "effect {name}{render_config_params(params)} \{\n{indent_block(strip_trailing_nl(render_effect_ops(ops, 0)))}\n\}",
-  HandlerDeclStmt(hname, _ename, config, states, arms) => "handler {hname}{render_config_params(config)}{render_state_inits(states, 0)} \{\n{indent_block(strip_trailing_nl(render_handler_arms(arms, 0)))}\n\}",
-  RefineStmt(name, ty, pred) => "type {name} = {render_type_tokens(ty)} where {render_predicate_tokens(pred)}",
+  HandlerDeclStmt{name: hname, config, state: states, arms} => "handler {hname}{render_config_params(config)}{render_state_inits(states, 0)} \{\n{indent_block(strip_trailing_nl(render_handler_arms(arms, 0)))}\n\}",
+  RefineStmt{name, base: ty, pred} => "type {name} = {render_type_tokens(ty)} where {render_predicate_tokens(pred)}",
 }
 
 fn render_pat_tokens(node) with Rendering + !Mutate = render_pat_shape(pat_of(node))
@@ -691,8 +691,8 @@ fn operand_body(node) with Memory + GraphRead = match ast_kind_of(node) {
 }
 
 fn expr_prec_of(node) with Pure = match ast_kind_of(node) {
-  NExpr(BinOpExpr(op, _, _)) => binop_prec(op),
-  NExpr(PipeExpr(k, _, _)) => pipe_prec(k),
+  NExpr(BinOpExpr{op}) => binop_prec(op),
+  NExpr(PipeExpr{kind: k}) => pipe_prec(k),
   NExpr(FanoutExpr(_)) => pipe_prec(fanout_distribute_kind),
   NExpr(UnaryOpExpr(_, _)) => 90,
   NExpr(IfExpr(_, _, _)) => 15,
@@ -998,13 +998,13 @@ fn render_type_tokens(ref ty) with Rendering + !Mutate = match ty {
   TTuple(elems) => "({render_type_list(elems, 0)})",
   TFun{params, ret, row} => "({render_tparam_types(params, 0)}) -> {render_type_tokens(ret)}{render_row_surface(row)}",
   TVar(id) => render_type_handle(id),
-  TName(name, args) => if len(args) == 0 { name } else { "{name}({render_type_list(args, 0)})" },
+  TName{name, args} => if len(args) == 0 { name } else { "{name}({render_type_list(args, 0)})" },
   TRecord(fields) => "\{{render_type_fields(fields, 0)}\}",
-  TRecordOpen(fields, _) => "\{{render_type_fields(fields, 0)}, ...\}",
-  TRefined(base, pred) => "{render_type_tokens(base)} where {render_predicate_tokens(pred)}",
-  TCont(input, answer, disc, world) => show_type(TCont(input, answer, disc, world)),
-  TAlias(name, _) => name,
-  TReprPin(r, base) => // Parse-inverse: a pin whose base is the width's own bare atom
+  TRecordOpen{fields} => "\{{render_type_fields(fields, 0)}, ...\}",
+  TRefined{base, pred} => "{render_type_tokens(base)} where {render_predicate_tokens(pred)}",
+  TCont{input, answer, discipline: disc, world} => show_type(TCont(input, answer, disc, world)),
+  TAlias{name} => name,
+  TReprPin{repr: r, inner: base} => // Parse-inverse: a pin whose base is the width's own bare atom
   // renders bare (`f32` — the atom mints exactly this pair); any other
   // pairing renders the authored `repr` suffix.
   match (r, base) {
@@ -1026,7 +1026,7 @@ fn render_type_tokens(ref ty) with Rendering + !Mutate = match ty {
 // total token render; the cmp glyph is binop_to_str, total by match.
 fn render_predicate_tokens(pred) with Rendering + !Mutate = match pred {
   PTrue => "true",
-  PCompare(op, a, b) => "{render_pred_node(a)} {binop_to_str(op)} {render_pred_node(b)}",
+  PCompare{op, left: a, right: b} => "{render_pred_node(a)} {binop_to_str(op)} {render_pred_node(b)}",
   PAnd(a, b) => "{render_pred_grouped(a, 5, false)} && {render_pred_grouped(b, 5, true)}",
   POr(a, b) => "{render_pred_grouped(a, 4, false)} || {render_pred_grouped(b, 4, true)}",
   PNot(p) => "!{render_pred_grouped(p, 90, false)}",
@@ -1053,7 +1053,7 @@ fn render_pred_grouped(pred, parent_prec, is_right) with Rendering + !Mutate = {
 }
 
 fn pred_prec(pred) with Pure = match pred {
-  PCompare(op, _, _) => binop_prec(op),
+  PCompare{op} => binop_prec(op),
   PAnd(_, _) => 5,
   POr(_, _) => 4,
   _ => 90,
@@ -1094,7 +1094,7 @@ fn render_type_fields(ref fields: [(String, Ty)], i) with Rendering + !Mutate = 
 // never silently absorbed.
 fn render_type_handle(h) with Rendering + !Mutate = match graph_chase(h) {
   GNode(NBound(ty), _) => render_type_tokens(ty),
-  GNode(NRecordRowBound(fields, _), _) => render_type_tokens(TRecord(fields)),
+  GNode(NRecordRowBound{fields}, _) => render_type_tokens(TRecord(fields)),
   GNode(NFree(_), _) => show_handle(h),
   GNode(NRowBound(_), _) => show_handle(h),
   GNode(NRowFree(_), _) => show_handle(h),
@@ -1259,7 +1259,7 @@ fn render_authored_eff_name(name) with Rendering + !Mutate = match name {
   EPure => // drift-audit: ignore — the ADT match RENDERING the surface keyword, not a string-keyed dispatch
   "Pure",
   ENamed(h) => intern_name_of(h),
-  EParameterized(h, args) => "{intern_name_of(h)}({render_authored_eff_args(args, 0)})",
+  EParameterized{name: h, args} => "{intern_name_of(h)}({render_authored_eff_args(args, 0)})",
 }
 
 // The instance args render through show_eff_arg — the ONE arg renderer
@@ -1360,7 +1360,7 @@ fn scan_for_render_parent(target, i, n) with GraphRead + !Mutate + Memory + Allo
 // a tuple. Depth is the parent's own enclosing depth + 1 (read by recursion at
 // render time; the first enclosing edge is sufficient for the indent step).
 fn render_context_from_parent(target, body) with Memory + Alloc = match body {
-  NExpr(PipeExpr(_, l, r)) => if child_is(target, l) || child_is(target, r) {
+  NExpr(PipeExpr{left: l, right: r}) => if child_is(target, l) || child_is(target, r) {
     RenderContextChain(1)
   } else {
     RenderContextDefault

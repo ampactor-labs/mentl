@@ -1114,7 +1114,7 @@ fn parse_type_decl(ref tokens, pos) = {
               }
             } else {
               match alias_ty {
-                TName(vname, fields) => if len(fields) > 0 {
+                TName{name: vname, args: fields} => if len(fields) > 0 {
                   (TypeDefStmt(name, [(vname, positional_fields(fields), mint_node(NTypeAnn(TTuple(fields)), start))]), p_alias)
                 } else {
                   (AliasStmt(name, alias_ty), p_alias)
@@ -1236,7 +1236,7 @@ fn parse_variant_fields(ref tokens, pos, i) = {
 
 fn parse_variant_field(tokens, p, i) = if at_named_field(tokens, p) {
   match parse_type_ty(tokens, skip_ws(tokens, skip_ws(tokens, p + 1) + 1)) {
-    (ty, p2) => (mk_param(ident_at(tokens, p), ty), p2),
+    (ty, p2) => (mk_param(field_name_at(tokens, p), ty), p2),
   }
 } else {
   match parse_type_ty(tokens, p) {
@@ -1244,10 +1244,20 @@ fn parse_variant_field(tokens, p, i) = if at_named_field(tokens, p) {
   }
 }
 
-// `name :` opens a named field; a type never has a colon after its head.
-fn at_named_field(tokens, p) = match kind_at(tokens, p) {
-  TIdent(_) => at(tokens, skip_ws(tokens, p + 1), TColon),
-  _ => false,
+// `name :` opens a named field; a type never has a colon after its head, so
+// ANY token before a colon is a field name, even one that cannot be.
+fn at_named_field(tokens, p) = at(tokens, skip_ws(tokens, p + 1), TColon)
+
+// A keyword cannot name a field: a pattern or construction naming it would
+// lex as the keyword. Said once, at the word, and the field keeps the
+// spelling so the rest of the declaration still parses (`effect: String`
+// cascaded into two hundred unrelated errors before this).
+fn field_name_at(tokens, p) = match kind_at(tokens, p) {
+  TIdent(s) => s,
+  k => {
+    report(PUnexpectedToken("`{show_token_kind(k)}` is a keyword and cannot name a field", span_at(tokens, p)))
+    show_token_kind(k)
+  },
 }
 
 // A positional field's name is its position, so a variant mixing the two
@@ -2890,7 +2900,7 @@ fn find_destructure_let(stmts, i) = if i >= len(stmts) {
   None
 } else {
   match list_index(stmts, i) {
-    N{body: NStmt(LetStmt(pat, v, _)), span: lsp} => if is_destructure_pat(pat) { Some((i, pat, v, lsp)) } else { find_destructure_let(stmts, i + 1) },
+    N{body: NStmt(LetStmt{pat, value: v}), span: lsp} => if is_destructure_pat(pat) { Some((i, pat, v, lsp)) } else { find_destructure_let(stmts, i + 1) },
     _ => find_destructure_let(stmts, i + 1),
   }
 }
@@ -3447,7 +3457,7 @@ fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
       match parse_type_args(tokens, skip_ws(tokens, base_pos + 1)) {
         (args, p_after) => {
           let typed = match base {
-            TName(name, _) => TName(name, args),
+            TName{name} => TName(name, args),
             _ => base,
           }
           (typed, p_after)
@@ -3665,14 +3675,14 @@ fn parse_predicate(ref tokens, pos) = match parse_expr(tokens, pos) {
 // read live. No lossy fallback.
 fn node_to_predicate(node, span: ValidSpan) = match node {
   N{body} => match body {
-    NExpr(BinOpExpr(BEq, l, r)) => compare_pred(BEq, l, r),
-    NExpr(BinOpExpr(BNe, l, r)) => PNot(compare_pred(BEq, l, r)),
-    NExpr(BinOpExpr(BLt, l, r)) => compare_pred(BLt, l, r),
-    NExpr(BinOpExpr(BLe, l, r)) => compare_pred(BLe, l, r),
-    NExpr(BinOpExpr(BGt, l, r)) => compare_pred(BLt, r, l),
-    NExpr(BinOpExpr(BGe, l, r)) => compare_pred(BLe, r, l),
-    NExpr(BinOpExpr(BAnd, l, r)) => PAnd(node_to_predicate(l, span), node_to_predicate(r, span)),
-    NExpr(BinOpExpr(BOr, l, r)) => POr(node_to_predicate(l, span), node_to_predicate(r, span)),
+    NExpr(BinOpExpr{op: BEq, left: l, right: r}) => compare_pred(BEq, l, r),
+    NExpr(BinOpExpr{op: BNe, left: l, right: r}) => PNot(compare_pred(BEq, l, r)),
+    NExpr(BinOpExpr{op: BLt, left: l, right: r}) => compare_pred(BLt, l, r),
+    NExpr(BinOpExpr{op: BLe, left: l, right: r}) => compare_pred(BLe, l, r),
+    NExpr(BinOpExpr{op: BGt, left: l, right: r}) => compare_pred(BLt, r, l),
+    NExpr(BinOpExpr{op: BGe, left: l, right: r}) => compare_pred(BLe, r, l),
+    NExpr(BinOpExpr{op: BAnd, left: l, right: r}) => PAnd(node_to_predicate(l, span), node_to_predicate(r, span)),
+    NExpr(BinOpExpr{op: BOr, left: l, right: r}) => POr(node_to_predicate(l, span), node_to_predicate(r, span)),
     NExpr(UnaryOpExpr(UNot, inner)) => PNot(node_to_predicate(inner, span)),
     NExpr(LitBool(true)) => PTrue,
     _ => PBoolNode(node_handle(node)),
@@ -3728,7 +3738,7 @@ fn free_vars_expr(e, bound) = match e {
   LitBool(_) => [],
   LitUnit => [],
   VarRef(name) => if free_vars_contains(bound, name) { [] } else { [name] },
-  BinOpExpr(_, l, r) => free_vars_merge(collect_free_vars(l, bound), collect_free_vars(r, bound)),
+  BinOpExpr{left: l, right: r} => free_vars_merge(collect_free_vars(l, bound), collect_free_vars(r, bound)),
   UnaryOpExpr(_, inner) => collect_free_vars(inner, bound),
   CallExpr(f, args) => free_vars_merge(collect_free_vars(f, bound), free_vars_list(args, bound)),
   IfExpr(c, t, e) => free_vars_merge(
@@ -3765,12 +3775,12 @@ fn free_vars_expr(e, bound) = match e {
     free_vars_merge(collect_free_vars(val, bound), free_vars_state_updates(state_updates, bound))
   ),
   FieldExpr(rec, _) => collect_free_vars(rec, bound),
-  PipeExpr(_, l, r) => free_vars_merge(collect_free_vars(l, bound), collect_free_vars(r, bound)),
+  PipeExpr{left: l, right: r} => free_vars_merge(collect_free_vars(l, bound), collect_free_vars(r, bound)),
   FanoutExpr(branches) => collect_free_vars_branches(branches, bound),
   RestExpr(_) => // the rest NAME binds in the lambda path; it is never a free ref
   [],
   ExprPlaceholder => [],
-  LabeledArg(_, v) => // A labeled arg's value can reference free vars (closure capture must see
+  LabeledArg{value: v} => // A labeled arg's value can reference free vars (closure capture must see
   // them); the label is a param name, not a value-position var.
   collect_free_vars(v, bound),
   LitInt(_) => // H6: exhaustive Expr enumeration. Literals contribute no
@@ -3819,12 +3829,12 @@ fn free_vars_state_updates(updates, bound) = fold(
 // RefineStmt keeps [] for a different reason: its predicate is not yet an
 // expression this walk can descend (Hβ.types.predicate-is-expr).
 fn free_vars_stmt(s, bound) = match s {
-  LetStmt(_, expr, _) => collect_free_vars(expr, bound),
+  LetStmt{value: expr} => collect_free_vars(expr, bound),
   FnStmt{body: body_node} => collect_free_vars(body_node, bound),
   ExprStmt(expr) => collect_free_vars(expr, bound),
-  TypeDefStmt(_, _) => [],
-  EffectDeclStmt(_, _, _) => [],
-  HandlerDeclStmt(_, _, config, state, arms) => {
+  TypeDefStmt{} => [],
+  EffectDeclStmt{} => [],
+  HandlerDeclStmt{config, state, arms} => {
     // Inits evaluate in the installer's scope with the config in hand; an
     // arm additionally binds the state names and its own args. `resume` is
     // a keyword and never a reference.
@@ -3836,9 +3846,9 @@ fn free_vars_stmt(s, bound) = match s {
     )
   },
   ImportStmt(_) => [],
-  RefineStmt(_, _, _) => [],
-  AliasStmt(_, _) => [],
-  RowAliasStmt(_, _) => [],
+  RefineStmt{} => [],
+  AliasStmt{} => [],
+  RowAliasStmt{} => [],
 }
 
 fn free_vars_handler_arms(arms, bound) = fold(
@@ -3870,7 +3880,7 @@ fn free_vars_stmts(stmts, bound, acc_frees) = if len(stmts) == 0 {
   let stmt = last(stmts)
   match stmt {
     N{body: stmt_body} => match stmt_body {
-      NStmt(LetStmt(pat, expr, _)) => {
+      NStmt(LetStmt{pat, value: expr}) => {
         let frees = collect_free_vars(expr, bound)
         let new_bound = free_vars_merge(bound, pat_binders(pat))
         free_vars_stmts(drop_last(stmts), new_bound, free_vars_merge(acc_frees, frees))

@@ -972,7 +972,10 @@ type SchemeKind
   | ConstructorScheme(Int, Int)          // positional: a small wrapper, a genuine tuple
 ```
 
-A variant's fields are all named or all positional, never mixed. A positional
+A variant's fields are all named or all positional, never mixed. A keyword
+cannot name a field (`effect: String` — the pattern `Decl{effect}` would lex
+the keyword), and the parser says so once, at the word, then keeps the rest
+of the declaration. A positional
 field's name is its position (`_0`, `_1`, …), which is what `mentl <addr>`
 shows at the constructor, and `EffectOpScheme(_0: String)` is the positional
 form written the long way, so `mentl fmt` renders it positionally.

@@ -127,10 +127,10 @@ fn absent_contradicted_by(absent, present) with Memory = if eff_name_handle(abse
   match absent {
     ENamed(_) => true,
     EPure => false,
-    EParameterized(_, aargs) => match present {
+    EParameterized{args: aargs} => match present {
       ENamed(_) => false,
       EPure => false,
-      EParameterized(_, pargs) => !eff_args_provably_distinct(aargs, pargs, 0),
+      EParameterized{args: pargs} => !eff_args_provably_distinct(aargs, pargs, 0),
     },
   }
 }
@@ -513,7 +513,7 @@ fn frag_collision_walk(ref pa, ref pb, i) with Memory + Alloc = if i >= len(pb) 
   false
 } else {
   let hit = match list_index(pb, i) {
-    EParameterized(h2, args2) => frag_name_clash(pa, h2, args2, 0),
+    EParameterized{name: h2, args: args2} => frag_name_clash(pa, h2, args2, 0),
     _ => false,
   }
   if hit { true } else { frag_collision_walk(pa, pb, i + 1) }
@@ -523,7 +523,7 @@ fn frag_name_clash(ref pa, h2, args2, j) with Memory + Alloc = if j >= len(pa) {
   false
 } else {
   let hit = match list_index(pa, j) {
-    EParameterized(h1, args1) => h1 == h2 && !frag_args_same(args1, args2),
+    EParameterized{name: h1, args: args1} => h1 == h2 && !frag_args_same(args1, args2),
     _ => false,
   }
   if hit { true } else { frag_name_clash(pa, h2, args2, j + 1) }
@@ -541,7 +541,7 @@ fn frag_present(ref acc, e, i) with Memory + Alloc = if i >= len(acc) {
 } else {
   let hit = match (list_index(acc, i), e) {
     (ENamed(h1), ENamed(h2)) => h1 == h2,
-    (EParameterized(h1, args1), EParameterized(h2, args2)) => h1 == h2 && frag_args_same(args1, args2),
+    (EParameterized{name: h1, args: args1}, EParameterized{name: h2, args: args2}) => h1 == h2 && frag_args_same(args1, args2),
     _ => false,
   }
   if hit { true } else { frag_present(acc, e, i + 1) }
@@ -1022,7 +1022,7 @@ fn sort_unique(ref names) with Memory + Alloc = name_set_canonicalize(names)
 // the reserved absent handle 0 and never matches a named effect.
 fn eff_name_handle(name: EffName) -> Int with Pure = match name {
   ENamed(h) => h,
-  EParameterized(h, _) => h,
+  EParameterized{name: h} => h,
   EPure => 0,
 }
 
@@ -1031,7 +1031,7 @@ fn eff_name_handle(name: EffName) -> Int with Pure = match name {
 // diagnostics, show, and lower's ename extraction do.
 fn eff_name_str(name: EffName) -> String with Intern = match name {
   ENamed(h) => intern_name_of(h),
-  EParameterized(h, _) => intern_name_of(h),
+  EParameterized{name: h} => intern_name_of(h),
   EPure => "",
 }
 
@@ -1075,10 +1075,10 @@ fn eff_forbids(forbidden: EffName, present: EffName) with Memory = if eff_name_h
   match forbidden {
     ENamed(_) => true,
     EPure => false,
-    EParameterized(_, fargs) => match present {
+    EParameterized{args: fargs} => match present {
       ENamed(_) => true,
       EPure => false,
-      EParameterized(_, pargs) => !eff_args_provably_distinct(fargs, pargs, 0),
+      EParameterized{args: pargs} => !eff_args_provably_distinct(fargs, pargs, 0),
     },
   }
 }
@@ -1099,10 +1099,10 @@ fn eff_admits(gate_name: EffName, body_name: EffName) with Memory + Alloc = if e
   match gate_name {
     ENamed(_) => true,
     EPure => false,
-    EParameterized(_, gargs) => match body_name {
+    EParameterized{args: gargs} => match body_name {
       ENamed(_) => false,
       EPure => false,
-      EParameterized(_, bargs) => frag_args_same(gargs, bargs),
+      EParameterized{args: bargs} => frag_args_same(gargs, bargs),
     },
   }
 }
@@ -1245,7 +1245,7 @@ fn name_set_dedup_into(ref names, i, n, own buf, count) with Memory + Alloc = if
     // parameterized-negation-instance).
     let held = list_index(buf, at)
     let upgraded = match (held, x) {
-      (ENamed(_), EParameterized(_, _)) => list_set(buf, at, x),
+      (ENamed(_), EParameterized{}) => list_set(buf, at, x),
       _ => buf,
     }
     name_set_dedup_into(names, i + 1, n, upgraded, count)
@@ -1314,7 +1314,7 @@ fn name_set_dedup_count(ref names, i, n, own buf, count) with Memory + Alloc = i
   if at >= 0 {
     let held = list_index(buf, at)
     let upgraded = match (held, x) {
-      (ENamed(_), EParameterized(_, _)) => list_set(buf, at, x),
+      (ENamed(_), EParameterized{}) => list_set(buf, at, x),
       _ => buf,
     }
     name_set_dedup_count(names, i + 1, n, upgraded, count)
@@ -1331,7 +1331,7 @@ fn name_set_union_rest(ref b, i, n, own buf, count) with Memory + Alloc = if i >
   if at >= 0 {
     let held = list_index(buf, at)
     let upgraded = match (held, x) {
-      (ENamed(_), EParameterized(_, _)) => list_set(buf, at, x),
+      (ENamed(_), EParameterized{}) => list_set(buf, at, x),
       _ => buf,
     }
     name_set_union_rest(b, i + 1, n, upgraded, count)

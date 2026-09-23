@@ -99,7 +99,7 @@ type EntryHandlerInvocation = Invocation(EntryVerb) | ParseError(String)
 // could drift, and now both read this table (Carried-Truth Law: one home, and
 // every reader is a projection of it). Adding a verb is ONE row here plus its
 // runner arm in dispatch_invocation.
-type VerbSpec = VerbSpec(String, String, ([String]) -> EntryHandlerInvocation, String)
+type VerbSpec = VerbSpec(name: String, hint: String, build: ([String]) -> EntryHandlerInvocation, help: String)
 
 // req_target — the shape of an action whose address is REQUIRED (`compile`):
 // argv[2] resolved to a module, or a ParseError that names the verb and shows
@@ -121,7 +121,7 @@ fn run_verb_args(a) with Memory + Alloc = if len(a) >= 3 {
 // raise no ParseError, because its one argument is the address the grammar
 // already resolved — `target_at` defaults it to the project, so a question
 // always has something to be about.
-type QuestionSpec = QuestionSpec(String, (String) -> EntryVerb, String)
+type QuestionSpec = QuestionSpec(name: String, verb: (String) -> EntryVerb, help: String)
 
 fn question_specs() with Memory + Alloc = [QuestionSpec("check", VCheck, "diagnostics only, no emit"), QuestionSpec("audit", VAudit, "the capability set + severance unlocks"), QuestionSpec("doc", VDoc, "documentation projection"), QuestionSpec("teach", VTeach, "the gradient narrated"), QuestionSpec(
   "verify",
@@ -137,8 +137,8 @@ fn question_specs() with Memory + Alloc = [QuestionSpec("check", VCheck, "diagno
 fn ask_at(target, words) with Memory + Alloc = if len(words) == 0 {
   Invocation(VAt(target, 0, 0))
 } else {
-  match find({ QuestionSpec(n, _, _) => n == words[0] }, question_specs()) {
-    Some(QuestionSpec(_, build, _)) => Invocation(build(target)),
+  match find({ QuestionSpec{name: n} => n == words[0] }, question_specs()) {
+    Some(QuestionSpec{verb: build}) => Invocation(build(target)),
     None => Invocation(VQuery(target, words)),
   }
 }
@@ -224,7 +224,7 @@ fn verb_specs() with Memory + Alloc = [VerbSpec(
 // own `find` IS this walk; a hand-rolled `last`/`drop_last` recursion stood
 // here and was one more index-threaded self-call in a module whose whole
 // subject is not re-deriving what already exists.
-fn find_verb(name, specs) with Memory + Alloc = find({ VerbSpec(n, _, _, _) => n == name }, specs)
+fn find_verb(name, specs) with Memory + Alloc = find({ VerbSpec{name: n} => n == name }, specs)
 
 // ─── argv parsing ─────────────────────────────────────────────────
 //
@@ -249,7 +249,7 @@ fn parse_cli_args(argv) with Memory + Alloc = if len(argv) < 2 {
     {
       let name = if mode == "-h" || mode == "--help" { "help" } else { mode }
       match find_verb(name, verb_specs()) {
-        Some(VerbSpec(_, _, build, _)) => build(argv),
+        Some(VerbSpec{build}) => build(argv),
         None => // Not an action, so it is a READ, and the only question is whose
         // address. A named projection standing alone asks about the project
         // (`mentl verify`, `mentl check` — the address defaults exactly as
@@ -258,8 +258,8 @@ fn parse_cli_args(argv) with Memory + Alloc = if len(argv) < 2 {
         // left to write: an address that resolves to nothing refuses by
         // NAMING what it could not read, which teaches where a roster of
         // twenty-four words could only list itself.
-        match find({ QuestionSpec(n, _, _) => n == mode }, question_specs()) {
-          Some(QuestionSpec(_, build, _)) => if len(argv) > 2 {
+        match find({ QuestionSpec{name: n} => n == mode }, question_specs()) {
+          Some(QuestionSpec{verb: build}) => if len(argv) > 2 {
             // The address comes FIRST, with no exception, because the
             // alternative is two spellings of one read — and the one that
             // keeps the address in front is the one a developer can live in:

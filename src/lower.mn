@@ -93,7 +93,7 @@ handler arm_state_ctx(fields, disc, hname) {
 fn handler_decl_of(hname) = match env_lookup(hname) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      HandlerKind(_, config, state, arms) => Some((config, state, arms)),
+      HandlerKind{config, state, arms} => Some((config, state, arms)),
       _ => None,
     },
   },
@@ -264,15 +264,15 @@ type LowExpr
   | LLocal(Int, String)
   // handle, name
   | LGlobal(Int, String)
-  | LLet(Int, String, LowExpr)
+  | LLet(handle: Int, name: String, value: LowExpr)
   | LUpval(Int, Int)
-  | LBinOp(Int, BinOp, LowExpr, LowExpr)
+  | LBinOp(handle: Int, op: BinOp, left: LowExpr, right: LowExpr)
   | LUnaryOp(Int, UnaryOp, LowExpr)
   // monomorphic direct call
   | LCall(Int, LowExpr, [LowExpr])
   | LTailCall(Int, LowExpr, [LowExpr])
   // call handle, callee-ref handle, fn name, tail, args — the DIRECT native call to a known top-level fn: lower resolved the callee's FnScheme, so the emit calls $name with NATIVE argument types (an f64 arg stays f64 — no spill cell, no word face, no wrapper hop) and `return_call` in tail position (true tails for wide results too — the word-face demotion and the wrapper's per-iteration frame leak both die at this node). __state stays the callee's own static-closure global, byte-equal semantics to the closure convention minus the table hop. The closure path remains for genuine VALUE callees; the callee-ref handle feeds the twin-demand scan (the reference's instantiated TFun lives there)
-  | LDirectCall(Int, Int, String, Bool, [LowExpr])
+  | LDirectCall(handle: Int, callee: Int, name: String, tail: Bool, args: [LowExpr])
   | LReturn(Int, LowExpr)
   // handle, fn, captures
   // The YIELD of a MultiShot perform (band B, continuation-reification k1):
@@ -292,7 +292,7 @@ type LowExpr
   // comment-marked unreachable, censusable; k2/k3's named homes
   // Hβ.lower.continuation-callboundary-bubble /
   // Hβ.lower.multishot-reyield-composition / .multishot-arm-state-commit).
-  | LMakeClosure(Int, LowFn, [LowExpr])
+  | LMakeClosure(handle: Int, lowfn: LowFn, captures: [LowExpr])
   | LYield(Int, String, [LowExpr], LowExpr)
   // band B M1.3 — the k2 call-boundary's yield path (the bank Ruling 5): a
   // non-tail can-yield call returned with $yield_flag still raised, so this
@@ -307,7 +307,7 @@ type LowExpr
   // install driver's parked $__hres), which is what makes the check correct
   // INSIDE an install body (a `(return)` here would skip the driver bracket).
   | LKExtend(Int, LowExpr)
-  | LMakeContinuation(Int, LowFn, [LowExpr], Int, Int)
+  | LMakeContinuation(handle: Int, resume_fn: LowFn, captures: [LowExpr], state_index: Int, ret_slot: Int)
   // H7 — multi-shot continuation record per the H7 walkthrough §1.2.
   // handle, resume-fn, captures, state_index, ret_slot.
   // Heap-allocated through emit_alloc (one allocator per kernel
@@ -325,7 +325,7 @@ type LowExpr
   //
   // module-level fn declaration (handler arm) — no runtime slot
   | LDeclareFn(LowFn)
-  | LIf(Int, LowExpr, [LowExpr], [LowExpr])
+  | LIf(handle: Int, cond: LowExpr, then_body: [LowExpr], else_body: [LowExpr])
   | LBlock(Int, [LowExpr])
   | LMakeList(Int, [LowExpr])
   | LMakeTuple(Int, [LowExpr])
@@ -503,7 +503,7 @@ type PerformDispatch = PdFrame(Int, String, String) | PdWalk(String, Int, String
 
 type LowValue = LInt(Int) | LFloat(Float) | LString(String) | LBool(Bool)
 
-type LowFn = LFn(String, Int, [String], [LowExpr], EffRow, Int)
+type LowFn = LFn(name: String, arity: Int, params: [String], body: [LowExpr], row: EffRow, fence: Int)
 
 // name, arity, param names, body stmts, effect row, fence.
 // fence = where this fn's __state evidence region starts,
@@ -528,7 +528,7 @@ type LowPat
   // `unknown local $v.f64`, a module that does not assemble (measured
   // 2026-09-18). One source, one truth: the two lists cannot disagree
   // because there is only one.
-  | LPCon(String, TagId, [(Ty, LowPat)])
+  | LPCon(name: String, tag: TagId, args: [(Ty, LowPat)])
   // a pattern naming a ctor no declaration proves — infer already reported the miss; the match test is FALSE (no tag exists to compare) and the sub-binders still declare so the dead arm body assembles. Replaces the fabricated tag -1, which violated TagId's own 0..255 refinement — the armed E_RefinementRejected caught it on the wheel the hour the class armed.
   | LPUnresolvedCon(String, [LowPat])
   // [(elem_ty: Ty, sub_pat: LowPat)]
@@ -565,23 +565,23 @@ fn lexpr_handle(e) with Pure = match e {
   LConst(h, _) => h,
   LLocal(h, _) => h,
   LGlobal(h, _) => h,
-  LLet(h, _, _) => h,
+  LLet{handle: h} => h,
   LUpval(h, _) => h,
-  LBinOp(h, _, _, _) => h,
+  LBinOp{handle: h} => h,
   LUnaryOp(h, _, _) => h,
   LCall(h, _, _) => h,
   LTailCall(h, _, _) => h,
-  LDirectCall(h, _, _, _, _) => h,
+  LDirectCall{handle: h} => h,
   LReturn(h, _) => h,
-  LMakeClosure(h, _, _) => h,
+  LMakeClosure{handle: h} => h,
   LShow(h, _) => h,
   LHash(h, _) => h,
-  LMakeContinuation(h, _, _, _, _) => h,
+  LMakeContinuation{handle: h} => h,
   LResumeK(h, _, _) => h,
   LYield(h, _, _, _) => h,
   LKExtend(h, _) => h,
   LDeclareFn(_) => 0,
-  LIf(h, _, _, _) => h,
+  LIf{handle: h} => h,
   LBlock(h, _) => h,
   LMakeList(h, _) => h,
   LMakeTuple(h, _) => h,
@@ -620,8 +620,8 @@ fn lexpr_handle(e) with Pure = match e {
 // Called by FnStmt / LambdaExpr / handler-arm-body lowering after lower_expr.
 fn mark_tail(e) with Memory + Alloc = match e {
   LCall(h, fn_, args) => LTailCall(h, fn_, args),
-  LDirectCall(h, fh, n, _, args) => LDirectCall(h, fh, n, true, args),
-  LIf(h, cond, then_b, else_b) => LIf(h, cond, mark_tail_last_in(then_b), mark_tail_last_in(else_b)),
+  LDirectCall{handle: h, callee: fh, name: n, args} => LDirectCall(h, fh, n, true, args),
+  LIf{handle: h, cond, then_body: then_b, else_body: else_b} => LIf(h, cond, mark_tail_last_in(then_b), mark_tail_last_in(else_b)),
   LBlock(h, stmts) => LBlock(h, mark_tail_last_in(stmts)),
   LMatch(h, scrut, arms) => LMatch(h, scrut, mark_tail_arms(arms)),
   _ => e,
@@ -750,7 +750,7 @@ fn lower_call_dispatch(handle, f, fh, fbody, r_args) = {
       }
     } else {
       match env_kind_of(name) {
-        Some(ConstructorScheme(tag_id, _)) => LMakeVariant(handle, tag_id, lo_args),
+        Some(ConstructorScheme{tag: tag_id}) => LMakeVariant(handle, tag_id, lo_args),
         Some(RecordSchemeKind(_)) => // Nominal-record CALL-form construction `Pri({...})`: the runtime
         // representation IS the bare record (NamedRecordExpr's own arm
         // lowers to LMakeRecord — type identity is type-system-only, no
@@ -895,7 +895,7 @@ fn partial_callee_form(handle, fbody, fh) = match fbody {
   } else {
     match env_kind_of(name) {
       Some(FnScheme) => Some(PcfCall(name)),
-      Some(ConstructorScheme(tag_id, _)) => Some(PcfVariant(tag_id)),
+      Some(ConstructorScheme{tag: tag_id}) => Some(PcfVariant(tag_id)),
       Some(EffectOpScheme{}) => // An OP reified as a value, and it passes None for the lexical
       // answer — not to disable a tier, but because it HAS no lexical
       // answer: this body becomes a lifted fn, so a frame local resolved
@@ -1112,7 +1112,7 @@ fn lower_call_partial(handle, fbody, fh, r_args, n_ps) = match partial_callee_fo
 // live, the subsumed Hβ.infer.order-free-live-row).
 fn effects_of(fn_ty) = match fn_ty {
   TFun{row} => effects_of_row(row),
-  TCont(_, _, _, world) => effects_of_row(world),
+  TCont{world} => effects_of_row(world),
   _ => [],
 }
 
@@ -1264,7 +1264,7 @@ fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
   match last(stmts) {
     N{body: b} => {
       let binds2 = match b {
-        NStmt(HandlerDeclStmt(hname, _, _, _, arms)) => bind_from_arms(arms, hname, summaries, decls, binds),
+        NStmt(HandlerDeclStmt{name: hname, arms}) => bind_from_arms(arms, hname, summaries, decls, binds),
         _ => binds,
       }
       bind_from_handlers(drop_last(stmts), summaries, decls, binds2)
@@ -1338,7 +1338,7 @@ fn collect_free_vars_of_decl(decls, name: String) = {
 fn program_may_yield(stmts) = any(
   {
     N{body} => match body {
-      NStmt(EffectDeclStmt(ename, _, _)) => effect_has_multishot_op(ename),
+      NStmt(EffectDeclStmt{name: ename}) => effect_has_multishot_op(ename),
       _ => false,
     },
   },
@@ -1363,7 +1363,7 @@ fn program_may_yield(stmts) = any(
 // fixpoint (the A.6 m3 leg's alloc trap; the fixpoint oracle caught what
 // the census structurally could not).
 fn eff_names_of(names) = flatten(map(
-  { ENamed(h) => [intern_name_of(h)], EParameterized(h, _) => [intern_name_of(h)], EPure => [] },
+  { ENamed(h) => [intern_name_of(h)], EParameterized{name: h} => [intern_name_of(h)], EPure => [] },
   names
 ))
 
@@ -1550,7 +1550,7 @@ fn flow_edges_expr(e) = match e {
   // lower_arm_ev_index_for reads its own logical counter, not the
   // capacity-as-length list header (the Carried-Truth substrate fix).
   ([name], []),
-  BinOpExpr(_, l, r) => flow_join(flow_edges(l), flow_edges(r)),
+  BinOpExpr{left: l, right: r} => flow_join(flow_edges(l), flow_edges(r)),
   UnaryOpExpr(_, inner) => flow_edges(inner),
   CallExpr(f, args) => match f {
     N{body: fbody} => {
@@ -1574,7 +1574,7 @@ fn flow_edges_expr(e) = match e {
   LambdaExpr(_, b) => flow_edges(b),
   ResumeExpr(v, su) => flow_join(flow_edges(v), flow_edges_state_updates(su)),
   FieldExpr(rec, _) => flow_edges(rec),
-  PipeExpr(kind, l, r) => {
+  PipeExpr{kind, left: l, right: r} => {
     let inner = flow_join(flow_edges(l), flow_edges(r))
     match kind {
       PTee => match r {
@@ -1595,20 +1595,20 @@ fn flow_edges_expr(e) = match e {
   },
   ExprPlaceholder => ([], []),
   RestExpr(_) => ([], []),
-  LabeledArg(_, v) => flow_edges(v),
+  LabeledArg{value: v} => flow_edges(v),
 }
 
 fn flow_edges_stmt(s) = match s {
-  LetStmt(_, expr, _) => flow_edges(expr),
+  LetStmt{value: expr} => flow_edges(expr),
   FnStmt{body: body_node} => flow_edges(body_node),
   ExprStmt(expr) => flow_edges(expr),
-  TypeDefStmt(_, _) => ([], []),
-  EffectDeclStmt(_, _, _) => ([], []),
-  HandlerDeclStmt(_, _, _, _, _) => ([], []),
+  TypeDefStmt{} => ([], []),
+  EffectDeclStmt{} => ([], []),
+  HandlerDeclStmt{} => ([], []),
   ImportStmt(_) => ([], []),
-  RefineStmt(_, _, _) => ([], []),
-  AliasStmt(_, _) => ([], []),
-  RowAliasStmt(_, _) => ([], []),
+  RefineStmt{} => ([], []),
+  AliasStmt{} => ([], []),
+  RowAliasStmt{} => ([], []),
 }
 
 fn flow_edges_match_arms(arms) = fold(
@@ -1641,7 +1641,7 @@ fn installed_handled_ename(handler_body) = {
     match env_lookup(hname) {
       Some(entry) => match entry {
         (_, _, kind) => match kind {
-          HandlerKind(_, _, _, arms) => // The absorbed effect is a live projection of the arms (§2), not a field.
+          HandlerKind{arms} => // The absorbed effect is a live projection of the arms (§2), not a field.
           derive_handler_ename(arms, hname),
           _ => // drift-audit: ignore — "" = RHS is not a named handler decl (nothing absorbed)
           "",
@@ -1867,7 +1867,9 @@ type Schedule = Seq | Threaded | Simd | Gpu | Persisted
 // One projection of infer's ExecutableBoundary edge. Every field keeps its
 // graph identity through LowIR: the thunk closure, semantic result, boundary-
 // local carrier, and the two scheduler-specific transient tickets.
-type ScheduledBoundary = ScheduledBoundary(LowExpr, Int, Int, Int, Int) | InvalidScheduledBoundary(Int, BoundaryInvariant)
+type ScheduledBoundary
+  = ScheduledBoundary(thunk: LowExpr, result: Int, carrier: Int, thread_ticket: Int, persist_ticket: Int)
+  | InvalidScheduledBoundary(Int, BoundaryInvariant)
 
 // Read the fanout's execution strategy from the installed `~>` chain —
 // the SAME `lower_handler_stack_now()` + `handler_covers_effect`
@@ -2023,7 +2025,7 @@ fn expr_diverges(node) = match node {
     NStmt(ExprStmt(e)) => // Statements wrap their expression — a block's stmts are NStmt(...), so
     // first_diverging must unwrap to reach the perform.
     expr_diverges(e),
-    NStmt(LetStmt(_, init, _)) => expr_diverges(init),
+    NStmt(LetStmt{value: init}) => expr_diverges(init),
     NExpr(CallExpr(f, _)) => match f {
       N{body: fb} => match fb {
         NExpr(VarRef(name)) => match op_resume_discipline(name) {
@@ -2306,7 +2308,7 @@ fn lower_expr_body(e, handle, span) = match e {
         // no supplied args and no new mechanism. The callee shape is read live from the
         // node's own program cell, never rebuilt from the matched Expr.
         match env_kind_of(name) {
-          Some(ConstructorScheme(tag_id, _)) => match scheme_ref_fun_arity(name) {
+          Some(ConstructorScheme{tag: tag_id}) => match scheme_ref_fun_arity(name) {
             None => // Not a function type: the reference IS the value — a nullary
             // variant, the sentinel form emit already knows.
             LMakeVariant(handle, tag_id, []),
@@ -2340,7 +2342,7 @@ fn lower_expr_body(e, handle, span) = match e {
       }
     },
   },
-  BinOpExpr(op, left, right) => // The boolean verbs are CONTROL, not arithmetic: `a && b` IS
+  BinOpExpr{op, left, right} => // The boolean verbs are CONTROL, not arithmetic: `a && b` IS
   // `if a { b } else { false }`, `a || b` IS `if a { true } else { b }`.
   // The eager i32.and lowering evaluated both operands, so every guard
   // protecting a read (`pos < n && str_eq(set[pos], …)`) ran the read it
@@ -2539,14 +2541,14 @@ fn lower_expr_body(e, handle, span) = match e {
   FieldExpr(rec, field) => // W6: the field NAME rides the node; the offset projects at emit from
   // the receiver's live type under the bracket.
   LFieldLoad(handle, lower_expr(rec), FByName(field)),
-  PipeExpr(kind, left, right) => lower_pipe(kind, left, right, handle),
+  PipeExpr{kind, left, right} => lower_pipe(kind, left, right, handle),
   FanoutExpr(branches) => lower_fanout_nary(handle, branches),
   RestExpr(_) => // infer already reported ERestOutsideDestructure at this node;
   // productive-under-error, same as the hole.
   LConst(handle, LInt(0)),
   ExprPlaceholder => // ? — emit lowers to unreachable via NHole check
   LConst(handle, LInt(0)),
-  LabeledArg(_, v) => // A labeled arg is resolved to positional by resolve_call_args before
+  LabeledArg{value: v} => // A labeled arg is resolved to positional by resolve_call_args before
   // lower_expr sees it; reaching here means one leaked outside a call's arg
   // list. Lower the value through (productive-under-error) — infer has already
   // surfaced the E_UnknownArgLabel diagnostic at this node.
@@ -2596,7 +2598,7 @@ fn lower_pipe_complete(lo_l, right, handle) = match right {
       _ => false,
     }
     match lo_r {
-      LDirectCall(dh, dfh, dn, dt, dargs) => if hole_at >= 0 {
+      LDirectCall{handle: dh, callee: dfh, name: dn, tail: dt, args: dargs} => if hole_at >= 0 {
         LDirectCall(dh, dfh, dn, dt, splice_at(dargs, hole_at, lo_l))
       }
       // drift-audit: ignore — one completion per pipe node, not a loop accumulator
@@ -2907,7 +2909,7 @@ fn fanout_thunk_walk(handle, branch_nodes, boundaries, i, n) = if i >= n {
 // edge: a compiler error, surfaced before the productive-under-error fallback.
 fn fanout_boundaries(handle) = match graph_boundary_at(handle) {
   FanoutBoundary(edges) => Ok(edges),
-  PendingContinuationBoundary(_, _, _, _) => {
+  PendingContinuationBoundary{} => {
     report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
     Err(WrongFanoutBoundaryKind)
   },
@@ -2948,7 +2950,7 @@ fn executable_boundary_row(thunk_h) = match lookup_ty(thunk_h) {
 // carrier back to the semantic result representation. The scheduler only ever
 // transports the carrier pointer; f64/f32/v128 remain unboxed in field 0.
 fn invoke_scheduled_boundary(branch) = match branch {
-  ScheduledBoundary(thunk, result_h, carrier_h, _, _) => LFieldLoad(result_h, LCall(carrier_h, thunk, []), FByIndex(0)),
+  ScheduledBoundary{thunk, result: result_h, carrier: carrier_h} => LFieldLoad(result_h, LCall(carrier_h, thunk, []), FByIndex(0)),
   InvalidScheduledBoundary(handle, invariant) => LInvariantFailure(handle, invariant),
 }
 
@@ -2975,7 +2977,7 @@ fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
     let spawn_lets = map(
       {
         (i, branch) => match branch {
-          ScheduledBoundary(thunk, _, _, thread_ticket_h, _) => LLet(
+          ScheduledBoundary{thunk, thread_ticket: thread_ticket_h} => LLet(
             thread_ticket_h,
             "__fanout_spawn_{int_to_str(i)}_{int_to_str(handle)}",
             lower_perform_dispatch(thread_ticket_h, "spawn", [thunk])
@@ -2992,7 +2994,7 @@ fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
     let joins = map(
       {
         (i, branch) => match branch {
-          ScheduledBoundary(_, result_h, carrier_h, thread_ticket_h, _) => {
+          ScheduledBoundary{result: result_h, carrier: carrier_h, thread_ticket: thread_ticket_h} => {
             let joined = lower_perform_dispatch(
               carrier_h,
               "thread_join",
@@ -3040,7 +3042,7 @@ fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
     let spawn_lets = map(
       {
         (i, branch) => match branch {
-          ScheduledBoundary(thunk, _, _, _, persist_ticket_h) => LLet(
+          ScheduledBoundary{thunk, persist_ticket: persist_ticket_h} => LLet(
             persist_ticket_h,
             "__fanout_persist_{int_to_str(i)}_{int_to_str(handle)}",
             lower_perform_dispatch(persist_ticket_h, "persist_branch", [thunk])
@@ -3057,7 +3059,7 @@ fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
     let joins = map(
       {
         (i, branch) => match branch {
-          ScheduledBoundary(_, result_h, carrier_h, _, persist_ticket_h) => {
+          ScheduledBoundary{result: result_h, carrier: carrier_h, persist_ticket: persist_ticket_h} => {
             let joined = lower_perform_dispatch(
               carrier_h,
               "join_persist",
@@ -3217,12 +3219,12 @@ fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, bound
 // first sorted field), and the unprovable case must floor loudly, never
 // return a partial sum.
 fn open_record_full_fields(fields, v) = match graph_chase(v) {
-  GNode(NRecordRowBound(residual, RowClosed(_)), _) => record_layout(fields ++ residual),
-  GNode(NRecordRowBound(residual, RowContinues(next_v)), _) => // The chain CONTINUES at another row var: these residual fields are
+  GNode(NRecordRowBound{fields: residual, tail: RowClosed(_)}, _) => record_layout(fields ++ residual),
+  GNode(NRecordRowBound{fields: residual, tail: RowContinues(next_v)}, _) => // The chain CONTINUES at another row var: these residual fields are
   // known, the rest is not yet. Chasing on keeps the answer honest —
   // a still-free tail reaches the None arm below and floors.
   open_record_full_fields(fields ++ residual, next_v),
-  GNode(NBound(TRecordOpen(more, v2)), _) => open_record_full_fields(fields ++ more, v2),
+  GNode(NBound(TRecordOpen{fields: more, rest: v2}), _) => open_record_full_fields(fields ++ more, v2),
   GNode(NBound(TRecord(more)), _) => record_layout(fields ++ more),
   _ => None,
 }
@@ -3257,8 +3259,8 @@ fn resolve_field_offset(rec_handle, field_name) = match record_layout_of(rec_han
 // record.
 fn record_layout_of(rec_handle) = match lookup_ty(rec_handle) {
   TRecord(fields) => record_layout(fields),
-  TRecordOpen(fields, v) => open_record_full_fields(fields, v),
-  TName(name, _) => // H2.3: nominal records — chase TName through env to its
+  TRecordOpen{fields, rest: v} => open_record_full_fields(fields, v),
+  TName{name} => // H2.3: nominal records — chase TName through env to its
   // RecordSchemeKind for the field schema.
   match env_lookup(name) {
     Some(entry) => match entry {
@@ -3379,7 +3381,7 @@ fn lower_stmt(node) = match node {
 }
 
 fn lower_stmt_body(s, handle, span) = match s {
-  LetStmt(pat, expr, _) => {
+  LetStmt{pat, value: expr} => {
     let lo = lower_expr(expr)
     match pat_of(pat) {
       PVar(name) => // Register the name in the current scope (a local for subsequent
@@ -3469,9 +3471,9 @@ fn lower_stmt_body(s, handle, span) = match s {
       },
     }
   },
-  TypeDefStmt(_name, _variants) => LConst(handle, LInt(0)),
-  EffectDeclStmt(_name, _params, _ops) => LConst(handle, LInt(0)),
-  HandlerDeclStmt(name, _ename, config, state, arms) => {
+  TypeDefStmt{} => LConst(handle, LInt(0)),
+  EffectDeclStmt{} => LConst(handle, LInt(0)),
+  HandlerDeclStmt{name, config, state, arms} => {
     // H1.4: each handler arm becomes a callable wasm function. With
     // the Hβ.first-light.handler-arm-fn-name-discriminator landing,
     // arm fns are named `op_<handler_name>_<op_name>` — unique even
@@ -3497,11 +3499,11 @@ fn lower_stmt_body(s, handle, span) = match s {
     LBlock(handle, list_concat(arm_decls, [LConst(handle, LInt(0))]))
   },
   ImportStmt(_module) => LConst(handle, LInt(0)),
-  RefineStmt(_name, _ty, _pred) => LConst(handle, LInt(0)),
-  AliasStmt(_name, _ty) => // Transparent alias: type-level only, no runtime presence — the alias
+  RefineStmt{} => LConst(handle, LInt(0)),
+  AliasStmt{} => // Transparent alias: type-level only, no runtime presence — the alias
   // and its underlying type unify at infer; emit erases (like RefineStmt).
   LConst(handle, LInt(0)),
-  RowAliasStmt(_name, _effs) => // A named row is an env fact — no runtime presence.
+  RowAliasStmt{} => // A named row is an env fact — no runtime presence.
   LConst(handle, LInt(0)),
   ExprStmt(expr) => lower_expr(expr),
 }
@@ -3545,13 +3547,13 @@ fn ty_handle_of(ty) = match ty {
   TList(_) => 0,
   TTuple(_) => 0,
   TFun{} => 0,
-  TName(_, _) => 0,
+  TName{} => 0,
   TRecord(_) => 0,
-  TRecordOpen(_, _) => 0,
-  TRefined(_, _) => 0,
-  TCont(_, _, _, _) => 0,
-  TAlias(_, _) => 0,
-  TReprPin(_, _) => 0,
+  TRecordOpen{} => 0,
+  TRefined{} => 0,
+  TCont{} => 0,
+  TAlias{} => 0,
+  TReprPin{} => 0,
 }
 
 // Bind every name a pattern binds as a local whose type handle is the
@@ -3628,7 +3630,7 @@ fn seq_rep_of_fuel(h, fuel) = if fuel <= 0 {
     NExpr(LitString(_)) => SRFlat,
     NExpr(MakeStringExpr(_)) => SRFlat,
     NExpr(ShowExpr(_)) => SRFlat,
-    NExpr(BinOpExpr(op, _, _)) => match op {
+    NExpr(BinOpExpr{op}) => match op {
       BConcat => SRRope,
       _ => SRUnknown,
     },
@@ -3723,7 +3725,7 @@ fn lower_pat(node, srep) = match node {
     PWild => LPWild,
     PLit(v) => LPLit(lower_lit_value(v)),
     PCon(name, subs) => match env_kind_of(name) {
-      Some(ConstructorScheme(t, _)) => LPCon(name, t, map(lower_pat_with_ty, subs)),
+      Some(ConstructorScheme{tag: t}) => LPCon(name, t, map(lower_pat_with_ty, subs)),
       Some(RecordSchemeKind(_)) => // A nominal record's pattern `Pri(pa)`: the runtime value IS the bare
       // record (no tag word), so the constructor is the identity here exactly
       // as in construction, and its one sub-pattern matches the value itself.
@@ -3737,7 +3739,7 @@ fn lower_pat(node, srep) = match node {
       LPUnresolvedCon(name, map(lower_sub_pat, subs)),
     },
     PConFields(name, flds) => match env_kind_of(name) {
-      Some(ConstructorScheme(t, _)) => // Each named field lowers at the position the constructor's own
+      Some(ConstructorScheme{tag: t}) => // Each named field lowers at the position the constructor's own
       // parameters give it; a field the arm does not name matches anything.
       LPCon(name, t, map(lower_field_cell(flds), con_field_cells(h))),
       Some(RecordSchemeKind(_)) => // A nominal record read by field IS the record pattern it spells, and
@@ -3764,7 +3766,7 @@ fn con_field_cells(h) = match graph_boundary_at(h) {
   ConFieldsBoundary(cells) => cells,
   NoBoundary => [],
   FanoutBoundary(_) => [],
-  PendingContinuationBoundary(_, _, _, _) => [],
+  PendingContinuationBoundary{} => [],
   ContinuationBoundary(_) => [],
   InterpBoundary(_) => [],
 }
@@ -4211,7 +4213,7 @@ fn k_spine_next(node, subs) = match k_sub_for(subs, node) {
     },
     None => match node {
       N{body: b} => match b {
-        NExpr(BinOpExpr(_, l, r)) => match k_spine_next(l, subs) {
+        NExpr(BinOpExpr{left: l, right: r}) => match k_spine_next(l, subs) {
           Some(hit) => Some(hit),
           None => if k_trivial(l, subs) { k_spine_next(r, subs) } else { None },
         },
@@ -4238,7 +4240,7 @@ fn k_trivial(node, subs) = match k_sub_for(subs, node) {
       NExpr(LitString(_)) => true,
       NExpr(LitUnit) => true,
       NExpr(VarRef(_)) => true,
-      NExpr(BinOpExpr(_, l, r)) => k_trivial(l, subs) && k_trivial(r, subs),
+      NExpr(BinOpExpr{left: l, right: r}) => k_trivial(l, subs) && k_trivial(r, subs),
       NExpr(UnaryOpExpr(_, x)) => k_trivial(x, subs),
       _ => false,
     },
@@ -4258,9 +4260,9 @@ fn k_trivial(node, subs) = match k_sub_for(subs, node) {
 // calls are NOT silent: k2_floor_guard wraps them with the loud floor.
 fn k2_spine_call(node) = match node {
   N{body: b} => match b {
-    NExpr(BinOpExpr(_, l, _)) => k2_spine_call(l),
+    NExpr(BinOpExpr{left: l}) => k2_spine_call(l),
     NExpr(BlockExpr(stmts, final)) => if len(stmts) == 0 { k2_spine_call(final) } else { None },
-    NExpr(PipeExpr(kind, l, r)) => match kind {
+    NExpr(PipeExpr{kind, left: l, right: r}) => match kind {
       PForward => match k2_spine_call(l) {
         Some(deeper) => Some(deeper),
         None => match r {
@@ -4307,7 +4309,7 @@ fn k2_spine_call(node) = match node {
 fn callee_is_constructor(name) = match env_lookup(name) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      ConstructorScheme(_, _) => true,
+      ConstructorScheme{} => true,
       _ => false,
     },
   },
@@ -4356,9 +4358,9 @@ fn k_subs_inside(node, subs) = match k_sub_for(subs, node) {
   Some(_) => true,
   None => match node {
     N{body: b} => match b {
-      NExpr(BinOpExpr(_, l, r)) => k_subs_inside(l, subs) || k_subs_inside(r, subs),
+      NExpr(BinOpExpr{left: l, right: r}) => k_subs_inside(l, subs) || k_subs_inside(r, subs),
       NExpr(BlockExpr(stmts, final)) => if len(stmts) == 0 { k_subs_inside(final, subs) } else { false },
-      NExpr(PipeExpr(_, l, _)) => k_subs_inside(l, subs),
+      NExpr(PipeExpr{left: l}) => k_subs_inside(l, subs),
       NExpr(CallExpr(_, args)) => // M4 — a sub inside a constructor/call arg (the `Some(call)` boundary)
       any((a) => k_subs_inside(a, subs), args),
       _ => false,
@@ -4381,9 +4383,9 @@ fn k_remainder(node, subs) = match k_sub_for(subs, node) {
   } else {
     match node {
       N{body: b, handle: h} => match b {
-        NExpr(BinOpExpr(op2, l, r)) => LBinOp(h, op2, k_remainder(l, subs), k_remainder(r, subs)),
+        NExpr(BinOpExpr{op: op2, left: l, right: r}) => LBinOp(h, op2, k_remainder(l, subs), k_remainder(r, subs)),
         NExpr(BlockExpr(_, final)) => k_remainder(final, subs),
-        NExpr(PipeExpr(_, l, r)) => lower_pipe_complete(k_remainder(l, subs), r, h),
+        NExpr(PipeExpr{left: l, right: r}) => lower_pipe_complete(k_remainder(l, subs), r, h),
         NExpr(CallExpr(f, args)) => // M4 — a boundary inside a CONSTRUCTOR arg (`Some(risky())`): the
         // remainder is the variant rebuilt with the arg substituted. The
         // tag is read LIVE from the ConstructorScheme (never re-derived).
@@ -4392,7 +4394,7 @@ fn k_remainder(node, subs) = match k_sub_for(subs, node) {
         match f {
           N{body: fbody} => match fbody {
             NExpr(VarRef(name)) => match env_lookup(name) {
-              Some((_, _, ConstructorScheme(tag, _))) => LMakeVariant(h, tag, map((a) => k_remainder(a, subs), args)),
+              Some((_, _, ConstructorScheme{tag})) => LMakeVariant(h, tag, map((a) => k_remainder(a, subs), args)),
               _ => LYield(h, "", [], LConst(h, LInt(0))),
             },
             _ => LYield(h, "", [], LConst(h, LInt(0))),
@@ -4498,7 +4500,7 @@ fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
 
 fn continuation_boundary_at(site_h) = match graph_boundary_at(site_h) {
   ContinuationBoundary(edge) => Ok(edge),
-  PendingContinuationBoundary(_, _, continuation_h, _) => {
+  PendingContinuationBoundary{cont: continuation_h} => {
     report_at(
       continuation_h,
       EUnresolvedType(continuation_h, graph_epoch(), parse_span_of(continuation_h))
@@ -4622,14 +4624,14 @@ fn lower_body_reified(body_node) = match k_spine_next(body_node, []) {
 fn k2_guard(e) = if ls_program_may_yield() { k2_floor_guard(e, true) } else { e }
 
 fn k2_floor_guard(e, terminus) = match e {
-  LLet(h, name, init) => // A `__kr_` let is the k2 COMPOSITION JUNCTION's own park (the spine
+  LLet{handle: h, name, value: init} => // A `__kr_` let is the k2 COMPOSITION JUNCTION's own park (the spine
   // machinery minted the flag-check + LKExtend right below it), so its
   // init's yield is already composed — walk it under terminus so the
   // call-boundary wrap never double-wraps a handled boundary (the
   // pre-cut LSuspend park exclusion, carried to the bare-call carrier).
   LLet(h, name, k2_floor_guard(init, k2_is_park(name))),
   LBlock(h, stmts) => LBlock(h, k2_floor_last(stmts, terminus)),
-  LIf(h, c, t, el) => LIf(h, k2_floor_guard(c, false), k2_floor_last(t, terminus), k2_floor_last(el, terminus)),
+  LIf{handle: h, cond: c, then_body: t, else_body: el} => LIf(h, k2_floor_guard(c, false), k2_floor_last(t, terminus), k2_floor_last(el, terminus)),
   LMatch(h, s, arms) => LMatch(
     h,
     k2_floor_guard(s, false),
@@ -4680,14 +4682,14 @@ fn k2_floor_guard(e, terminus) = match e {
   LShow(h, x) => LShow(h, k2_floor_guard(x, false)),
   LHash(h, x) => LHash(h, k2_floor_guard(x, false)),
   LTailCall(h, f, args) => LTailCall(h, k2_floor_guard(f, false), k2_floor_list(args)),
-  LDirectCall(h, fh, n, t, args) => {
+  LDirectCall{handle: h, callee: fh, name: n, tail: t, args} => {
     let walked = LDirectCall(h, fh, n, t, k2_floor_list(args))
     if t || terminus || !can_yield(fh) { walked } else { k2_floor_wrap(h, walked) }
   },
-  LBinOp(h, op, l, r) => LBinOp(h, op, k2_floor_guard(l, false), k2_floor_guard(r, false)),
+  LBinOp{handle: h, op, left: l, right: r} => LBinOp(h, op, k2_floor_guard(l, false), k2_floor_guard(r, false)),
   LUnaryOp(h, op, x) => LUnaryOp(h, op, k2_floor_guard(x, false)),
-  LMakeClosure(h, fn_, caps) => LMakeClosure(h, fn_, k2_floor_list(caps)),
-  LMakeContinuation(h, fn_, caps, si, rs) => LMakeContinuation(h, fn_, k2_floor_list(caps), si, rs),
+  LMakeClosure{handle: h, lowfn: fn_, captures: caps} => LMakeClosure(h, fn_, k2_floor_list(caps)),
+  LMakeContinuation{handle: h, resume_fn: fn_, captures: caps, state_index: si, ret_slot: rs} => LMakeContinuation(h, fn_, k2_floor_list(caps), si, rs),
   LResumeK(h, k, v) => // The resume invocation is NEVER k2-wrapped: lower_resume_callk's own
   // redrive LIf owns the raised flag at this exact boundary.
   LResumeK(h, k2_floor_guard(k, false), k2_floor_guard(v, false)),
@@ -5142,8 +5144,8 @@ fn collect_top_level_names_loop(stmts, i, n, buf, count) = if i >= n {
   match list_index(stmts, i) {
     N{body} => match match body {
       NStmt(FnStmt{name}) => push_name(buf, count, name),
-      NStmt(LetStmt(N{body: NPat(PVar(name))}, _, _)) => push_name(buf, count, name),
-      NStmt(HandlerDeclStmt(name, _, _, _, _)) => // A handler decl IS a top-level name — `~> h` references it as a
+      NStmt(LetStmt{pat: N{body: NPat(PVar(name))}}) => push_name(buf, count, name),
+      NStmt(HandlerDeclStmt{name}) => // A handler decl IS a top-level name — `~> h` references it as a
       // global, never a captured upvalue (the phantom-capture fence lie:
       // each install counted as a capture inflated the ev-region base by
       // 4×installs while every caller built the record at ncap=0).
@@ -5381,7 +5383,7 @@ fn reach_perform_target(disp) = match perform_target_symbol(disp) {
 
 fn reach_names_expr(expr, acc) = match expr {
   LGlobal(_, n) => [n] ++ acc,
-  LDirectCall(_h, _fh, n, _t, args) => reach_names_list(args, [n] ++ acc),
+  LDirectCall{name: n, args} => reach_names_list(args, [n] ++ acc),
   LPerform(_h, disp, args) => // Emit calls op_<target> (the arm fn), so reach the arm fn by its emitted
   // name — the un-prefixed target matched nothing (installed handlers survive
   // via their reached decl-container, but a singleton dispatch to an
@@ -5392,9 +5394,9 @@ fn reach_names_expr(expr, acc) = match expr {
     inits,
     reach_names_expr(hn, reach_names_expr(b, reach_arm_group_names(arm_names, acc)))
   ),
-  LLet(_h, _n, inner) => reach_names_expr(inner, acc),
-  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f), caps) => reach_names_list(caps, reach_names_list(body, acc)),
-  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f), caps, _, _) => reach_names_list(caps, reach_names_list(body, acc)),
+  LLet{value: inner} => reach_names_expr(inner, acc),
+  LMakeClosure{lowfn: LFn{body}, captures: caps} => reach_names_list(caps, reach_names_list(body, acc)),
+  LMakeContinuation{resume_fn: LFn{body}, captures: caps} => reach_names_list(caps, reach_names_list(body, acc)),
   LResumeK(_h, k, v) => // The resume invocation reaches through its k expr and value; the __k
   // fn itself reaches via its LMakeContinuation record above.
   reach_names_expr(v, reach_names_expr(k, acc)),
@@ -5403,10 +5405,10 @@ fn reach_names_expr(expr, acc) = match expr {
   reach_names_expr(k, reach_names_list(args, acc)),
   LKExtend(_h, k) => // A k2 boundary reaches through its frame_k record the same way.
   reach_names_expr(k, acc),
-  LDeclareFn(LFn(_n, _a, _p, body, _r, _f)) => reach_names_list(body, acc),
+  LDeclareFn(LFn{body}) => reach_names_list(body, acc),
   LBlock(_h, stmts) => reach_names_list(stmts, acc),
-  LIf(_h, c, t, e) => reach_names_list(e, reach_names_list(t, reach_names_expr(c, acc))),
-  LBinOp(_h, op, l, r) => // ==/ordering on a wide-element sequence mints list_eq_f64/list_compare_f64
+  LIf{cond: c, then_body: t, else_body: e} => reach_names_list(e, reach_names_list(t, reach_names_expr(c, acc))),
+  LBinOp{op, left: l, right: r} => // ==/ordering on a wide-element sequence mints list_eq_f64/list_compare_f64
   // (emit_eq_for_ty / emit_cmp_for_ty); contribute it where emit reads it.
   reach_names_expr(r, reach_names_expr(l, wide_binop_seed(op, l) ++ acc)),
   LUnaryOp(_h, _op, x) => reach_names_expr(x, acc),
@@ -5442,9 +5444,9 @@ fn reach_names_expr(expr, acc) = match expr {
 // The decl's emitted name — "" for statements that are not named fns
 // (module value lets stay unconditionally; they run in __init_lets).
 fn reach_decl_name(stmt) = match stmt {
-  LDeclareFn(LFn(n, _, _, _, _, _)) => n,
-  LLet(_, n, LMakeClosure(_, _, _)) => n,
-  LLet(_, n, LMakeContinuation(_, _, _, _, _)) => n,
+  LDeclareFn(LFn{name: n}) => n,
+  LLet{name: n, value: LMakeClosure{}} => n,
+  LLet{name: n, value: LMakeContinuation{}} => n,
   _ => // drift-audit: ignore — "" = stmt is not a named fn (module value lets run in __init_lets)
   "",
 }
@@ -5501,14 +5503,14 @@ fn reach_stmt_defers(node) = match node {
   N{body} => match body {
     NStmt(s) => match s {
       FnStmt{} => true,
-      HandlerDeclStmt(_, _, _, _, arms) => len(arms) > 0,
-      LetStmt(_, _, _) => false,
-      TypeDefStmt(_, _) => false,
-      EffectDeclStmt(_, _, _) => false,
+      HandlerDeclStmt{arms} => len(arms) > 0,
+      LetStmt{} => false,
+      TypeDefStmt{} => false,
+      EffectDeclStmt{} => false,
       ImportStmt(_) => false,
-      RefineStmt(_, _, _) => false,
-      AliasStmt(_, _) => false,
-      RowAliasStmt(_, _) => false,
+      RefineStmt{} => false,
+      AliasStmt{} => false,
+      RowAliasStmt{} => false,
       ExprStmt(_) => false,
     },
     NExpr(_) => false,
@@ -5532,8 +5534,8 @@ fn reach_name_map(stmts, i, n, map) = if i >= n {
   let m2 = match list_index(stmts, i) {
     N{body} => match body {
       NStmt(FnStmt{name}) => smap_add(map, name, i),
-      NStmt(LetStmt(N{body: NPat(PVar(name))}, _, _)) => smap_add(map, name, i),
-      NStmt(HandlerDeclStmt(hname, _, _, _, arms)) => fold(map, (m, arm) => smap_add(m, arm_fn_name(hname, arm.op_name), i), arms),
+      NStmt(LetStmt{pat: N{body: NPat(PVar(name))}}) => smap_add(map, name, i),
+      NStmt(HandlerDeclStmt{name: hname, arms}) => fold(map, (m, arm) => smap_add(m, arm_fn_name(hname, arm.op_name), i), arms),
       _ => // no name keys this stmt — phase A owns it
       map,
     },
@@ -5568,9 +5570,9 @@ fn reach_seed_stmts(stmts, i, n, outs, enq, r0, fbuf, fc) = if i >= n {
   graph_hole_drain(reach_decl_name(lo))
   let outs2 = list_set(outs, i, lo)
   match lo {
-    LLet(_, _, LMakeClosure(_, _, _)) => reach_seed_stmts(stmts, i + 1, n, outs2, enq, r0, fbuf, fc),
-    LLet(_, _, LMakeContinuation(_, _, _, _, _)) => reach_seed_stmts(stmts, i + 1, n, outs2, enq, r0, fbuf, fc),
-    LLet(_, _, init) => match reach_enqueue(reach_names_expr(init, []) ++ spec_entry_seed(lo), r0, 0, fbuf, fc) {
+    LLet{value: LMakeClosure{}} => reach_seed_stmts(stmts, i + 1, n, outs2, enq, r0, fbuf, fc),
+    LLet{value: LMakeContinuation{}} => reach_seed_stmts(stmts, i + 1, n, outs2, enq, r0, fbuf, fc),
+    LLet{value: init} => match reach_enqueue(reach_names_expr(init, []) ++ spec_entry_seed(lo), r0, 0, fbuf, fc) {
       (fbuf2, fc2) => reach_seed_stmts(stmts, i + 1, n, outs2, list_set(enq, i, 1), r0, fbuf2, fc2),
     },
     _ => match reach_enqueue(spec_entry_seed(lo), r0, 0, fbuf, fc) {
@@ -5659,10 +5661,10 @@ fn reach_collect(outs, rbuf, rn, i, n, buf, count) = if i >= n {
 // any of them was reached (installing a handler makes every arm
 // dispatchable, so arms keep whole-container).
 fn reach_nested_names(d, acc) = match d {
-  LDeclareFn(LFn(n, _, _, body, _, _)) => reach_nested_names_list(body, [n] ++ acc),
+  LDeclareFn(LFn{name: n, body}) => reach_nested_names_list(body, [n] ++ acc),
   LBlock(_h, stmts) => reach_nested_names_list(stmts, acc),
-  LLet(_h, _n, inner) => reach_nested_names(inner, acc),
-  LIf(_h, _c, t, e) => reach_nested_names_list(e, reach_nested_names_list(t, acc)),
+  LLet{value: inner} => reach_nested_names(inner, acc),
+  LIf{then_body: t, else_body: e} => reach_nested_names_list(e, reach_nested_names_list(t, acc)),
   LHandleWith(_h, b, _hn, _hname, _inits, _an) => reach_nested_names(b, acc),
   _ => acc,
 }
@@ -5772,9 +5774,9 @@ fn holes_filter(pairs, uni, acc, i) = if i >= len(pairs) {
 fn ty_has_wide_seq(t, seen) = match fold_strip(t) {
   TList(e) => stride_of(seq_elem_face(e)) >= 8 || ty_has_wide_seq(e, seen),
   TRecord(fields) => any({ (_n, fty) => ty_has_wide_seq(fty, seen) }, fields),
-  TRecordOpen(fields, _) => any({ (_n, fty) => ty_has_wide_seq(fty, seen) }, fields),
+  TRecordOpen{fields} => any({ (_n, fty) => ty_has_wide_seq(fty, seen) }, fields),
   TTuple(elems) => any((x) => ty_has_wide_seq(x, seen), elems),
-  TName(name, _) => if ls_find_str_local(seen, name, 0) >= 0 {
+  TName{name} => if ls_find_str_local(seen, name, 0) >= 0 {
     false
   } else {
     any(
@@ -5827,9 +5829,9 @@ fn show_reach_names(x) with LookupTy + Memory + Alloc = {
     TFloat => ["float_to_str"],
     TList(_) => show_agg_reach(ty),
     TTuple(_) => show_agg_reach(ty),
-    TName(_, _) => show_agg_reach(ty),
+    TName{} => show_agg_reach(ty),
     TRecord(_) => show_agg_reach(ty),
-    TRecordOpen(_, _) => show_agg_reach(ty),
+    TRecordOpen{} => show_agg_reach(ty),
     _ => ["int_to_str"],
   }
 }
@@ -5863,9 +5865,9 @@ fn hash_reach_names(x) with LookupTy + Memory + Alloc = {
     },
     TFloat => ["float_to_str", "str_hash"],
     TRecord(_) => hash_agg_reach(ty),
-    TRecordOpen(_, _) => hash_agg_reach(ty),
+    TRecordOpen{} => hash_agg_reach(ty),
     TTuple(_) => hash_agg_reach(ty),
-    TName(_, _) => hash_agg_reach(ty),
+    TName{} => hash_agg_reach(ty),
     _ => [],
   }
 }
@@ -5938,9 +5940,9 @@ fn spec_resolve_changes(t) with LookupTy + Memory = match t {
   TList(e) => spec_resolve_changes(e),
   TTuple(es) => spec_resolve_changes_list(es, 0),
   TFun{params: ps, ret: r} => spec_resolve_changes_params(ps, 0) || spec_resolve_changes(r),
-  TName(_, args) => spec_resolve_changes_list(args, 0),
+  TName{args} => spec_resolve_changes_list(args, 0),
   TRecord(fs) => spec_resolve_changes_fields(fs, 0),
-  TRecordOpen(fs, v) => // The row var resolves like any other var — this arm read only the field
+  TRecordOpen{fields: fs, rest: v} => // The row var resolves like any other var — this arm read only the field
   // TYPES, so a site whose ONLY change was the row closing reported
   // "unchanged" and kept the open form. That is what left an INTERIOR site (a
   // call inside another twin's body) reading the decl's unlearned row after
@@ -5949,9 +5951,9 @@ fn spec_resolve_changes(t) with LookupTy + Memory = match t {
     TVar(h2) => h2 != v || spec_resolve_changes_fields(fs, 0),
     _ => true,
   },
-  TRefined(b, _) => spec_resolve_changes(b),
-  TAlias(_, i) => spec_resolve_changes(i),
-  TCont(i, a, _, _) => spec_resolve_changes(i) || spec_resolve_changes(a),
+  TRefined{base: b} => spec_resolve_changes(b),
+  TAlias{inner: i} => spec_resolve_changes(i),
+  TCont{input: i, answer: a} => spec_resolve_changes(i) || spec_resolve_changes(a),
   _ => // scalars (TInt/TFloat/TUnit/TByte)
   false,
 }
@@ -6004,9 +6006,9 @@ fn spec_resolve_build(t) with LookupTy + Memory + Alloc + GraphRead = match t {
   TList(e) => TList(spec_resolve(e)),
   TTuple(es) => TTuple(map(spec_resolve, es)),
   TFun{params: ps, ret: r, row: eff} => TFun(map((p) => param_with_ty(p, spec_resolve(param_ty(p))), ps), spec_resolve(r), eff),
-  TName(n, args) => TName(n, map(spec_resolve, args)),
+  TName{name: n, args} => TName(n, map(spec_resolve, args)),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_resolve(ft)) }, fs)),
-  TRecordOpen(fs, v) => // The row var read through the same live channel as every other var: when
+  TRecordOpen{fields: fs, rest: v} => // The row var read through the same live channel as every other var: when
   // the site closed it, that record IS the resolved receiver and the open
   // form is gone. Anything else keeps the open form with resolved fields.
   // The var holds the REMAINDER the site proved, so the record is the known
@@ -6018,9 +6020,9 @@ fn spec_resolve_build(t) with LookupTy + Memory + Alloc + GraphRead = match t {
       _ => mk_record_open(known, v),
     }
   },
-  TRefined(b, p) => TRefined(spec_resolve(b), p),
-  TAlias(n, i) => TAlias(n, spec_resolve(i)),
-  TCont(i, a, d, w) => TCont(spec_resolve(i), spec_resolve(a), d, w),
+  TRefined{base: b, pred: p} => TRefined(spec_resolve(b), p),
+  TAlias{name: n, inner: i} => TAlias(n, spec_resolve(i)),
+  TCont{input: i, answer: a, discipline: d, world: w} => TCont(spec_resolve(i), spec_resolve(a), d, w),
   _ => // scalars (TInt/TFloat/TUnit/TByte)
   t,
 }
@@ -6052,16 +6054,16 @@ fn spec_pairs_walk(st0, it0, acc) with GraphRead + Memory + Alloc = {
       TFun{params: ips, ret: ir} => spec_pairs_walk(r, ir, spec_pairs_walk_params(ps, ips, acc)),
       _ => acc,
     },
-    TName(_, args) => match fold_strip(it0) {
-      TName(_, iargs) => spec_pairs_walk_list(args, iargs, acc),
+    TName{args} => match fold_strip(it0) {
+      TName{args: iargs} => spec_pairs_walk_list(args, iargs, acc),
       _ => acc,
     },
     TRecord(fs) => match fold_strip(it0) {
       TRecord(ifs) => spec_pairs_walk_fields(fs, ifs, acc),
-      TRecordOpen(ifs, _) => spec_pairs_walk_fields(fs, ifs, acc),
+      TRecordOpen{fields: ifs} => spec_pairs_walk_fields(fs, ifs, acc),
       _ => acc,
     },
-    TRecordOpen(fs, v) => // The ROW VAR is a quantified var like any other, and it keys the twin.
+    TRecordOpen{fields: fs, rest: v} => // The ROW VAR is a quantified var like any other, and it keys the twin.
     // Dropping it made every record shape share one body, so the offset came
     // from the decl's own row — which never learned a residual — instead of
     // the call's proven set: two shapes through one open-row callee answered
@@ -6079,7 +6081,7 @@ fn spec_pairs_walk(st0, it0, acc) with GraphRead + Memory + Alloc = {
         graph_chase_handle(v),
         TRecord(record_remainder(ifs, fs))
       ),
-      TRecordOpen(ifs, iv) => // The site stays TRecordOpen even when its row is BOUND — the residual
+      TRecordOpen{fields: ifs, rest: iv} => // The site stays TRecordOpen even when its row is BOUND — the residual
       // lives on the row var, which is why the offset read reconstructs the
       // set rather than matching TRecord. Read it the same way; unproven,
       // nothing is keyed.
@@ -6093,8 +6095,8 @@ fn spec_pairs_walk(st0, it0, acc) with GraphRead + Memory + Alloc = {
       },
       _ => acc,
     },
-    TCont(i1, a1, _, _) => match fold_strip(it0) {
-      TCont(i2, a2, _, _) => spec_pairs_walk(a1, a2, spec_pairs_walk(i1, i2, acc)),
+    TCont{input: i1, answer: a1} => match fold_strip(it0) {
+      TCont{input: i2, answer: a2} => spec_pairs_walk(a1, a2, spec_pairs_walk(i1, i2, acc)),
       _ => acc,
     },
     _ => // scalars carry no vars
@@ -6248,27 +6250,27 @@ fn spec_scan_expr(expr, acc) with Memory + Alloc = match expr {
   LGlobal(h, n) => match acc {
     (s, o) => ([(h, n)] ++ s, o),
   },
-  LDirectCall(_h, fh, n, _t, args) => match spec_scan_list(args, acc) {
+  LDirectCall{callee: fh, name: n, args} => match spec_scan_list(args, acc) {
     (s, o) => ([(fh, n)] ++ s, o),
   },
   LPerform(_h, _d, args) => spec_scan_list(args, acc),
   LHandleWith(_h, b, hn, _hname, inits, _arms) => spec_scan_list(inits, spec_scan_expr(hn, spec_scan_expr(b, acc))),
-  LLet(_h, _n, inner) => spec_scan_expr(inner, acc),
-  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f), caps) => spec_scan_list(caps, spec_scan_list(body, acc)),
-  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f), caps, _, _) => spec_scan_list(caps, spec_scan_list(body, acc)),
+  LLet{value: inner} => spec_scan_expr(inner, acc),
+  LMakeClosure{lowfn: LFn{body}, captures: caps} => spec_scan_list(caps, spec_scan_list(body, acc)),
+  LMakeContinuation{resume_fn: LFn{body}, captures: caps} => spec_scan_list(caps, spec_scan_list(body, acc)),
   LResumeK(_h, k, v) => spec_scan_expr(v, spec_scan_expr(k, acc)),
   LYield(_h, _op, args, k) => spec_scan_expr(k, spec_scan_list(args, acc)),
   LKExtend(_h, k) => spec_scan_expr(k, acc),
-  LDeclareFn(LFn(_n, _a, _p, body, _r, _f)) => spec_scan_list(body, acc),
+  LDeclareFn(LFn{body}) => spec_scan_list(body, acc),
   LBlock(_h, stmts) => spec_scan_list(stmts, acc),
-  LIf(_h, c, t, e) => spec_scan_list(e, spec_scan_list(t, spec_scan_expr(c, acc))),
+  LIf{cond: c, then_body: t, else_body: e} => spec_scan_list(e, spec_scan_list(t, spec_scan_expr(c, acc))),
   LShow(_h, x) => match spec_scan_expr(x, acc) {
     (s, o) => (s, [lexpr_handle(x)] ++ o),
   },
   LHash(_h, x) => match spec_scan_expr(x, acc) {
     (s, o) => (s, [lexpr_handle(x)] ++ o),
   },
-  LBinOp(_h, op, l, r) => {
+  LBinOp{op, left: l, right: r} => {
     let acc2 = match op {
       BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe => match acc {
         (s, o) => (s, [lexpr_handle(l)] ++ ([lexpr_handle(r)] ++ o)),
@@ -6334,7 +6336,7 @@ fn lowpat_reads_layout(pat) with Memory + Alloc = match pat {
   LPTuple(_) => true,
   LPRecord(_, _, _) => true,
   LPAs(_, inner) => lowpat_reads_layout(inner),
-  LPCon(_, _, pairs) => any(lowpat_reads_layout, pat_of_pairs(pairs)),
+  LPCon{args: pairs} => any(lowpat_reads_layout, pat_of_pairs(pairs)),
   LPUnresolvedCon(_, subs) => any(lowpat_reads_layout, subs),
   LPList(subs, _, _) => any(lowpat_reads_layout, subs),
   LPAlt(branches) => any(lowpat_reads_layout, branches),
@@ -6534,9 +6536,9 @@ fn seq_elem_face(e) = match fold_strip(e) {
 // dispatches and the fold collector all read it.
 fn seq_face_structural(face) = match face {
   TRecord(_) => true,
-  TRecordOpen(_, _) => true,
+  TRecordOpen{} => true,
   TTuple(_) => true,
-  TName(_, _) => true,
+  TName{} => true,
   TList(_) => true,
   _ => false,
 }
@@ -6607,7 +6609,7 @@ fn drop_variant_name(spec) with Memory + Alloc = match spec {
 
 // The same read carrying each variant's constructor NAME — show prints it.
 fn variant_named_specs_at(applied) with EnvRead + Memory + Alloc + GraphRead = match applied {
-  TName(name, args) => match env_lookup_variants(name) {
+  TName{name, args} => match env_lookup_variants(name) {
     Some(entry) => match entry {
       (binding, _r, kind) => match kind {
         TypeVariants(specs) => if len(args) == 0 { specs } else { map(ground_variant_spec(type_params_of(binding), args), specs) },
@@ -6631,7 +6633,7 @@ fn variant_named_specs_at(applied) with EnvRead + Memory + Alloc + GraphRead = m
 // WASI — into every emit-side payload read for a shape that cannot occur.
 fn type_params_of(binding) with Memory + Alloc = match binding {
   Frozen(_, ty) => match ty {
-    TName(_, params) => params,
+    TName{args: params} => params,
     _ => [],
   },
   Live(_) => // A Live binding here would mean the entry came from somewhere the
@@ -6656,14 +6658,14 @@ fn ground_ty(params, args, ty) with GraphRead + Memory + Alloc = match ty {
   TVar(h) => ground_var(params, args, h, ty),
   TList(elem) => TList(ground_ty(params, args, elem)),
   TTuple(elems) => TTuple(map(ground_ty(params, args), elems)),
-  TName(n, as_applied) => TName(n, map(ground_ty(params, args), as_applied)),
+  TName{name: n, args: as_applied} => TName(n, map(ground_ty(params, args), as_applied)),
   TRecord(fields) => TRecord(map(ground_field(params, args), fields)),
-  TRecordOpen(fields, v) => TRecordOpen(map(ground_field(params, args), fields), v),
+  TRecordOpen{fields, rest: v} => TRecordOpen(map(ground_field(params, args), fields), v),
   TFun{params: ps, ret, row: eff} => TFun(map(ground_param(params, args), ps), ground_ty(params, args, ret), eff),
-  TRefined(base, pred) => TRefined(ground_ty(params, args, base), pred),
-  TReprPin(r, base) => TReprPin(r, ground_ty(params, args, base)),
-  TAlias(n, inner) => TAlias(n, ground_ty(params, args, inner)),
-  TCont(input, answer, d, world) => TCont(ground_ty(params, args, input), ground_ty(params, args, answer), d, world),
+  TRefined{base, pred} => TRefined(ground_ty(params, args, base), pred),
+  TReprPin{repr: r, inner: base} => TReprPin(r, ground_ty(params, args, base)),
+  TAlias{name: n, inner} => TAlias(n, ground_ty(params, args, inner)),
+  TCont{input, answer, discipline: d, world} => TCont(ground_ty(params, args, input), ground_ty(params, args, answer), d, world),
   TInt => ty,
   TFloat => ty,
   TUnit => ty,
@@ -6709,7 +6711,7 @@ fn ctor_payload_tys(ty) with Memory + Alloc = match ty {
 }
 
 fn ctor_result_is(ty, type_name: String) with Pure = match ty {
-  TName(n, _) => n == type_name,
+  TName{name: n} => n == type_name,
   TFun{ret} => ctor_result_is(ret, type_name),
   _ => false,
 }
