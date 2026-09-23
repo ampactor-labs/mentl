@@ -261,8 +261,8 @@ fn executable_gate(lowered) = match gate_reads(lowered) {
 fn report_unhandled_effects(lowered) = match env_lookup("main") {
   Some(entry) => match entry {
     (scheme, reason, _) => match judgment_ty(scheme) {
-      TFun(_, _, row) => match resolve_row(row) {
-        EfRow(p, _, _) => {
+      TFun{row} => match resolve_row(row) {
+        EfRow{present: p} => {
           // The evidence census — the emit's OWN single-walk projection
           // (the seventh: visit_effect_demand/install), run over the
           // post-reach tree the gate already holds. The artifact is the
@@ -320,7 +320,7 @@ fn demands_to_enames(ref demands, i, acc) = if i >= len(demands) {
   let en = match env_lookup(d) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
-        EffectOpScheme(op_effect, _, _) => op_effect,
+        EffectOpScheme{effect_name: op_effect} => op_effect,
         _ => d,
       },
     },
@@ -387,7 +387,7 @@ fn grounded_scan(ref bindings, i, n, ename: String) = if i >= n {
   match list_index(bindings, i) {
     (opname, _, _, kind) => {
       let ok = match kind {
-        EffectOpScheme(op_effect, _, _) => // Substrate projection or WASI import only. A DEFAULT HANDLER does
+        EffectOpScheme{effect_name: op_effect} => // Substrate projection or WASI import only. A DEFAULT HANDLER does
         // NOT ground: the perform's singleton tier direct-calls it, but a
         // STATEFUL default with no live install reads its zero state
         // global — the silent-wrong the runtime guard refuses
@@ -464,7 +464,7 @@ fn handler_arms_touch(ref arms: [{args: [String], body: Node, op_name: String}],
       let touches = match env_lookup(opn) {
         Some(op_entry) => match op_entry {
           (_, _, op_kind) => match op_kind {
-            EffectOpScheme(op_effect, _, _) => op_effect == ename,
+            EffectOpScheme{effect_name: op_effect} => op_effect == ename,
             _ => false,
           },
         },
@@ -687,7 +687,7 @@ fn audit_project(ast) =
   map_fn_stmts(ast, (name, handle) => (name, handle)) |> audit_walk(verify_debt(), tightenables(), 0) |> render_audit
 
 fn decl_start_line(handle) with GraphRead = match parse_span_of(handle) {
-  Span(sl, _, _, _) => sl,
+  Span{start_line: sl} => sl,
 }
 
 fn audit_walk(debt, tights, i, fns) with GraphRead + EnvRead + LookupTy + Memory + Alloc + Intern + WASI = if i >= len(fns) {
@@ -882,8 +882,8 @@ handler fresh_for_query with next_display = 0 {
 // audit and teach are two projections of it (Carried-Truth: the walk lived
 // twice, byte-identical but for the projection — one home now).
 fn map_fn_stmts(ast, project) = ast |> map({
-  N(body, _, handle) => match body {
-    NStmt(FnStmt(name, _, _, _, _)) => [project(name, handle)],
+  N{body, handle} => match body {
+    NStmt(FnStmt{name}) => [project(name, handle)],
     _ => [],
   },
 }) |> flatten
@@ -1222,6 +1222,14 @@ fn render_census_sites(ref sites) with GraphRead + !Mutate + Memory + Alloc + In
 fn census_site_line(h) with GraphRead + !Mutate + Memory + Alloc + Intern =
   "\n  at {site_address(h)}"
 
+// The facts that convicted the sites, most frequent first — which declaration
+// a count is made of, before the coordinates that make it up.
+fn render_census_facts(facts) with Memory + Alloc = facts |> map(census_fact_line) |> str_concat_all
+
+fn census_fact_line(entry) with Memory + Alloc = match entry {
+  (fact, n) => "\n  {int_to_str(n)} × {fact}",
+}
+
 // A declaration as a reader looks for it: its own name, then where it lives.
 // The decls facet rendered the census line here — 1,155 bare addresses and no
 // name among them (measured 2026-09-22) — so a roster asked for by name
@@ -1478,7 +1486,7 @@ fn render_query_result(result) = match result {
     "→ handled at {int_to_str(len(arms))} arm(s){render_provider_arms(arms)}"
   },
   QRFlowLabel(label, reason) => "→ {show_flow_label(label)}\n  Reason: {show_reason(reason)}",
-  QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_census_sites(sites)}",
+  QRCensus(label, sites, facts) => "→ {int_to_str(len(sites))} {label}{render_census_facts(facts)}{render_census_sites(sites)}",
   QRDecls(sites) => // The decls column's projection, each declaration by its own name and
   // its address — the roster a reader navigates by.
   "→ {int_to_str(len(sites))} declaration(s){render_decl_sites(sites)}",

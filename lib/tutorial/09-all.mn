@@ -43,9 +43,7 @@ fn raise(base) with Bump = base + bump() + bump() + bump()
 fn run() with Bump = seed() |> raise |> keep
 
 fn main() = {
-  let total = {
-    run()
-  } ~> counter
+  let total = run() ~> counter
   total |> int_to_str |> print_string
 }
 

@@ -217,6 +217,30 @@ source-shape count held byte-for-byte across the cut; `span_of_node_raw`,
 `decl_site_of` and `census_site_span` are deleted. The record is under
 `Hβ.cursor.module-of-a-span-is-containment` as that family's fourth machine.
 
+THE FACT BESIDE THE SITE LANDED 2026-09-23, as a TALLY rather than a new key:
+`census_fact(shape, h)` answers what convicted a site, where the shape has a
+finer fact than its address, and `mentl <file> census <shape>` ranks those
+facts above the coordinates. Two shapes answer today. `wildcard-destructure`
+names the product whose slots a pattern counts — it named `N` 195, tuples
+164, `TFun` 64, and the named-fields landing took the count 738 → 391 in one
+fmt sweep off that list. `free-row-callee` names the callee, and its first
+reading is the headline this entry was born asking for: **353 of 1,103 sites
+are calls to `int_to_str`**, one leaf whose row learned a free tail from its
+callers. The cause is concentrated, so grounding that one row is the largest
+single fall this count can take, and it is the rows landing's to take
+(`Hβ.effects.rows-are-propagated-cells`). The keyed-by-cause BOUND is still
+the next form (a ceiling on distinct unquantified cells); the tally is the
+reading that says where it will fall.
+
+THE QUIET GATE CANNOT JOIN THE BOARD YET, and the reason is this entry's own
+subject. The authored `own`/`ref` counts are a text census in
+`tools/verify.sh`, outside `mentl verify` and therefore outside the repin's
+board leg — which is why they refused at the commit rather than at the pin on
+2026-09-23. A census shape convicts NODES, and a parameter's ownership marker
+is a field of a `TParam`, not a node, so a shape could count functions
+carrying a marker but not the markers. Parameters as nodes (the pattern
+nodes' precedent) is the prerequisite; until then the text gate stands.
+
 `Hβ.link.the-flat-judgment-ends` — OPEN, RULED 2026-09-21 (Morgan: "the flat
 judgement… end it"), and it is the form `Hβ.link.manifest-and-blob-emit-
 differently` was circling. The wheel judges itself two ways — the BLOB

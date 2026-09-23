@@ -162,7 +162,7 @@ fn gradient_next(handle, performed) = {
     GNode(_, anchor_reason) => match node {
       GNode(kind, _) => match kind {
         NBound(ty) => match ty {
-          TFun(_, _, _) => {
+          TFun{} => {
             let proven = try_each_annotation(handle, gradient_candidates(ty, performed), ty)
             match pick_highest_leverage(proven) {
               None => None,
@@ -204,7 +204,7 @@ fn entries_row_names(entries, acc) = match entries {
 
 fn entry_row_names(e) = match e {
   (_, scheme, _, _) => match judgment_ty(scheme) {
-    TFun(_, _, row) => row_names(row),
+    TFun{row} => row_names(row),
     _ => [],
   },
 }
@@ -262,7 +262,7 @@ fn severance_negations(performed) = match performed {
 // happens in this program and is absent from THIS fn's row — the
 // proof loop filters the present ones.
 fn gradient_candidates(ty, performed) = match ty {
-  TFun(params, _ret, _row) => [APure(None)] ++ severance_negations(performed) ++ ownership_candidates(params),
+  TFun{params} => [APure(None)] ++ severance_negations(performed) ++ ownership_candidates(params),
   _ => [],
 }
 
@@ -415,7 +415,7 @@ fn apply_annotation_tentatively(handle, ann, base_ty) = match ann {
       // absorbing handler, so the residual row is true BY the wrap —
       // unlike a bare narrowing, no body claim needs discharging.
       match base_ty {
-        TFun(_params, _ret, base_row) => {
+        TFun{row: base_row} => {
           let narrowed = diff_row(base_row, absorbed_row)
           narrow_row(handle, base_ty, narrowed, sp)
           true
@@ -434,7 +434,7 @@ fn apply_annotation_tentatively(handle, ann, base_ty) = match ann {
 // what the declaration gate would prove: with Pure demands the empty row,
 // !E demands E provably absent.
 fn narrow_row_proven(handle, base_ty, narrow, source_span) = match base_ty {
-  TFun(_, _, base_row) => {
+  TFun{row: base_row} => {
     narrow_row(handle, base_ty, narrow, source_span)
     row_subsumes(resolve_row(base_row), narrow)
   },
@@ -509,7 +509,7 @@ fn capabilities_for_severance(name) = match name {
 }
 
 fn narrow_row(handle, base_ty, narrow, source_span) = match base_ty {
-  TFun(params, ret, _) => {
+  TFun{params, ret} => {
     let narrowed = TFun(params, ret, narrow)
     // The trail reverts this bind on rollback. source_span is Some(s)
     // when the candidate originated at a user site (hovered hole,
@@ -638,7 +638,7 @@ fn why_from_handle(handle) = match graph_chase(handle) {
 // behavior by itself). Named explicitly so a future Ty whose row
 // semantics aren't pure surfaces as a compile error.
 fn extract_row(ty) with Pure = match ty {
-  TFun(_, _, row) => row,
+  TFun{row} => row,
   TInt => mk_ef_pure(),
   TFloat => mk_ef_pure(),
   TUnit => mk_ef_pure(),

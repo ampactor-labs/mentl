@@ -35,6 +35,49 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-23 · pin c39f79c5e646a653 (CLEAN m2 == m3, census 0, frontier
+  407/0/12, crown green) · THE WHEEL NAMES ITS FIELDS, AND THE MEDIUM
+  REWRITES ITS OWN SOURCE TO READ THEM. Step 2 of named fields. The first
+  move was a question the census could not answer — *which constructors
+  are the 738 positional destructures made of?* — so the census grew a
+  fact beside each site (`census_fact`) and a ranked tally in its render:
+  `N` 195, tuples 164, `TFun` 64, `FnStmt` 41, `Span` 28, `EfRow` 21. Eight
+  constructors got their field names, each replacing a comment that had
+  been listing them ("body, span, TypeHandle"; "present, absent, tail").
+  Design C then made the rewrite the medium's: `render_pat_shape` renders a
+  positional pattern on a named constructor by name, punned where the
+  binder is the field's own name, the wildcards and `_`-binders dropped,
+  reading the declared names through `callee_params` under the env fmt's
+  `infer_context` already installs. That widened the formatter's row by
+  `EnvRead` across ~48 signatures, which were one five-name inventory, so
+  the inventory got a name (`type Rendering`) and the signatures read `with
+  Rendering + !Mutate`. The sweep ran file by file through ONE pinned m2
+  (`fresh` would have rebuilt m2 after every rewrite, because the source
+  key moves), every file prose-conserved: 738 → 391, and the index walks
+  the render rewrite retired took the iteration census 470 → 467.
+  KILLS: (1) the first sweep trial wrote `TFun{}` for `TFun(_, ret, _)`,
+  dropping the binder — the new render had put a `|>` chain inside an
+  interpolation splice, the exact shape banked RED that morning
+  (`Hβ.lower.pipe-completion-carries-the-stage-handle`); it was caught on
+  one file before the sweep and the chain moved out of the splice, in two
+  places. (2) SYNTAX's own example used `effect` as a field name, which is a
+  keyword and cannot lex — corrected to `effect_name`. THE READING WORTH
+  CARRYING: the free-row callee census, ranked by callee for the first
+  time, is not diffuse — 353 of 1,103 sites are calls to `int_to_str`, one
+  leaf row. Its bound rose 1,081 → 1,103 with 17 sites attributed by the
+  tally to the pattern render now reaching the env and 5 left unitemized
+  (there was no prior tally to compare against). CADENCE: three marches
+  where one was budgeted, each over-budget run caused by a gate the repin's
+  `mentl verify` leg does not carry — the commit's text gates refused a new
+  unprovable compare (the tally's own `m > n`, typed at its Intent Boundary)
+  and a fallen authored-ref count (baseline 705 -> 700), and the re-march's
+  cost ratchet refused a peak of 1,001,100 KB against 1,000,000: a ceiling
+  set ~1% over the highest min-of-3 had been reached by a 0.3% heap rise,
+  because single reads within one march spread 1.5%. Raised to 1,011,000
+  with that justification. Both text gates (unprovable compares, authored
+  markers) belong in `mentl verify` so the repin refuses what the commit
+  does; the markers need parameters as nodes first (RESIDUE's census entry).
+
 - 2026-09-23 · pin f8ec5cd9e12c01f1 (CLEAN m2 == m3, census 0, frontier
   407/0/12, crown green) · A CONSTRUCTOR'S FIELDS ARE ITS PARAMETER LIST, SO
   A PATTERN NAMES ONLY WHAT IT READS. This is step 1 of two, the compiler

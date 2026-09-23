@@ -899,7 +899,7 @@ fn chase_node(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 10
         _ => GNode(kind, reason),
       },
       NRowBound(row) => match row {
-        EfRow(names, absents, EtOpen(edges)) => // The chase folds the chain under the READING LAW: each level's
+        EfRow{present: names, absent: absents, tail: EtOpen(edges)} => // The chase folds the chain under the READING LAW: each level's
         // present rides forward MINUS the levels above it masked, and the
         // absents ACCUMULATE — the discarded-absent destructure here was
         // the mask-killer at the one mechanism every row read routes
@@ -962,7 +962,7 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
       // reach this arm; a MULTI-edge tail has no single root, so the
       // cell is its own canonical handle (content reads ride resolve).
       match row {
-        EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 { chase_handle(spine, mint_bound, last(edges), depth + 1) } else { handle },
+        EfRow{tail: EtOpen(edges)} => if len(edges) == 1 { chase_handle(spine, mint_bound, last(edges), depth + 1) } else { handle },
         _ => handle,
       },
       _ => handle,
@@ -999,7 +999,7 @@ fn merge_chased_row(ref chased, ref names, ref absents, free_handle) with Memory
 // reading-equal only when this level carried no absents — with the
 // masks riding, the uniform arm is the truth for it too.
 fn merge_row(ref names, ref absents, ref row) with Memory + Alloc = match row {
-  EfRow(p, a, t) => ef_make(name_set_union(names, name_set_diff(p, absents)), name_set_union(absents, a), t),
+  EfRow{present: p, absent: a, tail: t} => ef_make(name_set_union(names, name_set_diff(p, absents)), name_set_union(absents, a), t),
 }
 
 // THE FLAT-CELL LAW's WRITE half (PLAN's settled laws): a stored row
@@ -1015,7 +1015,7 @@ fn merge_row(ref names, ref absents, ref row) with Memory + Alloc = match row {
 // at the judgment line, the memo cost 2.4MB and saved nothing — the tree
 // walk that paid was the occurs check's (occurs_in's header), never this.
 fn flatten_row_stored(ref spine, mint_bound, row) with !Mutate = match row {
-  EfRow(p, a, t) => match t {
+  EfRow{present: p, absent: a, tail: t} => match t {
     EtOpen(vs) => match flatten_row_edges(spine, mint_bound, vs, (p, a, [], false)) {
       (rp, ra, res, saw_all) => if saw_all { ef_make(rp, ra, EtAll) } else { ef_make(rp, ra, EtOpen(res)) },
     },
@@ -1030,7 +1030,7 @@ fn flatten_row_edges(ref spine, mint_bound, ref vs: [Int], acc) with !Mutate + M
       let next = match chase_node(spine, mint_bound, v, 0) {
         GNode(kind, _) => match edge_row_of(kind) {
           Some(inner) => match flatten_row_stored(spine, mint_bound, inner) {
-            EfRow(cp, ca, ct) => {
+            EfRow{present: cp, absent: ca, tail: ct} => {
               let p2 = name_set_union(p, name_set_diff(cp, a))
               let a2 = name_set_union(a, ca)
               match ct {
@@ -1141,7 +1141,7 @@ fn occurs_in_seen(spine, mint_bound, handle, ty, seen) with !Mutate = match ty {
   },
   TList(elem) => occurs_in_seen(spine, mint_bound, handle, elem, seen),
   TTuple(elems) => occurs_in_list_seen(spine, mint_bound, handle, elems, seen),
-  TFun(params, ret, eff) => match occurs_in_params_seen(spine, mint_bound, handle, params, seen) {
+  TFun{params, ret, row: eff} => match occurs_in_params_seen(spine, mint_bound, handle, params, seen) {
     (true, s1) => (true, s1),
     (false, s1) => match occurs_in_seen(spine, mint_bound, handle, ret, s1) {
       (true, s2) => (true, s2),
@@ -1242,7 +1242,7 @@ fn occurs_in_row(spine, mint_bound, handle, eff) with !Mutate = match occurs_in_
 }
 
 fn occurs_in_row_seen(spine, mint_bound, handle, eff, seen) with !Mutate = match eff {
-  EfRow(p, a, t) => match occurs_in_eff_names_seen(spine, mint_bound, handle, p, seen) {
+  EfRow{present: p, absent: a, tail: t} => match occurs_in_eff_names_seen(spine, mint_bound, handle, p, seen) {
     (true, s1) => (true, s1),
     (false, s1) => match occurs_in_eff_names_seen(spine, mint_bound, handle, a, s1) {
       (true, s2) => (true, s2),
@@ -1433,7 +1433,7 @@ fn trail_append(trail, trail_len, own mutation) =
 // moved from a module DOWNSTREAM of its users so every user reaches it
 // through a forward import edge — the manifest tells the truth.
 fn node_handle(node) = match node {
-  N(_, _, h) => h,
+  N{handle: h} => h,
 }
 
 // The MINT span of a handle — the reverse read of the span_index weave
@@ -1677,7 +1677,7 @@ fn filter_map_imports(decls) with Alloc + Memory = if len(decls) == 0 {
 }
 
 fn node_body_of(node) with Pure = match node {
-  N(body, _, _) => body,
+  N{body} => body,
 }
 
 // The total source the medium processed for this entry — the SUM of every
@@ -1698,7 +1698,7 @@ fn node_body_of(node) with Pure = match node {
 fn weave_line_extent() with Memory + Alloc + GraphRead + !Mutate = fold(
   0,
   (acc, c) => match cell_span(c) {
-    Span(sl, _sc, el, _ec) => acc + (el - sl),
+    Span{start_line: sl, end_line: el} => acc + (el - sl),
   },
   module_cells()
 )
@@ -1779,7 +1779,7 @@ fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
   },
   TList(e) => TList(spec_subst_pairs(e, pairs)),
   TTuple(es) => TTuple(map((x) => spec_subst_pairs(x, pairs), es)),
-  TFun(ps, r, eff) => TFun(
+  TFun{params: ps, ret: r, row: eff} => TFun(
     map((p) => param_with_ty(p, spec_subst_pairs(param_ty(p), pairs)), ps),
     spec_subst_pairs(r, pairs),
     eff

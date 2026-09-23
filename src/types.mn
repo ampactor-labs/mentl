@@ -47,8 +47,7 @@ type Ty
   | TByte
   | TList(Ty)
   | TTuple([Ty])
-  // params, return, effects
-  | TFun([TParam], Ty, EffRow)
+  | TFun(params: [TParam], ret: Ty, row: EffRow)
   // handle into Graph
   | TVar(Int)
   // nominal type + type args (Bool lives here)
@@ -160,7 +159,7 @@ fn repr_of(ty) with Pure = match ty {
   RI32,
   TTuple(_) => // pointer
   RI32,
-  TFun(_, _, _) => // table index / closure ptr
+  TFun{} => // table index / closure ptr
   RI32,
   TVar(_) => // genuinely-unresolved handle — a 32-bit word
   RI32,
@@ -309,7 +308,7 @@ fn fold_sig(ty) with Memory = match fold_strip(ty) {
   TTuple(elems) => "t{fold_sig_list(elems, 0, len(elems))}_",
   TRecord(fs) => "r{fold_sig_fields(fs, 0, len(fs))}_",
   TRecordOpen(fs, _) => "r{fold_sig_fields(fs, 0, len(fs))}_",
-  TFun(_, _, _) => // closure — folds at the function leaf
+  TFun{} => // closure — folds at the function leaf
   "fn",
   TCont(_, _, _, _) => // continuation pointer — a word here
   // fold_strip already removed TAlias/TRefined; reaching them is impossible.
@@ -333,12 +332,10 @@ fn fold_sig_fields(fields: [(String, Ty)], i, n) with Memory = if i >= n {
 // ─── Ownership (spec 02 · spec 07) ─────────────────────────────────
 // Every function parameter wraps Ty with an Ownership marker.
 // Inference fills unmarked parameters; Own/Ref are explicit commitments.
-type TParam = TParam(String, Ty, Ownership, Ownership, Option(Node))
+type TParam = TParam(name: String, ty: Ty, authored: Ownership, resolved: Ownership, default: Option(Node))
 
-// name, ty, authored, resolved, default
-// OW.2 — authored = what developer typed (Own/Ref/Unmarked)
-//        resolved = what infer_ownership determined
-// default = Some(expr_node) when the param has a
+// authored = what the developer typed (Own/Ref/Unmarked); resolved = what
+// infer_ownership determined; default = Some(expr_node) when the param has a
 //   trailing `= expr` (SYNTAX.md §«Default parameter
 //   values»); None otherwise. The default node lives
 //   in the graph (parser-minted); lower fills an
@@ -368,11 +365,10 @@ type BranchMode
 
 // ─── TParam projections — the §2 'project' operation made literal ──
 // A param is a PRODUCT node CARRIED whole; every aspect is read through
-// a TOTAL named projection defined ONCE here, never a positional
-// destructure at a consumer (THE CARRIED-TRUTH LAW — §4①: a product's
-// fields are projections read live). The single destructure of the
-// 5-tuple lives in each function below; reviewed once against the decl
-// (TParam(name, ty, authored, resolved, default) = slots 0..4).
+// a TOTAL named projection defined ONCE here (THE CARRIED-TRUTH LAW — §4①:
+// a product's fields are projections read live). Its fields carry their
+// names at the declaration, so each projection reads the one field it
+// names and a consumer may read it the same way.
 //
 // Consumers split into three roles:
 //   LEAF       — read one aspect via param_{name,ty,authored,resolved,default}
@@ -388,11 +384,11 @@ type BranchMode
 // collapse's larval seam: the {type,row} form swaps behind them with no
 // consumer touched (peer Hβ.types.param-projects-to-type-row).
 fn param_name(p) = match p {
-  TParam(n, _, _, _, _) => n,
+  TParam{name: n} => n,
 }
 
 fn param_ty(p) = match p {
-  TParam(_, t, _, _, _) => t,
+  TParam{ty: t} => t,
 }
 
 // The same read as a PRESENT signature slot (EmitFnEntry above): a declared
@@ -401,15 +397,15 @@ fn param_ty(p) = match p {
 fn some_param_ty(p) = Some(param_ty(p))
 
 fn param_authored(p) = match p {
-  TParam(_, _, a, _, _) => a,
+  TParam{authored: a} => a,
 }
 
 fn param_resolved(p) = match p {
-  TParam(_, _, _, r, _) => r,
+  TParam{resolved: r} => r,
 }
 
 fn param_default(p) = match p {
-  TParam(_, _, _, _, d) => d,
+  TParam{default: d} => d,
 }
 
 // The one move-vs-borrow read of a param product: TRUE where a call site
@@ -434,11 +430,11 @@ fn param_borrows(p) = match param_authored(p) {
 
 // Structure-preserving updaters for PROPAGATORS — carry the other four.
 fn param_with_ty(p, t) = match p {
-  TParam(n, _, a, r, d) => TParam(n, t, a, r, d),
+  TParam{name: n, authored: a, resolved: r, default: d} => TParam(n, t, a, r, d),
 }
 
 fn param_with_resolved(p, r2) = match p {
-  TParam(n, t, a, _, d) => TParam(n, t, a, r2, d),
+  TParam{name: n, ty: t, authored: a, default: d} => TParam(n, t, a, r2, d),
 }
 
 // Smart constructor for inferred/synthetic PRODUCERS — no authored aspect.
@@ -568,7 +564,7 @@ type SchemeKind
   // name and an "ambiguous" flag instead — a summary of this set in which every
   // provider but one was already lost, so a question about who handles an op
   // had to scan the graph to rebuild what registration had in hand.
-  | EffectOpScheme(String, [(Int, Int)], ResumeDiscipline)
+  | EffectOpScheme(effect_name: String, providers: [(Int, Int)], discipline: ResumeDiscipline)
   // tag 3 — [(field_name, ty)]
   | RecordSchemeKind([(String, Ty)])
   // tag 5 — [op_name: String]  (cache byte 5; byte 4 retired with the dissolved capability)
@@ -630,9 +626,8 @@ type SchemeKind
 // present ∩ absent = ∅, and EtClosed ⇒ absent = [] (a closed tail makes
 // absence vacuous). Unification and subsumption are fieldwise set ops —
 // no wrapper trees, no rewrite passes, no read-time re-derivation.
-type EffRow = EfRow([EffName], [EffName], EffTail)
+type EffRow = EfRow(present: [EffName], absent: [EffName], tail: EffTail)
 
-// present, absent, tail
 type EffTail
   // nothing beyond the present set
   = EtClosed
@@ -671,7 +666,7 @@ type EffTail
 fn edge_row_of(kind) with Memory + Alloc = match kind {
   NRowBound(inner) => Some(inner),
   NBound(ty) => match ty {
-    TFun(_, _, frow) => Some(frow),
+    TFun{row: frow} => Some(frow),
     _ => None,
   },
   _ => None,
@@ -1224,9 +1219,8 @@ fn count_lines_from(ref s, n, i, acc) with Memory = if i >= n {
   count_lines_from(s, n, i + 1, acc + step)
 }
 
-type Span = Span(Int, Int, Int, Int)
+type Span = Span(start_line: Int, start_col: Int, end_line: Int, end_col: Int)
 
-// start_line, start_col, end_line, end_col
 //
 // The producers CARRY the proof (types.mn's own construction-site law):
 // a `-> ValidSpan` return proves span_valid ONCE at this decl — an
@@ -1235,14 +1229,14 @@ type Span = Span(Int, Int, Int, Int)
 // weave carried ~85 re-demanded copies of this one obligation at call
 // sites before the return was declared, measured 2026-07-30).
 fn span_join(a, b) -> ValidSpan with Memory + Alloc = match a {
-  Span(sl, sc, _, _) => match b {
-    Span(_, _, el, ec) => Span(sl, sc, el, ec),
+  Span{start_line: sl, start_col: sc} => match b {
+    Span{end_line: el, end_col: ec} => Span(sl, sc, el, ec),
   },
 }
 
 fn span_eq(a, b) with Pure = match a {
-  Span(asl, asc, ael, aec) => match b {
-    Span(bsl, bsc, bel, bec) => asl == bsl && asc == bsc && ael == bel && aec == bec,
+  Span{start_line: asl, start_col: asc, end_line: ael, end_col: aec} => match b {
+    Span{start_line: bsl, start_col: bsc, end_line: bel, end_col: bec} => asl == bsl && asc == bsc && ael == bel && aec == bec,
   },
 }
 
@@ -1250,8 +1244,8 @@ fn span_eq(a, b) with Pure = match a {
 // proximity-tier classification; column-precise comparison is
 // peer-handle territory.
 fn span_overlaps(a, b) with Pure = match a {
-  Span(asl, _asc, ael, _aec) => match b {
-    Span(bsl, _bsc, bel, _bec) => ael >= bsl && bel >= asl,
+  Span{start_line: asl, end_line: ael} => match b {
+    Span{start_line: bsl, end_line: bel} => ael >= bsl && bel >= asl,
   },
 }
 
@@ -1281,14 +1275,14 @@ type ValidOffset = Int where 0 <= self
 type NonEmptyList = [a] where 0 < len(self)
 
 fn span_valid(s) with Pure = match s {
-  Span(sl, sc, el, ec) => sl >= 0 && sc >= 0 && el >= sl && (el > sl || ec >= sc),
+  Span{start_line: sl, start_col: sc, end_line: el, end_col: ec} => sl >= 0 && sc >= 0 && el >= sl && (el > sl || ec >= sc),
 }
 
 type ValidSpan = Span where span_valid(self)
 
 fn span_contains(outer, inner) with Pure = match outer {
-  Span(osl, osc, oel, oec) => match inner {
-    Span(isl, isc, iel, iec) => (osl < isl || osl == isl && osc <= isc) && (oel > iel || oel == iel && oec >= iec),
+  Span{start_line: osl, start_col: osc, end_line: oel, end_col: oec} => match inner {
+    Span{start_line: isl, start_col: isc, end_line: iel, end_col: iec} => (osl < isl || osl == isl && osc <= isc) && (oel > iel || oel == iel && oec >= iec),
   },
 }
 
@@ -1417,11 +1411,10 @@ fn token_span(t) with Pure = match t {
 // by type, so the 31 infer-side call boundaries that each re-demanded
 // span_valid collapse by typed identity; the obligation lives at
 // N-construction, where span_at/span_join already supply ValidSpan.
-type Node = N(NodeBody, ValidSpan, Int)
+type Node = N(body: NodeBody, span: ValidSpan, handle: Int)
 
-// body, span, TypeHandle
 fn span_of_node(node) = match node {
-  N(_, span, _) => span,
+  N{span} => span,
 }
 
 type NodeBody
@@ -1694,8 +1687,7 @@ type Stmt
   // unannotated let). Readers include the channel only when it is
   // NTypeAnn — infer's arm and stmt_child_handles both read it so.
   = LetStmt(Node, Node, Node)
-  | FnStmt(String, [TParam], Node, [(EffName, Bool, EConn)], Node)
-  // name, params (TParam), retty, effects, body
+  | FnStmt(name: String, params: [TParam], ret: Node, effs: [(EffName, Bool, EConn)], body: Node)
   | TypeDefStmt(String, [(String, [TParam], Node)])
   // name, then per variant its name and its fields — a constructor IS a
   // function, so its fields are the parameter list its scheme carries: named
@@ -1779,7 +1771,7 @@ type Pat
 // non-pattern node in pattern position would be a parse that failed, and
 // the parse already reported it.
 fn pat_of(node) = match node {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NPat(p) => p,
     NExpr(_) => PWild,
     NStmt(_) => PWild,
@@ -3526,7 +3518,7 @@ fn show_type(ref ty) with GraphRead + !Mutate + Alloc + Memory + Intern = match 
   TByte => "Byte",
   TList(elem) => "List({show_type(elem)})",
   TTuple(elems) => "({show_list(elems, show_type, ", ")})",
-  TFun(params, ret, row) => "({show_list(params, show_tparam, ", ")}) -> {show_type(ret)}{show_row_suffix(row)}",
+  TFun{params, ret, row} => "({show_list(params, show_tparam, ", ")}) -> {show_type(ret)}{show_row_suffix(row)}",
   TVar(id) => show_handle(id),
   TName(name, args) => "{name}{show_type_args(args)}",
   TRecord(fields) => "\{ {show_list(fields, show_field, ", ")} \}",
@@ -3588,14 +3580,14 @@ fn callee_params(name) with EnvRead + GraphRead + Memory + Alloc = match env_loo
       // resolver has no use for — and types.mn sits below infer, so the
       // chase IS the layer's live read.
       match graph_chase(h) {
-        GNode(NBound(TFun(params, _, _)), _) => params,
+        GNode(NBound(TFun{params}), _) => params,
         _ => [],
       },
       Frozen(_, TVar(h)) => match graph_chase(h) {
-        GNode(NBound(TFun(params, _, _)), _) => params,
+        GNode(NBound(TFun{params}), _) => params,
         _ => [],
       },
-      Frozen(_, TFun(params, _, _)) => params,
+      Frozen(_, TFun{params}) => params,
       _ => [],
     },
   },
@@ -3629,7 +3621,7 @@ fn resolve_call_args(cname, args) with EnvRead + GraphRead + Memory + Alloc + Di
 
 // Unwrap a LabeledArg to its value node; a positional arg passes through.
 fn unwrap_labeled_arg(arg) with Pure = match arg {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NExpr(LabeledArg(_, v)) => v,
     _ => arg,
   },
@@ -3655,7 +3647,7 @@ fn place_labeled(params, args, i, slots, cname: String) with GraphRead + Memory 
 } else {
   let arg = list_index(args, i)
   match arg {
-    N(body, sp, _) => {
+    N{body, span: sp} => {
       let next = match body {
         NExpr(LabeledArg(label, v)) => {
           let idx = param_index(params, label, 0)
@@ -3681,7 +3673,7 @@ fn place_positional(args, cur, slot, slots, n) = if cur >= len(args) {
 } else {
   let arg = list_index(args, cur)
   match arg {
-    N(body, aspan, _) => match body {
+    N{body, span: aspan} => match body {
       NExpr(LabeledArg(_, _)) => place_positional(args, cur + 1, slot, slots, n),
       _ => {
         let free = next_free_slot(slots, slot, n)
@@ -3775,14 +3767,14 @@ fn show_type_args(ref args) with GraphRead + Memory + !Mutate + Intern + Alloc =
   if len(args) == 0 { "" } else { "({show_list(args, show_type, ", ")})" }
 
 fn show_row_suffix(ref row) with GraphRead + !Mutate + Intern + Memory + Alloc = match row {
-  EfRow([], [], EtClosed) => "",
+  EfRow{present: [], absent: [], tail: EtClosed} => "",
   _ => " with {show_effrow(row)}",
 }
 
 // The triple's voice: presents joined with `+`, the absent set as `!X`
 // terms, the tail as its var handle; an empty closed row is Pure.   // drift-audit: ignore — human-facing rendering string for diagnostics/show; not an effect-keyed lookup; tracked by Hβ.perf.name-is-handle; effect-rendering normalization
 fn show_effrow(ref row) with GraphRead + Memory + !Mutate + Alloc + Intern = match row {
-  EfRow(p, a, t) => {
+  EfRow{present: p, absent: a, tail: t} => {
     let parts = show_list(p, show_eff_name, " + ")
     let negs = show_list(a, (n) => "!{show_eff_name(n)}", " + ")
     let joiner = if len(p) > 0 && len(a) > 0 { " + " } else { "" }
@@ -3913,25 +3905,25 @@ fn show_pred_operand(handle) with GraphRead + Alloc + Memory = match graph_node_
   // left, and `self % 2` carries a BinOpExpr; both rendered `<expr>` before,
   // fabricating away the exact bound the diagnostic exists to teach.
   match inner {
-    N(_, _, ih) => "-{show_pred_operand(ih)}",
+    N{handle: ih} => "-{show_pred_operand(ih)}",
   },
   NExpr(UnaryOpExpr(UNot, inner)) => match inner {
-    N(_, _, ih) => "!{show_pred_operand(ih)}",
+    N{handle: ih} => "!{show_pred_operand(ih)}",
   },
   NExpr(BinOpExpr(op, l, r)) => match l {
-    N(_, _, lh) => match r {
-      N(_, _, rh) => "{show_pred_operand(lh)} {binop_to_str(op)} {show_pred_operand(rh)}",
+    N{handle: lh} => match r {
+      N{handle: rh} => "{show_pred_operand(lh)} {binop_to_str(op)} {show_pred_operand(rh)}",
     },
   },
   NExpr(CallExpr(callee, args)) => // The canonical refinement vocabulary is call-shaped (len(self),
   // abs(x)) — render the call rather than a placeholder; an exotic
   // callee degrades through show_callee_name's own sentinel.
-  "{show_callee_name(callee)}({show_list(args, { N(_, _, ah) => show_pred_operand(ah) }, ", ")})",
+  "{show_callee_name(callee)}({show_list(args, { N{handle: ah} => show_pred_operand(ah) }, ", ")})",
   _ => "<expr>",
 }
 
 fn show_callee_name(ref callee) with Pure = match callee {
-  N(cbody, _, _) => match cbody {
+  N{body: cbody} => match cbody {
     NExpr(VarRef(n)) => n,
     _ => "_",
   },
@@ -3998,7 +3990,7 @@ fn declaring_node(reason) = match reason {
 // at the ADT's home: the parser reads it to note a declaration at its birth,
 // the judgment keys its layer index on it, and every roster renders by it.
 fn body_decl_name(body) with Pure = match body {
-  NStmt(FnStmt(name, _, _, _, _)) => name,
+  NStmt(FnStmt{name}) => name,
   NStmt(TypeDefStmt(name, _)) => name,
   NStmt(EffectDeclStmt(name, _, _)) => name,
   NStmt(HandlerDeclStmt(name, _, _, _, _)) => name,
@@ -4051,7 +4043,7 @@ fn node_address(h) with GraphRead + Memory + Alloc = match site_of(h) {
 }
 
 fn show_span(ref span) with Memory + Alloc = match span {
-  Span(sl, sc, el, ec) => "{int_to_str(sl)}:{int_to_str(sc)}-{int_to_str(el)}:{int_to_str(ec)}",
+  Span{start_line: sl, start_col: sc, end_line: el, end_col: ec} => "{int_to_str(sl)}:{int_to_str(sc)}-{int_to_str(el)}:{int_to_str(ec)}",
 }
 
 // ─── The seam render — weave spans as the developer's coordinates ───
@@ -4141,7 +4133,7 @@ fn query_flow_label(ref ty) with GraphRead + Memory + Alloc + EnvRead = match ty
       },
     },
   },
-  TFun(_, ret, row) => // A fn's flow character joins its RETURN's label with its row
+  TFun{ret, row} => // A fn's flow character joins its RETURN's label with its row
   // confinement — a source returning Secret is a Secret channel
   // whatever its capabilities (the 2026-08-08 Phase-7 walk: `flow
   // getpw` on a `-> Secret where classified(self)` source answered
@@ -4186,7 +4178,7 @@ fn predicate_flow_label(ref pred) with GraphRead + Memory + Alloc = match pred {
   // The callee name IS the authored intent; reading it is reading the graph.
   match graph_node_body(h) {
     NExpr(CallExpr(callee, _)) => match callee {
-      N(cbody, _, _) => match cbody {
+      N{body: cbody} => match cbody {
         NExpr(VarRef(fname)) => if str_contains(fname, "secret") || str_contains(fname, "classified") || str_contains(fname, "sensitive") {
           Secret
         } else {
@@ -4206,11 +4198,11 @@ fn predicate_flow_label(ref pred) with GraphRead + Memory + Alloc = match pred {
 // Public (their absent set records proofs but the row itself flows). H6:
 // exhaustive over the three tails.
 fn row_flow_label(ref row) with Pure = match row {
-  EfRow(_, _, EtAll) => // A universal tail is the proved-absence stance (!E) — Secret; every
+  EfRow{tail: EtAll} => // A universal tail is the proved-absence stance (!E) — Secret; every
   // other form is observably Public (subtraction/openness conservative).
   Secret,
-  EfRow(_, _, EtOpen(_)) => Public,
-  EfRow(_, _, EtClosed) => Public,
+  EfRow{tail: EtOpen(_)} => Public,
+  EfRow{tail: EtClosed} => Public,
 }
 
 // Resolve every `TVar` transitively through the graph. Every query

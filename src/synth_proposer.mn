@@ -191,7 +191,7 @@ handler synth_default {
 // allowed_effects row.
 fn enumerate_typed(target_ty, allowed_effects, context) with EnvRead + Memory + Alloc + GraphRead + WASI + GraphWrite + LookupTy = match target_ty {
   TName(name, args) => enumerate_constructors(name, args, context),
-  TFun(params, ret, row) => enumerate_lambdas(params, ret, row, context),
+  TFun{params, ret, row} => enumerate_lambdas(params, ret, row, context),
   TInt => enumerate_int_literals(context),
   TByte => enumerate_int_literals(context),
   TFloat => enumerate_float_literals(context),
@@ -248,7 +248,7 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context) with GraphRead + 
       (accepted, rejected) => match entry {
         (name, scheme, reason, kind) => match kind {
           FnScheme => match judgment_ty(scheme) {
-            TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_decl(name, enclosing, []) {
+            TFun{params, ret, row} => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_decl(name, enclosing, []) {
               if row_subsumes(row, allowed_row) {
                 // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator
                 (accepted ++ [vocabulary_call_candidate(name, row, allowed_row)], rejected)
@@ -312,8 +312,8 @@ fn same_head(a, b) with Pure = match a {
     TName(bn, _) => an == bn,
     _ => false,
   },
-  TFun(_, _, _) => match b {
-    TFun(_, _, _) => true,
+  TFun{} => match b {
+    TFun{} => true,
     _ => false,
   },
   TTuple(_) => match b {
@@ -381,9 +381,9 @@ fn candidate_rank(name, decl_reason, hole_span) with GraphRead + !Mutate + Alloc
 // stored form paid at enrichment, moved to the read point.
 fn rank_of(c, hole_span) with GraphRead + EnvRead + !Mutate + Alloc + Memory = match c {
   EnrichedCandidate(cr) => match cr.node {
-    N(body, _, _) => match body {
+    N{body} => match body {
       NExpr(CallExpr(callee, _)) => match callee {
-        N(cb, _, _) => match cb {
+        N{body: cb} => match cb {
           NExpr(VarRef(name)) => match env_lookup(name) {
             Some(entry) => match entry {
               (_, decl_reason, _) => candidate_rank(name, decl_reason, hole_span),
@@ -469,7 +469,7 @@ fn fn_body_scan(name: String, i, n) with GraphRead + !Mutate + Memory + Alloc = 
   None
 } else {
   match graph_node_body(i) {
-    NStmt(FnStmt(fname, _params, _ret, _effs, body)) => if fname == name { Some(body) } else { fn_body_scan(name, i + 1, n) },
+    NStmt(FnStmt{name: fname, body}) => if fname == name { Some(body) } else { fn_body_scan(name, i + 1, n) },
     _ => fn_body_scan(name, i + 1, n),
   }
 }
@@ -881,7 +881,7 @@ fn indexed_value(indexed) with Memory + Alloc = match indexed {
 fn candidate_proven(node, hole_h, reason) = {
   infer_expr(node) ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
   match node {
-    N(_, span, h) => {
+    N{span, handle: h} => {
       unify(hole_h, h, span, reason)
       verify_after_apply(h) && refinement_admits(hole_ty_live(hole_h), h)
     },
@@ -965,9 +965,9 @@ fn candidate_reason(candidate) with Pure = match candidate {
 // needs to see, and it has an arg. A skeleton with no head name teaches
 // nothing and stays out.
 fn candidate_head_name(node) with Memory + Alloc = match node {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NExpr(CallExpr(callee, _)) => match callee {
-      N(cb, _, _) => match cb {
+      N{body: cb} => match cb {
         NExpr(VarRef(name)) => Some(name),
         _ => None,
       },
@@ -1002,7 +1002,7 @@ fn extract_optimal(candidate) with GraphRead + Memory + Alloc = match candidate 
 }
 
 fn node_span(node) with Pure = match node {
-  N(_, span, _) => span,
+  N{span} => span,
 }
 
 // ─── map_to_proposals — project each survivor to its (node, reason) ──
@@ -1216,7 +1216,7 @@ fn synthesize_record_node(fields) with GraphRead + GraphWrite + !Mutate + Memory
 // fielded ones carry TFun(_, TName, _)), so this is a read, never a new
 // fact: SYNTAX's own surface says `let nothing = None`.
 fn synthesize_ctor_call_node(name, scheme) with GraphRead + WASI + GraphWrite + !Mutate + Memory + Alloc = match judgment_ty(scheme) {
-  TFun(params, _, _) => synth_node(CallExpr(synth_node(VarRef(name)), synth_holes_for(params))),
+  TFun{params} => synth_node(CallExpr(synth_node(VarRef(name)), synth_holes_for(params))),
   _ => synth_node(VarRef(name)),
 }
 

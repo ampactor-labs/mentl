@@ -119,12 +119,12 @@ fn node_const_at(handle, self_h) with GraphRead + Memory + Alloc = match graph_n
   NExpr(LitBool(b)) => Some(LVBool(b)),
   NExpr(VarRef(name)) => resolve_self_operand(name, self_h),
   NExpr(BinOpExpr(op, l, r)) => match l {
-    N(_, _, lh) => match r {
-      N(_, _, rh) => litval_arith_opt(op, node_const_at(lh, self_h), node_const_at(rh, self_h)),
+    N{handle: lh} => match r {
+      N{handle: rh} => litval_arith_opt(op, node_const_at(lh, self_h), node_const_at(rh, self_h)),
     },
   },
   NExpr(UnaryOpExpr(op, x)) => match x {
-    N(_, _, xh) => litval_unary_opt(op, node_const_at(xh, self_h)),
+    N{handle: xh} => litval_unary_opt(op, node_const_at(xh, self_h)),
   },
   _ => None,
 }
@@ -195,7 +195,7 @@ fn call_lo(ref callee) with GraphRead + Memory + Alloc = match graph_node_body(n
 
 fn callee_ret_lo(ch) with GraphRead + Memory + Alloc = match graph_chase(ch) {
   GNode(kind, _) => match kind {
-    NBound(TFun(_, ret, _)) => ty_lo(ret),
+    NBound(TFun{ret}) => ty_lo(ret),
     _ => None,
   },
 }
@@ -949,7 +949,7 @@ fn handle_to_smt(handle) with GraphRead + Memory + Alloc + Diagnostic + Intern =
 // name read live from its node body, or the unencodable sentinel if it is not a
 // bare name reference.
 fn smt_call(callee, args) with GraphRead + Memory + Alloc + Diagnostic + Intern = match callee {
-  N(cbody, _, _) => {
+  N{body: cbody} => {
     let fname = match cbody {
       NExpr(VarRef(n)) => n,
       _ => {
@@ -966,19 +966,19 @@ fn smt_call(callee, args) with GraphRead + Memory + Alloc + Diagnostic + Intern 
 fn smt_arg_terms(args) with GraphRead + Memory + Alloc + Diagnostic + Intern = fold(
   "",
   (acc, arg) => match arg {
-    N(_, _, h) => "{acc} {handle_to_smt(h)}",
+    N{handle: h} => "{acc} {handle_to_smt(h)}",
   },
   args
 )
 
 fn smt_binop(op, l, r) with GraphRead + Memory + Alloc + Diagnostic + Intern = match l {
-  N(_, _, lh) => match r {
-    N(_, _, rh) => "({smt_binop_sym(op)} {handle_to_smt(lh)} {handle_to_smt(rh)})",
+  N{handle: lh} => match r {
+    N{handle: rh} => "({smt_binop_sym(op)} {handle_to_smt(lh)} {handle_to_smt(rh)})",
   },
 }
 
 fn smt_unop(op, x) with GraphRead + Memory + Alloc + Diagnostic + Intern = match x {
-  N(_, _, xh) => match op {
+  N{handle: xh} => match op {
     UNot => "(not {handle_to_smt(xh)})",
     UNeg => "(- {handle_to_smt(xh)})",
   },

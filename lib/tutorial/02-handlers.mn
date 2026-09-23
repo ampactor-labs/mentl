@@ -58,8 +58,6 @@ fn triple_inc() with Counter = {
 // main installs the in-memory handler with `~>`. Change it to `~> counter_logged`
 // to get the narrated reality — nothing else moves.
 fn main() = {
-  let total = {
-    triple_inc()
-  } ~> counter_in_memory
+  let total = triple_inc() ~> counter_in_memory
   total |> int_to_str |> print_string
 }

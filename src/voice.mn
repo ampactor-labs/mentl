@@ -870,7 +870,7 @@ fn query_result_to_answer(result) with GraphRead + !Mutate + Memory + Alloc = ma
   // them. Which language they are spoken in is the RENDER's decision
   // (pipeline.mn), never a second answer shape here.
   AnsDebt(debt, Inferred("smt: {int_to_str(len(debt))} obligation(s) as SMT-LIB")),
-  QRCensus(label, sites) => // The census result is a forensic LIST the graph proved — the same
+  QRCensus(label, sites, _) => // The census result is a forensic LIST the graph proved — the same
   // shape refs-of carries, so it rides AnsRefs (the §7 registry-trap
   // rule: computed, never dropped to Silence). AnsRefs carries SPANS, so
   // the module half drops here and only here: this answer is consumed by
@@ -1425,7 +1425,7 @@ handler mentl_voice_filesystem with handles_table = [], next_handle_id = 1, proj
 fn replace_span_in_text(ref source, span, ref replacement: String) with Memory + Alloc = {
   let n = byte_len(source)
   match span {
-    Span(sl, sc, el, ec) => {
+    Span{start_line: sl, start_col: sc, end_line: el, end_col: ec} => {
       let start_pos = byte_offset_at(source, sl, sc, 0, 1, 1, n)
       let end_pos = byte_offset_at(source, el, ec, 0, 1, 1, n)
       "{str_slice(source, 0, start_pos)}{replacement}{str_slice(source, end_pos, n)}"

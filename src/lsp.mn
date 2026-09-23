@@ -394,7 +394,7 @@ fn handle_references(params) with Memory + Alloc + Interact + GraphRead + !Mutat
 
 // span_to_location — project a Mentl Span to an LSP Location at the doc URI.
 fn span_to_location(uri, span) with Memory + Alloc = match span {
-  Span(sl, sc, el, ec) => Location(uri, sl, sc, el, ec),
+  Span{start_line: sl, start_col: sc, end_line: el, end_col: ec} => Location(uri, sl, sc, el, ec),
 }
 
 // spans_to_locations — project each reference Span to a Location (buffer-rev
@@ -421,7 +421,7 @@ fn map_debt_to_diagnostics(debt, i, n, acc_rev) with Memory + Alloc + GraphRead 
 } else {
   match list_index(debt, i) {
     (_modh, span, predicate, reason) => match span {
-      Span(sl, sc, el, ec) => {
+      Span{start_line: sl, start_col: sc, end_line: el, end_col: ec} => {
         let diag = LspDiagnostic(
           sl,
           sc,

@@ -966,7 +966,7 @@ may carry the name a parameter does:
 ```
 type SchemeKind
   = FnScheme
-  | EffectOpScheme(effect: String, providers: [Int], discipline: ResumeDiscipline)
+  | EffectOpScheme(effect_name: String, providers: [(Int, Int)], discipline: ResumeDiscipline)
   | ConstructorScheme(Int, Int)          // positional: a small wrapper, a genuine tuple
 ```
 
@@ -989,7 +989,7 @@ not bound and not written:
 
 ```
 match kind {
-  EffectOpScheme{effect} => effect,              // punned: binds `effect`
+  EffectOpScheme{effect_name} => effect_name,    // punned: binds `effect_name`
   EffectOpScheme{discipline: MultiShot} => "ms", // a nested pattern on one field
   FnScheme => "fn",
   _ => "other",

@@ -309,8 +309,9 @@ type QueryResult
   // position. The (module, span) pair this carried rendered `tuples:72:1-75:2`
   // for a cell born under one module with a Reason copied from another: two
   // columns read as one coordinate, in a 39-line file. The handle cannot
-  // fabricate an address, because it IS one.
-  | QRCensus(String, [Int])
+  // fabricate an address, because it IS one. The last field ranks the facts
+  // that convicted the sites, where the shape has one (`census_fact`).
+  | QRCensus(String, [Int], [(String, Int)])
   // the declaring nodes (count = len), projected at the render like the
   // census sites — `graph_decls_at` is the column read, nothing between.
   | QRDecls([Int])
@@ -393,7 +394,7 @@ handler query_default {
     // intent ledger re-found by scan (Carried-Truth). A non-fn node
     // carries no authored intent.
     match graph_node_body(handle) {
-      NStmt(FnStmt(_, _, _, effs, _)) => resume(QRIntent(effs)),
+      NStmt(FnStmt{effs}) => resume(QRIntent(effs)),
       _ => // drift-audit: ignore
       resume(QRError("no authored intent at handle {int_to_str(handle)}")),
     },
@@ -405,7 +406,7 @@ handler query_default {
       None => resume(QRError("not found: {name}")),
       Some(entry) => match entry {
         (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
-          TFun(_, _, row) => resume(QREffects(row)),
+          TFun{row} => resume(QREffects(row)),
           _ => resume(QRError("{name} is not a function")),
         },
       },
@@ -414,7 +415,7 @@ handler query_default {
       None => resume(QRError("not found: {name}")),
       Some(entry) => match entry {
         (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
-          TFun(_, _, row) => // BOTH FORMS, because the difference between them IS the answer.
+          TFun{row} => // BOTH FORMS, because the difference between them IS the answer.
           // The RAW row is what the scheme carries; the RESOLVED row is what
           // `resolve_row` produces and what `can_yield` decides on. Rendering
           // one is how this facet's own first reading went wrong inside an
@@ -424,8 +425,8 @@ handler query_default {
           // consumer reads is the Carried-Truth violation inside the
           // instrument built to find one.
           match row {
-            EfRow(present, absent, tail) => match resolve_row(row) {
-              EfRow(rp, _, rtail) => resume(QRRow(
+            EfRow{present, absent, tail} => match resolve_row(row) {
+              EfRow{present: rp, tail: rtail} => resume(QRRow(
                 map(name_with_handle, present),
                 map(name_with_handle, absent),
                 "{show_row_tail(tail)}\n  resolved: {int_to_str(len(rp))} present · tail {show_row_tail(rtail)}"
@@ -440,7 +441,7 @@ handler query_default {
       None => resume(QRError("not found: {name}")),
       Some(entry) => match entry {
         (scheme, _, _) => match chase_type_deep(judgment_ty(scheme)) {
-          TFun(params, _, _) => resume(QROwnership(params)),
+          TFun{params} => resume(QROwnership(params)),
           _ => resume(QRError("{name} is not a function")),
         },
       },
@@ -483,7 +484,7 @@ handler query_default {
     // answer is that set, read off the op. An op no handler provides has
     // none; a name that is not an op says so.
     match env_lookup(op_name) {
-      Some((_, _, EffectOpScheme(_, providers, _))) => resume(QRHandlerProvider(providers)),
+      Some((_, _, EffectOpScheme{providers})) => resume(QRHandlerProvider(providers)),
       _ => resume(QRError("not an effect op: {op_name}")),
     },
     QFlowOf(name) => // The IFC tentacle: read the FlowLabel the type system already proves
@@ -499,7 +500,10 @@ handler query_default {
         (scheme, reason, _kind) => resume(QRFlowLabel(scheme |> judgment_ty |> chase_type_deep |> query_flow_label, reason)),
       },
     },
-    QCensus(shape) => resume(QRCensus(census_label(shape), census_sites(shape))),
+    QCensus(shape) => {
+      let sites = census_sites(shape)
+      resume(QRCensus(census_label(shape), sites, census_tally(shape, sites)))
+    },
     QWhere(name) => resume(where_badges(name)),
     QVariants(tname) => resume(variants_of(tname)),
     QModules => resume(QRModules(module_paths())),
@@ -522,7 +526,7 @@ fn chase_type_deep(ref ty) with GraphRead + Memory + Alloc = match ty {
   },
   TList(elem) => TList(chase_type_deep(elem)),
   TTuple(elems) => TTuple(chase_list_deep(elems)),
-  TFun(params, ret, eff) => TFun(chase_params_deep(params), chase_type_deep(ret), eff),
+  TFun{params, ret, row: eff} => TFun(chase_params_deep(params), chase_type_deep(ret), eff),
   TName(name, args) => TName(name, chase_list_deep(args)),
   TRecord(fields) => TRecord(chase_fields_deep(fields)),
   TRecordOpen(fields, v) => mk_record_open(chase_fields_deep(fields), v),
@@ -564,7 +568,7 @@ fn has_free_tvar(ref ty) with GraphRead + Memory + Alloc = match ty {
   },
   TList(elem) => has_free_tvar(elem),
   TTuple(elems) => has_free_tvar_list(elems),
-  TFun(params, ret, _) => has_free_tvar(ret) || has_free_tvar_params(params),
+  TFun{params, ret} => has_free_tvar(ret) || has_free_tvar_params(params),
   TName(_, args) => has_free_tvar_list(args),
   TRecord(fields) => has_free_tvar_fields(fields),
   TRecordOpen(fields, _) => has_free_tvar_fields(fields),
@@ -699,7 +703,7 @@ fn last_segment(s: String) with Memory + Alloc = match split("/", s) {
 fn import_edges_of(decls) with Memory + Alloc = fold([], import_edge_join, decls)
 
 fn import_edge_join(acc, d) with Memory + Alloc = match d {
-  N(NStmt(ImportStmt(p)), _, _) => push(acc, p),
+  N{body: NStmt(ImportStmt(p))} => push(acc, p),
   _ => acc,
 }
 
@@ -718,12 +722,12 @@ fn decl_names_join(acc, d) with Memory + Alloc = acc ++ decl_names_of(d)
 // positional destructure `CsWildcardDestructure` counts; it retires when
 // the Stmt roster carries records, which is that census's zero.)
 fn decl_names_of(d) with Memory + Alloc = match d {
-  N(NStmt(s), _, _) => stmt_declared_names(s),
-  N(NExpr(_), _, _) | N(NPat(_), _, _) | N(NHole(_), _, _) | N(NModule(_), _, _) | N(NTypeAnn(_), _, _) => [],
+  N{body: NStmt(s)} => stmt_declared_names(s),
+  N{body: NExpr(_)} | N{body: NPat(_)} | N{body: NHole(_)} | N{body: NModule(_)} | N{body: NTypeAnn(_)} => [],
 }
 
 fn stmt_declared_names(s) with Memory + Alloc = match s {
-  FnStmt(n, _, _, _, _) => [n],
+  FnStmt{name: n} => [n],
   HandlerDeclStmt(n, _, _, _, _) => [n],
   TypeDefStmt(n, ctors) => [n] ++ map({ (cn, _, _) => cn }, ctors),
   EffectDeclStmt(n, _, ops) => [n] ++ map({ (on, _, _, _) => on }, ops),
@@ -787,11 +791,11 @@ fn decl_ref_verdict(path: String, extent, name: String) with GraphRead + Memory 
   (path, name, count(ref_is_outside(extent), graph_refs_at(name)))
 
 fn decl_extent(d) with Pure = match d {
-  N(_, sp, _) => sp,
+  N{span: sp} => sp,
 }
 
 fn decl_handle(d) with Pure = match d {
-  N(_, _, h) => h,
+  N{handle: h} => h,
 }
 
 // ─── unreachable — unreferenced's transitive face ───────────────────
@@ -846,7 +850,7 @@ fn refine_roots(decls) with GraphRead + Memory + Alloc = decls |> map(refine_dec
 
 fn refine_decl_names(entry) with GraphRead + Memory + Alloc = match entry {
   (_, d) => match d {
-    N(NStmt(RefineStmt(_, _, pred)), _, _) => predicate_names(pred),
+    N{body: NStmt(RefineStmt(_, _, pred))} => predicate_names(pred),
     _ => [],
   },
 }
@@ -906,7 +910,7 @@ fn ur_rows(decls, reached) with Memory + Alloc = fold([], ur_row_join(reached), 
 
 fn ur_row_join(reached, acc, entry) with Memory + Alloc = match entry {
   (path, d) => match d {
-    N(NStmt(FnStmt(name, _, _, _, _)), _, _) => {
+    N{body: NStmt(FnStmt{name})} => {
       let hit = match smap_get(reached, name) {
         Some(_) => 1,
         None => 0,
@@ -1011,7 +1015,7 @@ fn effect_rows_for(cell) with GraphRead + Memory + Alloc + !Mutate =
   fold([], effect_row_join(cell_path(cell)), cell_decls(cell))
 
 fn effect_row_join(path: String, acc, d) with GraphRead + Memory + Alloc + !Mutate = match d {
-  N(body, sp, _) => match body {
+  N{body, span: sp} => match body {
     NStmt(s) => match s {
       EffectDeclStmt(n, _, ops) => push(acc, (path, n, len(ops), count(op_is_performed(sp), ops))),
       _ => acc,
@@ -1137,7 +1141,7 @@ fn show_row_edge_kind(kind, depth) with GraphRead + !Mutate + Memory + Alloc = m
     "row-bound(…)"
   } else {
     match inner {
-      EfRow(p, _, t2) => "row-bound({int_to_str(len(p))}n {show_row_tail_at(t2, depth + 1)})",
+      EfRow{present: p, tail: t2} => "row-bound({int_to_str(len(p))}n {show_row_tail_at(t2, depth + 1)})",
     }
   },
   NRecordRowBound(_, _) => "record-row-bound",
@@ -1151,8 +1155,8 @@ fn show_row_edge_kind(kind, depth) with GraphRead + !Mutate + Memory + Alloc = m
 // not merely open. A non-fn callee is silent: a shape that convicted every
 // unresolved node would be counting the judgment's own scratch.
 fn callee_row_tail_is_free(h) with GraphRead + !Mutate + Alloc + Memory = match graph_chase(h) {
-  GNode(NBound(TFun(_, _, row)), _) => match resolve_row(row) {
-    EfRow(_, _, t) => match t {
+  GNode(NBound(TFun{row}), _) => match resolve_row(row) {
+    EfRow{tail: t} => match t {
       EtOpen(vs) => row_edges_carry_free(vs),
       _ => false,
     },
@@ -1174,6 +1178,49 @@ fn row_edges_carry_free(vs) with GraphRead + !Mutate + Alloc + Memory = match vs
 
 fn census_sites(shape) with GraphRead + !Mutate + Alloc + Memory =
   matching_handles(shape) |> dedup_sites
+
+// What convicted a site, where the shape has a fact finer than its address:
+// the product a positional destructure counts slots of. Hundreds of
+// coordinates answer "how many"; the facts ranked answer "which declaration
+// to name", which is the question the count exists to drive to zero.
+fn census_fact(shape: CensusShape, h) with GraphRead + !Mutate + Alloc + Memory = match shape {
+  CsWildcardDestructure => match graph_node_body(h) {
+    NExpr(MatchExpr(_, arms)) => arms |> map({ (p, _) => p }) |> first_discarding,
+    NStmt(LetStmt(p, _, _)) => discarding_head(p),
+    _ => None,
+  },
+  CsFreeRowCallee => // The callee whose ungrounded row the site calls — the fact a ceiling on
+  // this count is raised or lowered by.
+  match graph_node_body(h) {
+    NExpr(CallExpr(f, _)) => match graph_node_body(node_handle(f)) {
+      NExpr(VarRef(name)) => Some(name),
+      _ => Some("a computed callee"),
+    },
+    _ => None,
+  },
+  _ => None,
+}
+
+// The facts behind a census, each with its count, most frequent first.
+fn census_tally(shape, sites) with GraphRead + !Mutate + Alloc + Memory =
+  sites |> fold([], tally_site(shape)) |> fold([], tally_insert)
+
+fn tally_site(shape, acc, h) with GraphRead + !Mutate + Alloc + Memory = match census_fact(shape, h) {
+  Some(fact) => tally_bump(acc, fact),
+  None => acc,
+}
+
+fn tally_bump(acc, fact: String) with Memory + Alloc = match acc {
+  [] => [(fact, 1)],
+  [(f, n), ...rest] => if f == fact { [(f, n + 1)] ++ rest } else { [(f, n)] ++ tally_bump(rest, fact) },
+}
+
+fn tally_insert(sorted: [(String, Int)], entry: (String, Int)) with Memory + Alloc = match sorted {
+  [] => [entry],
+  [(f, n), ...rest] => match entry {
+    (_, m) => if m > n { [entry] ++ sorted } else { [(f, n)] ++ tally_insert(rest, entry) },
+  },
+}
 
 // Every handle the shape convicts, in mint order: the Iterate range over
 // the graph's handles — the producer `map` and `filter` stand on — under
@@ -1234,7 +1281,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
     _ => false,
   },
   CsIterationCostume => match body {
-    NStmt(FnStmt(_, _, _, _, _)) => recursion_shape_of(h),
+    NStmt(FnStmt{}) => recursion_shape_of(h),
     _ => false,
   },
   CsWildcardZero => // Drift mode 10's shape (the 5.6 absorption's first instance —
@@ -1255,7 +1302,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   match body {
     NExpr(BinOpExpr(op, _, r)) => match op {
       BOr => match r {
-        N(rb, _, _) => match rb {
+        N{body: rb} => match rb {
           NExpr(LitBool(v)) => v,
           _ => false,
         },
@@ -1326,7 +1373,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   // the handle convention; the paired bind/params convict.
   match body {
     NExpr(MatchExpr(_, arms)) => any(arm_binds_handle_pair, arms),
-    NStmt(FnStmt(_, params, _, _, _)) => adjacent_handle_params(params |> map(param_name)),
+    NStmt(FnStmt{params}) => adjacent_handle_params(params |> map(param_name)),
     _ => false,
   },
   CsVtableRecord => // Drift mode 1's shape (the eighth absorption): a record
@@ -1350,7 +1397,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   // key is the mode's own anchor, exactly as CsFlagAsInt and
   // CsPrintInReport key on their families.
   match body {
-    NStmt(FnStmt(name, _, _, _, _)) => env_frame_name(name),
+    NStmt(FnStmt{name}) => env_frame_name(name),
     NExpr(VarRef(name)) => env_frame_name(name),
     NStmt(LetStmt(p, _, _)) => match pat_of(p) {
       PVar(name) => env_frame_name(name),
@@ -1366,7 +1413,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   // row is the callee's row, which is why the crown pins it as a carrier
   // (leak-default-latent / sound-default-transport).
   match body {
-    NStmt(FnStmt(_, params, _, _, _)) => any(
+    NStmt(FnStmt{params}) => any(
       (p) => match param_default(p) {
         Some(_) => true,
         None => false,
@@ -1385,7 +1432,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   // signed clauses are FnStmt's own field, and the call is the weave's
   // tree edge walked to the callee's VarRef.
   match body {
-    NStmt(FnStmt(_, params, _, effs, fbody)) => if len(effs) == 0 {
+    NStmt(FnStmt{params, effs, body: fbody}) => if len(effs) == 0 {
       false
     } else {
       subtree_calls_param(node_handle(fbody), map(param_name, params), 64)
@@ -1395,7 +1442,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   CsWideRow => // The declared clauses are `FnStmt`'s own field — the row is read where
   // the signature holds it, never re-parsed from the page.
   match body {
-    NStmt(FnStmt(_, _, _, effs, _)) => len(effs) > wide_row_width,
+    NStmt(FnStmt{effs}) => len(effs) > wide_row_width,
     _ => false,
   },
   CsFreeRowVar => // The node's own cell, read through the nodes column rather than the
@@ -1418,8 +1465,8 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   // unlike a `_ => []` over what a kind DECLARES, which the fabricates
   // roster now counts.
   match body {
-    NExpr(MatchExpr(_, arms)) => any({ (p, _) => pattern_discards_by_position(p) }, arms),
-    NStmt(LetStmt(p, _, _)) => pattern_discards_by_position(p),
+    NExpr(MatchExpr(_, arms)) => any({ (p, _) => discards_by_position(p) }, arms),
+    NStmt(LetStmt(p, _, _)) => discards_by_position(p),
     _ => false,
   },
   CsFreeRowCallee => // THE CALL SITE, reading the CALLEE's node — the same handle lower's
@@ -1449,7 +1496,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   // walks. `Hβ.query.census-keyed-by-the-fact-not-the-site` is that form.
   match body {
     NExpr(CallExpr(f, _)) => match f {
-      N(_, _, fh) => callee_row_tail_is_free(fh),
+      N{handle: fh} => callee_row_tail_is_free(fh),
     },
     _ => false,
   },
@@ -1497,7 +1544,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
 // resolves to `TRecordOpen`, which is exactly when lowering has no full
 // sorted field set to take offsets from.
 fn receiver_row_open(rhs) with GraphRead = match rhs {
-  N(_, _, rh) => match graph_chase(rh) {
+  N{handle: rh} => match graph_chase(rh) {
     GNode(NBound(ty), _) => match fold_strip(ty) {
       TRecordOpen(_, _) => true,
       _ => false,
@@ -1682,7 +1729,7 @@ fn any_wildcard_zero(arms, i, n) with Memory = if i >= n {
   match list_index(arms, i) {
     (p, b) => match pat_of(p) {
       PWild => match b {
-        N(nb, _, _) => match nb {
+        N{body: nb} => match nb {
           NExpr(LitInt(0)) => true,
           _ => any_wildcard_zero(arms, i + 1, n),
         },
@@ -1703,21 +1750,37 @@ fn any_wildcard_fabricates(arms, i, n) with Memory + GraphRead = if i >= n {
   }
 }
 
-// A constructor or tuple pattern whose slots include two or more discards —
-// the bare `_` and the binder that spells one (`_h`, `_s`). One discard is a
-// field the arm does not need; two is a position the reader has to count.
-fn pattern_discards_by_position(p) with Memory + Alloc = match pat_of(p) {
-  PCon(_, slots) => count(slot_is_discard, slots) >= 2 || any(pattern_discards_by_position, slots),
-  PTuple(slots) => count(slot_is_discard, slots) >= 2 || any(pattern_discards_by_position, slots),
-  PList(slots, _) => any(pattern_discards_by_position, slots),
-  PRecord(fields, _) => any({ (_, sub) => pattern_discards_by_position(sub) }, fields),
+// The product a pattern counts slots of: the outermost constructor or tuple
+// whose slots include two or more discards — the bare `_` and the binder that
+// spells one (`_h`, `_s`). One discard is a field the arm does not need; two
+// is a position the reader has to count. The answer names the product so a
+// census can rank the declarations whose fields want names; a pattern that
+// discards nothing by position answers None.
+fn discarding_head(p) with Memory + Alloc = match pat_of(p) {
+  PCon(name, slots) => if count(slot_is_discard, slots) >= 2 { Some(name) } else { first_discarding(slots) },
+  PTuple(slots) => if count(slot_is_discard, slots) >= 2 { Some("a tuple") } else { first_discarding(slots) },
+  PList(slots, _) => first_discarding(slots),
+  PRecord(fields, _) => first_discarding(map({ (_, sub) => sub }, fields)),
   PConFields(_, fields) => // A named pattern names only what it reads, so it discards nothing by position.
-  any({ (_, sub) => pattern_discards_by_position(sub) }, fields),
-  PAlt(alts) => any(pattern_discards_by_position, alts),
-  PAs(_, inner) => pattern_discards_by_position(inner),
-  PVar(_) => false,
-  PWild => false,
-  PLit(_) => false,
+  first_discarding(map({ (_, sub) => sub }, fields)),
+  PAlt(alts) => first_discarding(alts),
+  PAs(_, inner) => discarding_head(inner),
+  PVar(_) => None,
+  PWild => None,
+  PLit(_) => None,
+}
+
+fn first_discarding(pats) with Memory + Alloc = match pats {
+  [] => None,
+  [p, ...rest] => match discarding_head(p) {
+    Some(name) => Some(name),
+    None => first_discarding(rest),
+  },
+}
+
+fn discards_by_position(p) with Memory + Alloc = match discarding_head(p) {
+  Some(_) => true,
+  None => false,
 }
 
 fn slot_is_discard(p) with Memory = match pat_of(p) {
@@ -1727,7 +1790,7 @@ fn slot_is_discard(p) with Memory = match pat_of(p) {
 }
 
 fn wildcard_body_fabricates(b) with Memory + GraphRead = match b {
-  N(nb, _, _) => match nb {
+  N{body: nb} => match nb {
     NExpr(LitString(s)) => // drift-audit: ignore — the census DETECTOR reading the drifted literal from the weave, not an effect-name dispatch
     s == "" || s == "Pure",
     NExpr(MakeListExpr(elems)) => // `_ => []` — "this kind declares nothing / carries nothing", which is
@@ -1798,7 +1861,7 @@ fn tuple_field_handle(field) with Pure = match field {
 // holes and contribute none.
 fn stmt_child_handles(s) with Alloc + Memory = match s {
   LetStmt(_pat, value, ann) => match ann {
-    N(NTypeAnn(_), _, _) => // the annotation channel is a child only when it IS one: the absent
+    N{body: NTypeAnn(_)} => // the annotation channel is a child only when it IS one: the absent
     // form ALIASES the value node (the parser's no-fresh-mint sentinel,
     // all three LetStmt mints), so listing the alias double-visits every
     // unannotated let's value subtree — measured as count_var_uses
@@ -1807,7 +1870,7 @@ fn stmt_child_handles(s) with Alloc + Memory = match s {
     [node_handle(value), node_handle(ann)],
     _ => [node_handle(value)],
   },
-  FnStmt(_name, _params, _ret, _effs, body) => [node_handle(body)],
+  FnStmt{body} => [node_handle(body)],
   ExprStmt(e) => [node_handle(e)],
   HandlerDeclStmt(_hname, _ename, _config, states, arms) => map(record_field_handle, states) ++ map(arm_body_handle, arms),
   TypeDefStmt(_, _) => [],
@@ -1858,7 +1921,7 @@ fn body_child_handles(body) with Alloc + Memory = match body {
 // (a structural fold's self-call recurses on CHILDREN, never on an
 // incremented counter, so derived-fold-shaped recursion never fires).
 fn recursion_shape_of(fn_handle) with GraphRead + Alloc + Memory = match graph_node_body(fn_handle) {
-  NStmt(FnStmt(name, params, _, _, body)) => self_call_increments(node_handle(body), name, params |> map(param_name)),
+  NStmt(FnStmt{name, params, body}) => self_call_increments(node_handle(body), name, params |> map(param_name)),
   _ => false,
 }
 
@@ -1924,7 +1987,7 @@ fn chain_links(nodes) with GraphRead + Alloc + Memory = if len(nodes) < 2 {
   []
 } else {
   range(0, len(nodes) - 1) |> map((i) => match graph_node_body(node_handle(nodes[i])) {
-    NStmt(LetStmt(N(NPat(PVar(name)), _, _), _, _)) => let_feeds_next(name, nodes, i),
+    NStmt(LetStmt(N{body: NPat(PVar(name))}, _, _)) => let_feeds_next(name, nodes, i),
     _ => false,
   })
 }
@@ -1942,7 +2005,7 @@ fn rest_uses(name: String, nodes, j) with GraphRead + Alloc + Memory =
 // pipe_shape_of — the verb-shape read over a fn's body spine, the
 // audit tier's entry (build_audit_report reads it per fn).
 fn pipe_shape_of(fn_handle) with GraphRead + Alloc + Memory = match graph_node_body(fn_handle) {
-  NStmt(FnStmt(_, _, _, _, body)) => match graph_node_body(node_handle(body)) {
+  NStmt(FnStmt{body}) => match graph_node_body(node_handle(body)) {
     NExpr(BlockExpr(stmts, fin)) => chain_scan(stmts ++ [fin]),
     _ => [],
   },
@@ -1962,7 +2025,7 @@ fn pipe_shape_of(fn_handle) with GraphRead + Alloc + Memory = match graph_node_b
 // The escape class is DEP `Hβ.infer.use-profile` (band N): until the
 // escape-bit lands, the read speaks the two classes it can prove.
 fn anonymity_shape_of(fn_handle) with GraphRead + !Mutate + Alloc + Memory = match graph_node_body(fn_handle) {
-  NStmt(FnStmt(_, _, _, _, body)) => lambda_shapes(node_handle(body), (0, 0)),
+  NStmt(FnStmt{body}) => lambda_shapes(node_handle(body), (0, 0)),
   _ => (0, 0),
 }
 
@@ -2063,8 +2126,8 @@ fn arg_is_var(a, n: String) with GraphRead = match graph_node_body(node_handle(a
 // open polymorphic tail at a HOF boundary — stays silent: pure
 // vocabulary never narrates.
 fn lambda_carries_row(h) with GraphRead + !Mutate + Alloc + Memory = match graph_chase(h) {
-  GNode(NBound(TFun(_, _, row)), _) => match resolve_row(row) {
-    EfRow(present, _, _) => len(present) > 0,
+  GNode(NBound(TFun{row}), _) => match resolve_row(row) {
+    EfRow{present} => len(present) > 0,
   },
   _ => false,
 }
@@ -2085,11 +2148,11 @@ fn where_badges(name: String) with GraphRead + WASI + EnvRead + Intern + !Mutate
   None => QRError("not found: {name}"),
   Some(entry) => match entry {
     (scheme, _, kind) => match kind {
-      EffectOpScheme(ename, _, disc) => QRWhere(["{name} : {ename} op — resume {op_resume_ty(scheme)} {disc_glyph(disc)} answer"], []),
+      EffectOpScheme{effect_name: ename, discipline: disc} => QRWhere(["{name} : {ename} op — resume {op_resume_ty(scheme)} {disc_glyph(disc)} answer"], []),
       _ => {
         let ty = judgment_ty(scheme)
         match chase_type_deep(ty) {
-          TFun(_, _, _) => QRWhere(fn_tee_lines(name), fn_fanout_sites(name)),
+          TFun{} => QRWhere(fn_tee_lines(name), fn_fanout_sites(name)),
           chased => QRWhere(
             ["{name} : {show_type(chased)} @ {repr_name(repr_of(chased))} ({pin_word(ty_has_repr_pin(ty))})"],
             []
@@ -2120,7 +2183,7 @@ fn is_ctor_of(kind, scheme, type_name) with GraphRead + WASI + Memory + Alloc = 
 // the flowing datum.
 fn scheme_result_is(type_name, ty) with Pure = match ty {
   TName(n, _) => n == type_name,
-  TFun(_, ret, _) => scheme_result_is(type_name, ret),
+  TFun{ret} => scheme_result_is(type_name, ret),
   _ => false,
 }
 
@@ -2145,13 +2208,13 @@ fn variant_lines(entries, tname: String, i, n, acc) = if i >= n {
 }
 
 fn ctor_arity(scheme) = match judgment_ty(scheme) {
-  TFun(params, _, _) => len(params),
+  TFun{params} => len(params),
   _ => // drift-audit: ignore — the arity of any non-TFun scheme IS zero (a value takes no params); a true total answer, not a masked case
   0,
 }
 
 fn op_resume_ty(scheme) with GraphRead + WASI + Intern + !Mutate + Memory + Alloc = match chase_type_deep(judgment_ty(scheme)) {
-  TFun(_, ret, _) => show_type(ret),
+  TFun{ret} => show_type(ret),
   other => show_type(other),
 }
 
@@ -2194,7 +2257,7 @@ fn find_fn_fanouts(name: String, i, n) with GraphRead + EnvRead + !Mutate + Allo
   []
 } else {
   match graph_node_body(i) {
-    NStmt(FnStmt(fname, _, _, _, body)) => if fname == name { fanout_sites(node_handle(body), []) } else { find_fn_fanouts(name, i + 1, n) },
+    NStmt(FnStmt{name: fname, body}) => if fname == name { fanout_sites(node_handle(body), []) } else { find_fn_fanouts(name, i + 1, n) },
     _ => find_fn_fanouts(name, i + 1, n),
   }
 }
@@ -2206,7 +2269,7 @@ fn fanout_sites(h, tees) with GraphRead + EnvRead + !Mutate + Alloc + Memory = {
     NExpr(FanoutExpr(branches)) => [(schedule_word(tees), h)] ++ fanout_sites_list(branches, tees),
     NExpr(LambdaExpr(_, lb)) => // the frame fence, statically mirrored
     fanout_sites(node_handle(lb), []),
-    NStmt(FnStmt(_, _, _, _, fb)) => fanout_sites(node_handle(fb), []),
+    NStmt(FnStmt{body: fb}) => fanout_sites(node_handle(fb), []),
     _ => fanout_sites_children(body_child_handles(body), tees),
   }
 }
@@ -2234,7 +2297,7 @@ fn find_fn_tees(name: String, i, n) with GraphRead + EnvRead + !Mutate + Alloc +
   []
 } else {
   match graph_node_body(i) {
-    NStmt(FnStmt(fname, _, _, _, body)) => if fname == name { tee_lines(node_handle(body)) } else { find_fn_tees(name, i + 1, n) },
+    NStmt(FnStmt{name: fname, body}) => if fname == name { tee_lines(node_handle(body)) } else { find_fn_tees(name, i + 1, n) },
     _ => find_fn_tees(name, i + 1, n),
   }
 }
@@ -2249,7 +2312,7 @@ fn tee_lines(h) with GraphRead + EnvRead + !Mutate + Alloc + Memory + Intern = {
       line ++ tee_lines(node_handle(l))
     },
     NExpr(LambdaExpr(_, lb)) => tee_lines(node_handle(lb)),
-    NStmt(FnStmt(_, _, _, _, fb)) => tee_lines(node_handle(fb)),
+    NStmt(FnStmt{body: fb}) => tee_lines(node_handle(fb)),
     _ => tee_lines_children(body_child_handles(body)),
   }
 }
@@ -2272,7 +2335,7 @@ fn handler_absorbs_str(hname: String) with EnvRead + Memory + Alloc = match env_
 // One arm's op names its effect through the op's own scheme; each effect
 // joins the absorbed set once.
 fn absorbed_effect(seen, arm) with EnvRead + Memory + Alloc = match env_lookup(handler_arm_op_name(arm)) {
-  Some((_, _, EffectOpScheme(ename, _, _))) => if any({ e => e == ename }, seen) { seen } else { push(seen, ename) },
+  Some((_, _, EffectOpScheme{effect_name: ename})) => if any({ e => e == ename }, seen) { seen } else { push(seen, ename) },
   _ => seen,
 }
 
@@ -2389,7 +2452,7 @@ fn defining_node_of(name) with EnvRead + !Mutate + Memory + Alloc = match env_lo
 // address tie-break alone, measured 2026-07-30) while the proof was
 // never read.
 fn span_area(s) with Pure = match s {
-  Span(sl, sc, el, ec) => if sl == el { ec - sc } else { (el - sl) * 1000 + ec - sc },
+  Span{start_line: sl, start_col: sc, end_line: el, end_col: ec} => if sl == el { ec - sc } else { (el - sl) * 1000 + ec - sc },
 }
 
 fn find_tightest(ref idx, target, best_h, best_area) with Memory + Alloc = if len(idx) == 0 {

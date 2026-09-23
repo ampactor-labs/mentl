@@ -45,7 +45,7 @@ fn nexpr(e, span: ValidSpan) = mint_node(NExpr(e), span)
 fn nstmt(s, span: ValidSpan) = {
   let node = mint_node(NStmt(s), span)
   match node {
-    N(body, _, h) => if body_decl_name(body) == "" { () } else { graph_decl_note(h) },
+    N{body, handle: h} => if body_decl_name(body) == "" { () } else { graph_decl_note(h) },
   }
   node
 }
@@ -380,7 +380,7 @@ fn cw_collect_runs(ref tokens, i, prev_line, acc) -> [CwRun] with Memory + Alloc
 } else {
   match token_kind(tokens[i]) {
     TComment(first) => match span_at(tokens, i) {
-      Span(sl, _, _, _) => match cw_join_run(tokens, i + 1, first, sl) {
+      Span{start_line: sl} => match cw_join_run(tokens, i + 1, first, sl) {
         (text, endl, j) => {
           let run =
             CwRun{end_line: endl, run_span: span_at(tokens, i), start_line: sl, text: text, trailing: prev_line == sl}
@@ -391,14 +391,14 @@ fn cw_collect_runs(ref tokens, i, prev_line, acc) -> [CwRun] with Memory + Alloc
     TNewline => cw_collect_runs(tokens, i + 1, prev_line, acc),
     TEof => acc,
     _ => match span_at(tokens, i) {
-      Span(_, _, el, _) => cw_collect_runs(tokens, i + 1, el, acc),
+      Span{end_line: el} => cw_collect_runs(tokens, i + 1, el, acc),
     },
   }
 }
 
 fn cw_join_run(ref tokens, i, own acc, last_line) with Memory + Alloc = match token_kind(tokens[i]) {
   TComment(next) => match span_at(tokens, i) {
-    Span(sl, _, _, _) => if sl <= last_line + 1 {
+    Span{start_line: sl} => if sl <= last_line + 1 {
       cw_join_run(tokens, i + 1, "{acc}\n{next}", sl)
     } else {
       (acc, last_line, i)
@@ -406,7 +406,7 @@ fn cw_join_run(ref tokens, i, own acc, last_line) with Memory + Alloc = match to
   },
   TNewline => match token_kind(tokens[i + 1]) {
     TComment(next) => match span_at(tokens, i + 1) {
-      Span(sl, _, _, _) => if sl <= last_line + 1 {
+      Span{start_line: sl} => if sl <= last_line + 1 {
         cw_join_run(tokens, i + 2, "{acc}\n{next}", sl)
       } else {
         (acc, last_line, i)
@@ -433,7 +433,7 @@ fn cw_scan_index(ref idx, i, h_from, ref runs: [CwRun], leads, trails) with Memo
       cw_scan_index(idx, i + 1, h_from, runs, leads, trails)
     } else {
       match span {
-        Span(sl, sc, el, ec) => {
+        Span{start_line: sl, start_col: sc, end_line: el, end_col: ec} => {
           let tk = cw_find_run_on_line(runs, 0, len(runs) - 1, sl)
           if tk >= 0 { cw_compete_trail(trails, tk, sl, sc, el, ec, h) } else { () }
           let lk = cw_find_run_before(runs, 0, len(runs) - 1, sl, 0 - 1)
@@ -1001,7 +1001,7 @@ fn parse_one_eff_arg(ref tokens, pos) = match kind_at(tokens, pos) {
   {
     let sp = span_at(tokens, pos)
     match nexpr(VarRef(name), sp) {
-      N(_, _, h) => (EANode(h), pos + 1),
+      N{handle: h} => (EANode(h), pos + 1),
     }
   },
   _ => {
@@ -1790,7 +1790,7 @@ fn parse_let_expr(ref tokens, pos, start_span) = match parse_pat(tokens, pos) {
           // the rest of its block exactly as the nesting did, and a merged
           // explicit block was the final expression — nothing followed it.
           match body {
-            N(NExpr(BlockExpr(stmts2, final2)), _, _) => (desugar_block([let_stmt] ++ stmts2, final2, start_span), p7),
+            N{body: NExpr(BlockExpr(stmts2, final2))} => (desugar_block([let_stmt] ++ stmts2, final2, start_span), p7),
             _ => (desugar_block([let_stmt], body, start_span), p7),
           },
         }
@@ -1817,12 +1817,12 @@ fn binop_loop(ref tokens, left, pos, min_prec, slot) = {
     // layout is never semantics; the table is the only scope law).
     match parse_binop(tokens, skip_ws(tokens, p + 1), prec + 1, slot) {
       (right, p2) => match left {
-        N(_, left_span, _) => {
+        N{span: left_span} => {
           // The operation's span is its whole extent, left operand through
           // right — it used to stop at the operator (`x * ` for `x * 2`), a
           // span that named no expression in the source.
           let combined_span = match right {
-            N(_, right_span, _) => span_join(left_span, right_span),
+            N{span: right_span} => span_join(left_span, right_span),
           }
           let node = match op_to_pipe_kind(k) {
             Some(pk) => match pk {
@@ -1833,7 +1833,7 @@ fn binop_loop(ref tokens, left, pos, min_prec, slot) = {
               // tuple-valued branch stays a branch: only the chain
               // accretes, so `(1, 2) >< (3, 4)` is two branches of two.
               match left {
-                N(NExpr(FanoutExpr(branches)), _, _) => nexpr(FanoutExpr(branches ++ [right]), combined_span),
+                N{body: NExpr(FanoutExpr(branches))} => nexpr(FanoutExpr(branches ++ [right]), combined_span),
                 _ => nexpr(FanoutExpr([left, right]), combined_span),
               },
               _ => nexpr(PipeExpr(pk, left, right), combined_span),
@@ -1874,7 +1874,7 @@ fn parse_postfix(ref tokens, pos, slot) = match parse_primary(tokens, pos, slot)
 fn postfix_loop(ref tokens, e, pos, slot) = match kind_at(tokens, pos) {
   TLParen => match parse_call_args(tokens, skip_ws(tokens, pos + 1)) {
     (args, p2) => match e {
-      N(_, start_span, _) => {
+      N{span: start_span} => {
         let end_span = span_at(tokens, p2 - 1)
         postfix_loop(tokens, nexpr(CallExpr(e, args), span_join(start_span, end_span)), p2, slot)
       },
@@ -1895,7 +1895,7 @@ fn postfix_loop(ref tokens, e, pos, slot) = match kind_at(tokens, pos) {
     (idx_expr, p2) => {
       let p3 = expect(tokens, skip_ws(tokens, p2), TRBracket)
       match e {
-        N(_, start_span, _) => {
+        N{span: start_span} => {
           let end_span = span_at(tokens, p3 - 1)
           postfix_loop(tokens, nexpr(IndexExpr(e, idx_expr), span_join(start_span, end_span)), p3, slot)
         },
@@ -1905,7 +1905,7 @@ fn postfix_loop(ref tokens, e, pos, slot) = match kind_at(tokens, pos) {
   TDot => {
     let field = ident_at(tokens, pos + 1)
     match e {
-      N(_, start_span, _) => {
+      N{span: start_span} => {
         let field_span = span_at(tokens, pos + 1)
         postfix_loop(tokens, nexpr(FieldExpr(e, field), span_join(start_span, field_span)), pos + 2, slot)
       },
@@ -1919,7 +1919,7 @@ fn postfix_loop(ref tokens, e, pos, slot) = match kind_at(tokens, pos) {
   // `if x == None {` — the continuation never fires there; a record
   // literal in a header parenthesizes.
   match e {
-    N(body, start_span, _) => {
+    N{body, span: start_span} => {
       let is_named_record = match slot {
         BraceHeader => false,
         FreeExpr => match body {
@@ -2173,7 +2173,7 @@ fn fresh_param_under(prefix: String, span: ValidSpan) = {
 // pattern: a record/tuple/list literal IS the corresponding destructure
 // pattern; a bare var is PVar; anything else is PWild (productive-under-error).
 fn expr_to_pat(e) = match e {
-  N(eb, sp, _) => npat(expr_body_to_pat(eb), sp),
+  N{body: eb, span: sp} => npat(expr_body_to_pat(eb), sp),
 }
 
 fn expr_body_to_pat(eb) = match eb {
@@ -2186,7 +2186,7 @@ fn expr_body_to_pat(eb) = match eb {
   // HERE, so it never reaches infer on the lambda path.
   if len(elems) > 0 {
     match last(elems) {
-      N(lb, _, _) => match lb {
+      N{body: lb} => match lb {
         NExpr(RestExpr(rest_nm)) => PList(map(expr_to_pat, drop_last(elems)), Some(rest_nm)),
         _ => PList(map(expr_to_pat, elems), None),
       },
@@ -2237,7 +2237,7 @@ fn exprs_to_params(elems, i, n, own buf, count, own lbuf, lcount) = if i >= n {
 } else {
   let e = list_index(elems, i)
   match e {
-    N(_, esp, _) => match pat_param_and_let(expr_to_pat(e), esp) {
+    N{span: esp} => match pat_param_and_let(expr_to_pat(e), esp) {
       (param, opt_let) => match push_node(buf, count, param) {
         (b1, c1) => match push_opt_let(lbuf, lcount, opt_let) {
           (lb1, lc1) => exprs_to_params(elems, i + 1, n, b1, c1, lb1, lc1),
@@ -2298,7 +2298,7 @@ fn parse_paren_or_tuple(ref tokens, pos, start_span) = {
             // as the param. A destructure (`({x,y}) => …`) binds its pattern at
             // entry via the same prepend-let machinery.
             match first {
-              N(_, fsp, _) => match pat_param_and_let(expr_to_pat(first), fsp) {
+              N{span: fsp} => match pat_param_and_let(expr_to_pat(first), fsp) {
                 (param, opt_let) => match parse_expr(tokens, skip_ws(tokens, p_after + 1)) {
                   (raw_body, pb) => {
                     let body = bind_param_destructures(
@@ -2555,7 +2555,7 @@ fn parse_arm_list(tokens, pos, start_span: ValidSpan) = {
 // second spelling of one graph. A pattern that binds a plain name was never
 // desugared, so only a destructuring pattern is a let here.
 fn let_arm(node) = match node {
-  N(NExpr(MatchExpr(v, [(pat, rest), (refused, refusal)])), _, _) => if is_destructure_pat(pat) && is_let_refusal(refused, refusal) {
+  N{body: NExpr(MatchExpr(v, [(pat, rest), (refused, refusal)]))} => if is_destructure_pat(pat) && is_let_refusal(refused, refusal) {
     Some((pat, v, rest))
   } else {
     None
@@ -2564,7 +2564,7 @@ fn let_arm(node) = match node {
 }
 
 fn is_let_refusal(refused, refusal) = match (pat_of(refused), refusal) {
-  (PWild, N(NExpr(CallExpr(N(NExpr(VarRef(callee)), _, _), [])), _, _)) => callee == "abort",
+  (PWild, N{body: NExpr(CallExpr(N{body: NExpr(VarRef(callee))}, []))}) => callee == "abort",
   _ => false,
 }
 
@@ -2599,9 +2599,9 @@ fn arm_list_of(params, body) = if len(params) != 1 {
 } else {
   let nm = param_name(params[0])
   match body {
-    N(b, _, _) => match b {
+    N{body: b} => match b {
       NExpr(MatchExpr(scrut, arms)) => match scrut {
-        N(sb, _, _) => match sb {
+        N{body: sb} => match sb {
           NExpr(VarRef(snm)) => if snm == nm && !free_vars_contains(free_vars_match_arms(arms, []), nm) { Some(arms) } else { None },
           _ => None,
         },
@@ -2890,7 +2890,7 @@ fn find_destructure_let(stmts, i) = if i >= len(stmts) {
   None
 } else {
   match list_index(stmts, i) {
-    N(NStmt(LetStmt(pat, v, _)), lsp, _) => if is_destructure_pat(pat) { Some((i, pat, v, lsp)) } else { find_destructure_let(stmts, i + 1) },
+    N{body: NStmt(LetStmt(pat, v, _)), span: lsp} => if is_destructure_pat(pat) { Some((i, pat, v, lsp)) } else { find_destructure_let(stmts, i + 1) },
     _ => find_destructure_let(stmts, i + 1),
   }
 }
@@ -3057,7 +3057,7 @@ fn parse_resume(ref tokens, pos, span: ValidSpan) = {
 // none at `:4`). The node's span is the node's extent; a head-only span is
 // a copy of the wrong fact.
 fn lambda_span(head, body) with Memory + Alloc = match body {
-  N(_, bsp, _) => span_join(head, bsp),
+  N{span: bsp} => span_join(head, bsp),
 }
 
 fn parse_lambda(ref tokens, pos, span: ValidSpan) = {
@@ -3159,7 +3159,7 @@ fn parse_block_expr_checked(ref tokens, pos, start_span) = match parse_block_exp
 // drift class of `_ => <fabricated int sentinel>` per CLAUDE.md red-flag
 // "no `_ => <fabricated value>` over a load-bearing ADT".
 fn is_empty_block(node) = match node {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NExpr(e) => is_empty_block_expr(e),
     _ => false,
   },
@@ -3655,7 +3655,7 @@ fn parse_type_expr(ref tokens, pos) = match parse_type_ty(tokens, pos) {
 // SYNTAX.md:1604-1611 — the where-clause adds nothing.
 fn parse_predicate(ref tokens, pos) = match parse_expr(tokens, pos) {
   (expr_node, p) => match expr_node {
-    N(_, span, _) => {
+    N{span} => {
       let pred = node_to_predicate(expr_node, span)
       match pred {
         PTrue => report(WRedundantWhere(span)),
@@ -3675,7 +3675,7 @@ fn parse_predicate(ref tokens, pos) = match parse_expr(tokens, pos) {
 // refinement call, a bare bool var) IS its graph node — PBoolNode(handle),
 // read live. No lossy fallback.
 fn node_to_predicate(node, span: ValidSpan) = match node {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NExpr(BinOpExpr(BEq, l, r)) => compare_pred(BEq, l, r),
     NExpr(BinOpExpr(BNe, l, r)) => PNot(compare_pred(BEq, l, r)),
     NExpr(BinOpExpr(BLt, l, r)) => compare_pred(BLt, l, r),
@@ -3720,7 +3720,7 @@ fn compare_pred(op, l, r) = PCompare(op, node_handle(l), node_handle(r))
 // forms). Named explicitly so new NodeBody variants decide
 // whether they can contain VarRefs.
 fn collect_free_vars(node, bound) = match node {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NExpr(e) => free_vars_expr(e, bound),
     NStmt(s) => free_vars_stmt(s, bound),
     NPat(_) => [],
@@ -3831,7 +3831,7 @@ fn free_vars_state_updates(updates, bound) = fold(
 // expression this walk can descend (Hβ.types.predicate-is-expr).
 fn free_vars_stmt(s, bound) = match s {
   LetStmt(_, expr, _) => collect_free_vars(expr, bound),
-  FnStmt(_, _, _, _, body_node) => collect_free_vars(body_node, bound),
+  FnStmt{body: body_node} => collect_free_vars(body_node, bound),
   ExprStmt(expr) => collect_free_vars(expr, bound),
   TypeDefStmt(_, _) => [],
   EffectDeclStmt(_, _, _) => [],
@@ -3880,13 +3880,13 @@ fn free_vars_stmts(stmts, bound, acc_frees) = if len(stmts) == 0 {
 } else {
   let stmt = last(stmts)
   match stmt {
-    N(stmt_body, _, _) => match stmt_body {
+    N{body: stmt_body} => match stmt_body {
       NStmt(LetStmt(pat, expr, _)) => {
         let frees = collect_free_vars(expr, bound)
         let new_bound = free_vars_merge(bound, pat_binders(pat))
         free_vars_stmts(drop_last(stmts), new_bound, free_vars_merge(acc_frees, frees))
       },
-      NStmt(FnStmt(name, _, _, _, body_node)) => {
+      NStmt(FnStmt{name, body: body_node}) => {
         // Nested named fn — its name is in scope for siblings and the
         // final expression (recursive / mutual references resolve via env).
         let frees = collect_free_vars(body_node, bound)

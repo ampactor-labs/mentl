@@ -298,15 +298,15 @@ fn scan_for_tee_governing(target, i, n) with GraphRead + !Mutate = if i >= n {
 } else {
   match graph_node_body(i) {
     NExpr(PipeExpr(PTee, body, _handler)) => match body {
-      N(_, _, bh) => if bh == target { true } else { scan_for_tee_governing(target, i + 1, n) },
+      N{handle: bh} => if bh == target { true } else { scan_for_tee_governing(target, i + 1, n) },
     },
     _ => scan_for_tee_governing(target, i + 1, n),
   }
 }
 
 fn is_pure_row(row) with Pure = match row {
-  EfRow([], [], EtClosed) => true,
-  EfRow([], _, EtClosed) => true,
+  EfRow{present: [], absent: [], tail: EtClosed} => true,
+  EfRow{present: [], tail: EtClosed} => true,
   _ => false,
 }
 

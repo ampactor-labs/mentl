@@ -680,7 +680,7 @@ fn tighten_run(entry_module) = infer_context(() => match driver_entry_with_range
 // it down. Making the surface able to say it is
 // `Hβ.syntax.type-instance-in-with-clause`.
 fn row_is_authorable(ref used) = match used {
-  EfRow(present, absent, t) => match t {
+  EfRow{present, absent, tail: t} => match t {
     EtClosed => every_eff_authorable(present, 0) && every_eff_authorable(absent, 0),
     EtOpen(_) => false,
     EtAll => false,
@@ -723,7 +723,7 @@ fn apply_tightenings(cands) = {
       // open without a containment scan placing a line in a range. The path
       // is the module's own; the span is already the developer's line.
       match span {
-        Span(sl, _, _, _) => [(driver_module_path(dmod), 0 - sl, name, declared, used)],
+        Span{start_line: sl} => [(driver_module_path(dmod), 0 - sl, name, declared, used)],
       },
     },
     cands
@@ -799,7 +799,7 @@ fn effname_writable(en) with GraphRead + Memory + Alloc + !Mutate = match en {
 }
 
 fn effrow_writable(r) with GraphRead + Memory + Alloc + !Mutate = match r {
-  EfRow(present, absent, _) => all(effname_writable, present) && all(effname_writable, absent),
+  EfRow{present, absent} => all(effname_writable, present) && all(effname_writable, absent),
 }
 
 // Rewrite one decl line's with-clause to the proven row. The terminator
@@ -915,7 +915,7 @@ fn doc_render_cell(entry_module: String, cell) =
 // declaration was, an effect read `IO : ()` and a type `Ty : Ty` (measured
 // 2026-09-22).
 fn doc_render_decl(d) = match d {
-  N(body, _, h) => match doc_signature(body) {
+  N{body, handle: h} => match doc_signature(body) {
     Some(signature) => print("{signature}  at {site_address(h)}{doc_lede(h)}\n"),
     None => (),
   },
@@ -925,9 +925,9 @@ fn doc_render_decl(d) = match d {
 // its judged type, a type by its variants, an effect by its operations, an
 // alias by what it stands for.
 fn doc_signature(body) = match body {
-  NStmt(FnStmt(name, _, _, _, _)) => Some(doc_value_signature(name)),
+  NStmt(FnStmt{name}) => Some(doc_value_signature(name)),
   NStmt(HandlerDeclStmt(name, _, _, _, _)) => Some(doc_value_signature(name)),
-  NStmt(LetStmt(N(NPat(PVar(name)), _, _), _, _)) => Some(doc_value_signature(name)),
+  NStmt(LetStmt(N{body: NPat(PVar(name))}, _, _)) => Some(doc_value_signature(name)),
   NStmt(TypeDefStmt(name, variants)) => Some("type {name} = {variants |> map({ (variant, _, _) => variant }) |> join(" | ")}"),
   NStmt(EffectDeclStmt(name, _, ops)) => Some("effect {name} \{ {ops |> map({ (op, _, _, _) => op }) |> join(", ")} \}"),
   NStmt(AliasStmt(name, ty)) => Some("type {name} = {show_type(ty)}"),
@@ -1060,7 +1060,7 @@ fn check_run(target) = if pipeline_check(target) > 0 { 1 } else { 0 }
 // generation floor retires (the session-epoch face).
 fn field_positions(handles, fstart, nlines) with GraphRead + Memory + Alloc + !Mutate = field_dedup_spans(filter(
   (h) => match caret_span_of_handle(h) {
-    Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
+    Span{start_line: sl} => sl >= fstart && sl < fstart + nlines,
   },
   handles
 ))
@@ -1075,8 +1075,8 @@ fn field_dedup_spans(handles) with GraphRead + Memory + Alloc + !Mutate = filter
 )
 
 fn span_start_eq(ref a, ref b) with Pure = match a {
-  Span(asl, asc, _, _) => match b {
-    Span(bsl, bsc, _, _) => asl == bsl && asc == bsc,
+  Span{start_line: asl, start_col: asc} => match b {
+    Span{start_line: bsl, start_col: bsc} => asl == bsl && asc == bsc,
   },
 }
 
@@ -1106,7 +1106,7 @@ fn render_field_tier(ranked: [(Float, Handle)], target: String, fstart, i) = if 
     (_, ph) => {
       let pspan = caret_span_of_handle(ph)
       match pspan {
-        Span(sl, sc, _, _) => {
+        Span{start_line: sl, start_col: sc} => {
           print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
           render_at(cursor_at_handle(ph), ph, pspan, target)
           render_field_tier(ranked, target, fstart, i + 1)
@@ -1157,7 +1157,7 @@ fn render_field(target: String, fstart, nlines) = {
 fn field_pending(debt, fstart, nlines) with Memory + Alloc = filter(
   {
     (_modh, dspan, _, _) => match dspan {
-      Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
+      Span{start_line: sl} => sl >= fstart && sl < fstart + nlines,
     },
   },
   debt
@@ -1168,7 +1168,7 @@ fn render_pending_tier(pending, target: String, fstart, i) = if i >= len(pending
 } else {
   match list_index(pending, i) {
     (_modh, dspan, pred, reason) => match dspan {
-      Span(sl, sc, _, _) => {
+      Span{start_line: sl, start_col: sc} => {
         print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
         print("Pending: {show_predicate(pred)} — undischarged; a ground witness or a refinement collapses it\n")
         print("Why: {show_reason(reason)}\n")
@@ -1184,7 +1184,7 @@ fn render_pending_tier(pending, target: String, fstart, i) = if i >= len(pending
 fn field_tightenables(cands, fstart, nlines) with Memory + Alloc = filter(
   {
     (_, _, _, tspan, _) => match tspan {
-      Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
+      Span{start_line: sl} => sl >= fstart && sl < fstart + nlines,
     },
   },
   cands
@@ -1195,7 +1195,7 @@ fn render_tighten_tier(tights, target: String, fstart, i) = if i >= len(tights) 
 } else {
   match list_index(tights, i) {
     (declared, used, name, tspan, _dmod) => match tspan {
-      Span(sl, sc, _, _) => {
+      Span{start_line: sl, start_col: sc} => {
         print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
         print(tighten_line(name, declared, used))
         print("  the proven row is the patch (mentl tighten authors it)\n")
@@ -1348,7 +1348,7 @@ fn span_in_module(mh, e) with GraphRead = match e {
 // the addressed one and the span is already its own coordinate, so the
 // question the search answered no longer has to be asked.
 fn file_line(ref target: String, ref span) with Memory + Alloc = match span {
-  Span(sl, _, _, _) => "{target}:{int_to_str(sl)}",
+  Span{start_line: sl} => "{target}:{int_to_str(sl)}",
 }
 
 // The three-case line rule (the panel's corrected form, deterministic):
@@ -1377,7 +1377,7 @@ fn address_case_a(ref spans, gline, col, i, n, best) with Memory + GraphRead + A
 } else {
   match list_index(spans, i) {
     (s, h) => match s {
-      Span(sl, sc, _, _) => {
+      Span{start_line: sl, start_col: sc} => {
         let hits = if sl == gline {
           if col > 0 { span_contains(s, Span(gline, col, gline, col)) } else { true }
         } else {
@@ -1402,8 +1402,8 @@ fn address_better_a(col, best, cand) with Memory + Alloc + GraphRead = match bes
   Some(b) => match b {
     (bs, bh) => match cand {
       (cs, ch) => match bs {
-        Span(_, bsc, _, _) => match cs {
-          Span(_, csc, _, _) => {
+        Span{start_col: bsc} => match cs {
+          Span{start_col: csc} => {
             // A BOUND cell beats a ghost, above the area rule (column
             // mode): a decl's head-anchored span loses tightness to a
             // never-judged parse cell over its own NAME, and the
@@ -1456,13 +1456,13 @@ fn address_case_c(ref spans, gline, i, n, best) with Memory + Alloc = if i >= n 
 } else {
   match list_index(spans, i) {
     (s, h) => match s {
-      Span(sl, _, _, _) => {
+      Span{start_line: sl} => {
         let d = if sl > gline { sl - gline } else { gline - sl }
         let next = match best {
           None => Some((s, h)),
           Some(b) => match b {
             (bs, _) => match bs {
-              Span(bsl, _, _, _) => {
+              Span{start_line: bsl} => {
                 let bd = if bsl > gline { bsl - gline } else { gline - bsl }
                 if d < bd { Some((s, h)) } else { best }
               },
@@ -1529,7 +1529,7 @@ fn render_at(view, h, pspan, target: String) = match view {
       Proposal(pj) => each(print_refusal, pj.rejected),
     }
     match row {
-      EfRow([], [], EtClosed) => (),
+      EfRow{present: [], absent: [], tail: EtClosed} => (),
       _ => print("Effects: {show_effrow(row)}\n"),
     }
     match trace {
@@ -1567,7 +1567,7 @@ fn render_at(view, h, pspan, target: String) = match view {
 // refinement's base and predicate, the alias's target, the handler's
 // effect and arm count — never a re-derivation.
 fn node_query_line(h, kind) with GraphRead + WASI + EnvRead + Memory + Alloc + Intern = match graph_node_body(h) {
-  NStmt(FnStmt(name, _, _, _, _)) => match env_lookup(name) {
+  NStmt(FnStmt{name}) => match env_lookup(name) {
     Some(entry) => match entry {
       (scheme, _, _) => show_type(judgment_ty(scheme)),
     },
@@ -1605,7 +1605,7 @@ fn node_query_line(h, kind) with GraphRead + WASI + EnvRead + Memory + Alloc + I
 // line inside a module range is gone: the module is the one being addressed
 // and the line is its own, so this opens that file and reads that line.
 fn source_slice(ref span, ref target: String) with Filesystem + Memory + Alloc = match span {
-  Span(sl, sc, el, ec) => {
+  Span{start_line: sl, start_col: sc, end_line: el, end_col: ec} => {
     let p = driver_module_path(target)
     if fs_exists(p) {
       let text = fs_read_file(p)
@@ -1725,12 +1725,12 @@ fn binding_ledes(span, inner) with GraphRead + Memory + Alloc = match inner {
 }
 
 fn span_line_of(ref s) with Pure = match s {
-  Span(sl, _, _, _) => sl,
+  Span{start_line: sl} => sl,
 }
 
 fn value_lede(sh) with GraphRead + Alloc + Memory = match graph_node_body(sh) {
   NStmt(LetStmt(_, value, _)) => match value {
-    N(_, _, vh) => match node_const(vh) {
+    N{handle: vh} => match node_const(vh) {
       Some(LVInt(n)) => " = {int_to_str(n)}",
       Some(LVFloat(f)) => " = {float_to_str(f)}",
       Some(LVString(s)) => " = \"{s}\"",

@@ -59,8 +59,6 @@ fn run() with Beat = {
 
 // ~> handler — install the Beat context over the whole run.
 fn main() = {
-  let total = {
-    run()
-  } ~> beat
+  let total = run() ~> beat
   total |> int_to_str |> print_string
 }

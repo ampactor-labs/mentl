@@ -219,7 +219,7 @@ fn build_row_seen(effs, seen) = match fold(
     // invariant — flowing rows keep coexisting present/absent (the
     // reading law: present adds now, absent filters the tail).
     match pos {
-      EfRow(pp, pa, pt) => if len(pp) == 0 {
+      EfRow{present: pp, absent: pa, tail: pt} => if len(pp) == 0 {
         mk_ef_neg(sort_unique(neg_names))
       } else {
         let full_absent = name_set_union(pa, sort_unique(neg_names))
@@ -262,7 +262,7 @@ fn neg_names_of(name, seen) = match row_alias_triples(name) {
     []
   } else {
     match build_row_seen(triples, seen ++ [eff_name_str(name)]) {
-      EfRow(pp, pa, pt) => if len(pa) == 0 && row_tail_closed(pt) {
+      EfRow{present: pp, absent: pa, tail: pt} => if len(pa) == 0 && row_tail_closed(pt) {
         pp
       } else {
         report(ERowAliasNegation(eff_name_str(name), span_zero()))
@@ -370,7 +370,7 @@ fn field_copy_suffix_shifted(ref src, own dst, src_idx, dst_idx, n) with Memory 
 // free edge survives into the residual set; a row with no bound edge
 // returns UNTOUCHED (identity until progress, preserved exactly).
 fn resolve_row(row) with Memory + Alloc + GraphRead = match row {
-  EfRow(p, a, t) => match t {
+  EfRow{present: p, absent: a, tail: t} => match t {
     EtOpen(vs) => match resolve_edges(vs, (p, a, [], false, false)) {
       (rp, ra, res, saw_all, progressed) => if progressed {
         if saw_all { ef_make(rp, ra, EtAll) } else { ef_make(rp, ra, EtOpen(res)) }
@@ -407,7 +407,7 @@ fn resolve_edge(acc, v) with GraphRead + Memory + Alloc = match acc {
 // every edge fold shares (resolve, compress, chase-face, subst). The
 // residual set unions in order (the sorted-set invariant).
 fn edge_content_into(ref p, ref a, ref res, saw_all, ri) with Memory + Alloc = match ri {
-  EfRow(cp, ca, ct) => {
+  EfRow{present: cp, absent: ca, tail: ct} => {
     let p2 = name_set_union(p, name_set_diff(cp, a))
     let a2 = name_set_union(a, ca)
     match ct {
@@ -428,7 +428,7 @@ fn edge_content_into(ref p, ref a, ref res, saw_all, ri) with Memory + Alloc = m
 // rebinding shared chain cells makes sibling chases schedule-dependent;
 // the root's sequential walks compress the web).
 fn resolve_row_compress(row) = match row {
-  EfRow(p, a, t) => match t {
+  EfRow{present: p, absent: a, tail: t} => match t {
     EtOpen(vs) => match resolve_edges_compress(vs, (p, a, [], false, false)) {
       (rp, ra, res, saw_all, progressed) => if progressed {
         if saw_all { ef_make(rp, ra, EtAll) } else { ef_make(rp, ra, EtOpen(res)) }
@@ -478,8 +478,8 @@ fn resolve_edge_compress(acc, v) = match acc {
 // equal fragment coexists as a copy, and coexistence is the safe side.
 // Bare names and absent sets are genuine name-sets; tails join as ever.
 fn row_join(ref a, ref b) with !Mutate + Memory + Alloc = match a {
-  EfRow(pa, aa, ta) => match b {
-    EfRow(pb, ab, tb) => {
+  EfRow{present: pa, absent: aa, tail: ta} => match b {
+    EfRow{present: pb, absent: ab, tail: tb} => {
       let p = frag_union(pa, pb)
       let absent = match ta {
         EtClosed => match tb {
@@ -504,8 +504,8 @@ fn row_join(ref a, ref b) with !Mutate + Memory + Alloc = match a {
 // confluence net that keeps it deterministic while the census drives
 // the leak class to zero.
 fn row_frag_collision(ref a, ref b) with Memory + Alloc = match a {
-  EfRow(pa, _, _) => match b {
-    EfRow(pb, _, _) => frag_collision_walk(pa, pb, 0),
+  EfRow{present: pa} => match b {
+    EfRow{present: pb} => frag_collision_walk(pa, pb, 0),
   },
 }
 
@@ -588,8 +588,8 @@ fn frag_args_same_walk(ref a1, ref a2, i) with Memory + Alloc = if i >= len(a1) 
 // present ANYWHERE escapes every mask, so the joint absent set drops it;
 // tails join Closed < Var < All, first var kept (unification constrains).
 fn union_row(ref a, ref b) with Memory + Alloc = match a {
-  EfRow(pa, aa, ta) => match b {
-    EfRow(pb, ab, tb) => {
+  EfRow{present: pa, absent: aa, tail: ta} => match b {
+    EfRow{present: pb, absent: ab, tail: tb} => {
       let p = name_set_union(pa, pb)
       let absent = match ta {
         EtClosed => match tb {
@@ -643,8 +643,8 @@ fn tail_join(ta, tb) with Memory + Alloc + !Mutate = match ta {
 // makes the mask an EDGE resolve_row folds through — unions carry vars
 // untouched, so the subtraction survives every union by construction.
 fn diff_row(ref a, ref b) with GraphWrite + Memory + !Mutate + Alloc = match a {
-  EfRow(pa, aa, ta) => match b {
-    EfRow(pb, _, _) => match ta {
+  EfRow{present: pa, absent: aa, tail: ta} => match b {
+    EfRow{present: pb} => match ta {
       EtOpen(vs) => {
         // The mask edge wraps the WHOLE original edge set — one fresh
         // cell bound to the masked triple over every surviving edge, so
@@ -667,8 +667,8 @@ fn diff_row(ref a, ref b) with GraphWrite + Memory + !Mutate + Alloc = match a {
 // var-tailed general meet is the modal frontier — the LOUD refusal names
 // it instead of mushing (the crucible that reaches it is the witness).
 fn inter_row(ref a, ref b) with Memory + Alloc + GraphWrite = match a {
-  EfRow(pa, aa, ta) => match b {
-    EfRow(pb, ab, tb) => match ta {
+  EfRow{present: pa, absent: aa, tail: ta} => match b {
+    EfRow{present: pb, absent: ab, tail: tb} => match ta {
       EtAll => if len(pa) == 0 { diff_row(b, mk_ef_closed(aa)) } else { EfRow(pa, aa, ta) },
       _ => match tb {
         EtAll => if len(pb) == 0 { diff_row(a, mk_ef_closed(ab)) } else { EfRow(pa, aa, ta) },
@@ -712,7 +712,7 @@ fn absorb_row(ref body_row, ref handled_row, ref extra_row) with !Mutate =
 // drains at the group's completion event (D4). Until then this freeze
 // is the sound form.
 fn row_without_self(row, self_h) with Memory + Alloc + GraphRead = match resolve_row(row) {
-  EfRow(p, a, t) => match t {
+  EfRow{present: p, absent: a, tail: t} => match t {
     EtOpen(vs) => {
       // The cut drops every edge chasing to the fn's OWN cell; the
       // surviving edges keep the tail open (chased-root compare — the
@@ -767,7 +767,7 @@ fn row_keep_completion(row, ceiling: Int, sig_keep: [Int]) with Memory + Alloc +
   row
 } else {
   match row {
-    EfRow(p, a, t) => match t {
+    EfRow{present: p, absent: a, tail: t} => match t {
       EtOpen(vs) => {
         let kept = edges_keep_completion(vs, ceiling, sig_keep)
         if len(kept) == 0 { ef_make(p, a, EtClosed) } else { ef_make(p, a, EtOpen(kept)) }
@@ -832,8 +832,8 @@ fn row_subsumes(ref body_row, ref gate_row) with Memory + Alloc + GraphRead = {
   let b = resolve_row(body_row)
   let g = resolve_row(gate_row)
   match b {
-    EfRow(pb, ab, tb) => match g {
-      EfRow(pg, ag, tg) => match tg {
+    EfRow{present: pb, absent: ab, tail: tb} => match g {
+      EfRow{present: pg, absent: ag, tail: tg} => match tg {
         EtAll => // The `!B` gate: nothing present may touch the forbidden set. A
         // closed or free-tailed body passes on disjointness alone.
         //
@@ -904,8 +904,8 @@ fn bind_edges_to(ref ws: [Int], row, ref span, ref reason) with Memory + Alloc +
 }
 
 fn unify_row_canonical(ref a, ref b, ref span, ref reason) with Memory + Alloc + Intern + GraphRead + Diagnostic + GraphWrite = match a {
-  EfRow(pa, aa, ta) => match b {
-    EfRow(pb, ab, tb) => match ta {
+  EfRow{present: pa, absent: aa, tail: ta} => match b {
+    EfRow{present: pb, absent: ab, tail: tb} => match ta {
       EtClosed => match tb {
         EtClosed => if name_set_eq(pa, pb) { () } else { report_effect_mismatch(a, b, span, reason) },
         EtOpen(wbs) => // Closed(A) ~ (B + edges∖ab): the residual (A ∖ B) binds EVERY
@@ -1002,7 +1002,7 @@ fn report_effect_mismatch(ref a, ref b, ref span, ref reason) with !Mutate =
 
 // Ground: no open edge anywhere the dispatch would need resolved.
 fn row_is_ground(ref row) with Pure = match row {
-  EfRow(_, _, t) => match t {
+  EfRow{tail: t} => match t {
     EtOpen(_) => false,
     _ => true,
   },

@@ -95,7 +95,7 @@ fn body_is_pure(handle) with GraphRead + LookupTy + Memory + Alloc = match graph
 // value node carries NONE, which IS the pure row (a value performs nothing to BE a
 // value). No fabrication, no AST re-derivation: the row is read where infer wrote it.
 fn effs_at(handle) with LookupTy = match lookup_ty(handle) {
-  TFun(_, _, row) => row,
+  TFun{row} => row,
   _ => mk_ef_pure(),
 }
 

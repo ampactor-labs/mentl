@@ -559,7 +559,7 @@ fn pair_join(a, b) = match a {
 // walks because resume carries call-substitution this walk must not, and
 // this walk carries mode resume must not (the stamped two-walks ruling).
 fn usage_of(ref name: String, ref node, mode) with Memory + Alloc + EnvRead + GraphRead = match node {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NExpr(VarRef(n)) => if n == name { use_leaf(mode) } else { pair_zero() },
     NExpr(CallExpr(f, args)) => pair_seq(usage_of(name, f, MRead), usage_args(name, args, callee_borrow_params(f), 0)),
     NExpr(BinOpExpr(_, l, r)) => pair_seq(usage_of(name, l, mode), usage_of(name, r, mode)),
@@ -614,7 +614,7 @@ fn usage_of(ref name: String, ref node, mode) with Memory + Alloc + EnvRead + Gr
     // statement-level use; the walk descends.
     usage_of(name, v, MConsume),
     NStmt(ExprStmt(e)) => usage_of(name, e, mode),
-    NStmt(FnStmt(_, _, _, _, _)) => // A nested fn declaration is not an execution (resume_grade's own
+    NStmt(FnStmt{}) => // A nested fn declaration is not an execution (resume_grade's own
     // ruling); its capture-and-call usage stays uncounted — parity with
     // the deleted count, Ref-safe when it under-counts.
     pair_zero(),
@@ -679,11 +679,11 @@ fn usage_flds(ref name, ref flds, mode) with Memory + Alloc + EnvRead + GraphRea
 // (2026-09-17) the read is the shape at this moment, and the callee-first
 // walk makes it an arrow for every acyclic callee before its callers ask.
 fn callee_borrow_params(ref f) with !Mutate + GraphRead + EnvRead + Memory + Alloc = match f {
-  N(fb, _, _) => match fb {
+  N{body: fb} => match fb {
     NExpr(VarRef(cn)) => match env_lookup(cn) {
       Some(entry) => match entry {
         (scheme, _, _) => match scheme {
-          Frozen(_, TFun(ps, _, _)) => Some(ps),
+          Frozen(_, TFun{params: ps}) => Some(ps),
           Frozen(_, TVar(h)) => chased_borrow_params(h),
           Live(h) => chased_borrow_params(h),
           _ => None,
@@ -699,7 +699,7 @@ fn callee_borrow_params(ref f) with !Mutate + GraphRead + EnvRead + Memory + All
 // None when it is anything else. Shared by the live posture and the frozen
 // TVar, which are the same read taken at two moments.
 fn chased_borrow_params(h) with GraphRead + Memory + Alloc = match graph_chase(h) {
-  GNode(NBound(TFun(ps, _, _)), _) => Some(ps),
+  GNode(NBound(TFun{params: ps}), _) => Some(ps),
   _ => None,
 }
 
@@ -723,13 +723,13 @@ fn usage_args(ref name, ref args, borrow_slots, i) with Memory + Alloc + EnvRead
 // own VarRef-only rule). Beyond-product args consume (the arg walk's
 // plain infer_expr fall-through).
 fn arg_slot_mode(ref arg, ref borrow_slots, i) = match arg {
-  N(ab, _, _) => match ab {
+  N{body: ab} => match ab {
     NExpr(VarRef(_)) => match borrow_slots {
       Some(ps) => if i < len(ps) { if param_borrows(list_index(ps, i)) { MRead } else { MConsume } } else { MConsume },
       None => MRead,
     },
     NExpr(LabeledArg(label, v)) => match v {
-      N(vb, _, _) => match vb {
+      N{body: vb} => match vb {
         NExpr(VarRef(_)) => match borrow_slots {
           Some(ps) => if labeled_param_borrows(ps, label, 0) { MRead } else { MConsume },
           None => MRead,

@@ -643,7 +643,7 @@ fn mark_tail_arms(arms) with Memory + Alloc = map({ (pat, body) => (pat, mark_ta
 // True when the row carries no effect names — the callee performs
 // nothing, so no handler evidence is needed at the call site.
 fn row_is_effectless(row) = match row {
-  EfRow(p, _, t) => match t {
+  EfRow{present: p, tail: t} => match t {
     EtClosed => len(p) == 0,
     _ => false,
   },
@@ -663,7 +663,7 @@ fn lower_callee_name(fbody) = match fbody {
   NExpr(VarRef(name)) => name,
   NExpr(FieldExpr(_, field)) => field,
   NExpr(CallExpr(callee, _)) => match callee {
-    N(cb, _, _) => lower_callee_name(cb),
+    N{body: cb} => lower_callee_name(cb),
   },
   _ => // drift-audit: ignore — "" = callee has no declared name (positional passthrough)
   "",
@@ -757,7 +757,7 @@ fn lower_call_dispatch(handle, f, fh, fbody, r_args) = {
         // zero-arg call (already reported there) lowers to the empty
         // record, never a garbage read past an empty args list.
         if len(lo_args) == 0 { LMakeRecord(handle, []) } else { list_index(lo_args, 0) },
-        Some(EffectOpScheme(_, _, _)) => // ONE perform, whose DISPATCH says how much of the walk this
+        Some(EffectOpScheme{}) => // ONE perform, whose DISPATCH says how much of the walk this
         // site could finish now (PerformDispatch). PLAN §6's
         // handler-elimination tiers are degrees of that boundness, not
         // three operations: the meaning is always "walk innermost-out to
@@ -813,7 +813,7 @@ fn partial_unfilled(cname, fh, r_args) = if is_seq_op(cname) {
   None
 } else {
   match lookup_ty(fh) {
-    TFun(ps, _, _) => if len(r_args) < len(ps) {
+    TFun{params: ps} => if len(r_args) < len(ps) {
       Some(len(ps))
     } else if len(r_args) == len(ps) && call_hole_index(r_args, 0) >= 0 {
       // Saturated by COUNT but a slot is an authored hole — `add(??, 41)`,
@@ -851,7 +851,7 @@ fn partial_split(r_args, n_args, n_ps, handle, i, ci) = if i >= n_ps {
 } else {
   let arg = list_index(r_args, i)
   match arg {
-    N(b, _, ah) => match b {
+    N{body: b, handle: ah} => match b {
       NHole(_) => {
         let pn = "__part_{int_to_str(i)}"
         match partial_split(r_args, n_args, n_ps, handle, i + 1, ci) {
@@ -893,7 +893,7 @@ fn partial_callee_form(handle, fbody, fh) = match fbody {
     match env_kind_of(name) {
       Some(FnScheme) => Some(PcfCall(name)),
       Some(ConstructorScheme(tag_id, _)) => Some(PcfVariant(tag_id)),
-      Some(EffectOpScheme(_, _, _)) => // An OP reified as a value, and it passes None for the lexical
+      Some(EffectOpScheme{}) => // An OP reified as a value, and it passes None for the lexical
       // answer — not to disable a tier, but because it HAS no lexical
       // answer: this body becomes a lifted fn, so a frame local resolved
       // here would name a frame that is gone by the time it runs. The walk
@@ -945,7 +945,7 @@ fn apply_callee_form(form, handle, fh, bargs) = match form {
 fn scheme_ref_fun_arity(name) = match env_lookup(name) {
   Some(entry) => match entry {
     (scheme, _, _) => match judgment_ty(scheme) {
-      TFun(ps, _, _) => Some(len(ps)),
+      TFun{params: ps} => Some(len(ps)),
       _ => None,
     },
   },
@@ -1000,7 +1000,7 @@ fn project_lambda_fn(origin, cap_pairs) = match graph_node_body(origin) {
 // and the resume-binding fact's column home is the dispatch-tier
 // column (named in the stamp), so the seam is explicit until it lands.
 fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body(origin) {
-  NStmt(FnStmt(_name, params, _ret_ann, _effs, body_node)) => {
+  NStmt(FnStmt{params, body: body_node}) => {
     let cap_names = map({ (n, _) => n }, cap_pairs)
     let cap_handles = map({ (_, h) => h }, cap_pairs)
     let base_param_names = lower_param_names(params)
@@ -1099,7 +1099,7 @@ fn lower_call_partial(handle, fbody, fh, r_args, n_ps) = match partial_callee_fo
 // resolved design; this second engine deletes at rung 3 when rows are
 // live, the subsumed Hβ.infer.order-free-live-row).
 fn effects_of(fn_ty) = match fn_ty {
-  TFun(_, _, row) => effects_of_row(row),
+  TFun{row} => effects_of_row(row),
   TCont(_, _, _, world) => effects_of_row(world),
   _ => [],
 }
@@ -1109,7 +1109,7 @@ fn effects_of(fn_ty) = match fn_ty {
 // discarding it read [] and starved the escaping rows, the pinned
 // seam). The absent field masks tail contributions.
 fn effects_of_row(row) = match row {
-  EfRow(names, ab, t) => {
+  EfRow{present: names, absent: ab, tail: t} => {
     let inline = row_dispatched_names(eff_names_of(names))
     match t {
       EtOpen(vs) => effects_of_edges(vs, inline, ab),
@@ -1165,7 +1165,7 @@ fn can_yield(callee_handle) = if !ls_program_may_yield() {
     true
   } else {
     match lookup_ty(callee_handle) {
-      TFun(_, _, row) => row_may_multishot(row),
+      TFun{row} => row_may_multishot(row),
       _ => true,
     }
   }
@@ -1175,7 +1175,7 @@ fn can_yield(callee_handle) = if !ls_program_may_yield() {
 // any tail edge is unproven. Total over the three tails — the unproven
 // forms answer true (check), never a fabricated "safe".
 fn row_may_multishot(row) = match row {
-  EfRow(names, _, t) => if names_have_multishot(eff_names_of(names)) {
+  EfRow{present: names, tail: t} => if names_have_multishot(eff_names_of(names)) {
     true
   } else {
     match t {
@@ -1250,7 +1250,7 @@ fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
   binds
 } else {
   match last(stmts) {
-    N(b, _, _) => {
+    N{body: b} => {
       let binds2 = match b {
         NStmt(HandlerDeclStmt(hname, _, _, _, arms)) => bind_from_arms(arms, hname, summaries, decls, binds),
         _ => binds,
@@ -1325,7 +1325,7 @@ fn collect_free_vars_of_decl(decls, name: String) = {
 // body lowers.
 fn program_may_yield(stmts) = any(
   {
-    N(body, _, _) => match body {
+    N{body} => match body {
       NStmt(EffectDeclStmt(ename, _, _)) => effect_has_multishot_op(ename),
       _ => false,
     },
@@ -1481,7 +1481,7 @@ fn callee_name_of_handle(h) = lower_callee_name(graph_node_body(h))
 // installed_handled_enames). A `~> h` records the effect h's HandlerKind
 // absorbs; every other node just unions its children's edges.
 fn flow_edges(node) = match node {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NExpr(e) => flow_edges_expr(e),
     NStmt(s) => flow_edges_stmt(s),
     NPat(_) => ([], []),
@@ -1541,7 +1541,7 @@ fn flow_edges_expr(e) = match e {
   BinOpExpr(_, l, r) => flow_join(flow_edges(l), flow_edges(r)),
   UnaryOpExpr(_, inner) => flow_edges(inner),
   CallExpr(f, args) => match f {
-    N(fbody, _, _) => {
+    N{body: fbody} => {
       let nm = lower_callee_name(fbody)
       let here = if nm == "" { ([], []) } else { ([nm], []) }
       flow_join(here, flow_join(flow_edges(f), flow_edges_list(args)))
@@ -1566,7 +1566,7 @@ fn flow_edges_expr(e) = match e {
     let inner = flow_join(flow_edges(l), flow_edges(r))
     match kind {
       PTee => match r {
-        N(rbody, _, _) => {
+        N{body: rbody} => {
           let hd = installed_handled_ename(rbody)
           if hd == "" {
             inner
@@ -1588,7 +1588,7 @@ fn flow_edges_expr(e) = match e {
 
 fn flow_edges_stmt(s) = match s {
   LetStmt(_, expr, _) => flow_edges(expr),
-  FnStmt(_, _, _, _, body_node) => flow_edges(body_node),
+  FnStmt{body: body_node} => flow_edges(body_node),
   ExprStmt(expr) => flow_edges(expr),
   TypeDefStmt(_, _) => ([], []),
   EffectDeclStmt(_, _, _) => ([], []),
@@ -1643,8 +1643,8 @@ fn installed_handled_ename(handler_body) = {
 // One base per top-level fn: (name, own-leaf, sorted callees, sorted handled).
 fn collect_fn_bases(stmts) = flatten(map(
   {
-    N(sb, _, _) => match sb {
-      NStmt(FnStmt(name, _, _, _, body_node)) => match flow_edges(body_node) {
+    N{body: sb} => match sb {
+      NStmt(FnStmt{name, body: body_node}) => match flow_edges(body_node) {
         (callees, handled) => [(name, own_dispatched_row(name), set_canonicalize(callees), set_canonicalize(handled))],
       },
       _ => [],
@@ -2007,13 +2007,13 @@ fn lookup_effect_op_names(eff_name) = match env_lookup(eff_name) {
 // propagates via the caller's k2 boundary, only the local dead code isn't
 // pruned).
 fn expr_diverges(node) = match node {
-  N(b, _, _) => match b {
+  N{body: b} => match b {
     NStmt(ExprStmt(e)) => // Statements wrap their expression — a block's stmts are NStmt(...), so
     // first_diverging must unwrap to reach the perform.
     expr_diverges(e),
     NStmt(LetStmt(_, init, _)) => expr_diverges(init),
     NExpr(CallExpr(f, _)) => match f {
-      N(fb, _, _) => match fb {
+      N{body: fb} => match fb {
         NExpr(VarRef(name)) => match op_resume_discipline(name) {
           Abandon => true,
           _ => false,
@@ -2146,7 +2146,7 @@ fn perform_target_symbol(disp) = match disp {
 fn lower_op_default_handler(op_name) = match env_lookup(op_name) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      EffectOpScheme(_, [(decl, _)], _) => Some(body_decl_name(graph_node_body(decl))),
+      EffectOpScheme{providers: [(decl, _)]} => Some(body_decl_name(graph_node_body(decl))),
       _ => None,
     },
   },
@@ -2166,7 +2166,7 @@ fn lower_op_default_handler(op_name) = match env_lookup(op_name) {
 fn lookup_parent_effect(op_name) = match env_lookup(op_name) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      EffectOpScheme(ename, _, _) => Some(ename),
+      EffectOpScheme{effect_name: ename} => Some(ename),
       _ => None,
     },
   },
@@ -2188,7 +2188,7 @@ fn lookup_parent_effect(op_name) = match env_lookup(op_name) {
 // The canonical handle carries the type lookups, since a rewrite preserves
 // the type (and, for a dropping rewrite, the effect row — the gate proved it).
 fn lower_expr(node) = match node {
-  N(obody, span, handle) => // An AUTHORED hole's identity lives on its own node — the id and the
+  N{body: obody, span, handle} => // An AUTHORED hole's identity lives on its own node — the id and the
   // authored span the executable gate and the cursor read (authored_hole).
   // Its union-find class root is often an absent-default mint (NHole(0):
   // the fn-return var a body hole unified with, a let's value var), so
@@ -2300,7 +2300,7 @@ fn lower_expr_body(e, handle, span) = match e {
             LMakeVariant(handle, tag_id, []),
             Some(arity) => lower_call_partial(handle, graph_node_body(handle), handle, [], arity),
           },
-          Some(EffectOpScheme(_, _, _)) => match scheme_ref_fun_arity(name) {
+          Some(EffectOpScheme{}) => match scheme_ref_fun_arity(name) {
             None => // An op's declared scheme is always a signature, zero-arg
             // included, so a miss here is an unresolved judgment and the
             // typed floor is the honest answer — lower_call_partial's own
@@ -2356,7 +2356,7 @@ fn lower_expr_body(e, handle, span) = match e {
   // only form, dispatched here by the env's EffectOpScheme. Plain
   // function calls fall through.
   match f {
-    N(fbody, _, fh) => {
+    N{body: fbody, handle: fh} => {
       // Resolve the arg PRODUCT to the callee's positional param order — labeled
       // args reordered by field name, absent fields filled by their param
       // defaults — the ONE read both infer + lower call (identical order by
@@ -2409,7 +2409,7 @@ fn lower_expr_body(e, handle, span) = match e {
     result
   },
   MatchExpr(scrutinee, arms) => match scrutinee {
-    N(_, _, sh) => LMatch(handle, lower_expr(scrutinee), lower_match_arms(sh, arms)),
+    N{handle: sh} => LMatch(handle, lower_expr(scrutinee), lower_match_arms(sh, arms)),
   },
   MakeListExpr(elems) => LMakeList(handle, lower_expr_list(elems)),
   MakeTupleExpr(elems) => LMakeTuple(handle, lower_expr_list(elems)),
@@ -2553,13 +2553,13 @@ fn lower_expr_body(e, handle, span) = match e {
 // builder can complete a stage with the RESUME HOLE as the piped value
 // (band B M1.3) — one completion, two callers.
 fn lower_pipe_complete(lo_l, right, handle) = match right {
-  N(rbody, _, rfh) => {
+  N{body: rbody, handle: rfh} => {
     // A pipe-right CALL dispatches fork-free (lower_call_dispatch): the pipe
     // owns its hole and completes it below by inline splice, so a raw
     // hole-bearing call in stage position never mints a partial closure.
     let lo_r = match rbody {
       NExpr(CallExpr(f2, args2)) => match f2 {
-        N(fbody2, _, fh2) => lower_call_dispatch(rfh, f2, fh2, fbody2, resolve_call_args(lower_callee_name(fbody2), args2)),
+        N{body: fbody2, handle: fh2} => lower_call_dispatch(rfh, f2, fh2, fbody2, resolve_call_args(lower_callee_name(fbody2), args2)),
       },
       _ => lower_expr(right),
     }
@@ -2573,7 +2573,7 @@ fn lower_pipe_complete(lo_l, right, handle) = match right {
     match rbody {
       NExpr(CallExpr(_, cargs2)) => if hole_at >= 0 {
         match list_index(cargs2, hole_at) {
-          N(_, _, hh) => graph_hole_unnote(hh),
+          N{handle: hh} => graph_hole_unnote(hh),
         }
       } else {
         ()
@@ -2704,7 +2704,7 @@ fn pipe_hole_index(args, i) = if i >= len(args) {
   -1
 } else {
   match list_index(args, i) {
-    N(b, _, _) => match b {
+    N{body: b} => match b {
       NHole(_) => i,
       _ => pipe_hole_index(args, i + 1),
     },
@@ -2716,8 +2716,8 @@ fn pipe_hole_index(args, i) = if i >= len(args) {
 // no fn type at the callee (the unresolved callee already carries its own
 // diagnostic); the pipe then treats the right side as a saturated stage.
 fn callee_arity_of(f) = match f {
-  N(_, _, fh) => match lookup_ty(fh) {
-    TFun(ps, _, _) => len(ps),
+  N{handle: fh} => match lookup_ty(fh) {
+    TFun{params: ps} => len(ps),
     _ => -1,
   },
 }
@@ -2732,7 +2732,7 @@ fn splice_at(xs, i, v) = slice(xs, 0, i) ++ [v] ++ slice(xs, i + 1, len(xs))
 // the recurrence reads y[n-1] live. Any other LHS lowers as-is (a bare
 // expression computes on the current input only, the structural form).
 fn lower_feedback_body(left, fb_handle) = match left {
-  N(lbody, _, _) => match lbody {
+  N{body: lbody} => match lbody {
     NExpr(LambdaExpr(params, body)) => if len(params) == 1 {
       ls_bind_fb_prior(feedback_param_name(last(params)), fb_handle)
       let lo = lower_expr(body)
@@ -2774,10 +2774,10 @@ fn feedback_param_name(p) = param_name(p)
 // zero, and the perform's strict scan trapping in main). "" remains
 // the MEANINGFUL sentinel for a genuinely anonymous install expression.
 fn extract_handler_name(node) = match node {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NExpr(VarRef(name)) => name,
     NExpr(CallExpr(callee, _args)) => match callee {
-      N(cb, _, _) => match cb {
+      N{body: cb} => match cb {
         NExpr(VarRef(name)) => name,
         _ => // drift-audit: ignore — "" = genuinely anonymous install (the meaningful sentinel)
         "",
@@ -2799,7 +2799,7 @@ fn extract_handler_name(node) = match node {
 // decl default (SYNTAX §«Default parameter values»); the HandlerKind guard
 // keeps a tee over a plain fn value at its positional passthrough.
 fn extract_handler_config_args(node) = match node {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NExpr(CallExpr(_callee, args)) => resolve_call_args(lower_callee_name(body), args),
     NExpr(VarRef(name)) => match handler_decl_of(name) {
       Some((config, _, _)) => if len(config) == 0 { [] } else { resolve_call_args(name, []) },
@@ -2849,8 +2849,8 @@ fn lower_fanout(handle, fan_own, left, right) = match fanout_boundaries(handle) 
       let lo_input = lower_expr(left)
       let input_local_name = "__fanout_input_{int_to_str(handle)}"
       match left {
-        N(_, _, input_h) => match right {
-          N(rbody, _, _) => {
+        N{handle: input_h} => match right {
+          N{body: rbody} => {
             let branch_nodes = match rbody {
               NExpr(MakeTupleExpr(elems)) => elems,
               _ => [right],
@@ -2886,7 +2886,7 @@ fn fanout_thunk_walk(handle, branch_nodes, boundaries, i, n) = if i >= n {
 } else {
   let branch = list_index(branch_nodes, i)
   let thunk = match branch {
-    N(_, _, bh) => synthesize_branch_thunk(handle, int_to_str(i), branch, fanout_boundary_at(boundaries, i, bh)),
+    N{handle: bh} => synthesize_branch_thunk(handle, int_to_str(i), branch, fanout_boundary_at(boundaries, i, bh)),
   }
   [thunk] ++ fanout_thunk_walk(handle, branch_nodes, boundaries, i + 1, n)
 }
@@ -2926,7 +2926,7 @@ fn fanout_boundary_at(boundaries, i, fallback_h) = if i < len(boundaries) {
 }
 
 fn executable_boundary_row(thunk_h) = match lookup_ty(thunk_h) {
-  TFun(_, _, row) => Ok(row),
+  TFun{row} => Ok(row),
   _ => {
     report_at(thunk_h, EUnresolvedType(thunk_h, graph_epoch(), parse_span_of(thunk_h)))
     Err(UnresolvedBoundaryThunk(thunk_h))
@@ -3074,7 +3074,7 @@ fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
 fn synthesize_diverge_thunks(parent_handle, input_h, input_local_name, branch_nodes, boundaries, base_idx) = map(
   {
     (i, branch_node) => match branch_node {
-      N(_, _, branch_h) => match fanout_boundary_at(boundaries, base_idx + i, branch_h) {
+      N{handle: branch_h} => match fanout_boundary_at(boundaries, base_idx + i, branch_h) {
         Ok(boundary) => match boundary {
           BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h) => {
             let thunk_name = "diverge_{int_to_str(base_idx + i)}_{int_to_str(parent_handle)}"
@@ -3147,7 +3147,7 @@ fn synthesize_diverge_thunks(parent_handle, input_h, input_local_name, branch_no
 // Drift 6 closure: same closure substrate — no special-case for
 // "compiler-synthesized" thunks vs. user-written ones.
 fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, boundary) = match branch_node {
-  N(_, _, branch_h) => match boundary {
+  N{handle: branch_h} => match boundary {
     Ok(edge) => match edge {
       BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h) => {
         let thunk_name = "compose_{side_label}_{int_to_str(parent_handle)}"
@@ -3354,7 +3354,7 @@ fn lower_stmt_list_loop(stmts, i, n, buf, count) = if i >= n {
 // is the "unreachable-in-well-formed-source" fallback. Named
 // explicitly so a new NodeBody variant surfaces at compile time.
 fn lower_stmt(node) = match node {
-  N(body, span, handle) => match body {
+  N{body, span, handle} => match body {
     NStmt(s) => lower_stmt_body(s, handle, span),
     NExpr(e) => lower_expr_body(e, handle, span),
     NPat(_) => // pattern at stmt position — degenerate
@@ -3375,7 +3375,7 @@ fn lower_stmt_body(s, handle, span) = match s {
       PVar(name) => // Register the name in the current scope (a local for subsequent
       // VarRef lookups; the bound expr's handle IS the local's type handle).
       match expr {
-        N(_, _, expr_h) => {
+        N{handle: expr_h} => {
           ls_bind_local(name, expr_h)
           LLet(handle, name, lo)
         },
@@ -3390,7 +3390,7 @@ fn lower_stmt_body(s, handle, span) = match s {
       lo,
     }
   },
-  FnStmt(name, params, _ret_ann, _effs, body_node) => {
+  FnStmt{name, params, body: body_node} => {
     // Bind the fn's name in the enclosing frame; the fn's handle is
     // the type handle (TFun bound to handle by infer).
     ls_bind_local(name, handle)
@@ -3534,7 +3534,7 @@ fn ty_handle_of(ty) = match ty {
   TByte => 0,
   TList(_) => 0,
   TTuple(_) => 0,
-  TFun(_, _, _) => 0,
+  TFun{} => 0,
   TName(_, _) => 0,
   TRecord(_) => 0,
   TRecordOpen(_, _) => 0,
@@ -3551,7 +3551,7 @@ fn ty_handle_of(ty) = match ty {
 // rebuilt from the scrutinee, and the whole split existed because the
 // sub-patterns had no cell to read.
 fn bind_pat_locals(node) = match node {
-  N(_, _, h) => match pat_of(node) {
+  N{handle: h} => match pat_of(node) {
     PVar(name) => {
       ls_bind_local(name, h)
       ()
@@ -3623,19 +3623,19 @@ fn seq_rep_of_fuel(h, fuel) = if fuel <= 0 {
       _ => SRUnknown,
     },
     NExpr(CallExpr(f, _)) => match f {
-      N(fb, _, _) => match fb {
+      N{body: fb} => match fb {
         NExpr(VarRef(cname)) => seq_rep_of_call(cname),
         _ => SRUnknown,
       },
     },
     NExpr(IfExpr(_, t, e)) => match t {
-      N(_, _, th) => match e {
-        N(_, _, eh) => seq_rep_join(seq_rep_of_fuel(th, fuel - 1), seq_rep_of_fuel(eh, fuel - 1)),
+      N{handle: th} => match e {
+        N{handle: eh} => seq_rep_join(seq_rep_of_fuel(th, fuel - 1), seq_rep_of_fuel(eh, fuel - 1)),
       },
     },
     NExpr(MatchExpr(_, arms)) => seq_rep_arms(arms, 0, SRUnknown, true, fuel - 1),
     NExpr(BlockExpr(_, final_e)) => match final_e {
-      N(_, _, fh) => seq_rep_of_fuel(fh, fuel - 1),
+      N{handle: fh} => seq_rep_of_fuel(fh, fuel - 1),
     },
     NExpr(VarRef(name)) => match ls_resolve(name) {
       (res, local_h) => match res {
@@ -3672,7 +3672,7 @@ fn seq_rep_arms(ref arms, i, acc, first, fuel) = if i >= len(arms) {
 } else {
   match list_index(arms, i) {
     (_, body) => match body {
-      N(_, _, bh) => {
+      N{handle: bh} => {
         let r = seq_rep_of_fuel(bh, fuel)
         seq_rep_arms(arms, i + 1, if first { r } else { seq_rep_join(acc, r) }, false, fuel)
       },
@@ -3708,7 +3708,7 @@ fn seq_elem_stride_word(ty) = match fold_strip(ty) {
 // the TOP list pattern: nested sequences are reached through elements, whose
 // representation is unknown, and stay on the total reader.
 fn lower_pat(node, srep) = match node {
-  N(_, _, h) => match pat_of(node) {
+  N{handle: h} => match pat_of(node) {
     PVar(name) => LPVar(name),
     PWild => LPWild,
     PLit(v) => LPLit(lower_lit_value(v)),
@@ -3783,7 +3783,7 @@ fn field_owns_cell(c, fld) = match fld {
 fn lower_pat_with_ty(node) = (pat_value_ty(node), lower_sub_pat(node))
 
 fn pat_value_ty(node) = match node {
-  N(_, _, h) => chase_deep(lookup_ty(h)),
+  N{handle: h} => chase_deep(lookup_ty(h)),
 }
 
 // The receiver's full sorted field NAME list, when its type resolves to a
@@ -4041,7 +4041,7 @@ fn lower_state_field_inits(config, state) = {
 }
 
 fn lower_state_init(config_names, field: {init: Node, name: String}) = match field.init {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NExpr(VarRef(name)) => {
       let slot = index_of_name(config_names, name, 0)
       if slot >= 0 { LUpval(0, slot) } else { lower_expr(field.init) }
@@ -4258,9 +4258,9 @@ fn resolve_resume_k(handle) = match ls_resolve("__k") {
 // (op_resume_discipline returns MultiShot only for a genuine MultiShot op;
 // every non-op floors OneShot).
 fn ms_op_of_call(node) = match node {
-  N(b, _, _) => match b {
+  N{body: b} => match b {
     NExpr(CallExpr(f, args)) => match f {
-      N(fb, _, _) => match fb {
+      N{body: fb} => match fb {
         NExpr(VarRef(name)) => match op_resume_discipline(name) {
           MultiShot => Some((name, args)),
           _ => None,
@@ -4292,10 +4292,10 @@ fn k_spine_next(node, subs) = match k_sub_for(subs, node) {
   Some(_) => None,
   None => match ms_op_of_call(node) {
     Some((op, args)) => match node {
-      N(_, _, ph) => Some((op, ph, args)),
+      N{handle: ph} => Some((op, ph, args)),
     },
     None => match node {
-      N(b, _, _) => match b {
+      N{body: b} => match b {
         NExpr(BinOpExpr(_, l, r)) => match k_spine_next(l, subs) {
           Some(hit) => Some(hit),
           None => if k_trivial(l, subs) { k_spine_next(r, subs) } else { None },
@@ -4316,7 +4316,7 @@ fn k_spine_next(node, subs) = match k_sub_for(subs, node) {
 fn k_trivial(node, subs) = match k_sub_for(subs, node) {
   Some(_) => true,
   None => match node {
-    N(b, _, _) => match b {
+    N{body: b} => match b {
       NExpr(LitInt(_)) => true,
       NExpr(LitFloat(_)) => true,
       NExpr(LitBool(_)) => true,
@@ -4342,14 +4342,14 @@ fn k_trivial(node, subs) = match k_sub_for(subs, node) {
 // crucible mn-resume-across-install arbitrates, M2). Off-spine can-yield
 // calls are NOT silent: k2_floor_guard wraps them with the loud floor.
 fn k2_spine_call(node) = match node {
-  N(b, _, _) => match b {
+  N{body: b} => match b {
     NExpr(BinOpExpr(_, l, _)) => k2_spine_call(l),
     NExpr(BlockExpr(stmts, final)) => if len(stmts) == 0 { k2_spine_call(final) } else { None },
     NExpr(PipeExpr(kind, l, r)) => match kind {
       PForward => match k2_spine_call(l) {
         Some(deeper) => Some(deeper),
         None => match r {
-          N(rb, _, rfh) => match rb {
+          N{body: rb, handle: rfh} => match rb {
             NExpr(VarRef(_)) => if can_yield(rfh) { Some(node) } else { None },
             _ => None,
           },
@@ -4358,7 +4358,7 @@ fn k2_spine_call(node) = match node {
       _ => None,
     },
     NExpr(CallExpr(f, args)) => match f {
-      N(fb, _, fh) => match fb {
+      N{body: fb, handle: fh} => match fb {
         NExpr(VarRef(name)) => // An effect op is k1's business (its MultiShot form yields at the
         // perform itself); a k2 boundary is an ordinary CALL whose callee
         // may carry a yield out.
@@ -4421,7 +4421,7 @@ fn k2_spine_in_args(args, i) = if i >= len(args) {
 // nested spine perform substitutes its whole LYield, and the inline
 // residency reads the parked __kr local. One environment, four read kinds.
 fn k_sub_for(subs, node) = match node {
-  N(_, _, h) => {
+  N{handle: h} => {
     let hits = filter({ (ph, _) => ph == h }, subs)
     if len(hits) == 0 {
       None
@@ -4440,7 +4440,7 @@ fn k_sub_for(subs, node) = match node {
 fn k_subs_inside(node, subs) = match k_sub_for(subs, node) {
   Some(_) => true,
   None => match node {
-    N(b, _, _) => match b {
+    N{body: b} => match b {
       NExpr(BinOpExpr(_, l, r)) => k_subs_inside(l, subs) || k_subs_inside(r, subs),
       NExpr(BlockExpr(stmts, final)) => if len(stmts) == 0 { k_subs_inside(final, subs) } else { false },
       NExpr(PipeExpr(_, l, _)) => k_subs_inside(l, subs),
@@ -4465,7 +4465,7 @@ fn k_remainder(node, subs) = match k_sub_for(subs, node) {
     lower_expr(node)
   } else {
     match node {
-      N(b, _, h) => match b {
+      N{body: b, handle: h} => match b {
         NExpr(BinOpExpr(op2, l, r)) => LBinOp(h, op2, k_remainder(l, subs), k_remainder(r, subs)),
         NExpr(BlockExpr(_, final)) => k_remainder(final, subs),
         NExpr(PipeExpr(_, l, r)) => lower_pipe_complete(k_remainder(l, subs), r, h),
@@ -4475,7 +4475,7 @@ fn k_remainder(node, subs) = match k_sub_for(subs, node) {
         // A fn-CALL boundary reconstruction (evidence, arity resolution)
         // is the named floor Hβ.lower.k2-remainder-fncall — loud, unbuilt.
         match f {
-          N(fbody, _, _) => match fbody {
+          N{body: fbody} => match fbody {
             NExpr(VarRef(name)) => match env_lookup(name) {
               Some((_, _, ConstructorScheme(tag, _))) => LMakeVariant(h, tag, map((a) => k_remainder(a, subs), args)),
               _ => LYield(h, "", [], LConst(h, LInt(0))),
@@ -4640,7 +4640,7 @@ fn k_deaden_rest(body_node, subs) = match k_spine_next(body_node, subs) {
 //   else — verbatim lowering (the byte-identical path, Law 7).
 fn lower_body_reified(body_node) = match k_spine_next(body_node, []) {
   Some((op_name, ph, arg_nodes)) => match body_node {
-    N(_, _, frame_h) => {
+    N{handle: frame_h} => {
       // The op's args evaluate at the yield site, in the ENCLOSING frame —
       // the already-computed prefix; the k's hole replaces the whole
       // perform call, so the remainder never re-evaluates them.
@@ -4650,8 +4650,8 @@ fn lower_body_reified(body_node) = match k_spine_next(body_node, []) {
   },
   None => match k2_spine_call(body_node) {
     Some(spine_node) => match body_node {
-      N(_, _, frame_h) => match spine_node {
-        N(_, _, ph) => {
+      N{handle: frame_h} => match spine_node {
+        N{handle: ph} => {
           let kr = "__kr_{int_to_str(ph)}"
           let c_inline = k_remainder(body_node, [(ph, LLocal(ph, kr))])
           match c_inline {
@@ -4938,7 +4938,7 @@ fn lower_param_names(params) = map(param_name, params)
 // (==, ++, to_string) see the type the graph proved. (Discipline: never
 // cache the resolved Ty; carry the handle and chase — types.mn.)
 fn param_handles_of(fn_handle, params) = match lookup_ty(fn_handle) {
-  TFun(tparams, _, _) => if len(tparams) == len(params) { map(tparam_handle, tparams) } else { lower_param_handles(params) },
+  TFun{params: tparams} => if len(tparams) == len(params) { map(tparam_handle, tparams) } else { lower_param_handles(params) },
   _ => lower_param_handles(params),
 }
 
@@ -4959,12 +4959,12 @@ fn tparam_handle(tp) = ty_handle_of(param_ty(tp))
 // right: "handle zero means no node" is a convention every reader has to
 // learn, where None is a fact the type states. The reader floors on None.
 fn entry_param_tys(fn_handle, params) = match lookup_ty(fn_handle) {
-  TFun(tparams, _, _) => if len(tparams) == len(params) { map(some_param_ty, tparams) } else { map(some_param_ty, params) },
+  TFun{params: tparams} => if len(tparams) == len(params) { map(some_param_ty, tparams) } else { map(some_param_ty, params) },
   _ => map(some_param_ty, params),
 }
 
 fn ret_ty_of(fn_handle) = match lookup_ty(fn_handle) {
-  TFun(_, r, _) => Some(r),
+  TFun{ret: r} => Some(r),
   _ => None,
 }
 
@@ -4978,7 +4978,7 @@ fn none_of(_i) = None
 // the tail is exactly what remains). A callee whose type is not a readable
 // TFun floors: no judged params, no fabricated widths.
 fn partial_param_tys(callee_h, n) = match lookup_ty(callee_h) {
-  TFun(tparams, _, _) => if len(tparams) >= n { map(some_param_ty, drop(len(tparams) - n, tparams)) } else { floor_tys(n) },
+  TFun{params: tparams} => if len(tparams) >= n { map(some_param_ty, drop(len(tparams) - n, tparams)) } else { floor_tys(n) },
   _ => floor_tys(n),
 }
 
@@ -5022,8 +5022,8 @@ fn is_wasi_import_op(name) with Pure =
 // to ValidIndex, but the const case is the one a positional product answers at
 // compile time).
 fn lower_index(handle, receiver, index) = match receiver {
-  N(_, _, rh) => match index {
-    N(idx_body, _, _) => match lookup_ty(rh) {
+  N{handle: rh} => match index {
+    N{body: idx_body} => match lookup_ty(rh) {
       TTuple(elems) => match idx_body {
         NExpr(LitInt(n)) => LFieldLoad(handle, lower_expr(receiver), FByIndex(n)),
         _ => lower_index_runtime(handle, receiver, index),
@@ -5042,7 +5042,7 @@ fn lower_index(handle, receiver, index) = match receiver {
 // re-derived; an un-narrowed index (the 0 default) stays the checked list_index,
 // byte-identical to the prior form.
 fn lower_index_runtime(handle, receiver, index) = match index {
-  N(_, _, ih) => {
+  N{handle: ih} => {
     let callee = if graph_narrow_at(ih) != 0 { "list_index_proven" } else { "list_index" }
     LCall(handle, LGlobal(handle, callee), [lower_expr(receiver), lower_expr(index)])
   },
@@ -5147,7 +5147,7 @@ fn lower_record_update(handle, base, overrides) = {
   // offset from the receiver's live type, and base's layout is the one the
   // copied field lives in (the result may ADD fields — two layouts).
   match base {
-    N(_, _, bh) => {
+    N{handle: bh} => {
       let field_exprs = map(
         {
           (fname, _) => match find_override(overrides, fname) {
@@ -5264,9 +5264,9 @@ fn collect_top_level_names_loop(stmts, i, n, buf, count) = if i >= n {
   (buf, count)
 } else {
   match list_index(stmts, i) {
-    N(body, _, _) => match match body {
-      NStmt(FnStmt(name, _, _, _, _)) => push_name(buf, count, name),
-      NStmt(LetStmt(N(NPat(PVar(name)), _, _), _, _)) => push_name(buf, count, name),
+    N{body} => match match body {
+      NStmt(FnStmt{name}) => push_name(buf, count, name),
+      NStmt(LetStmt(N{body: NPat(PVar(name))}, _, _)) => push_name(buf, count, name),
       NStmt(HandlerDeclStmt(name, _, _, _, _)) => // A handler decl IS a top-level name — `~> h` references it as a
       // global, never a captured upvalue (the phantom-capture fence lie:
       // each install counted as a capture inflated the ev-region base by
@@ -5606,8 +5606,8 @@ fn reach_has_loop(buf, count, target: String, i) = if i >= count {
 // program's own read (main_param_count's precedent: the FnStmt is the
 // canonical main). A library folds false and emits whole.
 fn stmt_is_main_fn(node) = match node {
-  N(body, _, _) => match body {
-    NStmt(FnStmt(name, _, _, _, _)) => name == "main",
+  N{body} => match body {
+    NStmt(FnStmt{name}) => name == "main",
     _ => // not a fn decl — cannot be the entry
     false,
   },
@@ -5621,9 +5621,9 @@ fn stmt_is_main_fn(node) = match node {
 // trivial type/effect/import decls, bare exprs — phase A constructs
 // them in source order.
 fn reach_stmt_defers(node) = match node {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NStmt(s) => match s {
-      FnStmt(_, _, _, _, _) => true,
+      FnStmt{} => true,
       HandlerDeclStmt(_, _, _, _, arms) => len(arms) > 0,
       LetStmt(_, _, _) => false,
       TypeDefStmt(_, _) => false,
@@ -5653,9 +5653,9 @@ fn reach_name_map(stmts, i, n, map) = if i >= n {
   map
 } else {
   let m2 = match list_index(stmts, i) {
-    N(body, _, _) => match body {
-      NStmt(FnStmt(name, _, _, _, _)) => smap_add(map, name, i),
-      NStmt(LetStmt(N(NPat(PVar(name)), _, _), _, _)) => smap_add(map, name, i),
+    N{body} => match body {
+      NStmt(FnStmt{name}) => smap_add(map, name, i),
+      NStmt(LetStmt(N{body: NPat(PVar(name))}, _, _)) => smap_add(map, name, i),
       NStmt(HandlerDeclStmt(hname, _, _, _, arms)) => fold(map, (m, arm) => smap_add(m, arm_fn_name(hname, arm.op_name), i), arms),
       _ => // no name keys this stmt — phase A owns it
       map,
@@ -6060,7 +6060,7 @@ fn spec_resolve_changes(t) with LookupTy + Memory = match t {
   },
   TList(e) => spec_resolve_changes(e),
   TTuple(es) => spec_resolve_changes_list(es, 0),
-  TFun(ps, r, _) => spec_resolve_changes_params(ps, 0) || spec_resolve_changes(r),
+  TFun{params: ps, ret: r} => spec_resolve_changes_params(ps, 0) || spec_resolve_changes(r),
   TName(_, args) => spec_resolve_changes_list(args, 0),
   TRecord(fs) => spec_resolve_changes_fields(fs, 0),
   TRecordOpen(fs, v) => // The row var resolves like any other var — this arm read only the field
@@ -6126,7 +6126,7 @@ fn spec_resolve_build(t) with LookupTy + Memory + Alloc + GraphRead = match t {
   },
   TList(e) => TList(spec_resolve(e)),
   TTuple(es) => TTuple(map(spec_resolve, es)),
-  TFun(ps, r, eff) => TFun(map((p) => param_with_ty(p, spec_resolve(param_ty(p))), ps), spec_resolve(r), eff),
+  TFun{params: ps, ret: r, row: eff} => TFun(map((p) => param_with_ty(p, spec_resolve(param_ty(p))), ps), spec_resolve(r), eff),
   TName(n, args) => TName(n, map(spec_resolve, args)),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_resolve(ft)) }, fs)),
   TRecordOpen(fs, v) => // The row var read through the same live channel as every other var: when
@@ -6166,8 +6166,8 @@ fn spec_pairs_walk(st0, it0, acc) with GraphRead + Memory + Alloc = {
       TTuple(ies) => spec_pairs_walk_list(es, ies, acc),
       _ => acc,
     },
-    TFun(ps, r, _) => match fold_strip(it0) {
-      TFun(ips, ir, _) => spec_pairs_walk(r, ir, spec_pairs_walk_params(ps, ips, acc)),
+    TFun{params: ps, ret: r} => match fold_strip(it0) {
+      TFun{params: ips, ret: ir} => spec_pairs_walk(r, ir, spec_pairs_walk_params(ps, ips, acc)),
       _ => acc,
     },
     TName(_, args) => match fold_strip(it0) {
@@ -6585,7 +6585,7 @@ fn ls_find_str_local(lst: [String], target: String, i) =
 fn main_param_count() = fold(
   0,
   (acc, h) => match graph_node_body(h) {
-    NStmt(FnStmt(name, params, _ret, _effs, _body)) => if name == "main" { len(params) } else { acc },
+    NStmt(FnStmt{name, params}) => if name == "main" { len(params) } else { acc },
     _ => acc,
   },
   graph_decls_at()
@@ -6753,7 +6753,7 @@ fn ground_ty(params, args, ty) with GraphRead + Memory + Alloc = match ty {
   TName(n, as_applied) => TName(n, map(ground_ty(params, args), as_applied)),
   TRecord(fields) => TRecord(map(ground_field(params, args), fields)),
   TRecordOpen(fields, v) => TRecordOpen(map(ground_field(params, args), fields), v),
-  TFun(ps, ret, eff) => TFun(map(ground_param(params, args), ps), ground_ty(params, args, ret), eff),
+  TFun{params: ps, ret, row: eff} => TFun(map(ground_param(params, args), ps), ground_ty(params, args, ret), eff),
   TRefined(base, pred) => TRefined(ground_ty(params, args, base), pred),
   TReprPin(r, base) => TReprPin(r, ground_ty(params, args, base)),
   TAlias(n, inner) => TAlias(n, ground_ty(params, args, inner)),
@@ -6769,7 +6769,7 @@ fn ground_field(params, args, field) with GraphRead + Memory + Alloc = match fie
 }
 
 fn ground_param(params, args, p) with GraphRead + Memory + Alloc = match p {
-  TParam(n, pty, authored, resolved, dflt) => TParam(n, ground_ty(params, args, pty), authored, resolved, dflt),
+  TParam{name: n, ty: pty, authored, resolved, default: dflt} => TParam(n, ground_ty(params, args, pty), authored, resolved, dflt),
 }
 
 // The argument standing in this var's position. Keyed by the union-find ROOT
@@ -6798,13 +6798,13 @@ fn param_at_root(h, indexed) with GraphRead + Memory + Alloc = match indexed {
 // The constructor's payload types, in field order: a fielded ctor's TFun params
 // (each TParam carries its ty); a nullary ctor (bare TName) has none.
 fn ctor_payload_tys(ty) with Memory + Alloc = match ty {
-  TFun(params, _ret, _) => param_tys_of(params, 0, len(params)),
+  TFun{params} => param_tys_of(params, 0, len(params)),
   _ => [],
 }
 
 fn ctor_result_is(ty, type_name: String) with Pure = match ty {
   TName(n, _) => n == type_name,
-  TFun(_, ret, _) => ctor_result_is(ret, type_name),
+  TFun{ret} => ctor_result_is(ret, type_name),
   _ => false,
 }
 

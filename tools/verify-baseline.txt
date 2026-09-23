@@ -1239,7 +1239,7 @@ authored_own_max: 62
 # cost instrument's helpers, twenty-two in all; `mentl src/main.mn check` is
 # clean without them, which is the Hylo bar measured rather than felt. The
 # ceiling follows the count down.
-authored_ref_max: 705
+authored_ref_max: 700
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1307,7 +1307,17 @@ authored_ref_max: 705
 # (523 -> 520MB). Four marches' min-of-3 readings ran 978,080 to 990,764
 # KB; the ceiling is ~1% over the highest, the same jitter margin as the
 # two entries above. The arena's fall is still owed, and it now owes this.
-selfcompile_peak_kb_max: 1000000
+#
+# 1,000,000 -> 1,011,000 (2026-09-23), and the rise is mostly the ceiling
+# having sat inside its own noise. Named constructor fields, both steps,
+# moved the judgment's heap 524,737,288 -> 526,248,488 bytes (+1.5MB, 0.29%,
+# the m3 leg's heap line at each pin), and the min-of-3 peak moved 994,540
+# -> 999,744 -> 1,001,100 KB across this landing's three marches — while
+# single reads within one march spread up to 1,015,256. The prior ceiling
+# was set ~1% over the then-highest min-of-3, and the wheel reached it with
+# a 0.3% heap rise, so this one keeps the same ~1% margin over today's
+# highest. It is a cost the arena's fall owes, not one this landing removes.
+selfcompile_peak_kb_max: 1011000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

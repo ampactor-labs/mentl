@@ -236,10 +236,10 @@ fn enumerate_hole_positions() with GraphRead + Alloc + Memory + !Mutate = match 
 // answers None because nothing downstream can yet say what its arguments
 // are (`Hβ.synth.vocabulary-arg-holes` is where they start being sayable).
 fn callee_name_of(node) with Memory + Alloc = match node {
-  N(body, _, _) => match body {
+  N{body} => match body {
     NExpr(CallExpr(callee, args)) => if len(args) == 0 {
       match callee {
-        N(cb, _, _) => match cb {
+        N{body: cb} => match cb {
           NExpr(VarRef(name)) => Some(name),
           _ => None,
         },
@@ -265,7 +265,7 @@ fn enumerate_gradient_positions() with GraphRead + Teach + Alloc + Memory + !Mut
 
 fn gradient_position(i) with GraphRead + Teach = match graph_node_body(i) {
   NStmt(s) => match s {
-    FnStmt(_, _, _, _, _) => match teach_gradient(i) {
+    FnStmt{} => match teach_gradient(i) {
       None => false,
       Some(_) => true,
     },
@@ -529,7 +529,7 @@ fn row_of_kind(kind) with Pure = match kind {
 }
 
 fn extract_row_local(ty) with Pure = match ty {
-  TFun(_, _, row) => row,
+  TFun{row} => row,
   _ => mk_ef_pure(),
 }
 
@@ -545,7 +545,7 @@ fn ownership_of_kind(kind) with Memory = match kind {
 }
 
 fn ownership_of_ty(ty) with Memory = match ty {
-  TFun(params, _, _) => if len(params) == 0 { Unmarked } else { param_resolved(list_index(params, 0)) },
+  TFun{params} => if len(params) == 0 { Unmarked } else { param_resolved(list_index(params, 0)) },
   _ => Unmarked,
 }
 
@@ -579,8 +579,8 @@ fn scan_for_pipe_parent(target, i, n) with GraphRead + !Mutate + Memory + Alloc 
 // PipeKind verb and which side the target sits on. Non-pipe bodies → NoPipe.
 fn pipe_position_in(target, body) with Memory + Alloc = match body {
   NExpr(PipeExpr(verb, left, right)) => match left {
-    N(_, _, lh) => match right {
-      N(_, _, rh) => if lh == target { StartingPipe } else if rh == target { InsidePipe(verb) } else { NoPipe },
+    N{handle: lh} => match right {
+      N{handle: rh} => if lh == target { StartingPipe } else if rh == target { InsidePipe(verb) } else { NoPipe },
     },
   },
   _ => NoPipe,
@@ -660,7 +660,7 @@ fn enclosing_fn_scan(target, i, n, best) with GraphRead + Memory + Alloc + !Muta
   }
 } else {
   match graph_node_body(i) {
-    NStmt(FnStmt(name, _params, _ret, effs, body)) => if node_contains_handle(node_handle(body), target) {
+    NStmt(FnStmt{name, effs, body}) => if node_contains_handle(node_handle(body), target) {
       match best {
         None => enclosing_fn_scan(target, i + 1, n, Some((name, effs, i))),
         Some((bn, be, bi)) => // both contain the hole — the nested one wins: this decl's own

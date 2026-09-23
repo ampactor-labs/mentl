@@ -148,7 +148,7 @@ fn handler_name(_handler) with Pure = ""
 // effect_count — count distinct effects in a row. Pure walk over
 // EffRow's variant tree.
 fn effect_count(row) with Memory = match row {
-  EfRow(p, a, _) => len(p) + len(a),
+  EfRow{present: p, absent: a} => len(p) + len(a),
 }
 
 // reason_chain_length — count steps in a Reason chain. Walks via
@@ -167,7 +167,7 @@ fn intent_matches(_handler, _cursor) with Pure = true
 // span_start — extract the start position from a Span. Pure
 // destructure.
 fn span_start(span) with Pure = match span {
-  Span(line, col, _, _) => // sortable composite
+  Span{start_line: line, start_col: col} => // sortable composite
   line * 100000 + col,
 }
 
