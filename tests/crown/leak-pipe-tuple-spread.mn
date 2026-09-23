@@ -1,0 +1,13 @@
+// CROWN — latency rides a TUPLE piped into a two-parameter stage:
+// `(loud, 1) |> f` where `f(g, n) = g() + n`, under `with !E`.
+// Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot. The guard on the spread: the parameter
+// pairing swaps its sides to decompose the tuple, and a flow that does not
+// flip with the swap runs the parameters into the datum.
+effect E { op() -> Int }
+fn loud() = op()
+fn f(g, n) = g() + n
+fn bad() with !E = (loud, 1) |> f
+handler h { op() => resume(7) }
+fn main() = bad() ~> h

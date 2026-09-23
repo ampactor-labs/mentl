@@ -1,0 +1,7 @@
+// CROWN — the `if` face of sound-match-arms-mixed-rows: two branches
+// returning fns whose rows differ. Must accept.
+effect E { op() -> Int }
+fn quiet(x) = x + 1
+fn loud(x) = op() + x
+fn pick(c) = if c { quiet } else { loud }
+fn main() = 0

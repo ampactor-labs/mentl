@@ -1,0 +1,15 @@
+// CROWN — latency rides a `<~` PRIOR: the recurrence's output is a
+// performing closure, and the next tick calls the prior under `with !E`.
+// Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot. It is here as the guard on the flow's
+// direction: the prior IS the output, so the two meet as equals — a
+// one-way flow from the prior into the output would read the call as
+// charging nothing.
+effect E { op() -> Int }
+fn loud() = op()
+fn cyc(x) with !E = {
+  let r = ((prev) => { let q = prev(); () => loud() + q }) <~ delay(1)
+  x
+}
+fn main() = cyc(1)

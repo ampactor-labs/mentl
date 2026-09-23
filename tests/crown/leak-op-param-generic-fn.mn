@@ -1,0 +1,15 @@
+// CROWN — latency rides a GENERIC op parameter instantiated at a fn:
+// `emit(x: a)` handed a performing closure, the arm calls it, the install
+// under `with !E`. Expect E_EffectMismatch.
+//
+// Checked clean and ran at 7 through the pinned boot (measured 2026-09-23).
+// The instance's positions have mixed variance — an op PARAMETER flows
+// performer to handler — and the arm's call charges the handler's
+// declaration-time residual, which the install never instantiates.
+effect E { op() -> Int }
+effect Emit { emit(x: a) -> Int }
+fn loud() = op()
+handler runit { emit(x) => resume(x()) }
+fn bad() with !E = emit(loud) ~> runit
+handler h { op() => resume(7) }
+fn main() = bad() ~> h

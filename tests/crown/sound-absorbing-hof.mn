@@ -1,0 +1,11 @@
+// CROWN — an install absorbs E around a HOF parameter's call: `guarded`
+// declares `!E` and handles every E its `f` performs. Must accept.
+//
+// Accepted through the pinned boot (runs 6). The guard on ceilings: a
+// declared negation copied onto the instance without the install's mask
+// would refuse this.
+effect E { op() -> Int }
+handler absorb { op() => resume(5) }
+fn guarded(f) with !E = f(1) ~> absorb
+fn use_it() with !E = guarded({ x => op() + x })
+fn main() = use_it()

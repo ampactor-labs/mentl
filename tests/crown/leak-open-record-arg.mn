@@ -1,0 +1,14 @@
+// CROWN — latency rides a structural record ARGUMENT into an open-row
+// parameter: `use({run: loud})` where `use(r) = r.run()`, under `with !E`.
+// Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot. The guard on the record helpers: the
+// open-against-closed meeting names its sides in a fixed order whichever is
+// the value, so a flow read off that order would run context into value
+// and lose the perform.
+effect E { op() -> Int }
+fn loud() = op()
+fn use(r) = r.run()
+fn bad() with !E = use({run: loud})
+handler h { op() => resume(7) }
+fn main() = bad() ~> h

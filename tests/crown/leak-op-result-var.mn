@@ -1,0 +1,19 @@
+// CROWN — latency rides a GENERIC op RESULT instantiated at a fn:
+// `give() -> a`, the arm resumes with a performing closure, the body calls
+// it under `with !E`. Expect E_EffectMismatch.
+//
+// Checked clean and ran at 7 through the pinned boot (measured 2026-09-23).
+// The result cap (`cap_result_fn_row`) reaches a DECLARED fn-typed result;
+// a type variable that becomes a fn at the use has nothing to cap, and the
+// op-result position flows handler to performer — the opposite direction
+// from the parameter beside it (leak-op-param-generic-fn).
+effect E { op() -> Int }
+effect Give { give() -> a }
+fn loud() = op()
+handler g { give() => resume(loud) }
+fn bad() with !E = {
+  let f = give()
+  f()
+} ~> g
+handler h { op() => resume(7) }
+fn main() = bad() ~> h

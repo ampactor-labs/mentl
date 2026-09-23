@@ -1,0 +1,19 @@
+// CROWN — latency rides a HOF parameter CALLED INSIDE A LAMBDA the HOF
+// builds: `outer(h)` wraps `h(1)` in a closure and calls it; the caller
+// hands `outer` a performing closure under `with !E`.
+// Expect E_EffectMismatch.
+//
+// Checked clean through the pinned boot (measured 2026-09-23), while the
+// same program with `h(1)` called directly refuses: the call to `h` mints
+// its row cell inside the lambda's frame, nothing in the lambda's own
+// signature reaches it, and the lambda's exit settles it Pure — a cell
+// free in the ENCLOSING environment, settled at an inner frame. The
+// prelude's `sum_by`, `count` and `max_by` publish rows without their
+// parameter's row for the same reason.
+effect E { op() -> Int }
+fn outer(h) = {
+  let wrap = () => h(1)
+  wrap()
+}
+fn clean() with !E = outer({ x => op() })
+fn main() = 0

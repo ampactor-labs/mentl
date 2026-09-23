@@ -1,0 +1,22 @@
+// CROWN — latency rides a handler STATE slot written by one arm and called
+// by another: `set_loud` stores a performing closure, `call_it` calls the
+// slot, the install under `with !E`. Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot. The guard on mutable bindings: a state
+// slot is ONE cell every arm reads and writes, so a design that gives each
+// reference its own copy would let the write land where the call never
+// reads.
+effect E { op() -> Int }
+effect Cell {
+  set_loud() -> Int
+  call_it() -> Int
+}
+fn loud() = op()
+handler cell with f = (() => 3) {
+  set_loud() => resume(0) with f = loud,
+  call_it() => resume(f()),
+}
+fn body() = set_loud() + call_it()
+fn bad() with !E = body() ~> cell
+handler h { op() => resume(7) }
+fn main() = bad() ~> h

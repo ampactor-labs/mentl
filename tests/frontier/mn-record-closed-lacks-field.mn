@@ -1,0 +1,16 @@
+// A closed record handed to a function that reads a field it LACKS:
+// `f` reads fields a and b, and is called with a record carrying only a.
+// The contract is a refusal — no program can read a field that is not there.
+//
+// Measured 2026-09-23 through the pinned boot: `mentl check` answers
+// nothing, the executable traps at 134, and the type of `f` is REWRITTEN
+// to a closed-remainder row — the open-against-closed meeting overwrites the row
+// variable with the closed side's leftovers without checking what the open
+// side already carried. The two T_FieldOffsetUnprovable narrations the
+// compile does print are located at 0:0-0:0 — the specialized receiver
+// carries no span. Retires when a record row is one union-find cell
+// and a closed row meeting a residual that names a field it lacks is a
+// type error (Hβ.infer.record-row-vars-are-not-unioned).
+fn f(r) = r.a * 10 + r.b
+
+fn main() = f({a: 4})

@@ -24,7 +24,17 @@ else
   M="$C/m2.wasm"
 fi
 
-pass=0; fail=0
+# A crucible the medium does not yet satisfy is DECLARED by name
+# (`crown_expected_red: <name>` in tools/verify-baseline.txt) and judged in
+# both directions, the frontier's law: declared and still failing is XRED,
+# declared and now passing is RED until the declaration is deleted — so a
+# measured false absence sits on the board the day it is found, and the
+# declaration cannot outlive the fix.
+expected_red_has() {
+  grep -qE "^crown_expected_red:[[:space:]]*$1([[:space:]]|\$)" tools/verify-baseline.txt
+}
+
+pass=0; fail=0; xred=0
 for f in tests/crown/*.mn; do
   name=$(basename "$f" .mn)
   err=$("$WT" run "${WT_RUN_FLAGS[@]}" "$M" < "$f" 2>&1 >/dev/null)
@@ -34,8 +44,17 @@ for f in tests/crown/*.mn; do
     sound-*) want="accept"; ok=$([ "$n" -eq 0 ] && echo 1 || echo 0);;
     *)         want="?";      ok=0;;
   esac
-  if [ "$ok" = 1 ]; then echo "✓ crown $name ($want, mismatch=$n)"; pass=$((pass+1))
+  if expected_red_has "$name"; then
+    if [ "$ok" = 1 ]; then
+      echo "✗ crown $name: STALE EXPECTED-RED — it now holds ($want, mismatch=$n); delete"
+      echo "    'crown_expected_red: $name' from tools/verify-baseline.txt"
+      fail=$((fail+1))
+    else
+      echo "· crown $name (declared standing failure: want $want, mismatch=$n)"
+      xred=$((xred+1))
+    fi
+  elif [ "$ok" = 1 ]; then echo "✓ crown $name ($want, mismatch=$n)"; pass=$((pass+1))
   else echo "✗ crown $name (want $want, mismatch=$n)"; fail=$((fail+1)); fi
 done
-echo "── crown: $pass pass / $fail fail ──"
+echo "── crown: $pass pass / $fail fail / $xred expected-red ──"
 [ "$fail" -eq 0 ]

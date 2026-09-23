@@ -1,0 +1,17 @@
+// CROWN — latency rides a constructor payload whose fn type is DECLARED on
+// the type (`type Box = Box(() -> Int)`), not quantified. Matched out and
+// called under `with !E`. Expect E_EffectMismatch.
+//
+// The quantified payload (leak-variant-latent) refuses; this one checked
+// clean and ran at 7 through the pinned boot (measured 2026-09-23), because
+// the declared payload row is ONE identity cell on the constructor's scheme:
+// construction writes an instantiated copy, the match reads another copy of
+// a cell nothing writes. Hβ.effects.variant-payload-fn-row.
+effect E { op() -> Int }
+type Box = Box(() -> Int)
+fn loud() = op()
+fn bad() with !E = match Box(loud) {
+  Box(f) => f(),
+}
+handler h { op() => resume(7) }
+fn main() = bad() ~> h

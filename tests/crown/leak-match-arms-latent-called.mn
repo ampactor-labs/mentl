@@ -1,0 +1,13 @@
+// CROWN — the refusal twin of sound-match-arms-mixed-rows: the picked fn is
+// CALLED under `with !E`, so the joined latent row must reach the call.
+// Expect E_EffectMismatch.
+effect E { op() -> Int }
+fn quiet(x) = x + 1
+fn loud(x) = op() + x
+fn pick(c) = match c {
+  true => quiet,
+  false => loud,
+}
+fn bad() with !E = pick(false)(1)
+handler h { op() => resume(7) }
+fn main() = bad() ~> h

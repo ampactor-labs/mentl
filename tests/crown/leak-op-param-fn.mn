@@ -1,0 +1,16 @@
+// CROWN — latency rides an effect op's fn-typed PARAMETER: a performing
+// closure handed to `run`, called by the handler's arm, the install under
+// `with !E`. Expect E_EffectMismatch.
+//
+// Checked clean and ran at 7 through the pinned boot (measured 2026-09-23):
+// the param's row cell rides the effect as a TYPE argument (`Run(r)`), and
+// unify no-ops on a row-sorted node, so the arm's call charges a cell the
+// perform never reaches.
+effect E { op() -> Int }
+effect Run { run(f: () -> Int) -> Int }
+fn loud() = op()
+handler runner { run(f) => resume(f()) }
+fn body() = run(loud)
+fn bad() with !E = body() ~> runner
+handler h { op() => resume(7) }
+fn main() = bad() ~> h

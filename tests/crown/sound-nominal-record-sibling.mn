@@ -1,0 +1,19 @@
+// CROWN — a nominal record constructed with a PURE field in `bad`, while an
+// unrelated `other` constructs the same nominal with a performing field.
+// `bad` performs nothing. Must accept.
+//
+// Falsely refused through the pinned boot (measured 2026-09-23): the brace
+// constructor writes the DECLARATION's raw field row from every judgment
+// that builds one, so `other`'s perform lands in `bad`.
+effect E { op() -> Int }
+type Job = {run: () -> Int}
+fn loud() = op()
+fn quiet() = 3
+fn other() = Job{run: loud}
+fn bad() with !E = {
+  let j = Job{run: quiet}
+  let f = j.run
+  f()
+}
+handler h { op() => resume(7) }
+fn main() = (bad() + other().run()) ~> h

@@ -1,0 +1,16 @@
+// CROWN — a `match` whose arms return two fns with different rows, one
+// pure and one performing E. `pick` performs nothing; its result's latent
+// row is the join. Must accept.
+//
+// Falsely refused through the pinned boot (measured 2026-09-23, "E vs
+// Pure" at the second arm): the match's result is bound to the FIRST arm's
+// type, so the second arm meets the first arm's row as a ceiling instead of
+// joining it.
+effect E { op() -> Int }
+fn quiet(x) = x + 1
+fn loud(x) = op() + x
+fn pick(c) = match c {
+  true => quiet,
+  false => loud,
+}
+fn main() = 0

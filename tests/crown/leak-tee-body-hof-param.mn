@@ -1,0 +1,13 @@
+// CROWN — latency rides a HOF parameter called inside a TEE body whose
+// handler absorbs an UNRELATED effect: `g(f) = f(1) ~> quiet`, handed a
+// closure performing E under `with !E`. Expect E_EffectMismatch.
+//
+// Checked clean through the pinned boot (measured 2026-09-23): the tee
+// body's frame exits and settles the parameter's call cell, so `quiet`,
+// which absorbs only F, launders E as well.
+effect E { op() -> Int }
+effect F { other() -> Int }
+handler quiet { other() => resume(0) }
+fn g(f) = f(1) ~> quiet
+fn clean() with !E = g({ x => op() })
+fn main() = 0

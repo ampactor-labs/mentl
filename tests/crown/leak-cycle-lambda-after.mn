@@ -1,0 +1,8 @@
+// CROWN — the source-order twin of leak-cycle-lambda-before: the callee
+// declared first. Refuses through the pinned boot; it holds the order
+// independence the fix owes. Expect E_EffectMismatch.
+effect E { op() -> Int }
+fn run(f: () -> Int, n) = f() + caller(n)
+fn caller(n) with !E = if n <= 0 { 0 } else { run(() => op(), n - 1) }
+handler h { op() => resume(7) }
+fn main() = caller(2) ~> h

@@ -1,0 +1,15 @@
+// CROWN — a pure fn passed through a generic parameter into a callee whose
+// parameter is sealed `!E`, the caller declaring an unrelated `!F`.
+// Nothing performs anything. Must accept.
+//
+// Falsely refused through the pinned boot (measured 2026-09-23): a free
+// type variable meeting the sealed fn type takes its row WHOLESALE, so
+// `run` publishes the ceiling `!E` as its own row and the caller's `!F`
+// meets it as a mismatch. A ceiling is a bound, never content.
+effect E { op() -> Int }
+effect F { log() -> Int }
+fn strict(g: () -> Int with !E) = 1
+fn run(f) = strict(f) + f()
+fn quiet() = 3
+fn caller() with !F = run(quiet)
+fn main() = caller()

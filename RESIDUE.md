@@ -12049,6 +12049,60 @@ last member's `~>` subtraction must mask a name the first performs, with a
 declared-`!E` refusal twin. CLOSE: the eleven compensations deleted, the
 gates green, the numbers written into the ledger, the type-side visited set
 in `occurs_in` handed to the SCHEMES landing to delete.
+**THE BUILD REFUSED ITS OWN WHEEL, AND TWO REFUTERS THEN BROKE ITS REPAIR
+(2026-09-23).**
+
+*The in-flight compiler.* Built to the form above, it reported ~200
+E_EffectMismatch on `mentl src/main.mn check` where boot reports none. The
+first polluted cells were `list_concat`'s and `str_concat`'s pre-registered
+rows. They were taught a stranger's edge through the partial-application
+path, because the one write `unify_row_canonical` makes is a ONE-WAY TEACH:
+the first argument's private edges learn the second.
+
+*The repair (v1, "rows follow values").* It threaded a polarity through
+`unify_types` and made every call site's `(value, context)` order a
+subeffecting flow. Two read-only Opus refuters REFUTED it with measurements:
+- The claimed order is false at five sites: `unify_instance_args`, the
+  feedback prior, the record helpers, `pair_fn_params`' tuple swap, and
+  `infer_fn`'s reconciliation.
+- Settling at every frame exit loses rows the environment still reaches.
+- Copying a declared ceiling onto instances over-refuses the HOF
+  convention, and is vacuous one hop away.
+- Record rows as one whole-row cell lose the rest remainder.
+
+*What the refutations found on boot.* Worse, they found the PINNED BOOT
+unsound in eleven places and falsely refusing in five. All of it is banked
+RED by name and judged in both directions:
+- fourteen crown crucibles (`crown_expected_red`, which the crown gate
+  learned the same day);
+- two frontier record legs.
+
+The six carriers of the false absences:
+- constructor payloads;
+- nominal record fields;
+- effect op parameters;
+- generic op results;
+- a group co-member's annotated parameter;
+- HOF parameters called inside a lambda, nested fn or tee body. The last
+  includes the prelude's own `sum_by`, `count` and `max_by`, so every
+  user `!E` leaked through them.
+
+*v2, the form under review.* It dissolves all of it rather than patching
+each, and it is Talpin–Jouvelot stated on the graph:
+- TYPES unify by EQUALITY, so two arrow cells UNION;
+- EFFECTS relate by INCLUSION only at six charges: perform, call,
+  reference-as-value, install, arm and resume;
+- CONTENT is the least solution, propagated forward;
+- a declared row is ALWAYS a ceiling, propagated backward along sources and
+  widened by masks, and NEVER content;
+- stored fn rows are row arguments of their carrier's TName;
+- settling is a projection filter at a binding group's completion, with the
+  environment's free cells excluded;
+- record rows are Rémy continuations.
+
+The design and v1's kills live in the session's design file until a
+refuter fails to break v2; then the whole entry is rewritten in place to
+the form that survives.
 
 `Hβ.audit.re-derivation-census-2026-09-21` — OPEN, the bank of three
 read-only Opus audits run the day of the rows ruling, one question over the

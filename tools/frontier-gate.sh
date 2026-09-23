@@ -3307,6 +3307,16 @@ for i in "${!compilers[@]}"; do
   # trapped on the same shape). Declared RED until a record row is ONE
   # union-find cell holding the whole row (Hβ.infer.record-row-vars-are-not-unioned).
   run_program "$compiler" open-rows-through-lambdas "$ROOT/tests/frontier/mn-open-rows-through-lambdas.mn" 42 yes "$dir"
+  # The same record-row root at its two remaining faces, both silent and both
+  # trapping at 134 through the pinned boot (measured 2026-09-23 by the rows
+  # design's second refuter): a closed record missing a field the callee
+  # reads is ACCEPTED, the open row overwritten with the closed leftovers;
+  # and a rest pattern over an open parameter has no layout to read. Declared
+  # RED until a record row is one union-find cell with its remainder a
+  # continuation (Hβ.infer.record-row-vars-are-not-unioned).
+  run_refusal "$compiler" record-closed-lacks-field \
+    "$ROOT/tests/frontier/mn-record-closed-lacks-field.mn" E_TypeMismatch "$dir"
+  run_program "$compiler" record-rest-over-open "$ROOT/tests/frontier/mn-record-rest-over-open.mn" 7 yes "$dir"
   # A constructor's payload types come from the INSTANTIATION the graph
   # proved, never from the declaration that quantified them. These two
   # legs are the three faces that read measured on 2026-09-18, and they

@@ -1,0 +1,11 @@
+// CROWN — an install's mask stays on its own body: `g2` absorbs E around
+// `f(1)` and calls `k(1)` outside the install; `k` performs E, the caller
+// declares `!E`. Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot. The guard on masks: a mask taught onto
+// a cell with other sources would cover `k`'s E too.
+effect E { op() -> Int }
+handler absorb { op() => resume(5) }
+fn g2(f, k) = (f(1) ~> absorb) + k(1)
+fn clean() with !E = g2({ x => x }, { y => op() + y })
+fn main() = 0

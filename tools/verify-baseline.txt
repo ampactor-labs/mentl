@@ -929,6 +929,12 @@ solo_violations_max: 0
 # `provider` query trapped on it; retires when a record row is ONE
 # union-find cell holding the whole row (Hβ.infer.record-row-vars-are-not-unioned).
 frontier_expected_red: open-rows-through-lambdas
+# 2026-09-23: the same root's two other faces, both trapping at 134 with a
+# clean check — a closed record missing a field the callee reads is accepted
+# (its type rewritten to the closed leftovers), and a rest pattern over an
+# open parameter reads no layout. Same retirement.
+frontier_expected_red: record-closed-lacks-field
+frontier_expected_red: record-rest-over-open
 # 2026-09-23: AN INSTALL SOMEWHERE IS CREDITED FOR A PERFORM IT DOES NOT
 # COVER. `bad()` performs E under `~> h` on its left operand and through an
 # uncovered HOF call on its right; nothing declares a row, E reaches main's
@@ -951,6 +957,44 @@ frontier_expected_red: accumulate-init
 # it was measured; retires when the eq leaf refuses the unresolved operand
 # (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq) and the gate SAYS so.
 frontier_expected_red: eq-in-arm-pointer
+# 2026-09-23: EIGHT CROWN CRUCIBLES THE PINNED BOOT FAILS, measured by an
+# adversarial refuter of the rows design and re-run by hand the same hour.
+# Six are FALSE ABSENCE PROOFS — a body declared `!E` performs E and runs
+# (exit 7, or 14 through the cycle) — one per storage carrier whose fn row is
+# an IDENTITY cell that construction and use each instantiate separately: a
+# declared constructor payload, a nominal record built by the call form, an
+# effect op's fn parameter, a generic op parameter, a generic op result, and
+# an annotated fn parameter of a recursion co-member (source-order dependent;
+# its twin refuses). Two are FALSE REFUSALS of pure programs: the brace
+# constructor writes the declaration's raw field row from every judgment, and
+# a free type variable meeting a sealed fn type takes the ceiling as content.
+# All eight retire with the rows landing's cells-and-polarity form
+# (Hβ.effects.rows-are-propagated-cells); none is a patch site.
+crown_expected_red: leak-ctor-payload-declared-fn
+crown_expected_red: leak-nominal-record-ctor-call
+crown_expected_red: leak-op-param-fn
+crown_expected_red: leak-op-param-generic-fn
+crown_expected_red: leak-op-result-var
+crown_expected_red: leak-cycle-lambda-before
+crown_expected_red: sound-nominal-record-sibling
+crown_expected_red: sound-sealed-param-pure-arg
+# 2026-09-23, the second refuter the same hour: SETTLING AT AN INNER FRAME. A
+# HOF parameter called inside a lambda, a nested fn, or a tee body mints its
+# call cell in THAT frame, and the frame's exit settles it Pure though the
+# cell is free in the enclosing environment — three false absences, and the
+# prelude's own `sum_by`, `count` and `max_by` publish rows without their
+# parameter's row the same way. Beside them three false refusals: a co-member's
+# pure lambda published as the parameter's ceiling, and `match`/`if` binding
+# their result to the FIRST branch's type so the second meets it as a bound.
+# They retire with the same landing: a cell is settled only at a binding
+# group's completion, never while the environment still reaches it, and a
+# join is a fresh cell every branch flows into.
+crown_expected_red: leak-lambda-captures-hof-param
+crown_expected_red: leak-nested-fn-captures-hof-param
+crown_expected_red: leak-tee-body-hof-param
+crown_expected_red: sound-cycle-performing-lambda-undeclared
+crown_expected_red: sound-match-arms-mixed-rows
+crown_expected_red: sound-if-branches-mixed-rows
 # 2026-09-18: `eq-polymorphic-sum` was declared RED here for one landing and
 # RETIRED by proof in the next — the whole life of an expected-red entry, in a
 # day. It read: `==` on a POLYMORPHIC sum compares its payload by ADDRESS,

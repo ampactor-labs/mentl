@@ -1,0 +1,16 @@
+// A record REST pattern over an OPEN parameter: `tail_age(r)` binds
+// `{name, ...rest}` and reads `rest.age`; the caller hands it
+// `{age: 7, name: 3, zeta: 9}`. The contract is exit 7.
+//
+// Measured 2026-09-23 through the pinned boot: check clean, the executable
+// traps at 134. The same pattern over a record the body BUILT answers
+// correctly (tests/syntax/record-rest-field), so the remainder is proven
+// only when the row is closed at the pattern; over an open row the rest's
+// layout has nothing to read. Retires with the record-row cell and its
+// remainder continuation (Hβ.infer.record-row-vars-are-not-unioned).
+fn tail_age(r) = {
+  let {name, ...rest} = r
+  rest.age
+}
+
+fn main() = tail_age({age: 7, name: 3, zeta: 9})
