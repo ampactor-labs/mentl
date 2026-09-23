@@ -35,6 +35,13 @@
 #   Bash 2. a `mentl` invocation piped into a filter (grep, head, tail, wc,
 #           cut, sort, uniq, sed, awk, less, more): the answer is read WHOLE.
 #   Grep 3. a search whose scope reaches the medium's source or output.
+#   Bash 4. an interpreter (python, perl, ruby, node) that READS the medium's
+#           source or output — the same grep, one language over. Measured
+#           2026-09-23: some fifteen `for l in open('src/…mn'): if 'X' in l`
+#           scans in one dig, each a question `refs of` / `why` / `census`
+#           answers with more, and each one a thin answer never found because
+#           it was never asked. Writing a fixture (`open(p, 'w')`) is not a
+#           read and stays legal.
 # There is no escape hatch on purpose. A question the medium cannot answer
 # is the facet to grow in the same landing (CLAUDE.md ⟳, the address map).
 #
@@ -132,6 +139,16 @@ if filtered.search(cmd):
         "  Read all of what it returns; what the filter drops is where the gate\n"
         "  refuses your own work (measured 2026-09-21: `| grep -v` hid four\n"
         "  W_CommentRefUnresolved on the author's own comments).\n"
+    )
+    sys.exit(2)
+interp = re.compile(r"(^|[\s;|&(`])(python3?|perl|ruby|node)(\s|$)")
+medium_path = re.compile(r"\.(mn|wat|err)\b|/\.build/|\.build/|m2cache")
+reads = re.compile(r"\.read\(|readlines\(|\bin\s+open\(|splitlines\(|<\s*\S+\.(mn|wat|err)\b")
+if interp.search(cmd) and medium_path.search(cmd) and reads.search(cmd):
+    sys.stderr.write(
+        "mentl-first: an interpreter reading the medium's source or output is a\n"
+        "  grep in another language — ask the medium, and read what it says:\n"
+        + VERBS
     )
     sys.exit(2)
 m = tools.search(cmd)
