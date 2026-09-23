@@ -233,6 +233,23 @@ else
 fi
 echo "✓ m2 assembles ($(stat -c%s "$OUT/m2.wasm") bytes)"
 m2lines=$(wc -l < "$OUT/m2.wat" 2>/dev/null | tr -d ' ')
+# The source this march judges, read BEFORE any repin moves the boot: the
+# candidate m3 is written beside it, so `MENTL_COMPILER=march` (the shim) and
+# `--compiler march` (the gates) can ask the new wheel's own tooling a question
+# without a repin, and refuse when the source has moved on since.
+MARCH_KEY=$(wt_m2_key)
+rm -f "$OUT/key"
+mark_candidate() { printf '%s\n' "$MARCH_KEY" > "$OUT/key"; }
+
+# THE BOARD GATES THE BLESSING, beside the micros (2026-09-23). A repin used to
+# happen before `mentl verify` had read the candidate's bounds, and the first
+# full board after it refused four things and forced a second repin — twice
+# the march for one landing. The candidate is the boot by the time this runs,
+# so this is `mentl verify` through the wheel about to be blessed.
+board_verify() {
+  "$WT" run "${WT_RUN_FLAGS[@]}" --dir . --dir /tmp --dir "$PWD::/mentl-home" \
+    boot/mentl.wasm verify > "$OUT/repin-board.log" 2>&1
+}
 
 # VERB PARITY — this script's own successor has to be able to run.
 #
@@ -373,6 +390,7 @@ if [ ! -s "$OUT/m2.wat" ] || [ ! -s "$OUT/m3.wat" ]; then
 elif [ "$m3rc" = 0 ]; then
   if diff -q "$OUT/m2.wat" "$OUT/m3.wat" >/dev/null 2>&1; then
     echo "✓✓ FIXED POINT holds: m2 == m3"
+    cp "$OUT/m2.wasm" "$OUT/m3.wasm"; mark_candidate
     if [ "${MARCH_REPIN:-0}" = 1 ]; then
       # THE BATTERY GATES THE BLESSING (2026-07-31): a pin the micros have
       # not judged is not blessable — the OOM'd session repinned mid-gate
@@ -382,7 +400,7 @@ elif [ "$m3rc" = 0 ]; then
       # red restores the prior boot and refuses.
       cp boot/mentl.wasm "$OUT/boot.prev.wasm"
       cp "$OUT/m2.wasm" boot/mentl.wasm
-      if [ "$costok" = 1 ] && [ "$censusok" = 1 ] && bash tools/march-gate.sh --micros > "$OUT/repin-battery.log" 2>&1; then
+      if [ "$costok" = 1 ] && [ "$censusok" = 1 ] && bash tools/march-gate.sh --micros > "$OUT/repin-battery.log" 2>&1 && board_verify; then
         # A repin is a new build: the warm-compile images were written by
         # the old one, and their $build_key (table+strings+globals) does
         # NOT move on a body-only change — a key-matching stale image
@@ -396,8 +414,9 @@ elif [ "$m3rc" = 0 ]; then
           "$(grep -cE 'E_[A-Za-z]+ error' "$OUT/m3.err" 2>/dev/null)"
       else
         cp "$OUT/boot.prev.wasm" boot/mentl.wasm
-        echo "✗ REPIN REFUSED: the cost ratchet or the micro battery refused the candidate (the ✗ above names which) — boot restored."
+        echo "✗ REPIN REFUSED: the cost ratchet, the micro battery or the board refused the candidate — boot restored."
         tail -8 "$OUT/repin-battery.log"
+        tail -12 "$OUT/repin-board.log" 2>/dev/null
         fixok=0
       fi
     fi
@@ -416,12 +435,13 @@ elif [ "$m3rc" = 0 ]; then
       read_cost m4
       if [ "$m4rc" = 0 ] && diff -q "$OUT/m3.wat" "$OUT/m4.wat" >/dev/null 2>&1; then
         echo "✓✓ TRANSITION: m3 == m4 — the NEW wheel reproduces itself; the m2/m3 diff was the emit change crossing one generation."
+        mark_candidate
         if [ "${MARCH_REPIN:-0}" = 1 ]; then
-          # The battery gates this blessing too (2026-07-31; see the clean
-          # arm's comment) — through the candidate, restore-and-refuse on red.
+          # The battery and the board gate this blessing too (see the clean
+          # arm) — through the candidate, restore-and-refuse on red.
           cp boot/mentl.wasm "$OUT/boot.prev.wasm"
           cp "$OUT/m3.wasm" boot/mentl.wasm
-          if [ "$costok" = 1 ] && [ "$censusok" = 1 ] && bash tools/march-gate.sh --micros > "$OUT/repin-battery.log" 2>&1; then
+          if [ "$costok" = 1 ] && [ "$censusok" = 1 ] && bash tools/march-gate.sh --micros > "$OUT/repin-battery.log" 2>&1 && board_verify; then
             rm -f .build/warm-compile-*.img
             echo "· REPIN (transition): boot ← m3  sha256 $(sha256sum boot/mentl.wasm | cut -c1-16)…  (battery green; blessing m2 here is the trusting-trust mistake this arbitration exists to prevent)"
             emit_provenance m3 "TRANSITION m3 == m4" \
@@ -429,8 +449,9 @@ elif [ "$m3rc" = 0 ]; then
               "$(grep -cE 'E_[A-Za-z]+ error' "$OUT/m3.err" 2>/dev/null)"
           else
             cp "$OUT/boot.prev.wasm" boot/mentl.wasm
-            echo "✗ REPIN REFUSED: the cost ratchet or the micro battery refused the candidate (the ✗ above names which) — boot restored."
+            echo "✗ REPIN REFUSED: the cost ratchet, the micro battery or the board refused the candidate — boot restored."
             tail -8 "$OUT/repin-battery.log"
+            tail -12 "$OUT/repin-board.log" 2>/dev/null
             fixok=0
           fi
         else

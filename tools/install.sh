@@ -46,9 +46,30 @@ mentl_arg_dir() {
 # its own compiler this way, not through a hand-assembled runner command — the
 # "ceremony one layer down" CLAUDE.md names. A non-boot compiler bypasses the
 # resident session, which serves the pin.
+#
+# \`march\` is the candidate the last march produced (.build/march/m3.wasm) —
+# the new wheel compiled by ITSELF, the one to ask whether its own tooling
+# behaves before a repin. \`fresh\` cannot answer that: m2's code was compiled
+# by the OLD boot, so a fix to the compiler's judgment is absent from m2's own
+# fmt/check (measured 2026-09-23: three frontier REDs that were m2's, not the
+# wheel's). The march records the source key it compiled; a stale m3 refuses.
+#
+# MENTL_WASM is not an input, and it is REFUSED rather than ignored: set
+# in its place, it once sent four runs to the old boot while they were read
+# as the candidate's, and a phantom miscompile was chased through emit-diff.
+if [ -n "\${MENTL_WASM:-}" ]; then
+  echo "mentl: MENTL_WASM is not an input — MENTL_COMPILER=<boot|fresh|march|path> selects the compiler" >&2
+  exit 2
+fi
 mentl_compiler() {
   case "\${MENTL_COMPILER:-boot}" in
     boot) printf '%s' "\$MENTL_HOME/boot/mentl.wasm" ;;
+    march)
+      if [ ! -s .build/march/m3.wasm ] || [ "\$(cat .build/march/key 2>/dev/null)" != "\$(wt_m2_key)" ]; then
+        echo "mentl: MENTL_COMPILER=march — no m3 for this source (the last march compiled other bytes); run bash tools/march.sh" >&2
+        return 2
+      fi
+      printf '%s' "\$PWD/.build/march/m3.wasm" ;;
     fresh)
       if [ ! -f boot/mentl.wasm ] || [ ! -d src ]; then
         echo "mentl: MENTL_COMPILER=fresh answers from a checkout root, and \$PWD is not one" >&2

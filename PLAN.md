@@ -1799,9 +1799,23 @@ form the whole time. The arcs, in order:
   Peers: `Hβ.viz.severance-map`, `Hβ.viz.ambient-world-gutter`,
   `Hβ.viz.negative-space-diff`, `Hβ.viz.why-walk-elides-trivial-hops`.
 
-**CADENCE LAW (paid for twice):** one landing = build the WHOLE arc → verify
-once → board once → repin once. A march sweep per micro-edit spends the
-session on ceremony; a gate that was skipped is UNKNOWN, never green.
+**CADENCE LAW (paid for three times):** one landing = build the WHOLE arc →
+verify once → board once → repin once. A march sweep per micro-edit spends the
+session on ceremony; a gate that was skipped is UNKNOWN, never green. The
+third payment (2026-09-23) was five marches, two repins and three frontier
+runs for one landing, and every extra run traced to a missing mechanism, so
+the law now has three: a repin runs `mentl verify` through the candidate
+beside the micros and refuses on a breach (the first repin had blessed a
+wheel whose board then refused four things); the march leaves its m3 with
+the source key it compiled, and `MENTL_COMPILER=march` asks the NEW wheel's
+own tooling a question without a repin — `fresh` is m2, whose own code the
+old boot compiled, and three frontier REDs were m2's; and the shim refuses
+`MENTL_WASM`, which it never read and which once sent four runs to the old
+boot. The iteration ladder is `mentl check` → `MENTL_COMPILER=fresh mentl
+run|test|verify` → one march → frontier/crown against the march's m3 →
+`MARCH_REPIN=1`. Not re-running what already passed is the medium's job, not
+a script's: it arrives with `mentl verify` absorbing the gates, and the
+scaffolds take no stamping of their own on the way out.
 
 **Preemption exception:** `Hβ.infer.declared-row-vacuous-against-a-free-body-row`
 stands ABOVE the spine — §0's negative-is-provable failing at the shape most
