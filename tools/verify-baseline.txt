@@ -1225,7 +1225,7 @@ authored_own_max: 62
 # cost instrument's helpers, twenty-two in all; `mentl src/main.mn check` is
 # clean without them, which is the Hylo bar measured rather than felt. The
 # ceiling follows the count down.
-authored_ref_max: 706
+authored_ref_max: 705
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
