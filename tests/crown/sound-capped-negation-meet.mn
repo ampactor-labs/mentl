@@ -1,0 +1,6 @@
+// CROWN — the sound dual: both caps forbid `B`, so their join forbids `B` and
+// the declared `!B` holds. Expect no mismatch.
+effect B { bop() -> Int }
+effect C { cop() -> Int }
+fn run2(f: () -> Int with !B, g: () -> Int with !B + !C) with !B = f() + g()
+fn main() = 0

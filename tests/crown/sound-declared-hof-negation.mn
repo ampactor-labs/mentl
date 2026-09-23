@@ -1,0 +1,6 @@
+// CROWN — the sound dual: the same declared `!E`, a caller passing a function
+// that performs nothing. Expect no mismatch.
+effect E { op() -> Int }
+fn run(f) with !E = f()
+fn caller() = run(() => 7)
+fn main() = 0

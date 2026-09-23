@@ -1,0 +1,11 @@
+// CROWN — partial application of a higher-order fn whose argument belongs to
+// the recursive group being judged. `step` is still open when `hop` passes it,
+// so its row reaches `twice` only if the argument's row FLOWS INTO the
+// parameter's row. Boot sent it the other way: `hop` published pure and `bad`'s
+// `!E` was a false proof. Expect E_EffectMismatch.
+effect E { op() -> Int }
+fn twice(f, x) = f(f(x))
+fn step(n) = if n == 0 { op() } else { hop(n - 1) }
+fn hop(n) = n |> twice(step)
+fn bad(n) with !E = hop(n)
+fn main() = 0

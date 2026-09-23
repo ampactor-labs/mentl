@@ -1,0 +1,9 @@
+// CROWN — two function parameters capped by DIFFERENT negations. `g` may
+// perform `B` (its cap forbids only `C`), so the body may perform `B`. The
+// join of two negation stances forbids only what BOTH forbid; boot unioned
+// the absent sets, published `!B + !C` and accepted `with !B`. Expect
+// E_EffectMismatch.
+effect B { bop() -> Int }
+effect C { cop() -> Int }
+fn run2(f: () -> Int with !B, g: () -> Int with !C) with !B = f() + g()
+fn main() = 0

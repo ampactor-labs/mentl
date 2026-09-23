@@ -1,0 +1,10 @@
+// CROWN — a branch join of two named functions. `pick` returns a function that
+// may perform E, so calling it performs E and `bad`'s `!E` must refuse. Boot
+// equated the two rows, refused `pick` falsely and published it pure, so
+// `bad` read pure. Expect E_EffectMismatch (at `bad`; see the sound dual).
+effect E { op(n: Int) -> Int }
+fn quiet(n) = n
+fn loud(n) = op(n)
+fn pick(c) = if c { quiet } else { loud }
+fn bad(c) with !E = pick(c)(1)
+fn main() = 0

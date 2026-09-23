@@ -1,0 +1,10 @@
+// CROWN — the sound dual: the same group, its effect absorbed by an install
+// around the call, so the declared `!E` holds. The flow that closes the leak
+// must carry the effect to where the install subtracts it. Expect no mismatch.
+effect E { op() -> Int }
+handler h { op() => resume(0) }
+fn twice(f, x) = f(f(x))
+fn step(n) = if n == 0 { op() } else { hop(n - 1) }
+fn hop(n) = n |> twice(step)
+fn good(n) with !E = hop(n) ~> h
+fn main() = 0

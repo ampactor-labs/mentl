@@ -985,7 +985,8 @@ crown_expected_red: sound-sealed-param-pure-arg
 # prelude's own `sum_by`, `count` and `max_by` publish rows without their
 # parameter's row the same way. Beside them three false refusals: a co-member's
 # pure lambda published as the parameter's ceiling, and `match`/`if` binding
-# their result to the FIRST branch's type so the second meets it as a bound.
+# their result to the FIRST branch's type (the `if` face is
+# sound-branch-join, below) so the second meets it as a bound.
 # They retire with the same landing: a cell is settled only at a binding
 # group's completion, never while the environment still reaches it, and a
 # join is a fresh cell every branch flows into.
@@ -994,7 +995,17 @@ crown_expected_red: leak-nested-fn-captures-hof-param
 crown_expected_red: leak-tee-body-hof-param
 crown_expected_red: sound-cycle-performing-lambda-undeclared
 crown_expected_red: sound-match-arms-mixed-rows
-crown_expected_red: sound-if-branches-mixed-rows
+# 2026-09-23, the rows design's own first reading of the boot (v1, written in
+# the builder's worktree and brought to main here): a partial application whose
+# argument is a still-open group member publishes the caller pure; a
+# parameter capped !C inside a fn declaring !B is accepted though the cap
+# allows B; a declared negation on a HOF never reaches what callers pass
+# (Hβ.infer.declared-row-vacuous-against-a-free-body-row); and the `if` join of
+# a pure and a performing fn is refused with nothing declared.
+crown_expected_red: leak-partial-group-arg
+crown_expected_red: leak-capped-negation-union
+crown_expected_red: leak-declared-hof-negation
+crown_expected_red: sound-branch-join
 # 2026-09-18: `eq-polymorphic-sum` was declared RED here for one landing and
 # RETIRED by proof in the next — the whole life of an expected-red entry, in a
 # day. It read: `==` on a POLYMORPHIC sum compares its payload by ADDRESS,

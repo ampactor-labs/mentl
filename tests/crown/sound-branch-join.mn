@@ -1,0 +1,9 @@
+// CROWN — the sound dual: the same join with nothing declared. A function that
+// may perform E is a legal value in a context that allows E; the join must
+// widen, never demand equal rows. Expect no mismatch.
+effect E { op(n: Int) -> Int }
+fn quiet(n) = n
+fn loud(n) = op(n)
+fn pick(c) = if c { quiet } else { loud }
+fn good(c) = pick(c)(1)
+fn main() = 0

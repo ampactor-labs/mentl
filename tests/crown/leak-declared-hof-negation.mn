@@ -1,0 +1,10 @@
+// CROWN — a declared negation on a higher-order fn is a promise about EVERY
+// call, the parameter's row included: `run` may call `f`, so `!E` constrains
+// what callers pass. Boot admitted the free parameter row at the gate and
+// accepted a caller passing an E-performing function
+// (Hβ.infer.declared-row-vacuous-against-a-free-body-row). Expect
+// E_EffectMismatch.
+effect E { op() -> Int }
+fn run(f) with !E = f()
+fn caller() = run(() => op())
+fn main() = 0
