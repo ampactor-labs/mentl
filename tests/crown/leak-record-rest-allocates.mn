@@ -1,0 +1,15 @@
+// CROWN — a record rest pattern copies the residual fields into a fresh record.
+// Expect E_EffectMismatch under the declared !Alloc.
+//
+// Checked clean through the pinned boot, and the heap mark moved 8 bytes
+// (measured 2026-09-23).
+fn f(r: {a: Int, b: Int, c: Int}) with !Alloc = {
+  let {a, ...rest} = r
+  a
+}
+fn main() = {
+  let rec = {a: 1, b: 2, c: 3}
+  let m0 = heap_mark()
+  let r = f(rec)
+  heap_mark() - m0
+}

@@ -1,0 +1,13 @@
+// CROWN — the list face of leak-join-param-with-content-fn. Expect
+// E_EffectMismatch.
+//
+// A guard, refused through the pinned boot (measured 2026-09-23).
+effect E { op() -> Int }
+fn quiet() = len([1])
+fn g(f) = {
+  let fs = [f, quiet]
+  fs[0]()
+}
+fn bad() with !E = g(() => op())
+handler eh { op() => resume(7) }
+fn main() = (bad()) ~> eh

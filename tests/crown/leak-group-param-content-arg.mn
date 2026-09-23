@@ -1,0 +1,12 @@
+// CROWN — inside a recursion group one member hands the other a closure with
+// content; an outside caller then hands it a performing one. Expect
+// E_EffectMismatch.
+//
+// A guard, refused through the pinned boot (measured 2026-09-23).
+effect E { op() -> Int }
+fn quiet(x) = x
+fn a(n) = if n > 5 { 0 } else { b({ x => quiet(x) }, n + 1) }
+fn b(f, n) = if n > 5 { f(n) } else { a(n + 1) }
+fn z2() with !E = b({ x => op() }, 0)
+handler eh { op() => resume(7) }
+fn main() = (z2()) ~> eh

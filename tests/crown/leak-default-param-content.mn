@@ -1,0 +1,10 @@
+// CROWN — the parameter's default already carries content; the caller overrides
+// it with a performing closure. Expect E_EffectMismatch.
+//
+// A guard, refused through the pinned boot (measured 2026-09-23).
+effect E { op() -> Int }
+fn quiet() = len([1])
+fn takes(a, b = () => quiet()) = b()
+fn bad() with !E = takes(1, () => op())
+handler eh { op() => resume(7) }
+fn main() = (bad()) ~> eh

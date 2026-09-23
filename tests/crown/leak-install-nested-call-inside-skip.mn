@@ -1,0 +1,14 @@
+// CROWN — nested installs: the thunk meets the CALLING handler first, innermost.
+// Expect E_EffectMismatch.
+//
+// Checked clean and ran at 7 through the pinned boot (measured 2026-09-23).
+// A mask is an ORDERED path: an arrival meets the first handler that
+// names its effect, never any of them.
+effect E { op() -> Int }
+effect Run { run(f: () -> Int) -> Int }
+handler skip { run(f) => resume(0) }
+handler call { run(f) => resume(f()) }
+fn g(b) = ((b()) ~> call) ~> skip
+fn bad() with !E = g(() => run(() => op()))
+handler eh { op() => resume(7) }
+fn main() = (bad()) ~> eh

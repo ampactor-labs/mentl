@@ -1,0 +1,12 @@
+// CROWN — the control of leak-install-nested-call-inside-skip: the dropping
+// handler is innermost, so the thunk never runs. Must accept.
+//
+// Accepted through the pinned boot, ran at 0 (measured 2026-09-23).
+effect E { op() -> Int }
+effect Run { run(f: () -> Int) -> Int }
+handler skip { run(f) => resume(0) }
+handler call { run(f) => resume(f()) }
+fn g(b) = ((b()) ~> skip) ~> call
+fn good() with !E = g(() => run(() => op()))
+handler eh { op() => resume(7) }
+fn main() = (good()) ~> eh

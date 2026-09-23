@@ -1,0 +1,16 @@
+// CROWN — one HOF parameter reaches the frame by two install paths — one under a
+// handler that drops the thunk, one under a handler that calls it. The
+// thunk's instance must meet the CALLING handler's on its own path.
+// Expect E_EffectMismatch.
+//
+// Checked clean and ran at 7 through the pinned boot (measured 2026-09-23,
+// refuter rv3a). Merging the two paths' masks by name keeps one instance
+// and loses the other's unification.
+effect E { op() -> Int }
+effect Run { run(f: () -> Int) -> Int }
+handler skip { run(f) => resume(0) }
+handler call { run(f) => resume(f()) }
+fn g(b) = ((b()) ~> skip) + ((b()) ~> call)
+fn bad() with !E = g(() => run(() => op()))
+handler eh { op() => resume(7) }
+fn main() = (bad()) ~> eh

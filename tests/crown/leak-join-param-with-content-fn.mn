@@ -1,0 +1,17 @@
+// CROWN — a HOF parameter joined with a function that already carries content,
+// then called, under a declared !E; the caller hands it a performing
+// closure. Expect E_EffectMismatch.
+//
+// Refused through the pinned boot for a reason the rows landing deletes
+// (it equates the join's rows; its undeclared twin is falsely refused
+// too). A guard: the parameter's root carries content from the join and
+// must still be a root the caller's copy reaches.
+effect E { op() -> Int }
+fn quiet() = len([1])
+fn g(c, f) with !E = {
+  let k = if c { f } else { quiet }
+  k()
+}
+fn bad() = g(true, () => op())
+handler eh { op() => resume(7) }
+fn main() = (bad()) ~> eh

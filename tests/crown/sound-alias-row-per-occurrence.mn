@@ -1,0 +1,13 @@
+// CROWN — a transparent fn-type alias at two parameters, one of them under a
+// declared !E. The alias's row is minted per occurrence. Must accept.
+//
+// Accepted through the pinned boot, ran at 10 (measured 2026-09-23).
+effect E { op() -> Int }
+type Thunk = () -> Int
+fn run_a(f: Thunk) = f()
+fn run_b(g: Thunk) with !E = g()
+fn loud() = op()
+fn quiet() = 3
+fn c() = run_a(loud) + run_b(quiet)
+handler eh { op() => resume(7) }
+fn main() = c() ~> eh

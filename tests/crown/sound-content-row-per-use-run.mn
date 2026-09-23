@@ -1,0 +1,12 @@
+// CROWN — the same law on a calling handler. Must accept.
+//
+// Accepted through the pinned boot, ran at 7 (measured 2026-09-23).
+effect F { fop() -> Int }
+effect Run { run(f: () -> Int) -> Int }
+fn quiet() = 3
+fn body() = run(quiet)
+handler runner { run(f) => resume(f()) }
+fn a() = (body() + run(() => fop())) ~> runner
+fn b() with !F = body() ~> runner
+handler fh { fop() => resume(1) }
+fn main() = (a() + b()) ~> fh

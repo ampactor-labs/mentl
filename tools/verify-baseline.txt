@@ -1046,6 +1046,21 @@ crown_expected_red: leak-interpolation-allocates
 crown_expected_red: leak-sealed-hof-forwards-param
 crown_expected_red: leak-op-param-two-instances
 crown_expected_red: sound-payload-declared-negation-sibling
+# 2026-09-23, the rows v3 refutation round (rv3a): nine more false absences
+# in the pinned boot, each seen RED through it before this line was written.
+# Three are the install PATH law (a mask is an ordered path, one entry per
+# path, the thunk meeting the first handler that names its effect); one is a
+# state root that held content when first reached; five are constructions
+# the charge table never named.
+crown_expected_red: leak-install-paths-skip-then-call
+crown_expected_red: leak-install-paths-call-then-skip
+crown_expected_red: leak-install-nested-call-inside-skip
+crown_expected_red: leak-state-init-content-root
+crown_expected_red: leak-partial-application-allocates
+crown_expected_red: leak-partial-hole-allocates
+crown_expected_red: leak-fanout-allocates
+crown_expected_red: leak-diverge-allocates
+crown_expected_red: leak-record-rest-allocates
 # 2026-09-18: `eq-polymorphic-sum` was declared RED here for one landing and
 # RETIRED by proof in the next — the whole life of an expected-red entry, in a
 # day. It read: `==` on a POLYMORPHIC sum compares its payload by ADDRESS,

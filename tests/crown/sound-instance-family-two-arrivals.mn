@@ -1,0 +1,10 @@
+// CROWN — one unpinned handler absorbs two instances of one effect under a
+// negation of both. Value dimensions never unify at a mask. Must accept.
+//
+// Accepted through the pinned boot, ran at 2 (measured 2026-09-23).
+effect Sample(rate: Int) { tick() -> Int }
+handler h { tick() => resume(1) }
+fn w48() with Sample(48000) = tick()
+fn w44() with Sample(44100) = tick()
+fn f() with !Sample(48000) + !Sample(44100) = (w48() + w44()) ~> h
+fn main() = f()

@@ -1,0 +1,11 @@
+// CROWN — a declared instance pins what reaches it through an unpinned callee.
+// Must accept.
+//
+// Accepted through the pinned boot (measured 2026-09-23). The pin is a
+// property of the declaring function's cell, not of its own performs.
+effect Sample(rate: Int) { tick() -> Int }
+fn raw() = tick()
+fn inner() with Sample(44100) = raw()
+fn fine() with !Sample(48000) = inner()
+handler h { tick() => resume(1) }
+fn main() = (fine()) ~> h

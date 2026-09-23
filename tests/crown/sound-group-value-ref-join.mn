@@ -1,0 +1,16 @@
+// CROWN — a co-member referenced as a VALUE and joined with a performing lambda.
+// The join belongs to the referencing site, never to the member's own
+// row. Must accept.
+//
+// Accepted through the pinned boot, ran at 3 (measured 2026-09-23).
+effect F { fop() -> Int }
+fn a(c, n) = {
+  let k = if c { b } else { { x => fop() } }
+  k(n)
+}
+fn b(n) with !F = {
+  let unused = a
+  n
+}
+handler hf { fop() => resume(1) }
+fn main() = (a(false, 1) + b(2)) ~> hf
