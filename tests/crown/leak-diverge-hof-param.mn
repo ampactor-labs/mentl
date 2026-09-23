@@ -1,0 +1,13 @@
+// CROWN — `<|` applies a HOF parameter as a branch, the caller handing a
+// performing closure under `with !E`. Expect E_EffectMismatch.
+//
+// Checked clean and ran at 9 through the pinned boot (measured 2026-09-23).
+effect E { op() -> Int }
+fn quiet(x) = x
+fn fanf(f, x) = {
+  let (a, b) = x <| (f, quiet)
+  a + b
+}
+fn bad() with !E = fanf((y) => op() + y, 1)
+handler eh { op() => resume(7) }
+fn main() = (bad()) ~> eh

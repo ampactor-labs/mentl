@@ -1,0 +1,13 @@
+// CROWN — `<|` applies each branch to its input under `with !E`, one branch
+// performing E. Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot; the guard on branch application as a call.
+effect E { op() -> Int }
+fn loud(x) = op() + x
+fn quiet(x) = x
+fn fan(x) with !E = {
+  let (a, b) = x <| (loud, quiet)
+  a + b
+}
+handler eh { op() => resume(7) }
+fn main() = (fan(1)) ~> eh

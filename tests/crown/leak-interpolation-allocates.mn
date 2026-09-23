@@ -1,0 +1,8 @@
+// CROWN — string interpolation allocates (it lowers to concatenation), so
+// a body declared `!Alloc` that interpolates is refused.
+// Expect E_EffectMismatch.
+//
+// Checked clean through the pinned boot (measured 2026-09-23): the
+// interpolation charges nothing while `++` charges Alloc.
+fn mk(x) with !Alloc = "a{x}b"
+fn main() = 0

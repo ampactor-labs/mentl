@@ -1,0 +1,11 @@
+// CROWN — a `><` branch performs E directly under `with !E`.
+// Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot; the guard on the fanout thunk's charge.
+effect E { op() -> Int }
+fn par() with !E = {
+  let (a, b) = (op()) >< (1)
+  a + b
+}
+handler eh { op() => resume(7) }
+fn main() = (par()) ~> eh

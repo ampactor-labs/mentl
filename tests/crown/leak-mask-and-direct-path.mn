@@ -1,0 +1,12 @@
+// CROWN — one HOF parameter reaches a `!E` frame by two paths, one masked
+// by an install that absorbs E and one direct. Expect E_EffectMismatch.
+//
+// Checked clean and ran at 14 through the pinned boot (measured
+// 2026-09-23). The bound the parameter carries is the MEET of what each
+// path allows: through the install E is admitted, directly it is not.
+effect E { op() -> Int }
+handler absorb { op() => resume(5) }
+fn g(f) with !E = (f(1) ~> absorb) + f(1)
+fn caller() = g({ x => op() + x })
+handler eh { op() => resume(7) }
+fn main() = (caller()) ~> eh

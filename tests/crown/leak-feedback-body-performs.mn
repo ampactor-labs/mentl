@@ -1,0 +1,12 @@
+// CROWN — a `<~` recurrence body performs E every tick under `with !E`.
+// Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot. The guard on the feedback charge: the LHS
+// arrow is called each tick, which is a call, not only a union with the prior.
+effect E { op() -> Int }
+fn cyc(x) with !E = {
+  let r = ((prev) => op() + prev) <~ delay(1)
+  r + x
+}
+handler eh { op() => resume(7) }
+fn main() = (cyc(1)) ~> eh

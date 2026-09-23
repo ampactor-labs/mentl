@@ -1,0 +1,14 @@
+// CROWN — an ANNOTATED positive row on a constructor payload, matched and
+// called under `with !E`. Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot. The guard on a declared row in a carrier:
+// it bounds the writer AND is what the reader must assume, so treating it as a
+// ceiling alone would let this through.
+effect E { op() -> Int }
+type Box = Box(() -> Int with E)
+fn loud() = op()
+fn bad() with !E = match Box(loud) {
+  Box(f) => f(),
+}
+handler h { op() => resume(7) }
+fn main() = bad() ~> h

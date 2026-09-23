@@ -1,0 +1,6 @@
+// CROWN — a list literal allocates, so a body declared `!Alloc` building one
+// is refused. Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot; the guard on the construction charge.
+fn mk(x) with !Alloc = [x, x]
+fn main() = 0

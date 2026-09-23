@@ -1,0 +1,14 @@
+// CROWN — a MIXED declared row on a HOF, `with F + !E`: the positive half
+// licenses F for the body, and the negation half must still reach the
+// parameter. Expect E_EffectMismatch.
+//
+// Checked clean and ran at 10 through the pinned boot (measured
+// 2026-09-23): the declared-row fold collapses `F + !E` to the closed row
+// {F}, so the negation never exists as a bound on anything.
+effect F { fop() -> Int }
+effect E { op() -> Int }
+fn run(f) with F + !E = fop() + f()
+fn bad() = run(() => op())
+handler hf { fop() => resume(3) }
+handler eh { op() => resume(7) }
+fn main() = ((bad()) ~> hf) ~> eh

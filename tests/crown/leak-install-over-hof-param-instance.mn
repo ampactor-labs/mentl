@@ -1,0 +1,24 @@
+// CROWN — an install whose handled instance arrives LATER, through a HOF
+// parameter: `g(f) = (f()) ~> holder`, the caller's closure stores a
+// performing function in holder's state and fires it, under `with !E`.
+// Expect E_EffectMismatch.
+//
+// Checked clean and ran at 7 through the pinned boot (measured 2026-09-23).
+// The install unifies the handled instance with the body's performed
+// instances ONCE, at g's judgment, when f's row is still empty; the
+// instance that reaches the body through f's root at the call site never
+// meets holder's. A mask must carry the handled instance and every arrival
+// across it must unify with it.
+effect E { op() -> Int }
+effect Feed { set(k: () -> Int), fire() -> Int }
+handler holder with s = () => 0 {
+  set(k) => resume() with s = k,
+  fire() => resume(s()),
+}
+fn g(f) = (f()) ~> holder
+fn bad() with !E = g(() => {
+  set(() => op())
+  fire()
+})
+handler eh { op() => resume(7) }
+fn main() = (bad()) ~> eh

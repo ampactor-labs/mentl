@@ -3317,6 +3317,16 @@ for i in "${!compilers[@]}"; do
   run_refusal "$compiler" record-closed-lacks-field \
     "$ROOT/tests/frontier/mn-record-closed-lacks-field.mn" E_TypeMismatch "$dir"
   run_program "$compiler" record-rest-over-open "$ROOT/tests/frontier/mn-record-rest-over-open.mn" 7 yes "$dir"
+  # Two faces the rows design's third refuter measured on the pinned boot
+  # (2026-09-23), both checking clean and failing at runtime: an effect
+  # instance that reaches an install through a HOF parameter never meets the
+  # handler's, so an Int payload is called as a function; and a module-level
+  # `let` performs with no frame to charge, so nothing reaches the root gate.
+  # Declared RED until the rows landing (Hβ.effects.rows-are-propagated-cells).
+  run_refusal "$compiler" install-over-hof-param-payload \
+    "$ROOT/tests/frontier/mn-install-over-hof-param-payload.mn" E_TypeMismatch "$dir"
+  run_refusal "$compiler" module-let-performs \
+    "$ROOT/tests/frontier/mn-module-let-performs.mn" E_EffectUnhandled "$dir"
   # A constructor's payload types come from the INSTANTIATION the graph
   # proved, never from the declaration that quantified them. These two
   # legs are the three faces that read measured on 2026-09-18, and they

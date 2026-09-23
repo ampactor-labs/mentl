@@ -1,0 +1,14 @@
+// CROWN — an ANNOTATED positive row on an effect op's fn-typed result, the
+// returned fn called under `with !E`. Expect E_EffectMismatch.
+//
+// Refuses through the pinned boot; the op-result face of
+// leak-payload-declared-positive.
+effect E { op() -> Int }
+effect G { give() -> (() -> Int with E) }
+handler eh { op() => resume(7) }
+handler gh { give() => resume(() => op()) }
+fn body() with !E = {
+  let f = (give()) ~> gh
+  f()
+}
+fn main() = (body()) ~> eh

@@ -1,0 +1,16 @@
+// An install over a HOF parameter whose effect instance arrives through
+// the parameter: `g(f) = (f()) ~> runit`, and the caller's closure performs
+// `emit(5)` where runit's arm calls its payload as a function. The contract
+// is the refusal — an Int is not a function.
+//
+// Measured 2026-09-23 through the pinned boot: check clean, then a runtime
+// trap ("uninitialized element": 5 called). The direct form (the closure's
+// body written inside `g`) refuses with E_TypeMismatch. The install unified
+// its handled instance with the body's instances once, when the parameter's row
+// was still empty; the instance that arrives at the call site never meets the
+// arm's. Retires when a mask carries the handled instance and every arrival
+// across it unifies (Hβ.effects.rows-are-propagated-cells).
+effect Emit { emit(x: a) -> Int }
+handler runit { emit(x) => resume(x()) }
+fn g(f) = (f()) ~> runit
+fn main() = g(() => emit(5))
