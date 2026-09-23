@@ -1711,6 +1711,8 @@ fn pattern_discards_by_position(p) with Memory + Alloc = match pat_of(p) {
   PTuple(slots) => count(slot_is_discard, slots) >= 2 || any(pattern_discards_by_position, slots),
   PList(slots, _) => any(pattern_discards_by_position, slots),
   PRecord(fields, _) => any({ (_, sub) => pattern_discards_by_position(sub) }, fields),
+  PConFields(_, fields) => // A named pattern names only what it reads, so it discards nothing by position.
+  any({ (_, sub) => pattern_discards_by_position(sub) }, fields),
   PAlt(alts) => any(pattern_discards_by_position, alts),
   PAs(_, inner) => pattern_discards_by_position(inner),
   PVar(_) => false,

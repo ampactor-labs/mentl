@@ -1,0 +1,14 @@
+// expect: 6
+// A `|>` chain inside an interpolation splice renders the wrong value: the
+// splice below should be "(a, b)", six bytes, and it renders an ADDRESS. The
+// pipe's own node judges String; the show reads its operand's type through the
+// LOWERED operand's handle, and a hole-completing pipe lowers to the call it
+// completes, whose node is the partial application — a function, so the show
+// takes the word floor and prints a pointer. The same join spelled directly
+// (`join(sep(), xs)`) or behind a named fn renders right. Measured 2026-09-23,
+// also on the boot before patterns became nodes; found when a formatter
+// render wrote `Sample(99972)`. Declared RED until the show reads the node it
+// shows (Hβ.lower.pipe-completion-carries-the-stage-handle).
+fn sep() = ", "
+
+fn main() = len("({["a", "b"] |> join(sep())})")

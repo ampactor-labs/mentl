@@ -258,11 +258,22 @@ fn board_bounds() with Memory + Alloc = [
   // rows by hand would ground them and is refused on purpose: SYNTAX's
   // endpoint is the positive row inferred and projected, never typed.
   //
+  // 1,080 — five more, named: named constructor fields render a variant's
+  // fields (format `render_variant`), lower an unread field at its cell's
+  // judged type (`lower_field_cell`, two calls), and parse a field or read a
+  // type application as positional fields (parser, two). Same defect, same
+  // counting rule; no row among them is authored.
+  //
+  // 1,081 — one more, named: coverage's record witness renders its fields
+  // through `render_field_spaces` (coverage:366) where it had spelled a `|>`
+  // chain inside the splice — the shape `Hβ.lower.pipe-completion-carries-the-stage-handle`
+  // renders as an address. The call is the price of not writing that shape.
+  //
   // None of these is the probe's 856, which counted chase EVENTS inside one
   // lower run. Four instruments, four denominators, one fact; recording all
   // of them is how the next reader avoids reconciling numbers that were
   // never the same.
-  Bound({ceiling: 1075, shape: CsFreeRowCallee}),
+  Bound({ceiling: 1081, shape: CsFreeRowCallee}),
   // 480 — the imperative loop in recursion's costume, counted across the
   // whole wheel and bounded for the first time 2026-09-21 (Morgan: "anytime
   // there is anything that could be written with the five topological

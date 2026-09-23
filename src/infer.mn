@@ -656,9 +656,15 @@ fn cl_ctor_names(ref ctors, i, acc) = if i >= len(ctors) {
   acc
 } else {
   match list_index(ctors, i) {
-    (cname, tys, _) => cl_ctor_names(ctors, i + 1, cl_ctor_field_names(tys, 0, acc ++ [cname])),
+    (cname, fields, _) => cl_ctor_names(
+      ctors,
+      i + 1,
+      cl_ctor_field_names(map(param_ty, fields), 0, acc ++ [cname] ++ named_field_names(fields))
+    ),
   }
 }
+
+fn named_field_names(fields) = fields |> map(param_name) |> filter({ n => !is_position_name(n) })
 
 fn cl_ctor_field_names(ref tys, i, acc) = if i >= len(tys) {
   acc
@@ -3639,7 +3645,7 @@ fn seq_face_ty(name: String, scheme) = {
   match seq_op_sig(name, elem) {
     Some(sig) => match sig {
       (ptys, ret) => match instantiate(scheme) {
-        TFun(_, _, crow) => TFun(build_ctor_params(ptys, 0), ret, crow),
+        TFun(_, _, crow) => TFun(positional_fields(ptys), ret, crow),
         other => // a seq-op whose scheme is not fn-shaped keeps its own read
         other,
       },
@@ -3892,7 +3898,7 @@ fn infer_call(func, args, handle, span: ValidSpan) = match func {
         Some(sig) => match sig {
           (ptys, ret) => infer_call_partial(
             args,
-            build_ctor_params(ptys, 0),
+            positional_fields(ptys),
             ret,
             mk_ef_closed([ENamed(intern_str("Memory"))]),
             handle,
@@ -3946,7 +3952,7 @@ fn record_ctor_arrow_view(cname: String, span: ValidSpan) = match env_lookup(cna
       RecordSchemeKind(declared_fields) => match judgment_pair(scheme) {
         (q, body) => {
           let view =
-            instantiate(Frozen(q, TFun(build_ctor_params([TRecord(declared_fields)], 0), body, mk_ef_pure())))
+            instantiate(Frozen(q, TFun(positional_fields([TRecord(declared_fields)]), body, mk_ef_pure())))
           let vh = mint(Inferred("record-ctor arrow view of '{cname}'"))
           graph_bind(vh, view, Located(span, VarLookup(cname, reason)))
           Some(vh)
@@ -6172,20 +6178,38 @@ fn infer_pat_shape(pat, handle, span: ValidSpan) = match pat {
       // plain function value — degenerate but harmless; bind the
       // scrutinee to the looked-up type and skip sub-pat plumbing.
       match entry {
-        (scheme, reason, kind) => {
-          let ty = match kind {
-            RecordSchemeKind(declared_fields) => match judgment_pair(scheme) {
-              (q, body) => instantiate(Frozen(q, TFun(build_ctor_params([TRecord(declared_fields)], 0), body, mk_ef_pure()))),
-            },
-            _ => instantiate(scheme),
-          }
-          match ty {
-            TFun(params, ret_ty, _row) => {
-              constrain_scrutinee(handle, ret_ty, span, VarLookup(name, reason))
-              bind_pcon_subpats(params, sub_pats, span, VarLookup(name, reason), name)
-            },
-            _ => constrain_scrutinee(handle, ty, span, VarLookup(name, reason)),
-          }
+        (scheme, reason, kind) => match con_pattern_view(scheme, kind) {
+          TFun(params, ret_ty, _row) => {
+            constrain_scrutinee(handle, ret_ty, span, VarLookup(name, reason))
+            bind_pcon_subpats(params, sub_pats, span, VarLookup(name, reason), name)
+          },
+          ty => constrain_scrutinee(handle, ty, span, VarLookup(name, reason)),
+        },
+      },
+    }
+  },
+  PConFields(name, flds) => {
+    // The named form reads the SAME constructor, so its reference is noted
+    // and its arrow instantiated exactly as the positional form's is; each
+    // field it names binds to that field's type, found by name among the
+    // constructor's own parameters. A field it does not name is not read.
+    graph_ref_note(name, handle)
+    match env_lookup(name) {
+      None => report(EMissingVariable("constructor: {name}", span)),
+      Some(entry) => match entry {
+        (scheme, reason, kind) => match con_fields_view(scheme, kind) {
+          TFun(params, ret_ty, _row) => {
+            constrain_scrutinee(handle, ret_ty, span, VarLookup(name, reason))
+            each(named_field_declared(params, span), flds)
+            graph_boundary_set(
+              handle,
+              ConFieldsBoundary(map(field_cell(flds, VarLookup(name, reason), span), params))
+            )
+          },
+          ty => {
+            constrain_scrutinee(handle, ty, span, VarLookup(name, reason))
+            each(named_field_declared([], span), flds)
+          },
         },
       },
     }
@@ -6320,6 +6344,59 @@ fn infer_pat_list(pats, rest, parent_handle, span: ValidSpan) = {
       )
     },
   }
+}
+
+// The arrow a POSITIONAL constructor pattern reads: a payload constructor's
+// own, or for a nominal record the single-field arrow `Pri : record -> Pri`
+// its record-ctor view is, so `Pri(pa)` binds the whole record.
+fn con_pattern_view(scheme, kind) = match kind {
+  RecordSchemeKind(declared_fields) => match judgment_pair(scheme) {
+    (q, body) => instantiate(Frozen(q, TFun(positional_fields([TRecord(declared_fields)]), body, mk_ef_pure()))),
+  },
+  _ => instantiate(scheme),
+}
+
+// The arrow a NAMED constructor pattern reads: the same constructor, with a
+// nominal record's fields standing as its parameters, so `Person{name}`
+// reads the record's field exactly as `Holds{level}` reads a variant's.
+fn con_fields_view(scheme, kind) = match kind {
+  RecordSchemeKind(declared_fields) => match judgment_pair(scheme) {
+    (q, body) => instantiate(Frozen(q, TFun(map({ (n, t) => mk_param(n, t) }, declared_fields), body, mk_ef_pure()))),
+  },
+  _ => instantiate(scheme),
+}
+
+// A declared field's cell at this pattern: the sub-pattern's own when the
+// pattern names the field (judged against the field's type here), else a
+// cell of the field's type that nothing binds, which still carries the width
+// the payload's later offsets need.
+fn field_cell(flds, reason, span: ValidSpan, p) = match find(field_named(param_name(p)), flds) {
+  Some((_, sub)) => {
+    infer_sub_pat(sub, param_ty(p), reason)
+    node_handle(sub)
+  },
+  None => {
+    let c = mint(Inferred("a field the pattern does not name"))
+    graph_bind(c, param_ty(p), Located(span, reason))
+    c
+  },
+}
+
+// A field name the constructor does not declare is the label error a call
+// makes with it.
+// Its sub-pattern still judges, against a value nothing constrains, so the
+// arm's own binders stay in scope and one mistake is one diagnostic.
+fn named_field_declared(params, span: ValidSpan, fld) = match fld {
+  (fname, sub) => if any({ p => param_name(p) == fname }, params) {
+    ()
+  } else {
+    report(EUnknownArgLabel(fname, span))
+    infer_pat(sub, mint(Inferred("a field the constructor does not declare")))
+  },
+}
+
+fn field_named(name: String, fld) = match fld {
+  (n, _) => n == name,
 }
 
 // Each constructor sub-pattern's cell takes its declared field's type at
@@ -7629,7 +7706,7 @@ fn quantify_variants(variants, buf, i, n, qmap) = if i >= n {
   (slice(buf, 0, n), qmap)
 } else {
   match list_index(variants, i) {
-    (_, field_types, _) => match quantify_ty_list(field_types, qmap) {
+    (_, fields, _) => match quantify_ty_list(map(param_ty, fields), qmap) {
       (fields2, q2) => quantify_variants(variants, list_set(buf, i, fields2), i + 1, n, q2),
     },
   }
@@ -7780,7 +7857,7 @@ fn construction_row() with Memory + Alloc + Intern =
   mk_ef_closed([ENamed(intern_str("Memory")), ENamed(intern_str("Alloc"))])
 
 fn register_one_variant(type_name: String, result_ty, qhandles, field_types, variant, tag_id, total) = match variant {
-  (ctor_name, _, ctor_node) => {
+  (ctor_name, fields, ctor_node) => {
     // The variant's own node declared the constructor, so every entry below
     // names it as the declaring site.
     let declared = DeclaredAt(node_handle(ctor_node))
@@ -7813,7 +7890,7 @@ fn register_one_variant(type_name: String, result_ty, qhandles, field_types, var
       if len(field_types) == 0 {
         env_extend(ctor_name, Frozen(qhandles, result_ty), declared, kind)
       } else {
-        let params = build_ctor_params(field_types, 0)
+        let params = ctor_params(fields, field_types)
         // A payload ctor's arrow carries the construction row — the
         // variant record allocates, and the call path then charges it
         // through the one-way crow read like any callee (the ctor-probe
@@ -7829,8 +7906,10 @@ fn is_record_ty(ty) with Pure = match ty {
   _ => false,
 }
 
-fn build_ctor_params(field_types, base_idx) =
-  map({ (i, ty) => mk_param("_{int_to_str(base_idx + i)}", ty) }, enumerate(field_types))
+// The constructor's parameters: each declared field's own name over its
+// quantified type — the names a labeled call and a named pattern resolve.
+fn ctor_params(fields, field_types) =
+  map({ (f, ty) => mk_param(param_name(f), ty) }, zip(fields, field_types))
 
 fn register_effect_ops(decl, effect_name, params, ops) = {
   // Register the effect name itself with its op names.
@@ -7983,7 +8062,7 @@ fn register_one_op(effect_name, eff_name, op) = match op {
   // and a diagnostic never has to reach for span_zero.
   {
     let ret_type = cap_result_fn_row(raw_ret_type)
-    let params = build_ctor_params(param_types, 0)
+    let params = positional_fields(param_types)
     // Every op of the effect carries the SAME instance row (eff_name), so the
     // payload flows performer→handler at the install. Generalize over the
     // op's free vars INCLUDING the instance's (free_in_row) ⇒ each op USE is a

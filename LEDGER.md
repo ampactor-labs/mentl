@@ -35,6 +35,43 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-23 · pin f8ec5cd9e12c01f1 (CLEAN m2 == m3, census 0, frontier
+  407/0/12, crown green) · A CONSTRUCTOR'S FIELDS ARE ITS PARAMETER LIST, SO
+  A PATTERN NAMES ONLY WHAT IT READS. This is step 1 of two, the compiler
+  learning the form (SYNTAX §«Named fields»); step 2 is the wheel using it.
+  `type R = Sample(level: Float, count: Int)` declares names that were always
+  there — positional fields were already minted as parameters `_0`, `_1`,
+  and `build_ctor_params` re-derived them at five sites (deleted into one
+  `positional_fields`). Construction needed nothing new: labeled call
+  arguments already fill a constructor's product by name. The pattern
+  `Sample{count}` is `PConFields`, and infer writes a `ConFieldsBoundary` —
+  one cell per DECLARED field in declared order, the sub-pattern's own node
+  for a named field, a minted cell at the instantiated type for an unread
+  one — so lower places every field from a judged width, never from the word
+  floor, and coverage reads the same list with `SAny` where a field is
+  unread. `env_kind_of` moved to types (coverage and lower both ask it), and
+  coverage's arity reads `callee_params` rather than re-counting.
+  KILLS: (1) the first fixture passed BY LUCK — `tag = 0` equalled the low
+  word of 9.5, so a pattern reading the Float's bytes would have matched; the
+  fixture now reads only nonzero values behind wider fields. (2) A generic
+  payload read wide values at word width (`Box(a)` holding a Float) — first
+  blamed on the patterns-are-nodes landing, refuted on the pre-landing boot,
+  banked RED as `Hβ.value.generic-payload-read-at-word-width`. (3) fmt
+  rendered `Sample(99972)` — not the new render path but a `|>` chain inside
+  an interpolation splice, which shows an address because the show reads the
+  partial application's handle; banked RED as
+  `Hβ.lower.pipe-completion-carries-the-stage-handle`, and the new renders
+  avoid the shape (one more ungrounded callee, attributed on the board).
+  The positional-destructure census rose 732 -> 738 on this step's own
+  scaffolding; step 2 names the wheel's constructors and takes it back down.
+  Cadence: two marches, one over budget and named — the pre-commit
+  quiet-gate refused three `ref` markers the new parser helpers carried
+  (705 -> 708; deleted, inference grades them), and the second march
+  reproduced the same bytes. The quiet-gate is the one ratchet the repin's
+  `mentl verify` leg does not yet carry, which is why it surfaced at the
+  commit instead of the pin — task: absorb it into `mentl verify`. The
+  fixture reads 42 and fmt round-trips it byte-exact on the new boot.
+
 - 2026-09-23 · pin 677fc45ea658af6f (CLEAN m2 == m3, through a613c5cee95f
   TRANSITION m3 == m4, census 0) · PATTERNS ARE NODES, AND ONE COVERAGE JUDGMENT ASKS THEM BOTH QUESTIONS.
   The design began as "a helper decides whether a `let` pattern is

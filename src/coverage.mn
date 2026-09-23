@@ -48,6 +48,24 @@ fn space_of(node) = match pat_of(node) {
   PRecord(flds, _) => SCon(HRecord(map(field_label, flds)), map(field_space_of, flds)),
   PList(subs, rest) => subs |> map(space_of) |> reverse |> fold(list_end(rest), cons_space),
   PCon(name, subs) => con_space(name, map(space_of, subs)),
+  PConFields(name, flds) => con_fields_space(name, flds),
+}
+
+// A named pattern is its constructor with every field it does not name taking
+// any value: the fields sit where the constructor's own parameters put them.
+// A nominal record read by field is the record pattern it spells.
+fn con_fields_space(name, flds) = match env_kind_of(name) {
+  Some(RecordSchemeKind(_)) => SCon(HRecord(map(field_label, flds)), map(field_space_of, flds)),
+  _ => con_space(name, map(field_or_any(flds), callee_params(name))),
+}
+
+fn field_or_any(flds, p) = match find(field_is(param_name(p)), flds) {
+  Some(fld) => field_space_of(fld),
+  None => SAny,
+}
+
+fn field_is(name: String, fld) = match fld {
+  (n, _) => n == name,
 }
 
 fn field_label(fld) = match fld {
@@ -76,7 +94,7 @@ fn cons_space(tail, head) = SCon(HCons, [head, tail])
 // name is one diagnostic and not two.
 fn con_space(name, subs) = match env_lookup(name) {
   Some((binding, _, ConstructorScheme(tag, total))) => {
-    let arity = built_arity(binding)
+    let arity = len(callee_params(name))
     let v = Variant{arity: arity, name: name, tag: tag, total: total, ty: built_type(binding)}
     SCon(HVariant(v), at_arity(arity, subs))
   },
@@ -89,14 +107,6 @@ fn con_space(name, subs) = match env_lookup(name) {
 
 // A constructor's binding is registered Frozen at its own declaration: its
 // type is the type it builds, or a function to it.
-fn built_arity(binding) = match binding {
-  Frozen(_, ty) => match fold_strip(ty) {
-    TFun(params, _, _) => len(params),
-    _ => 0,
-  },
-  Live(_) => 0,
-}
-
 fn built_type(binding) = match binding {
   Frozen(_, ty) => result_type_name(ty),
   Live(_) => None,
@@ -353,7 +363,7 @@ fn render_space(s) = match s {
   SCon(h, args) => match h {
     HVariant(v) => if len(args) == 0 { variant_name(v) } else { "{variant_name(v)}({render_spaces(args)})" },
     HTuple(_) => "({render_spaces(args)})",
-    HRecord(names) => "\{{zip(names, args) |> map(render_field_space) |> join(", ")}\}",
+    HRecord(names) => "\{{render_field_spaces(zip(names, args))}\}",
     HNil => "[]",
     HCons => "[{render_list(s)}]",
     HBool(b) => if b { "true" } else { "false" },
@@ -362,6 +372,8 @@ fn render_space(s) = match s {
 }
 
 fn render_spaces(args) = args |> map(render_space) |> join(", ")
+
+fn render_field_spaces(pairs) = pairs |> map(render_field_space) |> join(", ")
 
 fn render_field_space(pair) = match pair {
   (name, s) => "{name}: {render_space(s)}",

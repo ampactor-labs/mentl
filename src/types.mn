@@ -875,6 +875,13 @@ type ExecutableBoundary
   // $call_<h>). Judged, trailed, read by lower's fold — the last
   // lower-time mint dies here.
   | InterpBoundary([Int])
+  // A named-field pattern's cells, one per declared field in declaration
+  // order: a field the pattern names is its sub-pattern's own cell, one it
+  // does not is a cell the judge mints at the field's instantiated type.
+  // The payload's offsets read every field's width, the unread ones too, and
+  // this is where they are — lower reads them rather than rebuilding a
+  // field's type from the constructor's name.
+  | ConFieldsBoundary([Int])
 
 // The bind-home column cell (Hβ.lower.lowering-is-a-column, marched
 // step i): lower's ls_resolve decision at a VarRef use site, written
@@ -1689,8 +1696,10 @@ type Stmt
   = LetStmt(Node, Node, Node)
   | FnStmt(String, [TParam], Node, [(EffName, Bool, EConn)], Node)
   // name, params (TParam), retty, effects, body
-  | TypeDefStmt(String, [(String, [Ty], Node)])
-  // name, then per variant its name + field types
+  | TypeDefStmt(String, [(String, [TParam], Node)])
+  // name, then per variant its name and its fields — a constructor IS a
+  // function, so its fields are the parameter list its scheme carries: named
+  // when authored so (`Holds(level: Level)`), else named by position (`_0`)
   | EffectDeclStmt(String, [TParam], [(String, [Ty], Ty, Node)])
   // effect name, instance params, ops (each op is (op_name, param_tys,
   // ret_ty, comment-carrier); ResumeDiscipline is inferred at
@@ -1746,6 +1755,10 @@ type Pat
   | PWild
   | PLit(LitValue)
   | PCon(String, [Node])
+  // `Holds{level}` / `Op{discipline: MultiShot}` — a constructor's fields
+  // read by NAME, only the ones the arm names; the constructor's own
+  // parameter list says where each one sits
+  | PConFields(String, [(String, Node)])
   | PTuple([Node])
   // prefix pats, optional rest name (`...rest`)
   | PList([Node], Option(String))
@@ -1786,6 +1799,7 @@ fn pat_binders(node) = match pat_of(node) {
   PWild => [],
   PLit(_) => [],
   PCon(_, subs) => flat_map(pat_binders, subs),
+  PConFields(_, flds) => flat_map({ (_, sub) => pat_binders(sub) }, flds),
   PTuple(subs) => flat_map(pat_binders, subs),
   PList(subs, rest) => flat_map(pat_binders, subs) ++ rest_binders(rest),
   PRecord(flds, rest) => flat_map({ (_, sub) => pat_binders(sub) }, flds) ++ rest_binders(rest),
@@ -3586,6 +3600,17 @@ fn callee_params(name) with EnvRead + GraphRead + Memory + Alloc = match env_loo
     },
   },
   None => [],
+}
+
+// The kind an env entry carries — what the name was declared as (a
+// constructor with its tag, a nominal record, a function, …). `None` when the
+// name is not bound; the reference that failed has already been reported
+// where it was judged. Lower and coverage read a constructor through this.
+fn env_kind_of(name) = match env_lookup(name) {
+  None => None,
+  Some(entry) => match entry {
+    (_, _, kind) => Some(kind),
+  },
 }
 
 // Resolve a call's arg list (carrying optional LabeledArg wrappers) to the

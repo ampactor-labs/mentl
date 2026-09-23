@@ -478,6 +478,9 @@ fn render_pat_shape(p) with Memory + Alloc = match p {
   PVar(name) => name,
   PWild => "_",
   PCon(name, ps) => if len(ps) == 0 { name } else { "{name}({render_pat_list(ps, ", ")})" },
+  PConFields(name, flds) => // The fields it reads, by name, punned where the binder is the field's
+  // own name — the record pattern's render, headed by its constructor.
+  "{name}\{{render_pat_fields(flds, 0)}\}",
   PLit(lv) => render_lit_value(lv),
   PTuple(ps) => "({render_pat_list(ps, ", ")})",
   PList(ps, rest) => "[{render_plist_inner(ps, rest)}]",
@@ -903,8 +906,8 @@ fn render_variants(name, variants) with GraphRead + Memory + Alloc + !Mutate + I
 // The record type a single same-named variant carries; None for every
 // other variant set.
 fn nominal_record_of(name: String, variants) with Memory + Alloc = match variants {
-  [(vname, [body], _)] => match body {
-    TRecord(_) => if vname == name { Some(body) } else { None },
+  [(vname, [field], _)] => match param_ty(field) {
+    TRecord(fs) => if vname == name { Some(TRecord(fs)) } else { None },
     _ => None,
   },
   _ => None,
@@ -922,19 +925,33 @@ fn render_variants_inline(ref variants, i) with GraphRead + Memory + Alloc + !Mu
   ""
 } else {
   match variants[i] {
-    (vname, tys, _) => {
-      let one = if len(tys) == 0 { vname } else { "{vname}({render_ty_list(tys, 0)})" }
+    (vname, fields, _) => {
+      let one = render_variant(vname, fields)
       if i == len(variants) - 1 { one } else { "{one} | {render_variants_inline(variants, i + 1)}" }
     },
   }
+}
+
+// A variant as its constructor's parameter list: a named field as `name: T`,
+// a positional one as its type alone, since its name is only its position.
+fn render_variant(vname, fields) with GraphRead + Memory + Alloc + !Mutate + Intern =
+  if len(fields) == 0 { vname } else { "{vname}({render_variant_fields(fields)})" }
+
+fn render_variant_fields(fields) with GraphRead + Memory + Alloc + !Mutate + Intern =
+  fields |> map(render_variant_field) |> join(", ")
+
+fn render_variant_field(p) with GraphRead + Memory + Alloc + !Mutate + Intern = if is_position_name(param_name(p)) {
+  render_type_tokens(param_ty(p))
+} else {
+  "{param_name(p)}: {render_type_tokens(param_ty(p))}"
 }
 
 fn render_variants_vertical(ref variants, i) with GraphRead + Memory + Alloc + !Mutate + Intern = if i >= len(variants) {
   ""
 } else {
   match variants[i] {
-    (vname, tys, cn) => {
-      let one = if len(tys) == 0 { vname } else { "{vname}({render_ty_list(tys, 0)})" }
+    (vname, fields, cn) => {
+      let one = render_variant(vname, fields)
       let lead = if i == 0 { "=" } else { "|" }
       let tail = if i == len(variants) - 1 { "" } else { "\n{render_variants_vertical(variants, i + 1)}" }
       "{render_stmt_comment(cn)}{lead} {one}{tail}"

@@ -3608,6 +3608,42 @@ with a TVar element and reads at the wrong stride. This is that class at
 the RECORD, and the census law asks for the pass covering both instances
 rather than a per-site pin. A fix lands with both repros as fixtures,
 never before.
+▶ THE SUM FACE, measured 2026-09-23 and named
+`Hβ.value.generic-payload-read-at-word-width`: a constructor field whose
+type is a type parameter, instantiated at Float, is read by a pattern inside
+a polymorphic fn as though it were one word, so the fields after it come
+from the Float's bytes (`tests/frontier/mn-generic-payload-wide-read.mn`,
+declared RED: 0 through `run`, the high word through `test`, no
+diagnostic). Construction is right, a read in `main` is right, and a read
+through a generic CONSTRUCTOR fn is right; only the polymorphic READER is
+wrong — and 5.1's twins are repr-keyed, where a Float field is exactly the
+repr that should key one, so the finding is that the reader is not twinned
+at the instantiation that reaches it, not that twinning cannot see it. It is
+older than the pattern-node landing (the boot before it answers 0 too), so
+the fix is not in reading sub-pattern cells; it belongs with the two faces
+above, one pass.
+
+`Hβ.lower.pipe-completion-carries-the-stage-handle` — OPEN, measured
+2026-09-23 (`tests/frontier/mn-pipe-in-splice-show.mn`, declared RED). A
+hole-completing pipe (`xs |> join(sep())`) lowers to the call it completes,
+and the LowExpr keeps that call's handle (`LDirectCall(dh, …)`,
+`LCall(ch, …)`, `LMakeVariant(vh, …)` in `lower_pipe_complete`), whose node is
+the PARTIAL application — a function. Every reader that takes a value's type
+from `lexpr_handle` therefore reads a function where the pipe's own node has
+judged the result: the splice show prints an address (`Sample(99972)` in a
+formatter render was the first sighting; the wheel's own renderers were
+rewritten around it). A Float result through the same pipe measured right, so
+the width path does not read this handle for its result — the show, hash and
+fold-type collectors do (`show_hash_ty`, `fold_acc_show`, the spec demand
+scan). TWO FORMS, and the root is the first: (1) the completed call carries
+the PIPE node's handle, which is what it computes — blocked on knowing every
+fact keyed on the call node's handle (continuation boundaries and resume
+bindings for a perform reached through a pipe), each of which then has to be
+read from the call node explicitly; (2) the show carries its operand NODE's
+handle and the five readers take the type from it. (2) is sound and local;
+(1) retires a whole class of second-hand type reads. Measure the keyed facts
+before choosing, and census the wheel's own pipe-in-splice sites either way —
+each is a silent wrong in a rendered string today.
 ▶ SEVERITY: face one is the silent-wrong class the docs rank worst — a
 declared surface answering the wrong value with the whole board green.
 The wheel never destructures a record parameter by pattern, which is why

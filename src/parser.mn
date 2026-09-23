@@ -1066,7 +1066,7 @@ fn parse_type_decl(ref tokens, pos) = {
         // A nominal record is closed by definition — its name IS the brand,
         // so an open rest is meaningless here; the closed TRecord is the body.
         let body = TRecord(sorted)
-        let variant = (name, [body], mint_node(NTypeAnn(body), start))
+        let variant = (name, [mk_param("_0", body)], mint_node(NTypeAnn(body), start))
         (TypeDefStmt(name, [variant]), p3)
       },
     }
@@ -1086,6 +1086,10 @@ fn parse_type_decl(ref tokens, pos) = {
       // named-row grammar from its first token.
       match parse_effect_list(tokens, p2) {
         (effs, p3) => (RowAliasStmt(name, effs), p3),
+      }
+    } else if at_named_variant(tokens, p2) {
+      match parse_variants(tokens, p2) {
+        (variants, p3) => (TypeDefStmt(name, variants), p3),
       }
     } else {
       match parse_type_ty(tokens, p2) {
@@ -1111,7 +1115,7 @@ fn parse_type_decl(ref tokens, pos) = {
             } else {
               match alias_ty {
                 TName(vname, fields) => if len(fields) > 0 {
-                  (TypeDefStmt(name, [(vname, fields, mint_node(NTypeAnn(TTuple(fields)), start))]), p_alias)
+                  (TypeDefStmt(name, [(vname, positional_fields(fields), mint_node(NTypeAnn(TTuple(fields)), start))]), p_alias)
                 } else {
                   (AliasStmt(name, alias_ty), p_alias)
                 },
@@ -1186,12 +1190,13 @@ fn parse_variants(ref tokens, pos) = {
     let vname = ident_at(tokens, p)
     let p2 = p + 1
     match if at(tokens, p2, TLParen) {
-      parse_variant_fields(tokens, skip_ws(tokens, p2 + 1))
+      parse_variant_fields(tokens, skip_ws(tokens, p2 + 1), 0)
     } else {
       ([], p2)
     } {
       (fields, p3) => {
-        let cnode = mint_node(NTypeAnn(TTuple(fields)), vspan)
+        variant_fields_one_form(fields, vspan)
+        let cnode = mint_node(NTypeAnn(TTuple(map(param_ty, fields))), vspan)
         let variant = (vname, fields, cnode)
         let p4 = skip_ws(tokens, p3)
         if at(tokens, p4, TPipe) {
@@ -1206,24 +1211,81 @@ fn parse_variants(ref tokens, pos) = {
   }
 }
 
-fn parse_variant_fields(ref tokens, pos) = {
+// A variant's fields are its constructor's parameter list (SYNTAX §«Named
+// fields»): `level: Level` is a named field, a bare type is a positional one
+// named by its position, exactly the names the constructor's scheme carries.
+fn parse_variant_fields(ref tokens, pos, i) = {
   let p = skip_ws(tokens, pos)
   if at(tokens, p, TRParen) {
     ([], p + 1)
   } else {
-    match parse_type_ty(tokens, p) {
-      (ty, p2) => {
+    match parse_variant_field(tokens, p, i) {
+      (field, p2) => {
         let p3 = skip_ws(tokens, p2)
         if at(tokens, p3, TComma) {
-          match parse_variant_fields(tokens, skip_ws(tokens, p3 + 1)) {
-            (rest, p4) => ([ty] ++ rest, p4),
+          match parse_variant_fields(tokens, skip_ws(tokens, p3 + 1), i + 1) {
+            (rest, p4) => ([field] ++ rest, p4),
           }
         } else {
-          ([ty], expect(tokens, p3, TRParen))
+          ([field], expect(tokens, p3, TRParen))
         }
       },
     }
   }
+}
+
+fn parse_variant_field(tokens, p, i) = if at_named_field(tokens, p) {
+  match parse_type_ty(tokens, skip_ws(tokens, skip_ws(tokens, p + 1) + 1)) {
+    (ty, p2) => (mk_param(ident_at(tokens, p), ty), p2),
+  }
+} else {
+  match parse_type_ty(tokens, p) {
+    (ty, p2) => (mk_param("_{int_to_str(i)}", ty), p2),
+  }
+}
+
+// `name :` opens a named field; a type never has a colon after its head.
+fn at_named_field(tokens, p) = match kind_at(tokens, p) {
+  TIdent(_) => at(tokens, skip_ws(tokens, p + 1), TColon),
+  _ => false,
+}
+
+// A positional field's name is its position, so a variant mixing the two
+// forms names some fields by what they mean and the rest by where they sit.
+fn variant_fields_one_form(fields, span: ValidSpan) = {
+  let named = fields |> filter({ f => !is_position_name(param_name(f)) }) |> len
+  if named == 0 || named == len(fields) {
+    ()
+  } else {
+    report(PUnexpectedToken("a variant's fields are all named or all positional", span))
+  }
+}
+
+fn is_position_name(name: String) = starts_with(name, "_")
+
+// A named-field pattern reads only the fields it names, so every other field
+// is already the rest; `...` says that again and binds nothing, and a named
+// rest would bind a value no constructor field holds.
+fn con_fields_rest(rest, span: ValidSpan) = match rest {
+  None => (),
+  Some(name) => if name == "_" {
+    ()
+  } else {
+    report(PUnexpectedToken(
+      "a constructor's fields have no rest to bind — name the fields the arm reads",
+      span
+    ))
+  },
+}
+
+// A type application read as a constructor's fields: each named by position.
+fn positional_fields(tys) = map({ (i, ty) => mk_param("_{int_to_str(i)}", ty) }, enumerate(tys))
+
+// `Name(field: …` — a single variant whose fields are named, which the type
+// grammar cannot read (a type's head is never followed by a colon).
+fn at_named_variant(tokens, p) = match kind_at(tokens, p) {
+  TIdent(_) => at(tokens, p + 1, TLParen) && at_named_field(tokens, skip_ws(tokens, p + 2)),
+  _ => false,
 }
 
 // Parse `effect X { op(args) -> ret }`. Resume discipline is
@@ -2117,6 +2179,7 @@ fn expr_to_pat(e) = match e {
 fn expr_body_to_pat(eb) = match eb {
   NExpr(VarRef(nm)) => if nm == "_" { PWild } else { PVar(nm) },
   NExpr(MakeRecordExpr(flds)) => PRecord(sort_pat_fields(record_fields_to_pat(flds)), None),
+  NExpr(NamedRecordExpr(name, flds)) => PConFields(name, record_fields_to_pat(flds)),
   NExpr(MakeTupleExpr(elems)) => PTuple(map(expr_to_pat, elems)),
   NExpr(MakeListExpr(elems)) => // a trailing RestExpr (the cover-grammar rest the list parser
   // minted for `([h, ...t]) =>`) becomes PList's rest — consumed
@@ -2438,7 +2501,8 @@ fn pat_prefix_end(tokens, pos) = {
 fn pat_atom_end(tokens, pos) = match kind_at(tokens, pos) {
   TIdent(_) => {
     let p1 = skip_ws(tokens, pos + 1)
-    if at(tokens, p1, TLParen) { skip_group(tokens, p1, 0) } else { pos + 1 }
+    // an applied ident, positionally `Some(v)` or by field `Holds{level}`
+    if at(tokens, p1, TLParen) || at(tokens, p1, TLBrace) { skip_group(tokens, p1, 0) } else { pos + 1 }
   },
   TIntLit(_) => pos + 1,
   TFloatLit(_) => pos + 1,
@@ -2837,6 +2901,7 @@ fn is_destructure_pat(pat) = match pat_of(pat) {
   PLit(_) => false,
   PTuple(_) => true,
   PCon(_, _) => true,
+  PConFields(_, _) => true,
   PList(_, _) => true,
   PRecord(_, _) => true,
   PAs(_, inner) => is_destructure_pat(inner),
@@ -3142,6 +3207,15 @@ fn parse_pat_body(ref tokens, pos) = match kind_at(tokens, pos) {
       if at(tokens, p2, TLParen) {
         match parse_pat_args(tokens, skip_ws(tokens, p2 + 1)) {
           (sub, p3) => (PCon(v, sub), p3),
+        }
+      } else if at(tokens, p2, TLBrace) {
+        // The fields read by name (SYNTAX §«Named fields») — the record
+        // pattern's own grammar, since a named product IS what it reads.
+        match parse_pat_record_fields(tokens, skip_ws(tokens, p2 + 1)) {
+          (flds, rest, p3) => {
+            con_fields_rest(rest, span_at(tokens, p2))
+            (PConFields(v, flds), p3)
+          },
         }
       } else {
         (PCon(v, []), p2)

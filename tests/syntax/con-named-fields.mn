@@ -1,0 +1,30 @@
+// expect: 42
+// SYNTAX §«Named fields»: a constructor's fields are its parameter list, so a
+// variant declares them by name, a call constructs them positionally or by
+// label, and a pattern reads only the fields it names. The unread fields are
+// the test: `level` and Held's value are Floats, wider than a word, and each
+// sits BEFORE the field the pattern reads, so a pattern that placed `count`
+// (or Held's tag) from the word floor would read the Float's bytes. Every
+// value read is nonzero, so no half of a Float can pass for it by accident.
+// 39 + 1 + 1 + 1 = 42.
+type Reading = Sample(level: Float, count: Int) | Silent
+
+type Held = Held(value: Float, tag: Int)
+
+fn count_of(r) = match r {
+  Sample{count} => count,
+  Silent => 0,
+}
+
+fn loud(r) = match r {
+  Sample{level: 1.5} => 1,
+  _ => 0,
+}
+
+fn tag_of(h) = {
+  let Held{tag} = h
+  tag
+}
+
+fn main() =
+  count_of(Sample(level = 2.5, count = 39)) + count_of(Sample(1.5, 1)) + loud(Sample(1.5, 0)) + tag_of(Held(value = 9.5, tag = 1))

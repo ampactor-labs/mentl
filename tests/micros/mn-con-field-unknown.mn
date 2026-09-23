@@ -1,0 +1,11 @@
+// expect: refuse E_UnknownArgLabel
+// A named pattern may only name fields the constructor declares — the same
+// label error a call makes with a name its callee does not have.
+type Reading = Sample(level: Int, count: Int) | Silent
+
+fn misread(r) = match r {
+  Sample{volume} => volume,
+  Silent => 0,
+}
+
+fn main() = misread(Silent)

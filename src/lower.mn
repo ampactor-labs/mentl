@@ -649,17 +649,6 @@ fn row_is_effectless(row) = match row {
   },
 }
 
-// Read the construction-origin metadata an env entry carries.
-// `None` when the name isn't bound (a missing-var diagnostic has
-// already fired at infer time; lower's path falls through to the
-// default `LGlobal`/`LCall` shape).
-fn env_kind_of(name) = match env_lookup(name) {
-  None => None,
-  Some(entry) => match entry {
-    (_, _, kind) => Some(kind),
-  },
-}
-
 // Default-fill, labeled-arg reorder, and label resolution are now ONE read —
 // resolve_call_args (types.mn), called by both infer and lower so they see the
 // identical positional product order. The former lower-only trailing-default
@@ -2919,6 +2908,10 @@ fn fanout_boundaries(handle) = match graph_boundary_at(handle) {
     report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
     Err(WrongFanoutBoundaryKind)
   },
+  ConFieldsBoundary(_) => {
+    report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
+    Err(WrongFanoutBoundaryKind)
+  },
   NoBoundary => {
     report_at(handle, EUnresolvedType(handle, graph_epoch(), parse_span_of(handle)))
     Err(MissingFanoutBoundary)
@@ -3568,6 +3561,7 @@ fn bind_pat_locals(node) = match node {
       bind_pat_locals(inner)
     },
     PCon(_, subs) => each(bind_pat_locals, subs),
+    PConFields(_, flds) => each({ (_, sub) => bind_pat_locals(sub) }, flds),
     PTuple(subs) => each(bind_pat_locals, subs),
     PList(subs, rest) => {
       each(bind_pat_locals, subs)
@@ -3732,6 +3726,18 @@ fn lower_pat(node, srep) = match node {
       // the emit treats the arm as one that never matches.
       LPUnresolvedCon(name, map(lower_sub_pat, subs)),
     },
+    PConFields(name, flds) => match env_kind_of(name) {
+      Some(ConstructorScheme(t, _)) => // Each named field lowers at the position the constructor's own
+      // parameters give it; a field the arm does not name matches anything.
+      LPCon(name, t, map(lower_field_cell(flds), con_field_cells(h))),
+      Some(RecordSchemeKind(_)) => // A nominal record read by field IS the record pattern it spells, and
+      // its receiver's full field set is on the pattern node's own cell.
+      match record_pat_full_fields(lookup_ty(h)) {
+        Some(full_names) => LPRecord(lower_pat_record_fields_full(flds, full_names), None),
+        None => LPRecord(lower_pat_record_fields(flds, 0), None),
+      },
+      _ => LPUnresolvedCon(name, map({ (_, sub) => lower_sub_pat(sub) }, flds)),
+    },
     PTuple(subs) => LPTuple(map(lower_pat_with_ty, subs)),
     PList(subs, rest) => LPList(map(lower_sub_pat, subs), rest, srep),
     PRecord(flds, rest) => // The receiver resolves the FULL sorted field set (structural or
@@ -3749,6 +3755,30 @@ fn lower_pat(node, srep) = match node {
 }
 
 fn lower_sub_pat(node) = lower_pat(node, SRUnknown)
+
+// The cells the judge left on a named-field pattern, one per declared field
+// in order (ConFieldsBoundary). No other boundary carries field cells; a
+// pattern without them was refused where infer judged it.
+fn con_field_cells(h) = match graph_boundary_at(h) {
+  ConFieldsBoundary(cells) => cells,
+  NoBoundary => [],
+  FanoutBoundary(_) => [],
+  PendingContinuationBoundary(_, _, _, _) => [],
+  ContinuationBoundary(_) => [],
+  InterpBoundary(_) => [],
+}
+
+// A declared field at its cell: the sub-pattern that owns the cell, or a
+// wildcard of the cell's judged type — its width is what places the fields
+// after it.
+fn lower_field_cell(flds, c) = match find(field_owns_cell(c), flds) {
+  Some((_, sub)) => lower_pat_with_ty(sub),
+  None => (chase_deep(lookup_ty(c)), LPWild),
+}
+
+fn field_owns_cell(c, fld) = match fld {
+  (_, sub) => node_handle(sub) == c,
+}
 
 fn lower_pat_with_ty(node) = (pat_value_ty(node), lower_sub_pat(node))
 
@@ -4565,6 +4595,10 @@ fn continuation_boundary_at(site_h) = match graph_boundary_at(site_h) {
     Err(WrongContinuationBoundaryKind)
   },
   InterpBoundary(_) => {
+    report_at(site_h, EUnresolvedType(site_h, graph_epoch(), parse_span_of(site_h)))
+    Err(WrongContinuationBoundaryKind)
+  },
+  ConFieldsBoundary(_) => {
     report_at(site_h, EUnresolvedType(site_h, graph_epoch(), parse_span_of(site_h)))
     Err(WrongContinuationBoundaryKind)
   },

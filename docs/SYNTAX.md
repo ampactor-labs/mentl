@@ -958,6 +958,50 @@ parameter set (`None : Option(a)` too). Types APPLY with parens,
 the one application syntax at every level: values `f(x)`, effects
 `Sample(44100)`, types `Option(Int)` / `Tree(a)`.
 
+### Named fields — a constructor's parameter list
+
+A constructor IS a function, so its fields are a parameter list, and a field
+may carry the name a parameter does:
+
+```
+type SchemeKind
+  = FnScheme
+  | EffectOpScheme(effect: String, providers: [Int], discipline: ResumeDiscipline)
+  | ConstructorScheme(Int, Int)          // positional: a small wrapper, a genuine tuple
+```
+
+A variant's fields are all named or all positional, never mixed. A positional
+field's name is its position (`_0`, `_1`, …), which is what `mentl <addr>`
+shows at the constructor, and `EffectOpScheme(_0: String)` is the positional
+form written the long way, so `mentl fmt` renders it positionally.
+
+**Construct** as any function is called — positionally, or by name
+(§«Labeled call arguments»), which is the same product constructed by
+identity; there is no second construction form:
+
+```
+EffectOpScheme(effect = e, providers = [], discipline = OneShot)
+EffectOpScheme(e, [], OneShot)
+```
+
+**Match** with braces, naming only the fields the arm reads — the rest are
+not bound and not written:
+
+```
+match kind {
+  EffectOpScheme{effect} => effect,              // punned: binds `effect`
+  EffectOpScheme{discipline: MultiShot} => "ms", // a nested pattern on one field
+  FnScheme => "fn",
+  _ => "other",
+}
+```
+
+The braces are what make a named pattern unambiguous: `EffectOpScheme(e)` is
+the POSITIONAL pattern (its first field bound to `e`), so a punned name needs a
+form of its own, and the one a named product already uses is the record's.
+A positional pattern on a named variant stays legal; `mentl fmt` writes it by
+name. An unknown field is `E_UnknownArgLabel`, as it is at a call.
+
 ### Constructor calls (value construction)
 
 ```
@@ -1484,6 +1528,7 @@ Patterns appear in `let`, `match`, function parameters, and lambda parameters.
 | `PWild`             | `_`                               | binds nothing      |
 | `PLit`              | `42`, `"hello"`, `true`, `()`     | matches literal    |
 | `PCon`              | `Some(v)`, `Branch(l, x, r)`      | binds inner pats   |
+| `PConFields`        | `Holds{level}`, `Op{discipline: MultiShot}` | named fields of a constructor, each field it names |
 | `PTuple`            | `(a, b, c)`                       | positional binds   |
 | `PList(prefix, rest)` | `[a, b, c]`, `[head, ...rest]`, `[_, ..._]` | positional prefix + optional rest |
 | `PRecord`           | `{name, age}`, `{name: n, ...r}`  | field punning + rest |

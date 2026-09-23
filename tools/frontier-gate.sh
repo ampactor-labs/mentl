@@ -3304,6 +3304,16 @@ for i in "${!compilers[@]}"; do
   # diagnostic (measured 2026-09-23). Declared RED by name until the site
   # reads the init as it reads the depth (Hβ.dataflow.state-element-is-read-whole).
   run_program "$compiler" accumulate-init "$ROOT/tests/frontier/mn-accumulate-init.mn" 7 yes "$dir"
+  # A wide instantiation of a generic constructor field, read by a pattern in
+  # a polymorphic fn, places the fields after it at word width — the value
+  # read is the Float's other half (measured 2026-09-23, pre-existing).
+  # Declared RED by name (Hβ.value.generic-payload-read-at-word-width).
+  run_program "$compiler" generic-payload-wide-read "$ROOT/tests/frontier/mn-generic-payload-wide-read.mn" 7 yes "$dir"
+  # A pipe completed inside a string splice shows its callee's partial
+  # application instead of its value — an address printed where "(a, b)"
+  # belongs (measured 2026-09-23, pre-existing). Declared RED by name
+  # (Hβ.lower.pipe-completion-carries-the-stage-handle).
+  run_program "$compiler" pipe-in-splice-show "$ROOT/tests/frontier/mn-pipe-in-splice-show.mn" 6 yes "$dir"
 
   # ─── THE EIGHT ARMS, SAYABLE TOGETHER (PLAN §2) ─────────────────────
   # One authoring site per kernel arm in one module: a refinement alias,
