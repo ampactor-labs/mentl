@@ -3668,6 +3668,35 @@ handle and the five readers take the type from it. (2) is sound and local;
 (1) retires a whole class of second-hand type reads. Measure the keyed facts
 before choosing, and census the wheel's own pipe-in-splice sites either way —
 each is a silent wrong in a rendered string today.
+
+`Hβ.infer.record-update-snapshots-the-base` — OPEN, measured 2026-09-23. The
+repro is HELD BACK and lands with the fix, because the frontier's run legs
+declare wrong ANSWERS and this defect refuses to compile a valid program (an
+over-refusal, which no declared-red leg may license):
+`fn recharge(c) = {...c, charged: 40}` then
+`recharge({born: 1, charged: 2, full: 3})` read back as
+`d.born + d.charged + d.full` must answer 44. `{...c, n: v}`
+types its result from `record_fields_of_node(base)` — the base's fields as
+they stand WHERE THE UPDATE IS JUDGED — merged with the overrides, then binds
+it CLOSED. For a literal base the snapshot is complete and the update judges
+right; for a parameter base it is empty, so `fn recharge(c) = {...c, charged:
+40}` is typed `{charged: Int}` and every other field read back is a type
+mismatch and a trap floor. Loud, never silent — but it is the Carried-Truth
+Law in the type layer: a copy of a cell that was still growing. Found while
+writing the rows arc's `{...cell, charged: x}` rewrite, one layer under a
+parser defect closed the same day (a fn body opening `{...` was parsed as a
+block, because the body slot kept its own copy of the brace discrimination).
+THE FORM: the update is an EXTENSION of the base's own row with SCOPED LABELS
+(Leijen, "Extensible records with scoped labels", TFP 2005) — the result is
+`{overrides | ρ}` where the base is `{| ρ}`, a duplicate label shadows the one
+beneath it, and field access reads the first. No lacks constraint, no
+snapshot: the base's fields ride the row variable and arrive whenever they
+are known, and an override of an existing field simply sits above it. The
+field-offset reader then resolves through the same row the record's own
+reads do. A NOMINAL base (`c: RowCell`) wants the update to keep its brand
+when every override names a declared field at its declared type — the
+nominal record's fields are known at its declaration, so that case is a
+field-wise unify against `RecordSchemeKind`, not a row question.
 ▶ SEVERITY: face one is the silent-wrong class the docs rank worst — a
 declared surface answering the wrong value with the whole board green.
 The wheel never destructures a record parameter by pattern, which is why

@@ -35,6 +35,28 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-23 · pin 9d93607113d4cfbe (CLEAN m2 == m3, census 0, frontier
+  407/0/12, crown green) · A BRACE HAS ONE DISCRIMINATION. Writing the rows
+  arc's two example rewrites (Part E of the named-fields plan) against the
+  real parser found that a function body's `{` did not pass through
+  `parse_brace_expr`: the body slot kept a second copy of the discrimination,
+  knowing arm lists and blocks and nothing else, so `fn bump(c) = {...c, n:
+  1}` parsed its spread as a block's statements — while the same update in a
+  `let` answered right (44). The body slot now asks the one discrimination
+  and keeps the redundant-brace report beside it; `parse_block_expr_checked`
+  is deleted. The fix opened the next layer, measured and banked rather than
+  built: the update's type is merged from `record_fields_of_node(base)`, a
+  snapshot of the base where the update is judged, so an open base types the
+  result as a closed record of its overrides alone — loud (type mismatch and
+  trap floors), and the Carried-Truth Law in the type layer. Its design is
+  scoped labels (Leijen 2005) and it belongs to the rows arc
+  (`Hβ.infer.record-update-snapshots-the-base`). KILL: the repro was first
+  wired as a declared-red frontier leg and the frontier refused it — a
+  declared-red leg is a claim about a program's ANSWER and never licenses a
+  compile refusal — so it is held back in the peer's entry and lands with
+  its fix. That cost one extra march to regenerate the pin's board block
+  honestly rather than hand-edit a RED one.
+
 - 2026-09-23 · pin c39f79c5e646a653 (CLEAN m2 == m3, census 0, frontier
   407/0/12, crown green) · THE WHEEL NAMES ITS FIELDS, AND THE MEDIUM
   REWRITES ITS OWN SOURCE TO READ THEM. Step 2 of named fields. The first

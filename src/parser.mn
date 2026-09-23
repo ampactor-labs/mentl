@@ -3104,12 +3104,11 @@ fn parse_body(ref tokens, pos) = {
     // context diagnostics parse_block_expr_checked emits. Converges
     // the brace path to the seed's "route through parse_expr ALWAYS".
     //
-    // The arm-list literal is consulted FIRST, and the reason is that
-    // `pat_prefix_end` has to have ONE home: a body slot is the only
-    // place a brace opens an expression without passing through
-    // `parse_brace_expr`, and leaving it out here would have priced the
-    // literal a pair of parens at every fn body — ceremony the page
-    // pays for a discrimination the parser already knows how to make.
+    // The brace goes through `parse_brace_expr`, the ONE discrimination of
+    // what a `{` opens — arm list, record literal, record update, block. The
+    // body slot carried a second copy that knew only arm lists and blocks,
+    // so `fn bump(c) = {...c, n: 1}` parsed its spread as a block's
+    // statements and refused a form SYNTAX declares (§«Record update»).
     // The result still feeds binop_loop, so `{ arms } ~> h` absorbs its
     // chain exactly as a block body does.
     //
@@ -3120,14 +3119,15 @@ fn parse_body(ref tokens, pos) = {
     // loop and a call suffix is postfix — so the application was parsed
     // and discarded. Measured on a block body, which is how far it
     // predates the literal; the literal is what made anyone look.
-    let p_in = skip_ws(tokens, p + 1)
-    match if at(tokens, pat_prefix_end(tokens, p_in), TFatArrow) {
-      parse_arm_list(tokens, p_in, span_at(tokens, p))
-    } else {
-      parse_block_expr_checked(tokens, p + 1, span_at(tokens, p))
-    } {
-      (braced, p_braced) => match postfix_loop(tokens, braced, p_braced, FreeExpr) {
-        (applied, p_applied) => binop_loop(tokens, applied, p_applied, 1, FreeExpr),
+    match parse_brace_expr(tokens, p + 1, span_at(tokens, p)) {
+      (braced, p_braced) => {
+        // Braces around a body with no statements are the redundant form
+        // (SYNTAX §«Redundant braces») — keyed on the block's shape, never
+        // on its line count.
+        if is_empty_block(braced) { report(ERedundantBraces(span_of_node(braced))) } else { () }
+        match postfix_loop(tokens, braced, p_braced, FreeExpr) {
+          (applied, p_applied) => binop_loop(tokens, applied, p_applied, 1, FreeExpr),
+        }
       },
     }
   } else {
@@ -3140,17 +3140,6 @@ fn parse_body(ref tokens, pos) = {
     // is the recovery diagnostic there — peer Hβ.parser.block-needs-braces.)
     parse_expr(tokens, p)
   }
-}
-
-// Wrapper around parse_block_expr that emits E_RedundantBraces when braces wrap
-// a non-BlockExpr body (no statements) — keyed on BlockExpr-SHAPE, NEVER on line
-// count (SYNTAX.md «Redundant braces»: the trigger is "braces enclose a body
-// that introduces no let-bindings/statements", regardless of line count).
-fn parse_block_expr_checked(ref tokens, pos, start_span) = match parse_block_expr(tokens, pos, start_span) {
-  (block_node, p_end) => {
-    if is_empty_block(block_node) { report(ERedundantBraces(span_of_node(block_node))) } else { () }
-    (block_node, p_end)
-  },
 }
 
 // "Is this Node an empty BlockExpr (a `{ final_expr }` with no statements)?"
