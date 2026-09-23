@@ -519,6 +519,8 @@ fn ty_of_kind(handle, kind) with Memory + Alloc = match kind {
   NRowBound(_) => TVar(handle),
   NRecordRowBound(_, _) => TVar(handle),
   NRowFree(_) => TVar(handle),
+  NMaybeFree(_) => TVar(handle),
+  NAbsent => TVar(handle),
   NErrorHole(_) => TVar(handle),
 }
 

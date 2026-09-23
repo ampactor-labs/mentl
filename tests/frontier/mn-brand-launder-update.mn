@@ -1,0 +1,10 @@
+// The same brand through a generic UPDATE: `touch` returns Q's remainder with
+// `a` written over it, which is a Q-shaped record closed by Q, never a P.
+type P = {a: Int, b: Int}
+type Q = {a: Int, b: Int}
+
+fn f(p: P) = p.a
+
+fn touch(r) = {...r, a: 5}
+
+fn main() = f(touch(Q{a: 1, b: 2}))

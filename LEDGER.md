@@ -35,6 +35,49 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-23 · pin 99a250ff7e179639 (TRANSITION m3 == m4, census 0,
+  frontier 415/0/10, crown 108/0/50, board green) · A RECORD IS A ROW, READ
+  TO ITS END. The record update was typed from a snapshot of its base, and
+  measuring it found the whole record sort carried the same shape. Four
+  moves, one landing. (1) THE UPDATE IS RÉMY'S EXTENSION: each override
+  mints a presence cell (`NMaybeFree`, resolving to a type or to `NAbsent`),
+  the base meets `{f: θ | ρ}` and the result is `{f: T | ρ}` over the same
+  ρ, so overwrite and add are one rule and the base's fields arrive
+  whenever they are proven. (2) ONE ROW UNIFIER for every record meet: read
+  both rows to their ends, unify the shared fields, hand a one-sided field
+  to an open end or require it absent against a closed one, and meet two
+  open ends at one fresh var. `unify_two_open_records`,
+  `absorb_into_residual`, `unify_record_open_against_closed`,
+  `unify_record_fields_closed` and `RowAssumed` are deleted — the assumed
+  union was the open-rows-through-lambdas wrong slot. (3) A CLOSED
+  REMAINDER REMEMBERS ITS CLOSER (`RowClosed(ByShape | ByName)`), which is
+  what makes the nominal case the same rule and closes a brand hole found
+  on the way: a rest binding of a `Q` checked clean as a `P`. (4) LAYOUT IS
+  READ AT EMIT: the update's stores (`LRecordUpdate`), a record pattern's
+  offsets and widths and its rest's residual (`LPRecord(h, fields, rest)`)
+  all read `record_layout_of` under the twin that closed the row; lowering
+  a generic body once had baked the open row's guess, word-only, as
+  `4 × index`. Beside them: instantiation mints by the root's own sort
+  (`mint_like`), the deep chase reads a record row to its end so a scheme
+  freshens the whole chain, and the twin pairs a row var with its
+  REMAINDER rather than the whole site record. Retired from the declared
+  reds: open-rows-through-lambdas and record-rest-over-open; the
+  mn-record-update-type witness became a leg (231). record-closed-lacks-field
+  now reports its type error and stays red on a different blocker,
+  E_TypeMismatch's absence from `diag_refuses`. KILLS: the scoped-labels
+  sketch (a duplicate label has no slot in a sorted product); a `TAbsent`
+  type (no honest `repr_of`); an arm list taking a pair handed to `fold`'s
+  two-argument call — it type-checks and traps at `call_indirect` in the
+  m2, so the emit writes the two-parameter form and the defect is its own
+  peer. free-row-callee 1,103 → 1,134, itemized by callee on the board.
+  Deleting the assumed union made two field-offset floors honest at the
+  pre-commit ratchet (3 → 5): `emitted_sig_of_entry` read `e.params` and
+  `e.ret` off a receiver nothing closed, and the old guess had put
+  `params` at slot 0 where the entry holds it at 20, a silent wrong slot.
+  The fn now matches its `EmitFnEntry` by name, the row closes by brand,
+  and the count is back at 3. Unprovable comparisons fell 53 → 52,
+  measured and not yet attributed to a site.
+
 - 2026-09-23 · pin 9d93607113d4cfbe (CLEAN m2 == m3, census 0, frontier
   407/0/12, crown green) · A BRACE HAS ONE DISCRIMINATION. Writing the rows
   arc's two example rewrites (Part E of the named-fields plan) against the

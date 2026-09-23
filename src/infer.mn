@@ -229,9 +229,17 @@ handler fresh_for_inference {
     let h = graph_fresh_ty(reason)
     resume(h)
   },
-  mint_row(reason) => {
-    let h = graph_fresh_row(reason)
-    resume(h)
+  mint_like(root, reason) => // The fresh cell takes the root's own sort: a row var freshens as a row, a
+  // record field's presence as a presence, everything else as a type.
+  match graph_chase(root) {
+    GNode(NRowFree(_), _) => resume(graph_fresh_row(reason)),
+    GNode(NRowBound(_), _) => resume(graph_fresh_row(reason)),
+    GNode(NRecordRowBound(_, _), _) => resume(graph_fresh_row(reason)),
+    GNode(NMaybeFree(_), _) => resume(graph_fresh_maybe(reason)),
+    GNode(NAbsent, _) => resume(graph_fresh_maybe(reason)),
+    GNode(NBound(_), _) => resume(graph_fresh_ty(reason)),
+    GNode(NFree(_), _) => resume(graph_fresh_ty(reason)),
+    GNode(NErrorHole(_), _) => resume(graph_fresh_ty(reason)),
   },
 }
 
@@ -3338,29 +3346,41 @@ fn infer_expr(ref node) = match node {
       tag_alloc_join(handle, record_field_handles(fields))
     },
     NExpr(RecordUpdateExpr(base, overrides)) => {
-      // {...base, f: v} — non-destructive update. Infer the base (its
-      // record fields are the copy source) and each override value;
-      // the result type is the base's record fields with each override
-      // overwritten-or-added by name (the field set lower reads live).
-      // The base's proven record type IS the source of truth — the
-      // result is derived from it, never fabricated.
+      // {...base, f: v} — a NEW record: the base's own row with each override
+      // written over it. The base meets `{f: θ | ρ}`, one presence cell θ per
+      // override, and the result is `{f: T(v) | ρ}` over the SAME ρ (Rémy's
+      // extension). Nothing of the base is copied at judgment: every field it
+      // will ever be proven to carry arrives through ρ, and whether it
+      // carried f at all is θ's to resolve — so overwriting and adding are
+      // one rule, and a record the base's caller closes later is read whole.
+      // `{...5, f: v}` still refuses at the spread: 5 is no record.
       infer_expr(base)
-      // The spread base MUST be record-shaped — the same open-record
-      // constraint field access erects, so `{...5, f: v}` is a type
-      // error at the spread, never a zero-field fabrication.
+      infer_record_field_values(overrides)
+      inf_add_row(construction_row())
       match base {
         N{handle: bh} => {
-          let base_row_h = graph_fresh_row(Inferred("record update row"))
+          let rho = graph_fresh_row(Located(span, Inferred("record update remainder")))
+          let presences = map(
+            {
+              (name, _) => (name, TVar(graph_fresh_maybe(Located(span, Inferred("does the base carry '{name}'?"))))),
+            },
+            overrides
+          )
           let expected_h = mint(Inferred("record update base"))
-          graph_bind(expected_h, mk_record_open([], base_row_h), Located(span, Inferred("expected record")))
+          graph_bind(
+            expected_h,
+            mk_record_open(presences, rho),
+            Located(span, Inferred("the base of a record update"))
+          )
           unify(bh, expected_h, span, Inferred("record spread base"))
-          infer_record_field_values(overrides)
-          inf_add_row(construction_row())
-          let base_fields = record_fields_of_node(base)
-          let override_types = build_record_field_types(overrides)
-          let merged = merge_override_fields(base_fields, override_types)
-          graph_bind(handle, TRecord(merged), Located(span, Inferred("record update")))
-          tag_alloc_join(handle, record_field_handles(overrides))
+          graph_bind(
+            handle,
+            mk_record_open(build_record_field_types(overrides), rho),
+            Located(span, Inferred("record update"))
+          )
+          // The result holds every copied base field as well as the overrides,
+          // so its region joins the base's too.
+          tag_alloc_join(handle, [bh] ++ record_field_handles(overrides))
         },
       }
     },
@@ -5148,11 +5168,29 @@ fn unify(h_a, h_b, span: ValidSpan, reason) = {
     let nb = graph_chase(rb)
     match na {
       GNode(ka, _) => match nb {
-        GNode(kb, _) => match ka {
-          NFree(_) => graph_bind(ra, TVar(rb), Located(span, reason)),
+        GNode(kb, _) => // A record field's PRESENCE cell yields at every meet: an ordinary
+        // var is a field something reads, so binding it into the presence
+        // cell would let a demanded field later resolve absent. And an
+        // absence meets nothing but another presence cell — anything else is
+        // a read of a field the record does not have.
+        match ka {
+          NFree(_) => match kb {
+            NMaybeFree(_) => graph_bind(rb, TVar(ra), Located(span, reason)),
+            NAbsent => type_mismatch(TVar(ra), TVar(rb), span, reason),
+            _ => graph_bind(ra, TVar(rb), Located(span, reason)),
+          },
+          NMaybeFree(_) => graph_bind(ra, TVar(rb), Located(span, reason)),
+          NAbsent => match kb {
+            NMaybeFree(_) => graph_bind(rb, TVar(ra), Located(span, reason)),
+            NAbsent => (),
+            NErrorHole(_) => (),
+            _ => type_mismatch(TVar(ra), TVar(rb), span, reason),
+          },
           NBound(ta) => match kb {
             NFree(_) => graph_bind(rb, TVar(ra), Located(span, reason)),
+            NMaybeFree(_) => graph_bind(rb, TVar(ra), Located(span, reason)),
             NBound(tb) => unify_types(ta, tb, span, reason),
+            NAbsent => type_mismatch(TVar(ra), TVar(rb), span, reason),
             NErrorHole(_) => (),
             _ => (),
           },
@@ -5226,6 +5264,7 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
           let root = graph_chase_handle(ha)
           match graph_chase(root) {
             GNode(NBound(inner), _) => unify_types(inner, b, span, reason),
+            GNode(NAbsent, _) => type_mismatch(a, b, span, reason),
             GNode(_, mint_reason) => if occurs_in_live(root, b) {
               report(EOccursCheck(root, b, span))
               // The poly-recursion teach rides the refusal: an infinite
@@ -5285,7 +5324,7 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
         } else {
           type_mismatch(a, b, span, reason)
         },
-        TRecordOpen(fb, vb) => // A nominal RECORD satisfies a structural field demand by its own
+        TRecordOpen(_, _) => // A nominal RECORD satisfies a structural field demand by its own
         // declaration, read through the live env edge (RecordSchemeKind —
         // the same channel the literal check and the ctor arrow view
         // read). The brand never erases: this side stays TName; only the
@@ -5295,23 +5334,22 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
         // SYNTAX forms; before this arm both falsely mismatched. A CLOSED
         // structural demand still refuses (exact-shape identity is the
         // brand's point).
-        match nominal_record_fields(na) {
-          Some(declared) => unify_record_open_against_closed(declared, fb, vb, span, reason),
-          None => type_mismatch(a, b, span, reason),
-        },
+        // The declaration closes the row, and the row remembers that it did
+        // (Closer), so the brand survives every remainder the row hands on.
+        unify_records(a, b, span, reason),
         TVar(_) => unify_types(b, a, span, reason),
         _ => type_mismatch(a, b, span, reason),
       },
-      TRecord(fa) => match b {
-        TRecord(fb) => unify_record_fields_closed(fa, fb, span, reason),
-        TRecordOpen(fb, vb) => unify_record_open_against_closed(fa, fb, vb, span, reason),
+      TRecord(_) => match b {
+        TRecord(_) => unify_records(a, b, span, reason),
+        TRecordOpen(_, _) => unify_records(a, b, span, reason),
         TVar(_) => unify_types(b, a, span, reason),
         _ => type_mismatch(a, b, span, reason),
       },
-      TRecordOpen(fa, va) => match b {
-        TRecord(fb) => unify_record_open_against_closed(fb, fa, va, span, reason),
-        TRecordOpen(fb, vb) => unify_two_open_records(fa, va, fb, vb, span, reason),
-        TName(_, _) => unify_types(b, a, span, reason),
+      TRecordOpen(_, _) => match b {
+        TRecord(_) => unify_records(a, b, span, reason),
+        TRecordOpen(_, _) => unify_records(a, b, span, reason),
+        TName(_, _) => unify_records(a, b, span, reason),
         TVar(_) => unify_types(b, a, span, reason),
         _ => type_mismatch(a, b, span, reason),
       },
@@ -5478,31 +5516,134 @@ fn unify_type_lists(as_list, bs_list, span: ValidSpan, reason) = if len(as_list)
   unify_type_lists(drop_last(as_list), drop_last(bs_list), span, reason)
 }
 
-// Both field lists arrive sorted by name (parser invariant + smart
-// constructor `mk_record_open`). Closed×closed: pointwise field
-// equality (length match + name match + type unify). Closed×open:
-// the closed record must include every open-side field; remaining
-// fields bind the open's row variable. Open×open: intersect known
-// fields; bind one variable to the residual relative to the other.
-fn unify_record_fields_closed(fa, fb, span: ValidSpan, reason) = if len(fa) != len(fb) {
-  type_mismatch(TRecord(fa), TRecord(fb), span, reason)
-} else {
-  unify_record_fields_loop(fa, fb, 0, len(fa), span, reason)
+// A RECORD ROW, READ TO ITS END: every field the chain knows, and what lies
+// past them — an open var, or a remainder proven whole by a closer.
+type RowEnd = EndOpen(Int) | EndClosed(Closer)
+
+// Every record meets every record through ONE rule (Rémy): read both rows to
+// their ends, unify the fields they share, then settle the rest. A field only
+// one side names is either handed to the other side's open end or, against a
+// closed end, must be ABSENT there — a presence cell resolves absent, an
+// ordinary field is the mismatch. Two open ends meet at one fresh var and each
+// continues into it, so nothing is written over a row that already knew
+// something, and nothing is guessed about what lies past a union.
+fn unify_records(ref a, ref b, span: ValidSpan, reason) = match record_row_of(a) {
+  Some(ra) => match record_row_of(b) {
+    Some(rb) => match ra {
+      (fa, ea) => match rb {
+        (fb, eb) => unify_record_rows(fa, ea, fb, eb, a, b, span, reason),
+      },
+    },
+    None => type_mismatch(a, b, span, reason),
+  },
+  None => type_mismatch(a, b, span, reason),
 }
 
-fn unify_record_fields_loop(fa, fb, i, n, span: ValidSpan, reason) = if i >= n {
-  ()
-} else {
-  match list_index(fa, i) {
-    (na, ta) => match list_index(fb, i) {
-      (nb, tb) => if field_name_eq(na, nb) {
-        unify_types(ta, tb, span, reason)
-        unify_record_fields_loop(fa, fb, i + 1, n, span, reason)
+fn record_row_of(ref ty) = match ty {
+  TRecord(fs) => Some((fs, EndClosed(ByShape))),
+  TRecordOpen(fs, v) => Some(record_row_from(fs, v)),
+  TName(n, _) => match nominal_record_fields(n) {
+    Some(declared) => Some((declared, EndClosed(ByName(n)))),
+    None => None,
+  },
+  _ => None,
+}
+
+// Follow a row var's chain to its end, gathering the fields it carries.
+fn record_row_from(fs, v) = {
+  let r = graph_chase_handle(v)
+  match graph_chase(r) {
+    GNode(NRecordRowBound(more, RowClosed(c)), _) => (fs ++ more, EndClosed(c)),
+    GNode(NRecordRowBound(more, RowContinues(next)), _) => record_row_from(fs ++ more, next),
+    GNode(NBound(TRecordOpen(more, v2)), _) => record_row_from(fs ++ more, v2),
+    GNode(NBound(TRecord(more)), _) => (fs ++ more, EndClosed(ByShape)),
+    GNode(NRowFree(_), _) => // A var that holds no record structure is the row's open end — free, or
+    // an error hole that productive-under-error keeps open.
+    (fs, EndOpen(r)),
+    GNode(NFree(_), _) => (fs, EndOpen(r)),
+    GNode(NErrorHole(_), _) => (fs, EndOpen(r)),
+    GNode(NBound(_), _) => (fs, EndOpen(r)),
+    GNode(NRowBound(_), _) => (fs, EndOpen(r)),
+    GNode(NMaybeFree(_), _) => (fs, EndOpen(r)),
+    GNode(NAbsent, _) => (fs, EndOpen(r)),
+  }
+}
+
+fn unify_record_rows(fa, ea, fb, eb, ref a, ref b, span: ValidSpan, reason) = {
+  unify_record_fields_loop_shared(fa, fb, intersect_record_fields(fa, fb), span, reason)
+  let only_a = record_fields_diff(fa, fb)
+  let only_b = record_fields_diff(fb, fa)
+  match ea {
+    EndClosed(ca) => match eb {
+      EndClosed(cb) => if closers_agree(ca, cb) {
+        require_absent(only_a, a, b, span, reason)
+        require_absent(only_b, a, b, span, reason)
       } else {
-        type_mismatch(TRecord(fa), TRecord(fb), span, reason)
+        type_mismatch(a, b, span, reason)
+      },
+      EndOpen(vb) => {
+        require_absent(only_b, a, b, span, reason)
+        graph_bind_record_row(vb, only_a, RowClosed(ca), Located(span, reason))
+      },
+    },
+    EndOpen(va) => match eb {
+      EndClosed(cb) => {
+        require_absent(only_a, a, b, span, reason)
+        graph_bind_record_row(va, only_b, RowClosed(cb), Located(span, reason))
+      },
+      EndOpen(vb) => if va == vb {
+        require_absent(only_a, a, b, span, reason)
+        require_absent(only_b, a, b, span, reason)
+      } else if len(only_a) == 0 && len(only_b) == 0 {
+        // Nothing to hand either way: the two ends ARE one row, and the graph
+        // says so by making one an alias of the other.
+        graph_bind(vb, TVar(va), Located(span, reason))
+      } else {
+        let rho = graph_fresh_row(Located(span, Inferred("record row meet")))
+        graph_bind_record_row(va, only_b, RowContinues(rho), Located(span, reason))
+        graph_bind_record_row(vb, only_a, RowContinues(rho), Located(span, reason))
       },
     },
   }
+}
+
+fn closers_agree(a, b) with Pure = match a {
+  ByShape => match b {
+    ByShape => true,
+    ByName(_) => false,
+  },
+  ByName(na) => match b {
+    ByShape => false,
+    ByName(nb) => type_name_eq(na, nb),
+  },
+}
+
+// Fields a closed partner does not carry: each must be ABSENT. A presence cell
+// resolves absent; a field something demanded present is the mismatch.
+fn require_absent(fields, ref a, ref b, span: ValidSpan, reason) = if all({ (_, ft) => settle_absent(ft, span, reason) }, fields) {
+  ()
+} else {
+  type_mismatch(a, b, span, reason)
+}
+
+fn settle_absent(ty, span: ValidSpan, reason) = match ty {
+  TVar(h) => {
+    let r = graph_chase_handle(h)
+    match graph_chase(r) {
+      GNode(NMaybeFree(_), _) => {
+        graph_bind_absent(r, Located(span, reason))
+        true
+      },
+      GNode(NAbsent, _) => true,
+      GNode(NErrorHole(_), _) => true,
+      GNode(NBound(_), _) => false,
+      GNode(NFree(_), _) => false,
+      GNode(NRowFree(_), _) => false,
+      GNode(NRowBound(_), _) => false,
+      GNode(NRecordRowBound(_, _), _) => false,
+    }
+  },
+  _ => false,
 }
 
 // The nominal record's declared fields, read through the live env edge —
@@ -5517,142 +5658,6 @@ fn nominal_record_fields(name) = match env_lookup(name) {
     },
   },
   None => None,
-}
-
-fn unify_record_open_against_closed(closed_fields, open_fields, open_var, span: ValidSpan, reason) = {
-  // Every open-side field must appear in the closed side. Unify
-  // matched fields' types; bind the row variable to the remainder.
-  unify_record_open_subset(open_fields, closed_fields, span, reason)
-  let residual = record_fields_diff(closed_fields, open_fields)
-  // PROVEN. The other side is CLOSED, so its fields are the whole set and
-  // the residual is exactly what remains — nothing further can arrive.
-  graph_bind_record_row(open_var, residual, RowClosed, Located(span, reason))
-}
-
-fn unify_record_open_subset(needed, available, span: ValidSpan, reason) = if len(needed) == 0 {
-  ()
-} else {
-  match last(needed) {
-    (n, t) => {
-      let pos = find_record_field_pos(available, n)
-      if pos < 0 {
-        type_mismatch(TRecord(needed), TRecord(available), span, reason)
-      } else {
-        match list_index(available, pos) {
-          (_, t2) => {
-            unify_types(t, t2, span, reason)
-            unify_record_open_subset(drop_last(needed), available, span, reason)
-          },
-        }
-      }
-    },
-  }
-}
-
-fn unify_two_open_records(fa, va, fb, vb, span: ValidSpan, reason) = {
-  // Intersect known fields (unify shared types); bind va to a
-  // record-residual carrying fb's exclusive fields, mirror for vb.
-  // Two row variables collapse to one when they're already linked;
-  // otherwise both narrow to the union of known fields.
-  let shared = intersect_record_fields(fa, fb)
-  unify_record_fields_loop_shared(fa, fb, shared, span, reason)
-  let extra_a = record_fields_diff(fa, fb)
-  let extra_b = record_fields_diff(fb, fa)
-  if va == vb {
-    if len(extra_a) == 0 && len(extra_b) == 0 {
-      ()
-    } else {
-      type_mismatch(TRecordOpen(fa, va), TRecordOpen(fb, vb), span, reason)
-    }
-  } else if len(extra_a) == 0 && len(extra_b) == 0 && row_var_is_free(vb) {
-    // THE UNION. Identical known sets and nothing yet written on vb: these
-    // are not two rows that happen to agree, they ARE one row, and the graph
-    // says so by making vb an alias of va — the same NBound(TVar) edge
-    // chase_handle already follows for a type var, whose own comment states
-    // the law this arm was missing: unify unions the ROOTS.
-    //
-    // Left unlinked, the two stayed separate nodes forever, so nothing that
-    // keys on a row var could see them as one: an open-row callee reached
-    // from inside another twin's body projected its key against a handle the
-    // twin's pairs had never heard of, no interior twin was demanded, and the
-    // body read the decl's own unlearned row (7 where 9 was asked for —
-    // tests/repro-wf/open-row-interior-site.mn).
-    //
-    // Only the unwritten side aliases, and only when the known sets agree. A
-    // row carrying its own residual is a DIFFERENT remainder of the same
-    // record — `{zeta | Ra}` beside `{alpha | Rb}` have Ra ≠ Rb by
-    // construction — so those cross-absorb below, which was right all along.
-    graph_bind(vb, TVar(va), Located(span, reason))
-  } else {
-    // ASSUMED. Each var takes the fields the other side knows and it does
-    // not — a real carrying, measured: the second-field micro's offsets are
-    // right because this bind moves the far side's field across. What it
-    // does NOT know is whether anything lies past the union, and the old
-    // shape said
-    // "nothing" in the same breath it said the fields. The mark separates
-    // the two halves so a reader can tell a carried fact from a guess.
-    absorb_into_residual(va, extra_b, span, reason)
-    absorb_into_residual(vb, extra_a, span, reason)
-  }
-}
-
-// A DEMAND IS CHECKED AGAINST THE GRAPH, NEVER INSTALLED OVER IT. A field
-// access builds an EXPECTED receiver `{field: <fresh> | <fresh row>}` and
-// unifies the real one against it, so the incoming fields here are often a
-// question, not an answer. When the var already carries a residual, the
-// fields it shares with the question get UNIFIED — the graph's proof
-// constrains the fresh variable, which is the direction that keeps a fact
-// — and only genuinely new fields widen it. Writing the incoming set over
-// the residual turned `run : () -> Int with E` into a free variable and
-// took its row with it, so a closure called under `!E` through a record
-// rest checked clean (`Hβ.infer.field-access-overwrites-a-proven-residual`).
-// The unbound case is unchanged: nothing is known, so the union IS the
-// reading, and it is marked assumed.
-fn absorb_into_residual(v, incoming, span: ValidSpan, reason) = match graph_chase(v) {
-  GNode(NRecordRowBound(known, tail), _) => {
-    unify_record_fields_loop_shared(
-      known,
-      incoming,
-      intersect_record_fields(known, incoming),
-      span,
-      reason
-    )
-    let added = record_fields_diff(incoming, known)
-    if len(added) == 0 {
-      ()
-    } else {
-      match tail {
-        RowClosed => // PROVEN WHOLE: the writer saw a closed partner, so this residual
-        // IS the remainder and a name outside it is provably absent. That
-        // is the same verdict a closed record already gives for an unknown
-        // field, and it has to be given here too: widening put the missing
-        // name at its sorted offset and the read came back with a
-        // NEIGHBOUR's value (`{a: 1, b: 2}` destructured, `rest.aa`
-        // answered 2 — b's).
-        type_mismatch(TRecord(known), TRecord(known ++ added), span, reason),
-        RowAssumed => // The remainder is a union of partial sets or continues at another
-        // var: more may genuinely exist, so a new name widens. The residual
-        // KEEPS its own tail — what the writer knew about the rest did not
-        // change because a demand named one more field.
-        graph_bind_record_row(v, known ++ added, tail, Located(span, reason)),
-        RowContinues(_) => graph_bind_record_row(v, known ++ added, tail, Located(span, reason)),
-      }
-    }
-  },
-  _ => // An EMPTY incoming set carries nothing, so it writes nothing. The bound
-  // arm above already says this — `if len(added) == 0 { () }` — and the
-  // unbound arm said the opposite, stamping `[] assumed` onto a cell that
-  // knew nothing at all. That write is a fabrication in the Law's exact
-  // sense: "the remainder is empty, and I am guessing" is a claim the graph
-  // never made, and every reader downstream believed it. It is what made an
-  // open row's offset come back provable-and-wrong, and what kept two
-  // identical rows from ever unioning, since the cell was no longer free.
-  // A cell that knows nothing stays free, and a free cell floors honestly.
-  if len(incoming) == 0 {
-    ()
-  } else {
-    graph_bind_record_row(v, incoming, RowAssumed, Located(span, reason))
-  },
 }
 
 fn unify_record_fields_loop_shared(fa, fb, names, span: ValidSpan, reason) = if len(names) == 0 {
@@ -5749,37 +5754,6 @@ fn build_record_field_types(fields) = map(
   },
   fields
 )
-
-// The record field list inferred at a node — chase its handle to the
-// bound type and read its fields LIVE (TRecord / TRecordOpen carry them;
-// any other resolved type yields []). The record-update result derives
-// from this, so it reads the base's proven shape, never a copy.
-fn record_fields_of_node(node) = match node {
-  N{handle: h} => match graph_chase(h) {
-    GNode(NBound(ty), _) => match ty {
-      TRecord(fields) => fields,
-      TRecordOpen(fields, _) => fields,
-      _ => [],
-    },
-    _ => [],
-  },
-}
-
-// Merge override field-types into a base field list: each override
-// overwrites the same-named base field or is added, and the result is
-// kept in the one canonical name-sorted layout via the parser's
-// record_field_insert (the same sort lower's offset arithmetic assumes
-// — the sort has ONE home, not re-derived here). The override wins by
-// name (last-writer over the base copy) — the spread semantics.
-fn merge_override_fields(base_fields, overrides) = fold(
-  base_fields,
-  (acc, ov) => match ov {
-    (oname, _) => record_field_insert(reject_field(acc, oname), ov),
-  },
-  overrides
-)
-
-fn reject_field(fields, target) = filter({ (n, _) => n != target }, fields)
 
 // H4.1 projection — pull the value handles out of a record-field list
 // for region-join lookup. Field names aren't needed for region
@@ -6697,6 +6671,10 @@ fn generalize_pair(handle) = {
       ([], TVar(handle)),
       NRowFree(_) => // unresolved row — quantified like NFree; instantiate's row-sort mint freshens
       ([handle], TVar(handle)),
+      NMaybeFree(_) => // an unresolved presence — quantified; instantiate mints a fresh presence
+      ([handle], TVar(handle)),
+      NAbsent => // a proven absence — bound; shared, never freshened
+      ([], TVar(handle)),
       NErrorHole(_) => // error — preserve handle for diagnostics
       ([], TVar(handle)),
     },
@@ -6790,6 +6768,8 @@ fn chase_changes(ty, d) = if d > 200 {
         NRowBound(_) => false,
         NRecordRowBound(_, _) => false,
         NRowFree(_) => false,
+        NMaybeFree(_) => graph_chase_handle(h) != h,
+        NAbsent => false,
         NErrorHole(_) => false,
       },
     },
@@ -6798,7 +6778,7 @@ fn chase_changes(ty, d) = if d > 200 {
     TFun{params, ret, row: eff} => chase_params_changes(params, d + 1, 0, len(params)) || chase_changes(ret, d + 1) || chase_row_changes(eff, d + 1),
     TName(_, args) => chase_list_changes(args, d + 1, 0, len(args)),
     TRecord(fields) => chase_fields_changes(fields, d + 1, 0, len(fields)),
-    TRecordOpen(fields, _) => chase_fields_changes(fields, d + 1, 0, len(fields)),
+    TRecordOpen(fields, v) => record_row_carries(v) || chase_fields_changes(fields, d + 1, 0, len(fields)),
     TRefined(base, _) => chase_changes(base, d + 1),
     TCont(input, answer, _, world) => chase_changes(input, d + 1) || chase_changes(answer, d + 1) || chase_row_changes(world, d + 1),
     TAlias(_, inner) => chase_changes(inner, d + 1),
@@ -6907,6 +6887,10 @@ fn chase_deep_build(ty, d) = if d > 200 {
         ty,
         NRowFree(_) => // unresolved row handle — stays
         ty,
+        NMaybeFree(_) => // an unresolved presence canonicalizes to its root, as a free var does
+        TVar(graph_chase_handle(h)),
+        NAbsent => // a proven absence — its field reads it; stays
+        ty,
         NErrorHole(_) => // error node — preserve TVar for diagnostics
         ty,
       },
@@ -6924,7 +6908,17 @@ fn chase_deep_build(ty, d) = if d > 200 {
     TFun(chase_params(params, d + 1), chase_deep_at(ret, d + 1), chase_row_deep(eff, d + 1)),
     TName(name, args) => TName(name, map_chase_ty(args, d + 1)),
     TRecord(fields) => TRecord(chase_fields(fields, d + 1)),
-    TRecordOpen(fields, v) => mk_record_open(chase_fields(fields, d + 1), v),
+    TRecordOpen(fields, v) => // The snapshot reads the row to its END. A row var bound to a residual
+    // that continues at another var holds fields a scheme must freshen, and
+    // a snapshot that kept the bound var shared those fields — and the tail
+    // past them — across every instantiation. A remainder proven whole by
+    // shape is simply the closed record; one closed by a nominal keeps its
+    // chain, because the brand lives on the closed cell.
+    match record_row_from(fields, v) {
+      (all, EndOpen(r)) => mk_record_open(chase_fields(all, d + 1), r),
+      (all, EndClosed(ByShape)) => TRecord(field_canonicalize(fields_present(chase_fields(all, d + 1)))),
+      (_, EndClosed(ByName(_))) => mk_record_open(chase_fields(fields, d + 1), v),
+    },
     TRefined(base, pred) => TRefined(chase_deep_at(base, d + 1), pred),
     TCont(input, answer, disc, world) => TCont(chase_deep_at(input, d + 1), chase_deep_at(answer, d + 1), disc, chase_row_deep(world, d + 1)),
     TAlias(name, inner) => TAlias(name, chase_deep_at(inner, d + 1)),
@@ -6934,6 +6928,21 @@ fn chase_deep_build(ty, d) = if d > 200 {
 
 // An unchanged row IS its own canonical form (rows are canonical at
 // birth), so the sharing face returns it whole.
+// Does this record row var hold anything a snapshot must read through — an
+// alias, a residual, or bound structure?
+fn record_row_carries(v) = {
+  let r = graph_chase_handle(v)
+  if r != v {
+    true
+  } else {
+    match graph_chase(r) {
+      GNode(NRecordRowBound(_, _), _) => true,
+      GNode(NBound(_), _) => true,
+      _ => false,
+    }
+  }
+}
+
 fn chase_row_deep(eff, d) = if chase_row_changes(eff, d) {
   match eff {
     EfRow{present: p, absent: a, tail: t} => {
@@ -7047,8 +7056,7 @@ fn free_in_record_row(v) = {
 }
 
 fn free_in_record_tail(tail) = match tail {
-  RowClosed => [],
-  RowAssumed => [],
+  RowClosed(_) => [],
   RowContinues(next) => free_in_record_row(next),
 }
 
@@ -7056,7 +7064,11 @@ fn free_in_list(tys) = tys |> map(free_in_ty) |> flatten
 
 fn free_in_params(params) = params |> map((p) => free_in_ty(param_ty(p))) |> flatten
 
-fn free_in_fields(fields) = fields |> map({ (_, ty) => free_in_ty(ty) }) |> flatten
+// A field proven ABSENT carries no var: its cell is resolved, and
+// quantifying it would let instantiation mint a fresh presence in its place
+// — the absence re-opened at every use.
+fn free_in_fields(fields) =
+  fields |> map({ (_, ty) => if slot_is_absent(ty) { [] } else { free_in_ty(ty) } }) |> flatten
 
 // A row's free variable is its open tail — the same first-class graph
 // node a type variable is. Effect-polymorphism IS value-polymorphism over
@@ -7185,12 +7197,7 @@ fn build_inst_mapping(qs) = map(
     // quantified var aliased after generalize still freshens (read the root,
     // carry the whole instance).
     let root = graph_chase_handle(old)
-    let fresh = if is_row_handle(root) {
-      mint_row(Instantiation("inst", Fresh(root)))
-    } else {
-      mint(Instantiation("inst", Fresh(root)))
-    }
-    (root, fresh)
+    (root, mint_like(root, Instantiation("inst", Fresh(root))))
   },
   qs
 )

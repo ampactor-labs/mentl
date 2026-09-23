@@ -3678,7 +3678,31 @@ halves landed as `tests/syntax/record-pattern-local` and
 `record-field-access` — the controls that made the finding precise, kept
 as the contracts they proved.
 
-`Hβ.infer.record-update-snapshots-the-base` — OPEN, measured 2026-09-23,
+`Hβ.infer.record-update-snapshots-the-base` — CLOSED 2026-09-23 at pin
+99a250ff7e179639 (LEDGER "A RECORD IS A ROW, READ TO ITS END"), built as
+designed below and wider: the whole record sort moved to one row unifier,
+the closer, and emit-time layout for updates AND patterns. Three things it
+measured and did not fix, each its own peer:
+▶ `Hβ.emit.pair-literal-at-a-two-argument-call` — an arm list taking a
+pair (`{ (a, b) => … }`) handed to `fold`, which calls its function with
+TWO arguments, type-checks ("parameters are tuples") and traps at
+`call_indirect` with a type mismatch: the closure is one-parameter at the
+ABI and the call site passes two. Measured in the m2 on this landing's own
+emit code; the emit writes `(a, b) =>` there. The fix is the ABI following
+the unification — the decomposition the judgment accepted must be the
+lowering's too, or the judgment must refuse it.
+▶ `Hβ.diag.type-mismatch-refuses-the-executable` — E_TypeMismatch is not in
+`diag_refuses`, so a program with a reported type error compiles, runs and
+traps at the floors the error left (every face of this peer did, before
+the fix). `record-closed-lacks-field` is held red on it alone. The licence
+is measurable: the wheel checks clean, so its census of the class is zero.
+▶ `Hβ.emit.generic-body-floors-beside-its-twins` — a generic decl whose
+every call site mints a twin is ALSO emitted unspecialized, and that body's
+open-row reads floor and narrate `T_FieldOffsetUnprovable` on a correct
+program (tests/syntax/record-field-param-open prints one on the pinned boot
+and answers 9). Reachability should prune the body no call reaches.
+
+The original record follows.
 DESIGN BUILD-READY the same day. `{...c, n: v}` types its result from
 `record_fields_of_node(base)` — the base's fields as they stand WHERE THE
 UPDATE IS JUDGED — merged with the overrides, then binds it CLOSED; the row

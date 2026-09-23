@@ -1098,6 +1098,8 @@ fn render_type_handle(h) with Rendering + !Mutate = match graph_chase(h) {
   GNode(NFree(_), _) => show_handle(h),
   GNode(NRowBound(_), _) => show_handle(h),
   GNode(NRowFree(_), _) => show_handle(h),
+  GNode(NMaybeFree(_), _) => show_handle(h),
+  GNode(NAbsent, _) => show_handle(h),
   GNode(NErrorHole(_), _) => show_handle(h),
 }
 

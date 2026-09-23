@@ -1,0 +1,9 @@
+// expect: 16
+// The literal-base control: overwrite and add over a record whose fields are
+// all known where the update is judged.
+fn main() = {
+  let r = {a: 1, b: 2}
+  let s = {...r, b: 5}
+  let t = {...r, c: 7}
+  s.a + s.b + t.a + t.b + t.c
+}

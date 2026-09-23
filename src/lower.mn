@@ -341,6 +341,9 @@ type LowExpr
   | LSimdLanes(Int, [LowExpr])
   // handle, [field_value] sorted by field name
   | LMakeRecord(Int, [LowExpr])
+  // {...base, f: v}: handle, the base (a local already holding it), the
+  // overrides by name — the layout is the result's own, read at emit
+  | LRecordUpdate(Int, LowExpr, [(String, LowExpr)])
   // handle, tag_id, field exprs
   | LMakeVariant(Int, TagId, [LowExpr])
   | LMatch(Int, LowExpr, [(LowPat, LowExpr)])
@@ -542,13 +545,12 @@ type LowPat
   // the scrutinee's PROVEN representation
   // (SRFlat licenses raw element loads)
   | LPList([LowPat], Option(String), SeqRep)
-  // [(field_name: String, offset_bytes: Int, sub_pat: LowPat)], optional
-  // rest binder (name, [(residual_field, src_index)]) — resolved at
-  // lower through the receiver's type (lower_pat_typed); emit BUILDS
-  // the remaining-fields record by copying each residual slot. An
-  // empty spec list = the receiver never resolved: emit's loud floor
-  // (resolved-or-loud, the field-offset class's own law).
-  | LPRecord([(String, Int, LowPat)], Option((String, [(String, Int)])))
+  // the pattern node (its cell is the receiver's type), the named fields,
+  // the optional rest binder. Offsets, widths and the rest's residual are
+  // read at EMIT from the receiver's layout (record_layout_of), under the
+  // twin that closed it; lowering a generic body once could only have
+  // baked the open row's guess.
+  | LPRecord(Int, [(String, LowPat)], Option(String))
   // name @ pat — binds the whole value at the pattern's own path,
   // then the inner pattern destructures the same slot
   | LPAs(String, LowPat)
@@ -585,6 +587,7 @@ fn lexpr_handle(e) with Pure = match e {
   LMakeTuple(h, _) => h,
   LSimdLanes(h, _) => h,
   LMakeRecord(h, _) => h,
+  LRecordUpdate(h, _, _) => h,
   LMakeVariant(h, _, _) => h,
   LMatch(h, _, _) => h,
   LHandleWith(h, _, _, _, _, _) => h,
@@ -2445,13 +2448,12 @@ fn lower_expr_body(e, handle, span) = match e {
   // raw fields. The type name is preserved in the AST for
   // diagnostics and IDE projection but doesn't reach LIR.
   LMakeRecord(handle, lower_record_field_values(fields)),
-  RecordUpdateExpr(base, overrides) => // {...base, f: v} — non-destructive update. The RESULT record's
-  // field set is PROVEN by infer (base's fields ∪ overrides), read
-  // live via lookup_ty(handle); each result field is either an
-  // override value or a field-load COPIED from base at its proven
-  // offset — never re-derived, never a runtime field-copy loop. The
-  // base is evaluated once into a temp local (LLet) and field-loaded
-  // N times (LLocal) — the share the spread semantics demand.
+  RecordUpdateExpr(base, overrides) => // {...base, f: v} — non-destructive update, whose field set is the
+  // base's row with the overrides written over it. A generic body is
+  // lowered once and emitted under every closing its twins prove, so the
+  // set is read at EMIT, where the twin has closed the row; lowering keeps
+  // the overrides by name and binds the base once to a temp the emit loads
+  // the copied fields from.
   lower_record_update(handle, base, overrides),
   LambdaExpr(params, body_node) => {
     // DESIGN Ch 1: lambdas close over their free variables. Each
@@ -3206,60 +3208,59 @@ fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, bound
 // first sorted field), and the unprovable case must floor loudly, never
 // return a partial sum.
 fn open_record_full_fields(fields, v) = match graph_chase(v) {
-  GNode(NRecordRowBound(residual, RowClosed), _) => Some(sort_record_type_fields(fields ++ residual)),
-  GNode(NRecordRowBound(residual, RowAssumed), _) => // The residual was CARRIED, not proven: a union of two partial sets,
-  // with nothing known about what lies past it. This arm answers exactly
-  // as RowClosed does, which is today's measured behaviour and is what
-  // keeps a correct program correct — refusing here turns mn-findtag into
-  // a trap, measured twice. The mark makes the difference legible at the
-  // query and the floor while that stays true; what an assumed remainder
-  // should DO is the open half of
-  // `Hβ.infer.record-row-residual-is-learned-or-assumed`.
-  Some(sort_record_type_fields(fields ++ residual)),
+  GNode(NRecordRowBound(residual, RowClosed(_)), _) => record_layout(fields ++ residual),
   GNode(NRecordRowBound(residual, RowContinues(next_v)), _) => // The chain CONTINUES at another row var: these residual fields are
   // known, the rest is not yet. Chasing on keeps the answer honest —
   // a still-free tail reaches the None arm below and floors.
   open_record_full_fields(fields ++ residual, next_v),
   GNode(NBound(TRecordOpen(more, v2)), _) => open_record_full_fields(fields ++ more, v2),
-  GNode(NBound(TRecord(more)), _) => Some(sort_record_type_fields(fields ++ more)),
+  GNode(NBound(TRecord(more)), _) => record_layout(fields ++ more),
   _ => None,
 }
 
-// The same walk held to the TWIN KEY's standard, which is stricter than the
-// offset read's. An assumed remainder is a carried union with nothing known
-// past it; the offset read tolerates it because refusing there turns a
-// correct program into a trap (measured twice), but a key has no such excuse
-// — two sites keyed on a guess mint two bodies that disagree, which is the
-// wrong-slot class with extra steps. Unproven, it declines and the site keeps
-// the floor.
-fn open_record_proven_fields(fields, v) = match graph_chase(v) {
-  GNode(NRecordRowBound(residual, RowClosed), _) => Some(sort_record_type_fields(fields ++ residual)),
-  GNode(NRecordRowBound(_, RowAssumed), _) => None,
-  GNode(NRecordRowBound(residual, RowContinues(next_v)), _) => open_record_proven_fields(fields ++ residual, next_v),
-  GNode(NBound(TRecordOpen(more, v2)), _) => open_record_proven_fields(fields ++ more, v2),
-  GNode(NBound(TRecord(more)), _) => Some(sort_record_type_fields(fields ++ more)),
-  _ => None,
+// A closed field set's LAYOUT: its present fields, sorted. A field proven
+// absent is no slot; a field whose presence is still undecided makes the
+// layout unprovable, because its slot is there or not depending on a fact
+// nobody has settled.
+fn record_layout(fields) with GraphRead + Memory + Alloc = if any({ (_, ft) => slot_is_undecided(ft) }, fields) {
+  None
+} else {
+  Some(sort_record_type_fields(fields_present(fields)))
 }
 
-fn resolve_field_offset(rec_handle, field_name) = match lookup_ty(rec_handle) {
-  TRecord(fields) => field_byte_offset(fields, field_name, 0, len(fields)),
-  TRecordOpen(fields, v) => match open_record_full_fields(fields, v) {
-    Some(full) => field_byte_offset(full, field_name, 0, len(full)),
-    None => -1,
+fn slot_is_undecided(ty) with GraphRead = match ty {
+  TVar(h) => match graph_chase(h) {
+    GNode(NMaybeFree(_), _) => true,
+    _ => false,
   },
+  _ => false,
+}
+
+fn resolve_field_offset(rec_handle, field_name) = match record_layout_of(rec_handle) {
+  Some(full) => field_byte_offset(full, field_name, 0, len(full)),
+  None => -1,
+}
+
+// THE LAYOUT of the record at a handle — its fields in slot order — read
+// from its live type under whatever specialization bracket is active. One
+// read serves the offset of a load and the stores of an update, so the two
+// cannot place a field differently. None is unprovable, never an empty
+// record.
+fn record_layout_of(rec_handle) = match lookup_ty(rec_handle) {
+  TRecord(fields) => record_layout(fields),
+  TRecordOpen(fields, v) => open_record_full_fields(fields, v),
   TName(name, _) => // H2.3: nominal records — chase TName through env to its
-  // RecordSchemeKind for the field schema. Same offset arithmetic
-  // (sorted-by-name, 4 bytes per i32-erased slot).
+  // RecordSchemeKind for the field schema.
   match env_lookup(name) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
-        RecordSchemeKind(fields) => field_byte_offset(fields, field_name, 0, len(fields)),
-        _ => -1,
+        RecordSchemeKind(fields) => Some(fields),
+        _ => None,
       },
     },
-    None => -1,
+    None => None,
   },
-  _ => -1,
+  _ => None,
 }
 
 // A field's byte offset is the prefix-sum of repr_width over the canonically-
@@ -3732,23 +3733,14 @@ fn lower_pat(node, srep) = match node {
       LPCon(name, t, map(lower_field_cell(flds), con_field_cells(h))),
       Some(RecordSchemeKind(_)) => // A nominal record read by field IS the record pattern it spells, and
       // its receiver's full field set is on the pattern node's own cell.
-      match record_pat_full_fields(lookup_ty(h)) {
-        Some(full_names) => LPRecord(lower_pat_record_fields_full(flds, full_names), None),
-        None => LPRecord(lower_pat_record_fields(flds, 0), None),
-      },
+      LPRecord(h, lower_pat_record_fields(flds), None),
       _ => LPUnresolvedCon(name, map({ (_, sub) => lower_sub_pat(sub) }, flds)),
     },
     PTuple(subs) => LPTuple(map(lower_pat_with_ty, subs)),
     PList(subs, rest) => LPList(map(lower_sub_pat, subs), rest, srep),
-    PRecord(flds, rest) => // The receiver resolves the FULL sorted field set (structural or
-    // nominal), so each named field's true offset and the rest's residual
-    // read from the type, never from the pattern's own subset. An unresolved
-    // receiver keeps pattern-index offsets and hands the rest an empty
-    // residual, which the emit refuses loudly.
-    match record_pat_full_fields(lookup_ty(h)) {
-      Some(full_names) => LPRecord(lower_pat_record_fields_full(flds, full_names), lower_rest_specs(rest, flds, full_names)),
-      None => LPRecord(lower_pat_record_fields(flds, 0), lower_rest_unresolved(rest)),
-    },
+    PRecord(flds, rest) => // The receiver's layout — every field's true offset, and the residual
+    // the rest binds — is read at emit from the pattern node's own cell.
+    LPRecord(h, lower_pat_record_fields(flds), rest),
     PAlt(branches) => LPAlt(map(lower_sub_pat, branches)),
     PAs(name, inner) => LPAs(name, lower_pat(inner, srep)),
   },
@@ -3786,84 +3778,6 @@ fn pat_value_ty(node) = match node {
   N{handle: h} => chase_deep(lookup_ty(h)),
 }
 
-// The receiver's full sorted field NAME list, when its type resolves to a
-// record — structural TRecord directly, or a nominal TName through the env's
-// RecordSchemeKind (nominal_record_fields — the one channel's fourth
-// reader). None = genuinely unresolved (the floor's honest input).
-fn record_pat_full_fields(ty) with GraphRead + EnvRead + Memory + Alloc = match tuple_pat_strip(ty) {
-  TRecord(full) => Some(map({ (n, _) => n }, full)),
-  TName(nm, _) => match nominal_record_fields(nm) {
-    Some(declared) => Some(map({ (n, _) => n }, declared)),
-    None => None,
-  },
-  _ => None,
-}
-
-// Named fields at their TRUE full-set offsets (4 × the field's index in
-// the receiver's sorted set — the same layout construction wrote); a
-// name the receiver lacks keeps the pattern-index fallback (infer
-// already reported it).
-fn lower_pat_record_fields_full(flds, full_names) = map(
-  {
-    (i, fld) => match fld {
-      (name, sub_pat) => {
-        let fi = name_index_in(full_names, name, 0)
-        (name, if fi < 0 { i } else { fi } * 4, lower_sub_pat(sub_pat))
-      },
-    },
-  },
-  enumerate(flds)
-)
-
-fn name_index_in(ref names, target, i) with Memory = if i >= len(names) {
-  0 - 1
-} else {
-  if field_name_eq(list_index(names, i), target) { i } else { name_index_in(names, target, i + 1) }
-}
-
-// The residual specs: every receiver field the pattern does not name,
-// carried as (field, src_index) — the copy plan for emit's build.
-fn lower_rest_specs(rest, flds, full_names) with Memory + Alloc = match rest {
-  None => None,
-  Some(rn) => Some((rn, residual_specs(full_names, flds, 0))),
-}
-
-fn residual_specs(ref full_names, ref flds, i) with Memory + Alloc = if i >= len(full_names) {
-  []
-} else {
-  let fname = list_index(full_names, i)
-  if pat_names_field(flds, fname, 0) {
-    residual_specs(full_names, flds, i + 1)
-  } else {
-    [(fname, i)] ++ residual_specs(full_names, flds, i + 1)
-  }
-}
-
-fn pat_names_field(ref flds, fname, i) with Memory = if i >= len(flds) {
-  false
-} else {
-  match list_index(flds, i) {
-    (n, _) => if field_name_eq(n, fname) { true } else { pat_names_field(flds, fname, i + 1) },
-  }
-}
-
-fn lower_rest_unresolved(rest) = match rest {
-  None => None,
-  Some(rn) => Some((rn, [])),
-}
-
-// Strip alias/refinement and chase a top-level TVar to its bound type so a
-// tuple scrutinee typed as `TVar -> TTuple` resolves to its element list.
-fn tuple_pat_strip(ty) with GraphRead = match ty {
-  TVar(h) => match graph_chase(h) {
-    GNode(NBound(inner), _) => tuple_pat_strip(inner),
-    _ => ty,
-  },
-  TAlias(_, inner) => tuple_pat_strip(inner),
-  TRefined(base, _) => tuple_pat_strip(base),
-  _ => ty,
-}
-
 // The two views of one paired list. The walkers that read a payload's OFFSET
 // need the whole type list (the width-summed fold), and the walkers that read
 // a sub-pattern need the patterns; both project from the ONE source LPCon
@@ -3881,17 +3795,9 @@ fn pair_pat(pair) with Memory + Alloc = match pair {
   (_, p) => p,
 }
 
-// Pattern fields are sorted-by-name (parser invariant); position
-// IS the byte offset (`4 * index`) per `LMakeRecord`'s untagged layout.
-// No tag prefix to skip — offset 0 is the first field.
-fn lower_pat_record_fields(flds, base) = map(
-  {
-    (i, fld) => match fld {
-      (name, sub_pat) => (name, (base + i) * 4, lower_sub_pat(sub_pat)),
-    },
-  },
-  enumerate(flds)
-)
+// A record pattern's named fields, kept by NAME: where each sits is the
+// receiver's layout, read at emit.
+fn lower_pat_record_fields(flds) = map({ (name, sub_pat) => (name, lower_sub_pat(sub_pat)) }, flds)
 
 fn lower_lit_value(v) with Memory + Alloc = match v {
   LVInt(n) => LInt(n),
@@ -4783,6 +4689,7 @@ fn k2_floor_guard(e, terminus) = match e {
   LMakeTuple(h, es) => LMakeTuple(h, k2_floor_list(es)),
   LSimdLanes(h, ls) => LSimdLanes(h, k2_floor_list(ls)),
   LMakeRecord(h, fs) => LMakeRecord(h, k2_floor_list(fs)),
+  LRecordUpdate(h, base, ovs) => LRecordUpdate(h, k2_floor_guard(base, false), map({ (n, v) => (n, k2_floor_guard(v, false)) }, ovs)),
   LMakeVariant(h, t, fs) => LMakeVariant(h, t, k2_floor_list(fs)),
   LFeedback(h, d, b) => LFeedback(h, d, k2_floor_guard(b, false)),
   LPerform(h, d, args) => LPerform(h, d, k2_floor_list(args)),
@@ -5132,61 +5039,21 @@ fn lower_expr_list(nodes) = map(lower_expr, nodes)
 // layout directly, no per-field lookup.
 fn lower_record_field_values(flds) = map({ (_, value) => lower_expr(value) }, flds)
 
-// {...base, f: v} — lower a non-destructive record update. The result
-// record's field set is read LIVE from the inferred type at `handle`
-// (infer proved it = base's fields ∪ overrides); the base is bound once
-// to a temp local, then each result field is filled either from the
-// override expr (carried by name) or by copying the base's proven field
-// (LFieldLoad at base's offset). No runtime copy loop, no re-derivation —
-// the proof IS the layout (Carried-Truth at the record layer).
-fn lower_record_update(handle, base, overrides) = {
-  let result_fields = record_fields_of_handle(handle)
-  let tmp = "__upd_{int_to_str(handle)}"
-  let base_lo = lower_expr(base)
-  // The copy-load's receiver carries BASE's handle: the emit projects the
-  // offset from the receiver's live type, and base's layout is the one the
-  // copied field lives in (the result may ADD fields — two layouts).
-  match base {
-    N{handle: bh} => {
-      let field_exprs = map(
-        {
-          (fname, _) => match find_override(overrides, fname) {
-            Some(v) => lower_expr(v),
-            None => LFieldLoad(handle, LLocal(bh, tmp), FByName(fname)),
-          },
-        },
-        result_fields
-      )
-      LBlock(handle, [LLet(handle, tmp, base_lo), LMakeRecord(handle, field_exprs)])
-    },
-  }
-}
-
-// The sorted field list of the record type inferred at a handle —
-// TRecord / TRecordOpen carry it directly; a nominal TName chases the
-// env to its RecordSchemeKind (same shape resolve_field_offset reads).
-fn record_fields_of_handle(handle) = match lookup_ty(handle) {
-  TRecord(fields) => fields,
-  TRecordOpen(fields, _) => fields,
-  TName(name, _) => match env_lookup(name) {
-    Some(entry) => match entry {
-      (_, _, kind) => match kind {
-        RecordSchemeKind(fields) => fields,
-        _ => [],
-      },
-    },
-    None => [],
+// {...base, f: v} — the base evaluated once into a temp, the overrides kept
+// by name. The copied fields are chosen at emit from the result's layout
+// (record_layout_of), each loaded from the base at the base's own offset.
+fn lower_record_update(handle, base, overrides) = match base {
+  N{handle: bh} => {
+    let tmp = "__upd_{int_to_str(handle)}"
+    LBlock(
+      handle,
+      [LLet(handle, tmp, lower_expr(base)), LRecordUpdate(handle, LLocal(bh, tmp), map({ (name, v) => (name, lower_expr(v)) }, overrides))]
+    )
   },
-  _ => [],
 }
 
-// The byte offset of `field` within the record inferred at `base`'s
-// handle — base's own field layout (the source we copy from), distinct
-// from the result layout. Reuses resolve_field_offset's proven offset.
-fn find_override(overrides, target: String) = match overrides {
-  [] => None,
-  [(n, v), ...t] => if n == target { Some(v) } else { find_override(t, target) },
-}
+// An update's lowered children, base first, for the walks that only descend.
+fn record_update_children(base, overrides) = [base] ++ map({ (_, e) => e }, overrides)
 
 // W7.1 — called at `LambdaExpr` / `FnStmt` lower-time, BEFORE entering
 // the new frame. Each free name is resolved against the CURRENT (enclosing)
@@ -5548,6 +5415,7 @@ fn reach_names_expr(expr, acc) = match expr {
   LMakeTuple(_h, elems) => reach_names_list(elems, acc),
   LSimdLanes(_h, lanes) => reach_names_list(lanes, acc),
   LMakeRecord(_h, fs) => reach_names_list(fs, acc),
+  LRecordUpdate(_h, base, ovs) => reach_names_list(record_update_children(base, ovs), acc),
   LMakeVariant(_h, _t, fs) => reach_names_list(fs, acc),
   LMatch(_h, s, arms) => reach_match_arms(arms, reach_names_expr(s, acc)),
   LFeedback(_h, _d, b) => reach_names_expr(b, acc),
@@ -6132,9 +6000,14 @@ fn spec_resolve_build(t) with LookupTy + Memory + Alloc + GraphRead = match t {
   TRecordOpen(fs, v) => // The row var read through the same live channel as every other var: when
   // the site closed it, that record IS the resolved receiver and the open
   // form is gone. Anything else keeps the open form with resolved fields.
-  match lookup_ty(v) {
-    TRecord(full) => TRecord(full),
-    _ => mk_record_open(map({ (n, ft) => (n, spec_resolve(ft)) }, fs), v),
+  // The var holds the REMAINDER the site proved, so the record is the known
+  // fields beside it, with any field the site proved absent dropped.
+  {
+    let known = map({ (n, ft) => (n, spec_resolve(ft)) }, fs)
+    match lookup_ty(v) {
+      TRecord(rem) => TRecord(sort_record_type_fields(fields_present(known ++ rem))),
+      _ => mk_record_open(known, v),
+    }
   },
   TRefined(b, p) => TRefined(spec_resolve(b), p),
   TAlias(n, i) => TAlias(n, spec_resolve(i)),
@@ -6186,14 +6059,27 @@ fn spec_pairs_walk(st0, it0, acc) with GraphRead + Memory + Alloc = {
     // 10 and 6 where both are 6, silently. It pairs only against a CLOSED
     // site, because only there is the remainder proven; an open-against-open
     // site has nothing to key on and keeps the floor.
+    //
+    // It pairs with the REMAINDER — the site's fields the decl's row does not
+    // name — because that is what the row var holds. Pairing the whole site
+    // record was right only while every known field was one the site also
+    // carried; an update's result knows a field its base may lack.
     match fold_strip(it0) {
-      TRecord(ifs) => spec_pairs_add(spec_pairs_walk_fields(fs, ifs, acc), graph_chase_handle(v), TRecord(ifs)),
+      TRecord(ifs) => spec_pairs_add(
+        spec_pairs_walk_fields(fs, ifs, acc),
+        graph_chase_handle(v),
+        TRecord(record_remainder(ifs, fs))
+      ),
       TRecordOpen(ifs, iv) => // The site stays TRecordOpen even when its row is BOUND — the residual
       // lives on the row var, which is why the offset read reconstructs the
-      // set rather than matching TRecord. Read it the same way and key on the
-      // proven whole; unproven, nothing is keyed.
-      match open_record_proven_fields(ifs, iv) {
-        Some(full) => spec_pairs_add(spec_pairs_walk_fields(fs, full, acc), graph_chase_handle(v), TRecord(full)),
+      // set rather than matching TRecord. Read it the same way; unproven,
+      // nothing is keyed.
+      match open_record_full_fields(ifs, iv) {
+        Some(full) => spec_pairs_add(
+          spec_pairs_walk_fields(fs, ifs ++ full, acc),
+          graph_chase_handle(v),
+          TRecord(record_remainder(full, fs))
+        ),
         None => spec_pairs_walk_fields(fs, ifs, acc),
       },
       _ => acc,
@@ -6218,6 +6104,11 @@ fn spec_pairs_walk_params(ps, ips, acc) with Memory + Alloc + GraphRead = if len
 } else {
   spec_pairs_walk_params(rest(ps), rest(ips), spec_pairs_walk(param_ty(ps[0]), param_ty(ips[0]), acc))
 }
+
+// The site's fields the decl's own row does not name — what the decl's row
+// var holds at this site.
+fn record_remainder(site, known) with Memory + Alloc =
+  filter({ (n, _) => !any({ (k, _) => field_name_eq(k, n) }, known) }, site)
 
 // Fields pair by NAME (both sides parse-sorted); a missing partner is an
 // error path — skip, never fabricate.
@@ -6385,9 +6276,15 @@ fn spec_scan_expr(expr, acc) with Memory + Alloc = match expr {
   LMakeTuple(_h, elems) => spec_scan_list(elems, acc),
   LSimdLanes(_h, lanes) => spec_scan_list(lanes, acc),
   LMakeRecord(_h, fs) => spec_scan_list(fs, acc),
+  LRecordUpdate(h, base, ovs) => // The result and the base are STRUCTURE witnesses, as a field-load
+  // receiver is: the update's layout and the base's offsets follow the
+  // instantiation, so a var-rooted update heals under the site's twin.
+  match spec_scan_list(record_update_children(base, ovs), acc) {
+    (s2, o) => (s2, [h, lexpr_handle(base)] ++ o),
+  },
   LMakeVariant(_h, _t, fs) => spec_scan_list(fs, acc),
-  LMatch(_h, s, arms) => // A tuple-destructuring arm is a STRUCTURE witness on the scrutinee —
-  // the pattern's element offsets and widths follow the instantiation
+  LMatch(_h, s, arms) => // A tuple- or record-destructuring arm is a STRUCTURE witness on the
+  // scrutinee — the pattern's offsets and widths follow the instantiation
   // (a wide element occupies 8 inline bytes where the floor bakes the
   // word layout: the non-worthy floor read an f64's high word as the
   // tag, an invalid exit with zero diagnostics), so a var-rooted
@@ -6395,7 +6292,7 @@ fn spec_scan_expr(expr, acc) with Memory + Alloc = match expr {
   // exactly as a field-load receiver does.
   {
     let acc2 = spec_scan_arms(arms, spec_scan_expr(s, acc))
-    if any({ (p, _) => lowpat_has_tuple(p) }, arms) {
+    if any({ (p, _) => lowpat_reads_layout(p) }, arms) {
       match acc2 {
         (s2, o) => (s2, [lexpr_handle(s)] ++ o),
       }
@@ -6421,17 +6318,17 @@ fn spec_scan_expr(expr, acc) with Memory + Alloc = match expr {
 
 fn spec_scan_list(exprs, acc) with Memory + Alloc = fold(acc, (a, e) => spec_scan_expr(e, a), exprs)
 
-// A tuple destructure at ANY depth reads positional layout: a tuple nested
-// under a con payload / record field / list slot sits behind a word pointer,
-// and its OWN element offsets are the same instantiation-sensitive read.
-fn lowpat_has_tuple(pat) with Memory + Alloc = match pat {
+// A tuple or record destructure at ANY depth reads layout: its offsets and
+// widths are the instantiation-sensitive read, whether it sits at the root
+// or nested under a con payload / field / list slot behind a word pointer.
+fn lowpat_reads_layout(pat) with Memory + Alloc = match pat {
   LPTuple(_) => true,
-  LPAs(_, inner) => lowpat_has_tuple(inner),
-  LPCon(_, _, pairs) => any(lowpat_has_tuple, pat_of_pairs(pairs)),
-  LPUnresolvedCon(_, subs) => any(lowpat_has_tuple, subs),
-  LPRecord(fbs, _) => any({ (_, _, sp) => lowpat_has_tuple(sp) }, fbs),
-  LPList(subs, _, _) => any(lowpat_has_tuple, subs),
-  LPAlt(branches) => any(lowpat_has_tuple, branches),
+  LPRecord(_, _, _) => true,
+  LPAs(_, inner) => lowpat_reads_layout(inner),
+  LPCon(_, _, pairs) => any(lowpat_reads_layout, pat_of_pairs(pairs)),
+  LPUnresolvedCon(_, subs) => any(lowpat_reads_layout, subs),
+  LPList(subs, _, _) => any(lowpat_reads_layout, subs),
+  LPAlt(branches) => any(lowpat_reads_layout, branches),
   LPVar(_) => false,
   LPWild => false,
   LPLit(_) => false,

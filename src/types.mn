@@ -782,6 +782,16 @@ type NodeKind
   // SORT rather than as a Ty bound onto a row handle — that shortcut was
   // tried and the march broke on it, for the reason this kind exists.
   | NRecordRowBound([(String, Ty)], RecordRowTail)
+  // a record field's PRESENCE, undetermined — the cell a record update mints
+  // for each field it writes, because the base may or may not carry it
+  // (Rémy's presence variable). It resolves PRESENT by binding a type, like
+  // any var, or ABSENT by becoming NAbsent. It yields to an ordinary var at
+  // every meet: a field something READS is demanded present.
+  | NMaybeFree(Int)
+  // a record field PROVEN ABSENT — the resolved half of NMaybeFree. It lives
+  // in a field slot and nowhere else; a meet with anything but another
+  // presence cell is the "no such field" mismatch.
+  | NAbsent
   // inference observed failure (Hazel marked hole)
   // IFC (§4⑥): no separate NFlowBound/NFlowFree dimension needed. The existing
   // graph already encodes information-flow constraints through two mechanisms:
@@ -812,13 +822,28 @@ type NodeKind
 // each way and is right by proof. Same writer, different inputs — so the
 // mark belongs on the WRITE, where the writer knows which it made, never
 // re-derived later from the fields alone.
+//
+// Two open rows meet at ONE fresh row var (Rémy), each side continuing into
+// it with the fields the other knew, so there is no third, "assumed" write:
+// a remainder is either proven whole or continues at a var whose own
+// binding says the rest. The union that used to be marked assumed was the
+// open-rows-through-lambdas wrong-slot read.
 type RecordRowTail
-  // proven: these fields and no more
-  = RowClosed
+  // proven: these fields and no more, and WHO proved it
+  = RowClosed(Closer)
   // the remainder is another row var's residual
   | RowContinues(Int)
-  // a union of partial sets; the rest is unseen
-  | RowAssumed
+
+// What closed a record row. A closed remainder remembers it, because the
+// brand of a nominal record lives in its declaration and nowhere in its
+// fields: without the closer, a rest binding or an update of one nominal
+// record closed a row that then met another nominal of the same shape and
+// was accepted as it.
+type Closer
+  // a structural record: its fields are its whole identity
+  = ByShape
+  // the declaration of this nominal record type
+  | ByName(String)
 
 type GNode = GNode(NodeKind, Reason)
 
@@ -2156,6 +2181,8 @@ effect GraphRead {
 effect GraphWrite {
   graph_fresh_ty(Reason) -> Handle
   graph_fresh_row(Reason) -> Handle
+  // a fresh record-field presence cell (NMaybeFree)
+  graph_fresh_maybe(Reason) -> Handle
   // edge-link a node's body into the one graph at its handle (the program column of the handle's page); resolves via graph_node_body
   graph_register_node(Int, NodeBody)
   // attach parse-collected comment prose + its span to a node's handle (the comment column of the handle's page); resolves via graph_comment_at — a comment is graph content
@@ -2178,6 +2205,8 @@ effect GraphWrite {
   graph_bind(Int, Ty, Reason)
   // mark a node an OBSERVED FAILURE (NErrorHole) — the productive-under-error poison. An env miss binds this, never TVar(self): the self-var tripped graph_bind's own occurs check (a spurious 0:0 E_OccursCheck per missing name) and read downstream as a normal free var (the ownership move-default cascade). A hole is the fact itself: unify no-ops on it, generalize preserves the handle, consumers stay silent.
   graph_bind_hole(Int, Reason)
+  // resolve a record field's presence cell ABSENT (NMaybeFree → NAbsent)
+  graph_bind_absent(Int, Reason)
   graph_bind_row(Int, EffRow, Reason)
   // the decl-exit REPLACE — inf_exit_fn publishing the frame's accumulated row as the fn's verdict. Distinct from graph_bind_row BY OP because the two writes have different algebra: a teaching bind on an already-bound row cell JOINS (the row is a join-semilattice; joins commute, so N caller branches teaching one cell converge to the same value in any order — LVars' law), while the finalization REPLACES (the frame's accumulation is the decl's own total, already containing everything taught)
   graph_finalize_row(Int, EffRow, Reason)
@@ -3227,7 +3256,9 @@ effect Mutate {
 // function, two handlers, different semantics for the same op.
 effect FreshHandle {
   mint(Reason) -> Int
-  mint_row(Reason) -> Int
+  // a fresh cell of the same SORT as the given root — the sort is read off
+  // the root, never re-derived by the caller and hoisted into an op name
+  mint_like(Int, Reason) -> Int
 }
 
 // Tracks the stack of (locals, captures) frames so VarRef can resolve
@@ -3536,8 +3567,8 @@ fn show_type(ref ty) with GraphRead + !Mutate + Alloc + Memory + Intern = match 
 // layer — `{ }` from a closed partner is a proof, `{ }` from two partial
 // sets is a guess, and they used to print identically.
 fn show_record_row_residual(fields, tail) with GraphRead + Memory + Alloc + !Mutate + Intern = match tail {
-  RowClosed => show_type(TRecord(fields)),
-  RowAssumed => "{show_type(TRecord(fields))} assumed",
+  RowClosed(ByShape) => show_type(TRecord(fields)),
+  RowClosed(ByName(n)) => "{show_type(TRecord(fields))} of {n}",
   RowContinues(v) => "{show_type(TRecord(fields))} | {show_handle(v)}",
 }
 
@@ -3553,6 +3584,8 @@ fn show_handle(h) with GraphRead + Memory + Alloc + !Mutate + Intern = {
     GNode(NRecordRowBound(fields, tail), _) => show_record_row_residual(fields, tail),
     GNode(NFree(epoch), _) => "t{int_to_str(h)}@e{int_to_str(epoch)}",
     GNode(NRowFree(epoch), _) => "r{int_to_str(h)}@e{int_to_str(epoch)}",
+    GNode(NMaybeFree(epoch), _) => "p{int_to_str(h)}@e{int_to_str(epoch)}?",
+    GNode(NAbsent, _) => "absent",
     GNode(NErrorHole(reason), _) => "!hole[{show_reason(reason)}]",
   }
 }

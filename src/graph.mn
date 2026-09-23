@@ -386,6 +386,15 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = trail_len + 1
     },
   },
+  graph_fresh_maybe(reason) => match spine_ensure(spine, spine_open, spine_band(next)) {
+    (sp, so) => {
+      spine_put_node(sp, next, GNode(NMaybeFree(epoch), reason))
+      spine_put_module(sp, next, cur_module + 1)
+      let new_trail = trail_append(trail, trail_len, MFreshNode(next))
+      if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(next)) }
+      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = trail_len + 1
+    },
+  },
   graph_register_node(handle, body) => // Edge-link a node's body into the one graph at its handle — the program
   // COLUMN of the handle's own SpinePage. Every AST node registers here at
   // construction, so any handle resolves to its body live (graph_node_body)
@@ -552,6 +561,14 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   {
     let old_node = graph_node_at(spine, next, handle)
     spine_put_node(spine, handle, GNode(NErrorHole(reason), reason))
+    let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
+    let new_epoch = epoch + 1
+    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) } else { () }
+    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+  },
+  graph_bind_absent(handle, reason) => {
+    let old_node = graph_node_at(spine, next, handle)
+    spine_put_node(spine, handle, GNode(NAbsent, reason))
     let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
     let new_epoch = epoch + 1
     if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) } else { () }
@@ -1150,26 +1167,9 @@ fn occurs_in_seen(spine, mint_bound, handle, ty, seen) with !Mutate = match ty {
   },
   TName(_, args) => occurs_in_list_seen(spine, mint_bound, handle, args, seen),
   TRecord(fields) => occurs_in_fields_seen(spine, mint_bound, handle, fields, seen),
-  TRecordOpen(fields, v) => if v == handle {
-    (true, seen)
-  } else {
-    match occurs_in_fields_seen(spine, mint_bound, handle, fields, seen) {
-      (true, s1) => (true, s1),
-      (false, s1) => {
-        let vroot = chase_handle(spine, mint_bound, v, 0)
-        if vroot == handle {
-          (true, s1)
-        } else if seen_has(s1, vroot) {
-          (false, s1)
-        } else {
-          let marked = seen_mark(s1, vroot)
-          match chase_node(spine, mint_bound, vroot, 0) {
-            GNode(NRecordRowBound(rest, _), _) => occurs_in_fields_seen(spine, mint_bound, handle, rest, marked),
-            _ => (false, marked),
-          }
-        }
-      },
-    }
+  TRecordOpen(fields, v) => match occurs_in_fields_seen(spine, mint_bound, handle, fields, seen) {
+    (true, s1) => (true, s1),
+    (false, s1) => occurs_in_record_row_seen(spine, mint_bound, handle, v, s1),
   },
   TRefined(base, _) => occurs_in_seen(spine, mint_bound, handle, base, seen),
   TCont(input, answer, _, world) => match occurs_in_seen(spine, mint_bound, handle, input, seen) {
@@ -1304,9 +1304,34 @@ fn occurs_in_record_fields_seen(spine, mint_bound, handle, fields, seen) with !M
 // continues at the very handle being bound is the row sort's own infinite
 // type, and subst would walk it forever. The other two arms carry no
 // handle, so there is nothing to close.
+// The record row to its end: a row var's residual fields, then whatever its
+// tail continues at. Two open rows meet at one fresh var and each continues
+// into it, so a cycle can run through the CHAIN and never through a field —
+// the walk has to follow the continuation, not stop at the first residual.
+fn occurs_in_record_row_seen(spine, mint_bound, handle, v, seen) with !Mutate = {
+  let vroot = chase_handle(spine, mint_bound, v, 0)
+  if v == handle || vroot == handle {
+    (true, seen)
+  } else if seen_has(seen, vroot) {
+    (false, seen)
+  } else {
+    let marked = seen_mark(seen, vroot)
+    match chase_node(spine, mint_bound, vroot, 0) {
+      GNode(NRecordRowBound(rest, tail), _) => match occurs_in_fields_seen(spine, mint_bound, handle, rest, marked) {
+        (true, s1) => (true, s1),
+        (false, s1) => match tail {
+          RowContinues(next) => occurs_in_record_row_seen(spine, mint_bound, handle, next, s1),
+          RowClosed(_) => (false, s1),
+        },
+      },
+      GNode(NBound(bound), _) => occurs_in_seen(spine, mint_bound, handle, bound, marked),
+      _ => (false, marked),
+    }
+  }
+}
+
 fn record_row_tail_is(tail, handle) with Pure = match tail {
-  RowClosed => false,
-  RowAssumed => false,
+  RowClosed(_) => false,
   RowContinues(v) => v == handle,
 }
 
@@ -1757,11 +1782,45 @@ fn spec_pair_or_var(u, pairs) with GraphRead + Memory + Alloc = match spec_pairs
   None => TVar(u),
 }
 
+// A record row under a site's pairs, read to its END. The row var a body
+// holds may be bound to a residual that continues at the var the scheme
+// quantified — a rest binding, a second field read — and the site paired
+// only that end. Looking up the first var alone found no pair and left the
+// row open inside the twin, where the layout then had nothing to read.
+fn spec_record_row(known, v, pairs) with GraphRead + Memory + Alloc = {
+  let r = graph_chase_handle(v)
+  match spec_pairs_find(pairs, r) {
+    Some(TRecord(rem)) => TRecord(field_canonicalize(fields_present(known ++ rem))),
+    Some(other) => other,
+    None => match graph_chase(r) {
+      GNode(NRecordRowBound(more, RowContinues(next)), _) => spec_record_row(known ++ map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, more), next, pairs),
+      GNode(NRecordRowBound(more, RowClosed(_)), _) => TRecord(field_canonicalize(fields_present(known ++ map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, more)))),
+      _ => mk_record_open(known, v),
+    },
+  }
+}
+
+// A record's fields with every PROVEN-ABSENT slot dropped: absence is a fact
+// about the type, never a slot in the layout.
+fn fields_present(fields) with GraphRead + Memory + Alloc =
+  filter({ (_, ft) => !slot_is_absent(ft) }, fields)
+
+fn slot_is_absent(ty) with GraphRead = match ty {
+  TVar(h) => match graph_chase(h) {
+    GNode(NAbsent, _) => true,
+    _ => false,
+  },
+  _ => false,
+}
+
 fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
   TVar(u) => match graph_chase(u) {
     GNode(kind, _r) => match kind {
       NBound(t2) => spec_subst_pairs(t2, pairs),
       NFree(_) => spec_pair_or_var(u, pairs),
+      NMaybeFree(_) => spec_pair_or_var(u, pairs),
+      NAbsent => // a proven absence is not a var the site instantiates; the layout readers drop its field
+      t,
       NErrorHole(_) => spec_pair_or_var(u, pairs),
       NRowBound(_) => // an EFFECT row — not in the pair space, which keys value shapes
       t,
@@ -1793,10 +1852,12 @@ fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
   // the known set's own ordering instead of the record's. Paired, the open
   // row resolves to the closed record it was proven to be, and every offset
   // downstream reads the full sorted set.
-  match spec_pairs_find(pairs, graph_chase_handle(v)) {
-    Some(closed) => closed,
-    None => mk_record_open(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs), v),
-  },
+  // The pair holds the REMAINDER the site proved — what the row var itself
+  // carries — so the record is the known fields beside it. Pairing the whole
+  // site record was right only while every known field was one the site
+  // also had; an update's result knows a field its base may lack, and the
+  // whole-record pairing dropped it.
+  spec_record_row(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs), v, pairs),
   TRefined(b, p) => TRefined(spec_subst_pairs(b, pairs), p),
   TAlias(n, i) => TAlias(n, spec_subst_pairs(i, pairs)),
   TCont(i, a, d, w) => TCont(spec_subst_pairs(i, pairs), spec_subst_pairs(a, pairs), d, w),
@@ -1826,6 +1887,8 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
       match kind {
         NBound(t) => resume(spec_subst_pairs(t, spec_pairs)),
         NFree(_) => resume(spec_pair_or_var(h, spec_pairs)),
+        NMaybeFree(_) => resume(spec_pair_or_var(h, spec_pairs)),
+        NAbsent => resume(TVar(h)),
         NErrorHole(_) => resume(spec_pair_or_var(h, spec_pairs)),
         NRowBound(_) => resume(TUnit),
         NRecordRowBound(_, _) => resume(TUnit),
@@ -1859,6 +1922,10 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
         // ft mismatch), at the site that actually needs the width — the
         // consumer owns the refusal, never the read.
         resume(TVar(h)),
+        NMaybeFree(_) => // A presence cell carries its handle like a free var: the field-slot
+        // readers ask its node whether the field is there.
+        resume(TVar(h)),
+        NAbsent => resume(TVar(h)),
         NRowBound(_) => resume(TUnit),
         NRecordRowBound(_, _) => resume(TUnit),
         NRowFree(_) => resume(TUnit),

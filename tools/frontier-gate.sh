@@ -3337,23 +3337,35 @@ for i in "${!compilers[@]}"; do
   # the day that refusal lands with the twin reaching the arm.
   run_program "$compiler" eq-in-arm-pointer "$ROOT/tests/frontier/mn-eq-in-arm-pointer.mn" 0 yes "$dir"
   # A record read through lambdas over a list of records: the filter's and
-  # the map's element rows are two OPEN rows, and unifying them absorbs each
-  # side's residual into the other and reads the absorbed row as proven, so
-  # `.body` reads a neighbouring slot — 32 where 42 was written, no
-  # diagnostic (measured 2026-09-23, when the medium's own `provider` query
-  # trapped on the same shape). Declared RED until a record row is ONE
-  # union-find cell holding the whole row (Hβ.infer.record-row-vars-are-not-unioned).
+  # the map's element rows are two OPEN rows. They meet at ONE fresh row var
+  # now (Rémy), each continuing into it, so `.body` reads its own slot —
+  # it read a neighbour's, 32 where 42 was written, while two open rows
+  # absorbed each other's fields as an "assumed" remainder.
   run_program "$compiler" open-rows-through-lambdas "$ROOT/tests/frontier/mn-open-rows-through-lambdas.mn" 42 yes "$dir"
-  # The same record-row root at its two remaining faces, both silent and both
-  # trapping at 134 through the pinned boot (measured 2026-09-23 by the rows
-  # design's second refuter): a closed record missing a field the callee
-  # reads is ACCEPTED, the open row overwritten with the closed leftovers;
-  # and a rest pattern over an open parameter has no layout to read. Declared
-  # RED until a record row is one union-find cell with its remainder a
-  # continuation (Hβ.infer.record-row-vars-are-not-unioned).
+  # A closed record missing a field the callee reads is a type error now —
+  # the row is read to its end and a field only the open side names must be
+  # absent from the closed one. The contract is the REFUSAL, and it stays
+  # declared red on a different blocker: E_TypeMismatch is not in
+  # diag_refuses, so the reported mismatch still emits and traps.
   run_refusal "$compiler" record-closed-lacks-field \
     "$ROOT/tests/frontier/mn-record-closed-lacks-field.mn" E_TypeMismatch "$dir"
+  # A rest pattern over an open parameter: the residual is read at emit
+  # from the pattern node's layout under the twin, where lowering the
+  # generic body once had nothing to read.
   run_program "$compiler" record-rest-over-open "$ROOT/tests/frontier/mn-record-rest-over-open.mn" 7 yes "$dir"
+  # A record update is the base's row with the overrides written over it:
+  # a nominal base keeps its declared fields, and a record twice-updated
+  # through a function reads every field back.
+  run_program "$compiler" record-update-type "$ROOT/tests/frontier/mn-record-update-type.mn" 231 yes "$dir"
+  # A closed remainder remembers what closed it, so a rest binding or an
+  # update of a `Q` never becomes a `P` of the same shape; and a field the
+  # body reads from an update's base cannot resolve absent.
+  run_diagnostic "$compiler" brand-launder-rest \
+    "$ROOT/tests/frontier/mn-brand-launder-rest.mn" E_TypeMismatch "$dir"
+  run_diagnostic "$compiler" brand-launder-update \
+    "$ROOT/tests/frontier/mn-brand-launder-update.mn" E_TypeMismatch "$dir"
+  run_diagnostic "$compiler" update-absent-read \
+    "$ROOT/tests/frontier/mn-update-absent-read.mn" E_TypeMismatch "$dir"
   # Two faces the rows design's third refuter measured on the pinned boot
   # (2026-09-23), both checking clean and failing at runtime: an effect
   # instance that reaches an install through a HOF parameter never meets the

@@ -1,0 +1,9 @@
+// expect: 42
+// A structural update may change a field's type: the result carries the
+// override's type, and the base's own field type is not consulted.
+fn tag(r) = {...r, v: 40}
+
+fn main() = {
+  let t = tag({n: 2, v: "unused"})
+  t.n + t.v
+}

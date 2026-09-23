@@ -282,11 +282,22 @@ fn board_bounds() with Memory + Alloc = [
   // grounded leaf until it read the env. The other five are not itemized,
   // because the tally did not exist before this landing to compare against.
   //
+  // 1,134 — thirty-one more, and the first raise compared tally against
+  // tally. The record row landing moved every record LAYOUT read to emit —
+  // an update's stores, a pattern's offsets and widths, a rest's residual —
+  // so the readers it added sit on this line: `record_layout_of` 4,
+  // `record_row_from` 4, `open_record_full_fields` 4, `record_slot_at` 3,
+  // `emit_pat_record_floor` 3, `resolve_field_offset` 2, one call each to the
+  // pattern field test and bind, the rest bind and copy, `lower_record_update`
+  // and `show_record_row_residual`, and six more `int_to_str` inside their
+  // diagnostics (353 → 359). Same defect, same counting rule; no row among
+  // them is authored.
+  //
   // None of these is the probe's 856, which counted chase EVENTS inside one
   // lower run. Four instruments, four denominators, one fact; recording all
   // of them is how the next reader avoids reconciling numbers that were
   // never the same.
-  Bound({ceiling: 1103, shape: CsFreeRowCallee}),
+  Bound({ceiling: 1134, shape: CsFreeRowCallee}),
   // 480 — the imperative loop in recursion's costume, counted across the
   // whole wheel and bounded for the first time 2026-09-21 (Morgan: "anytime
   // there is anything that could be written with the five topological

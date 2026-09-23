@@ -921,20 +921,14 @@ solo_violations_max: 0
 # RETIRED by proof: a declaration's reason stopped copying its own name and
 # span and became an edge to the declaring node, whose address carries the
 # file (`why gain` → `declared at tests/frontier/mn-where-badges:8:1-8:15`).
-# 2026-09-23: a record read through a lambda over a list reads the WRONG
-# SLOT — `arms |> filter({ a => a.op == 7 }) |> map({ a => a.body })` over
-# `[{args, body: 42, op: 7}]` answers 32 with no diagnostic, because two open
-# record rows unify by cross-absorbing each other's residuals and the offset
-# read takes the absorbed row as proven. Measured the day the medium's own
-# `provider` query trapped on it; retires when a record row is ONE
-# union-find cell holding the whole row (Hβ.infer.record-row-vars-are-not-unioned).
-frontier_expected_red: open-rows-through-lambdas
-# 2026-09-23: the same root's two other faces, both trapping at 134 with a
-# clean check — a closed record missing a field the callee reads is accepted
-# (its type rewritten to the closed leftovers), and a rest pattern over an
-# open parameter reads no layout. Same retirement.
+# 2026-09-23: `open-rows-through-lambdas` and `record-rest-over-open` were
+# declared RED here the same day and RETIRED by the record row landing: two
+# open rows meet at one fresh var (Rémy) instead of absorbing each other as an
+# "assumed" remainder, and a record pattern reads its layout at emit under
+# the twin. `record-closed-lacks-field` stays RED on a different blocker: the
+# missing field is now a type error, but E_TypeMismatch is not in
+# diag_refuses, so the mismatch is reported and the program still emits.
 frontier_expected_red: record-closed-lacks-field
-frontier_expected_red: record-rest-over-open
 # 2026-09-23: the rows design's third refuter — an instance reaching an install
 # through a HOF parameter is never unified with the handler's (an Int payload
 # called as a function, runtime trap), and a module-level `let` performs with
@@ -1143,7 +1137,11 @@ crown_expected_red: sound-join-sealed-param-with-loud-swapped
 # arm's op name) and `handle_in` (a handle-membership helper, deleted with the
 # dedup it served). Same measurement as above, HEAD's wheel through HEAD's boot beside
 # the tree's m2; the lambda sites renumber and pair one to one.
-eq_type_unprovable_max: 53
+# 2026-09-23 (the record-row landing): 53 -> 52, measured at the pre-commit
+# gate and NOT yet attributed to a site — no paired diff was run, so no cause
+# is written here; a record's layout now reads to its row's end at emit, which
+# is where to look first.
+eq_type_unprovable_max: 52
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the

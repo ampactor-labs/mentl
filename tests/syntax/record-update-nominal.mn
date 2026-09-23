@@ -1,0 +1,12 @@
+// expect: 15
+// A NOMINAL base keeps every declared field: the update's result carries the
+// remainder of `Person` through its row. The snapshot read nothing from a
+// nominal type, so the updated record held the age alone and reading its name
+// trapped.
+type Person = {name: Int, age: Int}
+
+fn main() = {
+  let p = Person{name: 5, age: 9}
+  let q = {...p, age: 10}
+  q.name + q.age
+}

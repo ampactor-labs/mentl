@@ -546,6 +546,8 @@ fn verify_after_apply(handle) = match graph_chase(handle) {
     NRowBound(_) => false,
     NRecordRowBound(_, _) => false,
     NRowFree(_) => false,
+    NMaybeFree(_) => false,
+    NAbsent => false,
   },
 }
 

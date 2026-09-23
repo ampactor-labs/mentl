@@ -1,0 +1,11 @@
+// expect: 203
+// One generic update, two bases: one LACKS the field and one carries it.
+// Overwriting and adding are one rule — the override's presence in the base
+// is a variable the call site resolves — so each call mints its own layout.
+fn stamp(e) = {...e, ts: 100}
+
+fn main() = {
+  let a = stamp({id: 1})
+  let b = stamp({id: 2, ts: 3})
+  a.id + a.ts + b.id + b.ts
+}

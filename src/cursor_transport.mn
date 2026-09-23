@@ -329,6 +329,8 @@ fn show_node_kind(kind) with Pure = match kind {
   NRowBound(_) => "row-bound",
   NRowFree(_) => "row-free",
   NRecordRowBound(_, _) => "record-row-bound",
+  NMaybeFree(_) => "presence-free",
+  NAbsent => "absent",
   NErrorHole(_) => "error-hole",
 }
 

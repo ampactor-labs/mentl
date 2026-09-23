@@ -868,7 +868,7 @@ handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
 // rendering); both satisfy FreshHandle.
 handler fresh_for_query with next_display = 0 {
   mint(_reason) => resume(next_display) with next_display = next_display + 1,
-  mint_row(_reason) => resume(next_display) with next_display = next_display + 1,
+  mint_like(_root, _reason) => resume(next_display) with next_display = next_display + 1,
 }
 
 // Collection helpers — consumed by teach / audit

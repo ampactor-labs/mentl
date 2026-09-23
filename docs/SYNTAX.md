@@ -906,7 +906,9 @@ let older = {...user, age: user.age + 1}
 let tagged = {...event, timestamp: now(), processed: true}
 ```
 
-`{...existing, field: new_value, ...}` creates a NEW record by copying `existing`'s fields and overwriting/adding the listed fields. Non-destructive; original record unchanged (ownership preserved). Field lists must be type-compatible with the source shape.
+`{...existing, field: new_value, ...}` creates a NEW record by copying `existing`'s fields and overwriting/adding the listed fields. Non-destructive; original record unchanged (ownership preserved).
+
+**The result is the base's own row with the overrides written over it** (Rémy's extension): whether the base carried a field is a fact its caller settles, so overwriting and adding are one rule, and `fn stamp(e) = {...e, ts: now()}` works on a record with or without `ts`. A structural update may change a field's type. A **nominal** base keeps its brand through the row that closed it: `{...p, age: 31}` with `p: Person` is still a `Person` wherever one is demanded, and an update that adds a field or changes a declared field's type is a record of Person's shape that is no longer a Person — it meets `Person` as a type mismatch, never as a laundered brand.
 
 ---
 

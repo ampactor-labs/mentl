@@ -1,0 +1,13 @@
+// expect: 44
+// SYNTAX §«Record update» through a PARAMETER base: the update's result is
+// the base's own row with the override written over it, so every field the
+// caller's record carries arrives through that row. It was typed from a
+// snapshot of the base taken where the update is judged — empty for a
+// parameter — so `d.born` and `d.full` were type mismatches and the program
+// trapped (`Hβ.infer.record-update-snapshots-the-base`).
+fn recharge(c) = {...c, charged: 40}
+
+fn main() = {
+  let d = recharge({born: 1, charged: 2, full: 3})
+  d.born + d.charged + d.full
+}

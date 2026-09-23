@@ -1,0 +1,9 @@
+// A field the body READS from the base is demanded present, so the update's
+// presence cell for it cannot resolve absent: a caller whose record lacks
+// that field is refused at the call.
+fn g(c) = {
+  let d = {...c, x: 1}
+  c.x + d.x
+}
+
+fn main() = g({y: 1})

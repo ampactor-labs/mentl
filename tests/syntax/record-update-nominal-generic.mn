@@ -1,0 +1,11 @@
+// expect: 61
+// A generic update of a nominal record is still that nominal record: the
+// remainder was closed BY `Person`, and the row remembers it, so the result
+// passes where a `Person` is demanded.
+type Person = {name: Int, age: Int}
+
+fn older(p) = {...p, age: 11}
+
+fn describe(p: Person) = p.name * 10 + p.age
+
+fn main() = describe(older(Person{name: 5, age: 9}))

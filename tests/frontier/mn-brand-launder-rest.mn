@@ -1,0 +1,12 @@
+// A rest binding of a nominal record is that record's remainder, closed BY
+// its declaration. `P` and `Q` share a shape and are different types, so a
+// remainder of `Q` is never a `P`. It was: the TName arm re-bound a row that
+// was already closed, and passing the rest to `f` checked clean and ran.
+type P = {a: Int, b: Int}
+type Q = {a: Int, b: Int}
+
+fn f(p: P) = p.a
+
+fn main() = match (Q{a: 1, b: 2}) {
+  {...rest} => f(rest),
+}
