@@ -248,6 +248,11 @@ if C=$(wt_m2_ensure); then
     rout=$(tools/run-micro.sh "$rf" "$rwant" "${RTLIBS[@]}" 2>/dev/null | grep -E '^(PASS|FAIL)' | tail -1)
     [[ "$rout" == PASS* ]] || { say "✗ row $r: ${rout:-no output}"; rm_bad=$((rm_bad+1)); continue; }
     rproj=$(wt_run --dir . "$C/m2.wasm" "$rf" type pick 2>/dev/null)
+    # The mark lives on the TYPE line; the Reason line below it names the
+    # declaring node's file since 2026-09-23, and this fixture's own file is
+    # `mn-assumed-residual` — matching the whole answer read the file name as
+    # the mark.
+    rproj="${rproj%%$'\n'*}"
     # Three states, not two. A remainder is PROVEN (rendered as its fields),
     # ASSUMED (rendered with the mark), or genuinely FREE — and the third was
     # invisible while absorb_into_residual stamped `[] assumed` onto cells that
@@ -265,6 +270,7 @@ if C=$(wt_m2_ensure); then
     esac
   done
   ctl=$(wt_run --dir . "$C/m2.wasm" tests/micros/mn-findtag.mn type pick 2>/dev/null)
+  ctl="${ctl%%$'\n'*}"
   case "$ctl" in
     *assumed*) say "✗ row control: findtag's proven residual is marked assumed"; rm_bad=$((rm_bad+1)) ;;
     *region_id*) ;;

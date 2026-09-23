@@ -371,11 +371,15 @@ type LowExpr
   // param (`(prev) => ...`) lowers to THIS — the recurrence y[n]=f(x[n],y[n-1])
   // is expressed, not commented. Carried-Truth: the feedback NODE is the value;
   // no register copy, no snapshot — emit reads the one local the cycle writes.
-  // handle, DEPTH, body, spec. The depth is the authored `delay(N)` read
-  // at the site — the number of priors the line carries, so the emit
-  // declares N slots and reads the oldest. It rides the node because the
-  // AST is where the literal lives and this is the pass that sees both.
-  | LFeedback(Int, Int, LowExpr, LowExpr)
+  // handle, DEPTH, body. The depth is the authored `delay(N)` read at the
+  // site — the number of priors the line carries, so the emit declares N
+  // slots and reads the oldest. It rides the node because the AST is where
+  // the literal lives and this is the pass that sees both. The state
+  // element itself is NOT lowered: it declares the register and the
+  // compiler reads it, and the value it would build was lowered, walked by
+  // every pre-pass and dropped at emit — a construction nothing performed,
+  // whose row was charged anyway (Hβ.effects.feedback-row-substitutes).
+  | LFeedback(Int, Int, LowExpr)
   // handle of the enclosing <~ site
   | LFeedbackPrior(Int)
   // THE ONE PERFORM. It replaced LPerform + LDirectPerform + LEvPerform,
@@ -584,7 +588,7 @@ fn lexpr_handle(e) with Pure = match e {
   LMakeVariant(h, _, _) => h,
   LMatch(h, _, _) => h,
   LHandleWith(h, _, _, _, _, _) => h,
-  LFeedback(h, _, _, _) => h,
+  LFeedback(h, _, _) => h,
   LFeedbackPrior(h) => h,
   LPerform(h, _, _) => h,
   LFieldLoad(h, _, _) => h,
@@ -764,7 +768,7 @@ fn lower_call_dispatch(handle, f, fh, fbody, r_args) = {
         // zero-arg call (already reported there) lowers to the empty
         // record, never a garbage read past an empty args list.
         if len(lo_args) == 0 { LMakeRecord(handle, []) } else { list_index(lo_args, 0) },
-        Some(EffectOpScheme(_, _, _, _)) => // ONE perform, whose DISPATCH says how much of the walk this
+        Some(EffectOpScheme(_, _, _)) => // ONE perform, whose DISPATCH says how much of the walk this
         // site could finish now (PerformDispatch). PLAN §6's
         // handler-elimination tiers are degrees of that boundness, not
         // three operations: the meaning is always "walk innermost-out to
@@ -900,7 +904,7 @@ fn partial_callee_form(handle, fbody, fh) = match fbody {
     match env_kind_of(name) {
       Some(FnScheme) => Some(PcfCall(name)),
       Some(ConstructorScheme(tag_id, _)) => Some(PcfVariant(tag_id)),
-      Some(EffectOpScheme(_, _, _, _)) => // An OP reified as a value, and it passes None for the lexical
+      Some(EffectOpScheme(_, _, _)) => // An OP reified as a value, and it passes None for the lexical
       // answer — not to disable a tier, but because it HAS no lexical
       // answer: this body becomes a lifted fn, so a frame local resolved
       // here would name a frame that is gone by the time it runs. The walk
@@ -2146,15 +2150,14 @@ fn perform_target_symbol(disp) = match disp {
   PdDriver(name) => Some(name),
 }
 
-// The op's UNIQUE default handler, read from the EffectOpScheme edge drawn at
-// register_handler — None when unset (no handler declares it) or ambiguous
-// (≥2 do → thread evidence, no static singleton to read).
+// The op's UNIQUE providing handler, a projection of the providers the op's
+// scheme carries (each arm joins itself at register_handler) — None when no
+// handler provides it or more than one does (thread evidence: no static
+// singleton to name). The name is read off the providing decl's own node.
 fn lower_op_default_handler(op_name) = match env_lookup(op_name) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      EffectOpScheme(_, default_handler, ambiguous, _) => // field_name_eq forces str_eq (a bare `== ""` is pointer-eq under the
-      // seed — §9 name-compare class); default_handler "" ⇒ unset.
-      if ambiguous || field_name_eq(default_handler, "") { None } else { Some(default_handler) },
+      EffectOpScheme(_, [(decl, _)], _) => Some(body_decl_name(graph_node_body(decl))),
       _ => None,
     },
   },
@@ -2174,7 +2177,7 @@ fn lower_op_default_handler(op_name) = match env_lookup(op_name) {
 fn lookup_parent_effect(op_name) = match env_lookup(op_name) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      EffectOpScheme(ename, _, _, _) => Some(ename),
+      EffectOpScheme(ename, _, _) => Some(ename),
       _ => None,
     },
   },
@@ -2308,7 +2311,7 @@ fn lower_expr_body(e, handle, span) = match e {
             LMakeVariant(handle, tag_id, []),
             Some(arity) => lower_call_partial(handle, graph_node_body(handle), handle, [], arity),
           },
-          Some(EffectOpScheme(_, _, _, _)) => match scheme_ref_fun_arity(name) {
+          Some(EffectOpScheme(_, _, _)) => match scheme_ref_fun_arity(name) {
             None => // An op's declared scheme is always a signature, zero-arg
             // included, so a miss here is an unresolved judgment and the
             // typed floor is the honest answer — lower_call_partial's own
@@ -2681,18 +2684,14 @@ fn lower_pipe(kind, left, right, handle) = match kind {
     let all_inits = config_inits ++ lookup_handler_state_inits_of(hname)
     LHandleWith(handle, lo_l, lo_r, hname, all_inits, arm_groups)
   },
-  PFeedback => {
-    // <~ feedback — requires iterative context. The LFeedback emit declares
-    // and loads $__fb_prev_<h> (the prior-iteration output), so the body can
-    // read it LIVE. (LF.B) When the LHS is (prev) => body, prev binds to
-    // THIS feedback handle's prior node and the recurrence y[n]=f(x[n],y[n-1])
-    // is expressed — not commented. The lambda is INLINED (its body lowers
-    // directly into the cycle), never a closure: the prior is a register read,
-    // and a `<~` recurrence allocating a closure per tick would defeat !Alloc.
-    let lo_l = lower_feedback_body(left, handle)
-    let lo_r = lower_expr(right)
-    LFeedback(handle, feedback_line_depth(right), lo_l, lo_r)
-  },
+  PFeedback => // <~ feedback — requires iterative context. The LFeedback emit declares
+  // and loads $__fb_prev_<h> (the prior-iteration output), so the body can
+  // read it LIVE. (LF.B) When the LHS is (prev) => body, prev binds to
+  // THIS feedback handle's prior node and the recurrence y[n]=f(x[n],y[n-1])
+  // is expressed — not commented. The lambda is INLINED (its body lowers
+  // directly into the cycle), never a closure: the prior is a register read,
+  // and a `<~` recurrence allocating a closure per tick would defeat !Alloc.
+  LFeedback(handle, feedback_line_depth(right), lower_feedback_body(left, handle)),
 }
 
 // How many priors does this site's line carry? The authored literal when
@@ -4867,7 +4866,7 @@ fn k2_floor_guard(e, terminus) = match e {
   LSimdLanes(h, ls) => LSimdLanes(h, k2_floor_list(ls)),
   LMakeRecord(h, fs) => LMakeRecord(h, k2_floor_list(fs)),
   LMakeVariant(h, t, fs) => LMakeVariant(h, t, k2_floor_list(fs)),
-  LFeedback(h, d, b, s) => LFeedback(h, d, k2_floor_guard(b, false), k2_floor_guard(s, false)),
+  LFeedback(h, d, b) => LFeedback(h, d, k2_floor_guard(b, false)),
   LPerform(h, d, args) => LPerform(h, d, k2_floor_list(args)),
   LWasiCall(h, n, args) => LWasiCall(h, n, k2_floor_list(args)),
   LFieldLoad(h, rec, o) => LFieldLoad(h, k2_floor_guard(rec, false), o),
@@ -5633,7 +5632,7 @@ fn reach_names_expr(expr, acc) = match expr {
   LMakeRecord(_h, fs) => reach_names_list(fs, acc),
   LMakeVariant(_h, _t, fs) => reach_names_list(fs, acc),
   LMatch(_h, s, arms) => reach_match_arms(arms, reach_names_expr(s, acc)),
-  LFeedback(_h, _d, b, s) => reach_names_expr(s, reach_names_expr(b, acc)),
+  LFeedback(_h, _d, b) => reach_names_expr(b, acc),
   LWasiCall(_h, _n, args) => reach_names_list(args, acc),
   LInvariantFailure(_, _) => acc,
   LFieldLoad(_h, rec, _off) => reach_names_expr(rec, acc),
@@ -6486,7 +6485,7 @@ fn spec_scan_expr(expr, acc) with Memory + Alloc = match expr {
       acc2
     }
   },
-  LFeedback(_h, _d, b, s) => spec_scan_expr(s, spec_scan_expr(b, acc)),
+  LFeedback(_h, _d, b) => spec_scan_expr(b, acc),
   LWasiCall(_h, _n, args) => spec_scan_list(args, acc),
   LInvariantFailure(_, _) => acc,
   LFieldLoad(_h, rec, _sel) => // A field-load receiver is a STRUCTURE witness: a var-rooted receiver

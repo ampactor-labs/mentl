@@ -840,21 +840,30 @@ fn compose_propose_situation(target_handle, target_reason, prior_turn) with Memo
 // to Silence (the §7 registry-trap shape: computing a fact then dropping it).
 // Their Reason is the projection's own provenance (Inferred), satisfying the
 // no-Answer-without-Reason contract. The remaining forensic results
-// (QREffects / QRUnresolved / QRChain / QRIntent / QROwnership /
-// QRHandlerProvider) have no Answer variant to carry them and no hover-shaped
-// payload, so they project to AnsSilence — the honest "no provable hover here"
-// rather than a fabricated Reason. QRError → AnsSilence: an ill-posed or
-// unprovable question is a valid Silence (voice.mn:265). H6 exhaustive over
-// QueryResult's 15 variants — no wildcard.
+// (QREffects / QRUnresolved / QRChain / QRIntent / QROwnership) have no
+// Answer variant to carry them and no hover-shaped payload, so they project
+// to AnsSilence — the honest "no provable hover here" rather than a
+// fabricated Reason. QRError → AnsSilence: an ill-posed or unprovable
+// question is a valid Silence. Exhaustive over QueryResult — no wildcard.
 fn query_result_to_answer(result) with GraphRead + !Mutate + Memory + Alloc = match result {
   QRType(ty, reason) => AnsType(ty, reason),
   QRWhy(reason) => AnsReason(reason),
-  QRRefs(sites) => // refs-of carries NODES, and this boundary projects each one to its own
+  QRRefs(decl, sites) => // refs-of carries NODES, and this boundary projects each one to its own
   // span — the same projection the census and decls arms below make, for
   // the same reason: AnsRefs is the caret's carrier and the caret already
   // knows its file. The TERMINAL is where the module is needed and where it
-  // is read (pipeline.mn's site line, through `site_address`).
-  AnsRefs(map(graph_span_of, sites), Inferred("refs-of: {int_to_str(len(sites))} reference(s)")),
+  // is read (pipeline.mn's site line, through `site_address`). The
+  // declaration leads, so a rename the caret drives edits the name's own site.
+  AnsRefs(
+    map(
+      graph_span_of,
+      match decl {
+        Some(h) => [h] ++ sites,
+        None => sites,
+      }
+    ),
+    Inferred("refs-of: {int_to_str(len(sites))} reference(s)")
+  ),
   QRVerifyDebt(debt) => AnsDebt(debt, Inferred("verify-debt: {int_to_str(len(debt))} obligation(s)")),
   QRSmt(debt) => // The SMT projection rides AnsDebt too — it is the SAME bank, and the
   // voice answers with the obligations, not with the text a render made of
@@ -869,7 +878,7 @@ fn query_result_to_answer(result) with GraphRead + !Mutate + Memory + Alloc = ma
   AnsRefs(map(graph_span_of, sites), Inferred("census: {int_to_str(len(sites))} {label}")),
   QRDecls(sites) => // The decls column's sites ride AnsRefs like the census — same shape,
   // so the module half drops at the same boundary and for the same reason.
-  AnsRefs(map(graph_span_of, sites), Inferred("decls: {int_to_str(len(sites))} judged decl(s)")),
+  AnsRefs(map(graph_span_of, sites), Inferred("decls: {int_to_str(len(sites))} declaration(s)")),
   QRWhere(_, sites) => // The where badges' site list rides AnsRefs like the census; the
   // badge lines render at the CLI (the terminal projection's home).
   AnsRefs(site_spans(sites), Inferred("where: {int_to_str(len(sites))} fanout site(s)")),
@@ -900,15 +909,16 @@ fn query_result_to_answer(result) with GraphRead + !Mutate + Memory + Alloc = ma
   QRChain(_) => AnsSilence,
   QRIntent(_) => AnsSilence,
   QROwnership(_) => AnsSilence,
-  QRHandlerProvider(_) => AnsSilence,
+  QRHandlerProvider(arms) => // The providing arms are sites the caret visits exactly as it visits the
+  // decls column's — so they ride the same carrier rather than being
+  // computed and dropped to Silence.
+  AnsRefs(site_spans(arms), Inferred("provider: {int_to_str(len(arms))} arm(s)")),
   QRFlowLabel(_, _) => AnsSilence,
   QRError(_) => AnsSilence,
 }
 
-fn site_spans(sites) with GraphRead + !Mutate + Memory + Alloc = match sites {
-  [] => [],
-  [(_, h), ...t] => [graph_span_of(h)] ++ site_spans(t),
-}
+fn site_spans(sites) with GraphRead + !Mutate + Memory + Alloc =
+  sites |> map({ (_, h) => graph_span_of(h) })
 
 // ─── Live forensic-result projections — the run ops read the graph ────
 //

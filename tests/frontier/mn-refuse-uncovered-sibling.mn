@@ -1,0 +1,34 @@
+// expect: refuse E_EffectUnhandled
+// AN INSTALL SOMEWHERE IS CREDITED FOR A PERFORM IT DOES NOT COVER. The same
+// body as mn-refuse-sibling-mask with the declaration taken off: the left
+// operand performs E under `~> h`, the right operand performs E through a
+// second HOF call no install encloses, and nothing declares a row. E reaches
+// main's root row — the row is right — and the executable gate clears it
+// because `h` is installed somewhere in the program.
+//
+// MEASURED 2026-09-23 through the current wheel: zero diagnostics, an
+// executable emitted, and the run faults out of bounds in ev_declaring_node
+// — the uncovered op reading evidence no install threaded. So nothing
+// executes unproven is false here, and not even the walk's own belt fires:
+// the fault is a memory access, not the named trap.
+//
+// The credit is deliberate and measured (report_unhandled_names in
+// pipeline.mn): deleting it refuses the wheel, whose nested graph installs
+// forward sibling GraphRead ops through an outer install the row cannot see.
+// Telling that forwarding apart from this uncovered site is install identity
+// — a performed name discharged by an install that REACHES it — and this
+// fixture holds the refusal until the gate reads the install chain
+// (Hβ.effects.reachable-perform-with-no-install-compiles).
+effect E { op() -> Int }
+
+handler h {
+  op() => resume(1),
+}
+
+fn run(f) = f()
+
+fn run2(g) = g()
+
+fn bad() = ((run(() => op())) ~> h) + run2(() => op())
+
+fn main() = bad()

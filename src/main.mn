@@ -909,22 +909,42 @@ fn doc_render(entry_module: String, cells) = each(doc_render_cell(entry_module),
 fn doc_render_cell(entry_module: String, cell) =
   if cell_path(cell) == entry_module { each(doc_render_decl, cell_decls(cell)) } else { () }
 
+// Each declaration by its signature, where it lives, and its lede. The roster
+// matched four kinds under a wildcard, so a module's value bindings and
+// aliases were missing from its own documentation, no line said where its
+// declaration was, an effect read `IO : ()` and a type `Ty : Ty` (measured
+// 2026-09-22).
 fn doc_render_decl(d) = match d {
-  N(NStmt(FnStmt(name, _, _, _, _)), _, h) => doc_render_line(name, h),
-  N(NStmt(HandlerDeclStmt(name, _, _, _, _)), _, h) => doc_render_line(name, h),
-  N(NStmt(TypeDefStmt(name, _)), _, h) => doc_render_line(name, h),
-  N(NStmt(EffectDeclStmt(name, _, _)), _, h) => doc_render_line(name, h),
-  _ => (),
+  N(body, _, h) => match doc_signature(body) {
+    Some(signature) => print("{signature}  at {site_address(h)}{doc_lede(h)}\n"),
+    None => (),
+  },
 }
 
-fn doc_render_line(name: String, h) = {
-  let ty = match env_lookup(name) {
-    Some((sch, _, _)) => " : {show_type(judgment_ty(sch))}",
-    None => "",
-  }
+// A declaration's signature in the form its kind is written in: a value by
+// its judged type, a type by its variants, an effect by its operations, an
+// alias by what it stands for.
+fn doc_signature(body) = match body {
+  NStmt(FnStmt(name, _, _, _, _)) => Some(doc_value_signature(name)),
+  NStmt(HandlerDeclStmt(name, _, _, _, _)) => Some(doc_value_signature(name)),
+  NStmt(LetStmt(PVar(name), _, _)) => Some(doc_value_signature(name)),
+  NStmt(TypeDefStmt(name, variants)) => Some("type {name} = {variants |> map({ (variant, _, _) => variant }) |> join(" | ")}"),
+  NStmt(EffectDeclStmt(name, _, ops)) => Some("effect {name} \{ {ops |> map({ (op, _, _, _) => op }) |> join(", ")} \}"),
+  NStmt(AliasStmt(name, ty)) => Some("type {name} = {show_type(ty)}"),
+  NStmt(RefineStmt(name, base, pred)) => Some("type {name} = {show_type(base)} where {show_predicate(pred)}"),
+  NStmt(RowAliasStmt(name, terms)) => Some("type {name} = {show_row_terms(terms)}"),
+  _ => // A destructured let, an expression, an import: nothing the roster names.
+  None,
+}
+
+fn doc_value_signature(name) = match env_lookup(name) {
+  Some((sch, _, _)) => "{name} : {show_type(judgment_ty(sch))}",
+  None => name,
+}
+
+fn doc_lede(h) = {
   let prose = graph_comment_at(h)
-  let lede = if len(prose) > 0 { "\n    {comment_first_line(prose)}" } else { "" }
-  print("{name}{ty}{lede}\n")
+  if len(prose) > 0 { "\n    {comment_first_line(prose)}" } else { "" }
 }
 
 // Rendering this roster through md / html / llms handlers is the named

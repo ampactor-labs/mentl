@@ -562,8 +562,13 @@ type SchemeKind
   = FnScheme
   // tag 1
   | ConstructorScheme(TagId, Int)
-  // tag 2 — (effect_name, default_handler, ambiguous, resume cardinality — the join over handlers' arm grades)
-  | EffectOpScheme(String, String, Bool, ResumeDiscipline)
+  // (effect_name, providers, resume cardinality — the join over the providing
+  // arms' grades). The providers are every arm that handles the op, as (handler
+  // decl node, arm body node), drawn at registration. It held the FIRST handler's
+  // name and an "ambiguous" flag instead — a summary of this set in which every
+  // provider but one was already lost, so a question about who handles an op
+  // had to scan the graph to rebuild what registration had in hand.
+  | EffectOpScheme(String, [(Int, Int)], ResumeDiscipline)
   // tag 3 — [(field_name, ty)]
   | RecordSchemeKind([(String, Ty)])
   // tag 5 — [op_name: String]  (cache byte 5; byte 4 retired with the dissolved capability)
@@ -1070,7 +1075,14 @@ fn binop_to_str(op) with Pure = match op {
 // Every graph node and every unification records a Reason. Mentl's
 // teach_why (spec 09) walks this DAG. Full provenance falls out.
 type Reason
+  // a name the medium declares itself, with no source node behind it — a
+  // primitive, a parameter cell, a type variable named in an annotation
   = Declared(String)
+  // the source node that declares this: a fn, a type, a variant, an effect,
+  // an op, a handler, an alias. The node carries its name and its position,
+  // so neither is copied here — `Declared(name)` at these sites was a name
+  // standing where the node belonged, and `why` could say a line and no file.
+  | DeclaredAt(Int)
   | Inferred(String)
   | Fresh(Int)
   | OpConstraint(String, Reason, Reason)
@@ -2882,6 +2894,17 @@ fn diag_refuses(d) with Pure = match d {
   // right refusal; classes arm one at a time as their census falls, and
   // this one has.
   True,
+  EEffectMismatch(_, _, _) => // ARMED 2026-09-23 — the crown's second verdict joining its first
+  // (EPurityViolated above): `with !E` refuted by the body was proven,
+  // printed, and emitted. Measured on tests/frontier/mn-refuse-sibling-mask:
+  // `bad() with !E` performs E through two HOF calls, one install covers the
+  // left one only, and the compile exited 0 — then the executable faulted
+  // out of bounds in ev_declaring_node, the uncovered op reading evidence no
+  // install threaded. The identical body with no install refused, only
+  // because E_EffectUnhandled fired beside the mismatch; one install was the
+  // whole difference between a proof the medium enforces and one it merely
+  // mentions. Wheel census at arming: 0 (`mentl src/main.mn check` clean).
+  True,
   EFnShadowsOp(_, _, _) => // ARMED at birth (2026-08-18), read at the op's env write — the one
   // place both claims on the name are present. Wheel census 0.
   True,
@@ -3854,6 +3877,7 @@ fn show_callee_name(ref callee) with Pure = match callee {
 
 fn show_reason(ref reason) with GraphRead + Memory + Alloc + !Mutate + Intern = match reason {
   Declared(name) => "declared as {name}",
+  DeclaredAt(h) => show_declared_at(h),
   Inferred(ctx) => "inferred from {ctx}",
   Fresh(id) => "fresh {show_handle(id)}",
   OpConstraint(op, l, r) => "operator {op} constrains {show_reason(l)} with {show_reason(r)}",
@@ -3872,13 +3896,96 @@ fn show_reason(ref reason) with GraphRead + Memory + Alloc + !Mutate + Intern = 
   BinOpPlaceholder(op) => "binop {binop_to_str(op)}",
   MissingVar(name) => "unbound variable: {name}",
   Refinement(p, q) => "refinement: {show_predicate(p)} ∧ {show_predicate(q)}",
-  Located(span, inner) => "at {show_span(span)}: {show_reason(inner)}",
+  Located(span, inner) => match inner {
+    DeclaredAt(_) => // The node the inner reason names already projects its own address; the
+    // copied span beside it would render the same line twice, once without
+    // its module.
+    show_reason(inner),
+    _ => "at {show_span(span)}: {show_reason(inner)}",
+  },
   InferredCallReturn(callee, inner) => // RX.2 — high-intent structured variants
   "call to '{callee}' → {show_reason(inner)}",
   InferredPipeResult(verb, inner) => "{verb} pipe → {show_reason(inner)}",
   FreshInContext(id, ctx) => "fresh {show_handle(id)} in '{ctx}'",
   DefaultReason(pname, span) => "{pname} defaulted at {show_span(span)}",
   VerifyWitness(model) => "proved by SMT witness: {model}",
+}
+
+// A declaring node as a reader wants it: what it declares, then where. The
+// name is the node's own — a statement's — so a Why chain that walks to a
+// declaration other than the one asked about still says which; a
+// constructor's or an op's node carries no name of its own and answers with
+// the address alone.
+fn show_declared_at(h) with GraphRead + Memory + Alloc = match body_decl_name(graph_node_body(h)) {
+  "" => "declared at {node_address(h)}",
+  name => "declared as {name} at {node_address(h)}",
+}
+
+// The node a reason says declared its subject, through any `Located` it
+// arrived under and through a let's binding. None for a reason that names no
+// declaring node.
+fn declaring_node(reason) = match reason {
+  DeclaredAt(h) => Some(h),
+  Located(_, inner) => declaring_node(inner),
+  LetBinding(_, inner) => declaring_node(inner),
+  _ => None,
+}
+
+// The name a statement declares — `""` for a statement that declares none (a
+// destructured let, an expression, an import). The Stmt ADT's own projection,
+// at the ADT's home: the parser reads it to note a declaration at its birth,
+// the judgment keys its layer index on it, and every roster renders by it.
+fn body_decl_name(body) with Pure = match body {
+  NStmt(FnStmt(name, _, _, _, _)) => name,
+  NStmt(TypeDefStmt(name, _)) => name,
+  NStmt(EffectDeclStmt(name, _, _)) => name,
+  NStmt(HandlerDeclStmt(name, _, _, _, _)) => name,
+  NStmt(RefineStmt(name, _, _)) => name,
+  NStmt(AliasStmt(name, _)) => name,
+  NStmt(RowAliasStmt(name, _)) => name,
+  NStmt(LetStmt(pat, _, _)) => match pat {
+    PVar(name) => name,
+    _ => // drift-audit: ignore — the documented no-key contract (a destructured let declares no single name)
+    "",
+  },
+  _ => // drift-audit: ignore — the documented no-key contract (a statement that declares nothing has no name)
+  "",
+}
+
+// A SITE IS A NODE; ITS POSITION IS A PROJECTION OF IT. The two halves of a
+// source location — which module, which span — are two columns the parser
+// wrote in ONE act (`parse_one_module` enters the module, then every node
+// it mints is span-indexed under it), so read from the node's own columns
+// they agree by construction. Read from anywhere else they need not: the
+// census took the module from the birth column and the span from the type
+// cell's Reason — a `Located` copied at bind time from whatever the binder
+// was judging — and printed `tuples:72:1-75:2`, prelude's `and_then` span
+// under a 39-line module's name. Nothing was wrong with either fact; the
+// PAIR was a fabrication, and it took a shape that convicts cells to expose
+// it, because a parse-born node's Reason usually copies its own span and
+// the two reads usually agreed by accident.
+//
+// A node born at parse has a position; a cell minted by inference does not,
+// and the spans column says so (span_zero) rather than lending it one.
+fn site_of(h) with GraphRead + !Mutate + Memory + Alloc = (graph_module_of(h), graph_span_of(h))
+
+// The address surface's own form: `module:span` for a node with a position,
+// the handle beside its reason for a cell — the reason is the one fact a
+// cell carries about where it came from ("effects of 'and_then'"), and it
+// is the truth the coordinate was standing in for.
+fn site_address(h) with GraphRead + !Mutate + Memory + Alloc + Intern = if graph_span_of(h) == span_zero() {
+  "#{int_to_str(h)} — {show_reason(graph_reason_at(h))}"
+} else {
+  node_address(h)
+}
+
+// A parse-born node's address, `module:span`, from its own two columns. A
+// declaring node always has one — declarations are source — so the Why
+// chain's declaration edge renders through here and never through the cell
+// branch above, which renders by the Reason and would make the render a
+// recursion through its own subject.
+fn node_address(h) with GraphRead + Memory + Alloc = match site_of(h) {
+  (m, sp) => "{module_name_of_handle(m)}:{show_span(sp)}",
 }
 
 fn show_span(ref span) with Memory + Alloc = match span {

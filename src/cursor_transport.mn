@@ -217,8 +217,13 @@ fn cursor_step(state) with Surface + GraphRead + CursorRead + !Mutate + Memory +
   TransportState(s) => {
     // Compute the cursor: gradient argmax with caret bias.
     let cursor = cursor_argmax(s.caret)
-    // Project the eight-aspect CursorView at the cursor's position.
-    let view = cursor_at(span_of_cursor(cursor))
+    // Project the eight-aspect CursorView at the node the cursor HOLDS. It
+    // handed a span to a projection that found a node by position again —
+    // module-unqualified, so a hole's own span landed on a stranger's node in
+    // another module the day the span became the node's own (2026-09-23).
+    let view = match cursor {
+      Cursor(h, _, _) => cursor_at_handle(h),
+    }
     // Render through the installed transport handler.
     surface_render(cursor, view)
     // Receive an action from the human, fold into the next state.
@@ -252,10 +257,6 @@ fn state_with_render(state, cursor) with Memory + Alloc = match state {
 
 fn state_with_caret(state, new_caret) with Memory + Alloc = match state {
   TransportState(s) => TransportState({cadence: s.cadence, caret: new_caret, cursor: s.cursor, last_render: s.last_render, session_id: s.session_id + 1}),
-}
-
-fn span_of_cursor(cursor) with GraphRead + Memory + Alloc = match cursor {
-  Cursor(handle, _, _) => span_of_handle(handle),
 }
 
 // handle_at_span() — see src/cursor.mn (canonical scan-based impl).

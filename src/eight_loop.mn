@@ -177,7 +177,7 @@ handler interrogate_default {
   // bodied; no "later"); 11 (no acc-append in loop; <| outputs tuple).
   match graph_chase(handle) {
     GNode(kind, reason) => {
-      let span = span_of_handle(handle)
+      let span = graph_span_of(handle)
       let pos = (handle, kind, reason)
       match pos <| (
         // 1. Graph

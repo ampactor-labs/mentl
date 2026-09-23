@@ -320,7 +320,7 @@ fn demands_to_enames(ref demands, i, acc) = if i >= len(demands) {
   let en = match env_lookup(d) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
-        EffectOpScheme(op_effect, _, _, _) => op_effect,
+        EffectOpScheme(op_effect, _, _) => op_effect,
         _ => d,
       },
     },
@@ -387,7 +387,7 @@ fn grounded_scan(ref bindings, i, n, ename: String) = if i >= n {
   match list_index(bindings, i) {
     (opname, _, _, kind) => {
       let ok = match kind {
-        EffectOpScheme(op_effect, _, _, _) => // Substrate projection or WASI import only. A DEFAULT HANDLER does
+        EffectOpScheme(op_effect, _, _) => // Substrate projection or WASI import only. A DEFAULT HANDLER does
         // NOT ground: the perform's singleton tier direct-calls it, but a
         // STATEFUL default with no live install reads its zero state
         // global — the silent-wrong the runtime guard refuses
@@ -464,7 +464,7 @@ fn handler_arms_touch(ref arms: [{args: [String], body: Node, op_name: String}],
       let touches = match env_lookup(opn) {
         Some(op_entry) => match op_entry {
           (_, _, op_kind) => match op_kind {
-            EffectOpScheme(op_effect, _, _, _) => op_effect == ename,
+            EffectOpScheme(op_effect, _, _) => op_effect == ename,
             _ => false,
           },
         },
@@ -1222,13 +1222,46 @@ fn render_census_sites(ref sites) with GraphRead + !Mutate + Memory + Alloc + In
 fn census_site_line(h) with GraphRead + !Mutate + Memory + Alloc + Intern =
   "\n  at {site_address(h)}"
 
+// A declaration as a reader looks for it: its own name, then where it lives.
+// The decls facet rendered the census line here — 1,155 bare addresses and no
+// name among them (measured 2026-09-22) — so a roster asked for by name
+// answered by coordinate, and every use of it was a second query.
+fn decl_named_site(h) with GraphRead + !Mutate + Memory + Alloc + Intern =
+  "{body_decl_name(graph_node_body(h))} at {site_address(h)}"
+
+fn render_decl_sites(sites) with GraphRead + !Mutate + Memory + Alloc + Intern =
+  sites |> map({ h => "\n  {decl_named_site(h)}" }) |> str_concat_all
+
+// The declaring node on its own line ahead of what reads it — nothing for a
+// name no source node declared.
+fn render_declared_at(decl) with GraphRead + !Mutate + Memory + Alloc + Intern = match decl {
+  Some(h) => "\n  declared at {site_address(h)}",
+  None => "",
+}
+
+// An authored row as its author wrote it: each term with the connective that
+// joins it and its sign — the `with` clause, and a named row's right side.
+fn show_row_terms(terms) with GraphRead + Memory + Alloc + Intern = terms |> map({
+  (name, negated, conn) => "{show_connective(conn)}{if negated { "!" } else { "" }}{show_eff_name(name)}",
+}) |> str_concat_all
+
+fn show_connective(conn) = match conn {
+  EcUnion => "+",
+  EcDiff => "-",
+  EcInter => "&",
+}
+
+// Each providing arm by its handler's name, at the arm's own address.
+fn render_provider_arms(arms) with GraphRead + !Mutate + Memory + Alloc + Intern =
+  arms |> map({ (h, arm) => "\n  {body_decl_name(graph_node_body(h))} at {site_address(arm)}" }) |> str_concat_all
+
 // The judgment's heaviest decls — bytes of judgment heap each, the decl's
 // name read off its handle's body, its address off its columns.
 fn render_judged_rows(rows) with GraphRead + !Mutate + Memory + Alloc + Intern =
   rows |> map(judged_row_line) |> str_concat_all
 
 fn judged_row_line(row: (Int, Int)) with GraphRead + !Mutate + Memory + Alloc + Intern = match row {
-  (h, bytes) => "\n  {bytes} B  {body_decl_name(graph_node_body(h))} at {site_address(h)}",
+  (h, bytes) => "\n  {bytes} B  {decl_named_site(h)}",
 }
 
 // One line per undischarged obligation: the predicate the graph holds,
@@ -1404,20 +1437,7 @@ fn render_orphan_rows(rows) with Memory + Alloc =
 
 fn render_query_result(result) = match result {
   QRType(ty, reason) => "→ {show_type(ty)}\n  Reason: {show_reason(reason)}",
-  QRIntent(effs) => {
-    let terms = effs |> map({
-      (name, negated, conn) => {
-        let sign = if negated { "!" } else { "" }
-        let symbol = match conn {
-          EcUnion => "+",
-          EcDiff => "-",
-          EcInter => "&",
-        }
-        "{symbol}{sign}{show_eff_name(name)}"
-      },
-    })
-    "→ {str_concat_all(terms)}"
-  },
+  QRIntent(effs) => "→ {show_row_terms(effs)}",
   QRUnresolved(entries) => "→ {int_to_str(len(entries))} unresolved entries",
   QRChain(hops) => "→ {int_to_str(len(hops))} hops in chain",
   QREffects(row) => "→ {show_effrow(row)}",
@@ -1427,15 +1447,22 @@ fn render_query_result(result) = match result {
   // the comparison, which is the half a set union is decided by.
   "→ present {int_to_str(len(present))}: {show_keyed_names(present, 0, len(present), "")}\n  absent {int_to_str(len(absent))}: {show_keyed_names(absent, 0, len(absent), "")}\n  tail {tail}",
   QROwnership(params) => "→ {int_to_str(len(params))} params",
-  QRWhy(reason) => show_reason(reason),
-  QRRefs(sites) => // The refs facet renders WHAT the graph computed, not just how much:
+  QRWhy(reason) => // A declared name's chain ends at the edge to its declaring node, and
+  // show_reason renders that node's own address. It rendered a Located span
+  // with no module until the reason carried the node — `why
+  // unify_row_canonical` on a linked program answered `at 867:1-963:2` and
+  // left the reader to guess the file (measured 2026-09-22).
+  "→ {show_reason(reason)}",
+  QRRefs(decl, sites) => // The refs facet renders WHAT the graph computed, not just how much:
   // one located line per inbound use-edge (the seam the propose-facet fix
   // convicted once already — the graph computed it, the terminal threw it
   // away). Every "who calls X" grep this replaces was a re-derivation of
   // edges the weave holds — and the answer is only a replacement once it
   // names the FILE, which is why it renders through the census's own site
   // line rather than a second renderer that knew one half of an address.
-  "→ {int_to_str(len(sites))} reference(s){render_census_sites(sites)}",
+  // The declaration leads: this is a rename's edit set, and a set without
+  // the declaring node renames every use and leaves the name itself behind.
+  "→ {int_to_str(len(sites))} reference(s){render_declared_at(decl)}{render_census_sites(sites)}",
   QRVerifyDebt(obligations) => // The debt renders WHAT is owed, not just how much (the refs facet's
   // own lesson): each obligation located with its predicate, so the
   // discharge work has an instrument instead of a count.
@@ -1445,15 +1472,16 @@ fn render_query_result(result) = match result {
   // `predicate_to_smt_lib` is verify.mn's own serializer — this render is
   // its first reader, and Phase 8.3's handler swap is its second.
   "→ {int_to_str(len(obligations))} obligation(s) as SMT-LIB{render_smt_lines(obligations)}",
-  QRHandlerProvider(provider) => match provider {
-    Some(name) => "→ handled by {name}",
-    None => "→ no handler installed",
+  QRHandlerProvider(arms) => if len(arms) == 0 {
+    "→ no handler declaration provides it"
+  } else {
+    "→ handled at {int_to_str(len(arms))} arm(s){render_provider_arms(arms)}"
   },
   QRFlowLabel(label, reason) => "→ {show_flow_label(label)}\n  Reason: {show_reason(reason)}",
   QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_census_sites(sites)}",
-  QRDecls(sites) => // The decls column's projection — the oracle queue's own seed set,
-  // rendered located so the seed is inspectable at the CLI.
-  "→ {int_to_str(len(sites))} judged decl(s){render_census_sites(sites)}",
+  QRDecls(sites) => // The decls column's projection, each declaration by its own name and
+  // its address — the roster a reader navigates by.
+  "→ {int_to_str(len(sites))} declaration(s){render_decl_sites(sites)}",
   QRModules(paths) => "→ {int_to_str(len(paths))} module(s) in the weave\n  {str_join_indented(paths)}",
   QRImports(rows) => render_import_rows(rows),
   QRUnreferenced(rows) => render_unref_rows(rows),

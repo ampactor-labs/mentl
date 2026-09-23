@@ -701,9 +701,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // whole-graph scan applied to judgment re-mints).
   resume() with refs_col = smap_add(refs_col, name, ref_handle),
   graph_refs_at(name) => resume(smap_get_all(refs_col, name)),
-  graph_decl_note(decl_handle) => // The refs column's decl-granularity sibling — same append-only
-  // telemetry contract (not trail-backed; judgment rounds re-note the
-  // same handle, readers dedup by handle).
+  graph_decl_note(decl_handle) => // The declarations column: every declaring node, noted ONCE — at its
+  // birth in the parser (`nstmt`), where a statement comes into being exactly
+  // once. It was noted at JUDGMENT, where a speculative round judges a decl
+  // again, so every reader deduplicated the whole column, an index-threaded
+  // O(n²) walk per read compensating for the writer standing in the wrong place.
   resume() with decls_col = push(decls_col, decl_handle),
   graph_decls_at() => resume(decls_col),
   graph_judged_note(h, bytes) => // The decls column's cost sibling — the same append-only telemetry

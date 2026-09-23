@@ -966,6 +966,12 @@ and this is the STATE.
   executable root gate is exactly where that promise is kept, so this is the
   promise failing at its own boundary.
   `Hβ.effects.reachable-perform-with-no-install-compiles` carries it.
+  **ITS SECOND FACE (measured 2026-09-23) is an install that EXISTS and does
+  not reach:** `((run(() => op())) ~> h) + run2(() => op())` compiles with
+  zero diagnostics and faults out of bounds at runtime, because the gate
+  clears E on `h` being installed somewhere. With `with !E` declared the same
+  body now refuses — `E_EffectMismatch` was armed that day — so the
+  undeclared form is the live one, held RED by name at the frontier.
 - **THE MEDIUM'S OWN PROJECTIONS WENT UNASKED, and asking them was the whole
   audit of 2026-09-21.** Six findings, one law — *a fact with two homes, or a
   fact restated where an edge already carried it* — and every one was found by

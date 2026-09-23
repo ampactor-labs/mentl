@@ -1,0 +1,45 @@
+// expect: 231
+// RECORD UPDATE IS A NEW RECORD OF THE BASE'S SHAPE, and the lathe is behind
+// the surface two ways. `bump` rebuilds a nominal `Cell` with two fields
+// overridden and the rest carried; the base's other fields are then read
+// back, so the update's TYPE has to be the base's for the reads to have
+// provable slots.
+//
+// MEASURED 2026-09-22 through the pinned boot. Written at a body lead the
+// update does not parse: fn bump(c, d) = {...c, b: v} is read as a BLOCK
+// and every token after the braces is unexpected. Written inside a let it
+// parses and is judged as the override fields ALONE — { b: Int, deps: Chain }
+// against `Cell` — so the reads of c2's other fields have no provable slot,
+// the emit writes the trap, and the run exits 134. The value below is the
+// contract the surface makes, and it fits an exit status: 22 × 10 for the
+// twice-bumped b, 1 × 5 for the carried a, 2 × 2 for the two-link chain, 2
+// for the untouched base's b, less the base's empty chain — 231. (Its first
+// form summed to 201,222, which an exit status reads as 6, so it could never
+// have passed.)
+//
+// It rides here because the rows landing wanted the spread for its cell
+// record and could not have it. It is a WITNESS, not yet a frontier leg: the
+// gate declares a standing failure only about a program's ANSWER, and this
+// one does not compile yet, so its leg lands with the fix.
+type Chain
+  = NoLink
+  | Link(Int, Chain)
+
+type Cell = {a: Int, b: Int, deps: Chain, name: String}
+
+fn chain_len(c) = match c {
+  NoLink => 0,
+  Link(_, rest) => 1 + chain_len(rest),
+}
+
+fn bump(c: Cell, d) = {
+  let next = {...c, b: c.b + 10, deps: Link(d, c.deps)}
+  next
+}
+
+fn main() = {
+  let c0 = Cell{a: 1, b: 2, deps: NoLink, name: "x"}
+  let c1 = bump(c0, 7)
+  let c2 = bump(c1, 8)
+  c2.b * 10 + c2.a * 5 + chain_len(c2.deps) * 2 + c0.b - chain_len(c0.deps)
+}

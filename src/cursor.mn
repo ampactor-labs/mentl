@@ -66,8 +66,9 @@ import infer
 // projection cannot corrupt oracle state — exactly the constraint
 // PLAN §2's cached cursor locks for "surfaces query, never write."
 effect CursorRead {
-  cursor_at(Span) -> CursorView
-  // the by-HANDLE projection — a caller that already resolved the node reads it directly; re-resolving a handle it holds is the re-derivation (the cursor-address transport resolves once, then projects)
+  // the eight-aspect projection at a node — a caller holds the handle, and
+  // a by-SPAN form that re-found the node by position (module-unqualified)
+  // was deleted with its last caller
   cursor_at_handle(Handle) -> CursorView
   cursor_argmax(Caret) -> Cursor
   cursor_pinned(Handle) -> Cursor
@@ -85,26 +86,10 @@ effect CursorRead {
 // AFTER mentl_default lets cursor_default's perform calls bubble
 // `teach_gradient` / `teach_why` to mentl_default.
 handler cursor_default {
-  cursor_at(span) => // The eight kernel-primitive aspects fan out via `<|` — one position
-  // borrowed (read-only) to eight branches, each branch projects one
-  // tentacle's lens, output is the 8-tuple in primitive-order. The
-  // shape on the page IS the cursor's read-tensor at this handle;
-  // per PLAN §2's cursor table
-  // and PLAN §2, each tentacle is the same
-  // graph projected through one kernel primitive.
-  //
-  // Ownership: `<|` borrows `(handle, kind)` to all branches — none
-  // can move it (drift 5 enforcement). The closure-as-branch syntax
-  // is structural, not vtable (drift 1 refusal). `kind` is destructured
-  // when it's the relevant input for the tentacle; `handle` when the
-  // tentacle reads the graph live (verify ledger, teach gradient,
-  // teach why); `_` discards the unread half — explicit per H6
-  // exhaustiveness, no `_ => fabricated` over the load-bearing pos
-  // (CLAUDE.md red-flag table).
-  resume(cursor_view_of(handle_at_span(span))),
-  cursor_at_handle(handle) => // The by-handle entry — the same eight-arm fan, resolution already done
-  // by the caller (the cursor-address transport resolves once via its
-  // line rule; re-resolving here would be the re-derivation).
+  cursor_at_handle(handle) => // The eight kernel-primitive aspects fan out via `<|` — one node
+  // borrowed (read-only) to eight branches, each projecting one
+  // tentacle's lens (cursor_view_of). The caller holds the handle, so
+  // nothing here re-finds it.
   resume(cursor_view_of(handle)),
   cursor_argmax(caret) => resume(cursor_argmax_compute(caret)),
   cursor_pinned(handle) => {

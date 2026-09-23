@@ -1,0 +1,37 @@
+// expect: refuse E_EffectMismatch
+// A DECLARED ROW REFUTED BY THE BODY IS DIAGNOSED AND STILL EMITTED. `bad()`
+// declares !E. Its LEFT operand performs E under a ~> h that absorbs it —
+// sound. Its RIGHT operand performs E through a second, independent
+// higher-order call that no install covers, so the declared !E is a false
+// absence proof. The medium SAYS so — effect row mismatch: !E + Any vs E —
+// and then writes 7,696 bytes of WAT and exits 0.
+//
+// MEASURED 2026-09-22 through the pinned boot and through the rows-as-cells
+// wheel alike, both identical: the diagnostic fires, the executable does not
+// refuse. Its control, mn-sibling-mask-control, is the same body with the
+// install removed; there the class that fires is E_EffectUnhandled, which IS
+// armed, and the compile refuses with zero bytes. So one install is the whole
+// difference between a proof the medium enforces and a proof it merely
+// mentions.
+//
+// The pair was written to test a different question — whether a mask on one
+// operand of a fold silences its sibling — and answered it: it does not. Both
+// compilers charge the sibling's E to bad() and report the mismatch, which is
+// the row reading being right. What the pair found instead is the arming gap:
+// re-measured 2026-09-23, the emitted executable faults out of bounds in
+// ev_declaring_node, the uncovered op reading evidence no install threaded.
+// E_EffectMismatch was armed in the landing that banked this fixture, and the
+// contract it holds is the refusal.
+effect E { op() -> Int }
+
+handler h {
+  op() => resume(1),
+}
+
+fn run(f) = f()
+
+fn run2(g) = g()
+
+fn bad() with !E = ((run(() => op())) ~> h) + run2(() => op())
+
+fn main() = bad()

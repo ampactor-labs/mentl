@@ -1,0 +1,20 @@
+// expect: refuse E_EffectUnhandled
+// THE CONTROL for mn-refuse-sibling-mask: the identical body with NO
+// install anywhere. Two polymorphic HOF calls both perform E under a
+// declared `!E`, nothing absorbs it, and the medium refuses — E reaches the
+// executable root with no handler.
+//
+// It stands beside its twin because the twin differs from it by ONE install
+// over the LEFT operand, and the difference that install makes is not what it
+// looks like: the twin's right operand is charged and diagnosed exactly the
+// same way. What changes is WHICH class fires — E_EffectUnhandled here, which
+// is armed and refuses; E_EffectMismatch there, which is not and does not.
+effect E { op() -> Int }
+
+fn run(f) = f()
+
+fn run2(g) = g()
+
+fn bad() with !E = (run(() => op())) + run2(() => op())
+
+fn main() = bad()

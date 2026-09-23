@@ -35,6 +35,79 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-23 · pin fec1a92108e0a002 (CLEAN m2 == m3, through cecd9b5b7110
+  TRANSITION m3 == m4 and 9fbce4116430) · A DECLARATION IS AN EDGE — AND ARMING A CROWN
+  VERDICT FOUND A FALSE CHARGE THE CROWN HAD BEEN NARRATING.
+  **The design correction came first and it is the transferable half.** The
+  first cut at "decls without names, refs without the declaration, why with
+  no file" added a seen-set to the decls column, a by-NAME filter over it for
+  `why`/`refs of`, and a whole-graph scan for `provider` — sidecars and scans
+  answering questions the graph already answered by edge. Morgan's cut: does
+  it empower carried truth, no sidecars, no bandage? It did not. Rebuilt:
+  `Reason` gained `DeclaredAt(Int)`, every source declaration's reason is the
+  edge to its node (fns, types, constructors, effects, ops, handlers with
+  their config and state, named lets, row aliases; `Declared(String)` stays
+  for what has no node), and `show_declared_at` renders `declared as NAME at
+  module:span` from the node's own body and columns. `declaring_node` reads
+  the edge through `Located` and a let's `LetBinding`. `EffectOpScheme`'s
+  (default_handler, ambiguous) pair became its providers — (handler decl,
+  arm body) nodes, joined at each registration — so `provider` reads the op,
+  and lower's singleton dispatch is `[(decl, _)]`, a projection. The decls
+  column is noted once at `nstmt` (parse birth); speculative rounds no longer
+  re-note. `decl_sites_of`, `handlers_providing_op`, `arms_providing`,
+  `span_of_handle` and `cursor_at(Span)` are deleted; goto-definition reads
+  `defining_node_of`.
+  **What asking found**, each fixed or banked the same day: (1) the runner
+  reported a trap as a bare exit 134 with no output (`provider` died
+  silently) — it prints the backtrace now; (2) the backtrace named a wrong
+  record slot through two lambdas over a list — 32 for 42, RED-banked as
+  `open-rows-through-lambdas`, the form a whole-row union-find cell inside
+  the rows landing, and a read-time residual-chain walker KILLED before it
+  was written; (3) a block's span was its `{` alone (`provider mint` answered
+  a one-character arm) — the block takes its extent; (4) `refs of` a
+  constructor used in a pattern places it at the match scrutinee, because a
+  pattern has no node (Landing 5's to end).
+  **ARMING E_EffectMismatch.** A refuted `!E` compiled and ran — and the
+  undeclared twin compiles clean and faults OUT OF BOUNDS in
+  `ev_declaring_node` because an install elsewhere is credited for the site
+  (`uncovered-sibling-refuse`, RED-banked under
+  `Hβ.effects.reachable-perform-with-no-install-compiles`). The first repin
+  was REFUSED: micro `mn-feedback-iir` failed to compile, `with Sample`
+  charged `Memory + Alloc` by `delay(1)`. That is
+  `Hβ.effects.feedback-row-substitutes`' ADD half, banked since 2026-08-17 as
+  a fork left for Morgan (value vs static annotation). KILL: the fork. It
+  never asked WHEN the RHS runs; a probe answered NEVER — `accumulate(5)`
+  answers 2, not 7, because the init is discarded like the depth's spec. So
+  the RHS stays an expression judged in a frame of its own
+  (`infer_state_element`) and `LFeedback` lost its fourth field and six
+  walkers; the micro judges Pure and runs 30, the transport crucible accepts
+  and became a leg, and `accumulate-init` is RED-banked under
+  `Hβ.dataflow.state-element-is-read-whole`. The second board went 15 RED,
+  every one read before touched: six oracle legs were the SESSION view
+  re-finding its node by span (module-unqualified) while holding the handle
+  — it projects at the handle now; the hof and MCP legs pinned
+  report-and-proceed (split into quiet/noisy fixtures; two claims); the decls
+  and session legs pinned old render words. `why-coordinates` retired by
+  proof. Two worktree witnesses came across with their gates, and one
+  (`record-update-type`) could not be a leg — a declared red is a claim about
+  an ANSWER and it does not compile — and its contract was unreachable (it
+  expected 222 from 201,222, an exit status of 6).
+  The first WHOLE board refused four things, each fixed at its cause: four
+  authored `ref`s on new helpers (706 → 710; removed, inference infers the
+  borrow); the residual-mark check reading `assumed` out of the fixture's
+  FILE NAME once a Reason named files (it reads the type line now);
+  `CsFreeRowCallee` 1,051 → 1,067, of which seven were a recursion the
+  declaration render opened (`show_reason → show_declared_at → site_address
+  → show_reason`, closed by `node_address`, which reads the node's own
+  columns) and nine are new calls to closed leaves whose row cells another
+  judgment wrote — `mentl src/main.mn row int_to_str` shows the tail chained
+  to free cell 151261 — so the bound rose to 1,060 with that measurement;
+  and two floors FELL (field-offset 4 → 3, comparisons 55 → 53), measured by
+  compiling HEAD's wheel with HEAD's boot: `arms_include_op` and `handle_in`
+  left with the scans. The perimeter stamp read RED because
+  `core.hooksPath` was absolute; the setup script made it canonical.
+  Board: frontier 401 / 0 / 4 expected-red; m3 leg 8.25s, 924,160 KB.
+
 - 2026-09-21 · pin 4824ccc48f3504e8 (CLEAN m2 == m3) · A SITE IS A HANDLE —
   THE CENSUS, THE REFS, THE DECLS, THE BADGES AND THE BOARD CARRY NODES, AND
   A POSITION PROJECTS FROM THE NODE'S OWN COLUMNS.

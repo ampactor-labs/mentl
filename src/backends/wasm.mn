@@ -1435,10 +1435,9 @@ fn walk_lemit_expr(expr) = match expr {
       multishot_ops_of(hname)
     )
   },
-  LFeedback(h, d, b, s) => {
+  LFeedback(h, d, b) => {
     visit_state_slot(h, d)
     walk_lemit_expr(b)
-    walk_lemit_expr(s)
   },
   LPerform(_, disp, args) => // ONE arm, because there is one perform. Every dispatch that WALKS
   // interns its effect key through the SAME visit_string channel user
@@ -2386,7 +2385,7 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LMakeVariant(_h, _t, fs) => collect_call_vectors_list(fs, acc),
   LMatch(_h, s, arms) => collect_call_vectors_arms(arms, collect_call_vectors_expr(s, acc)),
   LHandleWith(_h, b, hn, _hn2, inits, _arms) => collect_call_vectors_expr(b, collect_call_vectors_expr(hn, collect_call_vectors_list(inits, acc))),
-  LFeedback(_h, _d, b, s) => collect_call_vectors_expr(s, collect_call_vectors_expr(b, acc)),
+  LFeedback(_h, _d, b) => collect_call_vectors_expr(b, acc),
   LWasiCall(_h, _n, args) => collect_call_vectors_list(args, acc),
   LFieldLoad(_h, rec, _o) => collect_call_vectors_expr(rec, acc),
   LConvert(_h, _, operand) => collect_call_vectors_expr(operand, acc),
@@ -2988,7 +2987,7 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LMatch(_h, s, arms) => collect_fn_emit_records_expr(s) ++ fn_emit_records_arms(arms, 0),
   LResumeK(_h, k, v) => collect_fn_emit_records_expr(k) ++ collect_fn_emit_records_expr(v),
   LHandleWith(_h, b, hn, _hname, inits, _arm_names) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(hn) ++ collect_fn_emit_records(inits),
-  LFeedback(_h, _d, b, s) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(s),
+  LFeedback(_h, _d, b) => collect_fn_emit_records_expr(b),
   LPerform(_h, _d, args) => collect_fn_emit_records(args),
   LWasiCall(_h, _n, args) => collect_fn_emit_records(args),
   LInvariantFailure(_, _) => [],
@@ -3081,7 +3080,7 @@ fn emit_reason_comment_for_fn(name, body) = if len(body) == 0 {
 // Render a Reason chain as a one-line comment string. The full
 // structured walk lives in show_reason (types.mn); emit's variant
 // truncates to a single line so WAT stays readable.
-fn emit_reason_summary(handle) with GraphRead + Alloc + Memory = match graph_chase(handle) {
+fn emit_reason_summary(handle) = match graph_chase(handle) {
   GNode(_, reason) => emit_render_reason_oneline(reason),
 }
 
@@ -3094,8 +3093,9 @@ fn emit_reason_summary(handle) with GraphRead + Alloc + Memory = match graph_cha
 // phantoms) while missing nine that do — the seed compiled the phantom
 // patterns without membership checking and the sentinel guard trapped
 // the first LetBinding-reasoned node (a match inside a handler arm).
-fn emit_render_reason_oneline(reason) with Alloc + Memory = match reason {
+fn emit_render_reason_oneline(reason) = match reason {
   Declared(n) => "declared as {n}",
+  DeclaredAt(h) => show_declared_at(h),
   Inferred(ctx) => "inferred from {ctx}",
   Located(_, inner) => emit_render_reason_oneline(inner),
   FnReturn(n, _) => "return of {n}",
@@ -3231,7 +3231,7 @@ fn walk_locals_expr(expr, acc) = match expr {
     }
     walk_locals_list(inits, walk_locals_expr(hn, walk_locals_expr(b, with_ms)))
   },
-  LFeedback(h, _d, b, s) => {
+  LFeedback(h, _d, b) => {
     // LF walkthrough §4.5: both per-site locals for the load-tee-store
     // state-machine at the LFeedback arm. $__fb_prev_<h> holds the prior
     // iteration's output; $__fb_<h> holds the current. Both declare at the
@@ -3240,10 +3240,7 @@ fn walk_locals_expr(expr, acc) = match expr {
     // Carried-Truth: the graph proved the feedback's type; the emit reads it,
     // never fabricates i32 (an integer IIR is byte-identical, repr_wat "i32").
     let fb_rw = repr_wat(repr_of(lookup_ty(h)))
-    walk_locals_expr(
-      s,
-      walk_locals_expr(b, ["__fb_prev_{int_to_str(h)} {fb_rw}", "__fb_{int_to_str(h)} {fb_rw}"] ++ acc)
-    )
+    walk_locals_expr(b, ["__fb_prev_{int_to_str(h)} {fb_rw}", "__fb_{int_to_str(h)} {fb_rw}"] ++ acc)
   },
   LWasiCall(_h, _n, args) => walk_locals_list(args, acc),
   LPerform(h, _d, a) => // The perform's per-site pair, mirror-true to the ONE emit arm: evw holds
@@ -4398,7 +4395,7 @@ fn emit_expr(expr) = match expr {
     wat_emit(local_name)
     wat_emit("_wprev)(global.set $world_g)\n")
   },
-  LFeedback(h, depth, body, _spec) => {
+  LFeedback(h, depth, body) => {
     // <~ feedback — the site's DELAY LINE, `depth` priors deep.
     //
     // Per LF walkthrough §1.5 the cycle is load-prior → emit body →
@@ -5322,7 +5319,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
   LMakeVariant(_h, _t, fs) => collect_fold_tys_list(fs, acc),
   LMatch(_h, s, arms) => collect_fold_tys_arms(arms, collect_fold_tys_expr(s, acc)),
   LHandleWith(_h, b, hn, _hn2, inits, _arms) => collect_fold_tys_expr(b, collect_fold_tys_expr(hn, collect_fold_tys_list(inits, acc))),
-  LFeedback(_h, _d, b, s) => collect_fold_tys_expr(s, collect_fold_tys_expr(b, acc)),
+  LFeedback(_h, _d, b) => collect_fold_tys_expr(b, acc),
   LPerform(_h, _d, args) => collect_fold_tys_list(args, acc),
   LWasiCall(_h, _n, args) => collect_fold_tys_list(args, acc),
   LFieldLoad(_h, rec, _o) => collect_fold_tys_expr(rec, acc),

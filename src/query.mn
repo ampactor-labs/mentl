@@ -225,8 +225,8 @@ type Question
   | QFlowOf(String)
   // "census <shape>" — count + sites of a structural shape in the weave
   | QCensus(CensusShape)
-  // "decls" — the decls column's projection: the judged fn-decl handles
-  // (the oracle queue's own seed set), located
+  // "decls" — the decls column's projection: every declaring node, by name
+  // and address
   | QDecls
   // "where NAME" — the derived-badge projection (Hβ.cli.where-verb):
   // repr width, resume cardinality, fanout schedules. Output, never input.
@@ -270,6 +270,8 @@ type QueryResult
   | QRChain([(Int, GNode)])
   | QREffects(EffRow)
   | QROwnership([TParam])
+  // The reason chain, walked to root. A declared name's chain ends at the edge
+  // to its declaring node, which renders as that node's address.
   | QRWhy(Reason)
   // THE REFS SITES ARE NODES. A site was a (module, span) pair here for one
   // landing, and a pair is a copy of two column reads made at collection
@@ -278,7 +280,11 @@ type QueryResult
   // a BARE span, and a bare span is not an address: `at 3090:3` names a line
   // in no file, and the dedup compared two modules' line 42 as one site.
   // A handle is the medium's address; module and span are its projection.
-  | QRRefs([Int])
+  // The DECLARING node rides first and apart from the uses: a rename's edit
+  // set needs the name's own site, and the column this reads notes uses only.
+  // It is the edge the name's env binding carries — None for a name no
+  // source node declared (a primitive, or no binding at all).
+  | QRRefs(Option(Int), [Int])
   | QRVerifyDebt([(Int, Span, Predicate, Reason)])
   // THE SAME OBLIGATIONS, PROJECTED AS SMT-LIB — `mentl <f> smt`.
   // One read (`verify_debt()`), two renders: `QRVerifyDebt` speaks the
@@ -293,7 +299,8 @@ type QueryResult
   // projection is what turns it back into one, and it means 8.3 arrives with
   // this half already exercised instead of re-derived.
   | QRSmt([(Int, Span, Predicate, Reason)])
-  | QRHandlerProvider(Option(String))
+  // every arm that handles the op, as (handler decl node, arm body node)
+  | QRHandlerProvider([(Int, Int)])
   // IFC projection — the FlowLabel the type already proves
   | QRFlowLabel(FlowLabel, Reason)
   // census label + the convicted NODES (count = len). Each site is a handle;
@@ -304,8 +311,8 @@ type QueryResult
   // columns read as one coordinate, in a 39-line file. The handle cannot
   // fabricate an address, because it IS one.
   | QRCensus(String, [Int])
-  // the judged decl handles (count = len), projected at the render like the
-  // census sites — `decl_handles` is the decls column read, nothing between.
+  // the declaring nodes (count = len), projected at the render like the
+  // census sites — `graph_decls_at` is the column read, nothing between.
   | QRDecls([Int])
   // the weave's module paths, in weave order (count = len)
   | QRModules([String])
@@ -443,20 +450,25 @@ handler query_default {
       Some(entry) => match entry {
         (_, reason, _) => // Walk the reason to ROOT — why_expand chases each Fresh(id) through
         // the graph to its resolved reason, so intent is walkable, not a chain
-        // ending in dangling unification vars. The engine existed (mentl.mn:437)
-        // and only why_from_handle called it; the CLI `why` now performs it too.
+        // ending in dangling unification vars. A declared name's reason IS the
+        // edge to the node that declared it, so the root renders its address.
         resume(QRWhy(why_expand(reason, 0))),
       },
     },
     QRefsOf(name) => // Every reference to NAME is a VarRef node in the one graph (the parser
-    // wrote each use into the program weave). refs-of is the projection of
-    // the inbound use-edges: scan the weave for NExpr(VarRef(name)) and
-    // collect each node's span — read live, never an "AST index required"
-    // surrender. This IS rename: the (module, span) sites are exactly the
-    // edit set, and a rename needs the module half — an edit set that names
-    // lines without naming files edits nothing.
-    resume(QRRefs(refs_of_name(name))),
-    QDecls => resume(QRDecls(decl_handles())),
+    // wrote each use into the program weave). This IS rename: the (module,
+    // span) sites are exactly the edit set, and a rename needs the module
+    // half — an edit set that names lines without naming files edits
+    // nothing. It needs the declaration too, which is the edge the name's
+    // own env binding already carries.
+    resume(QRRefs(
+      match env_lookup(name) {
+        Some((_, reason, _)) => declaring_node(reason),
+        None => None,
+      },
+      refs_of_name(name)
+    )),
+    QDecls => resume(QRDecls(graph_decls_at())),
     QVerifyDebt => {
       let debt = verify_debt()
       resume(QRVerifyDebt(debt))
@@ -466,13 +478,14 @@ handler query_default {
     // obligations again would be the violation this facet's own subject —
     // the unreached serializer — was a symptom of.
     resume(QRSmt(verify_debt())),
-    QHandlerProvider(op_name) => // The handler stack IS graph content (PLAN §2 — "the handler chain IS
-    // the capability stack"): each handler decl is a HandlerDeclStmt in the
-    // weave whose arms name the ops it provides. Which handler provides OP is
-    // the decl whose arms include an arm for OP — read live, never a
-    // "requires active inference context" surrender. None when no handler
-    // provides the op.
-    resume(QRHandlerProvider(handler_providing_op(op_name))),
+    QHandlerProvider(op_name) => // Every arm that handles OP joined itself into the op's own scheme when
+    // its handler registered — (handler decl, arm body), both nodes — so the
+    // answer is that set, read off the op. An op no handler provides has
+    // none; a name that is not an op says so.
+    match env_lookup(op_name) {
+      Some((_, _, EffectOpScheme(_, providers, _))) => resume(QRHandlerProvider(providers)),
+      _ => resume(QRError("not an effect op: {op_name}")),
+    },
     QFlowOf(name) => // The IFC tentacle: read the FlowLabel the type system already proves
     // for NAME, without any new graph state. The classification comes from:
     //   - TRefined: a refinement predicate whose name contains secret / classified
@@ -1040,35 +1053,6 @@ fn judged_insert_desc(acc, row: (Int, Int)) with Memory + Alloc = match row {
   },
 }
 
-// ─── The decls column's projection — one home, two readers ──────────
-//
-// decl_handles — the judged DECLARATION handles (fn, value binding,
-// handler decl), read from the graph's decls column and deduped by
-// handle (judgment rounds re-note the same decl). The oracle queue
-// seeds from this read; the "decls" facet renders it located — so a
-// column write is a proposal position, not vocabulary.
-fn decl_handles() with GraphRead + Alloc + Memory = {
-  let hs = graph_decls_at()
-  dedup_handles(hs, 0, make_list(0))
-}
-
-fn dedup_handles(hs, i, acc) with Memory + Alloc = if i >= len(hs) {
-  acc
-} else {
-  let h = hs[i]
-  if handle_in(acc, h, 0) {
-    dedup_handles(hs, i + 1, acc)
-  } else {
-    dedup_handles(hs, i + 1, push(acc, h))
-  }
-}
-
-fn handle_in(acc, target, i) with Memory = if i >= len(acc) {
-  false
-} else {
-  if acc[i] == target { true } else { handle_in(acc, target, i + 1) }
-}
-
 // ─── The structural census — count + sites of a shape in the weave ──
 //
 // The same walk refs_of_name runs (every node once, span-deduped —
@@ -1202,35 +1186,6 @@ fn matching_handles(shape) with GraphRead + !Mutate + Alloc + Memory = match gra
     iterate_range(0, next)
     result()
   } ~> filter_collector({ h => census_matches(shape, h, graph_node_body(h)) }),
-}
-
-// A SITE IS A NODE; ITS POSITION IS A PROJECTION OF IT. The two halves of a
-// source location — which module, which span — are two columns the parser
-// wrote in ONE act (`parse_one_module` enters the module, then every node
-// it mints is span-indexed under it), so read from the node's own columns
-// they agree by construction. Read from anywhere else they need not: the
-// census took the module from the birth column and the span from the type
-// cell's Reason — a `Located` copied at bind time from whatever the binder
-// was judging — and printed `tuples:72:1-75:2`, prelude's `and_then` span
-// under a 39-line module's name. Nothing was wrong with either fact; the
-// PAIR was a fabrication, and it took a shape that convicts cells to expose
-// it, because a parse-born node's Reason usually copies its own span and
-// the two reads usually agreed by accident.
-//
-// A node born at parse has a position; a cell minted by inference does not,
-// and the spans column says so (span_zero) rather than lending it one.
-fn site_of(h) with GraphRead + !Mutate + Memory + Alloc = (graph_module_of(h), graph_span_of(h))
-
-// The address surface's own form: `module:span` for a node with a position,
-// the handle beside its reason for a cell — the reason is the one fact a
-// cell carries about where it came from ("effects of 'and_then'"), and it
-// is the truth the coordinate was standing in for.
-fn site_address(h) with GraphRead + !Mutate + Memory + Alloc + Intern = match site_of(h) {
-  (m, sp) => if sp == span_zero() {
-    "#{int_to_str(h)} — {show_reason(graph_reason_at(h))}"
-  } else {
-    "{module_name_of_handle(m)}:{show_span(sp)}"
-  },
 }
 
 // Sites dedup by PROJECTED position: two nodes at one source position are
@@ -2130,7 +2085,7 @@ fn where_badges(name: String) with GraphRead + WASI + EnvRead + Intern + !Mutate
   None => QRError("not found: {name}"),
   Some(entry) => match entry {
     (scheme, _, kind) => match kind {
-      EffectOpScheme(ename, _, _, disc) => QRWhere(["{name} : {ename} op — resume {op_resume_ty(scheme)} {disc_glyph(disc)} answer"], []),
+      EffectOpScheme(ename, _, disc) => QRWhere(["{name} : {ename} op — resume {op_resume_ty(scheme)} {disc_glyph(disc)} answer"], []),
       _ => {
         let ty = judgment_ty(scheme)
         match chase_type_deep(ty) {
@@ -2308,37 +2263,17 @@ fn tee_lines_children(hs) with GraphRead + EnvRead + !Mutate + Alloc + Memory + 
 // EffectOpScheme's ename; distinct names join with " + ".
 fn handler_absorbs_str(hname: String) with EnvRead + Memory + Alloc = match env_lookup(hname) {
   Some(entry) => match entry {
-    (_, _, HandlerKind(_, _, _, arms)) => absorbs_join(arms, 0, len(arms), []),
+    (_, _, HandlerKind(_, _, _, arms)) => arms |> fold([], absorbed_effect) |> fold("", (acc, e) => if byte_len(acc) == 0 { e } else { "{acc} + {e}" }),
     _ => "?",
   },
   None => "?",
 }
 
-fn absorbs_join(arms, i, n, seen) with EnvRead + Memory + Alloc = if i >= n {
-  join_names(seen, 0, len(seen), "")
-} else {
-  match env_lookup(handler_arm_op_name(list_index(arms, i))) {
-    Some((_, _, EffectOpScheme(ename, _, _, _))) => if name_in(seen, ename, 0, len(seen)) {
-      absorbs_join(arms, i + 1, n, seen)
-    } else {
-      absorbs_join(arms, i + 1, n, seen ++ [ename])
-    },
-    _ => absorbs_join(arms, i + 1, n, seen),
-  }
-}
-
-fn name_in(xs, x: String, i, n) with Memory =
-  if i >= n { false } else { if list_index(xs, i) == x { true } else { name_in(xs, x, i + 1, n) } }
-
-fn join_names(xs, i, n, acc: String) with Memory = if i >= n {
-  acc
-} else {
-  join_names(
-    xs,
-    i + 1,
-    n,
-    if byte_len(acc) == 0 { list_index(xs, i) } else { "{acc} + {list_index(xs, i)}" }
-  )
+// One arm's op names its effect through the op's own scheme; each effect
+// joins the absorbed set once.
+fn absorbed_effect(seen, arm) with EnvRead + Memory + Alloc = match env_lookup(handler_arm_op_name(arm)) {
+  Some((_, _, EffectOpScheme(ename, _, _))) => if any({ e => e == ename }, seen) { seen } else { push(seen, ename) },
+  _ => seen,
 }
 
 // A tee whose handler expression is not a named reference has no name
@@ -2409,41 +2344,14 @@ fn ops_contain(ops, target: String, i, n) with Memory = if i >= n {
   if list_index(ops, i) == target { true } else { ops_contain(ops, target, i + 1, n) }
 }
 
-// span_of_handle — the node's source span, read live from its Reason chain
-// (the parser/infer wrote Located(span, _) at the node). One graph_chase, the
-// span peeled from the located reason — no parallel span-index re-lookup.
-fn span_of_handle(handle) with GraphRead + !Mutate + Memory + Alloc = match graph_chase(handle) {
-  GNode(_, reason) => span_of_reason(reason),
-}
-
+// The span a Reason carries — for a reason that is ABOUT a site with no node
+// of its own (an annotation suggestion's target). A node's position is its
+// own spans column (`graph_span_of`), never this: a Reason's span is a copy
+// made at bind time, and it named the wrong line whenever the binder was
+// judging something else.
 fn span_of_reason(reason) with Memory + Alloc = match reason {
   Located(sp, _) => sp,
   _ => span_zero(),
-}
-
-// ─── Live install-edge projection — which handler provides OP ──────
-//
-// Each handler decl is a HandlerDeclStmt in the weave whose arms name the ops
-// it provides (the handler chain IS the capability stack, PLAN §2). Scan the
-// weave for the decl whose arms include OP; project its handler name.
-fn handler_providing_op(op_name) with GraphRead + !Mutate + Memory + Alloc = match graph_snapshot() {
-  Graph(next, _) => scan_handler_for_op(op_name, 0, next),
-}
-
-fn scan_handler_for_op(op_name, i, n) with GraphRead + !Mutate + Memory + Alloc = if i >= n {
-  None
-} else {
-  match graph_node_body(i) {
-    NStmt(HandlerDeclStmt(hname, _eff, _cfg, _state, arms)) => if arms_include_op(arms, op_name) { Some(hname) } else { scan_handler_for_op(op_name, i + 1, n) },
-    _ => scan_handler_for_op(op_name, i + 1, n),
-  }
-}
-
-fn arms_include_op(arms, op_name) with Memory + Alloc = if len(arms) == 0 {
-  false
-} else {
-  let arm = last(arms)
-  if arm.op_name == op_name { true } else { arms_include_op(drop_last(arms), op_name) }
 }
 
 // ─── Span → name — the inverse use-edge read (goto/rename anchor) ──
@@ -2463,18 +2371,14 @@ fn name_at_span(span) with GraphRead + !Mutate + Memory + Alloc = match graph_sn
   },
 }
 
-// defining_span_of — the span where NAME is bound, read from its env entry's
-// Reason (the parser/infer wrote Located(span,_) at the binding). The graph
+// The node that declared NAME — the edge its env binding carries. The graph
 // already proved where each name lives; goto-definition follows that edge, it
-// does not re-scan. None when the name is unbound or its reason is unlocated.
-fn defining_span_of(name) with EnvRead + !Mutate + Memory + Alloc = match env_lookup(name) {
+// does not re-scan, and the position is the node's own column, never a span a
+// Reason copied beside it. None when the name is unbound or no source node
+// declared it.
+fn defining_node_of(name) with EnvRead + !Mutate + Memory + Alloc = match env_lookup(name) {
   None => None,
-  Some(entry) => match entry {
-    (_, reason, _) => match reason {
-      Located(sp, _) => Some(sp),
-      _ => None,
-    },
-  },
+  Some((_, reason, _)) => declaring_node(reason),
 }
 
 // ─── Span Index Search (Arc F.2) ───────────────────────────────────

@@ -883,6 +883,18 @@ THE FIX is the gate reading the install CHAIN rather than the declared set: a
 performed name is discharged by an install that reaches it, which is an edge the
 `~>` chain already draws. The RED-first fixture is a three-line program that
 performs an op whose handler is declared and never installed.
+▶ THE SECOND FACE, MEASURED 2026-09-23, and it is the same credit with an
+install that EXISTS but does not reach. `fn bad() = ((run(() => op())) ~>
+h) + run2(() => op())` — the left operand's E is absorbed, the right's is
+covered by nothing — compiles with ZERO diagnostics, and the executable
+faults out of bounds in `ev_declaring_node`: not the walk's named trap, a
+memory access at 0x100000000. The row is right (E is on main's root row);
+the gate clears E because `h` is installed somewhere. With `with !E`
+declared the same body now REFUSES, because `E_EffectMismatch` was armed in
+this landing — so the undeclared form is the one this entry holds.
+`tests/frontier/mn-refuse-uncovered-sibling.mn` is its refusal contract,
+declared RED by name (`uncovered-sibling-refuse`) and retiring the day the
+gate reads the install chain.
 
 `Hβ.verify.smt-lowering-built-and-never-run` — OPEN, BORN 2026-09-21, from the
 same facet read.
@@ -4216,6 +4228,27 @@ citizen, so two rows proven equal ARE one node and the assumed residual
 this bind manufactures has nothing left to manufacture. That also retires
 `open_record_proven_fields`' RowAssumed decline, since an assumed
 remainder from two partial sets is exactly what the union removes.
+▶ THE WITNESS EXISTS NOW, AND THE MEDIUM FOUND IT ON ITSELF (2026-09-23).
+`tests/frontier/mn-open-rows-through-lambdas.mn` — `[{args: [1, 2, 3],
+body: 42, op: 7}] |> filter({ a => a.op == 7 }) |> map({ a => a.body })` —
+answers 32 where 42 is written, no diagnostic; declared RED by name
+(`open-rows-through-lambdas`) until this entry closes. It surfaced because
+the medium's own `provider` query, rewritten as that exact filter-then-map
+over a handler's arms, exited 134 with NO OUTPUT: the runner reported a
+trap as a bare exit status (fixed in the same arc, tools/runner — a trap now
+prints its backtrace), and the backtrace named the wrong-slot read. The
+query was then rewritten to read the providers the op's own scheme carries,
+so no wheel code rides this shape today; the fixture holds it.
+▶ THE FORM, and the design it replaces. A record row is ONE union-find cell
+holding the WHOLE row — known fields and tail together — and unifying two
+open rows UNIONS the cells, merging field sets at the union, so there is no
+residual on either side to cross-absorb and nothing to mark assumed. It is
+`Hβ.effects.rows-are-propagated-cells`' machinery one sort over, and lands
+with it. KILLED before a line was written: a read-time walker that follows
+each side's residual chain and re-assembles the full field set at the offset
+read (Rémy-style). It would have answered correctly and been the effect-row
+disease this landing exists to end — a fact re-derived by walking at every
+read instead of held in the cell the union already names.
 
 `Hβ.lower.open-row-field-offset-from-known-set` — RESOLVED 2026-09-01 at
 pin 7740ac94 for the DIRECT call (the row var keys the twin; gates
@@ -6307,6 +6340,42 @@ The surface and the emit disagree about what a `<~` RHS IS.
 B is the smaller artifact and the larger surface change; A is the
 reverse. The measurement cannot choose between them, which is why it is
 a fork and not a finding.
+**THE ADD HALF IS CLOSED, 2026-09-23, and the fork dissolved rather than
+being chosen** — forced by arming `E_EffectMismatch`, which turned the false
+charge into a refused compile of the correct micro `mn-feedback-iir` (`with
+Sample`, charged `Memory + Alloc`). The question the fork never asked was
+WHEN the RHS runs, and the artifact answers it: never. So the surface stays
+an expression (A's grammar, no non-expression slot) while the value it
+spells is read by the COMPILER (B's semantics): `infer_state_element` judges
+the RHS for its type in a frame of its own, whose row charges nobody, and
+lower no longer builds the value — `LFeedback` lost its fourth field and the
+six walkers that carried it (reach, spec scan, fold collection, call
+vectors, fn records, locals). `mn-feedback-iir` judges `Pure` and runs to
+30; `tests/frontier/mn-feedback-transport.mn` (a `with !Alloc` cycle over
+`Delay(3)`) ACCEPTS and is wired as the leg that holds the fix, beside the
+negation leg already wired. What the dissolution EXPOSED is the next peer:
+if the compiler reads the element, it has to read ALL of it, and it reads
+the depth alone (`Hβ.dataflow.state-element-is-read-whole`).
+
+`Hβ.dataflow.state-element-is-read-whole` — OPEN, measured 2026-09-23.
+`accumulate(5)` starts its register at ZERO: `fn step(x) -> Int = ((prev)
+=> x + prev) <~ accumulate(5)` ticked twice with 1 answers 2 where 7 is
+written, no diagnostic. The site reads a state element through
+`feedback_depth` (infer.mn), which answers the depth of a `delay` and
+`DepthUnstated` for everything else, and the line's globals are declared at
+zero; nothing reads `Accumulate`'s init or `FilterSpec`'s taps (LF.2 / LF.3
+in the emit's own comment). Until 2026-09-23 the spec was ALSO lowered as a
+value every pre-pass walked and the emit dropped, so the init rode the whole
+back end and never arrived — a fact carried and discarded, the Carried-Truth
+Law at the register. THE FORM: the state element IS the register's
+declaration and the site reads it whole — one read answering depth, init and
+taps, replacing `feedback_depth`'s callee-NAME test (`delay`/`Delay` by
+string) with a match on the `FeedbackSpec` variant the element resolves to;
+the line's globals are BORN holding the init (a global initializer is a
+constant, so a computed init refuses beside `E_ComputedDelayDepth`, its
+sibling on the same read); `FilterSpec`'s taps are the same read growing an
+arm. GATE: `tests/frontier/mn-accumulate-init.mn`, declared RED by name
+(`accumulate-init`); retires when it answers 7.
 
 `Hβ.effects.feedback-row-substitutes` — NAMED 2026-08-17 by the loop
 iteration that set out to PIN the feedback-under-negation modal rule
@@ -6928,6 +6997,21 @@ exist on disk. THE GATE ALREADY EXISTS AND IS ALREADY RED
 (tools/frontier-gate.sh, `why coordinates are the developer's`, asserting
 `mn-where-badges:8`), so this peer needs no new instrument — the RED-first
 half is banked and standing.
+**THE FILE HALF LANDED FOR DECLARATIONS, 2026-09-23 — and not by giving
+Located a module.** A declaration's reason was `Located(span,
+Declared(name))`: the node's own name and span, copied into the Reason at the
+node that already held both. `Reason` gained `DeclaredAt(Int)` — the edge to
+the declaring node — and every source declaration uses it (fns, types,
+constructors, effects, ops, handlers and their config and state, named lets,
+row aliases); `show_reason` renders it as `site_address(h)`, module and span
+projected from the node's own columns. `why gain` answers `let gain =
+declared at tests/frontier/mn-where-badges:8:1-8:15`, the leg passed, and its
+expected-red declaration retired in the same landing. `Declared(String)`
+stays for what has no source node — a primitive, a parameter, a type variable
+read off an annotation, an operator's own `bool`. THE REMAINDER is every
+other `Located` in a chain — a unification's, a call's, a pattern's — each
+still a copied coordinate; `Hβ.why.provenance-is-edges` holds that half, and
+the same move (carry the node, project the position) is its form.
 
 `Hβ.where.emitted-signature-is-a-badge` — THE ABI HAS A HOME AND NO FACE.
 `sigs_col` makes every emitted symbol's param repr-vector and result repr a
@@ -12531,6 +12615,17 @@ measured before and after is the wall-clock witness (O(n²) → O(n)).
 RETIRES when the five parent scans, the module dedup family, the
 span-containment module read and the per-bound census walks are gone;
 `Hβ.cursor.module-of-a-span-is-containment` closes with it.
+▶ ONE MORE READER THE PARENT COLUMN SERVES, measured 2026-09-23 when the
+decls column moved to parse birth (`nstmt` notes every statement that
+declares a name, once, where the parser mints it). The column holds every
+declaring node — a block-local `let` and a nested `fn` are declarations,
+and a `why`/`refs` edge needs them — so `mentl lib/tuples.mn decls` answers
+710 rows, `n at strings:68:3` and `step at types:1216:3` among the module
+members. A roster reader asked for the module's members. With the parent
+column the roster is the decls whose parent is an `NModule` (and, for a
+file address, THAT module), and `main_param_count` (lower.mn) — which folds
+the whole column for a decl named `main` and would take a nested one — reads
+the entry module's own member.
 ▶ KILLS (the adversarial review of 2026-09-22, verified against the
 artifact): "at most one AST parent" (F3.1 — the dissolved let, the
 orphans of `expr_to_pat`); a total children enumeration assumed (F3.2 —
@@ -12650,6 +12745,22 @@ is NOT on this list: `scan_for_span` compares REASON spans on purpose
 fixtures red) and its callers hold no module handle; it is
 `Hβ.why.provenance-is-edges`', where the obligations it serves carry the
 handle.
+▶ ALREADY LANDED BESIDE IT (2026-09-23), so the build starts further on.
+The decls column is noted at the PARSER'S birth of the node (`nstmt`, for
+every statement that declares a name), never at the judgment — (1)'s
+premise that `graph_decl_note` fires during inference is history; what (1)
+still owes is the constructor and op arms, since an op's and a variant's
+node is not a statement. (2)'s first half is live: every env entry's reason
+is the edge to its declaring node (`DeclaredAt`, read by `declaring_node`),
+so `refs of NAME` leads with the declaration and goto-definition follows
+the same edge; `refs_col` is still keyed by NAME. AND A FIFTH POSITION
+READER WAS FOUND BY ASKING: `refs of` a constructor that appears in a
+PATTERN places the reference at the MATCH SCRUTINEE, one character wide —
+`infer_pat`'s `PCon` arm notes `graph_ref_note(name, handle)` with the
+scrutinee's handle, because a pattern has no node of its own. Refs by decl
+handle need a USE handle, so patterns minting nodes (or the note carrying
+the arm's) is part of (2), with a fixture: `refs of Some` over a match
+answering the pattern's own line and column.
 ▶ GATES: Landing 1's whole; `unreachable`, `doc` and the comment-ref count
 (0) byte-identical before and after on the wheel (RED-first by breaking one
 write); `refs of NAME` and `imports` gated on their ENUMERATED intended
@@ -12853,10 +12964,23 @@ it closes when every inference-time mint records the node it was minted
 FOR (`FreshInContext(Int, String)` already does; `Inferred(String)` gains a
 handle where one exists, and the two handle-less mint sites above are
 named residue), and the Why render reads `site_of` through THAT handle.
+▶ ALREADY LANDED BESIDE IT (2026-09-23), so the build starts from it:
+`DeclaredAt(Int)` — a declaration's reason is the edge to its node, kept
+inside `Located` where readers take the bind-site span (fact (i) above), and
+`declaring_node` reads it through `Located` and a let's `LetBinding`. The
+`why gain` leg went GREEN on it and its declaration retired; `refs of`,
+goto-definition and `provider` read the same edge (the provider as the set
+of (handler decl, arm body) nodes the op's own scheme carries, joined at
+each handler's registration). One boundary still drops the file:
+goto-definition answers the declaring node's span under the REQUESTING
+document's uri, because the LSP's location is built from the doc it was
+asked in — a cross-module declaration lands at the right line of the wrong
+file. It is `AnsRefs` carrying handles, at the definition route, and it
+closes with that.
 ▶ GATES: Landing 1's whole; every `why` fixture byte-identical or better,
-with `tests/frontier/mn-where-badges.mn why gain` (the standing frontier
-red, `why coordinates are the developer's`) turning GREEN only when the
-mint-for handle lands — until then it stays the declared red; a
+with `tests/frontier/mn-where-badges.mn why gain` green through the
+declaration edge — the chain's OTHER hops render their files only when the
+mint-for handle lands; a
 RED-first fixture that a `Why` hop through an aliased cell (`graph_bind(a,
 TVar(b))`) renders `a`'s own provenance, not `b`'s (the non-chasing read);
 a refusal fixture whose message is unchanged after a later unification of
@@ -12873,3 +12997,29 @@ last-write-wins slot with no non-chasing reader (W3, W4); `UnifyFailed`
 reading live types (W5 — the snapshot is right for a refusal); the two
 Span-embedding arms the first draft did not name (W6); the seven
 nested-Reason consumers (W7).
+
+`Hβ.syntax.record-update-is-refused-by-the-lathe` — OPEN, measured
+2026-09-22 through the pinned boot while the rows landing reached for the
+spread to rebuild its cell record. SYNTAX §«Record update — spread into new
+record» says `{...existing, field: v}` is a NEW record of the base's shape,
+and the lathe is behind it in two places. (1) THE PARSER: at a body lead —
+`fn bump(c, d) = {...c, b: v}` — the `{` opens a BLOCK and the `...` is
+`P_UnexpectedToken`; the brace discrimination reads `{...` as neither a
+record literal nor an arm list, though the spread can begin nothing else.
+(2) THE JUDGMENT: inside a `let` the update parses and `infer_expr`'s
+`RecordUpdateExpr` arm judges the result as the OVERRIDE fields alone —
+`{ b: Int, deps: Chain }` against `Cell` — so a later read of the base's
+other fields has no provable slot, `T_FieldOffsetUnprovable` narrates, and
+the run exits 134; `E_TypeMismatch` is reported at the `let` and does not
+refuse. The form: the update's type IS the base's (row-unify the overrides
+into the base's field set, the base's nominal brand carried), and the parser
+discriminates on the `...` after `{` before it decides block or literal.
+WITNESS: `tests/frontier/mn-record-update-type.mn` (expects 231, the
+surface's own answer). It is not a frontier leg yet, and cannot be declared
+red: the gate holds a standing failure only about a program's ANSWER, and
+this program does not compile — its leg lands in the fix's own landing, RED
+against the prior boot there. Its first form expected 222 from an expression
+summing to 201,222, which an exit status reads as 6, so it could never have
+passed; corrected 2026-09-23 when the witness was brought beside this entry.
+RETIRES when the leg passes; the rows landing's six full `RowCell` literals
+collapse into the spread the day it does.

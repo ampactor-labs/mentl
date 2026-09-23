@@ -39,7 +39,16 @@ fn mint_node(body, span: ValidSpan) = {
 
 fn nexpr(e, span: ValidSpan) = mint_node(NExpr(e), span)
 
-fn nstmt(s, span: ValidSpan) = mint_node(NStmt(s), span)
+// A statement's birth, and so the one place a DECLARATION comes into being:
+// a statement that declares a name is noted in the declarations column here,
+// once, since nothing parses a statement twice.
+fn nstmt(s, span: ValidSpan) = {
+  let node = mint_node(NStmt(s), span)
+  match node {
+    N(body, _, h) => if body_decl_name(body) == "" { () } else { graph_decl_note(h) },
+  }
+  node
+}
 
 fn nhole(id, span: ValidSpan) = mint_node(NHole(id), span)
 
@@ -2661,10 +2670,19 @@ fn record_field_copy_suffix(src, dst, src_idx, dst_idx, n) = if src_idx >= n {
   )
 }
 
+// A block's span is its whole extent, `{` through `}` — the lambda's law
+// (SYNTAX §Comments: an anonymous node is a home like any other, found by
+// its span). Minted at the `{` alone, every arm body read as one character:
+// `provider mint` answered `infer:218:19-218:20` for a three-line arm
+// (measured 2026-09-23).
 fn parse_block_expr(ref tokens, pos, start_span) = {
   let buf = make_list(8)
   match parse_block_body(tokens, pos, buf, 0) {
-    (final_buf, final_count, final_e, p) => (desugar_block(slice(final_buf, 0, final_count), final_e, start_span), p),
+    (final_buf, final_count, final_e, p) => (desugar_block(
+      slice(final_buf, 0, final_count),
+      final_e,
+      span_join(start_span, span_at(tokens, p - 1))
+    ), p),
   }
 }
 
@@ -3030,11 +3048,7 @@ fn parse_body(ref tokens, pos) = {
 // that introduces no let-bindings/statements", regardless of line count).
 fn parse_block_expr_checked(ref tokens, pos, start_span) = match parse_block_expr(tokens, pos, start_span) {
   (block_node, p_end) => {
-    if is_empty_block(block_node) {
-      report(ERedundantBraces(span_join(start_span, span_at(tokens, p_end - 1))))
-    } else {
-      ()
-    }
+    if is_empty_block(block_node) { report(ERedundantBraces(span_of_node(block_node))) } else { () }
     (block_node, p_end)
   },
 }

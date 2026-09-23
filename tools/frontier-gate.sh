@@ -566,10 +566,14 @@ run_refusal() {
   rc=$?
   count=$(grep -c "$expected_code error:" "$err" 2>/dev/null || true)
   size=$(wc -c < "$wat" 2>/dev/null || echo 0)
+  # The verdict goes through judge, keyed by the leg's label, so a refusal
+  # the medium does not yet make can be DECLARED by name in
+  # frontier_expected_red and retires loudly the day it starts refusing —
+  # the same two-direction contract the named and program legs already have.
   if [ "$rc" -ne 0 ] && [ "$count" -gt 0 ] && [ "$size" -eq 0 ]; then
-    pass "$label refusal ($expected_code=$count exit=$rc wat=0B)"
+    judge "$label" 1 "$label refusal ($expected_code=$count exit=$rc wat=0B)"
   else
-    fail "$label refusal (exit=$rc $expected_code=$count wat=${size}B; see $err)"
+    judge "$label" 0 "$label refusal (exit=$rc $expected_code=$count wat=${size}B; see $err)"
   fi
 }
 
@@ -1487,6 +1491,28 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-effect-residual-absence.mn" 42 no "$dir"
   run_program "$compiler" effect-absorbed \
     "$ROOT/tests/frontier/mn-effect-absorbed.mn" 42 no "$dir"
+  # THE SIBLING MASK. One shape read from both sides: a declared `!E` over
+  # two operands that both perform E, where ONE `~> h` covers the left
+  # operand only. The reading was right through the pinned boot — the
+  # sibling's E is charged and E_EffectMismatch is reported — and what
+  # differed was which class fired: the control has no install, so
+  # E_EffectUnhandled joins the mismatch and refuses; the twin's install
+  # cleared the root gate, the mismatch stood alone, and it did not refuse —
+  # exit 0, then an out-of-bounds fault in ev_declaring_node at runtime
+  # (measured 2026-09-22, re-measured 2026-09-23). E_EffectMismatch is armed
+  # in the landing that banks this pair, so both legs are refusal contracts.
+  run_refusal "$compiler" sibling-mask-control \
+    "$ROOT/tests/frontier/mn-sibling-mask-control.mn" E_EffectUnhandled "$dir"
+  run_refusal "$compiler" sibling-mask-refuse \
+    "$ROOT/tests/frontier/mn-refuse-sibling-mask.mn" E_EffectMismatch "$dir"
+  # The same body with NO declaration: nothing claims `!E`, E reaches main's
+  # root row, and the root gate clears it because `h` is installed SOMEWHERE
+  # — zero diagnostics, then an out-of-bounds fault at runtime (measured
+  # 2026-09-23). Declared RED by name until the gate discharges a performed
+  # name only by an install that reaches it
+  # (Hβ.effects.reachable-perform-with-no-install-compiles).
+  run_refusal "$compiler" uncovered-sibling-refuse \
+    "$ROOT/tests/frontier/mn-refuse-uncovered-sibling.mn" E_EffectUnhandled "$dir"
   # The sequence-of-struct fold leaves (Hβ.emit.seq-struct-eq-leaf,
   # RESOLVED): structural ==/hash/ordering over lists whose element is
   # a product / nested list / computed string. RED on the pre-leaf
@@ -2171,8 +2197,10 @@ for i in "${!compilers[@]}"; do
   # `at <stdin>:3:1` is strictly STRONGER: the mcp transport feeds the
   # claim on stdin, so a teaching span that pointed at any OTHER file
   # would now fail where before it passed — which is exactly the
-  # file-local property the pass line claims.
-  if grep -q 'REFUSED — 1 claim' "$mcp_dir/out.jsonl" \
+  # file-local property the pass line claims. TWO claims since
+  # E_EffectMismatch was armed (2026-09-23): the refuted `!E` is itself a
+  # refusal now, beside the unhandled effect, where it was a narration.
+  if grep -q 'REFUSED — 2 claim' "$mcp_dir/out.jsonl" \
      && grep -q 'E_EffectMismatch' "$mcp_dir/out.jsonl" \
      && grep -q 'at <stdin>:3:1' "$mcp_dir/out.jsonl" \
      && grep -q 'E_EffectUnhandled' "$mcp_dir/out.jsonl"; then
@@ -2428,16 +2456,25 @@ for i in "${!compilers[@]}"; do
   # unify_row's Closed~EtAll meet is SUBSUMPTION — pass-no-bind, the
   # negation row judging — where the old equality arm falsely refused
   # every closed-row argument. Seen RED on the prior boot: the quiet
-  # thunk reported a second mismatch (hof 2, clean 1); here the quiet
-  # face admits and runs while the noisy edge alone reports.
+  # thunk reported a second mismatch (hof 2, clean 1). Two faces, two
+  # fixtures since E_EffectMismatch was armed (2026-09-23): the quiet
+  # thunk is admitted and runs 42 with NO mismatch, and the noisy thunk
+  # refuses — exactly one mismatch at its own edge, no executable.
   cat "${RTLIBS[@]}" "$ROOT/lib/io.mn" "$ROOT/tests/frontier/mn-hof-row-gate.mn" | wt_run "$compiler" > "$dir/hof-gate.wat" 2> "$dir/hof-gate.err" \
     && wt_asm "$dir/hof-gate.wat" "$dir/hof-gate.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$dir/hof-gate.wasm" > /dev/null
   hof_rc=$?
-  if [ "$hof_rc" = "42" ] && [ "$(grep -c 'E_EffectMismatch' "$dir/hof-gate.err")" = "1" ]; then
-    pass "hof row gate (quiet admitted, runs 42; exactly the noisy edge reports)"
+  if [ "$hof_rc" = "42" ] && ! grep -q 'E_EffectMismatch' "$dir/hof-gate.err"; then
+    pass "hof row gate (the quiet thunk is admitted and runs 42, no mismatch)"
   else
     fail "hof row gate (rc=$hof_rc mismatches=$(grep -c 'E_EffectMismatch' "$dir/hof-gate.err"); see $dir/hof-gate.err)"
+  fi
+  cat "${RTLIBS[@]}" "$ROOT/lib/io.mn" "$ROOT/tests/frontier/mn-hof-row-gate-noisy.mn" | wt_run "$compiler" > "$dir/hof-noisy.wat" 2> "$dir/hof-noisy.err"
+  hofn_rc=$?
+  if [ "$hofn_rc" -ne 0 ] && [ "$(grep -c 'E_EffectMismatch' "$dir/hof-noisy.err")" = "1" ] && [ ! -s "$dir/hof-noisy.wat" ]; then
+    pass "hof row gate noisy (the printing thunk refuses at its own edge, no executable)"
+  else
+    fail "hof row gate noisy (rc=$hofn_rc mismatches=$(grep -c 'E_EffectMismatch' "$dir/hof-noisy.err"); see $dir/hof-noisy.err)"
   fi
   # ── the persist_branch resume barrier ──────────────────────────────
   # The op's param row severs image-external effects (a crashed branch
@@ -2791,20 +2828,20 @@ for i in "${!compilers[@]}"; do
   # fabrication, not a fix. The honest fix is the POSITIONS face of §11's
   # four-faces law — Located carries the handle and reads the span live —
   # which is 157 construction sites, a representation change, its own arc.
-  # Banked as Hβ.why.reason-span-is-a-weave-coordinate; types.mn's own
-  # seam-render comment names it too. This leg stays RED on purpose and is
-  # the one entry in frontier_expected_red, judged by name in both
-  # directions — so the day the peer lands, this leg starts PASSING and the
-  # gate REFUSES until the entry is deleted, instead of a slack count
-  # silently licensing some other leg's red.
-  # A DECLARED standing failure, judged by NAME in both directions (see
-  # judge()). It no longer zeroes w_ok: the aggregate below claims only that
-  # the WHERE badges narrate, which they do — folding an unrelated `why`
-  # coordinate defect into that verdict hid a real pass behind a real red.
+  # Banked as Hβ.why.reason-span-is-a-weave-coordinate.
+  #
+  # THE FILE HALF LANDED 2026-09-23 for the link this leg reads, and not by
+  # stamping a file on the coordinate: a declaration's reason stopped
+  # copying its own name and span and became an EDGE to the declaring node
+  # (`DeclaredAt`), whose address projects from the node's own columns — so
+  # `why gain` answers `declared at tests/frontier/mn-where-badges:8:1-8:15`.
+  # The leg was an expected-red for three weeks and retired the day it
+  # passed. The coordinates Located still copies elsewhere in a chain (a
+  # unification's, a call's) are that peer's remainder.
   wy_file_ok=0
   printf '%s' "$wy_out" | grep -q 'mn-where-badges:8' && wy_file_ok=1
   judge why-coordinates "$wy_file_ok" \
-    "why coordinates carry their file (line half fixed; file half is Hβ.why.reason-span-is-a-weave-coordinate) (got: $wy_out)"
+    "why coordinates carry their file — a declaration's reason is the edge to its node (got: $wy_out)"
   # The capability-at-tee badge (§11 6.3's felt face): the install line
   # names the handler and the effect set its arms absorb, from the
   # graph's own facts. Born RED 2026-08-08 (the boot lacked the facet).
@@ -2938,9 +2975,12 @@ for i in "${!compilers[@]}"; do
   # queue's own seed set. Born RED 2026-08-07: the incumbent boot
   # answered "error: unknown query: decls". The fixture's three decls
   # (lines 7/9/11) must be listed located; the retired whole-handle
-  # NBound walk seeded every fn-typed MENTION alongside its decl.
+  # NBound walk seeded every fn-typed MENTION alongside its decl. The
+  # header reads "declaration(s)" since 2026-09-23, when the column moved
+  # from the judgment to the parser's birth of the node ("judged" stopped
+  # being what it counts).
   df_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-decls-facet.mn" decls 2>/dev/null)
-  if printf '%s' "$df_out" | grep -q "judged decl" && printf '%s' "$df_out" | grep -q "mn-decls-facet:7" && printf '%s' "$df_out" | grep -q "mn-decls-facet:9" && printf '%s' "$df_out" | grep -q "mn-decls-facet:11"; then
+  if printf '%s' "$df_out" | grep -q "declaration(s)" && printf '%s' "$df_out" | grep -q "mn-decls-facet:7" && printf '%s' "$df_out" | grep -q "mn-decls-facet:9" && printf '%s' "$df_out" | grep -q "mn-decls-facet:11"; then
     pass "decls facet: the column lists the fixture's three decls (7/9/11)"
   else
     fail "decls facet (column projection; got: $(printf '%s' "$df_out" | tail -1))"
@@ -3222,6 +3262,21 @@ for i in "${!compilers[@]}"; do
   else
     fail "feedback negation (mismatch=$fb_n — the cycle laundered a forbidden effect)"
   fi
+  # ITS DUAL, the transport half: a `with !Alloc` cycle over `<~ Delay(3)`
+  # must ACCEPT, because the state element declares the register and
+  # nothing constructs it. Held unwired while inference charged the spec's
+  # construction row to every recurrence (a leg asserting the refusal would
+  # have canonized a false charge); it is the leg that holds the fix now —
+  # the state element judged in a frame of its own, the never-read lowering
+  # deleted — and with E_EffectMismatch armed, a false charge fails its
+  # compile. Exit 1: the prior starts at zero and one tick of `ramp` is
+  # positive.
+  run_program "$compiler" feedback-transport "$ROOT/tests/frontier/mn-feedback-transport.mn" 1 yes "$dir"
+  # A state element's INIT is discarded: `accumulate(5)` starts its register
+  # at zero, so two ticks of 1 answer 2 where 7 is written, with no
+  # diagnostic (measured 2026-09-23). Declared RED by name until the site
+  # reads the init as it reads the depth (Hβ.dataflow.state-element-is-read-whole).
+  run_program "$compiler" accumulate-init "$ROOT/tests/frontier/mn-accumulate-init.mn" 7 yes "$dir"
 
   # ─── THE EIGHT ARMS, SAYABLE TOGETHER (PLAN §2) ─────────────────────
   # One authoring site per kernel arm in one module: a refinement alias,
@@ -3244,6 +3299,14 @@ for i in "${!compilers[@]}"; do
   # (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq), and it turns green
   # the day that refusal lands with the twin reaching the arm.
   run_program "$compiler" eq-in-arm-pointer "$ROOT/tests/frontier/mn-eq-in-arm-pointer.mn" 0 yes "$dir"
+  # A record read through lambdas over a list of records: the filter's and
+  # the map's element rows are two OPEN rows, and unifying them absorbs each
+  # side's residual into the other and reads the absorbed row as proven, so
+  # `.body` reads a neighbouring slot — 32 where 42 was written, no
+  # diagnostic (measured 2026-09-23, when the medium's own `provider` query
+  # trapped on the same shape). Declared RED until a record row is ONE
+  # union-find cell holding the whole row (Hβ.infer.record-row-vars-are-not-unioned).
+  run_program "$compiler" open-rows-through-lambdas "$ROOT/tests/frontier/mn-open-rows-through-lambdas.mn" 42 yes "$dir"
   # A constructor's payload types come from the INSTANTIATION the graph
   # proved, never from the declaration that quantified them. These two
   # legs are the three faces that read measured on 2026-09-18, and they

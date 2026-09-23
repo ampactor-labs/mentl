@@ -233,11 +233,25 @@ fn board_bounds() with Memory + Alloc = [
   // and the fix is there, never in writing fewer folds.
   // `Hβ.link.manifest-and-blob-emit-differently` is where this number falls.
   //
+  // 1,060 — RAISED 2026-09-23, and the medium named every one of the nine.
+  // The declaration-edge landing added calls to the address renderers
+  // (`node_address`, `show_declared_at`, the doc and provider renders), and
+  // each callee is a CLOSED LEAF whose row cell carries a tail another
+  // judgment wrote: `mentl src/main.mn row int_to_str` answers `Alloc +
+  // Memory`, tail open through cells 139064 and 139877 to the free cell
+  // 151261, and `show_span` and `node_address` answer the same chain. A
+  // leaf's row learning a free tail from its callers is the wrong-direction
+  // write the rows landing ends (`Hβ.effects.rows-are-propagated-cells`), so
+  // new calls to it are counted as convictions of that defect, not new
+  // defects. A first cut had also made `site_address` part of `show_reason`'s
+  // recursion (the declaration render reached its cell branch) and read
+  // 1,067; the render reads the node's own address now and the cycle is gone.
+  //
   // None of these is the probe's 856, which counted chase EVENTS inside one
   // lower run. Four instruments, four denominators, one fact; recording all
   // of them is how the next reader avoids reconciling numbers that were
   // never the same.
-  Bound({ceiling: 1051, shape: CsFreeRowCallee}),
+  Bound({ceiling: 1060, shape: CsFreeRowCallee}),
   // 480 — the imperative loop in recursion's costume, counted across the
   // whole wheel and bounded for the first time 2026-09-21 (Morgan: "anytime
   // there is anything that could be written with the five topological

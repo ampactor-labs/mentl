@@ -1,0 +1,21 @@
+// expect: 7
+// A STATE ELEMENT'S INIT IS DISCARDED. `accumulate(5)` declares a register
+// whose prior starts at five; the recurrence adds each tick's input to the
+// prior, so two ticks of 1 answer 6, then 7. The program answers 2 — the
+// register starts at zero, exactly as if `accumulate(0)` had been written —
+// with no diagnostic (measured 2026-09-23).
+//
+// Why: the `<~` state element is read by the compiler for its DEPTH alone
+// (feedback_depth in infer.mn), and the line's globals are declared at zero.
+// Nothing reads the init, and until the landing that banked this fixture the
+// spec was also lowered as a value that every pre-pass walked and the emit
+// then dropped, so the init was carried through the whole back end and still
+// never arrived. The contract is the surface's own answer; it retires when
+// the site reads the init as it reads the depth and the register is born
+// holding it (Hβ.dataflow.state-element-is-read-whole).
+fn step(x) -> Int = ((prev) => x + prev) <~ accumulate(5)
+
+fn main() -> Int = {
+  let a = step(1)
+  step(1)
+}

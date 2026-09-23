@@ -1,0 +1,16 @@
+// expect: refuse E_EffectMismatch
+// The noisy face of mn-hof-row-gate: a printing thunk meets a param typed
+// `() -> Int with !WASI` at the argument edge, and the negation row refuses
+// it — one mismatch, at its own edge, and no executable. This face shared a
+// file with the quiet one and the program ran 42 beside the mismatch it
+// reported; arming E_EffectMismatch (2026-09-23) made the refusal the
+// contract.
+
+fn noisy() = {
+  println("boom")
+  42
+}
+
+fn accept_thunk(f: () -> Int with !WASI) -> Int with !WASI = f()
+
+fn main() = accept_thunk(noisy)

@@ -727,7 +727,12 @@ comment_refs_max: 0
 # wheel though the op that fills it declares EmitFnEntry, which is the
 # Carried-Truth Law at the element type. Drive them to zero, then arm, then
 # this line and the pre-arm fixture both retire.
-field_offset_unprovable_max: 4
+# 2026-09-23: 4 -> 3. The `op_name` floor was `arms_include_op`'s `last(arms)`,
+# and it left with the whole-graph provider scan it served: `provider` reads
+# the providing arms the op's own scheme carries, so no walk reads an arm's
+# field through an open row any more. Measured by compiling HEAD's wheel with
+# HEAD's boot beside the tree's m2 — one floor gone, none entered.
+field_offset_unprovable_max: 3
 
 # The effect seam: filesystem impl calls outside the handler that owns them.
 # MEASURED 24 before this landing and 13 after (both read from the artifact,
@@ -912,7 +917,33 @@ solo_violations_max: 0
 # to appear in the wheel raises this and the gate refuses the pin. What the
 # count MEANS at zero is that no named fn in the wheel hides behind a lambda
 # that only forwards to it.
-frontier_expected_red: why-coordinates
+# 2026-09-23: `why-coordinates` was declared RED here from 2026-09-06 and
+# RETIRED by proof: a declaration's reason stopped copying its own name and
+# span and became an edge to the declaring node, whose address carries the
+# file (`why gain` → `declared at tests/frontier/mn-where-badges:8:1-8:15`).
+# 2026-09-23: a record read through a lambda over a list reads the WRONG
+# SLOT — `arms |> filter({ a => a.op == 7 }) |> map({ a => a.body })` over
+# `[{args, body: 42, op: 7}]` answers 32 with no diagnostic, because two open
+# record rows unify by cross-absorbing each other's residuals and the offset
+# read takes the absorbed row as proven. Measured the day the medium's own
+# `provider` query trapped on it; retires when a record row is ONE
+# union-find cell holding the whole row (Hβ.infer.record-row-vars-are-not-unioned).
+frontier_expected_red: open-rows-through-lambdas
+# 2026-09-23: AN INSTALL SOMEWHERE IS CREDITED FOR A PERFORM IT DOES NOT
+# COVER. `bad()` performs E under `~> h` on its left operand and through an
+# uncovered HOF call on its right; nothing declares a row, E reaches main's
+# root, the gate clears it because `h` is installed somewhere, and the
+# executable faults out of bounds in ev_declaring_node. The contract is the
+# refusal (tests/frontier/mn-refuse-uncovered-sibling.mn); retires when the
+# gate discharges a performed name only by an install that reaches it
+# (Hβ.effects.reachable-perform-with-no-install-compiles).
+frontier_expected_red: uncovered-sibling-refuse
+# 2026-09-23: A `<~` STATE ELEMENT'S INIT IS DISCARDED. `accumulate(5)`
+# starts its register at zero — tests/frontier/mn-accumulate-init.mn answers 2
+# where 7 is written, no diagnostic. The site reads the depth and nothing
+# else; retires when it reads the element whole and the register is born
+# holding its init (Hβ.dataflow.state-element-is-read-whole).
+frontier_expected_red: accumulate-init
 # 2026-09-18: `==` on an operand whose type is still a variable at emit (a
 # handler arm over quantified op parameters — no call-site twin reaches it)
 # emits i32.eq on two heap addresses; tests/frontier/mn-eq-in-arm-pointer.mn
@@ -968,7 +999,12 @@ frontier_expected_red: eq-in-arm-pointer
 # own mechanism, "name the type at its Intent Boundary" — not by deleting
 # code. The eleven lambda sites renumber between generations and pair one to
 # one; none entered or left.
-eq_type_unprovable_max: 55
+# 2026-09-23 (the declaration-edge landing): 55 -> 53, both by DELETION of a
+# scan the edges replaced — `arms_include_op` (the provider scan's `==` on an
+# arm's op name) and `handle_in` (a handle-membership helper, deleted with the
+# dedup it served). Same measurement as above, HEAD's wheel through HEAD's boot beside
+# the tree's m2; the lambda sites renumber and pair one to one.
+eq_type_unprovable_max: 53
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the

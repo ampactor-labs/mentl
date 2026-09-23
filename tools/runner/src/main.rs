@@ -618,11 +618,16 @@ fn instance_linker(
 // A guest trap surfaces as an error; the wasmtime CLI maps traps to exit
 // 134 (128+SIGABRT) and the micro battery banks that number, so the runner
 // speaks the same status — for the root instance and for an exec'd child.
+// It speaks the TRAP too, as the CLI does: the reason and the wasm backtrace
+// on stderr. This fn answered 134 in silence (measured 2026-09-22 — a query
+// that died inside the medium printed nothing at all), which is the one
+// failure a runner must never make quiet: the trap is the measurement that
+// names the defect, and without it the only instrument left is a guess.
 fn exit_status_of(e: &wasmtime::Error) -> i32 {
+    eprintln!("Error: {e:?}");
     if e.downcast_ref::<wasmtime::Trap>().is_some() {
         134
     } else {
-        eprintln!("Error: {e:?}");
         1
     }
 }

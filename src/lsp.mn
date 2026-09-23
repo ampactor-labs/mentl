@@ -347,10 +347,13 @@ fn handle_diagnostic(params) with Memory + Alloc + Interact + GraphRead + Intern
   }
 }
 
-// handle_definition — resolve the identifier at the cursor, then read
-// its binding span LIVE from the env entry's Located Reason (the graph
-// proved where the name lives). No echo of the cursor's own position;
-// the defining span IS the goto target. None when unresolved.
+// handle_definition — resolve the identifier at the cursor, then follow its
+// env binding's edge to the declaring node and read that node's own span.
+// No echo of the cursor's own position; the declaring node IS the goto
+// target. None when unresolved. The location still takes the DOC's uri, so a
+// declaration in another module lands at the right line of the wrong file —
+// the answer's module half is dropped at the same boundary AnsRefs drops it
+// (Hβ.why.provenance-is-edges carries it).
 fn handle_definition(params) with Memory + Alloc + Interact + GraphRead + !Mutate + EnvRead = {
   let uri = lsp_extract_uri(params)
   let pos = lsp_extract_position(params)
@@ -359,9 +362,9 @@ fn handle_definition(params) with Memory + Alloc + Interact + GraphRead + !Mutat
   focus(TargetSpan(span))
   match name_at_span(span) {
     None => LspDefinitionResp(None),
-    Some(name) => match defining_span_of(name) {
+    Some(name) => match defining_node_of(name) {
       None => LspDefinitionResp(None),
-      Some(def_span) => LspDefinitionResp(Some(span_to_location(uri, def_span))),
+      Some(def) => LspDefinitionResp(Some(span_to_location(uri, graph_span_of(def)))),
     },
   }
 }

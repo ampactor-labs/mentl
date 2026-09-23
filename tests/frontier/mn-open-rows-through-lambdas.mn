@@ -1,0 +1,14 @@
+// Two lambdas read two different fields of one record through a filter-then-
+// map chain. Each lambda's parameter is an OPEN row — `{op | r1}` for the
+// filter's, `{body | r2}` for the map's — and by the time the map's meets the
+// filter's result, the filter's row is already closed against the list. The
+// rows must stay one row when they unify: the closing that reached one has to
+// reach the other, and the body field sorts after the args field, so a row
+// that forgot the closing reads args in body's place. Measured 2026-09-22 on
+// the medium's own provider question, which died in exactly this shape with
+// no diagnostic; this program answered 32 where 42 is right, in silence.
+fn main() = {
+  let arms = [{args: [1, 2, 3], body: 42, op: 7}]
+  let found = arms |> filter({ a => a.op == 7 }) |> map({ a => a.body })
+  found[0]
+}
