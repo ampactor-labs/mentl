@@ -1,0 +1,11 @@
+// CROWN — a handler's arm hands its config to a helper declaring !E; the install
+// passes a performing closure. Expect E_EffectMismatch.
+//
+// Checked clean and ran at 7 through the pinned boot (measured 2026-09-23).
+effect E { op() -> Int }
+effect T { tick() -> Int }
+fn helper(g, n) with !E = if n > 0 { g() } else { 0 }
+handler hh(f) { tick() => resume(helper(f, 1)) }
+fn z() = (tick()) ~> hh(() => op())
+handler eh { op() => resume(7) }
+fn main() = (z()) ~> eh

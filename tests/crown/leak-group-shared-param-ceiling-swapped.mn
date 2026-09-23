@@ -1,0 +1,10 @@
+// CROWN — leak-group-shared-param-ceiling in the other source order. Expect
+// E_EffectMismatch.
+//
+// Checked clean and ran at 7 through the pinned boot (measured 2026-09-23).
+effect E { op() -> Int }
+fn b(f, n) = a(f, n + 1)
+fn a(f, n) with !E = if n > 3 { f() } else { b(f, n + 1) }
+fn z() = b(() => op(), 0)
+handler eh { op() => resume(7) }
+fn main() = (z()) ~> eh

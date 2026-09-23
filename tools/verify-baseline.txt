@@ -1061,6 +1061,21 @@ crown_expected_red: leak-partial-hole-allocates
 crown_expected_red: leak-fanout-allocates
 crown_expected_red: leak-diverge-allocates
 crown_expected_red: leak-record-rest-allocates
+# 2026-09-23, the rows v4 refutation round (rv4): eight more false absences
+# (a bound on a cell recursion-group members share, handler configs into
+# negated helpers, let-bound lambdas and nested fns into negated callees) and
+# two false refusals (a join that unions a performing branch into a sealed
+# parameter's cell), each seen RED through the pinned boot first.
+crown_expected_red: leak-group-shared-param-ceiling
+crown_expected_red: leak-group-shared-param-ceiling-swapped
+crown_expected_red: leak-group-forwarded-param-ceiling
+crown_expected_red: leak-handler-config-through-group
+crown_expected_red: leak-handler-config-into-sealed-helper
+crown_expected_red: leak-let-lambda-into-negated-callee
+crown_expected_red: leak-nested-fn-into-negated-callee
+crown_expected_red: leak-let-lambda-captures-param
+crown_expected_red: sound-join-sealed-param-with-loud
+crown_expected_red: sound-join-sealed-param-with-loud-swapped
 # 2026-09-18: `eq-polymorphic-sum` was declared RED here for one landing and
 # RETIRED by proof in the next — the whole life of an expected-red entry, in a
 # day. It read: `==` on a POLYMORPHIC sum compares its payload by ADDRESS,

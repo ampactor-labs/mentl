@@ -1,0 +1,14 @@
+// CROWN — a co-member hands a recursion-group member a performing closure; an
+// outside caller under !E hands it a pure one. Must accept.
+//
+// Accepted through the pinned boot, ran at 9 (measured 2026-09-23). What a
+// co-member passes in is that call's, never the member's published row.
+effect E { op() -> Int }
+fn b(f, n) = {
+  let unused = a
+  f(n)
+}
+fn a(n) = b({ x => op() }, n)
+fn z() with !E = b({ x => x + 1 }, 1)
+handler eh { op() => resume(7) }
+fn main() = (a(1) + z()) ~> eh

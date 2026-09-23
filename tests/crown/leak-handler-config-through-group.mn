@@ -1,0 +1,11 @@
+// CROWN — a handler's config reaches a !E helper that installs the same handler
+// again — the cycle through a config parameter. Expect E_EffectMismatch.
+//
+// Checked clean and ran at 7 through the pinned boot (measured 2026-09-23).
+effect E { op() -> Int }
+effect T { tick() -> Int }
+handler hh(f) { tick() => resume(helper(f, 1)) }
+fn helper(g, n) with !E = if n > 0 { g() } else { (tick()) ~> hh(g) }
+fn z() = (tick()) ~> hh(() => op())
+handler eh { op() => resume(7) }
+fn main() = (z()) ~> eh

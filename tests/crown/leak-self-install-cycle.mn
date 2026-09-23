@@ -1,0 +1,13 @@
+// CROWN — a self-recursive function installs an absorbing handler around its own
+// recursive call, so the parameter reaches the frame by an unmasked
+// path and by a masked cycle. Expect E_EffectMismatch.
+//
+// Refused through the pinned boot (measured 2026-09-23). A guard: the
+// masked cycle must terminate — a path holds each effect once, its
+// first hit.
+effect E { op() -> Int }
+handler absorb { op() => resume(5) }
+fn walk(f, n) = if n == 0 { f() } else { (walk(f, n - 1)) ~> absorb }
+fn bad() with !E = walk(() => op(), 0)
+handler eh { op() => resume(7) }
+fn main() = (bad()) ~> eh

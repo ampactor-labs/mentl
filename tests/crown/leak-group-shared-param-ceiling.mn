@@ -1,0 +1,13 @@
+// CROWN — a recursion group whose members share one parameter's row, the
+// member that calls it declaring !E; an outside caller hands the OTHER
+// member a performing closure. Expect E_EffectMismatch.
+//
+// Checked clean and ran at 7 through the pinned boot (measured 2026-09-23,
+// refuter rv4). A bound on a cell two co-members share is the bound of
+// every instantiation of either, never only its installer's.
+effect E { op() -> Int }
+fn a(f, n) with !E = if n > 3 { f() } else { b(f, n + 1) }
+fn b(f, n) = a(f, n + 1)
+fn z() = b(() => op(), 0)
+handler eh { op() => resume(7) }
+fn main() = (z()) ~> eh
