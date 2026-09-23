@@ -10,15 +10,17 @@
 //   the INSTALL's, abandoning the continuation): this program flips to 42
 //   (the catch branch). The flip is this ratchet's expected break — M4's
 //   commit re-pins it with the measurement in hand.
-effect Abort {
-  abort() -> Option
+// The effect is this fixture's own (`Bail`), not the prelude's `Abort`: it
+// pins an Option-returning op, and one namespace holds one `Abort`.
+effect Bail {
+  bail() -> Option(a)
 }
 
 handler my_catch {
-  abort() => None
+  bail() => None
 }
 
-fn try_with(try_fn, catch_fn) with Abort = {
+fn try_with(try_fn, catch_fn) with Bail = {
   let attempted = (try_fn()) ~> my_catch
   match attempted {
     Some(value) => value,
@@ -26,6 +28,6 @@ fn try_with(try_fn, catch_fn) with Abort = {
   }
 }
 
-fn risky(n) with Abort = if n > 3 { abort(); 0 } else { n * 7 }
+fn risky(n) with Bail = if n > 3 { bail(); 0 } else { n * 7 }
 
 fn main() = try_with(() => Some(risky(9)), () => 42)

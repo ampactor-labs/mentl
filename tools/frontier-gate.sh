@@ -470,10 +470,30 @@ run_warm_start() {
     fail "$label warm emission diverges (diff $dir/$label.1.wat $dir/$label.2.wat)"
     return
   fi
-  # Leg 3 — the resume verb with the SOURCE ABSENT: the projection rode the
-  # image, so deleting main.mn and resuming the .img must emit the same WAT.
+  # The compile's own image, named before another verb writes a second one.
   local img
   img=$(ls "$wdir/.build"/warm-compile-*.img 2>/dev/null | head -1)
+  # Leg 4 — another VERB over the same entry. An image is memory from address
+  # 0, so it carries the invocation that wrote it (its emit sink among it); a
+  # `compile` after a `run` restored the run's sink and emitted ZERO bytes at
+  # exit 0 (measured 2026-09-23). Each invocation resumes only its own image.
+  wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" run main \
+    > "$dir/$label.4r.out" 2> "$dir/$label.4r.err"
+  rc=$?
+  if [ "$rc" -ne 42 ]; then
+    fail "$label run beside the compile image (exit=$rc, want 42; see $dir/$label.4r.err)"
+    return
+  fi
+  wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
+    > "$dir/$label.4.wat" 2> "$dir/$label.4.err"
+  if cmp -s "$dir/$label.1.wat" "$dir/$label.4.wat"; then
+    pass "$label compile after a run (byte-identical — the run's image is its own)"
+  else
+    fail "$label compile after a run diverges ($(wc -c < "$dir/$label.4.wat") bytes; diff $dir/$label.1.wat $dir/$label.4.wat)"
+    return
+  fi
+  # Leg 3 — the resume verb with the SOURCE ABSENT: the projection rode the
+  # image, so deleting main.mn and resuming the .img must emit the same WAT.
   command rm -f "$wdir/main.mn"
   wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" resume ".build/$(basename "$img")" \
     > "$dir/$label.3.wat" 2> "$dir/$label.3.err"
@@ -574,6 +594,23 @@ run_refusal() {
     judge "$label" 1 "$label refusal ($expected_code=$count exit=$rc wat=0B)"
   else
     judge "$label" 0 "$label refusal (exit=$rc $expected_code=$count wat=${size}B; see $err)"
+  fi
+}
+
+# The same contract THROUGH THE MANIFEST — a verb and a path, the way a person
+# compiles — for a defect that only exists when the program links the
+# library: stdin is the blob path, and its link has no prelude to collide with.
+run_refusal_linked() {
+  local compiler="$1" label="$2" source="$3" expected_code="$4" dir="$5"
+  local err="$dir/$label.compile.err" wat rc count
+  wat=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" \
+    "$compiler" compile "$source" 2> "$err")
+  rc=$?
+  count=$(grep -c "$expected_code error:" "$err" 2>/dev/null || true)
+  if [ "$rc" -ne 0 ] && [ "$count" -gt 0 ] && [ -z "$wat" ]; then
+    judge "$label" 1 "$label refusal ($expected_code=$count exit=$rc wat=0B, through the manifest)"
+  else
+    judge "$label" 0 "$label refusal (exit=$rc $expected_code=$count wat=${#wat}B; see $err)"
   fi
 }
 
@@ -1436,16 +1473,8 @@ for i in "${!compilers[@]}"; do
   # by the final). With one pass effects register first, so the fn WON
   # silently (exit 0, 35KB of WAT, E_TypeMismatch noise in threading). The
   # check now runs at the fn's own write too; this leg is what caught it.
-  fso_err="$dir/fn-shadows-op.err"
-  fso_wat=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" \
-    "$compiler" compile "$ROOT/tests/frontier/mn-fn-shadows-op.mn" 2> "$fso_err")
-  fso_rc=$?
-  fso_count=$(printf '%s' "$fso_err" >/dev/null; grep -c 'E_FnShadowsOp error:' "$fso_err" 2>/dev/null || true)
-  if [ "$fso_rc" -ne 0 ] && [ "$fso_count" -gt 0 ] && [ -z "$fso_wat" ]; then
-    pass "fn-shadows-op refusal (E_FnShadowsOp=$fso_count exit=$fso_rc wat=0B, through the manifest)"
-  else
-    fail "fn-shadows-op refusal (exit=$fso_rc E_FnShadowsOp=$fso_count wat=${#fso_wat}B; see $fso_err)"
-  fi
+  run_refusal_linked "$compiler" fn-shadows-op \
+    "$ROOT/tests/frontier/mn-fn-shadows-op.mn" E_FnShadowsOp "$dir"
   run_refusal "$compiler" effect-stateful-uninstalled \
     "$ROOT/tests/frontier/mn-effect-stateful-uninstalled.mn" E_EffectUnhandled "$dir"
   # ARMED 2026-08-08 (the decl-site licence, wheel census 0 at birth): an
@@ -1459,7 +1488,8 @@ for i in "${!compilers[@]}"; do
   # program trapped at an instruction no diagnostic had ever mentioned.
   # Pre-arm, so run_narration, not run_refusal — the wheel's own census is
   # four (emitfns_index_build, arms_include_op, record_field_handle,
-  # arm_body_handle) and diag_refuses' licence is a wheel census of zero.
+  # arm_body_handle), and it arms by becoming an error, which the wheel's own
+  # census must reach zero to afford.
   # The ratchet in verify-baseline holds those four; when they fall this
   # moves to run_refusal in the commit that arms the class.
   run_narration "$compiler" field-offset-unprovable \
@@ -1540,8 +1570,7 @@ for i in "${!compilers[@]}"; do
   # itself: "narration until the wheel's own census reaches 0 (the arming
   # law)". The census reached 0 at the Phase 4.1 landing and stayed there, so
   # the narration had become a counter held at zero — a proxy for a proof the
-  # medium can hold directly (diag_refuses' own licence: "born at ZERO on
-  # every program measured, which is the point"). Reading a value the affine
+  # medium can hold directly: the refusal. Reading a value the affine
   # ledger already moved is not something to report and proceed through;
   # before the arena it is a stale read, after it a use-after-free.
   run_refusal "$compiler" use-after-move \
@@ -1594,6 +1623,12 @@ for i in "${!compilers[@]}"; do
   # meant, zero diagnostics).
   run_refusal "$compiler" refuse-dup-type \
     "$ROOT/tests/frontier/mn-refuse-dup-type.mn" E_DuplicateTypeName "$dir"
+  # Two EFFECTS of one name — effects have their own namespace beside types,
+  # so `type Sample` and `effect Sample` coexist, but a second `effect Abort`
+  # replaces the prelude's ops under the prelude's own calls. Before this it
+  # surfaced only as `() vs Option at prelude:68`.
+  run_refusal_linked "$compiler" refuse-dup-effect \
+    "$ROOT/tests/frontier/mn-refuse-dup-effect.mn" E_DuplicateEffectName "$dir"
   # E_MissingVariable armed 2026-07-18 — wheel census 0 and the user-path
   # licence measured: a no-import stdlib program resolves via the DAG's
   # prelude seed (compile exit 0, runs); the stdin contract is
@@ -3336,6 +3371,12 @@ for i in "${!compilers[@]}"; do
   # (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq), and it turns green
   # the day that refusal lands with the twin reaching the arm.
   run_program "$compiler" eq-in-arm-pointer "$ROOT/tests/frontier/mn-eq-in-arm-pointer.mn" 0 yes "$dir"
+  # A resume inside a lambda whose caller keeps computing with the answer —
+  # declared red: the resume is taken as the arm's tail and lowers as a
+  # return out of the lambda (13 where 40 is written). It turns green when
+  # the real-k path carries a perform at any position, so the lambda can be
+  # walked as non-tail (Hβ.lower.resume-through-a-lambda-is-taken-as-the-arms-answer).
+  run_program "$compiler" resume-through-caller "$ROOT/tests/frontier/mn-resume-through-caller.mn" 40 yes "$dir"
   # A record read through lambdas over a list of records: the filter's and
   # the map's element rows are two OPEN rows. They meet at ONE fresh row var
   # now (Rémy), each continuing into it, so `.body` reads its own slot —
@@ -3344,9 +3385,8 @@ for i in "${!compilers[@]}"; do
   run_program "$compiler" open-rows-through-lambdas "$ROOT/tests/frontier/mn-open-rows-through-lambdas.mn" 42 yes "$dir"
   # A closed record missing a field the callee reads is a type error now —
   # the row is read to its end and a field only the open side names must be
-  # absent from the closed one. The contract is the REFUSAL, and it stays
-  # declared red on a different blocker: E_TypeMismatch is not in
-  # diag_refuses, so the reported mismatch still emits and traps.
+  # absent from the closed one. The contract is the REFUSAL: every error
+  # refuses the executable.
   run_refusal "$compiler" record-closed-lacks-field \
     "$ROOT/tests/frontier/mn-record-closed-lacks-field.mn" E_TypeMismatch "$dir"
   # A rest pattern over an open parameter: the residual is read at emit
@@ -3359,12 +3399,13 @@ for i in "${!compilers[@]}"; do
   run_program "$compiler" record-update-type "$ROOT/tests/frontier/mn-record-update-type.mn" 231 yes "$dir"
   # A closed remainder remembers what closed it, so a rest binding or an
   # update of a `Q` never becomes a `P` of the same shape; and a field the
-  # body reads from an update's base cannot resolve absent.
-  run_diagnostic "$compiler" brand-launder-rest \
+  # body reads from an update's base cannot resolve absent. Each is a type
+  # error, and a type error refuses the executable.
+  run_refusal "$compiler" brand-launder-rest \
     "$ROOT/tests/frontier/mn-brand-launder-rest.mn" E_TypeMismatch "$dir"
-  run_diagnostic "$compiler" brand-launder-update \
+  run_refusal "$compiler" brand-launder-update \
     "$ROOT/tests/frontier/mn-brand-launder-update.mn" E_TypeMismatch "$dir"
-  run_diagnostic "$compiler" update-absent-read \
+  run_refusal "$compiler" update-absent-read \
     "$ROOT/tests/frontier/mn-update-absent-read.mn" E_TypeMismatch "$dir"
   # Two faces the rows design's third refuter measured on the pinned boot
   # (2026-09-23), both checking clean and failing at runtime: an effect

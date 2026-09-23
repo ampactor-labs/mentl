@@ -269,11 +269,9 @@ effect row in scope, its Boolean algebra rendered (`+` union, `-` difference,
 nodes. The ownership budget is `own`/`ref` and the remaining `Consume` count,
 from the use-count grade. The refinement obligations are each `V_Pending` debt
 with its state (`verify.mn`'s `verify_debt()`), the sound-incomplete ledger
-surfaced, never a silent assume-true. And the armed refusals are the classes the
-medium now *enforces* on itself and everyone (`types.mn`'s `diag_refuses`, the
-emit gate): `E_UnresolvedHole`, `E_MissingModule`, `E_HandlerStateShadowsOp`,
-`E_DuplicateFnName`, `E_RefinementRejected`, `E_OwnershipViolation`,
-`E_MissingVariable`, `E_OccursCheck`. A refusal here is a promise the medium
+surfaced, never a silent assume-true. And the refusals are every error the
+medium reports — each one a claim it could not discharge, and the emit gate
+refuses the executable on any of them. A refusal here is a promise the medium
 keeps, projected.
 
 The surface the machine-code age actually needs is the **absence proof**: every
@@ -605,8 +603,8 @@ The live reads exist; the work is projection and render, no new kernel.
 - **The Why button**: `cursor.mn`'s `why` arm (`teach_why`) and `voice.mn`'s
   `render_why_arm` render the Reason chain today. Draw the walk.
 - **The Ledger, three of four bands**: declared and inferred rows, `V_Pending`
-  debt (`verify.mn`'s `verify_debt`), and the armed refusals (`types.mn`'s
-  `diag_refuses`) are all live reads. Render them as ambient chrome.
+  debt (`verify.mn`'s `verify_debt`), and the refusals (every error, by
+  `types.mn`'s `diag_severity`) are all live reads. Render them as ambient chrome.
 - **The cursor neighborhood and the effect-row flow overlay**: `graph.mn`'s
   chase and `effects.mn`'s `absorb_row` give the structure and the row math;
   the views are rendering.

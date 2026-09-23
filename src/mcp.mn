@@ -136,7 +136,6 @@ handler mcp_diag_collector with slots = make_list(diag_bank_slots), n = 0, text 
     }
   },
   diag_errors() => resume(diag_errors()),
-  diag_refusals() => resume(diag_refusals()),
   gate_facts() => resume(if dropped == 0 {
     str_slice(text, 0, tlen)
   } else {

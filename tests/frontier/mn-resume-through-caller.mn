@@ -1,0 +1,18 @@
+// A resume inside a lambda whose caller keeps computing with the lambda's
+// answer. resume(1) runs the rest of body (1 + 3 = 4) and the arm multiplies
+// that by 10, so the install's value is 40. The resume is taken as the
+// arm's own tail, so it lowers as a return out of the lambda, pick()
+// answers 10, and the program answers 13.
+effect Choice {
+  pick() -> Int
+}
+
+fn call_thunk(f) = f()
+
+handler once {
+  pick() => call_thunk(() => resume(1)) * 10
+}
+
+fn body() with Choice = pick() + 3
+
+fn main() = body() ~> once

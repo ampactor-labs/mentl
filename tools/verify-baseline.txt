@@ -718,11 +718,10 @@ comment_refs_max: 0
 # ever found — the m4 leg died at a bare `wasm trap: unreachable` with no
 # diagnostic anywhere in the run.
 #
-# This is a ratchet toward an ARMING, not a standing tolerance. E_FieldOffset
-# Unprovable is declared and reported but NOT in diag_refuses, because that
-# licence is a wheel census of ZERO (types.mn states it: "the medium never
-# violates it on ITSELF, so enforcing it on everyone cannot refuse the
-# medium"). Each of the four is a receiver whose row never closed —
+# This is a ratchet toward an ARMING, not a standing tolerance. The class is
+# narration (T_, SWarning) and every error refuses, so it arms by becoming an
+# error — which the wheel's own census must reach ZERO to afford, or the
+# medium refuses itself. Each of the four is a receiver whose row never closed —
 # emitfns_index_build's `col` reads List({ name: String | r }) in the full
 # wheel though the op that fills it declares EmitFnEntry, which is the
 # Carried-Truth Law at the element type. Drive them to zero, then arm, then
@@ -843,8 +842,8 @@ fs_impl_bypass_max: 7
 # INTERROGATED 2026-09-15 and KEPT — the measurement is recorded so the
 # next session does not re-derive it. The day E_UseAfterMove was armed and
 # use_after_move_max retired, this key was the obvious next candidate: it
-# reads ZERO, and the thing it counts (E_MissingVariable) is ALREADY in
-# diag_refuses, which looks exactly like a counter standing beside a proof.
+# reads ZERO, and the thing it counts (E_MissingVariable) ALREADY refuses,
+# which looks exactly like a counter standing beside a proof.
 # It is not. E_MissingVariable refuses the program the wheel actually
 # LINKS — one concatenated blob in which every name resolves whether or
 # not its module declared the dep. This sweep checks each module ALONE,
@@ -925,10 +924,9 @@ solo_violations_max: 0
 # declared RED here the same day and RETIRED by the record row landing: two
 # open rows meet at one fresh var (Rémy) instead of absorbing each other as an
 # "assumed" remainder, and a record pattern reads its layout at emit under
-# the twin. `record-closed-lacks-field` stays RED on a different blocker: the
-# missing field is now a type error, but E_TypeMismatch is not in
-# diag_refuses, so the mismatch is reported and the program still emits.
-frontier_expected_red: record-closed-lacks-field
+# the twin. `record-closed-lacks-field` stayed RED one landing longer, on
+# E_TypeMismatch not refusing the executable; it retired when every error
+# became a refusal (`diag_refuses` deleted into the severity).
 # 2026-09-23: the rows design's third refuter — an instance reaching an install
 # through a HOF parameter is never unified with the handler's (an Int payload
 # called as a function, runtime trap), and a module-level `let` performs with
@@ -976,6 +974,14 @@ frontier_expected_red: pipe-in-splice-show
 # it was measured; retires when the eq leaf refuses the unresolved operand
 # (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq) and the gate SAYS so.
 frontier_expected_red: eq-in-arm-pointer
+# 2026-09-23: a resume inside a lambda whose caller keeps computing with the
+# lambda's answer is taken as the arm's tail — 13 where 40 is written. The
+# arm body and a fn nested in it are read exactly now (non-tail → the real
+# continuation); the lambda keeps the assumption because walking it as
+# non-tail would put correct programs (a thunk the caller returns unchanged)
+# on the real-k path, which floors a perform off the k1 spine.
+# Hβ.lower.resume-through-a-lambda-is-taken-as-the-arms-answer.
+frontier_expected_red: resume-through-caller
 # 2026-09-23: EIGHT CROWN CRUCIBLES THE PINNED BOOT FAILS, measured by an
 # adversarial refuter of the rows design and re-run by hand the same hour.
 # Six are FALSE ABSENCE PROOFS — a body declared `!E` performs E and runs

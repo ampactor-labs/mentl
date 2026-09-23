@@ -205,22 +205,23 @@ wasi_filesystem)
 // executable_gate (refuse + proc_exit — the CLI compile, one process one
 // verdict), battery_compile (batch: count and continue), and the mcp
 // judge (serve: verdict as data, the server outlives every refusal). The
-// reports land before the diag_refusals read — the teaching precedes the
+// reports land before the diag_errors read — the teaching precedes the
 // tally it feeds.
 fn gate_reads(lowered) = {
   report_verify_debt(verify_debt())
   report_unhandled_effects(lowered)
   let holes = column_value_holes(lowered)
-  // The ARMED classes, read LIVE off the ledger the diagnostics handler keeps
-  // (diag_refuses names them; a class arms only when the wheel's own census of it
-  // is zero, so this can never refuse the medium). The hole gate was this law
-  // with one arm; these are its others. Productive at the walk, refusing at the
-  // boundary — SYNTAX's "a hole is productive, never executable", generalized.
+  // Every error, read LIVE off the ledger the diagnostics handler keeps. An
+  // error is a claim the medium could not discharge, and nothing executes
+  // unproven: productive at the walk, refusing at the boundary — SYNTAX's "a
+  // hole is productive, never executable", read for every class. Classes once
+  // armed one at a time as the wheel's census of each reached zero; the wheel
+  // checks clean, so the law is the severity itself.
   //
   // The verdict binds BEFORE the hole report so refusals never double-count
-  // a hole (report_holes raises the armed E_UnresolvedHole; the tally read
-  // above deliberately precedes it — len(holes) is the hole half).
-  let refused = diag_refusals()
+  // a hole (report_holes raises E_UnresolvedHole; the tally read above
+  // deliberately precedes it — len(holes) is the hole half).
+  let refused = diag_errors()
   let nholes = len(holes)
   let verdict = (nholes, refused)
   if nholes > 0 { report_holes(holes, 0) }
@@ -638,7 +639,6 @@ handler tighten_collector with found = [] {
     }
   },
   diag_errors() => resume(diag_errors()),
-  diag_refusals() => resume(diag_refusals()),
   tightenables() => resume(found),
   tighten_reset() => resume() with found = [],
 }
@@ -812,10 +812,10 @@ handler wasi_filesystem {
 // The sandbox boundary. Outermost in every route. Declares
 // `with !Diagnostic` so its own arms cannot recursively perform
 // report — structural gate via spec 01's algebra.
-handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
+handler diagnostics_handler with errors = 0, scope = ScopeAll {
   diag_report(diag, line, dmod) => // The line arrives MADE (rendered at the report boundary, in the
   // reporter's own world) — this arm's remaining projections
-  // (severity, refuses, span, the register's file-local rewrite) are
+  // (severity, span, the register's file-local rewrite) are
   // pure ctor/string reads, so the arm's row carries no graph or
   // intern demand and its residual stays clean through every install.
   // The tally IS the projection continued. This arm saw every diagnostic and
@@ -827,11 +827,7 @@ handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
     // An error renders in EVERY scope — a broken claim anywhere in the
     // weave changes the answer's validity; the register never silences it.
     eprint_string(line)
-    if diag_refuses(diag) {
-      resume() with errors = errors + 1, refusals = refusals + 1
-    } else {
-      resume() with errors = errors + 1
-    }
+    resume() with errors = errors + 1
   } else {
     // Narration is the register's business: ScopeAll (the census paths)
     // prints everything; ScopeModule renders only the file the user asked
@@ -846,7 +842,6 @@ handler diagnostics_handler with errors = 0, refusals = 0, scope = ScopeAll {
     resume()
   },
   diag_errors() => resume(errors),
-  diag_refusals() => resume(refusals),
   diag_scope(sc) => resume() with scope = sc,
   diag_scope_of() => resume(scope),
 }

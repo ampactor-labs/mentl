@@ -2490,6 +2490,8 @@ type DiagKind
   | EDuplicateFnName(String, Span)
   // a second `type name` in one namespace — the decls silently MERGE: disjoint ctor sets share tag ids and a cross-tag match returns the wrong arm (measured: exit 13 where 99 was meant, zero diagnostics)
   | EDuplicateTypeName(String, Span)
+  // a second `effect name` in the program — effects are named in rows, their own namespace beside types (`type Sample` and `effect Sample` coexist, as SYNTAX writes them); two effects of one name are not both representable, and the second's ops replace the first's under every call already written against them (measured: a program declaring its own `effect Abort` retyped the prelude's `require` against its op, `() vs Option` at a span the program never wrote)
+  | EDuplicateEffectName(String, String, Span)
   // two DISTINCT emitted fn records claim one symbol. Not a program error — the naming function collided, and the emitter's keep-first dedup would silently drop the second body while every call meaning it went to the first. The sibling above refuses that for AUTHORED names; synthesized ones (lambda_/partial_/__k_/the twins) never reached it, being unique only because a mint counter happens to be unique. This is that invariant checked instead of assumed (symbol)
   | EEmittedNameCollision(String, Span)
   // unresolved handle, epoch (lower-time NFree)
@@ -2544,16 +2546,12 @@ effect Diagnostic {
   // local span cannot name a file (two modules both have a line 8). The
   // reporter has GraphRead and reads it live; the register just compares.
   diag_report(DiagKind, String, String)
-  // The two live reads of the ledger the handler already keeps. The exit code
-  // and the emit gate were both RE-DERIVING this as 0 — the handler saw every
-  // diagnostic, printed it, and threw the severity away, so `mentl check` on a
-  // missing module printed E_MissingModule and exited 0. Carried-Truth at the
-  // instrument: the handler knows; nobody read it.
-  //
-  // every SError seen. `check`'s exit code.
+  // The live read of the ledger the handler already keeps: every SError seen.
+  // It is `check`'s exit code AND the emit gate, because an error is a claim
+  // the medium could not discharge and nothing executes unproven. The exit
+  // code and the gate were once both RE-DERIVING this as 0 — the handler saw
+  // every diagnostic, printed it, and threw the severity away.
   diag_errors() -> Int
-  // only the ARMED classes (diag_refuses). The emit gate.
-  diag_refusals() -> Int
 }
 
 // The render REGISTER (SYNTAX: how much surfaces is the gradient reading
@@ -2691,6 +2689,7 @@ fn diag_span(d) with Pure = match d {
   EOpShadowsOp(_, _, _, s) => s,
   EDuplicateFnName(_, s) => s,
   EDuplicateTypeName(_, s) => s,
+  EDuplicateEffectName(_, _, s) => s,
   EEmittedNameCollision(_, s) => s,
   EUnresolvedType(_, _, s) => s,
   EEffectUnhandled(_, _, s) => s,
@@ -2761,6 +2760,7 @@ fn diag_source(d) with Pure = match d {
   EOpShadowsOp(_, _, _, _) => "infer",
   EDuplicateFnName(_, _) => "infer",
   EDuplicateTypeName(_, _) => "infer",
+  EDuplicateEffectName(_, _, _) => "infer",
   EEmittedNameCollision(_, _) => "emit",
   EUnresolvedType(_, _, _) => "lower",
   EEffectUnhandled(_, _, _) => "effects",
@@ -2831,6 +2831,7 @@ fn diag_code(d) with Pure = match d {
   EOpShadowsOp(_, _, _, _) => "E_OpShadowsOp",
   EDuplicateFnName(_, _) => "E_DuplicateFnName",
   EDuplicateTypeName(_, _) => "E_DuplicateTypeName",
+  EDuplicateEffectName(_, _, _) => "E_DuplicateEffectName",
   EEmittedNameCollision(_, _) => "E_EmittedNameCollision",
   EUnresolvedType(_, _, _) => "E_UnresolvedType",
   EEffectUnhandled(_, _, _) => "E_EffectUnhandled",
@@ -2877,228 +2878,6 @@ fn diag_severity(d) with Pure = match d {
   VPending(_, _) => SVerificationPending,
   EVerifyUnencodable(_) => SVerificationPending,
   _ => SError,
-}
-
-// diag_refuses — the ARMED classes of the refusal law, a projection beside
-// diag_severity.
-//
-// SYNTAX already wrote this law, for one class: "A hole is productive, never
-// executable." That is Hazel's own shape, which infer.mn:24 cites by name —
-// productive under error at the WALK (a mismatch binds NErrorHole and continues;
-// ten mismatches yield ten holes, not one-and-halt), refusing at the BOUNDARY.
-// The walk's half was built; the boundary's half was drawn for holes and for
-// decidable-false refinements, and never for the other twelve classes. This is
-// that same law reaching them — nothing new is invented here.
-//
-// A class is ARMED when the wheel's own census of it is ZERO: the medium never
-// violates it on ITSELF, so enforcing it on everyone cannot refuse the medium.
-// The census ratchet (tools/verify-baseline.txt) holds it at zero, so an armed
-// class can never un-arm. That licence is the self-hosting property doing the
-// work — rustc and tsc gate from day one because they never had errors on their
-// own source; here the wheel is the medium's first user, so "a class the medium
-// keeps on itself" is a MECHANICAL licence, not a policy.
-//
-// The all-at-once form — refuse on any SError — was designed, dispatched to an
-// adversarial fleet, and REFUTED on the artifact by three independent verifiers:
-// the wheel reports 2,266 errors about its own source, so that gate refuses the
-// medium itself and no m2 exists. The target does not lower; the WORK sequences
-// (§9.3). Classes arm one at a time as their census falls.
-//
-// `_ => False` is not a fabrication: "not yet armed" is TRUE of every class not
-// listed, and the list only grows. When the last one arms, this projection and
-// the census line are both DELETED and the law is `diag_severity(d) == SError`.
-fn diag_refuses(d) with Pure = match d {
-  EMissingModule(_, _, _) => // ARMED 2026-07-17. Census on the wheel: 0. Its silent skip in
-  // driver_compile_entry's fold was fixed the same day — `mentl check` reported
-  // it while `mentl compile` on the same source said nothing and shipped 2,432
-  // bytes of WAT.
-  True,
-  EHandlerStateShadowsOp(_, _, _) => // ARMED at birth (2026-07-18): both are DECL-SITE facts read from parsed
-  // structure — no resolution dependency, so the blob-vs-user-path licence
-  // gap the adversarial panel found for name-dependent classes cannot apply.
-  // Census on the wheel at arming: 0 (the wheel's one state-shadow — the
-  // voice history field — was renamed in the arming commit; the wheel has
-  // no duplicate fn names, measured).
-  True,
-  EDuplicateFnName(_, _) => True,
-  EEmittedNameCollision(_, _) => // ARMED at birth (2026-09-10) and born at ZERO on every program measured,
-  // which is the point: it does not police a mistake, it holds an invariant
-  // that was true by two unrelated accidents. Authored duplicates are refused
-  // upstream by EDuplicateFnName; synthesized symbols were unique only
-  // because a mint counter is unique, and the emitter's keep-first dedup
-  // compares NAMES — so the day a symbol stops being minted from a counter,
-  // an unchecked collision drops one body and silently redirects every call
-  // that meant it. Emitting a program whose calls go to the wrong function is
-  // not something to report and proceed through.
-  True,
-  EOpShadowsOp(_, _, _, _) => // ARMED at birth (2026-09-04), and the arming is the whole point: a
-  // reported-but-emitted collision is the corruption plus a note about it.
-  // The env holds ONE entry per name, so two effects declaring the same op
-  // are not both representable — the second write REPLACES the first and
-  // every prior call retypes against a signature its author never wrote.
-  // Measured: tests/crown/leak-handler-residual declared `Feed.yield` beside
-  // prelude's `Iterate.yield` and compiled to 42 spurious E_TypeMismatch
-  // INSIDE lib, burying the one refusal the crucible exists to prove.
-  // Renaming the op left exactly that one.
-  //
-  // Licence, both halves measured: the wheel declares 325 ops across its
-  // effects with ZERO cross-effect name reuse, so this cannot refuse the
-  // medium; and the corpus fixtures that collide are being renamed in the
-  // same landing.
-  //
-  // WHAT THE REFUSAL COSTS, stated rather than hidden: two effects sharing
-  // an op name is ordinary in effect systems (`Reader.get` beside
-  // `State.get`), and Mentl cannot express it TODAY because op identity is
-  // the bare name. The capability arrives when the env keys an op by
-  // (effect, name) — the entry already carries its effect, so the key is
-  // what throws it away. `Hβ.env.op-identity-is-effect-and-name` carries it,
-  // and this refusal is what makes the limit sayable instead of silent.
-  True,
-  EPurityViolated(_, _) => // ARMED 2026-09-03, the first of the CROWN's own two verdicts to reach
-  // the refusal law. §0's first property is "nothing executes unproven",
-  // and a violated `with Pure` was proven, printed, and then emitted: the
-  // probe was `fn claims_pure(n) with Pure = shout(n)`, which reported the
-  // violation and shipped 38,750 bytes.
-  //
-  // Both halves of the licence above, measured rather than assumed. The
-  // wheel's own census of this class is ZERO (verify's census line), so
-  // arming cannot refuse the medium. And the user-path channel was checked
-  // across all 372 corpus fixtures: the only carriers left are the two that
-  // EXPECT the refusal (mn-constructor-row-charge, mn-index-sugar-row). The
-  // one true blocker was mn-cli-dispatch, whose parse_verb and
-  // build_question declared `with Pure` while constructing payload-carrying
-  // variants — an honestly wrong signature, widened in the same landing,
-  // and it had gone unnoticed because this class did not refuse and the
-  // micro battery's diagnostic counter could not report a nonzero number.
-  //
-  // The recorded refutation against the all-at-once form — "the wheel
-  // reports 2,266 errors about its own source" — is era-stale; that count
-  // is 0 today. It refuted arming EVERY class at once, which is still the
-  // right refusal; classes arm one at a time as their census falls, and
-  // this one has.
-  True,
-  EEffectMismatch(_, _, _) => // ARMED 2026-09-23 — the crown's second verdict joining its first
-  // (EPurityViolated above): `with !E` refuted by the body was proven,
-  // printed, and emitted. Measured on tests/frontier/mn-refuse-sibling-mask:
-  // `bad() with !E` performs E through two HOF calls, one install covers the
-  // left one only, and the compile exited 0 — then the executable faulted
-  // out of bounds in ev_declaring_node, the uncovered op reading evidence no
-  // install threaded. The identical body with no install refused, only
-  // because E_EffectUnhandled fired beside the mismatch; one install was the
-  // whole difference between a proof the medium enforces and one it merely
-  // mentions. Wheel census at arming: 0 (`mentl src/main.mn check` clean).
-  True,
-  EFnShadowsOp(_, _, _) => // ARMED at birth (2026-08-18), read at the op's env write — the one
-  // place both claims on the name are present. Wheel census 0.
-  True,
-  EDuplicateTypeName(_, _) => // ARMED at birth (2026-07-25), same licence as the two above: a DECL-SITE
-  // fact read from parsed structure — no resolution dependency. Census on
-  // the wheel blob at arming: 0 (the one Level pair lives in two tutorial
-  // files, both outside the blob and compiled standalone).
-  True,
-  EEffectUnhandled(_, _, _) => // ARMED at birth (2026-07-22): an EXECUTABLE-root fact read from main's
-  // resolved row at the gate — the row representation is true (the triple),
-  // the wheel's own main carries only substrate-grounded names (census 0 at
-  // arming), and check/edit never route through the gate, so the productive
-  // surfaces stay open. The unhandled effect was the LAST undiagnosed
-  // 0x100000000 class: a perform whose evidence no install threads.
-  True,
-  ERefinementRejected(_, _) => // ARMED 2026-07-18, panel-corrected licence: census 0 on the wheel AND the
-  // user-path channel verified. ERefinementRejected fires only on a predicate
-  // DECIDED false (undecidable defers to V_Pending, decidable-true passes —
-  // the panel found no false-refusal channel); §11 claimed this class was
-  // locked while a decidable-false `let bad: Sample = 1.5` emitted 2,513
-  // bytes at exit 0. EOwnershipViolation's one false channel (an unresolved
-  // callee's move default) died with graph_bind_hole + the callee-miss borrow
-  // guard; the detector survived adversarial falsification on resolved
-  // programs (a genuine double move still refuses, disjoint arms still pass).
-  True,
-  EOwnershipViolation(_, _) => True,
-  EUseAfterMove(_, _) => // ARMED 2026-09-15 — the affine tier's READ half joining the consume half
-  // above, and the arming condition was written by the class itself: its
-  // decl and its fixture both said "narration until the wheel's own count
-  // reaches 0 (the census arming law)". The count reached 0 at the Phase 4.1
-  // landing (pin 8ba768c810c4) and has held every board since, so what
-  // remained was a counter standing in for a proof — `use_after_move_max: 0`
-  // in verify-baseline, retired by this arm because an armed class has
-  // nothing to count: a wheel carrying one cannot compile.
-  // WHAT IT HOLDS, and why proceeding is not an option: the ledger already
-  // proved the name moved, and the read takes the bytes anyway. Today that is
-  // sound only by accident — the bump heap never frees, the
-  // accident-invariant §5.O layer 3's arena deletes — so this is a
-  // use-after-free the day ownership gets a real reclaim, emitted silently
-  // at exit 0. The licence is the same one its sibling holds: the detector
-  // reads the used-set BEFORE borrow_depth (4.1's ordering fix), so a borrow
-  // of a live name cannot reach it, and tests/frontier/mn-use-after-move.mn
-  // is the falsifying witness, re-banked from run_narration to the refusal
-  // contract in the same landing and seen RED first (exit 0, 4,474 WAT bytes
-  // against the unarmed tree).
-  True,
-  EMissingVariable(_, _) => // ARMED 2026-07-18, the manifest arc's dividend: wheel census 0, and the
-  // user-path licence MEASURED — a no-import stdlib program (map / fold /
-  // len / any) resolves via the DAG's prelude seed and runs; the stdin
-  // contract is self-contained input (the wheel's own build form), where a
-  // missing name is a real break. Pre-arming, the refusal fixture compiled
-  // a missing-name executable to 2,795 bytes at exit 0 with the diagnostic
-  // on stderr — the silent-wrong this class's arming deletes.
-  True,
-  EOccursCheck(_, _, _) => // ARMED 2026-07-18, the eighth — the same day its fixture found the spin:
-  // a genuinely infinite type (selfapply f = f(f)) used to TRAP the compiler
-  // (chase_deep / subst_ty stack exhaustion, zero reports) because the occurs
-  // leaf compared handles where the cycle lived in BOUND STRUCTURE (bind
-  // graph_bind(a, TFun([b], r)) first, then graph_bind(b, TVar(a)) closes
-  // the cycle — no comparison sees
-  // it). The leaf now recurses into the root's binding, the write guard is
-  // total, and the fixture reports E_OccursCheck and refuses. Wheel census 0
-  // throughout; the phantom cascade stayed dead (one miss, one diagnostic).
-  True,
-  EDeclaredRowContradiction(_, _) => // ARMED at birth (2026-08-08), the decl-site licence: a fact read from
-  // the authored clause's own signed fold — no resolution dependency.
-  // Census on the wheel at arming: 0 (the birth landing's march measured
-  // the whole wheel contradiction-free). The pre-diagnostic meet let a
-  // performing body check CLEAN under a declared !E; an unsatisfiable
-  // clause must never reach an executable.
-  True,
-  EMalformedNumericLiteral(_, _, _) => // ARMED at birth (2026-08-18), the lexical licence: the judgment is
-  // read from the source bytes themselves at the scan, so it has no
-  // resolution dependency and cannot differ between the blob link and a
-  // user path. Census on the wheel at arming: 0 — every literal the
-  // medium's own source writes is well-formed, and the march is the
-  // proof. This is the class the armed contract exists for: 0b1012 read
-  // 5 and ran, 0o1238 read 83 and ran, a bare 0x read 0 and ran. A
-  // value the medium cannot read is not a proven value, and nothing
-  // executes unproven.
-  True,
-  EZeroDelayFeedback(_) => // ARMED at birth (2026-08-12), the literal licence: the depth is read
-  // from the authored `delay(<int literal>)` at the `<~` site — no
-  // resolution dependency, so the blob-vs-user-path gap cannot apply.
-  // Census on the wheel at arming: 0 (all thirteen `<~` sites declare
-  // delay(1) or accumulate). A cycle with no delay has no computable
-  // value, and today it SILENTLY became a one-sample delay — the emit
-  // never read the depth at all, measured by probe (delay(0), delay(1)
-  // and delay(3) each returned 30).
-  True,
-  EInitPerformsOwnOp(_, _, _) => // ARMED at birth (2026-08-18): the judgment is STRUCTURAL, read from
-  // the lowered install itself — a direct-perform inside `LHandleWith`'s
-  // own inits list, naming that same install's handler. No resolution
-  // dependency and no extent guess: the install's world_push has not run
-  // while its inits run, for every install, so the dispatch's walk
-  // provably reaches the chain's end. The runtime already refuses precisely
-  // there (ev_declaring_node's own trap); arming moves the same verdict to a
-  // point where nothing has been emitted. Census on the wheel at arming:
-  // 0 — every handler in it has a pure init, which is why no gate saw the
-  // shape until one was written for it.
-  True,
-  EComputedDelayDepth(_) => // ARMED at birth (2026-08-12), the same literal licence its sibling
-  // rides: the judgment is "was a literal written here", read from the
-  // authored RHS with no resolution dependency. Census on the wheel at
-  // arming: 0 — every `delay(...)` in src/ and lib/ is `delay(1)`, and
-  // the other feedback sites are `accumulate`. A line is a fixed set of
-  // globals, so an unreadable depth cannot be held; refusing is what
-  // keeps the depth read honest, because the alternative is handing a
-  // site that asked for n the one slot it did not ask for.
-  True,
-  _ => False,
 }
 
 // The severity-class label the stderr line prints (the legacy `kind`
@@ -3216,6 +2995,7 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   EOpShadowsOp(name, prior, now, _) => "effect `{now}` declares an op `{name}` that effect `{prior}` already declares, and this program links both. The env holds one entry per name, so the second declaration REPLACES the first rather than joining it: every existing call to `{name}` is now judged against `{now}`'s signature, and the errors surface wherever those calls are — inside the library, at spans your program never wrote. Rename this op",
   EDuplicateFnName(name, _) => "a second `fn {name}` in one namespace — the first declaration already binds it; rename one",
   EDuplicateTypeName(name, _) => "a second `type {name}` in one namespace — the declarations would merge and their constructor sets share tag ids; rename one",
+  EDuplicateEffectName(name, other, _) => "`effect {name}` is declared twice in the program — here and at {other}. The env keeps one entry per op, so one declaration's ops REPLACE the other's under every call already written against them (a library's own bodies included); rename one",
   EEmittedNameCollision(symbol, _) => "two different functions both emit as `{symbol}` — the dedup keeps the first, so every call meaning the second would reach the first instead. This is the compiler's own naming, not your program: report it",
   EUnresolvedType(h, epoch, _) => "handle {int_to_str(h)} @epoch={int_to_str(epoch)}",
   EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",

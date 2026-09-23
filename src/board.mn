@@ -23,9 +23,9 @@
 // WHAT A BOUND IS NOT. A bound is not a proof. Fourteen of the old file's
 // keys read ZERO, and a ratchet held at zero is a proxy for a proof nobody
 // minted (PLAN §7, in those words). The ultimate form of every line here is
-// its own DELETION: the shape becomes a `DiagKind` the executable refuses,
-// `diag_refuses` holds the invariant directly, and the line retires the way
-// the use-after-move ratchet did at pin 21696779. So this roster is a COUNTDOWN,
+// its own DELETION: the shape becomes an error-severity `DiagKind`, every
+// error refuses the executable, the refusal holds the invariant directly, and
+// the line retires the way the use-after-move ratchet did at pin 21696779. So this roster is a COUNTDOWN,
 // and a line that never falls is not a passing gate — it is 8.4's universal
 // executable refusal, unbuilt, saying so.
 import types
@@ -293,11 +293,20 @@ fn board_bounds() with Memory + Alloc = [
   // diagnostics (353 → 359). Same defect, same counting rule; no row among
   // them is authored.
   //
+  // 1,141 — seven more, tally against tally (HEAD's source through its own
+  // boot beside the tree's through the march): the warm image's path names
+  // its invocation context (`int_to_str` 359 → 360), an effect declared twice
+  // reports at both of its writers (`report_at` 24 → 26, `node_address` 3 → 5),
+  // and a fn nested in a handler arm lowers under the arm's own context
+  // rather than a fabricated default, so `project_nested_fn` holds two calls
+  // to `lower_body_reified` where it held one. Same defect, same counting
+  // rule; no row among them is authored.
+  //
   // None of these is the probe's 856, which counted chase EVENTS inside one
   // lower run. Four instruments, four denominators, one fact; recording all
   // of them is how the next reader avoids reconciling numbers that were
   // never the same.
-  Bound({ceiling: 1134, shape: CsFreeRowCallee}),
+  Bound({ceiling: 1141, shape: CsFreeRowCallee}),
   // 480 — the imperative loop in recursion's costume, counted across the
   // whole wheel and bounded for the first time 2026-09-21 (Morgan: "anytime
   // there is anything that could be written with the five topological

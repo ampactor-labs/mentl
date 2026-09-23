@@ -1,0 +1,10 @@
+// A program declaring its own effect under the prelude's name. The env keeps
+// one entry per op, so this declaration's ops replaced the prelude's, and
+// the prelude's own require was judged against a signature its author never
+// wrote: a type error inside the prelude, at a span this program never wrote,
+// and nothing at the declaration that caused it.
+effect Abort {
+  abort() -> Option(a)
+}
+
+fn main() = 1

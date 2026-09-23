@@ -35,6 +35,41 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-23 · pin 45fc255ef62f296c (CLEAN m2 == m3, census 0, frontier 420/0/10,
+  crown 108/0/50, micros 155/155, board green) · EVERY ERROR REFUSES, AND
+  WHAT THAT FOUND. Asking whether named constructor fields worked (they do —
+  declare, construct by name, match `Variant{field}`, fmt rewrites
+  positional patterns by name) ran a program `check` had reported two
+  errors on, and it trapped. (1) `diag_refuses` — the per-class armed list —
+  is DELETED into the severity, the end state its own comment named; the
+  recorded objection (2,266 errors on the wheel) had been stale for weeks.
+  The whole frontier held; four type-error fixtures became refusals,
+  `record-closed-lacks-field` retired from the declared reds, and five
+  micros turned out to carry real errors the old gate let through. (2) Two
+  of those were a collision: a program's own `effect Abort` replaced the
+  prelude's ops and mistyped the prelude's own `require`. Effects are their
+  own namespace (the wheel's DSP library declares `type Sample` AND `effect
+  Sample`, as SYNTAX does — a first cut that put effects in the type
+  namespace was refuted by the wheel refusing itself), so
+  `E_DuplicateEffectName` is new, raised at the env write across modules
+  and by a walk within one. (3) A SILENT WRONG in the resume tier:
+  `arm_disc_of` graded by count alone, so `resume(1) + 10` lowered as
+  `return 1` — 4 where 14 was written. `KUse` (None < Tail < Held < Many)
+  reads tail position in the same walk, allocation-free (a tuple-per-node
+  first cut cost 13.8MB of judgment heap and was measured and replaced).
+  (4) A fn nested in an arm lowered under a fabricated default context
+  (`project_nested_fn`), so its resume was a direct return even on the
+  real-k path; it inherits the arm's now. (5) A warm image carried its
+  PERSISTER's invocation — a `compile` after a `run` emitted zero bytes at
+  exit 0; the image path names the context the restore would overwrite.
+  (6) The incremental cone judged a module under its path where the cold
+  path used its name; it walks the DAG's entries now. KILLS: "effects share
+  the type namespace" (the wheel's own `Sample`); "a resume inside a lambda
+  is never tail" (correct programs moved onto a real-k path that floors off
+  the k1 spine — held red instead, `Hβ.lower.resume-through-a-lambda-is-taken-as-the-arms-answer`);
+  "the zero-byte compile is a stale image" (it was the restored sink).
+  free-row-callee 1,134 → 1,141, itemized by callee on the board.
+
 - 2026-09-23 · pin 99a250ff7e179639 (TRANSITION m3 == m4, census 0,
   frontier 415/0/10, crown 108/0/50, board green) · A RECORD IS A ROW, READ
   TO ITS END. The record update was typed from a snapshot of its base, and

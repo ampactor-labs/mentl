@@ -53,8 +53,8 @@ m missing check >/dev/null 2>&1; ck "check <missing module> refuses" "$?" "1"
 m typeerr check >/dev/null 2>&1; ck "check <type error> refuses"     "$?" "1"
 m ok check      >/dev/null 2>&1; ck "check <clean> accepts"          "$?" "0"
 
-# The emit refuses on an ARMED class (diag_refuses; E_MissingModule armed
-# 2026-07-17 because its census on the wheel is 0).
+# The emit refuses on any error (E_MissingModule here; every SError refuses
+# since 2026-09-23).
 b=$(m compile missing 2>/dev/null | wc -c); ck "emit refuses armed class (0 bytes)" "$b" "0"
 m compile missing >/dev/null 2>&1;          ck "  and exits nonzero"                "$?" "1"
 

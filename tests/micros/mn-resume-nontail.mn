@@ -1,0 +1,18 @@
+// expect: 14
+// A resume whose answer the arm keeps computing with. `resume(1)` runs the
+// rest of `body` (1 + 3 = 4) and the arm adds 10 to that, so the install's
+// value is 14. The direct-return tier lowers `resume(v)` as `return v`,
+// which is the resume's meaning only in TAIL position; this one is not, so
+// the arm takes the continuation as a value. Before the tail read it ran as
+// `return 1` and answered 4 with no diagnostic.
+effect Choice {
+  pick() -> Int
+}
+
+handler once {
+  pick() => resume(1) + 10
+}
+
+fn body() with Choice = pick() + 3
+
+fn main() = body() ~> once

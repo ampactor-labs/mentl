@@ -806,16 +806,18 @@ and this is the STATE.
   resume through the same row check every `~>` edge already uses.
 - **O(1) complexity** is the DIRECTION, not built. Honest contract: O(1) chase,
   O(changed cone) incremental, O(reachable) image, O(1) reclaim-after-proof.
-- **Executable refusal** is PARTIAL — read `diag_refuses` for the live list and
-  its size; this doc carries neither. It used to say "fifteen classes refuse" in
-  the same breath as "never this doc", and the artifact measured EIGHTEEN on
-  2026-09-15 — a sentence that told the reader not to trust it while giving them
-  a number to trust. **A count in prose is a copy of a fact the artifact holds**,
-  so the count is deleted rather than corrected: the pointer is the whole
-  content. The remaining census classes are the ratcheting work toward
-  universal, and the ZERO-held ones are not ratchet work at all — a class
-  measured at zero is armed, not counted (`diag_refuses`' own licence: "born at
-  ZERO on every program measured, which is the point").
+- **Executable refusal is UNIVERSAL for errors** (2026-09-23): every `SError`
+  refuses the executable, and `diag_refuses` — the per-class armed list — is
+  deleted into the severity, as its own comment said it would be "when the last
+  one arms". The trigger was a measurement, not a schedule: `mentl run` on a
+  program `check` had reported two `E_ConstructorArity` errors about executed it
+  and trapped, and the recorded objection to the all-at-once form ("the wheel
+  reports 2,266 errors about its own source") had been era-stale for weeks — the
+  wheel checks clean. The whole corpus held under the flip; the only verdicts
+  that moved were four type-error fixtures that SHOULD refuse. What stays open
+  is narration that ought to be an error: `T_FieldOffsetUnprovable` and
+  `T_EqTypeUnprovable` report floors the executable still ships, and each
+  becomes a refusal by flipping its severity once its wheel count reaches zero.
 - **Per-module manifest** — CLOSED at entry, OPEN per-module
   (`solo_violations_max: 0`). The overlay is the stamped second half.
 - **Thread schedule** is REAL (host threads over shared image). Safety gated on
@@ -1667,8 +1669,8 @@ form the whole time. The arcs, in order:
   silent floor is always found, by a later generation stepping on it.
   `T_FieldOffsetUnprovable` now reports at the receiver's span carrying the
   selector and the receiver's live type; the class is pre-arm under
-  `field_offset_unprovable_max: 4` (`diag_refuses`' licence is a wheel
-  census of zero) and `Hβ.emit.field-offset-floor-is-never-reported`
+  `field_offset_unprovable_max` (it becomes an error, and so a refusal, when
+  the wheel's count reaches zero) and `Hβ.emit.field-offset-floor-is-never-reported`
   carries the record. The four sites are the peer's own: the constructor
   `HandlerDeclStmt` (types.mn:1668) DECLARES `[{init: Node, name: String}]`
   closed, the caller holds it, and the callee re-derives a free row at
@@ -1897,10 +1899,9 @@ calculus). Full mechanics: `LEDGER.md`.
   that arrangement is the thing worth carrying forward: the key's own text
   named the zero as an *arming licence*, both its conditions were met at the
   landing, and it then sat for five weeks as a counter standing in for a proof
-  nobody had minted. **A ratchet held at ZERO is a proxy for a proof** —
-  `diag_refuses` holds the proof directly, in its own words ("born at ZERO on
-  every program measured, which is the point: it does not police a mistake, it
-  holds an invariant"). Fourteen of verify-baseline's twenty-six keys read zero
+  nobody had minted. **A ratchet held at ZERO is a proxy for a proof** — the
+  refusal holds the proof directly (an error refuses the executable, so a wheel
+  carrying one cannot compile). Fourteen of verify-baseline's twenty-six keys read zero
   the day this one retired; each that is a real `DiagKind` retires the same
   way, and each that is only a census shape retires when its shape is minted as
   a class — which is 8.4's universal executable refusal, arriving one landing

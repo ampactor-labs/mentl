@@ -1023,9 +1023,18 @@ fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body
         None => [],
       }
     }
-    let bind_disc = if bind_h == "" { OneShot } else { MultiShot }
-    let lo_body =
-      k2_guard(mark_tail(lower_body_reified(body_node) ~> arm_state_ctx(bind_fields, bind_disc, bind_h)))
+    // A resume-bound fn lowers under its handler's arm context. Any other
+    // nested fn lowers under the context it is NESTED in, exactly as a lambda
+    // does: inside an arm that is the arm's own (its resumes are the arm's,
+    // `__k` a capture), and outside every arm it is the pipeline's default.
+    // Installing a default here overwrote the arm's live context, so a resume
+    // in a fn nested in a MultiShot arm lowered as a direct return (measured
+    // 2026-09-23: `fn drive() = resume(1) + 10` emitted `(i32.const 1) (return)`).
+    let lo_body = if bind_h == "" {
+      k2_guard(mark_tail(lower_body_reified(body_node)))
+    } else {
+      k2_guard(mark_tail(lower_body_reified(body_node) ~> arm_state_ctx(bind_fields, MultiShot, bind_h)))
+    }
     lower_frame_fence_pop()
     ls_exit_frame()
     Some(LFn(fn_name, len(param_names_list), param_names_list, [lo_body], mk_ef_pure(), len(cap_pairs)))

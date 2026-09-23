@@ -1,0 +1,19 @@
+// expect: 14
+// A resume inside a fn NESTED in the arm is the arm's resume: the nested fn
+// lowers under the arm's own context, as a lambda does. It had a default
+// context installed over the arm's, so this resume lowered as a direct
+// return and the program answered 4.
+effect Choice {
+  pick() -> Int
+}
+
+handler once {
+  pick() => {
+    fn drive() = resume(1) + 10
+    drive()
+  }
+}
+
+fn body() with Choice = pick() + 3
+
+fn main() = body() ~> once

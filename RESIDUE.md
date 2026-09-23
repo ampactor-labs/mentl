@@ -3691,11 +3691,44 @@ ABI and the call site passes two. Measured in the m2 on this landing's own
 emit code; the emit writes `(a, b) =>` there. The fix is the ABI following
 the unification — the decomposition the judgment accepted must be the
 lowering's too, or the judgment must refuse it.
-▶ `Hβ.diag.type-mismatch-refuses-the-executable` — E_TypeMismatch is not in
-`diag_refuses`, so a program with a reported type error compiles, runs and
-traps at the floors the error left (every face of this peer did, before
-the fix). `record-closed-lacks-field` is held red on it alone. The licence
-is measurable: the wheel checks clean, so its census of the class is zero.
+▶ `Hβ.diag.type-mismatch-refuses-the-executable` — CLOSED 2026-09-23, and
+wider than its name: every `SError` refuses the executable now, and
+`diag_refuses` is deleted into the severity (its own comment's end state).
+Found again the next landing by a second class — `mentl run` executed a
+program `check` had reported two `E_ConstructorArity` errors about, and it
+trapped. The whole frontier held under the flip; `record-closed-lacks-field`
+retired from the declared reds and the three brand/absent fixtures became
+refusal contracts.
+▶ `Hβ.lower.resume-through-a-lambda-is-taken-as-the-arms-answer` — OPEN,
+held red by `resume-through-caller` (40 written, 13 answered). A resume at
+a lambda's tail is graded as the arm's own tail, so it lowers as a return
+out of the lambda; a caller that keeps computing with the lambda's answer
+(`call_thunk(() => resume(1)) * 10`) gets the direct-return value where the
+continuation's was meant. Grading it non-tail is the sound direction and is
+one line in `resume_use` — but it moves correct programs (a thunk its caller
+returns unchanged, `mn-oneshot-lambda-commit`) onto the real-k path, which
+floors any perform off the k1 spine (measured: that micro trapped in
+`body`). So the peer's precondition is the real-k path carrying a perform at
+ANY position; then the lambda is walked as non-tail and the leg turns green.
+What CLOSED beside it (2026-09-23): the resume's TAIL POSITION is read at
+all. `arm_disc_of` graded by count alone, so one resume whose answer the arm
+kept computing with (`resume(1) + 10`) lowered as `return 1` and dropped the
+`+ 10` — 4 where 14 was written, no diagnostic, in the arm body and in a fn
+nested in it. `KUse` (None < Tail < Held < Many) is the one lattice both
+questions live on; a nested fn lowers under the arm's own context rather
+than a fabricated default (`project_nested_fn`), and `mn-resume-nontail` and
+`mn-resume-nested-fn` hold both.
+▶ `Hβ.persist.image-carries-its-invocation` — CLOSED 2026-09-23. A warm
+image is memory from address 0 plus every mutable global, so a restore put
+back the PERSISTER's emit sink and install chain: a `compile` after a `run`
+emitted zero bytes at exit 0, and a `run` after a `compile` printed WAT
+instead of executing. The image path now names a fold of the bytes the
+restore would overwrite (`invocation_context`), so each invocation resumes
+only an image it could have written; the warm-start leg's fourth face
+holds it. Found beside it: the incremental cone judged a re-parsed module
+under its PATH where the cold parse had used its NAME, giving one module
+two spellings in the node column; the cone now walks the DAG's own entries
+and judges each under the cold name.
 ▶ `Hβ.emit.generic-body-floors-beside-its-twins` — a generic decl whose
 every call site mints a twin is ALSO emitted unspecialized, and that body's
 open-row reads floor and narrate `T_FieldOffsetUnprovable` on a correct

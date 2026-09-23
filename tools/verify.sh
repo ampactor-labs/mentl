@@ -359,8 +359,8 @@ if C=$(wt_m2_ensure); then
   # THE UNPROVABLE-FIELD-OFFSET RATCHET — same stderr, and it reads a class
   # that did not exist before 2026-09-15 because the floor was emitted
   # silently. Every count here is an `(unreachable)` the wheel ships inside
-  # itself; the class arms when this reaches 0 (diag_refuses' wheel-zero
-  # licence), so this is a countdown, not a tolerance. A RISE is a new
+  # itself; the class becomes an error, and so a refusal, when this reaches
+  # 0, so this is a countdown, not a tolerance. A RISE is a new
   # landmine.
   #
   # LIKE movers ABOVE, THIS IS THE PINNED BOOT'S SELF-REPORT, and on the
@@ -378,14 +378,14 @@ if C=$(wt_m2_ensure); then
     fail=1
   elif [[ -n "$fmax" && "$fou" -lt "$fmax" ]]; then
     say "  ↓ field-offset floors FELL $fmax -> $fou — lower field_offset_unprovable_max in $BASELINE;"
-    say "    at 0, rename TFieldOffsetUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
+    say "    at 0, rename TFieldOffsetUnprovable to E_, flip it to SError (every error refuses), and move the fixture to run_refusal."
   fi
   # THE UNPROVABLE-COMPARISON ratchet — the floor class one operator over
   # (2026-09-18): `==`/`!=`/`<`… on an operand whose type is still a
   # variable at emit REPORTS T_EqTypeUnprovable and writes the trap instead
   # of i32.eq on two addresses. Same ladder as the field-offset floor above:
   # the pinned boot's self-report on the wheel, a countdown to 0, at which
-  # the class arms (E_, SError, diag_refuses) and the eq-in-arm-pointer leg
+  # the class arms (E_, SError — every error refuses) and the eq-in-arm-pointer leg
   # turns green by PROVING its arm — never by the annotation the fixture
   # deliberately omits.
   equ=$(grep -c 'T_EqTypeUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); equ=${equ:-0}
@@ -397,7 +397,7 @@ if C=$(wt_m2_ensure); then
     fail=1
   elif [[ -n "$eqmax" && "$equ" -lt "$eqmax" ]]; then
     say "  ↓ unprovable comparisons FELL $eqmax -> $equ — lower eq_type_unprovable_max in $BASELINE;"
-    say "    at 0, rename TEqTypeUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
+    say "    at 0, rename TEqTypeUnprovable to E_, flip it to SError (every error refuses), and move the fixture to run_refusal."
   fi
   # THE USE-AFTER-MOVE RATCHET IS RETIRED (2026-09-15) — the class is ARMED.
   # It counted T_UseAfterMove narrations on the wheel's own compile and held

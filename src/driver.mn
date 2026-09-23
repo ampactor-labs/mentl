@@ -541,8 +541,7 @@ fn warm_program() with Memory + Alloc =
 // matched against it to build the downstream closure, so a spelling here
 // against paths there would drop an importer out of the cone and leave a
 // stale judgment standing after its dep was edited.
-fn driver_tree_scan(ref entry_module) with Memory + Alloc + Filesystem + Intern + GraphRead = {
-  let modules = driver_canonical_order(driver_collect_dag(entry_module))
+fn driver_tree_scan(ref modules) with Memory + Alloc + Filesystem + Intern + GraphRead = {
   let paths = map(module_path_of, modules)
   map(
     (entry) => match module_source_of(entry) {
@@ -568,8 +567,24 @@ fn scan_pairs(ref scan) with Memory + Alloc = map({ (m, h, _) => (m, h) }, scan)
 // session; probe runs work under .build/probe, never /tmp. Nothing
 // prunes sibling images yet (19 entries held 7.2GB) — keep-newest-N
 // retention is this writer's own named follow-up.
-fn driver_warm_path(ref entry_module) with Memory + Alloc =
-  ".build/warm-compile-e{int_to_str(str_hash(entry_module))}.img"
+fn driver_warm_path(ref entry_module, context) with Memory + Alloc =
+  ".build/warm-compile-e{int_to_str(str_hash(entry_module))}-c{int_to_str(context)}.img"
+
+// A warm image's identity includes the invocation it continues. The image is
+// memory from address 0 plus every mutable global, so a restore puts back
+// whatever the persisting process had built before its judgment began — its
+// emit sink, its installs, its arguments. Resumed under another invocation
+// that is another program's world, the TIME axis's own law (PLAN §4③) at the
+// persistence boundary: measured 2026-09-23, a `compile` over the image a
+// `run` wrote emitted zero bytes and exited 0, its WAT routed through `run`'s
+// sink, and a `run` over a `compile`'s image printed WAT instead of executing.
+// So the path names the context the restore would overwrite — every word
+// below the heap line at the moment the judgment begins — and an invocation
+// resumes only an image it could have written itself.
+fn invocation_context() with Memory + Alloc = {
+  iterate_range(0, heap_mark() / 4)
+  result()
+} ~> fold_handler((h, i) => i32_xor(h, load_i32(i * 4)) * 16777619, 0 - 2128831035)
 
 fn driver_warm_ready(path) with Memory + Alloc + Filesystem = if fs_exists(path) {
   let wire = fs_read_file(path)
@@ -584,18 +599,20 @@ fn driver_warm_ready(path) with Memory + Alloc + Filesystem = if fs_exists(path)
 }
 
 fn driver_compile_entry(ref entry_module) with Judging + Filesystem + Persist + Fail = {
-  let path = driver_warm_path(entry_module)
+  let context = invocation_context()
+  let path = driver_warm_path(entry_module, context)
   if driver_warm_ready(path) {
     eprint_string("warm: restoring the analyzed image\n")
     image_resume(path)
-    driver_incremental()
+    driver_incremental(context)
   } else {
     match driver_entry_with_ranges(entry_module) {
       (ast, ranges) => {
         driver_warm_persist(
           entry_module,
+          context,
           split_weave_by_module(ast, ranges),
-          scan_pairs(driver_tree_scan(entry_module))
+          scan_pairs(driver_tree_scan(driver_canonical_order(driver_collect_dag(entry_module))))
         )
         ast
       },
@@ -629,12 +646,12 @@ fn driver_compile_entry(ref entry_module) with Judging + Filesystem + Persist + 
 // per-decl arena's image/scratch split, which the old comment named as
 // the thing the capacity would dissolve with — that split makes the image
 // SMALLER, a good and separate win; it was never what made it unwritable.
-fn driver_warm_persist(ref entry_module, ref asts, ref pairs) with Memory + Alloc + Cast + Persist + WASI + Filesystem + Diagnostic = if diag_errors() == 0 {
+fn driver_warm_persist(ref entry_module, context, ref asts, ref pairs) with Memory + Alloc + Cast + Persist + WASI + Filesystem + Diagnostic = if diag_errors() == 0 {
   fs_mkdir(".build")
   list_set(warm_asts, 0, asts)
   list_set(warm_manifest, 0, pairs)
   list_set(warm_entry, 0, entry_module)
-  persist(image_header(addr(asts)), driver_warm_path(entry_module))
+  persist(image_header(addr(asts)), driver_warm_path(entry_module, context))
 } else {
   ()
 }
@@ -687,9 +704,10 @@ fn assoc_stmts(ref pairs, name: String) with Memory + Alloc = match find({ (m, _
 // a nonempty cone (every DAG module is one of its transitive deps, so
 // the downstream closure of any change reaches it). The re-judged state
 // re-persists, so the image tracks the tree edit by edit.
-fn driver_incremental() with Judging + Filesystem + Persist = {
+fn driver_incremental(context) with Judging + Filesystem + Persist = {
   let entry = list_index(warm_entry, 0)
-  let scan = driver_tree_scan(entry)
+  let modules = driver_canonical_order(driver_collect_dag(entry))
+  let scan = driver_tree_scan(modules)
   let cur_pairs = scan_pairs(scan)
   let changed = changed_modules(list_index(warm_manifest, 0), cur_pairs)
   if len(changed) == 0 {
@@ -712,7 +730,7 @@ fn driver_incremental() with Judging + Filesystem + Persist = {
   } else {
     let cone = downstream_closure(scan, changed)
     eprint_string("warm: re-deriving {names_join(cone)}\n")
-    let fresh = rederive_cone(cone)
+    let fresh = rederive_cone(modules, cone)
     let old_asts = list_index(warm_asts, 0)
     // The full program reassembles in the scan's own canonical order: an
     // unchanged module contributes its restored (already-inferred)
@@ -721,7 +739,7 @@ fn driver_incremental() with Judging + Filesystem + Persist = {
     let merged = scan |> map({
       (m, _, _) => (m, if module_in(cone, m) { assoc_stmts(fresh, m) } else { assoc_stmts(old_asts, m) }),
     })
-    driver_warm_persist(entry, merged, cur_pairs)
+    driver_warm_persist(entry, context, merged, cur_pairs)
     flatten(map({ (_, ss) => ss }, merged))
   }
 }
@@ -778,23 +796,21 @@ fn names_join(ref xs) with Memory + Alloc =
 // keeps its statement bucket for the reassembly.
 // ImageAlloc: the same deletion as driver_check_module above — the branch's
 // allocation stopped hiding behind a thread boundary.
-// The cone's elements ARE paths (driver_tree_scan's identity), so the read
-// is the read — the driver_module_path call that stood here re-resolved a
-// name the scan had already resolved, and against a path it would not have
-// resolved at all.
-fn rederive_cone(ref cone) with Judging + Filesystem = map(
-  (m) => {
-    // The module is judged UNDER ITS OWN NAME. This read
-    // infer_program_converged, which names its single module "<stdin>" — so
-    // every re-derived module in the cone claimed to be stdin, and the warm
-    // emission diverged from the cold one at exactly the modules the cone
-    // touched (measured: warm-start and warm-inc both RED the day the parse
-    // moved). A module's identity is what it resolves to.
-    let ast = infer_modules_converged([(m, fs_read_file(m))])
-    (m, ast)
-  },
-  cone
-)
+// The cone's elements ARE paths (driver_tree_scan's identity); the DAG's
+// entries carry the path AND the name, so the cone is those entries filtered
+// by path — nothing re-resolved, nothing looked up.
+fn rederive_cone(modules, ref cone) with Judging + Filesystem = modules |> filter((e) => module_in(cone, module_path_of(e))) |> map((e) => {
+  // The module is judged UNDER THE NAME THE COLD PATH GAVE IT. It was once
+  // "<stdin>" for every module (the warm emission diverged at exactly the
+  // cone), then its path — which gave the module node a second spelling
+  // beside the cold path's name, so the restored world and the re-derived
+  // one disagreed about which module a declaration sat in (measured
+  // 2026-09-23: an unchanged `effect Cell` re-registered from the module
+  // spelled with its `.mn` over the image's spelling without it, and read
+  // as a second declaration).
+  let path = module_path_of(e)
+  (path, infer_modules_converged([(module_name_of(e), fs_read_file(path))]))
+})
 
 // Walk the post-order DAG and pair each module with its in-DAG deps.
 // In-DAG: dep PATHS that appear among the collected modules (filters

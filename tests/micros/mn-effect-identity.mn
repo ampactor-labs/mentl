@@ -1,10 +1,7 @@
 // expect: 81
 // Fail is bottom-producing failure; Abort is a control cut. The two effects
 // must retain distinct identities even when both opposite handlers are live.
-effect Abort {
-  abort() -> !
-}
-
+// Both are the prelude's own.
 handler fail_value {
   fail(_) => 7
 }

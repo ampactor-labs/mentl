@@ -8,22 +8,24 @@
 // the arm's call threads [__resume][__k] through the sst_ clone — the M1.6
 // dormant tier's writer, landed at the cut.
 //   k = ?? + 3: a = resume(1) → 4; b = resume(2) → 5; arm = drive() = 9 →
-//   exit 9. (Infer still reports E_ResumeOutsideArm ×2 on drive — the
-//   recovered diagnostic; the typed R→S binding is the named follow-up.)
+//   exit 9. The called fn is NESTED in the arm: the continuation is lexical
+//   to the arm, so a top-level fn that resumes is E_ResumeOutsideArm, and
+//   every error refuses.
 effect Choice {
   pick() -> Int
 }
 
-fn drive() with Choice = {
-  let a = resume(1)
-  let b = resume(2)
-  a + b
-}
-
 handler twice {
-  pick() => drive()
+  pick() => {
+    fn drive() = {
+      let a = resume(1)
+      let b = resume(2)
+      a + b
+    }
+    drive()
+  }
 }
 
 fn body() with Choice = pick() + 3
 
-fn main() = { body() } ~> twice
+fn main() = body() ~> twice

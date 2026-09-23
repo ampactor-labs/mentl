@@ -20,4 +20,4 @@ handler cell with s = 10 {
 
 fn body() with Cell = { let first = bump(); first + read_it() }
 
-fn main() = { body() } ~> cell
+fn main() = body() ~> cell

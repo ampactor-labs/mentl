@@ -24,15 +24,17 @@ effect Choice {
   choose(options) -> Int
 }
 
-effect Abort {
-  abort() -> Option(a)
+// The effect is this fixture's own (`Bail`), not the prelude's `Abort`: it
+// pins an Option-returning op, and one namespace holds one `Abort`.
+effect Bail {
+  bail() -> Option(a)
 }
 
 handler my_catch {
-  abort() => None
+  bail() => None
 }
 
-fn twac(try_fn, catch_fn) with Abort = {
+fn twac(try_fn, catch_fn) with Bail = {
   let attempted = (try_fn()) ~> my_catch
   match attempted {
     Some(value) => value,
@@ -54,8 +56,8 @@ handler bt {
 
 fn pick_one() with Choice + Memory + Alloc = choose([10, 20, 30])
 
-fn attempt(v) with Abort + Memory + Alloc = if v > 25 { Some(v) } else { abort() }
+fn attempt(v) with Bail + Memory + Alloc = if v > 25 { Some(v) } else { bail() }
 
-fn body() with Choice + Abort + Memory + Alloc = pick_one() |> attempt
+fn body() with Choice + Bail + Memory + Alloc = pick_one() |> attempt
 
-fn main() = { body() } ~> bt
+fn main() = body() ~> bt

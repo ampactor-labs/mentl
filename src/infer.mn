@@ -814,6 +814,7 @@ fn register_primitives() = {
 // graph drew the alias edge; quantify_ctor_ty re-derived a nominal name).
 fn pre_register_decls(stmts) = {
   refuse_duplicate_type_decls(stmts, 0, len(stmts), smap_new())
+  fold(smap_new(), effect_decl_claim, stmts)
   each(pre_register_alias, stmts)
   each(pre_register_effect, stmts)
   // The duplicate-fn refusal is keyed by THIS WALK's own seen-set, never
@@ -855,6 +856,37 @@ fn refuse_duplicate_type_decls(stmts, i, n, seen) = if i >= n {
       refuse_duplicate_type_decls(stmts, i + 1, n, claimed)
     },
   }
+}
+
+// Effects are named in ROWS — their own namespace beside types, so `type
+// Sample` and `effect Sample` coexist (the wheel's DSP library carries both,
+// and SYNTAX writes both in one signature). Two EFFECTS of one name do not:
+// the env keeps one entry per op name, so the second effect's ops replace the
+// first's under every call already written against them. This walk holds the
+// duplicate WITHIN one module, where no env probe can tell a second decl from
+// a re-registration; one across modules is refused at the env write
+// (register_effect_ops). Registration proceeds past the report.
+fn effect_decl_claim(seen, node) = match node {
+  N{body: NStmt(EffectDeclStmt(name, _, _)), span, handle} => match smap_get(seen, name) {
+    Some(first) => {
+      if decl_module(first) == decl_module(handle) {
+        report_at(handle, EDuplicateEffectName(name, node_address(first), span))
+      }
+      seen
+    },
+    None => smap_add(seen, name, handle),
+  },
+  _ => seen,
+}
+
+// The module a declaration sits in, by PATH — the identity a re-parse keeps.
+fn decl_module(h) = match site_of(h) {
+  (m, _) => module_name_of_handle(m),
+}
+
+// A declaration's span, read from its own node.
+fn decl_span(h) = match site_of(h) {
+  (_, s) => s,
 }
 
 fn type_decl_claim(seen, name, span) = match smap_get(seen, name) {
@@ -1163,7 +1195,6 @@ fn frontend(source) = source |> lex |> parse_program
 handler diag_quiet {
   diag_report(d, _line, _dmod) => resume(),
   diag_errors() => resume(0),
-  diag_refusals() => resume(0),
 }
 
 // diag_branch — the branch cursor's per-stmt collector (Phase C, C1c-2).
@@ -1171,7 +1202,7 @@ handler diag_quiet {
 // values), banked as lines instead of printed; the local tally answers
 // any in-branch diag_errors/diag_refusals read with branch-local truth.
 // diag_lines_taken hands the whole fact set to the join.
-handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals = 0 {
+handler diag_branch with lines = make_list(16), count = 0, errors = 0 {
   diag_report(diag, line, dmod) => // The banked fact carries the DIAG STRUCTURALLY beside the rendered
   // line — the join re-performs diag_report(diag, line, dmod) into the root
   // chain, so every Diagnostic forwarder (tighten_collector, the mcp
@@ -1185,17 +1216,12 @@ handler diag_branch with lines = make_list(16), count = 0, errors = 0, refusals 
     let iserr = diag_severity(diag) == SError
     let grown = list_set(list_extend_to(lines, count + 1), count, (diag, line, dmod))
     if iserr {
-      if diag_refuses(diag) {
-        resume() with lines = grown, count = count + 1, errors = errors + 1, refusals = refusals + 1
-      } else {
-        resume() with lines = grown, count = count + 1, errors = errors + 1
-      }
+      resume() with lines = grown, count = count + 1, errors = errors + 1
     } else {
       resume() with lines = grown, count = count + 1
     }
   },
   diag_errors() => resume(errors),
-  diag_refusals() => resume(refusals),
   diag_lines_taken() => resume(list_to_flat(slice(lines, 0, count))),
 }
 
@@ -1216,7 +1242,6 @@ effect PolyCapture {
 handler poly_capture with held = [] {
   diag_report(diag, line, dmod) => resume() with held = push(held, (diag, line, dmod)),
   diag_errors() => resume(diag_errors()),
-  diag_refusals() => resume(diag_refusals()),
   poly_captured() => resume(held),
 }
 
@@ -6477,7 +6502,7 @@ fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, res
     },
   }
   let continuation_h = mint(Inferred("handler arm continuation"))
-  let continuation_disc = arm_disc_of(resume_grade(arm.body), op_ret_ty)
+  let continuation_disc = arm_disc_of(resume_use(arm.body, true), op_ret_ty)
   graph_bind(
     continuation_h,
     TCont(op_ret_ty, TVar(result_h), continuation_disc, inf_current_world()),
@@ -7929,6 +7954,18 @@ fn register_effect_ops(decl, effect_name, params, ops) = {
   // instance judges its args against; a bare effect publishes the
   // empty tuple. The formerly-empty tuple here was a placeholder.
   let op_names = map({ (n, _, _, _) => n }, ops)
+  // A second effect of this name from ANOTHER module replaces the first's ops
+  // under every call already written against them — refused at this write,
+  // the one place both claims are in hand (EFnShadowsOp's precedent). The
+  // comparison is by module PATH: the incremental cursor re-parses a changed
+  // module, so its re-registration arrives from a new module node with the
+  // same path, and that is the re-judgment, never a collision.
+  match env_lookup(effect_name) {
+    Some((_, DeclaredAt(prior), EffectDeclKind(_))) => if decl_module(prior) != decl_module(decl) {
+      report_at(decl, EDuplicateEffectName(effect_name, node_address(prior), decl_span(decl)))
+    },
+    _ => (),
+  }
   env_extend(
     effect_name,
     Frozen([], TTuple(map(param_ty, params))),
@@ -8363,12 +8400,12 @@ fn draw_op_edges(arms, decl) = if len(arms) == 0 {
 } else {
   let arm = last(arms)
   let op_name = handler_arm_op_name(arm)
-  // The arm's resume cardinality, computed from the body infer just typed
-  // (resume_grade — the Usage fold), JOINED onto the op's scheme. This is
-  // the write: cardinality is inference's, carried on the op's type, read
-  // live by lower — no second hand-walk at lower. The join is monotone
-  // toward MultiShot, so a re-drawn arm only ever raises disc.
-  let grade = resume_grade(handler_arm_body(arm))
+  // The arm's use of its continuation, computed from the body infer just
+  // typed (resume_use — the grade and the tail fact), JOINED onto the op's
+  // scheme. This is the write: cardinality is inference's, carried on the
+  // op's type, read live by lower — no second hand-walk at lower. The join
+  // is monotone toward MultiShot, so a re-drawn arm only ever raises disc.
+  let arm_use = resume_use(handler_arm_body(arm), true)
   match env_lookup(op_name) {
     Some(entry) => match entry {
       (scheme, reason, kind) => match kind {
@@ -8394,7 +8431,7 @@ fn draw_op_edges(arms, decl) = if len(arms) == 0 {
           // () carries no value, so return-vs-abandon is observationally
           // near-equivalent — the concrete-non-unit signal captures every
           // meaningful case).
-          let arm_disc = arm_disc_of(grade, scheme_ret_ty(scheme))
+          let arm_disc = arm_disc_of(arm_use, scheme_ret_ty(scheme))
           let joined = providers_join(providers, [(decl, node_handle(handler_arm_body(arm)))])
           env_extend(op_name, scheme, reason, EffectOpScheme(ename, joined, disc_join(cur_disc, arm_disc)))
         },
@@ -8665,10 +8702,19 @@ fn collect_fn_decls_updates(updates, acc) = if len(updates) == 0 {
 // documented-OneShot abort/fail — Law 7 wheel-wide). A concrete return
 // (`abort -> Option`) must abandon, delivering the arm value to the
 // install through the driver → MultiShot.
-fn arm_disc_of(grade, ret) = match grade {
-  UMany => MultiShot,
-  UOne => OneShot,
-  UZero => match ret {
+//
+// The grade is half the question. The direct-return tier lowers `resume(v)`
+// as `return v`, which is only the resume's meaning when its answer IS the
+// arm's answer — the resume in TAIL position. One resume whose answer the arm
+// keeps computing with (`resume(1) + 10`) needs that answer handed back, so it
+// needs the continuation as a value, which is the real-k path MultiShot rides.
+// Measured 2026-09-23 before this read: `resume(1) + 10` ran as `return 1`,
+// the `+ 10` dropped, 4 where 14 was written, with no diagnostic anywhere.
+fn arm_disc_of(arm_use, ret) = match arm_use {
+  KMany => MultiShot,
+  KHeld => MultiShot,
+  KTail => OneShot,
+  KNone => match ret {
     TVar(_) => // bottom: `fail -> a` — the free var unifies with any consumer; the arm terminates
     OneShot,
     TUnit => // `abort -> !` (parsed TUnit) / unit — no value to abandon; Hβ.lower.uzero-unit-abandon names the rare genuine-unit case
@@ -8703,100 +8749,171 @@ fn disc_join(a, b) = match a {
   Either => b,
 }
 
-fn resume_grade(node) = match node {
+// An arm's use of its continuation — how many times it resumes on a path
+// AND whether a single resume's answer is the arm's answer. One lattice,
+// ordered None < Tail < Held < Many, because both questions decide one
+// thing: whether the continuation can stay a return or must be a value.
+type KUse
+  // never resumes
+  = KNone
+  // resumes once, in tail position: `resume(v)` IS `return v`
+  | KTail
+  // resumes once and keeps computing with the answer
+  | KHeld
+  // may resume more than once on one path
+  | KMany
+
+// The grade alone — the classifier's summaries and every reader that asks
+// how many times, not where.
+fn resume_grade(node) = match resume_use(node, true) {
+  KNone => UZero,
+  KTail => UOne,
+  KHeld => UOne,
+  KMany => UMany,
+}
+
+// One walk. `tail` is the position of the node itself; children that are
+// not the node's own result are walked with `false`.
+fn resume_use(node, tail) = match node {
   N{body} => match body {
-    NExpr(ResumeExpr(_, _)) => UOne,
-    NExpr(BlockExpr(stmts, final)) => usage_seq(grade_nodes(stmts), resume_grade(final)),
-    NExpr(IfExpr(c, t, e)) => usage_seq(resume_grade(c), usage_join(resume_grade(t), resume_grade(e))),
-    NExpr(MatchExpr(scrut, arms)) => usage_seq(resume_grade(scrut), grade_join_arms(arms)),
+    NExpr(ResumeExpr(v, us)) => use_seq(if tail { KTail } else { KHeld }, use_seq(resume_use(v, false), use_updates(us))),
+    NExpr(BlockExpr(stmts, final)) => use_seq(use_nodes(stmts), resume_use(final, tail)),
+    NExpr(IfExpr(c, t, e)) => use_seq(resume_use(c, false), use_join(resume_use(t, tail), resume_use(e, tail))),
+    NExpr(MatchExpr(scrut, arms)) => use_seq(resume_use(scrut, false), use_join_arms(arms, tail)),
     NExpr(CallExpr(f, args)) => // THE CUT (bank Ruling 6): call-substitution — a call to a fn with a
     // resume summary contributes that summary (the classifier fixpoint
     // wrote it; summary_of answers UZero for unknown names, params, and
     // ops). This is what makes backtrack's try_each recursion saturate
     // to UMany by round 2 and lets an arm's grade see resumes in CALLED
-    // fns (yield_inhabitants' shape) — the classifier gap closed.
+    // fns. A resume reached through a call is never the arm's own
+    // `return`, so it is never tail: the direct-return tier lowers only a
+    // resume the arm body writes itself.
     match f {
       N{body: fb} => {
         let callee_g = match fb {
           NExpr(VarRef(cn)) => summary_of(cn),
           _ => UZero,
         }
-        usage_seq(callee_g, usage_seq(resume_grade(f), grade_nodes(args)))
+        let callee_use = match callee_g {
+          UZero => KNone,
+          UOne => KHeld,
+          UMany => KMany,
+        }
+        use_seq(callee_use, use_seq(resume_use(f, false), use_nodes(args)))
       },
     },
-    NExpr(BinOpExpr(_, l, r)) => usage_seq(resume_grade(l), resume_grade(r)),
-    NExpr(UnaryOpExpr(_, x)) => resume_grade(x),
-    NExpr(LambdaExpr(_, lbody)) => resume_grade(lbody),
-    NExpr(MakeListExpr(elems)) => grade_nodes(elems),
-    NExpr(MakeTupleExpr(elems)) => grade_nodes(elems),
-    NExpr(MakeRecordExpr(fields)) => grade_fields(fields),
-    NExpr(RecordUpdateExpr(base, fields)) => usage_seq(resume_grade(base), grade_fields(fields)),
-    NExpr(NamedRecordExpr(_, fields)) => grade_fields(fields),
-    NExpr(FieldExpr(b, _)) => resume_grade(b),
-    NExpr(IndexExpr(receiver, index)) => usage_seq(resume_grade(receiver), resume_grade(index)),
-    NExpr(PipeExpr(_, l, r)) => usage_seq(resume_grade(l), resume_grade(r)),
-    NExpr(FanoutExpr(branches)) => grade_nodes(branches),
-    NExpr(RestExpr(_)) => UZero,
-    NExpr(MakeStringExpr(frags)) => grade_nodes(frags),
-    NExpr(ShowExpr(inner)) => resume_grade(inner),
-    NExpr(LabeledArg(_, v)) => resume_grade(v),
-    NStmt(LetStmt(_, v, _)) => resume_grade(v),
-    NStmt(ExprStmt(e)) => resume_grade(e),
+    NExpr(BinOpExpr(_, l, r)) => use_seq(resume_use(l, false), resume_use(r, false)),
+    NExpr(UnaryOpExpr(_, x)) => resume_use(x, false),
+    NExpr(LambdaExpr(_, lbody)) => // A resume at a lambda's own tail is taken as the arm's answer, which
+    // holds exactly when every caller between the lambda and the arm
+    // returns the lambda's result unchanged — `call_thunk(() => resume(s))`
+    // does. A caller that keeps computing with it does not, and its
+    // program is silently wrong today; walking this body as non-tail
+    // would be sound, but it puts the perform on the real-k path, which
+    // floors any perform off the k1 spine. The shape is held red by name
+    // (Hβ.lower.resume-through-a-lambda-is-taken-as-the-arms-answer).
+    resume_use(lbody, true),
+    NExpr(MakeListExpr(elems)) => use_nodes(elems),
+    NExpr(MakeTupleExpr(elems)) => use_nodes(elems),
+    NExpr(MakeRecordExpr(fields)) => use_fields(fields),
+    NExpr(RecordUpdateExpr(base, fields)) => use_seq(resume_use(base, false), use_fields(fields)),
+    NExpr(NamedRecordExpr(_, fields)) => use_fields(fields),
+    NExpr(FieldExpr(b, _)) => resume_use(b, false),
+    NExpr(IndexExpr(receiver, index)) => use_seq(resume_use(receiver, false), resume_use(index, false)),
+    NExpr(PipeExpr(_, l, r)) => use_seq(resume_use(l, false), resume_use(r, false)),
+    NExpr(FanoutExpr(branches)) => use_nodes(branches),
+    NExpr(RestExpr(_)) => KNone,
+    NExpr(MakeStringExpr(frags)) => use_nodes(frags),
+    NExpr(ShowExpr(inner)) => resume_use(inner, false),
+    NExpr(LabeledArg(_, v)) => resume_use(v, false),
+    NStmt(LetStmt(_, v, _)) => resume_use(v, false),
+    NStmt(ExprStmt(e)) => resume_use(e, false),
     NStmt(FnStmt{}) => // A nested fn DECLARATION is not an execution — its resumes count at
     // its CALL sites via the summary substitution (the pre-cut descend
     // double-counted a define-once-call-once helper into UMany).
-    UZero,
+    KNone,
     NStmt(TypeDefStmt(_, _)) => // Decls nested in an arm carry no resume of THIS arm's continuation; leaves
-    // carry no children. Both are the grade identity UZero (explicit, never a
-    // wildcard fabricating a grade for an un-enumerated child-bearing variant).
-    UZero,
-    NStmt(EffectDeclStmt(_, _, _)) => UZero,
-    NStmt(HandlerDeclStmt(_, _, _, _, _)) => UZero,
-    NStmt(ImportStmt(_)) => UZero,
-    NStmt(RefineStmt(_, _, _)) => UZero,
-    NStmt(AliasStmt(_, _)) => UZero,
-    NStmt(RowAliasStmt(_, _)) => UZero,
-    NExpr(LitInt(_)) => UZero,
-    NExpr(LitFloat(_)) => UZero,
-    NExpr(LitString(_)) => UZero,
-    NExpr(LitBool(_)) => UZero,
-    NExpr(LitUnit) => UZero,
-    NExpr(VarRef(_)) => UZero,
-    NExpr(ExprPlaceholder) => UZero,
-    NHole(_) => UZero,
-    NPat(_) => UZero,
-    NModule(_) => UZero,
-    NTypeAnn(_) => UZero,
+    // carry no children. Both are the identity KNone — explicit, never a
+    // wildcard fabricating a grade for an un-enumerated child-bearing variant.
+    KNone,
+    NStmt(EffectDeclStmt(_, _, _)) => KNone,
+    NStmt(HandlerDeclStmt(_, _, _, _, _)) => KNone,
+    NStmt(ImportStmt(_)) => KNone,
+    NStmt(RefineStmt(_, _, _)) => KNone,
+    NStmt(AliasStmt(_, _)) => KNone,
+    NStmt(RowAliasStmt(_, _)) => KNone,
+    NExpr(LitInt(_)) => KNone,
+    NExpr(LitFloat(_)) => KNone,
+    NExpr(LitString(_)) => KNone,
+    NExpr(LitBool(_)) => KNone,
+    NExpr(LitUnit) => KNone,
+    NExpr(VarRef(_)) => KNone,
+    NExpr(ExprPlaceholder) => KNone,
+    NHole(_) => KNone,
+    NPat(_) => KNone,
+    NModule(_) => KNone,
+    NTypeAnn(_) => KNone,
   },
 }
 
-// Sequential composition over a node list (block stmts, call args, list
-// elems, string frags): all execute on one path, so ⊗-combine. last/drop_last
-// are the O(1) snoc-end reads, so the fold is O(N); usage_seq is order-
-// insensitive (UMany absorbs, UZero is identity), so last-first is fine.
-fn grade_nodes(nodes) = if len(nodes) == 0 {
-  UZero
-} else {
-  usage_seq(resume_grade(last(nodes)), grade_nodes(drop_last(nodes)))
+// Two uses on one path: nothing beside something is that something, and two
+// resumes on one path are many.
+fn use_seq(a, b) = match a {
+  KNone => b,
+  _ => match b {
+    KNone => a,
+    _ => KMany,
+  },
 }
 
-// Alternation over match arms ((pat, body) tuples): exactly one arm runs, so
-// ⊔-join their grades — two resumes in sibling arms is still one per path.
-fn grade_join_arms(arms) = if len(arms) == 0 {
-  UZero
+// Two alternatives, exactly one of which runs: the higher of the two on the
+// chain None < Tail < Held < Many.
+fn use_join(a, b) = if kuse_rank(a) >= kuse_rank(b) { a } else { b }
+
+fn kuse_rank(k) = match k {
+  KNone => 0,
+  KTail => 1,
+  KHeld => 2,
+  KMany => 3,
+}
+
+// The four list walks below recurse on the snoc end rather than folding: the
+// classifier's fixpoint runs this walk over every fn body every round, and a
+// fold's handler install and closure per call measured 8MB of judgment heap
+// on the wheel (2026-09-23) where the recursion allocates nothing.
+//
+// Sequential composition over a node list (block stmts, call args, list
+// elems, string frags): all execute on one path, none is the node's result.
+fn use_nodes(nodes) = if len(nodes) == 0 {
+  KNone
+} else {
+  use_seq(resume_use(last(nodes), false), use_nodes(drop_last(nodes)))
+}
+
+// Alternation over match arms ((pat, body) tuples): exactly one arm runs, and
+// its body is the match's result — tail when the match is.
+fn use_join_arms(arms, tail) = if len(arms) == 0 {
+  KNone
 } else {
   match last(arms) {
-    (_, b) => usage_join(resume_grade(b), grade_join_arms(drop_last(arms))),
+    (_, b) => use_join(resume_use(b, tail), use_join_arms(drop_last(arms), tail)),
   }
 }
 
-// Record fields ((name, value) tuples) all evaluate on one path — ⊗ the values.
-fn grade_fields(fields) = if len(fields) == 0 {
-  UZero
+// Record fields ((name, value) tuples) all evaluate on one path.
+fn use_fields(fields) = if len(fields) == 0 {
+  KNone
 } else {
   match last(fields) {
-    (_, v) => usage_seq(resume_grade(v), grade_fields(drop_last(fields))),
+    (_, v) => use_seq(resume_use(v, false), use_fields(drop_last(fields))),
   }
+}
+
+// A resume's state updates (`resume() with n = n + 1`) evaluate before it.
+fn use_updates(updates) = if len(updates) == 0 {
+  KNone
+} else {
+  use_seq(resume_use(state_field_init(last(updates)), false), use_updates(drop_last(updates)))
 }
 
 // The inference primitive — every emergent property is cursor-

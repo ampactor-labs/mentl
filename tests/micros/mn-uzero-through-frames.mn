@@ -12,15 +12,17 @@
 //   M4: same exit by a different mechanism (the install delivers the
 //   arm's None directly, no chain) — the pin survives the cut; only the
 //   FRAGILITY (the non-tail break) disappears.
-effect Abort {
-  abort() -> Option
+// The effect is this fixture's own (`Bail`), not the prelude's `Abort`: it
+// pins an Option-returning op, and one namespace holds one `Abort`.
+effect Bail {
+  bail() -> Option(a)
 }
 
 handler my_catch {
-  abort() => None
+  bail() => None
 }
 
-fn deep(n) with Abort = if n == 0 { abort() } else { deep(n - 1) }
+fn deep(n) with Bail = if n == 0 { bail() } else { deep(n - 1) }
 
 fn main() = match (deep(3)) ~> my_catch {
   Some(v) => v,
