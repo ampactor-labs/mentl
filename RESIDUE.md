@@ -3668,35 +3668,6 @@ handle and the five readers take the type from it. (2) is sound and local;
 (1) retires a whole class of second-hand type reads. Measure the keyed facts
 before choosing, and census the wheel's own pipe-in-splice sites either way —
 each is a silent wrong in a rendered string today.
-
-`Hβ.infer.record-update-snapshots-the-base` — OPEN, measured 2026-09-23. The
-repro is HELD BACK and lands with the fix, because the frontier's run legs
-declare wrong ANSWERS and this defect refuses to compile a valid program (an
-over-refusal, which no declared-red leg may license):
-`fn recharge(c) = {...c, charged: 40}` then
-`recharge({born: 1, charged: 2, full: 3})` read back as
-`d.born + d.charged + d.full` must answer 44. `{...c, n: v}`
-types its result from `record_fields_of_node(base)` — the base's fields as
-they stand WHERE THE UPDATE IS JUDGED — merged with the overrides, then binds
-it CLOSED. For a literal base the snapshot is complete and the update judges
-right; for a parameter base it is empty, so `fn recharge(c) = {...c, charged:
-40}` is typed `{charged: Int}` and every other field read back is a type
-mismatch and a trap floor. Loud, never silent — but it is the Carried-Truth
-Law in the type layer: a copy of a cell that was still growing. Found while
-writing the rows arc's `{...cell, charged: x}` rewrite, one layer under a
-parser defect closed the same day (a fn body opening `{...` was parsed as a
-block, because the body slot kept its own copy of the brace discrimination).
-THE FORM: the update is an EXTENSION of the base's own row with SCOPED LABELS
-(Leijen, "Extensible records with scoped labels", TFP 2005) — the result is
-`{overrides | ρ}` where the base is `{| ρ}`, a duplicate label shadows the one
-beneath it, and field access reads the first. No lacks constraint, no
-snapshot: the base's fields ride the row variable and arrive whenever they
-are known, and an override of an existing field simply sits above it. The
-field-offset reader then resolves through the same row the record's own
-reads do. A NOMINAL base (`c: RowCell`) wants the update to keep its brand
-when every override names a declared field at its declared type — the
-nominal record's fields are known at its declaration, so that case is a
-field-wise unify against `RecordSchemeKind`, not a row question.
 ▶ SEVERITY: face one is the silent-wrong class the docs rank worst — a
 declared surface answering the wrong value with the whole board green.
 The wheel never destructures a record parameter by pattern, which is why
@@ -3706,6 +3677,52 @@ the fixed forms stay fixed.
 halves landed as `tests/syntax/record-pattern-local` and
 `record-field-access` — the controls that made the finding precise, kept
 as the contracts they proved.
+
+`Hβ.infer.record-update-snapshots-the-base` — OPEN, measured 2026-09-23,
+DESIGN BUILD-READY the same day. `{...c, n: v}` types its result from
+`record_fields_of_node(base)` — the base's fields as they stand WHERE THE
+UPDATE IS JUDGED — merged with the overrides, then binds it CLOSED; the row
+var the arm mints for the base is unified and thrown away. Four faces, each
+RUN on the pinned boot: `fn recharge(c) = {...c, charged: 40}` over
+`{born: 1, charged: 2, full: 3}` types `{charged: Int}`, and
+`fn stamp(e) = {...e, ts: 100}` does the same — E_TypeMismatch on every
+other field read; a NOMINAL base (`{...p, age: 10}`, `p: Person`) DROPS the
+declared fields, because the snapshot reads `[]` for a `TName`; a literal
+base judges right, since its snapshot is complete. **An earlier line here
+said "loud, never silent" and "refuses to compile a valid program" — both
+false:** E_TypeMismatch is not in `diag_refuses`, so each of those programs
+compiles, runs and TRAPS (exit 134) at the floors where the fields should
+be.
+▶ A FIFTH FACE, one sort over, found by the probe written to check the
+brand: `let {...rest} = q` with `q: Q`, passed to `f(p: P)` where P and Q
+share a shape, checks CLEAN and runs — a Q becomes a P. The `TName`-vs-open
+arm treats every open record as a DEMAND and re-binds a row that is already
+closed (`graph_bind_record_row` over a bound var), so a closed remainder
+does not remember who closed it. The fix below produces open-record VALUES
+on purpose, so it closes this in the same landing.
+▶ THE FORM (the scoped-labels sketch that stood here is KILLED — Mentl's
+layout is one sorted, duplicate-free field set, and an update is
+copy-then-overwrite, so a shadowed duplicate label has nowhere to live):
+Rémy presence (1989). Each override `fᵢ` gets a presence var θᵢ; the base
+meets `{fᵢ: θᵢ | ρ}` and the result is `{fᵢ: T(vᵢ) | ρ}` over the SAME ρ.
+Presence is a SORT OF CELL — node kinds `NMaybeFree` / `NAbsent`, no `Ty`
+constructor (a `TAbsent` type dies at H6: `repr_of` has no honest arm for
+it); a maybe var meeting an ordinary var yields to it, so a demanded field
+never goes absent. A closed remainder carries its closer
+(`RowClosed(Closer)`, `Closer = ByShape | ByName(String)`), which makes the
+nominal case the same rule: `{...p, age: 10}` is `{age: Int | Person}`,
+unifies with `Person` and with no other brand. Instantiation mints by the
+root's own sort (`mint_like`, deleting `mint_row` and `is_row_handle`).
+The layout is read at EMIT (`LRecordUpdate`), under the twin's bracket,
+because one lowered generic body emits under many closings — lower's
+`record_fields_of_handle` answered the known fields only and `[]` otherwise,
+the same snapshot one module over. Full design, fixtures, the eight kills
+and the refuter's open questions: the session's design-record-update note,
+banked with the landing.
+▶ THE REPROS land with the fix as `tests/syntax/record-update-*` (six run
+legs, the literal-base control among them) plus four `check` narrations
+(the two brand launders, the absent-field read, the region join); they are
+held back because the run legs of this defect trap rather than answer.
 
 `Hβ.infer.as-pattern-defeats-exhaustiveness` — A FALSE REFUSAL ON A FORM
 SYNTAX CALLS REAL. Measured 2026-08-17 at pin a6e900f35888.
