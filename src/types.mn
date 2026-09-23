@@ -1465,8 +1465,8 @@ type Expr
   | IfExpr(Node, Node, Node)
   // stmts, final expr
   | BlockExpr([Node], Node)
-  // scrutinee, arms
-  | MatchExpr(Node, [(Pat, Node)])
+  // scrutinee, arms — each arm's pattern is a node (see `Pat`)
+  | MatchExpr(Node, [(Node, Node)])
   // value, state updates
   | ResumeExpr(Node, [{init: Node, name: String}])
   | MakeListExpr([Node])
@@ -1686,7 +1686,7 @@ type Stmt
   // three LetStmt mints, keeping handle numbering unshifted for every
   // unannotated let). Readers include the channel only when it is
   // NTypeAnn — infer's arm and stmt_child_handles both read it so.
-  = LetStmt(Pat, Node, Node)
+  = LetStmt(Node, Node, Node)
   | FnStmt(String, [TParam], Node, [(EffName, Bool, EConn)], Node)
   // name, params (TParam), retty, effects, body
   | TypeDefStmt(String, [(String, [Ty], Node)])
@@ -1733,25 +1733,73 @@ type Stmt
 // authored name travels in the TAlias for Reason chains.
 //
 // ─── Pat (spec 03) ─────────────────────────────────────────────────
+//
+// A pattern is a NODE, and so is every pattern inside it. Each carries its
+// own span and handle, and inference binds that handle to the value the
+// pattern matches, so every later reader chases the node rather than
+// re-deriving the payload type from the constructor's NAME. Before this the
+// sub-patterns were bare values with nowhere to keep a fact: infer minted a
+// throwaway handle per sub-pattern and dropped it, and lower rebuilt the same
+// types from the scrutinee by name, twice (a typed walk and an untyped floor).
 type Pat
   = PVar(String)
   | PWild
   | PLit(LitValue)
-  | PCon(String, [Pat])
-  | PTuple([Pat])
+  | PCon(String, [Node])
+  | PTuple([Node])
   // prefix pats, optional rest name (`...rest`)
-  | PList([Pat], Option(String))
-  // [(fieldname, Pat)], optional rest name (`...rest` — SYNTAX
+  | PList([Node], Option(String))
+  // [(fieldname, pattern)], optional rest name (`...rest` — SYNTAX
   // §"Pattern syntax for records": the rest binds a record of the
   // remaining fields, the list-pattern rest's sibling)
-  | PRecord([(String, Pat)], Option(String))
+  | PRecord([(String, Node)], Option(String))
   // pat_1 | pat_2 | ... — any branch matches; branches
   // bind the same names with unifiable types (SYNTAX.md
   // §"Pattern alternation — rule")
-  | PAlt([Pat])
+  | PAlt([Node])
   // name @ pat — binds the WHOLE value AND destructures it
   // (SYNTAX.md §"As-patterns — rule")
-  | PAs(String, Pat)
+  | PAs(String, Node)
+
+// The pattern a node carries. A node whose body is not a pattern is a
+// wildcard here, and that is not a fabrication: the only producer of a
+// non-pattern node in pattern position would be a parse that failed, and
+// the parse already reported it.
+fn pat_of(node) = match node {
+  N(body, _, _) => match body {
+    NPat(p) => p,
+    NExpr(_) => PWild,
+    NStmt(_) => PWild,
+    NHole(_) => PWild,
+    NModule(_) => PWild,
+    NTypeAnn(_) => PWild,
+  },
+}
+
+// The names a pattern binds, in one walk. The free-variable pass, the
+// alternation law and the lowering scope all ask this question; each used to
+// carry its own copy of the walk. A wildcard or a literal binds nothing, a
+// `...rest` binds unless it is `_`, and an alternation binds what its first
+// branch binds, because every branch binds the same set by law.
+fn pat_binders(node) = match pat_of(node) {
+  PVar(name) => [name],
+  PWild => [],
+  PLit(_) => [],
+  PCon(_, subs) => flat_map(pat_binders, subs),
+  PTuple(subs) => flat_map(pat_binders, subs),
+  PList(subs, rest) => flat_map(pat_binders, subs) ++ rest_binders(rest),
+  PRecord(flds, rest) => flat_map({ (_, sub) => pat_binders(sub) }, flds) ++ rest_binders(rest),
+  PAlt(branches) => match branches {
+    [] => [],
+    [first, ..._] => pat_binders(first),
+  },
+  PAs(name, inner) => [name] ++ pat_binders(inner),
+}
+
+fn rest_binders(rest) = match rest {
+  None => [],
+  Some(name) => if name == "_" { [] } else { [name] },
+}
 
 type LitValue = LVInt(Int) | LVFloat(Float) | LVString(String) | LVBool(Bool)
 
@@ -1843,7 +1891,7 @@ type Predicate
   // predicate IS a bool expr node, by handle (a boolean call or bare bool var folds in here)
   | PBoolNode(Int)
   // scrutinee node handle matches pat — match-narrowing
-  | PPatternMatch(Pat, Int)
+  | PPatternMatch(Node, Int)
   // IFC obligation (§4⑥): src ⊑ dst in the flow lattice.
   // Compile-time decidable by flow_le — ALWAYS Some(true/false),
   // never deferred. verify(span, PFlowLe(src, dst), reason)
@@ -2344,8 +2392,8 @@ type DiagKind
   | ERecordFieldExtra(String, String, Span)
   // field, type_name
   | ERecordFieldMissing(String, String, Span)
-  // missing, total
-  | EPatternInexhaustive(Int, Int, Span)
+  // a value no arm takes, written as the pattern that would take it
+  | EPatternInexhaustive(String, Span)
   // the binding-conflict detail
   | EPatternAlternationBindingMismatch(String, Span)
   | EIfMissingElse(Span)
@@ -2587,7 +2635,7 @@ fn diag_span(d) with Pure = match d {
   ERowAliasNegation(_, s) => s,
   ERecordFieldExtra(_, _, s) => s,
   ERecordFieldMissing(_, _, s) => s,
-  EPatternInexhaustive(_, _, s) => s,
+  EPatternInexhaustive(_, s) => s,
   EPatternAlternationBindingMismatch(_, s) => s,
   EIfMissingElse(s) => s,
   TOverDeclared(_, _, _, s) => s,
@@ -2657,7 +2705,7 @@ fn diag_source(d) with Pure = match d {
   ERowAliasNegation(_, _) => "effects",
   ERecordFieldExtra(_, _, _) => "infer",
   ERecordFieldMissing(_, _, _) => "infer",
-  EPatternInexhaustive(_, _, _) => "infer",
+  EPatternInexhaustive(_, _) => "infer",
   EPatternAlternationBindingMismatch(_, _) => "infer",
   EIfMissingElse(_) => "infer",
   TOverDeclared(_, _, _, _) => "infer",
@@ -2727,7 +2775,7 @@ fn diag_code(d) with Pure = match d {
   ERowAliasNegation(_, _) => "E_RowAliasNegation",
   ERecordFieldExtra(_, _, _) => "E_RecordFieldExtra",
   ERecordFieldMissing(_, _, _) => "E_RecordFieldMissing",
-  EPatternInexhaustive(_, _, _) => "E_PatternInexhaustive",
+  EPatternInexhaustive(_, _) => "E_PatternInexhaustive",
   EPatternAlternationBindingMismatch(_, _) => "E_PatternAlternationBindingMismatch",
   EIfMissingElse(_) => "E_IfMissingElse",
   TOverDeclared(_, _, _, _) => "T_OverDeclared",
@@ -3041,7 +3089,7 @@ fn diag_applicability(d) with Pure = match d {
   EUseAfterMove(_, _) => // The fix is structural — drop the read or restructure so the
   // move happens after it — never a patch.
   Unspecified,
-  EPatternInexhaustive(_, _, _) => HasPlaceholders,
+  EPatternInexhaustive(_, _) => HasPlaceholders,
   EEffectUnhandled(_, _, _) => MaybeIncorrect,
   EUnresolvedHole(_, _) => HasPlaceholders,
   TFieldOffsetUnprovable(_, _) => MaybeIncorrect,
@@ -3111,7 +3159,7 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   "record literal has unknown field '{field}' for type {tn}",
   ERecordFieldMissing(field, tn, _) => // drift-audit: ignore — diagnostic message string, not a control keyword
   "record literal missing field '{field}' for type {tn}",
-  EPatternInexhaustive(missing, total, _) => "match misses {int_to_str(missing)} of {int_to_str(total)} variants — add the missing arms or a wildcard",
+  EPatternInexhaustive(untaken, _) => "no arm takes `{untaken}` — add an arm for it",
   EPatternAlternationBindingMismatch(detail, _) => detail,
   EIfMissingElse(_) => "`if` without `else` requires a unit body",
   TOverDeclared(declared, used, name, _) => "function '{name}' declares {show_effrow(declared)} but body only uses {show_effrow(used)} — tighten the signature to unlock capabilities",
@@ -3140,17 +3188,6 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   TFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed, so this load has no provable slot and the emit writes a trap here; close the row (annotate the receiver at its Intent Boundary, or give the call site a shape the twin can key on)",
   TEqTypeUnprovable(why, _) => "{why} — the operand's type is still a variable at emit, so the comparison has no structure to read and falls to a one-word compare (right for a word, an address lie for anything else); prove the operand: give the call site a shape the twin can key on, or name the type at its Intent Boundary",
   EReplayExhausted(_) => "clock replay trace exhausted",
-}
-
-// Universal short-circuit / early return.
-// Flattens the "Option Monad" into the topological pipeline.
-// `abort` is inferred OneShot despite `-> !`: OneShot's semantics
-// is "at most once" (zero ≤ 1) and "continuation on stack, no
-// heap capture" — both true for a handler arm that never calls
-// resume. The infer pass counts zero resume sites in `catch_abort`-
-// shape arms and produces `OneShot` (count ≤ 1 → OneShot).
-effect Abort {
-  abort() -> !
 }
 
 // Mutation capability marker.
@@ -3943,7 +3980,7 @@ fn body_decl_name(body) with Pure = match body {
   NStmt(RefineStmt(name, _, _)) => name,
   NStmt(AliasStmt(name, _)) => name,
   NStmt(RowAliasStmt(name, _)) => name,
-  NStmt(LetStmt(pat, _, _)) => match pat {
+  NStmt(LetStmt(pat, _, _)) => match pat_of(pat) {
     PVar(name) => name,
     _ => // drift-audit: ignore — the documented no-key contract (a destructured let declares no single name)
     "",

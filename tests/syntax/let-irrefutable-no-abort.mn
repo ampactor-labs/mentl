@@ -1,0 +1,13 @@
+// expect: 23
+// A `let` whose pattern takes every value never refuses, so its refusal arm
+// can never run and charges nothing: a tuple destructure stays `Pure`. The
+// arm is still there (the desugar appends it to every destructuring let);
+// what keeps the row clean is coverage marking it dead, and a dead arm
+// performing nothing. Were the arm judged live, `abort()` would put `Abort`
+// in the row and the declaration would refuse.
+fn weigh(p) with Pure = {
+  let (a, b) = p
+  a * 10 + b
+}
+
+fn main() = weigh((2, 3))

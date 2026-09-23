@@ -250,21 +250,70 @@ fn join_lines_from(ref lines, i) with Memory = if i >= len(lines) {
 // node's prose forces its line to break, which the fits-or-breaks rule
 // cascades outward — and the verb's internal re-render makes the
 // written file the fixpoint of any resulting movement.
-fn render_tokens_for(node) with GraphRead + Memory + Alloc + !Mutate + Intern = match node {
-  N(body, _, h) => {
-    let c = graph_comment_at(h)
-    if c == "" {
-      render_body_tokens(body)
-    } else {
-      "//{replace(c, "\n", "\n//")}\n{render_body_tokens(body)}"
-    }
+fn render_tokens_for(node) with GraphRead + Memory + Alloc + !Mutate + Intern = match let_arm(node) {
+  Some(_) => render_let_block(node),
+  None => match node {
+    N(body, _, h) => {
+      let c = graph_comment_at(h)
+      if c == "" {
+        render_body_tokens(body)
+      } else {
+        "//{replace(c, "\n", "\n//")}\n{render_body_tokens(body)}"
+      }
+    },
   },
+}
+
+// ─── The let, read back ─────────────────────────────────────────────
+//
+// A destructuring `let` is born a match (parser.mn `desugar_block`), and the
+// page is where it becomes a let again (parser.mn `let_arm`). It renders
+// inside the braces its block had, with its own prose first, where the let's
+// comment was written.
+fn render_let_block(node) with GraphRead + Memory + Alloc + !Mutate + Intern =
+  "\{\n{indent_block(render_let_lines(node))}\n\}"
+
+fn render_let_lines(node) with GraphRead + Memory + Alloc + !Mutate + Intern = match let_arm(node) {
+  Some((pat, value, rest)) => "{render_stmt_comment(node)}{render_let_head(render_pat_tokens(pat), "", value)}\n{render_let_rest(rest)}",
+  None => render_grouped_body(node),
+}
+
+// What follows a let: another let, the rest of the block it was split from,
+// or the block's final expression.
+fn render_let_rest(node) with GraphRead + Memory + Alloc + !Mutate + Intern = match let_arm(node) {
+  Some(_) => render_let_lines(node),
+  None => match ast_kind_of(node) {
+    NExpr(BlockExpr(stmts, final)) => if graph_comment_at(node_handle(node)) == "" {
+      "{render_block_stmts(stmts, 0)}{render_let_rest(final)}"
+    } else {
+      render_grouped_body(node)
+    },
+    _ => render_grouped_body(node),
+  },
+}
+
+// A block's final expression — its own lines when it is a let the block was
+// split at, the grouped body otherwise.
+fn render_let_rest_or_final(final) with GraphRead + Memory + Alloc + !Mutate + Intern = match let_arm(final) {
+  Some(_) => render_let_lines(final),
+  None => render_grouped_body(final),
+}
+
+// A let's head, breaking before a value too long to share its line.
+fn render_let_head(pat_text, ann_text, value) with GraphRead + Memory + Alloc + !Mutate + Intern = {
+  let lhead = "let {pat_text}{ann_text} ="
+  let lv = render_tokens_for(value)
+  if str_contains(lv, "\n") || fits_inline("{lhead} {lv}") {
+    "{lhead} {lv}"
+  } else {
+    "{lhead}\n{indent_block(lv)}"
+  }
 }
 
 fn render_body_tokens(body) with GraphRead + Memory + Alloc + !Mutate + Intern = match body {
   NExpr(e) => render_expr_tokens(e),
   NStmt(s) => render_stmt_tokens(s),
-  NPat(p) => render_pat_tokens(p),
+  NPat(p) => render_pat_shape(p),
   NHole(_) => "??",
   NModule(m) => "// module {m.path}",
   NTypeAnn(ty) => render_type_tokens(ty),
@@ -345,7 +394,9 @@ fn render_expr_tokens(e) with GraphRead + Memory + Alloc + !Mutate + Intern = ma
   // follows) to the final, and dropping it violated "never dropped" (the
   // fmt census's blocker 5: a third of parser.mn's prose was
   // body-interior).
-  "\{\n{indent_block("{render_block_stmts(stmts, 0)}{render_grouped_body(final)}")}\n\}",
+  // A final that is a let (the block was split at it) continues this block's
+  // own lines rather than opening a block of its own.
+  "\{\n{indent_block("{render_block_stmts(stmts, 0)}{render_let_rest_or_final(final)}")}\n\}",
   LambdaExpr(params, body) => match arm_list_of(params, body) {
     Some(arms) => // The literal renders as the arms alone — the head it would
     // otherwise carry is the wrapper this form exists to delete, and
@@ -409,15 +460,7 @@ fn render_stmt_tokens(s) with GraphRead + Memory + Alloc + !Mutate + Intern = ma
   },
   AliasStmt(name, ty) => "type {name} = {render_type_tokens(ty)}",
   RowAliasStmt(name, effs) => "type {name} = {render_row_triples(effs, 0)}",
-  LetStmt(pat, value, ann) => {
-    let lhead = "let {render_pat_tokens(pat)}{render_let_ann(ann)} ="
-    let lv = render_tokens_for(value)
-    if str_contains(lv, "\n") || fits_inline("{lhead} {lv}") {
-      "{lhead} {lv}"
-    } else {
-      "{lhead}\n{indent_block(lv)}"
-    }
-  },
+  LetStmt(pat, value, ann) => render_let_head(render_pat_tokens(pat), render_let_ann(ann), value),
   TypeDefStmt(name, variants) => "type {name}{render_variants(name, variants)}",
   EffectDeclStmt(name, params, ops) => // Op param NAMES are parse-consumed (the ADT stores types only), and
   // bare types parse in op position — the render is the parse's inverse
@@ -429,7 +472,9 @@ fn render_stmt_tokens(s) with GraphRead + Memory + Alloc + !Mutate + Intern = ma
   RefineStmt(name, ty, pred) => "type {name} = {render_type_tokens(ty)} where {render_predicate_tokens(pred)}",
 }
 
-fn render_pat_tokens(p) with Memory + Alloc = match p {
+fn render_pat_tokens(node) with Memory + Alloc = render_pat_shape(pat_of(node))
+
+fn render_pat_shape(p) with Memory + Alloc = match p {
   PVar(name) => name,
   PWild => "_",
   PCon(name, ps) => if len(ps) == 0 { name } else { "{name}({render_pat_list(ps, ", ")})" },
@@ -1140,9 +1185,9 @@ fn render_pat_fields(ref fields, i) with Memory + Alloc = if i >= len(fields) {
     (fname, p) => {
       // Punning is the canonical form when the pattern binds the field's
       // own name (SYNTAX §records).
-      let one = match p {
+      let one = match pat_of(p) {
         PVar(n) => if n == fname { fname } else { "{fname}: {n}" },
-        other => "{fname}: {render_pat_tokens(other)}",
+        other => "{fname}: {render_pat_shape(other)}",
       }
       if i == len(fields) - 1 { one } else { "{one}, {render_pat_fields(fields, i + 1)}" }
     },

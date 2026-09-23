@@ -1,0 +1,11 @@
+// expect: 7
+// SYNTAX §«Refutable let»: a `let` whose pattern can refuse the value
+// performs `abort()` when it does, and the answer is written once, at the
+// foot of the chain. `first_or([4], 0)` takes the list's first element; an
+// empty list has none, so the let refuses and `otherwise` answers 3.
+fn first_or(xs, fallback) = {
+  let [x, ..._] = xs
+  x
+} ~> otherwise(fallback)
+
+fn main() = first_or([4], 0) + first_or([], 3)

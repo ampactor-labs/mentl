@@ -35,6 +35,44 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-23 · pin 677fc45ea658af6f (CLEAN m2 == m3, through a613c5cee95f
+  TRANSITION m3 == m4, census 0) · PATTERNS ARE NODES, AND ONE COVERAGE JUDGMENT ASKS THEM BOTH QUESTIONS.
+  The design began as "a helper decides whether a `let` pattern is
+  refutable"; Morgan asked whether the helper was really what was needed,
+  and it was the third copy of one fact — beside four hand-walks of
+  top-level tags that re-looked-up each constructor by name, never read the
+  scrutinee, and passed nested matches that trapped. The root under all of
+  them was that patterns were values, not nodes. Now: every sub-pattern is
+  an `NPat` node, infer binds its cell to the value it matches, and lower
+  reads each test's type off that node (the dual walk and
+  `con_payload_tys_at` deleted). src/coverage.mn is Maranget usefulness,
+  nested, over constructors' own variant sets: it answers per arm "can this
+  fire?" and per match "what value is untaken?", written as a pattern.
+  First run: census 4 — three int-tag matches in lib/lists.mn with no arm
+  for an unwritten tag (one read, `unwritten_tag`, now names the trap) and
+  desugar_block's own one-arm destructure. A dead arm is judged in its own
+  frame and charges nothing, so the refutable `let` needed no machinery:
+  `_ => abort()` is an ordinary second arm, dead when the pattern takes
+  everything. Parameter patterns became arms on the argument (no refusal).
+  fmt reads the shape back as `let`. KILLS, in order: (1) m3 appeared to
+  drop the let's refusal arm and trap — refuted when emit-diff showed
+  desugar_block identical across m2/m3; the runs had used the old boot,
+  because the shim ignores `MENTL_WASM` (`MENTL_COMPILER=<path>` is the
+  switch). (2) The fmt pointer render first blamed on the new render path
+  was a pre-existing cycle-member defect — `fn wrap(n) = shape(n)` with
+  `shape` splicing `wrap(n - 1)` gave `len` 8 for 4 on boot and fresh
+  alike: the early member publishes before its co-member decides its cells,
+  and the later use instantiates a copy nothing reaches. (3) Sharing every
+  reachable cell of a pending member broke the libs (10 E_TypeMismatch) —
+  reverted. The fix that held: copies of group members made during the
+  group's judgment are noted, and at group exit each copy whose source was
+  DECIDED joins it; a still-free source is the member's real polymorphism.
+  The census's parallel-arrays let face keyed on "a one-arm match" and went
+  blind when a let grew its refusal arm; it reads any arm now. Heap 481 ->
+  520MB judged (pattern nodes + coverage, spread thin — the widest matches
+  ~12% each), peak ceiling 936,000 -> 1,000,000 KB with the attribution
+  beside it; the prelude floor 2835 -> 2870 for the refusal vocabulary.
+
 - 2026-09-23 · pin fec1a92108e0a002 (CLEAN m2 == m3, through cecd9b5b7110
   TRANSITION m3 == m4 and 9fbce4116430) · A DECLARATION IS AN EDGE — AND ARMING A CROWN
   VERDICT FOUND A FALSE CHARGE THE CROWN HAD BEEN NARRATING.

@@ -981,12 +981,14 @@ Arms separated by commas. Trailing comma allowed.
 
 ### Exhaustiveness
 
-The match must cover every variant of the scrutinee's type, OR include a wildcard arm `_ => default`. Missing variants without wildcard:
+The match must take every value of the scrutinee's type, OR include a wildcard arm `_ => default`. Coverage is judged NESTED, all the way down: `GNode(NBound(t), _)` alone leaves `GNode(NFree(_), _)` untaken, and the diagnostic names that value, written as the pattern the developer adds:
 
-Diagnostic: **`E_PatternInexhaustive`** at the `match` keyword:
-> "match on Option does not cover variant: None. Add `None => ...` arm or `_ => ...` wildcard."
+Diagnostic: **`E_PatternInexhaustive`** at the `match`:
+> "no arm takes `GNode(NFree(_), _)` — add an arm for it"
 
-Quick Fix: insert stubs for missing variants.
+Quick Fix: insert an arm for the named value.
+
+The judgment is usefulness over the arm matrix (Maranget, JFP 2007), read from each constructor's own variant set, and it answers a second question at the same time: can this arm take anything the arms above it left? An arm that cannot never runs, so it is judged for its TYPES in a frame of its own and charges nothing to the row. That is the `<~` state element's precedent (§«`<~` — feedback»): code that never runs performs nothing.
 
 ### Type aliases
 
@@ -1533,9 +1535,35 @@ optional in the AST; no rest means exact-length match, while `..._`
 accepts any remaining tail without binding it. `|` remains pattern
 alternation / type-variant separation and is never list-cons syntax.
 
+### Patterns are graph nodes
+
+Every pattern, and every sub-pattern inside it, is a node (`NPat`) with its own handle and its own type cell: inference binds each to the value it matches. So `mentl <file:line:col>` on a sub-pattern projects the type it takes, lowering reads each sub-pattern's cell where it compiles the test, and no phase re-derives a pattern's type from its parent's.
+
 ### Exhaustiveness
 
-Match arms must cover all variants OR include a wildcard. Missing-variant errors include the missing variants by name (per H3's exhaustiveness machinery).
+Match arms must take every value, nested, OR include a wildcard (§«Algebraic data types — Exhaustiveness»). The diagnostic names one untaken value as the pattern that takes it.
+
+### Refutable `let`
+
+A `let` whose pattern can refuse the value it is given performs `abort()` when it does:
+
+```
+fn first_or(xs, fallback) = {
+  let [x, ..._] = xs      // refuses the empty list
+  x
+} ~> otherwise(fallback)
+```
+
+A destructuring `let p = v; rest` IS `match v { p => rest, _ => abort() }` — the second arm is ordinary, and coverage decides it: when `p` takes every value (`let (a, b) = pair`), that arm can never run and charges nothing, so the body keeps whatever row it had (`with Pure` included). When `p` can refuse, `Abort` is in the row, and the answer is written once, at the foot of the chain, by the handler that means it. The vocabulary is the prelude's:
+
+- `effect Abort { abort() -> ! }` — the refusal;
+- `handler otherwise(v)` — answers every refusal in its extent with `v`;
+- `handler catch_abort` — answers with `None`;
+- `fn require(ok)` — refuses when `ok` is false, the guard written as a statement.
+
+An unanswered refusal reaching the executable root is `E_EffectUnhandled`, like any other effect. `mentl fmt` renders the `match` shape back as the `let` it is, whoever wrote it: one graph, one spelling.
+
+**A pattern in PARAMETER position is an arm on the argument, never a `let`.** `fn f((a, b)) = a + b` is `f`'s argument matched by one arm, so an irrefutable destructure costs nothing, and a refutable one (`fn h([p, q])`) is inexhaustive exactly as a one-arm `match` would be — coverage names the untaken value (`[]`). There is no hidden refusal in a signature: a caller who wants one writes the `let`.
 
 ### Pattern alternation — rule
 
@@ -2177,7 +2205,7 @@ token, so there is nothing to lift.*
 
 | Code                  | Trigger                                       | Applicability        | Quick Fix                                      |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
-| `E_PatternInexhaustive` | match missing variants, no wildcard         | `HasPlaceholders`    | insert stubs for missing variants              |
+| `E_PatternInexhaustive` | some value no arm takes, judged nested; the message names it as a pattern (`no arm takes \`GNode(NFree(_), _)\``) | `HasPlaceholders` | add an arm for the named value |
 | `E_RefinementRejected`| value violates refinement predicate           | `Unspecified`        | adjust value or widen refinement               |
 | `E_EffectMismatch`    | declared row doesn't subsume body row         | `MaybeIncorrect`     | widen declaration OR install absorbing handler |
 | `E_PurityViolated`    | `with Pure` body performs non-empty effects   | `MaybeIncorrect`     | remove `with Pure` or absorb the effect        |

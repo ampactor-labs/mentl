@@ -7,7 +7,9 @@
 // expression grammar. The cover-grammar rest (RestExpr, minted by the
 // list parser, consumed by expr_to_pat, loud anywhere else) closes the
 // second-weaker-copy gap without a second parameter parser. The
-// frontier leg gates the PARSE half (zero diagnostics at check); the
+// frontier leg gates the PARSE half (no parse diagnostic at check, and
+// the one coverage verdict the pattern owes: a parameter pattern is an
+// arm on the argument, and this one leaves `[]` untaken); the
 // RUN half is the named peer's gate — the rest BINDING emits a
 // hand-baked $make_list call reachability cannot see, so solo emission
 // dangles (measured at pin 8031eaf1).

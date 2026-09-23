@@ -5,6 +5,10 @@
 // named-fn half through the same desugar (fresh param + prepend-let,
 // bind_param_destructures) for all three shapes the lambda path runs:
 // tuple f=7, record g=30, exact-length list h=7 → 44.
+// A pattern in parameter position is an arm on the argument, so `h`'s
+// exact-length list leaves every other length untaken, and the coverage
+// judgment says so (`no arm takes []`). The class is not armed, so the
+// program still runs; the diagnostic is the honest price of the shape.
 fn f((a, b)) = a + b
 fn g({x, y}) = x * y
 fn h([p, q]) = p - q

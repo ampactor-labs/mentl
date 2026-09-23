@@ -27,6 +27,8 @@ import graph
 
 import verify
 
+import coverage
+
 import env
 
 import intern
@@ -97,6 +99,12 @@ effect InferCtx {
   // demotes to an assert-empty.
   set_group_members([String])
   group_member(String) -> Bool
+  // The copies a use of a group member made while the group was still in
+  // judgment — (source, fresh) pairs. The group's exit reads each source
+  // again: one its co-member decided is joined back to its copy, one still
+  // free stays polymorphic (`reconcile_group_copies`).
+  note_group_copies([(Int, Int)])
+  take_group_copies() -> [(Int, Int)]
   // The pass's prereg ceiling — graph_next at the moment pre-registration
   // completed, set once per pass by its driver. The finalize's completion
   // prune reads it: a free edge minted at or above it is an unconstrained
@@ -104,7 +112,7 @@ effect InferCtx {
   set_mint_ceiling(Int)
 }
 
-handler infer_ctx with stack = [], arm_stack = [], install_marks = [], pending_gates = [], group_names = [], mint_ceiling = 0 {
+handler infer_ctx with stack = [], arm_stack = [], install_marks = [], pending_gates = [], group_names = [], group_copies = [], mint_ceiling = 0 {
   inf_enter_fn(h, answer_h, fn_span, effs) => // stack = [InferFrame, ...] where each InferFrame is a record:
   //   {accumulated_row: EffRow, answer_handle: Int, declared: List,
   //    fn_span: Span, row_handle: Int}
@@ -205,6 +213,8 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], pending_g
   drain_row_gates() => resume(pending_gates) with pending_gates = [],
   set_group_members(ns) => resume() with group_names = ns,
   group_member(n) => resume(string_in_list(group_names, n)),
+  note_group_copies(pairs) => resume() with group_copies = group_copies ++ pairs,
+  take_group_copies() => resume(group_copies) with group_copies = [],
   set_mint_ceiling(n) => resume() with mint_ceiling = n,
 }
 
@@ -1509,6 +1519,12 @@ fn trial_judge_group(ref stmts, members) = {
   set_group_members(map((j) => stmt_decl_name(stmts[j]), members))
   group_judge_members(stmts, members, 0)
   set_group_members([])
+  // A member judged early publishes before its co-member decides its
+  // cells, so a later co-member's use instantiated a copy the decision
+  // never reached (`tests/micros/mn-cycle-return-shared.mn`). Inside a
+  // group every use is monomorphic, so each copy whose source was decided
+  // joins it here; a source still free is the member's real polymorphism.
+  reconcile_group_copies(span_of_node(stmts[members[0]]))
   // The exit sweep is the one genuinely multi-member piece: it exists so
   // an EARLY member's scheme carries a LATE member's resolution. A
   // singleton has no late member — its own infer_fn publish IS the
@@ -1658,6 +1674,50 @@ fn group_judge_members(ref stmts, ref members, j) = if j >= len(members) {
 } else {
   judge_stmt_one(stmts[members[j]])
   group_judge_members(stmts, members, j + 1)
+}
+
+// A cycle member judged before its co-members publishes a scheme at its own
+// exit, and that scheme quantifies every type variable still free — including
+// the ones free only because a co-member NOT YET JUDGED decides them. A later
+// co-member's use instantiates a copy of such a variable, and when the
+// co-member does decide it, nothing tells the copy. Measured 2026-09-23:
+// `fn wrap(n) = shape(n)` beside a `shape` that splices `"{wrap(n - 1)}!"`
+// printed the string's ADDRESS — the splice read wrap's return as a fresh
+// variable while wrap's own declaration read `-> String`.
+//
+// So a use of a group member made during the group's judgment keeps its
+// copies (`note_group_copies`), and the group's exit reads each copy's source
+// again: a source the group ended up binding is not the member's to be
+// general over, and the copy takes the source's type — the use sees what the
+// final scheme says. A source still free is genuine polymorphism and its copy
+// is left alone; that is how the runtime libs use one cycle member at two
+// types, which sharing every reachable cell broke (measured: ten
+// `E_TypeMismatch` across prelude and strings, the same day). Rows are
+// never reconciled: the row channel is a flow, never a shared cap.
+fn reconcile_group_copies(span: ValidSpan) = each(reconcile_copy(span), take_group_copies())
+
+fn reconcile_copy(span: ValidSpan, copy) = match copy {
+  (source, fresh) => if is_row_handle(source) {
+    ()
+  } else {
+    match graph_chase(source) {
+      GNode(NBound(_), _) => unify(fresh, source, span, Inferred("a cycle member's use reads what its co-member decided")),
+      _ => (),
+    }
+  },
+}
+
+// A group member's scheme, instantiated with its copies noted for the
+// group's exit (`reconcile_group_copies`).
+fn instantiate_in_group(scheme) = match scheme {
+  Frozen(qs, ty) => if len(qs) == 0 {
+    ty
+  } else {
+    let mapping = build_inst_mapping(qs)
+    note_group_copies(mapping)
+    subst_ty(ty, mapping)
+  },
+  Live(h) => instantiate_in_group(generalize(h)),
 }
 
 // EVERY JUDGMENT RUNS INSIDE A MODULE. The stmt was attributed at its own
@@ -1911,9 +1971,12 @@ fn infer_stmt(ref node) = match node {
           // A named let is a declaration: its binding's reason is the edge to
           // this statement's node. Only a name binds here — a destructure was
           // desugared to a match at parse, and a wildcard or literal binds none.
-          match pat {
-            PVar(name) => env_extend(name, Frozen([], TVar(eh)), LetBinding(name, DeclaredAt(handle)), FnScheme),
-            _ => infer_pat(pat, eh, span),
+          match pat_of(pat) {
+            PVar(name) => {
+              pat_cell_is(pat, eh)
+              env_extend(name, Frozen([], TVar(eh)), LetBinding(name, DeclaredAt(handle)), FnScheme)
+            },
+            _ => infer_pat(pat, eh),
           }
           // The `: T` annotation is a CONSTRAINT verified against the value node.
           // Unlike the generic TRefined arm of unify_types (predicate + span only),
@@ -3555,7 +3618,13 @@ fn infer_var_ref(name, handle, span: ValidSpan) = {
         // last raw-scheme leak, measured as `xs |> len` unifying List
         // against Int while emitting correctly, the 3.3 false-diagnostic
         // drift). The row stays the callee's own declared row.
-        let ty = if is_seq_op(name) { seq_face_ty(name, scheme) } else { instantiate(scheme) }
+        let ty = if is_seq_op(name) {
+          seq_face_ty(name, scheme)
+        } else if group_member(name) {
+          instantiate_in_group(scheme)
+        } else {
+          instantiate(scheme)
+        }
         graph_bind(handle, ty, Located(span, VarLookup(name, reason)))
         // Carry parameter ownership from the env edge into Consume. No recovery
         // lookup: SchemeKind names the binding's construction origin.
@@ -6029,7 +6098,38 @@ fn constrain_scrutinee(scrutinee_h, ty, span: ValidSpan, reason) = {
   unify(scrutinee_h, pat_h, span, reason)
 }
 
-fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
+// A pattern's cell IS the value it matches. The node's handle is bound to
+// the value's (one union-find edge), so the pattern's own address answers its
+// type, and the phases after this one read each sub-pattern's cell instead of
+// rebuilding it from the constructor's name.
+fn pat_cell_is(node, value_h) = match node {
+  N(_, span, ph) => graph_bind(ph, TVar(value_h), Located(span, Inferred("the value this pattern matches"))),
+}
+
+fn infer_pat(node, value_h) = {
+  pat_cell_is(node, value_h)
+  infer_pat_at(node)
+}
+
+// A sub-pattern whose value's type is already known — a constructor's
+// declared field at this instantiation.
+fn infer_sub_pat(node, ty, reason) = match node {
+  N(_, span, sh) => {
+    graph_bind(sh, ty, Located(span, reason))
+    infer_pat_at(node)
+  },
+}
+
+fn pat_cell(node) = match node {
+  N(_, _, h) => TVar(h),
+}
+
+// Judge a pattern whose own cell already holds the value it matches.
+fn infer_pat_at(node) = match node {
+  N(_, span, handle) => infer_pat_shape(pat_of(node), handle, span),
+}
+
+fn infer_pat_shape(pat, handle, span: ValidSpan) = match pat {
   PVar(name) => env_extend(
     name,
     Frozen([], TVar(handle)),
@@ -6082,7 +6182,7 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
           match ty {
             TFun(params, ret_ty, _row) => {
               constrain_scrutinee(handle, ret_ty, span, VarLookup(name, reason))
-              bind_pcon_subpats(params, sub_pats, span, reason, name)
+              bind_pcon_subpats(params, sub_pats, span, VarLookup(name, reason), name)
             },
             _ => constrain_scrutinee(handle, ty, span, VarLookup(name, reason)),
           }
@@ -6099,10 +6199,9 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
     // handle of the field's type; field-puning patterns are PVar
     // and bind into env via infer_pat's recursion.
     let row_h = graph_fresh_row(Inferred("record pattern row"))
-    let field_specs = build_pat_record_field_specs(flds, span)
-    let pat_ty = mk_record_open(field_specs, row_h)
+    let pat_ty = mk_record_open(map({ (name, sub) => (name, pat_cell(sub)) }, flds), row_h)
     constrain_scrutinee(handle, pat_ty, span, Inferred("record pattern"))
-    infer_pat_record_subs(flds, field_specs, span)
+    each({ (_, sub) => infer_pat_at(sub) }, flds)
     match rest {
       Some(rn) => if rn == "_" {
         ()
@@ -6132,31 +6231,27 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
     // type. Each branch's binder types are read back IMMEDIATELY
     // after its walk (env entries shadow across branches; the law
     // check needs per-branch snapshots).
-    let branch_binds = map((b) => infer_pat_alt_branch(b, handle, span), branches)
+    let branch_binds = map({ b => infer_pat_alt_branch(b, handle, span) }, branches)
     enforce_alt_binding_law(branch_binds, span)
   },
   PAs(name, inner) => {
-    // The as-pattern binds the WHOLE value: the name's cell IS the
-    // scrutinee's (one unify edge — the binder sees exactly the
-    // matched value's type), then the inner pattern destructures the
-    // same handle.
-    let as_h = mint(Located(span, LetBinding(name, Inferred("as-pattern binds the whole value"))))
-    graph_bind(as_h, TVar(handle), Located(span, LetBinding(name, Inferred("as-pattern"))))
+    // The as-pattern binds the WHOLE value, and its own cell already IS
+    // that value; the inner pattern destructures the same value.
     env_extend(
       name,
-      Frozen([], TVar(as_h)),
+      Frozen([], TVar(handle)),
       Located(span, LetBinding(name, Inferred("as-pattern"))),
       FnScheme
     )
-    infer_pat(inner, handle, span)
+    infer_pat(inner, handle)
   },
 }
 
 // Walk one alternation branch, then snapshot its (name, type) binds
 // while they are still the latest env entries.
 fn infer_pat_alt_branch(ref b, handle, span: ValidSpan) = {
-  infer_pat(b, handle, span)
-  map((n) => (n, alt_binder_ty(n, span)), pat_binders(b))
+  infer_pat(b, handle)
+  map({ n => (n, alt_binder_ty(n, span)) }, pat_binders(b))
 }
 
 fn alt_binder_ty(ref n, span: ValidSpan) = match env_lookup(n) {
@@ -6199,69 +6294,17 @@ fn enforce_alt_binding_law(branch_binds, span: ValidSpan) = match branch_binds {
 
 fn alt_same_name_set(a, b) = len(a) == len(b) && all({ (n, _) => any({ (m, _) => m == n }, b) }, a)
 
-// pat_binders — the names a pattern binds (pure structural walk).
-// Wildcards and literals bind nothing; a PList rest name binds
-// unless `_`; a nested alternation's binders are branch 0's (its
-// own law check fires on its own walk).
-fn pat_binders(ref pat) = match pat {
-  PVar(name) => [name],
-  PWild => [],
-  PLit(_) => [],
-  PCon(_, subs) => flat_map(pat_binders, subs),
-  PTuple(subs) => flat_map(pat_binders, subs),
-  PList(subs, rest) => flatten([flat_map(pat_binders, subs), plist_rest_binders(rest)]),
-  PRecord(flds, rest) => flatten([flat_map({ (_, sub) => pat_binders(sub) }, flds), plist_rest_binders(rest)]),
-  PAlt(branches) => // Branch 0 carries the whole alternation's binder set (infer's law).
-  // Read through len/list_index — total over every representation — so
-  // this walk runs identically under a boot whose list-pattern emit
-  // predates the PIdx step (the ladder's one exposed rung).
-  if len(branches) == 0 { [] } else { pat_binders(list_index(branches, 0)) },
-  PAs(name, inner) => [name] ++ pat_binders(inner),
-}
-
-fn plist_rest_binders(rest) = match rest {
-  None => [],
-  Some(n) => if field_name_eq(n, "_") { [] } else { [n] },
-}
-
-fn build_pat_record_field_specs(flds, span: ValidSpan) = map(
-  {
-    (name, _) => {
-      let h = mint(Inferred("record pattern field"))
-      (name, TVar(h))
-    },
-  },
-  flds
-)
-
-fn infer_pat_record_subs(flds, specs, span: ValidSpan) = each(
-  {
-    ((_, sub_pat), (_, ty)) => match ty {
-      TVar(h) => infer_pat(sub_pat, h, span),
-      _ => (),
-    },
-  },
-  zip(flds, specs)
-)
-
+// The scrutinee's proven element types flow into the elements' own cells,
+// and an arity mismatch is a unification failure at this edge — the exact
+// constraint the sibling infer_pat_list draws for lists.
 fn infer_pat_tuple(pats, parent_handle, span: ValidSpan) = {
-  let elem_tys = map(
-    (p) => {
-      let sub_h = mint(Inferred("tuple pattern element"))
-      infer_pat(p, sub_h, span)
-      TVar(sub_h)
-    },
-    pats
-  )
-  // The scrutinee's proven element types flow into the bound vars, and
-  // an arity mismatch is a unification failure at this edge — the exact
-  // constraint the sibling infer_pat_list draws for lists.
-  constrain_scrutinee(parent_handle, TTuple(elem_tys), span, Inferred("tuple pattern"))
+  constrain_scrutinee(parent_handle, TTuple(map(pat_cell, pats)), span, Inferred("tuple pattern"))
+  each(infer_pat_at, pats)
 }
 
 fn infer_pat_list(pats, rest, parent_handle, span: ValidSpan) = {
   let elem_h = mint(Inferred("list pattern element"))
-  each((p) => infer_pat(p, elem_h, span), pats)
+  each({ p => infer_pat(p, elem_h) }, pats)
   let list_ty = TList(TVar(elem_h))
   constrain_scrutinee(parent_handle, list_ty, span, Inferred("list pattern"))
   match rest {
@@ -6279,27 +6322,23 @@ fn infer_pat_list(pats, rest, parent_handle, span: ValidSpan) = {
   }
 }
 
-// Bind each PCon sub-pattern to its corresponding constructor param
-// type. Mints a fresh handle per sub-pat so PVar bindings carry a
-// distinct entry into env. An arity mismatch reports EConstructorArity
-// FIRST; the aligned prefix still binds (productive-under-error).
+// Each constructor sub-pattern's cell takes its declared field's type at
+// this instantiation. An arity mismatch reports EConstructorArity FIRST;
+// the aligned prefix still binds (productive-under-error).
 fn bind_pcon_subpats(params, sub_pats, span: ValidSpan, reason, ctor_name) = {
   if len(params) != len(sub_pats) {
     report(EConstructorArity(ctor_name, len(params), len(sub_pats), span))
   }
-  each(
-    {
-      (param, sub_pat) => {
-        let sub_h = mint(VarLookup(ctor_name, reason))
-        graph_bind(sub_h, param_ty(param), Located(span, VarLookup(ctor_name, reason)))
-        infer_pat(sub_pat, sub_h, span)
-      },
-    },
-    zip(params, sub_pats)
-  )
+  each({ (param, sub) => infer_sub_pat(sub, param_ty(param), reason) }, zip(params, sub_pats))
 }
 
 fn infer_match_arms(arms, scrut, result_h, span: ValidSpan) = {
+  // The one coverage judgment (coverage.mn), read before any arm is judged:
+  // whether each arm can take a value the arms above it left, and what value
+  // no arm takes. It needs only the patterns and the constructors' own
+  // declarations, both already in hand.
+  let rows = arm_rows(map({ (pat, _) => pat }, arms))
+  let live = arm_liveness(rows)
   // Match arms are ALTERNATIVE — exactly one runs — so an `own` value
   // consumed in several arms is one consume on the taken path, unioned
   // by the affine ledger without a collision (BAlternative), the same
@@ -6307,109 +6346,53 @@ fn infer_match_arms(arms, scrut, result_h, span: ValidSpan) = {
   // bracket.
   let n = len(arms)
   if n > 0 { branch_enter(BAlternative) }
-  infer_match_arm_iter(arms, scrut, result_h, span, 0, n)
+  infer_match_arm_iter(arms, live, scrut, result_h, span, 0, n)
   if n > 0 { branch_exit(span) }
-  // Exhaustiveness check (H3): if no wildcard arm covers the
-  // remainder, every constructor of the scrutinee's declaring type
-  // must appear among the arms. ConstructorScheme(_, total_variants)
-  // makes this a graph read — no per-type registry needed.
-  let covered = collect_arm_tags(arms, [])
-  let total = arms_total_variants(arms)
-  let has_wild = arms_have_wildcard(arms)
-  if total > 0 && len(covered) < total && !has_wild {
-    report(EPatternInexhaustive(total - len(covered), total, span))
+  match uncovered(rows) {
+    Some(missing) => report(EPatternInexhaustive(missing, span)),
+    None => (),
   }
 }
 
-fn infer_match_arm_iter(arms, scrut, result_h, span: ValidSpan, i, n) = if i >= n {
+fn infer_match_arm_iter(arms, live, scrut, result_h, span: ValidSpan, i, n) = if i >= n {
   ()
 } else {
   match list_index(arms, i) {
     (pat, body) => {
       env_scope_enter()
-      infer_pat(pat, scrut, span)
-      infer_expr(body)
-      match body {
-        N(_, _, bh) => {
-          unify(bh, result_h, span, MatchBranch(Inferred("arm body"), Inferred("result")))
-          env_scope_exit()
-          // Divide BETWEEN arms only — the affine ledger resets `used` to the
-          // frame base so the next arm sees the pre-match scope, never the
-          // prior arm's consumes.
-          if i + 1 < n { branch_divider(span) }
-          infer_match_arm_iter(arms, scrut, result_h, span, i + 1, n)
-        },
+      if live[i] {
+        infer_arm(pat, body, scrut, result_h, span)
+      } else {
+        infer_arm_that_never_runs(pat, body, scrut, result_h, span)
       }
+      env_scope_exit()
+      // Divide BETWEEN arms only — the affine ledger resets `used` to the
+      // frame base so the next arm sees the pre-match scope, never the
+      // prior arm's consumes.
+      if i + 1 < n { branch_divider(span) }
+      infer_match_arm_iter(arms, live, scrut, result_h, span, i + 1, n)
     },
   }
 }
 
-// Walk arms, gathering each PCon's tag_id (deduped via set_insert).
-// Non-PCon arms (wildcards, vars, lits) contribute no tag. The seed's
-// transfer is structural (the fold chain absorbs it) — an authored `own`
-// here claimed a consume the callee's param product cannot see (`fold`'s
-// function parameter is a param callee, product unreadable → the seed
-// reads), and the
-// grade now says so (§11 4.2's one wheel narration; band H's bar is
-// fewer authored markers, not more).
-fn collect_arm_tags(arms, init) = fold(
-  init,
-  (acc, arm) => match arm {
-    (pat, _body) => collect_pat_tags(pat, acc),
-  },
-  arms
-)
-
-// An alternation covers the UNION of its branches — flatten. The counter
-// was blind to PAlt: two H6-exhaustive alternation matches in voice read
-// "misses 11 of 13" while covering every variant (the census's own find).
-fn collect_pat_tags(pat, own acc) = match pat {
-  PCon(name, _) => match env_lookup(name) {
-    Some(entry) => match entry {
-      (_, _, kind) => match kind {
-        ConstructorScheme(tag, _) => set_insert(acc, int_to_str(tag)),
-        _ => acc,
-      },
-    },
-    None => acc,
-  },
-  PAlt(branches) => fold(acc, (a, b) => collect_pat_tags(b, a), branches),
-  _ => acc,
-}
-
-// Read total_variants from any one PCon arm's ConstructorScheme.
-// All variants of a single declaring type carry the same total; the
-// FIRST hit is sufficient. Returns 0 when no PCon arm is present
-// (e.g., literal-only match) — the exhaustiveness check skips.
-fn arms_total_variants(arms) = if len(arms) == 0 {
-  0
-} else {
-  match last(arms) {
-    (pat, _body) => match pat {
-      PCon(name, _) => match env_lookup(name) {
-        Some(entry) => match entry {
-          (_, _, kind) => match kind {
-            ConstructorScheme(_, total) => total,
-            _ => arms_total_variants(drop_last(arms)),
-          },
-        },
-        None => arms_total_variants(drop_last(arms)),
-      },
-      _ => arms_total_variants(drop_last(arms)),
-    },
+fn infer_arm(pat, body, scrut, result_h, span: ValidSpan) = {
+  infer_pat(pat, scrut)
+  infer_expr(body)
+  match body {
+    N(_, _, bh) => unify(bh, result_h, span, MatchBranch(Inferred("arm body"), Inferred("result"))),
   }
 }
 
-// Wildcard detection: PWild or PVar at the top level catches
-// everything the prior arms don't.
-fn arms_have_wildcard(arms) = any({ (pat, _body) => pat_has_wildcard(pat) }, arms)
-
-fn pat_has_wildcard(pat) = match pat {
-  PWild => true,
-  PVar(_) => true,
-  PAlt(branches) => // A wildcard inside an alternation covers the remainder the same way.
-  any(pat_has_wildcard, branches),
-  _ => false,
+// An arm the arms above it already cover never runs, so it performs nothing:
+// it is judged for its types, and its effects land in a frame of its own that
+// no caller reads (the `<~` state element's precedent). This is what makes a
+// refutable `let` free when it cannot refuse: its `_ => abort()` arm is dead
+// whenever the pattern takes every value, and then it charges no `Abort`.
+fn infer_arm_that_never_runs(pat, body, scrut, result_h, span: ValidSpan) = {
+  inf_enter_fn(graph_fresh_row(Inferred("an arm that never runs")), inf_current_answer(), span, [])
+  infer_arm(pat, body, scrut, result_h, span)
+  inf_exit_fn([])
+  ()
 }
 
 // One arm under the typed-resume law (SYNTAX §Effect declarations).

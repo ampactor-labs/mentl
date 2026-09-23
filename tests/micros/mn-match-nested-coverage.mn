@@ -1,0 +1,15 @@
+// expect: refuse E_PatternInexhaustive
+// A constructor nested inside a constructor leaves its sibling untaken.
+// `Holds(Low)` takes every value of Outer's one tag and still refuses
+// `Holds(High)`. The check that counted top-level tags passed this match,
+// and the program trapped at the value no arm took. The one coverage
+// judgment reads nested patterns and names the value: `Holds(High)`.
+type Level = Low | High
+
+type Outer = Holds(Level)
+
+fn weigh(o) = match o {
+  Holds(Low) => 1,
+}
+
+fn main() = weigh(Holds(Low))

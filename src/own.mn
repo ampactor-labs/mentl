@@ -29,10 +29,6 @@ import imap
 //                   branch's captured delta; branch_exit pairwise-checks
 //                   and merges. Stack shape naturally supports nested
 //                   branches (e.g. (a >< b) >< c).
-handler catch_abort {
-  abort() => None,
-}
-
 handler affine_ledger with used = [], used_sites = [], branches = [], fn_saved = [], borrow_depth = 0, declared = [] {
   borrow_enter() => // A borrow scope reads without moving — inside it consume is a no-op, so
   // an `own` value used in an `if` condition / `match` scrutinee stays

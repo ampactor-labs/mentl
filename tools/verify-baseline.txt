@@ -1196,7 +1196,7 @@ desugar_vocabulary: 41
 # 2026-09-18 · 67 -> 63 · the fan's copy machinery took four `own` markers
 # with it (`fan_blocks`/`fan_spawn`/`fan_join`'s accumulators and
 # `keep_proven`'s). A judgment on the live graph accumulates nothing to own.
-authored_own_max: 63
+authored_own_max: 62
 # 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
 # primitive's deletion — the honest grade needs no marker where there is no
 # second copy to annotate.
@@ -1276,7 +1276,24 @@ authored_ref_max: 706
 # measures 925,780 KB against the prior pin's 998,948, and this ceiling is set
 # ~1% over that reading, the same jitter margin as before. The arena's fall is
 # still owed on top of this one.
-selfcompile_peak_kb_max: 936000
+#
+# 936,000 -> 1,000,000 (2026-09-23), attributed rather than absorbed. The
+# judgment's heap moved 481,206,424 -> 520,191,416 bytes (m2's line against
+# m3's, one march) for two things this landing added on purpose: every
+# sub-pattern is a node with its own cell (253,359 -> 264,590 nodes minted
+# on the wheel, `mentl src/main.mn cost`), and every match is judged once
+# for NESTED coverage, which is what found three int-tag matches in
+# lib/lists.mn that trapped on an unwritten tag with nothing said. The
+# per-decl instrument shows the rise spread thin — the widest matches
+# (`emit_expr`, `infer_expr`, `lower_expr_body`) about 12% each, no single
+# decl carrying it — so there is no two-line culprit to delete this time,
+# unlike the occurs check above. The one waste the read did find (a
+# constructor pattern padded with a fresh list of wildcards when its count
+# already matched, src/coverage.mn `at_arity`) is removed and measured
+# (523 -> 520MB). Four marches' min-of-3 readings ran 978,080 to 990,764
+# KB; the ceiling is ~1% over the highest, the same jitter margin as the
+# two entries above. The arena's fall is still owed, and it now owes this.
+selfcompile_peak_kb_max: 1000000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

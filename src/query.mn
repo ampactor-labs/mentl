@@ -1293,7 +1293,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   // opening with the underscore is the retained costume; deletion,
   // not decoration, is the fix the mode has always named.
   match body {
-    NStmt(LetStmt(p, _, _)) => match p {
+    NStmt(LetStmt(p, _, _)) => match pat_of(p) {
       PVar(name) => starts_with(name, "_"),
       _ => false,
     },
@@ -1313,27 +1313,19 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
     _ => false,
   },
   CsParallelArrays => // Drift mode 7's shape (the seventh absorption): parallel
-  // arrays where one record was native, in its TWO faces. The let-tuple
-  // face: a destructuring bind of a tuple whose FIRST TWO binders both
-  // carry the _h suffix (the surface let desugars at parse into the
-  // one-arm match — desugar_block — so the weave shape covers both
-  // spellings). The PARAM-ADJACENCY face (the mode's second bash row,
+  // arrays where one record was native, in its TWO faces. The bind face:
+  // an arm whose tuple pattern's FIRST TWO binders both carry the _h
+  // suffix — a `let`, a parameter destructure and a hand-written match
+  // are all arms on the value (`desugar_block`), so one arm-shaped read
+  // covers every spelling however many arms stand beside it (a `let`
+  // carries its refusal arm). The PARAM-ADJACENCY face (the mode's second bash row,
   // absorbed): a fn whose parameter list carries an adjacent `x, x_h`
   // pair — the paired arrays threaded as paired arguments; structural
   // over ANY name where the regex saw four literals. The pair anchor
   // is the mode's own settled note: ctor payloads legitimately carry
   // the handle convention; the paired bind/params convict.
   match body {
-    NExpr(MatchExpr(_, arms)) => if len(arms) == 1 {
-      match list_index(arms, 0) {
-        (p, _) => match p {
-          PTuple(elems) => paired_handle_binders(elems),
-          _ => false,
-        },
-      }
-    } else {
-      false
-    },
+    NExpr(MatchExpr(_, arms)) => any(arm_binds_handle_pair, arms),
     NStmt(FnStmt(_, params, _, _, _)) => adjacent_handle_params(params |> map(param_name)),
     _ => false,
   },
@@ -1360,7 +1352,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   match body {
     NStmt(FnStmt(name, _, _, _, _)) => env_frame_name(name),
     NExpr(VarRef(name)) => env_frame_name(name),
-    NStmt(LetStmt(p, _, _)) => match p {
+    NStmt(LetStmt(p, _, _)) => match pat_of(p) {
       PVar(name) => env_frame_name(name),
       _ => false,
     },
@@ -1418,14 +1410,13 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   // program and the nodes: the marker is prose on whatever node the
   // exempted line belongs to.
   str_contains(graph_comment_at(h), "drift-audit: ignore"),
-  CsWildcardDestructure => // Patterns are VALUES on their nodes — a match arm's `(Pat, Node)`, a
-  // let's binder — never nodes of their own (the first draft read the
-  // `NPat` column and counted zero), so the read is over the match and the
-  // let, recursing into every sub-pattern. It convicts its own
-  // `LetStmt(p, _, _)` arm below, and should: that count's zero is the
-  // Stmt roster carrying records. A shape test's `_ => false` is the total
-  // answer (a new node kind is not this shape), unlike a `_ => []` over
-  // what a kind DECLARES, which the fabricates roster now counts.
+  CsWildcardDestructure => // Read over the match and the let, recursing into every sub-pattern,
+  // so one site is one arm list or one binding however deep the discards
+  // sit. It convicts its own `LetStmt(p, _, _)` arm below, and should:
+  // that count's zero is the Stmt roster carrying records. A shape test's
+  // `_ => false` is the total answer (a new node kind is not this shape),
+  // unlike a `_ => []` over what a kind DECLARES, which the fabricates
+  // roster now counts.
   match body {
     NExpr(MatchExpr(_, arms)) => any({ (p, _) => pattern_discards_by_position(p) }, arms),
     NStmt(LetStmt(p, _, _)) => pattern_discards_by_position(p),
@@ -1472,7 +1463,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   // (`Hβ.query.record-pattern-open-receiver`), a read this syntactic
   // half does not make.
   match body {
-    NStmt(LetStmt(p, _, _)) => match p {
+    NStmt(LetStmt(p, _, _)) => match pat_of(p) {
       PRecord(_, _) => true,
       _ => false,
     },
@@ -1493,7 +1484,7 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
   // 0 — caught a shape blind to exactly what it was built to count. The
   // scrutinee handle was never out of reach; `MatchExpr` carries it.
   match body {
-    NStmt(LetStmt(p, rhs, _)) => match p {
+    NStmt(LetStmt(p, rhs, _)) => match pat_of(p) {
       PRecord(_, _) => receiver_row_open(rhs),
       _ => false,
     },
@@ -1521,7 +1512,7 @@ fn any_record_arm(arms, i, n) with Memory = if i >= n {
   false
 } else {
   match list_index(arms, i) {
-    (p, _) => match p {
+    (p, _) => match pat_of(p) {
       PRecord(_, _) => true,
       _ => any_record_arm(arms, i + 1, n),
     },
@@ -1548,10 +1539,17 @@ fn any_vtable_field(flds, i, n) with GraphRead + !Mutate + Alloc + Memory = if i
   }
 }
 
+fn arm_binds_handle_pair(arm) = match arm {
+  (p, _) => match pat_of(p) {
+    PTuple(elems) => paired_handle_binders(elems),
+    _ => false,
+  },
+}
+
 fn paired_handle_binders(elems) with Memory + Alloc = if len(elems) < 2 {
   false
 } else {
-  match (list_index(elems, 0), list_index(elems, 1)) {
+  match (pat_of(list_index(elems, 0)), pat_of(list_index(elems, 1))) {
     (PVar(a), PVar(b)) => ends_with(a, "_h") && ends_with(b, "_h"),
     _ => false,
   }
@@ -1682,7 +1680,7 @@ fn any_wildcard_zero(arms, i, n) with Memory = if i >= n {
   false
 } else {
   match list_index(arms, i) {
-    (p, b) => match p {
+    (p, b) => match pat_of(p) {
       PWild => match b {
         N(nb, _, _) => match nb {
           NExpr(LitInt(0)) => true,
@@ -1698,7 +1696,7 @@ fn any_wildcard_fabricates(arms, i, n) with Memory + GraphRead = if i >= n {
   false
 } else {
   match list_index(arms, i) {
-    (p, b) => match p {
+    (p, b) => match pat_of(p) {
       PWild => if wildcard_body_fabricates(b) { true } else { any_wildcard_fabricates(arms, i + 1, n) },
       _ => any_wildcard_fabricates(arms, i + 1, n),
     },
@@ -1708,7 +1706,7 @@ fn any_wildcard_fabricates(arms, i, n) with Memory + GraphRead = if i >= n {
 // A constructor or tuple pattern whose slots include two or more discards —
 // the bare `_` and the binder that spells one (`_h`, `_s`). One discard is a
 // field the arm does not need; two is a position the reader has to count.
-fn pattern_discards_by_position(p) with Memory + Alloc = match p {
+fn pattern_discards_by_position(p) with Memory + Alloc = match pat_of(p) {
   PCon(_, slots) => count(slot_is_discard, slots) >= 2 || any(pattern_discards_by_position, slots),
   PTuple(slots) => count(slot_is_discard, slots) >= 2 || any(pattern_discards_by_position, slots),
   PList(slots, _) => any(pattern_discards_by_position, slots),
@@ -1720,7 +1718,7 @@ fn pattern_discards_by_position(p) with Memory + Alloc = match p {
   PLit(_) => false,
 }
 
-fn slot_is_discard(p) with Memory = match p {
+fn slot_is_discard(p) with Memory = match pat_of(p) {
   PWild => true,
   PVar(n) => byte_len(n) > 0 && byte_at(n, 0) == 95,
   _ => false,
@@ -1924,7 +1922,7 @@ fn chain_links(nodes) with GraphRead + Alloc + Memory = if len(nodes) < 2 {
   []
 } else {
   range(0, len(nodes) - 1) |> map((i) => match graph_node_body(node_handle(nodes[i])) {
-    NStmt(LetStmt(PVar(name), _, _)) => let_feeds_next(name, nodes, i),
+    NStmt(LetStmt(N(NPat(PVar(name)), _, _), _, _)) => let_feeds_next(name, nodes, i),
     _ => false,
   })
 }

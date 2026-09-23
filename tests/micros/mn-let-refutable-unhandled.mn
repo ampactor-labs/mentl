@@ -1,0 +1,12 @@
+// expect: refuse E_EffectUnhandled
+// A refutable `let` with nothing installed to answer its refusal is a
+// program that can stop with no one to hear it. `Abort` is in `first`'s row,
+// no handler absorbs it on the way to main, and the executable refuses. The
+// silence this replaces: the let desugared to a one-arm match, and an empty
+// list trapped at the arm no pattern took.
+fn first(xs) = {
+  let [x, ..._] = xs
+  x
+}
+
+fn main() = first([9])

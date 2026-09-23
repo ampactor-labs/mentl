@@ -7261,7 +7261,15 @@ checker at 27 of 28 Expr variants and trapped at runtime on the
 new ctor; totality must decompose through wrapping patterns, or
 every grown ADT walks old matches into their compiled floors (the
 placeholder-tell census — grep NExpr(ExprPlaceholder) — is the
-hand instrument until the checker closes). And the IFC
+hand instrument until the checker closes). ✅ CLOSED 2026-09-23 (pin
+a613c5ce): patterns are nodes and src/coverage.mn judges usefulness nested
+through every wrapping constructor, naming the untaken value; its first run
+convicted four sites the top-level walk had passed. ONE REMAINDER, named:
+a pattern's constructor is still resolved BY NAME twice — `infer_pat`'s
+PCon arm and coverage's `con_space` each `env_lookup` it — where an edge
+from the pattern node to the constructor's declaration should be read. It
+rides `Hβ.graph.references-and-positions-are-columns` (a reference is a
+column keyed by handle), which makes it one read. And the IFC
 read-through: check_splice_flow_labels now sees ShowExpr-wrapped
 fragments — its label read must reach the INNER node (verified
 green by the flow frontier leg this landing; named here so the
@@ -12273,6 +12281,24 @@ rows builder ran: Landing 2 of the re-derivation queue (family B above),
 sequenced after `Hβ.effects.rows-are-propagated-cells`, whose worklist and
 cell discipline it reuses one sort over. Build-ready; the Opus brief is cut
 from this entry.
+▶ A WAYPOINT THIS LANDING OWES (added 2026-09-23, pin a613c5ce). A binding
+group's early member publishes a QUANTIFIED scheme before its co-member has
+decided the cells it quantifies, so a later co-member's use instantiated a
+copy the decision never reached: `fn wrap(n) = shape(n)` beside `shape`
+splicing `{wrap(n - 1)}` answered `len` 8 for 4, the splice rendering an
+address (tests/micros/mn-cycle-return-shared.mn; the formatter's own tuple
+render was the first victim seen). What landed is a reconciliation, not the
+form: copies made during the group's judgment are noted
+(`note_group_copies`), and at group exit each copy whose source was decided
+joins it (`reconcile_group_copies`); a still-free source stays polymorphic.
+It is a compensation for the snapshot that `Frozen(qs, ty)` takes at an
+early member's exit — the fourteen publishes this entry already lists — and
+it DIES with them: when the quantifier is a read of a cell's propagated
+frees, a member's scheme is quantified over what is free at the READ, so a
+use after the co-member decided sees the decision and no copy exists to
+reconcile. Retirement condition: `reconcile_group_copies` and the
+`group_copies` state are deleted in the landing that makes the quantifier a
+read, with the cycle micro held green through it.
 ▶ THE FACT AND ITS COPIES. A type cell (`NFree`/`NBound`) holds a Ty VALUE
 whose leaves are cells, and the two facts every reader wants — which unbound
 cells the type still reaches (its frees) and whether a given cell occurs in it

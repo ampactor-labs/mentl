@@ -1,0 +1,12 @@
+// expect: 4
+// A cycle member judged before its co-member must not quantify a variable
+// the co-member still decides. `wrap`'s return is `shape`'s return, and
+// `shape` is judged second, so at `wrap`'s exit that return is still free.
+// Quantified there, `shape`'s use of `wrap` instantiated a fresh copy that
+// nothing ever bound, and the splice `{wrap(n - 1)}` rendered a variable:
+// the string's address, so `len` answered 8 instead of 4 (`"z!!!"`).
+fn wrap(n) = shape(n)
+
+fn shape(n) = if n <= 0 { "z" } else { "{wrap(n - 1)}!" }
+
+fn main() = len(wrap(3))

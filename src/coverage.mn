@@ -1,0 +1,385 @@
+// coverage.mn — which values an arm list leaves untaken, and which arms can
+// take anything at all.
+//
+// One judgment answers both questions a match asks of its patterns. Is some
+// value left that no arm takes? The answer is that value written as a
+// pattern, which is the arm the developer adds. Can this arm take anything
+// the arms above it left? If not, the arm never runs. A refutable `let` asks
+// the first question of one pattern. The judgment is usefulness over the arm
+// matrix (Maranget, "Warnings for pattern matching", JFP 2007), nested all
+// the way down: a constructor reaches its siblings through its type's own
+// variant set, so `GNode(NBound(t), _)` leaves `GNode(NFree(_), _)` untaken
+// and says so. The walk it replaces counted top-level tags, so a nested
+// pattern could leave a value untaken and the match compiled clean.
+import types
+
+// A pattern as the judgment reads it: the values it takes, with binders and
+// spans gone. A list pattern reads as the cons chain it abbreviates.
+type Space = SAny | SCon(Head, [Space]) | SOr([Space])
+
+// One way a value is built. Two heads are one when they take the same values:
+// a variant by its tag within its type, a literal by its value, and a tuple or
+// a record by being one, since a product has a single way to be built.
+type Head = HVariant(Variant) | HTuple(Int) | HRecord([String]) | HNil | HCons | HBool(Bool) | HLit(LitValue)
+
+// A constructor as its declaration states it. `ty` names the type it builds,
+// which is where its siblings are read from when one of them is untaken.
+type Variant = {arity: Int, name: String, tag: Int, total: Int, ty: Option(String)}
+
+fn variant_arity(v: Variant) = v.arity
+
+fn variant_name(v: Variant) = v.name
+
+fn variant_tag(v: Variant) = v.tag
+
+fn variant_total(v: Variant) = v.total
+
+fn variant_type(v: Variant) = v.ty
+
+// The values a pattern takes, read off its node.
+fn space_of(node) = match pat_of(node) {
+  PVar(_) => SAny,
+  PWild => SAny,
+  PAs(_, inner) => space_of(inner),
+  PAlt(branches) => SOr(map(space_of, branches)),
+  PLit(LVBool(b)) => SCon(HBool(b), []),
+  PLit(v) => SCon(HLit(v), []),
+  PTuple(subs) => SCon(HTuple(len(subs)), map(space_of, subs)),
+  PRecord(flds, _) => SCon(HRecord(map(field_label, flds)), map(field_space_of, flds)),
+  PList(subs, rest) => subs |> map(space_of) |> reverse |> fold(list_end(rest), cons_space),
+  PCon(name, subs) => con_space(name, map(space_of, subs)),
+}
+
+fn field_label(fld) = match fld {
+  (name, _) => name,
+}
+
+fn field_space_of(fld) = match fld {
+  (_, sub) => space_of(sub),
+}
+
+// A list pattern with no rest ends in the empty list; one with a rest ends in
+// whatever the rest takes, which is any list at all.
+fn list_end(rest) = match rest {
+  None => SCon(HNil, []),
+  Some(_) => SAny,
+}
+
+fn cons_space(tail, head) = SCon(HCons, [head, tail])
+
+// A constructor the env holds builds a value of its declared type, with as
+// many fields as its declaration gives it; a pattern with the wrong count was
+// already reported by infer, and here it is read at the declared count. A
+// nominal record's constructor is the identity on the record it wraps, so its
+// one sub-pattern IS the pattern. A name the env does not hold was reported
+// where infer resolved it, and it takes any value here, so that one missing
+// name is one diagnostic and not two.
+fn con_space(name, subs) = match env_lookup(name) {
+  Some((binding, _, ConstructorScheme(tag, total))) => {
+    let arity = built_arity(binding)
+    let v = Variant{arity: arity, name: name, tag: tag, total: total, ty: built_type(binding)}
+    SCon(HVariant(v), at_arity(arity, subs))
+  },
+  Some((_, _, RecordSchemeKind(_))) => match subs {
+    [] => SAny,
+    [only, ..._] => only,
+  },
+  _ => SAny,
+}
+
+// A constructor's binding is registered Frozen at its own declaration: its
+// type is the type it builds, or a function to it.
+fn built_arity(binding) = match binding {
+  Frozen(_, ty) => match fold_strip(ty) {
+    TFun(params, _, _) => len(params),
+    _ => 0,
+  },
+  Live(_) => 0,
+}
+
+fn built_type(binding) = match binding {
+  Frozen(_, ty) => result_type_name(ty),
+  Live(_) => None,
+}
+
+fn result_type_name(ty) = match fold_strip(ty) {
+  TFun(_, ret, _) => result_type_name(ret),
+  TName(name, _) => Some(name),
+  _ => None,
+}
+
+fn anys(n) = map({ _ => SAny }, range(0, n))
+
+// The sub-spaces at the declared count. A well-formed pattern already has
+// it, and only a miscounted one (reported by infer) is padded or cut.
+fn at_arity(arity, subs) = if len(subs) == arity { subs } else { take(arity, subs ++ anys(arity)) }
+
+fn head_same(a, b) = match (a, b) {
+  (HVariant(x), HVariant(y)) => variant_tag(x) == variant_tag(y),
+  (HTuple(_), HTuple(_)) => true,
+  (HRecord(_), HRecord(_)) => true,
+  (HNil, HNil) => true,
+  (HCons, HCons) => true,
+  (HBool(x), HBool(y)) => x == y,
+  (HLit(x), HLit(y)) => literals_same(x, y),
+  _ => false,
+}
+
+fn literals_same(a, b) = match (a, b) {
+  (LVInt(x), LVInt(y)) => x == y,
+  (LVFloat(x), LVFloat(y)) => x == y,
+  (LVString(x), LVString(y)) => x == y,
+  (LVBool(x), LVBool(y)) => x == y,
+  _ => false,
+}
+
+fn head_arity(h) = match h {
+  HVariant(v) => variant_arity(v),
+  HTuple(n) => n,
+  HRecord(names) => len(names),
+  HNil => 0,
+  HCons => 2,
+  HBool(_) => 0,
+  HLit(_) => 0,
+}
+
+// The heads the first position of a column is built by, once each. Records
+// merge into one head over every field any row names: a record has one way to
+// be built, and a row naming fewer fields takes any value in the others.
+fn column_heads(rows) = rows |> flat_map(row_heads) |> fold([], add_head)
+
+fn row_heads(row) = match row {
+  [] => [],
+  [first, ..._] => space_heads(first),
+}
+
+fn space_heads(s) = match s {
+  SAny => [],
+  SCon(h, _) => [h],
+  SOr(branches) => flat_map(space_heads, branches),
+}
+
+fn add_head(acc, h) = if any(head_same(h), acc) { map(record_union(h), acc) } else { push(acc, h) }
+
+fn record_union(h, k) = match (k, h) {
+  (HRecord(have), HRecord(more)) => HRecord(have ++ filter({ n => !any({ m => m == n }, have) }, more)),
+  _ => k,
+}
+
+// The head a pattern's own head stands for in this column — for a record,
+// the union of every field the column names. Any other head stands for
+// itself, and only a record pays for reading the column.
+fn column_head(h, rows) = match h {
+  HRecord(_) => fold(h, record_union_into, column_heads(rows)),
+  _ => h,
+}
+
+fn record_union_into(acc, k) = record_union(k, acc)
+
+// Do the heads name every way a value of their type is built? A literal's
+// type has more values than any list of arms can name.
+fn heads_complete(sigma) = match sigma {
+  [] => false,
+  [first, ..._] => match first {
+    HVariant(v) => len(sigma) == variant_total(v),
+    HTuple(_) => true,
+    HRecord(_) => true,
+    HNil => len(sigma) == 2,
+    HCons => len(sigma) == 2,
+    HBool(_) => len(sigma) == 2,
+    HLit(_) => false,
+  },
+}
+
+// The rows that can still take a value built by `k`, each with `k`'s fields
+// in place of its first position. A row that cannot is simply not kept, so a
+// wide match pays only for the rows a head actually selects.
+fn specialize(k, rows) = fold([], specialize_into(k), rows)
+
+fn specialize_into(k, acc, row) = match row {
+  [] => acc,
+  [SAny, ...more] => push(acc, anys(head_arity(k)) ++ more),
+  [SCon(h, args), ...more] => if head_same(k, h) { push(acc, head_fields(k, h, args) ++ more) } else { acc },
+  [SOr(branches), ...more] => fold(acc, specialize_branch(k, more), branches),
+}
+
+fn specialize_branch(k, more, acc, branch) = specialize_into(k, acc, [branch] ++ more)
+
+// A row's fields read at the column's head: a record's by name across the
+// union, anything else as it stands.
+fn head_fields(k, h, args) = match (k, h) {
+  (HRecord(all), HRecord(mine)) => map(named_field(mine, args), all),
+  _ => args,
+}
+
+fn named_field(mine, args, name: String) = match find({ (n, _) => n == name }, zip(mine, args)) {
+  Some((_, s)) => s,
+  None => SAny,
+}
+
+// The rows that take whatever is built by a head the column does not name.
+fn default_rows(rows) = fold([], default_into, rows)
+
+fn default_into(acc, row) = match row {
+  [] => acc,
+  [SAny, ...more] => push(acc, more),
+  [SCon(_, _), ..._] => acc,
+  [SOr(branches), ...more] => fold(acc, default_branch(more), branches),
+}
+
+fn default_branch(more, acc, branch) = default_into(acc, [branch] ++ more)
+
+// A row that takes every value — a wildcard arm, however it is spelled.
+fn row_takes_all(row) = all(space_takes_all, row)
+
+fn space_takes_all(s) = match s {
+  SAny => true,
+  SCon(_, _) => false,
+  SOr(branches) => any(space_takes_all, branches),
+}
+
+// Can a value matching `q` get past every row? The rows are the vectors the
+// arms above take; `q` is a vector of the same length.
+fn can_take(rows, q) = match q {
+  [] => len(rows) == 0,
+  [SAny, ...more] => {
+    let sigma = column_heads(rows)
+    if heads_complete(sigma) {
+      any({ k => can_take(specialize(k, rows), anys(head_arity(k)) ++ more) }, sigma)
+    } else {
+      can_take(default_rows(rows), more)
+    }
+  },
+  [SCon(h, args), ...more] => {
+    let k = column_head(h, rows)
+    can_take(specialize(k, rows), head_fields(k, h, args) ++ more)
+  },
+  [SOr(branches), ...more] => any({ b => can_take(rows, [b] ++ more) }, branches),
+}
+
+// A vector of `n` values no row takes, or None when the rows take them all.
+fn untaken(rows, n) = if n == 0 {
+  if len(rows) == 0 { Some([]) } else { None }
+} else {
+  let sigma = column_heads(rows)
+  if heads_complete(sigma) {
+    untaken_under(sigma, rows, n)
+  } else {
+    match untaken(default_rows(rows), n - 1) {
+      Some(rest_w) => Some([head_absent(sigma)] ++ rest_w),
+      None => None,
+    }
+  }
+}
+
+fn untaken_under(sigma, rows, n) = match sigma {
+  [] => None,
+  [k, ...others] => match untaken(specialize(k, rows), head_arity(k) + n - 1) {
+    Some(w) => Some([SCon(k, take(head_arity(k), w))] ++ drop(head_arity(k), w)),
+    None => untaken_under(others, rows, n),
+  },
+}
+
+// A value built by a head the column does not name. A variant names its
+// first untaken sibling from its type's own variant set; a value of a literal's
+// type is any other value.
+fn head_absent(sigma) = match sigma {
+  [] => SAny,
+  [first, ..._] => match first {
+    HVariant(v) => variant_absent(v, sigma),
+    HNil => SCon(HCons, [SAny, SAny]),
+    HCons => SCon(HNil, []),
+    HBool(b) => SCon(HBool(!b), []),
+    HLit(_) => SAny,
+    HTuple(_) => SAny,
+    HRecord(_) => SAny,
+  },
+}
+
+fn variant_absent(v: Variant, sigma) = match variant_type(v) {
+  Some(ty) => match env_lookup_variants(ty) {
+    Some((_, _, TypeVariants(specs))) => match find(spec_untaken(sigma), specs) {
+      Some((tag, name, tys)) => SCon(
+        HVariant(Variant{arity: len(tys), name: name, tag: tag, total: variant_total(v), ty: Some(ty)}),
+        anys(len(tys))
+      ),
+      None => SAny,
+    },
+    _ => SAny,
+  },
+  None => SAny,
+}
+
+fn spec_untaken(sigma, spec) = match spec {
+  (tag, _, _) => !any(head_has_tag(tag), sigma),
+}
+
+fn head_has_tag(tag, h) = match h {
+  HVariant(v) => variant_tag(v) == tag,
+  _ => false,
+}
+
+// The arms' patterns as rows of one column each.
+fn arm_rows(pats) = map({ p => [space_of(p)] }, pats)
+
+// For each arm, whether it can take anything the arms above it left. Past the
+// first arm that takes every value, nothing can.
+fn arm_liveness(rows) = map(arm_live_in(rows, first_total(rows)), range(0, len(rows)))
+
+fn arm_live_in(rows, total_at, i) =
+  if i > total_at { false } else { can_take(slice(rows, 0, i), rows[i]) }
+
+// The index of the first row that takes every value, or past the end.
+fn first_total(rows) = match find({ i => row_takes_all(rows[i]) }, range(0, len(rows))) {
+  Some(i) => i,
+  None => len(rows),
+}
+
+// What the arms leave untaken, written as the pattern the developer adds. An
+// arm that takes every value leaves nothing, and the search is not run.
+fn uncovered(rows) = if any(row_takes_all, rows) {
+  None
+} else {
+  match untaken(rows, 1) {
+    Some([w, ..._]) => Some(render_space(w)),
+    _ => None,
+  }
+}
+
+// A value, written as the pattern that takes it.
+fn render_space(s) = match s {
+  SAny => "_",
+  SOr(branches) => branches |> map(render_space) |> join(" | "),
+  SCon(h, args) => match h {
+    HVariant(v) => if len(args) == 0 { variant_name(v) } else { "{variant_name(v)}({render_spaces(args)})" },
+    HTuple(_) => "({render_spaces(args)})",
+    HRecord(names) => "\{{zip(names, args) |> map(render_field_space) |> join(", ")}\}",
+    HNil => "[]",
+    HCons => "[{render_list(s)}]",
+    HBool(b) => if b { "true" } else { "false" },
+    HLit(v) => render_lit(v),
+  },
+}
+
+fn render_spaces(args) = args |> map(render_space) |> join(", ")
+
+fn render_field_space(pair) = match pair {
+  (name, s) => "{name}: {render_space(s)}",
+}
+
+// A cons chain reads back as the list pattern it abbreviates.
+fn render_list(s) = match s {
+  SCon(HCons, [head, tail]) => match tail {
+    SCon(HNil, _) => render_space(head),
+    SAny => "{render_space(head)}, ..._",
+    _ => "{render_space(head)}, {render_list(tail)}",
+  },
+  _ => render_space(s),
+}
+
+fn render_lit(v) = match v {
+  LVInt(n) => int_to_str(n),
+  LVFloat(f) => float_to_str(f),
+  LVString(s) => "\"{s}\"",
+  LVBool(b) => if b { "true" } else { "false" },
+}

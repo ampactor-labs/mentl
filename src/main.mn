@@ -927,7 +927,7 @@ fn doc_render_decl(d) = match d {
 fn doc_signature(body) = match body {
   NStmt(FnStmt(name, _, _, _, _)) => Some(doc_value_signature(name)),
   NStmt(HandlerDeclStmt(name, _, _, _, _)) => Some(doc_value_signature(name)),
-  NStmt(LetStmt(PVar(name), _, _)) => Some(doc_value_signature(name)),
+  NStmt(LetStmt(N(NPat(PVar(name)), _, _), _, _)) => Some(doc_value_signature(name)),
   NStmt(TypeDefStmt(name, variants)) => Some("type {name} = {variants |> map({ (variant, _, _) => variant }) |> join(" | ")}"),
   NStmt(EffectDeclStmt(name, _, ops)) => Some("effect {name} \{ {ops |> map({ (op, _, _, _) => op }) |> join(", ")} \}"),
   NStmt(AliasStmt(name, ty)) => Some("type {name} = {show_type(ty)}"),

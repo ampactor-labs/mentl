@@ -44,6 +44,29 @@ effect Fail {
   fail(String) -> a
 }
 
+// The control cut: a computation that stops here, answered by whoever is
+// installed around it. A refutable `let` performs it on the value its pattern
+// refuses (SYNTAX §«Refutable let»), so the answer to "what if it does not
+// match" is written once, at the foot of the chain, instead of at every let.
+// `abort` never resumes; it is inferred OneShot because zero resumes is at
+// most one and the continuation never leaves the stack.
+effect Abort {
+  abort() -> !
+}
+
+// Answer an abort with a value the chain returns instead.
+handler otherwise(fallback) {
+  abort() => fallback,
+}
+
+// Answer an abort with `None`, so the chain's value is an Option.
+handler catch_abort {
+  abort() => None,
+}
+
+// Stop here unless `ok` holds — a condition is the refutable pattern of a Bool.
+fn require(ok) = if ok { () } else { abort() }
+
 fn unwrap(opt) = match opt {
   Some(v) => v,
   None => fail("unwrap on None"),

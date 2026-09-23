@@ -2855,11 +2855,17 @@ for i in "${!compilers[@]}"; do
   # Hβ.lower.list-rest-binding-runtime's gate (the fixture's own header
   # carries the expected value for that day).
   lp_chk=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-lambda-list-param.mn" check 2>&1)
+  # A parameter pattern is an arm on the argument (SYNTAX §«Refutable let»),
+  # so `[h, ...t]` leaves the empty list untaken and coverage says so — the
+  # one diagnostic this fixture owes, named by its witness. Anything else
+  # (a parse diagnostic, a second error) is the refusal coming back.
   lp_n=$(printf '%s' "$lp_chk" | grep -cE 'P_(Unexpected|Expected)Token|E_.* error')
-  if [ "$lp_n" = "0" ]; then
-    pass "lambda list-pattern param: ([h, ...t]) => parses and checks clean"
+  lp_witness=0
+  printf '%s' "$lp_chk" | grep -q 'E_PatternInexhaustive error: no arm takes `\[\]`' && lp_witness=1
+  if [ "$lp_n" = "1" ] && [ "$lp_witness" = "1" ]; then
+    pass "lambda list-pattern param: ([h, ...t]) => parses, and coverage names the [] it leaves"
   else
-    fail "lambda list-pattern param ($lp_n diagnostics; the six-warning refusal is back)"
+    fail "lambda list-pattern param ($lp_n diagnostics, witness=$lp_witness; want exactly the [] coverage witness)"
   fi
 
   # ─── Named effect rows (PLAN §11 Phase 3.3, Hβ.types.named-effect-rows) ─
@@ -3220,7 +3226,18 @@ for i in "${!compilers[@]}"; do
   # landed, `CsIterationCostume` bounded at 480 on the board). A bare program
   # walks no graph and links the producer for no reason at all — the same
   # sentence as the two lines above, and the same peer takes it back.
-  cost_ceiling=2835
+  # 2870 (2026-09-23): ROSE 2835 → 2870, and this one is NOT the same class.
+  # A destructuring `let` is `match v { p => rest, _ => abort() }` (SYNTAX
+  # §«Refutable let»), so the desugar puts `abort()` into any program that
+  # binds a pattern, and the vocabulary that answers it — `effect Abort`,
+  # `otherwise`, `catch_abort`, `require` — moved out of the compiler's own
+  # types.mn/own.mn into lib/prelude.mn, where every program sees it. The
+  # rest is `unwritten_tag` in lib/lists.mn: the nested coverage judgment
+  # found three int-tag matches with no arm for an unwritten tag, and the
+  # read that names that trap is one function where three silent fallbacks
+  # stood. A bare program binds no pattern, so the link-is-reachability
+  # peer takes these lines back like the three above.
+  cost_ceiling=2870
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-bare-floor.mn" cost 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then
