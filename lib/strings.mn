@@ -541,9 +541,9 @@ fn float_to_str(f) with Memory + Alloc = if float_is_nan(f) {
   if float_is_negative(f) { "-0.0" } else { "0.0" }
 } else {
   let sign = float_is_negative(f)
-  let abs_f = if sign == 1 { 0.0 - f } else { f }
+  let abs_f = if sign { 0.0 - f } else { f }
   let rendered = float_render_positive(abs_f)
-  if sign == 1 {
+  if sign {
     let minus = str_of_single_byte(45)
     minus ++ rendered
   } else {
@@ -785,7 +785,10 @@ fn float_is_inf(f: Float) = f == f && f - f != f - f
 
 fn float_is_zero(f) = f == 0.0 || f == 0.0 - 0.0
 
-fn float_is_negative(f) = if f < 0.0 { 1 } else { if float_is_negative_zero(f) { 1 } else { 0 } }
+// A Bool, because its callers branch on it: it answered 0/1 and `if
+// float_is_negative(f)` checked clean for as long as an `if` condition was
+// written with Bool rather than unified with it (tests/syntax/if-over-int).
+fn float_is_negative(f) = f < 0.0 || float_is_negative_zero(f)
 
 fn float_is_negative_zero(f) = f == 0.0 - 0.0 && 1.0 / f < 0.0
 

@@ -2629,7 +2629,12 @@ for i in "${!compilers[@]}"; do
   # is the subtraction — a line-2 error had rendered at weave 5730).
   lcdir="$dir/local-span"
   mkdir -p "$lcdir"
-  printf 'fn main() = {\n  let x: Int = "hi"\n  len(x)\n}\n' > "$lcdir/main.mn"
+  # The body READS x as the Int it is declared to be, so the program holds
+  # exactly one error. It read `len(x)` until 2026-09-24, which was one error
+  # only while the annotation never reached the binder (x read as the String
+  # its value proved); with `x` carrying `Int`, `len(x)` is a second, real
+  # mismatch at its own line, and this leg measures rendering, not arity.
+  printf 'fn main() = {\n  let x: Int = "hi"\n  x + 1\n}\n' > "$lcdir/main.mn"
   lc_out=$(cd "$lcdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$lcdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" main.mn check 2>&1)
   lc_n=$(printf '%s' "$lc_out" | grep -c 'E_TypeMismatch')
   # The assertion names the MODULE as well as the line (2026-09-15). It read
@@ -3278,7 +3283,13 @@ for i in "${!compilers[@]}"; do
   # read that names that trap is one function where three silent fallbacks
   # stood. A bare program binds no pattern, so the link-is-reachability
   # peer takes these lines back like the three above.
-  cost_ceiling=2870
+  # 2873 (2026-09-24): ROSE 2870 → 2873, three lines of prose in
+  # lib/strings.mn on `float_is_negative`, which answered 0/1 and was branched
+  # on as a Bool — a silent wrong the graph's writer surfaced the day it
+  # learned to refuse a bind over a bound cell (E_BindOverBound). The prose
+  # names the class where the fn is; the lines are comment, not link weight,
+  # and the same peer takes them back with the rest.
+  cost_ceiling=2873
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ROOT/tests/frontier/mn-bare-floor.mn" cost 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

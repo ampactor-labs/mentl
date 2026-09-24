@@ -1,0 +1,12 @@
+// expect: refuse E_TypeMismatch
+// SYNTAX §«Operator precedence»: `!` is logical not, so its operand is a
+// Bool and `!5` is a type error. It was not: the operator's arm WROTE
+// `Bool` over the operand's already-bound cell with `graph_bind`, and a
+// bind over a bound cell overwrites — the proof the operand carried was
+// discarded, `!5` checked clean, and the emit negated the word. The
+// operand is unified now, which is what every other operator does; the
+// bind that overwrote is the class the graph's write guard refuses.
+fn main() = {
+  let n = 5
+  if !n { 1 } else { 2 }
+}

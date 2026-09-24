@@ -808,11 +808,36 @@ type Ceiling = {allowed: EffRow, at: Int, sealed: Bool, why: Reason}
 // other link, a charge, and a union of two cells — and, across all four, what
 // the carry each one set off spent per kind of wake, so a write's own cost
 // and the fan-out it triggered are told apart.
-type RowBytes = {carry: CarryBytes, inst: Int, link: Int, teach: Int, union: Int}
+// Beside the rows, the two type-sort costs of a scheme: `clone` is what a
+// use pays to rename and rebuild the declaration's type (`subst_ty` and its
+// mapping), `scheme` what a publish pays to quantify it (`generalize_pair`).
+// Then the graph's own arms — a chase (which PROJECTS a row cell on every
+// read), a bind (its occurs check and trail entry), a mint (a spine page
+// opening) — and the two passes a fn's judgment runs after its body.
+type RowBytes = {bind: Int, carry: CarryBytes, chase: Int, clone: Int, inst: Int, link: Int, mint: Int, narrow: Int, owner: Int, scheme: Int, teach: Int, union: Int}
 
 // The carry's heap by the wake that spent it: a new edge read alone, a
 // source's growth joined, a source re-read, a cell read whole again.
 type CarryBytes = {all: Int, delta: Int, edge: Int, from: Int}
+
+// The slots of the judgment's cost tally, one per kind of write, wake, or
+// type-sort work — the names `graph_tally_add` files under.
+type RowTally
+  = ByInst
+  | ByLink
+  | ByCharge
+  | ByUnion
+  | ByWhole
+  | ByDelta
+  | ByEdge
+  | ByReread
+  | ByClone
+  | ByScheme
+  | ByChase
+  | ByBind
+  | ByMint
+  | ByOwnership
+  | ByNarrowing
 
 // What one declaration's judgment cost: the heap line's advance across it,
 // and the part of that the effect rows wrote, by kind.
@@ -1318,7 +1343,11 @@ type CursorView
 // files and finding out at the type error which one you missed. Three hand
 // copies of one type is the Carried-Truth Law at the declaration layer; the
 // name is its one home, and the next column is one line.
-type SpinePage = {bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], cells: [CellSlot], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]}
+//
+// `mark` is the occurs check's visited set: a root reached by the check whose
+// stamp is the epoch that check's bind takes. Scratch, never trailed — a
+// stale stamp can never match a later one, because the epoch only grows.
+type SpinePage = {bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], cells: [CellSlot], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], mark: [Int], module: [Int], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]}
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) with Memory = count_lines_from(s, byte_len(s), 0, 0)
@@ -2248,7 +2277,6 @@ effect GraphRead {
   // no branch ever appends). A branch graph_handler installs over
   // these with its stmt's planned range as (next0, limit0).
   graph_boundary_at(Int) -> ExecutableBoundary
-  graph_branch_seed() -> ([SpinePage], Int, [(ValidSpan, Int)])
   // The REVERSE-EDGE column's read: every reference handle noted under
   // NAME (newest first — the column prepends). refs_of_name's whole-
   // graph VarRef scan and the oracle's quadratic count_dependents both
@@ -2300,6 +2328,14 @@ effect GraphWrite {
   // module is what parsing a file is, and there is no parse outside one.
   graph_module_enter(Int)
   graph_bind(Int, Ty, Reason)
+  // Write a fn cell's RESOLVED GRADES — the ownership pass's one write, after
+  // the body. It is not a bind: the cell's TFun stays what it is in every
+  // field but each param's `resolved` slot, and the arm refuses a write that
+  // would change anything else, so the grade can never discard a proof the
+  // way a bind over a bound cell does (T_BindOverBound). Larval: a param's
+  // grade is a Consume in its ROW (`Hβ.types.param-projects-to-type-row`),
+  // and this op dissolves into graph_row_teach when the param carries one.
+  graph_grade(Int, [TParam], Reason)
   // mark a node an OBSERVED FAILURE (NErrorHole) — the productive-under-error poison. An env miss binds this, never TVar(self): the self-var tripped graph_bind's own occurs check (a spurious 0:0 E_OccursCheck per missing name) and read downstream as a normal free var (the ownership move-default cascade). A hole is the fact itself: unify no-ops on it, generalize preserves the handle, consumers stay silent.
   graph_bind_hole(Int, Reason)
   // resolve a record field's presence cell ABSENT (NMaybeFree → NAbsent)
@@ -2323,6 +2359,14 @@ effect GraphWrite {
   graph_row_ceiling(Int, Ceiling)
   // A declaration's scalar instances, applied to everything the cell reads.
   graph_row_pin(Int, [EffName])
+  // File heap spent on type-sort work under its slot of the judgment's cost
+  // tally — the rows file their own at their arms; instantiation and
+  // generalization run in the body and file through this.
+  graph_tally_add(RowTally, Int)
+  // The occurs check as an op, for the one body-side asker (the poly teach
+  // after a refusal): does `handle` occur in the type? The handler owns the
+  // stamp the check marks with, so the walk runs in its arm.
+  graph_occurs_in(Int, Ty) -> Bool
   // DRAIN the instance unifications a mask crossing asked for: (the mask's
   // handled instance, the instance that arrived across it). The arm cannot
   // unify, so it notes and inference unifies — until the drain is empty.
@@ -2639,6 +2683,17 @@ type DiagKind
   // (measured 2026-09-18: a handler arm over quantified op parameters
   // answered "ab" != "ab"). T_FieldOffsetUnprovable's sibling, same ladder.
   | TEqTypeUnprovable(String, Span)
+  // a bind that would WRITE OVER a bound cell: the handle, the type it holds,
+  // and the reason of the write refused. A cell the graph already proved is
+  // read by unification, never rewritten — a rewrite is the Carried-Truth Law
+  // violated at the one writer, and it is how `!5`, `5 && true` and `if 5`
+  // all checked clean (2026-09-24: the operand's cell written with Bool).
+  // ARMED the day it was born: its census on the wheel's own compile read
+  // 5,881, and the three families it named retired at their writers the
+  // same day — the ownership pass grades (graph_grade), a let annotation
+  // types the binder, an operator unifies. The writer refuses; a wheel
+  // carrying one cannot compile.
+  | EBindOverBound(Int, Ty, Reason, Span)
   // clock-replay trace ran out
   | EReplayExhausted(Span)
 
@@ -2848,6 +2903,7 @@ fn diag_span(d) with Pure = match d {
   EUnresolvedHole(_, s) => s,
   TFieldOffsetUnprovable(_, s) => s,
   TEqTypeUnprovable(_, s) => s,
+  EBindOverBound(_, _, _, s) => s,
   EReplayExhausted(s) => s,
 }
 
@@ -2919,6 +2975,7 @@ fn diag_source(d) with Pure = match d {
   EUnresolvedHole(_, _) => "verify",
   TFieldOffsetUnprovable(_, _) => "lower",
   TEqTypeUnprovable(_, _) => "lower",
+  EBindOverBound(_, _, _, _) => "graph",
   EReplayExhausted(_) => "clock",
 }
 
@@ -2990,6 +3047,7 @@ fn diag_code(d) with Pure = match d {
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
   TFieldOffsetUnprovable(_, _) => "T_FieldOffsetUnprovable",
   TEqTypeUnprovable(_, _) => "T_EqTypeUnprovable",
+  EBindOverBound(_, _, _, _) => "E_BindOverBound",
   EReplayExhausted(_) => "E_ReplayExhausted",
 }
 
@@ -3060,6 +3118,7 @@ fn diag_applicability(d) with Pure = match d {
   EUnresolvedHole(_, _) => HasPlaceholders,
   TFieldOffsetUnprovable(_, _) => MaybeIncorrect,
   TEqTypeUnprovable(_, _) => MaybeIncorrect,
+  EBindOverBound(_, _, _, _) => MaybeIncorrect,
   ERefinementRejected(_, _) => Unspecified,
   EVerifyUnencodable(_) => Unspecified,
   ETypeMismatch(_, _, _) => Unspecified,
@@ -3154,6 +3213,7 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
   TFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed, so this load has no provable slot and the emit writes a trap here; close the row (annotate the receiver at its Intent Boundary, or give the call site a shape the twin can key on)",
   TEqTypeUnprovable(why, _) => "{why} — the operand's type is still a variable at emit, so the comparison has no structure to read and falls to a one-word compare (right for a word, an address lie for anything else); prove the operand: give the call site a shape the twin can key on, or name the type at its Intent Boundary",
+  EBindOverBound(h, was, why, _) => "a bind reached cell #{int_to_str(h)}, which already holds {show_type(was)} ({show_reason(why)}) — it would have discarded a proof the graph carries where a unification would have read it, so the writer refused; the writer is the compiler's own, so this is a report on the medium, not on your program",
   EReplayExhausted(_) => "clock replay trace exhausted",
 }
 

@@ -136,9 +136,14 @@ if C=$(wt_m2_ensure); then
     [[ -e "$sf" ]] || continue
     syn_n=$((syn_n+1))
     s=$(basename "$sf" .mn)
+    # The fixture's contract is the verb's grammar (`mentl test`): `// expect: N`
+    # runs to N; `// expect: refuse E_Class` must be refused with that class
+    # named. run-micro.sh speaks the second as `refuse:E_Class`.
     swant=$(sed -n '1s|^// expect: \([0-9]\+\)$|\1|p' "$sf")
+    srefuse=$(sed -n '1s|^// expect: refuse \([A-Z]_[A-Za-z]\+\)$|\1|p' "$sf")
+    [[ -n "$srefuse" ]] && swant="refuse:$srefuse"
     if [[ -z "$swant" ]]; then
-      say "✗ syntax $s: no '// expect: N' header"; syn_bad=$((syn_bad+1)); continue
+      say "✗ syntax $s: no '// expect: N' or '// expect: refuse E_Class' header"; syn_bad=$((syn_bad+1)); continue
     fi
     # The VERDICT line, not the last line: run-micro.sh prints FAIL(...) and
     # then tails the run's stderr, so `tail -1` on a failure hands back a
@@ -164,8 +169,16 @@ if C=$(wt_m2_ensure); then
   man_bad=0
   for sf in tests/syntax/*.mn; do
     [[ -e "$sf" ]] || continue
-    mout=$(wt_run --dir . "$C/m2.wasm" "$sf" check 2>&1 | grep -cE ' error: ' || true)
-    if [[ "$mout" -gt 0 ]]; then
+    mrefuse=$(sed -n '1s|^// expect: refuse \([A-Z]_[A-Za-z]\+\)$|\1|p' "$sf")
+    merr=$(wt_run --dir . "$C/m2.wasm" "$sf" check 2>&1)
+    mout=$(printf '%s' "$merr" | grep -cE ' error: ' || true)
+    if [[ -n "$mrefuse" ]]; then
+      # A refusal fixture agrees when BOTH links refuse with the class named.
+      if ! printf '%s' "$merr" | grep -q "$mrefuse.*[Ee]rror:"; then
+        say "✗ syntax(manifest) $(basename "$sf" .mn): the blob link refuses $mrefuse and the manifest does not"
+        man_bad=$((man_bad+1))
+      fi
+    elif [[ "$mout" -gt 0 ]]; then
       say "✗ syntax(manifest) $(basename "$sf" .mn): $mout diagnostic(s) the blob link never sees"
       man_bad=$((man_bad+1))
     fi

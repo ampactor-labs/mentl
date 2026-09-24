@@ -35,6 +35,59 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-24 · pin 9c298e72ef48dccf (TRANSITION m3 == m4; census 0, frontier
+  422/0/8 and crown 152/0/6 through the candidate before the repin, board
+  24/24 and micros green through it at the repin) · THE GRAPH'S ONE TYPE
+  WRITER REFUSES A BIND OVER A BOUND CELL, AND THE OCCURS CHECK MOVED ONTO
+  THE SPINE. Two arcs, one day. (1) THE OCCURS COLUMN. The visited set the
+  occurs check kept was a fresh list per check, re-walking every path to a
+  shared row variable; it is a `mark` column on `SpinePage` now, stamped
+  with `epoch + 1` at every check (a refusal takes the stamp too, so no two
+  checks share one), zero allocation, `||` short-circuit. MEASURED on the
+  weave's judgment: the bind class 226.7MB → 18.3MB, the whole 819 →
+  612MB; the m3 leg's heap 680 → 477MB and peak RSS 1196 → 1009MB. Two
+  hypotheses killed on the way, both banked as design-inst-edge.md's
+  thesis: the `subst_ty` clone measured 3% and the chase projection 1.6%
+  of the judgment once the cost tally split them by kind (`ByClone`,
+  `ByScheme`, `ByChase`, `ByBind`, `ByMint`, `ByOwnership`, `ByNarrowing`
+  joined the tally; `mentl <file> cost` reads them). (2) THE WRITER. A
+  four-parameter helper in that same family was called with three
+  arguments under `!` and the wheel checked clean — a partial application,
+  a FUNCTION, negated. Probed: `!5`, `5 && true`, `if 5 { … }` all typed
+  `Bool` with zero diagnostics, because the operator and `if` arms wrote
+  `Bool` over the operand's proven cell and `graph_bind` on a bound cell
+  OVERWROTE. The census at the writer, before any site was fixed: 5,881 on
+  the wheel's own compile, in families the writer's own Reason named
+  (3,281 ownership rewrites of the decl's fn type, 1,985 `Bool`, 614 the
+  same operands one alias over, 1 let annotation). Each retired at its
+  home: operators and `if` unify (`unify_types(TVar(h), ty_bool, …)`);
+  the ownership pass writes through `graph_grade`, an op that refuses any
+  write wider than a param's resolved slot, the held and graded fn types
+  compared as the graph holds them (`ty_agrees` — a value compare refused
+  every pre-registered fn on its first run, because prereg's cells and the
+  body's are aliases); a let annotation types the BINDER's own pattern
+  cell (`let n: ValidOffset = …` — `n` carries the refinement, the value
+  keeps its Int). Zero, then ARMED as `E_BindOverBound`, no board bound —
+  the refusal holds the proof. WHAT THE GATES THEN FOUND: `lib/strings.mn`
+  branched on `float_is_negative`'s 0/1 (the fix's first fresh run), and
+  the frontier's first run against the armed candidate refused
+  mn-handler-config-default — a DEFAULT re-inferred at every omitting call,
+  confessed in the handler decl's own comment. A default is judged once
+  at its declaration (fn and handler, `judge_param_default`) and a filled
+  slot that IS the default node is referenced (`arg_is_the_default`). Two
+  marches, one repin, two frontier runs: the second march was the fix's.
+  Fixtures, each seen RED first: `tests/syntax/not-over-int`,
+  `and-over-int`, `if-over-int`, `not-over-partial` (refuse
+  `E_TypeMismatch`), `default-judged-once` (17, RED against the armed
+  candidate). Gate edits: the localize leg's program reads `x + 1` (with
+  the annotation reaching the binder, `len(x)` was a second real error);
+  the prelude floor 2870 → 2873 (three lines of prose on the lib's Bool).
+  Peers: `Hβ.graph.bind-over-bound-refuses` (LANDED, the record),
+  `Hβ.types.param-projects-to-type-row` (the grade op's retirement, named
+  in this catalog for the first time), `Hβ.graph.record-row-occurs-refuses-
+  silently` (the record sort's occurs refusal says nothing). Board:
+  `JudgmentHeap` 815,485,216 → 614,513,472; `CsAuthored(Ref)` 561 → 560;
+  `CsIterationCostume` 440; `CsWildcardDestructure` 212.
 - 2026-09-24 · pin 8afcc826917fe92f (CLEAN m2 == m3; census 0, frontier 422/0/8
   and crown 152/0/6 through the candidate before the repin, board and micros
   green through it at the repin) · THE AUDIT OF THE LANDING BEFORE THIS ONE,

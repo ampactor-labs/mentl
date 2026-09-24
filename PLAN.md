@@ -1033,6 +1033,35 @@ and this is the STATE.
   `Hβ.syntax.positive-row-is-authored-by-hand`: author the negations, the
   pins and the genuine narrowings; infer and PROJECT the positive row.
 
+- **THE GRAPH'S ONE TYPE WRITER REFUSES A BIND OVER A BOUND CELL (2026-09-24),
+  and the day it was born its census read 5,881 on the wheel's own compile.**
+  `graph_bind` on a cell that already held a type OVERWROTE it, so `!5`,
+  `5 && true` and `if 5 { … }` checked clean — the operator arms and the `if`
+  arm wrote `Bool` over the operand's proven cell instead of unifying with it
+  — and a four-parameter helper called with three arguments under `!` in the
+  wheel's own occurs family compiled as a negated closure pointer. Three
+  families, each named by the writer's own Reason column and each retired at
+  its home the same day: operators and `if` unify; the ownership pass writes
+  grades through `graph_grade`, an op that refuses any write wider than a
+  param's resolved slot (the held fn type and the graded one compared as the
+  graph holds them, since prereg's cells and the body's are aliases); a let
+  annotation types the BINDER's own pattern cell. Then zero, then ARMED:
+  `E_BindOverBound`, no board bound, the refusal holding the proof a zero
+  ceiling would only stand in for. The fix's first run through the fresh
+  compiler found `lib/strings.mn` branching on an Int (`float_is_negative`
+  answered 0/1), and the frontier gate's first run against the armed
+  candidate found a fourth family the wheel never writes: a parameter
+  DEFAULT re-inferred at every omitting call, the decl's own comment
+  confessing it. A default is judged once at the declaration now, and a
+  call that omits the field references its node. `Hβ.graph.bind-over-bound-refuses` carries the record;
+  `Hβ.types.param-projects-to-type-row` (the grade op's retirement) and
+  `Hβ.graph.record-row-occurs-refuses-silently` (the record sort's occurs
+  refusal says nothing) are the two gaps it named. **The occurs check itself
+  moved the same day** onto a stamped `mark` column on the spine — the
+  visited set that had been a fresh list per check, re-walking every path to
+  a shared row variable — and the bind class of the judgment's heap fell
+  226.7MB → 18.3MB, the weave's judgment 819 → 612MB.
+
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
 

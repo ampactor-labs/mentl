@@ -1,0 +1,11 @@
+// expect: refuse E_TypeMismatch
+// The shape that found the class in the wheel's own source: a call one
+// argument short is a partial application (SYNTAX §«Partial application»),
+// a FUNCTION value, and `!` over it must refuse. It checked clean, so a
+// four-parameter helper called with three arguments under `!` compiled,
+// and the emit compared a closure pointer with zero — always false, so
+// the guard the call implemented never fired. A refusal is what makes
+// the arity slip unsayable.
+fn four(a, b, c, d) = a + b + c + d
+
+fn main() = if !four(1, 2, 3) { 1 } else { 2 }

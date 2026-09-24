@@ -393,7 +393,7 @@ fn board_bounds() with Memory + Alloc = [
   // same day by reading the board whole. 446 (2026-09-24): the count fell
   // again as the rows landing's walks became folds; the ceiling follows. 445
   // when the formatter's whole-graph parent scan was deleted (2026-09-24).
-  Bound({ceiling: 445, measure: Census(CsIterationCostume)}),
+  Bound({ceiling: 440, measure: Census(CsIterationCostume)}),
   // 131 (2026-09-24, from 136) — a gate told to look away, counted on the comments column. Each
   // marker is a bash pattern left imprecise (the control-keyword rule inside
   // a Reason string, the accumulator rule on a bounded stack push); the
@@ -425,7 +425,7 @@ fn board_bounds() with Memory + Alloc = [
   // steps, and the count fell by one with them. 213 when the formatter's
   // seven-aspect fan and its parent scan were deleted — each aspect branch
   // destructured the borrowed triple by position.
-  Bound({ceiling: 213, measure: Census(CsWildcardDestructure)}),
+  Bound({ceiling: 212, measure: Census(CsWildcardDestructure)}),
   // THE QUIET GATE (§4⑤'s Hylo bar): a parameter whose ownership the author
   // had to write is the inference failing, measured instead of felt. These
   // two counts were `grep -roE '[(,] *own [a-z_]' src/` in tools/verify.sh
@@ -435,7 +435,7 @@ fn board_bounds() with Memory + Alloc = [
   // `authored` slot, so these are declarations, across every module the
   // wheel links: 57 and 561 the day they moved here.
   Bound({ceiling: 57, measure: Census(CsAuthored(Own))}),
-  Bound({ceiling: 561, measure: Census(CsAuthored(Ref))}),
+  Bound({ceiling: 560, measure: Census(CsAuthored(Ref))}),
   // Reads emit REPORTS rather than a census, so `mentl verify` runs the
   // compile's remainder to see them: each is a field read the executable
   // ships as `(unreachable)`. The class arms — its narration becomes an
@@ -446,6 +446,11 @@ fn board_bounds() with Memory + Alloc = [
   // still a variable at emit, where a one-word compare would be an address
   // compare answering a lie. Fifty-two, again the flat link's own count.
   Bound({ceiling: 52, measure: Said(UnprovableComparison)}),
+  // No bound holds the bind-over-a-bound-cell class: it was born, measured at
+  // 5,881 on the wheel's own compile, taken to zero and ARMED in one landing
+  // (2026-09-24), so the graph's writer refuses it and a wheel carrying one
+  // cannot compile — the refusal holds the proof a zero ceiling would only
+  // have stood in for.
   // A backticked name in prose is a reference the judgment resolves; one that
   // resolves nowhere is a claim about the code nobody can check. Zero, and it
   // was zero while the count lived in verify.sh — the difference is that the
@@ -461,7 +466,7 @@ fn board_bounds() with Memory + Alloc = [
   // 823,561,992 when a row cell's copies stopped waking at every growth and
   // its membership tests stopped copying their sets, then → 815,485,216 when
   // the rows' cost tally stopped rebuilding a record at every wake it counted.
-  Bound({ceiling: 815485216, measure: JudgmentHeap}),
+  Bound({ceiling: 614513472, measure: JudgmentHeap}),
   // Zero, and it is what makes the pre-commit's formatting pass unnecessary:
   // a landing whose source is off its canonical render was pinned from one
   // text and committed as another.

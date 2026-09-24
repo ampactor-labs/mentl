@@ -28,6 +28,110 @@
 
 ---
 
+`Hβ.graph.bind-over-bound-refuses` — LANDED 2026-09-24, born, measured and
+ARMED in one landing, and the record is kept because the way it was found is
+the transferable half.
+
+HOW IT WAS FOUND. A four-parameter helper in the occurs family was called with
+three arguments under `!` — a partial application, a FUNCTION value — and
+`mentl check` on the wheel passed. Probed on a two-line program: `!5`,
+`5 && true` and `if 5 { 1 } else { 2 }` all checked clean and typed `Bool`.
+The operator arms and the `if` arm CONSTRAINED their operand with
+`graph_bind(operand, Bool)`, and `graph_bind` on a cell already holding a
+type OVERWROTE it — the Int the literal proved, the fn type the partial
+proved, discarded at the one place the graph is written. `unify_types`'s own
+TVar arm had named the class in its comment for weeks ("never `graph_bind`
+over it — the raw bind discards the proof") and nothing refused it.
+
+THE CENSUS, taken at the one writer before any site was fixed: 5,881 binds
+over a bound cell on the wheel's own compile, in three families, each named
+by the writer's own Reason once the diagnostic carried it — 3,281 `inferred
+from ownership-resolved params of '…'` (infer_fn's last write, one per fn:
+the ownership pass rewrote the decl's whole fn type to land the grades),
+1,985 `Bool` (operators and `if` conditions), 614 a cell holding a variable
+(the same operands, one alias hop over), and ONE `let annotation pins the
+value` (the lexer's `let n: ValidOffset = byte_len(source)`, whose value
+cell was rewritten with the refined alias so consumers of `n` could read it).
+
+WHAT RETIRED EACH. `!`, `&&`/`||` and `if` unify their operand
+(`unify_types(TVar(h), ty_bool, …)`, the form every other operator already
+used). The ownership pass writes through `graph_grade(handle, params, reason)`,
+an op whose arm refuses any write that would change more than a param's
+`resolved` slot — the held fn type and the graded one are compared as the
+graph holds them (`ty_agrees`: every variable read at its root, rows by their
+root sets), because prereg's param cells and the body's are aliases and a
+value compare refused every pre-registered fn on the first run. A let
+annotation types the BINDER: the pattern node has its own cell (patterns are
+nodes, 2026-09-20), so `n`'s cell carries `ValidOffset` and the value node
+keeps its `Int`. Then the count was ZERO on the wheel and the class ARMED the
+same day: `E_BindOverBound`, the writer refuses without writing, and a wheel
+carrying one cannot compile — no board bound holds it, because a ceiling at
+zero is a proxy for the proof the refusal holds directly (Phase 4.1's law).
+
+WHAT THE FIX EXPOSED, the counted kill: `lib/strings.mn`'s
+`float_is_negative` answered 0/1 and was branched on as `if
+float_is_negative(f)` — a real silent wrong the refusal surfaced on its first
+run through the fresh compiler (`E_TypeMismatch Int vs Bool at strings:539`).
+It answers a Bool now.
+
+A FOURTH FAMILY THE WHEEL NEVER WRITES, found by the frontier gate against
+the armed candidate on the first march: a parameter DEFAULT was re-inferred
+at every call that omitted the field (`resolve_call_args` splices the
+default's own node into the arg list and `infer_call_arg` judged it again),
+so the second omitting call to `fn add(a, b = 2)` — or the second install of
+`handler times(base = 3, factor = 2)` — bound the same literal twice. The
+handler decl's own comment had confessed it ("an omitting explicit install
+re-infers the spliced node at its site"). A default is judged ONCE now, at
+the declaration in the callee's frame (`judge_param_default`, fn and handler
+alike — so what a fn default performs charges the callee's row, which is
+SYNTAX's rule and what the crown's default-carrier crucibles assume), and a
+filled slot whose node IS the default (`arg_is_the_default`, identity by
+handle) is referenced, never judged. `tests/syntax/default-judged-once` (17)
+was seen RED against the armed candidate before the fix.
+
+FIXTURES: `tests/syntax/not-over-int`, `and-over-int`, `if-over-int`,
+`not-over-partial` — each `// expect: refuse E_TypeMismatch`, each seen RED
+on the boot (errors=0) before the fix; `default-judged-once`, RED as above.
+
+MEASURED: the judgment's heap 610.3MB → 612.5MB (the four fixtures and the
+lib's Bool are in it); the battery 30/30 through the fresh compiler.
+
+THE PRINCIPLE, stated so the next one is not fixed as a mole: a write that
+can discard a proof must refuse at the WRITER, and the census of who was
+discarding is what the writer reports before it refuses. Two sites were the
+symptom; the writer was the root; the families were found by reading the
+writer's own Reason column, never by grepping the callers.
+
+---
+
+`Hβ.types.param-projects-to-type-row` — OPEN, named in `src/types.mn`'s
+parameter-product comment since the accessor family landed and never in this
+catalog until 2026-09-24 (a gap that lives only in a comment is not named).
+A param projects to {type, row}: ownership IS a Consume in the param's ROW, a
+refinement IS a refined type, and the five-slot `TParam` dissolves. Its
+larval seam today is `graph_grade` (graph.mn): the ownership pass's one write,
+which moves a param's `resolved` slot inside the fn cell's TFun VALUE — a
+grade stored in a type value where a row fact belongs. When the param carries
+a row cell, the grade is charged into it (`graph_row_teach`) and `graph_grade`
+loses its caller. Retirement: `graph_grade` deleted; `param_resolved` reads
+the row.
+
+---
+
+`Hβ.graph.record-row-occurs-refuses-silently` — OPEN, measured 2026-09-24
+while the occurs check moved onto the spine's `mark` column.
+`graph_bind_record_row`'s occurs refusal (`occurs_in_fields(…) ||
+record_row_tail_is(tail, handle)`) resumes WITHOUT writing and WITHOUT a
+diagnostic: the infinite record row is refused and nobody is told. Its type
+sibling stores `EOccursCheck` in `guard_diags` for the body to render; the
+record sort stores nothing. The form: the same stored refusal, one
+constructor over (an `EOccursCheck` whose type renders the record row), so a
+program building a cyclic record row reads a refusal at the site instead of
+an open row that never closes. Seen RED nowhere yet — the fixture is owed with
+the fix.
+
+---
+
 `Hβ.test.blob-link-has-no-verb` — OPEN, BORN 2026-09-21, and it exists because
 a STALE LIMITATION hid a LIVE one for an unknown number of landings.
 

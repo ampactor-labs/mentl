@@ -129,7 +129,7 @@ fn spine_open_loop(own spine, opened, b) with Memory + Alloc = if opened > b {
   (spine, opened)
 } else {
   let page =
-    SpinePage{bind: make_list(spine_slots), boundaries: make_list(spine_slots), canon: make_list(spine_slots), cells: make_list(spine_slots), comments: make_list(spine_slots), dispatch: make_list(spine_slots), installs: make_list(spine_slots), module: make_list(spine_slots), narrowing: make_list(spine_slots), nodes: make_list(spine_slots), program: make_list(spine_slots), slots: make_list(spine_slots), spans: make_list(spine_slots)}
+    SpinePage{bind: make_list(spine_slots), boundaries: make_list(spine_slots), canon: make_list(spine_slots), cells: make_list(spine_slots), comments: make_list(spine_slots), dispatch: make_list(spine_slots), installs: make_list(spine_slots), mark: make_list(spine_slots), module: make_list(spine_slots), narrowing: make_list(spine_slots), nodes: make_list(spine_slots), program: make_list(spine_slots), slots: make_list(spine_slots), spans: make_list(spine_slots)}
   spine_open_loop(list_set(spine, opened, page), opened + 1, b)
 }
 
@@ -178,6 +178,15 @@ fn spine_put_comment(ref spine, h, own cell) with Memory = {
 // inside some module, because entering one is what parsing a file IS.
 fn spine_put_module(ref spine, h, m) with Memory = {
   let _ = list_set(spine_page(spine, h).module, spine_slot(h), m)
+  ()
+}
+
+// The occurs check's mark on a root: the stamp of the check that reached it.
+// A root is always a minted handle, so its band is open.
+fn spine_mark_at(spine, h) with Memory = list_index(spine_page(spine, h).mark, spine_slot(h))
+
+fn spine_put_mark(spine, h, stamp) with Memory = {
+  let _ = list_set(spine_page(spine, h).mark, spine_slot(h), stamp)
   ()
 }
 
@@ -283,14 +292,6 @@ fn spine_boundary_at(ref spine, spine_open, h) with Memory = if spine_band(h) >=
   list_index(spine_page(spine, h).boundaries, spine_slot(h))
 }
 
-// The op-based face of the state-passed occurs family — for bracketed
-// pre-check sites (unify's typed-render occurs report), which hold no
-// spine: one seed read, then a zero-op walk. The arms call the family
-// directly with their own state and never come here.
-fn occurs_in_live(handle, ref ty) with GraphRead + Memory + Alloc + Cast + !Mutate = match graph_branch_seed() {
-  (spine, _open, _spans) => occurs_in(spine, graph_next(), handle, ty),
-}
-
 // Config: a BRANCH CURSOR (the parallel fan's per-thread instance) installs
 // over the SHARED spine with a private planned range — the root install is
 // bare and the defaults are the empty graph. Handler state records live in
@@ -308,7 +309,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   //
   // ─── Read ops ────────────────────────────────────────────────────
   {
-    resume(chase_node(spine, next, handle, 0))
+    let m0 = heap_mark()
+    let node = chase_node(spine, next, handle, 0)
+    row_tally_add(row_tally, ByChase, heap_mark() - m0)
+    resume(node)
   },
   graph_chase_handle(handle) => resume(chase_handle(spine, next, handle, 0)),
   graph_epoch() => resume(epoch),
@@ -381,12 +385,14 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // rather than left switched off: a branch nothing can take still costs
   // every mint the test, and a reader the price of believing it matters.
   {
+    let m0 = heap_mark()
     match spine_ensure(spine, spine_open, spine_band(next)) {
       (sp, so) => {
         spine_put_node(sp, next, GNode(NFree(epoch), reason))
         spine_put_module(sp, next, cur_module + 1)
         let new_trail = trail_append(trail, trail_len, MFreshNode(next))
         if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(next)) }
+        row_tally_add(row_tally, ByMint, heap_mark() - m0)
         resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = trail_len + 1
       },
     }
@@ -543,28 +549,86 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // the enclosing chain held) nor charge GraphRead into this handler's
   // residual (the row leak that carried the render/guard ops past every
   // bracket into the wheel's own root row).
-  if occurs_in(spine, next, handle, ty) {
-    // THE ONE HOME OF THE OCCURS REFUSAL. Every bind passes here, so this is
-    // where an infinite type is refused, whichever unification drew it.
-    // STORED, NOT REPORTED: a diag_report here resolves OUTER of this install
-    // and sails past any capture bracket installed deeper — which is where
-    // speculation installs one, so the refusal the Mycroft retry keys on
-    // would never reach it. And STORED UNRENDERED: an arm cannot read the
-    // graph its own body reads, so the body that drains it renders it
-    // (`report_guard_note`), and the body that judged the fn decides whether
-    // the cycle is polymorphic recursion (`poly_teach_notes`) — a question
-    // about the fn's own signature, which no single cell's mint answers.
-    resume() with guard_diags = push(
-      guard_diags,
-      (EOccursCheck(handle, ty, reason_span_or_zero(reason)), "", spine_module_name(spine, spine_open, cur_module))
-    )
-  } else {
+  {
+    let m0 = heap_mark()
+    // The stamp is the epoch this write takes. A refusal takes it too, so no
+    // two checks ever mark with one stamp.
+    let stamp = epoch + 1
+    if occurs_in(spine, next, handle, ty, stamp) {
+      // THE ONE HOME OF THE OCCURS REFUSAL. Every bind passes here, so this is
+      // where an infinite type is refused, whichever unification drew it.
+      // STORED, NOT REPORTED: a diag_report here resolves OUTER of this install
+      // and sails past any capture bracket installed deeper — which is where
+      // speculation installs one, so the refusal the Mycroft retry keys on
+      // would never reach it. And STORED UNRENDERED: an arm cannot read the
+      // graph its own body reads, so the body that drains it renders it
+      // (`report_guard_note`), and the body that judged the fn decides whether
+      // the cycle is polymorphic recursion (`poly_teach_notes`) — a question
+      // about the fn's own signature, which no single cell's mint answers.
+      row_tally_add(row_tally, ByBind, heap_mark() - m0)
+      resume() with epoch = stamp, guard_diags = push(
+        guard_diags,
+        (EOccursCheck(handle, ty, reason_span_or_zero(reason)), "", spine_module_name(spine, spine_open, cur_module))
+      )
+    } else {
+      let old_node = graph_node_at(spine, next, handle)
+      match old_node {
+        GNode(NBound(was), _) => // A BIND OVER A BOUND CELL IS A RE-DERIVATION, and the writer REFUSES
+        // it: the cell already carries a proof, and a second write would
+        // discard it where a unification would have checked it (`!5`, `5 &&
+        // true` and `if 5` all checked clean this way, 2026-09-24 — the
+        // operand's cell written with Bool). The refusal is stored like the
+        // occurs refusal, and it is an error: a wheel carrying one cannot
+        // compile. The grade write (graph_grade) is the one write that
+        // legitimately reaches a bound fn cell, and it has its own op.
+        {
+          row_tally_add(row_tally, ByBind, heap_mark() - m0)
+          resume() with epoch = stamp, guard_diags = push(
+            guard_diags,
+            (EBindOverBound(handle, was, reason, reason_span_or_zero(reason)), "", spine_module_name(spine, spine_open, cur_module))
+          )
+        },
+        _ => {
+          spine_put_node(spine, handle, GNode(NBound(ty), reason))
+          let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
+          if len(checkpoint_stack) == 0 { graph_mutated(stamp, MSetNode(handle, old_node)) }
+          row_tally_add(row_tally, ByBind, heap_mark() - m0)
+          resume() with epoch = stamp, trail = new_trail, trail_len = trail_len + 1
+        },
+      }
+    }
+  },
+  graph_grade(handle, params, reason) => // THE GRADE WRITE: only the params' `resolved` slots move. The cell must
+  // hold a TFun whose params match the graded ones in every other field —
+  // otherwise this write would be a bind over a bound cell wearing a
+  // narrower name, and it refuses (stored, like the occurs refusal) rather
+  // than write.
+  {
     let old_node = graph_node_at(spine, next, handle)
-    spine_put_node(spine, handle, GNode(NBound(ty), reason))
-    let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
-    let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    let graded = match old_node {
+      GNode(NBound(TFun{params: was, ret, row}), _) => if grades_only_differ(spine, next, was, params) {
+        Some(GNode(NBound(TFun(params, ret, row)), reason))
+      } else {
+        None
+      },
+      _ => None,
+    }
+    match graded {
+      Some(node) => {
+        spine_put_node(spine, handle, node)
+        let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
+        let new_epoch = epoch + 1
+        if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) }
+        resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+      },
+      None => resume() with guard_diags = push(
+        guard_diags,
+        (EInternalInvariant(
+          "a grade write reached cell #{int_to_str(handle)}, which does not hold the fn type it grades — the write would have changed more than the params' resolved slots",
+          reason_span_or_zero(reason)
+        ), "", spine_module_name(spine, spine_open, cur_module))
+      ),
+    }
   },
   graph_bind_hole(handle, reason) => // The productive-under-error poison write (infer.mn:24's law, given its
   // graph op): the node becomes an OBSERVED FAILURE. No occurs check — a hole
@@ -704,6 +768,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   },
   graph_row_cell(handle) => resume(row_cell_at(spine, next, handle)),
   graph_row_bytes() => resume(row_tally_read(row_tally)),
+  graph_tally_add(t, n) => {
+    row_tally_add(row_tally, t, n)
+    resume()
+  },
   graph_is_row_cell(handle) => resume(cell_slot_held(spine, next, row_root(spine, next, handle, 0))),
   graph_row_pending() => // The instance unifications a mask crossing asked for, handed to the
   // body that can perform them (an arm cannot unify: its performs resolve
@@ -717,6 +785,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // each field ty (a residual's self-reference is a real infinite type), and
   // the tail's own self-reference is the row-side half of the same check.
   {
+    let stamp = epoch + 1
     if cell_slot_held(spine, next, handle) {
       // THE TWO ROW SORTS NEVER MEET AT ONE HANDLE. A record residual bound
       // onto an effect row cell is stored where no read looks — the chase
@@ -728,8 +797,12 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         reason_span_or_zero(reason)
       ), "", spine_module_name(spine, spine_open, spine_module_of(spine, spine_open, handle)))
       resume() with guard_diags = row_diags_join(guard_diags, [d])
-    } else if occurs_in_record_fields(spine, next, handle, fields) || record_row_tail_is(tail, handle) {
-      resume()
+    } else if occurs_in_fields(spine, next, handle, fields, stamp) || record_row_tail_is(tail, handle) {
+      // A residual that reaches its own handle is refused SILENTLY here — no
+      // diagnostic, no trail entry — where the type sort's twin above stores
+      // an `EOccursCheck` for the body to narrate. The stamp the check marked
+      // with is spent either way (`Hβ.graph.record-row-occurs-refuses-silently`).
+      resume() with epoch = stamp
     } else {
       let old_node = graph_node_at(spine, next, handle)
       // The TAIL rides from the writer that knew it (types.mn RecordRowTail):
@@ -737,9 +810,8 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       // the fields alone cannot say which of the three produced them.
       spine_put_node(spine, handle, GNode(NRecordRowBound(fields, tail), reason))
       let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
-      let new_epoch = epoch + 1
-      if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) }
-      resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+      if len(checkpoint_stack) == 0 { graph_mutated(stamp, MSetNode(handle, old_node)) }
+      resume() with epoch = stamp, trail = new_trail, trail_len = trail_len + 1
     }
   },
   graph_index_span(span, handle) => // ─── Rollback — the oracle's undo ────────────────────────────────
@@ -885,7 +957,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // Every read before the publish — every non-emit route, `check`,
   // `query`, the judgment's own — answers None and takes the word floor.
   if len(sigs_col) == 0 { resume(None) } else { resume(smap_get(sigs_col, name)) },
-  graph_branch_seed() => resume((spine, spine_open, span_index)),
+  graph_occurs_in(handle, ty) => // The marks this check leaves are graph state, so the check takes an
+  // epoch like any write.
+  {
+    let stamp = epoch + 1
+    let occ = occurs_in(spine, next, handle, ty, stamp)
+    resume(occ) with epoch = stamp
+  },
   graph_rollback(target_idx) => {
     let n = len(checkpoint_stack)
     if n == 0 {
@@ -1068,8 +1146,6 @@ fn row_acc_new(trail, tl, tally) = RowAcc{diags: [], pairs: [], tally: tally, tl
 // measured — the diagnostics ledger's lesson (integer tallies, never a list
 // or record rebuilt per event) read one layer over. `RowBytes` exists only
 // where it is read.
-type RowTally = ByInst | ByLink | ByCharge | ByUnion | ByWhole | ByDelta | ByEdge | ByReread
-
 fn row_tally_slot(t) = match t {
   ByInst => 0,
   ByLink => 1,
@@ -1079,9 +1155,16 @@ fn row_tally_slot(t) = match t {
   ByDelta => 5,
   ByEdge => 6,
   ByReread => 7,
+  ByClone => 8,
+  ByScheme => 9,
+  ByChase => 10,
+  ByBind => 11,
+  ByMint => 12,
+  ByOwnership => 13,
+  ByNarrowing => 14,
 }
 
-fn row_tally_new() = list_filled(8, 0)
+fn row_tally_new() = list_filled(15, 0)
 
 fn row_tally_add(tally, t, n) = {
   let slot = row_tally_slot(t)
@@ -1098,20 +1181,21 @@ fn row_tally_of_wake(wake) = match wake {
 fn row_tally_of_edge(e: RowEdge) = if e.inst { ByInst } else { ByLink }
 
 fn row_tally_read(tally) =
-  RowBytes{carry: CarryBytes{all: tally[row_tally_slot(ByWhole)], delta: tally[row_tally_slot(ByDelta)], edge: tally[row_tally_slot(ByEdge)], from: tally[row_tally_slot(ByReread)]}, inst: tally[row_tally_slot(ByInst)], link: tally[row_tally_slot(ByLink)], teach: tally[row_tally_slot(ByCharge)], union: tally[row_tally_slot(ByUnion)]}
+  RowBytes{bind: tally[row_tally_slot(ByBind)], carry: CarryBytes{all: tally[row_tally_slot(ByWhole)], delta: tally[row_tally_slot(ByDelta)], edge: tally[row_tally_slot(ByEdge)], from: tally[row_tally_slot(ByReread)]}, chase: tally[row_tally_slot(ByChase)], clone: tally[row_tally_slot(ByClone)], inst: tally[row_tally_slot(ByInst)], link: tally[row_tally_slot(ByLink)], mint: tally[row_tally_slot(ByMint)], narrow: tally[row_tally_slot(ByNarrowing)], owner: tally[row_tally_slot(ByOwnership)], scheme: tally[row_tally_slot(ByScheme)], teach: tally[row_tally_slot(ByCharge)], union: tally[row_tally_slot(ByUnion)]}
 
 // What the rows wrote between two readings of the running total.
 fn row_bytes_since(now: RowBytes, then: RowBytes) = {
   let c = now.carry
   let d = then.carry
-  RowBytes{carry: CarryBytes{all: c.all - d.all, delta: c.delta - d.delta, edge: c.edge - d.edge, from: c.from - d.from}, inst: now.inst - then.inst, link: now.link - then.link, teach: now.teach - then.teach, union: now.union - then.union}
+  RowBytes{bind: now.bind - then.bind, carry: CarryBytes{all: c.all - d.all, delta: c.delta - d.delta, edge: c.edge - d.edge, from: c.from - d.from}, chase: now.chase - then.chase, clone: now.clone - then.clone, inst: now.inst - then.inst, link: now.link - then.link, mint: now.mint - then.mint, narrow: now.narrow - then.narrow, owner: now.owner - then.owner, scheme: now.scheme - then.scheme, teach: now.teach - then.teach, union: now.union - then.union}
 }
 
 // The rows' heap as one line: each kind of write, then what the carries they
-// set off spent per kind of wake.
+// set off spent per kind of wake, then the type sort's two costs, the graph's
+// three arms, and the two passes after a body.
 fn row_bytes_line(rb: RowBytes) = {
   let c = rb.carry
-  "instantiation {int_to_str(rb.inst)} · link {int_to_str(rb.link)} · charge {int_to_str(rb.teach)} · union {int_to_str(rb.union)}; carried: edge {int_to_str(c.edge)} · delta {int_to_str(c.delta)} · re-read {int_to_str(c.from)} · whole {int_to_str(c.all)}"
+  "instantiation {int_to_str(rb.inst)} · link {int_to_str(rb.link)} · charge {int_to_str(rb.teach)} · union {int_to_str(rb.union)}; carried: edge {int_to_str(c.edge)} · delta {int_to_str(c.delta)} · re-read {int_to_str(c.from)} · whole {int_to_str(c.all)}; types: clone {int_to_str(rb.clone)} · scheme {int_to_str(rb.scheme)}; graph: chase {int_to_str(rb.chase)} · bind {int_to_str(rb.bind)} · mint {int_to_str(rb.mint)}; passes: ownership {int_to_str(rb.owner)} · narrowing {int_to_str(rb.narrow)}"
 }
 
 // A bound checked at several cells refuses once: the same triple joins the
@@ -2357,39 +2441,23 @@ fn graph_node_at(ref spine, mint_bound, idx) with Memory + Alloc + Cast = if idx
 // future variant fails to compile until its containment semantics
 // are decided explicitly.
 //
-// THE WALK IS A REACHABILITY QUERY OVER A DAG, AND IT CARRIES ITS VISITED
-// SET (2026-09-21). Var roots are shared: a cycle's every member binds a
-// TFun whose row edges reach the same hub vars, so a walk that descends
-// each edge afresh visits a hub once PER PATH. Measured on the wheel with
-// `mentl <file> cost`: ONE type bind of a two-line render fn's call —
-// `expected` in infer_call_saturated, the TFun carrying the callee's row —
-// allocated 170MB in this check, two such binds 341MB, 40% of the whole
-// judgment's heap, and a fifteen-line edit elsewhere in the cycle added
-// 76MB to that one decl. A root explored once answers every later path at
-// once, so every arm of `occurs_in_seen` threads the visited set (lazy: the
-// empty list until the first root is marked, so a bind whose type reaches no
-// var pays nothing).
-fn occurs_in(spine, mint_bound, handle, ty) with !Mutate = match occurs_in_seen(spine, mint_bound, handle, ty, []) {
-  (occ, _) => occ,
-}
-
-fn seen_has(seen, r) with Memory + Alloc = if len(seen) == 0 {
-  false
-} else {
-  match wmap_get(seen, r) {
-    Some(_) => true,
-    None => false,
-  }
-}
-
-fn seen_mark(seen, r) with Memory + Alloc =
-  wmap_add(if len(seen) == 0 { wmap_new(256) } else { seen }, r, 1)
-
-fn occurs_in_seen(spine, mint_bound, handle, ty, seen) with !Mutate = match ty {
-  TInt => (false, seen),
-  TFloat => (false, seen),
-  TUnit => (false, seen),
-  TByte => (false, seen),
+// THE WALK IS A REACHABILITY QUERY OVER A DAG, AND ITS VISITED SET IS A
+// COLUMN (2026-09-21, re-founded 2026-09-24). Var roots are shared: a cycle's
+// every member binds a TFun whose row edges reach the same hub vars, so a
+// walk that descends each edge afresh visits a hub once PER PATH — one bind
+// of a two-line render fn's call allocated 170MB that way, 40% of the whole
+// judgment's heap. The first visited set was a TABLE minted per check
+// (`wmap_new(256)`, 1,032 bytes at the first root) with a `(Bool, seen)`
+// pair returned from every arm, and `mentl verify`'s tally filed the check
+// at 226MB of the wheel's 819MB judgment — 28%, the largest class it names.
+// A root's mark is a cell in the spine's `mark` column now, written with the
+// check's STAMP — the epoch its bind takes — so a root explored once is one
+// word to ask about, and the check allocates nothing at all.
+fn occurs_in(spine, mint_bound, handle, ty, stamp) with !Mutate = match ty {
+  TInt => false,
+  TFloat => false,
+  TUnit => false,
+  TByte => false,
   TVar(id) => // The leaf answers "does handle occur in the type GRAPH reachable from
   // here" — three tiers, each a hole the selfapply fixture found trapping
   // the compiler (f(f) spun chase_deep/subst_ty to stack exhaustion with
@@ -2403,95 +2471,171 @@ fn occurs_in_seen(spine, mint_bound, handle, ty, seen) with !Mutate = match ty {
   // every bind runs this check, so the graph stays acyclic and the
   // recursion always bottoms out (chase_deep's depth tripwire is the
   // belt behind this suspender).
-  if id == handle {
-    (true, seen)
-  } else {
+  id == handle || {
     let root = chase_handle(spine, mint_bound, id, 0)
-    if root == handle {
-      (true, seen)
-    } else if seen_has(seen, root) {
-      (false, seen)
-    } else {
-      let marked = seen_mark(seen, root)
+    root == handle || !marked(spine, mint_bound, root, stamp) && {
+      mark(spine, mint_bound, root, stamp)
       match chase_node(spine, mint_bound, root, 0) {
-        GNode(NBound(inner), _) => occurs_in_seen(spine, mint_bound, handle, inner, marked),
-        GNode(NRecordRowBound{fields}, _) => occurs_in_fields_seen(spine, mint_bound, handle, fields, marked),
-        _ => (false, marked),
+        GNode(NBound(inner), _) => occurs_in(spine, mint_bound, handle, inner, stamp),
+        GNode(NRecordRowBound{fields}, _) => occurs_in_fields(spine, mint_bound, handle, fields, stamp),
+        _ => false,
       }
     }
   },
-  TList(elem) => occurs_in_seen(spine, mint_bound, handle, elem, seen),
-  TTuple(elems) => occurs_in_list_seen(spine, mint_bound, handle, elems, seen),
-  TFun{params, ret, row: eff} => match occurs_in_params_seen(spine, mint_bound, handle, params, seen) {
-    (true, s1) => (true, s1),
-    (false, s1) => match occurs_in_seen(spine, mint_bound, handle, ret, s1) {
-      (true, s2) => (true, s2),
-      (false, s2) => occurs_in_row_seen(spine, mint_bound, handle, eff, s2),
+  TList(elem) => occurs_in(spine, mint_bound, handle, elem, stamp),
+  TTuple(elems) => occurs_in_list(spine, mint_bound, handle, elems, stamp),
+  TFun{params, ret, row: eff} => occurs_in_params(spine, mint_bound, handle, params, stamp) || occurs_in(spine, mint_bound, handle, ret, stamp) || occurs_in_row(spine, mint_bound, handle, eff, stamp),
+  TName{args, rows} => occurs_in_list(spine, mint_bound, handle, args, stamp) || occurs_in_edges(spine, mint_bound, handle, rows, stamp),
+  TRecord(fields) => occurs_in_fields(spine, mint_bound, handle, fields, stamp),
+  TRecordOpen{fields, rest: v} => occurs_in_fields(spine, mint_bound, handle, fields, stamp) || occurs_in_record_row(spine, mint_bound, handle, v, stamp),
+  TRefined{base} => occurs_in(spine, mint_bound, handle, base, stamp),
+  TCont{input, answer, world} => occurs_in(spine, mint_bound, handle, input, stamp) || occurs_in(spine, mint_bound, handle, answer, stamp) || occurs_in_row(spine, mint_bound, handle, world, stamp),
+  TAlias{inner} => occurs_in(spine, mint_bound, handle, inner, stamp),
+  TReprPin{inner: base} => occurs_in(spine, mint_bound, handle, base, stamp),
+}
+
+// The grade write's contract, read pairwise from the end: the graded list is
+// the held list with only each param's `resolved` slot moved. Name, authored
+// marker and default must be the same value; the TYPE must be the same type
+// as the graph holds it — the held fn type and the graded one were built one
+// unification apart (prereg's param cells and the body's are aliases), so a
+// value compare would refuse every pre-registered fn.
+fn grades_only_differ(spine, mint_bound, was, params) with !Mutate = len(was) == len(params) && (len(was) == 0 || {
+  let w = last(was)
+  let p = last(params)
+  param_name(w) == param_name(p) && param_authored(w) == param_authored(p) && param_default(w) == param_default(p) && ty_agrees(spine, mint_bound, param_ty(w), param_ty(p)) && grades_only_differ(spine, mint_bound, drop_last(was), drop_last(params))
+})
+
+// A type read at its root: a variable chased to the cell it stands for, an
+// alias to what it names. The structure compare below reads both sides here
+// first, so two spellings of one proof compare as the one proof.
+fn ty_resolve(spine, mint_bound, t) with !Mutate = match t {
+  TVar(h) => {
+    // The root is the type wherever it holds no structure — free, a presence
+    // cell, a hole: the variable itself is what the graph knows there.
+    let root = chase_handle(spine, mint_bound, h, 0)
+    let as_itself = TVar(root)
+    match chase_node(spine, mint_bound, root, 0) {
+      GNode(NBound(inner), _) => match inner {
+        TVar(_) => as_itself,
+        _ => ty_resolve(spine, mint_bound, inner),
+      },
+      _ => as_itself,
+    }
+  },
+  TAlias{inner} => ty_resolve(spine, mint_bound, inner),
+  _ => t,
+}
+
+// Two types the graph already holds equal: the same structure once every
+// variable is read at its root, so a unification of them would bind nothing.
+fn ty_agrees(spine, mint_bound, a, b) with !Mutate = match ty_resolve(spine, mint_bound, a) {
+  TVar(ra) => match ty_resolve(spine, mint_bound, b) {
+    TVar(rb) => ra == rb,
+    _ => false,
+  },
+  TInt => ty_resolve(spine, mint_bound, b) == TInt,
+  TFloat => ty_resolve(spine, mint_bound, b) == TFloat,
+  TUnit => ty_resolve(spine, mint_bound, b) == TUnit,
+  TByte => ty_resolve(spine, mint_bound, b) == TByte,
+  TList(ea) => match ty_resolve(spine, mint_bound, b) {
+    TList(eb) => ty_agrees(spine, mint_bound, ea, eb),
+    _ => false,
+  },
+  TTuple(xs) => match ty_resolve(spine, mint_bound, b) {
+    TTuple(ys) => tys_agree(spine, mint_bound, xs, ys),
+    _ => false,
+  },
+  TFun{params: pa, ret: ra, row: ea} => match ty_resolve(spine, mint_bound, b) {
+    TFun{params: pb, ret: rb, row: eb} => params_agree(spine, mint_bound, pa, pb) && ty_agrees(spine, mint_bound, ra, rb) && rows_agree(spine, mint_bound, ea, eb),
+    _ => false,
+  },
+  TName{name: na, args: xa, rows: ra} => match ty_resolve(spine, mint_bound, b) {
+    TName{name: nb, args: xb, rows: rb} => na == nb && tys_agree(spine, mint_bound, xa, xb) && row_roots_agree(spine, mint_bound, ra, rb),
+    _ => false,
+  },
+  TRecord(fa) => match ty_resolve(spine, mint_bound, b) {
+    TRecord(fb) => fields_agree(spine, mint_bound, fa, fb),
+    _ => false,
+  },
+  TRecordOpen{fields: fa, rest: va} => match ty_resolve(spine, mint_bound, b) {
+    TRecordOpen{fields: fb, rest: vb} => fields_agree(spine, mint_bound, fa, fb) && chase_handle(spine, mint_bound, va, 0) == chase_handle(spine, mint_bound, vb, 0),
+    _ => false,
+  },
+  TRefined{base: ba, pred: pa} => match ty_resolve(spine, mint_bound, b) {
+    TRefined{base: bb, pred: pb} => ty_agrees(spine, mint_bound, ba, bb) && pa == pb,
+    _ => false,
+  },
+  TReprPin{repr: ra, inner: ia} => match ty_resolve(spine, mint_bound, b) {
+    TReprPin{repr: rb, inner: ib} => ra == rb && ty_agrees(spine, mint_bound, ia, ib),
+    _ => false,
+  },
+  TCont{input: ia, answer: aa, discipline: da, world: wa} => match ty_resolve(spine, mint_bound, b) {
+    TCont{input: ib, answer: ab, discipline: db, world: wb} => ty_agrees(spine, mint_bound, ia, ib) && ty_agrees(spine, mint_bound, aa, ab) && da == db && rows_agree(spine, mint_bound, wa, wb),
+    _ => false,
+  },
+  TAlias{inner} => ty_agrees(spine, mint_bound, inner, b),
+}
+
+fn tys_agree(spine, mint_bound, xs, ys) with !Mutate =
+  len(xs) == len(ys) && (len(xs) == 0 || ty_agrees(spine, mint_bound, last(xs), last(ys)) && tys_agree(spine, mint_bound, drop_last(xs), drop_last(ys)))
+
+fn params_agree(spine, mint_bound, pa, pb) with !Mutate =
+  len(pa) == len(pb) && (len(pa) == 0 || param_name(last(pa)) == param_name(last(pb)) && ty_agrees(spine, mint_bound, param_ty(last(pa)), param_ty(last(pb))) && params_agree(spine, mint_bound, drop_last(pa), drop_last(pb)))
+
+fn fields_agree(spine, mint_bound, fa, fb) with !Mutate = len(fa) == len(fb) && (len(fa) == 0 || match last(fa) {
+  (na, ta) => match last(fb) {
+    (nb, tb) => na == nb && ty_agrees(spine, mint_bound, ta, tb) && fields_agree(spine, mint_bound, drop_last(fa), drop_last(fb)),
+  },
+})
+
+// Two rows agree when their names agree as values and their tails reach the
+// same cells: an open tail is a set of row roots, read here as one.
+fn rows_agree(spine, mint_bound, ea, eb) with !Mutate = match ea {
+  EfRow{present: pa, absent: aa, tail: ta} => match eb {
+    EfRow{present: pb, absent: ab, tail: tb} => pa == pb && aa == ab && match ta {
+      EtOpen(vs) => match tb {
+        EtOpen(ws) => row_roots_agree(spine, mint_bound, vs, ws),
+        _ => false,
+      },
+      EtClosed => tb == EtClosed,
+      EtAll => tb == EtAll,
     },
   },
-  TName{args, rows} => match occurs_in_list_seen(spine, mint_bound, handle, args, seen) {
-    (true, s1) => (true, s1),
-    (false, s1) => occurs_in_edges_seen(spine, mint_bound, handle, rows, s1),
-  },
-  TRecord(fields) => occurs_in_fields_seen(spine, mint_bound, handle, fields, seen),
-  TRecordOpen{fields, rest: v} => match occurs_in_fields_seen(spine, mint_bound, handle, fields, seen) {
-    (true, s1) => (true, s1),
-    (false, s1) => occurs_in_record_row_seen(spine, mint_bound, handle, v, s1),
-  },
-  TRefined{base} => occurs_in_seen(spine, mint_bound, handle, base, seen),
-  TCont{input, answer, world} => match occurs_in_seen(spine, mint_bound, handle, input, seen) {
-    (true, s1) => (true, s1),
-    (false, s1) => match occurs_in_seen(spine, mint_bound, handle, answer, s1) {
-      (true, s2) => (true, s2),
-      (false, s2) => occurs_in_row_seen(spine, mint_bound, handle, world, s2),
-    },
-  },
-  TAlias{inner} => occurs_in_seen(spine, mint_bound, handle, inner, seen),
-  TReprPin{inner: base} => occurs_in_seen(spine, mint_bound, handle, base, seen),
 }
 
-fn occurs_in_params_seen(spine, mint_bound, handle, params, seen) with !Mutate = {
-  let flat = list_to_flat(params)
-  occurs_in_params_loop(spine, mint_bound, handle, flat, 0, len(flat), seen)
-}
+fn row_roots_agree(spine, mint_bound, vs, ws) with !Mutate =
+  len(vs) == len(ws) && roots_within(spine, mint_bound, vs, ws) && roots_within(spine, mint_bound, ws, vs)
 
-fn occurs_in_params_loop(spine, mint_bound, handle, params, i, n, seen) with !Mutate = if i >= n {
-  (false, seen)
-} else {
-  match occurs_in_seen(spine, mint_bound, handle, param_ty(list_index(params, i)), seen) {
-    (true, s1) => (true, s1),
-    (false, s1) => occurs_in_params_loop(spine, mint_bound, handle, params, i + 1, n, s1),
+fn roots_within(spine, mint_bound, vs, ws) with !Mutate =
+  len(vs) == 0 || root_among(spine, mint_bound, row_root(spine, mint_bound, last(vs), 0), ws) && roots_within(spine, mint_bound, drop_last(vs), ws)
+
+fn root_among(spine, mint_bound, r, ws) with !Mutate =
+  len(ws) > 0 && (row_root(spine, mint_bound, last(ws), 0) == r || root_among(spine, mint_bound, r, drop_last(ws)))
+
+// A root at or past the mint bound holds no cell at all (`graph_node_at`'s
+// own guard): it reads unmarked and takes no mark, and the walk answers
+// false at it one hop on.
+fn marked(spine, mint_bound, r, stamp) with Memory =
+  r < mint_bound && spine_mark_at(spine, r) == stamp
+
+fn mark(spine, mint_bound, r, stamp) with Memory =
+  if r < mint_bound { spine_put_mark(spine, r, stamp) } else { () }
+
+// The loops walk a list from its last element back: an argument list is a
+// snoc chain more often than not, and `last`/`drop_last` read it where it
+// stands, where flattening it first copied it.
+fn occurs_in_params(spine, mint_bound, handle, params, stamp) with !Mutate =
+  len(params) > 0 && (occurs_in(spine, mint_bound, handle, param_ty(last(params)), stamp) || occurs_in_params(spine, mint_bound, handle, drop_last(params), stamp))
+
+fn occurs_in_list(spine, mint_bound, handle, tys, stamp) with !Mutate =
+  len(tys) > 0 && (occurs_in(spine, mint_bound, handle, last(tys), stamp) || occurs_in_list(spine, mint_bound, handle, drop_last(tys), stamp))
+
+fn occurs_in_fields(spine, mint_bound, handle, fields, stamp) with !Mutate = len(fields) > 0 && {
+  let occ = match last(fields) {
+    (_, ty) => occurs_in(spine, mint_bound, handle, ty, stamp),
   }
-}
-
-fn occurs_in_list_seen(spine, mint_bound, handle, tys, seen) with !Mutate = {
-  let flat = list_to_flat(tys)
-  occurs_in_list_loop(spine, mint_bound, handle, flat, 0, len(flat), seen)
-}
-
-fn occurs_in_list_loop(spine, mint_bound, handle, tys, i, n, seen) with !Mutate = if i >= n {
-  (false, seen)
-} else {
-  match occurs_in_seen(spine, mint_bound, handle, list_index(tys, i), seen) {
-    (true, s1) => (true, s1),
-    (false, s1) => occurs_in_list_loop(spine, mint_bound, handle, tys, i + 1, n, s1),
-  }
-}
-
-fn occurs_in_fields_seen(spine, mint_bound, handle, fields, seen) with !Mutate = {
-  let flat = list_to_flat(fields)
-  occurs_in_fields_loop(spine, mint_bound, handle, flat, 0, len(flat), seen)
-}
-
-fn occurs_in_fields_loop(spine, mint_bound, handle, fields, i, n, seen) with !Mutate = if i >= n {
-  (false, seen)
-} else {
-  match list_index(fields, i) {
-    (_, ty) => match occurs_in_seen(spine, mint_bound, handle, ty, seen) {
-      (true, s1) => (true, s1),
-      (false, s1) => occurs_in_fields_loop(spine, mint_bound, handle, fields, i + 1, n, s1),
-    },
-  }
+  occ || occurs_in_fields(spine, mint_bound, handle, drop_last(fields), stamp)
 }
 
 // The occurs-check twin of free_in_row: does `handle` appear in the row's
@@ -2504,25 +2648,15 @@ fn occurs_in_fields_loop(spine, mint_bound, handle, fields, i, n, seen) with !Mu
 // ONE triple, one walk: the names on both fields plus the tail var —
 // the three vars-of-a-row walks (free/occurs/subst) agree by having
 // one shape to agree about.
-fn occurs_in_row(spine, mint_bound, handle, eff) with !Mutate = match occurs_in_row_seen(spine, mint_bound, handle, eff, []) {
-  (occ, _) => occ,
-}
-
-fn occurs_in_row_seen(spine, mint_bound, handle, eff, seen) with !Mutate = match eff {
-  EfRow{present: p, absent: a, tail: t} => match occurs_in_eff_names_seen(spine, mint_bound, handle, p, seen) {
-    (true, s1) => (true, s1),
-    (false, s1) => match occurs_in_eff_names_seen(spine, mint_bound, handle, a, s1) {
-      (true, s2) => (true, s2),
-      (false, s2) => match t {
-        EtOpen(vs) => // A BOUND edge hides structure the write would embed: subst_row's
-        // merge arm traverses into the binding, so the cycle guard must
-        // reach the same leaves through EVERY edge (the trio law over
-        // rows — any edge occurring is the row occurring). Structural
-        // walk — the mechanism layer's own discipline.
-        occurs_in_edges_seen(spine, mint_bound, handle, vs, s2),
-        _ => (false, s2),
-      },
-    },
+fn occurs_in_row(spine, mint_bound, handle, eff, stamp) with !Mutate = match eff {
+  EfRow{present: p, absent: a, tail: t} => occurs_in_eff_names(spine, mint_bound, handle, p, stamp) || occurs_in_eff_names(spine, mint_bound, handle, a, stamp) || match t {
+    EtOpen(vs) => // A BOUND edge hides structure the write would embed: subst_row's
+    // merge arm traverses into the binding, so the cycle guard must
+    // reach the same leaves through EVERY edge (the trio law over
+    // rows — any edge occurring is the row occurring). Structural
+    // walk — the mechanism layer's own discipline.
+    occurs_in_edges(spine, mint_bound, handle, vs, stamp),
+    _ => false,
   },
 }
 
@@ -2533,40 +2667,13 @@ fn occurs_in_row_seen(spine, mint_bound, handle, eff, seen) with !Mutate = match
 // A row reached twice answers once, like a type root — a row whose read holds
 // an instance carrying that same row (a task that re-spawns itself) is a
 // cycle to stop at, not an infinite type.
-fn occurs_in_edges_seen(spine, mint_bound, handle, vs: [Int], seen) with !Mutate = match vs {
-  [] => (false, seen),
-  [v, ...rest] => {
-    let r = row_root(spine, mint_bound, v, 0)
-    if seen_has(seen, r) {
-      occurs_in_edges_seen(spine, mint_bound, handle, rest, seen)
-    } else {
-      match occurs_in_eff_names_seen(
-        spine,
-        mint_bound,
-        handle,
-        row_cell_at(spine, mint_bound, r).full,
-        seen_mark(seen, r)
-      ) {
-        (true, s1) => (true, s1),
-        (false, s1) => occurs_in_edges_seen(spine, mint_bound, handle, rest, s1),
-      }
-    }
-  },
-}
-
-fn occurs_in_record_fields(spine, mint_bound, handle, fields) with !Mutate = match occurs_in_record_fields_seen(spine, mint_bound, handle, fields, []) {
-  (occ, _) => occ,
-}
-
-fn occurs_in_record_fields_seen(spine, mint_bound, handle, fields, seen) with !Mutate = if len(fields) == 0 {
-  (false, seen)
-} else {
-  match last(fields) {
-    (_, ty) => match occurs_in_seen(spine, mint_bound, handle, ty, seen) {
-      (true, s1) => (true, s1),
-      (false, s1) => occurs_in_record_fields_seen(spine, mint_bound, handle, drop_last(fields), s1),
-    },
+fn occurs_in_edges(spine, mint_bound, handle, vs: [Int], stamp) with !Mutate = len(vs) > 0 && {
+  let r = row_root(spine, mint_bound, last(vs), 0)
+  let here = !marked(spine, mint_bound, r, stamp) && {
+    mark(spine, mint_bound, r, stamp)
+    occurs_in_eff_names(spine, mint_bound, handle, row_cell_at(spine, mint_bound, r).full, stamp)
   }
+  here || occurs_in_edges(spine, mint_bound, handle, drop_last(vs), stamp)
 }
 
 // The ROW-side half of the residual bind's occurs guard: a tail that
@@ -2577,24 +2684,17 @@ fn occurs_in_record_fields_seen(spine, mint_bound, handle, fields, seen) with !M
 // tail continues at. Two open rows meet at one fresh var and each continues
 // into it, so a cycle can run through the CHAIN and never through a field —
 // the walk has to follow the continuation, not stop at the first residual.
-fn occurs_in_record_row_seen(spine, mint_bound, handle, v, seen) with !Mutate = {
+fn occurs_in_record_row(spine, mint_bound, handle, v, stamp) with !Mutate = {
   let vroot = chase_handle(spine, mint_bound, v, 0)
-  if v == handle || vroot == handle {
-    (true, seen)
-  } else if seen_has(seen, vroot) {
-    (false, seen)
-  } else {
-    let marked = seen_mark(seen, vroot)
+  v == handle || vroot == handle || !marked(spine, mint_bound, vroot, stamp) && {
+    mark(spine, mint_bound, vroot, stamp)
     match chase_node(spine, mint_bound, vroot, 0) {
-      GNode(NRecordRowBound{fields: rest, tail}, _) => match occurs_in_fields_seen(spine, mint_bound, handle, rest, marked) {
-        (true, s1) => (true, s1),
-        (false, s1) => match tail {
-          RowContinues(next) => occurs_in_record_row_seen(spine, mint_bound, handle, next, s1),
-          RowClosed(_) => (false, s1),
-        },
+      GNode(NRecordRowBound{fields: rest, tail}, _) => occurs_in_fields(spine, mint_bound, handle, rest, stamp) || match tail {
+        RowContinues(next) => occurs_in_record_row(spine, mint_bound, handle, next, stamp),
+        RowClosed(_) => false,
       },
-      GNode(NBound(bound), _) => occurs_in_seen(spine, mint_bound, handle, bound, marked),
-      _ => (false, marked),
+      GNode(NBound(bound), _) => occurs_in(spine, mint_bound, handle, bound, stamp),
+      _ => false,
     }
   }
 }
@@ -2604,48 +2704,28 @@ fn record_row_tail_is(tail, handle) with Pure = match tail {
   RowContinues(v) => v == handle,
 }
 
-fn occurs_in_eff_names_seen(spine, mint_bound, handle, names, seen) with !Mutate = {
-  let flat = list_to_flat(names)
-  occurs_in_eff_names_loop(spine, mint_bound, handle, flat, 0, len(flat), seen)
-}
-
-fn occurs_in_eff_names_loop(spine, mint_bound, handle, names, i, n, seen) with !Mutate = if i >= n {
-  (false, seen)
-} else {
-  let step = match list_index(names, i) {
-    ENamed(_) => (false, seen),
-    EPure => (false, seen),
-    EParameterized{args} => occurs_in_eff_args_seen(spine, mint_bound, handle, args, seen),
+fn occurs_in_eff_names(spine, mint_bound, handle, names, stamp) with !Mutate = len(names) > 0 && {
+  let here = match last(names) {
+    ENamed(_) => false,
+    EPure => false,
+    EParameterized{args} => occurs_in_eff_args(spine, mint_bound, handle, args, stamp),
   }
-  match step {
-    (true, s1) => (true, s1),
-    (false, s1) => occurs_in_eff_names_loop(spine, mint_bound, handle, names, i + 1, n, s1),
-  }
+  here || occurs_in_eff_names(spine, mint_bound, handle, drop_last(names), stamp)
 }
 
-fn occurs_in_eff_args_seen(spine, mint_bound, handle, args, seen) with !Mutate = {
-  let flat = list_to_flat(args)
-  occurs_in_eff_args_loop(spine, mint_bound, handle, flat, 0, len(flat), seen)
-}
-
-fn occurs_in_eff_args_loop(spine, mint_bound, handle, args, i, n, seen) with !Mutate = if i >= n {
-  (false, seen)
-} else {
-  let step = match list_index(args, i) {
-    EAInt(_) => (false, seen),
-    EAFloat(_) => (false, seen),
-    EAString(_) => (false, seen),
-    EAType(ty) => occurs_in_seen(spine, mint_bound, handle, ty, seen),
-    EARow(r) => occurs_in_edges_seen(spine, mint_bound, handle, [r], seen),
-    EANode(_) => (false, seen),
+fn occurs_in_eff_args(spine, mint_bound, handle, args, stamp) with !Mutate = len(args) > 0 && {
+  let here = match last(args) {
+    EAInt(_) => false,
+    EAFloat(_) => false,
+    EAString(_) => false,
+    EAType(ty) => occurs_in(spine, mint_bound, handle, ty, stamp),
+    EARow(r) => occurs_in_edges(spine, mint_bound, handle, [r], stamp),
+    EANode(_) => false,
     EAEffect(_) => // interned identities — no embedded Ty, nothing to occur in
-    (false, seen),
-    EACon(_) => (false, seen),
+    false,
+    EACon(_) => false,
   }
-  match step {
-    (true, s1) => (true, s1),
-    (false, s1) => occurs_in_eff_args_loop(spine, mint_bound, handle, args, i + 1, n, s1),
-  }
+  here || occurs_in_eff_args(spine, mint_bound, handle, drop_last(args), stamp)
 }
 
 // Trail buffer — flat array + length counter

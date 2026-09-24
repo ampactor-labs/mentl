@@ -1908,23 +1908,46 @@ fn infer_stmt(ref node) = match node {
           // A named let is a declaration: its binding's reason is the edge to
           // this statement's node. Only a name binds here — a destructure was
           // desugared to a match at parse, and a wildcard or literal binds none.
-          match pat_of(pat) {
-            PVar(name) => {
-              pat_cell_is(pat, eh)
-              env_extend(name, Frozen([], TVar(eh)), LetBinding(name, DeclaredAt(handle)), FnScheme)
-            },
-            _ => infer_pat(pat, eh),
-          }
           // The `: T` annotation is a CONSTRAINT verified against the value node.
           // Unlike the generic TRefined arm of unify_types (predicate + span only),
           // the value's node HANDLE (eh) is live here, so a refinement's `self`
           // operand binds to the value and Verify decides it on the literal —
           // `let bad: Sample = 1.5` rejects, `0.5` compiles. Absent = LitUnit, skipped.
-          match ann {
+          let annotated = match ann {
             N{body: ann_body} => match ann_body {
-              NTypeAnn(ann_ty) => apply_let_annotation(ann_ty, eh, val_span),
-              _ => (),
+              NTypeAnn(ann_ty) => {
+                let resolved = let_annotation_type(ann_ty)
+                apply_let_annotation(resolved, eh, val_span)
+                Some(resolved)
+              },
+              _ => None,
             },
+          }
+          match pat_of(pat) {
+            PVar(name) => {
+              // THE ANNOTATION IS THE BINDER'S TYPE. The name's cell is the
+              // pattern node's own, and an annotated binder carries the
+              // annotation there — `let n: ValidOffset = byte_len(s)` binds
+              // `n` to the refinement, and the value node keeps the Int it
+              // proved. This used to REWRITE the value node with the refined
+              // alias (the last T_BindOverBound on the wheel): the binder had
+              // no cell of its own then, so the only place a consumer could
+              // read the annotation from was the value's proof, overwritten.
+              let bound = match annotated {
+                Some(resolved) => match pat {
+                  N{span: pat_span, handle: ph} => {
+                    graph_bind(ph, resolved, Located(pat_span, Inferred("let annotation names the binder")))
+                    TVar(ph)
+                  },
+                },
+                None => {
+                  pat_cell_is(pat, eh)
+                  TVar(eh)
+                },
+              }
+              env_extend(name, Frozen([], bound), LetBinding(name, DeclaredAt(handle)), FnScheme)
+            },
+            _ => infer_pat(pat, eh),
           }
         },
       }
@@ -2480,6 +2503,15 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
     ),
     None => (),
   }
+  // A parameter's DEFAULT is judged here, ONCE, in this function's own frame
+  // (SYNTAX §«Default parameter values»: one home, the signature node; one
+  // evaluation context, the callee — so what it performs charges THIS row,
+  // and a caller's `!E` meets it through the call). A call that omits the
+  // field references this node and never judges it again; it used to be
+  // re-inferred at every omitting call through resolve_call_args, which the
+  // graph's writer now refuses as the bind over a bound cell it is
+  // (tests/frontier/mn-handler-config-default was the witness).
+  each(judge_param_default, resolved_params)
   let body_region = region_enter(span)
   // The body is a consume scope — its `own` params are its own linear
   // resources. Without this bracket, a name consumed here (affine_ledger
@@ -2548,14 +2580,19 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
           // REMOVED here (Stage 1b): a syntactic escape check that fired on
           // use-count-plus-bare-return with no hazard model — 356 false alarms, min and
           // every fold accumulator among them. The region tracker covers the real hazard.
+          let m_own = heap_mark()
           let inferred_params = infer_ownership(resolved_params, body_node)
-          graph_bind(
+          graph_tally_add(ByOwnership, heap_mark() - m_own)
+          // The GRADE write, not a bind: the cell keeps the fn type it holds
+          // and only each param's resolved slot moves (graph_grade refuses
+          // anything wider). This was a graph_bind over the bound cell —
+          // one per fn, 3,281 on the wheel, the largest family of
+          // T_BindOverBound — and a bind that rewrote the ret slot as a bare
+          // var here once re-opened the class-contamination channel the
+          // pre-body pin closes.
+          graph_grade(
             handle,
-            // The ret slot carries the SAME pinned value the pre-body signature
-            // rides — rewriting it as the bare var here would re-open the
-            // class-contamination channel the pin closed (this rewrite is the
-            // record's last writer; the slot's law is prereg's).
-            TFun(inferred_params, pinned_ret, mk_ef_open([], row_handle)),
+            inferred_params,
             Located(span, Inferred("ownership-resolved params of '{name}'"))
           )
           // ─── Refinement narrowing (§4⑥, arm 6) — the verified cursor ────
@@ -2564,7 +2601,9 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
           // lower's bounds-check read (graph_narrow_at) elides any check the path already
           // proves (Carried-Truth: the narrowing is written ONCE here, read live at
           // lower — never re-derived; the elision is a PROJECTION, not a recomputation).
+          let m_narrow = heap_mark()
           infer_refinement_narrowing(body_node)
+          graph_tally_add(ByNarrowing, heap_mark() - m_narrow)
           // ─── The declared POSITIVE row — a completion check ─────────────
           // A positive row bounds what this function does ITSELF, so it is
           // read when the cell holds exactly that: at the binding group's
@@ -2595,6 +2634,18 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   each(report_guard_note, poly_teach_notes(graph_guard_drain(), name, handle, body_node, params))
 }
 
+// One parameter's default, judged in the frame that is open when this runs —
+// the declaring function's own — and unified with the parameter it fills.
+fn judge_param_default(p) = match param_default(p) {
+  Some(d) => {
+    infer_expr(d)
+    match d {
+      N{span: dsp, handle: dh} => unify_types(TVar(dh), param_ty(p), dsp, DefaultReason(param_name(p), dsp)),
+    }
+  },
+  None => (),
+}
+
 // Polymorphic recursion's fingerprint, read where it is decidable: a fn that
 // calls itself, and an infinite type whose cycle runs through the fn's OWN
 // signature — the self-call met the fn at a type its own parameters or
@@ -2615,7 +2666,7 @@ fn poly_teach_notes(notes, name: String, handle, body_node, params) = if any(is_
 // when the guard refused it; by the drain the body's later joins may have put
 // it under another, so its CLASS is what the signature is asked about.
 fn poly_teach_note(name: String, handle, note) = match note {
-  (EOccursCheck(refused, _, span), _, dmod) => if occurs_in_live(graph_chase_handle(refused), TVar(handle)) {
+  (EOccursCheck(refused, _, span), _, dmod) => if graph_occurs_in(graph_chase_handle(refused), TVar(handle)) {
     [note, (TPolyRecursionSignature(name, span), "", dmod)]
   } else {
     [note]
@@ -3030,7 +3081,10 @@ fn infer_expr(ref node) = match node {
           N{handle: th} => match else_e {
             N{handle: eh} => match else_e {
               N{body: else_body} => {
-                graph_bind(ch, ty_bool, Located(span, IfBranch(Inferred("condition"))))
+                // The condition's cell is UNIFIED with Bool: a bind over the cell
+                // a comparison had already proved discarded that proof, and
+                // `if 5 { … }` checked clean (tests/syntax/if-over-int).
+                unify_types(TVar(ch), ty_bool, span, IfBranch(Inferred("condition")))
                 // E_IfMissingElse per SYNTAX.md: detect synthesized-LitUnit else
                 // (parser produces LitUnit when no else clause — src/parser.mn:1275).
                 // If the then-branch produces a non-unit value, the missing else
@@ -3856,18 +3910,33 @@ fn infer_call_arg_list(args, params, i) = if i >= len(args) {
 }
 
 fn infer_call_arg(arg, param) = match arg {
-  N{body} => match body {
-    NExpr(VarRef(_)) => // param_borrows (types.mn, the classification's one home — the
-    // ownership grade's mode walk reads the same test at decl time).
-    if param_borrows(param) {
-      borrow_enter()
-      infer_expr(arg)
-      borrow_exit()
-    } else {
-      infer_expr(arg)
-    },
-    _ => infer_expr(arg),
+  N{body, handle: ah} => if arg_is_the_default(ah, param) {
+    // The slot was filled from the param's default: that node was judged
+    // once at the declaration, in the callee's frame, and the call only
+    // omits an edge (SYNTAX §«Default parameter values»). Judging it here
+    // again is the bind over a bound cell the writer refuses.
+    ()
+  } else {
+    match body {
+      NExpr(VarRef(_)) => // param_borrows (types.mn, the classification's one home — the
+      // ownership grade's mode walk reads the same test at decl time).
+      if param_borrows(param) {
+        borrow_enter()
+        infer_expr(arg)
+        borrow_exit()
+      } else {
+        infer_expr(arg)
+      },
+      _ => infer_expr(arg),
+    }
   },
+}
+
+// A filled slot IS the default's own node — identity by handle, the one
+// O(1) read.
+fn arg_is_the_default(ah, param) = match param_default(param) {
+  Some(N{handle: dh}) => dh == ah,
+  None => false,
 }
 
 // The `??` hole's declaration-order index among a call's raw args (-1: none).
@@ -5468,8 +5537,11 @@ fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
       )
     },
     BKBool => {
-      graph_bind(lh, ty_bool, Located(span, OpConstraint(lbl, Inferred("left"), Declared("bool"))))
-      graph_bind(rh, ty_bool, Located(span, OpConstraint(lbl, Inferred("right"), Declared("bool"))))
+      // Both operands are UNIFIED with Bool (tests/syntax/and-over-int): a
+      // bind over an operand's proven cell overwrote it, and `5 && true`
+      // checked clean.
+      unify_types(TVar(lh), ty_bool, span, OpConstraint(lbl, Inferred("left"), Declared("bool")))
+      unify_types(TVar(rh), ty_bool, span, OpConstraint(lbl, Inferred("right"), Declared("bool")))
       graph_bind(handle, ty_bool, Located(span, OpConstraint(lbl, Inferred("result"), Declared("bool"))))
     },
     BKConcat => {
@@ -5537,7 +5609,11 @@ fn infer_unaryop(handle, op, ih, span: ValidSpan) = match op {
     Located(span, OpConstraint("Neg", Inferred("negate"), Inferred("operand")))
   ),
   UNot => {
-    graph_bind(ih, ty_bool, Located(span, OpConstraint("Not", Inferred("not"), Declared("bool"))))
+    // The operand's cell is UNIFIED with Bool, never written with it: a
+    // bind over a cell the graph already proved discards the proof, and
+    // `!5` and `!f(a, b)` (a partial application) both checked clean that
+    // way (tests/syntax/not-over-int, not-over-partial).
+    unify_types(TVar(ih), ty_bool, span, OpConstraint("Not", Inferred("not"), Declared("bool")))
     graph_bind(
       handle,
       ty_bool,
@@ -6378,13 +6454,26 @@ fn names_type_vars(names) = fold(
 
 // The cell→scheme projection: generalize_pair's verdict wrapped as the env's
 // currency. Publishers freeze through it; instantiate clones through it.
-fn generalize(handle) = match generalize_pair(handle) {
-  (qs, ty) => Frozen(qs, ty),
+// Both publishes file what quantifying cost under the judgment's tally —
+// here, at the publish, and not in `generalize_pair`, which lower, query and
+// the address surface read a scheme through without writing anything.
+fn generalize(handle) = {
+  let m0 = heap_mark()
+  let pair = generalize_pair(handle)
+  graph_tally_add(ByScheme, heap_mark() - m0)
+  match pair {
+    (qs, ty) => Frozen(qs, ty),
+  }
 }
 
 // The type sort alone — a scheme whose rows every use shares.
-fn generalize_types(handle) = match generalize_pair(handle) {
-  (qs, ty) => Frozen(type_sort(qs), ty),
+fn generalize_types(handle) = {
+  let m0 = heap_mark()
+  let pair = generalize_pair(handle)
+  graph_tally_add(ByScheme, heap_mark() - m0)
+  match pair {
+    (qs, ty) => Frozen(type_sort(qs), ty),
+  }
 }
 
 // The one reader-side read of an env judgment: a frozen decl reads straight
@@ -6781,6 +6870,10 @@ fn instantiate_noting(scheme, note) = match scheme {
   Frozen(qs, ty) => if len(qs) == 0 {
     cellify_rows(ty)
   } else {
+    // What a use costs beyond its row links: the tally is read before and
+    // after, so the links' own slot is subtracted and the slots partition.
+    let m0 = heap_mark()
+    let rb0 = graph_row_bytes()
     let mapping = build_inst_mapping(qs)
     note(mapping)
     let ty2 = subst_ty(ty, mapping)
@@ -6788,7 +6881,10 @@ fn instantiate_noting(scheme, note) = match scheme {
       polar_row_cells(ty, Covariant, [], 0) |> filter({ (_, pol) => pol == Contravariant }) |> map({ (c, _) => c })
     each({ pair => copy_row_cell(pair, mapping, inputs) }, mapping)
     row_settle()
-    cellify_rows(ty2)
+    let out = cellify_rows(ty2)
+    let rb1 = graph_row_bytes()
+    graph_tally_add(ByClone, heap_mark() - m0 - (rb1.inst - rb0.inst) - (rb1.link - rb0.link))
+    out
   },
   Live(h) => instantiate_noting(generalize(h), note),
   Recursive(h) => match recursive_pair(h) {
@@ -7296,29 +7392,23 @@ fn build_param_types_loop(params, handles, qmap, i) = if i >= len(params) {
 // non-constant value stays V_Pending (node_const → None). Resolve the annotation
 // through its alias edge (quantify_ctor_ty — the same resolution build_param_types
 // uses), then discharge the refinement.
-fn apply_let_annotation(ann_ty, value_handle, span: ValidSpan) = match quantify_ctor_ty(ann_ty, []) {
-  (resolved, _q) => {
-    // Constraint FIRST — the refinement reads the value's class before the
-    // adopting unify below enters the annotation into it (the flow licence's
-    // uncontaminated-read order, the return site's landed twin).
-    apply_refinement_constraint(resolved, value_handle, span)
-    // THEN the base unify: the annotation is a real CONSTRAINT, not
-    // decoration — `let x: Int = "hi"` refused here (measured passing clean
-    // before this edge existed).
-    unify_types(TVar(value_handle), resolved, span, Inferred("let annotation pins the value"))
-    // THE CLASS EXPOSES ITS MOST-REFINED MEMBER (the decl pin's rebind, at
-    // the let): a CONCRETE-bound value cell cannot adopt through the unify
-    // (concrete-meets-refined checks the base and binds nothing), so an
-    // annotated alias never reached any consumer edge — the lexer's
-    // ValidOffset arg starved on exactly this absence. Rebind the refined
-    // form as the representative; plain annotations skip (nothing refined
-    // to expose).
-    match resolved {
-      TAlias{} => graph_bind(value_handle, resolved, Located(span, Inferred("let annotation pins the value"))),
-      TRefined{} => graph_bind(value_handle, resolved, Located(span, Inferred("let annotation pins the value"))),
-      _ => (),
-    }
-  },
+// The annotation resolved through its alias edge (quantify_ctor_ty — the same
+// resolution build_param_types uses).
+fn let_annotation_type(ann_ty) = match quantify_ctor_ty(ann_ty, []) {
+  (resolved, _q) => resolved,
+}
+
+fn apply_let_annotation(resolved, value_handle, span: ValidSpan) = {
+  // Constraint FIRST — the refinement reads the value's class before the
+  // adopting unify below enters the annotation into it (the flow licence's
+  // uncontaminated-read order, the return site's landed twin).
+  apply_refinement_constraint(resolved, value_handle, span)
+  // THEN the base unify: the annotation is a real CONSTRAINT, not
+  // decoration — `let x: Int = "hi"` refused here (measured passing clean
+  // before this edge existed). A concrete value cell meets a refined
+  // annotation at the base and binds nothing; the refined form is the
+  // BINDER's cell (the let arm), never a rebind of the value's proof.
+  unify_types(TVar(value_handle), resolved, span, Inferred("let annotation pins the value"))
 }
 
 // Peel the resolved annotation to its refinement. A transparent alias recurses
@@ -7998,12 +8088,13 @@ fn register_handler(decl, hname, ename_parsed, config, state, arms, span: ValidS
   // is where row(h) is accumulated
   // (`Hβ.effects.handler-state-init-row-never-installed`).
   //
-  // A config DEFAULT is still typed at its one home — the handler's own
-  // parameter scope (SYNTAX §«Default parameter values»: one home, the
-  // signature node; one evaluation context, the callee). The bare `~> h`
-  // install has no call node to splice the default through, so the decl is
-  // the scope that grounds it, and an omitting explicit install (`~> h()`)
-  // re-infers the spliced node at its site through resolve_call_args.
+  // A config DEFAULT is typed at its one home — the handler's own parameter
+  // scope (SYNTAX §«Default parameter values»: one home, the signature
+  // node; one evaluation context, the callee) — and ONLY here: an omitting
+  // install (`~> h()`) references this node through resolve_call_args and
+  // never judges it again (infer_call_arg's default read). It used to
+  // re-infer it per install, which is a bind over a bound cell, and the
+  // writer refused it the day it learned to.
   each(
     (p) => match param_default(p) {
       Some(d) => {

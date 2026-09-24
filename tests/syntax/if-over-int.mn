@@ -1,0 +1,7 @@
+// expect: refuse E_TypeMismatch
+// An `if` condition is a Bool. `if 5 { … }` checked clean for the reason
+// `!5` did (not-over-int.mn): the condition's cell was WRITTEN with Bool
+// over the Int the literal had already proved, and the emit branched on the
+// word. The condition is unified now; the write that overwrote is
+// T_BindOverBound at the graph's one writer.
+fn main() = if 5 { 1 } else { 2 }

@@ -1,0 +1,11 @@
+// expect: 17
+// A parameter's default is judged ONCE, at the declaration, in the callee's
+// frame; a call that omits the field references that node and never judges
+// it again. It used to be re-inferred at every omitting call — the same
+// literal node bound twice — and the day the graph's writer learned to
+// refuse a bind over a bound cell, the second omitting call refused
+// (RED against that wheel: E_BindOverBound at the default's literal). Two
+// omitting calls and one explicit fill: 3 + 5 + 9.
+fn add(a, b = 2) = a + b
+
+fn main() = add(1) + add(3) + add(4, 5)

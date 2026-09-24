@@ -1,0 +1,9 @@
+// expect: refuse E_TypeMismatch
+// `&&` and `||` constrain both operands to Bool. `5 && true` checked
+// clean for the same reason `!5` did (not-over-int.mn): the operands'
+// cells were WRITTEN with Bool, never unified with it, so an Int operand
+// lost its proof and the emit read the word as a truth value.
+fn main() = {
+  let n = 5
+  if n && true { 1 } else { 2 }
+}
