@@ -561,40 +561,57 @@ fn fmt_run(target) = infer_context(() => {
   let ast = match driver_entry_with_ranges(entry_module) {
     (ast_all, _ranges) => driver_module_ast(ast_all, entry_module),
   }
-  // The verb writes its own FIXPOINT: render once, re-parse, render
-  // again — a mid-line prose attach moves to its line-start home in
-  // the first render and is stable from the second, so the WRITTEN
-  // file is idempotent in one invocation.
-  let first = format_program(ast)
-  let rendered = format_program(frontend(first))
-  // THE CONSERVATION GATE — the verb lexes its own render beside the
-  // source and compares comment-token counts: the lexer emits one
-  // TComment per authored line, so the difference IS the number of
-  // prose lines the round trip loses (this absorbed the hand-run
-  // comment census — ⟳; and the LEXICAL count sees lines the parse
-  // never attaches, which a weave-to-weave compare was blind to).
-  let src_text = fs_read_file(path)
-  let src_lines = count_comment_tokens(lex(src_text), 0, 0)
-  let out_lines = count_comment_tokens(lex(rendered), 0, 0)
-  // THE FAITHFULNESS GATE. Reading the first render back must give the
-  // program it was rendered from, and the second render is that reading
-  // written out, so the two may differ only where prose moved. A render
-  // the parser reads as ANOTHER program parses without complaint — the
-  // guard that restores a file the parser refuses never fires — and
-  // `graph_handler`'s record-literal state init, written without its
-  // parens, came back as every arm of the handler rewritten (2026-09-24).
-  if code_token_kinds(lex(first)) == code_token_kinds(lex(rendered)) {
-    fs_write_file(path, rendered)
-    if out_lines < src_lines {
-      print_string("fmt: {path} rendered canonical — {int_to_str(src_lines - out_lines)} of {int_to_str(src_lines)} prose lines would not survive a reparse\n")
-      print_lost_comments(lex(src_text), lex(rendered), 0, 0)
-    } else {
-      print_string("fmt: {path} rendered canonical — prose conserved ({int_to_str(src_lines)} lines)\n")
-    }
-    0
-  } else {
-    print_string("fmt: {path} NOT written — its canonical render reads back as a different program; the render is wrong, not the file\n")
+  // A FILE THAT DOES NOT JUDGE CLEAN IS NOT RENDERED. The render is a read
+  // of what the parse built, so a file mid-edit — an unclosed brace, a
+  // half-typed arm — renders as the part the parser could read, and writing
+  // that is deleting the rest. The pre-commit guard that restored such a file
+  // grepped fmt's stderr for a parser prefix; the verb knows its own verdict.
+  // Since 2026-09-24 the edit hook runs this on every write, so the refusal
+  // is what keeps a mid-edit save from costing the text.
+  if diag_errors() > 0 {
+    print_string("fmt: {path} NOT written — it does not judge clean ({int_to_str(diag_errors())} error(s) above), and a render of it would keep only what parsed\n")
     1
+  } else {
+    // The verb writes its own FIXPOINT: render once, re-parse, render
+    // again — a mid-line prose attach moves to its line-start home in
+    // the first render and is stable from the second, so the WRITTEN
+    // file is idempotent in one invocation.
+    let first = format_program(ast)
+    let rendered = format_program(frontend(first))
+    // THE CONSERVATION GATE — the verb lexes its own render beside the
+    // source and compares comment-token counts: the lexer emits one
+    // TComment per authored line, so the difference IS the number of
+    // prose lines the round trip loses (this absorbed the hand-run
+    // comment census — ⟳; and the LEXICAL count sees lines the parse
+    // never attaches, which a weave-to-weave compare was blind to).
+    let src_text = fs_read_file(path)
+    let src_lines = count_comment_tokens(lex(src_text), 0, 0)
+    let out_lines = count_comment_tokens(lex(rendered), 0, 0)
+    // THE FAITHFULNESS GATE. Reading the first render back must give the
+    // program it was rendered from, and the second render is that reading
+    // written out, so the two may differ only where prose moved. A render
+    // the parser reads as ANOTHER program parses without complaint — the
+    // guard that restores a file the parser refuses never fires — and
+    // `graph_handler`'s record-literal state init, written without its
+    // parens, came back as every arm of the handler rewritten (2026-09-24).
+    if code_token_kinds(lex(first)) != code_token_kinds(lex(rendered)) {
+      print_string("fmt: {path} NOT written — its canonical render reads back as a different program; the render is wrong, not the file\n")
+      1
+    } else if rendered == src_text {
+      // At its fixpoint already: nothing is written, so a file the hook
+      // formats after every edit is untouched when the edit was canonical.
+      print_string("fmt: {path} is canonical\n")
+      0
+    } else {
+      fs_write_file(path, rendered)
+      if out_lines < src_lines {
+        print_string("fmt: {path} rendered canonical — {int_to_str(src_lines - out_lines)} of {int_to_str(src_lines)} prose lines would not survive a reparse\n")
+        print_lost_comments(lex(src_text), lex(rendered), 0, 0)
+      } else {
+        print_string("fmt: {path} rendered canonical — prose conserved ({int_to_str(src_lines)} lines)\n")
+      }
+      0
+    }
   }
 } ~> format_default ~> wasi_filesystem ~> mentl_default)
 
@@ -841,12 +858,12 @@ fn patch_with_clause(ref text, line1, ref used) = {
   let ls = line_start_offset(text, line1)
   let le = line_end_offset(text, ls)
   let line = str_slice(text, ls, le)
-  let wi = index_of(line, " with ")
+  let wi = str_index_of(line, " with ")
   if wi < 0 {
     None
   } else {
     let after = str_slice(line, wi + 6, byte_len(line))
-    let eq = index_of(after, " = ")
+    let eq = str_index_of(after, " = ")
     if eq < 0 {
       None
     } else {
@@ -2072,8 +2089,15 @@ fn query_run(target, words) =
 // defect, and while it inherited the narrowing the comment-reference count
 // could only ever see the entry module's prose (measured 2026-09-20:
 // 0 on the entry link against 58 across the modules).
-fn verify_run(entry_module) = infer_context(() => match driver_entry_scoped(entry_module, ScopeAll) {
-  (_ast, ranges) => match range_of_module(ranges, entry_module) {
+//
+// THE WHOLE COMPILE, not the judgment alone (2026-09-24). A floor emit writes
+// and a comparison it cannot prove are reported by EMIT, so a board that
+// stopped at the judgment could not see them, and tools/verify.sh grepped
+// them out of a second compile's stderr at commit — after the repin had
+// blessed the wheel. The remainder runs here into `wat_discard`: the verdict
+// is the product, the module is nobody's.
+fn verify_run(entry_module) = compile_context(() => match driver_entry_scoped(entry_module, ScopeAll) {
+  (ast, ranges) => match range_of_module(ranges, entry_module) {
     None => {
       eprint_string("mentl verify: no source to judge — {entry_module} never joined the weave\n")
       1
@@ -2091,13 +2115,43 @@ fn verify_run(entry_module) = infer_context(() => match driver_entry_scoped(entr
       eprint_string("mentl verify: {entry_module} did not judge clean — a board over a refused weave measures a program nobody has\n")
       1
     } else {
-      verify_board(entry_module)
+      // Read at the judgment's close, before lowering allocates: the bump
+      // image is monotone through the judgment, so this IS its high-water.
+      let heap = heap_mark()
+      let off = off_canonical(ast, ranges)
+      let rendered_at = heap_mark()
+      let lowered = ast |> saturate_pass |> lower_program |> reachable_from_main
+      let lowered_at = heap_mark()
+      eprint_string("verify: heap — judgment {int_to_str(heap)} · canonical renders {int_to_str(rendered_at - heap)} · lowering {int_to_str(lowered_at - rendered_at)} byte(s)\n")
+      match gate_reads(lowered) {
+        (0, 0) => {
+          emit_module(lowered)
+          eprint_string("verify: heap — emit {int_to_str(heap_mark() - lowered_at)} byte(s)\n")
+          verify_board(entry_module, Beside{heap: heap, off_canonical: off})
+        },
+        (holes, refused) => {
+          eprint_string("mentl verify: the compile refuses — {int_to_str(refused)} claim(s) undischarged, {int_to_str(holes)} hole(s) — and a board over a program that does not compile measures nothing anyone runs\n")
+          1
+        },
+      }
     },
   },
-} ~> stdout_console ~> wasi_filesystem ~> mentl_default)
+} ~> format_default ~> stdout_console ~> wasi_filesystem ~> mentl_default) ~> wat_discard ~> no_iter_context ~> diagnostics_handler ~> graph_handler([], 0, []) ~> mutate_sink
 
-fn verify_board(entry_module: String) = {
-  let board = board_read()
+// Every module whose text is not its own canonical render — the page `mentl
+// fmt` writes, compared with the page the judgment just read.
+fn off_canonical(ast, ranges) = ranges |> filter(off_its_render(ast, ??)) |> map(off_canonical_line)
+
+fn off_its_render(ast, entry) = match entry {
+  (m, _, text) => format_program(driver_module_ast(ast, m)) != text,
+}
+
+fn off_canonical_line(entry) = match entry {
+  (_, p, _) => "{p}\n",
+}
+
+fn verify_board(entry_module: String, beside) = {
+  let board = board_read(beside)
   print_string("verify: the medium's verdict on {entry_module}\n")
   each(print_board_line, board)
   let breached = len(filter(board_breached, board))

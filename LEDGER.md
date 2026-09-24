@@ -35,6 +35,59 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-24 · pin 2d7692ad8398d197 (CLEAN m2 == m3; census 0, frontier
+  422/0/8 and crown 152/0/6 through the candidate BEFORE the repin, board
+  and micros green through it at the repin) · ONE VERDICT FOR THE REPIN AND
+  THE COMMIT. The landing before this one paid seven marches, and each extra
+  run traced to a verdict the repin could not see: verify.sh's ratchets ran
+  only at commit, and the commit's fmt rewrote source after the pin. (1)
+  `mentl verify` runs the WHOLE compile — judgment, then saturate, lower,
+  reachability, the executable gate and emit into `wat_discard` — and the
+  board's bounds are over MEASURES: `Census(shape)`, `Said(DiagClass)` (the
+  diagnostics handler's own tally of field-offset floors, unprovable
+  comparisons and unresolved comment references), `JudgmentHeap` (exact,
+  ±0.5% band) and `OffCanonical` (modules whose text is not their own
+  render). `CsAuthored(Ownership)` reads the parameter product's `authored`
+  slot where verify.sh ran a regex over src/: 57 own / 561 ref declarations
+  across the whole weave, where the regex read 62 / 698. Five baseline keys
+  and verify.sh's comment-ref, floor, comparison, quiet-gate and manifest
+  legs are deleted; the peak-RSS line is a crash guard at 1,500,000 KB. The
+  verb reproduced the old counts exactly on its first reading (3, 52) and the
+  same reading refused this landing's own four dangling references and three
+  modules off canonical. (2) CANONICAL ON WRITE: tools/audit-on-edit.sh runs
+  `mentl fmt` after every edit to src/ or lib/, and the pre-commit's Gate 0 is
+  deleted — it formatted after the pin, which is how one landing committed a
+  source its boot was not built from. `fmt` REFUSES a file that does not
+  judge clean and leaves a file at its fixpoint untouched. Seen RED first:
+  the pinned boot's fmt rewrote a half-typed `x + (2` into `x + 2` then `()`
+  — a different program, exit 0 — which a hook running it on every edit
+  would have multiplied. The frontier's fmt legs had run inside a directory
+  with no lib/, so the refutable-let desugar's `abort` resolved nowhere and
+  fmt rendered the unjudged program; they run from the checkout root now.
+  (3) The frontier stamp names the wheel it TESTED (one sha per compiler):
+  a green run against a march candidate had stamped the OLD boot, so every
+  landing paid a second frontier run after its repin. This landing's one
+  frontier run, against the candidate, is the commit's stamp. (4) What the
+  whole-wheel render found on its first run: the formatter's
+  `render_context_at` scanned EVERY graph handle per statement for a parent
+  whose answer nothing read (the indent ignored it; the sibling glue answered
+  "" for all four contexts), beside a reason aspect that rendered each node's
+  whole Reason chain and was dropped at assembly — deleted, 7 aspects to 3.
+  `str_contains` built a 4-byte index list plus a 16-byte view per byte of
+  every rendered body (`str_contains(b, "\n")`); it is one allocation-free
+  search (`str_index_of` over the range producer, bytes compared in place),
+  and the prelude's second copy of it is deleted. (5) `E_DuplicateFnName`
+  reported under the AMBIENT module — a duplicate in types.mn rendered as
+  `threading:3672`; it reports at the declaration and names the first. The
+  first march of the landing trapped: a `said` list in the diagnostics
+  handler held reports pushed inside emit's per-fn heap regions, which reset
+  and zeroed them — the ledger is integer tallies now, written in place.
+  KILLS: the render's OOM was named `str_contains` first and was the parent
+  scan (the second trap moved, the first fix stays — it was also real). NEW
+  PEERS: `Hβ.fmt.render-streams-instead-of-reindenting`,
+  `Hβ.voice.solo-read-narrates-refs-the-program-resolves`,
+  `Hβ.why.a-pattern-arm-renders-the-sum-types-first-constructor`. RUNS: one
+  march, one frontier re-run (the fmt directory fix), one crown, one repin.
 - 2026-09-24 · pin cbe921ced8afac04 (CLEAN m2 == m3 on the canonical
   source, after TRANSITION m3 == m4 at the landing's first pin; census 0,
   frontier 422/0/8, crown 152/0/6, board and micros green through the

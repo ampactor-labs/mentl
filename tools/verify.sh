@@ -327,78 +327,14 @@ if C=$(wt_m2_ensure); then
   elif [[ -n "$max" && "$errors" -lt "$max" ]]; then
     say "  ↓ census FELL $max -> $errors — lower census_errors_max in $BASELINE to hold it."
   fi
-  # The comment-reference ratchet — the SAME stderr, one layer up: every
-  # backticked identifier in a comment is a REFERENCE the medium resolves at
-  # the infer tail (W_CommentRefUnresolved, SYNTAX §Comments). This absorbed
-  # tools/comment-audit.sh + comment-ratchet.sh whole: the medium is the
-  # classifier now, and the count rides the census compile — zero extra passes.
-  # IT READS THE MANIFEST LINK, NOT THE BLOB, and that is the whole fix.
-  # This grepped "$C/m2.err" — the compile of .build/m2cache/wheel.mn, which
-  # is every module CONCATENATED INTO ONE FILE. One module means every name is
-  # local and a cross-module reference problem is UNCONSTRUCTIBLE, so the count
-  # was not a measurement that read zero; it was one that could not read
-  # anything else (measured 2026-09-20: 0 here against 58 across the modules).
-  # `mentl verify` links through the real import DAG and runs ScopeAll, so the
-  # medium's own board sees every module's prose — the reader the driver's
-  # hardcoded narrowing had left with no way to ask.
-  crefs=$(wt_run --dir . "$C/m2.wasm" src/main.mn verify 2>&1 >/dev/null | grep -cE 'W_CommentRefUnresolved')
-  cmax=$(grep -E '^comment_refs_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· comment-refs: $crefs unresolved — the medium's verdict on its own prose"
-  if [[ -n "$cmax" && "$crefs" -gt "$cmax" ]]; then
-    say "✗ comment-ref RATCHET: unresolved references rose $cmax -> $crefs. A backticked"
-    say "  name is a claim; fix the reference or write prose without backticks."
-    fail=1
-  elif [[ -n "$cmax" && "$crefs" -lt "$cmax" ]]; then
-    say "  ↓ comment-refs FELL $cmax -> $crefs — lower comment_refs_max in $BASELINE to hold it."
-  fi
-  # The MOVERS ratchet stood here — the two-pass tower's size gauge (schemes
-  # the final judged differently than the trial published). RETIRED
-  # 2026-09-17 with the pass it gauged: one judgment has no trial→final
-  # override to count, and a ratchet whose instrument is gone reads a phantom
-  # zero forever — the mute-gate class, never green.
-  # THE UNPROVABLE-FIELD-OFFSET RATCHET — same stderr, and it reads a class
-  # that did not exist before 2026-09-15 because the floor was emitted
-  # silently. Every count here is an `(unreachable)` the wheel ships inside
-  # itself; the class becomes an error, and so a refusal, when this reaches
-  # 0, so this is a countdown, not a tolerance. A RISE is a new
-  # landmine.
-  #
-  # LIKE movers ABOVE, THIS IS THE PINNED BOOT'S SELF-REPORT, and on the
-  # landing that BIRTHS the class the pin predates it, so the read is 0 and
-  # the FELL notice below fires once against a compiler that could not have
-  # counted. The ceiling is 4 because 4 is what the NEW compiler measured
-  # running on the wheel (the m3 leg), not what the old one failed to say.
-  # After the repin the two agree and the notice is real.
-  fou=$(grep -c 'T_FieldOffsetUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); fou=${fou:-0}
-  fmax=$(grep -E '^field_offset_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· field-offset floors: $fou unprovable slot(s) the wheel ships as (unreachable) — 0 arms the class"
-  if [[ -n "$fmax" && "$fou" -gt "$fmax" ]]; then
-    say "✗ field-offset RATCHET: rose $fmax -> $fou — a new silent trap entered the wheel."
-    say "  Close the receiver's row at the reported span; the diagnostic names the field and the type."
-    fail=1
-  elif [[ -n "$fmax" && "$fou" -lt "$fmax" ]]; then
-    say "  ↓ field-offset floors FELL $fmax -> $fou — lower field_offset_unprovable_max in $BASELINE;"
-    say "    at 0, rename TFieldOffsetUnprovable to E_, flip it to SError (every error refuses), and move the fixture to run_refusal."
-  fi
-  # THE UNPROVABLE-COMPARISON ratchet — the floor class one operator over
-  # (2026-09-18): `==`/`!=`/`<`… on an operand whose type is still a
-  # variable at emit REPORTS T_EqTypeUnprovable and writes the trap instead
-  # of i32.eq on two addresses. Same ladder as the field-offset floor above:
-  # the pinned boot's self-report on the wheel, a countdown to 0, at which
-  # the class arms (E_, SError — every error refuses) and the eq-in-arm-pointer leg
-  # turns green by PROVING its arm — never by the annotation the fixture
-  # deliberately omits.
-  equ=$(grep -c 'T_EqTypeUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); equ=${equ:-0}
-  eqmax=$(grep -E '^eq_type_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· unprovable comparisons: $equ operand(s) still a variable at emit — 0 arms the class"
-  if [[ -n "$eqmax" && "$equ" -gt "$eqmax" ]]; then
-    say "✗ unprovable-comparison RATCHET: rose $eqmax -> $equ — a new address compare entered the wheel."
-    say "  Prove the operand at the reported span; the diagnostic names the operator and the type."
-    fail=1
-  elif [[ -n "$eqmax" && "$equ" -lt "$eqmax" ]]; then
-    say "  ↓ unprovable comparisons FELL $eqmax -> $equ — lower eq_type_unprovable_max in $BASELINE;"
-    say "    at 0, rename TEqTypeUnprovable to E_, flip it to SError (every error refuses), and move the fixture to run_refusal."
-  fi
+  # THE COMMENT-REFERENCE, FIELD-OFFSET AND UNPROVABLE-COMPARISON RATCHETS
+  # LEFT THIS FILE on 2026-09-24, with the quiet gate below them. Each is a
+  # bound in src/board.mn now, read by `mentl verify` off the compile's own
+  # tally — the verb runs the compile's remainder, so it sees what emit
+  # reports — and the repin runs that verb. Here they ran only at commit,
+  # after the repin had blessed the wheel: one landing's repin passed and its
+  # commit then refused five of them, and the cost was a fourth march
+  # (`Hβ.board.verify-ratchets-live-beside-the-board`).
   # THE USE-AFTER-MOVE RATCHET IS RETIRED (2026-09-15) — the class is ARMED.
   # It counted T_UseAfterMove narrations on the wheel's own compile and held
   # them at ZERO so that diag_refuses' wheel-zero arming licence stayed
@@ -450,35 +386,6 @@ if C=$(wt_m2_ensure); then
     fail=1
   elif [[ -n "$srmax" && "$csref" -lt "$srmax" ]]; then
     say "  ↓ loop scaffolds FELL $srmax -> $csref — lower loop_scaffold_refs_max in $BASELINE to hold it."
-  fi
-  # The QUIET gate (§4⑤'s Hylo bar, PLAN §11 4.4 — Hβ.ownership.quiet-
-  # empirical-gate): authored own/ref markers in src/, monotone DOWN. The
-  # measured invariant is "if the developer has to think about it, the
-  # inference failed" — a RISING count IS the inference failing, measured
-  # instead of felt. Text-pattern tier (param-position anchored); the
-  # census-shape absorption is the named refinement.
-  cown=$(grep -roE '[(,] *own [a-z_]' src/ | wc -l)
-  cref=$(grep -roE '[(,] *ref [a-z_]' src/ | wc -l)
-  omax=$(grep -E '^authored_own_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  refmax=$(grep -E '^authored_ref_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· quiet gate: $cown authored own, $cref authored ref in src/ — the Hylo bar's counts"
-  # MONOTONE DOWN needs BOTH halves. This gate had only the rise arm for
-  # five weeks, so a marker the inference retired left the ceiling where it
-  # was and the slack accumulated invisibly — a ratchet that can only be
-  # breached, never tightened, is measuring nothing between breaches (§11
-  # tripwire 4, the same shape as the crown's eleven quiet entries). Every
-  # other ratchet in this file prints its fall; these two now do too.
-  if [[ -n "$omax" && "$cown" -gt "$omax" ]]; then
-    say "✗ quiet-gate RATCHET: authored own rose $omax -> $cown — the inference failed somewhere; teach it, do not annotate around it."
-    fail=1
-  elif [[ -n "$omax" && "$cown" -lt "$omax" ]]; then
-    say "  ↓ authored own FELL $omax -> $cown — lower authored_own_max in $BASELINE to hold it."
-  fi
-  if [[ -n "$refmax" && "$cref" -gt "$refmax" ]]; then
-    say "✗ quiet-gate RATCHET: authored ref rose $refmax -> $cref — the inference failed somewhere; teach it, do not annotate around it."
-    fail=1
-  elif [[ -n "$refmax" && "$cref" -lt "$refmax" ]]; then
-    say "  ↓ authored ref FELL $refmax -> $cref — lower authored_ref_max in $BASELINE to hold it."
   fi
   # The EFFECT-SEAM gate (Hβ.io.fs-close-op-is-bypassed, closed 2026-09-04).
   # An effect exists so a handler can intercept the operation. A caller that
@@ -568,24 +475,11 @@ if C=$(wt_m2_ensure); then
     say "✗ BOARD: mentl verify answered nothing — the projection is broken, not clean."
     fail=1
   fi
-  # The manifest gate — the wheel's own DAG judgment, zero-tolerance. The
-  # blob census is structurally BLIND to a missing import edge (every name
-  # resolves in the concatenation), and the class sat silent five days
-  # until a felt walk found canon.mn imported by NOBODY — ty_string
-  # starving every check/at/field invocation while the march stayed green.
-  # One ~2.5s judgment of the entry's import closure holds it at zero:
-  # a name whose defining module is in nobody's closure surfaces here as
-  # E_MissingVariable. Per-module import PRECISION (a name used by M,
-  # defined in a module M never imports but another module's closure
-  # carries) needs env-entry module attribution — the named deeper
-  # instrument.
-  mmiss=$(wt_run --dir . "$C/m2.wasm" src/main.mn check 2>&1 >/dev/null | grep -cE 'E_MissingVariable' || true)
-  say "· manifest: $mmiss missing name(s) on the wheel's own DAG judgment"
-  if [[ "$mmiss" -gt 0 ]]; then
-    say "✗ MANIFEST: a name resolves in the blob but not the import DAG — a module"
-    say "  is missing an import edge (the canon.mn class). Probe: mentl src/main.mn check"
-    fail=1
-  fi
+  # (The manifest gate — `mentl check` on the wheel, grepped for
+  # E_MissingVariable — is absorbed: the board above REFUSES a weave that
+  # does not judge clean, which holds every error class at zero on the import
+  # DAG rather than one of them. The canon.mn class it was born for, a module
+  # imported by nobody, is an E_MissingVariable that refusal already sees.)
 else
   say "✗ compiler TRAPPED compiling the wheel (tail $WT_M2CACHE/m2.err):"; tail -3 "$WT_M2CACHE/m2.err"; fail=1
 fi

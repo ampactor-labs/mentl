@@ -1675,9 +1675,9 @@ form the whole time. The arcs, in order:
   unreachable` with no diagnostic anywhere in the run — which is how a
   silent floor is always found, by a later generation stepping on it.
   `T_FieldOffsetUnprovable` now reports at the receiver's span carrying the
-  selector and the receiver's live type; the class is pre-arm under
-  `field_offset_unprovable_max` (it becomes an error, and so a refusal, when
-  the wheel's count reaches zero) and `Hβ.emit.field-offset-floor-is-never-reported`
+  selector and the receiver's live type; the class is pre-arm under the
+  board's `Said(FieldOffsetFloor)` bound (it becomes an error, and so a
+  refusal, when the wheel's count reaches zero) and `Hβ.emit.field-offset-floor-is-never-reported`
   carries the record. The four sites are the peer's own: the constructor
   `HandlerDeclStmt` (types.mn:1668) DECLARES `[{init: Node, name: String}]`
   closed, the caller holds it, and the callee re-derives a free row at
@@ -1820,9 +1820,15 @@ the source key it compiled, and `MENTL_COMPILER=march` asks the NEW wheel's
 own tooling a question without a repin — `fresh` is m2, whose own code the
 old boot compiled, and three frontier REDs were m2's; and the shim refuses
 `MENTL_WASM`, which it never read and which once sent four runs to the old
-boot. The iteration ladder is `mentl check` → `MENTL_COMPILER=fresh mentl
-run|test|verify` → one march → frontier/crown against the march's m3 →
-`MARCH_REPIN=1`. Not re-running what already passed is the medium's job, not
+boot. The fourth payment (2026-09-24, seven marches) closed the rest: `mentl
+verify` runs the WHOLE compile and holds every ratchet the commit reads, so
+the repin and the commit give one verdict; source is canonical as it is
+written (the edit hook runs `mentl fmt`; the pre-commit no longer formats
+after the pin), and the board refuses a module off its render; and a
+frontier run against the march's candidate stamps that candidate, which is
+the next boot. The iteration ladder is `mentl check` → `MENTL_COMPILER=fresh
+mentl run|test|verify` → one march → frontier/crown against the march's m3 →
+`MARCH_REPIN=1`, and the commit re-runs nothing that passed. Not re-running what already passed is the medium's job, not
 a script's: it arrives with `mentl verify` absorbing the gates, and the
 scaffolds take no stamping of their own on the way out.
 

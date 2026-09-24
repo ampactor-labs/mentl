@@ -2591,7 +2591,7 @@ type DiagKind
   // to prove. Renaming the op left exactly that one.
   | EOpShadowsOp(String, String, String, Span)
   // a second `fn name` in one namespace — the emitter would pick one silently (invalid WAT today; silent under a native path)
-  | EDuplicateFnName(String, Span)
+  | EDuplicateFnName(String, String, Span)
   // a second `type name` in one namespace — the decls silently MERGE: disjoint ctor sets share tag ids and a cross-tag match returns the wrong arm (measured: exit 13 where 99 was meant, zero diagnostics)
   | EDuplicateTypeName(String, Span)
   // a second `effect name` in the program — effects are named in rows, their own namespace beside types (`type Sample` and `effect Sample` coexist, as SYNTAX writes them); two effects of one name are not both representable, and the second's ops replace the first's under every call already written against them (measured: a program declaring its own `effect Abort` retyped the prelude's `require` against its op, `() vs Option` at a span the program never wrote)
@@ -2656,6 +2656,43 @@ effect Diagnostic {
   // code and the gate were once both RE-DERIVING this as 0 — the handler saw
   // every diagnostic, printed it, and threw the severity away.
   diag_errors() -> Int
+  // How many of a class the handler has been told. The board reads it: a
+  // floor emit reports, a reference a comment could not resolve, is a claim
+  // the medium made about its own source, and the gate that counted them
+  // grepped the same lines back out of a second compile's stderr.
+  //
+  // A COUNT, NOT THE REPORTS, and the reason is measured: emit reports inside
+  // its per-fn heap regions, which reset after each fn streams, so a list of
+  // reports kept in this handler's state held pointers into zeroed memory
+  // after the first fn and faulted the compile (2026-09-24). The line itself
+  // survives because it is printed before the reset; an integer slot survives
+  // because it is written in place.
+  diag_tally(DiagClass) -> Int
+}
+
+// The reported classes the ledger counts — each a narration whose own
+// diagnostic already names it, counted so a bound can hold it on its way to
+// arming.
+type DiagClass = FieldOffsetFloor | UnprovableComparison | UnresolvedCommentRef
+
+// One report's contribution to a class's count.
+fn said_as(class, diag) = if in_class(class, diag) { 1 } else { 0 }
+
+// A class is its diagnostic's constructor; a new DiagKind is in no class, the
+// shape test's total answer rather than a fabricated one.
+fn in_class(class, diag) = match class {
+  FieldOffsetFloor => match diag {
+    TFieldOffsetUnprovable{} => true,
+    _ => false,
+  },
+  UnprovableComparison => match diag {
+    TEqTypeUnprovable{} => true,
+    _ => false,
+  },
+  UnresolvedCommentRef => match diag {
+    WCommentRefUnresolved{} => true,
+    _ => false,
+  },
 }
 
 // The render REGISTER (SYNTAX: how much surfaces is the gradient reading
@@ -2791,7 +2828,7 @@ fn diag_span(d) with Pure = match d {
   EHandlerStateShadowsOp(_, _, s) => s,
   EFnShadowsOp(_, _, s) => s,
   EOpShadowsOp(_, _, _, s) => s,
-  EDuplicateFnName(_, s) => s,
+  EDuplicateFnName(_, _, s) => s,
   EDuplicateTypeName(_, s) => s,
   EDuplicateEffectName(_, _, s) => s,
   EEmittedNameCollision(_, s) => s,
@@ -2862,7 +2899,7 @@ fn diag_source(d) with Pure = match d {
   EHandlerStateShadowsOp(_, _, _) => "infer",
   EFnShadowsOp(_, _, _) => "infer",
   EOpShadowsOp(_, _, _, _) => "infer",
-  EDuplicateFnName(_, _) => "infer",
+  EDuplicateFnName{} => "infer",
   EDuplicateTypeName(_, _) => "infer",
   EDuplicateEffectName(_, _, _) => "infer",
   EEmittedNameCollision(_, _) => "emit",
@@ -2933,7 +2970,7 @@ fn diag_code(d) with Pure = match d {
   EHandlerStateShadowsOp(_, _, _) => "E_HandlerStateShadowsOp",
   EFnShadowsOp(_, _, _) => "E_FnShadowsOp",
   EOpShadowsOp(_, _, _, _) => "E_OpShadowsOp",
-  EDuplicateFnName(_, _) => "E_DuplicateFnName",
+  EDuplicateFnName{} => "E_DuplicateFnName",
   EDuplicateTypeName(_, _) => "E_DuplicateTypeName",
   EDuplicateEffectName(_, _, _) => "E_DuplicateEffectName",
   EEmittedNameCollision(_, _) => "E_EmittedNameCollision",
@@ -3097,7 +3134,7 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   EHandlerStateShadowsOp(hname, field, _) => "handler '{hname}' state field '{field}' names an op of the handled effect — a state read and an op call become indistinguishable in the arm bodies; rename the field",
   EFnShadowsOp(name, ename, _) => "`fn {name}` collides with an op of effect `{ename}` that this program links — so this declaration is not a second definition, it is an unreachable one: every call to `{name}` performs the op, and the body is judged against the op's signature. Rename the function",
   EOpShadowsOp(name, prior, now, _) => "effect `{now}` declares an op `{name}` that effect `{prior}` already declares, and this program links both. The env holds one entry per name, so the second declaration REPLACES the first rather than joining it: every existing call to `{name}` is now judged against `{now}`'s signature, and the errors surface wherever those calls are — inside the library, at spans your program never wrote. Rename this op",
-  EDuplicateFnName(name, _) => "a second `fn {name}` in one namespace — the first declaration already binds it; rename one",
+  EDuplicateFnName(name, first, _) => "a second `fn {name}` in one namespace — the first, at {first}, already binds it; rename one",
   EDuplicateTypeName(name, _) => "a second `type {name}` in one namespace — the declarations would merge and their constructor sets share tag ids; rename one",
   EDuplicateEffectName(name, other, _) => "`effect {name}` is declared twice in the program — here and at {other}. The env keeps one entry per op, so one declaration's ops REPLACE the other's under every call already written against them (a library's own bodies included); rename one",
   EEmittedNameCollision(symbol, _) => "two different functions both emit as `{symbol}` — the dedup keeps the first, so every call meaning the second would reach the first instead. This is the compiler's own naming, not your program: report it",

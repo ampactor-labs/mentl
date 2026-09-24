@@ -32,10 +32,37 @@ import types
 
 import query
 
-// One measured invariant: the shape the medium counts and the count it may
-// not exceed. The two fields are inseparable — a shape with no bound is a
-// report, and a bound with no shape is the text file this replaces.
-type Bound = {ceiling: Int, shape: CensusShape}
+// One measured invariant: what the medium measures and the count it may not
+// exceed. The two fields are inseparable — a measure with no bound is a
+// report, and a bound with no measure is the text file this replaces.
+type Bound = {ceiling: Int, measure: Measure}
+
+// What a bound reads. Three things, because the medium holds three kinds of
+// fact about its own source, and until 2026-09-24 the board read only the
+// first while tools/verify.sh grepped the other two back out of stderr — so a
+// repin passed the board and the commit then refused five counts the board
+// never saw, and the landing paid a fourth march for it
+// (`Hβ.board.verify-ratchets-live-beside-the-board`). One verdict now, read by
+// the repin and the commit alike.
+type Measure
+  // sites the census convicts on the judged graph
+  = Census(CensusShape)
+  // claims the compile REPORTED — a floor emit wrote, a reference no
+  // declaration answers
+  | Said(DiagClass)
+  // bytes at the judgment's high-water line: exact, because the bump image is
+  // monotone through the judgment, where peak RSS jitters by tens of MB over
+  // byte-identical runs (`Hβ.perf.cost-ratchet-reads-the-image`)
+  | JudgmentHeap
+  // modules whose text is not their own canonical render — the page `mentl
+  // fmt` would write. A landing whose source is off its fixpoint is committed
+  // one way and pinned another, because the commit formats after the pin
+  | OffCanonical
+
+// What the medium found for a measure: the census's sites, the lines naming
+// what is off, the compile's own tally of a reported class, or a byte count.
+// The count is read from this, never stored beside it.
+type Found = Sites([Int]) | Lines([String]) | Tally(Int) | Bytes(Int)
 
 // Where a bound's count stands against its ceiling.
 //
@@ -57,7 +84,7 @@ type Standing = Within | Over | Slack
 // only speaks when it fails cannot show a countdown moving, and they are what
 // lets a breach say WHICH — "367, was 365" tells the developer a number rose;
 // the sites tell them where to look, from a list the walk already built.
-type Reading = Reading(bound: Bound, sites: [Int], standing: Standing)
+type Reading = Reading(bound: Bound, found: Found, standing: Standing)
 
 // The roster, complete by construction: a shape absent here is not measured,
 // which is visible, where a shape measured against a missing bound would be
@@ -67,7 +94,7 @@ fn board_bounds() with Memory + Alloc = [
   // Zero because an eta-wrapper is a REFERENCE written as a MINT: the name it
   // wraps already exists, so the lambda re-mints what a handle would have
   // carried. Retires when the shape is a refusal rather than a count.
-  Bound({ceiling: 0, shape: CsEta}),
+  Bound({ceiling: 0, measure: Census(CsEta)}),
   // The one line here that is genuinely a COUNTDOWN rather than a held zero.
   //
   // ITS CONVICTION IS RE-FOUNDED, and the text it replaces was mine from one
@@ -109,8 +136,9 @@ fn board_bounds() with Memory + Alloc = [
   // performs what the member does (`ty_has_wide_seq`'s) — the false absences
   // the rows landing's crown crucibles name. None was dropped. 257 the same
   // day: `build_pipeline` folds `compose` by reference, as its own comment
-  // always said it did.
-  Bound({ceiling: 257, shape: CsEffectfulLambda}),
+  // always said it did. 256 when the formatter's seven-aspect fan went, one
+  // lambda per aspect with it.
+  Bound({ceiling: 256, measure: Census(CsEffectfulLambda)}),
   // A record pattern whose receiver row never closes reads a field offset
   // the graph cannot prove. `T_FieldOffsetUnprovable` reports that class at
   // the receiver now; this line retires when that diagnostic arms.
@@ -122,19 +150,19 @@ fn board_bounds() with Memory + Alloc = [
   // caught it; the readers went through closed projections (`cell_path`)
   // and the count came back to zero. The pun returns when the row union
   // lands (`Hβ.infer.record-row-vars-are-not-unioned`).
-  Bound({ceiling: 0, shape: CsRecordPatternOpen}),
+  Bound({ceiling: 0, measure: Census(CsRecordPatternOpen)}),
   // Drift mode 10 — the nine survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
   // is exactly why the bound is a count and not zero. Five stand
   // (2026-09-24); the ceiling follows them.
-  Bound({ceiling: 5, shape: CsWildcardZero}),
+  Bound({ceiling: 5, measure: Census(CsWildcardZero)}),
   // Drift mode 13 — a bug is zero or it is blocking; a masked failure is the
   // surrender-fallback Anchor 2 deletes rather than wraps.
-  Bound({ceiling: 0, shape: CsFailureMask}),
+  Bound({ceiling: 0, measure: Census(CsFailureMask)}),
   // A print inside a `report(...)` arm corrupts WAT stdout — the wheel's own
   // emission running through the same file descriptor as its narration.
-  Bound({ceiling: 0, shape: CsPrintInReport}),
+  Bound({ceiling: 0, measure: Census(CsPrintInReport)}),
   // Drift mode 10's typed face: a wildcard arm minting `Forall`, a bare
   // `TVar`, `"Pure"` or `""` is a fabricated judgment, and a fabricated
   // judgment is indistinguishable downstream from a proven one.
@@ -146,24 +174,24 @@ fn board_bounds() with Memory + Alloc = [
   // used only for one of them read as dead). Forty-four such arms stood the
   // day the roster grew; each retires by enumeration. Fifty-nine stand
   // (2026-09-24); the ceiling follows them.
-  Bound({ceiling: 59, shape: CsWildcardFabricates}),
+  Bound({ceiling: 59, measure: Census(CsWildcardFabricates)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
-  Bound({ceiling: 0, shape: CsUnderscoreRetain}),
+  Bound({ceiling: 0, measure: Census(CsUnderscoreRetain)}),
   // Drift mode 8 — an int-coded flag is an ADT the author did not write, and
   // every comparison against it is a claim the type system cannot check.
-  Bound({ceiling: 0, shape: CsFlagAsInt}),
+  Bound({ceiling: 0, measure: Census(CsFlagAsInt)}),
   // Drift mode 7 — adjacent `x, x_h` parameters are one record split across
   // two positions, with position standing in for the identity the record
   // would have carried.
-  Bound({ceiling: 0, shape: CsParallelArrays}),
+  Bound({ceiling: 0, measure: Census(CsParallelArrays)}),
   // Drift mode 1 — a dispatch-slot record. The word never appears in correct
   // Mentl: the graph plus a handler IS the form a vtable approximates.
-  Bound({ceiling: 0, shape: CsVtableRecord}),
+  Bound({ceiling: 0, measure: Census(CsVtableRecord)}),
   // Drift mode 2 — scope as a parent-pointer frame stack. Env lookup is an
   // effect op; a frame walk is that op re-implemented where the handler was.
-  Bound({ceiling: 0, shape: CsEnvFrame}),
+  Bound({ceiling: 0, measure: Census(CsEnvFrame)}),
   // THE SECOND LINE ON THIS ROSTER THAT IS A REAL COUNTDOWN, and it was an
   // OPINION until it was a number.
   //
@@ -191,7 +219,7 @@ fn board_bounds() with Memory + Alloc = [
   // The remaining eleven are emit, cursor, infer and synth_proposer, whose
   // cores differ from this one and from each other — each is its own unnamed
   // capability, and naming them is what walks this to zero.
-  Bound({ceiling: 11, shape: CsWideRow}),
+  Bound({ceiling: 11, measure: Census(CsWideRow)}),
   // THE ONE BOUND ON THIS BOARD MINTED FROM A PRICE RATHER THAN A PRINCIPLE,
   // and the price was measured before the bound existed. The wheel compiles
   // itself through two links — the blob (every file concatenated, one module,
@@ -338,7 +366,12 @@ fn board_bounds() with Memory + Alloc = [
   // settled row is that row renamed rather than a fresh variable; a row
   // nothing can reach is closed when its group is judged. So a callee's row
   // is free now only when something could still bind it.
-  Bound({ceiling: 280, shape: CsFreeRowCallee}),
+  //
+  // 282 — two calls into the same defect, named: `mentl verify` installs
+  // `graph_handler` in its own belt as every compile route does (main), and
+  // the one substring search walks its positions under `find_handler`
+  // (strings). No row among them is authored.
+  Bound({ceiling: 282, measure: Census(CsFreeRowCallee)}),
   // 480 — the imperative loop in recursion's costume, counted across the
   // whole wheel and bounded for the first time 2026-09-21 (Morgan: "anytime
   // there is anything that could be written with the five topological
@@ -358,15 +391,16 @@ fn board_bounds() with Memory + Alloc = [
   // 462 — the count had already fallen to it and the ceiling had not
   // followed, which licenses five future loops nobody would see. Caught the
   // same day by reading the board whole. 446 (2026-09-24): the count fell
-  // again as the rows landing's walks became folds; the ceiling follows.
-  Bound({ceiling: 446, shape: CsIterationCostume}),
+  // again as the rows landing's walks became folds; the ceiling follows. 445
+  // when the formatter's whole-graph parent scan was deleted (2026-09-24).
+  Bound({ceiling: 445, measure: Census(CsIterationCostume)}),
   // 131 (2026-09-24, from 136) — a gate told to look away, counted on the comments column. Each
   // marker is a bash pattern left imprecise (the control-keyword rule inside
   // a Reason string, the accumulator rule on a bounded stack push); the
   // count falls as each pattern is absorbed into a census shape that reads
   // structure instead of text (Phase 5.6's motion), and its zero is an
   // audit that needs no exemptions.
-  Bound({ceiling: 131, shape: CsAuditSilenced}),
+  Bound({ceiling: 131, measure: Census(CsAuditSilenced)}),
   // 732 — a product destructured by position with two or more slots
   // discarded (`FnStmt(n, _, _, _, _)`, `(_h, p, _s, _d)`), counted on
   // every match and let across the wheel the day Morgan's screenshot named
@@ -388,33 +422,114 @@ fn board_bounds() with Memory + Alloc = [
   // `ScheduledBoundary` and twenty more named, then one sweep. What is left
   // is 158 tuples and 61 constructors with two sites or fewer apiece. 218
   // (2026-09-24): the speculation landing's own walks became named fold
-  // steps, and the count fell by one with them.
-  Bound({ceiling: 218, shape: CsWildcardDestructure})
+  // steps, and the count fell by one with them. 213 when the formatter's
+  // seven-aspect fan and its parent scan were deleted — each aspect branch
+  // destructured the borrowed triple by position.
+  Bound({ceiling: 213, measure: Census(CsWildcardDestructure)}),
+  // THE QUIET GATE (§4⑤'s Hylo bar): a parameter whose ownership the author
+  // had to write is the inference failing, measured instead of felt. These
+  // two counts were `grep -roE '[(,] *own [a-z_]' src/` in tools/verify.sh
+  // through 2026-09-24 — 62 and 698 — and that regex counted prose as readily
+  // as signatures, missed lib/, and could not tell a parameter from a
+  // sentence about one. The census reads the parameter product's own
+  // `authored` slot, so these are declarations, across every module the
+  // wheel links: 57 and 561 the day they moved here.
+  Bound({ceiling: 57, measure: Census(CsAuthored(Own))}),
+  Bound({ceiling: 561, measure: Census(CsAuthored(Ref))}),
+  // Reads emit REPORTS rather than a census, so `mentl verify` runs the
+  // compile's remainder to see them: each is a field read the executable
+  // ships as `(unreachable)`. The class arms — its narration becomes an
+  // error, and every error refuses — when this reaches zero. Three, the same
+  // three verify.sh counted on the flat link.
+  Bound({ceiling: 3, measure: Said(FieldOffsetFloor)}),
+  // The same ladder one operator over: `==`/`<` on an operand whose type is
+  // still a variable at emit, where a one-word compare would be an address
+  // compare answering a lie. Fifty-two, again the flat link's own count.
+  Bound({ceiling: 52, measure: Said(UnprovableComparison)}),
+  // A backticked name in prose is a reference the judgment resolves; one that
+  // resolves nowhere is a claim about the code nobody can check. Zero, and it
+  // was zero while the count lived in verify.sh — the difference is that the
+  // repin now reads it. Its first reading here caught four in the prose that
+  // announced it.
+  Bound({ceiling: 0, measure: Said(UnresolvedCommentRef)}),
+  // THE JUDGMENT'S HEAP, the cost ratchet in the one unit that does not
+  // jitter. The band is ±0.5%: a byte count is a cost rather than a set of
+  // defects, so a comment's allocation is not an attribution a landing owes,
+  // and a real rise (the rows landing's 548MB → 757MB) is not hidden in it.
+  // This is the WEAVE's judgment — the link a user's program takes — where
+  // the march's `heap:` line is the flat link's.
+  Bound({ceiling: 895736816, measure: JudgmentHeap}),
+  // Zero, and it is what makes the pre-commit's formatting pass unnecessary:
+  // a landing whose source is off its canonical render was pinned from one
+  // text and committed as another.
+  Bound({ceiling: 0, measure: OffCanonical})
 ]
 
-// The board: every bound answered by one live walk.
+// What the board reads beside the graph and the ledger — handed in by the
+// verb that ran the compile, because neither holds them: where the judgment's
+// heap stood, and which modules are not the page their own render writes.
+type Beside = {heap: Int, off_canonical: [String]}
+
+// The board: every bound answered by one live read.
 //
 // The answer is `census_sites(shape)` — the walk's own result, not a number
 // recovered from its rendering. That distinction is the landing: the old path
 // ran this same walk, printed "N site(s)", and then asked a regex what N was,
 // so a change to the SENTENCE could break the GATE. Nothing here can drift
 // from the walk, because there is nothing between them.
-fn board_read() with GraphRead + !Mutate + Alloc + Memory = board_bounds() |> map(bound_standing)
+fn board_read(beside) with !Mutate = board_bounds() |> map(bound_standing(beside, ??))
 
-fn bound_standing(b) with GraphRead + !Mutate + Alloc + Memory = match b {
+fn bound_standing(beside, b) with !Mutate = match b {
   Bound(r) => {
-    let sites = census_sites(r.shape)
-    let n = len(sites)
-    Reading(b, sites, if n > r.ceiling { Over } else if n < r.ceiling { Slack } else { Within })
+    let found = measure_found(beside, r.measure)
+    Reading(b, found, standing_of(found, r.ceiling))
   },
 }
 
-// One line, in the medium's voice: the shape, what it found, and where the
+fn measure_found(beside: Beside, m) with !Mutate = match m {
+  Census(shape) => Sites(census_sites(shape)),
+  Said(class) => Tally(diag_tally(class)),
+  JudgmentHeap => Bytes(beside.heap),
+  OffCanonical => Lines(beside.off_canonical),
+}
+
+fn found_count(found) = match found {
+  Sites(sites) => len(sites),
+  Lines(lines) => len(lines),
+  Tally(n) => n,
+  Bytes(n) => n,
+}
+
+// A COUNT stands exactly — each unit is a site someone can go to, so a
+// ceiling above it licenses that many unseen sites. BYTES stand in a band:
+// half a percent either way is allocation nobody should have to attribute,
+// and anything past it is a cost a landing names.
+fn standing_of(found, ceiling) = {
+  let n = found_count(found)
+  let band = match found {
+    Bytes(_) => ceiling / 200,
+    Sites(_) => 0,
+    Lines(_) => 0,
+    Tally(_) => 0,
+  }
+  if n > ceiling + band { Over } else if n < ceiling - band { Slack } else { Within }
+}
+
+fn measure_label(m) = match m {
+  Census(shape) => census_label(shape),
+  Said(FieldOffsetFloor) => "field read(s) whose slot the compile could not prove — each shipped as (unreachable)",
+  Said(UnprovableComparison) => "comparison(s) on an operand still a type variable at emit — each shipped as (unreachable)",
+  Said(UnresolvedCommentRef) => "backticked name(s) in prose that resolve nowhere — a reference is a claim",
+  JudgmentHeap => "byte(s) at the judgment's high-water line",
+  OffCanonical => "module(s) off their canonical render — `mentl fmt` rewrites each",
+}
+
+// One line, in the medium's voice: the measure, what it found, and where the
 // count stands against its bound. The count and the label render once; the
 // standing supplies only its words, because they are the one part that
 // differs — a rise and a fall are both "the number moved", said two ways.
 fn board_line(reading) with GraphRead + !Mutate + Memory + Alloc + Intern = match reading {
-  Reading{bound: Bound(r), sites, standing} => "  {standing_mark(standing)} {int_to_str(len(sites))} {census_label(r.shape)} — {standing_words(standing)} {int_to_str(r.ceiling)}{standing_hint(standing)}\n{breach_sites(standing, sites)}",
+  Reading{bound: Bound(r), found, standing} => "  {standing_mark(standing)} {int_to_str(found_count(found))} {measure_label(r.measure)} — {standing_words(standing)} {int_to_str(r.ceiling)}{standing_hint(standing)}\n{breach_sites(standing, found)}",
 }
 
 fn standing_mark(standing) with Pure = match standing {
@@ -438,17 +553,27 @@ fn standing_hint(standing) with Pure = match standing {
 // A breach names WHERE, because the number alone is the one thing the
 // developer cannot act on. The sites come from the same walk that decided it —
 // one read, no second question. A fall needs no list: its fix is the number.
-fn breach_sites(standing, sites) with GraphRead + !Mutate + Memory + Alloc + Intern = match standing {
-  Over => board_sites(sites),
+fn breach_sites(standing, found) with GraphRead + !Mutate + Memory + Alloc + Intern = match standing {
+  Over => found_sites(found),
   Within => "",
   Slack => "",
 }
 
-fn board_sites(sites) with GraphRead + !Mutate + Memory + Alloc + Intern =
-  sites |> map(board_site_line) |> str_concat_all
+// A census site is a handle, projected to its address here; a line already
+// carries its own address; a tallied class was named, each at its site, in
+// the compile's own report above; a byte count has no WHERE — `mentl <file>
+// cost` ranks it by declaration.
+fn found_sites(found) with GraphRead + !Mutate + Memory + Alloc + Intern = match found {
+  Sites(sites) => sites |> map(board_site_line) |> str_concat_all,
+  Lines(lines) => lines |> map(board_said_line) |> str_concat_all,
+  Tally(_) => "      each is named at its site in the compile's report above\n",
+  Bytes(_) => "      `mentl <file> cost` ranks the heap by declaration\n",
+}
 
 fn board_site_line(h) with GraphRead + !Mutate + Memory + Alloc + Intern =
   "      {site_address(h)}\n"
+
+fn board_said_line(line: String) with Memory + Alloc = "      {line}"
 
 fn board_breached(reading) with Pure = match reading {
   Reading{standing: Within} => false,

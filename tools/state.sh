@@ -69,7 +69,7 @@ else
 fi
 boot_sha=$(sha256sum boot/mentl.wasm 2>/dev/null | cut -d' ' -f1)
 stamp=$(cat .build/frontier-stamp 2>/dev/null)
-if [ -n "$boot_sha" ] && [ "$stamp" = "$boot_sha" ]; then
+if [ -n "$boot_sha" ] && printf '%s\n' "$stamp" | grep -qx "$boot_sha"; then
   echo "    frontier: green at this boot (${boot_sha:0:12})"
 else
   echo "    frontier: NOT RUN at this boot — boot ${boot_sha:0:12}, stamp ${stamp:0:12}${stamp:+ (stale)}"

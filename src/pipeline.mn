@@ -812,38 +812,43 @@ handler wasi_filesystem {
 // The sandbox boundary. Outermost in every route. Declares
 // `with !Diagnostic` so its own arms cannot recursively perform
 // report — structural gate via spec 01's algebra.
-handler diagnostics_handler with errors = 0, scope = ScopeAll {
-  diag_report(diag, line, dmod) => // The line arrives MADE (rendered at the report boundary, in the
-  // reporter's own world) — this arm's remaining projections
-  // (severity, span, the register's file-local rewrite) are
-  // pure ctor/string reads, so the arm's row carries no graph or
-  // intern demand and its residual stays clean through every install.
-  // The tally IS the projection continued. This arm saw every diagnostic and
-  // dropped its severity on the floor, so `mentl check` on a missing module
-  // printed the error and exited 0, and a program with a live E_TypeMismatch
-  // emitted 77 lines of WAT. The verdict was here the whole time; the exit
-  // code re-derived it as success.
-  if diag_severity(diag) == SError {
+handler diagnostics_handler with errors = 0, scope = ScopeAll, floors = 0, compares = 0, refs = 0 {
+  diag_report(diag, line, dmod) => {
+    // The line arrives MADE (rendered at the report boundary, in the
+    // reporter's own world) — this arm's remaining projections
+    // (severity, span, the register's file-local rewrite) are
+    // pure ctor/string reads, so the arm's row carries no graph or
+    // intern demand and its residual stays clean through every install.
+    // The tally IS the projection continued. This arm saw every diagnostic and
+    // dropped its severity on the floor, so `mentl check` on a missing module
+    // printed the error and exited 0, and a program with a live E_TypeMismatch
+    // emitted 77 lines of WAT. The verdict was here the whole time; the exit
+    // code re-derived it as success.
+    let is_error = diag_severity(diag) == SError
     // An error renders in EVERY scope — a broken claim anywhere in the
     // weave changes the answer's validity; the register never silences it.
-    eprint_string(line)
-    resume() with errors = errors + 1
-  } else {
-    // Narration is the register's business: ScopeAll (the census paths)
-    // prints everything; ScopeModule renders only the file the user asked
-    // about. The comparison is on the module the report CARRIES, not on a
-    // line range — spans are local now, so every file starts at line 1 and a
-    // range names nothing.
-    match scope {
-      ScopeAll => eprint_string(line),
-      ScopeNone => (),
-      ScopeModule(target) => if dmod == target { eprint_string(line) } else { () },
-    }
-    resume()
+    if is_error || narrates(scope, dmod) { eprint_string(line) }
+    resume() with errors = errors + if is_error { 1 } else { 0 }, floors = floors + said_as(FieldOffsetFloor, diag), compares = compares + said_as(UnprovableComparison, diag), refs = refs + said_as(UnresolvedCommentRef, diag)
   },
   diag_errors() => resume(errors),
+  diag_tally(class) => resume(match class {
+    FieldOffsetFloor => floors,
+    UnprovableComparison => compares,
+    UnresolvedCommentRef => refs,
+  }),
   diag_scope(sc) => resume() with scope = sc,
   diag_scope_of() => resume(scope),
+}
+
+// Narration is the register's business: ScopeAll (the census paths) prints
+// everything; ScopeModule renders only the file the user asked about. The
+// comparison is on the module the report CARRIES, not on a line range —
+// spans are local now, so every file starts at line 1 and a range names
+// nothing.
+fn narrates(scope, dmod: String) = match scope {
+  ScopeAll => true,
+  ScopeNone => false,
+  ScopeModule(target) => dmod == target,
 }
 
 // scope_localize DELETED with the weave: it rebuilt every rendered span by
@@ -1753,6 +1758,10 @@ fn census_shape_of(arg) with Memory + Alloc = if arg == "anonymous" {
   Some(CsAuditSilenced)
 } else if arg == "wildcard-destructure" {
   Some(CsWildcardDestructure)
+} else if arg == "authored-own" {
+  Some(CsAuthored(Own))
+} else if arg == "authored-ref" {
+  Some(CsAuthored(Ref))
 } else {
   match find(
     (k) => show_pipe_kind(k) == arg,

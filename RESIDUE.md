@@ -2119,7 +2119,14 @@ bytes, which is the better k anyway) and did not paper it: this entry is the
 record, band A owns the fix, and the repro is two `addr` calls at different
 types in one body.
 
-`Hβ.tools.cost-ratchet-reads-the-heap-line` — NAMED 2026-09-23. The march
+`Hβ.tools.cost-ratchet-reads-the-heap-line` — CLOSED 2026-09-24, in the form
+below with one change of home: the exact ratchet is src/board.mn's
+`JudgmentHeap` bound, read by `mentl verify` (so the repin and the commit
+both hold it) off the WEAVE judgment's high-water line — 895,980,464 B the day
+it landed, against the flat link's 759,031,984 on the march's m3 leg. The band
+is ±0.5%, because a byte count is a cost rather than a set of defects: a
+comment's allocation is not an attribution a landing owes. The peak-RSS line
+is demoted to a crash guard at 1,500,000 KB. NAMED 2026-09-23. The march
 prints two costs per leg: the judgment's heap at its high-water line, which
 is byte-deterministic (m2 and m3 of one source agree to the byte, and two
 sources differ by exactly what they allocate), and the process's peak RSS,
@@ -3363,8 +3370,11 @@ every mint was paying for. What `(arena, offset)` still owns is the counting
 pass and 9.2's determinism. `Hβ.perf.per-decl-arena`
 (4.3) resumes on the 941MB judgment, ~98% of it scratch.
 
-`Hβ.perf.cost-ratchet-reads-the-image` — THE BOARD POLICES COST WITH A HOST
-PROXY, and the proxy's noise is wider than the margin it guards. Measured
+`Hβ.perf.cost-ratchet-reads-the-image` — CLOSED 2026-09-24: its close
+condition met on the board rather than in the march — the heap line carries
+the exact ratchet (`JudgmentHeap`, `Hβ.tools.cost-ratchet-reads-the-heap-line`)
+and the RSS ceiling is a crash guard. THE BOARD POLICED COST WITH A HOST
+PROXY, and the proxy's noise was wider than the margin it guarded. Measured
 2026-09-12: two byte-identical m2 binaries (sha256 7ad73818…, boot's emit of
 0e79bdbd and e5ae5736, which differ in no src/ or lib/ byte) over one
 identical input answered 2389636KB and 2356360KB of peak RSS — 33MB of
@@ -12113,20 +12123,70 @@ this: a copy reads a VIEW of its source (the renamed roots its mapping
 covers), not the source's whole path set. Retires when the peak ratchet is
 back under the pre-landing ceiling.
 
-`Hβ.board.verify-ratchets-live-beside-the-board` — OPEN, measured
-2026-09-24. A repin blesses a wheel after the micros and `mentl verify`
-(src/board.mn's bounds), and verify.sh's own ratchets — field-offset
-floors, unprovable comparisons, comment references, authored own/ref —
-run only at commit. This landing's repin passed and its commit then refused
-five of them, one a rise of eighteen shipped `(unreachable)` floors, and the
-cost was a fourth march. They cannot simply be run at the repin: verify.sh's
-doc-truth leg compares PROVENANCE's head sha with the boot, which is
-mid-change there. THE FORM: each of the four is a bound in src/board.mn, read
-off the one judged graph as every other bound is (the field-offset and
-comparison counts are the diagnostics the judgment already raises; the
-comment-reference count is the weave's), so the repin's `mentl verify` holds
-them and verify.sh keeps only what measures the world outside the graph.
-Retires with the four keys leaving tools/verify-baseline.txt.
+`Hβ.board.verify-ratchets-live-beside-the-board` — CLOSED 2026-09-24, one
+landing after it was named. A repin blessed a wheel after the micros and
+`mentl verify`, and verify.sh's own ratchets — field-offset floors,
+unprovable comparisons, comment references, authored own/ref — ran only at
+commit; one landing's repin passed and its commit then refused five of them.
+THE CORRECTION TO ITS OWN FORM, measured while building it: the entry said
+the floor counts are "diagnostics the judgment already raises". They are
+not — EMIT raises them, so a board that stops at the judgment cannot see
+them. `mentl verify` runs the compile's remainder now (saturate, lower,
+reachability, the executable gate, emit into `wat_discard`), and the board's
+bounds are over MEASURES rather than census shapes alone: `Census(shape)`,
+`Said(DiagClass)` — the compile's own tally of a reported class —
+`JudgmentHeap`, and `OffCanonical` (modules whose text is not their own
+render). The authored own/ref pair is a census over the parameter product's
+`authored` slot (`CsAuthored`), where verify.sh ran a regex over src/ that
+counted prose, missed lib/, and read 62/698 where the declarations number
+57/561. The tally is COUNTS, not the reports, for a measured reason: emit
+reports inside its per-fn heap regions, which reset after each fn streams,
+so a list of reports held in the handler's state pointed into zeroed memory
+after the first fn and faulted the compile at 4GB. The verb reproduced
+verify.sh's counts exactly on its first reading (3 floors, 52 comparisons)
+and, the same reading, refused the landing's own four unresolved references
+and three modules off their canonical render. Each new bound was seen RED at
+ceiling 0 before its ceiling was set. The five keys left the baseline;
+verify.sh's manifest leg went with them, subsumed by the board's refusal of
+a weave that does not judge clean.
+
+`Hβ.fmt.render-streams-instead-of-reindenting` — OPEN, measured 2026-09-24.
+The formatter builds each node's page as a string and indents a nested block
+by `replace(s, "\n", "\n  ")` over the block's whole text, once per nesting
+level, so a render costs O(depth × size) in copies; rendering the whole wheel
+in one process (the board's canonical-render measure) allocates 117MB where
+the source is ~4MB. Two defects in the same path were closed the day this was
+measured and are recorded in the LEDGER: a whole-graph parent scan per
+statement whose answer nothing read, and a substring search that built a list
+and a view per byte. THE FORM: the render writes into a sink handler that
+carries the current indent as state, so a line is indented once, as it is
+written, and nothing is re-copied; `mentl fmt` and the board read the same
+stream. Retires when the canonical-render phase of `mentl verify` measures in
+single-digit MB.
+
+`Hβ.voice.solo-read-narrates-refs-the-program-resolves` — OPEN, measured
+2026-09-24. `mentl src/board.mn doc` prints twenty-six
+`W_CommentRefUnresolved` warnings for backticked names the WHOLE wheel
+resolves (`infer_context`, `can_yield`, `render_pat_tokens`, …) — the solo
+read judges the module's import closure, and its prose names functions in
+modules board.mn does not import. The board, which reads the whole program,
+counts zero. So a developer reading one module is told its prose is wrong
+when it is not. THE FORM: a comment reference resolves against the program the
+module is linked into when one is in hand (the address surface always has
+the entry), and narrates only what resolves nowhere in it; a module read truly
+alone says which program it resolved against. Retires with the solo read and
+the board agreeing on every module.
+
+`Hβ.why.a-pattern-arm-renders-the-sum-types-first-constructor` — OPEN,
+measured 2026-09-24. `mentl src/types.mn:2799` on the arm
+`EDuplicateFnName(_, s) => s` answers `Why: PExpectedToken flows in here`,
+naming the first constructor of `DiagKind` — the reason the pattern's type
+cell carries is the sum type's declaration, rendered through its first
+variant, rather than the constructor the arm names. Every arm of a large
+match reads the same wrong line. THE FORM: a constructor pattern's node
+carries the constructor's own declaration as its reason, which the pattern's
+node already knows (patterns are graph nodes). Retires with the Why at any
+constructor arm naming that constructor.
 
 `Hβ.fmt.a-render-that-reads-back-as-another-program` — CLOSED 2026-09-24.
 The pre-commit hook canonicalizes every staged wheel file with `mentl fmt`,

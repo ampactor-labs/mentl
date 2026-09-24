@@ -187,6 +187,13 @@ type CensusShape
   // this count can. Wheel-zero is the contract
   // (`Hβ.lower.record-pattern-param-receiver`).
   | CsRecordPatternOpen
+  // A PARAMETER WHOSE OWNERSHIP THE AUTHOR HAD TO WRITE — the quiet gate
+  // (§4⑤'s Hylo bar: if the developer has to think about it, the inference
+  // failed). Read off the `authored` slot of the parameter product, where the
+  // parser records exactly what was typed, on every carrier that has one: a
+  // fn, a lambda, a handler's config. A regex over the page counted this for
+  // five weeks, matching `(ref x` inside prose as readily as in a signature.
+  | CsAuthored(Ownership)
 
 // Sum type covering every forensic question `mentl query` can pose.
 // Each variant corresponds to one `ask(Q)` arm in `query_default`.
@@ -1088,6 +1095,7 @@ fn census_label(shape) = match shape {
   CsFreeRowVar => "row variable(s) the judgment left unbound — the cause the call-site count pays for",
   CsAuditSilenced => "comment(s) telling the drift audit to look away — each one a pattern left imprecise",
   CsWildcardDestructure => "product pattern(s) discarding two or more slots by position — a record punned by name is the form",
+  CsAuthored(marker) => "declaration(s) with a parameter authored{show_ownership(marker)} — ownership the inference left to the developer",
 }
 
 // A name beside the key the algebra compares it on. `eff_name_str` is the
@@ -1542,6 +1550,12 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
     NExpr(MatchExpr(_, arms)) => any_record_arm(arms, 0, len(arms)),
     _ => false,
   },
+  CsAuthored(marker) => match body {
+    NStmt(FnStmt{params}) => any(authors(marker, ??), params),
+    NStmt(HandlerDeclStmt{config}) => any(authors(marker, ??), config),
+    NExpr(LambdaExpr(params, _)) => any(authors(marker, ??), params),
+    _ => false,
+  },
   CsRecordPatternOpen => // The same sites, filtered by the receiver's JUDGED type. Two
   // existing homes compose and nothing is re-derived: `graph_chase`
   // resolves the receiver handle through the union-find (so a TVar needs
@@ -1564,6 +1578,8 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with GraphRead + !Mutat
     _ => false,
   },
 }
+
+fn authors(marker: Ownership, p) = param_authored(p) == marker
 
 // The receiver's judged type at a record-pattern site: open when it
 // resolves to `TRecordOpen`, which is exactly when lowering has no full

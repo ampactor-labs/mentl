@@ -8,6 +8,16 @@
 # never gets worse.
 #
 # ── WHERE THE CENSUS BOUNDS WENT ─────────────────────────────────────────
+# 2026-09-24: five more — comment_refs_max, field_offset_unprovable_max,
+# eq_type_unprovable_max, authored_own_max, authored_ref_max. They were read
+# here at COMMIT, after the repin had blessed the wheel, so a repin could pass
+# and its commit refuse (one landing paid a fourth march for exactly that).
+# `mentl verify` runs the compile's remainder now and reads the first three
+# off the compile's own tally, and the ownership pair is a census over the
+# parameter product's `authored` slot rather than a regex over the page. Their
+# histories are in git; their justifications are beside their numbers in
+# src/board.mn.
+#
 # Twelve keys left this file: eta_max, effectful_lambda_max,
 # record_pattern_open_max, wildcard_zero_max, failure_mask_max,
 # print_in_report_max, wildcard_fabricates_max, underscore_retain_max,
@@ -434,20 +444,6 @@
 # self-compile raises ZERO row mismatches and the rounds CONVERGE.
 census_errors_max: 0
 
-# ── THE PHANTOM RATCHET ─────────────────────────────────────────────────
-# The census one layer up: symbols cited in `//` comments that exist nowhere
-# in code. A comment IS graph content (SYNTAX §Comments) — a CommentReason
-# edge the Why engine walks — so a phantom is a FALSE EDGE, the Carried-Truth
-# Law at the prose layer. tools/comment-audit.sh has caught these since it was
-# written, exits 1 on a hit, and says in its own header "wire into pre-commit
-# to gate, or run by hand." It was wired to nothing and had never been run.
-#
-# 2026-07-17: 554, the first measurement. Read by tools/comment-ratchet.sh,
-# which is on the board. Falls to 0, then both it and this line are deleted and
-# comment-audit gates directly — and both ratchets dissolve into `mentl audit`,
-# the projection they are larval forms of.
-comment_refs_max: 0
-
 # 2026-07-31: the MOVERS ratchet — the condemned second pass's vital sign
 # (PLAN, THE RESOLVED DESIGN D5/D8): the count of schemes the final judges
 # differently than the trial published. Overrides, not verification — so this
@@ -707,31 +703,6 @@ comment_refs_max: 0
 # gauge to read, and no key: a ratchet held at zero over a deleted instrument
 # is a mute gate. The regrowth alarm is structural — a second pass would
 # have to be written back into infer.mn.
-
-# THE UNPROVABLE-FIELD-OFFSET CENSUS — the wheel's own count of reachable
-# field accesses whose slot the graph could not prove. Each one is an
-# `(unreachable)` the emit writes into the shipping module, and until
-# 2026-09-15 each one was written and never SAID: `mentl check` passed, the
-# compile exited 0, and the program trapped at the instruction that admits
-# it. Four of them rode the wheel. One was the unconditional else-branch of
-# emitfns_index_build, and the march found it the only way a silent floor is
-# ever found — the m4 leg died at a bare `wasm trap: unreachable` with no
-# diagnostic anywhere in the run.
-#
-# This is a ratchet toward an ARMING, not a standing tolerance. The class is
-# narration (T_, SWarning) and every error refuses, so it arms by becoming an
-# error — which the wheel's own census must reach ZERO to afford, or the
-# medium refuses itself. Each of the four is a receiver whose row never closed —
-# emitfns_index_build's `col` reads List({ name: String | r }) in the full
-# wheel though the op that fills it declares EmitFnEntry, which is the
-# Carried-Truth Law at the element type. Drive them to zero, then arm, then
-# this line and the pre-arm fixture both retire.
-# 2026-09-23: 4 -> 3. The `op_name` floor was `arms_include_op`'s `last(arms)`,
-# and it left with the whole-graph provider scan it served: `provider` reads
-# the providing arms the op's own scheme carries, so no walk reads an arm's
-# field through an open row any more. Measured by compiling HEAD's wheel with
-# HEAD's boot beside the tree's m2 — one floor gone, none entered.
-field_offset_unprovable_max: 3
 
 # The effect seam: filesystem impl calls outside the handler that owns them.
 # MEASURED 24 before this landing and 13 after (both read from the artifact,
@@ -1015,55 +986,6 @@ crown_expected_red: sound-nominal-record-sibling
 # the gate's other direction refused the stale declaration the moment it
 # passed, which is what that contract is for.
 
-# 2026-09-18: THE UNPROVABLE-COMPARISON census (T_EqTypeUnprovable, the
-# field-offset floor's sibling): a `==`/`!=`/`<`… whose operand type is still a
-# variable at emit falls to a one-word compare, right for a word and an address
-# lie for anything else. The first form wrote a trap and the wheel compiled by
-# it died compiling the wheel (m4 exit 134): the wheel carries 56 of these,
-# measured on the m3 leg the day the class was born — 15 at authored spans
-# (word and handle membership, two `<` on Option payloads, and Strings compared
-# by interned address, e.g. in_owner_names) and 41 on synthesized nodes at span
-# 0, unattributed until the report carries the nearest authored span.
-# Countdown to 0 (twins reaching the site; an Intent Boundary naming the type
-# where the polymorphism is over words); at 0 the class arms and the
-# eq-in-arm-pointer leg turns green by proving its arm. A RISE is a new
-# address compare entering the wheel.
-# 56 -> 60 at pin 8798566e: the Domain walk (verify.mn) is new generic
-# code, and EVERY generic comparison in this wheel lands in this class, because
-# a word-repr instantiation mints no twin (spec_enc_is_floor skips an all-word
-# key) so the floor body compares two type vars. Measured by diffing the site
-# names: `bound_admits_lo`, `bound_admits_hi`, `int_same`, `int_max`, `int_min`
-# entered; `lo_best`, `hi_best`, `lo_hull`, `hi_hull` left, because four
-# near-identical bound-combiners collapsed into one meet and one join
-# parameterized by the comparator. The rise is +4 rather than +6 for that
-# reason, and it is a rise the countdown cannot avoid by writing less code —
-# only by the twin reaching word-typed instantiations, which is step (2) of
-# Hβ.emit.eq-on-unresolved-operand-is-pointer-eq.
-# 2026-09-21: 60 -> 58. Two left with src/oracle.mn — a whole module deleted
-# takes its unprovable compares with it, which is the cheapest way this
-# counter ever falls and the least instructive: the class is unchanged.
-# 2026-09-21 (the site-is-a-handle landing): 58 -> 55, and this fall is the
-# instructive kind. Measured by compiling the prior pin's source with THIS
-# boot beside the current tree — one judge, two sources — and comparing the
-# sites by operator and emitting fn: `module_decls_of` and its `$spli000`
-# twin compared an untyped `target` against a cell's path and now compare
-# `cell_path(c: ModuleCell)` against `target: String`; `site_in` compared a
-# generic pair and now compares `site_of(h)`, a `(Int, Span)`. Three
-# comparisons PROVEN by reading through a typed projection — the countdown's
-# own mechanism, "name the type at its Intent Boundary" — not by deleting
-# code. The eleven lambda sites renumber between generations and pair one to
-# one; none entered or left.
-# 2026-09-23 (the declaration-edge landing): 55 -> 53, both by DELETION of a
-# scan the edges replaced — `arms_include_op` (the provider scan's `==` on an
-# arm's op name) and `handle_in` (a handle-membership helper, deleted with the
-# dedup it served). Same measurement as above, HEAD's wheel through HEAD's boot beside
-# the tree's m2; the lambda sites renumber and pair one to one.
-# 2026-09-23 (the record-row landing): 53 -> 52, measured at the pre-commit
-# gate and NOT yet attributed to a site — no paired diff was run, so no cause
-# is written here; a record's layout now reads to its row's end at emit, which
-# is where to look first.
-eq_type_unprovable_max: 52
-
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
 # receiver's full sorted field set. Born at ZERO (pin 4ce9914b7360), which
@@ -1075,19 +997,6 @@ eq_type_unprovable_max: 52
 # 0 → 1 with the site located. Class: Hβ.lower.record-pattern-param-receiver.
 loop_scaffold_refs_max: 3
 
-# 2026-08-07: the QUIET gate (§4⑤'s Hylo bar as a banked ceiling, PLAN
-# §11 4.4 — Hβ.ownership.quiet-empirical-gate). Authored own/ref markers
-# in src/, param-position-anchored text count, monotone DOWN — a rising
-# count IS the inference failing, measured instead of felt. Seeded from
-# this turn's read: 83 own (the 4.2 landing's collect_arm_tags drop
-# already banked), 817 ref. Mostly compensation for the pre-4.2 grade;
-# each marker the honest grade retires lowers these. The census-shape
-# count (a graph fact, not a text pattern) is the named refinement.
-# 816 → 814 at the carried-DAG landing (2026-08-17): deleting
-# driver_module_in_dag_deps took its two authored `ref` params with it.
-# The same landing tried to author five NEW markers and the gate refused
-# all five; dropping them left the emit byte-identical, so the inference
-# held every borrow already — the ceiling falls and nothing replaced it.
 # 2026-08-17: the SUGAR VOCABULARY contract — the prelude names the five
 # desugar-capable modules mint as literals, which is the seed set
 # Hβ.driver.link-is-reachability needs and a name-keyed contract nothing
@@ -1116,52 +1025,6 @@ loop_scaffold_refs_max: 3
 # when Hβ.driver.link-is-reachability lands and an emit-minted name demands
 # its defining module the way an import does.
 desugar_vocabulary: 41
-
-# 2026-09-11 · 812 -> 811 · the gate's own DOWN arm, held. Bisected with the
-# gate's regex to pin 0bd0525e, and the retired marker is `ref strict` in
-# pipeline.mn — it did not become unnecessary, its FUNCTION was deleted with
-# the dispatch-tier residue. That still counts: a borrow nobody authors is a
-# borrow the inference no longer has to be told about, however it left.
-# 2026-09-12 · 811 -> 807 · the refs facet's two renderers (render_ref_spans,
-# ref_span_line) and its private span_in deleted into the census's own site
-# line and site_in — four borrow markers gone with the duplicate code that
-# carried them. A consolidation pays this ceiling directly.
-# 2026-09-18 · 67 -> 63 · the fan's copy machinery took four `own` markers
-# with it (`fan_blocks`/`fan_spawn`/`fan_join`'s accumulators and
-# `keep_proven`'s). A judgment on the live graph accumulates nothing to own.
-authored_own_max: 62
-# 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
-# primitive's deletion — the honest grade needs no marker where there is no
-# second copy to annotate.
-# 2026-09-18: 744 -> 739. Five borrow markers rode the fan's walkers
-# (`ref candidates`, `ref recs`, `ref cands`, `ref verdicts`) and the
-# banded-mint arms. Deleted with what they annotated.
-# 2026-09-21: 739 -> 737. Two borrow markers left with the decls that carried
-# them — `driver_check_entry`'s own `ref entry_module`, and the `ref ranges`
-# on driver_module_ast, a parameter four call sites supplied and nothing read.
-# 2026-09-21 (second landing): 737 -> 729. Four left with the ranked-queue
-# oracle's deletion; four more were dropped from the SMT helpers while
-# refuting them as a cause of the pointer-render defect — they were not the
-# cause, and they were also not needed, which is the grade doing its job.
-# 2026-09-21 (the site-is-a-handle landing): 729 -> 721. Eight borrow markers
-# left with the declarations that carried them — the five chain renderers
-# behind the `format_chain` op nothing performed, `collect_module_cells` and
-# `cell_path_in` (the module cell became a nominal record with projections),
-# and `span_of_node_raw`'s readers (a site is a handle now, so nothing
-# borrows a span to pair with a module). Deleted with what they annotated,
-# never retired by the grade; the ceiling follows the count down.
-# 2026-09-22 · 721 -> 706 · the gate refused its author: the occurs family's
-# visited-set rewrite arrived with seven NEW markers (the `_seen` twins and
-# three helpers, every one a read the grade infers), and the count rose to
-# 728. The fix deleted every authored `ref` in that family — eighteen, the
-# fifteen it inherited included — plus the four on the formatter's and the
-# cost instrument's helpers, twenty-two in all; `mentl src/main.mn check` is
-# clean without them, which is the Hylo bar measured rather than felt. The
-# ceiling follows the count down. 698 (2026-09-24): the rows landing wrote
-# `ref spine` on forty-eight graph helpers that only read it; eight of them
-# carry none now and the wheel checks clean, so the rest are the next
-# retirements of the same kind.
-authored_ref_max: 698
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1278,7 +1141,16 @@ authored_ref_max: 698
 # tail-call walkers the deterministic heap line moved 756,308,728 →
 # 756,942,040 B (+0.08%). The ceiling to ratchet is that line
 # (`Hβ.tools.cost-ratchet-reads-the-heap-line`), which RSS jitter cannot move.
-selfcompile_peak_kb_max: 1310000
+#
+# 1,500,000 (2026-09-24) — DEMOTED TO A CRASH GUARD, as the banked design
+# said it should be. The exact cost ratchet is src/board.mn's JudgmentHeap
+# bound now: the weave judgment's high-water line, byte-deterministic, read
+# by `mentl verify` at the repin and at every commit, with a ±0.5% band that
+# a comment's allocation cannot cross and a real rise cannot hide in. This
+# line stays for what that one cannot see — lowering, emit, the WAT buffer —
+# and is set far enough over the ~1.3GB it reads that kernel jitter never
+# refuses a repin again; it catches a process that is about to be killed.
+selfcompile_peak_kb_max: 1500000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

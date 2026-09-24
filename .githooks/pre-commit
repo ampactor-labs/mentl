@@ -37,40 +37,14 @@ mapfile -t staged_src < <(
       | grep -E '\.mn$' || true
 )
 
-# ─── Gate 0: the fmt rung — canonical form enters history ────────────
-# The fmt fixpoint is proven (one-pass idempotent, whole-wheel, prose
-# conserved — the canonical-page landing), which licenses applying it in
-# place at the commit boundary: every staged WHEEL file (src/ lib/) is
-# rendered canonical and re-staged BEFORE the drift and comment gates
-# judge it. Guards: a file the parser refuses is restored untouched (fmt
-# is productive-under-error — a broken file must not be "canonicalized");
-# a partially-staged file is skipped (fmt-in-place would mix staged and
-# unstaged hunks); tests/ are excluded deliberately (frontier fixtures
-# bank exact spans — canonicalizing them moves banked coordinates).
-if command -v mentl >/dev/null 2>&1 && [[ ${#staged_src[@]} -gt 0 ]]; then
-    unstaged=$(git diff --name-only 2>/dev/null)
-    for f in "${staged_src[@]}"; do
-        case "$f" in src/*|lib/*) ;; *) continue ;; esac
-        [[ -f "$REPO_ROOT/$f" ]] || continue
-        if printf '%s\n' "$unstaged" | grep -qx "$f"; then
-            echo "fmt: SKIP $f (partially staged — stage it whole to canonicalize)"
-            continue
-        fi
-        before=$(git hash-object "$REPO_ROOT/$f")
-        out=$(timeout 90 mentl fmt "$REPO_ROOT/$f" 2>&1 || true)
-        if printf '%s' "$out" | grep -qE '^parser: (P_|[A-Za-z_]+ error:)'; then
-            echo "fmt: REFUSED $f (parse breakage — fix before committing):"
-            printf '%s\n' "$out" | grep -E '^parser: (P_|[A-Za-z_]+ error:)' | head -3
-            git checkout -- "$f" 2>/dev/null || true
-            continue
-        fi
-        after=$(git hash-object "$REPO_ROOT/$f")
-        if [[ "$before" != "$after" ]]; then
-            git add "$f"
-            echo "fmt: canonicalized $f (re-staged)"
-        fi
-    done
-fi
+# (The former Gate 0 — `mentl fmt` over staged files, re-staged — is GONE,
+# 2026-09-24. It formatted AFTER the march had pinned a boot from the
+# unformatted text, so the commit and the pin were two sources, and one
+# landing paid four marches to reconcile them. Source is canonical as it is
+# WRITTEN now — tools/audit-on-edit.sh runs `mentl fmt` on every edit — and
+# `mentl verify` refuses any module off its canonical render, at the repin
+# and again inside Gate 3 below, so a commit-time rewrite could only ever
+# reintroduce the split it existed to prevent.)
 
 # ─── Gate 1: drift-audit ─────────────────────────────────────────────
 if [[ -x "$AUDIT" && ${#staged_src[@]} -gt 0 ]]; then
@@ -91,11 +65,11 @@ if [[ -x "$AUDIT" && ${#staged_src[@]} -gt 0 ]]; then
 fi
 
 # (The former Gate 2 — the comment-truth ratchet — ABSORBED 2026-07-22:
-# the medium's own W_CommentRefUnresolved pass runs in every compile and
-# verify's census ratchets comment_refs_max at 0. Its script was deleted
+# the medium's own W_CommentRefUnresolved pass runs in every compile, and
+# `mentl verify` bounds its tally at 0 (src/board.mn). Its script was deleted
 # then; the dead -x check here silently no-opped for a week — the exact
 # gate-that-cannot-fail vacuity, caught by the practice scout 2026-07-30.
-# Verify's ratchet in Gate 3 below IS the comment-truth gate now.)
+# The board in Gate 3 below IS the comment-truth gate now.)
 
 # ─── Gate 3: the thesis gate (compiler source staged) ────────────────
 has_compiler_change=false
@@ -138,7 +112,9 @@ staged_boot=$(git diff --cached --name-only --diff-filter=ACMR | grep -cx 'boot/
 if [[ "$has_compiler_change" == "true" || "$staged_boot" -gt 0 ]]; then
     STAMP="$REPO_ROOT/.build/frontier-stamp"
     boot_sha=$(sha256sum "$REPO_ROOT/boot/mentl.wasm" | cut -d' ' -f1)
-    if [[ ! -f "$STAMP" ]] || [[ "$(cat "$STAMP")" != "$boot_sha" ]]; then
+    # The stamp lists every wheel a green run tested (tools/frontier-gate.sh),
+    # so a green run against a march candidate stands for the boot it becomes.
+    if [[ ! -f "$STAMP" ]] || ! grep -qx "$boot_sha" "$STAMP"; then
         echo ""
         echo "pre-commit: THE FULL-GREEN PERIMETER REFUSES — the frontier has not"
         echo "run green against this boot ($(echo "$boot_sha" | cut -c1-12)…). Run:"

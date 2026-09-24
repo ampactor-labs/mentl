@@ -413,7 +413,7 @@ fn argmax_or_default(scored, caret) with Memory + Alloc = match caret {
 // cursor carries Located(span, Inferred("user pinned via ??")). Structural
 // projection — no magic float.
 fn reason_is_pinned(reason) with Memory + Alloc = match reason {
-  Located(_, Inferred(ctx)) => contains(ctx, "user pinned"),
+  Located(_, Inferred(ctx)) => str_contains(ctx, "user pinned"),
   _ => false,
 }
 

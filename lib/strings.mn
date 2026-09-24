@@ -121,25 +121,38 @@ fn str_compare(a, b) -> Int with Memory = {
   str_compare_loop(a, b, la, lb, 0)
 }
 
-// str_contains — is `needle` a byte-substring of `haystack`? One read: at
-// each start position where the needle still fits, the O(1) [Byte] VIEW of
-// that window compares by the structural `==` (the str_eq instance) — the
-// one sequence-eq derivation reused, no second byte-matcher. Empty needle
-// is contained; a needle longer than the haystack is not. The row carries
-// +Alloc honestly (each window is a 16-byte view record) until band-I
-// fusion tightens the view away. Used by the IFC flow-label heuristic
-// (query.mn: a `secret`/`classified`/`sensitive` name flows Secret).
-fn str_contains(haystack: String, needle: String) -> Bool with Memory + Alloc = {
-  let hlen = byte_len(haystack)
+// str_index_of — where `needle` first sits in `haystack`, or -1. The ONE
+// substring search: every start position the needle still fits at is a
+// candidate, walked by the range producer, and the first whose bytes agree
+// is the answer. An empty needle sits at 0; one longer than the haystack
+// sits nowhere, because the producer yields nothing.
+//
+// IT ALLOCATED A LIST AND A VIEW PER POSITION, and the price was measured
+// 2026-09-24: the board rendering every wheel module in one process died in
+// `alloc` under `str_contains(body, "\n")`, which the formatter asks of every
+// fn and let body it renders — each call built a 4-byte `range` entry and a
+// 16-byte window view for every byte of the body. The prelude held a second
+// copy of the same search, with the view and without the list; it is deleted
+// into this one.
+fn str_index_of(haystack: String, needle: String) -> Int with Memory + Alloc = {
   let nlen = byte_len(needle)
-  if nlen == 0 {
-    true
-  } else if nlen > hlen {
-    false
-  } else {
-    range(0, hlen - nlen + 1) |> any((i) => needle == str_slice(haystack, i, i + nlen))
+  match {
+    iterate_range(0, byte_len(haystack) - nlen + 1)
+    result()
+  } ~> find_handler(bytes_agree_at(haystack, needle, ??, 0, nlen)) {
+    Some(at) => at,
+    None => 0 - 1,
   }
 }
+
+fn str_contains(haystack: String, needle: String) -> Bool with Memory + Alloc =
+  str_index_of(haystack, needle) >= 0
+
+// Do the needle's bytes sit at `at` in the haystack? The sequence kind's
+// memcmp, read where the bytes lie — a window view would be an allocation per
+// comparison.
+fn bytes_agree_at(haystack: String, needle: String, at, k, n) -> Bool with Memory =
+  k >= n || byte_at(haystack, at + k) == byte_at(needle, k) && bytes_agree_at(haystack, needle, at, k + 1, n)
 
 // str_hash — FNV-1a over the bytes: the [Byte] instance of the ONE hash leaf.
 // Structural-equal strings (byte-equal) hash equal by construction (str_eq ⇒

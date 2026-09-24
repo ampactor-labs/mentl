@@ -656,7 +656,9 @@
 8. **String-keyed** — `mode == 0/1/2`; every flag is an ADT
 9. **Deferred-by-omission** — claiming done while sub-handles uncommitted
 
-(`tools/drift-audit.sh` runs as a PostToolUse hook on every `.mn` edit —
+(`tools/drift-audit.sh` runs as a PostToolUse hook on every `.mn` edit, and
+`mentl fmt` after it for src/ and lib/ — a rewrite comes back as "re-read it
+before the next edit", a file that does not judge clean is left as written —
 wired by `.claude/settings.json` through `tools/audit-on-edit.sh`; measured
 UNWIRED on 2026-09-21, when the session's hook configuration was `{}` and this
 sentence had been true nowhere — and catches these + the extended catalog,

@@ -902,8 +902,13 @@ fn pre_register_effect(ref node) = match node {
 fn pre_register_stmt(seen, ref node) = match node {
   N{body, span, handle} => match body {
     NStmt(FnStmt{name, params, ret: ret_ann}) => match smap_get(seen, name) {
-      Some(_) => {
-        report(EDuplicateFnName(name, span))
+      Some(first) => // AT the second declaration, naming the first: this walk runs after the
+      // parse over the whole program, so the module in force is whichever one
+      // parsed last, and the report read it — measured 2026-09-24 as a
+      // duplicate in types.mn rendered `threading:3672`, a line in a module
+      // that has none. `effect_decl_claim` already did it this way.
+      {
+        report_at(handle, EDuplicateFnName(name, node_address(first), span))
         seen
       },
       None => {
@@ -914,11 +919,11 @@ fn pre_register_stmt(seen, ref node) = match node {
         // 2026-09-17 as E_TypeMismatch noise inside threading.mn, exit 0,
         // WAT emitted). register_one_op's arm covers the other order.
         match env_lookup(name) {
-          Some((_, _, EffectOpScheme{effect_name: prior_effect})) => report(EFnShadowsOp(name, prior_effect, span)),
+          Some((_, _, EffectOpScheme{effect_name: prior_effect})) => report_at(handle, EFnShadowsOp(name, prior_effect, span)),
           _ => (),
         }
         pre_register_fn_sig(name, params, ret_ann, handle, span)
-        smap_add(seen, name, 1)
+        smap_add(seen, name, handle)
       },
     },
     NStmt(TypeDefStmt{name, variants}) => {

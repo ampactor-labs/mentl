@@ -1828,13 +1828,19 @@ for i in "${!compilers[@]}"; do
   # cannot tell (a+b)*c from a+b*c; only behavior can); (2) idempotence
   # byte-exact; (3) the render carries comments and authored annotations.
   fdemo2="$dir/fmt-demo"
+  # fmt judges each fixture from the CHECKOUT ROOT, where the prelude links.
+  # It ran inside fmt-demo/ until 2026-09-24, where no lib/ exists, so the
+  # refutable-let desugar's `abort` resolved nowhere — and fmt rendered the
+  # unjudged program anyway. It refuses a file that does not judge clean
+  # now, which is what surfaced the missing prelude here.
+  fdemo2_rel="${fdemo2#"$ROOT"/}"
   mkdir -p "$fdemo2"
   cp "$ROOT/tests/frontier/fmt-demo/rich.mn" "$fdemo2/rich.mn"
   cat "${RTLIBS[@]}" "$fdemo2/rich.mn" | wt_run "$compiler" > "$fdemo2/pre.wat" 2>/dev/null \
     && wt_asm "$fdemo2/pre.wat" "$fdemo2/pre.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/pre.wasm" >/dev/null 2>&1
   fmt_pre=$?
-  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt rich.mn) >"$dir/fmt.out" 2>&1
+  (cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" fmt "$fdemo2_rel/rich.mn") >"$dir/fmt.out" 2>&1
   fmt_rc=$?
   cat "${RTLIBS[@]}" "$fdemo2/rich.mn" | wt_run "$compiler" > "$fdemo2/post.wat" 2>/dev/null \
     && wt_asm "$fdemo2/post.wat" "$fdemo2/post.wasm" 2>/dev/null \
@@ -1846,7 +1852,7 @@ for i in "${!compilers[@]}"; do
     fail "fmt behavioral (fmt_rc=$fmt_rc pre=$fmt_pre post=$fmt_post; see $dir/fmt.out)"
   fi
   cp "$fdemo2/rich.mn" "$fdemo2/pass1.mn"
-  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt rich.mn) >/dev/null 2>&1
+  (cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" fmt "$fdemo2_rel/rich.mn") >/dev/null 2>&1
   if cmp -s "$fdemo2/rich.mn" "$fdemo2/pass1.mn"; then
     pass "fmt is idempotent (second render byte-identical)"
   else
@@ -1891,7 +1897,7 @@ for i in "${!compilers[@]}"; do
     && wt_asm "$fdemo2/vpre.wat" "$fdemo2/vpre.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$fdemo2/vpre.wasm" >/dev/null 2>&1
   vfmt_pre=$?
-  (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt voicey.mn) >"$dir/vfmt.out" 2>&1
+  (cd "$ROOT" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp "$compiler" fmt "$fdemo2_rel/voicey.mn") >"$dir/vfmt.out" 2>&1
   vfmt_rc=$?
   cat "${RTLIBS[@]}" "$fdemo2/voicey.mn" | wt_run "$compiler" > "$fdemo2/vpost.wat" 2>/dev/null \
     && wt_asm "$fdemo2/vpost.wat" "$fdemo2/vpost.wasm" 2>/dev/null \
@@ -3511,8 +3517,15 @@ echo "frontier: $total_pass pass / $total_fail red / $total_xred expected-red"
 # failing; the named contract in judge() does, in both directions, and a
 # declared standing failure lands in $total_xred rather than $total_fail. So
 # zero here is the strong form, not the unreachable one it was this morning.
+# THE STAMP NAMES WHAT WAS TESTED (2026-09-24). It wrote boot/mentl.wasm's
+# sha whatever `--compiler` had run, so a green run against a march candidate
+# stamped the OLD boot green — a claim about a wheel the run never touched —
+# and the commit after a repin demanded a second full frontier run against
+# bytes the first run had already judged (a clean march's m2 IS the next
+# boot). One sha per tested compiler, one per line; the readers ask whether
+# the boot they hold is among them.
 if [ "$total_fail" -eq 0 ]; then
-  sha256sum "$ROOT/boot/mentl.wasm" | cut -d' ' -f1 > "$ROOT/.build/frontier-stamp"
+  for c in "${compilers[@]}"; do sha256sum "$c" | cut -d' ' -f1; done > "$ROOT/.build/frontier-stamp"
 else
   rm -f "$ROOT/.build/frontier-stamp"
 fi
