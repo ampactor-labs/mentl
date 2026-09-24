@@ -711,21 +711,6 @@ fn render_for_tentacle(situation) with Alloc + Memory = match situation {
 // `render_for_tentacle` survives — it is the LIVE render, called from the
 // `propose` arm below.
 //
-// ─── unimplemented_arm — sentinel for arms not yet in their batch ─────
-//
-// Per drift mode 9 (deferred-by-omission): every Interact arm in the
-// handler below is named — even those whose body lands in a later
-// peer sub-handle (MV.2.e.P / .V / .Filesystem / .Run / .Session).
-// Stub arms route here so unintended dispatch surfaces immediately
-// (Abort) rather than returning a fabricated default. The diagnostic
-// string surfaces which op was hit. Returns ! (bottom) — unifies with
-// every Interact op's resume value type without fabrication.
-//
-// The Abort effect installed above this handler is the surface's
-// responsibility: lsp_adapter installs catch_abort; CLI installs its
-// own. The handler declares its row honestly.
-fn unimplemented_arm(op_name) with Abort = abort()
-
 // ─── MV.2.e.Q — Query tentacle helpers ────────────────────────────────
 //
 // The 7 helpers below are the substrate the cursor / focus / ask arms
@@ -1250,9 +1235,21 @@ handler mentl_voice_default with caret_now = Caret(0, Inferred("session start"))
 //   project_root_cache — resolved project root; v1 uses Path("./") since
 //                       WASI preopen fd 3 IS the workspace by convention
 //
-// tree_list arm stubs to unimplemented_arm pending FX.A.dirent (which
-// adds fs_list_dir + dirent parsing) + FX.1 (which adds
-// fs_filestat_is_dir for TreeFile vs TreeDir projection).
+// A directory's children as the tree projects them, one level: each entry's
+// kind is the one the listing read off the dirent, so a directory expands on
+// demand through another `tree_list` and a file is never opened to ask. A
+// path that is not an openable directory has no children.
+fn tree_entries(dir) = match fs_list_dir_impl(dir) {
+  None => [],
+  Some(entries) => entries |> filter(is_tree_child) |> map(tree_entry_of(dir)),
+}
+
+// fd_readdir reports the self and parent links; the tree shows children.
+fn is_tree_child(e: DirEntry) = e.name != "." && e.name != ".."
+
+fn tree_entry_of(dir, e: DirEntry) =
+  if e.dir { TreeDir(Path("{dir}/{e.name}")) } else { TreeFile(Path("{dir}/{e.name}")) }
+
 //
 // handles_table_lookup — find the (FileHandle, Path, String) entry
 // matching a target FileHandle. Returns Option<(FileHandle, Path,
@@ -1310,11 +1307,9 @@ handler mentl_voice_filesystem with handles_table = [], next_handle_id = 1, proj
   /// resolution via Module-handle synthesis lands as FX.4 peer
   /// sub-handle when surfaces need absolute paths.
   resume(project_root_cache),
-  tree_list(_path) => /// tree_list — directory listing as [TreeEntry]. Stubbed
-  /// pending FX.A.dirent (fs_list_dir + dirent parsing) + FX.1
-  /// (fs_filestat_is_dir for TreeFile vs TreeDir projection). Per
-  /// drift mode 9: gap is named explicitly, not silently absorbed.
-  resume(unimplemented_arm("tree_list")),
+  tree_list(path) => match path {
+    Path(dir) => resume(tree_entries(dir)),
+  },
   open_file(path) => /// open_file — fs_open the path; on success, snapshot text via
   /// fs_read_file, mint fresh FileHandle, append to handles_table.
   /// On open failure, return invalid-handle sentinel FileHandle(0)

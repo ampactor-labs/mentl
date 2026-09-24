@@ -375,7 +375,7 @@ fn emit_hash(h, x) = {
 // its table index redirected — captures, self-binding, and local naming keep
 // the ORIGINAL name (the record local is the closure value; only the offset-0
 // index points at the twin body). Outside a bracket enc is "" — floor.
-fn spec_closure_name(name: String) with SpecTwins + LookupTy + Memory = if !spec_twins_exist() {
+fn spec_closure_name(name: String) with SpecTwins + LookupTy + Memory + Alloc = if !spec_twins_exist() {
   name
 } else {
   let e = spec_enc_active()
@@ -1266,7 +1266,7 @@ fn register_one_show_literals(ty) with EmitStringLiteralOp + EnvRead + Memory + 
   },
 }
 
-fn register_show_field_name_literals(fields: [(String, Ty)], i, is_record) with EmitStringLiteralOp + Memory = if i >= len(fields) {
+fn register_show_field_name_literals(fields: [(String, Ty)], i, is_record) with EmitStringLiteralOp + Memory + Alloc = if i >= len(fields) {
   ()
 } else {
   match list_index(fields, i) {
@@ -1277,7 +1277,7 @@ fn register_show_field_name_literals(fields: [(String, Ty)], i, is_record) with 
   }
 }
 
-fn register_show_sum_literals(specs, i) with EmitStringLiteralOp + Memory = if i >= len(specs) {
+fn register_show_sum_literals(specs, i) with EmitStringLiteralOp + Memory + Alloc = if i >= len(specs) {
   visit_string(", ")
 } else {
   match list_index(specs, i) {
@@ -2224,7 +2224,6 @@ fn emit_init_lets(value_lets) = if len(value_lets) > 0 {
   wat_emit(" (local $f64_tmp f64)")
   wat_emit(" (local $wide_cell i32)")
   wat_emit(" (local $variant_tmp i32)")
-  wat_emit(" (local $record_tmp i32)")
   wat_emit(" (local $scrut_tmp i32)")
   wat_emit(" (local $callee_closure i32)")
   wat_emit(" (local $alloc_size i32)")
@@ -3050,7 +3049,6 @@ fn emit_fn_body(name, param_names, body, captures_count) = {
   wat_emit(" (local $f64_tmp f64)")
   wat_emit(" (local $wide_cell i32)")
   wat_emit(" (local $variant_tmp i32)")
-  wat_emit(" (local $record_tmp i32)")
   wat_emit(" (local $scrut_tmp i32)")
   wat_emit(" (local $callee_closure i32)")
   wat_emit(" (local $alloc_size i32)")
@@ -3216,7 +3214,7 @@ fn walk_locals_expr(expr, acc) = match expr {
   LSimdLanes(h, lanes) => // SIMD lanes need a v128 accumulator local — replace_lane reads-modifies the
   // running vector. No heap local (the value is pure stack v128, not a pointer).
   walk_locals_list(lanes, if len(lanes) > 0 { ["simd_{int_to_str(h)} v128"] ++ acc } else { acc }),
-  LMakeRecord(_h, fs) => walk_locals_list(fs, acc),
+  LMakeRecord(h, fs) => walk_locals_list(fs, ["record_{int_to_str(h)} i32"] ++ acc),
   LRecordUpdate(h, base, ovs) => walk_locals_list(record_update_children(base, ovs), ["upd_{int_to_str(h)} i32"] ++ acc),
   LMakeVariant(h, _t, fs) => walk_locals_list(fs, if len(fs) > 0 { ["variant_{int_to_str(h)} i32"] ++ acc } else { acc }),
   LMatch(_h, s, arms) => walk_locals_arms(arms, walk_locals_expr(s, acc)),
@@ -4224,7 +4222,7 @@ fn emit_expr(expr) = match expr {
   LMakeList(h, elems) => emit_list_literal(h, elems),
   LMakeTuple(h, elems) => emit_tuple_literal(h, elems),
   LSimdLanes(h, lanes) => emit_simd_lanes(h, lanes),
-  LMakeRecord(_h, fields) => {
+  LMakeRecord(h, fields) => {
     // Untagged heap layout: fields at the width-summed offset in declaration
     // sort order (the prefix-sum of repr_width — an f64 field is 8 inline
     // bytes). Mirrors LMakeVariant minus the tag word — records carry their
@@ -4232,10 +4230,12 @@ fn emit_expr(expr) = match expr {
     // SIZE is that same prefix-sum total (never n*4), so the record is exactly
     // as wide as its read-side offsets reach. emit_alloc routes through the
     // EmitMemory swap surface, same discipline as closures and variants.
-    let size = product_byte_size(fields)
-    emit_alloc(size, "record_tmp")
-    emit_record_field_stores(fields)
-    wat_emit("    (local.get $record_tmp)\n")
+    // The pointer lives in a local of this record's own: a field that builds
+    // a record of its own runs between the alloc and the stores.
+    let local = "record_{int_to_str(h)}"
+    emit_alloc(product_byte_size(fields), local)
+    emit_field_stores_acc(fields, 0, len(fields), 0, local)
+    wat_emit("    (local.get ${local})\n")
   },
   LRecordUpdate(h, base, ovs) => // The update's layout is the RESULT's own, read here under the active
   // bracket — a twin has closed the row the generic body left open — and
@@ -5462,7 +5462,11 @@ fn emit_eq_seq_body(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
   wat_emit("          (call $")
   wat_emit(callee)
   wat_emit(" (local.get $__state) (call $list_index (local.get $__state) (local.get $a) (local.get $i)) (call $list_index (local.get $__state) (local.get $b) (local.get $i)))\n")
-  wat_emit("          (then (call $eq_listbody_")
+  // The walk's next step is its answer, so it is a TAIL call: a plain
+  // `call` here spent one frame per element, and `==` on the ~100k tokens
+  // of one wheel file exhausted the stack (fmt's faithfulness gate,
+  // 2026-09-24).
+  wat_emit("          (then (return_call $eq_listbody_")
   wat_emit(sig)
   wat_emit(" (local.get $__state) (local.get $a) (local.get $b) (i32.add (local.get $i) (i32.const 1))))\n")
   wat_emit("          (else (i32.const 0)))))\n")
@@ -5508,7 +5512,7 @@ fn emit_cmp_seq_body(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
   wat_emit(callee)
   wat_emit(" (local.get $__state) (call $list_index (local.get $__state) (local.get $a) (local.get $i)) (call $list_index (local.get $__state) (local.get $b) (local.get $i))))\n")
   wat_emit("            (if (result i32) (i32.eqz (local.get $c))\n")
-  wat_emit("              (then (call $compare_listbody_")
+  wat_emit("              (then (return_call $compare_listbody_")
   wat_emit(sig)
   wat_emit(" (local.get $__state) (local.get $a) (local.get $b) (i32.add (local.get $i) (i32.const 1))))\n")
   wat_emit("              (else (local.get $c)))))))\n")
@@ -5541,7 +5545,7 @@ fn emit_hash_seq_body(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
   wat_emit("    (if (result i32)\n")
   wat_emit("      (i32.ge_s (local.get $i) (call $len (local.get $__state) (local.get $a)))\n")
   wat_emit("      (then (local.get $h))\n")
-  wat_emit("      (else (call $hash_listbody_")
+  wat_emit("      (else (return_call $hash_listbody_")
   wat_emit(sig)
   wat_emit(" (local.get $__state) (local.get $a) (i32.add (local.get $i) (i32.const 1)) (i32.mul (i32.xor (local.get $h) (call $")
   wat_emit(callee)
@@ -6323,7 +6327,7 @@ fn emit_show_product_fields(fields, i, off, is_record) with EmitMemory + StringT
 
 fn show_field_sep(i) with Pure = if i == 0 { "" } else { ", " }
 
-fn show_field_name(fname: String, is_record) with Pure = if is_record { "{fname}: " } else { "" }
+fn show_field_name(fname: String, is_record) = if is_record { "{fname}: " } else { "" }
 
 // Render one field value at `off`/width `r`: load the field, wrap it in its
 // leaf renderer. Word fields → int_to_str / float_to_str; string field → as-is;
@@ -7065,19 +7069,14 @@ fn variant_payload_offset(ptys, target, i, off) = if i >= len(ptys) {
   if i == target { here } else { variant_payload_offset(ptys, target, i + 1, here + repr_width(r)) }
 }
 
-// Record field stores: the STORE twin of the read-side width-summed
-// projection. Each field lands at the prefix-sum of repr_width over the
-// canonically-sorted preceding fields (align_for + repr_width — the IDENTICAL
-// fold lower's field_byte_offset_acc and emit_eq_leaf_conjunction run), and
-// is written with repr_store_op(field_repr) — an f64 field is 8 inline bytes
-// via f64.store, every i32/pointer field is i32.store at 4*i (byte-identical to
-// the pre-gradient form, Law 7). Carried-Truth: construction reads the SAME
-// offset+width the load side reads — never a flat 4*i the load re-derives as
-// f64. The field repr is read LIVE off each field expr's handle.
-fn emit_record_field_stores(fields) = emit_field_stores_acc(fields, 0, len(fields), 0, "record_tmp")
-
-// The shared store-fold: place field i at the width-summed `off`, advance by
-// this field's repr_width. `local_name` is the record/variant base pointer.
+// The shared store-fold — the STORE twin of the read-side width-summed
+// projection, for records and variant payloads alike. Each field lands at the
+// prefix-sum of repr_width over the canonically-sorted preceding fields
+// (align_for + repr_width — the IDENTICAL fold lower's field_byte_offset_acc
+// and emit_eq_leaf_conjunction run), written with repr_store_op(field_repr),
+// the repr read live off each field expr's handle. Field i lands at the
+// width-summed `off`, the next at `off` advanced by this field's repr_width;
+// `local_name` is the record's or variant's own base-pointer local.
 fn emit_field_stores_acc(fields, i, n, off, local_name) = if i >= n {
   ()
 } else {

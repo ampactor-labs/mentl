@@ -855,17 +855,6 @@ handler diagnostics_handler with errors = 0, scope = ScopeAll {
 // infer.mn beside diag_quiet — the branch bracket and the join are its
 // only consumers.
 //
-// FreshHandle — two handlers, same function. Inference mints via
-// graph_fresh_ty (stored in graph) — that handler lives in infer.mn, its
-// op's own layer, so synth's re-inference chain reaches it through
-// `import infer` (the import-truth round: pipeline was an over-wide home
-// only its own chain could see). Query mints display ids (ephemeral, for
-// rendering); both satisfy FreshHandle.
-handler fresh_for_query with next_display = 0 {
-  mint(_reason) => resume(next_display) with next_display = next_display + 1,
-  mint_like(_root, _reason) => resume(next_display) with next_display = next_display + 1,
-}
-
 // Collection helpers — consumed by teach / audit
 //
 // Per-fn gradient projection. Each FnStmt's teach_gradient is
@@ -936,10 +925,8 @@ fn join_unlock_labels(labels) with Memory + Alloc = if len(labels) == 0 {
 // field-offset class). Positional destructure is provable with no type
 // flow, exactly as teach's [(name, result)] tuples are.
 fn build_audit_report(fn_name, handle, ty, pending, tightens) = {
-  // The row resolves BEFORE any read: row_names is a top-link read, and
-  // an unchased chain hides its deeper presents — Alloc rendered in the
-  // row while severance claimed it absent (measured on the wheel's own
-  // audit). One chased value serves the render and the membership.
+  // What the body reaches is the row's READING (`row_names` resolves the
+  // cell); the chased spelling serves the render.
   let body_row = chase_row_deep(extract_row(ty), 0)
   let reached = row_names(body_row)
   // THE GRADIENT, not the flood: every declared-but-unreached effect is
@@ -1263,8 +1250,17 @@ fn render_provider_arms(arms) with GraphRead + !Mutate + Memory + Alloc + Intern
 fn render_judged_rows(rows) with GraphRead + !Mutate + Memory + Alloc + Intern =
   rows |> map(judged_row_line) |> str_concat_all
 
-fn judged_row_line(row: (Int, Int)) with GraphRead + !Mutate + Memory + Alloc + Intern = match row {
-  (h, bytes) => "\n  {bytes} B  {decl_named_site(h)}",
+// The rows' share follows, by kind, when the effect rows wrote any of it.
+fn judged_row_line(row: JudgedCost) with GraphRead + !Mutate + Memory + Alloc + Intern =
+  "\n  {row.bytes} B  {decl_named_site(row.handle)}{judged_rows_part(row.rows)}"
+
+fn judged_rows_part(rb: RowBytes) with Memory + Alloc = {
+  let total = rb.inst + rb.link + rb.teach + rb.union
+  if total == 0 {
+    ""
+  } else {
+    "  (rows {total} B: instantiation {rb.inst} · link {rb.link} · charge {rb.teach} · union {rb.union})"
+  }
 }
 
 // One line per undischarged obligation: the predicate the graph holds,
@@ -1291,7 +1287,7 @@ fn render_smt_line(ob) with GraphRead + Memory + Alloc + Diagnostic + Intern = m
 // not guessed from text, which is the whole reason the facet exists: a grep
 // cannot tell a used name from one mentioned in a comment, and 52 of these
 // sat unseen behind exactly that.
-fn render_import_row(row) with Pure = match row {
+fn render_import_row(row) = match row {
   (m, imported, used) => {
     let mark = if used { "used" } else { "DEAD" }
     "  {mark}  {m} -> import {imported}"
@@ -1311,7 +1307,7 @@ fn render_import_rows(rows) with Memory + Alloc =
 // unreachable — it is the direct reference, measured, and a name reached
 // through an edge the graph does not draw surfaces here as exactly that
 // finding, never as noise to tune away.
-fn render_unref_row(row) with Pure = match row {
+fn render_unref_row(row) = match row {
   (m, name, _) => "  UNREFERENCED  {m} -> {name}",
 }
 
@@ -1438,11 +1434,30 @@ fn render_orphan_row(row) with Memory + Alloc = match row {
 fn render_orphan_rows(rows) with Memory + Alloc =
   "→ {int_to_str(len(rows))} declaration(s) explained at length and referenced by nothing\n{str_join_indented(map(render_orphan_row, rows))}"
 
+// One hop of a handle's chain: where the node is, what it holds, and the
+// Reason it holds it for — a bound cell's Reason is its BINDER, which is the
+// question a stray binding asks.
+fn chain_hop_line(hop) = match hop {
+  (h, GNode(kind, reason)) => "#{int_to_str(h)} {site_address(h)}  {chain_hop_kind(kind)}  because {show_reason(reason)}",
+}
+
+fn chain_hop_kind(kind) = match kind {
+  NBound(TVar(n)) => "-> #{int_to_str(n)}",
+  NBound(ty) => "= {show_type(ty)}",
+  NFree(e) => "free (epoch {int_to_str(e)})",
+  NRowFree(e) => "row cell (epoch {int_to_str(e)})",
+  NRowBound(row) => "row = {show_effrow(row)}",
+  NRecordRowBound{fields, tail} => "record row = {show_record_row_residual(fields, tail)}",
+  NMaybeFree(e) => "presence (epoch {int_to_str(e)})",
+  NAbsent => "absent",
+  NErrorHole(r) => "hole: {show_reason(r)}",
+}
+
 fn render_query_result(result) = match result {
   QRType(ty, reason) => "→ {show_type(ty)}\n  Reason: {show_reason(reason)}",
   QRIntent(effs) => "→ {show_row_terms(effs)}",
   QRUnresolved(entries) => "→ {int_to_str(len(entries))} unresolved entries",
-  QRChain(hops) => "→ {int_to_str(len(hops))} hops in chain",
+  QRChain(hops) => "→ {int_to_str(len(hops))} hop(s)\n{str_join_indented(map(chain_hop_line, hops))}",
   QREffects(row) => "→ {show_effrow(row)}",
   QRRow(present, absent, tail) => // The row as the algebra holds it: every name beside the intern handle
   // `eff_name_handle` keys on, so a reader can see whether two names that
@@ -1504,7 +1519,7 @@ fn render_query_result(result) = match result {
 // `drop_last` replaced them (SYNTAX §Vocabulary). The callers
 // that want the indent name it; a caller that wants whole lines concatenates
 // them itself.
-fn str_join_indented(lines) with Pure = match lines {
+fn str_join_indented(lines) = match lines {
   [] => "",
   [one] => one,
   [h, ...t] => "{h}\n  {str_join_indented(t)}",
@@ -1550,6 +1565,7 @@ type QueryVerb
   | QVOrphanClaims
   | QVCost
   | QVSmt
+  | QVChain
   | QVUnknownVerb
 
 // One name beside its key, repeated — `Memory#41` reads as the pair it is.
@@ -1605,8 +1621,24 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVCost
 } else if w == "smt" {
   QVSmt
+} else if w == "chain" {
+  QVChain
 } else {
   QVUnknownVerb
+}
+
+// A handle as the medium prints one — a sort letter and its number (t13,
+// r9077, p12), a #-prefixed number, or the bare number — read back to the
+// number it is. The letter says which sort the
+// render found; the chain reads the handle whatever its sort. A word is a
+// handle when its digits print back as themselves.
+fn handle_word(w: String) with Memory + Alloc = if byte_len(w) == 0 {
+  None
+} else {
+  let digits =
+    if byte_at(w, 0) >= 48 && byte_at(w, 0) <= 57 { w } else { str_slice(w, 1, byte_len(w)) }
+  let h = parse_int(digits)
+  if byte_len(digits) > 0 && int_to_str(h) == digits { Some(h) } else { None }
 }
 
 // The grammar reads WORDS, because that is what a question is. The terminal
@@ -1664,6 +1696,10 @@ fn build_question(verb, arg, words) with Memory + Alloc = {
     QVOrphanClaims => QOrphanClaims,
     QVCost => QCost,
     QVSmt => QSmt,
+    QVChain => match handle_word(arg) {
+      Some(h) => QSubstChain(h),
+      None => QUnknown(raw),
+    },
     QVUnknownVerb => QUnknown(raw),
   }
 }

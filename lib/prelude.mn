@@ -423,7 +423,7 @@ fn not(x) with Pure = if x { false } else { true }
 
 // Build a pipeline from a list of functions.  Fold with compose.
 // build_pipeline([f, g, h]) = f <> g <> h
-fn build_pipeline(steps) = fold(id, (acc, step) => (x) => step(acc(x)), steps)
+fn build_pipeline(steps) = fold(id, compose, steps)
 
 // ─── Safe access ────────────────────────────────────────────
 fn nth(xs, n, default) = if n >= 0 && n < len(xs) { xs[n] } else { default }

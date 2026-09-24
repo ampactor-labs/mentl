@@ -914,11 +914,12 @@ fn hole_ty_live(hole_h) with GraphRead + Memory + Alloc = match graph_chase(hole
 // FORCED: extract-then-prove would optimize a program that may be
 // inadmissible. What reaches the user is therefore proven AND
 // extraction-optimal, never merely proven.
-// The declared row lost `WasiThreads` and `BranchDiag` at the segment walk,
-// and that loss IS the measurement: nothing spawns a task any more, so the
-// judgment no longer reaches the threading vocabulary at all. The medium
-// named it (`T_OverDeclared`) the moment the spawn left.
-fn verify_each_enriched(candidates, hole_h, cand_start) with GraphRead + GraphWrite + LookupTy + Memory + Alloc + EnvRead + EnvWrite + Consume + Verify + Intern + WASI + BranchEnv + Diagnostic + !Mutate = {
+// The declared row is the one claim worth authoring here: the judgment of a
+// candidate mutates nothing it does not roll back. It was a thirteen-name
+// inventory until 2026-09-24, and an inventory is a hand copy of the
+// inferred row that goes stale — this one had been missing the unifier's
+// casts since before rows were cells, and only a sound ceiling said so.
+fn verify_each_enriched(candidates, hole_h, cand_start) with !Mutate = {
   let verdicts = segment_verify(candidates, hole_h)
   let refusals = named_refusals(candidates, verdicts)
   let survivors = keep_survivors(candidates, verdicts)

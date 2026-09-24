@@ -12088,7 +12088,120 @@ visit. Land order, both halves together or neither (the half-step law,
 paid for twice more here): visitor-quantifier + publish-Live +
 subst-shares-the-edge, judged by census 0, the movers line, and m3 == m4.
 
-`Hβ.effects.rows-are-propagated-cells` — OPEN, designed 2026-09-21, the
+`Hβ.effects.row-link-fans-out-per-call` — OPEN, measured 2026-09-24, and
+the ceiling `selfcompile_peak_kb_max` was raised 1,021,000 → 1,300,000 KB
+against it. THE COST: the judgment's heap is 745MB against the pinned boot's
+548MB on the same source, 150MB of it written by the effect rows (m3 leg's
+`rows:` line), and `mentl <file> cost` now prints each decl's row bytes beside
+its heap. THE SHAPE, read with the `row` facet's new cell shape: a large
+function's frame cell reads one edge per call (`emit_expr`: 458 edges, 483
+paths, 42 readers — the 42 are its own recursive call sites' copies). Every
+link adds a path, so the cell GROWS at every call, and every growth wakes all
+its readers. Before the delta carry each reader re-walked the source's every
+path (`emit_expr` 94MB, 89.7MB of it rows); after it (`RowWake`'s
+`WakeDelta`) each reader joins only what grew, and `emit_expr` is 14.4MB. The
+remainder is the wake itself: 42 readers × one path per call, most of them
+learning nothing. KILLS on the way: equating an install's row arguments
+instead of linking them by flow (cost unchanged), and leaving a recursion
+member's own frame cell unrenamed inside its group (cost ×4 at `emit_expr`
+and `leak-cycle-lambda-before` leaks — the copy carries what the recursive
+call's arguments bring). THE FORM TO BUILD: a path to a root is information
+only to a reader that could rename it or that is bounded by it, so a growth
+whose new paths reach roots no reader's renaming covers and no bound names
+must not wake. The instantiation-edge design's own next stage, "views", is
+this: a copy reads a VIEW of its source (the renamed roots its mapping
+covers), not the source's whole path set. Retires when the peak ratchet is
+back under the pre-landing ceiling.
+
+`Hβ.board.verify-ratchets-live-beside-the-board` — OPEN, measured
+2026-09-24. A repin blesses a wheel after the micros and `mentl verify`
+(src/board.mn's bounds), and verify.sh's own ratchets — field-offset
+floors, unprovable comparisons, comment references, authored own/ref —
+run only at commit. This landing's repin passed and its commit then refused
+five of them, one a rise of eighteen shipped `(unreachable)` floors, and the
+cost was a fourth march. They cannot simply be run at the repin: verify.sh's
+doc-truth leg compares PROVENANCE's head sha with the boot, which is
+mid-change there. THE FORM: each of the four is a bound in src/board.mn, read
+off the one judged graph as every other bound is (the field-offset and
+comparison counts are the diagnostics the judgment already raises; the
+comment-reference count is the weave's), so the repin's `mentl verify` holds
+them and verify.sh keeps only what measures the world outside the graph.
+Retires with the four keys leaving tools/verify-baseline.txt.
+
+`Hβ.fmt.a-render-that-reads-back-as-another-program` — CLOSED 2026-09-24.
+The pre-commit hook canonicalizes every staged wheel file with `mentl fmt`,
+guarded by one rule: a file the parser REFUSES is restored untouched. The
+landing's first commit attempt rewrote eleven files and the wheel it produced
+refused itself (445 undischarged claims). The cause was in the render, not
+the parser: `graph_handler`'s state init `row_bytes = (RowBytes{inst: 0, …})`
+is parenthesized because a handler's state inits are a brace-header slot
+(SYNTAX «Brace-header slots»), and the render dropped the parens, so fmt's own
+re-read took the record's body for the handler's arm block and rewrote every
+arm (`graph_chase(handle) =>` became `graph_chase => (handle) =>`). Nothing
+was refused, because the misreading is valid syntax. Two changes, one each
+side: `render_header_expr` parenthesizes a record construction at every
+brace-header slot (the `if` and `else if` conditions, the `match` scrutinee,
+the state inits); and `fmt_run` WRITES only a faithful render — the first
+render read back and rendered again may differ from it in prose and line
+breaks alone (`code_token_kinds`), or the file is left as it was and the verb
+exits 1. The fmt verb's own comment had said "idempotence is the gate" while
+the code wrote the second render unconditionally. A second fault rode beside
+it: the installed shim answered the worktree's hook from the home checkout's
+boot, so the hook's fmt was an older wheel's; the shim in this landing answers
+from the checkout it stands in, and takes effect when `tools/install.sh` is
+next run from the main checkout. KILL: "the home boot's older parser misreads
+the new syntax" — the landing's own boot mangled the same file the same way.
+SEEN RED: the gate refused a probe whose `if` condition carried a record
+construction under a unary `!` (exit 1, file untouched); the operand walk
+(`header_brace_is_open`) grew that arm and the same probe was written and
+ran. THE GATE'S FIRST RUN ON THE WHEEL FOUND A THIRD DEFECT: comparing one
+file's ~100k tokens with `==` exhausted the stack, because the generated
+sequence walkers (`eq_listbody_*`, `compare_listbody_*`, `hash_listbody_*`)
+called themselves for the next element with a plain `call` in tail
+position. They `return_call` now; `tests/micros/mn-eq-long-list.mn` (two
+equal 200,000-element lists of a sum type) trapped on the prior boot and
+answers 1.
+
+`Hβ.infer.speculation-leaves-a-handle-standing` — CLOSED 2026-09-24. A
+Mycroft round rolls the graph back and frees its handle numbers for reuse, and
+four things outlived the rollback holding those numbers. (1) The row guard's
+refusals and its told-list were handler state outside the checkpoint, so round
+2 re-met round 1's occurs refusal as "already told" and dropped it: `fn g(f) =
+f(f)` checked clean. They ride the checkpoint record now, with the unifications
+the guard asked for. (2) The recheck round built its assumed scheme from round
+2's result AFTER the rollback: it re-minted only the quantified handles, every
+one as a TYPE, and left the rest dangling — a row of round 2 stood in the
+scheme at a number the recheck minted as a type, and `fn bad(x, n)` read
+`with Memory + Alloc + List(t11)`. Every round-2 handle the detached scheme
+names is recorded with its sort before the rollback and re-minted by sort
+after (`round_handles`, `recheck_fresh`). (3) `infer_ctx`'s group copies and
+deferred positive checks named rolled-back cells; the speculative driver takes
+them out before the rounds, discards each round's at its rollback, and puts
+the earlier ones back (`spec_ledgers_*`). (4) A rolled-back row mint left its
+cell in the slot, and the re-mint as a type variable writes no cell, so the
+variable read as a row: `CellSlot` spells the empty slot (`CEmpty`, the page's
+zero word), and the un-mint (`MFreshNode`'s revert) writes it back.
+THE REFUSAL THAT NAMES THE CLASS: `graph_row_link` and `graph_row_union` refuse
+a write whose end is not a row cell (`row_sorts_hold`), naming both handles —
+it named #9079/#9080 on its first run and the chain facet walked to the writer.
+THE TEACH moved to where it is decidable: the occurs refusal has one home (the
+write guard; `unify_types`' duplicate pre-check is deleted), and the fn whose
+body drains it asks whether the refused CLASS runs through its own signature
+and whether it calls itself (`poly_teach_notes`) — the mint-reason fingerprint
+depended on which cell union-find made root. Asked only when a refusal was
+drained: walking every body for "calls itself" cost the wheel's judgment 48MB.
+KILLS: warm-compile images (cleared, same answer); the row-mint trail (reverted,
+same); the ceilings-for-inputs edit (reverted, same); the checkpoint change
+(reverted, same); and the "stray handle t13", which was the if-node's own cell
+— a legitimate class root — read through a shim that answered a worktree from
+the home checkout's boot (the shim answers from the checkout you stand in now).
+INSTRUMENTS BUILT: `mentl <file> chain tN` (a handle's chain with each hop's
+site and binder), the `row` facet naming each edge source and path root with
+NOT-A-ROW for a stray.
+
+`Hβ.effects.rows-are-propagated-cells` — LANDED 2026-09-24 as the v5 form
+(the last section of this entry; the sections above it are the path there,
+kept as the record of what each refuter broke). Designed 2026-09-21, the
 FIRST landing of the re-derivation queue by Morgan's ruling (*"flatten" /
 "memoize" / "cache" are words to be careful with; the e-graph is the same
 disease; rows as propagated cells first*). THE DEFECT: a row variable is a
@@ -12285,9 +12398,54 @@ each, and it is Talpin–Jouvelot stated on the graph:
   environment's free cells excluded;
 - record rows are Rémy continuations.
 
-The design and v1's kills live in the session's design file until a
-refuter fails to break v2; then the whole entry is rewritten in place to
-the form that survives.
+*v3–v5, the form that landed.* Three more refuters broke v2 through v4, each
+finding banked as a crown crucible before the design moved. What survived
+and is built (`RowCell`, `RowEdge`, `Ceiling`, `CellSlot` in types.mn; the
+cell ops in graph.mn):
+- a cell holds what was CHARGED here, the read carried forward (`full`), and
+  its `frees` — one entry per PATH with that path's mask, each effect once at
+  the install that meets it first, so a masked cycle terminates;
+- the charges are named: perform, call, reference-as-value, construction,
+  install (the mask carries the handled INSTANCE), handler arm, `<~` (the
+  LHS called every tick; the RHS state element judged detached, charging
+  nothing), fanout, the host boundary, the module initializer, and a
+  declared instance pin (`pins`, applied to everything the read brings in);
+- a ceiling travels to the FREES, one hop, never along sources; a SEALED
+  ceiling (the author's) is checked, never strengthened; bounds are copied
+  whole on instantiation, unsealed, with no owner;
+- an instantiation edge carries its source's roots renamed and live, so a
+  copy made mid-group still reaches roots that appear later;
+- inside a binding group a reference instantiates the member's ROW cells
+  with types kept mono — polymorphic recursion on the row sort only; nested
+  fns and let-bound lambdas share their cells;
+- a join (`if`/`match`) is a fresh cell every branch flows into;
+- a positive declared row is a completion check that exempts only the
+  signature's negative-polarity rows; a negation propagates as a ceiling.
+MEASURED at the landing, through the pinned boot (cbe921ce): crown 152 pass
+with six declared reds (forty-four of the fifty crucibles the four refuters
+wrote now hold); frontier 422 pass with eight declared reds (the open-row and
+rest legs, `install-over-hof-param-payload` and `spawn-thunk-sequential`
+retired); census 0; TRANSITION m3 == m4. THE COST IS NOT PAID DOWN:
+judgment heap 757MB against the prior pin's 548MB on one source, the peak
+ceiling raised to 1,310,000 KB, and `Hβ.effects.row-link-fans-out-per-call`
+carries it. The mask's `2^k` first-hit blow-up under k nested distinct
+handlers is `Hβ.effects.install-path-antichain`. Of the eleven
+compensations this entry opened with, the landing's diff deletes
+`flatten_row_stored`, `merge_chased_row`, `group_completion_fold`,
+`free_in_edges` and `subst_edges_build`; `resolve_row` stays as the one-hop
+read. The gate this entry set ("no decl above 5MB", the heap line below
+474MB) is NOT met, and it is the cost peer's.
+
+`Hβ.effects.install-path-antichain` — OPEN, named 2026-09-24 by the rows
+landing's third refuter. A row cell's `frees` keep one entry per PATH, and a
+path's mask records each effect once, at the first install that meets it.
+Under k nested installs of distinct handlers, the first-hit maps a root can
+be reached with number up to 2^k, and each is a separate entry the ceilings
+and the instantiation copies walk (the refuter's x16 witness, which was not
+banked as a fixture — that is owed with the fix). THE FORM: two paths whose masks differ only in
+effects the root can never carry are one path, so the entries kept are the
+antichain of masks restricted to what the root can hold. Retires with a
+fixture that nests k = 16 distinct installs and judges in linear heap.
 
 `Hβ.audit.re-derivation-census-2026-09-21` — OPEN, the bank of three
 read-only Opus audits run the day of the rows ruling, one question over the

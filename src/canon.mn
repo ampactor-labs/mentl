@@ -15,3 +15,6 @@ import types
 // is the render (show_type's TAlias arm prints "String"); the inner
 // byte-list is the truth every walk sees through the peel.
 let ty_string = TAlias("String", TList(TByte))
+
+// THE ONE Bool — the derived `False | True`, applied to nothing.
+let ty_bool = TName("Bool", [], [])

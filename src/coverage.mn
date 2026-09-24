@@ -110,6 +110,7 @@ fn con_space(name, subs) = match env_lookup(name) {
 fn built_type(binding) = match binding {
   Frozen(_, ty) => result_type_name(ty),
   Live(_) => None,
+  Recursive(_) => None,
 }
 
 fn result_type_name(ty) = match fold_strip(ty) {

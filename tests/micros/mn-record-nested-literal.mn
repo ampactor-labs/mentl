@@ -1,0 +1,16 @@
+// expect: 57
+// A record literal as the field of a record literal. Every record was built
+// in one shared local, so the inner construction overwrote the outer's
+// pointer before the outer's stores ran, and the whole expression evaluated
+// to the INNER record: `u.bytes` read `inst`, silently, with no diagnostic
+// (measured 2026-09-24 in the pinned boot — 1 where 5 was written, anonymous
+// and nominal alike). Each record now lives in a local of its own, as
+// tuples, variants and record updates already did.
+type Counts = {inst: Int, link: Int}
+type Judged = {bytes: Int, rows: Counts}
+
+fn main() = {
+  let u = Judged{bytes: 5, rows: Counts{inst: 1, link: 2}}
+  let v = {outer: 40, inner: {deep: 9}}
+  u.bytes + u.rows.link + v.outer + v.inner.deep + u.rows.inst
+}

@@ -3529,8 +3529,6 @@ fn lower_match_arms(scrut_h, arms) = {
   )
 }
 
-// Bind every `PVar` in the pattern as a local, carrying its element's TYPE
-// HANDLE read live from the scrutinee's type — so a String destructure local's
 // THE one "handle of a Ty (0 if ground)" projection — read by tparam_handle
 // and lower_param_handles (Carried-Truth: one home, N readers, never a
 // re-derived copy). A Ty is TVar(handle) only while un-ground; every ground
@@ -6006,7 +6004,7 @@ fn spec_resolve_build(t) with LookupTy + Memory + Alloc + GraphRead = match t {
   TList(e) => TList(spec_resolve(e)),
   TTuple(es) => TTuple(map(spec_resolve, es)),
   TFun{params: ps, ret: r, row: eff} => TFun(map((p) => param_with_ty(p, spec_resolve(param_ty(p))), ps), spec_resolve(r), eff),
-  TName{name: n, args} => TName(n, map(spec_resolve, args)),
+  TName{name: n, args, rows} => TName(n, map(spec_resolve, args), rows),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_resolve(ft)) }, fs)),
   TRecordOpen{fields: fs, rest: v} => // The row var read through the same live channel as every other var: when
   // the site closed it, that record IS the resolved receiver and the open
@@ -6166,7 +6164,7 @@ fn spec_repr_digit(t) with Pure = match repr_of(t) {
 // name-safe type signature. A repr digit cannot say WHICH record closed
 // the var, and the all-'0' floor test was silently ejecting every
 // structure-bound site from candidacy (the field-heal gate).
-fn spec_pair_code(t) with Memory = match fold_strip(t) {
+fn spec_pair_code(t) with Memory + Alloc = match fold_strip(t) {
   TInt => spec_repr_digit(t),
   TByte => spec_repr_digit(t),
   TUnit => spec_repr_digit(t),
@@ -6200,12 +6198,12 @@ else if byte_at(enc, i) != 48 {
 // generalize (their only use IS the splice) and the floor copy shows a
 // String operand through the word face — twin names minted as pointer
 // numerals, the m3 ≠ m4 the march caught.
-fn spec_mangle(name: String, enc: String) with Pure = "{name}$sp{enc}"
+fn spec_mangle(name: String, enc: String) = "{name}$sp{enc}"
 
 // The handler-arm fn name's ONE spelling (the arm decl, the ev-slot
 // placement, and the redrive liveness probe all read it here). The same
 // String pins as spec_mangle, for the same reason.
-fn arm_fn_name(hname: String, op: String) with Pure = "op_{hname}_{op}"
+fn arm_fn_name(hname: String, op: String) = "op_{hname}_{op}"
 
 // The site's instantiation pairs — [] when the name is not generic: a value
 // let, a monomorphic fn, or an internal synthesized name. The scheme's
@@ -6572,7 +6570,7 @@ fn ls_find_str_local_loop(lst: [String], target: String, i, n) = if i >= n {
 // (TypeVariants, minted at registration). The whole-env backward scan
 // this replaces re-derived the grouping per read.
 fn variant_specs_of(type_name) with EnvRead + Memory + Alloc + GraphRead =
-  variant_specs_at(TName(type_name, []))
+  variant_specs_at(TName(type_name, [], []))
 
 // ─── The variant specs AT AN INSTANTIATION ───────────────────────────
 //
@@ -6636,7 +6634,7 @@ fn type_params_of(binding) with Memory + Alloc = match binding {
     TName{args: params} => params,
     _ => [],
   },
-  Live(_) => // A Live binding here would mean the entry came from somewhere the
+  Live(_) | Recursive(_) => // A live binding here would mean the entry came from somewhere the
   // registration does not reach; inventing parameters for it is the
   // fabrication this whole read exists to end, so it grounds nothing.
   [],
@@ -6650,15 +6648,13 @@ fn ground_variant_spec(params, args, spec) with GraphRead + Memory + Alloc = mat
 // H6-exhaustive over Ty: a constructor added here without an arm is a compile
 // error rather than a silently un-grounded payload.
 //
-// A `TFun`'s effect row and a `TCont`'s world pass through: a nominal type's
-// arguments are TYPES, so a row parameter is not constructible at this
-// boundary today. When it is, the row grounds through the same positions
-// (`Hβ.types.nominal-row-parameter`).
+// A `TFun`'s effect row and a `TCont`'s world pass through: lowering erases
+// rows, so a payload's layout never depends on one.
 fn ground_ty(params, args, ty) with GraphRead + Memory + Alloc = match ty {
   TVar(h) => ground_var(params, args, h, ty),
   TList(elem) => TList(ground_ty(params, args, elem)),
   TTuple(elems) => TTuple(map(ground_ty(params, args), elems)),
-  TName{name: n, args: as_applied} => TName(n, map(ground_ty(params, args), as_applied)),
+  TName{name: n, args: as_applied, rows} => TName(n, map(ground_ty(params, args), as_applied), rows),
   TRecord(fields) => TRecord(map(ground_field(params, args), fields)),
   TRecordOpen{fields, rest: v} => TRecordOpen(map(ground_field(params, args), fields), v),
   TFun{params: ps, ret, row: eff} => TFun(map(ground_param(params, args), ps), ground_ty(params, args, ret), eff),

@@ -1,0 +1,16 @@
+// expect: 1
+// `==` over two long lists of a sum type. The generated walker compared one
+// element and called itself for the next with a plain call, a frame per
+// element, so two equal lists of 200,000 elements exhausted the stack
+// instead of answering (measured 2026-09-24, when fmt's faithfulness gate
+// compared one wheel file's tokens). The next step is the walk's answer, so
+// it is a tail call.
+type Tok = Word | Num(Int)
+
+fn filled(n, acc) = if n == 0 { acc } else { filled(n - 1, push(acc, if n % 3 == 0 { Word } else { Num(n % 7) })) }
+
+fn main() = {
+  let a = filled(200000, [])
+  let b = filled(200000, [])
+  if a == b { 1 } else { 0 }
+}

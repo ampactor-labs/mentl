@@ -85,7 +85,7 @@ type Judging = Memory + Alloc + ImageAlloc + WASI + EnvRead + EnvWrite + GraphRe
 // (the tree scan's erased list) routes the word floor — paths minted as
 // pointer numerals, fs_exists false for every module, the warm manifest
 // all zeros, and the incremental compile blind to every edit.
-fn driver_module_path(ref module_name: String) with Filesystem = {
+fn driver_module_path(ref module_name: String) with Filesystem + Memory + Alloc = {
   let direct = "{module_name}.mn"
   if fs_exists(direct) {
     direct

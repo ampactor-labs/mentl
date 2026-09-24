@@ -50,8 +50,13 @@ type Ty
   | TFun(params: [TParam], ret: Ty, row: EffRow)
   // handle into Graph
   | TVar(Int)
-  // nominal type + type args (Bool lives here)
-  | TName(name: String, args: [Ty])
+  // A nominal type: its name, its TYPE arguments, and its ROW arguments —
+  // the effect row cells it is parameterized by (a handler's residual, the
+  // row a stored closure performs). A row is a type-level fact of another
+  // kind, so it has its own field: a reader of values names `name` and `args`
+  // and never meets one. An authored application writes none; elaboration
+  // supplies them. (Bool lives here.)
+  | TName(name: String, args: [Ty], rows: [Int])
   // [(name, Ty)]
   | TRecord([(String, Ty)])
   // fields + row-variable handle
@@ -283,7 +288,7 @@ fn fold_strip(ty) with Pure = match ty {
 // Two types share a sig iff they fold identically (the same structural-eq the
 // cursor derives for records — the proof IS the name). Alias/refinement-stripped
 // first, like every other fold-through.
-fn fold_sig(ty) with Memory = match fold_strip(ty) {
+fn fold_sig(ty) with Memory + Alloc = match fold_strip(ty) {
   TInt => "i",
   TFloat => "d",
   TUnit => "u",
@@ -304,10 +309,10 @@ fn fold_sig(ty) with Memory = match fold_strip(ty) {
   // its own leaf, exactly as total monomorphization twins a function per the
   // types its call sites prove. A type with no arguments renders as it always
   // did, so every monomorphic ADT keeps its helper name.
-  if len(args) == 0 { "n{n}" } else { "n{n}{fold_sig_list(args, 0, len(args))}_" },
-  TTuple(elems) => "t{fold_sig_list(elems, 0, len(elems))}_",
-  TRecord(fs) => "r{fold_sig_fields(fs, 0, len(fs))}_",
-  TRecordOpen{fields: fs} => "r{fold_sig_fields(fs, 0, len(fs))}_",
+  if len(args) == 0 { "n{n}" } else { "n{n}{fold_sig_list(args)}_" },
+  TTuple(elems) => "t{fold_sig_list(elems)}_",
+  TRecord(fs) => "r{fold_sig_fields(fs)}_",
+  TRecordOpen{fields: fs} => "r{fold_sig_fields(fs)}_",
   TFun{} => // closure — folds at the function leaf
   "fn",
   TCont{} => // continuation pointer — a word here
@@ -318,15 +323,14 @@ fn fold_sig(ty) with Memory = match fold_strip(ty) {
   TReprPin{inner: base} => fold_sig(base),
 }
 
-fn fold_sig_list(elems, i, n) with Memory =
-  if i >= n { "" } else { "_{fold_sig(list_index(elems, i))}{fold_sig_list(elems, i + 1, n)}" }
+fn fold_sig_list(elems) with Memory + Alloc = fold("", fold_sig_part, elems)
 
-fn fold_sig_fields(fields: [(String, Ty)], i, n) with Memory = if i >= n {
-  ""
-} else {
-  match list_index(fields, i) {
-    (name, ty) => "_{name}{fold_sig(ty)}{fold_sig_fields(fields, i + 1, n)}",
-  }
+fn fold_sig_part(sig, t) with Memory + Alloc = "{sig}_{fold_sig(t)}"
+
+fn fold_sig_fields(fields: [(String, Ty)]) with Memory + Alloc = fold("", fold_sig_field, fields)
+
+fn fold_sig_field(sig, field) with Memory + Alloc = match field {
+  (name, ty) => "{sig}_{name}{fold_sig(ty)}",
 }
 
 // ─── Ownership (spec 02 · spec 07) ─────────────────────────────────
@@ -511,8 +515,13 @@ fn usage_join(a, b) = match a {
 // generalize's publication-time chase-materialization: the env no
 // longer freezes a past view of a decl; consumers who need the
 // quantifier of a cell project it at consumption (instantiate folds
-// generalize's split rule for exactly that).
-type Binding = Frozen([Int], Ty) | Live(Int)
+// generalize's split rule for exactly that). `Recursive(h)` is a binding
+// group member as its own group sees it while the group is judged: its
+// TYPES are the group's, shared, because polymorphic recursion on types is
+// undecidable; its ROWS are copied from the cell at every use, because on
+// the row sort it is not — a co-member's closure is that call's, never the
+// member's published row.
+type Binding = Frozen([Int], Ty) | Live(Int) | Recursive(Int)
 
 // SchemeKind discriminates env entries by their CONSTRUCTION ORIGIN.
 // Same Scheme shape, three different downstream stories: lower
@@ -742,6 +751,11 @@ type EffArg
   // value, never a constant — it stays EANode. Folded at
   // infer's registration; emit erases.
   | EACon(Int)
+  // an effect ROW CELL at an instance-argument position — the row a closure
+  // the effect's ops take or return carries, made a parameter of the instance
+  // so an install renames it exactly as it renames an element type. A row is
+  // not a type, so it is its own argument kind; emit erases.
+  | EARow(Int)
 
 // The Boolean connective joining a surface effect term to the row
 // accumulated to its left — the topology the surface `+ - &` draws
@@ -759,6 +773,65 @@ type EConn
   // `&` — set intersection
   | EcInter
 
+// ─── THE EFFECT ROW CELL — a row is a least solution ─────────────────────
+// Types unify by EQUALITY, so two function types' row cells UNION. Effects
+// relate by INCLUSION only where something is CHARGED — a perform, a call,
+// a reference used as a value, an install, a handler arm — and each charge
+// is an edge `into ⊇ from` this cell records as a source. What a cell reads
+// is its least solution: what it was charged directly, joined with every
+// source's read across that edge's mask, CARRIED FORWARD along the reverse
+// edges at the write so a read is one hop. An upper bound is a separate
+// fact, a ceiling, carried BACKWARD along the sources: a declared row is
+// always a ceiling and never content, which is what keeps a negation on a
+// callee from ever constraining its caller's world.
+//
+// One source of a cell: the source cell, the effect names this edge filters
+// (an install's handled instances — a subtraction rides the edge, never a
+// cell), the payload renaming an instantiation carries (a quantified root →
+// the fresh one this use owns), and whether it IS an instantiation's edge.
+// An instantiation edge carries the declaration's content and never its free
+// roots: those are the declaration's own, and the use reaches its renamed
+// copies through the direct edges the instantiation draws beside it.
+type RowEdge = {inst: Bool, mask: [EffName], src: Int, tys: [(Int, Int)]}
+
+// An upper bound on a cell: the names it admits (a closed row) or forbids
+// (an `EtAll` row), where it was declared, and whether it is an AUTHORED
+// contract on the declaration being judged. A sealed ceiling is checked
+// against a bound crossing into it, never strengthened by one: inference
+// does not rewrite what the author wrote. A bound has no owner: whatever
+// put it on a cell, every instantiation of a scheme holding that cell
+// carries it, because a bound a co-member left on a cell the two share is
+// a bound on every use of either.
+type Ceiling = {allowed: EffRow, at: Int, sealed: Bool, why: Reason}
+
+// The heap each kind of row write consumed: an instantiation's copy link, any
+// other link, a charge, and a union of two cells.
+type RowBytes = {inst: Int, link: Int, teach: Int, union: Int}
+
+// What one declaration's judgment cost: the heap line's advance across it,
+// and the part of that the effect rows wrote, by kind.
+type JudgedCost = {bytes: Int, handle: Int, rows: RowBytes}
+
+// The stored effect row. `charged` is what was charged HERE; `full` is the
+// read carried forward; `frees` lists every cell reached along a path, one
+// entry per PATH with that path's mask — each effect once, at the install
+// that meets it first — the roots an instantiation renames and a bound
+// travels to, whether or not they hold content. An instantiation edge
+// contributes the roots it renames and no others. `pins` are a
+// declaration's scalar instances, applied to everything the read brings in.
+// `deps` is the reverse edge a write walks; it rides inside the record, so
+// a rollback restores it with the cell.
+type RowCell = {born: Int, ceilings: [Ceiling], charged: [EffName], deps: [Int], edges: [RowEdge], frees: [(Int, [EffName])], full: [EffName], pins: [EffName]}
+
+// What a handle holds BESIDE its node: an effect row's cell, or the union-find
+// pointer to the cell it was proven one with. It lives in its own page column,
+// never in the node, because a reader is shown the row's READ (`NRowBound` /
+// `NRowFree`) and never the cell — a stored kind in `NodeKind` made every
+// exhaustive reader answer for a case the chase never returns. A handle that
+// holds neither is `CEmpty`, the nullary tag 0 — the page's zero word spelled,
+// so the un-mint a rollback performs can write it back.
+type CellSlot = CEmpty | CRow(RowCell) | CRowAlias(Int)
+
 // Substrate owned by graph.mn. The ADTs live here because every
 // consumer of the graph names them — Read/Write/Speculate effects,
 // chase return type, trail mutations, overlay tags.
@@ -767,9 +840,11 @@ type NodeKind
   = NBound(Ty)
   // unresolved — epoch at allocation time
   | NFree(Int)
-  // resolved effect row — the payload is EffRow, ONLY
+  // An effect row READ: the projection `graph_chase` renders a row cell as
+  // (the cell itself lives in the page's cells column — `CellSlot`).
   | NRowBound(EffRow)
-  // unresolved effect row variable
+  // An effect row cell nothing has charged, projected — and, stored, a
+  // RECORD row variable nothing has bound (the record sort's own free form).
   | NRowFree(Int)
   // record-row residual — a `...R` rest's
   // remaining (name, ty) fields. Its own kind: binding
@@ -1002,8 +1077,8 @@ type Graph = Graph(Int, [(ValidSpan, Int)])
 type Mutation
   // handle, old_node (before overwrite)
   = MSetNode(Int, GNode)
-  // handle, old_node (row variant)
-  | MSetRow(Int, GNode)
+  // handle, old cell slot (the word 0 when the handle held none)
+  | MSetRow(Int, CellSlot)
   // fanout site handle, old boundary edges
   | MSetBoundary(Int, ExecutableBoundary)
   // handle allocated (undo = shrink)
@@ -1232,7 +1307,7 @@ type CursorView
 // files and finding out at the type error which one you missed. Three hand
 // copies of one type is the Carried-Truth Law at the declaration layer; the
 // name is its one home, and the next column is one line.
-type SpinePage = {bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]}
+type SpinePage = {bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], cells: [CellSlot], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]}
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) with Memory = count_lines_from(s, byte_len(s), 0, 0)
@@ -2108,6 +2183,17 @@ effect GraphRead {
   graph_chase(Int) -> GNode
   // the canonical ROOT handle of a TVar chain (union-find find)
   graph_chase_handle(Int) -> Int
+  // the effect ROW CELL at a handle, alias-resolved — the raw record beside
+  // `graph_chase`'s projection, for the readers that want what was charged
+  // HERE, the sources, or the ceilings rather than the rendered read
+  graph_row_cell(Int) -> RowCell
+  // The heap the row writes consumed so far, by the kind of write — the
+  // judgment's cost of its effect rows, read beside the whole heap line.
+  graph_row_bytes() -> RowBytes
+  // Is the handle an EFFECT row cell? The effect sort and the record sort
+  // both project a free row as NRowFree, so the sort is read from the node
+  // itself — never guessed from the projection.
+  graph_is_row_cell(Int) -> Bool
   graph_epoch() -> Int
   // the fresh-handle counter — the node-space bound for saturation
   graph_next() -> Int
@@ -2160,7 +2246,7 @@ effect GraphRead {
   graph_decls_at() -> [Int]
   // The judged-cost column's read: (decl handle, bytes of judgment heap)
   // in judgment order — `mentl <file> cost` ranks it.
-  graph_judged_at() -> [(Int, Int)]
+  graph_judged_at() -> [JudgedCost]
   // The value-holes column's read: (hole handle, entry name) pairs — the
   // executable gate's whole input (lowering-is-a-column (ii), the first
   // walker swap; the four-fn LowExpr walk retired onto this read).
@@ -2207,11 +2293,29 @@ effect GraphWrite {
   graph_bind_hole(Int, Reason)
   // resolve a record field's presence cell ABSENT (NMaybeFree → NAbsent)
   graph_bind_absent(Int, Reason)
-  graph_bind_row(Int, EffRow, Reason)
-  // the decl-exit REPLACE — inf_exit_fn publishing the frame's accumulated row as the fn's verdict. Distinct from graph_bind_row BY OP because the two writes have different algebra: a teaching bind on an already-bound row cell JOINS (the row is a join-semilattice; joins commute, so N caller branches teaching one cell converge to the same value in any order — LVars' law), while the finalization REPLACES (the frame's accumulation is the decl's own total, already containing everything taught)
-  graph_finalize_row(Int, EffRow, Reason)
-  // union-find path compression at the row sort — an OPTIMIZATION write, distinct from the judgment bind: a BRANCH cursor's arm skips it (a branch writing shared chain cells makes sibling chases schedule-dependent — the measured k2 yield-floor flips; the root's sequential walks re-compress), the root's arm rebinds the chain link to its resolved terminal
-  graph_compress_row(Int, EffRow)
+  // A RECORD row variable, unbound — the record sort's own mint, beside the
+  // effect sort's cell. The two sorts never meet at one handle.
+  graph_fresh_record_row(Reason) -> Handle
+  // CHARGE names into a cell: what was performed here joins its own content
+  // and the read is carried forward to every dependent, each dependent's
+  // ceilings checked on the way.
+  graph_row_teach(Int, [EffName], Reason)
+  // LINK a source: `into ⊇ edge.src ∖ edge.mask`, carried now and at each
+  // growth of the source from here on; the into-side's bounds reach the free roots
+  // the new read lists. A self-link is a no-op (R ∪ R = R).
+  graph_row_link(Int, RowEdge, Reason)
+  // Two cells proven the SAME function value's row — union-find's union:
+  // the second's root aliases the first's, content, sources, dependents and
+  // ceilings merge, and the merged ceilings are checked against the merged read.
+  graph_row_union(Int, Int, Reason)
+  // Install an upper bound on a cell and on every free root its read reaches.
+  graph_row_ceiling(Int, Ceiling)
+  // A declaration's scalar instances, applied to everything the cell reads.
+  graph_row_pin(Int, [EffName])
+  // DRAIN the instance unifications a mask crossing asked for: (the mask's
+  // handled instance, the instance that arrived across it). The arm cannot
+  // unify, so it notes and inference unifies — until the drain is empty.
+  graph_row_pending() -> [(EffName, EffName)]
   graph_bind_record_row(Int, [(String, Ty)], RecordRowTail, Reason)
   graph_rollback(Int)
   // The speculation's ACCEPT: pop the newest checkpoint WITHOUT
@@ -2238,7 +2342,7 @@ effect GraphWrite {
   // (its node handle, the heap line's advance across `infer_stmt`). Exact
   // on the monotone bump image, never a sample; the read face is
   // graph_judged_at.
-  graph_judged_note(Int, Int)
+  graph_judged_note(JudgedCost)
   // The value-holes column's writes: lower's authored-hole arm NOTES the
   // surviving hole (value-position is a lowering decision — a consumed
   // call-arg/pipe hole never reaches that arm), and each constructed
@@ -3036,8 +3140,9 @@ effect Mutate {
 // function, two handlers, different semantics for the same op.
 effect FreshHandle {
   mint(Reason) -> Int
-  // a fresh cell of the same SORT as the given root — the sort is read off
-  // the root, never re-derived by the caller and hoisted into an op name
+  // a fresh cell of the same SORT as the given root — an effect row cell, a
+  // record row variable, a presence, or a type. The sort is read off the
+  // root, never re-derived by the caller and hoisted into an op name.
   mint_like(Int, Reason) -> Int
 }
 
@@ -3331,7 +3436,7 @@ fn show_type(ref ty) with GraphRead + !Mutate + Alloc + Memory + Intern = match 
   TTuple(elems) => "({show_list(elems, show_type, ", ")})",
   TFun{params, ret, row} => "({show_list(params, show_tparam, ", ")}) -> {show_type(ret)}{show_row_suffix(row)}",
   TVar(id) => show_handle(id),
-  TName{name, args} => "{name}{show_type_args(args)}",
+  TName{name, args, rows} => "{name}{show_type_args(map(show_type, args) ++ map(show_handle, rows))}",
   TRecord(fields) => "\{ {show_list(fields, show_field, ", ")} \}",
   TRecordOpen{fields, rest: v} => "\{ {show_list(fields, show_field, ", ")} | {show_handle(v)} \}",
   TRefined{base, pred} => "{show_type(base)} where {show_predicate(pred)}",
@@ -3576,8 +3681,10 @@ fn show_field(ref field: (String, Ty)) with GraphRead + !Mutate + Alloc + Memory
   (name, ty) => "{name}: {show_type(ty)}",
 }
 
-fn show_type_args(ref args) with GraphRead + Memory + !Mutate + Intern + Alloc =
-  if len(args) == 0 { "" } else { "({show_list(args, show_type, ", ")})" }
+fn show_type_args(ref shown) with Memory + Alloc = match shown {
+  [] => "",
+  parts => "({show_list(parts, id, ", ")})",
+}
 
 fn show_row_suffix(ref row) with GraphRead + !Mutate + Intern + Memory + Alloc = match row {
   EfRow{present: [], absent: [], tail: EtClosed} => "",
@@ -3681,6 +3788,8 @@ fn show_eff_arg(ref arg) with GraphRead + !Mutate + Alloc + Memory + Intern = ma
   // re-parses to EANode and re-resolves to the same folded form.
   intern_name_of(h),
   EACon(h) => intern_name_of(h),
+  EARow(h) => // The voice names the cell; the `row` facet reads what it holds.
+  show_handle(h),
 }
 
 fn show_predicate(ref pred) with GraphRead + Memory + Alloc = match pred {
@@ -3936,7 +4045,7 @@ fn query_flow_label(ref ty) with GraphRead + Memory + Alloc + EnvRead = match ty
           _ => // non-refined nominal: Public
           Public,
         },
-        Live(h) => match graph_chase(h) {
+        Live(h) | Recursive(h) => match graph_chase(h) {
           GNode(kind, _) => match kind {
             NBound(ty) => query_flow_label(ty),
             _ => // a type decl's cell is NBound; row and error kinds carry no nominal label

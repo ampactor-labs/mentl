@@ -6,7 +6,7 @@
 # the prelude's own positive-path noise doesn't mask the signal) through the
 # compiler-under-test.
 #
-#   leak-*   MUST emit E_EffectMismatch (a body performs a forbidden effect)
+#   leak-*   MUST emit E_EffectMismatch or E_PurityViolated (a body performs a forbidden effect)
 #   sound-*  MUST NOT (the gate must not over-reject)
 #
 # Compiler-under-test: $GATE_WASM (default the keyed boot->m2 artifact), or point
@@ -38,7 +38,11 @@ pass=0; fail=0; xred=0
 for f in tests/crown/*.mn; do
   name=$(basename "$f" .mn)
   err=$("$WT" run "${WT_RUN_FLAGS[@]}" "$M" < "$f" 2>&1 >/dev/null)
-  n=$(printf '%s' "$err" | grep -c 'E_EffectMismatch')
+  # A breached ceiling is ONE refusal the medium names by the ceiling's
+  # shape — E_PurityViolated when the bound is Pure, E_EffectMismatch
+  # otherwise (graph.mn `row_violation`) — so both count, in both
+  # directions: a sound crucible refused under either name is over-rejected.
+  n=$(printf '%s' "$err" | grep -cE 'E_EffectMismatch|E_PurityViolated')
   case "$name" in
     leak-*)  want="reject"; ok=$([ "$n" -ge 1 ] && echo 1 || echo 0);;
     sound-*) want="accept"; ok=$([ "$n" -eq 0 ] && echo 1 || echo 0);;

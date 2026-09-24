@@ -140,8 +140,8 @@ type CensusShape
   // answers is the question `CsFreeRowCallee` raised: that shape counts the
   // SITES paying for a cause, and this one shows the cause, of which only the
   // cells no scheme quantifies are a countdown. The bound is the shape that
-  // reads the quantifier, and `sig_owns` is where the wheel already draws
-  // that line.
+  // reads the quantifier, and the signature's own quantified roots are where
+  // the wheel already draws that line.
   //
   // It also found the defect it was built to find, one layer over: the
   // census rendered these cells at `tuples:72:1-75:2`, an address inside a
@@ -329,7 +329,7 @@ type QueryResult
   // column ranked, `judged_top` deep. The instrument PLAN §5.O's arena
   // thesis wants (98% of the judgment's heap is scratch — WHOSE?) and the
   // one that names which decl a peak-RSS rise belongs to.
-  | QRCost(Int, Int, Int, [(Int, Int)])
+  | QRCost(Int, Int, Int, [JudgedCost])
   // the derived badges (plain lines) + fanout sites as (schedule, node)
   | QRWhere([String], [(String, Int)])
   // THE ROW AS STRUCTURE, not as spelling — every name beside the INTERN
@@ -529,7 +529,7 @@ fn chase_type_deep(ref ty) with GraphRead + Memory + Alloc = match ty {
   TList(elem) => TList(chase_type_deep(elem)),
   TTuple(elems) => TTuple(chase_list_deep(elems)),
   TFun{params, ret, row: eff} => TFun(chase_params_deep(params), chase_type_deep(ret), eff),
-  TName{name, args} => TName(name, chase_list_deep(args)),
+  TName{name, args, rows} => TName(name, chase_list_deep(args), rows),
   TRecord(fields) => TRecord(chase_fields_deep(fields)),
   TRecordOpen{fields, rest: v} => mk_record_open(chase_fields_deep(fields), v),
   TRefined{base, pred} => TRefined(chase_type_deep(base), pred),
@@ -1050,13 +1050,9 @@ fn judged_ranked() with GraphRead + Memory + Alloc = fold([], judged_rank_insert
 
 fn judged_rank_insert(acc, row) with Memory + Alloc = take(judged_top, judged_insert_desc(acc, row))
 
-fn judged_insert_desc(acc, row: (Int, Int)) with Memory + Alloc = match row {
-  (_, bytes) => match acc {
-    [] => [row],
-    [top, ...more] => match top {
-      (_, top_bytes) => if bytes > top_bytes { [row] ++ acc } else { [top] ++ judged_insert_desc(more, row) },
-    },
-  },
+fn judged_insert_desc(acc, row: JudgedCost) with Memory + Alloc = match acc {
+  [] => [row],
+  [top, ...more] => if row.bytes > top.bytes { [row] ++ acc } else { [top] ++ judged_insert_desc(more, row) },
 }
 
 // ─── The structural census — count + sites of a shape in the weave ──
@@ -1065,7 +1061,7 @@ fn judged_insert_desc(acc, row: (Int, Int)) with Memory + Alloc = match row {
 // re-parsed judgment generations mint one source site many times), with
 // the membership read from the shape. A membership predicate's false arm
 // is the read's honest complement over NodeBody, not a fabricated value.
-fn census_label(shape) with Pure = match shape {
+fn census_label(shape) = match shape {
   CsAnonymous => "anonymous fn(s)",
   CsVerb(k) => "{show_pipe_kind(k)} site(s)",
   CsEta => "eta-wrapper(s)",
@@ -1134,8 +1130,33 @@ fn show_row_edges(vs, i, n, depth, acc: String) with GraphRead + !Mutate + Memor
 // the row cannot prove the absence of anything, and every call to the fn
 // carrying it pays a yield floor.
 fn show_row_edge(v, depth) with GraphRead + !Mutate + Memory + Alloc = match graph_chase(v) {
-  GNode(kind, _) => "{int_to_str(v)}:{show_row_edge_kind(kind, depth)}",
+  GNode(kind, _) => "{int_to_str(v)}:{show_row_edge_kind(kind, depth)}{show_row_cell_shape(v)}",
 }
+
+// A cell's own shape beside its reading — what a charge, a link or a read of
+// it has to walk: the edges it reads across, the paths to roots it has
+// reached, the cells that read it, the bounds on it.
+fn show_row_cell_shape(v) with GraphRead + !Mutate + Memory + Alloc = if graph_is_row_cell(v) {
+  let c = graph_row_cell(v)
+  " [edges {len(c.edges)}{show_row_sources(map(row_edge_src, c.edges))} · paths {len(c.frees)}{show_row_sources(map(row_path_root, c.frees))} · readers {len(c.deps)} · bounds {len(c.ceilings)} · charged {len(c.charged)}]"
+} else {
+  ""
+}
+
+// The handles a cell reads from or has reached, each with its SORT. A row's
+// edge or path lands on a row cell by construction, so a handle that is not
+// one is a sort confusion made visible — the fact the counts alone hid.
+fn show_row_sources(hs) with GraphRead + !Mutate + Memory + Alloc =
+  if len(hs) == 0 { "" } else { " ({join(" ", map(show_row_source, hs))})" }
+
+fn row_edge_src(e: RowEdge) = e.src
+
+fn row_path_root(path) = match path {
+  (r, _) => r,
+}
+
+fn show_row_source(h) with GraphRead + !Mutate + Memory + Alloc =
+  if graph_is_row_cell(h) { "#{int_to_str(h)}" } else { "#{int_to_str(h)}:NOT-A-ROW" }
 
 fn show_row_edge_kind(kind, depth) with GraphRead + !Mutate + Memory + Alloc = match kind {
   NRowFree(_) => "ROW-FREE",

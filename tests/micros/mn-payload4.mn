@@ -1,4 +1,8 @@
-// expect: 134
+// expect: 2
+// EXPECTATION TRUED AGAIN (2026-09-24, rows as cells): the install's handled
+// instance now meets every instance crossing it, so the state's record type
+// reaches `rd`'s result and `.beta` reads its true slot — 2, re-derived by
+// hand: `set` writes {1, 2, 3} into `s`, `rd` returns `s`.
 // EXPECTATION TRUED (2026-07-25, the resolved-or-loud offset landing): the
 // old banked value was the PARTIAL-SET offset read — the arm's demanded
 // {beta | rho} summed offsets over {beta} alone, so .beta read offset 0,

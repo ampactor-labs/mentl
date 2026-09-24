@@ -371,7 +371,7 @@ fn show_one_proposal(proposal) with GraphRead + Memory + !Mutate + Alloc + Inter
   (node, reason) => " · {render_candidate_source(node)} — {show_reason(reason)}",
 }
 
-fn show_pipe_context(ctx) with Pure = match ctx {
+fn show_pipe_context(ctx) = match ctx {
   NoPipe => "(none)",
   InsidePipe(pk) => "inside {show_pipe_kind(pk)}",
   StartingPipe => "starts pipe",
@@ -442,7 +442,7 @@ fn splice_span(ref source, ref span, ref text: String) with Memory + Alloc = {
   }
 }
 
-fn indent_annotation(ref text: String) with Pure = "  {text}\n"
+fn indent_annotation(ref text: String) = "  {text}\n"
 
 fn splice_before_line(ref source, target_line, ref insert: String) with Memory + Alloc = {
   let n = byte_len(source)

@@ -223,16 +223,16 @@ fn render_fanout_inline(branches) = match branches {
 // the loop internally; it does not need a `<~` wrapper nobody calls.
 //
 // ─── Helper functions — pure transforms over String ────────────────
-fn spaces(n) with Pure = if n == 0 { "" } else { " {spaces(n - 1)}" }
+fn spaces(n) = if n == 0 { "" } else { " {spaces(n - 1)}" }
 
-fn parenthesize(s: String) with Pure = "({s})"
+fn parenthesize(s: String) = "({s})"
 
 // Head-first join: parser lists are source-ordered (built `[x] ++ rest`),
 // so iteration walks index 0 upward — the last/drop_last form rendered
 // every list REVERSED, unseen because this module had zero callers.
-fn join_lines(lines) with Memory = join_lines_from(lines, 0)
+fn join_lines(lines) with Memory + Alloc = join_lines_from(lines, 0)
 
-fn join_lines_from(ref lines, i) with Memory = if i >= len(lines) {
+fn join_lines_from(ref lines, i) with Memory + Alloc = if i >= len(lines) {
   ""
 } else if i == len(lines) - 1 {
   lines[i]
@@ -368,11 +368,11 @@ fn render_expr_tokens(e) with Rendering + !Mutate = match e {
   render_fanout_inline(branches),
   RestExpr(nm) => "...{nm}",
   IfExpr(c, t, el) => {
-    let inline = "if {render_tokens_for(c)} {render_if_branch(t)}{render_else(el)}"
+    let inline = "if {render_header_expr(c)} {render_if_branch(t)}{render_else(el)}"
     if fits_inline(inline) {
       inline
     } else {
-      "if {render_tokens_for(c)} {render_branch_block(t)}{render_else_block(el)}"
+      "if {render_header_expr(c)} {render_branch_block(t)}{render_else_block(el)}"
     }
   },
   MakeListExpr(elems) => // An element carrying prose forces the VERTICAL layout (the CallExpr
@@ -433,7 +433,7 @@ fn render_expr_tokens(e) with Rendering + !Mutate = match e {
   ShowExpr(inner) => // Outside a string context the wrap is invisible surface — the
   // inner renders bare (parser-minted only inside fragments).
   render_tokens_for(inner),
-  MatchExpr(scrut, arms) => "match {render_tokens_for(scrut)} \{\n{indent_block(strip_trailing_nl(render_match_arms(arms, 0)))}\n\}",
+  MatchExpr(scrut, arms) => "match {render_header_expr(scrut)} \{\n{indent_block(strip_trailing_nl(render_match_arms(arms, 0)))}\n\}",
   ResumeExpr(v, updates) => "{render_resume_head(v)}{render_state_updates(updates, 0)}",
 }
 
@@ -804,7 +804,7 @@ fn render_branch_block(n) with Rendering + !Mutate = match ast_kind_of(n) {
 fn render_else_block(el) with Rendering + !Mutate = match ast_kind_of(el) {
   NExpr(LitUnit) => "",
   NExpr(IfExpr(c2, t2, e2)) => {
-    let core = "else if {render_tokens_for(c2)} {render_branch_block(t2)}{render_else_block(e2)}"
+    let core = "else if {render_header_expr(c2)} {render_branch_block(t2)}{render_else_block(e2)}"
     let ec = graph_comment_at(node_handle(el))
     if ec == "" { " {core}" } else { "\n//{replace(ec, "\n", "\n//")}\n{core}" }
   },
@@ -1169,7 +1169,7 @@ fn render_config_param(p) with Rendering + !Mutate = match param_default(p) {
   None => param_name(p),
 }
 
-fn render_name_list(ref names, i) with Memory = if i >= len(names) {
+fn render_name_list(ref names, i) with Memory + Alloc = if i >= len(names) {
   ""
 } else if i == len(names) - 1 {
   names[i]
@@ -1186,9 +1186,34 @@ fn render_state_inits(ref states, i) with Rendering + !Mutate = if i >= len(stat
   ""
 } else {
   let st = states[i]
-  let one = "{state_field_name(st)} = {render_tokens_for(state_field_init(st))}"
+  let one = "{state_field_name(st)} = {render_header_expr(state_field_init(st))}"
   let lead = if i == 0 { " with " } else { ", " }
   "{lead}{one}{render_state_inits(states, i + 1)}"
+}
+
+// An expression in a slot the grammar closes at `{` — an `if` condition, a
+// `match` scrutinee, a handler's state init (SYNTAX «Brace-header slots»).
+// There a record construction's own brace would open the form's block, so
+// the page writes it in parens; without them fmt's own re-read took
+// `graph_handler`'s `(RowBytes{inst: 0, …})` init for the handler's arms
+// and rewrote every arm of it.
+fn render_header_expr(node) with Rendering + !Mutate = if header_brace_is_open(node) {
+  parenthesize(render_tokens_for(node))
+} else {
+  render_tokens_for(node)
+}
+
+// Whether a record construction stands where the header's own `{` could be
+// read — the expression itself, or an operand reached without crossing a
+// bracket. Inside a call's parens or a list's brackets the brace is closed
+// by them and reads as the record it is.
+fn header_brace_is_open(node) = match ast_kind_of(node) {
+  NExpr(NamedRecordExpr{}) => true,
+  NExpr(BinOpExpr{left, right}) => header_brace_is_open(left) || header_brace_is_open(right),
+  NExpr(PipeExpr{left, right}) => header_brace_is_open(left) || header_brace_is_open(right),
+  NExpr(FieldExpr(receiver, _)) => header_brace_is_open(receiver),
+  NExpr(UnaryOpExpr(_, operand)) => header_brace_is_open(operand),
+  _ => false,
 }
 
 fn render_handler_arms(ref arms, i) with Rendering + !Mutate = if i >= len(arms) {
@@ -1285,7 +1310,7 @@ fn render_retty(retty) with Rendering + !Mutate = match retty {
 // Canonical indent depth per node kind. Match-arm bodies +2; let-
 // value at same indent as let; fn body +2 from fn signature; etc.
 // Each kind's indent is the PARENT's indent + verb-class offset.
-fn render_indent_for(kind, ctx) with Pure = spaces(canonical_indent_depth(kind, ctx))
+fn render_indent_for(kind, ctx) = spaces(canonical_indent_depth(kind, ctx))
 
 fn render_line_break_after(kind) with Pure = match kind {
   NStmt(_) => "\n",

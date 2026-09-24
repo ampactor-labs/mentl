@@ -1,11 +1,15 @@
 // expect: 42
 // The effect-polymorphic absorption crossing a scheme boundary: bracket's
-// row is its thunk's row minus the install's handled set (the pending
-// mask, diff_row's bound triple), generalized and instantiated at the
-// caller. The caller proves Pure — the subtraction must survive
-// instantiation (subst_row carries the mask's absent set; the drop was
-// measured as Ping leaking here, and as infer_context's three wheel
-// callers reading the whole analysis core unsubtracted).
+// row is its thunk's row read across the install's mask, generalized and
+// instantiated at the caller. The caller proves `!Ping` — the subtraction
+// must survive instantiation. It was measured leaking twice: once as the
+// mask's absent set dropped by the substitution, and again (2026-09-24, rows
+// as cells) as a reader folding a tail root's content back in, unmasked,
+// after the carry had already filtered it.
+// EXPECTATION TRUED (2026-09-24): this declared `with Pure`, and building the
+// thunk is a construction — a closure record, `Memory + Alloc` — so Pure was
+// a false claim the moment construction was charged. `!Ping` is what the
+// fixture measures.
 effect Ping { ping() -> Int }
 
 handler pong {
@@ -14,6 +18,6 @@ handler pong {
 
 fn bracket(body) = body() ~> pong
 
-fn caller() -> Int with Pure = bracket(() => ping())
+fn caller() -> Int with !Ping = bracket(() => ping())
 
 fn main() = caller() * 6

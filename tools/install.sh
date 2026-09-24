@@ -26,6 +26,17 @@ cat > "$BIN_DIR/mentl" <<SHIM
 # this command with zero action — the shim never copies.
 MENTL_HOME="$MENTL_HOME"
 source "\$MENTL_HOME/tools/wt-env.sh"
+# THE CHECKOUT YOU STAND IN answers: its pinned boot and its library, when
+# the cwd is a checkout root; the installed home otherwise. Answering a
+# worktree from the home's boot judged the worktree's source by a wheel the
+# worktree had already left — measured 2026-09-24: the home's boot reported
+# the occurs check and the poly teach the worktree's own pin had lost, so a
+# regression read as healthy and a healthy representative read as a defect.
+if [ -f boot/mentl.wasm ] && [ -d src ] && [ -d lib ]; then
+  MENTL_CHECKOUT="\$PWD"
+else
+  MENTL_CHECKOUT="\$MENTL_HOME"
+fi
 # A path argument OUTSIDE the standing mounts (cwd, /tmp, the repo at
 # /mentl-home) has no guest route — the read fails and, before the
 # driver's refusal landed, every verb answered EMPTY at exit 0. The shim
@@ -63,7 +74,7 @@ if [ -n "\${MENTL_WASM:-}" ]; then
 fi
 mentl_compiler() {
   case "\${MENTL_COMPILER:-boot}" in
-    boot) printf '%s' "\$MENTL_HOME/boot/mentl.wasm" ;;
+    boot) printf '%s' "\$MENTL_CHECKOUT/boot/mentl.wasm" ;;
     march)
       if [ ! -s .build/march/m3.wasm ] || [ "\$(cat .build/march/key 2>/dev/null)" != "\$(wt_m2_key)" ]; then
         echo "mentl: MENTL_COMPILER=march — no m3 for this source (the last march compiled other bytes); run bash tools/march.sh" >&2
@@ -106,10 +117,10 @@ mentl_wasm() {
     fi
   done
   "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
-    --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" "\${extra[@]}" \\
+    --dir "\$PWD" --dir /tmp --dir "\$MENTL_CHECKOUT::/mentl-home" "\${extra[@]}" \\
     "\$COMPILER" "\$@"
 }
-# `mentl run` is the WHEEL's verb: compile, stream the module to the runner
+# mentl run is the WHEEL's verb: compile, stream the module to the runner
 # through the Process seam, execute it there, answer the program's own exit
 # (src/main.mn run_run ~> process_host; tools/runner mentl_host.exec). The
 # shim owned this seam as compile → wat2wasm → wasmtime with a content-keyed
@@ -122,7 +133,7 @@ if [ "\${1:-}" = "session" ]; then
   # connections speaking the CLI's own grammar. Port override:
   # MENTL_SESSION_PORT.
   exec "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
-    --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" \\
+    --dir "\$PWD" --dir /tmp --dir "\$MENTL_CHECKOUT::/mentl-home" \\
     -S "tcplisten=127.0.0.1:\${MENTL_SESSION_PORT:-7377}" \\
     "\$COMPILER" session
 fi
@@ -144,7 +155,7 @@ mentl_session_try() {
   printf '%s' "\$out"
   return 0
 }
-if [ -n "\${1:-}" ] && [ "\${MENTL_COMPILER:-boot}" = "boot" ]; then
+if [ -n "\${1:-}" ] && [ "\${MENTL_COMPILER:-boot}" = "boot" ] && [ "\$MENTL_CHECKOUT" = "\$MENTL_HOME" ]; then
   if mentl_session_try "\$@"; then exit 0; fi
 fi
 if [ "\${1:-}" = "space" ]; then
@@ -156,7 +167,7 @@ if [ "\${1:-}" = "space" ]; then
   # (No backticks in this heredoc: it is unquoted, so they would run as
   # command substitution at install time — which is exactly what they did.)
   exec "\$WT" run "\${WT_RUN_FLAGS[@]}" \\
-    --dir "\$MENTL_HOME::." --dir /tmp \\
+    --dir "\$MENTL_CHECKOUT::." --dir /tmp \\
     -S "tcplisten=127.0.0.1:\${MENTL_SPACE_PORT:-7378}" \\
     "\$COMPILER" space
 fi

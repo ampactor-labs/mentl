@@ -931,13 +931,16 @@ solo_violations_max: 0
 # through a HOF parameter is never unified with the handler's (an Int payload
 # called as a function, runtime trap), and a module-level `let` performs with
 # no frame (out-of-bounds fault in the initializer). Same retirement.
-frontier_expected_red: install-over-hof-param-payload
+# `install-over-hof-param-payload` RETIRED 2026-09-24 with the speculation
+# landing (Hβ.infer.speculation-leaves-a-handle-standing), measured passing
+# through the march's m3.
 frontier_expected_red: module-let-performs
 # 2026-09-23, the fourth refuter: a task handed to `spawn` performs E inside a
 # `!E` body and checks clean under BOTH schedules, so the gap is the task's row
 # never reaching the install, not only the host boundary. Same retirement.
+# The SEQUENTIAL schedule's leg RETIRED 2026-09-24 with the same landing; the
+# parallel leg still checks clean, so the host boundary is the half left.
 frontier_expected_red: spawn-thunk-parallel
-frontier_expected_red: spawn-thunk-sequential
 # 2026-09-23: AN INSTALL SOMEWHERE IS CREDITED FOR A PERFORM IT DOES NOT
 # COVER. `bad()` performs E under `~> h` on its left operand and through an
 # uncovered HOF call on its right; nothing declares a row, E reaches main's
@@ -982,114 +985,26 @@ frontier_expected_red: eq-in-arm-pointer
 # on the real-k path, which floors a perform off the k1 spine.
 # Hβ.lower.resume-through-a-lambda-is-taken-as-the-arms-answer.
 frontier_expected_red: resume-through-caller
-# 2026-09-23: EIGHT CROWN CRUCIBLES THE PINNED BOOT FAILS, measured by an
-# adversarial refuter of the rows design and re-run by hand the same hour.
-# Six are FALSE ABSENCE PROOFS — a body declared `!E` performs E and runs
-# (exit 7, or 14 through the cycle) — one per storage carrier whose fn row is
-# an IDENTITY cell that construction and use each instantiate separately: a
-# declared constructor payload, a nominal record built by the call form, an
-# effect op's fn parameter, a generic op parameter, a generic op result, and
-# an annotated fn parameter of a recursion co-member (source-order dependent;
-# its twin refuses). Two are FALSE REFUSALS of pure programs: the brace
-# constructor writes the declaration's raw field row from every judgment, and
-# a free type variable meeting a sealed fn type takes the ceiling as content.
-# All eight retire with the rows landing's cells-and-polarity form
-# (Hβ.effects.rows-are-propagated-cells); none is a patch site.
-crown_expected_red: leak-ctor-payload-declared-fn
-crown_expected_red: leak-nominal-record-ctor-call
-crown_expected_red: leak-op-param-fn
-crown_expected_red: leak-op-param-generic-fn
-crown_expected_red: leak-op-result-var
-crown_expected_red: leak-cycle-lambda-before
-crown_expected_red: sound-nominal-record-sibling
-crown_expected_red: sound-sealed-param-pure-arg
-# 2026-09-23, the second refuter the same hour: SETTLING AT AN INNER FRAME. A
-# HOF parameter called inside a lambda, a nested fn, or a tee body mints its
-# call cell in THAT frame, and the frame's exit settles it Pure though the
-# cell is free in the enclosing environment — three false absences, and the
-# prelude's own `sum_by`, `count` and `max_by` publish rows without their
-# parameter's row the same way. Beside them three false refusals: a co-member's
-# pure lambda published as the parameter's ceiling, and `match`/`if` binding
-# their result to the FIRST branch's type (the `if` face is
-# sound-branch-join, below) so the second meets it as a bound.
-# They retire with the same landing: a cell is settled only at a binding
-# group's completion, never while the environment still reaches it, and a
-# join is a fresh cell every branch flows into.
-crown_expected_red: leak-lambda-captures-hof-param
-crown_expected_red: leak-nested-fn-captures-hof-param
-crown_expected_red: leak-tee-body-hof-param
-crown_expected_red: sound-cycle-performing-lambda-undeclared
-crown_expected_red: sound-match-arms-mixed-rows
-# 2026-09-23, the rows design's own first reading of the boot (v1, written in
-# the builder's worktree and brought to main here): a partial application whose
-# argument is a still-open group member publishes the caller pure; a
-# parameter capped !C inside a fn declaring !B is accepted though the cap
-# allows B; a declared negation on a HOF never reaches what callers pass
-# (Hβ.infer.declared-row-vacuous-against-a-free-body-row); and the `if` join of
-# a pure and a performing fn is refused with nothing declared.
-crown_expected_red: leak-partial-group-arg
-crown_expected_red: leak-capped-negation-union
-crown_expected_red: leak-declared-hof-negation
-crown_expected_red: sound-branch-join
-# 2026-09-23, the third refuter (v2's soundness review), eleven more live
-# false absences, every one checking clean and most running at 7:
-# - an install whose handled instance arrives later, through a HOF parameter;
-# - a parameter reaching a !E frame both masked and direct, where the bound is
-#   the MEET;
-# - a mixed `F + !E` row folded to {F}, losing its negation;
-# - `with Pure` on a HOF, which SYNTAX calls absolute;
-# - a parameter bound crossing a generalized callee, and its direct control;
-# - fn payloads in a recursive type and in a nested nominal;
-# - `<|` and `><` over a HOF parameter;
-# - string interpolation, which charges no Alloc.
-crown_expected_red: leak-install-over-hof-param-instance
-crown_expected_red: leak-mask-and-direct-path
-crown_expected_red: leak-mixed-row-hof-negation
-crown_expected_red: leak-pure-hof-param
-crown_expected_red: leak-param-ceiling-through-generic
-crown_expected_red: leak-param-ceiling-through-lambda
-crown_expected_red: leak-recursive-type-payload
-crown_expected_red: leak-nested-type-payload
-crown_expected_red: leak-diverge-hof-param
-crown_expected_red: leak-fanout-hof-param
-crown_expected_red: leak-interpolation-allocates
-# 2026-09-23, the fourth refuter (v2's wheel-idioms review): a sealed HOF that
-# FORWARDS its parameter to another generic HOF; two instances of one op kept
-# by NAME so the second is dropped; and an annotated `!G` payload read as the
-# content "anything but G", which falsely refuses a pure sibling.
-crown_expected_red: leak-sealed-hof-forwards-param
-crown_expected_red: leak-op-param-two-instances
-crown_expected_red: sound-payload-declared-negation-sibling
-# 2026-09-23, the rows v3 refutation round (rv3a): nine more false absences
-# in the pinned boot, each seen RED through it before this line was written.
-# Three are the install PATH law (a mask is an ordered path, one entry per
-# path, the thunk meeting the first handler that names its effect); one is a
-# state root that held content when first reached; five are constructions
-# the charge table never named.
-crown_expected_red: leak-install-paths-skip-then-call
-crown_expected_red: leak-install-paths-call-then-skip
-crown_expected_red: leak-install-nested-call-inside-skip
-crown_expected_red: leak-state-init-content-root
-crown_expected_red: leak-partial-application-allocates
-crown_expected_red: leak-partial-hole-allocates
-crown_expected_red: leak-fanout-allocates
-crown_expected_red: leak-diverge-allocates
-crown_expected_red: leak-record-rest-allocates
-# 2026-09-23, the rows v4 refutation round (rv4): eight more false absences
-# (a bound on a cell recursion-group members share, handler configs into
-# negated helpers, let-bound lambdas and nested fns into negated callees) and
-# two false refusals (a join that unions a performing branch into a sealed
-# parameter's cell), each seen RED through the pinned boot first.
-crown_expected_red: leak-group-shared-param-ceiling
-crown_expected_red: leak-group-shared-param-ceiling-swapped
+# 2026-09-23: FIFTY CROWN CRUCIBLES THE PINNED BOOT FAILED, written by four
+# adversarial refuters of the rows design and each seen RED through the boot
+# the hour it was written. 2026-09-24: FORTY-TWO hold through the rows
+# landing's cells (Hβ.effects.rows-are-propagated-cells) and their
+# declarations are deleted. The eight below still fail, and each names its
+# carrier:
+# - a bound on a parameter forwarded across a recursion group, and a handler
+#   config through one;
+# - fn payloads in a nested nominal and in a recursive type;
+# - a nominal record built by the call form, and its pure sibling refused.
+# The seventh and eighth — a parameter bound crossing a generalized callee,
+# and through a lambda — hold since the speculation landing
+# (Hβ.infer.speculation-leaves-a-handle-standing), measured through the
+# march's m3; which of its four closures carried each is not isolated.
 crown_expected_red: leak-group-forwarded-param-ceiling
 crown_expected_red: leak-handler-config-through-group
-crown_expected_red: leak-handler-config-into-sealed-helper
-crown_expected_red: leak-let-lambda-into-negated-callee
-crown_expected_red: leak-nested-fn-into-negated-callee
-crown_expected_red: leak-let-lambda-captures-param
-crown_expected_red: sound-join-sealed-param-with-loud
-crown_expected_red: sound-join-sealed-param-with-loud-swapped
+crown_expected_red: leak-nested-type-payload
+crown_expected_red: leak-recursive-type-payload
+crown_expected_red: leak-nominal-record-ctor-call
+crown_expected_red: sound-nominal-record-sibling
 # 2026-09-18: `eq-polymorphic-sum` was declared RED here for one landing and
 # RETIRED by proof in the next — the whole life of an expected-red entry, in a
 # day. It read: `==` on a POLYMORPHIC sum compares its payload by ADDRESS,
@@ -1242,8 +1157,11 @@ authored_own_max: 62
 # fifteen it inherited included — plus the four on the formatter's and the
 # cost instrument's helpers, twenty-two in all; `mentl src/main.mn check` is
 # clean without them, which is the Hylo bar measured rather than felt. The
-# ceiling follows the count down.
-authored_ref_max: 699
+# ceiling follows the count down. 698 (2026-09-24): the rows landing wrote
+# `ref spine` on forty-eight graph helpers that only read it; eight of them
+# carry none now and the wheel checks clean, so the rest are the next
+# retirements of the same kind.
+authored_ref_max: 698
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1333,7 +1251,34 @@ authored_ref_max: 699
 # ceiling should be on the heap line itself, which cannot be wrong by a
 # coin flip, and the peak kept as the looser sanity bound
 # (`Hβ.tools.cost-ratchet-reads-the-heap-line`).
-selfcompile_peak_kb_max: 1021000
+#
+# 1,021,000 -> 1,300,000 (2026-09-24, the rows landing), and this raise is a
+# DEBT, not noise. The judgment's heap moved 548,585,424 -> 745,370,608 bytes
+# (m2's line against m3's, one march); the m3 leg's own `rows:` line puts
+# 150,137,920 of it on the effect rows (instantiation 26.5MB · link 90.5MB ·
+# charge 19.1MB · union 14.0MB), and the min-of-3 peak reads 1,281,792 KB.
+# What it bought: forty-two crown crucibles that were false absence proofs or
+# false refusals in the pinned boot now hold (crown 150/0/8), a nested record
+# literal no longer evaluates to its INNER record (a silent wrong in every
+# program, tests/micros/mn-record-nested-literal.mn), and a handler instance's
+# row argument is renamed per use and met by the flow its op gives it.
+# What was measured on the way, so the next move starts from it: the rise
+# had been 94MB in ONE decl (`emit_expr`, rows 89.7MB) until a growth began
+# carrying its delta to readers instead of making each re-walk its source's
+# every path (graph.mn RowWake); `mentl <file> cost` now shows each decl's
+# row bytes beside its heap, which is how that was found. Two probes were
+# refuted: equating instead of linking an install's row arguments (cost
+# unchanged), and leaving a recursion member's own frame unrenamed (cost x4
+# and a leak). The remainder is the per-link fan-out to a large frame
+# cell's readers — `Hβ.effects.row-link-fans-out-per-call` owns it, and the
+# ceiling comes back down with it.
+# 1,310,000 the same day, a MARGIN correction and not a rise in the work: the
+# 1,300,000 line was set about 5MB over one reading, and three reads of one
+# unchanged m4 leg spread 1,303,936–1,305,928 KB. Across the fmt gate and the
+# tail-call walkers the deterministic heap line moved 756,308,728 →
+# 756,942,040 B (+0.08%). The ceiling to ratchet is that line
+# (`Hβ.tools.cost-ratchet-reads-the-heap-line`), which RSS jitter cannot move.
+selfcompile_peak_kb_max: 1310000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

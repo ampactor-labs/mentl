@@ -1,17 +1,17 @@
 // expect: 42
 // The forward-referenced face of the effect-polymorphic absorption: the
-// caller precedes the bracket in source, so the trial reads the loose
-// pre-registration; the FINAL's re-judgment reads bracket's published
-// subtraction and the caller's Pure proof lands (the rounds that once
-// did this are deleted, and the re-judgment cadence is itself condemned
-// — rung 3's decl→site edge delivers the proof without a second pass).
+// caller precedes the bracket in source, and the judgment is callee-first,
+// so the caller reads bracket's masked row and its `!Ping` proof lands.
+// EXPECTATION TRUED (2026-09-24): this declared `with Pure`; building the
+// thunk is a construction (`Memory + Alloc`), so `!Ping` is the claim the
+// fixture measures — see mn-absorb-poly.
 effect Ping { ping() -> Int }
 
 handler pong {
   ping() => resume(7)
 }
 
-fn caller() -> Int with Pure = bracket(() => ping())
+fn caller() -> Int with !Ping = bracket(() => ping())
 
 fn bracket(body) = body() ~> pong
 

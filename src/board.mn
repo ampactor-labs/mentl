@@ -100,7 +100,17 @@ fn board_bounds() with Memory + Alloc = [
   //
   // 216 — and it had sat twenty above its count again, the same slack the
   // paragraph above names, until the board was read whole on 2026-09-23.
-  Bound({ceiling: 216, shape: CsEffectfulLambda}),
+  //
+  // 258 (2026-09-24, the rows landing), a rise measured site by site against
+  // the boot's census of the same source. 18 are lambdas this tree added,
+  // convicted by the old judgment too (216 → 234). The other 24 the boot read
+  // as pure and were not: a lambda that builds a closure allocates
+  // (`build_pipeline`'s), and a lambda calling a recursion group's member
+  // performs what the member does (`ty_has_wide_seq`'s) — the false absences
+  // the rows landing's crown crucibles name. None was dropped. 257 the same
+  // day: `build_pipeline` folds `compose` by reference, as its own comment
+  // always said it did.
+  Bound({ceiling: 257, shape: CsEffectfulLambda}),
   // A record pattern whose receiver row never closes reads a field offset
   // the graph cannot prove. `T_FieldOffsetUnprovable` reports that class at
   // the receiver now; this line retires when that diagnostic arms.
@@ -116,9 +126,9 @@ fn board_bounds() with Memory + Alloc = [
   // Drift mode 10 — the nine survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
-  // is exactly why the bound is a count and not zero. Seven stand
-  // (2026-09-23); the ceiling follows them.
-  Bound({ceiling: 7, shape: CsWildcardZero}),
+  // is exactly why the bound is a count and not zero. Five stand
+  // (2026-09-24); the ceiling follows them.
+  Bound({ceiling: 5, shape: CsWildcardZero}),
   // Drift mode 13 — a bug is zero or it is blocking; a masked failure is the
   // surrender-fallback Anchor 2 deletes rather than wraps.
   Bound({ceiling: 0, shape: CsFailureMask}),
@@ -134,9 +144,9 @@ fn board_bounds() with Memory + Alloc = [
   // fabricated absence over a load-bearing ADT, found where it had hidden
   // that a `let`, a refinement and an alias declare names (so an import
   // used only for one of them read as dead). Forty-four such arms stood the
-  // day the roster grew; each retires by enumeration. Sixty-one stand
-  // (2026-09-23); the ceiling follows them.
-  Bound({ceiling: 61, shape: CsWildcardFabricates}),
+  // day the roster grew; each retires by enumeration. Fifty-nine stand
+  // (2026-09-24); the ceiling follows them.
+  Bound({ceiling: 59, shape: CsWildcardFabricates}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -178,10 +188,10 @@ fn board_bounds() with Memory + Alloc = [
   // name a decision a reader should read. No proven fact was lost; a row
   // alias is transparent, so the checked row is identical.
   //
-  // The remaining twelve are emit, cursor, infer and synth_proposer, whose
+  // The remaining eleven are emit, cursor, infer and synth_proposer, whose
   // cores differ from this one and from each other — each is its own unnamed
   // capability, and naming them is what walks this to zero.
-  Bound({ceiling: 12, shape: CsWideRow}),
+  Bound({ceiling: 11, shape: CsWideRow}),
   // THE ONE BOUND ON THIS BOARD MINTED FROM A PRICE RATHER THAN A PRINCIPLE,
   // and the price was measured before the bound existed. The wheel compiles
   // itself through two links — the blob (every file concatenated, one module,
@@ -224,8 +234,8 @@ fn board_bounds() with Memory + Alloc = [
   // quantified row or its per-use instantiation — the only spelling row
   // polymorphism has, so a ratchet on it would convict the language. The
   // countdown that can reach zero is the cells NO scheme quantifies, and
-  // that shape reads the quantifier (`sig_owns` is where the wheel draws the
-  // line). Until it is built this line prices the extent, and the extent is
+  // that shape reads the quantifier (the signature's own quantified roots are
+  // where the wheel draws the line). Until it is built this line prices the extent, and the extent is
   // the true cost: one floor per call.
   //
   // 1,047 — one site fell when the decls facet stopped projecting each
@@ -322,7 +332,13 @@ fn board_bounds() with Memory + Alloc = [
   // lower run. Four instruments, four denominators, one fact; recording all
   // of them is how the next reader avoids reconciling numbers that were
   // never the same.
-  Bound({ceiling: 1139, shape: CsFreeRowCallee}),
+  //
+  // 280 (2026-09-24) — the first fall this line's own defect caused. A row
+  // is a cell whose read carries every root it reached, and a copy of a
+  // settled row is that row renamed rather than a fresh variable; a row
+  // nothing can reach is closed when its group is judged. So a callee's row
+  // is free now only when something could still bind it.
+  Bound({ceiling: 280, shape: CsFreeRowCallee}),
   // 480 — the imperative loop in recursion's costume, counted across the
   // whole wheel and bounded for the first time 2026-09-21 (Morgan: "anytime
   // there is anything that could be written with the five topological
@@ -341,15 +357,16 @@ fn board_bounds() with Memory + Alloc = [
   //
   // 462 — the count had already fallen to it and the ceiling had not
   // followed, which licenses five future loops nobody would see. Caught the
-  // same day by reading the board whole.
-  Bound({ceiling: 462, shape: CsIterationCostume}),
-  // 136 — a gate told to look away, counted on the comments column. Each
+  // same day by reading the board whole. 446 (2026-09-24): the count fell
+  // again as the rows landing's walks became folds; the ceiling follows.
+  Bound({ceiling: 446, shape: CsIterationCostume}),
+  // 131 (2026-09-24, from 136) — a gate told to look away, counted on the comments column. Each
   // marker is a bash pattern left imprecise (the control-keyword rule inside
   // a Reason string, the accumulator rule on a bounded stack push); the
   // count falls as each pattern is absorbed into a census shape that reads
   // structure instead of text (Phase 5.6's motion), and its zero is an
   // audit that needs no exemptions.
-  Bound({ceiling: 136, shape: CsAuditSilenced}),
+  Bound({ceiling: 131, shape: CsAuditSilenced}),
   // 732 — a product destructured by position with two or more slots
   // discarded (`FnStmt(n, _, _, _, _)`, `(_h, p, _s, _d)`), counted on
   // every match and let across the wheel the day Morgan's screenshot named
@@ -369,8 +386,10 @@ fn board_bounds() with Memory + Alloc = [
   // 219 — the second tier, the same day: `TName`, `TRecordOpen`, `TCont`,
   // `HandlerDeclStmt`, `LetStmt`, `HandlerKind`, `Cursor`, `LFn`,
   // `ScheduledBoundary` and twenty more named, then one sweep. What is left
-  // is 158 tuples and 61 constructors with two sites or fewer apiece.
-  Bound({ceiling: 219, shape: CsWildcardDestructure})
+  // is 158 tuples and 61 constructors with two sites or fewer apiece. 218
+  // (2026-09-24): the speculation landing's own walks became named fold
+  // steps, and the count fell by one with them.
+  Bound({ceiling: 218, shape: CsWildcardDestructure})
 ]
 
 // The board: every bound answered by one live walk.

@@ -1,4 +1,11 @@
-// expect: 134
+// expect: 2
+// EXPECTATION TRUED AGAIN (2026-09-24, rows as cells): the install's handled
+// instance now meets every instance crossing it, so the slot list's element
+// type reaches `get`'s result. The first run under the flow answered 0, and
+// re-deriving it by hand showed the PROGRAM was wrong, not the compiler:
+// `make_list(2)` is two slots, `put` writes slot 0, and `last` read slot 1 —
+// the zero word, a field read off an empty slot. `get` reads the slot `put`
+// wrote now, so the fixture measures what its own comment says it measures.
 // EXPECTATION TRUED (2026-07-25, the resolved-or-loud offset landing): the
 // old banked value was the PARTIAL-SET offset read — the arm's demanded
 // {beta | rho} summed offsets over {beta} alone, so .beta read offset 0,
@@ -10,7 +17,7 @@
 // Rung 3: the element must flow through HANDLER STATE — put writes the record
 // into the slot list; get reads it back. This is map_collector's buf, minus
 // iterate/f/count. If state's element type flows from list_set's value, slot :
-// [record], last(slot) : record, .beta = 2. If the state stays [free]
+// [record], slot[0] : record, .beta = 2. If the state stays [free]
 // (re-derived at the decl, not read live from the arm), it traps.
 effect Probe {
   put(x) -> ()
@@ -19,7 +26,7 @@ effect Probe {
 
 handler hold with slot = make_list(2) {
   put(v) => resume() with slot = list_set(slot, 0, v),
-  get() => resume(last(slot))
+  get() => resume(list_index(slot, 0))
 }
 
 fn run() with Probe + Memory + Alloc = {

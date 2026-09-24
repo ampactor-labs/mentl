@@ -466,48 +466,53 @@ fn march_wheel_files() = {
 
 fn march_walk(dir, acc) = match fs_list_dir_impl(dir) {
   None => acc,
-  Some(names) => march_walk_entries(dir, march_sort_names(names), 0, acc),
+  Some(entries) => march_walk_entries(dir, march_sort_entries(entries), 0, acc),
 }
 
-fn march_walk_entries(dir, ref names, i, acc) = if i >= len(names) {
+// Each entry says whether it is a directory, so a subdirectory is descended
+// and a file is kept without opening either to ask.
+fn march_walk_entries(dir, ref entries, i, acc) = if i >= len(entries) {
   acc
 } else {
-  let name = names[i]
+  let e = entries[i]
   // fd_readdir reports the self and parent links; a recursive walk that
   // descends them loops "src/./." forever (measured: 3,000-byte paths,
   // +2 per level, until the alloc ceiling). A tree walk visits children.
-  if name == "." || name == ".." || name == "tutorial" {
-    march_walk_entries(dir, names, i + 1, acc)
+  if e.name == "." || e.name == ".." || e.name == "tutorial" {
+    march_walk_entries(dir, entries, i + 1, acc)
   } else {
-    let path = "{dir}/{name}"
-    match fs_list_dir_impl(path) {
-      Some(sub) => march_walk_entries(dir, names, i + 1, march_walk_entries(path, march_sort_names(sub), 0, acc)),
-      None => if ends_with(name, ".mn") {
-        march_walk_entries(dir, names, i + 1, push(acc, path))
-      } else {
-        march_walk_entries(dir, names, i + 1, acc)
-      },
+    let path = "{dir}/{e.name}"
+    if e.dir {
+      march_walk_entries(dir, entries, i + 1, march_walk(path, acc))
+    } else if ends_with(e.name, ".mn") {
+      march_walk_entries(dir, entries, i + 1, push(acc, path))
+    } else {
+      march_walk_entries(dir, entries, i + 1, acc)
     }
   }
 }
 
-// Lexicographic insertion sort through str_lt directly — the typed
+// Lexicographic insertion sort by name through str_lt directly — the typed
 // byte-compare — never the generic sort, whose word floor would order
-// a [String] by ADDRESS (the validator tier's measured class). The
-// readdir names arrive push-built (snoc), so the sort flattens first:
+// strings by ADDRESS (the validator tier's measured class). The readdir
+// entries arrive push-built (snoc), so the sort flattens first:
 // list_set's flat contract refused the chain loudly on the verb's very
 // first run — the gate catching its builder.
-fn march_sort_names(names) = march_sort_insert(list_to_flat(names), 1)
+fn march_sort_entries(entries) = march_sort_insert(list_to_flat(entries), 1)
 
-fn march_sort_insert(names, i) =
-  if i >= len(names) { names } else { march_sort_insert(march_sift(names, i), i + 1) }
+fn march_sort_insert(entries, i) =
+  if i >= len(entries) { entries } else { march_sort_insert(march_sift(entries, i), i + 1) }
 
-fn march_sift(names, i) = if i == 0 {
-  names
+fn march_sift(entries: [DirEntry], i) = if i == 0 {
+  entries
 } else {
-  let a = names[i - 1]
-  let b = names[i]
-  if str_lt(b, a) { march_sift(list_set(list_set(names, i - 1, b), i, a), i - 1) } else { names }
+  let a = entries[i - 1]
+  let b = entries[i]
+  if str_lt(b.name, a.name) {
+    march_sift(list_set(list_set(entries, i - 1, b), i, a), i - 1)
+  } else {
+    entries
+  }
 }
 
 fn march_read_files(ref files, i, acc) = if i >= len(files) {
@@ -533,44 +538,52 @@ fn count_newlines_from(s, i, n, acc) = if i >= n {
 // the surface (every Expr/Stmt/Pat variant has its arm — the formatter
 // arc's totality landing), carries the comment weave, and re-escapes
 // string content, so format∘parse is the identity the module's own
-// comment always claimed. Idempotence is the gate: the second render is
-// byte-identical to the first.
-fn fmt_run(target) = {
-  infer_context(() => {
-    // The verb convention: the arg normalizes to a MODULE name, and the
-    // write-back path is the resolver's own answer — one resolution
-    // home, never the raw argv string carried past it.
-    let entry_module = path_to_module(target)
-    let path = driver_module_path(entry_module)
-    // THE WEAVE, scoped to the entry — the same `driver_entry_with_ranges`
-    // that `check`, the address, `audit`, `teach` and the resident session
-    // read. fmt was the LAST verb on the solo entry route every other verb
-    // had already left, and that route's distinguishing property was an
-    // omission: it never installed a diagnostic scope, so it fell to
-    // `diagnostics_handler`'s default `ScopeAll` and narrated every
-    // dependency at a developer who had named one file. The
-    // measurement: `mentl check` on a one-function file printed one line and
-    // `mentl fmt` on the same file printed every prelude `T_OverDeclared` and
-    // `E_MissingVariable` in the tree. One question — whose diagnostics does
-    // this verb show? — answered in two places, the second by not answering.
-    let ast = match driver_entry_with_ranges(entry_module) {
-      (ast_all, _ranges) => driver_module_ast(ast_all, entry_module),
-    }
-    // The verb writes its own FIXPOINT: render once, re-parse, render
-    // again — a mid-line prose attach moves to its line-start home in
-    // the first render and is stable from the second, so the WRITTEN
-    // file is idempotent in one invocation.
-    let first = format_program(ast)
-    let rendered = format_program(frontend(first))
-    // THE CONSERVATION GATE — the verb lexes its own render beside the
-    // source and compares comment-token counts: the lexer emits one
-    // TComment per authored line, so the difference IS the number of
-    // prose lines the round trip loses (this absorbed the hand-run
-    // comment census — ⟳; and the LEXICAL count sees lines the parse
-    // never attaches, which a weave-to-weave compare was blind to).
-    let src_text = fs_read_file(path)
-    let src_lines = count_comment_tokens(lex(src_text), 0, 0)
-    let out_lines = count_comment_tokens(lex(rendered), 0, 0)
+// comment always claimed. The gate is FAITHFULNESS: the render read back
+// and rendered again differs from the first only in prose and line breaks,
+// or nothing is written.
+fn fmt_run(target) = infer_context(() => {
+  // The verb convention: the arg normalizes to a MODULE name, and the
+  // write-back path is the resolver's own answer — one resolution
+  // home, never the raw argv string carried past it.
+  let entry_module = path_to_module(target)
+  let path = driver_module_path(entry_module)
+  // THE WEAVE, scoped to the entry — the same `driver_entry_with_ranges`
+  // that `check`, the address, `audit`, `teach` and the resident session
+  // read. fmt was the LAST verb on the solo entry route every other verb
+  // had already left, and that route's distinguishing property was an
+  // omission: it never installed a diagnostic scope, so it fell to
+  // `diagnostics_handler`'s default `ScopeAll` and narrated every
+  // dependency at a developer who had named one file. The
+  // measurement: `mentl check` on a one-function file printed one line and
+  // `mentl fmt` on the same file printed every prelude `T_OverDeclared` and
+  // `E_MissingVariable` in the tree. One question — whose diagnostics does
+  // this verb show? — answered in two places, the second by not answering.
+  let ast = match driver_entry_with_ranges(entry_module) {
+    (ast_all, _ranges) => driver_module_ast(ast_all, entry_module),
+  }
+  // The verb writes its own FIXPOINT: render once, re-parse, render
+  // again — a mid-line prose attach moves to its line-start home in
+  // the first render and is stable from the second, so the WRITTEN
+  // file is idempotent in one invocation.
+  let first = format_program(ast)
+  let rendered = format_program(frontend(first))
+  // THE CONSERVATION GATE — the verb lexes its own render beside the
+  // source and compares comment-token counts: the lexer emits one
+  // TComment per authored line, so the difference IS the number of
+  // prose lines the round trip loses (this absorbed the hand-run
+  // comment census — ⟳; and the LEXICAL count sees lines the parse
+  // never attaches, which a weave-to-weave compare was blind to).
+  let src_text = fs_read_file(path)
+  let src_lines = count_comment_tokens(lex(src_text), 0, 0)
+  let out_lines = count_comment_tokens(lex(rendered), 0, 0)
+  // THE FAITHFULNESS GATE. Reading the first render back must give the
+  // program it was rendered from, and the second render is that reading
+  // written out, so the two may differ only where prose moved. A render
+  // the parser reads as ANOTHER program parses without complaint — the
+  // guard that restores a file the parser refuses never fires — and
+  // `graph_handler`'s record-literal state init, written without its
+  // parens, came back as every arm of the handler rewritten (2026-09-24).
+  if code_token_kinds(lex(first)) == code_token_kinds(lex(rendered)) {
     fs_write_file(path, rendered)
     if out_lines < src_lines {
       print_string("fmt: {path} rendered canonical — {int_to_str(src_lines - out_lines)} of {int_to_str(src_lines)} prose lines would not survive a reparse\n")
@@ -579,8 +592,20 @@ fn fmt_run(target) = {
       print_string("fmt: {path} rendered canonical — prose conserved ({int_to_str(src_lines)} lines)\n")
     }
     0
-  } ~> format_default ~> wasi_filesystem ~> mentl_default)
-  0
+  } else {
+    print_string("fmt: {path} NOT written — its canonical render reads back as a different program; the render is wrong, not the file\n")
+    1
+  }
+} ~> format_default ~> wasi_filesystem ~> mentl_default)
+
+// What a render says, as the parser will read it: every token but prose and
+// line breaks, which are the two things a canonical render may move.
+fn code_token_kinds(toks) = toks |> map(token_kind) |> filter(is_code_token)
+
+fn is_code_token(kind) = match kind {
+  TComment(_) => false,
+  TNewline => false,
+  _ => true,
 }
 
 // The gate NAMES its losses: each source comment line whose text appears
@@ -784,6 +809,9 @@ fn effarg_writable(a) with GraphRead + Memory + Alloc + !Mutate = match a {
   EAFloat(_) => True,
   EAString(_) => True,
   EAType(t) => len(free_in_ty(t)) == 0,
+  EARow(_) => // A row argument is elaboration's, never authored: there is no source
+  // spelling for a cell.
+  False,
   EANode(h) => match graph_node_body(h) {
     NExpr(VarRef(_)) => True,
     _ => False,
@@ -1787,7 +1815,7 @@ fn addr_newline_at(ref s, i, n) with Memory =
 // SingletonUninstalled guard refused it); test_check_run keeps its own
 // inner chain, which shadows these installs for its extent, unchanged.
 fn test_run(entry_module) = match fs_list_dir_impl(entry_module) {
-  Some(names) => battery_run(entry_module, names),
+  Some(entries) => battery_run(entry_module, map(dir_entry_name, entries)),
   None => test_check_run(entry_module),
 } ~> stdout_console ~> wasi_filesystem ~> diagnostics_handler
 

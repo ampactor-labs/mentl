@@ -1,0 +1,21 @@
+// expect: 42
+// The absorption one wrapper deeper: `through` hands its own parameter to
+// `bracket`, so its judgment instantiates bracket and the parameter's row
+// becomes that instantiation's copy of bracket's quantified leaf. The copy
+// carries an instantiation edge whose source renames to the copy itself, and
+// it read as a CLOSED empty row (2026-09-24) — `through` published its
+// parameter as Pure, and a thunk that performs Ping could not reach it. The
+// copy is a variable of its own until something else arrives.
+effect Ping { ping() -> Int }
+
+handler pong {
+  ping() => resume(7)
+}
+
+fn bracket(body) = body() ~> pong
+
+fn through(g) = bracket(g)
+
+fn caller() -> Int with !Ping = through(() => ping())
+
+fn main() = caller() * 6

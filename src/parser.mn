@@ -26,6 +26,14 @@ fn fresh_handle(span: ValidSpan) = {
   h
 }
 
+// The two row sorts get their own mints: an authored fn type's row is an
+// effect row CELL, a record type's `...` rest is a record-row variable. A
+// type handle in either position is a variable of the wrong sort, which no
+// row write can reach.
+fn fresh_row_cell(span: ValidSpan) = graph_fresh_row(Placeholder(span))
+
+fn fresh_record_row_var(span: ValidSpan) = graph_fresh_record_row(Placeholder(span))
+
 // Every node is born here: mint its handle, edge-link its body into the
 // one graph (graph_register_node at the handle), and wrap it. The body is
 // registered AND carried in N — one heap object, two references (the AST
@@ -3378,9 +3386,9 @@ fn first_char_code(s) = if byte_len(s) == 0 { 0 } else { byte_at(s, 0) }
 // the `f: a -> b` param annotation). Right-associative: `a -> b -> c` is
 // `a -> (b -> c)`. A leading parenthesized tuple is the parameter list
 // (`(a, b) -> c`); `()` is the zero-arg list; any other base is one parameter.
-// The function's effect row is an OPEN row var — the annotation names the
-// shape, and the bound value's effects flow in by a normal-call unify (the
-// mechanism that lets declared functor signatures replace infer_seq_op).
+// The function's effect row is a row CELL — the annotation names the shape,
+// and the bound value's row is that cell (the mechanism that lets declared
+// functor signatures replace infer_seq_op).
 fn parse_type_ty(ref tokens, pos) = match parse_type_atom(tokens, pos) {
   (base, p) => {
     let pa = skip_ws(tokens, p)
@@ -3405,7 +3413,7 @@ fn parse_type_ty(ref tokens, pos) = match parse_type_atom(tokens, pos) {
               (row_effs, p3) => (build_declared_row(row_effs), p3),
             }
           } else {
-            (mk_ef_open([], fresh_handle(span_at(tokens, pos))), p2)
+            (mk_ef_open([], fresh_row_cell(span_at(tokens, pos))), p2)
           } {
             (row, p_row) => (TFun(map((t) => mk_param("_", t), param_tys), ret, row), p_row),
           }
@@ -3441,11 +3449,13 @@ fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
     } else if str_eq(v, "String") {
       ty_string
     } else if str_eq(v, "Bool") {
-      TName("Bool", [])
+      ty_bool
     } else if str_eq(v, "Unit") {
       TUnit
     } else {
-      TName(v, [])
+      // An authored application writes no row arguments; elaboration
+      // supplies them.
+      TName(v, [], [])
     }
     // Parens application — the one-application-syntax law: types
     // apply like effects apply (`Sample(44100)`) and values apply
@@ -3457,7 +3467,7 @@ fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
       match parse_type_args(tokens, skip_ws(tokens, base_pos + 1)) {
         (args, p_after) => {
           let typed = match base {
-            TName{name} => TName(name, args),
+            TName{name} => TName(name, args, []),
             _ => base,
           }
           (typed, p_after)
@@ -3471,7 +3481,7 @@ fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
   // syntactic name "!" resolves at quantify_ctor_ty to a FRESH quantified var
   // per occurrence: bottom unifies with every consumer, exactly the
   // bottom-producing sibling `fail(msg) -> a` spelled as intent.
-  (TName("!", []), pos + 1),
+  (TName("!", [], []), pos + 1),
   TLParen => {
     let p = skip_ws(tokens, pos + 1)
     if at(tokens, p, TRParen) {
@@ -3598,7 +3608,7 @@ fn parse_record_type_fields(ref tokens, pos) = {
       _ => false,
     }
     let p_rest = if named { after_dots + 1 } else { after_dots }
-    let row_var = fresh_handle(span_at(tokens, p))
+    let row_var = fresh_record_row_var(span_at(tokens, p))
     ([], Some(row_var), expect(tokens, skip_ws(tokens, p_rest), TRBrace))
   } else {
     let name = ident_at(tokens, p)

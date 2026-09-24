@@ -413,7 +413,16 @@ fn stdin_is_tty() with Memory + Alloc + WASI = {
 // the low word (the fd_readdir import's RI64 slot zero-extends it — the
 // wait_i32 precedent); a buffer-boundary-truncated entry resumes the
 // loop from the last whole entry's d_next.
-fn fs_list_dir_names() with Memory + Alloc + WASI = fs_dir_fd() |> fs_readdir_loop(??, 0, [])
+fn fs_list_dir_names() with Memory + Alloc + WASI =
+  fs_dir_fd() |> fs_readdir_loop(??, 0, []) |> map(dir_entry_name)
+
+// One entry as fd_readdir reports it: its name, and whether it is itself a
+// directory — the dirent's d_type (WASI filetype 3), read where the host
+// wrote it. A walk that re-opened each child to ask would be re-deriving a
+// byte the listing already carried.
+type DirEntry = {dir: Bool, name: String}
+
+fn dir_entry_name(e: DirEntry) = e.name
 
 fn fs_readdir_loop(fd, cookie, acc) with Memory + Alloc + WASI = {
   let bufsz = 8192
@@ -444,11 +453,12 @@ fn fs_parse_dirents(buf, end, off, acc, last_cookie, saw_whole) with Memory + Al
   } else {
     let name = bytes_buf(namlen)
     mem_copy(name + 8, buf + off + 24, namlen)
-    fs_parse_dirents(buf, end, off + 24 + namlen, push(acc, str_of_buf(name)), d_next, true)
+    let entry = DirEntry{dir: load_i8(buf + off + 20) == 3, name: str_of_buf(name)}
+    fs_parse_dirents(buf, end, off + 24 + namlen, push(acc, entry), d_next, true)
   }
 }
 
-// fs_list_dir_impl — list a SUBDIRECTORY's entry names: path_open the dir
+// fs_list_dir_impl — list a SUBDIRECTORY's entries: path_open the dir
 // (oflags DIRECTORY = 0x2; rights = fd_readdir, bit 14) against its preopen,
 // then the same fd_readdir loop the cwd projection drives, then close. None
 // = the path is not an openable directory — the discriminator `mentl test`
@@ -461,9 +471,9 @@ fn fs_list_dir_impl(path_str) with Memory + Alloc + WASI = match fs_at(path_str)
       None
     } else {
       let fd = load_i32(fd_cell)
-      let names = fs_readdir_loop(fd, 0, [])
+      let entries = fs_readdir_loop(fd, 0, [])
       fd_close(fd)
-      Some(names)
+      Some(entries)
     }
   },
 }

@@ -1356,7 +1356,12 @@ oracle is what they add up to:
   (`resolve_row`), with five more readers each walking the same DAG —
   measured at 40% of the judgment's heap in one two-line function. The form
   is a CELL whose reading is propagated forward along reverse edges at the
-  write, read in one hop: `Hβ.effects.rows-are-propagated-cells`. The same
+  write, read in one hop: `Hβ.effects.rows-are-propagated-cells` — LANDED
+  2026-09-24 in its v5 form, after four refuters broke v1–v4, and with the
+  law it was queued under NOT yet met: the judgment's heap ROSE (757MB where
+  the prior boot measured 548MB), because a large frame cell grows one path
+  per call and wakes every reader at each growth
+  (`Hβ.effects.row-link-fans-out-per-call`). The same
   machinery, one sort over, is the SCHEMES face's own fix (a `frees` set
   propagated at the bind makes the quantifier a read and the occurs check a
   membership test), and one altitude up it is the e-graph's (a rewrite fires

@@ -35,6 +35,67 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-24 · pin cbe921ced8afac04 (CLEAN m2 == m3 on the canonical
+  source, after TRANSITION m3 == m4 at the landing's first pin; census 0,
+  frontier 422/0/8, crown 152/0/6, board and micros green through the
+  candidate) · ROWS ARE LEAST SOLUTIONS, AND A
+  SPECULATIVE ROUND LEAVES NOTHING STANDING. (1) The effect row is a CELL
+  (`Hβ.effects.rows-are-propagated-cells`, landed as its v5 form after four
+  refuters broke v1–v4): content is what was charged, propagated forward
+  along named charges; a declared row is a ceiling that travels to the
+  cell's frees and is never content; a join is a fresh cell every branch
+  flows into; inside a binding group a reference instantiates the member's
+  row cells with types kept mono. `flatten_row_stored`, `merge_chased_row`,
+  `group_completion_fold`, `free_in_edges` and `subst_edges_build` are
+  deleted. Forty-four of the fifty crown crucibles the refuters wrote hold;
+  the open-row, rest, HOF-payload and sequential-spawn frontier legs retire.
+  (2) Four things outlived a Mycroft rollback holding freed handle numbers
+  (`Hβ.infer.speculation-leaves-a-handle-standing`): the write guard's
+  refusals and told-list, the recheck's scheme (it re-minted every handle
+  as a type), infer_ctx's group copies and deferred checks, and a
+  rolled-back row mint's cell. Each is restored, re-minted by sort,
+  bracketed, or un-minted to `CEmpty`, and `graph_row_link` /
+  `graph_row_union` refuse a write whose end is not a row cell. The occurs
+  refusal has one home, and the polymorphic-recursion teach asks the fn's
+  own signature, only when a refusal was drained (asking every body cost
+  48MB). (3) THE COST IS NOT PAID: judgment heap 757MB where RESIDUE
+  measured the prior boot at 548MB on the same source; the peak ceiling
+  is raised to 1,310,000 KB (1,300,000 sat inside the ±8MB spread of three
+  reads) and `Hβ.effects.row-link-fans-out-per-call`
+  carries it. (4) The first repin was REFUSED by the board the cadence law
+  put in front of it: three counts rose with this session's own new code
+  (a depth-threaded alias walk, a teach fold lambda, four lambdas in the
+  recheck and the row facet). They became a `row_root` read and named fold
+  steps; `build_pipeline` folds `compose` by reference; and two pure
+  lambdas in `sig_row_names` became references, which is what brought the
+  free-row count back to 280 — two of the sites the rise added were never
+  traced to their edit. (5) The first COMMIT was refused too, and what it
+  found was worse than a count: the pre-commit fmt rewrote eleven files
+  into a wheel that refused itself. The render dropped the parens a record
+  construction needs in a brace-header slot, so fmt's own re-read took
+  `graph_handler`'s `(RowBytes{…})` state init for its arms and rewrote all
+  of them — and the hook's guard restores only a file the parser REFUSES
+  (`Hβ.fmt.a-render-that-reads-back-as-another-program`). `fmt_run` now
+  writes only a render whose read-back differs from it in prose and line
+  breaks alone (seen RED on a probe first), `render_header_expr`
+  parenthesizes at every brace-header slot, and the gate's first run on the
+  wheel found the generated sequence walkers spending a frame per element:
+  they `return_call` now (micro mn-eq-long-list, trapped on the prior boot).
+  The eleven files were recovered from the blobs the commit's `git add`
+  had written. (6) The second commit was refused by verify.sh's own
+  ratchets, which the repin's board does not read: eighteen new
+  field-offset floors (an `(unreachable)` shipped per site) — the
+  record-accumulator fold steps this session wrote to clear (4) among
+  them, so the fix for one count had minted traps in another — eleven
+  unprovable comparisons, twelve dangling comment references, seven
+  `ref` and one `own`. The steps became references with a hole
+  (`filter(minted_since(base, ??))`, `flat_map(poly_teach_note(name,
+  handle, ??))`), the list helpers name their element types, and every
+  count is back at or under its ceiling. INSTRUMENTS: `mentl <file> chain tN`, the `row`
+  facet's sources with NOT-A-ROW, and a shim that answers from the checkout
+  it stands in. KILLS: warm images, the row-mint trail, the
+  ceilings-for-inputs edit, the checkpoint change, and the "stray t13",
+  which was the if-node's own cell read through the home checkout's boot.
 - 2026-09-23 · pin b06287ca6b3f21cf (CLEAN m2 == m3, census 0, frontier 420/0/10,
   crown 108/0/50, board 17/17 at their counts) · THE BOARD REFUSES SLACK.
   (1) Named fields, second tier: `TName`, `TRecordOpen`, `TRefined`,
