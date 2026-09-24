@@ -12119,7 +12119,16 @@ landed: (1) a cell keeps its instantiation `copies` apart from its direct
 a new path only through its renaming, so a growth that brings no name and
 reaches no keyed root wakes only the direct readers. This is exactly the
 information `row_recompute_delta` would have joined, so it is not a
-heuristic. (2) Membership is read from the last element back
+heuristic. BUT `keyed` IS A SECOND HOME, named by the audit run on the
+landing itself: every copy of one declaration renames the same roots
+(measured: `map`'s frame, 376 copies behind 2 row keys; `emit_expr`'s, 42
+behind 1), so `keyed` is the declaration's quantified row set held again
+on the source cell. It is a reverse-edge index — the `refs_col` kind of
+waypoint — and it retires into the one renaming entity per declaration
+that the views stage below makes real. The same audit found the cost
+instrument taxing the loop it measured: it rebuilt a record at every wake
+and every write, 8.1MB of the weave's judgment (823,561,992 →
+815,485,216 once it became a tally written in place). (2) Membership is read from the last element back
 (`row_int_held`, `row_frees_holds`, `row_edge_held`, `frag_holds`). A set
 grown by `push` is a snoc chain, where `last`/`drop_last` allocate nothing.
 `frag_union` and `row_frag_minus` join in order without installing a
@@ -12156,7 +12165,17 @@ today is `graph_mutated(epoch, Mutation)`, whose mutation argument every
 handler discards (`Hβ.graph.mutation-delta-is-write-only`). So the two
 resolve together: the delta becomes a real cone read, or the argument is
 deleted. Retires when a whole-wheel judgment ends with a trail no longer than
-its deepest speculation.
+its deepest speculation. ONE PREMISE HAS AN EXCEPTION, found by the audit:
+`backtrack` (lib/search.mn) pushes a checkpoint per alternative and rolls
+back on abort, but on SUCCESS it resumes and never commits, so after any
+successful `choose` the stack stays non-empty for the rest of the run —
+`graph_mutated` is suppressed forever and every write is trailed. That is
+`Hβ.search.backtrack-never-commits-its-success` (OPEN, measured by reading
+2026-09-24; `backtrack` has zero references in the tree, so no gate has
+ever run it): an accepted speculation must be committed through
+`graph_commit_checkpoint`, the accept half `judge_speculatively` already
+uses, and its fixture is a program that chooses successfully and then
+observes a mutation event.
 
 `Hβ.board.verify-ratchets-live-beside-the-board` — CLOSED 2026-09-24, one
 landing after it was named. A repin blessed a wheel after the micros and

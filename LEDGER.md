@@ -35,6 +35,39 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-24 · pin 8afcc826917fe92f (CLEAN m2 == m3; census 0, frontier 422/0/8
+  and crown 152/0/6 through the candidate before the repin, board and micros
+  green through it at the repin) · THE AUDIT OF THE LANDING BEFORE THIS ONE,
+  RUN ON ITSELF. A Carried-Truth audit, the eight interrogations and a
+  refuter role-play were pointed at the row fan-out landing an hour after it
+  was pinned, and three findings came back. (1) THE COST INSTRUMENT TAXED
+  THE LOOP IT MEASURED. It rebuilt a `CarryBytes` and a `RowAcc` at every
+  wake and a `RowBytes` at every write, which is the diagnostics ledger's
+  lesson (tallies written in place, never a record rebuilt per event)
+  missed one layer over. The rows' cost is now one flat tally per graph
+  handler, allocated at install, slots named by `RowTally`, and `RowBytes`
+  is built only where it is read. MEASURED: the weave's judgment
+  823,561,992 → 815,485,216 (8.1MB was the instrument), the m3 leg's heap
+  688,432,936 → 680,402,752. The per-wake figures did not move (edge
+  34,837,112 both runs), so the split had been honest and only its
+  bookkeeping leaked. (2) `keyed` IS A SECOND HOME. Every copy of one
+  declaration renames the same roots — `map`'s frame holds 376 copies
+  behind 2 row keys, `emit_expr`'s 42 behind 1 — so the set is the
+  declaration's quantified rows held again on the source cell. It stays as
+  a reverse-edge index, named as the waypoint it is, and retires into the
+  one renaming entity per declaration. The same read found it holding the
+  renaming's TYPE variables, which are never a path's root (`map`'s four
+  keys were two rows and two dead entries); keys are filtered to the row
+  sort. (3) `backtrack` NEVER COMMITS ITS SUCCESS. `choose` pushes a
+  checkpoint per alternative and resumes on success without committing, so
+  every later write is trailed and `graph_mutated` never fires again — the
+  exception to the trail peer's own premise, named as
+  `Hβ.search.backtrack-never-commits-its-success` (zero references in the
+  tree; no gate has ever run it). REFUTED in the role-play and recorded as
+  refuted: a copy missing a path it needs (the skip test is the exact test
+  `row_recompute_delta` applies, and a copy holding a subscription is in
+  `deps`); an alias key after a union (the same staleness `row_tys_find`
+  always had, the views stage's own).
 - 2026-09-24 · pin f33097a493887407 (CLEAN m2 == m3; census 0, frontier 422/0/8
   and crown 152/0/6 through the candidate before the repin, board and micros
   green through it at the repin) · A COPY WAKES ONLY FOR WHAT ITS RENAMING

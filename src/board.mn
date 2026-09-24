@@ -459,8 +459,9 @@ fn board_bounds() with Memory + Alloc = [
   // This is the WEAVE's judgment — the link a user's program takes — where
   // the march's `heap:` line is the flat link's. It FELL 895,736,816 →
   // 823,561,992 when a row cell's copies stopped waking at every growth and
-  // its membership tests stopped copying their sets.
-  Bound({ceiling: 823561992, measure: JudgmentHeap}),
+  // its membership tests stopped copying their sets, then → 815,485,216 when
+  // the rows' cost tally stopped rebuilding a record at every wake it counted.
+  Bound({ceiling: 815485216, measure: JudgmentHeap}),
   // Zero, and it is what makes the pre-commit's formatting pass unnecessary:
   // a landing whose source is off its canonical render was pinned from one
   // text and committed as another.

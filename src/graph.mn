@@ -295,7 +295,7 @@ fn occurs_in_live(handle, ref ty) with GraphRead + Memory + Alloc + Cast + !Muta
 // over the SHARED spine with a private planned range — the root install is
 // bare and the defaults are the empty graph. Handler state records live in
 // shared heap; the install chain stays per-instance, correctly private.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], judged_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], guard_told = [], row_pend = [], row_bytes = (RowBytes{carry: CarryBytes{all: 0, delta: 0, edge: 0, from: 0}, inst: 0, link: 0, teach: 0, union: 0}) {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], judged_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], guard_told = [], row_pend = [], row_tally = row_tally_new() {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -593,13 +593,16 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // cell's read is its least solution and nothing ever re-derives it.
   {
     let m0 = heap_mark()
-    match row_teach_names(spine, spine_open, next, handle, names, row_acc_new(trail, trail_len)) {
-      acc => if acc.tl == trail_len {
-        resume() with row_bytes = row_bytes_carried({...row_bytes, teach: row_bytes.teach + heap_mark() - m0}, acc)
-      } else {
-        let new_epoch = epoch + 1
-        if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
-        resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc), row_bytes = row_bytes_carried({...row_bytes, teach: row_bytes.teach + heap_mark() - m0}, acc)
+    match row_teach_names(spine, spine_open, next, handle, names, row_acc_new(trail, trail_len, row_tally)) {
+      acc => {
+        row_tally_add(row_tally, ByCharge, heap_mark() - m0)
+        if acc.tl == trail_len {
+          resume()
+        } else {
+          let new_epoch = epoch + 1
+          if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
+          resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc)
+        }
       },
     }
   },
@@ -616,13 +619,16 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     )
   } else {
     let m0 = heap_mark()
-    match row_link_cells(spine, spine_open, next, into, edge, row_acc_new(trail, trail_len)) {
-      acc => if acc.tl == trail_len {
-        resume() with row_bytes = row_bytes_carried(row_bytes_link(row_bytes, edge, heap_mark() - m0), acc)
-      } else {
-        let new_epoch = epoch + 1
-        if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
-        resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc), row_bytes = row_bytes_carried(row_bytes_link(row_bytes, edge, heap_mark() - m0), acc)
+    match row_link_cells(spine, spine_open, next, into, edge, row_acc_new(trail, trail_len, row_tally)) {
+      acc => {
+        row_tally_add(row_tally, row_tally_of_edge(edge), heap_mark() - m0)
+        if acc.tl == trail_len {
+          resume()
+        } else {
+          let new_epoch = epoch + 1
+          if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
+          resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc)
+        }
       },
     }
   },
@@ -637,13 +643,16 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     )
   } else {
     let m0 = heap_mark()
-    match row_union_cells(spine, spine_open, next, a, b, row_acc_new(trail, trail_len)) {
-      acc => if acc.tl == trail_len {
-        resume() with row_bytes = row_bytes_carried({...row_bytes, union: row_bytes.union + heap_mark() - m0}, acc)
-      } else {
-        let new_epoch = epoch + 1
-        if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
-        resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc), row_bytes = row_bytes_carried({...row_bytes, union: row_bytes.union + heap_mark() - m0}, acc)
+    match row_union_cells(spine, spine_open, next, a, b, row_acc_new(trail, trail_len, row_tally)) {
+      acc => {
+        row_tally_add(row_tally, ByUnion, heap_mark() - m0)
+        if acc.tl == trail_len {
+          resume()
+        } else {
+          let new_epoch = epoch + 1
+          if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
+          resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc)
+        }
       },
     }
   },
@@ -655,7 +664,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     next,
     row_root(spine, next, handle, 0),
     c,
-    row_acc_new(trail, trail_len),
+    row_acc_new(trail, trail_len, row_tally),
     0
   ) {
     acc => if acc.tl == trail_len && len(acc.diags) == 0 {
@@ -686,7 +695,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
           next,
           root,
           CRow({...cell, pins: frag_union(cell.pins, pins)}),
-          row_acc_new(trail, trail_len)
+          row_acc_new(trail, trail_len, row_tally)
         ),
         row_carry_fuel
       )
@@ -694,7 +703,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     }
   },
   graph_row_cell(handle) => resume(row_cell_at(spine, next, handle)),
-  graph_row_bytes() => resume(row_bytes),
+  graph_row_bytes() => resume(row_tally_read(row_tally)),
   graph_is_row_cell(handle) => resume(cell_slot_held(spine, next, row_root(spine, next, handle, 0))),
   graph_row_pending() => // The instance unifications a mask crossing asked for, handed to the
   // body that can perform them (an arm cannot unify: its performs resolve
@@ -1043,27 +1052,53 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
 // body to narrate and perform.
 //
 // What a carry hands back: the refusals and unifications it noted, and the
-// trail it extended, and the heap its wakes spent.
-type RowAcc = {carry: CarryBytes, diags: [(DiagKind, String, String)], pairs: [(EffName, EffName)], tl: Int, trail: [Mutation]}
+// trail it extended — and the tally its wakes' heap is added into.
+type RowAcc = {diags: [(DiagKind, String, String)], pairs: [(EffName, EffName)], tally: [Int], tl: Int, trail: [Mutation]}
 
 // The belt, not the semantics (the HANG law): every write is monotone over a
 // finite lattice, so a carry settles; a runaway stops here, loudly.
 let row_carry_fuel = 1000000
 
-fn row_acc_new(trail, tl) =
-  RowAcc{carry: CarryBytes{all: 0, delta: 0, edge: 0, from: 0}, diags: [], pairs: [], tl: tl, trail: trail}
+fn row_acc_new(trail, tl, tally) = RowAcc{diags: [], pairs: [], tally: tally, tl: tl, trail: trail}
 
-// One wake's heap, filed under its kind.
-fn row_acc_spent(acc: RowAcc, wake, n) = {
-  let c = acc.carry
-  let c2 = match wake {
-    WakeDelta{} => ({...c, delta: c.delta + n}),
-    WakeFrom{} => ({...c, from: c.from + n}),
-    WakeEdge{} => ({...c, edge: c.edge + n}),
-    WakeAll{} => ({...c, all: c.all + n}),
-  }
-  ({...acc, carry: c2})
+// THE ROWS' COST IS A TALLY WRITTEN IN PLACE: one flat buffer per graph
+// handler, allocated at its install, each slot named by the kind of write or
+// wake it counts. The instrument that first split this cost rebuilt a record
+// at every wake and every write, so it spent heap inside the very loop it
+// measured — the diagnostics ledger's lesson (integer tallies, never a list
+// or record rebuilt per event) read one layer over. `RowBytes` exists only
+// where it is read.
+type RowTally = ByInst | ByLink | ByCharge | ByUnion | ByWhole | ByDelta | ByEdge | ByReread
+
+fn row_tally_slot(t) = match t {
+  ByInst => 0,
+  ByLink => 1,
+  ByCharge => 2,
+  ByUnion => 3,
+  ByWhole => 4,
+  ByDelta => 5,
+  ByEdge => 6,
+  ByReread => 7,
 }
+
+fn row_tally_new() = list_filled(8, 0)
+
+fn row_tally_add(tally, t, n) = {
+  let slot = row_tally_slot(t)
+  list_set(tally, slot, tally[slot] + n)
+}
+
+fn row_tally_of_wake(wake) = match wake {
+  WakeAll{} => ByWhole,
+  WakeDelta{} => ByDelta,
+  WakeEdge{} => ByEdge,
+  WakeFrom{} => ByReread,
+}
+
+fn row_tally_of_edge(e: RowEdge) = if e.inst { ByInst } else { ByLink }
+
+fn row_tally_read(tally) =
+  RowBytes{carry: CarryBytes{all: tally[row_tally_slot(ByWhole)], delta: tally[row_tally_slot(ByDelta)], edge: tally[row_tally_slot(ByEdge)], from: tally[row_tally_slot(ByReread)]}, inst: tally[row_tally_slot(ByInst)], link: tally[row_tally_slot(ByLink)], teach: tally[row_tally_slot(ByCharge)], union: tally[row_tally_slot(ByUnion)]}
 
 // What the rows wrote between two readings of the running total.
 fn row_bytes_since(now: RowBytes, then: RowBytes) = {
@@ -1077,13 +1112,6 @@ fn row_bytes_since(now: RowBytes, then: RowBytes) = {
 fn row_bytes_line(rb: RowBytes) = {
   let c = rb.carry
   "instantiation {int_to_str(rb.inst)} · link {int_to_str(rb.link)} · charge {int_to_str(rb.teach)} · union {int_to_str(rb.union)}; carried: edge {int_to_str(c.edge)} · delta {int_to_str(c.delta)} · re-read {int_to_str(c.from)} · whole {int_to_str(c.all)}"
-}
-
-// The handler's running total, with one write's carry added in.
-fn row_bytes_carried(rb: RowBytes, acc: RowAcc) = {
-  let c = rb.carry
-  let d = acc.carry
-  ({...rb, carry: CarryBytes{all: c.all + d.all, delta: c.delta + d.delta, edge: c.edge + d.edge, from: c.from + d.from}})
 }
 
 // A bound checked at several cells refuses once: the same triple joins the
@@ -1750,10 +1778,6 @@ fn row_subscribe(ref spine, mint_bound, reader, subs, acc: RowAcc) = fold(
   subs
 )
 
-// The heap a link consumed, filed under the kind of edge it drew.
-fn row_bytes_link(b: RowBytes, e: RowEdge, n) =
-  if e.inst { {...b, inst: b.inst + n} } else { {...b, link: b.link + n} }
-
 // An instantiation joins its source's copies, and the roots its renaming
 // covers join the source's keys. The copy is new, so it joins without the
 // membership read; a key is read for, because every use of one declaration
@@ -1766,16 +1790,28 @@ fn row_depend(ref spine, mint_bound, src, reader, tys: [(Int, Int)], acc: RowAcc
     spine,
     mint_bound,
     src,
-    CRow({...cs, copies: push(cs.copies, reader), keyed: row_keys_join(cs.keyed, tys)}),
+    CRow({...cs, copies: push(cs.copies, reader), keyed: row_keys_join(spine, mint_bound, cs.keyed, tys)}),
     acc
   )
 }
 
-fn row_keys_join(keyed, tys: [(Int, Int)]) = if len(tys) == 0 {
+// A renaming also covers the declaration's TYPE variables, and a type
+// variable is never a path's root, so only the row cells it renames are keys:
+// `map`'s four keys were two rows and two dead entries.
+fn row_keys_join(spine, mint_bound, keyed, tys: [(Int, Int)]) = if len(tys) == 0 {
   keyed
 } else {
   match last(tys) {
-    (k, _) => row_keys_join(if row_int_held(keyed, k) { keyed } else { push(keyed, k) }, drop_last(tys)),
+    (k, _) => row_keys_join(
+      spine,
+      mint_bound,
+      if row_int_held(keyed, k) || !cell_slot_held(spine, mint_bound, row_root(spine, mint_bound, k, 0)) {
+        keyed
+      } else {
+        push(keyed, k)
+      },
+      drop_last(tys)
+    ),
   }
 }
 
@@ -1893,14 +1929,10 @@ fn row_carry(ref spine, spine_open, mint_bound, work, acc: RowAcc, fuel) = if le
   let wake = last(work)
   let m0 = heap_mark()
   match row_carry_one(spine, spine_open, mint_bound, drop_last(work), wake, acc) {
-    (work2, acc2) => row_carry(
-      spine,
-      spine_open,
-      mint_bound,
-      work2,
-      row_acc_spent(acc2, wake, heap_mark() - m0),
-      fuel - 1
-    ),
+    (work2, acc2) => {
+      row_tally_add(acc2.tally, row_tally_of_wake(wake), heap_mark() - m0)
+      row_carry(spine, spine_open, mint_bound, work2, acc2, fuel - 1)
+    },
   }
 }
 
