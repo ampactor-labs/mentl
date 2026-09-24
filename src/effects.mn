@@ -456,11 +456,21 @@ fn row_join(ref a, ref b) with !Mutate + Memory + Alloc = match a {
 // already held. Bare ENamed is one fragment per effect (by handle);
 // EParameterized is the instance's GRAPH identity — the instance IS the
 // fragment.
-fn frag_union(ref pa, ref pb) with Memory + Alloc = fold(pa, frag_join, pb)
+//
+// `pb` is joined in its own order, the last fragment after the rest, with
+// no reduction installed: the carry unions a read at every edge it crosses,
+// and most of those unions add nothing.
+fn frag_union(ref pa, ref pb) with Memory + Alloc =
+  if len(pb) == 0 { pa } else { frag_join(frag_union(pa, drop_last(pb)), last(pb)) }
 
 fn frag_join(held, e) with Memory + Alloc = if frag_holds(held, e) { held } else { push(held, e) }
 
-fn frag_holds(ref held, e) with Memory + Alloc = held |> any({ x => frag_same(x, e) })
+// Read from the last fragment back: a set grown by `push` is a snoc chain,
+// where `last` and `drop_last` read a node where it stands, so asking costs
+// no allocation — `any` flattened the whole set first, once per name asked
+// about, at every union a row carry makes.
+fn frag_holds(ref held, e) with Memory + Alloc =
+  len(held) > 0 && (frag_same(last(held), e) || frag_holds(drop_last(held), e))
 
 fn frag_same(a, b) with Memory + Alloc = match (a, b) {
   (ENamed(h1), ENamed(h2)) => h1 == h2,

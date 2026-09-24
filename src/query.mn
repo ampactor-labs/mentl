@@ -1146,7 +1146,7 @@ fn show_row_edge(v, depth) with GraphRead + !Mutate + Memory + Alloc = match gra
 // reached, the cells that read it, the bounds on it.
 fn show_row_cell_shape(v) with GraphRead + !Mutate + Memory + Alloc = if graph_is_row_cell(v) {
   let c = graph_row_cell(v)
-  " [edges {len(c.edges)}{show_row_sources(map(row_edge_src, c.edges))} · paths {len(c.frees)}{show_row_sources(map(row_path_root, c.frees))} · readers {len(c.deps)} · bounds {len(c.ceilings)} · charged {len(c.charged)}]"
+  " [edges {len(c.edges)}{show_row_sources(map(row_edge_src, c.edges))} · paths {len(c.frees)}{show_row_sources(map(row_path_root, c.frees))} · readers {len(c.deps)} · copies {len(c.copies)} (keys {len(c.keyed)}) · bounds {len(c.ceilings)} · charged {len(c.charged)}]"
 } else {
   ""
 }

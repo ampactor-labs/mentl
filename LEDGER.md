@@ -35,6 +35,36 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-24 · pin f33097a493887407 (CLEAN m2 == m3; census 0, frontier 422/0/8
+  and crown 152/0/6 through the candidate before the repin, board and micros
+  green through it at the repin) · A COPY WAKES ONLY FOR WHAT ITS RENAMING
+  READS, AND A MEMBERSHIP TEST COPIES NOTHING. `emit_expr`'s frame cell held
+  458 edges, 483 paths and 42 readers (its own in-group copies), and each
+  link grew it by a path and consulted every reader. THE INSTRUMENT FIRST,
+  after two kills: the rows line and `mentl <file> cost` split each write's
+  heap by the wake that spent it (`carried: edge · delta · re-read · whole`).
+  Kill 1: skipping the no-op wakes moved `emit_expr`'s link bytes only
+  8.8 → 6.4MB. Kill 2: rewriting the `[x, ...rest]` scans as `any`/`fold`
+  moved it only 6.4 → 5.6MB, because those flatten a snoc chain and install
+  a reduction per call. The instrument's first reading then put 5.69MB of
+  the 5.70MB in the link's own edge read. THE FORM: (1) a row cell keeps its
+  instantiation `copies` apart from its direct `deps`, with `keyed` holding
+  the roots the copies' renamings cover. A growth that brings no name and
+  reaches no keyed root wakes the direct readers alone, which is exactly what
+  `row_recompute_delta` would have joined. (2) Membership is read from the
+  last element back (`row_int_held`, `row_frees_holds`, `row_edge_held`,
+  `frag_holds`), where `last`/`drop_last` on a snoc chain allocate nothing.
+  `frag_union` and `row_frag_minus` join in order with no reduction
+  installed, and a name set holding no instance renames to itself. (3) The
+  `row_cell_with_*` family is deleted into record spreads, now that spread
+  exists. MEASURED on the m3 leg: rows 148,489,936 → 72,275,952, judgment
+  heap 760,413,320 → 688,432,936, peak 1,301,792 → 1,241,316 KB. The board's
+  `JudgmentHeap` fell 895,736,816 → 823,561,992 and the ceiling follows it.
+  NAMED, not closed: the path set is still the transitive closure of every
+  cell a frame reached, which only the instantiation edge's views can shrink
+  (`Hβ.effects.row-link-fans-out-per-call`, remainder). Also measured: a
+  757,206-entry undo trail that nothing outside speculation can read
+  (`Hβ.graph.trail-records-what-nothing-can-undo`, new).
 - 2026-09-24 · pin 2d7692ad8398d197 (CLEAN m2 == m3; census 0, frontier
   422/0/8 and crown 152/0/6 through the candidate BEFORE the repin, board
   and micros green through it at the repin) · ONE VERDICT FOR THE REPIN AND

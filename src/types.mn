@@ -805,8 +805,14 @@ type RowEdge = {inst: Bool, mask: [EffName], src: Int, tys: [(Int, Int)]}
 type Ceiling = {allowed: EffRow, at: Int, sealed: Bool, why: Reason}
 
 // The heap each kind of row write consumed: an instantiation's copy link, any
-// other link, a charge, and a union of two cells.
-type RowBytes = {inst: Int, link: Int, teach: Int, union: Int}
+// other link, a charge, and a union of two cells — and, across all four, what
+// the carry each one set off spent per kind of wake, so a write's own cost
+// and the fan-out it triggered are told apart.
+type RowBytes = {carry: CarryBytes, inst: Int, link: Int, teach: Int, union: Int}
+
+// The carry's heap by the wake that spent it: a new edge read alone, a
+// source's growth joined, a source re-read, a cell read whole again.
+type CarryBytes = {all: Int, delta: Int, edge: Int, from: Int}
 
 // What one declaration's judgment cost: the heap line's advance across it,
 // and the part of that the effect rows wrote, by kind.
@@ -819,9 +825,14 @@ type JudgedCost = {bytes: Int, handle: Int, rows: RowBytes}
 // travels to, whether or not they hold content. An instantiation edge
 // contributes the roots it renames and no others. `pins` are a
 // declaration's scalar instances, applied to everything the read brings in.
-// `deps` is the reverse edge a write walks; it rides inside the record, so
-// a rollback restores it with the cell.
-type RowCell = {born: Int, ceilings: [Ceiling], charged: [EffName], deps: [Int], edges: [RowEdge], frees: [(Int, [EffName])], full: [EffName], pins: [EffName]}
+// The reverse edges a write walks come in two kinds, because the two kinds of
+// reader learn different things from a growth: `deps` read this cell directly
+// or hold a subscription at it, and take every new name and every new path;
+// `copies` are instantiations of it, which read only the names and the paths
+// whose root their renaming covers, and `keyed` holds the roots their
+// renamings cover, so a growth that reaches none of them wakes no copy. Both
+// ride inside the record, so a rollback restores them with the cell.
+type RowCell = {born: Int, ceilings: [Ceiling], charged: [EffName], copies: [Int], deps: [Int], edges: [RowEdge], frees: [(Int, [EffName])], full: [EffName], keyed: [Int], pins: [EffName]}
 
 // What a handle holds BESIDE its node: an effect row's cell, or the union-find
 // pointer to the cell it was proven one with. It lives in its own page column,

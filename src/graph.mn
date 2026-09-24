@@ -295,7 +295,7 @@ fn occurs_in_live(handle, ref ty) with GraphRead + Memory + Alloc + Cast + !Muta
 // over the SHARED spine with a private planned range — the root install is
 // bare and the defaults are the empty graph. Handler state records live in
 // shared heap; the install chain stays per-instance, correctly private.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], judged_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], guard_told = [], row_pend = [], row_bytes = (RowBytes{inst: 0, link: 0, teach: 0, union: 0}) {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], judged_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], guard_told = [], row_pend = [], row_bytes = (RowBytes{carry: CarryBytes{all: 0, delta: 0, edge: 0, from: 0}, inst: 0, link: 0, teach: 0, union: 0}) {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -595,11 +595,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     let m0 = heap_mark()
     match row_teach_names(spine, spine_open, next, handle, names, row_acc_new(trail, trail_len)) {
       acc => if acc.tl == trail_len {
-        resume() with row_bytes = {...row_bytes, teach: row_bytes.teach + heap_mark() - m0}
+        resume() with row_bytes = row_bytes_carried({...row_bytes, teach: row_bytes.teach + heap_mark() - m0}, acc)
       } else {
         let new_epoch = epoch + 1
         if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
-        resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc), row_bytes = {...row_bytes, teach: row_bytes.teach + heap_mark() - m0}
+        resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc), row_bytes = row_bytes_carried({...row_bytes, teach: row_bytes.teach + heap_mark() - m0}, acc)
       },
     }
   },
@@ -618,11 +618,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     let m0 = heap_mark()
     match row_link_cells(spine, spine_open, next, into, edge, row_acc_new(trail, trail_len)) {
       acc => if acc.tl == trail_len {
-        resume() with row_bytes = row_bytes_link(row_bytes, edge, heap_mark() - m0)
+        resume() with row_bytes = row_bytes_carried(row_bytes_link(row_bytes, edge, heap_mark() - m0), acc)
       } else {
         let new_epoch = epoch + 1
         if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
-        resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc), row_bytes = row_bytes_link(row_bytes, edge, heap_mark() - m0)
+        resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc), row_bytes = row_bytes_carried(row_bytes_link(row_bytes, edge, heap_mark() - m0), acc)
       },
     }
   },
@@ -639,11 +639,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     let m0 = heap_mark()
     match row_union_cells(spine, spine_open, next, a, b, row_acc_new(trail, trail_len)) {
       acc => if acc.tl == trail_len {
-        resume() with row_bytes = {...row_bytes, union: row_bytes.union + heap_mark() - m0}
+        resume() with row_bytes = row_bytes_carried({...row_bytes, union: row_bytes.union + heap_mark() - m0}, acc)
       } else {
         let new_epoch = epoch + 1
         if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
-        resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc), row_bytes = {...row_bytes, union: row_bytes.union + heap_mark() - m0}
+        resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc), row_bytes = row_bytes_carried({...row_bytes, union: row_bytes.union + heap_mark() - m0}, acc)
       },
     }
   },
@@ -685,7 +685,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
           spine,
           next,
           root,
-          CRow(row_cell_with_pins(cell, frag_union(cell.pins, pins))),
+          CRow({...cell, pins: frag_union(cell.pins, pins)}),
           row_acc_new(trail, trail_len)
         ),
         row_carry_fuel
@@ -1043,14 +1043,48 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
 // body to narrate and perform.
 //
 // What a carry hands back: the refusals and unifications it noted, and the
-// trail it extended.
-type RowAcc = {diags: [(DiagKind, String, String)], pairs: [(EffName, EffName)], tl: Int, trail: [Mutation]}
+// trail it extended, and the heap its wakes spent.
+type RowAcc = {carry: CarryBytes, diags: [(DiagKind, String, String)], pairs: [(EffName, EffName)], tl: Int, trail: [Mutation]}
 
 // The belt, not the semantics (the HANG law): every write is monotone over a
 // finite lattice, so a carry settles; a runaway stops here, loudly.
 let row_carry_fuel = 1000000
 
-fn row_acc_new(trail, tl) = RowAcc{diags: [], pairs: [], tl: tl, trail: trail}
+fn row_acc_new(trail, tl) =
+  RowAcc{carry: CarryBytes{all: 0, delta: 0, edge: 0, from: 0}, diags: [], pairs: [], tl: tl, trail: trail}
+
+// One wake's heap, filed under its kind.
+fn row_acc_spent(acc: RowAcc, wake, n) = {
+  let c = acc.carry
+  let c2 = match wake {
+    WakeDelta{} => ({...c, delta: c.delta + n}),
+    WakeFrom{} => ({...c, from: c.from + n}),
+    WakeEdge{} => ({...c, edge: c.edge + n}),
+    WakeAll{} => ({...c, all: c.all + n}),
+  }
+  ({...acc, carry: c2})
+}
+
+// What the rows wrote between two readings of the running total.
+fn row_bytes_since(now: RowBytes, then: RowBytes) = {
+  let c = now.carry
+  let d = then.carry
+  RowBytes{carry: CarryBytes{all: c.all - d.all, delta: c.delta - d.delta, edge: c.edge - d.edge, from: c.from - d.from}, inst: now.inst - then.inst, link: now.link - then.link, teach: now.teach - then.teach, union: now.union - then.union}
+}
+
+// The rows' heap as one line: each kind of write, then what the carries they
+// set off spent per kind of wake.
+fn row_bytes_line(rb: RowBytes) = {
+  let c = rb.carry
+  "instantiation {int_to_str(rb.inst)} · link {int_to_str(rb.link)} · charge {int_to_str(rb.teach)} · union {int_to_str(rb.union)}; carried: edge {int_to_str(c.edge)} · delta {int_to_str(c.delta)} · re-read {int_to_str(c.from)} · whole {int_to_str(c.all)}"
+}
+
+// The handler's running total, with one write's carry added in.
+fn row_bytes_carried(rb: RowBytes, acc: RowAcc) = {
+  let c = rb.carry
+  let d = acc.carry
+  ({...rb, carry: CarryBytes{all: c.all + d.all, delta: c.delta + d.delta, edge: c.edge + d.edge, from: c.from + d.from}})
+}
 
 // A bound checked at several cells refuses once: the same triple joins the
 // held set at most once.
@@ -1082,36 +1116,22 @@ fn row_diag_held(held: [(DiagKind, String, String)], d) = match held {
 fn row_acc_pairs_into(held, acc: RowAcc) =
   if len(acc.pairs) == 0 { held } else { held ++ acc.pairs }
 
-fn row_acc_with_pairs(acc: RowAcc, pairs) =
-  RowAcc{diags: acc.diags, pairs: pairs, tl: acc.tl, trail: acc.trail}
+fn row_acc_with_pairs(acc: RowAcc, pairs) = ({...acc, pairs: pairs})
 
-fn row_acc_with_diag(acc: RowAcc, d) = if row_diag_held(acc.diags, d) {
-  acc
-} else {
-  RowAcc{diags: push(acc.diags, d), pairs: acc.pairs, tl: acc.tl, trail: acc.trail}
-}
+fn row_acc_with_diag(acc: RowAcc, d) =
+  if row_diag_held(acc.diags, d) { acc } else { {...acc, diags: push(acc.diags, d)} }
 
 fn row_cell_fresh(born) =
-  RowCell{born: born, ceilings: [], charged: [], deps: [], edges: [], frees: [], full: [], pins: []}
+  RowCell{born: born, ceilings: [], charged: [], copies: [], deps: [], edges: [], frees: [], full: [], keyed: [], pins: []}
 
-// One home per field rebuild, so a field added to `RowCell` is a line here.
-fn row_cell_with_read(cell: RowCell, full, frees) =
-  RowCell{born: cell.born, ceilings: cell.ceilings, charged: cell.charged, deps: cell.deps, edges: cell.edges, frees: frees, full: full, pins: cell.pins}
-
-fn row_cell_with_charged(cell: RowCell, charged) =
-  RowCell{born: cell.born, ceilings: cell.ceilings, charged: charged, deps: cell.deps, edges: cell.edges, frees: cell.frees, full: cell.full, pins: cell.pins}
-
-fn row_cell_with_edges(cell: RowCell, edges) =
-  RowCell{born: cell.born, ceilings: cell.ceilings, charged: cell.charged, deps: cell.deps, edges: edges, frees: cell.frees, full: cell.full, pins: cell.pins}
-
-fn row_cell_with_deps(cell: RowCell, deps) =
-  RowCell{born: cell.born, ceilings: cell.ceilings, charged: cell.charged, deps: deps, edges: cell.edges, frees: cell.frees, full: cell.full, pins: cell.pins}
-
-fn row_cell_with_ceilings(cell: RowCell, ceilings) =
-  RowCell{born: cell.born, ceilings: ceilings, charged: cell.charged, deps: cell.deps, edges: cell.edges, frees: cell.frees, full: cell.full, pins: cell.pins}
-
-fn row_cell_with_pins(cell: RowCell, pins) =
-  RowCell{born: cell.born, ceilings: cell.ceilings, charged: cell.charged, deps: cell.deps, edges: cell.edges, frees: cell.frees, full: cell.full, pins: pins}
+// MEMBERSHIP IS READ FROM THE LAST ELEMENT BACK, in every walk below. A
+// cell's lists grow by `push`, so each is a snoc chain, where `last` and
+// `drop_last` read a node where it stands and the walk allocates nothing.
+// Matching `[x, ...rest]` from the front minted a slice per element and
+// re-walked the chain from its end to reach it, and the in-order reductions
+// flatten the chain before their first element: a membership question asked
+// at every link of a large frame copied its whole path list each time.
+fn row_int_held(xs: [Int], x) = len(xs) > 0 && (last(xs) == x || row_int_held(drop_last(xs), x))
 
 // Find at the row sort — one alias hop at a time.
 fn row_root(spine, mint_bound, handle, depth) with Memory + Alloc = if depth > 100 {
@@ -1247,25 +1267,52 @@ fn row_frees_add(frees, root, mask) =
 fn row_frees_new(frees2, frees) =
   if len(frees2) == len(frees) { [] } else { slice(frees2, len(frees), len(frees2)) }
 
-fn row_frees_holds(frees: [(Int, [EffName])], r, m) = match frees {
-  [] => false,
-  [f, ...rest] => match f {
-    (r2, m2) => if r2 == r && m2 == m { true } else { row_frees_holds(rest, r, m) },
-  },
+fn row_frees_holds(frees: [(Int, [EffName])], r, m) = if len(frees) == 0 {
+  false
+} else {
+  match last(frees) {
+    (r2, m2) => r2 == r && m2 == m || row_frees_holds(drop_last(frees), r, m),
+  }
+}
+
+// Does this cell read `src_root` by any edge, and does it read anything
+// across an instantiation?
+fn row_edges_from(spine, mint_bound, edges: [RowEdge], src_root) =
+  len(edges) > 0 && (row_root(spine, mint_bound, last(edges).src, 0) == src_root || row_edges_from(spine, mint_bound, drop_last(edges), src_root))
+
+fn row_edges_inst(edges: [RowEdge]) =
+  len(edges) > 0 && (last(edges).inst || row_edges_inst(drop_last(edges)))
+
+// Does a new path reach a root some copy's renaming covers?
+fn row_paths_keyed(spine, mint_bound, paths: [(Int, [EffName])], keyed) = if len(paths) == 0 {
+  false
+} else {
+  match last(paths) {
+    (r, _) => row_int_held(keyed, row_root(spine, mint_bound, r, 0)) || row_paths_keyed(spine, mint_bound, drop_last(paths), keyed),
+  }
 }
 
 // ─── renaming a payload through an instantiation edge ────────────────────
-fn row_tys_find(tys: [(Int, Int)], r) = match tys {
-  [] => -1,
-  [p, ...rest] => match p {
-    (from, to) => if from == r { to } else { row_tys_find(rest, r) },
-  },
+fn row_tys_find(tys: [(Int, Int)], r) = match find({ (from, _) => from == r }, tys) {
+  Some((_, to)) => to,
+  None => -1,
 }
 
-fn row_names_rename(ref spine, mint_bound, names, tys) = if len(tys) == 0 {
+// Only an instance's arguments rename, so a set holding none is its own
+// renaming — and that is nearly every set an instantiation carries.
+fn row_names_rename(ref spine, mint_bound, names, tys) = if len(tys) == 0 || !row_names_parameterized(names) {
   names
 } else {
   names |> map({ n => row_name_rename(spine, mint_bound, n, tys) })
+}
+
+fn row_names_parameterized(names) =
+  len(names) > 0 && (row_name_parameterized(last(names)) || row_names_parameterized(drop_last(names)))
+
+fn row_name_parameterized(n) = match n {
+  EParameterized{} => true,
+  ENamed(_) => false,
+  EPure => false,
 }
 
 fn row_name_rename(ref spine, mint_bound, n, tys) = match n {
@@ -1650,7 +1697,13 @@ fn row_pin_arg(barg, darg) = match barg {
 }
 
 // Entries of `a` absent from `b` by fragment identity — what a read gained.
-fn row_frag_minus(a, b) = a |> filter({ x => !frag_holds(b, x) })
+fn row_frag_minus(a, b) = if len(a) == 0 {
+  []
+} else {
+  let kept = row_frag_minus(drop_last(a), b)
+  let x = last(a)
+  if frag_holds(b, x) { kept } else { push(kept, x) }
+}
 
 // ─── the carry — a worklist over the reverse edges ───────────────────────
 // A wake names what woke it: the source whose read grew (a dependent reads
@@ -1674,7 +1727,7 @@ type RowWake
 fn row_put(ref spine, mint_bound, h, slot, acc: RowAcc) = {
   let old = cell_slot_at(spine, h)
   spine_put_cell(spine, h, slot)
-  RowAcc{diags: acc.diags, pairs: acc.pairs, tl: acc.tl + 1, trail: trail_append(acc.trail, acc.tl, MSetRow(h, old))}
+  ({...acc, tl: acc.tl + 1, trail: trail_append(acc.trail, acc.tl, MSetRow(h, old))})
 }
 
 // A read that reaches a root through an instantiation's renaming depends on
@@ -1690,7 +1743,7 @@ fn row_subscribe(ref spine, mint_bound, reader, subs, acc: RowAcc) = fold(
       if row_int_held(cs.deps, reader) {
         a
       } else {
-        row_put(spine, mint_bound, rs, CRow(row_cell_with_deps(cs, push(cs.deps, reader))), a)
+        row_put(spine, mint_bound, rs, CRow({...cs, deps: push(cs.deps, reader)}), a)
       }
     }
   },
@@ -1701,28 +1754,54 @@ fn row_subscribe(ref spine, mint_bound, reader, subs, acc: RowAcc) = fold(
 fn row_bytes_link(b: RowBytes, e: RowEdge, n) =
   if e.inst { {...b, inst: b.inst + n} } else { {...b, link: b.link + n} }
 
-// A dependent known to be new joins without the membership read.
-fn row_depend(ref spine, mint_bound, src, reader, acc: RowAcc) = if !cell_slot_held(spine, mint_bound, src) {
+// An instantiation joins its source's copies, and the roots its renaming
+// covers join the source's keys. The copy is new, so it joins without the
+// membership read; a key is read for, because every use of one declaration
+// renames the same roots.
+fn row_depend(ref spine, mint_bound, src, reader, tys: [(Int, Int)], acc: RowAcc) = if !cell_slot_held(spine, mint_bound, src) {
   acc
 } else {
   let cs = row_cell_at(spine, mint_bound, src)
-  row_put(spine, mint_bound, src, CRow(row_cell_with_deps(cs, push(cs.deps, reader))), acc)
+  row_put(
+    spine,
+    mint_bound,
+    src,
+    CRow({...cs, copies: push(cs.copies, reader), keyed: row_keys_join(cs.keyed, tys)}),
+    acc
+  )
 }
 
-// Every dependent of `src` is woken by it, to read it again whole.
-fn row_wake_deps(work, deps, src) = fold(work, (w, d) => push(w, WakeFrom(d, src)), deps)
+fn row_keys_join(keyed, tys: [(Int, Int)]) = if len(tys) == 0 {
+  keyed
+} else {
+  match last(tys) {
+    (k, _) => row_keys_join(if row_int_held(keyed, k) { keyed } else { push(keyed, k) }, drop_last(tys)),
+  }
+}
+
+// Every reader of `src`, direct or a copy, is woken by it, to read it again
+// whole.
+fn row_wake_deps(work, cell: RowCell, src) =
+  fold(work, (w, d) => push(w, WakeFrom(d, src)), cell.deps ++ cell.copies)
 
 // A cell's read grew: write it, meet its bounds with what is new — the names
 // against every bound, the new roots taking every bound onto themselves — and
-// hand whoever reads it exactly what is new.
+// hand whoever reads it exactly what is new. A copy reads a new path only
+// through its renaming, so a growth that brings no name and reaches no
+// renamed root is handed to the direct readers alone. A frame a large
+// function links every call into gains a path per call, and its in-group
+// copies learned nothing from any of them (measured 2026-09-24: `emit_expr`'s
+// 458 links each consulted 42 copies, 5.7MB of its judgment).
 fn row_grown(ref spine, spine_open, mint_bound, root, cell: RowCell, full2, frees2, work, acc: RowAcc) = {
-  let cell2 = row_cell_with_read(cell, full2, frees2)
+  let cell2 = {...cell, frees: frees2, full: full2}
   let new_names = row_frag_minus(full2, cell.full)
   let new_paths = row_frees_new(frees2, cell.frees)
   let acc2 = row_put(spine, mint_bound, root, CRow(cell2), acc)
   let acc3 = row_check_names(spine, spine_open, cell2.ceilings, new_names, acc2)
   let acc4 = row_ceilings_onto(spine, spine_open, mint_bound, cell2.ceilings, new_paths, acc3)
-  (fold(work, (w, d) => push(w, WakeDelta(d, root, new_names, new_paths)), cell2.deps), acc4)
+  let copies_learn = len(new_names) > 0 || row_paths_keyed(spine, mint_bound, new_paths, cell2.keyed)
+  let readers = if copies_learn { cell2.deps ++ cell2.copies } else { cell2.deps }
+  (fold(work, (w, d) => push(w, WakeDelta(d, root, new_names, new_paths)), readers), acc4)
 }
 
 // A source's growth, joined across what connects this cell to it: each edge
@@ -1734,7 +1813,7 @@ fn row_recompute_delta(ref spine, mint_bound, self_root, cell: RowCell, src_root
   // A subscription is a path an instantiation edge's renaming reached, so
   // only a cell reading across an instantiation holds one; a cell that reads
   // this source only by edges has nothing more to look for among its paths.
-  let direct = any({ e => row_root(spine, mint_bound, e.src, 0) == src_root }, cell.edges)
+  let direct = row_edges_from(spine, mint_bound, cell.edges, src_root)
   let by_edges = if direct {
     fold(
       (cell.full, cell.frees, pairs, []),
@@ -1748,7 +1827,7 @@ fn row_recompute_delta(ref spine, mint_bound, self_root, cell: RowCell, src_root
   } else {
     (cell.full, cell.frees, pairs, [])
   }
-  let joined = if !direct || any({ e => e.inst }, cell.edges) {
+  let joined = if !direct || row_edges_inst(cell.edges) {
     fold(
       by_edges,
       (acc, f) => match f {
@@ -1811,8 +1890,23 @@ fn row_carry(ref spine, spine_open, mint_bound, work, acc: RowAcc, fuel) = if le
   eprint_string("mentl: a row carry exhausted its belt — a monotone propagation did not settle\n")
   acc
 } else {
-  let rest = drop_last(work)
   let wake = last(work)
+  let m0 = heap_mark()
+  match row_carry_one(spine, spine_open, mint_bound, drop_last(work), wake, acc) {
+    (work2, acc2) => row_carry(
+      spine,
+      spine_open,
+      mint_bound,
+      work2,
+      row_acc_spent(acc2, wake, heap_mark() - m0),
+      fuel - 1
+    ),
+  }
+}
+
+// One wake: its target read again across what woke it, and — when the read
+// grew — written and handed on to whoever reads the target.
+fn row_carry_one(spine, spine_open, mint_bound, rest, wake, acc: RowAcc) = {
   let target = match wake {
     WakeDelta{reader: t} => t,
     WakeFrom(t, _) => t,
@@ -1821,7 +1915,7 @@ fn row_carry(ref spine, spine_open, mint_bound, work, acc: RowAcc, fuel) = if le
   }
   let root = row_root(spine, mint_bound, target, 0)
   if !cell_slot_held(spine, mint_bound, root) {
-    row_carry(spine, spine_open, mint_bound, rest, acc, fuel - 1)
+    (rest, acc)
   } else {
     let cell = row_cell_at(spine, mint_bound, root)
     let read = match wake {
@@ -1849,11 +1943,9 @@ fn row_carry(ref spine, spine_open, mint_bound, work, acc: RowAcc, fuel) = if le
           WakeEdge(_, _) => len(full2) != len(cell.full) || len(frees2) != len(cell.frees),
         }
         if grew {
-          match row_grown(spine, spine_open, mint_bound, root, cell, full2, frees2, rest, acc_p) {
-            (work2, acc2) => row_carry(spine, spine_open, mint_bound, work2, acc2, fuel - 1),
-          }
+          row_grown(spine, spine_open, mint_bound, root, cell, full2, frees2, rest, acc_p)
         } else {
-          row_carry(spine, spine_open, mint_bound, rest, acc_p, fuel - 1)
+          (rest, acc_p)
         }
       },
     }
@@ -1874,7 +1966,7 @@ fn row_teach_names(ref spine, spine_open, mint_bound, handle, names, acc: RowAcc
       acc
     } else {
       let fresh = row_frag_minus(names, cell.charged)
-      let cell1 = row_cell_with_charged(cell, own2)
+      let cell1 = {...cell, charged: own2}
       let full2 = frag_union(cell.full, row_pin_names(fresh, cell.pins))
       if len(full2) == len(cell.full) {
         row_put(spine, mint_bound, root, CRow(cell1), acc)
@@ -1890,15 +1982,8 @@ fn row_teach_names(ref spine, spine_open, mint_bound, handle, names, acc: RowAcc
 fn row_edge_same(a: RowEdge, b: RowEdge) =
   a.src == b.src && a.inst == b.inst && a.mask == b.mask && a.tys == b.tys
 
-fn row_edge_held(edges, e) = match edges {
-  [] => false,
-  [x, ...rest] => if row_edge_same(x, e) { true } else { row_edge_held(rest, e) },
-}
-
-fn row_int_held(xs: [Int], x) = match xs {
-  [] => false,
-  [y, ...rest] => if y == x { true } else { row_int_held(rest, x) },
-}
+fn row_edge_held(edges: [RowEdge], e) =
+  len(edges) > 0 && (row_edge_same(last(edges), e) || row_edge_held(drop_last(edges), e))
 
 fn row_link_cells(ref spine, spine_open, mint_bound, into, e0: RowEdge, acc: RowAcc) = {
   let ri = row_root(spine, mint_bound, into, 0)
@@ -1919,9 +2004,9 @@ fn row_link_cells(ref spine, spine_open, mint_bound, into, e0: RowEdge, acc: Row
     if !e.inst && row_int_held(row_cell_at(spine, mint_bound, rs).deps, ri) && row_edge_held(ci.edges, e) {
       acc
     } else {
-      let acc2 = row_put(spine, mint_bound, ri, CRow(row_cell_with_edges(ci, push(ci.edges, e))), acc)
+      let acc2 = row_put(spine, mint_bound, ri, CRow({...ci, edges: push(ci.edges, e)}), acc)
       let acc3 = if e.inst {
-        row_depend(spine, mint_bound, rs, ri, acc2)
+        row_depend(spine, mint_bound, rs, ri, e.tys, acc2)
       } else {
         row_subscribe(spine, mint_bound, ri, [rs], acc2)
       }
@@ -1986,7 +2071,7 @@ fn row_union_cells(ref spine, spine_open, mint_bound, a, b, acc: RowAcc) = {
   } else {
     let ca = row_cell_at(spine, mint_bound, ra)
     let cb = row_cell_at(spine, mint_bound, rb)
-    let merged = RowCell{born: ca.born, ceilings: row_ceilings_merge(ca.ceilings, cb.ceilings), charged: frag_union(ca.charged, cb.charged), deps: row_ints_merge(ca.deps, cb.deps), edges: row_edges_merge(
+    let merged = RowCell{born: ca.born, ceilings: row_ceilings_merge(ca.ceilings, cb.ceilings), charged: frag_union(ca.charged, cb.charged), copies: row_ints_merge(ca.copies, cb.copies), deps: row_ints_merge(ca.deps, cb.deps), edges: row_edges_merge(
       spine,
       mint_bound,
       row_edges_merge(spine, mint_bound, [], ca.edges, ra, rb),
@@ -2000,7 +2085,7 @@ fn row_union_cells(ref spine, spine_open, mint_bound, a, b, acc: RowAcc) = {
       cb.frees,
       ra,
       rb
-    ), full: frag_union(ca.full, cb.full), pins: frag_union(ca.pins, cb.pins)}
+    ), full: frag_union(ca.full, cb.full), keyed: row_ints_merge(ca.keyed, cb.keyed), pins: frag_union(ca.pins, cb.pins)}
     let acc2 = row_put(spine, mint_bound, ra, CRow(merged), acc)
     let acc3 = row_put(spine, mint_bound, rb, CRowAlias(ra), acc2)
     // Each side's bounds now meet the other side's read and roots.
@@ -2014,7 +2099,7 @@ fn row_union_cells(ref spine, spine_open, mint_bound, a, b, acc: RowAcc) = {
       spine,
       spine_open,
       mint_bound,
-      row_wake_deps([WakeAll(ra)], merged.deps, ra),
+      row_wake_deps([WakeAll(ra)], merged, ra),
       acc7,
       row_carry_fuel
     )
@@ -2204,8 +2289,7 @@ fn row_ceiling_install(ref spine, spine_open, mint_bound, root, c: Ceiling, acc:
         row_acc_with_diag(acc, row_violation(spine, spine_open, c, s.allowed))
       },
       None => {
-        let acc2 =
-          row_put(spine, mint_bound, root, CRow(row_cell_with_ceilings(cell, push(cell.ceilings, c))), acc)
+        let acc2 = row_put(spine, mint_bound, root, CRow({...cell, ceilings: push(cell.ceilings, c)}), acc)
         let acc3 = row_check_one(spine, spine_open, c, cell.full, acc2)
         row_ceiling_onto_frees(spine, spine_open, mint_bound, c, cell.frees, acc3, depth + 1)
       },

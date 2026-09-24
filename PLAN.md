@@ -1359,9 +1359,12 @@ oracle is what they add up to:
   write, read in one hop: `Hβ.effects.rows-are-propagated-cells` — LANDED
   2026-09-24 in its v5 form, after four refuters broke v1–v4, and with the
   law it was queued under NOT yet met: the judgment's heap ROSE (757MB where
-  the prior boot measured 548MB), because a large frame cell grows one path
-  per call and wakes every reader at each growth
-  (`Hβ.effects.row-link-fans-out-per-call`). The same
+  the prior boot measured 548MB). The fan-out that rise came from closed the
+  same day: a copy no longer wakes at a growth its renaming cannot read, and
+  a membership test no longer copies its set. The m3 leg's rows fell 148 →
+  72MB and its heap 760 → 688MB (`Hβ.effects.row-link-fans-out-per-call`).
+  What stands is the path set itself, the transitive closure of every cell a
+  frame reached, which only the instantiation edge's views can shrink. The same
   machinery, one sort over, is the SCHEMES face's own fix (a `frees` set
   propagated at the bind makes the quantifier a read and the occurs check a
   membership test), and one altitude up it is the e-graph's (a rewrite fires

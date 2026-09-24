@@ -1339,7 +1339,7 @@ fn infer_modules_converged(ref mods) = {
       eprint_string("image: {int_to_str(image_bytes())} image-classified byte(s)\n")
       eprint_string("heap: {int_to_str(heap_mark())} byte(s) at the judgment's high-water line\n")
       let rb = graph_row_bytes()
-      eprint_string("rows: {int_to_str(rb.inst + rb.link + rb.teach + rb.union)} byte(s) of it written by the effect rows (instantiation {int_to_str(rb.inst)} · link {int_to_str(rb.link)} · charge {int_to_str(rb.teach)} · union {int_to_str(rb.union)})\n")
+      eprint_string("rows: {int_to_str(rb.inst + rb.link + rb.teach + rb.union)} byte(s) of it written by the effect rows ({row_bytes_line(rb)})\n")
     },
     _ => (),
   }
@@ -1676,9 +1676,7 @@ fn judge_stmt_one(ref node) = {
   let line = heap_mark()
   let rb = graph_row_bytes()
   infer_stmt(node)
-  let rb2 = graph_row_bytes()
-  let rows =
-    RowBytes{inst: rb2.inst - rb.inst, link: rb2.link - rb.link, teach: rb2.teach - rb.teach, union: rb2.union - rb.union}
+  let rows = row_bytes_since(graph_row_bytes(), rb)
   graph_judged_note(JudgedCost{bytes: heap_mark() - line, handle: node_handle(node), rows: rows})
 }
 

@@ -1261,11 +1261,7 @@ fn judged_row_line(row: JudgedCost) with GraphRead + !Mutate + Memory + Alloc + 
 
 fn judged_rows_part(rb: RowBytes) with Memory + Alloc = {
   let total = rb.inst + rb.link + rb.teach + rb.union
-  if total == 0 {
-    ""
-  } else {
-    "  (rows {total} B: instantiation {rb.inst} · link {rb.link} · charge {rb.teach} · union {rb.union})"
-  }
+  if total == 0 { "" } else { "  (rows {total} B: {row_bytes_line(rb)})" }
 }
 
 // One line per undischarged obligation: the predicate the graph holds,

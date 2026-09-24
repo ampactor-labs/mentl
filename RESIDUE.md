@@ -12098,30 +12098,65 @@ visit. Land order, both halves together or neither (the half-step law,
 paid for twice more here): visitor-quantifier + publish-Live +
 subst-shares-the-edge, judged by census 0, the movers line, and m3 == m4.
 
-`Hβ.effects.row-link-fans-out-per-call` — OPEN, measured 2026-09-24, and
-the ceiling `selfcompile_peak_kb_max` was raised 1,021,000 → 1,300,000 KB
-against it. THE COST: the judgment's heap is 745MB against the pinned boot's
-548MB on the same source, 150MB of it written by the effect rows (m3 leg's
-`rows:` line), and `mentl <file> cost` now prints each decl's row bytes beside
-its heap. THE SHAPE, read with the `row` facet's new cell shape: a large
-function's frame cell reads one edge per call (`emit_expr`: 458 edges, 483
-paths, 42 readers — the 42 are its own recursive call sites' copies). Every
-link adds a path, so the cell GROWS at every call, and every growth wakes all
-its readers. Before the delta carry each reader re-walked the source's every
-path (`emit_expr` 94MB, 89.7MB of it rows); after it (`RowWake`'s
-`WakeDelta`) each reader joins only what grew, and `emit_expr` is 14.4MB. The
-remainder is the wake itself: 42 readers × one path per call, most of them
-learning nothing. KILLS on the way: equating an install's row arguments
-instead of linking them by flow (cost unchanged), and leaving a recursion
-member's own frame cell unrenamed inside its group (cost ×4 at `emit_expr`
-and `leak-cycle-lambda-before` leaks — the copy carries what the recursive
-call's arguments bring). THE FORM TO BUILD: a path to a root is information
-only to a reader that could rename it or that is bounded by it, so a growth
-whose new paths reach roots no reader's renaming covers and no bound names
-must not wake. The instantiation-edge design's own next stage, "views", is
-this: a copy reads a VIEW of its source (the renamed roots its mapping
-covers), not the source's whole path set. Retires when the peak ratchet is
-back under the pre-landing ceiling.
+`Hβ.effects.row-link-fans-out-per-call` — THE FAN-OUT CLOSED 2026-09-24; the
+path set it rode on is the named remainder below. THE COST as it was: the
+judgment's heap was 745MB against the prior boot's 548MB on the same source,
+150MB of it written by the effect rows, and `emit_expr`'s frame cell read one
+edge per call (458 edges, 483 paths, 42 readers — its own in-group copies).
+THE INSTRUMENT CAME BEFORE THE FIX, and only after two kills: the rows line and
+`mentl <file> cost` split each write's heap by the wake that spent it —
+`carried: edge · delta · re-read · whole` (`CarryBytes`) — because two
+hypotheses had already failed against the measurement. KILL 1: the no-op
+wakes as the main cost. A per-reader "does it learn anything?" check moved
+`emit_expr`'s link bytes 8.8 → 6.4MB, not the collapse the story predicted.
+KILL 2: the `[x, ...rest]` scans alone. Writing them as `any`/`fold` moved it
+6.4 → 5.6MB, because those flatten a snoc chain and install a reduction per
+call. THE INSTRUMENT'S FIRST READING named the rest: 5.69MB of `emit_expr`'s
+5.70MB link bytes were the link's own EDGE read. The cost was per-growth work
+done for every reader, plus every membership test copying its set. THE FORM,
+landed: (1) a cell keeps its instantiation `copies` apart from its direct
+`deps`, and `keyed` holds the roots the copies' renamings cover. A copy reads
+a new path only through its renaming, so a growth that brings no name and
+reaches no keyed root wakes only the direct readers. This is exactly the
+information `row_recompute_delta` would have joined, so it is not a
+heuristic. (2) Membership is read from the last element back
+(`row_int_held`, `row_frees_holds`, `row_edge_held`, `frag_holds`). A set
+grown by `push` is a snoc chain, where `last`/`drop_last` allocate nothing.
+`frag_union` and `row_frag_minus` join in order without installing a
+reduction. (3) Renaming a name set that holds no instance returns it
+untouched. MEASURED under `mentl verify` through the fresh wheel: effect-row
+bytes 140,266,456 → 75,029,376, judgment heap 890,831,448 → 823,561,992, and
+`emit_expr`'s rows 9.7MB → 2.2MB. The board's other bounds held.
+THE REMAINDER, named rather than claimed closed: the path set is still the
+TRANSITIVE closure of every cell a frame reached, one entry per callee copy.
+Each link still pays O(paths) to dedup, and each instantiation still walks
+the source's whole set to find its renamed roots. Filtering the set by a
+cell's role (a leaf, a frame image) was designed and REFUTED on paper the
+same day: a parameter's type variable can bind directly to a callee image's
+function type, so an "image" can be exactly the input a caller's closure
+arrives at (`let h = if c { g } else { k }; h()`). The set can only shrink
+when the renaming domain is known where the paths are recorded, and that is
+the instantiation-edge design's own "views" stage: a copy reads a VIEW of its
+source, the renamed roots its mapping covers
+(`Hβ.infer.instantiate-shares-never-clones`).
+
+`Hβ.graph.trail-records-what-nothing-can-undo` — OPEN, measured 2026-09-24.
+Every graph write appends an undo entry to the trail, and at the judgment's
+end the trail held 757,206 entries (a probe reading `graph_push_checkpoint`'s
+mark on the whole-wheel route). But every rollback in the tree is paired
+with a push (`judge_speculatively`, the synth segment, the annotation fan,
+`backtrack`), so an entry written while the checkpoint stack is EMPTY can
+never be read. The doubling copy of that buffer is charged to whichever
+declaration's write crosses the capacity boundary. The cost facet shows it as
+a lone ~4.2MB "edge" on a small decl (`cursor_step`, `apply_suggestion`,
+`splice_span`, `find_line_start` on four runs of one tree). THE FORM: an undo
+entry is written only while a checkpoint is open, and the change signal a
+write hands back becomes a count, not a stored entry. What forces the entry
+today is `graph_mutated(epoch, Mutation)`, whose mutation argument every
+handler discards (`Hβ.graph.mutation-delta-is-write-only`). So the two
+resolve together: the delta becomes a real cone read, or the argument is
+deleted. Retires when a whole-wheel judgment ends with a trail no longer than
+its deepest speculation.
 
 `Hβ.board.verify-ratchets-live-beside-the-board` — CLOSED 2026-09-24, one
 landing after it was named. A repin blessed a wheel after the micros and
