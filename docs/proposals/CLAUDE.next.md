@@ -2,9 +2,11 @@
 
 Mentl is a self-hosting, effect-typed language compiled to WASM. The compiler
 (`src/**.mn` and `lib/**`) is written in Mentl and compiled by the pinned wheel
-`boot/mentl.wasm`. At session start read `DESIGN.md` (what Mentl is) and
-`MILESTONE.md` (what we are building now). Read `docs/SYNTAX.md` before
-writing `.mn`; it is the authority on the language's form.
+`boot/mentl.wasm`. This is the only file loaded at every session start. Read
+`MILESTONE.md` (what we are building now) at the start of a session; read
+`DESIGN.md` (what Mentl is, the resolved decisions) before design or kernel
+work; the syntax card in `.claude/rules/` loads itself when you touch `.mn`,
+and `docs/SYNTAX.md` is the full authority on the language's form.
 
 ## Build, run, test
 
@@ -69,9 +71,13 @@ reading the diff, nothing else.
 - One landing is the change, `verify`, `march`, and a five-line commit message
   saying what changed and what the board said. The march writes the
   PROVENANCE entry when it re-pins.
-- Deep kernel reasoning stays in one conversation. Breadth and adversarial
-  review go to fresh agents, with the model passed explicitly. A reviewer gets
-  `DESIGN.md` and the diff.
+- Deep kernel reasoning stays in one conversation. Breadth goes to fresh
+  agents with the model passed explicitly. A fresh-context reviewer is for
+  high-stakes landings; it gets `DESIGN.md` and the diff, and it reviews
+  correctness, not taste.
+- A decision lives in `docs/decisions/` as a short record with a status. To
+  reopen one, write a new record; do not re-argue it in a session.
+- A restructuring names the acceptance test or `felt` issue it unblocks.
 - Report what changed and what was measured. If it is not done, say so in the
   first sentence.
 - Comments say what a thing is. The first line is the lede; backticked names
@@ -80,6 +86,8 @@ reading the diff, nothing else.
 
 ## Where things are
 
-`DESIGN.md` · `MILESTONE.md` · `docs/SYNTAX.md` · `docs/MENTL_EDIT.md` (the
-IDE) · `docs/NATIVE.md` · `docs/POSITIONING.md` · `docs/archive/` (history;
-not read at session start) · GitHub issues (every named gap)
+`MILESTONE.md` · `DESIGN.md` · `docs/decisions/` · `docs/SYNTAX.md` ·
+`docs/MENTL_EDIT.md` (the IDE) · `docs/NATIVE.md` · `docs/POSITIONING.md` ·
+`docs/archive/` (history; not read at session start) · GitHub issues (every
+named gap) · `.claude/rules/model-opus.md`, `model-fable.md` (twenty-line
+per-model notes; this file is model-neutral)
