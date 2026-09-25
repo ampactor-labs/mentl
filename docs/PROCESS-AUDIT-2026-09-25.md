@@ -6,7 +6,7 @@ optimize or redesign them so the build gets a clearer picture and a more
 rewarding pace. Everything below was measured on this checkout (branch
 `claude/mentl-design-audit-m1mptf`, head `fc4ddd3`) in a fresh container in
 which the runner was built and the wheel was run; every number comes from this
-session. Field research was done by three independent web-research passes;
+session. Field research was done by four independent web-research passes;
 their findings and sources are summarized in §4 and the full reports, with
 every URL, are in `docs/research/`.
 
@@ -307,10 +307,12 @@ The redesign moves policing to CI and lints so the human can go back to that.
 
 ## 4 · What the field says
 
-Three independent web-research passes were run (language-design process
+Four independent web-research passes were run: language-design process
 lessons; the instruction layer for coding agents; the 2026 state of the art
-the positioning claims against). Each is summarized with its sources; where a
-finding changes a recommendation in §5, the recommendation says so.
+against the positioning the docs currently lead with; and, after Morgan's
+reply to the first draft, the prior art for the vision the early docs
+actually state. Each is summarized with its sources; where a finding changes
+a recommendation in §5, the recommendation says so.
 
 ### 4.1 Language-design process lessons
 
@@ -715,7 +717,118 @@ manifesto derived from the effect algebra, mentioned once, and "For agents"
 leaves the README. The prior art that matters is the prior art for THIS
 vision, which the fourth research pass covers below.
 
-*(The prior-art map for this vision, from the fourth research pass, is added in the next commit.)*
+**The prior art for this vision** (fourth research pass; full report with
+sources in `docs/research/2026-09-25-vision-prior-art.md`).
+
+- **The compiler proposing a checked next step is shipped, for proof goals.**
+  Lean 4's `exact?` and `rw?` validate before suggesting; `try?` (4.28,
+  February 2026) runs three `grind` variants in parallel through `first_par`
+  and returns the first success; Agda 2.7 replaced Agsy with Mimer, a
+  type-directed hole-refinement search; Canonical (ITP 2025) does exhaustive
+  type-inhabitation search as a Lean tactic and solves 84% of the Natural
+  Number Game. For general programs the line is Myth, Synquid (refinements
+  prune the search), Smyth and Scrybe, all research-grade; Wingman, the one
+  typed-hole synthesizer inside a mainstream editor, was abandoned because it
+  could not keep up with GHC's API.
+- **The head-to-head numbers run against "no model is advantageous at any
+  scope."** Magnushammer (ICLR 2024): learned premise selection 59.5% versus
+  Sledgehammer's 38.3%. Lean Copilot: 74.2% of proof steps automated versus
+  40.1% for rule-based `aesop`. Li, Parsert and Polgreen (CAV 2024): a model
+  alone is "easily outperformed" by enumerative solvers, and a model placed
+  inside the enumerator beats both. Type-constrained decoding (PLDI 2025)
+  halves compilation errors. Every best result is a hybrid: proof or type
+  checking filters, a model ranks. The vision's own design already admits
+  this (the Synth chain with a model as a peer handler; PLAN §1's "the
+  dispatch among survivors is exogenous"); the vision's *claim* ("no LLM
+  advantageous at any scope", "unemployed") overreaches what has been
+  measured. The defensible statement is: the medium owns the candidate space
+  and the verdict; any ranker plugs in behind the gate.
+- **The separating question has a behavioural ancestor only.** Distinguishing
+  inputs in oracle-guided synthesis (Jha et al., ICSE 2010) and
+  disambiguation in programming-by-example (Mayer et al., UIST 2015) ask
+  about behaviour. Nothing found asks at the level where two type, effect or
+  ownership derivations diverge. A warning attached: learners "could not
+  connect Rust's static and dynamic semantics", and a permission-model
+  visualization raised ownership-inventory scores by only 9% (OOPSLA 2023),
+  so "consumed or borrowed?" is exactly the kind of question people
+  measurably struggle with, and the wording will need testing.
+- **Forked exploration has shipped at two granularities, neither the
+  vision's.** Cursor 2.0 runs up to eight model agents on git worktrees with
+  no proof filter and no shared checked context; Lean's `first_par` and
+  Sledgehammer run prover portfolios where the first success wins and the
+  rest are discarded. Worlds (ECOOP 2011) and multiverse debugging (ECOOP
+  2019; MIO at OOPSLA 2025; remote concolic at ECOOP 2026, where state
+  explosion is the named problem) are research. The design ancestor of
+  forked search over one shared heap on threads is or-parallel Prolog
+  (Aurora's binding arrays, Muse's stack copying), which shipped in the
+  1990s and was abandoned; its known costs, scheduling granularity and
+  binding install/uninstall per switch, are the literature to read before
+  building 9.2.
+- **Multi-shot as the fork mechanism is niche at the runtime layer.**
+  WebAssembly stack switching is single-shot by design ("none of our
+  critical use-cases requires multi-shot"); OCaml 5 is one-shot; Koka,
+  Effekt and Hansei support it. A WASM-hosted multi-shot search reifies or
+  copies its own continuations, which is what Mentl does.
+- **Search-based codegen is shipped piecemeal, and extraction is hard.**
+  Cranelift's acyclic e-graphs ship in Wasmtime without full saturation;
+  extraction with shared subterms is NP-hard and hard to approximate
+  (OOPSLA 2024 distinguished paper; optimal for treewidth ≤ 10); effects are
+  handled by CFG-skeleton relaxation (Julia, 2025) or sequence-level
+  saturation (E-Path, 2026); STOKE, Souper, AlphaDev and Halide's
+  autoscheduler measure real latency because static costs mislead. PLAN
+  §11.1's "extraction gets smaller, not cleverer" is half right: pinned
+  representation widths shrink the menu of alternatives but do not remove
+  the hardness that sharing creates; letting the effect row decide rewrite
+  legality is plausibly cleaner than CFG relaxation and untested.
+- **"Systems explain themselves" ships in niches with modest measured
+  gains.** Lean's InfoView, Glamorous Toolkit's moldable views (a pattern
+  language, no controlled study) and Aquascope exist; a 2025 study of live
+  introspection (N=37) found significantly faster debugging and called
+  itself possibly underpowered. Nobody measures whether an environment
+  teaches what completes the program.
+- **The proactive gradient is unoccupied.** Gradual typing and gradual
+  verification are mature theory; TypeScript's strict flags, Liquid Haskell,
+  Dafny and Rust are shipped "more annotation, more guarantee" ladders. No
+  tool found tells a developer which annotation unlocks which capability,
+  and no study measures whether such guidance helps.
+
+| Capability in the vision | Closest existing system | Status |
+|---|---|---|
+| holes filled by search, no model | Lean `exact?`/`try?`/`grind`, Agda Mimer, Canonical | shipped for proof goals; research for programs |
+| proof prunes candidates at every step | Synquid; type-constrained decoding | research |
+| joint pruning by effect absence, ownership and refinements | none found | unoccupied |
+| a tie asks one separating question | distinguishing inputs; PBE disambiguation | research, behavioural only; derivation-level: none |
+| parallel forked candidates | Cursor 2.0; Lean `first_par`; Sledgehammer | shipped as worktrees and portfolios |
+| forks as trail segments over one shared image, on threads | or-parallel Prolog | shipped in the 1990s, abandoned; none for program candidates |
+| the compiler chooses the form by search | Cranelift e-graphs, Halide, AlphaDev | shipped piecemeal; extraction NP-hard |
+| live truth at the cursor | Lean InfoView, Hazel, Glamorous Toolkit, Aquascope | shipped in niches; modest measured gains |
+| a proactive annotation gradient | gradual typing and verification | theory shipped; proactive guidance none |
+| all of it in one medium | Lean 4 (four of five columns) | none |
+
+**What is genuinely unoccupied, in the field's own terms:** a
+general-purpose language whose holes are filled by search pruned jointly by
+types, effect rows with negation, ownership and refinements; ties resolved
+by a question taken from where the derivations diverge; candidates held as
+rollback segments over one shared checked graph on several threads; and the
+same graph driving effect-aware extraction and the explanation at the
+cursor. Each piece has an ancestor (Synquid, oracle-guided synthesis,
+or-parallel Prolog, Lean), the combination is unclaimed, and two pieces most
+of all: effect absence as a pruning signal and questions at the derivation
+level, plus the proactive gradient. That is a larger unoccupied territory
+than the wedge's, and it is the vision's own.
+
+**The evidence the vision needs, stated so it can be collected on Pulse:**
+a next-move benchmark (holes cut from real commits; rates of unique
+survivor, tie and no survivor; top-1 accuracy; p50 and p95 latency; against
+a model given the same context, and against a model with type-constrained
+decoding); question quality (per tie, was the question answered correctly,
+including by novices, and time to the intended program against picking from
+a list); fork scaling (speedup at 1, 2, 4 and 8 threads, bytes per fork,
+identical results across thread counts, which the frontier gate's sha
+check already asserts); the extraction optimality gap against ILP on real
+functions with effects; and teaching, as pre/post concept-inventory gains
+attributable to the cursor's explanations. M2's gradient benchmark is the
+first of these.
 
 ---
 
@@ -884,9 +997,13 @@ Tang & Lindley sentence in PLAN §4③ and the Capslock paragraph in PLAN §1
 are corrected; "the podium is empty" is dropped; Odersky's capture-checked
 agents and LACUNA are named as the nearest work on the wedge, and the
 distinctive claim on that axis is the conjunction in one self-hosted
-substrate. The receipts for the vision are the ones §4.4 names: the gradient
-benchmark on Pulse, the cursor-moves-itself demo, and the question that
-beats the guess, each with a number.
+substrate. On the vision's own axis the claim is stated the way the
+measurements allow: the medium owns the candidate space and the verdict,
+proof is the filter, and any ranker, a model included, plugs in behind the
+gate; "no model is advantageous at any scope" is retired until a benchmark
+says otherwise. The receipts for the vision are the ones §4.4 names: the
+next-move benchmark on Pulse, the cursor-moves-itself demo, and the question
+that beats the guess, each with a number.
 
 ### 5.9 Triage the half-built arcs against the second program
 
@@ -945,11 +1062,11 @@ drift; an unnamed gap is. Issues are names.
 
 ### M2, two weeks: the medium proposing, on Pulse
 
-- The gradient benchmark, published: over Pulse's holes and annotation
-  sites, the fraction the medium fills with a proven survivor and no model,
-  the fraction where survivors tie and the question it asks is the right
-  one, the fraction where it is silent or wrong, and the time to first
-  proposal. The M1 log is the seed; a fixed set of Pulse holes is the
+- The next-move benchmark, published: holes cut from Pulse's own commits;
+  the rates of unique survivor, tie and no survivor; top-1 accuracy; p50 and
+  p95 latency; and, given the same context, the same holes offered to a
+  model, so "the question beats the guess" is a number rather than a
+  sentence. The M1 log is the seed; a fixed set of Pulse holes is the
   fixture. This is the receipt the vision needs and the field does not have.
 - The thirty-second demo recorded as a GIF in the README: a hole filled with
   survivors, a tie that asks, a signature tightened and the cursor moving, an
