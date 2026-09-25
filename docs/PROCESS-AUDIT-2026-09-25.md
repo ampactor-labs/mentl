@@ -49,13 +49,25 @@ the process has three structural defects:
    determinism leg never ran, the hooks live in a gitignored directory, and
    there is no CI. The board runs only when a person runs it.
 
-The research adds a fourth finding that is not about process: the headline
-positioning is prior art. Effect negation with complete inference and a
-safety proof shipped in Flix (ICFP 2023); the nearest rival to "agent code
-proven capability-safe, LLM proposes, compiler filters" is Odersky's group
-in Scala 3 (2026) with published benchmarks. What is distinctive is the
-conjunction in one self-hosted substrate, and it needs a demo and a benchmark
-to be credible (§4.3, §5.8).
+A fourth finding is about the north star itself, and it is the one Morgan's
+reply to the first draft of this audit surfaced. The vision written in
+April and May (ULTIMATE_MEDIUM.md, the cursor and oracle simulations, the
+day-trace) is the medium as the developer's collaborator: the compiler
+proposes the next move by proof-pruned search over the live graph, teaches
+what is true at any position, explores alternatives as forked cursors, and
+raises the person at the keyboard. Those documents were deleted as
+"archaeology" on 2026-07-22, and the read-path's §0 (rewritten 2026-06-18)
+now leads with a different thing: "humanity's verification substrate for
+the age of machine-generated code", value "inversely correlated with human
+authorship", a README section titled "For agents", and the sentence "a
+model behind this gate is unemployed", in the very vocabulary the vision
+forbade on user-facing surfaces. The receipts, the field comparisons, and
+the first draft of this audit all measured that wedge. Against the wedge the
+headline claims are prior art (Flix for `!E`, Odersky's group for
+capability-checked agent code). Against the vision the map of prior art is
+different and the unoccupied ground is larger (§4.4). The plan below is
+re-anchored on the vision: the flagship program is the one the day-trace
+already named, and the demo is the medium proposing.
 
 The redesign keeps the ambition and the kernel and changes the loop: a bounded,
 program-shaped definition of done (a second real program and one thirty-second
@@ -598,15 +610,19 @@ costs credibility with exactly the audience the README courts.
   LLM performance tracks corpus size; no study isolates syntax design as the
   cause.
 
-**The zero-corpus problem, stated plainly.** Every real user of Mentl will
-write it with a model, and no model has seen Mentl. Under "the LLM is only a
-proposer", a low-resource language produces proposals that are mostly
-filtered, which is sound and unproductive. Odersky's group chose Scala partly
-because models already write it. The README's "a model behind this gate is
-unemployed" is the framing the field's evidence argues against; the medium's
-job is to make proposals cheap to filter and to teach the proposer back
-(which `mentl mcp` already does structurally). The corpus is built by the
-second program, the tutorial and a SYNTAX card that fits in a context window.
+**The corpus question, stated in the vision's own terms.** Under the wedge,
+a zero-corpus language is a problem: users write with a model, no model has
+seen Mentl, and filtered proposals are sound but unproductive (Odersky's
+group chose Scala partly because models already write it). Under the vision
+the corpus is not the mechanism at all: the proposer is search over the typed
+graph, and a model is at most a peer handler in the Synth chain behind the
+same gate (DESIGN.md ch. 8, April 2026). That reframes the question into one
+that can be measured: at next-move scope inside a typed context, does the
+medium's proposer produce the right move more often, and faster, than a
+model would? Lean's `exact?` is the existence proof that proof search beats
+token prediction at that scope. §4.4 names the measurement; §6 puts it in
+M2. Users who bring a model still get one answer: it plugs into the chain and
+its candidates survive or do not.
 
 **Claim, closest prior art, verdict:**
 
@@ -631,6 +647,76 @@ then, "verification substrate" reads as an unevaluated reformulation of
 shipped work, and the README should say what is distinctive: the conjunction,
 in one self-hosted substrate, with a demo anyone can run.
 
+### 4.4 The vision, re-read from the early docs, and where the north star drifted
+
+**What the vision is, in its own words.** Lux's manifesto (2026-03-15,
+`docs/DESIGN.md` at the tenth commit): the problem is "the gap between what
+a programmer means and what they're forced to write"; the answer is a
+compiler that is "a collaborator — it shows you what it knows, teaches you
+what you don't, and helps you improve code you already wrote"; "a language
+should be a tool for thought, not a tax on expression. And if you build it
+right, the tool teaches you to think better." Sound is the founding
+workload and the portfolio's connective tissue. The Mentl documents of
+April and May (`ULTIMATE_MEDIUM.md`, 2026-05-02; `Hμ-cursor.md`;
+`MO-mentl-oracle-loop.md`; `MS2-multishot-full-territory.md`;
+`traces/a-day.md`) take that to its end: the medium is "the lossless
+substrate between human thought and machine action", "the developer's mind
+given substrate"; the cursor is attention, "the gradient's global argmax
+over the live graph", and "the cursor moves itself"; the oracle loop is
+checkpoint → apply → infer → verify → rollback, "hundreds of alternate
+realities per second" on multi-shot continuations, forked cursors on threads
+over one shared image; "the compiler IS the AI", a model is at most a peer
+handler in the Synth chain; "Mentl doesn't search. She proves."; and "the
+programs a developer writes in Mentl are the means; the developer they
+become is the end." The day-trace names the flagship program: Pulse, "a
+real-time audio pipeline with a browser UI, a cloud ingestion service, and
+a training pathway", one developer, one day, every surface tagged live or
+pending.
+
+Restated once, plainly, so it can be checked against the artifact: the
+medium holds the whole program as one typed graph; at any position it can
+say what is true and why; from any hole or weak annotation it can propose
+the next move by searching the space the constraints leave open, running
+every candidate through inference and proof on a forked trail, in parallel,
+and surfacing only survivors; when survivors tie it asks the one question
+that separates them; the same graph emits the code; and the effect of living
+in that loop is that the person becomes a better programmer. That is a
+programming environment in the Engelbart, Kay, Papert and Victor lineage
+with proof as its trust mechanism and one graph as its substrate. Nothing in
+this audit's process findings argues against it; the process findings are
+about how to get there.
+
+**Where the north star drifted.** On 2026-06-18 PLAN §0 was rewritten to
+open with "Mentl is humanity's verification substrate for the age of
+machine-generated code" and "Mentl's value is inversely correlated with
+human authorship — antifragile to AI progress". On 2026-07-22 the "hygiene
+wave" deleted ULTIMATE_MEDIUM.md and 104 other documents as archaeology. On
+2026-07-31 the README gained "For agents — the gate over MCP", "let the
+machine write. Let anything write", and "a model behind this gate is not
+forbidden; it is unemployed". ULTIMATE_MEDIUM.md §8.4 had listed "AI",
+"agent", "completion", "model" as forbidden vocabulary on user-facing
+surfaces, and CLAUDE.md's red-flag table still says so today. The clause
+"the developer is the telos" survived in §0, but the headline, the receipts
+(the absence benchmark, the MCP gate), the field comparisons, and this
+audit's first draft all followed the wedge. The mechanism is the same one
+§2 describes for laws: a vision statement kept in the same file as the state
+audit gets edited like state, one citable argument at a time, and the file
+that could have held it steady was deleted as history.
+
+**What this changes.** `DESIGN.md` is not condensed from PLAN §0; it is
+resurrected from ULTIMATE_MEDIUM.md §0–§4 and §8, DESIGN.md's manifesto
+chapters 0, 0.5, 5 and 8, SUBSTRATE.md §VI and §X, and PLAN §2–§4, and it is
+a file that changes only by decision record. The flagship program is Pulse,
+and the offline renderer in M1 is its first scene (the day-trace's 1000
+scene: "DSP completion + real-time proof"). The demo is the medium
+proposing on Pulse, not an agent benchmark. Positioning leads with the
+medium and the person; the sandbox gate is one of the four gates the
+manifesto derived from the effect algebra, mentioned once, and "For agents"
+leaves the README. The prior art that matters is the prior art for THIS
+vision, which the fourth research pass covers below.
+
+*(The prior-art map for this vision, from the fourth research pass, is added in the next commit.)*
+
 ---
 
 ## 5 · The redesign
@@ -640,17 +726,23 @@ in one self-hosted substrate, with a demo anyone can run.
 Keep "ultimate" as the direction, stated once in `DESIGN.md`. Make acceptance
 concrete and external, per milestone:
 
-- **A second program.** Real software written in Mentl that is not the
-  compiler, by Morgan, used by Morgan. The founding workload is right: an
-  offline audio renderer. A signal chain (oscillators, the echo, a lowpass, the
-  spectral distortion) rendered to a WAV file, with `!Alloc` proven on the
-  per-sample path and `Sample` refinements on the signal. It exercises `<~`,
-  the verbs, rows, refinements and ownership, and it produces something you
-  can hear. For the next quarter, every design question is answered by what
-  this program needs.
-- **The thirty-second demo.** A module banded green with `!Network` proven;
-  add one call; the band turns red and the compile refuses with the Reason.
-  Static HTML from `mentl audit` first; the resident IDE later if still wanted.
+- **A second program, and it already has a name.** Pulse, from the
+  day-trace: a real-time audio pipeline with a browser UI, a cloud ingestion
+  service and a training pathway. M1 builds its first scene as an offline
+  renderer: a signal chain (oscillators, the echo, a lowpass, the spectral
+  distortion) rendered to a WAV file, with `!Alloc` proven on the per-sample
+  path and `Sample` refinements on the signal. It exercises `<~`, the verbs,
+  rows, refinements and ownership, it produces something you can hear, and it
+  gives the gradient, the oracle and the cursor a program to be measured on.
+  For the next quarter, every design question is answered by what Pulse
+  needs.
+- **The thirty-second demo is the medium proposing.** Open Pulse at a hole;
+  the medium fills it with proven survivors and asks the one question when
+  they tie; tighten one signature and watch the cursor move to the place that
+  just became provable; break the `!Alloc` claim and watch the refusal name
+  the call. The severance map from PLAN §11 Arc G is the same demo one layer
+  up, and stays. Static renders first; the resident IDE when the substrate
+  is ready.
 - **The stranger test.** Someone who has never seen the repo installs it and
   runs the tutorial in ten minutes from the README alone.
 - **A dated first release, with exclusions.** After M2, write the definition
@@ -779,17 +871,22 @@ reader who was not there. `docs/proposals/CLAUDE.next.md` is the model.
   and rule violations, cost and time. It is the only way to know whether the
   prose was preventing anything, and it is a day of work.
 
-### 5.8 Positioning: claim the conjunction and the demo, cite the field
+### 5.8 Positioning: lead with the vision, cite the field honestly
 
-Per §4.3: name Flix as prior art for `!E` in the README (POSITIONING already
-does); correct the Tang & Lindley sentence in PLAN §4③ and the Capslock
-paragraph in PLAN §1; drop "the podium is empty"; state the distinctive claim
-as the conjunction in one self-hosted substrate, with the thirty-second demo
-and the absence benchmark as the receipts; name Odersky's capture-checked
-agents and LACUNA as the nearest work and plan the benchmark that compares
-against them. Retire "a model behind this gate is unemployed": the model is
-the proposer every user will actually use, and the medium's job is to make its
-proposals cheap to filter and to teach it back through the gate.
+Per §4.4, the door leads with the medium and the person: the compiler that
+proposes, proves, teaches, and explores alternatives in parallel. The
+AI-code trust argument becomes one consequence of the effect algebra (the
+manifesto's sandbox gate), stated once, and "For agents" leaves the README
+along with "let anything write" and "unemployed", which violate the
+vision's own vocabulary rule. Per §4.3, the field is cited straight: Flix is
+named as prior art for `!E` in the README as POSITIONING already does; the
+Tang & Lindley sentence in PLAN §4③ and the Capslock paragraph in PLAN §1
+are corrected; "the podium is empty" is dropped; Odersky's capture-checked
+agents and LACUNA are named as the nearest work on the wedge, and the
+distinctive claim on that axis is the conjunction in one self-hosted
+substrate. The receipts for the vision are the ones §4.4 names: the gradient
+benchmark on Pulse, the cursor-moves-itself demo, and the question that
+beats the guess, each with a number.
 
 ### 5.9 Triage the half-built arcs against the second program
 
@@ -823,37 +920,49 @@ drift; an unnamed gap is. Issues are names.
    (seven records, each under forty lines). From then on a decision is
    reopened by a new record, never by a session re-arguing it.
 
-### M1, two weeks: the second program (`docs/proposals/MILESTONE.next.md`)
+### M1, two weeks: Pulse's first scene (`docs/proposals/MILESTONE.next.md`)
 
-- `examples/render/`: an offline audio renderer in Mentl that writes a WAV.
+- `examples/pulse/render/`: an offline audio renderer in Mentl that writes a WAV.
   Oscillator → echo (`<~ delay`) → lowpass → the spectral distortion → mix,
   with `!Alloc` proven on the per-sample path and `Sample` refinements on the
-  signal. Acceptance: `mentl run examples/render/main.mn > out.wav` produces a
-  playable file; introducing an allocation on the audio path makes the
-  `!Alloc` claim refuse; the program is at least 500 lines of ordinary Mentl
-  written by Morgan.
+  signal. Acceptance: `mentl run examples/pulse/render/main.mn > out.wav`
+  produces a playable file; introducing an allocation on the audio path
+  makes the `!Alloc` claim refuse and the medium proposes the proven fix
+  (this is the day-trace's 1000 scene of May 2026, `distort` with
+  `<~ delay(1)` under `Sample(44100) + !Alloc`, almost verbatim); the
+  program is at least 500 lines of ordinary Mentl written by Morgan.
 - Every language pain met while writing it becomes an issue tagged `felt`.
   The milestone's compiler work is only what those issues need.
+- While writing it, every `??` Morgan leaves and every annotation the
+  gradient surfaces is logged: what the medium proposed, whether it was
+  right, how long it took, and what Morgan actually wrote. That log is the
+  first gradient benchmark, and it costs nothing to keep.
 - CI green on every push, and the CI summary prints the renderer's compile
   time and peak memory beside the compiler's own, so the flagship has its
   own number the way Mathlib has Radar.
 - The instruction-layer ablation from §5.7, run once, both models.
 - The stranger test, run once by someone who is not Morgan.
 
-### M2, two weeks: the demo
+### M2, two weeks: the medium proposing, on Pulse
 
-- The Severance Map as static HTML generated from `mentl audit`, three
-  colours (absent, present, not yet provable) with the third counted. The
-  thirty-second script recorded as a GIF in the README.
+- The gradient benchmark, published: over Pulse's holes and annotation
+  sites, the fraction the medium fills with a proven survivor and no model,
+  the fraction where survivors tie and the question it asks is the right
+  one, the fraction where it is silent or wrong, and the time to first
+  proposal. The M1 log is the seed; a fixed set of Pulse holes is the
+  fixture. This is the receipt the vision needs and the field does not have.
+- The thirty-second demo recorded as a GIF in the README: a hole filled with
+  survivors, a tie that asks, a signature tightened and the cursor moving, an
+  `!Alloc` refusal naming the call.
 - The effect-safety hole closed first: a reachable perform with no install
-  anywhere refuses (PLAN §7's own finding). A map that says "provably absent"
-  over that hole is the two-colour lie in a different costume.
-- The absence benchmark published as the receipts page; positioning tightened
-  per §4.3 and §5.8 so prior art is named and the claim is the conjunction.
-- The agent loop measured once: a model writes the renderer's next processor
-  through `mentl mcp` with diagnostics fed back; count rejections and retries
-  the way LACUNA reports them. This is the receipt the README currently
-  asserts without a number.
+  anywhere refuses (PLAN §7's own finding). A proposal marked proven over
+  that hole is not proven.
+- The severance map as static HTML from `mentl audit` (three colours, the
+  third counted), as the same demo one layer up.
+- Positioning rewritten per §5.8; the absence benchmark stays as one receipt
+  among the vision's. A model plugged into the Synth chain through
+  `mentl mcp`, with its rejection and retry counts, is an optional receipt
+  for readers who arrive from the wedge, not a milestone item.
 - `mentl diagnostics` generating SYNTAX's catalog tables.
 
 ### M3: decided at the end of M2, from the `felt` issues
@@ -900,7 +1009,10 @@ needs it.
 
 ## Appendix B · The rot list to fix in the reset
 
-See §1.6. Add: the README verb roster (10) versus `mentl help` (26); the
+See §1.6. Add: the README's "For agents" section and its "let anything
+write" and "unemployed" sentences, which violate the vocabulary rule in
+CLAUDE.md's own red-flag table and ULTIMATE_MEDIUM.md §8.4; the README verb
+roster (10) versus `mentl help` (26); the
 `src/main.mn` help comment (12 verbs, including `serve`, `repl`, `--with`);
 `AGENTS.md`'s toolchain sentence; SYNTAX's three diagnostic tables versus the
 66 kinds; the `Hβ.` names in code that name no catalog entry.

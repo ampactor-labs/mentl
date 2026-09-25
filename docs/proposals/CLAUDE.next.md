@@ -1,8 +1,12 @@
 # Mentl — CLAUDE.md
 
-Mentl is a self-hosting, effect-typed language compiled to WASM. The compiler
-(`src/**.mn` and `lib/**`) is written in Mentl and compiled by the pinned wheel
-`boot/mentl.wasm`. This is the only file loaded at every session start. Read
+Mentl is a medium between intent and execution: one typed graph that says
+what is true at any position and why, proposes the next move by proof-pruned
+search, explores alternatives as forked cursors, emits the code, and teaches
+the person at the keyboard. The compiler (`src/**.mn` and `lib/**`) is written
+in Mentl and compiled by the pinned wheel `boot/mentl.wasm`; the flagship
+program is Pulse (`examples/pulse/`). This is the only file loaded at every
+session start. Read
 `MILESTONE.md` (what we are building now) at the start of a session; read
 `DESIGN.md` (what Mentl is, the resolved decisions) before design or kernel
 work; the syntax card in `.claude/rules/` loads itself when you touch `.mn`,
@@ -68,6 +72,9 @@ reading the diff, nothing else.
 
 - The milestone's acceptance tests are the definition of done. "Ultimate" is
   the direction (`DESIGN.md`), not the bar for a commit.
+- User-facing text speaks in the medium's vocabulary: the medium proposes, the
+  cursor moves, the gradient unlocks, a refusal names the claim. Not "AI",
+  "agent", "completion" or "model".
 - One landing is the change, `verify`, `march`, and a five-line commit message
   saying what changed and what the board said. The march writes the
   PROVENANCE entry when it re-pins.

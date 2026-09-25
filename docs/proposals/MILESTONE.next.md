@@ -1,9 +1,12 @@
-# MILESTONE.md — M1: the second program (proposed)
+# MILESTONE.md — M1: Pulse, first scene (proposed)
 
 **Goal.** Real software written in Mentl that is not the compiler, by Morgan,
-used by Morgan: an offline audio renderer that writes a WAV file. Sound is the
-founding workload (`lib/dsp/README.md`); this is the first time it gets a
-program instead of a library.
+used by Morgan. The program is Pulse, the one the day-trace named in May: a
+real-time audio pipeline with a browser UI, a cloud ingestion service and a
+training pathway. M1 builds its first scene, the offline renderer that writes
+a WAV file. Sound is the founding workload (`lib/dsp/README.md`); this is the
+first time it gets a program instead of a library, and the first time the
+gradient, the oracle and the cursor have a program to be measured on.
 
 **Why this first.** Every design decision so far has been validated against
 one workload, the compiler's own source. The costs that only ordinary programs
@@ -14,7 +17,7 @@ ownership and the executable gate, and it produces something you can hear.
 
 ## Acceptance tests (the definition of done for M1)
 
-1. `mentl run examples/render/main.mn > out.wav` produces a playable 16-bit
+1. `mentl run examples/pulse/render/main.mn > out.wav` produces a playable 16-bit
    PCM WAV of at least ten seconds: oscillators → echo (`<~ delay`) → lowpass
    → the spectral distortion (`lib/dsp/spectral.mn`) → stereo mix.
 2. The per-sample path is declared `!Alloc`. Introducing one allocation on it
@@ -29,11 +32,15 @@ ownership and the executable gate, and it produces something you can hear.
 6. The stranger test: one person who has never seen the repo installs it and
    runs `lib/tutorial/00-hello.mn` in ten minutes from the README alone. The
    time and every stumble are recorded as issues tagged `felt`.
+7. The gradient log: every `??` left while writing the renderer and every
+   annotation the gradient surfaced is recorded (what the medium proposed,
+   whether it was right, how long it took, what was actually written). This
+   is the seed of M2's gradient benchmark.
 
 ## Items
 
-- `examples/render/` (the program). Compiler work in this milestone is only
-  what the program needs, each need an issue tagged `felt`.
+- `examples/pulse/render/` (the program). Compiler work in this milestone is
+  only what the program needs, each need an issue tagged `felt`.
 - WAV output through `lib/io.mn` (bytes to a file; no new host seam).
 - CI workflow landed; stamp machinery deleted once it is green twice.
 - The process reset from the audit's first 48 hours (docs, lints, archives).
@@ -46,8 +53,11 @@ issue with its design linked; none is worked unless a `felt` issue needs it.
 
 ## Next two, sketched
 
-- **M2 · the demo.** The Severance Map as static HTML from `mentl audit`
-  (three colours, the third counted); the thirty-second GIF in the README;
-  `mentl diagnostics` generating SYNTAX's catalog tables; positioning
-  tightened with prior art named.
+- **M2 · the medium proposing, on Pulse.** The gradient benchmark published
+  (holes filled with proven survivors and no model; ties that ask the right
+  question; time to first proposal); the thirty-second GIF in the README (a
+  hole filled, a tie that asks, a signature tightened and the cursor moving,
+  an `!Alloc` refusal naming the call); the effect-safety hole closed; the
+  severance map as static HTML; `mentl diagnostics` generating SYNTAX's
+  catalog tables; positioning rewritten to lead with the vision.
 - **M3 · decided from the `felt` issues at the end of M2.**
