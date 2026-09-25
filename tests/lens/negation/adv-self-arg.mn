@@ -1,0 +1,5 @@
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn run(f) with !E = f()
+fn a(n) = if n > 0 { op() } else { run(() => a(1)) }
+fn main() = (a(0)) ~> h

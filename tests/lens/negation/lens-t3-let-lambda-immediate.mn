@@ -1,0 +1,3 @@
+effect E { op() -> Int }
+fn run(f) = (() => f())()
+fn main() = run(() => op())

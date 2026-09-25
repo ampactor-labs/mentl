@@ -1,0 +1,6 @@
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h { op() => resume(7) }
+handler hf { fop() => resume(3) }
+fn both(f, g) with !E = f() + g() + fop()
+fn main() = ((both(() => 1, () => op())) ~> h) ~> hf

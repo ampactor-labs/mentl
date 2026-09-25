@@ -1,0 +1,5 @@
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn twice(f) = f() + f()
+fn app(g, f) with !E = g(f)
+fn main() = (app(twice, () => op())) ~> h

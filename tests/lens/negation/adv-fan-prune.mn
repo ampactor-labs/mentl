@@ -1,0 +1,4 @@
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn par(f, g) = (f()) >< (g())
+fn main() with !E = (par(() => op(), () => 1)) ~> h

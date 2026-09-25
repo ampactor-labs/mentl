@@ -1,0 +1,6 @@
+effect E { op() -> Int }
+fn run(f) = {
+  let g = () => f()
+  g()
+}
+fn main() = run(() => op())

@@ -1,0 +1,7 @@
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h { op() => resume(fop()) }
+handler hf { fop() => resume(3) }
+fn work() = op() + op()
+fn f() with !E = (work()) ~> h
+fn main() = (f()) ~> hf
