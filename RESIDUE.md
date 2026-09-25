@@ -2259,7 +2259,21 @@ boot by construction. Beside it, unverified: the headless screenshot shows
 the editor's code with its spaces collapsed (`fnmain()withMemory+Alloc=`) —
 a font artifact or a CSS defect, to check in a real browser.
 
-`Hβ.teach.one-kind-and-a-constant-facet` — OPEN, measured 2026-09-25 (the
+`Hβ.teach.one-kind-and-a-constant-facet` — HALF CLOSED 2026-09-25 (the
+pin after 3cc9fdec; LEDGER carries it). Teach now reads what the
+declaration says and what the judgment proved: it teaches only at an
+unannotated declaration (a declared fn is taught the T_OverDeclared
+tightening the judgment banked), the literal ladder became a count of
+concrete capabilities (Pure leads when it proves; CProvenAbsence counts
+zero), the unproven own/ref candidates left, and the address facet names
+the annotation and its capabilities instead of one constant sentence, at
+declarations only. Measured on src/effects.mn: 93 identical "add `!X`"
+lines became 11 tightenings, 1 Pure and 12 severances. STILL OPEN: the
+score (`score_one_position`) is `gates × proximity` over positions that
+include other modules, with two opposite tie-break orders; the annotation
+space is still one kind (no refinement, repr or return-type candidate);
+`T_Gradient` has no emitter; the voice's `gradient_next` is always None —
+PROGRAM D3, D4, D5. Measured 2026-09-25 (the
 gradient, read at the code). The only numeric gradient is
 `score_one_position` (src/cursor.mn) = `gates × proximity`, and `gates` was
 1 in 165 of 165 measured suggestions while `proximity` is five constants, so

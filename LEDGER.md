@@ -35,6 +35,36 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-25 · pin 871f915def45f8e3 (CLEAN m2 == m3) · TEACH SAYS WHAT IT
+  FOUND, AND ONLY WHAT IS TRUE. PROGRAM D1 + D2, one pin.
+  **D1** (src/mentl.mn): `gradient_next` teaches only at a FnStmt with no
+  authored row (`gradient_at_decl` holds the old body); a declared fn is
+  taught the T_OverDeclared tightening the judgment banked, read by name
+  from `tightenables()` (src/pipeline.mn `banked_tightening`, beside the
+  audit's own attribution). `pick_highest_leverage` is a fold over the
+  count of CONCRETE capabilities each proven annotation unlocks
+  (`CProvenAbsence` counts zero), replacing the literal ladder; the ladder's
+  helpers (`find_by_priority`, `find_annotation`, `annotation_eq`) and the
+  unproven own/ref candidates (`ownership_candidates`) are deleted.
+  **D2** (src/main.mn `render_at`): the Teach facet prints the suggestion
+  — "Teach: add `with Pure` to unlock Memoization …" — or the tightening
+  line at a declared fn, and nothing at a call site.
+  Measured on tests/frontier/mn-teach-authored.mn (born RED: all four fns
+  told to add `!Alloc`, a constant Teach line at the call): `step` and
+  `helper` are taught their proven tightenings, `add` and `main` `with
+  Pure`, no Teach line at the call. On src/effects.mn: 93 identical "add
+  `!X`" lines became 11 tightenings, one Pure and 12 severances. On the
+  gradient tutorial: `add` is taught `with Pure`, as its prose promised.
+  **THE RE-DERIVATIONS (§9.11):** the first board at this pin went RED on
+  two legs, both era expectations — mn-teach-prevalence's `main` declared a
+  closed `with Noise` that implied the very severances it ranked (main is
+  undeclared now and still ranks `!Common` by prevalence), and the MCP
+  problem-space field counted a declared-and-tightened fn twice (id 2 is two
+  gradient positions, id 3 still three). mn-teach-pure-control is taught
+  `with Pure`, strictly stronger than the `!Alloc` it banked.
+  Board: crown, proof-exactness, effect-identity green; frontier 394 pass /
+  0 red / 2 expected-red; m3 11.74s wall, 978MB peak RSS.
+
 - 2026-09-25 · pin 3cc9fdec2a7f9068 (CLEAN m2 == m3) · A TYPE ERROR REFUSES,
   AND A HOLE MAY PERFORM WHAT ITS CONTEXT ABSORBS. Three small landings of
   docs/PROGRAM-2026-09-25.md, one pin.

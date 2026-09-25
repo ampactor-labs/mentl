@@ -663,8 +663,10 @@ wasi_filesystem ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_regis
 // address_project law at the analysis verbs): the CLI derives an ast
 // then projects; the session projects the living ast it already holds.
 // Transport stays the caller's — analyze_fns prints, the session banks.
-fn teach_project(ast) =
-  map_fn_stmts(ast, (name, handle) => (name, teach_gradient(handle))) |> render_gradients
+fn teach_project(ast) = {
+  let tights = tightenables()
+  map_fn_stmts(ast, (name, handle) => (name, teach_gradient(handle))) |> render_gradients(tights)
+}
 
 // The banks the judgment already holds, read ONCE and attributed per
 // fn: pending proof obligations by decl EXTENT — this decl's span start
@@ -881,10 +883,10 @@ fn map_fn_stmts(ast, project) = ast |> map({
 // only use is the splice, so unpinned the fn generalizes and the floor
 // renders every fn's teach line under a pointer numeral instead of its
 // name.
-fn render_gradients(gradients: [(String, Option(AnnotationSuggestion))]) = if len(gradients) == 0 {
+fn render_gradients(tights, gradients: [(String, Option(AnnotationSuggestion))]) = if len(gradients) == 0 {
   "All functions are at maximum annotation density.\n"
 } else {
-  gradients |> map({ (name, result) => render_gradient_line(name, result) }) |> str_concat_all
+  gradients |> map({ (name, result) => render_gradient_line(name, result, tights) }) |> str_concat_all
 }
 
 // The name pin is an Intent Boundary at the line's ONE mint (spec_mangle's
@@ -892,7 +894,34 @@ fn render_gradients(gradients: [(String, Option(AnnotationSuggestion))]) = if le
 // element was still free, and the show floor read the word — every teach
 // line rendered under a pointer numeral. The named call anchors the
 // binder to String before the splice judges.
-fn render_gradient_line(name: String, result) = "{name}: {render_gradient_result(result)}\n"
+fn render_gradient_line(name: String, result, tights) = "{name}: {teach_result_text(name, result, tights)}\n"
+
+// One fn's teach: the gradient's proven annotation when it has one, else
+// the tightening the judgment already proved and banked for it (a
+// declaration with an authored row is taught only that), else the plain
+// statement that nothing is suggested.
+fn teach_result_text(name: String, result, tights) = match result {
+  Some(_) => render_gradient_result(result),
+  None => match banked_tightening(name, tights) {
+    Some(t) => match t {
+      (declared, used) => "→ tighten: declares {show_effrow(declared)}, the body proves {show_effrow(used)} (`mentl tighten` applies it)",
+    },
+    None => render_gradient_result(result),
+  },
+}
+
+// The judgment's banked T_OverDeclared for a declaration, by the name the
+// collector banked it under (the audit's attribution, `audit_walk`).
+fn banked_tightening(name: String, tights) = match find(tightening_named(name), tights) {
+  Some(t) => match t {
+    (declared, used, _, _, _) => Some((declared, used)),
+  },
+  None => None,
+}
+
+fn tightening_named(name: String, t) = match t {
+  (_, _, n, _, _) => n == name,
+}
 
 fn render_gradient_result(result) = match result {
   None => "(no next-step annotation suggested)",

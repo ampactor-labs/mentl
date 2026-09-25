@@ -156,7 +156,20 @@ handler mentl_default with annotations = [], performed = [] {
 // `to_annotation_suggestion` wraps at the boundary with kind / annotation
 // text / unlocked-capability labels / Reason — the public shape Cursor
 // reads off CursorView.teach.
-fn gradient_next(handle, performed) = {
+fn gradient_next(handle, performed) = match graph_node_body(handle) {
+  // The gradient teaches at a DECLARATION, where an annotation can be
+  // written, and only while it carries no authored row. A row the author
+  // wrote is either already tight or proven over-declared, and that proof —
+  // the judgment's T_OverDeclared, banked for `mentl tighten` — is the teach
+  // the render layer reads beside this (`banked_tightening`). Measured before
+  // (2026-09-25): `fn step(x) with !Alloc` and `fn add_pure(a, b) with Pure`
+  // were both told to add `!Alloc`, and the address surface fired at call
+  // sites (`fold(`, a fn used as a value) where no annotation can be written.
+  NStmt(FnStmt(_, _, _, effs, _)) => if len(effs) > 0 { None } else { gradient_at_decl(handle, performed) },
+  _ => None,
+}
+
+fn gradient_at_decl(handle, performed) = {
   let node = graph_chase(handle)
   match node {
     GNode(_, anchor_reason) => match node {
@@ -252,17 +265,18 @@ fn severance_negations(performed) = match performed {
   },
 }
 
-// The gradient's candidate enumeration — ONE home, two readers: the
-// cursor's single-step pick (gradient_next) and the oracle's full
-// ranked queue (candidates_at, oracle.mn). The severance vocabulary
-// IS the link's performed set: one ANotEffect candidate per performed
-// name (known names keep their rich capability labels through
-// capabilities_for_severance), each proven by the same
-// negation-narrowing row read. `!E` is informative exactly when E
-// happens in this program and is absent from THIS fn's row — the
-// proof loop filters the present ones.
+// The gradient's candidate enumeration, read by `gradient_at_decl`. The
+// severance vocabulary IS the link's performed set: one ANotEffect
+// candidate per performed name (known names keep their rich capability
+// labels through capabilities_for_severance), each proven by the same
+// negation-narrowing row read. `!E` is informative exactly when E happens
+// in this program and is absent from THIS fn's row — the proof loop
+// filters the present ones. Ownership markers are not candidates: the
+// apply step admits AOwn/ARef with no proof at all, so under a leverage
+// ranking they would win everywhere on no evidence, and an own/ref marker
+// is an Intent Boundary the author writes, never one the medium invents.
 fn gradient_candidates(ty, performed) = match ty {
-  TFun(params, _ret, _row) => [APure(None)] ++ severance_negations(performed) ++ ownership_candidates(params),
+  TFun(_params, _ret, _row) => [APure(None)] ++ severance_negations(performed),
   _ => [],
 }
 
@@ -549,81 +563,33 @@ fn verify_after_apply(handle) = match graph_chase(handle) {
   },
 }
 
-fn ownership_candidates(params) = list_to_flat(params) |> filter((p) => match param_resolved(p) {
-  Unmarked => true,
-  _ => false,
-}) |> ((inferred_params) => flatten(map(
-  (p) => {
-    let name = param_name(p)
-    [AOwn(name, None), ARef(name, None)]
-  },
-  inferred_params
-)))
-
-fn pick_highest_leverage(proven) = if len(proven) == 0 {
-  None
-} else {
-  // The ladder speaks the GENERAL vocabulary (annotation_eq's ANotEffect
-  // arm is name-sensitive, so each rung matches its proven namesake).
-  // The rich-label severances outrank Pure — the DSP marquee (!Alloc =
-  // real-time) leads; ranking by measured leverage instead of this
-  // literal ladder is the banked tie-ranking refinement
-  // (Hβ.teach.severance-vocabulary-from-link).
-  let best = find_by_priority(
-    proven,
-    [ANotEffect("Alloc", None), ANotEffect("IO", None), ANotEffect("Network", None), APure(None)]
-  )
-  match best {
-    Some(_) => best,
-    None => Some(list_index(proven, 0)),
-  }
+// The proven annotation that unlocks the MOST, counted in concrete
+// capabilities: `CProvenAbsence(E)` restates the annotation it came from
+// rather than unlocking anything a consumer reads, so it counts zero. Ties
+// keep the candidate order — prevalence order for the severances, the
+// link's most-performed name first — and Pure, the strongest single claim
+// (memoize, compile-time eval, parallelize), leads whenever it proves.
+// This replaced a literal ladder `[!Alloc, !IO, !Network, Pure]` that put
+// Pure last, so Pure won 0 of 165 measured suggestions although the
+// gradient tutorial promises it to a pure `add` (2026-09-25).
+fn pick_highest_leverage(proven) = match fold((None, -1), keep_more_leverage, proven) {
+  (best, _) => best,
 }
 
-fn find_by_priority(proven, priorities) = {
-  let matches = filter(
-    (target) => match find_annotation(proven, target) {
-      Some(_) => true,
-      None => false,
+fn keep_more_leverage(acc, candidate) = match acc {
+  (best, best_n) => match candidate {
+    (ann, _) => {
+      let n = concrete_leverage(ann)
+      if n > best_n { (Some(candidate), n) } else { (best, best_n) }
     },
-    priorities
-  )
-  if len(matches) == 0 { None } else { find_annotation(proven, head(matches)) }
+  },
 }
 
-fn find_annotation(proven, target) = {
-  let hits = filter({ (ann, _) => annotation_eq(ann, target) }, proven)
-  if len(hits) == 0 { None } else { Some(head(hits)) }
-}
+fn concrete_leverage(ann) = capabilities_for_annotation(ann) |> filter(is_concrete_capability) |> len
 
-// Span-insensitive: two APure(_) compare equal regardless of source
-// span. Priority comparison classifies by discriminator, not origin.
-fn annotation_eq(a, b) with Pure = match a {
-  APure(_) => match b {
-    APure(_) => true,
-    _ => false,
-  },
-  ARefined(_, _, _) => match b {
-    ARefined(_, _, _) => true,
-    _ => false,
-  },
-  AOwn(_, _) => match b {
-    AOwn(_, _) => true,
-    _ => false,
-  },
-  ARef(_, _) => match b {
-    ARef(_, _) => true,
-    _ => false,
-  },
-  AWrapHandler(_, _, _) => match b {
-    AWrapHandler(_, _, _) => true,
-    _ => false,
-  },
-  ANotEffect(an, _) => match b {
-    ANotEffect(bn, _) => // Name-sensitive where the others are shape-only: two general
-    // severances are the SAME candidate only for the same name.
-    field_name_eq(an, bn),
-    _ => false,
-  },
+fn is_concrete_capability(cap) with Pure = match cap {
+  CProvenAbsence(_) => false,
+  _ => true,
 }
 
 // Walk the reason DAG from a graph handle. Every unification, instantiation, and

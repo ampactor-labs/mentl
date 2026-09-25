@@ -1628,11 +1628,17 @@ for i in "${!compilers[@]}"; do
   else
     pass "teach-alloc-honest (no !Alloc proposal on an allocating body)"
   fi
+  # Re-derived by hand 2026-09-25 (§9.11) when the literal ladder
+  # [!Alloc, !IO, !Network, Pure] became the leverage count: `fn main() = 42`
+  # proves `with Pure`, which implies `!Alloc` and unlocks strictly more
+  # (memoize, compile-time eval, parallelize), and the ladder had ranked it
+  # LAST — Pure won 0 of 165 measured suggestions. The leg still guards what
+  # it was born to guard: a non-allocating body keeps a true proposal.
   cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-teach-pure-control.mn" | wt_run "$compiler" teach - > "$dir/teach-pure.out" 2>/dev/null
-  if grep '^main:' "$dir/teach-pure.out" | grep -q '!Alloc'; then
-    pass "teach-pure-control (a non-allocating body still unlocks !Alloc)"
+  if grep '^main:' "$dir/teach-pure.out" | grep -q 'with Pure'; then
+    pass "teach-pure-control (a pure body is taught its strongest proven claim, with Pure)"
   else
-    fail "teach-pure-control (the true proposal died with the fix)"
+    fail "teach-pure-control (the true proposal died; got: $(grep '^main:' "$dir/teach-pure.out" | head -1))"
   fi
 
   # The tie-ranking law (Hβ.teach.severance-vocabulary-from-link's last
@@ -1648,6 +1654,24 @@ for i in "${!compilers[@]}"; do
     pass "teach tie-ranking: prevalence beats enumeration order (!Common over !Rare)"
   else
     fail "teach tie-ranking (got: $(grep '^main:' "$dir/teach-prev.out" | head -1))"
+  fi
+  # TEACH READS THE DECLARATION AND THE JUDGMENT (PROGRAM D1/D2). Born RED
+  # 2026-09-25: every fn of this fixture was told to add `!Alloc` — `step`,
+  # which declares it; `add`, which proves `with Pure`; `helper`, whose
+  # over-declared row the judgment had already banked — and the address
+  # surface printed one constant Teach sentence at the call site.
+  ta_file="$ROOT/tests/frontier/mn-teach-authored.mn"
+  ta_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" teach "$ta_file" 2>/dev/null)
+  ta_decl=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ta_file:14" 2>/dev/null)
+  ta_call=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" "$ta_file:16:30" 2>/dev/null)
+  if ! printf '%s' "$ta_out" | grep '^step:' | grep -q 'add with !Alloc' \
+     && printf '%s' "$ta_out" | grep '^helper:' | grep -q 'tighten' \
+     && printf '%s' "$ta_out" | grep '^add:' | grep -q 'with Pure' \
+     && printf '%s' "$ta_decl" | grep -q '^Teach: add `with Pure`' \
+     && ! printf '%s' "$ta_call" | grep -q '^Teach:'; then
+    pass "teach reads the declaration and the judgment (no redundant !Alloc; Pure taught; tightening taught; no Teach at a call)"
+  else
+    fail "teach-authored (teach: $(printf '%s' "$ta_out" | grep -E '^(step|helper|add):' | tr '\n' ' ') decl: $(printf '%s' "$ta_decl" | grep Teach) call: $(printf '%s' "$ta_call" | grep Teach))"
   fi
 
   # Hβ.emit.under-application-suspension's standing crucible (2026-08-09):
@@ -2311,7 +2335,13 @@ for i in "${!compilers[@]}"; do
   prob_wait 3 || true
   exec 9>&-
   wait $prob_srv 2>/dev/null
-  if grep '"id":2' "$prob_dir/out.jsonl" | grep -q 'Field: 1 hole(s), 1 pending proof(s), 1 tightening(s), 3 gradient position(s)' \
+  # id 2 counts TWO gradient positions since 2026-09-25, re-derived by hand
+  # (§9.11): `noisy` declares `with IO` over a pure body, so its teach is the
+  # TIGHTENING the field already lists in its own tier; the gradient used to
+  # count it again as a position (offering it `!Alloc` beside its declared
+  # row), one declaration counted twice. After the edit removes the row,
+  # noisy is an undeclared fn the gradient teaches, and id 3's three stand.
+  if grep '"id":2' "$prob_dir/out.jsonl" | grep -q 'Field: 1 hole(s), 1 pending proof(s), 1 tightening(s), 2 gradient position(s)' \
      && grep '"id":2' "$prob_dir/out.jsonl" | grep -q 'Pending: 0 < self' \
      && grep '"id":2' "$prob_dir/out.jsonl" | grep -q 'Tighten: noisy declares IO — the body proves Pure' \
      && grep '"id":3' "$prob_dir/out.jsonl" | grep -q 'Field: 1 hole(s), 1 pending proof(s), 0 tightening(s), 3 gradient position(s)' \

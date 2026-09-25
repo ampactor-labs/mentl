@@ -14,7 +14,7 @@
 // names a hole the medium proposes into.
 //
 // Edit it:  mentl space   →   http://localhost:7378/ide/   (paste this in)
-// Read it:  mentl lib/tutorial/07-gradient.mn:31   ← the Teach facet names the next move
+// Read it:  mentl lib/tutorial/07-gradient.mn:23   ← the Teach facet names the next move
 import io
 
 // add carries no annotation. Inference still proves its row is Pure; the
@@ -26,10 +26,11 @@ fn add(a, b) = a + b
 // what changed is what the medium is now allowed to do with it.
 fn add_pure(a, b) with Pure = a + b
 
-// A bigger unlock lives here. step allocates nothing, so the gradient's argmax
-// at this signature is `with !Alloc`; take it and step becomes safe inside a
-// real-time callback. The annotation did not make it faster; it stated
-// a promise the medium could already prove, and unlocked the callers that need it.
+// A bigger unlock lives here. step allocates nothing, so `with !Alloc` makes it
+// safe inside a real-time callback. The annotation did not make it faster; it
+// stated a promise the medium could already prove, and unlocked the callers
+// that need it. Put the cursor on it and the medium says the body proves more
+// than you promised — Pure — and that tightening is the next move it offers.
 fn step(x) with !Alloc = x * 2 - 1
 
 fn main() = add_pure(step(20), 3) |> int_to_str |> print_string

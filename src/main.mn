@@ -1542,9 +1542,24 @@ fn render_at(view, h, pspan, target: String) = match view {
     } else {
       ()
     }
+    // The Teach facet says what it found. It printed one constant sentence
+    // for every position the predicate fired at — "an annotation here would
+    // unlock a capability", the suggestion itself discarded — so the facet
+    // named no annotation and no capability anywhere. A declaration with an
+    // authored row is taught the tightening the judgment proved instead.
     match teach {
-      None => (),
-      Some(_) => print("Teach: an annotation here would unlock a capability — `mentl teach` names it\n"),
+      Some(suggestion) => match suggestion {
+        AnnotationSuggestion(_, ann, unlocks, _) => print("Teach: add `{ann}` to unlock {join_unlock_labels(unlocks)}\n"),
+      },
+      None => match graph_node_body(h) {
+        NStmt(FnStmt(name, _, _, _, _)) => match banked_tightening(name, tightenables()) {
+          Some(t) => match t {
+            (declared, used) => print(tighten_line(name, declared, used)),
+          },
+          None => (),
+        },
+        _ => (),
+      },
     }
     print("Why: ")
     render_why_hops(why_expand(why, 0), target, 0)
