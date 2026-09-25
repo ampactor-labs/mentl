@@ -1,0 +1,13 @@
+// expect: 3
+// A TOP-LEVEL DESTRUCTURING LET BINDS NOTHING THE PROGRAM CAN REACH.
+// `let (a, b) = (1, 2)` at module scope checks clean and the emitted module
+// does not assemble: `unknown global $a` (measured 2026-09-25). With the
+// declaration below its use it refuses with E_MissingVariable instead. The
+// pattern's binders are in no index a module-scope reference resolves
+// through.
+//
+// Retires when a module's pattern binders are declarations of its scope
+// like any other (Hβ.resolve.reference-is-an-edge).
+let (a, b) = (1, 2)
+
+fn main() = a + b

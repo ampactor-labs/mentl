@@ -1,0 +1,24 @@
+// expect: 3
+// RENAMING A PARAMETER CHANGES THE VERDICT. `twice(f, x)` names its first
+// parameter `f`, which is also a top-level function. The free-name walk
+// reads a function's body with its parameters unbound, so `f` inside
+// `twice` becomes a call edge to the top-level `f`, the two land in one
+// binding group, and `twice` is judged monomorphically: six E_TypeMismatch
+// errors (measured 2026-09-25). The same program with the parameter named
+// `g` checks clean and answers 3.
+//
+// Retires when the call graph is read from resolved references, so a
+// parameter is never an edge to a namesake (Hβ.resolve.reference-is-an-edge).
+fn f(x) = {
+  let a = twice(inc, x)
+  let b = twice(flip, true)
+  if b { a } else { 0 }
+}
+
+fn twice(f, x) = f(f(x))
+
+fn inc(n) = n + 1
+
+fn flip(b) = !b
+
+fn main() = f(1)

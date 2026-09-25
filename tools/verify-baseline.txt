@@ -956,6 +956,39 @@ frontier_expected_red: eq-in-arm-pointer
 # on the real-k path, which floors a perform off the k1 spine.
 # Hβ.lower.resume-through-a-lambda-is-taken-as-the-arms-answer.
 frontier_expected_red: resume-through-caller
+# 2026-09-25: A REFERENCE RESOLVED BY NAME IN THE WRONG SCOPE. Two refuters of
+# the resolution-at-birth design each found programs the medium reads by NAME
+# where the language says a reference means a BINDER, every one re-run by hand
+# the same day. Wrong answers with a clean check: a parameter default and a
+# handler's state init or config default lowered in the caller's frame (243,
+# 101 and 51 where 21, 6 and 2 are written), a block's lets walked backwards
+# (a trap where 56 is written), a nested fn's later sibling read as its
+# top-level namesake (110 for 16), a feedback prior shadowing the local that
+# shadows it (1 for 101), a parameter spelled `hash` hijacked by the
+# structural leaf (41 for 42); and verdicts that change with source order or
+# with the spelling of a parameter, including a literal in parameter position
+# read as `_`. All retire with Hβ.resolve.reference-is-an-edge.
+frontier_expected_red: resolve-default-callee-scope
+frontier_expected_red: resolve-handler-init-scope
+frontier_expected_red: resolve-config-default-scope
+frontier_expected_red: resolve-block-let-order
+frontier_expected_red: resolve-nested-fn-letrec
+frontier_expected_red: resolve-feedback-prior-shadow
+frontier_expected_red: resolve-param-named-hash
+frontier_expected_red: resolve-source-order-verdict
+frontier_expected_red: resolve-default-edge
+frontier_expected_red: resolve-literal-param
+# The same arc's correct programs the medium refuses to build: mutually
+# recursive nested fns (E_MissingVariable), a local named `abort` beside a
+# refutable `let` (the desugar's name captured), a parameter spelled like a
+# top-level fn (six E_TypeMismatch through a phantom call edge), a lambda
+# closing over a feedback prior (`unknown local` at assemble), and a
+# top-level destructuring `let` (`unknown global` at assemble).
+frontier_expected_refused: resolve-nested-fn-mutual
+frontier_expected_refused: resolve-desugar-hygiene
+frontier_expected_refused: resolve-alpha-renaming
+frontier_expected_refused: resolve-feedback-capture
+frontier_expected_refused: resolve-toplevel-destructure
 # 2026-09-23: FIFTY CROWN CRUCIBLES THE PINNED BOOT FAILED, written by four
 # adversarial refuters of the rows design and each seen RED through the boot
 # the hour it was written. 2026-09-24: FORTY-TWO hold through the rows

@@ -1,0 +1,14 @@
+// expect: refuse E_TypeMismatch
+// A DEFAULT'S CALL IS NOT A CALL EDGE. `y = helper(1)` makes `y` a String,
+// so `x + y` is a type error. The program checks clean (measured
+// 2026-09-25): the free-name walk never enters parameter defaults, so `f`
+// has no edge to `helper` and is judged before `helper` is. Declaring
+// `helper` first refuses it, which is the right verdict in both orders.
+//
+// Retires when the call graph is read from resolved references, the
+// default's included (Hβ.resolve.reference-is-an-edge).
+fn f(x, y = helper(1)) = x + y
+
+fn helper(n) = "s"
+
+fn main() = f(1)

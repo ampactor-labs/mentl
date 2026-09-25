@@ -1,0 +1,18 @@
+// expect: 21
+// A PARAMETER DEFAULT READS THE CALLER'S VARIABLE. `b = a + 1` names the
+// callee's own `a`, so `f(10)` is 10 + 11. The program answers 243: the
+// default's node is spliced into the caller's argument list and lowered in
+// the caller's frame, where `a` is main's local 1000, and the sum wraps at
+// the exit byte (measured 2026-09-25; `mentl check` is clean). Without the
+// caller's `a` the same program traps instead.
+//
+// SYNTAX §«Default parameter values» says the default is evaluated in the
+// callee's parameter scope. Retires when every reference carries its binder
+// and lowering reads that edge, so the default's `a` can only be the
+// callee's parameter (Hβ.resolve.reference-is-an-edge).
+fn f(a, b = a + 1) = a + b
+
+fn main() = {
+  let a = 1000
+  f(10)
+}

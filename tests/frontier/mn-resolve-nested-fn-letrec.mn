@@ -1,0 +1,20 @@
+// expect: 16
+// A NESTED FUNCTION'S LATER SIBLING RESOLVES TO A TOP-LEVEL NAMESAKE.
+// SYNTAX §«Nested function declarations»: nested fns share a local letrec
+// scope, so `first`'s call to `later` is the sibling below it: 5 + 1 + 10.
+// The program answers 110: nested fns are bound in sequence, so at `first`
+// the name `later` is still the top-level fn that returns 100 (measured
+// 2026-09-25; `mentl check` is clean). Without the top-level namesake the
+// same program refuses with E_MissingVariable.
+//
+// Retires when a block's nested fns are one letrec frame whose references
+// are edges drawn at the frame's close (Hβ.resolve.reference-is-an-edge).
+fn later(n) = 100
+
+fn outer(k) = {
+  fn first(n) = later(n) + k
+  fn later(n) = n + 1
+  first(5)
+}
+
+fn main() = outer(10)

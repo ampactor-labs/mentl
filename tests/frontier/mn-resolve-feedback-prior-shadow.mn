@@ -1,0 +1,17 @@
+// expect: 101
+// A FEEDBACK PRIOR SHADOWS THE LOCAL THAT SHADOWS IT. Inside the recurrence
+// `let prev = 100` rebinds `prev`, so `prev + x` is 101. The program
+// answers 1: lowering keeps the priors on one global stack keyed by name and
+// consults it before the frame's own locals, so `prev` reads the prior,
+// which is 0 on the first tick (measured 2026-09-25; `mentl check` is
+// clean).
+//
+// Retires when lowering resolves a reference through its binder edge
+// rather than by name (Hβ.resolve.reference-is-an-edge).
+fn step(x) =
+  ((prev) => {
+    let prev = 100
+    prev + x
+  }) <~ delay(1)
+
+fn main() = step(1)

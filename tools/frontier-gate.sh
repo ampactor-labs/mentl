@@ -205,6 +205,38 @@ expected_red_has() {  # <key>
     "$ROOT/tools/verify-baseline.txt" 2>/dev/null
 }
 
+# The other standing failure, kept apart ON PURPOSE: a CORRECT program the
+# medium refuses to compile or cannot assemble. `frontier_expected_red` covers
+# a program's answer and must never license a compile failure — a regression
+# would hide behind it. This declaration covers exactly the compile/assemble
+# legs of a fixture whose defect IS the refusal (an over-refusal, or an emit
+# that names what it never declared), and it is judged in both directions:
+# XRED while the leg fails, a STALE red the day it compiles.
+expected_refused_has() {  # <key>
+  grep -qE "^frontier_expected_refused:[[:space:]]*$1([[:space:]]|\$)" \
+    "$ROOT/tools/verify-baseline.txt" 2>/dev/null
+}
+
+# judge_build <key> <ok:0|1> <message…> — judge for the compile/assemble legs.
+# An undeclared key keeps the plain pass/fail those legs always had.
+judge_build() {
+  local key="$1" ok="$2"; shift 2
+  if expected_refused_has "$key"; then
+    if [ "$ok" = 1 ]; then
+      echo "  RED  $key: STALE EXPECTED-REFUSED — this leg now BUILDS; delete"
+      echo "       'frontier_expected_refused: $key' from tools/verify-baseline.txt"
+      total_fail=$((total_fail + 1))
+    else
+      echo "  XRED $key (declared standing refusal) — $*"
+      total_xred=$((total_xred + 1))
+    fi
+  elif [ "$ok" = 1 ]; then
+    pass "$*"
+  else
+    fail "$*"
+  fi
+}
+
 # judge <key> <ok:0|1> <message…>
 #   ok=1, undeclared -> PASS      ok=0, undeclared -> RED
 #   ok=0, declared   -> XRED      ok=1, declared   -> RED (the contract is STALE:
@@ -324,20 +356,31 @@ run_program() {
     cp "$normalized" "$unexpected"
   fi
   errors=$(wc -l < "$unexpected")
-  if [ "$rc" -eq 0 ] && [ "$errors" -eq 0 ]; then
-    pass "$label compile (diagnostics=$diags$shadow)"
-  elif [ "$rc" -eq 0 ]; then
-    fail "$label compile (new-errors-or-debt=$errors diagnostics=$diags; see $unexpected)"
+  if expected_refused_has "$label"; then
+    # A declared standing refusal: compile and assemble are ONE verdict, the
+    # build, judged once in both directions.
+    if [ "$rc" -eq 0 ] && [ "$errors" -eq 0 ] && wt_asm "$wat" "$wasm" 2> "$aerr"; then
+      judge_build "$label" 1 "$label build"
+    else
+      judge_build "$label" 0 "$label build (compile exit=$rc new-errors-or-debt=$errors; see $cerr, $aerr)"
+      return
+    fi
   else
-    fail "$label compile (exit=$rc diagnostics=$diags; see $cerr)"
-    return
-  fi
+    if [ "$rc" -eq 0 ] && [ "$errors" -eq 0 ]; then
+      pass "$label compile (diagnostics=$diags$shadow)"
+    elif [ "$rc" -eq 0 ]; then
+      fail "$label compile (new-errors-or-debt=$errors diagnostics=$diags; see $unexpected)"
+    else
+      fail "$label compile (exit=$rc diagnostics=$diags; see $cerr)"
+      return
+    fi
 
-  if wt_asm "$wat" "$wasm" 2> "$aerr"; then
-    pass "$label assemble"
-  else
-    fail "$label assemble ($(head -1 "$aerr"))"
-    return
+    if wt_asm "$wat" "$wasm" 2> "$aerr"; then
+      pass "$label assemble"
+    else
+      fail "$label assemble ($(head -1 "$aerr"))"
+      return
+    fi
   fi
 
   wt_run "${run_flags[@]}" "$wasm" > "$rout" 2> "$rerr"
@@ -3394,6 +3437,36 @@ for i in "${!compilers[@]}"; do
   # the real-k path carries a perform at any position, so the lambda can be
   # walked as non-tail (Hβ.lower.resume-through-a-lambda-is-taken-as-the-arms-answer).
   run_program "$compiler" resume-through-caller "$ROOT/tests/frontier/mn-resume-through-caller.mn" 40 yes "$dir"
+  # ─── A REFERENCE IS AN EDGE (Hβ.resolve.reference-is-an-edge) ─────────
+  # Two refuters of the resolution-at-birth design found these on
+  # 2026-09-25, each a program the medium resolves by NAME in the wrong
+  # scope: a default or a handler init read in the caller's frame, a block
+  # walked backwards, a letrec read in sequence, a desugar captured by a
+  # user's local, a prior and a structural leaf recognised by spelling, a
+  # call graph drawn through a parameter's namesake. Every one is declared
+  # RED by name and retires with the arc; the two guards pass today and
+  # hold the shapes the arc must not break (continuation captures decided
+  # by inference, and the binder shapes a reference edge must carry).
+  run_program "$compiler" resolve-default-callee-scope "$ROOT/tests/frontier/mn-resolve-default-callee-scope.mn" 21 yes "$dir"
+  run_program "$compiler" resolve-handler-init-scope "$ROOT/tests/frontier/mn-resolve-handler-init-scope.mn" 6 yes "$dir"
+  run_program "$compiler" resolve-config-default-scope "$ROOT/tests/frontier/mn-resolve-config-default-scope.mn" 2 yes "$dir"
+  run_program "$compiler" resolve-block-let-order "$ROOT/tests/frontier/mn-resolve-block-let-order.mn" 56 yes "$dir"
+  run_program "$compiler" resolve-nested-fn-letrec "$ROOT/tests/frontier/mn-resolve-nested-fn-letrec.mn" 16 yes "$dir"
+  run_program "$compiler" resolve-nested-fn-mutual "$ROOT/tests/frontier/mn-resolve-nested-fn-mutual.mn" 1 yes "$dir"
+  run_program "$compiler" resolve-desugar-hygiene "$ROOT/tests/frontier/mn-resolve-desugar-hygiene.mn" 10 yes "$dir"
+  run_program "$compiler" resolve-feedback-prior-shadow "$ROOT/tests/frontier/mn-resolve-feedback-prior-shadow.mn" 101 yes "$dir"
+  run_program "$compiler" resolve-feedback-capture "$ROOT/tests/frontier/mn-resolve-feedback-capture.mn" 30 yes "$dir"
+  run_program "$compiler" resolve-param-named-hash "$ROOT/tests/frontier/mn-resolve-param-named-hash.mn" 42 yes "$dir"
+  run_program "$compiler" resolve-alpha-renaming "$ROOT/tests/frontier/mn-resolve-alpha-renaming.mn" 3 yes "$dir"
+  run_program "$compiler" resolve-toplevel-destructure "$ROOT/tests/frontier/mn-resolve-toplevel-destructure.mn" 3 yes "$dir"
+  run_refusal "$compiler" resolve-source-order-verdict \
+    "$ROOT/tests/frontier/mn-resolve-source-order-verdict.mn" E_TypeMismatch "$dir"
+  run_refusal "$compiler" resolve-default-edge \
+    "$ROOT/tests/frontier/mn-resolve-default-edge.mn" E_TypeMismatch "$dir"
+  run_refusal "$compiler" resolve-literal-param \
+    "$ROOT/tests/frontier/mn-resolve-literal-param.mn" E_PatternInexhaustive "$dir"
+  run_program "$compiler" resolve-k-captures "$ROOT/tests/frontier/mn-resolve-k-captures.mn" 71 yes "$dir"
+  run_program "$compiler" resolve-binder-shapes "$ROOT/tests/frontier/mn-resolve-binder-shapes.mn" 20 yes "$dir"
   # A record read through lambdas over a list of records: the filter's and
   # the map's element rows are two OPEN rows. They meet at ONE fresh row var
   # now (Rémy), each continuing into it, so `.body` reads its own slot —

@@ -1,0 +1,14 @@
+// expect: 42
+// A PARAMETER NAMED LIKE A STRUCTURAL LEAF IS HIJACKED. `hash` here is
+// `apply`'s own parameter, bound to `inc`, so `hash(x)` is 42. The program
+// answers 41: lowering intercepts every call spelled `hash` and emits the
+// structural hash leaf instead of calling the parameter (measured
+// 2026-09-25; `mentl check` is clean). Renaming the parameter answers 42.
+//
+// Retires when lowering recognizes the leaf by the declaration a call
+// resolves to, never by its spelling (Hβ.resolve.reference-is-an-edge).
+fn apply(hash, x) = hash(x)
+
+fn inc(n) = n + 1
+
+fn main() = apply(inc, 41)

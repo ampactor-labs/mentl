@@ -1,0 +1,23 @@
+// expect: 20
+// BINDER SHAPES THE REFERENCE EDGE MUST CARRY. An alternation binds one name
+// in each branch (`A(x) | B(x)`), a lambda may name its parameters `own`,
+// `ref` and `handler` (contextual keywords), and a nested fn captures itself
+// and its enclosing parameter. Each runs today; the leg holds them while
+// every binder becomes a node (Hβ.resolve.reference-is-an-edge).
+type E = A(Int) | B(Int) | C
+
+fn pick(e) = match e {
+  A(x) | B(x) => x,
+  C => 0,
+}
+
+fn outer(k) = {
+  fn count(n) = if n <= 0 { k } else { count(n - 1) + 1 }
+  count(3)
+}
+
+fn main() = {
+  let f = (own) => own + 1
+  let g = (handler, ref) => handler + ref
+  pick(B(7)) + pick(A(3)) + f(2) + g(3, 4) - 13 + outer(10)
+}

@@ -13404,6 +13404,9 @@ the decl node's registration, never at note time. `reaches_decl` (a DFS
 over decl handles through the decl index, with a `wmap` visited set),
 `ur_walk` and the comment-ref scope read it. `comment_ref_owners` becomes a
 `wmap` column keyed by referent, written where the pair is noted.
+▶ (3) SUPERSEDED 2026-09-25 by `Hβ.resolve.reference-is-an-edge`, whose
+refuters broke the form below in six places; the paragraph stays as the
+record of the correction before it.
 ▶ (3) CORRECTED 2026-09-24, BEFORE ANY BUILD, because it moved the problem.
 "Written at the decl node's registration" still WALKS THE BODY — it runs
 `collect_free_vars` once at parse where it ran once at the judgment, which
@@ -13502,6 +13505,81 @@ judgment); `refs of NAME` byte-identical (F4.3 — shadowing); `imports`
 unchanged (F4.4 — the span-overlap defect); `candidate_rank` (F4.5 — its
 own peer); `fn_body_by_name` first-vs-latest (F4.6); the range starting at
 the module node (F4.7); `handle_at_span` as a log reader (F4.8).
+
+`Hβ.resolve.reference-is-an-edge` — OPEN, designed 2026-09-25 in three
+rounds, the third under refutation. It supersedes (3) of the entry above and
+absorbs (2)'s refs-by-declaration half; it is the ENV's first dissolution
+(§7's gap list) and the floor under the SCHEMES face.
+▶ THE FACT. A use of a name means ONE binder. Four machines re-derive which,
+by name: the free-name walk (`collect_free_vars`, 43 call sites: the
+callee-first DAG, five of lower's capture sites, the replay gate, the
+recursion teach, `ur_walk`, `reaches_decl`), infer's env (`infer_var_ref` →
+`env_lookup(name)`), lower's LowerScope (`ls_resolve(name)`, a feedback-prior
+stack consulted before the frame, structural leaves intercepted by
+spelling), and the name indexes (`name_idx`, `ur_index`, `fn_body_scan`,
+`refs_col` by NAME).
+▶ WHAT RESOLVING BY NAME IN THE WRONG PLACE COSTS, measured 2026-09-25 by two
+refuters of the first design and re-run by hand: a parameter default and a
+handler's state init or config default are lowered in the CALLER's frame and
+read its locals (243, 101 and 51 where 21, 6 and 2 are written; `mentl
+check` clean); the walk threads a block from its last statement, hiding a
+real capture (a trap where 56 is written) and dropping a call edge so a
+verdict changes with declaration order; it reads a fn body with its
+parameters unbound, so a parameter spelled like a top-level fn is a phantom
+call edge and renaming it changes the verdict (six E_TypeMismatch vs clean);
+it never enters defaults; nested fns are sequential where SYNTAX says letrec,
+so an earlier sibling reads a top-level namesake (110 for 16) and mutual
+recursion refuses; a refutable `let`'s desugared `abort` is captured by a
+user's local named `abort`; a feedback prior shadows the local that shadows
+it (1 for 101) and cannot be captured by a lambda (`unknown local` at
+assemble); a parameter spelled `hash` is hijacked by the structural leaf (41
+for 42); a literal in lambda parameter position is read as `_`; a top-level
+destructuring `let` binds nothing reachable (`unknown global`). Seventeen
+fixtures, `tests/frontier/mn-resolve-*.mn`: fifteen declared by name in
+`tools/verify-baseline.txt` (`frontier_expected_red` for a wrong answer,
+`frontier_expected_refused` — born for them — for a correct program the
+medium will not build), two guards passing (continuation captures decided
+by inference; the binder shapes an edge must carry).
+▶ WHAT THE FIRST DESIGN GOT WRONG, each a kill by the artifact:
+captures and frees cannot be WRITTEN at the reference's birth — a
+continuation's boundary is decided by inference (`op_resume_discipline`,
+`can_yield`), a `><` first branch is parsed before the `><` is seen, and
+SYNTAX's `.field` closes a function after its argument is parsed; binders
+had no nodes (annotated params carry no handle, infer mints its own
+`FnParam` per param, arm args are Strings, rests and as-binders are
+Strings, an alternation binds one name twice); visibility is not the mint
+(`let x = x + 1` reads the outer `x`; state names are bound after every
+init); `resume` is a capture source the frames dropped; `Outer` resolved by
+name through a decl index is the re-derivation PLAN §2 forbids; and a
+column infer and lower do not read is a fifth disagreeing copy.
+▶ THE FORM, five landings, each a march (scratchpad design v3 is the brief;
+the refuters' second round runs against it before any byte of γ changes):
+α — every node records its PARENT and its EXTENT `[lo, hi]` at registration,
+from a children enumeration made total (this is
+`Hβ.graph.parent-and-module-columns-are-read` parts 0–1 plus the extent),
+so subtree membership is O(1). β — a name is a HANDLE (the lexer's intern
+handle, today discarded at the token, rides `TIdent`) and every binder is a
+NODE: a parameter is a pattern in parameter position with its annotation on
+the pattern, arm args and state names and rests and as-binders are pattern
+nodes, an arm mints its continuation's binder; the lambda cover grammar
+deletes into a bounded lookahead. γ — each reference carries
+`Resolution = RLocal(binder) | RDecl(decl) | RUnbound`, drawn by a scope the
+parser keeps as handler state (a name-handle-indexed table with a trail,
+O(1) per reference), binders entering at VISIBILITY, a block's nested fns
+letrec via a pre-scan that mints their binders first, module scope pended
+once and resolved at the module's and the link's close, a desugar's
+reference an edge to the declaration it means; captures and frees are ONE
+projection over the extent (`refs_crossing(S)`, `decl_refs(S)`), so a
+boundary decided late is a different S; the walk and its 43 sites delete;
+`infer_var_ref` follows the edge in the same landing. δ — LowerScope keyed
+by binder; a default or an init lowers at its call or install site under a
+substitution from the callee's parameter binders to the caller's argument
+temporaries; the prior stack and the spelling interception delete. ε — scope
+is graph content: the proposer's vocabulary at a hole, proximity, and
+import scoping read the scope chain.
+▶ RETIRES when the free-name walk, the env's by-name local lookup, lower's
+by-name resolution and the four name indexes are gone and the seventeen
+fixtures hold.
 
 `Hβ.driver.warm-start-reads-what-it-restored` — OPEN, designed 2026-09-22
 (Landing 7 of the re-derivation queue, family F: TIME). A composition

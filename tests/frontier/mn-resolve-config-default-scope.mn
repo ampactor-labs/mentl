@@ -1,0 +1,21 @@
+// expect: 2
+// A HANDLER CONFIG DEFAULT READS THE INSTALLER'S VARIABLE. `b = a` names
+// the handler's own first config parameter, so `~> pair(1)` makes `b` 1 and
+// the arm answers 2. The program answers 51: the default is lowered at the
+// install site, where `a` is main's local 50 (measured 2026-09-25, clean
+// check).
+//
+// Retires with the same edge as a function's default
+// (Hβ.resolve.reference-is-an-edge).
+effect C {
+  get() -> Int
+}
+
+handler pair(a, b = a) {
+  get() => resume(a + b),
+}
+
+fn main() = {
+  let a = 50
+  (get()) ~> pair(1)
+}

@@ -1,0 +1,31 @@
+// expect: 71
+// THE CONTINUATION'S CAPTURES ARE DECIDED BY INFERENCE, NOT BY SOURCE
+// SCOPING. A MultiShot perform reifies the rest of its frame as a
+// continuation record, and that record carries whatever the remainder reads:
+// a parameter (`f`'s `x`), a block let under an install (`g`'s `a`), and the
+// arm's own continuation inside `><` branch thunks (`h`). Each passes today
+// (23 + 25 + 23); the leg holds them while references become edges, since
+// no parse-time frame can know where a continuation's boundary falls
+// (Hβ.resolve.reference-is-an-edge).
+effect Choice {
+  pick() -> Int
+}
+
+handler both {
+  pick() => resume(1) + resume(2),
+}
+
+handler both_branches {
+  pick() => match (resume(1)) >< (resume(2)) {
+    (p, q) => p + q,
+  },
+}
+
+fn f(x) with Choice = pick() + x
+
+fn g(y) = {
+  let a = y + 1
+  (pick() + a) ~> both
+}
+
+fn main() = (f(10) ~> both) + g(10) + (f(10) ~> both_branches)

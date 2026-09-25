@@ -1,0 +1,15 @@
+// expect: refuse E_PatternInexhaustive
+// A LITERAL IN PARAMETER POSITION IS SILENTLY A WILDCARD. `(0) => 1` is an
+// arm that takes only 0 (SYNTAX §«Function literals»: a pattern in
+// parameter position is an arm on the argument), so it is inexhaustive and
+// must refuse. Today the lambda's parameters are parsed as expressions and
+// reinterpreted, a literal becomes `_`, and `f(5)` answers 1 (measured
+// 2026-09-25, clean check).
+//
+// Retires when parameters parse as patterns from the start, which is the
+// same change that gives every parameter a binder node
+// (Hβ.resolve.reference-is-an-edge).
+fn main() = {
+  let f = (0) => 1
+  f(5)
+}

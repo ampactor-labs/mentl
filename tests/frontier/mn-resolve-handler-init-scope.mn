@@ -1,0 +1,22 @@
+// expect: 6
+// A HANDLER'S STATE INIT READS THE INSTALLER'S VARIABLE. `acc = n + 1` names
+// the handler's own config parameter, so `~> h(5)` starts `acc` at 6. The
+// program answers 101: the init is lowered at the install site, where `n`
+// is main's local 100 (measured 2026-09-25; `mentl check` is clean).
+//
+// Retires when the init's `n` is an edge to the config parameter's binder
+// and lowering reads the edge (Hβ.resolve.reference-is-an-edge).
+effect Get {
+  get() -> Int
+}
+
+handler h(n) with acc = n + 1 {
+  get() => resume(acc),
+}
+
+fn body() with Get = get()
+
+fn main() = {
+  let n = 100
+  body() ~> h(5)
+}

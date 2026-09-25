@@ -1,0 +1,22 @@
+// expect: refuse E_TypeMismatch
+// THE VERDICT DEPENDS ON DECLARATION ORDER. `let a = helper(1)` calls the
+// top-level `helper`, which returns a String, because the block's own
+// `helper` is bound one line later; `a + helper` then adds a String to an
+// Int. The program checks clean and runs (measured 2026-09-25). Declaring
+// `helper` above `g` refuses it with E_TypeMismatch, which is the right
+// verdict in both orders.
+//
+// Why: the free-name walk threads a block backwards, so it counts the
+// inner `helper` as bound for the line that calls the top-level one, drops
+// the call edge, and `g` is judged before `helper` is.
+// Retires when the call graph is read from resolved references
+// (Hβ.resolve.reference-is-an-edge).
+fn g() = {
+  let a = helper(1)
+  let helper = 5
+  a + helper
+}
+
+fn helper(x) = "str"
+
+fn main() = g()

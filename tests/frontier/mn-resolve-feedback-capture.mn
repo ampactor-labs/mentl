@@ -1,0 +1,21 @@
+// expect: 30
+// A LAMBDA INSIDE A RECURRENCE CANNOT CAPTURE THE PRIOR. `(v) => v + prev`
+// closes over the feedback prior, and three ticks of 10 accumulate to 30.
+// The emitted module does not assemble: `unknown local $__fb_prev_28`
+// (measured 2026-09-25; `mentl check` is clean). The prior is looked up by
+// name on a global stack, so the capture list names a local that exists
+// only in the outer frame.
+//
+// Retires when the prior is a binder the lambda's capture reads by edge
+// (Hβ.resolve.reference-is-an-edge).
+fn apply1(f, x) = f(x)
+
+fn accum(input) -> Int = ((prev) => apply1((v) => v + prev, input)) <~ delay(1)
+
+fn run() -> Int = {
+  let a = accum(10)
+  let b = accum(10)
+  accum(10)
+}
+
+fn main() -> Int = run()

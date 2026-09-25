@@ -1,0 +1,24 @@
+// expect: 56
+// A BLOCK'S LETS ARE WALKED BACKWARDS WHEN A CLOSURE'S CAPTURES ARE
+// COLLECTED. Inside the lambda, `let y = x + z` reads the outer `x` (50),
+// because the block's own `x` is bound one line later: y = 51, and
+// `y + x` with the inner `x` is 56. The program traps: the free-name walk
+// threads a block from its last statement, so the inner `let x` counts as
+// bound for `y`'s line, and the capture of the outer `x` is never made
+// (measured 2026-09-25; `mentl check` is clean).
+//
+// Retires when every reference is resolved where it is written and a
+// closure's captures are read from those edges
+// (Hβ.resolve.reference-is-an-edge).
+fn apply1(g, v) = g(v)
+
+fn outer(x) = apply1(
+  (z) => {
+    let y = x + z
+    let x = 5
+    y + x
+  },
+  1
+)
+
+fn main() = outer(50)

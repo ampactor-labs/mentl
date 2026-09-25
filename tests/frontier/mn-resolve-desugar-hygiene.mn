@@ -1,0 +1,16 @@
+// expect: 10
+// A DESUGAR'S REFERENCE IS CAPTURED BY A USER'S LOCAL. A refutable `let`
+// desugars to a match whose second arm calls the prelude's `abort`. The
+// desugar writes that call as the NAME `abort`, so the local `abort` bound
+// on the line above captures it, and the program refuses with
+// E_TypeMismatch "Int vs () -> t" at the `let` (measured 2026-09-25). The
+// program is correct: it binds a local named `abort` and destructures a
+// two-element list.
+//
+// Retires when a desugar draws its reference as an edge to the declaration
+// it means, which no local can shadow (Hβ.resolve.reference-is-an-edge).
+fn main() = {
+  let abort = 7
+  let [a, b] = [1, 2]
+  a + b + abort
+}

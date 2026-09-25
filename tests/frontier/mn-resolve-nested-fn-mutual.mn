@@ -1,0 +1,13 @@
+// expect: 1
+// MUTUALLY RECURSIVE NESTED FUNCTIONS ARE REFUSED. SYNTAX §«Nested function
+// declarations»: "nested fns may reference each other — the compiler hoists
+// them into a local letrec scope". `even` names `odd` one line before `odd`
+// is declared, and the judgment refuses it with E_MissingVariable (measured
+// 2026-09-25). The contract is the run: even(4) is true.
+//
+// Retires with the letrec frame (Hβ.resolve.reference-is-an-edge).
+fn main() = {
+  fn even(n) = if n == 0 { true } else { odd(n - 1) }
+  fn odd(n) = if n == 0 { false } else { even(n - 1) }
+  if even(4) { 1 } else { 0 }
+}
