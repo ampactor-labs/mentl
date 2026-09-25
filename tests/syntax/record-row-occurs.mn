@@ -1,0 +1,16 @@
+// expect: refuse E_OccursCheck
+// A record whose own row would have to contain itself. The parameter is read
+// at field a, so it is an open record {a: t | ρ}; the list puts it beside
+// {a: x, b: r}, and the meet hands field b — whose type is the parameter's
+// own record — to ρ. A row holding a field whose type is that row is an
+// infinite type, and the type sort has always refused its twin. The record
+// sort resumed SILENTLY: no diagnostic, no write, and `f` typed its list's
+// two elements as two different records, {a | ρ} beside {a, b: {a | ρ}},
+// with check clean. It refuses now, as E_OccursCheck at the meet, the
+// would-be binding rendered as the record it would have made.
+fn f(r) = {
+  let x = r.a
+  [r, {a: x, b: r}]
+}
+
+fn main() = len(f({a: 1}))

@@ -1110,14 +1110,19 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
 // pass deletes; its price was 67% of the judgment's heap and the 5% that
 // kept the wheel above the warm-start line.
 fn infer_program_once(stmts, parse_end) = {
+  let at_register = heap_mark()
   register_primitives()
   pre_register_decls(stmts)
+  phase_noted(PhRegister, at_register)
+  let at_classify = heap_mark()
   // The summaries classify ONCE, here — the grades read arm STRUCTURE,
   // which no pass changes, and the value is name-keyed (parse-
   // independent), so the final REUSES this value instead of re-walking
   // the whole tree (Carried-Truth at the pass boundary).
   let summ = classify_fixpoint(stmts)
   set_summaries(summ)
+  phase_noted(PhClassify, at_classify)
+  let at_order = heap_mark()
   // The DAG is PARSE truth, read before any judgment: free names +
   // decl names give the Tarjan BINDING GROUPS, so the trial itself
   // walks callee-first with each cycle judged as one unit under the
@@ -1137,18 +1142,31 @@ fn infer_program_once(stmts, parse_end) = {
   // to go. The layers ride out to order the final's planned sweep (one
   // collection, two readers).
   let frees_all = stmt_frees(stmts)
+  phase_noted(PhFrees, at_order)
+  let at_groups = heap_mark()
   let name_idx = layer_name_index(map(stmt_decl_name, stmts), 0, smap_new())
   let groups = scc_groups(frees_all, name_idx)
+  phase_noted(PhOrder, at_groups)
+  let at_decls = heap_mark()
   trial_group_walk(stmts, groups, 0)
+  phase_noted(PhDecls, at_decls)
+  let at_finalize = heap_mark()
   finalize_continuation_boundaries(0, graph_next())
   // A positive declared outside every binding group — a handler arm's
   // nested fn, a module initializer's — is readable once the pass is judged.
   each(check_positive, drain_positive_checks())
   each(report_guard_note, graph_guard_drain())
+  phase_noted(PhFinalize, at_finalize)
+  let at_prose = heap_mark()
   // The prose gate judges here, on the one generation of comment cells the
   // parse minted — [0, parse_end) is exactly that generation.
   comment_refs_check(stmts, 0, parse_end)
+  phase_noted(PhProse, at_prose)
 } ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
+
+// One phase of the judgment noted beside the declarations' own costs: the
+// heap line's advance since the phase began, exact on the monotone image.
+fn phase_noted(phase, since) = graph_phase_note(PhaseCost{bytes: heap_mark() - since, phase: phase})
 
 // No private ledgers. The trial installed its own affine_ledger /
 // region_tracker / verify_ledger so its undischarged debt would die with
@@ -1331,7 +1349,10 @@ fn parse_one_module(m) = match m {
 // and go with it; the movers ratchet reads zero because there is nothing
 // left for a scheme to move between.
 fn infer_modules_converged(ref mods) = {
+  let at_parse = heap_mark()
+  graph_phase_note(PhaseCost{bytes: at_parse, phase: PhBefore})
   let stmts = parse_modules(mods)
+  phase_noted(PhParse, at_parse)
   let parse_end = graph_next()
   infer_program_once(stmts, parse_end)
   match diag_scope_of() {

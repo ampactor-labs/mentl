@@ -296,7 +296,7 @@ fn spine_boundary_at(ref spine, spine_open, h) with Memory = if spine_band(h) >=
 // over the SHARED spine with a private planned range — the root install is
 // bare and the defaults are the empty graph. Handler state records live in
 // shared heap; the install chain stays per-instance, correctly private.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], judged_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], guard_told = [], row_pend = [], row_tally = row_tally_new() {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], judged_col = [], phase_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], guard_told = [], row_pend = [], row_tally = row_tally_new() {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -390,10 +390,15 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       (sp, so) => {
         spine_put_node(sp, next, GNode(NFree(epoch), reason))
         spine_put_module(sp, next, cur_module + 1)
-        let new_trail = trail_append(trail, trail_len, MFreshNode(next))
-        if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(next)) }
+        // A WRITE IS OBSERVED BY ONE PARTY: an open speculation, which needs
+        // the inverse, or the world, which is told. An inverse nothing open
+        // could read is never built (`Hβ.graph.trail-records-what-nothing-can-undo`).
+        let undo = len(checkpoint_stack) > 0
+        let new_trail = if undo { trail_append(trail, trail_len, MFreshNode(next)) } else { trail }
+        let new_len = if undo { trail_len + 1 } else { trail_len }
+        if !undo { graph_mutated(epoch) }
         row_tally_add(row_tally, ByMint, heap_mark() - m0)
-        resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = trail_len + 1
+        resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = new_len
       },
     }
   },
@@ -412,27 +417,33 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       spine_put_node(sp, next, GNode(NRowFree(epoch), reason))
       spine_put_cell(sp, next, CRow(row_cell_fresh(epoch)))
       spine_put_module(sp, next, cur_module + 1)
-      let new_trail = trail_append(trail, trail_len, MFreshNode(next))
-      if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(next)) }
-      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = trail_len + 1
+      let undo = len(checkpoint_stack) > 0
+      let new_trail = if undo { trail_append(trail, trail_len, MFreshNode(next)) } else { trail }
+      let new_len = if undo { trail_len + 1 } else { trail_len }
+      if !undo { graph_mutated(epoch) }
+      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = new_len
     },
   },
   graph_fresh_record_row(reason) => match spine_ensure(spine, spine_open, spine_band(next)) {
     (sp, so) => {
       spine_put_node(sp, next, GNode(NRowFree(epoch), reason))
       spine_put_module(sp, next, cur_module + 1)
-      let new_trail = trail_append(trail, trail_len, MFreshNode(next))
-      if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(next)) }
-      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = trail_len + 1
+      let undo = len(checkpoint_stack) > 0
+      let new_trail = if undo { trail_append(trail, trail_len, MFreshNode(next)) } else { trail }
+      let new_len = if undo { trail_len + 1 } else { trail_len }
+      if !undo { graph_mutated(epoch) }
+      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = new_len
     },
   },
   graph_fresh_maybe(reason) => match spine_ensure(spine, spine_open, spine_band(next)) {
     (sp, so) => {
       spine_put_node(sp, next, GNode(NMaybeFree(epoch), reason))
       spine_put_module(sp, next, cur_module + 1)
-      let new_trail = trail_append(trail, trail_len, MFreshNode(next))
-      if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(next)) }
-      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = trail_len + 1
+      let undo = len(checkpoint_stack) > 0
+      let new_trail = if undo { trail_append(trail, trail_len, MFreshNode(next)) } else { trail }
+      let new_len = if undo { trail_len + 1 } else { trail_len }
+      if !undo { graph_mutated(epoch) }
+      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = new_len
     },
   },
   graph_register_node(handle, body) => // Edge-link a node's body into the one graph at its handle — the program
@@ -536,11 +547,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   graph_boundary_set(site_handle, boundary) => {
     let old_boundary = spine_boundary_at(spine, spine_open, site_handle)
     spine_put_boundary(spine, site_handle, boundary)
-    let mutation = MSetBoundary(site_handle, old_boundary)
-    let new_trail = trail_append(trail, trail_len, mutation)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, mutation) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    let undo = len(checkpoint_stack) > 0
+    let new_trail =
+      if undo { trail_append(trail, trail_len, MSetBoundary(site_handle, old_boundary)) } else { trail }
+    let new_len = if undo { trail_len + 1 } else { trail_len }
+    if !undo { graph_mutated(new_epoch) }
+    resume() with epoch = new_epoch, trail = new_trail, trail_len = new_len
   },
   graph_bind(handle, ty, reason) => // The guard reads THIS instance's state DIRECTLY: the occurs family is
   // mechanism-layer (state-passed, zero ops), so the check can neither
@@ -590,10 +603,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         },
         _ => {
           spine_put_node(spine, handle, GNode(NBound(ty), reason))
-          let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
-          if len(checkpoint_stack) == 0 { graph_mutated(stamp, MSetNode(handle, old_node)) }
+          let undo = len(checkpoint_stack) > 0
+          let new_trail =
+            if undo { trail_append(trail, trail_len, MSetNode(handle, old_node)) } else { trail }
+          let new_len = if undo { trail_len + 1 } else { trail_len }
+          if !undo { graph_mutated(stamp) }
           row_tally_add(row_tally, ByBind, heap_mark() - m0)
-          resume() with epoch = stamp, trail = new_trail, trail_len = trail_len + 1
+          resume() with epoch = stamp, trail = new_trail, trail_len = new_len
         },
       }
     }
@@ -616,10 +632,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     match graded {
       Some(node) => {
         spine_put_node(spine, handle, node)
-        let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
         let new_epoch = epoch + 1
-        if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) }
-        resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+        let undo = len(checkpoint_stack) > 0
+        let new_trail =
+          if undo { trail_append(trail, trail_len, MSetNode(handle, old_node)) } else { trail }
+        let new_len = if undo { trail_len + 1 } else { trail_len }
+        if !undo { graph_mutated(new_epoch) }
+        resume() with epoch = new_epoch, trail = new_trail, trail_len = new_len
       },
       None => resume() with guard_diags = push(
         guard_diags,
@@ -637,18 +656,24 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   {
     let old_node = graph_node_at(spine, next, handle)
     spine_put_node(spine, handle, GNode(NErrorHole(reason), reason))
-    let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) } else { () }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    let undo = len(checkpoint_stack) > 0
+    let new_trail =
+      if undo { trail_append(trail, trail_len, MSetNode(handle, old_node)) } else { trail }
+    let new_len = if undo { trail_len + 1 } else { trail_len }
+    if !undo { graph_mutated(new_epoch) }
+    resume() with epoch = new_epoch, trail = new_trail, trail_len = new_len
   },
   graph_bind_absent(handle, reason) => {
     let old_node = graph_node_at(spine, next, handle)
     spine_put_node(spine, handle, GNode(NAbsent, reason))
-    let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) } else { () }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    let undo = len(checkpoint_stack) > 0
+    let new_trail =
+      if undo { trail_append(trail, trail_len, MSetNode(handle, old_node)) } else { trail }
+    let new_len = if undo { trail_len + 1 } else { trail_len }
+    if !undo { graph_mutated(new_epoch) }
+    resume() with epoch = new_epoch, trail = new_trail, trail_len = new_len
   },
   graph_row_teach(handle, names, _reason) => // CHARGE: what was performed or constructed here joins the cell's own
   // content, and the read carries forward to every dependent — each one's
@@ -657,14 +682,22 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // cell's read is its least solution and nothing ever re-derives it.
   {
     let m0 = heap_mark()
-    match row_teach_names(spine, spine_open, next, handle, names, row_acc_new(trail, trail_len, row_tally)) {
+    let undo = len(checkpoint_stack) > 0
+    match row_teach_names(
+      spine,
+      spine_open,
+      next,
+      handle,
+      names,
+      row_acc_new(trail, trail_len, row_tally, undo)
+    ) {
       acc => {
         row_tally_add(row_tally, ByCharge, heap_mark() - m0)
-        if acc.tl == trail_len {
+        if row_acc_quiet(acc) {
           resume()
         } else {
           let new_epoch = epoch + 1
-          if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
+          if !undo && acc.writes > 0 { graph_mutated(new_epoch) }
           resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc)
         }
       },
@@ -683,14 +716,15 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     )
   } else {
     let m0 = heap_mark()
-    match row_link_cells(spine, spine_open, next, into, edge, row_acc_new(trail, trail_len, row_tally)) {
+    let undo = len(checkpoint_stack) > 0
+    match row_link_cells(spine, spine_open, next, into, edge, row_acc_new(trail, trail_len, row_tally, undo)) {
       acc => {
         row_tally_add(row_tally, row_tally_of_edge(edge), heap_mark() - m0)
-        if acc.tl == trail_len {
+        if row_acc_quiet(acc) {
           resume()
         } else {
           let new_epoch = epoch + 1
-          if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
+          if !undo && acc.writes > 0 { graph_mutated(new_epoch) }
           resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc)
         }
       },
@@ -707,14 +741,15 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     )
   } else {
     let m0 = heap_mark()
-    match row_union_cells(spine, spine_open, next, a, b, row_acc_new(trail, trail_len, row_tally)) {
+    let undo = len(checkpoint_stack) > 0
+    match row_union_cells(spine, spine_open, next, a, b, row_acc_new(trail, trail_len, row_tally, undo)) {
       acc => {
         row_tally_add(row_tally, ByUnion, heap_mark() - m0)
-        if acc.tl == trail_len {
+        if row_acc_quiet(acc) {
           resume()
         } else {
           let new_epoch = epoch + 1
-          if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, list_index(acc.trail, trail_len)) }
+          if !undo && acc.writes > 0 { graph_mutated(new_epoch) }
           resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc)
         }
       },
@@ -722,24 +757,25 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   },
   graph_row_ceiling(handle, c) => // An upper bound: checked against the read now and at every growth, and
   // carried onto every root the read reaches.
-  match row_ceiling_install(
-    spine,
-    spine_open,
-    next,
-    row_root(spine, next, handle, 0),
-    c,
-    row_acc_new(trail, trail_len, row_tally),
-    0
-  ) {
-    acc => if acc.tl == trail_len && len(acc.diags) == 0 {
-      resume()
-    } else {
-      let new_epoch = epoch + 1
-      if len(checkpoint_stack) == 0 && acc.tl > trail_len {
-        graph_mutated(new_epoch, list_index(acc.trail, trail_len))
-      }
-      resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc)
-    },
+  {
+    let undo = len(checkpoint_stack) > 0
+    match row_ceiling_install(
+      spine,
+      spine_open,
+      next,
+      row_root(spine, next, handle, 0),
+      c,
+      row_acc_new(trail, trail_len, row_tally, undo),
+      0
+    ) {
+      acc => if row_acc_quiet(acc) {
+        resume()
+      } else {
+        let new_epoch = epoch + 1
+        if !undo && acc.writes > 0 { graph_mutated(new_epoch) }
+        resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc)
+      },
+    }
   },
   graph_row_pin(handle, pins) => // A declaration's scalar instances join its frame cell's pins, and the
   // read is carried again so what already arrived is refined too.
@@ -749,6 +785,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       resume()
     } else {
       let cell = row_cell_at(spine, next, root)
+      let undo = len(checkpoint_stack) > 0
       let acc = row_carry(
         spine,
         spine_open,
@@ -759,11 +796,15 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
           next,
           root,
           CRow({...cell, pins: frag_union(cell.pins, pins)}),
-          row_acc_new(trail, trail_len, row_tally)
+          row_acc_new(trail, trail_len, row_tally, undo)
         ),
         row_carry_fuel
       )
-      resume() with epoch = epoch + 1, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc)
+      // It wrote the cell, so the world is told, as at every other row write;
+      // this arm alone never signalled before.
+      let new_epoch = epoch + 1
+      if !undo { graph_mutated(new_epoch) }
+      resume() with epoch = new_epoch, trail = acc.trail, trail_len = acc.tl, guard_diags = row_acc_diags_into(guard_diags, acc), row_pend = row_acc_pairs_into(row_pend, acc)
     }
   },
   graph_row_cell(handle) => resume(row_cell_at(spine, next, handle)),
@@ -797,21 +838,42 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         reason_span_or_zero(reason)
       ), "", spine_module_name(spine, spine_open, spine_module_of(spine, spine_open, handle)))
       resume() with guard_diags = row_diags_join(guard_diags, [d])
-    } else if occurs_in_fields(spine, next, handle, fields, stamp) || record_row_tail_is(tail, handle) {
-      // A residual that reaches its own handle is refused SILENTLY here — no
-      // diagnostic, no trail entry — where the type sort's twin above stores
-      // an `EOccursCheck` for the body to narrate. The stamp the check marked
-      // with is spent either way (`Hβ.graph.record-row-occurs-refuses-silently`).
-      resume() with epoch = stamp
     } else {
       let old_node = graph_node_at(spine, next, handle)
-      // The TAIL rides from the writer that knew it (types.mn RecordRowTail):
-      // proven, continuing, or assumed. It is never re-derived here, because
-      // the fields alone cannot say which of the three produced them.
-      spine_put_node(spine, handle, GNode(NRecordRowBound(fields, tail), reason))
-      let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
-      if len(checkpoint_stack) == 0 { graph_mutated(stamp, MSetNode(handle, old_node)) }
-      resume() with epoch = stamp, trail = new_trail, trail_len = trail_len + 1
+      let dmod = spine_module_name(spine, spine_open, cur_module)
+      match old_node {
+        GNode(NBound(was), _) => // ONE WRITER LAW FOR BOTH SORTS: a cell that already holds a proof is
+        // read by unification, never rewritten (graph_bind's own refusal).
+        resume() with guard_diags = push(guard_diags, (EBindOverBound(handle, was, reason, reason_span_or_zero(reason)), "", dmod)),
+        GNode(NRecordRowBound{fields: had, tail: had_tail}, _) => resume() with guard_diags = push(
+          guard_diags,
+          (EBindOverBound(handle, record_row_as_type(had, had_tail), reason, reason_span_or_zero(reason)), "", dmod)
+        ),
+        _ => if occurs_in_fields(spine, next, handle, fields, stamp) || record_row_tail_is(tail, handle) {
+          // A residual that reaches its own handle is an INFINITE RECORD — the
+          // row would have to contain itself — and it refuses exactly as the
+          // type sort does: an `EOccursCheck` stored for the body to render,
+          // the would-be binding shown as the record it would have made. It
+          // resumed silently until 2026-09-24, and the program typed the two
+          // sides of the meet as two different records
+          // (tests/syntax/record-row-occurs).
+          resume() with epoch = stamp, guard_diags = push(
+            guard_diags,
+            (EOccursCheck(handle, record_row_as_type(fields, tail), reason_span_or_zero(reason)), "", dmod)
+          )
+        } else {
+          // The TAIL rides from the writer that knew it (types.mn RecordRowTail):
+          // proven or continuing. It is never re-derived here, because the
+          // fields alone cannot say which produced them.
+          spine_put_node(spine, handle, GNode(NRecordRowBound(fields, tail), reason))
+          let undo = len(checkpoint_stack) > 0
+          let new_trail =
+            if undo { trail_append(trail, trail_len, MSetNode(handle, old_node)) } else { trail }
+          let new_len = if undo { trail_len + 1 } else { trail_len }
+          if !undo { graph_mutated(stamp) }
+          resume() with epoch = stamp, trail = new_trail, trail_len = new_len
+        },
+      }
     }
   },
   graph_index_span(span, handle) => // ─── Rollback — the oracle's undo ────────────────────────────────
@@ -853,6 +915,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // contract (not trail-backed; one note per judged decl).
   resume() with judged_col = push(judged_col, cost),
   graph_judged_at() => resume(judged_col),
+  graph_phase_note(cost) => // The judged column's whole-program sibling: one note per phase of the
+  // judgment, the same append-only telemetry contract.
+  resume() with phase_col = push(phase_col, cost),
+  graph_phases_at() => resume(phase_col),
   graph_hole_note(h) => // The value-holes column's pending half: lower's authored-hole arm is
   // the one writer (value-position is a lowering decision); the pair
   // lands at the next entry drain.
@@ -967,13 +1033,19 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   graph_rollback(target_idx) => {
     let n = len(checkpoint_stack)
     if n == 0 {
-      // Unpaired rollback (no snapshot on the stack): the per-slot walk
-      // undoes every trailed write in place — pages are stable, so each
-      // inverse lands on its live cell — and MFreshNode entries count next
-      // back down. Bands stay open (cells above the restored next are
-      // stale-and-overwritten at re-mint, the logical-length discipline).
-      let new_next = revert_trail(spine, spine_open, trail, trail_len, target_idx, next)
-      resume() with next = new_next, trail_len = target_idx
+      // A rollback with no speculation open has nothing to undo: an inverse
+      // is recorded only while a checkpoint is open, so there is no entry to
+      // walk, and this is a caller that rolled back without pushing — or
+      // twice. Refused, stored like every writer refusal. (The unpaired
+      // walker that undid writes nobody had fenced is deleted with the
+      // entries it walked.)
+      resume() with guard_diags = push(
+        guard_diags,
+        (EInternalInvariant(
+          "a rollback reached the graph with no checkpoint open — it was never pushed, or was already rolled back or committed",
+          span_zero()
+        ), "", spine_module_name(spine, spine_open, cur_module))
+      )
     } else {
       // Walk the CURRENT trail backward, undoing each write in place into
       // the fork-time table. Backward order makes the oldest trailed
@@ -993,13 +1065,26 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       resume() with spine = cp.spine, spine_open = cp.spine_open, next = cp.next, trail = cp.trail, trail_len = target_idx, span_index = cp.span_index, comment_refs = cp.comment_refs, guard_diags = cp.guard_diags, guard_told = cp.guard_told, row_pend = cp.row_pend, checkpoint_stack = drop_last(checkpoint_stack)
     }
   },
-  graph_commit_checkpoint(_target_idx) => // The ACCEPT half of speculation: drop the newest checkpoint record
-  // WITHOUT restoring — every write since the push stands as truth, the
-  // trail keeps its entries (an enclosing checkpoint's rollback still
-  // walks them), and mutation events resume when the stack empties. An
-  // empty stack is a benign no-op (the push/commit pair's belt).
+  graph_commit_checkpoint(target_idx) => // The ACCEPT half of speculation: drop the newest checkpoint record
+  // WITHOUT restoring — every write since the push stands as truth. Under an
+  // enclosing checkpoint the entries stay, because its rollback still walks
+  // them. When this was the OUTERMOST one, nothing can read them any more:
+  // the trail empties, and the world is told once that what the speculation
+  // wrote is now its truth — those writes were fenced from the signal while
+  // they were only possible. An empty stack is a commit with nothing pushed,
+  // refused like the unpaired rollback.
   if len(checkpoint_stack) == 0 {
-    resume()
+    resume() with guard_diags = push(
+      guard_diags,
+      (EInternalInvariant(
+        "a commit reached the graph with no checkpoint open — it was never pushed, or was already rolled back or committed",
+        span_zero()
+      ), "", spine_module_name(spine, spine_open, cur_module))
+    )
+  } else if len(checkpoint_stack) == 1 {
+    let new_epoch = epoch + 1
+    if trail_len > target_idx { graph_mutated(new_epoch) }
+    resume() with checkpoint_stack = drop_last(checkpoint_stack), epoch = new_epoch, trail_len = 0
   } else {
     resume() with checkpoint_stack = drop_last(checkpoint_stack)
   },
@@ -1035,7 +1120,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
 // ONLY reader when the cone lands. Until then the honest name for this handler
 // is what it does: a floor, not a seam.
 handler mutate_sink {
-  graph_mutated(_epoch, _mutation) => resume(),
+  graph_mutated(_epoch) => resume(),
 }
 
 // Pure graph operations — the mechanism
@@ -1129,15 +1214,27 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
 // itself — a bound refused, an instance unification asked for — for the
 // body to narrate and perform.
 //
-// What a carry hands back: the refusals and unifications it noted, and the
-// trail it extended — and the tally its wakes' heap is added into.
-type RowAcc = {diags: [(DiagKind, String, String)], pairs: [(EffName, EffName)], tally: [Int], tl: Int, trail: [Mutation]}
+// What a carry hands back: the refusals and unifications it noted, how many
+// cells it wrote, the trail it extended when a speculation is open to need
+// the inverses (`undo`) — and the tally its wakes' heap is added into.
+//
+// THE CHANGE SIGNAL IS THE COUNT, never the trail's length. The arms read
+// `writes` to decide whether the world saw a change; they used to read
+// `tl == trail_len`, which made an undo log nothing could read the only
+// evidence that a write happened, so every write outside speculation had to
+// be trailed to be seen (`Hβ.graph.trail-records-what-nothing-can-undo`).
+type RowAcc = {diags: [(DiagKind, String, String)], pairs: [(EffName, EffName)], tally: [Int], tl: Int, trail: [Mutation], undo: Bool, writes: Int}
 
 // The belt, not the semantics (the HANG law): every write is monotone over a
 // finite lattice, so a carry settles; a runaway stops here, loudly.
 let row_carry_fuel = 1000000
 
-fn row_acc_new(trail, tl, tally) = RowAcc{diags: [], pairs: [], tally: tally, tl: tl, trail: trail}
+fn row_acc_new(trail, tl, tally, undo) =
+  RowAcc{diags: [], pairs: [], tally: tally, tl: tl, trail: trail, undo: undo, writes: 0}
+
+// A carry the world never saw: no cell written, nothing refused, nothing
+// asked of the body.
+fn row_acc_quiet(acc: RowAcc) = acc.writes == 0 && len(acc.diags) == 0 && len(acc.pairs) == 0
 
 // THE ROWS' COST IS A TALLY WRITTEN IN PLACE: one flat buffer per graph
 // handler, allocated at its install, each slot named by the kind of write or
@@ -1836,10 +1933,15 @@ type RowWake
   | WakeEdge(Int, RowEdge)
   | WakeAll(Int)
 
-fn row_put(ref spine, mint_bound, h, slot, acc: RowAcc) = {
+// A row cell's write. The inverse is recorded only for an open speculation —
+// the one reader an undo entry has.
+fn row_put(ref spine, mint_bound, h, slot, acc: RowAcc) = if acc.undo {
   let old = cell_slot_at(spine, h)
   spine_put_cell(spine, h, slot)
-  ({...acc, tl: acc.tl + 1, trail: trail_append(acc.trail, acc.tl, MSetRow(h, old))})
+  ({...acc, tl: acc.tl + 1, trail: trail_append(acc.trail, acc.tl, MSetRow(h, old)), writes: acc.writes + 1})
+} else {
+  spine_put_cell(spine, h, slot)
+  ({...acc, writes: acc.writes + 1})
 }
 
 // A read that reaches a root through an instantiation's renaming depends on
@@ -2704,6 +2806,14 @@ fn record_row_tail_is(tail, handle) with Pure = match tail {
   RowContinues(v) => v == handle,
 }
 
+// A record row's residual shown as the record it makes: closed where a
+// closer proved it whole, open at the var it continues into. The refusals
+// render through it, so a diagnostic names a record, never a node kind.
+fn record_row_as_type(fields, tail) = match tail {
+  RowClosed(_) => TRecord(fields),
+  RowContinues(v) => TRecordOpen(fields, v),
+}
+
 fn occurs_in_eff_names(spine, mint_bound, handle, names, stamp) with !Mutate = len(names) > 0 && {
   let here = match last(names) {
     ENamed(_) => false,
@@ -2767,34 +2877,6 @@ fn revert_trail_into(ref spine, spine_open, ref trail, current, target) with Mem
     MFreshNode(h) => {
       if spine_band(h) < spine_open { spine_put_cell(spine, h, CEmpty) }
       revert_trail_into(spine, spine_open, trail, idx, target)
-    },
-  }
-}
-
-// The unpaired walker: same in-place undo (every touched band is open —
-// the guard is kept uniform as the belt), with MFreshNode counting `next`
-// back down.
-fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle) with Memory = if current <= target {
-  next_handle
-} else {
-  let idx = current - 1
-  let mutation = trail[idx]
-  match mutation {
-    MSetNode(h, old) => {
-      if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle)
-    },
-    MSetRow(h, old) => {
-      if spine_band(h) < spine_open { spine_put_cell(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle)
-    },
-    MSetBoundary(h, old) => {
-      if spine_band(h) < spine_open { spine_put_boundary(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle)
-    },
-    MFreshNode(h) => {
-      if spine_band(h) < spine_open { spine_put_cell(spine, h, CEmpty) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle - 1)
     },
   }
 }

@@ -1250,6 +1250,27 @@ fn show_connective(conn) = match conn {
 fn render_provider_arms(arms) with GraphRead + !Mutate + Memory + Alloc + Intern =
   arms |> map({ (h, arm) => "\n  {body_decl_name(graph_node_body(h))} at {site_address(arm)}" }) |> str_concat_all
 
+// The judgment by phase, in the order it ran, and the declarations phase
+// beside the sum of the declarations judged inside it — the difference is
+// what a binding group spends around its members.
+fn render_phases(phases, declared) with Memory + Alloc = if len(phases) == 0 {
+  ""
+} else {
+  "\n  the judgment by phase:{phases |> map(phase_line(declared, ??)) |> str_concat_all}"
+}
+
+fn phase_line(declared, pc: PhaseCost) with Memory + Alloc = match pc.phase {
+  PhBefore => "\n    {pc.bytes} B  held before it began",
+  PhParse => "\n    {pc.bytes} B  parse",
+  PhRegister => "\n    {pc.bytes} B  register primitives and signatures",
+  PhClassify => "\n    {pc.bytes} B  resume grades",
+  PhFrees => "\n    {pc.bytes} B  free names",
+  PhOrder => "\n    {pc.bytes} B  callee-first order",
+  PhDecls => "\n    {pc.bytes} B  declarations ({declared} B inside the declarations themselves)",
+  PhFinalize => "\n    {pc.bytes} B  finalize",
+  PhProse => "\n    {pc.bytes} B  prose",
+}
+
 // The judgment's heaviest decls — bytes of judgment heap each, the decl's
 // name read off its handle's body, its address off its columns.
 fn render_judged_rows(rows) with GraphRead + !Mutate + Memory + Alloc + Intern =
@@ -1507,7 +1528,7 @@ fn render_query_result(result) = match result {
   QRUnreachable(rows) => render_unreach_rows(rows),
   QRPerforms(rows) => render_perform_rows(rows),
   QROrphanClaims(rows) => render_orphan_rows(rows),
-  QRCost(mods, lines, nodes, judged) => "→ {int_to_str(mods)} module(s) · {int_to_str(lines)} source line(s) · {int_to_str(nodes)} node(s) minted{render_judged_rows(judged)}",
+  QRCost{modules, lines, nodes, judged, phases, declared} => "→ {int_to_str(modules)} module(s) · {int_to_str(lines)} source line(s) · {int_to_str(nodes)} node(s) minted{render_phases(phases, declared)}{render_judged_rows(judged)}",
   QRWhere(lines, sites) => "→ {str_join_indented(lines)}{render_where_sites(sites)}",
   QRError(msg) => "error: {msg}",
 }

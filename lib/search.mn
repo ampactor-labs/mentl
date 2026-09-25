@@ -125,6 +125,12 @@ fn try_with_abort_catch(try_fn, catch_fn) with Abort = {
 // backtrack catches. Nothing here is Prolog-specific or DPLL-
 // specific — backtrack is the substrate primitive for every "try
 // each alternative, commit the first that doesn't dead-end" pattern.
+// An alternative that runs to the end is ACCEPTED, and acceptance is the
+// commit: the speculation's writes become the graph's truth and its
+// checkpoint leaves the stack. It resumed and returned without one until
+// 2026-09-24, so after any successful choice the stack never emptied, every
+// write from then on was fenced as speculative, and the world was never told
+// of another change (`Hβ.search.backtrack-never-commits-its-success`).
 handler backtrack {
   choose(options) => {
     fn try_each(i) = if i >= len(options) {
@@ -132,7 +138,11 @@ handler backtrack {
     } else {
       let checkpoint = graph_push_checkpoint()
       try_with_abort_catch(
-        () => resume(list_index(options, i)),
+        () => {
+          let answer = resume(list_index(options, i))
+          graph_commit_checkpoint(checkpoint)
+          answer
+        },
         () => {
           graph_rollback(checkpoint)
           try_each(i + 1)

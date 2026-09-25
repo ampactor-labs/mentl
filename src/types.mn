@@ -843,6 +843,21 @@ type RowTally
 // and the part of that the effect rows wrote, by kind.
 type JudgedCost = {bytes: Int, handle: Int, rows: RowBytes}
 
+// The judgment's phases, in the order it runs them: what the process held
+// when the judgment began, the parse, the registration of primitives and
+// every declaration's signature, the resume-cardinality classifier, each
+// statement's free names, the callee-first order over them (the binding
+// groups), the declarations themselves, the finalization after them
+// (continuation boundaries, the deferred positive rows, the writer's stored
+// refusals), and the prose gate. Before 2026-09-24 the declarations phase
+// was the only one measured, so the facet could rank declarations and could
+// not say what share of the heap any of them held.
+type JudgmentPhase = PhBefore | PhParse | PhRegister | PhClassify | PhFrees | PhOrder | PhDecls | PhFinalize | PhProse
+
+// One phase's heap-line advance — or, for PhBefore, the line where the
+// judgment began.
+type PhaseCost = {bytes: Int, phase: JudgmentPhase}
+
 // The stored effect row. `charged` is what was charged HERE; `full` is the
 // read carried forward; `frees` lists every cell reached along a path, one
 // entry per PATH with that path's mask — each effect once, at the install
@@ -2286,6 +2301,9 @@ effect GraphRead {
   // The judged-cost column's read: (decl handle, bytes of judgment heap)
   // in judgment order — `mentl <file> cost` ranks it.
   graph_judged_at() -> [JudgedCost]
+  // The phase column's read: each phase of the judgment and its heap-line
+  // advance, in the order they ran.
+  graph_phases_at() -> [PhaseCost]
   // The value-holes column's read: (hole handle, entry name) pairs — the
   // executable gate's whole input (lowering-is-a-column (ii), the first
   // walker swap; the four-fn LowExpr walk retired onto this read).
@@ -2398,6 +2416,9 @@ effect GraphWrite {
   // on the monotone bump image, never a sample; the read face is
   // graph_judged_at.
   graph_judged_note(JudgedCost)
+  // The phase column's write — one note at each boundary of the judgment
+  // (`phase_noted`), the declarations column's whole-program sibling.
+  graph_phase_note(PhaseCost)
   // The value-holes column's writes: lower's authored-hole arm NOTES the
   // surviving hole (value-position is a lowering decision — a consumed
   // call-arg/pipe hole never reaches that arm), and each constructed
@@ -3221,24 +3242,21 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
 // !Mutate on a function proves read-only access to all parameters.
 // Vale-style region-freeze: "N parallel readers, no writers" through
 // the same Boolean algebra that proves !Alloc and !IO.
-// Mutate carries the graph_mutated event — performed by graph_handler
-// at the OUTERMOST commit boundary so the IC fixpoint (the oracle's
-// project_queue_merger, src/oracle.mn) re-projects only on real graph
-// state changes. Speculative writes between graph_push_checkpoint /
-// graph_rollback never reach this op — Mentl's own oracle would
-// otherwise subscribe to her speculations and recursively explore
-// forever.
+// Mutate carries the graph's change signal to the world — performed by
+// graph_handler for every write no open speculation fences, and once at the
+// outermost commit for everything a speculation wrote. Speculative writes
+// between graph_push_checkpoint and graph_rollback never reach it; a
+// subscriber that could see them would explore its own speculations.
 //
-// epoch — graph epoch at which the mutation committed. The epoch IS the
-// one cache key: the IC projection memoizes by it, re-deriving the queue
-// only when the epoch bumps (PLAN §2: read live is the meaning, cached
-// by epoch is the mechanism).
-// Mutation — MSetNode | MSetRow | MFreshNode (per the Mutation type at
-// src/types.mn:163). The event carries enough for the projection to
-// re-derive over the changed graph (Q-2 (B) scope: transitive dependents
-// via Reason chain).
+// The one argument is the epoch the change took. It carried a `Mutation`
+// too — one cell and its prior value — until 2026-09-24, and every handler
+// in the tree discarded it; for a row carry it named the FIRST of the cells
+// the carry wrote and none of the rest, so it was not a delta even for a
+// reader that wanted one. A cone re-projection's delta is a per-cell change
+// epoch read where the cells are, not an event log a subscriber keeps
+// (`Hβ.graph.mutation-delta-is-write-only`).
 effect Mutate {
-  graph_mutated(Int, Mutation)
+  graph_mutated(Int)
 }
 
 // effect LookupTy lives in graph.mn beside lookup_ty_graph — the

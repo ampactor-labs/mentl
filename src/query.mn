@@ -331,12 +331,13 @@ type QueryResult
   | QRUnreachable([(String, String, Int)])
   | QRPerforms([(String, String, Int, Int)])
   | QROrphanClaims([(String, String, Int)])
-  // modules linked, source lines processed, nodes minted, and the judgment's
-  // heaviest decls as (handle, bytes of judgment heap) — the judged-cost
-  // column ranked, `judged_top` deep. The instrument PLAN §5.O's arena
-  // thesis wants (98% of the judgment's heap is scratch — WHOSE?) and the
-  // one that names which decl a peak-RSS rise belongs to.
-  | QRCost(Int, Int, Int, [JudgedCost])
+  // modules linked, source lines processed, nodes minted, the judgment's
+  // heaviest decls — the judged-cost column ranked, `judged_top` deep — the
+  // judgment by phase, and the sum over EVERY declaration, so the ranked rows
+  // read as a share of something. The instrument PLAN §5.O's arena thesis
+  // wants (98% of the judgment's heap is scratch — WHOSE?) and the one that
+  // names which decl a peak-RSS rise belongs to.
+  | QRCost(modules: Int, lines: Int, nodes: Int, judged: [JudgedCost], phases: [PhaseCost], declared: Int)
   // the derived badges (plain lines) + fanout sites as (schedule, node)
   | QRWhere([String], [(String, Int)])
   // THE ROW AS STRUCTURE, not as spelling — every name beside the INTERN
@@ -521,7 +522,14 @@ handler query_default {
     QUnreachable => resume(QRUnreachable(reach_report(module_cells()))),
     QPerforms => resume(QRPerforms(effect_report(module_cells()))),
     QOrphanClaims => resume(QROrphanClaims(orphan_claim_report(module_cells()))),
-    QCost => resume(QRCost(len(module_cells()), weave_line_extent(), graph_next(), judged_ranked())),
+    QCost => resume(QRCost(
+      len(module_cells()),
+      weave_line_extent(),
+      graph_next(),
+      judged_ranked(),
+      graph_phases_at(),
+      judged_total()
+    )),
     QUnknown(q) => resume(QRError("unknown query: {q}")),
   },
 }
@@ -1054,6 +1062,11 @@ fn ref_is_outside(extent, site) with GraphRead + Memory + Alloc + !Mutate = {
 let judged_top = 16
 
 fn judged_ranked() with GraphRead + Memory + Alloc = fold([], judged_rank_insert, graph_judged_at())
+
+// Every declaration's judgment, summed — what the ranked rows are a share of.
+fn judged_total() with GraphRead + Memory + Alloc = fold(0, judged_add, graph_judged_at())
+
+fn judged_add(sum, row: JudgedCost) = sum + row.bytes
 
 fn judged_rank_insert(acc, row) with Memory + Alloc = take(judged_top, judged_insert_desc(acc, row))
 

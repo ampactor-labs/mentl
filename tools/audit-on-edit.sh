@@ -52,6 +52,15 @@ if [[ "$frc" -ne 0 ]]; then
   exit 2
 fi
 if [[ "$before" != "$after" ]]; then
+  # THE AUDIT READS WHAT THE FILE KEEPS. fmt reflows prose, so a word the
+  # audit passed mid-line can land at the head of a comment line where a
+  # drift pattern matches — measured 2026-09-24, when a reflowed `until`
+  # passed this hook, reached a repin, and was refused by the pre-commit's
+  # audit of the same file, costing a march. Audit again after the render.
+  if ! out=$(bash "$root/tools/drift-audit.sh" "$file" 2>&1); then
+    printf 'fmt rewrote %s, and its canonical render fails the drift audit:\n%s\n' "$rel" "$out" >&2
+    exit 2
+  fi
   printf 'fmt rewrote %s to its canonical render — re-read it before the next edit.\n' "$rel" >&2
   exit 2
 fi

@@ -909,6 +909,18 @@ and this is the STATE.
   fabricates roster grew `_ => []` and rose 21 → 65 by widening: the wildcard
   had been saying a `let`, a refinement and an alias declare nothing, so two
   imports read as dead that were alive.
+- **THE JUDGMENT IS MEASURED BY PHASE, AND HALF OF IT WAS NEVER IN ANY
+  DECLARATION (2026-09-24).** `mentl <file> cost` ranked declarations only, so
+  every heap arc for a month attacked the declarations phase — which is 49% of
+  the whole-wheel judgment. Its first phase reading (~606MB): held before the
+  judgment began 61MB · parse 164MB (~527 B per node minted) · register 7MB ·
+  resume grades 4MB · free names 54MB · callee-first order 1.4MB ·
+  declarations 298MB (285MB inside the declarations themselves) · finalize
+  4MB · prose gate 13MB. The free-name walk is a compensation the
+  resolution-at-birth form deletes
+  (`Hβ.graph.references-and-positions-are-columns`, its part (3) corrected
+  before any build because it only moved the walk); the parse is the next
+  largest unattributed cost and has no per-kind split yet.
 - **THE JUDGMENT HAS A PER-DECL INSTRUMENT, AND ITS FIRST READING NAMED 40% OF
   THE HEAP IN TWO LINES (2026-09-21).** `mentl <file> cost` ranks the
   judgment's heap by declaration (`judge_stmt_one` notes the heap line's
@@ -942,12 +954,16 @@ and this is the STATE.
   an invalidation key: `project_queue_merger` (oracle.mn) memoizes the project
   queue on it and re-projects when it moves, with its own comment stating the
   law correctly. What is missing is the CONE — it re-projects the WHOLE queue,
-  collapsing to one boolean a per-handle delta the graph already computes.
-  `graph_mutated(Int, Mutation)` carries *(handle, prior value)* at nine write
-  sites and **every handler in the tree discards both arguments**
-  (`mutate_sink`, `lsp_adapter`), so the delta is write-only
-  (`Hβ.graph.mutation-delta-is-write-only`). The warm start likewise restores an
-  image and re-derives the compile over it (§5.O).
+  collapsing to one boolean a per-handle delta the graph could supply.
+  `graph_mutated` carried *(handle, prior value)* until 2026-09-24 and every
+  handler discarded it; for a row carry it named the first cell of hundreds,
+  so it was never a delta. It is `graph_mutated(epoch)` now, and the cone's
+  delta is a per-cell change epoch read where the cells are, built with its
+  first reader (`Hβ.graph.mutation-delta-is-write-only`). The same build made
+  the trail hold only what an open speculation can undo — it had been every
+  write of the judgment, and the row machinery's only evidence that a write
+  happened. The warm start likewise restores an image and re-derives the
+  compile over it (§5.O).
 - **Resident Space** is not yet the shipping medium. `mentl space` serves the
   browser surface, and cursor/query/propose pieces exist, but the browser still
   needs the resident graph session: one WASM instance, a durable image boundary,
@@ -1054,9 +1070,11 @@ and this is the STATE.
   DEFAULT re-inferred at every omitting call, the decl's own comment
   confessing it. A default is judged once at the declaration now, and a
   call that omits the field references its node. `Hβ.graph.bind-over-bound-refuses` carries the record;
-  `Hβ.types.param-projects-to-type-row` (the grade op's retirement) and
-  `Hβ.graph.record-row-occurs-refuses-silently` (the record sort's occurs
-  refusal says nothing) are the two gaps it named. **The occurs check itself
+  `Hβ.types.param-projects-to-type-row` (the grade op's retirement) is the gap
+  it named that stands, and `Hβ.graph.record-row-occurs-refuses-silently` —
+  the record sort's occurs refusal said nothing, and its writer overwrote
+  whatever the row's root held — closed the next landing under the same
+  writer law. **The occurs check itself
   moved the same day** onto a stamped `mark` column on the spine — the
   visited set that had been a fresh list per check, re-walking every path to
   a shared row variable — and the bind class of the judgment's heap fell

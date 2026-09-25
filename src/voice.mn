@@ -867,7 +867,7 @@ fn query_result_to_answer(result) with GraphRead + !Mutate + Memory + Alloc = ma
   QRWhere(_, sites) => // The where badges' site list rides AnsRefs like the census; the
   // badge lines render at the CLI (the terminal projection's home).
   AnsRefs(site_spans(sites), Inferred("where: {int_to_str(len(sites))} fanout site(s)")),
-  QRCost(_m, _l, _n, _j) => // The cost figures render at the CLI; the caret has no site to visit.
+  QRCost{} => // The cost figures render at the CLI; the caret has no site to visit.
   AnsSilence,
   QRModules(paths) => // The module set is a COUNT with no spans of its own — the weave's
   // NModule cells carry each module's range, not a site the caret visits.

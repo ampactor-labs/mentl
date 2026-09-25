@@ -118,7 +118,15 @@ the row.
 
 ---
 
-`Hβ.graph.record-row-occurs-refuses-silently` — OPEN, measured 2026-09-24
+`Hβ.graph.record-row-occurs-refuses-silently` — LANDED 2026-09-24, one
+landing after it was named. The record writer stores `EOccursCheck` with the
+would-be binding rendered as the record it would have made
+(`record_row_as_type`), and refuses a bind over a cell that already holds a
+type or a record row with `E_BindOverBound` — one writer law for both sorts.
+`tests/syntax/record-row-occurs` was RED on boot 9c298e72 (`check` clean, and
+`f` typed its list's two elements as two different records). The entry as
+banked:
+`Hβ.graph.record-row-occurs-refuses-silently` — measured 2026-09-24
 while the occurs check moved onto the spine's `mark` column.
 `graph_bind_record_row`'s occurs refusal (`occurs_in_fields(…) ||
 record_row_tail_is(tail, handle)`) resumes WITHOUT writing and WITHOUT a
@@ -1582,9 +1590,22 @@ a node with no position projects as its handle beside its reason instead of
 borrowing one. `span_of_node_raw` is gone; `refs_inside`, `ref_is_outside`, the
 where badges and the tee lines read the column too.
 
-`Hβ.graph.mutation-delta-is-write-only` — OPEN, BORN 2026-09-19. `graph_mutated(Int,
-Mutation)` (types.mn) carries `MSetNode(Int, GNode)` — *(handle, prior value)* —
-and is performed at NINE sites in `graph_handler`'s write arms, each guarded by
+`Hβ.graph.mutation-delta-is-write-only` — OPEN, BORN 2026-09-19, its payload
+DELETED 2026-09-24. `graph_mutated` is `graph_mutated(Int)` now — the epoch a
+change took, performed for every write no open speculation fences and once at
+the outermost commit. It carried `MSetNode(Int, GNode)` — *(handle, prior
+value)* — and the build that removed the unreadable trail measured why that was
+never a delta: for a row carry the arms passed the FIRST cell the carry wrote
+and none of the others, and every handler discarded it anyway. THE FORM THE
+CONE NEEDS, stated so the next build does not restore the argument: a cached
+cursor asks "did anything in my cone change since the epoch I projected at?",
+which is a per-cell CHANGE EPOCH read where the cells are — a spine column
+each write stamps — walked over the cone at the read. An event log a
+subscriber accumulates is the side-ledger form of the same fact. The column is
+not built, because a column no reader walks is machinery; it lands with its
+first reader, the cone re-projection. What follows is the entry as born:
+`graph_mutated(Int, Mutation)` (types.mn) carried `MSetNode(Int, GNode)` and
+was performed at NINE sites in `graph_handler`'s write arms, each guarded by
 `len(checkpoint_stack) == 0` so speculation never emits. **Every handler arm of
 it in the tree discards both arguments**: `mutate_sink` (graph.mn) and
 `lsp_adapter` (lsp.mn). The effect is write-only, which is the class §5.U names
@@ -12253,7 +12274,36 @@ the instantiation-edge design's own "views" stage: a copy reads a VIEW of its
 source, the renamed roots its mapping covers
 (`Hβ.infer.instantiate-shares-never-clones`).
 
-`Hβ.graph.trail-records-what-nothing-can-undo` — OPEN, measured 2026-09-24.
+`Hβ.graph.trail-records-what-nothing-can-undo` — LANDED 2026-09-24 (the
+landing after the one that measured it), with its exception
+`Hβ.search.backtrack-never-commits-its-success` landed beside it.
+WHAT THE BUILD FOUND THAT THE ENTRY BELOW DID NOT: the trail was not only
+unreadable outside speculation, it was LOAD-BEARING there as the row
+machinery's change detector — the teach/link/union/ceiling arms decided
+whether the world saw a change by `acc.tl == trail_len`, and handed
+`graph_mutated` the FIRST new trail entry as "the" mutation of a carry that
+may write hundreds of cells. So an entry nothing could undo was also the only
+evidence a write happened. The form as built: every write is observed by ONE
+party — an open speculation, which gets the inverse, or the world, which gets
+the signal — decided by one read of the stack at the write; the inverse is
+constructed only in the first case. `RowAcc` counts its `writes`, and the
+arms read the count (`row_acc_quiet`, which also stops three arms dropping a
+refusal when the trail had not grown). `graph_mutated` lost its `Mutation`
+argument (the delta peer below carries why). The unpaired rollback — whose
+walker undid entries written with no checkpoint open — deleted with those
+entries; an unpaired rollback or commit is a stored refusal now. The
+outermost commit empties the trail and tells the world once that the
+speculation's writes are its truth (they were fenced from the signal while
+only possible). `graph_row_pin` wrote cells and never signalled at all; it
+does now. `backtrack` commits an alternative that runs to the end.
+MEASURED: the weave's judgment 614.5 → 604.4MB; the trail at a whole-wheel
+judgment's end is as long as its deepest open speculation, not 757,206.
+`backtrack` stays unexercised by any gate — it is reachable only where a
+graph handler is installed, which today is the compiler's own chain, and the
+compiler does not call it; its correctness is by construction, stated here so
+it is not mistaken for a measurement.
+
+THE ENTRY AS BANKED:
 Every graph write appends an undo entry to the trail, and at the judgment's
 end the trail held 757,206 entries (a probe reading `graph_push_checkpoint`'s
 mark on the whole-wheel route). But every rollback in the tree is paired
@@ -13354,6 +13404,47 @@ the decl node's registration, never at note time. `reaches_decl` (a DFS
 over decl handles through the decl index, with a `wmap` visited set),
 `ur_walk` and the comment-ref scope read it. `comment_ref_owners` becomes a
 `wmap` column keyed by referent, written where the pair is noted.
+▶ (3) CORRECTED 2026-09-24, BEFORE ANY BUILD, because it moved the problem.
+"Written at the decl node's registration" still WALKS THE BODY — it runs
+`collect_free_vars` once at parse where it ran once at the judgment, which
+changes where the cost is paid and not whether it is. The walk exists
+because a `VarRef` node does not carry what it RESOLVES TO; every binder that
+can capture a use (a let's pattern, an arm's pattern, a lambda's and a fn's
+parameters and defaults, a handler's config, state and arm args, a block's
+nested fn names under letrec) precedes the use in the source, so resolution
+is known at the reference's birth. THE FORM: the parser keeps the lexical
+scope as it descends and each `VarRef` it mints carries its resolution — a
+local binder (and the scope depth, which is what closure conversion needs:
+a use is a capture of every lambda frame between it and its binder) or
+OUTER (a module-scope name, resolved through (1)'s decl index). Then the
+DAG is the OUTER references filed under the declaration being parsed, a
+lambda's captures are the references that crossed it, and `infer_var_ref`
+follows a local binder's edge instead of looking the name up — the ENV's
+first dissolution (§7's gap list). The walk and all 43 of its call sites
+delete; nothing is collected, because nothing was lost.
+THE COST IT RETIRES, measured the same day by the new phase column
+(`mentl <file> cost`): the free-name walk is 54.0MB of the whole-wheel
+judgment's ~606MB, beside Tarjan's 1.4MB, for an answer of a few thousand
+names — `free_vars_merge` rebuilds its accumulator with `list_concat(a, [x])`
+per name at every node, and `bound` is merged the same way at every scope.
+THREE DEFECTS READ IN IT, and one probe that did NOT confirm them, recorded
+so nobody fixes the walk on a reading: (a) `free_vars_stmts` threads a
+block from its LAST statement, so a later `let`'s binder is in scope for the
+statements before it and an earlier `let`'s is not for the ones after it —
+blocks are stored in source order (`desugar_block` scans from index 0);
+(b) `free_vars_stmt` walks a `FnStmt`'s body with its PARAMETERS UNBOUND, so
+every parameter is reported free; (c) parameter DEFAULTS are never walked,
+though a default is judged at its declaration now. The consequence (a) and
+(b) predict — a phantom DAG edge closing a cycle, so a callee used at two
+types inside one binding group refuses — was PROBED AND REFUTED: `fn b(x)`
+with a local `a` read by a later let, and `fn a()` calling `b(1)` and
+`b(true)`, ran and answered its value (so did the parameter-named twin).
+Either the phantom edge is not produced as read, or the group tolerates it.
+UNMEASURED, so the output is an instrument: the decl's resolved references
+projected at its address (`mentl <file> refs from NAME` — what a decl
+reaches, the reverse of `refs of`), which the resolution column answers
+directly once it lands and which the walk can answer today, to see (a)–(c)
+or refute them before anything acts on them.
 (4) POSITIONS: the `(span, handle)` log DELETES and `Graph(next, spans)`
 loses its second field. CONTIGUITY HOLDS TODAY, verified: `parse_one_module`
 mints the module node, enters it, parses, and `parse_modules` maps

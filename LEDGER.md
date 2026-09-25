@@ -35,6 +35,55 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-24 · pin 252b72db5bb8613d (TRANSITION m3 == m4; census 0, frontier
+  422/0/8 and crown 152/0/6 through the candidate before the repin, board
+  24/24 and micros green through it at the repin) · ONE WRITER LAW FOR BOTH
+  SORTS, AN UNDO LOG ONLY WHERE SOMETHING CAN UNDO, AND THE JUDGMENT
+  MEASURED BY PHASE. Three arcs. (1) THE RECORD SORT. The record-row writer
+  resumed SILENTLY when its occurs guard fired: `fn f(r) = { let x = r.a;
+  [r, {a: x, b: r}] }` checked clean and typed its list's two elements as
+  two different records. It stores `EOccursCheck` now, the would-be binding
+  rendered as a record (`record_row_as_type`), and refuses a write over a
+  cell holding a type or a record row with `E_BindOverBound` — the type
+  writer's law, one landing later. `tests/syntax/record-row-occurs`, RED
+  on 9c298e72. (2) THE TRAIL. The banked entry said an undo entry written
+  with no checkpoint open is unreadable; the build found it load-bearing
+  there — the row arms decided whether the world saw a change by the
+  trail's LENGTH, and handed `graph_mutated` the FIRST new entry as the
+  mutation of a carry that writes hundreds. Every write is now observed by
+  one party, decided by one read of the stack: an open speculation gets the
+  inverse (built only then), the world gets the signal. `RowAcc` counts
+  `writes`; `row_acc_quiet` also stops three arms dropping a refusal when
+  the trail had not grown; `graph_row_pin`, which never signalled, does.
+  `graph_mutated(Int)` — its `Mutation` argument, discarded by every
+  handler and never a delta, deleted; the cone's delta is a per-cell change
+  epoch built with its first reader. The unpaired rollback and its walker
+  delete; an unpaired rollback or commit is a stored refusal; the
+  outermost commit empties the trail and tells the world once. `backtrack`
+  commits an alternative that runs to the end (by construction — no gate
+  runs it; it is reachable only where a graph handler is installed). The
+  weave's judgment 614.5 → 604.4MB; the m3 leg's heap 476.8 → 466.8MB.
+  (3) THE PHASE COLUMN. `cost` ranked declarations and could not say what
+  share any of them held. `JudgmentPhase`/`PhaseCost`, one note at each
+  boundary of the judgment (`phase_noted`), rendered by the facet beside
+  the sum over every declaration; `QRCost` became a named product (the
+  voice's four-slot positional discard went with it). FIRST READING
+  (~606MB): before 61 · parse 164 · register 7 · resume grades 4 · free
+  names 54 · order 1.4 · declarations 298 (285 inside them) · finalize 4 ·
+  prose 13 (MB). KILLS: Tarjan's tuple-per-step (1.4MB, not the cost); a
+  phantom-DAG-edge consequence of the free-name walk's backwards
+  threading, predicted from reading and REFUTED at a three-program probe
+  (all ran and answered their value) — the defects stay recorded as
+  unmeasured, with the instrument owed; the frontier's one RED on the
+  first candidate run (the solo sweep), which was this session editing
+  `pipeline.mn` while the gate read source (a transient `str_join`),
+  confirmed clean on every touched module solo. THE DESIGN CORRECTION:
+  `Hβ.graph.references-and-positions-are-columns` part (3) proposed the
+  frees column "written at the decl node's registration", which runs the
+  same walk at parse — a moved problem; corrected in place to resolution
+  at the reference's birth, which deletes the walk and its 43 call sites.
+  Two marches (the second over the phase column), one repin. Board:
+  `JudgmentHeap` → 604,360,344; `CsAuthored(Ref)` → 559.
 - 2026-09-24 · pin 9c298e72ef48dccf (TRANSITION m3 == m4; census 0, frontier
   422/0/8 and crown 152/0/6 through the candidate before the repin, board
   24/24 and micros green through it at the repin) · THE GRAPH'S ONE TYPE

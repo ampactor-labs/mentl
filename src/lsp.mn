@@ -656,7 +656,7 @@ fn range_to_json(sl, sc, el, ec) with Memory + Alloc =
 // write-only effect; `Hβ.graph.mutation-delta-is-write-only` carries the
 // class, and push diagnostics are what this arm grows into when it does.
 handler lsp_adapter with msg_id_counter = 0, initialized = false, shutdown_received = false {
-  graph_mutated(_epoch, _mutation) => resume(),
+  graph_mutated(_epoch) => resume(),
 }
 
 // lsp_session — the session loop entry. Reads frames from stdin

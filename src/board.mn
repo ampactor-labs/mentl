@@ -435,7 +435,7 @@ fn board_bounds() with Memory + Alloc = [
   // `authored` slot, so these are declarations, across every module the
   // wheel links: 57 and 561 the day they moved here.
   Bound({ceiling: 57, measure: Census(CsAuthored(Own))}),
-  Bound({ceiling: 560, measure: Census(CsAuthored(Ref))}),
+  Bound({ceiling: 559, measure: Census(CsAuthored(Ref))}),
   // Reads emit REPORTS rather than a census, so `mentl verify` runs the
   // compile's remainder to see them: each is a field read the executable
   // ships as `(unreachable)`. The class arms — its narration becomes an
@@ -466,7 +466,7 @@ fn board_bounds() with Memory + Alloc = [
   // 823,561,992 when a row cell's copies stopped waking at every growth and
   // its membership tests stopped copying their sets, then → 815,485,216 when
   // the rows' cost tally stopped rebuilding a record at every wake it counted.
-  Bound({ceiling: 614513472, measure: JudgmentHeap}),
+  Bound({ceiling: 604360344, measure: JudgmentHeap}),
   // Zero, and it is what makes the pre-commit's formatting pass unnecessary:
   // a landing whose source is off its canonical render was pinned from one
   // text and committed as another.
