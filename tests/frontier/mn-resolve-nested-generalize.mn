@@ -1,0 +1,17 @@
+// A NESTED FN IS GENERALIZED OVER ITS CAPTURE. `g` returns `outer`'s `k`, an
+// Int, so `g(2) ++ "xyz"` concatenates an Int with a String and the program
+// must refuse with E_TypeMismatch. It checks clean and runs (measured
+// 2026-09-25): the nested fn's type is generalized over every free variable,
+// including the one it shares with `outer`'s frame, so each call
+// instantiates `k`'s type afresh.
+//
+// Retires when a nested binding group generalizes only what its enclosing
+// frame cannot reach (Hβ.resolve.reference-is-an-edge).
+fn outer(k) = {
+  fn g(n) = k
+  let a = g(1) + 1
+  let b = g(2) ++ "xyz"
+  a
+}
+
+fn main() = outer(5)

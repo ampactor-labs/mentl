@@ -1,0 +1,15 @@
+// expect: 16
+// A NESTED FN WITH A DEFAULT CANNOT BE CALLED. `g(1)` is g(1, 5) = 6, plus
+// `k`. The emit writes `(unreachable) ;; partial over non-global callee
+// shape` at the call and the program traps (measured 2026-09-25) with a
+// clean check: the omitted field is filled by looking the callee up by NAME
+// at lowering, and a nested fn is no longer in the environment by then.
+//
+// Retires when a default is lowered once, in its callee's scope
+// (Hβ.resolve.reference-is-an-edge).
+fn outer(k) = {
+  fn g(a, b = 5) = a + b
+  g(1) + k
+}
+
+fn main() = outer(10)

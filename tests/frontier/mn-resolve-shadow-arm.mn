@@ -1,0 +1,16 @@
+// expect: 3
+// A MATCH ARM'S BINDER OVERWRITES THE LOCAL IT SHADOWS. The arm's `a` is its
+// own binder, so the sum is 1 + 2. The program answers 4 with a clean check
+// (measured 2026-09-25): the arm binds its `a` into the register the outer
+// `a` already names.
+//
+// Retires with the block form beside it, when a register is named by its
+// binder (Hβ.resolve.reference-is-an-edge).
+fn main() = {
+  let a = 1
+  let y = match Some(2) {
+    Some(a) => a,
+    None => 0,
+  }
+  a + y
+}

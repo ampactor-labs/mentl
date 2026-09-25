@@ -1,0 +1,15 @@
+// A LITERAL LET IS SILENTLY IRREFUTABLE. `let 0 = x` refuses every value but
+// zero, so it performs `abort()`, which nothing handles: the program must
+// refuse with E_EffectUnhandled. It checks clean and runs, answering 7
+// (measured 2026-09-25): the parser does not count a literal as a
+// destructuring pattern, so the let binds nothing and tests nothing.
+// `let Some(0) = x` refuses as it should.
+//
+// Retires when every non-variable pattern in let position desugars to the
+// refutable arm it is.
+fn f(x) = {
+  let 0 = x
+  7
+}
+
+fn main() = f(5)

@@ -35,6 +35,48 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-25 · pin 900ae3b2034226ad (CLEAN m2 == m3; census 0, frontier
+  442/0/23 and crown 152/0/6 through the candidate before the repin, board
+  24/24 and micros green through it at the repin, frontier 452/0/43 at the
+  pin with the twenty new legs) · EVERY NODE KNOWS ITS
+  CONTAINER, AND THE SECOND REFUTATION ROUND HELD RED BY NAME. The first
+  floor of `Hβ.resolve.reference-is-an-edge`. (1) THE TREE EDGE.
+  `body_children` (types.mn) enumerates every node-valued field of every
+  body; `graph_register_node` writes each child's parent into a spine column
+  biased by one. The cursor's pipe position and enclosing fn and the prose
+  gate's declaration scope climb it — three whole-graph scans deleted — and
+  the query walkers' hand-kept child lists (which skipped patterns,
+  defaults, carriers and a module's declarations while calling themselves
+  total) went, taking two of the three narrated field floors with them.
+  Parse 163.6 → 182.4MB on the same source, every other phase within 1MB;
+  the judgment bound rose to 627,277,640 with the repayment named (the
+  free-name walk's 54MB). KILLS: a stored extent (34MB at parse), then a
+  derived one, deleted before landing — its only reader had no callers, a
+  refuter showed the handle range inexact (ShowExpr minted after the next
+  chunk; a parameter destructure's match covering ret and effect nodes), and
+  a range scan costs the subtree it claimed to spare; a board note blaming
+  the prose gate's table for the fallen field floors, refuted by the prior
+  boot's own narration (`init` and `body` in the deleted walkers). (2) THE
+  SECOND ROUND. Two refuters broke design v3 for α–δ and found the class
+  wider than four machines: every spelling-keyed read. Twenty fixtures, seen
+  red on the prior boot and on this one — registers named by spelling (a
+  shadowing let or arm binder: 4 for 3; another width: `unknown local`),
+  spelling dispatch (a parameter named like an op, like a top-level fn with
+  defaults, `len`), a default's raw cell unified at the call, nested-fn
+  defaults (trap), a nested fn generalized over its capture, a module-level
+  `abort` capturing a desugar, a state update's target found by name,
+  annotations dropped (destructuring and braceless lets, handler config), a
+  config default judged before its callee, `let 0 = x` irrefutable, `fn
+  f(0)` losing its parameter, `(a)` a one-tuple, a parenthesized fanout
+  flattened. FINDING in the oracle: `run_refusal` compiles stdin without the
+  prelude, so the generalize leg read PASS through `len` being unbound while
+  `mentl run` answered 9; the new refusal legs judge through the manifest
+  (`run_refusal_linked`). SYNTAX: nested fns are a binding group (letrec,
+  generalizing only what the enclosing frame cannot reach), a default's
+  scope is sequential and instantiates per call, `(p)` is grouping — the
+  first two sentences were false against their own section. Design v4 in
+  RESIDUE.
+
 - 2026-09-24 · pin 252b72db5bb8613d (TRANSITION m3 == m4; census 0, frontier
   422/0/8 and crown 152/0/6 through the candidate before the repin, board
   24/24 and micros green through it at the repin) · ONE WRITER LAW FOR BOTH

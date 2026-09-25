@@ -1,0 +1,19 @@
+// A HANDLER CONFIG PARAMETER'S ANNOTATION IS DISCARDED. `k: Int` installed
+// with a String must refuse with E_TypeMismatch. The program checks clean and
+// runs, exiting 7 (measured 2026-09-25): the config parameters are minted
+// with a fresh type each, and the parsed annotation is thrown away. The fn
+// form (`fn f(k: Int)` called with a String) refuses as it should.
+//
+// Retires when a config parameter's annotation types its binder, as a fn
+// parameter's does (Hβ.resolve.reference-is-an-edge, the binder landing).
+effect Ask {
+  ask() -> Int
+}
+
+handler answer(k: Int) {
+  ask() => resume(7),
+}
+
+fn body() with Ask = ask()
+
+fn main() = body() ~> answer("not an int")

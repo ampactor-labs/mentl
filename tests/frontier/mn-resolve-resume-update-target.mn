@@ -1,0 +1,29 @@
+// expect: 16
+// A STATE UPDATE'S TARGET IS FOUND BY NAME. `resume() with n = …` names the
+// handler's state `n`; the arm's local `n` is a different binder that only
+// the right-hand side reads. So the state becomes byte_len("shadow") + 10 =
+// 16 and `get()` answers it. The program refuses with E_TypeMismatch "Int vs
+// List(Byte)" (measured 2026-09-25): the update's target is resolved as a
+// name in the arm's scope, where the local wins.
+//
+// Retires when an update's target is a reference to the state's binder
+// (Hβ.resolve.reference-is-an-edge, the binder landing).
+effect Ctr {
+  inc() -> ()
+  get() -> Int
+}
+
+handler counter with n = 0 {
+  inc() => {
+    let n = "shadow"
+    resume() with n = byte_len(n) + 10
+  },
+  get() => resume(n),
+}
+
+fn body() with Ctr = {
+  inc()
+  get()
+}
+
+fn main() = body() ~> counter

@@ -1,0 +1,19 @@
+// expect: 18
+// A PARENTHESIZED PATTERN IS READ AS A ONE-TUPLE. `(a)` in pattern position
+// is the pattern `a` grouped, exactly as `(x)` in an expression is `x`, so
+// each of the three forms below adds one to 5. All three refuse with
+// E_TypeMismatch "Int vs (Int)" (measured 2026-09-25): the pattern parser
+// builds a one-element tuple. The lambda form `((a)) => a + 1` runs, because
+// its parameters are parsed as expressions first.
+//
+// Retires when a parenthesized single pattern is grouping
+// (Hβ.resolve.reference-is-an-edge, the binder landing).
+fn f((a)) = a + 1
+
+fn main() = {
+  let g = { (x) => x + 1 }
+  let m = match 5 {
+    (a) => a + 1,
+  }
+  f(5) + g(5) + m
+}

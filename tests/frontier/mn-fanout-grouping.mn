@@ -1,0 +1,15 @@
+// expect: 123
+// A PARENTHESIZED FANOUT INSIDE A FANOUT IS FLATTENED. The author grouped
+// `(1) >< (2)` and fanned the pair out beside `(3)`, so the value is
+// ((1, 2), 3). The program refuses with E_TypeMismatch (measured 2026-09-25)
+// because the parser's N-ary accretion folds the inner fanout's branches
+// into the outer one and yields a 3-tuple. The N-ary law covers an
+// unparenthesized chain; parentheses are the author's grouping.
+//
+// Retires when accretion stops at the author's parentheses.
+fn main() = {
+  let t = ((1) >< (2)) >< (3)
+  match t {
+    ((a, b), c) => a * 100 + b * 10 + c,
+  }
+}

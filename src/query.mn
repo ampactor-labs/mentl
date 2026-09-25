@@ -893,7 +893,7 @@ fn handle_var_names(h) with GraphRead + Memory + Alloc = {
     NExpr(VarRef(n)) => [n],
     _ => [],
   }
-  here ++ (body_child_handles(body) |> map(handle_var_names) |> flatten)
+  here ++ (body_children(body) |> map(handle_var_names) |> flatten)
 }
 
 fn ur_cell_decls(acc, cell) with Memory + Alloc =
@@ -1698,7 +1698,7 @@ fn subtree_prints(h, fuel) with GraphRead + !Mutate + Alloc + Memory = if fuel <
     },
     _ => false,
   }
-  if here { true } else { subtree_prints_children(body_child_handles(body), fuel - 1) }
+  if here { true } else { subtree_prints_children(body_children(body), fuel - 1) }
 }
 
 fn subtree_prints_children(hs, fuel) with GraphRead + !Mutate + Alloc + Memory = match hs {
@@ -1721,7 +1721,7 @@ fn subtree_calls_param(h, pnames, fuel) with GraphRead + !Mutate + Alloc + Memor
     },
     _ => false,
   }
-  if here { true } else { subtree_calls_param_children(body_child_handles(body), pnames, fuel - 1) }
+  if here { true } else { subtree_calls_param_children(body_children(body), pnames, fuel - 1) }
 }
 
 fn subtree_calls_param_children(hs, pnames, fuel) with GraphRead + !Mutate + Alloc + Memory = match hs {
@@ -1747,7 +1747,7 @@ fn drift_roster() with Memory + Alloc =
 fn drift_shapes_of(fn_handle) with GraphRead + !Mutate + Alloc + Memory = {
   // The walk starts at the FN NODE, not its body: a shape can live ON
   // the FnStmt itself (the param-adjacency face), and
-  // body_child_handles already descends into the body — one uniform
+  // body_children already descends into the body — one uniform
   // walk, no per-kind carve-out.
   let roster = drift_roster()
   zip(roster, subtree_drift_counts(fn_handle, roster, map((_) => 0, roster), 128))
@@ -1758,7 +1758,7 @@ fn subtree_drift_counts(h, roster, counts, fuel) with GraphRead + !Mutate + Allo
 } else {
   let body = graph_node_body(h)
   let counts2 = roster_bump(roster, counts, 0, len(roster), h, body)
-  subtree_drift_children(body_child_handles(body), roster, counts2, fuel - 1)
+  subtree_drift_children(body_children(body), roster, counts2, fuel - 1)
 }
 
 fn roster_bump(roster, counts, i, n, h, body) with GraphRead + !Mutate + Alloc + Memory = if i >= n {
@@ -1861,94 +1861,6 @@ fn wildcard_body_fabricates(b) with Memory + GraphRead = match b {
   },
 }
 
-// ── the one total child projection — the weave's tree edge ──────────
-//
-// expr_child_handles — the type-handles of an Expr's direct child Nodes.
-// One arm per Expr variant that carries children (the row algebra over
-// the value space — H6 exhaustive); leaf literals carry none.
-fn expr_child_handles(e) with Alloc + Memory = match e {
-  BinOpExpr{left: l, right: r} => [node_handle(l), node_handle(r)],
-  UnaryOpExpr(_, n) => [node_handle(n)],
-  CallExpr(f, args) => [node_handle(f)] ++ map(node_handle, args),
-  LambdaExpr(_, body) => [node_handle(body)],
-  IfExpr(c, t, f) => [node_handle(c), node_handle(t), node_handle(f)],
-  BlockExpr(stmts, fin) => // order-free: membership test only
-  [node_handle(fin)] ++ map(node_handle, stmts),
-  MatchExpr(scrut, arms) => // an arm's BODY is a child node — dropping the arms left the
-  // projection partial and tree containment blind below any match
-  // (the enclosing-decl guard's measured hole).
-  [node_handle(scrut)] ++ map({ (_, b) => node_handle(b) }, arms),
-  ResumeExpr(v, updates) => // A resume-with update is the parser's {name, init} record — the handle
-  // lives on its init edge (record_field_handle's exact sibling).
-  [node_handle(v)] ++ map(record_field_handle, updates),
-  MakeListExpr(elems) => map(node_handle, elems),
-  MakeTupleExpr(elems) => map(node_handle, elems),
-  MakeRecordExpr(fields) => // Record LITERALS carry the parser's (name, value) tuples
-  // (parse_record_fields); only resume updates are {name, init} records.
-  map(tuple_field_handle, fields),
-  RecordUpdateExpr(base, flds) => [node_handle(base)] ++ map(tuple_field_handle, flds),
-  NamedRecordExpr(_, flds) => map(tuple_field_handle, flds),
-  IndexExpr(recv, idx) => [node_handle(recv), node_handle(idx)],
-  MakeStringExpr(frags) => map(node_handle, frags),
-  ShowExpr(inner) => [node_handle(inner)],
-  FieldExpr(recv, _) => [node_handle(recv)],
-  PipeExpr{left: l, right: r} => [node_handle(l), node_handle(r)],
-  FanoutExpr(branches) => map(node_handle, branches),
-  LabeledArg{value: v} => // the labeled value is a child node
-  [node_handle(v)],
-  _ => // LitInt/LitFloat/LitString/LitBool/LitUnit/VarRef/ExprPlaceholder — no child Nodes
-  [],
-}
-
-// The field IS the parser's {name, init} record — read the init edge by
-// name (the tuple destructure read a record as positions and met Node).
-fn record_field_handle(field) with Pure = node_handle(field.init)
-
-fn tuple_field_handle(field) with Pure = match field {
-  (_, v) => node_handle(v),
-}
-
-// stmt_child_handles — expr_child_handles' Stmt sibling (the projection
-// made TOTAL, Hβ.cursor.enclosing-decl-edge's dep): the VALUE-position
-// child nodes of a statement. Type-level carriers (a variant's or op's
-// comment node, an import, a refinement's predicate) hold no value
-// holes and contribute none.
-fn stmt_child_handles(s) with Alloc + Memory = match s {
-  LetStmt{value, ann} => match ann {
-    N{body: NTypeAnn(_)} => // the annotation channel is a child only when it IS one: the absent
-    // form ALIASES the value node (the parser's no-fresh-mint sentinel,
-    // all three LetStmt mints), so listing the alias double-visits every
-    // unannotated let's value subtree — measured as count_var_uses
-    // doubling through statement-position lets. Same read infer makes
-    // (its NTypeAnn arm skips a non-annotation node).
-    [node_handle(value), node_handle(ann)],
-    _ => [node_handle(value)],
-  },
-  FnStmt{body} => [node_handle(body)],
-  ExprStmt(e) => [node_handle(e)],
-  HandlerDeclStmt{state: states, arms} => map(record_field_handle, states) ++ map(arm_body_handle, arms),
-  TypeDefStmt{} => [],
-  EffectDeclStmt{} => [],
-  ImportStmt(_) => [],
-  RefineStmt{} => [],
-  AliasStmt{} => [],
-  RowAliasStmt{} => [],
-}
-
-fn arm_body_handle(arm) with Pure = node_handle(arm.body)
-
-// body_child_handles — the ONE total child projection over NodeBody:
-// tree walks (containment, the enclosing-decl descent) read this,
-// never a per-altitude copy.
-fn body_child_handles(body) with Alloc + Memory = match body {
-  NExpr(e) => expr_child_handles(e),
-  NStmt(s) => stmt_child_handles(s),
-  NPat(_) => [],
-  NHole(_) => [],
-  NModule(_) => [],
-  NTypeAnn(_) => [],
-}
-
 // ── the tier detectors — the census IS their home ────────────────────
 //
 // The audit tiers (`anonymity_shape_of` per fn, below; pipeline.mn's
@@ -1979,16 +1891,6 @@ fn recursion_shape_of(fn_handle) with GraphRead + Alloc + Memory = match graph_n
   _ => false,
 }
 
-// node_contains_handle — TREE containment: is `target` the node at
-// `h` or a descendant of it? The span form cannot answer this (decl
-// and body spans are head-anchored — the measured 2026-07-28 hole);
-// the tree IS the truth. Bounded by the subtree.
-fn node_contains_handle(h, target) with GraphRead + Alloc + Memory + !Mutate = if h == target {
-  true
-} else {
-  any((c) => node_contains_handle(c, target), body_child_handles(graph_node_body(h)))
-}
-
 // ── the verb-shape read — the topology the bindings already draw ─────
 //
 // SYNTAX ⌖: `|>` is NEVER optional on a chain — `y |> f |> g` over
@@ -2013,7 +1915,7 @@ fn body_is_var(body, name: String) with Pure = match body {
 fn count_var_uses(h, name: String) with GraphRead + Alloc + Memory = {
   let body = graph_node_body(h)
   let here = if body_is_var(body, name) { 1 } else { 0 }
-  here + (body_child_handles(body) |> map((c) => count_var_uses(c, name)) |> fold(0, (a, x) => a + x))
+  here + (body_children(body) |> map((c) => count_var_uses(c, name)) |> fold(0, (a, x) => a + x))
 }
 
 // chain_scan — walk a block's statement spine (stmts ++ final): a
@@ -2089,7 +1991,7 @@ fn lambda_shapes(h, acc) with GraphRead + !Mutate + Alloc + Memory = {
     NExpr(LambdaExpr(params, lbody)) => classify_lambda(h, params, lbody, acc),
     _ => acc,
   }
-  body_child_handles(body) |> fold(here, (a, c) => lambda_shapes(c, a))
+  body_children(body) |> fold(here, (a, c) => lambda_shapes(c, a))
 }
 
 fn classify_lambda(h, params, lbody, acc) with GraphRead + !Mutate + Alloc + Memory = match acc {
@@ -2108,7 +2010,7 @@ fn self_call_increments(h, name: String, pnames) with GraphRead + Alloc + Memory
     NExpr(CallExpr(callee, args)) => callee_names(callee, name) && (args |> any((a) => arg_is_increment(a, pnames))),
     _ => false,
   }
-  here || (body_child_handles(body) |> any((c) => self_call_increments(c, name, pnames)))
+  here || (body_children(body) |> any((c) => self_call_increments(c, name, pnames)))
 }
 
 fn callee_names(callee, name: String) with GraphRead = match graph_node_body(node_handle(callee)) {
@@ -2324,7 +2226,7 @@ fn fanout_sites(h, tees) with GraphRead + EnvRead + !Mutate + Alloc + Memory = {
     NExpr(LambdaExpr(_, lb)) => // the frame fence, statically mirrored
     fanout_sites(node_handle(lb), []),
     NStmt(FnStmt{body: fb}) => fanout_sites(node_handle(fb), []),
-    _ => fanout_sites_children(body_child_handles(body), tees),
+    _ => fanout_sites_children(body_children(body), tees),
   }
 }
 
@@ -2367,7 +2269,7 @@ fn tee_lines(h) with GraphRead + EnvRead + !Mutate + Alloc + Memory + Intern = {
     },
     NExpr(LambdaExpr(_, lb)) => tee_lines(node_handle(lb)),
     NStmt(FnStmt{body: fb}) => tee_lines(node_handle(fb)),
-    _ => tee_lines_children(body_child_handles(body)),
+    _ => tee_lines_children(body_children(body)),
   }
 }
 

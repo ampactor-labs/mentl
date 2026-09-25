@@ -1,0 +1,16 @@
+// expect: 3
+// A SHADOWING LET OF ANOTHER WIDTH BREAKS THE ASSEMBLY. The outer `a` is a
+// Float and the inner one an Int; they are two binders, so `x` is 3 and the
+// outer `a` still reads 1.5. The module does not assemble (`unknown local`,
+// measured 2026-09-25) while `mentl check` is clean: the registers are named
+// by spelling and width, and the two readings disagree about which exists.
+//
+// Retires when a register is named by its binder (Hβ.resolve.reference-is-an-edge).
+fn main() = {
+  let a = 1.5
+  let x = {
+    let a = 2
+    a + 1
+  }
+  if a == 1.5 { x } else { 99 }
+}

@@ -1,0 +1,16 @@
+// expect: 42
+// A PARAMETER SPELLED LIKE A TOP-LEVEL FN WITH A DEFAULT CALLS THE WRONG
+// THING. `g` is `apply`'s parameter, bound to `inc`, so `g(x)` is 42. The
+// program traps with an indirect-call type mismatch (measured 2026-09-25):
+// the judgment resolved the parameter, lowering resolved the top-level `g`
+// and filled its default. Renaming the top-level fn answers 42.
+//
+// Retires when lowering reads the resolution the judgment read
+// (Hβ.resolve.reference-is-an-edge).
+fn g(a, b = 7) = a + b
+
+fn apply(g, x) = g(x)
+
+fn inc(n) = n + 1
+
+fn main() = apply(inc, 41)

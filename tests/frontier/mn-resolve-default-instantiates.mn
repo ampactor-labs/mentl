@@ -1,0 +1,23 @@
+// expect: 2
+// A DEFAULT FIXES ITS CALLEE'S GENERIC TYPE AT THE FIRST OMITTING CALL.
+// `pair` is generic, and `y`'s default reads `x`, so `pair(2)` is (2, 2) and
+// `pair(true)` is (true, true). The program refuses with E_TypeMismatch
+// "Int vs Bool" (measured 2026-09-25); writing both arguments at both calls
+// runs and answers 2. The call unifies the default's own cell, which was
+// judged once in the callee's frame, instead of an instance of it.
+//
+// Retires when an omitted field takes the instantiated parameter type and a
+// default is lowered once in its callee's scope (Hβ.resolve.reference-is-an-edge).
+fn pair(x, y = x) = (x, y)
+
+fn main() = {
+  let p = pair(2)
+  let q = pair(true)
+  match p {
+    (m, _) => if first_of(q) { m } else { 0 },
+  }
+}
+
+fn first_of(t) = match t {
+  (b, _) => b,
+}

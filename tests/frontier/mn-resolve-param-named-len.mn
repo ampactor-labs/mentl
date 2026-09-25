@@ -1,0 +1,13 @@
+// expect: 42
+// A PARAMETER SPELLED `len` IS TYPED AS THE SEQUENCE OPERATION. `len` is
+// `apply`'s parameter, bound to `inc`, so `len(x)` is 42. The program
+// refuses with E_TypeMismatch "Int vs List" (measured 2026-09-25): the
+// judgment recognizes a sequence operation by the callee's spelling.
+//
+// Retires when a call is judged by the declaration it resolves to
+// (Hβ.resolve.reference-is-an-edge).
+fn apply(len, x) = len(x)
+
+fn inc(n) = n + 1
+
+fn main() = apply(inc, 41)

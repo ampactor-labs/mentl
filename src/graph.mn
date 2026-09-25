@@ -129,7 +129,7 @@ fn spine_open_loop(own spine, opened, b) with Memory + Alloc = if opened > b {
   (spine, opened)
 } else {
   let page =
-    SpinePage{bind: make_list(spine_slots), boundaries: make_list(spine_slots), canon: make_list(spine_slots), cells: make_list(spine_slots), comments: make_list(spine_slots), dispatch: make_list(spine_slots), installs: make_list(spine_slots), mark: make_list(spine_slots), module: make_list(spine_slots), narrowing: make_list(spine_slots), nodes: make_list(spine_slots), program: make_list(spine_slots), slots: make_list(spine_slots), spans: make_list(spine_slots)}
+    SpinePage{bind: make_list(spine_slots), boundaries: make_list(spine_slots), canon: make_list(spine_slots), cells: make_list(spine_slots), comments: make_list(spine_slots), dispatch: make_list(spine_slots), installs: make_list(spine_slots), mark: make_list(spine_slots), module: make_list(spine_slots), narrowing: make_list(spine_slots), nodes: make_list(spine_slots), parent: make_list(spine_slots), program: make_list(spine_slots), slots: make_list(spine_slots), spans: make_list(spine_slots)}
   spine_open_loop(list_set(spine, opened, page), opened + 1, b)
 }
 
@@ -244,6 +244,27 @@ fn spine_put_span(ref spine, h, own span) with Memory = {
   ()
 }
 
+// The tree edge, written where a node registers: each child learns its
+// container. The write is in-place, so a re-registration (a module's second,
+// with its parsed decls) writes it again. A LEAF writes nothing: it contains
+// no node, so it is no one's parent.
+fn spine_put_tree(spine, h, kids) with Memory + Alloc =
+  if len(kids) == 0 { () } else { each({ c => spine_put_parent(spine, c, h) }, kids) }
+
+fn spine_put_parent(spine, c, h) with Memory = {
+  let _ = list_set(spine_page(spine, c).parent, spine_slot(c), h + 1)
+  ()
+}
+
+// A node no container registered — a type cell, a root, an orphan — has no
+// parent: the column's absent answer.
+fn spine_parent_at(spine, spine_open, h) -> Option(Int) with Memory + Alloc = if h < 0 || spine_band(h) >= spine_open {
+  None
+} else {
+  let cell = list_index(spine_page(spine, h).parent, spine_slot(h))
+  if cell == 0 { None } else { Some(cell - 1) }
+}
+
 // The sparse-column reads, each answering its absent-contract for a closed
 // band or a virgin cell.
 fn spine_body_at(ref spine, spine_open, h) with Memory + Cast + Alloc = if spine_band(h) >= spine_open {
@@ -343,6 +364,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     if cell == 0 { load_i32(0 - 1) } else { 0 }
     resume(cell - 1)
   },
+  graph_parent_of(handle) => resume(spine_parent_at(spine, spine_open, handle)),
   graph_module_current() => // Enter a module: every subsequent mint is attributed to it. The module
   // node attributes ITSELF, which is what makes the column total without a
   // sentinel — the first stamp has no earlier module to inherit, so it is
@@ -456,6 +478,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // page, six columns. In-place cell write: no trail, no state rebind.
   {
     spine_put_body(spine, handle, body)
+    spine_put_tree(spine, handle, body_children(body))
     resume()
   },
   graph_attach_comment(handle, text, span) => // The comment column — parse-attached prose in the handle's own page. A

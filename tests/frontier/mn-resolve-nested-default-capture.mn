@@ -1,0 +1,16 @@
+// expect: 11
+// A NESTED FN'S DEFAULT READS ITS CAPTURE. `g`'s default is `outer`'s `k`,
+// so `f(1)` is g(1, 10) = 11. The program traps (measured 2026-09-25) with a
+// clean check: the default is lowered at the call inside the lambda `f`,
+// where `k` is not a capture, and a nested fn's defaults cannot be found by
+// name once its declaration has left the environment.
+//
+// Retires when a default is lowered once, in its callee's scope, sharing the
+// callee's closure record (Hβ.resolve.reference-is-an-edge).
+fn outer(k) = {
+  fn g(a, b = k) = a + b
+  let f = (x) => g(x)
+  f(1)
+}
+
+fn main() = outer(10)

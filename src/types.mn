@@ -1362,7 +1362,12 @@ type CursorView
 // `mark` is the occurs check's visited set: a root reached by the check whose
 // stamp is the epoch that check's bind takes. Scratch, never trailed — a
 // stale stamp can never match a later one, because the epoch only grows.
-type SpinePage = {bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], cells: [CellSlot], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], mark: [Int], module: [Int], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]}
+//
+// `parent` is the TREE edge, written once where a node is registered
+// (`body_children` is what it contains): a child's container handle, BIASED
+// BY ONE — handle 0 is a real node (the link's module), so an unbiased zero
+// could not tell "handle 0" from "never written".
+type SpinePage = {bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], cells: [CellSlot], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], mark: [Int], module: [Int], narrowing: [Int], nodes: [GNode], parent: [Int], program: [NodeBody], slots: [StateSlotHome], spans: [Span]}
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) with Memory = count_lines_from(s, byte_len(s), 0, 0)
@@ -1840,7 +1845,7 @@ type Stmt
   // aliases the value node (the parser's no-fresh-mint sentinel at all
   // three LetStmt mints, keeping handle numbering unshifted for every
   // unannotated let). Readers include the channel only when it is
-  // NTypeAnn — infer's arm and stmt_child_handles both read it so.
+  // NTypeAnn — infer's arm and `own_annotation` both read it so.
   = LetStmt(pat: Node, value: Node, ann: Node)
   | FnStmt(name: String, params: [TParam], ret: Node, effs: [(EffName, Bool, EConn)], body: Node)
   | TypeDefStmt(name: String, variants: [(String, [TParam], Node)])
@@ -1960,6 +1965,126 @@ fn pat_binders(node) = match pat_of(node) {
 fn rest_binders(rest) = match rest {
   None => [],
   Some(name) => if name == "_" { [] } else { [name] },
+}
+
+// ─── THE TREE EDGE — a node's children, total over every body ────────────
+//
+// The one enumeration of what a node CONTAINS, read where the node is
+// registered: each child's parent is written from it once
+// (`graph_register_node`), so no reader ever walks the tree to ask what is
+// inside what. Total over every node-valued FIELD — every constructor is
+// named, and a leaf answers [] because it holds no node, never because it
+// was skipped. A default, an init, a constructor's or an op's carrier node, a
+// predicate's operands and a pattern's sub-patterns are children like any
+// other. A node carried inside a non-node VALUE is not yet one: an effect
+// argument's VarRef (`with Sample(rate)`, an `EANode` in a row, also inside a
+// type) has no parent until it becomes a resolved reference in
+// `Hβ.resolve.reference-is-an-edge`'s third landing, which needs its scope.
+fn body_children(body) = match body {
+  NExpr(e) => expr_children(e),
+  NStmt(s) => stmt_children(s),
+  NPat(p) => pat_children(p),
+  NHole(_) => [],
+  NModule(m) => map(child_h, m.decls),
+  NTypeAnn(_) => [],
+}
+
+fn child_h(n) = match n {
+  N{handle} => handle,
+}
+
+fn expr_children(e) = match e {
+  LitInt(_) => [],
+  LitFloat(_) => [],
+  LitString(_) => [],
+  LitBool(_) => [],
+  LitUnit => [],
+  VarRef(_) => [],
+  BinOpExpr{left, right} => [child_h(left), child_h(right)],
+  UnaryOpExpr(_, n) => [child_h(n)],
+  CallExpr(f, args) => [child_h(f)] ++ map(child_h, args),
+  LabeledArg{value} => [child_h(value)],
+  LambdaExpr(params, body) => param_default_children(params) ++ [child_h(body)],
+  IfExpr(c, t, f) => [child_h(c), child_h(t), child_h(f)],
+  BlockExpr(stmts, fin) => map(child_h, stmts) ++ [child_h(fin)],
+  MatchExpr(scrut, arms) => [child_h(scrut)] ++ flat_map(arm_children, arms),
+  ResumeExpr(v, updates) => [child_h(v)] ++ map({ u => child_h(u.init) }, updates),
+  MakeListExpr(elems) => map(child_h, elems),
+  MakeTupleExpr(elems) => map(child_h, elems),
+  MakeRecordExpr(fields) => map(field_value_h, fields),
+  RecordUpdateExpr(base, fields) => [child_h(base)] ++ map(field_value_h, fields),
+  NamedRecordExpr(_, fields) => map(field_value_h, fields),
+  IndexExpr(recv, idx) => [child_h(recv), child_h(idx)],
+  MakeStringExpr(frags) => map(child_h, frags),
+  ShowExpr(inner) => [child_h(inner)],
+  FieldExpr(recv, _) => [child_h(recv)],
+  PipeExpr{left, right} => [child_h(left), child_h(right)],
+  FanoutExpr(branches) => map(child_h, branches),
+  RestExpr(_) => [],
+  ExprPlaceholder => [],
+}
+
+fn arm_children(arm) = match arm {
+  (pat, body) => [child_h(pat), child_h(body)],
+}
+
+fn field_value_h(field) = match field {
+  (_, value) => child_h(value),
+}
+
+fn param_default_children(params) = flat_map(
+  {
+    TParam{default} => match default {
+      Some(d) => [child_h(d)],
+      None => [],
+    },
+  },
+  params
+)
+
+fn stmt_children(s) = match s {
+  LetStmt{pat, value, ann} => [child_h(pat), child_h(value)] ++ own_annotation(ann, value),
+  FnStmt{params, ret, body} => param_default_children(params) ++ [child_h(ret), child_h(body)],
+  TypeDefStmt{variants} => map({ (_, _, carrier) => child_h(carrier) }, variants),
+  EffectDeclStmt{params, ops} => param_default_children(params) ++ map({ (_, _, _, carrier) => child_h(carrier) }, ops),
+  HandlerDeclStmt{config, state, arms} => param_default_children(config) ++ map({ st => child_h(st.init) }, state) ++ map({ a => child_h(a.body) }, arms),
+  ExprStmt(e) => [child_h(e)],
+  ImportStmt(_) => [],
+  RefineStmt{pred} => pred_children(pred),
+  AliasStmt{} => [],
+  RowAliasStmt{} => [],
+}
+
+// An unannotated let's annotation slot ALIASES its value node (the parser's
+// no-fresh-mint form), so the slot is a child only when it is a node of its
+// own — listing the alias would give the value two parents.
+fn own_annotation(ann, value) = if child_h(ann) == child_h(value) { [] } else { [child_h(ann)] }
+
+// A predicate carries its operands by HANDLE (the AST lives in the graph), so
+// its children are the handles it names.
+fn pred_children(p) = match p {
+  PTrue => [],
+  PCompare{left, right} => [left, right],
+  PAnd(a, b) => pred_children(a) ++ pred_children(b),
+  POr(a, b) => pred_children(a) ++ pred_children(b),
+  PNot(q) => pred_children(q),
+  PBoolNode(h) => [h],
+  PPatternMatch(scrut, pat_h) => [child_h(scrut), pat_h],
+  PFlowLe{} => [],
+  PWithSelf(self_h, q) => [self_h] ++ pred_children(q),
+}
+
+fn pat_children(p) = match p {
+  PVar(_) => [],
+  PWild => [],
+  PLit(_) => [],
+  PCon(_, subs) => map(child_h, subs),
+  PConFields(_, fields) => map(field_value_h, fields),
+  PTuple(subs) => map(child_h, subs),
+  PList(subs, _) => map(child_h, subs),
+  PRecord(fields, _) => map(field_value_h, fields),
+  PAlt(branches) => map(child_h, branches),
+  PAs(_, inner) => [child_h(inner)],
 }
 
 type LitValue = LVInt(Int) | LVFloat(Float) | LVString(String) | LVBool(Bool)
@@ -2267,6 +2392,10 @@ effect GraphRead {
   // line. TOTAL: every node is born inside a module, stdin's included, so
   // there is no absent case and no reader needs a "which file, if any" arm.
   graph_module_of(Int) -> Int
+  // the node that CONTAINS this one — the tree edge, written when the
+  // container registered. None at a root (a module) and at a node no
+  // registered container names (an orphan the parse minted and dropped).
+  graph_parent_of(Int) -> Option(Int)
   // the module currently in force — what the next mint will be attributed to.
   // Read by the diagnostics register to stamp a report with the file it is
   // about, which is how narration scopes to the module the user named now

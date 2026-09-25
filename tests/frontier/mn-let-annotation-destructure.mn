@@ -1,0 +1,13 @@
+// A DESTRUCTURING LET'S ANNOTATION IS DROPPED. `(1, "x")` is not an
+// `(Int, Int)`, so the program must refuse with E_TypeMismatch at the `let`.
+// It checks clean and runs, exiting 1 (measured 2026-09-25): the parser
+// discards the annotation of a destructuring let, and the refutable-let
+// desugar never reads the slot. `mentl fmt` then deletes the annotation from
+// the source. The PVar form (`let x: Int = "s"`) refuses as it should.
+//
+// Retires when a destructuring let's annotation types the value it
+// destructures (Hβ.resolve.reference-is-an-edge, the binder landing).
+fn main() = {
+  let (a, b): (Int, Int) = (1, "x")
+  byte_len(b)
+}

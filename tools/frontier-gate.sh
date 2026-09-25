@@ -3467,6 +3467,43 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-resolve-literal-param.mn" E_PatternInexhaustive "$dir"
   run_program "$compiler" resolve-k-captures "$ROOT/tests/frontier/mn-resolve-k-captures.mn" 71 yes "$dir"
   run_program "$compiler" resolve-binder-shapes "$ROOT/tests/frontier/mn-resolve-binder-shapes.mn" 20 yes "$dir"
+  # The second refutation round (2026-09-25) widened the class: every place
+  # the compiler asks what a SPELLING means. Registers named by spelling,
+  # dispatch by spelling, a default's raw cell unified at a call, a nested
+  # fn generalized over its capture, annotations and update targets dropped
+  # or resolved by name. Each declared by name in verify-baseline.
+  run_program "$compiler" resolve-shadow-block "$ROOT/tests/frontier/mn-resolve-shadow-block.mn" 3 yes "$dir"
+  run_program "$compiler" resolve-shadow-arm "$ROOT/tests/frontier/mn-resolve-shadow-arm.mn" 3 yes "$dir"
+  run_program "$compiler" resolve-shadow-width "$ROOT/tests/frontier/mn-resolve-shadow-width.mn" 3 yes "$dir"
+  run_program "$compiler" resolve-default-instantiates "$ROOT/tests/frontier/mn-resolve-default-instantiates.mn" 2 yes "$dir"
+  run_program "$compiler" resolve-nested-default "$ROOT/tests/frontier/mn-resolve-nested-default.mn" 16 yes "$dir"
+  run_program "$compiler" resolve-nested-default-capture "$ROOT/tests/frontier/mn-resolve-nested-default-capture.mn" 11 yes "$dir"
+  run_program "$compiler" resolve-param-named-op "$ROOT/tests/frontier/mn-resolve-param-named-op.mn" 42 yes "$dir"
+  run_program "$compiler" resolve-param-shadows-fn "$ROOT/tests/frontier/mn-resolve-param-shadows-fn.mn" 42 yes "$dir"
+  run_program "$compiler" resolve-param-named-len "$ROOT/tests/frontier/mn-resolve-param-named-len.mn" 42 yes "$dir"
+  run_program "$compiler" resolve-toplevel-abort-hygiene "$ROOT/tests/frontier/mn-resolve-toplevel-abort-hygiene.mn" 10 yes "$dir"
+  run_program "$compiler" resolve-resume-update-target "$ROOT/tests/frontier/mn-resolve-resume-update-target.mn" 16 yes "$dir"
+  run_program "$compiler" pattern-paren-grouping "$ROOT/tests/frontier/mn-pattern-paren-grouping.mn" 18 yes "$dir"
+  run_program "$compiler" fanout-grouping "$ROOT/tests/frontier/mn-fanout-grouping.mn" 123 yes "$dir"
+  # Through the manifest: a refusal is judged in the environment the program
+  # runs in. The stdin form links no prelude, so a fixture naming `len` or a
+  # desugar naming `abort` refused as E_MissingVariable plus a knock-on
+  # E_TypeMismatch — and the generalize leg read as passing on 2026-09-25
+  # for exactly that reason, while `mentl run` answered 9.
+  run_refusal_linked "$compiler" resolve-nested-generalize \
+    "$ROOT/tests/frontier/mn-resolve-nested-generalize.mn" E_TypeMismatch "$dir"
+  run_refusal_linked "$compiler" let-annotation-destructure \
+    "$ROOT/tests/frontier/mn-let-annotation-destructure.mn" E_TypeMismatch "$dir"
+  run_refusal_linked "$compiler" let-annotation-braceless \
+    "$ROOT/tests/frontier/mn-let-annotation-braceless.mn" E_TypeMismatch "$dir"
+  run_refusal_linked "$compiler" handler-config-default-order \
+    "$ROOT/tests/frontier/mn-handler-config-default-order.mn" E_TypeMismatch "$dir"
+  run_refusal_linked "$compiler" handler-config-annotation \
+    "$ROOT/tests/frontier/mn-handler-config-annotation.mn" E_TypeMismatch "$dir"
+  run_refusal_linked "$compiler" let-literal-refutable \
+    "$ROOT/tests/frontier/mn-let-literal-refutable.mn" E_EffectUnhandled "$dir"
+  run_refusal_linked "$compiler" literal-fn-param \
+    "$ROOT/tests/frontier/mn-literal-fn-param.mn" E_PatternInexhaustive "$dir"
   # A record read through lambdas over a list of records: the filter's and
   # the map's element rows are two OPEN rows. They meet at ONE fresh row var
   # now (Rémy), each continuing into it, so `.body` reads its own slot —

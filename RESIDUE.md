@@ -13552,34 +13552,91 @@ Strings, an alternation binds one name twice); visibility is not the mint
 init); `resume` is a capture source the frames dropped; `Outer` resolved by
 name through a decl index is the re-derivation PLAN §2 forbids; and a
 column infer and lower do not read is a fifth disagreeing copy.
-▶ THE FORM, five landings, each a march (scratchpad design v3 is the brief;
-the refuters' second round runs against it before any byte of γ changes):
-α — every node records its PARENT and its EXTENT `[lo, hi]` at registration,
-from a children enumeration made total (this is
-`Hβ.graph.parent-and-module-columns-are-read` parts 0–1 plus the extent),
-so subtree membership is O(1). β — a name is a HANDLE (the lexer's intern
-handle, today discarded at the token, rides `TIdent`) and every binder is a
-NODE: a parameter is a pattern in parameter position with its annotation on
-the pattern, arm args and state names and rests and as-binders are pattern
-nodes, an arm mints its continuation's binder; the lambda cover grammar
-deletes into a bounded lookahead. γ — each reference carries
-`Resolution = RLocal(binder) | RDecl(decl) | RUnbound`, drawn by a scope the
-parser keeps as handler state (a name-handle-indexed table with a trail,
-O(1) per reference), binders entering at VISIBILITY, a block's nested fns
-letrec via a pre-scan that mints their binders first, module scope pended
-once and resolved at the module's and the link's close, a desugar's
-reference an edge to the declaration it means; captures and frees are ONE
-projection over the extent (`refs_crossing(S)`, `decl_refs(S)`), so a
-boundary decided late is a different S; the walk and its 43 sites delete;
-`infer_var_ref` follows the edge in the same landing. δ — LowerScope keyed
-by binder; a default or an init lowers at its call or install site under a
-substitution from the callee's parameter binders to the caller's argument
-temporaries; the prior stack and the spelling interception delete. ε — scope
-is graph content: the proposer's vocabulary at a hole, proximity, and
-import scoping read the scope chain.
+▶ THE SECOND ROUND (2026-09-25) broke v3 too, and widened the disease. Two
+refuters (one on α/β, one on γ/δ) found that EVERY place the compiler asks
+"what is this spelling?" is this re-derivation, not only the four machines:
+a local's WASM register is named by its spelling, so a shadowing `let` in a
+nested block or a match arm overwrites the outer binder (4 for 3, clean
+check) and a shadow of another width does not assemble; a parameter spelled
+like an effect op lowers to a perform (does not assemble), one spelled like
+a top-level fn with defaults calls that fn (trap), one spelled `len` is
+typed as the sequence op (false refusal); a default's own cell is unified
+at the first omitting call, fixing a generic callee (`pair(2)` then
+`pair(true)` refuses); a nested fn's defaults cannot be called (the callee
+is looked up by name after its declaration left the env — trap) nor read
+its captures; a nested fn is generalized over the variable it captures
+(`k ++ "xyz"` with `k: Int` checks clean and runs); a module-level `let abort`
+captures a desugar's `abort`; a state update's TARGET is resolved as a
+name in the arm, where a shadowing local wins (false refusal); a handler
+config annotation and a destructuring or braceless let's annotation are
+thrown away (and `mentl fmt` deletes the let's from source); a handler
+config default is judged before the fn it calls (a list in `k + 1`, runs);
+`let 0 = x` is silently irrefutable; `fn f(0)` loses its parameter;
+`(a)` in pattern position is a one-tuple; an author-parenthesized fanout
+inside a fanout is flattened. Twenty fixtures, all seen red on the pinned
+boot (`tests/frontier/mn-resolve-*.mn`, `mn-let-*`, `mn-handler-config-*`,
+`mn-literal-fn-param`, `mn-pattern-paren-grouping`, `mn-fanout-grouping`),
+declared by name. The warm cone's miss (a module that references without
+importing is re-derived cold and not warm: warm exit 0, cold E_TypeMismatch)
+needs a two-step harness and is owed.
+▶ α LANDED 2026-09-25 (the tree edge): `body_children` (types.mn) is the one
+enumeration of a body's node-valued fields; `graph_register_node` writes each
+child's parent (a spine column, biased by one). The cursor's pipe parent and
+enclosing fn, and the prose gate's declaration scope, climb it; the query
+walkers' hand-kept child lists (and two of the three narrated field floors)
+deleted. THE EXTENT WAS DELETED before landing: its one reader had no
+callers, a handle range is not exact (a ShowExpr is minted after the next
+string chunk; a parameter destructure's match covers the return and effect
+nodes; accretion and let-chain flattening orphan registered nodes), and a
+range scan costs the subtree it claimed to spare. Parse +18.85MB (163.6 →
+182.4 on the same source); the judgment bound rose with a repayment
+condition — the free-name walk's 54MB. Open from α: a node inside a non-node
+value (an effect argument's `EANode` in a row or a type) has no parent;
+nothing refuses a registration under an open checkpoint.
+▶ THE FORM, v4 (scratchpad design v4 is the brief). β — `TIdent` carries its
+intern handle, keywords' too; every binder is a node; a PARAMETER is
+`Param(pat, ann, marks, default)` — there is no general typed-pattern
+grammar, because `Some(x: Int)` collides with the record pattern's
+`field: pattern` and with the brace-literal rule; a destructuring let keeps
+its annotation by desugaring through an annotated `__dp`; `(p)` is grouping;
+every non-variable let pattern is refutable; a parameter list is patterns
+from its first token, the `(` decision O(1) off a lex-time bracket column;
+ONE bind site per binder cell (pre-registration and the body judgment read
+the same cells; Mycroft's rounds re-mint parameter cells explicitly, gated by
+mn-poly-fragment); handler config params are PVar-only and typed by their
+annotation; a state UPDATE's target is a reference node; an alternation's
+first branch binder is canonical, the rest aliases; the as-pattern's node is
+its binder. γ — `Resolution = RLocal | RDecl | RUnbound` drawn by the parse's
+scope handler; CAPTURES ARE WRITTEN AT THE WRITE for every frame the parser
+sees (a reference k frames out adds its binder to each frame it crosses,
+O(answer)); a continuation's captures are DEMANDED at a MultiShot reify, a
+scan of the remainder against a binder-depth column; lower's own seeds
+(outer holes, `__k`, `__hrec`, the `<|` input) join at the boundary it
+builds, and any other absent binder is a loud floor; `decl_refs` is written
+at the write (the enclosing declaration and each crossed nested fn), which is
+what deletes the 54MB walk; letrec is GROUP ALLOCATION (every record of a
+block's nested fns allocated before captures fill; the pre-scan counts
+`TStringSplice` as an opener and its binders are the BlockExpr's children);
+the nested group is judged as a group under a STACKED group context and
+generalizes only what its enclosing frame cannot reach; `RLocal(b)` binds the
+reference to `TVar(b)` — no binder-keyed env; a desugar's reference is minted
+`RDecl(prelude's op)`; the warm cone is the reverse-resolution closure. δ —
+REGISTERS NAMED BY BINDER; defaults lower through OMISSION WRAPPERS once in
+the callee's scope sharing its closure record (v3's per-call-site
+substitution moved the problem to every call site and could not reach a
+nested callee's captures), infer giving an omitted field the INSTANTIATED
+parameter type; handler config defaults and inits become one install
+function; every spelling-keyed dispatch (op, callee defaults, structural
+leaves, `is_seq_op`, `group_member`, `ls_resume_bind_of`, `handler_decl_of`,
+`partial_unfilled`) reads the edge. Audit before porting: the resume-binding
+closure in lower may be unreachable. ε — unchanged. SYNTAX's nested-fn
+"sugar for `let`" and default "(the same letrec scope)" sentences are false
+under this form and are corrected with γ.
 ▶ RETIRES when the free-name walk, the env's by-name local lookup, lower's
-by-name resolution and the four name indexes are gone and the seventeen
-fixtures hold.
+by-name resolution and every spelling-keyed dispatch are gone and the
+fixtures named here hold — all but `mn-fanout-grouping`, which is the
+parser's accretion ignoring the author's parentheses and is fixed at the
+accretion on its own.
 
 `Hβ.driver.warm-start-reads-what-it-restored` — OPEN, designed 2026-09-22
 (Landing 7 of the re-derivation queue, family F: TIME). A composition

@@ -1,0 +1,13 @@
+// A LITERAL IN FN PARAMETER POSITION DELETES THE PARAMETER. `fn f(0)` is an
+// arm on the argument that refuses every value but zero, so the fn is
+// inexhaustive and must refuse with E_PatternInexhaustive (SYNTAX §«Refutable
+// `let`»: a pattern in parameter position is an arm, never a hidden
+// refusal). It refuses with E_TypeMismatch "Int vs ()" instead (measured
+// 2026-09-25): the parameter list silently loses the literal, so `f` takes
+// no arguments. The lambda form is mn-resolve-literal-param.
+//
+// Retires when a parameter is a pattern from its first token
+// (Hβ.resolve.reference-is-an-edge, the binder landing).
+fn f(0) = 1
+
+fn main() = f(5)

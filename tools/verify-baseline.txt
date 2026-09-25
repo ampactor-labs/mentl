@@ -989,6 +989,43 @@ frontier_expected_refused: resolve-desugar-hygiene
 frontier_expected_refused: resolve-alpha-renaming
 frontier_expected_refused: resolve-feedback-capture
 frontier_expected_refused: resolve-toplevel-destructure
+# 2026-09-25, the second refutation round: every place the compiler asks what
+# a SPELLING means is the same re-derivation. Wrong answers with a clean
+# check: a shadowing let or match-arm binder overwrites the outer local's
+# register (4 for 3); a nested fn's default traps (called by name after its
+# declaration left the env, and unable to read its capture); a parameter
+# spelled like a top-level fn with defaults calls that fn (trap). Refusals
+# that do not fire: a nested fn generalized over its capture runs; a
+# destructuring or braceless let's annotation is dropped; a handler config
+# default is judged before the fn it calls; a config annotation is dropped;
+# `let 0 = x` is irrefutable; `fn f(0)` loses its parameter (the wrong class
+# refuses). All but fanout-grouping retire with Hβ.resolve.reference-is-an-edge.
+frontier_expected_red: resolve-shadow-block
+frontier_expected_red: resolve-shadow-arm
+frontier_expected_red: resolve-nested-default
+frontier_expected_red: resolve-nested-default-capture
+frontier_expected_red: resolve-param-shadows-fn
+frontier_expected_red: resolve-nested-generalize
+frontier_expected_red: let-annotation-destructure
+frontier_expected_red: let-annotation-braceless
+frontier_expected_red: handler-config-default-order
+frontier_expected_red: handler-config-annotation
+frontier_expected_red: let-literal-refutable
+frontier_expected_red: literal-fn-param
+# Correct programs the medium will not build: a shadow of another width
+# (`unknown local`), a generic default at two types, a parameter spelled
+# like an effect op (does not assemble) or `len` (typed as the sequence op),
+# a module-level `abort` capturing a desugar, a state update's target found
+# by name, `(a)` read as a one-tuple, and an author-parenthesized fanout
+# flattened into its parent (the parser's accretion, fixed on its own).
+frontier_expected_refused: resolve-shadow-width
+frontier_expected_refused: resolve-default-instantiates
+frontier_expected_refused: resolve-param-named-op
+frontier_expected_refused: resolve-param-named-len
+frontier_expected_refused: resolve-toplevel-abort-hygiene
+frontier_expected_refused: resolve-resume-update-target
+frontier_expected_refused: pattern-paren-grouping
+frontier_expected_refused: fanout-grouping
 # 2026-09-23: FIFTY CROWN CRUCIBLES THE PINNED BOOT FAILED, written by four
 # adversarial refuters of the rows design and each seen RED through the boot
 # the hour it was written. 2026-09-24: FORTY-TWO hold through the rows

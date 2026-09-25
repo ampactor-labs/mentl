@@ -137,8 +137,9 @@ fn board_bounds() with Memory + Alloc = [
   // the rows landing's crown crucibles name. None was dropped. 257 the same
   // day: `build_pipeline` folds `compose` by reference, as its own comment
   // always said it did. 256 when the formatter's seven-aspect fan went, one
-  // lambda per aspect with it.
-  Bound({ceiling: 256, measure: Census(CsEffectfulLambda)}),
+  // lambda per aspect with it. 255 (2026-09-25) when the query walkers'
+  // hand-kept child lists became the tree edge's one enumeration.
+  Bound({ceiling: 255, measure: Census(CsEffectfulLambda)}),
   // A record pattern whose receiver row never closes reads a field offset
   // the graph cannot prove. `T_FieldOffsetUnprovable` reports that class at
   // the receiver now; this line retires when that diagnostic arms.
@@ -172,9 +173,11 @@ fn board_bounds() with Memory + Alloc = [
   // fabricated absence over a load-bearing ADT, found where it had hidden
   // that a `let`, a refinement and an alias declare names (so an import
   // used only for one of them read as dead). Forty-four such arms stood the
-  // day the roster grew; each retires by enumeration. Fifty-nine stand
-  // (2026-09-24); the ceiling follows them.
-  Bound({ceiling: 59, measure: Census(CsWildcardFabricates)}),
+  // day the roster grew; each retires by enumeration. Fifty-nine stood
+  // (2026-09-24); fifty-eight when the query walkers' child lists, one of
+  // which answered `_ => []` for every body it did not name, became the tree
+  // edge's total enumeration (2026-09-25). The ceiling follows them.
+  Bound({ceiling: 58, measure: Census(CsWildcardFabricates)}),
   // Drift mode 15 — a value given a leading-underscore name instead of being
   // deleted. The rename silences the reader, never the fact that nothing
   // reads it.
@@ -393,7 +396,11 @@ fn board_bounds() with Memory + Alloc = [
   // same day by reading the board whole. 446 (2026-09-24): the count fell
   // again as the rows landing's walks became folds; the ceiling follows. 445
   // when the formatter's whole-graph parent scan was deleted (2026-09-24).
-  Bound({ceiling: 440, measure: Census(CsIterationCostume)}),
+  // 436 (2026-09-25): four more handle scans went when the tree edge landed —
+  // the pipe-parent scan and the enclosing-fn scan in the cursor became parent
+  // climbs, and the prose gate's decl-span table and its containment search
+  // became one climb to the declaration.
+  Bound({ceiling: 436, measure: Census(CsIterationCostume)}),
   // 131 (2026-09-24, from 136) — a gate told to look away, counted on the comments column. Each
   // marker is a bash pattern left imprecise (the control-keyword rule inside
   // a Reason string, the accumulator rule on a bounded stack push); the
@@ -425,7 +432,14 @@ fn board_bounds() with Memory + Alloc = [
   // steps, and the count fell by one with them. 213 when the formatter's
   // seven-aspect fan and its parent scan were deleted — each aspect branch
   // destructured the borrowed triple by position.
-  Bound({ceiling: 212, measure: Census(CsWildcardDestructure)}),
+  //
+  // 214 — RAISED by two (2026-09-25), named: the tree edge's enumeration
+  // (`stmt_children`) reads each variant's and each op's carrier node out of
+  // the `TypeDefStmt` and `EffectDeclStmt` tuples. Their form is not a record.
+  // A variant and an op are BINDERS — each declares a name — so the second
+  // landing of `Hβ.resolve.reference-is-an-edge` makes each a node of its
+  // own; the tuple and the carrier delete together, and both sites with them.
+  Bound({ceiling: 214, measure: Census(CsWildcardDestructure)}),
   // THE QUIET GATE (§4⑤'s Hylo bar): a parameter whose ownership the author
   // had to write is the inference failing, measured instead of felt. These
   // two counts were `grep -roE '[(,] *own [a-z_]' src/` in tools/verify.sh
@@ -433,15 +447,22 @@ fn board_bounds() with Memory + Alloc = [
   // as signatures, missed lib/, and could not tell a parameter from a
   // sentence about one. The census reads the parameter product's own
   // `authored` slot, so these are declarations, across every module the
-  // wheel links: 57 and 561 the day they moved here.
+  // wheel links: 57 and 561 the day they moved here. 557 authored `ref`
+  // (2026-09-25): the prose gate's two scope helpers went, and the tree edge's
+  // writers carry no marker — the use count grades them.
   Bound({ceiling: 57, measure: Census(CsAuthored(Own))}),
-  Bound({ceiling: 559, measure: Census(CsAuthored(Ref))}),
+  Bound({ceiling: 557, measure: Census(CsAuthored(Ref))}),
   // Reads emit REPORTS rather than a census, so `mentl verify` runs the
   // compile's remainder to see them: each is a field read the executable
   // ships as `(unreachable)`. The class arms — its narration becomes an
   // error, and every error refuses — when this reaches zero. Three, the same
-  // three verify.sh counted on the flat link.
-  Bound({ceiling: 3, measure: Said(FieldOffsetFloor)}),
+  // three verify.sh counted on the flat link. One on 2026-09-25: `init` in
+  // the query walkers' record-field reader and `body` in their arm-body
+  // reader went with those hand-kept child lists, which read the fields off
+  // elements whose row never closed; the tree edge's one enumeration
+  // (`stmt_children`) reads them through the handler declaration's own closed
+  // records. `name` in `emitfns_index_build` is the one left.
+  Bound({ceiling: 1, measure: Said(FieldOffsetFloor)}),
   // The same ladder one operator over: `==`/`<` on an operand whose type is
   // still a variable at emit, where a one-word compare would be an address
   // compare answering a lie. Fifty-two, again the flat link's own count.
@@ -466,7 +487,20 @@ fn board_bounds() with Memory + Alloc = [
   // 823,561,992 when a row cell's copies stopped waking at every growth and
   // its membership tests stopped copying their sets, then → 815,485,216 when
   // the rows' cost tally stopped rebuilding a record at every wake it counted.
-  Bound({ceiling: 604360344, measure: JudgmentHeap}),
+  //
+  // 627,277,640 — RAISED 21MB (2026-09-25) by the tree edge, and the phase
+  // reading names it: the boot and the new wheel judging the SAME source spend
+  // 163.6MB and 182.4MB in parse, and within 1MB of each other in every other
+  // phase. Every registered node now enumerates its children (a list, and a
+  // closure when there are any) to write each child's parent — about sixty
+  // bytes a node over 311,301 nodes, scratch no reader keeps. What pays it
+  // back is designed, not measured: the free-name walk (54MB, the phase
+  // before callee-first order) re-derives from source which declarations
+  // each declaration references, and the third landing of
+  // `Hβ.resolve.reference-is-an-edge` writes that edge where the reference is
+  // born. If it does not fall by at least this much when that lands, this
+  // raise was the wrong trade and the enumeration's allocation is the cut.
+  Bound({ceiling: 627277640, measure: JudgmentHeap}),
   // Zero, and it is what makes the pre-commit's formatting pass unnecessary:
   // a landing whose source is off its canonical render was pinned from one
   // text and committed as another.

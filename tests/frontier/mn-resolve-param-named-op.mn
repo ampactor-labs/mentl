@@ -1,0 +1,22 @@
+// expect: 42
+// A PARAMETER SPELLED LIKE AN EFFECT OP BECOMES A PERFORM. `get` is
+// `apply`'s parameter, bound to `inc`, so `get(x)` is 42. The module does
+// not assemble (measured 2026-09-25: values remaining on the stack) while
+// `mentl check` is clean: lowering asks the environment what `get` is before
+// it asks the scope, and the environment answers with the op.
+//
+// Retires when lowering dispatches on the declaration a call resolves to,
+// never on its spelling (Hβ.resolve.reference-is-an-edge).
+effect Get {
+  get() -> Int
+}
+
+handler give {
+  get() => resume(5),
+}
+
+fn apply(get, x) = get(x)
+
+fn inc(n) = n + 1
+
+fn main() = (apply(inc, 41)) ~> give

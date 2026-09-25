@@ -1,0 +1,10 @@
+// A LET'S ANNOTATION IN A BRACELESS BODY IS DROPPED. `"s"` is not an Int,
+// so the program must refuse with E_TypeMismatch. It checks clean (measured
+// 2026-09-25): the braceless `let … ; x` form parses through a path that
+// throws the annotation away, and `mentl fmt` deletes it from the source.
+//
+// Retires when every let form carries its annotation to the judgment
+// (Hβ.resolve.reference-is-an-edge, the binder landing).
+fn f() = let x: Int = "s"; x
+
+fn main() = f()

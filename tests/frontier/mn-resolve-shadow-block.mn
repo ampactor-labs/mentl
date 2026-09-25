@@ -1,0 +1,17 @@
+// expect: 3
+// A SHADOWING LET IN A NESTED BLOCK OVERWRITES THE OUTER ONE. The inner `a`
+// is a different binder from the outer `a`, so the sum is 1 + 2. The program
+// answers 4 with a clean check (measured 2026-09-25): a local's register is
+// named by its SPELLING, so both lets write one register and the outer `a`
+// reads the inner one's 2. Renaming the inner binder answers 3.
+//
+// Retires when a register is named by the binder it holds, never by the
+// name it was spelled with (Hβ.resolve.reference-is-an-edge).
+fn main() = {
+  let a = 1
+  let y = {
+    let a = 2
+    a
+  }
+  a + y
+}

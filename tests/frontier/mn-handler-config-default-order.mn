@@ -1,0 +1,22 @@
+// A HANDLER CONFIG DEFAULT IS JUDGED BEFORE WHAT IT CALLS IS DECLARED. The
+// default `seed()` is a list, so `k + 1` must refuse with E_TypeMismatch.
+// The program checks clean and runs, exiting 17 (measured 2026-09-25): the
+// callee-first order never learns that the handler's config default calls
+// `seed`, so the default is judged against an unjudged `seed`. Declaring
+// `seed` above the handler refuses as it should.
+//
+// Retires when the default's reference is an edge the declaration order
+// reads (Hβ.resolve.reference-is-an-edge).
+effect Ask {
+  ask() -> Int
+}
+
+handler answer(k = seed()) {
+  ask() => resume(k + 1),
+}
+
+fn seed() = [1, 2, 3]
+
+fn body() with Ask = ask()
+
+fn main() = body() ~> answer

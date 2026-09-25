@@ -284,12 +284,6 @@ handler fresh_for_inference {
 // is a reference.
 fn comment_refs_check(ref stmts, parse_start, parse_end) = {
   let cdix = comment_decl_index(stmts, 0, smap_new())
-  // Flat ONCE before the per-comment scans: crc_scope_at indexes this list
-  // per scope per commented handle, and a snoc spine pays its depth on
-  // every read — measured 2026-07-24 at 83% of the ENTIRE self-compile
-  // (the prose gate cost five compilers; perf found it, no code-reading
-  // estimate ever named it).
-  let scopes = list_to_flat(crc_fn_scopes(stmts, 0, []))
   // The walk's bounds are THIS pass's own parse range: comments attach
   // only at parse (graph_attach_comment, like graph_index_span), so
   // handles above the frontend's frontier are comment-free by
@@ -298,6 +292,9 @@ fn comment_refs_check(ref stmts, parse_start, parse_end) = {
   // graph_next walk judged every stale generation's copy and probed
   // the judgment's millions of mints for prose (the crc share of the
   // healed profile, 19%, 2026-07-26).
+  // Each top-level declaration's locals, computed ONCE — a comment finds
+  // its declaration by the parent climb and reads the entry.
+  let scopes = fold(wmap_new(len(stmts) + 1), crc_scope_join, stmts)
   let dollars = crc_walk(parse_start, parse_end, cdix, scopes, [])
   if len(dollars) > 0 {
     let lvix = lit_vocab_build(0, graph_next(), smap_new())
@@ -308,64 +305,26 @@ fn comment_refs_check(ref stmts, parse_start, parse_end) = {
 }
 
 // The SCOPE face of the referent set: an interior comment's backticks name
-// the enclosing fn's params and binders — real names at that position —
-// so each top-level decl contributes (its span, its comment_locals) once,
-// and a comment inside that span resolves against them exactly as the
-// decl's own comment does.
-// A decl node's recorded span is its HEAD; the scope's EXTENT runs from
-// this decl's start to the next decl's start (the last runs open) — the
-// stmt list is consecutive, so the pair of starts IS the extent, no
-// re-measure of the body.
-// EACH SCOPE CARRIES ITS MODULE, and the extent stops at its module's edge.
-// A decl's extent is "from my span to the NEXT decl's", which was true while
-// spans were offsets into one weave and became a cross-file claim the moment
-// every module started at line 1 again: the last decl of module A ran to the
-// FIRST LINE OF MODULE B, so its extent was inverted and matched nothing,
-// while B's early decls sat inside A's range by pure line-number coincidence.
-// Measured 2026-09-20 — seven comment references to a fn's own PARAMS went
-// unresolved (cdix, effs, sig_frees, used_sites among them — named here as
-// prose, since from THIS scope they are other functions' binders) because the
-// interior comment looked up a scope by containment alone and found the wrong
-// file's, or none. This is `Hβ.cursor.module-of-a-span-is-containment` — the
-// third machine PLAN §7 names — meeting the prose gate.
-fn crc_fn_scopes(ref stmts, i, acc) = if i >= len(stmts) {
-  acc
-} else {
-  let node = list_index(stmts, i)
-  match node {
-    N{span: sp, handle: h} => match sp {
-      Span{start_line: sl, start_col: sc, end_line: el, end_col: ec} => {
-        let mh = graph_module_of(h)
-        // The next decl bounds this one only when it is the same module's;
-        // otherwise the decl's OWN end is the honest edge.
-        let ext = if i + 1 < len(stmts) {
-          match list_index(stmts, i + 1) {
-            N{span: nsp, handle: nh} => if graph_module_of(nh) == mh {
-              match nsp {
-                Span{start_line: nl, start_col: nc} => Span(sl, sc, nl, nc),
-              }
-            } else {
-              Span(sl, sc, el, ec)
-            },
-          }
-        } else {
-          Span(sl, sc, el, ec)
-        }
-        crc_fn_scopes(stmts, i + 1, push(acc, (mh, ext, comment_locals(h))))
-      },
-    },
-  }
-}
+// the enclosing declaration's params and binders — real names at that
+// position — so a comment resolves against the locals of the top-level
+// declaration it sits inside, found by climbing the parent edge to the node
+// whose own parent is the module. It was a per-compile table of
+// (module, line range, locals) built from each decl's head span to the next
+// decl's, searched per comment by containment; line ranges stopped being
+// addresses when every module began at line 1 again, and the table had to
+// learn to carry its module to stay true (2026-09-20). The tree was never
+// ambiguous.
+fn crc_scope_join(scopes, d) = wmap_add(scopes, node_handle(d), comment_locals(node_handle(d)))
 
-// A position is not an address until it is module-qualified, so the lookup
-// matches the MODULE first and the containment second — the same correction
-// the caret projection took at `Hβ.cursor.address-drops-module-identity`.
-fn crc_scope_at(ref scopes, cmod: Int, csp, i) = if i >= len(scopes) {
-  []
-} else {
-  match list_index(scopes, i) {
-    (mh, sp, names) => if mh == cmod && span_contains(sp, csp) { names } else { crc_scope_at(scopes, cmod, csp, i + 1) },
-  }
+fn crc_scope_of(scopes, h) = match graph_parent_of(h) {
+  None => [],
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => match wmap_get(scopes, h) {
+      Some(names) => names,
+      None => [],
+    },
+    _ => crc_scope_of(scopes, p),
+  },
 }
 
 // name -> decl stmt handle, one walk over the program's own statements.
@@ -407,9 +366,7 @@ fn crc_walk(h, n, ref cdix, ref scopes, dollars) = if h >= n {
 } else {
   let t = graph_comment_at(h)
   let d2 = if byte_len(t) > 0 {
-    let locals =
-      comment_locals(h) ++ crc_scope_at(scopes, graph_module_of(h), graph_comment_span_at(h), 0)
-    crc_scan(t, 0, byte_len(t), h, cdix, locals, dollars)
+    crc_scan(t, 0, byte_len(t), h, cdix, comment_locals(h) ++ crc_scope_of(scopes, h), dollars)
   } else {
     dollars
   }

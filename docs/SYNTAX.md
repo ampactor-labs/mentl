@@ -222,7 +222,7 @@ compress(sample, threshold = -6.0)                  // label to skip over ratio
 compress(sample, ratio = 2.0, threshold = -18.0)   // fully labeled
 ```
 
-A default **desugars once at the declaration** to a callee-scoped fill: when a call-site argument edge is absent, the parameter is filled by projecting the default's node, evaluated in the **callee's** parameter scope — where earlier parameters are in scope as a sequential binding chain (the same letrec scope nested fns use), never the caller's context. The default has one home (the signature node) and one evaluation context (the callee); the call site only omits an edge. A defaulted slot leaves a `DefaultReason(param, decl_site)` edge — `mentl why` at the slot walks to the declaration ("`ratio` defaulted to `4.0` from `compress` — annotate to pin").
+A default **desugars once at the declaration** to a callee-scoped fill: when a call-site argument edge is absent, the parameter is filled by projecting the default's node, evaluated in the **callee's** parameter scope — where the parameters declared before it are in scope, each after its own default (a sequential chain, not the letrec a block's nested fns share), never the caller's context. A call that omits the field instantiates the callee's type as any call does, so a default over a generic parameter takes each caller's type. The default has one home (the signature node) and one evaluation context (the callee); the call site only omits an edge. A defaulted slot leaves a `DefaultReason(param, decl_site)` edge — `mentl why` at the slot walks to the declaration ("`ratio` defaulted to `4.0` from `compress` — annotate to pin").
 
 ### Labeled call arguments
 
@@ -371,9 +371,9 @@ fn check_exhaustive(patterns) = {
 }
 ```
 
-Nested `fn name(params) = body` is syntactic sugar for `let name = (params) => body`. Same semantics; nested form reads more naturally when the inner fn is genuinely function-shaped (vs. a lambda passed as an argument).
+A nested `fn name(params) = body` is a member of its block's **binding group**: every nested fn a block declares is visible throughout that block — to itself, to its siblings, and to the statements before it — so nested fns call each other in any order (a local letrec). That is what distinguishes it from `let name = (params) => body`, whose name is visible only after the `let`.
 
-Mutual recursion: nested fns may reference each other — the compiler hoists them into a local letrec scope.
+The group is judged together, and it generalizes only over what its enclosing frame cannot reach: a local the nested fn captures belongs to the enclosing frame, shared by every call, never quantified per call. (Recorded 2026-09-25: this section called a nested fn "syntactic sugar for `let`" beside the letrec sentence it contradicted, and the artifact follows neither — `tests/frontier/mn-resolve-nested-fn-letrec`, `-nested-fn-mutual` and `-nested-generalize` hold the gap.)
 
 ---
 
@@ -1539,6 +1539,8 @@ Patterns appear in `let`, `match`, function parameters, and lambda parameters.
 | `PRecord`           | `{name, age}`, `{name: n, ...r}`  | field punning + rest |
 | `PAlt`              | `pat_1 \| pat_2 \| ...`            | matches if any branch matches; no variable bindings inside alternatives |
 | `PAs`               | `name @ pat`                      | binds `name` to whole value AND destructures via `pat` |
+
+A parenthesized single pattern `(p)` is `p`, grouped, exactly as `(e)` is `e` in an expression; there is no one-tuple pattern, as there is no one-tuple expression. (The pattern parser builds a one-tuple today, so `fn f((a))`, `match 5 { (a) => … }` and `{ (x) => x + 1 }` refuse — `tests/frontier/mn-pattern-paren-grouping`.)
 
 ### Examples
 

@@ -561,20 +561,9 @@ fn ownership_of_ty(ty) with Memory = match ty {
 //   no parent pipe → NoPipe (a leaf, or the chain's outermost result)
 // The verb tentacle then actually fires — "you are mid-|> chain" is a live
 // read, never the old constant NoPipe.
-fn pipe_context_of_handle(handle) with GraphRead + !Mutate + Memory + Alloc = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => scan_for_pipe_parent(handle, 0, next),
-  }
-}
-
-fn scan_for_pipe_parent(target, i, n) with GraphRead + !Mutate + Memory + Alloc = if i >= n {
-  NoPipe
-} else {
-  match pipe_position_in(target, graph_node_body(i)) {
-    NoPipe => scan_for_pipe_parent(target, i + 1, n),
-    found => found,
-  }
+fn pipe_context_of_handle(handle) with GraphRead + !Mutate + Memory + Alloc = match graph_parent_of(handle) {
+  Some(p) => pipe_position_in(handle, graph_node_body(p)),
+  None => NoPipe,
 }
 
 // Is `target` a stage of the PipeExpr at this weave entry? Project the
@@ -641,45 +630,17 @@ fn mentl_context_at(handle) with EnvRead + GraphRead + Memory + Alloc + Intern +
   },
 }
 
-// The enclosing fn DECLARATION at a handle — the innermost FnStmt whose
-// body TREE contains the handle. Spans cannot resolve containment
-// (decl and body parse spans are head-anchored — measured 2026-07-28:
-// a three-line body's span was two columns wide), so the walk descends
-// the tree through the ONE total child projection
-// (body_child_handles). Nesting resolves structurally: a candidate
-// whose own stmt node sits inside the current best's body is the
-// tighter enclosure and replaces it. O(weave × subtree) at felt
-// cadence; the O(1) form is the decl-containment edge on the node
-// (Hβ.cursor.enclosing-decl-edge).
-fn enclosing_fn_decl_at(handle) with GraphRead + Memory + Alloc + !Mutate = match graph_snapshot() {
-  Graph(next, _spans) => enclosing_fn_scan(handle, 0, next, None),
-}
-
-fn enclosing_fn_scan(target, i, n, best) with GraphRead + Memory + Alloc + !Mutate = if i >= n {
-  match best {
-    Some((name, effs, _)) => Some((name, effs)),
-    None => None,
-  }
-} else {
-  match graph_node_body(i) {
-    NStmt(FnStmt{name, effs, body}) => if node_contains_handle(node_handle(body), target) {
-      match best {
-        None => enclosing_fn_scan(target, i + 1, n, Some((name, effs, i))),
-        Some((bn, be, bi)) => // both contain the hole — the nested one wins: this decl's own
-        // stmt node inside the standing best's body means THIS is the
-        // inner declaration (a nested declaration is hoisted letrec
-        // sugar; its FnStmt node is a child of the outer body).
-        if node_contains_handle(bi, i) {
-          enclosing_fn_scan(target, i + 1, n, Some((name, effs, i)))
-        } else {
-          enclosing_fn_scan(target, i + 1, n, Some((bn, be, bi)))
-        },
-      }
-    } else {
-      enclosing_fn_scan(target, i + 1, n, best)
-    },
-    _ => enclosing_fn_scan(target, i + 1, n, best),
-  }
+// The enclosing fn DECLARATION at a handle — the nearest FnStmt above it in
+// the tree, read by climbing the parent edge. The innermost wins by
+// construction: the first FnStmt the climb meets is the tightest one. It
+// was a scan of every handle testing each FnStmt's body for containment and
+// keeping the innermost, O(weave × subtree) per caret.
+fn enclosing_fn_decl_at(handle) with GraphRead + Memory + Alloc + !Mutate = match graph_parent_of(handle) {
+  None => None,
+  Some(p) => match graph_node_body(p) {
+    NStmt(FnStmt{name, effs}) => Some((name, effs)),
+    _ => enclosing_fn_decl_at(p),
+  },
 }
 
 // verify_pending_at — Verify ledger holds ALL pending refinement
