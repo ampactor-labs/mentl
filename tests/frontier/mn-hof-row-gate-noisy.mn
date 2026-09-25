@@ -1,0 +1,18 @@
+// The noisy face of mn-hof-row-gate: a param typed `() -> Int with !WASI`
+// receives a thunk that PRINTS. The negation row judges the argument edge
+// and reports one E_EffectMismatch — and since 2026-09-25 the class is
+// ARMED, so the report is a refusal: no WAT, nonzero exit. This fixture
+// used to live inside mn-hof-row-gate.mn beside the quiet face, banked as
+// "exit 42 with exactly one E_EffectMismatch" — a real `!WASI` leak that
+// the era's unarmed class let run (§9.11: a banked expectation is a
+// hypothesis about the era that banked it).
+// Expected: REFUSE with exactly one E_EffectMismatch (the noisy edge).
+
+fn noisy() = {
+  println("boom")
+  42
+}
+
+fn accept_thunk(f: () -> Int with !WASI) -> Int with !WASI = f()
+
+fn main() = accept_thunk(noisy)

@@ -1404,9 +1404,9 @@ for i in "${!compilers[@]}"; do
   # lowered as a handler-less demand and the executable gate refused).
   run_program "$compiler" cast-addr \
     "$ROOT/tests/frontier/mn-cast-addr.mn" 42 yes "$dir"
-  # !Cast severance REPORTS today (E_EffectMismatch at the declaration —
-  # not an armed refusing class; arming it is the refusal-law's own
-  # licence-gated landing). The leg asserts the report fires.
+  # !Cast severance REFUSES (E_EffectMismatch at the declaration — ARMED
+  # 2026-09-25, the crown's own verdict; before that it reported and the
+  # program ran). The leg asserts the diagnostic fires.
   cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-cast-refused.mn" \
     | wt_run "$compiler" > /dev/null 2> "$dir/cast-refused.err"
   if grep -q "E_EffectMismatch error" "$dir/cast-refused.err"; then
@@ -2172,7 +2172,13 @@ for i in "${!compilers[@]}"; do
   # claim on stdin, so a teaching span that pointed at any OTHER file
   # would now fail where before it passed — which is exactly the
   # file-local property the pass line claims.
-  if grep -q 'REFUSED — 1 claim' "$mcp_dir/out.jsonl" \
+  # TWO claims since 2026-09-25, re-derived by hand before re-banking
+  # (§9.11): `fn bad() with !E = op()` with no handler anywhere violates its
+  # own declared `!E` (E_EffectMismatch — a REFUSING claim since the class
+  # was armed that day; before, it narrated beside the one refusal) AND lets
+  # E reach the executable root unhandled (E_EffectUnhandled). Two
+  # independent claims fail; "1 claim" was the unarmed era's count.
+  if grep -q 'REFUSED — 2 claim' "$mcp_dir/out.jsonl" \
      && grep -q 'E_EffectMismatch' "$mcp_dir/out.jsonl" \
      && grep -q 'at <stdin>:3:1' "$mcp_dir/out.jsonl" \
      && grep -q 'E_EffectUnhandled' "$mcp_dir/out.jsonl"; then
@@ -2430,14 +2436,26 @@ for i in "${!compilers[@]}"; do
   # every closed-row argument. Seen RED on the prior boot: the quiet
   # thunk reported a second mismatch (hof 2, clean 1); here the quiet
   # face admits and runs while the noisy edge alone reports.
+  # Two faces, two compiles since 2026-09-25: E_EffectMismatch is ARMED, so
+  # the noisy edge is a REFUSAL (no WAT, nonzero exit) and can no longer
+  # ride beside the quiet face's run. The old single-fixture form banked
+  # "exit 42 with exactly one mismatch" — a real `!WASI` leak the unarmed
+  # era let run (§9.11).
   cat "${RTLIBS[@]}" "$ROOT/lib/io.mn" "$ROOT/tests/frontier/mn-hof-row-gate.mn" | wt_run "$compiler" > "$dir/hof-gate.wat" 2> "$dir/hof-gate.err" \
     && wt_asm "$dir/hof-gate.wat" "$dir/hof-gate.wasm" 2>/dev/null \
     && "$WT" run "${WT_RUN_FLAGS[@]}" "$dir/hof-gate.wasm" > /dev/null
   hof_rc=$?
-  if [ "$hof_rc" = "42" ] && [ "$(grep -c 'E_EffectMismatch' "$dir/hof-gate.err")" = "1" ]; then
-    pass "hof row gate (quiet admitted, runs 42; exactly the noisy edge reports)"
+  if [ "$hof_rc" = "42" ] && [ "$(grep -c 'E_EffectMismatch' "$dir/hof-gate.err")" = "0" ]; then
+    pass "hof row gate (quiet admitted, runs 42, zero mismatches)"
   else
     fail "hof row gate (rc=$hof_rc mismatches=$(grep -c 'E_EffectMismatch' "$dir/hof-gate.err"); see $dir/hof-gate.err)"
+  fi
+  cat "${RTLIBS[@]}" "$ROOT/lib/io.mn" "$ROOT/tests/frontier/mn-hof-row-gate-noisy.mn" | wt_run "$compiler" > "$dir/hof-gate-noisy.wat" 2> "$dir/hof-gate-noisy.err"
+  hofn_rc=$?
+  if [ "$hofn_rc" != "0" ] && [ ! -s "$dir/hof-gate-noisy.wat" ] && [ "$(grep -c 'E_EffectMismatch' "$dir/hof-gate-noisy.err")" = "1" ]; then
+    pass "hof row gate, noisy face (REFUSED: exactly one mismatch at the printing edge, no WAT)"
+  else
+    fail "hof row gate, noisy face (rc=$hofn_rc wat=$(wc -c < "$dir/hof-gate-noisy.wat") mismatches=$(grep -c 'E_EffectMismatch' "$dir/hof-gate-noisy.err"); see $dir/hof-gate-noisy.err)"
   fi
   # ── the persist_branch resume barrier ──────────────────────────────
   # The op's param row severs image-external effects (a crashed branch
@@ -3211,6 +3229,19 @@ for i in "${!compilers[@]}"; do
     pass "feedback negation: !E refuses the effect performed inside the recurrence"
   else
     fail "feedback negation (mismatch=$fb_n — the cycle laundered a forbidden effect)"
+  fi
+  # The dual: a `<~` site charges nothing of its own, so `!Alloc` SURVIVES a
+  # cycle at depth 3. Born RED on the boot before 2026-09-25 (`!Alloc + Any
+  # vs Memory + Alloc`: the FeedbackSpec constructor's allocation charged the
+  # frame although emit discards the lowered spec and nothing allocates).
+  # Wired the day E_EffectMismatch was armed, because arming turned that
+  # false charge into a false REFUSAL of tests/micros/mn-feedback-iir —
+  # branch A of the fork banked under Hβ.effects.feedback-row-substitutes.
+  fbt_n=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-feedback-transport.mn" 2>&1 | grep -cE 'E_EffectMismatch')
+  if [ "$fbt_n" -eq 0 ]; then
+    pass "feedback transport: !Alloc survives a <~ cycle at depth 3 (the spec charges nothing)"
+  else
+    fail "feedback transport (mismatch=$fbt_n — the feedback site charged the spec's construction)"
   fi
 
   # ─── THE EIGHT ARMS, SAYABLE TOGETHER (PLAN §2) ─────────────────────

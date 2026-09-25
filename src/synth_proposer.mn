@@ -924,7 +924,7 @@ fn hole_ty_live(hole_h) with GraphRead + Memory + Alloc = match graph_chase(hole
 // and that loss IS the measurement: nothing spawns a task any more, so the
 // judgment no longer reaches the threading vocabulary at all. The medium
 // named it (`T_OverDeclared`) the moment the spawn left.
-fn verify_each_enriched(candidates, hole_h, cand_start) with GraphRead + GraphWrite + LookupTy + Memory + Alloc + EnvRead + EnvWrite + Consume + Verify + Intern + WASI + BranchEnv + Diagnostic + !Mutate = {
+fn verify_each_enriched(candidates, hole_h, cand_start) with GraphRead + GraphWrite + LookupTy + Memory + Alloc + EnvRead + EnvWrite + Consume + Verify + Intern + WASI + BranchEnv + Diagnostic + Cast + !Mutate = {
   let verdicts = segment_verify(candidates, hole_h)
   let refusals = named_refusals(candidates, verdicts)
   let survivors = keep_survivors(candidates, verdicts)

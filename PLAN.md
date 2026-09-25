@@ -798,7 +798,14 @@ and this is the STATE.
   (`Hβ.persist.cross-machine-resume`) is not.
   **The cost of this sentence being wrong was real**: a session reading it
   would have built the memcpy that already existed.
-- **`TCont` effect-WORLD** is INERT on OneShot — tag carried, not enforced.
+- **`TCont` effect-WORLD** is INERT on OneShot — tag carried, not enforced,
+  and the tag is not what the design says it is (read 2026-09-25): the world
+  is minted per arm inside `register_handler`'s own frame as
+  `inf_current_world()`, which is the HANDLER's live row cell — never a
+  performer's remainder — and `ResumeExpr` reads only `R` and `S`. There is no
+  first-class `k`; a residual-at-resume rule, if plumbed to the performer's
+  frame, would turn `sound-masking-negation` red (LENS §2.4 carries the static
+  rule that survives: the remainder's frames minus the arm's own absorption).
   "Inert" means the stack-only path never becomes a rehydratable continuation
   value, so no changed-world comparison can fire there. The fix is not a special
   OneShot patch; it is the single continuation/image value model: capture the
@@ -818,7 +825,14 @@ and this is the STATE.
   ZERO on every program measured, which is the point").
 - **Per-module manifest** — CLOSED at entry, OPEN per-module
   (`solo_violations_max: 0`). The overlay is the stamped second half.
-- **Thread schedule** is REAL (host threads over shared image). Safety gated on
+- **Thread schedule** is REAL (host threads over shared image; measured
+  2026-09-25 at 2×: two 1.5e9-iteration branches, bare 4.50 s wall / 4.47 s
+  user, `~> parallel_compose` 2.31 s / 4.57 s) — and AN EFFECT PERFORMED INSIDE
+  A SPAWNED BRANCH TRAPS (`Hβ.threads.perform-inside-spawned-branch-traps`:
+  the fresh instance's per-instance dispatch state starts at zero; the
+  identity fixture passes only because `thread_id()` is a direct WASI op).
+  The thread gate's ratchet counts host `clone`s and was RED on a fresh host
+  with no wheel change (`Hβ.threads.gate-counts-host-clones`). Safety gated on
   band A. SIMD/GPU remain scaffold (bands E/O). **PERSIST IS NOT IN THAT LIST
   and this bullet said it was until 2026-09-15** — six lines above, the
   persist-is-built bullet exists *because* the absence claim was named "doc rot
@@ -898,6 +912,22 @@ and this is the STATE.
   desugar-introduced names, and row/handler/type obligations; the prelude should
   become a frozen image slice, not a reparsed text prefix. A bare program's line
   floor is useful only when this reachability law is true.
+- **THE NESTED-FRAME PRUNE DROPPED PARAMETER ROWS — CLOSED 2026-09-25.** A
+  lambda, a `~>` body or a fanout thunk exited the completion prune with its
+  own signature as the keep-set, so a parameter's row cell was dropped as
+  scratch before the enclosing declaration's gate read it: `fn run(f) = (f())
+  ~> h` published Pure and a program performing an unhandled effect passed
+  `mentl check` and trapped at the root — no negation involved, the root gate
+  blind. Fixed by the inherited keep-set (every exit prunes with the whole
+  frame stack's signatures) plus the tee reader's catch-all; the pass-through
+  form was built first and refuted by the wheel at 163 mismatches (scratch
+  kept behind a mask cell became a channel between callers). What the fix
+  exposed is the open half: the wheel's declared positive rows omit what
+  their callbacks perform wherever this prune hid it
+  (`Hβ.effects.declared-positive-rows-under-count-callbacks`), and the
+  decision is to infer and project the positive row (Morgan, 2026-09-25).
+  `E_EffectMismatch` is ARMED at the same pin: the crown's own verdict had
+  printed and let the program run.
 - **A REACHABLE PERFORM WITH NO INSTALL ANYWHERE COMPILES CLEAN** — measured
   2026-09-21 and open. `silence_predicate` (src/voice.mn) is reachable, is
   called from a handler arm at voice:1177, and performs `query_project_queue`;
@@ -2564,7 +2594,14 @@ landed in 5–10; this phase is the finish that makes it FELT.
   compile-stdin through real spawned tasks, the address CursorView, the `??`
   Propose socket, resident navigation, resident delta+propose) is GREEN; leg 2
   (headless Chrome over `mentl space`) SKIPS loudly where chrome is absent,
-  and a board that has only ever run leg 1 has not measured the browser.
+  and a board that has only ever run leg 1 has not measured the browser —
+  until 2026-09-25, when both legs ran GREEN (leg 2: `SMOKE exit=0 tasks=259
+  ms=2049`; the skip was the literal command name `google-chrome`, and a
+  wrapper on PATH un-skips it). What the browser run does NOT show: the page's
+  `session-call` re-instantiates and zero-fills memory per call, the pinned
+  `ide/mentl-ide.wasm` is the 2026-07-29 wheel, and "sub-50 ms" has no timer
+  anywhere (`Hβ.ide.session-call-reinstantiates-per-call`,
+  `Hβ.ide.pinned-wasm-lags-boot`).
   Every reader-facing page leads with the person at
   the keyboard; the docs themselves pass the source standard.
 - **11.3 · DONE, measured.** The seven statements run as gates, each

@@ -59,7 +59,8 @@ import verify
 // binds to the handle via `graph_bind_row`. One write; no conflict.
 effect InferCtx {
   inf_enter_fn(Int, Int, Span, [(EffName, Bool, EConn)])
-  inf_exit_fn([Int]) -> [(EffName, Bool, EConn)]
+  inf_exit_fn() -> [(EffName, Bool, EConn)]
+  inf_frame_params([Int])
   inf_add_effect(EffName)
   inf_add_row(EffRow)
   inf_current_row() -> EffRow
@@ -115,11 +116,22 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], pending_g
     // [(EffName, negated)] list (empty for lambdas / tee bodies / arm scopes).
     // No ambient declared-scalar to clobber — a nested fn gets its own.
     let frame =
-      {accumulated_row: mk_ef_pure(), answer_handle: answer_h, declared: effs, fn_span: fn_span, row_handle: h}
+      {accumulated_row: mk_ef_pure(), answer_handle: answer_h, declared: effs, fn_span: fn_span, params: [], row_handle: h}
     // drift-audit: ignore — bounded-depth frame PUSH (one per fn nesting level, popped at exit; §9 push-at-END), not a loop accumulator
     resume() with stack = stack ++ [frame]
   },
-  inf_exit_fn(sig_keep) => if len(stack) == 0 {
+  inf_frame_params(ps) => // The frame's SIGNATURE CELLS — the handles whose live types the
+  // completion prune must keep reachable at exit (a decl's params and
+  // return, a lambda's params and body, a handler's config cells and
+  // state). Recorded once after the frame's own mint; read at EVERY exit
+  // below this frame, not only its own — see inf_exit_fn.
+  if len(stack) == 0 {
+    resume()
+  } else {
+    let frame = last(stack)
+    resume() with stack = push(drop_last(stack), {...frame, params: ps})
+  },
+  inf_exit_fn() => if len(stack) == 0 {
     resume([])
   } else {
     let frame = last(stack)
@@ -127,12 +139,33 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], pending_g
     // is the decl's own total, and a JOIN here would re-widen what
     // row_without_self strips (the teaching bind joins by the lattice
     // law; the exit REPLACES — two algebras, two ops).
+    //
+    // THE KEEP-SET IS THE WHOLE STACK'S SIGNATURES, not this frame's own.
+    // A nested frame — a lambda, a `~>` body, a fanout thunk — exits
+    // INSIDE the declaration whose parameters its body may call, and a
+    // parameter's row cell escapes through THAT declaration's signature,
+    // exactly as the prune's own third keep category says. The nested
+    // exits used to pass their own signature (the tee and the fanouts:
+    // nothing; the lambda: its own params only), so a parameter's row was
+    // dropped as judgment scratch before the declaration's gate could
+    // read it: `fn run(f) = (f()) ~> h` published Pure, and a program that
+    // performed an effect nobody handles compiled clean and trapped at the
+    // root (tests/lens/negation, the prune probes — measured 2026-09-25).
+    // The two forms this replaced were both measured on scratch copies of
+    // the tree: no prune at nested exits keeps judgment scratch behind
+    // the tee's mask cell, where neither the decl's prune nor the
+    // quantifier reaches it, and ONE caller's effects then leak into a
+    // library function's published row for every later caller (163
+    // mismatches across the wheel); pruning with the inherited keep-set
+    // keeps the parameter and drops the scratch (one under-declared
+    // signature exposed, its own).
+    let keep = signature_free_roots(stack |> map((fr) => fr.params) |> flatten)
     graph_finalize_row(
       frame.row_handle,
       row_keep_completion(
         row_without_self(frame.accumulated_row, frame.row_handle),
         mint_ceiling,
-        sig_keep
+        keep
       ),
       Located(frame.fn_span, Inferred("fn effect row"))
     )
@@ -157,7 +190,7 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], pending_g
     // case of inf_add_row; parameterized effects flow through inf_add_row.
     let extended = union_row(frame.accumulated_row, mk_ef_closed([name]))
     let updated =
-      {accumulated_row: extended, answer_handle: frame.answer_handle, declared: frame.declared, fn_span: frame.fn_span, row_handle: frame.row_handle}
+      {accumulated_row: extended, answer_handle: frame.answer_handle, declared: frame.declared, fn_span: frame.fn_span, params: frame.params, row_handle: frame.row_handle}
     // drift-audit: ignore — top-frame REPLACE on a bounded-depth stack (§9 push-at-END), not a loop accumulator
     resume() with stack = drop_last(stack) ++ [updated]
   },
@@ -174,7 +207,7 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], pending_g
     let frame = last(stack)
     let extended = union_row(frame.accumulated_row, row)
     let updated =
-      {accumulated_row: extended, answer_handle: frame.answer_handle, declared: frame.declared, fn_span: frame.fn_span, row_handle: frame.row_handle}
+      {accumulated_row: extended, answer_handle: frame.answer_handle, declared: frame.declared, fn_span: frame.fn_span, params: frame.params, row_handle: frame.row_handle}
     // drift-audit: ignore — top-frame REPLACE on a bounded-depth stack (§9 push-at-END), not a loop accumulator
     resume() with stack = drop_last(stack) ++ [updated]
   },
@@ -2401,6 +2434,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // region; nested fn decls nest their own; the return check below either
   // TRANSFERS the body value to the parent region or proves the escape.
   inf_enter_fn(row_handle, ret_handle, span, effs)
+  inf_frame_params(param_handles ++ [ret_handle])
   let body_region = region_enter(span)
   // The body is a consume scope — its `own` params are its own linear
   // resources. Without this bracket, a name consumed here (affine_ledger
@@ -2421,7 +2455,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   declare_authored_owns(params, span)
   infer_expr(body_node)
   consume_exit_fn()
-  let declared_effs = inf_exit_fn(signature_free_roots(param_handles ++ [ret_handle]))
+  let declared_effs = inf_exit_fn()
   // Unify body's type with the declared return.
   match body_node {
     N(_, _, body_handle) => {
@@ -3405,8 +3439,9 @@ fn infer_expr(ref node) = match node {
       match body_node {
         N(_, _, bh) => {
           inf_enter_fn(row_handle, bh, span, [])
+          inf_frame_params(param_handles ++ [bh])
           infer_expr(body_node)
-          inf_exit_fn(signature_free_roots(param_handles ++ [bh]))
+          inf_exit_fn()
           // ABSTRACTION IS PURE — creating a closure performs nothing. The
           // lambda's row rides its TYPE (the TFun below); every APPLIER is
           // charged by the call edge, an escaping closure included (its
@@ -3445,7 +3480,26 @@ fn infer_expr(ref node) = match node {
       PTee => infer_pipe_tee(left, right, handle, span),
       PFeedback => {
         infer_expr(left)
-        infer_expr(right)
+        // The spec stays a VALUE — `infer_pipe` checks it as a FeedbackSpec —
+        // but its construction never executes: the depth is read at lower
+        // (`feedback_line_depth`) and emit drops the lowered spec. So it is
+        // judged in a frame of its own whose row is dropped, never charged to
+        // this one. Measured 2026-09-25: `((prev) => ramp(prev)) <~ Delay(3)`
+        // under `!Alloc` refused with `!Alloc + Any vs Memory + Alloc`, the
+        // constructor charging an allocation that never happens; with
+        // E_EffectMismatch armed that false charge became a false REFUSAL of
+        // tests/micros/mn-feedback-iir, which is what closed it. This is
+        // branch A of the fork banked under Hβ.effects.feedback-row-substitutes;
+        // branch B — the RHS as a static depth annotation, the lowering
+        // deleted — stays open and would delete this frame with it.
+        match right {
+          N(_, _, rh) => {
+            let spec_row_h = graph_fresh_row(Inferred("feedback spec — static, its row never charges"))
+            inf_enter_fn(spec_row_h, rh, span, [])
+            infer_expr(right)
+            inf_exit_fn()
+          },
+        }
         infer_pipe(kind, left, right, handle, span)
       },
     },
@@ -4345,7 +4399,7 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
       inf_enter_fn(body_row_h, body_answer_h, span, [])
       inf_mark_install_frame()
       infer_expr(left)
-      inf_exit_fn([])
+      inf_exit_fn()
       infer_expr(right)
       let body_row = read_bound_row(body_row_h)
       match handler_e_r(right) {
@@ -4898,7 +4952,7 @@ fn infer_fanout_value_boundary(branch, span: ValidSpan, label: String) = match b
     // The branch evaluation is an application inside the thunk frame; its
     // suspension boundary carries THIS frame's world (staged before exit).
     stage_continuation_boundary("><", result_h)
-    inf_exit_fn([])
+    inf_exit_fn()
     let thunk_row = mk_ef_open([], thunk_row_h)
     graph_bind(
       carrier_h,
@@ -5032,7 +5086,7 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = match branch {
     }
     // The implicit application is a suspension boundary inside the thunk frame.
     stage_continuation_boundary("<|", ret_h)
-    inf_exit_fn([])
+    inf_exit_fn()
     let thunk_row = mk_ef_open([], thunk_row_h)
     graph_bind(
       carrier_h,
@@ -8208,6 +8262,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, span: ValidSpan) =
   // inf_add_row. On
   // exit, r_handle binds to R — the row `~> h` adds to the caller.
   inf_enter_fn(r_handle, s_h, span, [])
+  inf_frame_params(tparam_cells(config_tparams) ++ [s_h])
   // EVERYTHING THE INSTALL EVALUATES BELONGS INSIDE THIS SCOPE — the config
   // DEFAULTS and the state INITS both, because both run where the arms' own
   // effects run: at the install, in the installer's world. Judged outside it
@@ -8257,7 +8312,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, span: ValidSpan) =
   // here exactly as at a named decl's exit — with an empty keep the
   // residual dropped the config-fn edge and folded nothing (measured:
   // zero residual edges on the leak-handler-residual crucible).
-  inf_exit_fn(signature_free_roots(tparam_cells(config_tparams) ++ [s_h]))
+  inf_exit_fn()
   env_scope_exit()
   // Re-store the handler's scheme now that the arms have unified the instance's
   // result position with the state and config (r_h ~ acc ~ init). generalize
@@ -9135,7 +9190,14 @@ fn row_names(row) with Pure = match row {
   EfRow(names, _, _) => names,
 }
 
+// A frame row whose whole content is ONE free edge chases to that free
+// cell (the single-edge alias rule), and the reading of such a row IS the
+// edge — never Pure. The catch-all used to fabricate Pure here, so a `~>`
+// body that only called a parameter (`fn run(f) = (f()) ~> h`) published
+// no row at all, and a program performing an effect nobody handled
+// compiled clean and trapped at the root (measured 2026-09-25, the tee
+// probe in tests/lens/negation).
 fn read_bound_row(handle) = match graph_chase(handle) {
   GNode(NRowBound(row), _) => row,
-  _ => mk_ef_pure(),
+  _ => mk_ef_open([], handle),
 }

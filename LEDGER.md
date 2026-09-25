@@ -35,6 +35,64 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-25 · pin 13df4844d44880ed (TRANSITION m3 == m4, then CLEAN m2 == m3
+  at the board repin) · THE CROWN'S VERDICT REFUSES, AND A PARAMETER'S ROW
+  REACHES ITS GATE. Two landings of docs/PROGRAM-2026-09-25.md's track A, one
+  pin (the cadence law: the whole arc, then one board).
+  **A1 — `E_EffectMismatch` ARMED** (src/types.mn `diag_refuses`). Licence:
+  the wheel's census of the class is zero. Measured before: the refusal
+  printed and the program ran (`adv-annot-neg`, `adv-mutual`,
+  `adv-unsigd-self-rec` exited 7 after reporting; `adv-tee-direct-kept`
+  exited 3). After: each refuses, exit 1, no WAT.
+  **A2 — THE NESTED-FRAME PRUNE KEEPS THE ENCLOSING SIGNATURE'S CELLS**
+  (src/infer.mn). Each frame records its signature cells
+  (`inf_frame_params`); `inf_exit_fn` lost its argument and prunes with the
+  union over the whole frame stack, so a parameter's row cell — which
+  escapes through the enclosing declaration's signature, the prune's own
+  third keep category — survives a lambda, a `~>` body and a fanout thunk,
+  while judgment scratch still drops. `read_bound_row` answers the edge
+  (`mk_ef_open([], handle)`) where its catch-all fabricated Pure. Measured
+  before: five shapes (`adv-tee-prune-nohandler`,
+  `adv-lambda-prune-nohandler`, `adv-mask-partial-nohandler`,
+  `adv-mask-partial`, `lens-t3-let-lambda-immediate`) compiled clean and
+  trapped (134) or leaked; after: every one refuses (exit 1), and
+  `adv-mask-partial` is caught at check (`F` under `!F`). Every other probe
+  row unchanged; the remaining leak rows are the vacuous-gate class A3 owns.
+  **THE KILLS, before the landing, each on a scratch copy of the tree:** (1)
+  no prune at nested exits — refuted by the wheel: 163 E_EffectMismatch
+  across 18 modules, `GraphRead` inside lib/lists.mn, because judgment
+  scratch kept behind the tee's mask cell is dropped by neither the
+  declaration's prune (a bound edge is kept whole) nor the quantifier, and
+  the first caller that binds it writes its effects into a library's
+  published row for every later caller; (2) the prune fix alone for the tee
+  — refuted by the probe, `run` still Pure, which named `read_bound_row`'s
+  catch-all; (3) the first inherited-keep-set patch left two frame literals
+  without the new field — two E_TypeMismatch the unarmed class let compile,
+  and the compiler trapped on every program (`Hβ.diag.type-mismatch-is-
+  unarmed`, banked). **What the fix exposed, fixed here:** one under-declared
+  wheel row (`verify_each_enriched` + `Cast`); a dead `tree_list` arm that
+  resumed a stub performing `abort()`, surfacing as `Abort` at the wheel's
+  own root (`Hβ.voice.dead-abort-stub`, deleted with `TreeEntry`). **What
+  the arming forced:** the first repin was REFUSED by the micro battery —
+  mn-feedback-iir (`with Sample`, a correct IIR) refused `Sample vs Memory +
+  Alloc`, the feedback spec's constructor charging an allocation that never
+  executes. Branch A of the fork banked under
+  `Hβ.effects.feedback-row-substitutes` closes it: the `<~` arm judges the
+  spec in a frame whose row is dropped; `!Alloc` survives a cycle
+  (mn-feedback-transport wired as a frontier leg, SYNTAX §«`<~`» corrected);
+  branch B stays open and stays Morgan's. And two frontier expectations the
+  unarmed era canonized were re-derived by hand (§9.11): mn-hof-row-gate
+  banked "exit 42 with exactly one E_EffectMismatch" — a real `!WASI` leak
+  that ran — and splits into a quiet face (runs 42, zero mismatches) and a
+  noisy face that REFUSES; the MCP refusal leg banked "REFUSED — 1 claim"
+  and the true count is two (the violated `!E` and the unhandled root).
+  Board at the pin: crown 62/62, proof-exactness, effect-identity green;
+  frontier 392 pass / 0 red / 2 expected-red; `mentl check src/main.mn`
+  zero diagnostics; m3 11.55s wall, 980MB peak RSS. The self-build audit:
+  the probe table is still a bash loop over `mentl check`/`run`
+  (`Hβ.test.lens-probes-are-a-bash-loop` — the probes join `mentl test`'s
+  battery in the landing that turns them green).
+
 - 2026-09-21 · pin 6fef1076400e389d (CLEAN m2 == m3) · THE SESSION'S LESSONS
   LAND AS A GATE, NOT AS PROSE — and the count is the argument.
 

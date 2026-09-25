@@ -2147,6 +2147,169 @@ rule attributed to it must be read out of the paper first.
 
 ### Named-residue index (entry-born peers not yet in a §5.R band — one home each)
 
+`Hβ.diag.type-mismatch-is-unarmed` — OPEN, measured 2026-09-25. The first
+build of the nested-frame fix left two frame-record literals without the
+new `params` field; the compile reported `E_TypeMismatch` twice (`{…,
+params: List(Int), …} vs {…}`) and EMITTED anyway, and the resulting compiler
+trapped (exit 134) on every program, including `fn main() = 3`. A type error
+in the compiler's own source became a silently broken compiler because the
+class narrates rather than refuses. The arming licence is met the same way
+E_EffectMismatch's was: the wheel's census is ZERO (the blob compile carries
+none; `mentl check src/main.mn` answers no diagnostics). What arming must
+measure first is the frontier: fixtures that ran beside a narrated type
+mismatch are banked expectations to re-derive by hand (§9.11), exactly as
+`mn-hof-row-gate` and the MCP refusal count were at E_EffectMismatch's
+arming.
+
+`Hβ.test.lens-probes-are-a-bash-loop` — OPEN, 2026-09-25. The 36 negation
+probes under tests/lens/negation are measured by a shell loop over `mentl
+check` / `mentl run` into EXPECT.md, while the medium owns the verb that does
+exactly this: `mentl test` reads each fixture's own first-line `// expect: N`
+or `// expect: refuse E_Class` (src/main.mn `test_run`). The probes carry no
+such header because most are red-first contracts for the gate landing
+(LENS §2.2 rules 1–4) and a red member would fail the battery today. They
+gain their headers IN the landing that turns them green, and the bash table
+retires into the verb's own report.
+
+`Hβ.infer.nested-frame-prune-drops-parameter-row` — CLOSED 2026-09-25 (the
+pin that armed E_EffectMismatch). The completion prune ran at EVERY frame
+exit with the frame's OWN signature as its keep-set — the tee body and both
+fanout thunks passed nothing, the lambda its own params — so a parameter's
+row cell, which escapes through the ENCLOSING declaration's signature, was
+dropped as judgment scratch before that declaration's gate could read it.
+`fn run(f) = (f()) ~> h` published Pure; `fn run(f) = (() => f())()`
+published Pure; `main = run(() => fop())` with no `F` handler passed
+`mentl check` and TRAPPED (exit 134) at the root. No negation was involved:
+the root gate — the one refusal the crown relies on — was blind to what it
+could not see. Two forms were built on scratch copies before one landed.
+Pass-through (no prune at nested exits) fixed the lambda and fanout shapes
+and was REFUTED BY THE WHEEL: judgment scratch kept behind the tee's mask
+cell was neither dropped by the declaration's prune (a bound edge is kept
+whole) nor quantified, and the first caller whose context bound it wrote
+that caller's effects into the library's published rows — 163
+E_EffectMismatch across 18 modules, `GraphRead` inside lib/lists.mn. The
+inherited keep-set (each frame records its signature cells; every exit
+prunes with the union over the frame stack) keeps the parameter and drops
+the scratch: all five prune shapes refuse at the root, one under-declared
+wheel signature exposed (`verify_each_enriched` lacked `Cast`), zero other
+rows moved. The tee had a second drop one line later: `read_bound_row`'s
+`_ => mk_ef_pure()` catch-all read a frame row whose whole content is one
+free edge as Pure (the single-edge alias chase lands on the free cell);
+it answers the edge now. Fixtures: tests/lens/negation (36, with the
+before/after table in EXPECT.md). The theorem's lemma (v), exit-bind
+completeness, is what this closes.
+
+`Hβ.effects.declared-positive-rows-under-count-callbacks` — OPEN, measured
+2026-09-25, DECIDED (Morgan): the positive row is inferred and projected;
+only negations, instance pins and deliberate narrowings stay authored
+(`Hβ.syntax.positive-row-is-authored-by-hand` is the mechanism, `mentl
+tighten` its author). The nested-frame prune had hidden, at every HOF whose
+parameter is invoked inside a lambda, a tee or a fanout, the effects that
+parameter's callbacks perform — so the wheel's declared positive rows are
+systematically narrower than what the code does. The pass-through scratch
+build measured the exposure at 163 declarations (a lower bound: cascades
+through callers); the landed form exposes one (`Cast(GNode)` at
+src/synth_proposer.mn `verify_each_enriched`, fixed in the same commit). Under
+the gate (LENS §2.2, A3) a positive row on a HOF becomes a CAP on its
+callbacks and `try_with_abort_catch`'s `with Abort` refuses by the theorem;
+deleting positive rows on HOFs is the fix, never widening 163 hand-copies.
+
+`Hβ.threads.perform-inside-spawned-branch-traps` — OPEN, measured 2026-09-25.
+`fn work() = { let r = burn(7e8, 0); current_id() * 10 }` as both branches of
+`(work()) >< (work()) ~> parallel_compose` traps in the spawned thread:
+`wasi-thread-1 trapped: memory fault at 0x100000000 … ev_declaring_node ←
+work ← compose_0 ← wasi_thread_start`. The identity fixture
+(`mn-real-spawn-identity`, exit 60) passes only because `thread_id()` is a
+direct WASI op; an EFFECT op performed inside a spawned branch dispatches
+through per-instance state (the world chain top, the evidence base) that
+the fresh instance starts at zero. Parallelism itself is real and measured
+(two 1.5e9-iteration branches: bare 4.50 s wall / 4.47 s user; threaded
+2.31 s / 4.57 s). Design: the task record the spawn hands over carries the
+spawning frame's world-chain head (the chain lives in the shared image),
+installed by `$wasi_thread_start` before the thunk runs. Gate red-first: a
+threaded branch performing an op absorbed by a handler installed outside
+the fanout returns the handler's value. Until then `~> Thread` is unusable
+for effectful branches, which the crown's `!Thread` crucibles never
+exercised.
+
+`Hβ.threads.gate-counts-host-clones` — OPEN, measured 2026-09-25. The thread
+gate's ratchet (`judge_spawn_delta_max: 0`) counts `clone` under strace and
+was RED in a fresh container with no wheel change ("delta 1 exceeds 0 — 1
+decl 10, 61 decls 11"): a host-sensitive number standing in for a wheel
+fact. The count belongs to the medium — emitted spawn sites and the
+judgment's own spawns as a `mentl query` facet; strace stays a control.
+
+`Hβ.ide.session-call-reinstantiates-per-call` — OPEN, read 2026-09-25.
+`ide/wheel-worker.js:278-288` re-instantiates the wasm and zero-fills
+memory on every `session-call`, with `tasks:0` hard-coded (`:296`); a
+"delta update" is a whole-file replace in a JS map. So PLAN §11.2's
+"session alive across actions" holds for the Worker and not for the graph,
+and "sub-50 ms address projections" has no measurement anywhere (each
+projection is a full `_start`; the browser's only recorded number is a
+0.9–2.0 s compile). Measured the same day: both IDE gate legs GREEN — leg 2
+(headless Chromium over `mentl space`: `SMOKE exit=0 tasks=259 ms=2049`) had
+skipped on every prior board because `tools/ide-gate.sh:20` tests for the
+literal command name `google-chrome`; a two-line wrapper un-skips it.
+
+`Hβ.ide.pinned-wasm-lags-boot` — OPEN, read 2026-09-25. `ide/mentl-ide.wasm`
+is the 2026-07-29 wheel (1.79 MB, pinned at fe5b2c05) while `boot/mentl.wasm`
+is two months and one megabyte newer; the page demos a compiler the tree no
+longer has. `mentl space` should serve the boot, or the pin should be the
+boot by construction. Beside it, unverified: the headless screenshot shows
+the editor's code with its spaces collapsed (`fnmain()withMemory+Alloc=`) —
+a font artifact or a CSS defect, to check in a real browser.
+
+`Hβ.teach.one-kind-and-a-constant-facet` — OPEN, measured 2026-09-25 (the
+gradient, read at the code). The only numeric gradient is
+`score_one_position` (src/cursor.mn) = `gates × proximity`, and `gates` was
+1 in 165 of 165 measured suggestions while `proximity` is five constants, so
+the "argmax" ties on every position and is broken by handle order in two
+opposite directions (`cursor.mn` first-wins, `main.mn:1095` last-wins):
+`mentl edit tests/frontier/mn-where-badges.mn` focuses `decode_stride` in
+lib/lists.mn, outside the file. `mentl teach` proposes exactly one kind —
+`!E` severance (src/effects.mn: 43 `!GraphRead`, 31 `!Alloc` …; lib/prelude.mn:
+54 `!SharedMemory`) chosen by a literal ladder then "first proven"; it
+ignores the authored row (`fn step(x) with !Alloc` is told to add `!Alloc`)
+and never reads the MachineApplicable proposal the judgment already banks
+(`T_OverDeclared`/`tightenables()`). `ARefined`, `AWrapHandler`,
+`SuggestReturnType` have no constructor site; no repr candidate exists;
+`T_Gradient` has no emitter. The `Teach:` facet of the address projection
+discards its suggestion and prints a constant (`main.mn:1545-1548`), and
+fires at any TFun-typed node including call sites. The voice's
+`gradient_next` is always `None` (`voice.mn:825`). Track D of
+docs/PROGRAM-2026-09-25.md carries the landings.
+
+`Hβ.synth.acceptance-is-a-text-patch` — OPEN, read 2026-09-25. Accepting a
+proposal is `apply_suggestion` → `replace_span` → `fs_write_file` →
+`driver_check` (src/cursor_transport.mn:266-285); no `GraphWrite` is
+performed, so nothing in the graph records that a proposal was accepted and
+the "constraints compound" claim is a design, not a mechanism.
+`render_candidate_source` renders lambdas, lists and records as `??`, so
+accepting those is a no-op. The one site holding the hole handle and the
+survivor handle (`:275-276`) is where the `Proposal` edge is drawn; it must
+survive the re-derivation through the persisted image.
+
+`Hβ.synth.trail-segment-discarded-at-rollback` — OPEN, read 2026-09-25. The
+trail records handle + prior value per write (`Mutation`, src/types.mn), so
+the first-divergence question (§11.1) is computable — but a candidate's
+segment is readable only between its judgment and `graph_rollback` at
+src/synth_proposer.mn:761, where `trail_len` returns to the checkpoint and
+the next candidate's first append overwrites it. No `GraphRead` op exposes
+the trail. The op: copy `trail[cp .. trail_len)` before the rollback,
+filtering path-compression writes; the fixture: a hole whose cell is
+genuinely free at propose time (the existing fixtures bind it to the return
+cell, so the diff is empty).
+
+`Hβ.voice.dead-abort-stub` — CLOSED 2026-09-25. `mentl_voice_filesystem`'s
+`tree_list` arm resumed `unimplemented_arm("tree_list")`, a stub that
+performs `abort()`; the op had zero callers. Invisible while the prune
+dropped its row, it surfaced the moment the prune was fixed: the root gate
+refused the wheel's own `main` with `Abort(List(TreeEntry))` reaching the
+executable with no `catch_abort` on its chain. A stub that aborts at runtime
+is the silent-fallback class in a stub's costume; the op, the `TreeEntry`
+type and the stub are deleted, and the directory-listing gap stays a named
+peer rather than an arm.
+
 `Hβ.emit.eq-on-unresolved-operand-is-pointer-eq` — OPEN, measured 2026-09-18,
 RED contract banked the same day. The eq leaf's wildcard arm (`emit_eq_for_ty`,
 backends/wasm.mn) answers an operand whose type is still a VARIABLE at emit with
@@ -5651,7 +5814,21 @@ reds against current source without touching boot, so the previous
 iteration's pin-revert was unnecessary work. The instrument existed; the
 probe did not know it.
 
-`Hβ.effects.feedback-row-substitutes` — THE DROP HALF IS FIXED
+`Hβ.effects.feedback-row-substitutes` — THE ADD HALF IS CLOSED BY BRANCH A
+(2026-09-25, pin 13df4844). Arming E_EffectMismatch turned the false charge
+into a false REFUSAL: tests/micros/mn-feedback-iir (`with Sample`, a correct
+IIR accumulator) refused with `Sample vs Memory + Alloc` and the march's
+repin battery refused the pin. The fork below stopped being a preference at
+that moment, and A is the branch that changes nothing on the surface: the
+`<~` arm judges the RHS in a frame of its own whose row is dropped
+(src/infer.mn, the PFeedback arm of infer_expr), the spec is still checked
+as a FeedbackSpec value by infer_pipe, and `!Alloc` survives a cycle —
+tests/frontier/mn-feedback-transport.mn is wired as a frontier leg the same
+day. B remains open and remains Morgan's: it is still the smaller artifact
+(delete `lower_expr(right)` and the four pre-pass walks, the depth read with
+one home), and A does not foreclose it — B deletes the construction A only
+stops charging.
+THE DROP HALF IS FIXED
 (2026-08-17, unpinned): `inf_add_row(lam_row)` at the `PFeedback` arm of
 `infer_pipe`, where the recurrence lambda's row went to `_row` and was
 discarded. Measured through a fresh m2: the negation crucible refuses

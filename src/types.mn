@@ -2976,6 +2976,22 @@ fn diag_refuses(d) with Pure = match d {
   // 0 — every handler in it has a pure init, which is why no gate saw the
   // shape until one was written for it.
   True,
+  EEffectMismatch(_, _, _) => // ARMED 2026-09-25 — the crown's own verdict, and it was not armed:
+  // a declared row's refusal printed and the program RAN. Measured on the
+  // boot the day it was armed: `fn f() with !E = op()` under an outer
+  // handler reported the mismatch and exited 7 (the op's value); the
+  // authored-parameter form `fn run(f: () -> Int with !E) = f()` called
+  // with a performing callback reported and ran; a fixture in the frontier
+  // battery (`mn-hof-row-gate`) banked "exit 42 with exactly one
+  // E_EffectMismatch" as its expectation — a real `!WASI` leak canonized by
+  // the era that banked it (§9.11). The licence is the standard one: the
+  // wheel's own census of the class is ZERO (`mentl check src/main.mn`
+  // answers no diagnostics; the blob compile carries none), so this cannot
+  // refuse the medium. What it refuses is exactly PLAN §0's first property
+  // at its own boundary: a program whose declared row is contradicted by
+  // its inferred row is a program whose proof is false, and nothing
+  // executes unproven.
+  True,
   EComputedDelayDepth(_) => // ARMED at birth (2026-08-12), the same literal licence its sibling
   // rides: the judgment is "was a literal written here", read from the
   // authored RHS with no resolution dependency. Census on the wheel at

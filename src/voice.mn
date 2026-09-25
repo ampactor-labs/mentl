@@ -236,13 +236,6 @@ type Path = Path(String)
 // while editing.
 type FileHandle = FileHandle(Int)
 
-// tree_list projects the on-disk tree. Each entry is file or
-// directory; lazy (directories expand on demand).
-type TreeEntry
-  = TreeFile(Path)
-  // expand via another tree_list call
-  | TreeDir(Path)
-
 // Caret is the human's attention at a moment. Handle + Reason —
 // which graph node, and why Mentl thinks so (last focus op / last
 // edit's mutation site / last ask's target — the Reason traces
@@ -337,10 +330,9 @@ type IntentId = IntentId(Int)
 // #4 (handler rows compose with Interact via `~>`),
 // #7 (gradient surfaces through propose + speak).
 effect Interact {
-  // ─── Project / file ops (8) ─────────────────────────────────────
+  // ─── Project / file ops ─────────────────────────────────────────
   // Text-files-first is a hard constraint. These ops are first-class.
   project_root() -> Path
-  tree_list(Path) -> [TreeEntry]
   open_file(Path) -> FileHandle
   save_file(FileHandle)
   create_file(Path, String) -> FileHandle
@@ -712,21 +704,6 @@ fn render_for_tentacle(situation) with Alloc + Memory = match situation {
 // `render_for_tentacle` survives — it is the LIVE render, called from the
 // `propose` arm below.
 //
-// ─── unimplemented_arm — sentinel for arms not yet in their batch ─────
-//
-// Per drift mode 9 (deferred-by-omission): every Interact arm in the
-// handler below is named — even those whose body lands in a later
-// peer sub-handle (MV.2.e.P / .V / .Filesystem / .Run / .Session).
-// Stub arms route here so unintended dispatch surfaces immediately
-// (Abort) rather than returning a fabricated default. The diagnostic
-// string surfaces which op was hit. Returns ! (bottom) — unifies with
-// every Interact op's resume value type without fabrication.
-//
-// The Abort effect installed above this handler is the surface's
-// responsibility: lsp_adapter installs catch_abort; CLI installs its
-// own. The handler declares its row honestly.
-fn unimplemented_arm(op_name) with Abort = abort()
-
 // ─── MV.2.e.Q — Query tentacle helpers ────────────────────────────────
 //
 // The 7 helpers below are the substrate the cursor / focus / ask arms
@@ -1041,7 +1018,7 @@ fn intents_without(intents, id) with Alloc + Memory =
 //   MV.2.e.P        — Propose tentacle: propose / edit / speak / cancel_pending
 //   MV.2.e.V        — Verify tentacle: run_check
 //   MV.2.e.Run      — run_compile / run_audit / run_query
-//   MV.2.e.Filesystem — 8 file ops (project_root through file_text)
+//   MV.2.e.Filesystem — the file ops (project_root through file_text)
 //   MV.2.e.Session  — declare_intent / retract_intent / history
 //   MV.2.e.lsp_adapter — separate handler; the LSP transport surface
 //
@@ -1049,7 +1026,7 @@ fn intents_without(intents, id) with Alloc + Memory =
 // #2 (this handler IS primitive #2 incarnate), #4 (handler row composes
 // via ~> with caller rows), #8 (every cursor write threads a Reason).
 handler mentl_voice_default with caret_now = Caret(0, Inferred("session start")), prior_turn = None, turns = [], intents = [], next_intent_id = 0 {
-  focus(target) => // ─── Project / file ops (8) — handled by mentl_voice_filesystem ─
+  focus(target) => // ─── Project / file ops — handled by mentl_voice_filesystem ─────
   // Per FX walkthrough §3: file ops migrate to peer handler at
   // end-of-file; mentl_voice_default no longer declares them.
   // Composition via ~> chain: surface ~> mentl_voice_filesystem ~>
@@ -1241,10 +1218,6 @@ handler mentl_voice_default with caret_now = Caret(0, Inferred("session start"))
 //   project_root_cache — resolved project root; v1 uses Path("./") since
 //                       WASI preopen fd 3 IS the workspace by convention
 //
-// tree_list arm stubs to unimplemented_arm pending FX.A.dirent (which
-// adds fs_list_dir + dirent parsing) + FX.1 (which adds
-// fs_filestat_is_dir for TreeFile vs TreeDir projection).
-//
 // handles_table_lookup — find the (FileHandle, Path, String) entry
 // matching a target FileHandle. Returns Option<(FileHandle, Path,
 // String)>. Single-pass cons recursion; small N typical (handles
@@ -1301,11 +1274,6 @@ handler mentl_voice_filesystem with handles_table = [], next_handle_id = 1, proj
   /// resolution via Module-handle synthesis lands as FX.4 peer
   /// sub-handle when surfaces need absolute paths.
   resume(project_root_cache),
-  tree_list(_path) => /// tree_list — directory listing as [TreeEntry]. Stubbed
-  /// pending FX.A.dirent (fs_list_dir + dirent parsing) + FX.1
-  /// (fs_filestat_is_dir for TreeFile vs TreeDir projection). Per
-  /// drift mode 9: gap is named explicitly, not silently absorbed.
-  resume(unimplemented_arm("tree_list")),
   open_file(path) => /// open_file — fs_open the path; on success, snapshot text via
   /// fs_read_file, mint fresh FileHandle, append to handles_table.
   /// On open failure, return invalid-handle sentinel FileHandle(0)
