@@ -2596,8 +2596,9 @@ landed in 5–10; this phase is the finish that makes it FELT.
   (headless Chrome over `mentl space`) SKIPS loudly where chrome is absent,
   and a board that has only ever run leg 1 has not measured the browser —
   until 2026-09-25, when both legs ran GREEN (leg 2: `SMOKE exit=0 tasks=259
-  ms=2049`; the skip was the literal command name `google-chrome`, and a
-  wrapper on PATH un-skips it). What the browser run does NOT show: the page's
+  ms=2049`; the skip was the literal command name `google-chrome` — the
+  gate FINDS a browser now: `$MENTL_CHROME`, the usual names on PATH, then
+  Playwright's chromium). What the browser run does NOT show: the page's
   `session-call` re-instantiates and zero-fills memory per call, the pinned
   `ide/mentl-ide.wasm` is the 2026-07-29 wheel, and "sub-50 ms" has no timer
   anywhere (`Hβ.ide.session-call-reinstantiates-per-call`,

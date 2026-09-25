@@ -35,6 +35,43 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-25 · pin 3cc9fdec2a7f9068 (CLEAN m2 == m3) · A TYPE ERROR REFUSES,
+  AND A HOLE MAY PERFORM WHAT ITS CONTEXT ABSORBS. Three small landings of
+  docs/PROGRAM-2026-09-25.md, one pin.
+  **A1b — `E_TypeMismatch` ARMED** (src/types.mn `diag_refuses`). Licence:
+  the wheel's census is zero. The harm was measured one pin earlier: the
+  first inherited-keep-set build left two frame literals without a field,
+  the compile reported two E_TypeMismatch and emitted anyway, and the
+  resulting compiler trapped on `fn main() = 3`. Arming refused nothing in
+  the micro battery or the frontier. The proposer's refused candidates are
+  untouched — `segment_bracket` judges each under its own `diag_branch`,
+  and only a proven candidate, carrying no diagnostic, joins the root.
+  **C1 — THE HOLE'S ALLOWED ROW** (src/cursor.mn `allowed_row_at`,
+  `absorbed_around`; `enclosing_fn_scan` returns the decl handle). What the
+  enclosing declaration already performs — its inferred row, closed — or its
+  authored row, widened by every effect a `~>` between the hole and the
+  body absorbs (the names `derive_handler_enames` reads, the same
+  derivation `infer_pipe_tee` subtracts). Fixture:
+  tests/frontier/mn-hole-row-absorbed.mn, born RED ("refused eff_one —
+  refused by the target row Pure"), now `eff_one()` proposed with the ROW
+  divergence asked; the declared-row controls (mn-row-tie,
+  mn-capability-hole-workflow) render unchanged.
+  **E1 — the IDE gate finds its browser** (tools/ide-gate.sh
+  `find_browser`).
+  **THE KILL:** the first measurement of C1 on the new wheel reported it
+  still RED. It was a stale binary: a CLEAN march compares WAT and never
+  re-assembles `.build/march/m3.wasm`, so the file was the previous
+  landing's (20:55 beside a 21:50 m3.wat). An eprint probe on a scratch
+  copy showed the walk working (absorbed = 1, four survivors) — and the
+  probe itself was REFUSED first, because the eprint added WASI to three
+  declared rows and E_EffectMismatch is armed: CLAUDE.md's
+  wheel-probe-changes-the-rows hazard, now loud rather than silent. The
+  march clears its previous run's m3/m4 artifacts before generating
+  (tools/march.sh), so a file in .build/march is always this run's.
+  Board at the pin: crown, proof-exactness, effect-identity green;
+  frontier 393 pass / 0 red / 2 expected-red; m3 11.79s wall, 974MB peak
+  RSS.
+
 - 2026-09-25 · pin 13df4844d44880ed (TRANSITION m3 == m4, then CLEAN m2 == m3
   at the board repin) · THE CROWN'S VERDICT REFUSES, AND A PARAMETER'S ROW
   REACHES ITS GATE. Two landings of docs/PROGRAM-2026-09-25.md's track A, one

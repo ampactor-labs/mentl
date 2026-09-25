@@ -2992,6 +2992,19 @@ fn diag_refuses(d) with Pure = match d {
   // its inferred row is a program whose proof is false, and nothing
   // executes unproven.
   True,
+  ETypeMismatch(_, _, _) => // ARMED 2026-09-25, one pin after E_EffectMismatch, on the harm that
+  // pin measured: a build of the compiler whose own source carried two
+  // E_TypeMismatch (a frame record missing a field at two literals) reported
+  // them, EMITTED anyway, and the resulting compiler trapped on every program
+  // including `fn main() = 3`. A narrated type error is a program whose
+  // meaning the judgment could not establish; emitting it is exactly what
+  // PLAN §0 says never happens. The licence is the same one: the wheel's
+  // census of the class is zero (`mentl check src/main.mn` answers no
+  // diagnostics; the blob compile carries none). The proposer's refused
+  // candidates are unaffected: `segment_bracket` judges each under its own
+  // `diag_branch`, and only a proven candidate joins the root — which it
+  // does carrying no diagnostic, since a diagnostic is what refuses it.
+  True,
   EComputedDelayDepth(_) => // ARMED at birth (2026-08-12), the same literal licence its sibling
   // rides: the judgment is "was a literal written here", read from the
   // authored RHS with no resolution dependency. Census on the wheel at

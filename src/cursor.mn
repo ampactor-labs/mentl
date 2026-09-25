@@ -638,20 +638,68 @@ fn propose_at(h) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnostic
 
 // Synth's Context reads LIVE from the graph the cursor sits in — never
 // fabricated: scope bindings ARE the env snapshot (the same bindings
-// infer wrote); the row is the ENCLOSING declaration's authored signed
-// set (build_declared_row over the FnStmt's own effs — the one home of
-// `!E` at a decl); the enclosing NAME feeds the vocabulary's
+// infer wrote); the row is what the hole's position may perform
+// (`allowed_row_at`); the enclosing NAME feeds the vocabulary's
 // nontermination exclusion. At a top-level position with no enclosing
 // fn, the node's own row stands and the name is "".
 fn mentl_context_at(handle) with EnvRead + GraphRead + Memory + Alloc + Intern + Diagnostic + GraphWrite + !Mutate = match env_snapshot() {
   Env(scope_bindings) => match graph_chase(handle) {
     GNode(kind, _) => match enclosing_fn_decl_at(handle) {
       Some(decl) => match decl {
-        (fname, effs) => Context(scope_bindings, build_declared_row(effs), fname, handle),
+        (fname, effs, decl_h) => Context(scope_bindings, allowed_row_at(handle, decl_h, effs), fname, handle),
       },
       None => Context(scope_bindings, row_of_kind(kind), "", handle),
     },
   },
+}
+
+// What a candidate at the hole may perform: what the enclosing declaration
+// already performs — its inferred row, CLOSED, because the medium never
+// silently widens a function's capabilities — or its authored row when it
+// has one, and in both cases every effect a `~>` between the hole and the
+// declaration's body absorbs, since the handler around the hole catches it
+// and nothing outside sees it. The authored clause alone used to answer,
+// so an undeclared fn allowed Pure and `fn main() -> Int = (??) ~> h`
+// refused every candidate performing what `h` absorbs
+// (tests/frontier/mn-hole-row-absorbed.mn, measured 2026-09-25).
+fn allowed_row_at(hole, decl_h, effs) = {
+  let absorbed = match graph_node_body(decl_h) {
+    NStmt(FnStmt(_, _, _, _, body)) => absorbed_around(node_handle(body), hole),
+    _ => [],
+  }
+  let base = if len(effs) == 0 {
+    match graph_chase(decl_h) {
+      GNode(kind, _) => match resolve_row(row_of_kind(kind)) {
+        EfRow(present, _, _) => mk_ef_closed(present),
+      },
+    }
+  } else {
+    build_declared_row(effs)
+  }
+  union_row(base, mk_ef_closed(absorbed))
+}
+
+// The effects absorbed between a node and the hole below it: every `~>`
+// whose body side contains the hole contributes the names its handler's
+// arms handle — the derivation `infer_pipe_tee` subtracts at the same edge.
+fn absorbed_around(node_h, hole) = if node_h == hole {
+  []
+} else {
+  let here = match graph_node_body(node_h) {
+    NExpr(PipeExpr(PTee, left, right)) => if node_contains_handle(node_handle(left), hole) {
+      match handler_arms_of(right) {
+        Some(arms) => derive_handler_enames(arms, 0, []),
+        None => [],
+      }
+    } else {
+      []
+    },
+    _ => [],
+  }
+  match find((c) => node_contains_handle(c, hole), body_child_handles(graph_node_body(node_h))) {
+    Some(c) => name_set_union(here, absorbed_around(c, hole)),
+    None => here,
+  }
 }
 
 // The enclosing fn DECLARATION at a handle — the innermost FnStmt whose
@@ -669,10 +717,7 @@ fn enclosing_fn_decl_at(handle) with GraphRead + Memory + Alloc + !Mutate = matc
 }
 
 fn enclosing_fn_scan(target, i, n, best) with GraphRead + Memory + Alloc + !Mutate = if i >= n {
-  match best {
-    Some((name, effs, _)) => Some((name, effs)),
-    None => None,
-  }
+  best
 } else {
   match graph_node_body(i) {
     NStmt(FnStmt(name, _params, _ret, effs, body)) => if node_contains_handle(node_handle(body), target) {

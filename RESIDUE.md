@@ -2147,7 +2147,7 @@ rule attributed to it must be read out of the paper first.
 
 ### Named-residue index (entry-born peers not yet in a §5.R band — one home each)
 
-`Hβ.diag.type-mismatch-is-unarmed` — OPEN, measured 2026-09-25. The first
+`Hβ.diag.type-mismatch-is-unarmed` — CLOSED 2026-09-25 at pin 3cc9fdec (armed; the battery and the frontier refused nothing). Measured 2026-09-25. The first
 build of the nested-frame fix left two frame-record literals without the
 new `params` field; the compile reported `E_TypeMismatch` twice (`{…,
 params: List(Int), …} vs {…}`) and EMITTED anyway, and the resulting compiler

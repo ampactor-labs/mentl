@@ -217,6 +217,14 @@ pin_trap() {  # pin_trap <wasm> <err> — auto-disassemble the trap site from th
   find src -name '*.mn' | sort | xargs cat; } > "$WHEEL"
 echo "wheel: $(wc -l < "$WHEEL") lines"
 
+# A previous run's m3 module outlives this one on a CLEAN march, which
+# compares WAT and never re-assembles it — measured 2026-09-25: a probe run
+# against .build/march/m3.wasm after a CLEAN march exercised the PRIOR
+# wheel (20:55 beside a 21:50 m3.wat) and reported a fixed defect as still
+# present. Every artifact this run may leave is cleared first, so a file in
+# $OUT is always this run's.
+rm -f "$OUT/m3.wasm" "$OUT/m3w.err" "$OUT/m4.wat" "$OUT/m4.err" "$OUT/m4.time"
+
 BOOT=boot/mentl.wasm
 [ -f "$BOOT" ] || { echo "✗ no $BOOT (boot/PROVENANCE.md)"; exit 1; }
 echo "✓ boot: $BOOT (the pinned fixpoint wheel)"

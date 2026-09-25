@@ -2020,6 +2020,17 @@ for i in "${!compilers[@]}"; do
   else
     fail "computed question: name (got: $(printf '%s' "$qn" | tail -2))"
   fi
+  # THE HOLE'S ALLOWED ROW IS WHAT ITS CONTEXT ABSORBS (PROGRAM C1). `main`
+  # declares nothing and the hole sits under `~> h`, which absorbs E, so a
+  # candidate performing E is admissible. Born RED 2026-09-25: the proposer
+  # read only the authored clause (Pure for an undeclared fn) and refused
+  # `eff_one` "by the target row Pure".
+  qa=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-hole-row-absorbed.mn:15:21 2>/dev/null)
+  if printf '%s' "$qa" | grep -q '^  eff_one()' && ! printf '%s' "$qa" | grep -q 'refused eff_one'; then
+    pass "hole row: a candidate performing what the enclosing ~> absorbs is proposed"
+  else
+    fail "hole row absorbed (got: $(printf '%s' "$qa" | grep -E 'eff_one|Propose' | head -2 | tr '\n' ' '))"
+  fi
   # SHAPE: the constant read stops at a branch, so the medium will not claim
   # two unread bodies agree — the arm that keeps DivName honest.
   qs=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-shape-tie.mn:19:31 2>/dev/null)

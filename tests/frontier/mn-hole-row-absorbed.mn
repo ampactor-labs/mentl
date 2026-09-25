@@ -1,0 +1,15 @@
+// A HOLE'S ALLOWED ROW IS WHAT ITS CONTEXT ABSORBS, NOT THE AUTHORED CLAUSE.
+// `main` declares no row, and the hole sits under `~> h`, which absorbs E —
+// so a candidate performing E is admissible there: the handler around the
+// hole will catch it and main's own row does not widen. The proposer read
+// only the enclosing fn's AUTHORED clause, which is Pure for an undeclared
+// fn, so `eff_one()` was refused "by the target row Pure" — a row nobody
+// wrote (measured 2026-09-25, PROGRAM C1).
+// Expected: `eff_one()` is among the proven survivors at the hole.
+effect E { op() -> Int }
+
+handler h { op() => resume(7) }
+
+fn eff_one() = op()
+
+fn main() -> Int = (??) ~> h
