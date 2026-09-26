@@ -32,6 +32,18 @@ esac
   exit 2
 }
 
+# The memo (Hβ.tools.gate-stamp-is-uniform): three fixtures through one
+# compiler; a green run on exactly these bytes answers again. FORCE_GATES=1
+# re-runs.
+pe_key=$(wt_memo_key_run "$compiler" tests/frontier/mn-hole-executable-refusal.mn \
+  tests/frontier/mn-proof-debt-surfaced.mn tests/frontier/mn-partial-hole-executable.mn \
+  lib tools/proof-exactness-gate.sh)
+if pe_memo=$(wt_memo_hit "proof-exactness-$label" "$pe_key"); then
+  printf '%s\n' "$pe_memo"
+  echo "  (memo: this compiler already judged these fixtures green — FORCE_GATES=1 re-runs)"
+  exit 0
+fi
+
 dir="$ROOT/.build/proof-exactness-gate/$label"
 rm -rf "$dir"
 mkdir -p "$dir"
@@ -152,4 +164,5 @@ expect_executable \
   42
 
 echo "proof-exactness: $passes pass / $reds red"
+[ "$reds" -eq 0 ] && wt_memo_put "proof-exactness-$label" "$pe_key" "proof-exactness: $passes pass / $reds red"
 [ "$reds" -eq 0 ]

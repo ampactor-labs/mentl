@@ -99,10 +99,7 @@ type ProposerKind
 // chose to reach; the rest of the link — the pre-imported prelude and the
 // runtime floor under it — is in scope by name only because the link
 // flattens every module into one env.
-type VocabRing
-  = OwnModule
-  | AuthoredImport
-  | Linked
+type VocabRing = OwnModule | AuthoredImport | Linked
 
 // ─── EnrichedCandidate — Candidate + provenance ────────────────────
 //
@@ -154,11 +151,21 @@ handler synth_default {
     // minted (PLAN §5's fork/merge duality — the range is what keeps merging
     // cheap at a cursor position).
     match graph_next() {
-      cand_start => match enumerate_vocabulary_calls(target_ty, allowed_effects, context, vocabulary_rings(context_hole_handle(context))) {
+      cand_start => match enumerate_vocabulary_calls(
+        target_ty,
+        allowed_effects,
+        context,
+        vocabulary_rings(context_hole_handle(context))
+      ) {
         (vocab, row_rejected) => match search_outward(vocab, row_rejected, context_hole_handle(context), cand_start) {
-          (found, vocab_refused) => match verify_each_enriched(enumerate_typed(target_ty, allowed_effects, context), context_hole_handle(context), cand_start) {
+          (found, vocab_refused) => match verify_each_enriched(
+            enumerate_typed(target_ty, allowed_effects, context),
+            context_hole_handle(context),
+            cand_start
+          ) {
             (shaped, shape_refused) => {
-              let survivors = concat_candidates(found, shaped) |> collapse_equivalent |> rank_sort(context_hole_span(context)) |> reference_before_mint |> map_to_proposals
+              let survivors =
+                concat_candidates(found, shaped) |> collapse_equivalent |> rank_sort(context_hole_span(context)) |> reference_before_mint |> map_to_proposals
               // Both refusal channels, one list: the ROW pruned a candidate
               // before it was ever judged, the CELL refused one that was.
               // A developer auditing the proposal sees every name the medium
@@ -312,11 +319,12 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with Graph
 // module first and stops at the first ring that proves a survivor; a
 // farther ring is judged only when every nearer one proved nothing, and its
 // refusals are listed only then, because a name the search never reached
-// is not part of this answer. Measured 2026-09-25 at `5 |> ??` with
-// `double` declared above the hole: the whole link was one ring, so
-// `decode_stride`, `hex_val`, `escape_len`, `escape_tail`, `hash` and `id`
-// — reachable from the program only because the link flattens every
-// module into one env — tied with it, and the hole could never fill.
+// is not part of this answer. Measured 2026-09-25 at `5 |> ??` in
+// tests/frontier/mn-pipe-stage-fill.mn, whose one function sits above the
+// hole: the whole link was one ring, so `decode_stride`, `hex_val`,
+// `escape_len`, `escape_tail`, `hash` and `id` — reachable from the program
+// only because the link flattens every module into one env — tied with it,
+// and the hole could never fill.
 fn search_outward(vocab, row_rejected, hole_h, cand_start) =
   [OwnModule, AuthoredImport, Linked] |> fold(([], []), search_ring(vocab, row_rejected, hole_h, cand_start))
 
@@ -375,7 +383,7 @@ fn vocabulary_rings(hole_h) = match graph_node_body(graph_module_of(hole_h)) {
   NModule(m) => {
     let cells = module_cells()
     let reached = authored_reach(cells, import_paths_of_decls(m.decls), [])
-    {home: map(stmt_decl_name, m.decls), imported: cells |> filter(cell_reached(reached)) |> map(cell_decl_names) |> flatten}
+    ({home: map(stmt_decl_name, m.decls), imported: cells |> filter(cell_reached(reached)) |> map(cell_decl_names) |> flatten})
   },
   _ => {
     // The module column is written only with NModule handles, so a hole
@@ -383,7 +391,7 @@ fn vocabulary_rings(hole_h) = match graph_node_body(graph_module_of(hole_h)) {
     // defect in the caller, which traps rather than answering with an
     // empty vocabulary nobody could tell from a real one.
     load_i32(0 - 1)
-    {home: [], imported: []}
+    ({home: [], imported: []})
   },
 }
 
@@ -394,7 +402,11 @@ fn authored_reach(cells, frontier, seen) = if len(frontier) == 0 {
 } else if contains_path(seen, last(frontier)) {
   authored_reach(cells, drop_last(frontier), seen)
 } else {
-  authored_reach(cells, drop_last(frontier) ++ cell_imports(cells, last(frontier)), push(seen, last(frontier)))
+  authored_reach(
+    cells,
+    drop_last(frontier) ++ cell_imports(cells, last(frontier)),
+    push(seen, last(frontier))
+  )
 }
 
 fn cell_imports(cells, path: String) = fold([], cell_imports_pick(path), cells)
@@ -492,9 +504,7 @@ fn vocabulary_ref_candidate(name, row, allowed_row, ring) with GraphRead + Graph
 // refused, at every stage hole. `same_head` alone treats every two function
 // types alike, which is right for a head and too wide for a reference.
 fn fn_heads_may_unify(params, ret, target_ty) = match target_ty {
-  TFun(tparams, tret, _) => len(params) == len(tparams)
-    && heads_may_unify(ret, tret)
-    && all(params_heads_agree, zip(params, tparams)),
+  TFun(tparams, tret, _) => len(params) == len(tparams) && heads_may_unify(ret, tret) && all(params_heads_agree, zip(params, tparams)),
   TAlias(_, inner) => fn_heads_may_unify(params, ret, inner),
   _ => false,
 }
@@ -558,8 +568,8 @@ fn rank_of(c, hole_span) with GraphRead + EnvRead + !Mutate + Alloc + Memory = m
           _ => 0.5,
         },
       },
-      // A reference ranks by the same local-intent read as a call of it.
-      NExpr(VarRef(name)) => match env_lookup(name) {
+      NExpr(VarRef(name)) => // A reference ranks by the same local-intent read as a call of it.
+      match env_lookup(name) {
         Some(entry) => match entry {
           (_, decl_reason, _) => candidate_rank(name, decl_reason, hole_span),
         },
@@ -1253,10 +1263,10 @@ fn divergence_of(survivors, target_ty, context) = {
       (a, b) => DivRow(a, b),
     },
     None => match target_ty {
-      // At a function-typed hole the survivors are different COMPUTATIONS of
+      TFun(_, _, _) => // At a function-typed hole the survivors are different COMPUTATIONS of
       // one type: no denotation read separates them, and "shape" was the
       // wrong word for two functions with the same shape.
-      TFun(_, _, _) => DivBehavior,
+      DivBehavior,
       _ => divergence_by_denotation(nodes, target_ty),
     },
   }

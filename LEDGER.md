@@ -35,6 +35,34 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-26 · no repin (boot unchanged at 7593ca5f) · THE LOOP STOPS
+  RE-DERIVING ITSELF. PROGRAM F0.
+  **What was measured first.** C3(i)'s second repin produced a
+  byte-identical boot and still paid the whole board (~20 min), and two
+  stray `ref` markers had cost a board to learn what a text count knew.
+  **The mechanism** (tools/wt-env.sh `wt_memo_*`): a leg's green is stored
+  under the sha of exactly what it reads, compilers by content. The march's
+  board legs (crown, proof-exactness, effect-identity, frontier), the micro
+  battery, verify's fixture legs, its census section and the solo sweep, and
+  the march's verb-parity leg all answer from it. Cheapest first: `verify.sh
+  --preflight` (quiet gate, scaffold count, sugar vocabulary; 0.05 s, no
+  compiler) runs before the m2 leg, `verify.sh --wheel` before m3, and
+  tools/drift-audit.sh refuses an edit that raises a src file's authored
+  own/ref count against HEAD. A repin whose sha is the narrated head writes
+  no PROVENANCE block. The solo sweep moved from the frontier (the one leg
+  that read src/) into verify, so the frontier counts 394 legs.
+  **Measured:** first repin with every memo cold 647 s; the same tree again
+  111 s; then 52 s; then 22 s (the m3 leg is 11.5 s of it). Full verify 3 s.
+  Preflight seen RED on a scratch copy (authored ref 729 -> 730, exit 1).
+  **The kill.** Memoizing the board was not the whole cost: the 111 s run
+  still spent 30 s regenerating m2 through the verb and 56 s in verify's
+  census, which asked the judged wheel twelve whole-program questions, three
+  of them one question (`verify` twice for comment-refs and the board, and
+  `check` for the manifest). One ScopeAll `verify` now answers all three
+  (its stderr carries every module's missing names, where `check` saw the
+  entry's narrowed report), and the nine effect-seam `refs of` questions run
+  in parallel: the cold census went 56 s -> 25 s, 0.5 s memoized.
+
 - 2026-09-25 · pin 7593ca5fa97ce07b (CLEAN m2 == m3) · A STAGE IS PROPOSED
   BY REFERENCE, NEAREST MODULE FIRST. PROGRAM C3(i).
   **The mechanism** (src/synth_proposer.mn): at a function-typed hole the

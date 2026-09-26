@@ -1272,7 +1272,7 @@ fn parse_effect_ops(ref tokens, pos) = {
   }
 }
 
-// Parse a single op-param: either bare `Type` (positional) or
+// Parse a single op-param: either a bare type (positional) or
 // `name: Type` (named — SYNTAX.md §678 `print(msg: String)`). Skips
 // the optional `<ident> :` prefix; returns the parsed Ty + new pos.
 // Per Hβ.parser.effect-op-typed-arg-substrate (2026-05-10): the wheel
@@ -1834,7 +1834,10 @@ fn postfix_loop(ref tokens, e, pos, slot) = match kind_at(tokens, pos) {
     // (tests/syntax/record-field-keyword-name.mn, measured 2026-09-25).
     let field = ident_or_kw_at(tokens, pos + 1)
     if field == "" {
-      report(PExpectedToken("expected a field name after `.`, found `{show_token_kind(kind_at(tokens, pos + 1))}`", span_at(tokens, pos + 1)))
+      report(PExpectedToken(
+        "expected a field name after `.`, found `{show_token_kind(kind_at(tokens, pos + 1))}`",
+        span_at(tokens, pos + 1)
+      ))
     }
     match e {
       N(_, start_span, _) => {

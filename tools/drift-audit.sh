@@ -177,6 +177,36 @@ while IFS=$'\t' read -r mode_num mode_name regex scope notes channel; do
     echo
 done < "$PATTERNS"
 
+# ── THE QUIET GATE AT THE KEYSTROKE (2026-09-26) ──
+# verify.sh ratchets the authored own/ref count in src/ (the Hylo bar: a
+# marker the developer had to write is the ownership inference failing), and
+# until today that ratchet fired LAST, after the march and the board — so two
+# stray `ref` markers cost a second full board. The count per file is a text
+# read, so the edit that raises it is refused here, against the file's own
+# committed count, with the same pattern verify counts.
+qg_pat_own='[(,] *own [a-z_]'
+qg_pat_ref='[(,] *ref [a-z_]'
+for f in "${files[@]}"; do
+    rel="${f#"$REPO_ROOT"/}"
+    case "$rel" in src/*.mn) ;; *) continue ;; esac
+    was=$(git -C "$REPO_ROOT" show "HEAD:$rel" 2>/dev/null || true)
+    # `|| true` inside: a file with no markers is the common case, and grep's
+    # exit 1 would end the whole audit under pipefail.
+    now_own=$( { grep -oE "$qg_pat_own" "$f" || true; } | wc -l)
+    now_ref=$( { grep -oE "$qg_pat_ref" "$f" || true; } | wc -l)
+    was_own=$( { printf '%s' "$was" | grep -oE "$qg_pat_own" || true; } | wc -l)
+    was_ref=$( { printf '%s' "$was" | grep -oE "$qg_pat_ref" || true; } | wc -l)
+    if [[ "$now_own" -gt "$was_own" || "$now_ref" -gt "$was_ref" ]]; then
+        total_hits=$((total_hits + 1))
+        mode_hits[quiet]=$(( ${mode_hits[quiet]:-0} + 1 ))
+        echo "━━━ THE QUIET GATE — $rel raises its authored ownership markers"
+        echo "    own $was_own -> $now_own, ref $was_ref -> $now_ref against HEAD. The inference grades"
+        echo "    ownership; a marker written to satisfy it is the inference failing. Delete the"
+        echo "    marker, or teach the inference — verify.sh refuses the same count later."
+        echo
+    fi
+done
+
 echo "════════════════════════════════════════════════════════════"
 if [[ $total_hits -eq 0 ]]; then
     echo "drift-audit: CLEAN — ${#files[@]} file(s) scanned, 0 drift modes fired"

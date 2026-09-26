@@ -69,6 +69,20 @@ case "$selection" in
     ;;
 esac
 
+# THE MEMO (Hβ.tools.gate-stamp-is-uniform): this gate's verdict is a function
+# of the compiler bytes it runs and the files it reads — tests/, lib/ (every
+# fixture links the prelude), ide/, this script and the expected-red names in
+# the baseline. When a green run already judged exactly those, the verdict is
+# read back instead of re-derived; a byte-identical repin used to pay this
+# whole gate a second time. FORCE_GATES=1 re-runs it.
+frontier_key=$(wt_memo_key_run "${compilers[@]}" tests lib ide tools/frontier-gate.sh tools/verify-baseline.txt)
+if frontier_memo=$(wt_memo_hit "frontier-$selection" "$frontier_key"); then
+  printf '%s\n' "$frontier_memo"
+  echo "  (memo: these compilers already ran every leg against these inputs green — FORCE_GATES=1 re-runs)"
+  sha256sum "$ROOT/boot/mentl.wasm" | cut -d' ' -f1 > "$ROOT/.build/frontier-stamp"
+  exit 0
+fi
+
 RTLIBS=(
   "$ROOT/lib/memory.mn"
   "$ROOT/lib/strings.mn"
@@ -3341,55 +3355,9 @@ for i in "${!compilers[@]}"; do
   run_program "$compiler" eq-polymorphic-sum "$ROOT/tests/frontier/mn-eq-polymorphic-sum.mn" 0 yes "$dir"
   run_program "$compiler" payload-instantiation "$ROOT/tests/frontier/mn-payload-instantiation.mn" 0 yes "$dir"
 
-  # ─── The per-module solo sweep (PLAN §11 Phase 3.5, ratcheted) ──────
-  # E_MissingVariable across every SHIPPED module's SOLO check, ceiling in
-  # verify-baseline (solo_violations_max — monotone DOWN; 0 retires the
-  # drift catalog per §11). One judgment per module.
-  #
-  # lib/** JOINED THE SWEEP 2026-08-16, and the extension is the reason it
-  # had to: src/** was at the 0 ceiling and green while lib/** carried 20
-  # unresolved names — `mentl check lib/dsp/signal.mn` named four of them
-  # on its first run. The wheel's own link resolves every name whether or
-  # not the module declared the dep (concatenation hides it), and no
-  # oracle judged a lib-rooted link at all, so the count was invisible to
-  # census, fixpoint, and micros alike. That is §11 tripwire (3) — the
-  # board is blind to what the wheel never does — and the standing
-  # counter-measure is a gate that exercises it. Four import lines took
-  # lib/** to 0: io into dsp/cfc, test and net; math into
-  # ml/tensor.
-  sv_max=$(grep -E '^solo_violations_max:' "$ROOT/tools/verify-baseline.txt" | head -1 | cut -d: -f2 | tr -d ' ')
-  sv_total=0
-  # One cursor per module, concurrently: each solo-check is process-isolated
-  # and judged by artifact, so flight parallelizes while the judge stays
-  # serial (bash counters cannot cross children). Roots travel as env vars,
-  # never positional args — xargs owns those.
-  sv_specs=()
-  for svf in "$ROOT"/src/*.mn "$ROOT"/src/backends/*.mn \
-             "$ROOT"/lib/*.mn "$ROOT"/lib/dsp/*.mn \
-             "$ROOT"/lib/ml/*.mn "$ROOT"/lib/tutorial/*.mn; do
-    sv_specs+=("$svf")
-  done
-  sv_pool_dir=$(mktemp -d)
-  printf '%s\0' "${sv_specs[@]}" | SEED_ART="$compiler" SV_POOL_DIR="$sv_pool_dir" \
-        SV_ROOT="$ROOT" xargs -0 -n 1 -P "${FRONTIER_POOL:-$(nproc)}" bash -c '
-          source "$SV_ROOT/tools/wt-env.sh" >/dev/null 2>&1
-          h=$(printf %s "$1" | cksum | cut -d" " -f1)
-          n=$(wt_run --dir "$SV_ROOT" --dir /tmp --dir "$SV_ROOT::/mentl-home" "$SEED_ART" check "$1" 2>&1 | grep -cE "E_MissingVariable")
-          printf "%s\n" "$n" > "$SV_POOL_DIR/$h"' sv-child
-  sv_landed=$(find "$sv_pool_dir" -type f 2>/dev/null | wc -l)
-  if [ "$sv_landed" != "${#sv_specs[@]}" ]; then
-    rm -rf "$sv_pool_dir"
-    fail "per-module solo sweep: the flight dropped results ($sv_landed/${#sv_specs[@]} landed)"
-    sv_total=-1
-  else
-    sv_total=$(awk '{s+=$1} END{print s+0}' "$sv_pool_dir"/*)
-    rm -rf "$sv_pool_dir"
-  fi
-  if [ -n "$sv_max" ] && [ "$sv_total" -le "$sv_max" ]; then
-    pass "per-module solo sweep: $sv_total violation(s) within the $sv_max ceiling (0 retires the drift catalog)"
-  else
-    fail "per-module solo sweep: rose to $sv_total against ceiling $sv_max — a module newly under-imports its names"
-  fi
+  # (The per-module solo sweep moved to tools/verify.sh on 2026-09-26: it is a
+  # census of the wheel's own source, and it was the one leg here that read
+  # src/, which made this whole gate's verdict depend on every comment edit.)
 done
 
 echo "frontier: $total_pass pass / $total_fail red / $total_xred expected-red"
@@ -3422,6 +3390,7 @@ echo "frontier: $total_pass pass / $total_fail red / $total_xred expected-red"
 # zero here is the strong form, not the unreachable one it was this morning.
 if [ "$total_fail" -eq 0 ]; then
   sha256sum "$ROOT/boot/mentl.wasm" | cut -d' ' -f1 > "$ROOT/.build/frontier-stamp"
+  wt_memo_put "frontier-$selection" "$frontier_key" "frontier: $total_pass pass / $total_fail red / $total_xred expected-red"
 else
   rm -f "$ROOT/.build/frontier-stamp"
 fi

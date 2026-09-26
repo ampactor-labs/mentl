@@ -1519,36 +1519,27 @@ of megabytes is invisible, which is both failure modes at once. It also makes
 one measured fact hard to use: comments are GRAPH CONTENT in Mentl, so prose
 has a real footprint, and today it cannot be separated from the noise.
 
-`Hβ.tools.gate-stamp-is-uniform` — NAMED 2026-08-18. The frontier keeps a
-stamp (`.build/frontier-stamp`, the boot sha256 written on a 0-red run),
-so the board can say whether it measured THIS boot and the pre-commit
-perimeter can refuse a wheel commit without it. Crown, proof-exactness,
-effect-identity and instrument keep none, so nothing — not the board, not
-the hook, not PROVENANCE — can distinguish "green" from "not run since
-the pin moved" for four of the six boot-suite gates. That is the exact
-shape §11 tripwire 4 records: the crown went eleven ledger entries
-unmentioned while a leak rode the arc, and nothing written was false. The
-stamp is six lines in frontier-gate.sh; the work is making it one thing
-every gate does rather than four copies, which is why it is named rather
-than pasted. Its own destiny is `mentl verify` owning the suite and the
-stamp being a graph fact about the pin instead of a file. Until then
-`state.sh` prints the four as explicitly unstamped, because a blank you
-can see is worth more than a silence.
-A FIFTH, MEASURED 2026-09-19 AND WORSE THAN THE FOUR, because it reads
-like a channel while being a constant. Every provenance block march has
-ever written carries `micros+census: NOT RUN (run tools/verify.sh)` —
-every one, at every pin, back to the first. The line is
-`${MARCH_VERIFY:-NOT RUN …}` (march.sh) and **`MARCH_VERIFY` has no
-writer anywhere in the tree**, so the slot has never once held a
-verdict. Meanwhile verify.sh stamps `.build/gate/verify.green` keyed to
-the exact boot it measured — the fact the slot wants exists, one
-directory over, and the block cannot see it. This is NOT patched here,
-deliberately: march.sh and verify.sh are both condemned by `mentl verify`
-owning the suite (`boot/board.mn` written at repin), and improving a
-structure a named peer sentences to deletion is Anchor 2's roadmap face.
-It is named so the replacement inherits the requirement: every board line
-is a READ of the gate's own stamp, and a slot no writer feeds is a
-compile error, not a default string.
+`Hβ.tools.gate-stamp-is-uniform` — NAMED 2026-08-18, CLOSED 2026-09-26
+(PROGRAM F0, no repin). The frontier kept a stamp and crown,
+proof-exactness, effect-identity and instrument kept none, so "green" and
+"not run since the pin moved" were indistinguishable for four of six
+boot-suite gates; and the provenance slot `micros+census` had no writer at
+all. The closing form is one mechanism rather than four stamps: a leg's green
+is stored under the sha of exactly what it reads (`wt_memo_key` /
+`wt_memo_hit` / `wt_memo_put`, tools/wt-env.sh; a compiler artifact hashes by
+CONTENT, so boot and an identical m2 share a key; `FORCE_GATES=1` re-runs).
+Crown, proof-exactness, effect-identity, the frontier, the micro battery, the
+fixture legs, the solo sweep, verify's census section and the march's
+verb-parity leg all read it. `MARCH_VERIFY` is written now (`verify --wheel`
+runs before m3 under `MARCH_REPIN`), and a repin whose sha is the narrated
+head writes no block. Measured: a byte-identical repin paid ~20 min before,
+647 s with every memo cold, 22 s memoized; full verify 3 s.
+What stays open, named: the instrument, thread and IDE gates keep no memo,
+and the effect seam still asks nine whole-wheel `refs of` questions (in
+parallel now) where a census shape in src/board.mn would answer all nine off
+the one judged graph — the absorption the scaffold's destiny names. The
+destiny is unchanged: `mentl verify` owning the suite, the memo a graph fact
+about the pin rather than a directory of files.
 
 `Hβ.repr.option-of-word-niche` — NAMED 2026-08-18, by the landing that
 made the cost real. `base_digit(base, byte)` answers IS-this-a-digit and

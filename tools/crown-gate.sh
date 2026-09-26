@@ -24,6 +24,16 @@ else
   M="$C/m2.wasm"
 fi
 
+# The memo (Hβ.tools.gate-stamp-is-uniform): the verdict is a function of the
+# compiler bytes and the crucibles, so a green run on exactly these answers
+# again without recompiling sixty programs. FORCE_GATES=1 re-runs.
+crown_key=$(wt_memo_key_run "$M" tests/crown tools/crown-gate.sh)
+if crown_memo=$(wt_memo_hit crown "$crown_key"); then
+  printf '%s\n' "$crown_memo"
+  echo "  (memo: this compiler already judged these crucibles green — FORCE_GATES=1 re-runs)"
+  exit 0
+fi
+
 pass=0; fail=0
 for f in tests/crown/*.mn; do
   name=$(basename "$f" .mn)
@@ -38,4 +48,5 @@ for f in tests/crown/*.mn; do
   else echo "✗ crown $name (want $want, mismatch=$n)"; fail=$((fail+1)); fi
 done
 echo "── crown: $pass pass / $fail fail ──"
+[ "$fail" -eq 0 ] && wt_memo_put crown "$crown_key" "── crown: $pass pass / $fail fail ──"
 [ "$fail" -eq 0 ]
