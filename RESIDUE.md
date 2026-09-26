@@ -2911,6 +2911,46 @@ preserved rather than quietly re-ranked, because the honest fix needs the HOLE's
 module and a span is not an address. CLOSE CONDITION: rides positions-are-handles
 with the Why chain's own coordinate work — the gradient's first real ranking
 signal should not be a coincidence of line numbering.
+NARROWED 2026-09-25 (PROGRAM C3): the vocabulary is now searched in RINGS read
+from the hole's HANDLE — its module is the column `graph_module_of` reads, and
+the rings are that module's own decls, the modules it reaches through authored
+import edges, and the rest of the link — and the search stops at the first ring
+that proves a survivor. So a name from another module no longer competes with
+the hole's own module at all. What stays open is the rank WITHIN one outer ring,
+which can hold several modules whose spans this fold still compares by line.
+
+`Hβ.synth.vocabulary-ring-is-read-by-name` — OPEN, BORN 2026-09-25 with the
+ring search (src/synth_proposer.mn `vocabulary_rings`). The ring of a
+vocabulary name is decided by membership in NAME lists — the names the hole's
+module declares, and the names its authored imports declare — because the env
+entry the vocabulary enumerates carries no edge to its decl: `generalize`
+publishes a judged fn as `Frozen(qs, ty)`, so the handle that
+`graph_module_of` would read is gone by the time anything enumerates the env.
+That is PLAN §7's "Schemes are VALUES, not edges" showing through at a new
+reader. CLOSE: when a binding keeps its decl handle, the ring is one column
+read plus the import reach, and the name lists are deleted.
+
+`Hβ.parser.field-name-after-dot-drops-keyword` — CLOSED 2026-09-25 in the
+landing that found it. The record LITERAL reads a contextual keyword as a field
+name (`ident_or_kw_at`: `{own: 7}` has a field `own`), and field ACCESS read
+with `ident_at`, whose answer for anything but an identifier is "". So `r.own`
+parsed to a field with an empty name and surfaced layers later as `{ : t } vs
+{ own: Int }` — measured while building the ring search, whose record had an
+`own` field. Access now reads names the way the literal does, and a token that
+is not name-shaped reports `P_ExpectedToken` at its own span.
+tests/syntax/record-field-keyword-name.mn holds it (the boot refuses it with
+the mismatch; the landing runs it to 7).
+
+`Hβ.parser.ident-sentinel-is-an-empty-name` — OPEN, BORN 2026-09-25 as the
+class the field-access instance belongs to. `ident_at` and `ident_or_kw_at`
+answer "" for a token that is not name-shaped, and their comment says the
+parent "already verified the variant". The field-access caller had not, and
+there are twenty more callers in src/parser.mn (declaration names, effect op
+names, record rest names, repr width names); each is either verified by its
+parent or a silent empty name waiting for input nobody has typed yet. CLOSE:
+the extractors answer `Option(String)`, and every caller that can meet a
+non-name refuses at the token's own span — the census is the caller list, and
+the wildcard-fabricates count drops by the two `""` arms.
 
 `Hβ.infer.declared-row-vacuous-against-a-free-body-row` — **STAMPED
 2026-08-18, and the fork it was banked as is ANSWERED.** Morgan's

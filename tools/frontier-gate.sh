@@ -2055,6 +2055,26 @@ for i in "${!compilers[@]}"; do
   else
     fail "hole row absorbed (got: $(printf '%s' "$qa" | grep -E 'eff_one|Propose' | head -2 | tr '\n' ' '))"
   fi
+  # A PIPE STAGE IS PROPOSED BY REFERENCE, searched outward from the hole's
+  # module (PROGRAM C3). Born RED 2026-09-25 on all three: `5 |> ??` offered
+  # only the empty lambda skeleton — the vocabulary enumerated zero-argument
+  # calls, never a function reference — so a stage hole could neither fill
+  # nor ask a real question. The ring fixture is the search's own contract:
+  # with no fitting function in the entry, the one its authored import
+  # declares fills, and the prelude's `id` is never judged beside it.
+  qp=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-pipe-stage-hole.mn:13:25 2>/dev/null)
+  qf=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-pipe-stage-fill.mn:8:25 2>/dev/null)
+  ringdemo="$ROOT/tests/frontier/stage-ring-demo"
+  qr=$(cd "$ringdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ringdemo" --dir /tmp "$compiler" stage.mn:8:25 2>/dev/null)
+  if printf '%s' "$qp" | grep -q '^  double  ' && printf '%s' "$qp" | grep -q '^  inc  ' \
+     && printf '%s' "$qp" | grep -q 'different computations of the same type' \
+     && ! printf '%s' "$qp" | grep -q '^  ??  ' \
+     && printf '%s' "$qf" | grep -q '^Propose: double  ' \
+     && printf '%s' "$qr" | grep -q '^Propose: triple  '; then
+    pass "stage hole: in-scope functions proposed by reference, nearest module first (two ask the behavior question; one fills; an imported one fills)"
+  else
+    fail "stage hole by reference (tie: $(printf '%s' "$qp" | grep -E '^Propose|^  ' | head -4 | tr '\n' ' ') fill: $(printf '%s' "$qf" | grep '^Propose') ring: $(printf '%s' "$qr" | grep '^Propose'))"
+  fi
   # SHAPE: the constant read stops at a branch, so the medium will not claim
   # two unread bodies agree — the arm that keeps DivName honest.
   qs=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-shape-tie.mn:19:31 2>/dev/null)

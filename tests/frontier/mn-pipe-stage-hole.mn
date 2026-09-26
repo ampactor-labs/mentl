@@ -1,0 +1,13 @@
+// A PIPE STAGE IS PROPOSED BY REFERENCE. `5 |> ??` is the vision's most
+// common hole — which stage comes next — and the medium offered only an
+// empty lambda skeleton, because its vocabulary enumerated zero-argument
+// CALLS and never a function REFERENCE (SYNTAX §«Function literals»: a
+// function value is reached by reference, or minted). Measured 2026-09-25,
+// PROGRAM C3. Two functions fit here, so the medium asks which computation
+// this stage means — never a list, and never the skeleton beside them.
+// Expected: survivors `double` and `inc`, the behavior question, no `??`.
+fn double(x) = x * 2
+
+fn inc(x) = x + 1
+
+fn main() -> Int = 5 |> ??

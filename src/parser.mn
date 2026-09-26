@@ -1826,7 +1826,16 @@ fn postfix_loop(ref tokens, e, pos, slot) = match kind_at(tokens, pos) {
     },
   },
   TDot => {
-    let field = ident_at(tokens, pos + 1)
+    // The field name is read the way the record LITERAL reads it, where the
+    // contextual keywords own/ref are names — so `r.own` reaches the field
+    // `{own: …}` declared. A token that is not name-shaped is refused at its
+    // own span: it used to mint a field named "" that surfaced layers later
+    // as a record type mismatch against a field with no name
+    // (tests/syntax/record-field-keyword-name.mn, measured 2026-09-25).
+    let field = ident_or_kw_at(tokens, pos + 1)
+    if field == "" {
+      report(PExpectedToken("expected a field name after `.`, found `{show_token_kind(kind_at(tokens, pos + 1))}`", span_at(tokens, pos + 1)))
+    }
     match e {
       N(_, start_span, _) => {
         let field_span = span_at(tokens, pos + 1)

@@ -1820,6 +1820,8 @@ type Divergence
   // what the target type admits — the same read that seeded the candidates
   | DivValue(Domain)
   | DivShape
+  // survivors at a FUNCTION-typed hole: different computations of one type
+  | DivBehavior
 
 // Decidable shape. Verify discharges: ledger (Phase 1) accumulates;
 // verify_smt (Arc F.1) routes by theory — Z3 / cvc5 / Bitwuzla.
@@ -3770,6 +3772,7 @@ fn show_divergence(d) with GraphRead + Memory + !Mutate + Alloc + Intern = match
   DivName => "every survivor denotes the same value — the question is which name carries the intent",
   DivValue(dom) => "the survivors differ in VALUE and {show_domain(dom)}: which one does this position mean?",
   DivShape => "the survivors differ in SHAPE — what structure does this position hold?",
+  DivBehavior => "these are different computations of the same type — an example of the result, or a refinement on it, decides which one this position means",
 }
 
 fn show_eff_name(ref name) with Intern + Memory + Alloc + GraphRead + !Mutate = match name {

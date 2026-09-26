@@ -35,6 +35,50 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-25 · pin 7593ca5fa97ce07b (CLEAN m2 == m3) · A STAGE IS PROPOSED
+  BY REFERENCE, NEAREST MODULE FIRST. PROGRAM C3(i).
+  **The mechanism** (src/synth_proposer.mn): at a function-typed hole the
+  vocabulary enumerates in-scope functions of the target's shape as
+  REFERENCES (`vocabulary_ref_candidate`), through the same row gate as a
+  call; the lambda skeleton is offered only when no reference is proven
+  (`reference_before_mint`); a tie at a function-typed hole asks
+  `DivBehavior`. The vocabulary is searched OUTWARD (`search_outward`): the
+  hole's own module, then the modules it reaches through authored import
+  edges, then the rest of the link, each ring judged only when the nearer
+  ones proved nothing, and refusals listed only for the rings the search
+  reached. The rings are read from the hole handle's module column and the
+  module node's own decls (`vocabulary_rings`); the candidate's origin
+  carries its ring (`ProposerVocabulary`), the origin field's first reader.
+  **Two defects measured while building it, both fixed here.** The first
+  build printed 7 survivors and about 70 refusals at `5 |> ??`, and the
+  refusal list named the cause: `len : [a] -> Int` refused at an `Int ->
+  Int` hole could only have passed a head index that read a variable. The
+  hole's type was read without following its bound variables
+  (`context_target_ty` reads through `chase_deep` now). And `r.own` parsed
+  to a field with an empty name — field access read names with `ident_at`,
+  whose answer for a contextual keyword is "", while the record literal
+  reads them as names; access reads the literal's way now, and a non-name
+  after `.` reports `P_ExpectedToken` at its own span.
+  **Measured**, all RED on boot 871f915d, which offered only the `??`
+  skeleton at all three holes and refused the keyword fixture with `{ : t }
+  vs { own: Int }`: tests/frontier/mn-pipe-stage-hole.mn asks the behavior
+  question between `double` and `inc`; mn-pipe-stage-fill.mn fills
+  `double`; stage-ring-demo/stage.mn fills `triple` from its authored
+  import, with the prelude's `id` never judged; tests/syntax/
+  record-field-keyword-name.mn runs to 7. The first march of the landing
+  added one unproven comparison (`refused_in`, 59 against the ceiling of
+  58); the `ring: VocabRing` annotation carries the proof.
+  **Board:** crown, proof-exactness and effect-identity green; frontier 395
+  pass / 0 red / 2 expected-red. **Cost:** the m3 leg's peak is 1,006,436
+  KB, min of 3, against a 1,010,000 KB ceiling — two of three reads went
+  over it. The next landing that grows the wheel will cross it; the arena
+  (§11 4.3) is what lowers it, and raising the ceiling stays an in-commit
+  act. Named: `Hβ.synth.vocabulary-ring-is-read-by-name` (the ring is read
+  by name because a judged fn's env binding is `Frozen`),
+  `Hβ.parser.ident-sentinel-is-an-empty-name` (twenty more callers of the
+  empty-name sentinel); `Hβ.synth.proximity-compares-across-modules`
+  narrowed; `Hβ.parser.field-name-after-dot-drops-keyword` closed.
+
 - 2026-09-25 · pin 871f915def45f8e3 (CLEAN m2 == m3) · TEACH SAYS WHAT IT
   FOUND, AND ONLY WHAT IS TRUE. PROGRAM D1 + D2, one pin.
   **D1** (src/mentl.mn): `gradient_next` teaches only at a FnStmt with no

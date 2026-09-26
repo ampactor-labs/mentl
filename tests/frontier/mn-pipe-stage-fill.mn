@@ -1,0 +1,8 @@
+// ONE fitting function in scope: the stage hole FILLS with it. The empty
+// lambda skeleton used to stand beside every reference, so a stage hole
+// could never fill (REFERENCE BEFORE MINT — the skeleton is offered only
+// when nothing in scope is proven there). Measured 2026-09-25, PROGRAM C3.
+// Expected: Propose fills `double`.
+fn double(x) = x * 2
+
+fn main() -> Int = 5 |> ??
