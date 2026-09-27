@@ -4477,7 +4477,12 @@ fn stage_continuation_boundary(cname: String, resume_input_h) = {
   let answer_h = if current_answer_h < 0 { resume_input_h } else { current_answer_h }
   graph_boundary_set(
     resume_input_h,
-    PendingContinuationBoundary(resume_input_h, answer_h, continuation_h, inf_remainder_world(op_effect_of(cname)))
+    PendingContinuationBoundary(
+      resume_input_h,
+      answer_h,
+      continuation_h,
+      inf_remainder_world(op_effect_of(cname))
+    )
   )
 }
 
@@ -4658,14 +4663,15 @@ fn absorbing_frame(marks, ename, i) = match ename {
 fn frame_edges(stack, i, top, acc) = if i > top {
   acc
 } else {
-  frame_edges(stack, i + 1, top, push(acc, bare_edge(frame_row_handle(list_index(stack, i))))
+  frame_edges(stack, i + 1, top, push(acc, bare_edge(frame_row_handle(list_index(stack, i)))))
 }
 
 // A frame's row cell, read through the frame record's declared shape — the
 // Intent Boundary an INTERIOR field read needs: an element of the frame
 // stack arrives at emit with its row unresolved, and an unprovable offset
 // is a floor (T_FieldOffsetUnprovable), never a read.
-fn frame_row_handle(frame: {accumulated_row: EffRow, answer_handle: Int, declared: [(EffName, Bool, EConn)], fn_span: Span, params: [Int], row_handle: Int}) -> Int = frame.row_handle
+fn frame_row_handle(frame: {accumulated_row: EffRow, answer_handle: Int, declared: [(EffName, Bool, EConn)], fn_span: Span, params: [Int], row_handle: Int}) -> Int =
+  frame.row_handle
 
 // The effect an op name performs; None for a name that is not an op (a
 // pipe or fanout boundary stages under its own operator's name).
