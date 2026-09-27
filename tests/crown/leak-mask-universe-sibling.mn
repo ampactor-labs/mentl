@@ -1,0 +1,11 @@
+// CROWN — a universe edge beside a free one. f's declared row is
+// "anything except E" and g is free, so run may perform anything,
+// including g's E. The fold that met the universe dropped g's edge and
+// kept E masked (`!E + Any`), and a declared !E accepted a body that
+// performs E through g. Until the gate carried by the cell replaces the
+// supply-side universe, the fold's bound is `Any`. Expect E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn run(f: () -> Int with !E, g) = f() + g()
+fn bad() with !E = run(() => 1, () => op())
+fn main() = (bad()) ~> h

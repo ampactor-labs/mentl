@@ -928,6 +928,18 @@ and this is the STATE.
   decision is to infer and project the positive row (Morgan, 2026-09-25).
   `E_EffectMismatch` is ARMED at the same pin: the crown's own verdict had
   printed and let the program run.
+- **A `~>` MASK SPILLED ONTO THE EDGES BESIDE IT — CLOSED 2026-09-26.** A
+  row held one absent set for its whole open tail, and the stored flatten
+  folded each install's mask cell into it: `fn run(f, g) = f() + ((g()) ~>
+  h)` published `!E + r_f + r_g`, so a caller declaring `!E` over an
+  E-performing `f` was ACCEPTED, and two tees erased each other's callbacks'
+  effects. No negation was needed for the row to be false. The mask rides
+  the edge now (`RowEdge(cell, mask)`,
+  `Hβ.effects.mask-spills-onto-sibling-edges`), `diff_row` writes nothing,
+  and paths to one cell meet by intersection. The gate A3 installs pushes exactly this per-edge mask. What
+  it exposed: the executable root gate still credits an install ANYWHERE, so
+  `fn main() = op() + ((op()) ~> h)` — row `E`, correct — compiles and traps
+  (`Hβ.effects.root-gate-credits-an-install-that-had-not-opened`).
 - **A REACHABLE PERFORM WITH NO INSTALL ANYWHERE COMPILES CLEAN** — measured
   2026-09-21 and open. `silence_predicate` (src/voice.mn) is reachable, is
   called from a handler arm at voice:1177, and performs `query_project_queue`;

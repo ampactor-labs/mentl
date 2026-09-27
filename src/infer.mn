@@ -162,11 +162,7 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], pending_g
     let keep = signature_free_roots(stack |> map((fr) => fr.params) |> flatten)
     graph_finalize_row(
       frame.row_handle,
-      row_keep_completion(
-        row_without_self(frame.accumulated_row, frame.row_handle),
-        mint_ceiling,
-        keep
-      ),
+      row_keep_completion(row_without_self(frame.accumulated_row, frame.row_handle), mint_ceiling, keep),
       Located(frame.fn_span, Inferred("fn effect row"))
     )
     // The popped frame's declaration comes back to the closer — the
@@ -1646,9 +1642,10 @@ fn group_completion_fold(ref stmts, ref members, j) = if j >= len(members) {
   group_completion_fold(stmts, members, j + 1)
 }
 
-fn fold_member_cells(ref vs: [Int], ref span) = match vs {
+fn fold_member_cells(ref vs: [RowEdge], ref span) = match vs {
   [] => (),
-  [v, ...rest] => {
+  [e, ...rest] => {
+    let v = edge_cell(e)
     match graph_chase(v) {
       GNode(NRowBound(stored), _) => {
         // A residual edge chasing back to v contributes nothing
@@ -2639,10 +2636,10 @@ fn row_gate_unresolved(row_handle, ref sig_frees: [Int]) = match graph_chase(row
 // ownership test is on the CHASED terminal: `sig_frees` holds the
 // signature's handles as free_in_ty collected them, and a tail var that
 // chases to one of those cells is that cell.
-fn edges_any_free_beyond(ref vs: [Int], ref sig_frees: [Int]) = match vs {
+fn edges_any_free_beyond(ref vs: [RowEdge], ref sig_frees: [Int]) = match vs {
   [] => false,
-  [v, ...rest] => {
-    let r = graph_chase_handle(v)
+  [e, ...rest] => {
+    let r = graph_chase_handle(edge_cell(e))
     match graph_chase(r) {
       GNode(NRowFree(_), _) => if sig_owns(sig_frees, r) { edges_any_free_beyond(rest, sig_frees) } else { true },
       _ => edges_any_free_beyond(rest, sig_frees),
@@ -2813,33 +2810,23 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
         // author can tighten the signature and unlock the tighter
         // row's capabilities (memoization for the pure row, real-time
         // for !Alloc, etc.).
-        if row_subsumes(declared_row, body_row) {
-          ()
-        } else {
-          report(TOverDeclared(declared_row, body_row, name, span))
-        }
+        //
         // THE PROOF IS THE INTERFACE (the settled publish law, landed
         // WITH the union and THE FLAT-CELL LAW — the census proved the
         // pairing forced: with complete paths, the declared publish
         // delivered fabricated EtAll everywhere): the cell keeps its
-        // PROVEN row; the declaration publishes NOTHING. A closed proven
-        // row already entails every declared absence. The ONE
-        // declaration-write that survives is the ABSENT refinement,
-        // load-bearing exactly on an OPEN tail: the declared absences
-        // join the cell's absent field riding the cell's own edge set as
-        // carrier (row_join unions absents only across open tails —
-        // closed bodies entail their absences and take no write), so !E
-        // constrains every instantiation of a polymorphic row —
-        // bind_open_to_neg's mechanism as the one authored write.
-        match declared_row {
-          EfRow(_, da, _) => if len(da) > 0 {
-            match resolve_row_compress(body_row) {
-              EfRow(_, _, EtOpen(vs)) => graph_bind_row(row_handle, ef_make([], da, EtOpen(vs)), Located(span, Declared(name))),
-              _ => (),
-            }
-          } else {
-            ()
-          },
+        // PROVEN row; the declaration publishes NOTHING. A declared `!E`
+        // over an OPEN body row constrains the free cells — a gate on
+        // those cells, never a mask
+        // (`Hβ.infer.declared-row-vacuous-against-a-free-body-row`). The
+        // write that stood here joined the declared absences into the
+        // row as a mask: measured inert at every caller (LENS §2.2), the
+        // source of a false T_OverDeclared, and with masks on edges its
+        // join intersected back to the row it started from. Deleted.
+        if row_subsumes(declared_row, body_row) {
+          ()
+        } else {
+          report(TOverDeclared(declared_row, body_row, name, span))
         }
       } else {
         if has_pure {
@@ -4110,7 +4097,7 @@ fn fn_arg_directional_positions(dps, arg_handles, span: ValidSpan, i) = if i >= 
       // named census marker — expected zero on the wheel; a nonzero grep
       // is the counter.
       match chase_row_deep(prow, 0) {
-        EfRow(pres2, abs2, EtOpen(vs)) => if len(pres2) == 0 && len(abs2) == 0 {
+        EfRow(pres2, abs2, EtOpen(vs)) => if len(pres2) == 0 && len(abs2) == 0 && edges_unmasked(vs) {
           match graph_chase(list_index(arg_handles, i)) {
             GNode(NBound(aty), _) => match fold_strip(chase_deep(aty)) {
               TFun(aps, aret, arow) => if len(aps) == len(pps) {
@@ -4552,7 +4539,7 @@ fn tparam_cells(tparams) = flatten(map(
 ))
 
 fn residual_has_root(resid, root) = match resid {
-  EfRow(_, _, EtOpen(vs)) => any((v) => graph_chase_handle(v) == root, vs),
+  EfRow(_, _, EtOpen(vs)) => any((e) => graph_chase_handle(edge_cell(e)) == root, vs),
   _ => false,
 }
 
@@ -6837,7 +6824,7 @@ fn chase_row_changes(eff, d) = match eff {
     // VALUE (subst_row_changes' law at the chase face). Free edges stay —
     // generalize's NRowFree arm quantifies them.
     let tail_hit = match t {
-      EtOpen(vs) => edges_any_bound(vs),
+      EtOpen(vs) => edges_any_bound(vs) || edges_masks_change(vs, d),
       _ => false,
     }
     tail_hit || chase_names_changes(p, d, 0, len(p)) || chase_names_changes(a, d, 0, len(a))
@@ -6848,12 +6835,19 @@ fn chase_row_changes(eff, d) = match eff {
 // arm folds bindings by recursion, freshening nested frees at any
 // depth; answering false shared whole chains, the window-8 race).
 // Structural walk, the row walks' discipline.
-fn edges_any_bound(ref vs: [Int]) = match vs {
+fn edges_any_bound(ref vs: [RowEdge]) = match vs {
   [] => false,
-  [v, ...rest] => match graph_chase(v) {
+  [e, ...rest] => match graph_chase(edge_cell(e)) {
     GNode(NRowBound(_), _) => true,
     _ => edges_any_bound(rest),
   },
+}
+
+// A mask's parameterized names carry payload types exactly as the present
+// set's do, so the canonical form reaches them too (the trio law).
+fn edges_masks_change(vs: [RowEdge], d) = match vs {
+  [] => false,
+  [e, ...rest] => chase_names_changes(edge_mask(e), d, 0, len(edge_mask(e))) || edges_masks_change(rest, d),
 }
 
 fn chase_names_changes(names, d, i, n) = if i >= n {
@@ -6954,8 +6948,8 @@ fn chase_row_deep(eff, d) = if chase_row_changes(eff, d) {
       // bracket into every verb run's published row). A published scheme
       // is then a value or a quantified var, never a live pointer.
       match t {
-        EtOpen(vs) => match chase_edges_deep(vs, (p2, a2, [], false), d) {
-          (rp, ra, res, saw_all) => if saw_all { ef_make(rp, ra, EtAll) } else { ef_make(rp, ra, EtOpen(res)) },
+        EtOpen(vs) => match chase_edges_deep(edges_masked(vs, a2), (p2, [], [], false), d) {
+          (rp, am, res, saw_all) => row_of_fold(rp, am, res, saw_all),
         },
         _ => ef_make(p2, a2, t),
       }
@@ -6969,16 +6963,20 @@ fn chase_row_deep(eff, d) = if chase_row_changes(eff, d) {
 // Iterate vocabulary): a bound edge folds its DEEP value through the
 // shared assembly (edge_content_into — the same reading-law joins
 // resolve rides); a free edge survives into the residual set.
-fn chase_edges_deep(ref vs: [Int], acc, d) = match vs {
+fn chase_edges_deep(ref vs: [RowEdge], acc, d) = match vs {
   [] => acc,
-  [v, ...rest] => match acc {
-    (p, a, res, saw_all) => {
-      let next = match graph_chase(v) {
+  [e, ...rest] => match acc {
+    (p, am, res, saw_all) => {
+      // An unmasked edge is its own canonical form — no copy (the chase
+      // face's sharing law: an unchanged value is returned whole).
+      let e2 =
+        if len(edge_mask(e)) == 0 { e } else { row_edge(edge_cell(e), chase_eff_names(edge_mask(e), d)) }
+      let next = match graph_chase(edge_cell(e)) {
         GNode(kind, _) => match edge_row_of(kind) {
-          Some(inner) => match edge_content_into(p, a, res, saw_all, chase_row_deep(inner, d + 1)) {
-            (p2, a2, r2, s2, _) => (p2, a2, r2, s2),
+          Some(inner) => match edge_content_into(p, am, res, saw_all, edge_mask(e2), chase_row_deep(inner, d + 1)) {
+            (p2, am2, r2, s2, _) => (p2, am2, r2, s2),
           },
-          None => (p, a, tail_set_insert(res, v), saw_all),
+          None => (p, am, tail_set_insert(res, e2), saw_all),
         },
       }
       chase_edges_deep(rest, next, d)
@@ -7087,10 +7085,10 @@ fn free_in_row(eff) = match eff {
 // collection must reach the same leaves: the inner row's payload vars
 // are this row's free vars (the trio law — free/occurs/subst agree
 // over rows, here through every edge's binding).
-fn free_in_edges(ref vs: [Int]) = match vs {
+fn free_in_edges(ref vs: [RowEdge]) = match vs {
   [] => [],
-  [v, ...rest] => {
-    let r = graph_chase_handle(v)
+  [e, ...rest] => {
+    let r = graph_chase_handle(edge_cell(e))
     let here = if row_var_is_free(r) {
       [r]
     } else {
@@ -7101,7 +7099,8 @@ fn free_in_edges(ref vs: [Int]) = match vs {
         },
       }
     }
-    here ++ free_in_edges(rest)
+    // The mask's payload vars are the row's too — subst freshens them.
+    free_in_eff_names(edge_mask(e)) ++ here ++ free_in_edges(rest)
   },
 }
 
@@ -7302,16 +7301,21 @@ fn subst_row_changes(eff, mapping) = match eff {
 // two-deep chain's free terminal ride into every caller, the window-8
 // first-binder race); a free edge of either sort (row_var_is_free's
 // T-handle tolerance) changes exactly on a mapping hit.
-fn subst_edges_changed(ref vs: [Int], mapping) = match vs {
+fn subst_edges_changed(ref vs: [RowEdge], mapping) = match vs {
   [] => false,
-  [v, ...rest] => {
+  [e, ...rest] => {
+    let v = edge_cell(e)
     let hit = match graph_chase(v) {
       GNode(NRowBound(_), _) => true,
       GNode(NRowFree(_), _) => find_mapping(mapping, graph_chase_handle(v)) >= 0,
       GNode(NFree(_), _) => find_mapping(mapping, graph_chase_handle(v)) >= 0,
       _ => false,
     }
-    if hit { true } else { subst_edges_changed(rest, mapping) }
+    if hit || subst_names_changes(edge_mask(e), mapping, 0, len(edge_mask(e))) {
+      true
+    } else {
+      subst_edges_changed(rest, mapping)
+    }
   },
 }
 
@@ -7425,8 +7429,8 @@ fn subst_row_build(eff, mapping) = match eff {
     let ns2 = subst_eff_names(ns, mapping)
     let ab2 = subst_eff_names(ab, mapping)
     match t {
-      EtOpen(vs) => match subst_edges_build(vs, (ns2, ab2, [], false), mapping) {
-        (rp, ra, res, saw_all) => if saw_all { ef_make(rp, ra, EtAll) } else { ef_make(rp, ra, EtOpen(res)) },
+      EtOpen(vs) => match subst_edges_build(edges_masked(vs, ab2), (ns2, [], [], false), mapping) {
+        (rp, am, res, saw_all) => row_of_fold(rp, am, res, saw_all),
       },
       _ => ef_make(ns2, ab2, t),
     }
@@ -7434,9 +7438,9 @@ fn subst_row_build(eff, mapping) = match eff {
 }
 
 // The subst edge walk, structural (off the Iterate vocabulary).
-fn subst_edges_build(ref vs: [Int], acc, mapping) = match vs {
+fn subst_edges_build(ref vs: [RowEdge], acc, mapping) = match vs {
   [] => acc,
-  [v, ...rest] => subst_edges_build(rest, subst_edge_build_into(acc, v, mapping), mapping),
+  [e, ...rest] => subst_edges_build(rest, subst_edge_build_into(acc, e, mapping), mapping),
 }
 
 // THE FROZEN READ at the row sort, per EDGE — the mapping decides BEFORE
@@ -7450,18 +7454,22 @@ fn subst_edges_build(ref vs: [Int], acc, mapping) = match vs {
 // handle_to_smt's cell), and a genuinely unquantified free edge (either
 // sort — row_var_is_free's tolerance; the mono self-entry and two-phase
 // registration shapes) SHARES into the residual.
-fn subst_edge_build_into(acc, v, mapping) = match acc {
-  (p, a, res, saw_all) => {
+fn subst_edge_build_into(acc, e, mapping) = match acc {
+  (p, am, res, saw_all) => {
+    let v = edge_cell(e)
+    let m = if len(edge_mask(e)) == 0 { edge_mask(e) } else { subst_eff_names(edge_mask(e), mapping) }
     let r0 = find_mapping(mapping, graph_chase_handle(v))
     if r0 >= 0 {
-      (p, a, push(res, r0), saw_all)
+      (p, am, tail_set_insert(res, row_edge(r0, m)), saw_all)
     } else {
       match graph_chase(v) {
         GNode(kind, _) => match edge_row_of(kind) {
-          Some(inner) => match edge_content_into(p, a, res, saw_all, subst_row_build(inner, mapping)) {
-            (p2, a2, r2, s2, _) => (p2, a2, r2, s2),
+          Some(inner) => match edge_content_into(p, am, res, saw_all, m, subst_row_build(inner, mapping)) {
+            (p2, am2, r2, s2, _) => (p2, am2, r2, s2),
           },
-          None => (p, a, tail_set_insert(res, v), saw_all),
+          None => // An unmapped free edge SHARES: with an unmasked path it is
+          // itself, never a copy.
+          (p, am, tail_set_insert(res, if len(m) == 0 { e } else { row_edge(v, m) }), saw_all),
         },
       }
     }
@@ -7733,7 +7741,7 @@ fn quantify_ctor_row(row, qmap) = match row {
   EfRow(names, ab, t) => match t {
     EtOpen(_) => {
       let rv = graph_fresh_row(Inferred("polymorphic effect row of a stored function"))
-      (ef_make(names, ab, EtOpen([rv])), push(qmap, ("", rv)))
+      (ef_make(names, ab, EtOpen([bare_edge(rv)])), push(qmap, ("", rv)))
     },
     _ => (row, qmap),
   },

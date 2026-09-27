@@ -1127,13 +1127,16 @@ fn effects_of_row(row) = match row {
 }
 
 // The edge walk, structural (the row walks' discipline): each bound
-// edge's dispatched names fold in through the absent mask.
-fn effects_of_edges(ref vs: [Int], acc, ref ab) = match vs {
+// edge's dispatched names fold in through ITS OWN mask and the row's.
+fn effects_of_edges(ref vs: [RowEdge], acc, ref ab) = match vs {
   [] => acc,
-  [v, ...rest] => {
-    let next = match graph_chase(v) {
+  [e, ...rest] => {
+    let next = match graph_chase(edge_cell(e)) {
       GNode(kind, _) => match edge_row_of(kind) {
-        Some(inner) => set_canonicalize(names_concat(acc, names_diff_strs(effects_of_row(inner), eff_names_of(ab)))),
+        Some(inner) => set_canonicalize(names_concat(
+          acc,
+          names_diff_strs(effects_of_row(inner), eff_names_of(ab) ++ eff_names_of(edge_mask(e)))
+        )),
         None => acc,
       },
     }
@@ -1194,10 +1197,10 @@ fn row_may_multishot(row) = match row {
   },
 }
 
-fn edges_may_multishot(ref vs: [Int]) = match vs {
+fn edges_may_multishot(ref vs: [RowEdge]) = match vs {
   [] => false,
-  [v, ...rest] => {
-    let here = match graph_chase(v) {
+  [e, ...rest] => {
+    let here = match graph_chase(edge_cell(e)) {
       GNode(kind, _) => match edge_row_of(kind) {
         Some(inner) => row_may_multishot(inner),
         None => true,

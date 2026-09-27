@@ -1541,6 +1541,22 @@ the one judged graph — the absorption the scaffold's destiny names. The
 destiny is unchanged: `mentl verify` owning the suite, the memo a graph fact
 about the pin rather than a directory of files.
 
+`Hβ.verify.solo-sweep-is-one-judgment` — OPEN, NAMED 2026-09-26 by F0's
+timing. With the board memoized, the slowest thing a source change still pays
+is the per-module solo sweep: 63 separate `check` judgments (~2 minutes on
+four cores) to learn whether any module uses a name it never imports although
+the whole link resolves it. One ScopeAll judgment already resolves every
+reference; what it does not keep is WHERE each binding came from. The design:
+every env entry records the module handle that declared it (the decls column
+already holds the per-decl module; the entry needs the edge to it), and the
+reference site's module is `graph_module_of(h)`. A reference whose defining
+module is outside the referencing module's transitive import closure (the
+imports facet's edges) reports `E_MissingImport` at the reference, naming
+both modules. The sweep then becomes a board line read off the one judgment
+`mentl verify` already runs, `solo_violations_max: 0` becomes an armed
+refusal (born at zero on the wheel, `diag_refuses`' own licence), and
+verify.sh's sweep and its memo delete.
+
 `Hβ.repr.option-of-word-niche` — NAMED 2026-08-18, by the landing that
 made the cost real. `base_digit(base, byte)` answers IS-this-a-digit and
 WHICH-digit together, which is the whole point of it — the split it
@@ -2189,6 +2205,41 @@ free edge as Pure (the single-edge alias chase lands on the free cell);
 it answers the edge now. Fixtures: tests/lens/negation (36, with the
 before/after table in EXPECT.md). The theorem's lemma (v), exit-bind
 completeness, is what this closes.
+
+`Hβ.effects.mask-spills-onto-sibling-edges` — CLOSED 2026-09-26, the A3
+prerequisite. A row held ONE absent set for every edge of its open tail,
+and `diff_row` kept a `~>` mask from reaching siblings only by minting a
+cell bound to the masked triple. The flat-cell law's stored flatten
+(graph.mn `flatten_row_edges`, a second copy of the fold arithmetic) and
+the read fold (`edge_content_into`) then folded that cell with `a' = a ∪
+ca`, so the mask became the row's and covered edges its install never
+enclosed. Measured on the pinned boot: `fn run(f, g) = f() + ((g()) ~> h)`
+published `!E + r_f + r_g`; `((f()) ~> h) + ((g()) ~> k)` published `!E +
+!F + r_f + r_g`, and passing an F-performing f and an E-performing g
+compiled clean and trapped (134); a caller declaring `!E` over
+`run(() => op(), …)` was ACCEPTED — a false absence proof with no negation
+needed to create the hole, only to observe it. A fourth shape rode the same
+fold: an edge whose content was the universe (a `with !E` fn-typed
+parameter, called) set `saw_all`, dropped its sibling edges and unioned the
+masks, so `f() + g()` with an E-performing g read `!E + Any`.
+The fix is the representation, not the fold: the mask belongs to the EDGE
+(`EtOpen([RowEdge])`, `RowEdge({cell, mask})`, read `P ∪ ⋃ (cell ∖
+mask)` — a tagless product, one shared empty mask), `ef_make`
+pushes a row-level absent onto its open edges, `diff_row` is one line and
+mints nothing, a cell reached on two paths keeps the intersection of the
+masks, and two universes (or a universe beside open edges) meet by
+intersection — the old union of their absents claimed an absence neither
+side proved. graph.mn's copy of the fold is deleted into the one assembly.
+The universe-beside-an-edge case is a sound bound (`Any`), not exact: it
+drops the sibling edges, and it exists only while a supply-side EtAll
+reaches a row value, which the cell-carried gate removes. Fixtures:
+tests/crown/leak-mask-sibling, leak-mask-twin-tee,
+leak-mask-universe-sibling (all three accepted on the prior boot) and
+their controls sound-mask-sibling, sound-mask-twin-tee; crown 67/67.
+What it does NOT close: the executable root gate still clears a name when
+any install of it exists anywhere, so twin-tee without a declared negation
+still compiles and traps — the row is now true, and the gate is
+`Hβ.effects.root-gate-credits-an-install-that-had-not-opened`'s to fix.
 
 `Hβ.effects.declared-positive-rows-under-count-callbacks` — OPEN, measured
 2026-09-25, DECIDED (Morgan): the positive row is inferred and projected;
@@ -4855,6 +4906,13 @@ subtracting handled(h), and an init runs before its install exists.
 Rows two and three carry the same shape of fact and differ only in
 whether a handler for that effect exists in scope. The row is sufficient
 in all four; the gate is what varies.
+▶ A MONOMORPHIC WITNESS, measured 2026-09-26: `fn main() = op() + ((op())
+~> h)` needs no state init and no HOF. main's row is `E`, correctly — the
+first op() sits outside the only install — and the program compiles clean
+and traps (134), because `h` is installed somewhere in main. With the mask
+now carried per edge (`Hβ.effects.mask-spills-onto-sibling-edges`), every
+row the gate reads is true, and this credit is the one remaining reason a
+program that performs an unhandled effect compiles.
 ▶ THE CONDITION IS FOUND AND IS DELIBERATE.
 `report_unhandled_names` (pipeline.mn) clears a name when
 `!string_in_list(strict, ename) && string_in_list(installed, ename)`, and

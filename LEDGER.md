@@ -35,6 +35,49 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-26 · pin 2974547b80a7c09c (TRANSITION m3 == m4) · A `~>` MASK BELONGS
+  TO THE EDGE IT FILTERS. PROGRAM A3's prerequisite.
+  **The defect, measured on the prior boot.** A row held one absent set for
+  every edge of its open tail. `diff_row` kept a `~>` mask off the siblings
+  only by minting a cell bound to the masked triple, and both folds — the
+  stored flatten (a second copy of the arithmetic in graph.mn) and the read
+  fold `edge_content_into` — took `a' = a ∪ ca`, so the mask became the
+  row's. `fn run(f, g) = f() + ((g()) ~> h)` published `!E + r_f + r_g`;
+  two tees published `!E + !F + r_f + r_g`; a caller declaring `!E` over
+  an E-performing f was ACCEPTED, and with nothing declared the programs
+  compiled clean and trapped. A universe content (a `with !E` fn-typed
+  parameter, called) dropped its sibling edges and unioned the masks:
+  `!E + Any` over a g performing E.
+  **The mechanism.** `EtOpen([RowEdge])`, `RowEdge({cell, mask})`, read
+  `P ∪ ⋃ (cell ∖ mask)`; ef_make pushes a row-level absent onto the edges;
+  `diff_row` is one line and writes nothing (the cell, its graph write and
+  its Reason are gone); a cell on two paths keeps the masks' intersection;
+  two universes, or a universe beside open edges, meet by intersection —
+  the old union of their absents claimed absences neither side proved;
+  graph.mn's copy of the fold is deleted into `edge_content_into`; unify
+  reads per-edge masks (a demanded name must pass some edge's mask;
+  Open ~ All pushes `forbidden ∖ mask`); the declared-absence write in
+  `enforce_row_gate` (LENS: inert, the source of a false T_OverDeclared)
+  is deleted. Rows project `r_f + (r_g - E)` and `(r_f - E) + (r_g - F)`.
+  **Measured.** Crown 67/67 with five new crucibles, all three leaks
+  accepted by the prior boot. The 36 LENS negation probes are unchanged.
+  m2 ≠ m3 (11,176 lines — handle renumbering from the deleted mask-cell
+  mints), m3 == m4. Micros 149/149. Cost: m4 leg 11.71s wall · 987MB peak
+  RSS (1,011,124 KB), the pin block's own line.
+  **The kills.** The first form tagged each edge (a one-constructor
+  variant, 12 bytes) and minted a fresh `[]` mask per edge: peak 1,014,424
+  KB, min of 3, against a 1,010,000 ceiling — the ratchet refused two
+  marches. Reusing unchanged edges in the chase and substitution folds
+  moved nothing measurable (1,013,896). The record form, the SpinePage
+  idiom with no tag word, plus one shared empty mask read 1,009,460 on the
+  first measure. Accessors over a bare `e.cell` generalized over every
+  record with that field and left two new field-offset floors; naming the
+  receiver at the boundary closed both.
+  **Not closed.** The root gate credits an install anywhere: `fn main() =
+  op() + ((op()) ~> h)` — row `E`, correct — compiles and traps
+  (`Hβ.effects.root-gate-credits-an-install-that-had-not-opened`, now with
+  that monomorphic witness).
+
 - 2026-09-26 · no repin (boot unchanged at 7593ca5f) · THE LOOP STOPS
   RE-DERIVING ITSELF. PROGRAM F0.
   **What was measured first.** C3(i)'s second repin produced a

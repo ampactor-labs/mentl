@@ -1,0 +1,12 @@
+// CROWN — two installs, two masks, one row: each subtraction belongs to
+// its own path. `run` reads (r_f - E) + (r_g - F); f's F escapes h, which
+// absorbs only E, so the declared !F refuses. The one-absent row stored
+// this as `!E + !F + r_f + r_g`, and each tee's mask erased the other
+// callback's effect. Expect E_EffectMismatch.
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h { op() => resume(7) }
+handler k { fop() => resume(9) }
+fn run(f, g) = ((f()) ~> h) + ((g()) ~> k)
+fn bad() with !F = run(() => fop(), () => 1)
+fn main() = (bad()) ~> k

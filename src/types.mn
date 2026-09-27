@@ -609,46 +609,60 @@ type SchemeKind
 // the handler subtraction (the 2026-07-22 representation ruling; the
 // a normalize-by-rewrite representation re-derived per read and
 // DROPPED the `~>` subtraction from ungrounded tails — the fat-row
-// root). The reading: row = present ∪ (tail ∖ absent). Every old form
-// is a point in this space:
+// root). The reading: row = present ∪ ⋃ (each edge's cell ∖ that edge's
+// mask), and under EtAll present ∪ (everything ∖ absent). Every form is
+// a point in this space:
 //   Pure        = ([], [], EtClosed)
 //   Closed(A)   = (A,  [], EtClosed)
-//   Open(A, v)  = (A,  [], EtOpen([v]))
+//   Open(A, v)  = (A,  [], EtOpen([v−∅]))
 //   !B          = ([], B,  EtAll)          — the negative capability
-//   (A+tail)−B  = (A∖B, B, EtOpen([v]))    — the subtraction, UNDROPPABLE:
-//                                            the absent set masks the tail
-//                                            at every read, forever.
-// Subtraction is an EAGER LITERAL DIFFERENCE into the absent field (the
-// handled set is always a literal — the Elixir/Castagna lesson: lazy
-// differences accumulate, literal differences reduce now). Canonical
-// invariants, enforced at the constructors: present/absent deduped,
-// present ∩ absent = ∅, and EtClosed ⇒ absent = [] (a closed tail makes
-// absence vacuous). Unification and subsumption are fieldwise set ops —
-// no wrapper trees, no rewrite passes, no read-time re-derivation.
+//   (A+v)−B     = (A∖B, [], EtOpen([v−B])) — the subtraction, on the EDGE
+//                                            it filters and on no other.
+// Subtraction is an EAGER LITERAL DIFFERENCE (the handled set is always a
+// literal — the Elixir/Castagna lesson: lazy differences accumulate,
+// literal differences reduce now). The absent field is the universe's mask
+// under EtAll and the authored proof-of-absence record under EtClosed
+// (`with Sample + !Sample(44100)`); under EtOpen it is empty, because a
+// mask belongs to the path it was written on. It used to be one absent
+// for the whole tail, and two edges cannot share one: `f() + ((g()) ~> h)`
+// stored as `(r_f + r_g) − E`, erasing f's E (measured 2026-09-26 — the
+// program compiled clean and trapped). Unification and subsumption are
+// fieldwise set ops — no wrapper trees, no rewrite passes, no read-time
+// re-derivation.
 type EffRow = EfRow([EffName], [EffName], EffTail)
 
 // present, absent, tail
 type EffTail
   // nothing beyond the present set
   = EtClosed
-  // the OPEN tail is a SET OF EDGES — row-cell handles whose live content
-  // joins into the reading (row = present ∪ each edge's content ∖ absent).
-  // The sorted-handle-set is §4①'s one set representation; EtOpen([]) is
-  // EtClosed and ef_make canonicalizes it away, so readers never meet the
-  // empty set. Mints are singletons [v]; MULTI-edge sets are born at ONE
-  // writer — tail_join's union (two open tails meeting in a frame keep
-  // both sets; the A2 rung, landed with the judged bind sites: reads
-  // fold every edge, unify binds per-edge, and find treats a multi-edge
-  // cell as its own terminal). Sortedness is the writers' invariant
-  // (tail_set_insert/union — effects.mn), so structural == over two
-  // tails is set equality.
-  | EtOpen([Int])
+  // the OPEN tail is a SET OF EDGES — row cells whose live content joins
+  // into the reading, each minus its own mask. The set is sorted by cell
+  // with one entry per cell (§4①'s one set representation); a cell met on
+  // two paths keeps the INTERSECTION of their masks, since
+  // (v ∖ m1) ∪ (v ∖ m2) = v ∖ (m1 ∩ m2). EtOpen([]) is EtClosed and
+  // ef_make canonicalizes it away, so readers never meet the empty set.
+  // Mints are singletons; MULTI-edge sets are born where two open tails
+  // meet (the join), reads fold every edge, unify binds per edge, and find
+  // treats a multi-edge cell as its own terminal. Sortedness is the
+  // writers' invariant (tail_set_insert/union — effects.mn), so structural
+  // == over two tails is set equality.
+  | EtOpen([RowEdge])
   // the universe: anything EXCEPT the absent set — DEMAND-side only (an
   // authored anything-but constraint, the gate's transient universe-minus;
   // THE ETALL LAW, PLAN's settled laws): no publish, bind, or join may
   // store EtAll into an INFERRED row. A stored supply-side EtAll is a
   // census item at zero.
   | EtAll
+
+// One edge of an open tail: the row cell, and the names subtracted on the
+// path to it — the `~>` installs between this edge's performs and the row
+// that reads them. The mask rides the edge through every fold, union,
+// instantiation and chase, so a handler's absorption reaches exactly the
+// computation it enclosed. A PRODUCT, not a sum: the record wrapper is the
+// wheel's one-constructor idiom (SpinePage, EmitFnEntry), which carries no
+// tag word — an edge is minted per open row, so the first form's tagged
+// variant was a word per edge that said nothing.
+type RowEdge = RowEdge({cell: Int, mask: [EffName]})
 
 // The ONE row-edge content read — every edge walk (resolve, flatten,
 // compress, occurs, free, subst, the lower readers) dispatches an
@@ -3718,6 +3732,15 @@ fn show_row_suffix(ref row) with GraphRead + !Mutate + Intern + Memory + Alloc =
   _ => " with {show_effrow(row)}",
 }
 
+// An edge in the row's own algebra: the cell alone, or `(r - E - F)` when a
+// `~>` on its path subtracts — the difference SYNTAX already spells, so the
+// projection names which computation each absorption covered.
+fn show_row_edge(e: RowEdge) with GraphRead + Memory + Alloc + !Mutate + Intern = if len(e.mask) == 0 {
+  show_handle(e.cell)
+} else {
+  "({show_handle(e.cell)} - {show_list(e.mask, show_eff_name, " - ")})"
+}
+
 // The triple's voice: presents joined with `+`, the absent set as `!X`
 // terms, the tail as its var handle; an empty closed row is Pure.   // drift-audit: ignore — human-facing rendering string for diagnostics/show; not an effect-keyed lookup; tracked by Hβ.perf.name-is-handle; effect-rendering normalization
 fn show_effrow(ref row) with GraphRead + Memory + !Mutate + Alloc + Intern = match row {
@@ -3740,7 +3763,7 @@ fn show_effrow(ref row) with GraphRead + Memory + !Mutate + Alloc + Intern = mat
       if len(vs) == 0 {
         if len(p) == 0 && len(a) == 0 { "Pure" } else { head }
       } else {
-        let tails = show_list(vs, show_handle, " + ")
+        let tails = show_list(vs, show_row_edge, " + ")
         if len(p) == 0 && len(a) == 0 { tails } else { "{head} + {tails}" }
       },
     }

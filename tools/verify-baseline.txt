@@ -1038,7 +1038,7 @@ authored_own_max: 63
 # oracle's deletion; four more were dropped from the SMT helpers while
 # refuting them as a cause of the pointer-render defect — they were not the
 # cause, and they were also not needed, which is the grade doing its job.
-authored_ref_max: 729
+authored_ref_max: 728
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1069,6 +1069,20 @@ authored_ref_max: 729
 # regression (a judgment regression is tens of MB — the second pass was 1.3 GB)
 # while refusing to convict the instrument.
 #
+# RAISED AGAIN 2026-09-26, 1,010,000 -> 1,022,000, and this one IS about a
+# landing: the `~>` mask moved onto each row edge (RowEdge({cell, mask}),
+# Hβ.effects.mask-spills-onto-sibling-edges), which closed a false-absence
+# proof and costs one 8-byte record per open-row edge. Measured by the
+# judgment's own heap line on the same source: 559,300,184 -> 562,350,760
+# bytes at the high-water (+3,050,576, +0.55%). The first form (a tagged
+# one-constructor variant plus a fresh `[]` per edge) read 1,014,424 min of
+# 3 and was cut to the tagless record and one shared empty mask; the landed
+# form reads 1,009,996 (m3 leg) and 1,011,840 (m4 leg, the binary that
+# becomes the boot) — so the old line would convict every later landing on
+# noise. Same rule as before: ~1% over the highest min-of-3. The two ways
+# DOWN are named: the per-decl arena below, and a word niche that lets an
+# unmasked edge be its bare cell handle (Hβ.repr.option-of-word-niche).
+#
 # THE RAISE IS NOT THE FINDING. The number has gone 993,832 -> 996,920 ->
 # 998,596 -> ~1,000,000 across four pins, and NONE of those landings was about
 # memory. That creep is the per-decl arena's absence (PLAN §5.O layer 3,
@@ -1078,7 +1092,7 @@ authored_ref_max: 729
 # §5.O's own accounting — and a ceiling that only ever rises to meet a breach
 # has stopped ratcheting. Raising it is an explicit in-commit act, which is
 # what this paragraph is; the next move on this line should be down.
-selfcompile_peak_kb_max: 1010000
+selfcompile_peak_kb_max: 1022000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

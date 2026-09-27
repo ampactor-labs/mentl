@@ -902,10 +902,11 @@ fn chase_node(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 10
         // the root-row gate refused the wheel's own main). A SINGLE edge
         // is a chain link and the chase follows it; a MULTI-edge tail is
         // not a chain — the cell is its own terminal, and every content
-        // read rides resolve's fold (which walks each edge).
+        // read rides resolve's fold (which walks each edge). The link's
+        // own mask joins the masks carried forward: it is this path's.
         if len(edges) == 1 {
-          let next = last(edges)
-          chase_node(spine, mint_bound, next, depth + 1) |> merge_chased_row(??, names, absents, next)
+          let next = edge_cell(last(edges))
+          chase_node(spine, mint_bound, next, depth + 1) |> merge_chased_row(??, names, name_set_union(absents, edge_mask(last(edges))), next)
         } else {
           GNode(kind, reason)
         },
@@ -956,7 +957,11 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
       // reach this arm; a MULTI-edge tail has no single root, so the
       // cell is its own canonical handle (content reads ride resolve).
       match row {
-        EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 { chase_handle(spine, mint_bound, last(edges), depth + 1) } else { handle },
+        EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 {
+          chase_handle(spine, mint_bound, edge_cell(last(edges)), depth + 1)
+        } else {
+          handle
+        },
         _ => handle,
       },
       _ => handle,
@@ -982,7 +987,7 @@ fn merge_chased_row(ref chased, ref names, ref absents, free_handle) with Memory
     if len(names) == 0 && len(absents) == 0 {
       chased
     } else {
-      GNode(NRowBound(ef_make(names, absents, EtOpen([free_handle]))), cr)
+      GNode(NRowBound(ef_make(names, absents, EtOpen([bare_edge(free_handle)]))), cr)
     },
   },
 }
@@ -1001,36 +1006,32 @@ fn merge_row(ref names, ref absents, ref row) with Memory + Alloc = match row {
 // the two write ops, so reads are depth-1 by invariant and no read
 // path ever recurses stored chains (the hub-cell wall's cure: the
 // fold's cost is paid once per write, never per read). Free edges
-// survive into the residual; EtAll absorbs; masks filter under the
-// reading law — the same arithmetic merge_row states one level up.
+// survive into the residual carrying their masks; a bound edge's content
+// enters through edge_content_into, the one assembly every fold shares —
+// this file held a second copy of that arithmetic, and the copy is where
+// a `~>` mask became the whole row's: its `a' = a ∪ ca` filtered every
+// sibling edge with an install that never covered it (measured
+// 2026-09-26, `f() + ((g()) ~> h)` stored as `(r_f + r_g) − E`).
 // Mechanism-layer: state-passed, structural, zero ops.
 fn flatten_row_stored(ref spine, mint_bound, row) with !Mutate = match row {
   EfRow(p, a, t) => match t {
-    EtOpen(vs) => match flatten_row_edges(spine, mint_bound, vs, (p, a, [], false)) {
-      (rp, ra, res, saw_all) => if saw_all { ef_make(rp, ra, EtAll) } else { ef_make(rp, ra, EtOpen(res)) },
+    EtOpen(vs) => match flatten_row_edges(spine, mint_bound, edges_masked(vs, a), (p, [], [], false)) {
+      (rp, am, res, saw_all) => row_of_fold(rp, am, res, saw_all),
     },
     _ => row,
   },
 }
 
-fn flatten_row_edges(ref spine, mint_bound, ref vs: [Int], acc) with !Mutate + Memory + Alloc + Cast = match vs {
+fn flatten_row_edges(ref spine, mint_bound, ref vs: [RowEdge], acc) with !Mutate + Memory + Alloc + Cast = match vs {
   [] => acc,
-  [v, ...rest] => match acc {
-    (p, a, res, saw_all) => {
-      let next = match chase_node(spine, mint_bound, v, 0) {
+  [e, ...rest] => match acc {
+    (p, am, res, saw_all) => {
+      let next = match chase_node(spine, mint_bound, edge_cell(e), 0) {
         GNode(kind, _) => match edge_row_of(kind) {
-          Some(inner) => match flatten_row_stored(spine, mint_bound, inner) {
-            EfRow(cp, ca, ct) => {
-              let p2 = name_set_union(p, name_set_diff(cp, a))
-              let a2 = name_set_union(a, ca)
-              match ct {
-                EtClosed => (p2, a2, res, saw_all),
-                EtAll => (p2, a2, res, true),
-                EtOpen(ws) => (p2, a2, tail_set_union(res, ws), saw_all),
-              }
-            },
+          Some(inner) => match edge_content_into(p, am, res, saw_all, edge_mask(e), flatten_row_stored(spine, mint_bound, inner)) {
+            (p2, am2, r2, s2, _) => (p2, am2, r2, s2),
           },
-          None => (p, a, tail_set_insert(res, v), saw_all),
+          None => (p, am, tail_set_insert(res, e), saw_all),
         },
       }
       flatten_row_edges(spine, mint_bound, rest, next)
@@ -1199,11 +1200,16 @@ fn occurs_in_row(spine, mint_bound, handle, ref eff) with !Mutate = match eff {
   },
 }
 
-fn occurs_in_edges(spine, mint_bound, handle, ref vs: [Int]) with !Mutate = match vs {
+fn occurs_in_edges(spine, mint_bound, handle, ref vs: [RowEdge]) with !Mutate = match vs {
   [] => false,
-  [v, ...rest] => {
+  [e, ...rest] => {
+    let v = edge_cell(e)
     let r = chase_handle(spine, mint_bound, v, 0)
+    // The mask is part of the edge's structure (a parameterized name can
+    // carry a payload type), so the cycle guard reads it as subst does.
     let here = if v == handle || r == handle {
+      true
+    } else if occurs_in_eff_names(spine, mint_bound, handle, edge_mask(e)) {
       true
     } else {
       match chase_node(spine, mint_bound, r, 0) {
