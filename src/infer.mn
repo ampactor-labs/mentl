@@ -5425,9 +5425,17 @@ fn unify(h_a, h_b, span: ValidSpan, reason) = {
     match na {
       GNode(ka, _) => match nb {
         GNode(kb, _) => match ka {
-          NFree(_) => graph_bind(ra, TVar(rb), Located(span, reason)),
+          NFree(_) => {
+            // The numeric gates the vanishing root carries ride to the
+            // surviving root (numeric_check_alias) before the alias is drawn.
+            numeric_check_alias(ra, rb, span)
+            graph_bind(ra, TVar(rb), Located(span, reason))
+          },
           NBound(ta) => match kb {
-            NFree(_) => graph_bind(rb, TVar(ra), Located(span, reason)),
+            NFree(_) => {
+              numeric_judge_push(graph_numeric_gates_of(rb), ta, span)
+              graph_bind(rb, TVar(ra), Located(span, reason))
+            },
             NBound(tb) => unify_types(ta, tb, span, reason),
             NErrorHole(_) => (),
             _ => (),
@@ -5524,6 +5532,9 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
                 TFun(_, _, brow) => gate_check_push(root, brow, span),
                 _ => (),
               }
+              // The same writer's numeric half: a demand the cell carries
+              // judges the type entering it (numeric_judge_push).
+              numeric_judge_push(graph_numeric_gates_of(root), b, span)
               graph_bind(root, b, Located(span, reason))
             },
           }
@@ -6198,6 +6209,137 @@ fn infer_index_force(rh, handle, span: ValidSpan) = {
 
 fn type_mismatch(ref a, ref b, span: ValidSpan, reason) = report(ETypeMismatch(a, b, span))
 
+// ─── The numeric gate — arithmetic's demand on a type cell ───────────
+// `+ - * / %` and unary `-` unify their operands and ask one more thing of
+// them: a NUMBER. A bound operand is judged on the spot
+// (arith_operand_class); a free one carries the demand as a gate
+// (NumericGate, the gate mechanism's type-cell arm beside the row gate).
+// The one writer — unify's var binds — judges every type that later
+// enters a gated cell: a word passes, a variable inherits the gates, an
+// aggregate refuses E_ArithOnAggregate naming the arithmetic's site.
+// Instantiation copies the gates onto the fresh var (numeric_gates_copy),
+// and a copy minted before the demand is reached through the instance
+// column. So `{x: 1} * {x: 2}` refuses at the operator, a generic `a * b`
+// refuses `{x: 1}` at the call that instantiates it, and a floor twin's
+// arithmetic at emit is a word by construction — a wide instantiation
+// mints its own twin and binds the var under it; an aggregate never
+// reaches a bind.
+fn numeric_demand(lh, op, span: ValidSpan) = {
+  let root = graph_chase_handle(lh)
+  match graph_chase(root) {
+    GNode(kind, _) => match kind {
+      NFree(_) => numeric_gate_install(root, NumericGate({op: op, span: span}), span),
+      NBound(ty) => match arith_operand_class(ty) {
+        AoWord => (),
+        AoAggregate => report(EArithOnAggregate("`{binop_to_str(op)}` on {show_type(ty)}", span)),
+        AoUnproven(v) => numeric_gate_install(v, NumericGate({op: op, span: span}), span),
+      },
+      NErrorHole(_) => (),
+      _ => (),
+    },
+  }
+}
+
+fn numeric_gate_op(g: NumericGate) = match g {
+  NumericGate(r) => r.op,
+}
+
+fn numeric_gate_span(g: NumericGate) = match g {
+  NumericGate(r) => r.span,
+}
+
+// Dedup at the install, BY SITE: one arithmetic site enters a cell once,
+// however many paths reach it (an alias hop, an instance already bound
+// back to its root) — which is also what terminates the walk on a cycle.
+fn numeric_gate_present(gs: [NumericGate], g: NumericGate) = match gs {
+  [] => false,
+  [h, ...rest] => if numeric_gate_span(h) == numeric_gate_span(g) { true } else { numeric_gate_present(rest, g) },
+}
+
+// Install on a cell: enter the gate, judge what the cell ALREADY holds (a
+// copy bound before its root was demanded of), reach every instance the
+// column noted under it, and follow an alias to the free terminal the
+// writes land on — the row gate's gate_install, one sort over.
+fn numeric_gate_install(cell, g: NumericGate, span: ValidSpan) = if numeric_gate_present(graph_numeric_gates_of(cell), g) {
+  ()
+} else {
+  graph_numeric_gate_add(cell, g)
+  match graph_chase(cell) {
+    GNode(kind, _) => match kind {
+      NBound(ty) => numeric_judge_push([g], ty, span),
+      _ => (),
+    },
+  }
+  numeric_install_instances(graph_instances_of(cell), g, span)
+  let r = graph_chase_handle(cell)
+  if r == cell { () } else if numeric_cell_is_free(r) { numeric_gate_install(r, g, span) } else { () }
+}
+
+fn numeric_cell_is_free(v) = match graph_chase(v) {
+  GNode(NFree(_), _) => true,
+  _ => false,
+}
+
+fn numeric_install_instances(is, g: NumericGate, span: ValidSpan) = match is {
+  [] => (),
+  [i, ...rest] => {
+    numeric_gate_install(i, g, span)
+    numeric_install_instances(rest, g, span)
+  },
+}
+
+fn numeric_gates_install(gs: [NumericGate], cell, span: ValidSpan) = match gs {
+  [] => (),
+  [g, ...rest] => {
+    numeric_gate_install(cell, g, span)
+    numeric_gates_install(rest, cell, span)
+  },
+}
+
+// Judge a type entering gated cells: a word passes, a variable (under any
+// wrapper) inherits every gate, an aggregate refuses once, naming the
+// first demand's site.
+fn numeric_judge_push(gs: [NumericGate], ty, span: ValidSpan) = match gs {
+  [] => (),
+  [g, ..._] => match arith_operand_class(ty) {
+    AoWord => (),
+    AoAggregate => report(EArithOnAggregate(
+      "`{binop_to_str(numeric_gate_op(g))}` on {show_type(ty)}, demanded at {show_span(numeric_gate_span(g))}",
+      span
+    )),
+    AoUnproven(v) => numeric_gates_install(gs, v, span),
+  },
+}
+
+// The checking writer's numeric half at a var→var bind: the gates the
+// vanishing root carries ride to the surviving root — judged against what
+// it holds, or entered on it while it is free.
+fn numeric_check_alias(ra, rb, span: ValidSpan) = {
+  let gs = graph_numeric_gates_of(ra)
+  if len(gs) == 0 {
+    ()
+  } else {
+    match graph_chase(rb) {
+      GNode(kind, _) => match kind {
+        NFree(_) => numeric_gates_install(gs, rb, span),
+        NBound(tb) => numeric_judge_push(gs, tb, span),
+        _ => (),
+      },
+    }
+  }
+}
+
+// Instantiation's copy: the fresh var carries every demand its root does
+// (the qualified-type reading, `∀t. numeric(t) ⇒ …`, with the constraint on
+// the variable — the row gate's gates_copy, one sort over).
+fn numeric_gates_copy(gs: [NumericGate], fresh) = match gs {
+  [] => (),
+  [g, ...rest] => {
+    graph_numeric_gate_add(fresh, g)
+    numeric_gates_copy(rest, fresh)
+  },
+}
+
 // `BinOp` / `UnaryOp` inference — dispatched on `BinOpKind`.
 // `binop_kind` (declared in `types.mn`) maps each `BinOp` to one of four
 // `BinOpKind` variants — the behavior class used for inference rules.
@@ -6210,6 +6352,7 @@ fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
   match binop_kind(op) {
     BKArith => {
       unify(lh, rh, span, OpConstraint(lbl, Inferred("left"), Inferred("right")))
+      numeric_demand(lh, op, span)
       graph_bind(
         handle,
         TVar(lh),
@@ -6300,11 +6443,15 @@ fn named_fn_row(name: String) = match env_lookup(name) {
 // catch-all — `!x` typed as its operand instead of Bool (caught by the
 // order-independent judge, 2026-07-25).
 fn infer_unaryop(handle, op, ih, span: ValidSpan) = match op {
-  UNeg => graph_bind(
-    handle,
-    TVar(ih),
-    Located(span, OpConstraint("Neg", Inferred("negate"), Inferred("operand")))
-  ),
+  UNeg => {
+    // Negation is arithmetic: the same demand `-` the binary form makes.
+    numeric_demand(ih, BSub, span)
+    graph_bind(
+      handle,
+      TVar(ih),
+      Located(span, OpConstraint("Neg", Inferred("negate"), Inferred("operand")))
+    )
+  },
   UNot => {
     graph_bind(
       ih,
@@ -7460,6 +7607,7 @@ fn build_inst_mapping(qs) = map(
     // declaration's own; every other root belongs to an exited declaration
     // whose gates the copy above already carries.
     gates_copy(graph_gates_of(root), fresh)
+    numeric_gates_copy(graph_numeric_gates_of(root), fresh)
     if root < inf_mint_ceiling() || root >= inf_decl_entry() {
       graph_instance_note(root, fresh)
     } else {

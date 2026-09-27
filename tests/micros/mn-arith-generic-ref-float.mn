@@ -1,0 +1,9 @@
+// expect: 40
+// The theorem the emit's floor-twin arithmetic stands on: a wide
+// instantiation reaches its OWN twin even through a REFERENCE (the generic
+// `add` passed to a Float fold), so a quantified var still free at emit is
+// a floor word. 1.5 + 2.5 == 4.0 through the reference — measured 40 on
+// boots 5bf55b68 and 1ff80ffb before the numeric gate landed, and held.
+fn add(a, b) = a + b
+
+fn main() = if fold(0.0, add, [1.5, 2.5]) == 4.0 { 40 } else { 41 }

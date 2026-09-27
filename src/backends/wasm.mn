@@ -4962,15 +4962,58 @@ fn emit_binop_for(op, l, r) = {
     BGt => emit_struct_cmp(op, left_h),
     BLe => emit_struct_cmp(op, left_h),
     BGe => emit_struct_cmp(op, left_h),
-    _ => // Arithmetic: the representation gradient at the binop layer, read
-    // STRUCTURALLY from both operands (the seed's emit_expr_is_f64) — f64 iff
-    // EITHER operand's emitted width is f64, so a floored operand handle yields
-    // to a structural proof (an IntToFloat convert, a float-returning call).
-    // The operands are one type (§4①, no mixed arithmetic), so the join reads
-    // the truth both emit; reading only left_h's floored inference type emitted
-    // i32.mul against an f64 operand (the score_one_position floor). RI32 keeps
-    // the i32.* floor byte-identical (Law 7).
-    emit_binop_repr(op, repr_join(tail_expr_repr(l), tail_expr_repr(r))),
+    _ => // Arithmetic dispatches on the operand's TYPE, exactly as `==` and `<`
+    // do (emit_struct_eq / emit_struct_cmp). The width join alone read the
+    // operands' emitted widths, so a record, sum, sequence, function or
+    // continuation floored to RI32 and `{x: 1} * {x: 2}` multiplied the two
+    // ADDRESSES with zero diagnostics (2026-09-27,
+    // Hβ.emit.arith-on-aggregate-is-pointer-arith). The judgment gates every
+    // arithmetic operand's cell numeric (infer.mn numeric_demand), so what
+    // reaches this arm is a word at its proven repr, or a floor twin's
+    // quantified var — a word at the floor width by construction.
+    emit_arith_for(op, left_h, l, r),
+  }
+}
+
+fn emit_arith_for(op, left_h, l, r) = if left_h == 0 {
+  // Flat scalar word by construction — the machine floor at the join.
+  emit_binop_repr(op, repr_join(tail_expr_repr(l), tail_expr_repr(r)))
+} else {
+  match arith_operand_class(chase_deep(lookup_ty(left_h))) {
+    AoWord => // The type's own repr: the pin's width where one is authored
+    // (repr_of's TReprPin arm), the gradient's default otherwise — the same
+    // fact the join of the emitted widths reads, at its one home.
+    emit_binop_repr(op, repr_of_resolved(lookup_ty(left_h))),
+    AoUnproven(v) => {
+      // A variable at emit is a FLOOR twin's quantified var: every wide
+      // instantiation minted its own twin and bound the var under its
+      // bracket, so this operand is a word at the floor width. The judgment
+      // gated the cell numeric at the operator; a var it did not gate is an
+      // invariant broken upstream, said loudly rather than emitted quietly.
+      if len(graph_numeric_gates_of(graph_chase_handle(v))) == 0 {
+        report_at(
+          left_h,
+          EInternalInvariant(
+            "arithmetic `{binop_to_str(op)}` on an ungated variable at emit ({show_type(lookup_ty(left_h))}, emitting {emit_site()})",
+            parse_span_of(left_h)
+          )
+        )
+      }
+      emit_binop_repr(op, RI32)
+    },
+    AoAggregate => {
+      // Unreachable by construction — the judgment refused the bind that
+      // would put an aggregate here — so reaching it is the invariant
+      // broken; the floor keeps the module honest if anything runs it.
+      report_at(
+        left_h,
+        EInternalInvariant(
+          "arithmetic `{binop_to_str(op)}` on {show_type(lookup_ty(left_h))} reached emit past the judgment's gate, emitting {emit_site()}",
+          parse_span_of(left_h)
+        )
+      )
+      wat_emit("    (unreachable)  ;; arithmetic on an aggregate past the gate\n")
+    },
   }
 }
 

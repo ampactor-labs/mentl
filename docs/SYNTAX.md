@@ -1851,6 +1851,48 @@ count held unchanged across the whole discovery, because the unprovable
 operand sat inside a generated leaf rather than at an authored comparison. A
 census that measures one surface does not see the same class one layer in.
 
+### Arithmetic operators
+
+`+ - * / %` and unary `-` unify their operands and DEMAND one more thing of
+them: a number. The demand is a constraint on the operand's type CELL — the
+gate mechanism's second arm, beside the row gate (§«Negation in `with`
+clauses») — and the operand's cell decides:
+
+| Operand's cell                                | Arithmetic's verdict                           |
+|-----------------------------------------------|------------------------------------------------|
+| bound to a word (`Int`, `Float`, `Byte`, an alias or refinement of one, a `repr` pin) | the instruction at the operand's repr — `i32.*` at the floor, `f64.*`/`f32.*`/`i64.*` where the gradient or a pin says so |
+| still FREE at the operator                    | the cell carries the demand (a `NumericGate`); the one writer judges whatever later enters it — a word passes, a variable inherits the gate, an aggregate refuses — and instantiation copies it onto the fresh var, so a generic `a * b` refuses `{x: 1}` at the CALL that instantiates it |
+| bound to a product / sum / sequence / function / continuation / unit | `E_ArithOnAggregate` REFUSES at the judgment — arithmetic on an aggregate has no meaning the value ontology gives it; the operands are addresses |
+
+**THE THIRD MEASURED HOLE, closed 2026-09-27 in its second form.** The
+arithmetic arm of the emit read only the operands' emitted WIDTHS, so a
+record floored to a word and `{x: 1} * {x: 2}` multiplied the two ADDRESSES
+with zero diagnostics, then trapped at run time reading a field off the
+product (boot 5bf55b68, exit 134). The first form classified the operand's
+TYPE at lower and again at emit under the twin bracket, narrated the
+variable case and added a second gate after the emit for the generic one;
+it passed every test, and the artifact refuted it twice before it was
+pinned: `mentl check` still accepted both programs (only the executable
+refused), and the wheel's own compile narrated the floor twin of a generic
+`Option(t)` add "unproven" over a `t` the judgment had already seen added —
+the emit re-deriving a fact inference held. The demand belongs to the
+JUDGMENT, as a gate on the cell: `{x: 1} * {x: 2}` refuses at the operator
+(`tests/frontier/mn-arith-on-aggregate.mn`); `scale({x: 1}, {x: 2})` over
+`fn scale(a, b) = a * b` refuses at the argument edge that binds the copied
+gate, naming `*`'s site (`mn-arith-on-aggregate-twin.mn`); a copy minted
+before the demand — a signature'd fn's self-reference — is reached through
+the instance column (`mn-arith-on-aggregate-instance.mn`); and `mentl check`
+says so in every case. At emit nothing is decided: a word emits at its
+type's repr, and a variable still free there is a FLOOR twin's quantified
+var — every wide instantiation, through a reference included
+(`tests/micros/mn-arith-generic-ref-float.mn`), minted its own twin and
+bound the var under it — so it is a word at the floor width by
+construction, and the arithmetic narration class the first form minted no
+longer exists. Arithmetic on a USER type is not pointer arithmetic and not
+a trait: it arrives as a numeric projection's rules
+(`Hβ.lower.ad-is-a-demanded-projection`), the same mechanism that makes a
+chain differentiable.
+
 ---
 
 ## Canonical layout (formatter canon)
@@ -2231,6 +2273,7 @@ token, so there is nothing to lift.*
 | `E_ResumeWorldMismatch` | two continuations (`TCont(R, S, discipline, world)`) unify with incompatible resume DISCIPLINES — OneShot and MultiShot are distinct representations (stack frame vs heap record), so the mismatch is hard; `Either` unifies with either. The WORLD half is the row unification in the same TCont arm (`!E` lifted to the TIME axis, §4③); its dedicated runtime raise (`E_ResumeWorldMismatchWorld`) is declared but not yet wired — lathe-lag, band B | `MaybeIncorrect` | align the handler arms' resume cardinality; for a world clash, re-install the absorbing handler before the resume OR widen the continuation's world |
 | `E_ConcatTypeMismatch` | `++` operands' element types fail to unify (e.g. `[Int] ++ [Bool]`) | `MaybeIncorrect` | unify the element types |
 | `E_DeclaredRowContradiction` | one authored clause asserts a name present AND absent (`with E + !E`, instance-aware — a bare present beside an instance absent stays a refinement). Reported at the signed fold BEFORE the meet's drop; ARMED (refuses the executable): the pre-diagnostic meet let a performing body check clean under a declared `!E` | `MachineApplicable` | drop one side of the contradiction |
+| `E_ArithOnAggregate`  | `+ - * / %` or unary `-` whose operand is a product, sum, sequence, function, continuation or unit — the operands are addresses and the arithmetic would be on where the values live. ARMED at birth (the wheel's census is zero): judged at the operator for a bound operand and at the one writer for a gated cell bound later (a `NumericGate` on the cell, copied at instantiation, reached through the instance column), so the judgment refuses, `mentl check` says so, and no WAT streams. Until 2026-09-27 it compiled and multiplied the addresses | `Unspecified` | give the operand a number (a word) or read the field you meant |
 | `E_UnresolvedHole`    | compiling an EXECUTABLE whose reachable emitted tree carries an authored value-position `??` (§«Partial application» — a hole is productive for check/edit, never an executable value; a parameter-product `??` is an executable suspension and runs). Raised by the executable gate between reachability and emit: nonzero exit, zero WAT bytes, the authored weave span on the diagnostic | `HasPlaceholders` | fill the hole (accept a Synth survivor) or suspend it into a parameter product |
 
 ### Gradient narration (teaching surfaces)

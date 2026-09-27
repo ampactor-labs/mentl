@@ -2359,7 +2359,9 @@ fn lower_expr_body(e, handle, span) = match e {
       BAnd => LIf(handle, lower_expr(left), [lower_expr(right)], [LConst(handle, LInt(0))]),
       _ => LIf(handle, lower_expr(left), [LConst(handle, LInt(1))], [lower_expr(right)]),
     },
-    _ => LBinOp(handle, op, lower_expr(left), lower_expr(right)),
+    BKArith => LBinOp(handle, op, lower_expr(left), lower_expr(right)),
+    BKCmp => LBinOp(handle, op, lower_expr(left), lower_expr(right)),
+    BKConcat => LBinOp(handle, op, lower_expr(left), lower_expr(right)),
   },
   UnaryOpExpr(op, inner) => LUnaryOp(handle, op, lower_expr(inner)),
   CallExpr(f, args) => // SchemeKind dispatch (H3): when the callee is a VarRef whose

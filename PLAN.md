@@ -1117,6 +1117,30 @@ and this is the STATE.
   proof costs nothing where no declaration calls a parameter at its tail —
   the first form's ~100 MB of per-parameter free-variable lists refused the
   repin at the cost ratchet, the ratchet doing its job).
+- **ARITHMETIC DEMANDS A NUMBER OF ITS OPERAND — CLOSED 2026-09-27 (L1 of
+  the Pulse sprint).** The arithmetic arm of the emit read only the
+  operands' emitted WIDTHS, so a record floored to a word and `{x: 1} *
+  {x: 2}` multiplied the two ADDRESSES with zero diagnostics, then trapped
+  at run time (exit 134, boot 5bf55b68) — the `T_EqTypeUnprovable` class one
+  operator over, found by the refuter that killed the first Pulse design.
+  The first form built classified the operand at lower and at emit and
+  passed every gate; the artifact refuted it twice before it was pinned:
+  `mentl check` accepted both programs (only the executable refused), and
+  the wheel's own compile narrated the floor twin of `lo_add` (verify.mn)
+  "unproven" over a `t` the judgment had already seen added — the emit
+  re-deriving a fact inference held. The demand is a GATE ON THE TYPE CELL
+  (`NumericGate`, the gate mechanism's second arm beside A3's row gate):
+  judged at the operator when the operand is bound, carried by the cell
+  when it is free, checked at the one writer (unify's var binds), copied
+  at instantiation, reached through the instance column — so the judgment
+  refuses at the operator, at the call that instantiates a generic
+  arithmetic at a record, and through a sig'd self-reference's copy;
+  `E_ArithOnAggregate` is armed at birth (wheel census 0). At emit nothing
+  is decided: a word at its type's repr, a variable a floor twin's word by
+  construction (a wide instantiation mints its twin even through a
+  reference — measured), and the narration class the first form minted is
+  deleted with its ratchet and the post-emit gate
+  (`Hβ.emit.arith-on-aggregate-is-pointer-arith`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

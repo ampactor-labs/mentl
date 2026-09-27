@@ -263,6 +263,37 @@ fn repr_wat(r) with Pure = match r {
 // TRefined->base), structurally identical to repr_of's prologue. A Port-style
 // (= Int) folds as Int; a `Sample` (= Float where ..) folds as Float. The
 // predicate is erased at runtime, so the leaf reads the underlying value.
+// ─── ArithOperand — what arithmetic can do with an operand, off its type ──
+// The ONE classification the judgment reads at the operator and at the one
+// writer of a gated cell (NumericGate), and the emit reads under the twin
+// bracket. A word carries the instruction at its repr; a variable is
+// unproven HERE and carries its handle out, so the judgment can gate the
+// cell it names; everything else is an aggregate the value ontology gives
+// no arithmetic — the operands are addresses, and `{x: 1} * {x: 2}`
+// multiplied them with zero diagnostics until 2026-09-27
+// (Hβ.emit.arith-on-aggregate-is-pointer-arith). A user type's arithmetic
+// arrives as a numeric projection's rules
+// (Hβ.lower.ad-is-a-demanded-projection), never as pointer arithmetic.
+type ArithOperand = AoWord | AoUnproven(Int) | AoAggregate
+
+fn arith_operand_class(ty) = match ty {
+  TInt => AoWord,
+  TFloat => AoWord,
+  TByte => AoWord,
+  TVar(h) => AoUnproven(h),
+  TAlias(_, inner) => arith_operand_class(inner),
+  TRefined(base, _) => arith_operand_class(base),
+  TReprPin(_, base) => arith_operand_class(base),
+  TUnit => AoAggregate,
+  TList(_) => AoAggregate,
+  TTuple(_) => AoAggregate,
+  TFun(_, _, _) => AoAggregate,
+  TName(_, _) => AoAggregate,
+  TRecord(_) => AoAggregate,
+  TRecordOpen(_, _) => AoAggregate,
+  TCont(_, _, _, _) => AoAggregate,
+}
+
 fn fold_strip(ty) with Pure = match ty {
   TAlias(_, inner) => fold_strip(inner),
   TRefined(base, _) => fold_strip(base),
@@ -1083,6 +1114,8 @@ type Mutation
   | MSetGate(Int)
   // an instance noted under its root (undo = pop the newest note)
   | MInstanceNote(Int)
+  // a numeric gate entered on a type cell (undo = pop the newest)
+  | MSetNumericGate(Int)
 
 // 14 variants, one per operator form in SYNTAX.md's operator
 // precedence table. Exhaustive set; add a variant here AND update
@@ -1173,6 +1206,18 @@ fn binop_to_str(op) with Pure = match op {
   BOr => "||",
   BConcat => "++",
 }
+
+// ─── NumericGate — arithmetic's demand on a type cell ────────────────
+// The gate mechanism's second arm (the row gate is the first): `+ - * / %`
+// and unary `-` unify their operands and demand one more thing of them, a
+// NUMBER. At a bound cell the demand is judged on the spot; at a free cell
+// it is a gate the cell carries — the one writer (unify's var binds)
+// judges every type that later enters the cell (a word passes, a variable
+// inherits the gate, an aggregate refuses E_ArithOnAggregate naming this
+// site), instantiation copies it onto the fresh var, and a copy minted
+// before the demand is reached through the instance column. One gate per
+// arithmetic site; the op renders the refusal's operator.
+type NumericGate = NumericGate({op: BinOp, span: Span})
 
 // Every graph node and every unification records a Reason. Mentl's
 // teach_why (spec 09) walks this DAG. Full provenance falls out.
@@ -2222,6 +2267,11 @@ effect GraphRead {
   // instantiating a pre-registered or assumed scheme before the
   // declaration's own exit gated the root).
   graph_instances_of(Int) -> [Int]
+  // The NUMERIC gate column's read: every arithmetic demand entered on the
+  // type cell (NumericGate) — read by the checking var binds, by
+  // instantiation's copy, and by the emit's floor-twin arithmetic as the
+  // invariant it stands on.
+  graph_numeric_gates_of(Int) -> [NumericGate]
 }
 
 effect GraphWrite {
@@ -2263,6 +2313,11 @@ effect GraphWrite {
   // (MInstanceNote); build_inst_mapping is the one writer, and a gate
   // installed on the root later reaches the copy through this column
   graph_instance_note(Int, Int)
+  // enter a numeric gate on a type cell — trailed (MSetNumericGate), so a
+  // speculative judgment's demands roll back with its bindings; the
+  // judgment's arithmetic arm, the checking var binds and instantiation's
+  // copy are its callers (infer.mn numeric_gate_install / numeric_gates_copy)
+  graph_numeric_gate_add(Int, NumericGate)
   graph_bind_record_row(Int, [(String, Ty)], RecordRowTail, Reason)
   graph_rollback(Int)
   // The speculation's ACCEPT: pop the newest checkpoint WITHOUT
@@ -2585,6 +2640,12 @@ type DiagKind
   // (measured 2026-09-18: a handler arm over quantified op parameters
   // answered "ab" != "ab"). T_FieldOffsetUnprovable's sibling, same ladder.
   | TEqTypeUnprovable(String, Span)
+  // arithmetic on a product, sum, sequence, function, continuation or unit —
+  // no meaning the value ontology gives it. Judged at the operator when the
+  // operand is bound and at the one writer when a gated cell is bound later
+  // (NumericGate), so `mentl check` refuses it; the emit multiplied the two
+  // ADDRESSES with zero diagnostics until 2026-09-27
+  | EArithOnAggregate(String, Span)
   // clock-replay trace ran out
   | EReplayExhausted(Span)
 
@@ -2763,6 +2824,7 @@ fn diag_span(d) with Pure = match d {
   EUnresolvedHole(_, s) => s,
   TFieldOffsetUnprovable(_, s) => s,
   TEqTypeUnprovable(_, s) => s,
+  EArithOnAggregate(_, s) => s,
   EReplayExhausted(s) => s,
 }
 
@@ -2836,6 +2898,7 @@ fn diag_source(d) with Pure = match d {
   EUnresolvedHole(_, _) => "verify",
   TFieldOffsetUnprovable(_, _) => "lower",
   TEqTypeUnprovable(_, _) => "lower",
+  EArithOnAggregate(_, _) => "infer",
   EReplayExhausted(_) => "clock",
 }
 
@@ -2909,6 +2972,7 @@ fn diag_code(d) with Pure = match d {
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
   TFieldOffsetUnprovable(_, _) => "T_FieldOffsetUnprovable",
   TEqTypeUnprovable(_, _) => "T_EqTypeUnprovable",
+  EArithOnAggregate(_, _) => "E_ArithOnAggregate",
   EReplayExhausted(_) => "E_ReplayExhausted",
 }
 
@@ -2933,6 +2997,9 @@ fn diag_severity(d) with Pure = match d {
   TEqTypeUnprovable(_, _) => // PRE-ARM beside its sibling below, on the same ladder: the wheel's own
   // census of the class is what the arming commit counts down to zero.
   SWarning,
+  EArithOnAggregate(_, _) => // ARMED at birth: arithmetic on an aggregate has no meaning, and the
+  // wheel's census of it is zero (measured at the arming commit).
+  SError,
   TFieldOffsetUnprovable(_, _) => // PRE-ARM, on the exact ladder T_UseAfterMove walked: narrate → ratchet →
   // arm, and the arming commit renames it E_ and moves it to SError beside
   // its siblings. The severity tracks the ENFORCEMENT posture, never how bad
@@ -2992,6 +3059,12 @@ fn diag_refuses(d) with Pure = match d {
   // Census on the wheel at arming: 0 (the wheel's one state-shadow — the
   // voice history field — was renamed in the arming commit; the wheel has
   // no duplicate fn names, measured).
+  True,
+  EArithOnAggregate(_, _) => // ARMED at birth (2026-09-27): a TYPE fact — arithmetic's operand is a
+  // product, sum, sequence, function, continuation or unit — judged at the
+  // operator for a bound operand and at the one writer for a gated cell
+  // bound later (NumericGate), so the judgment refuses and no WAT streams.
+  // Census on the wheel at arming: 0.
   True,
   EDuplicateFnName(_, _) => True,
   EEmittedNameCollision(_, _) => // ARMED at birth (2026-09-10) and born at ZERO on every program measured,
@@ -3208,6 +3281,11 @@ fn diag_refuses(d) with Pure = match d {
   // keeps the depth read honest, because the alternative is handing a
   // site that asked for n the one slot it did not ask for.
   True,
+  EInternalInvariant(_, _) => // An invariant the judgment guaranteed and a later pass found broken
+  // is a module the medium cannot vouch for — "nothing executes unproven"
+  // applies to the compiler's own claims first. Zero on the wheel (the
+  // trial pass that muted thirteen of these is gone, 2026-09-17).
+  True,
   _ => False,
 }
 
@@ -3241,6 +3319,7 @@ fn diag_applicability(d) with Pure = match d {
   EUnresolvedHole(_, _) => HasPlaceholders,
   TFieldOffsetUnprovable(_, _) => MaybeIncorrect,
   TEqTypeUnprovable(_, _) => MaybeIncorrect,
+  EArithOnAggregate(_, _) => Unspecified,
   ERefinementRejected(_, _) => Unspecified,
   EVerifyUnencodable(_) => Unspecified,
   ETypeMismatch(_, _, _) => Unspecified,
@@ -3337,6 +3416,7 @@ fn diag_message(d) with !Mutate = match d {
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
   TFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed, so this load has no provable slot and the emit writes a trap here; close the row (annotate the receiver at its Intent Boundary, or give the call site a shape the twin can key on)",
   TEqTypeUnprovable(why, _) => "{why} — the operand's type is still a variable at emit, so the comparison has no structure to read and falls to a one-word compare (right for a word, an address lie for anything else); prove the operand: give the call site a shape the twin can key on, or name the type at its Intent Boundary",
+  EArithOnAggregate(why, _) => "{why} — arithmetic on a product, sum, sequence, function, continuation or unit has no meaning: the operands are addresses, and the result would be arithmetic on where the values live, never on the values. A number is a word (Int, Float, Byte); give this operand one, or read the field you meant",
   EReplayExhausted(_) => "clock replay trace exhausted",
 }
 

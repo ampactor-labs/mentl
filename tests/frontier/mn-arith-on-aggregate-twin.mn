@@ -1,0 +1,13 @@
+// The same product arithmetic reached through a GENERIC fn. `a * b` gates
+// scale's quantified var numeric (NumericGate on the cell); the call
+// instantiates the scheme and the copy carries the gate, so binding it to
+// `{x: Int}` at the argument edge refuses — at the JUDGMENT, naming `*`'s
+// site, with zero WAT. Measured on boot 5bf55b68: compiled, then trapped at
+// run time (exit 134) — the twin multiplied two addresses and the field read
+// walked off them.
+fn scale(a, b) = a * b
+
+fn main() = {
+  let p = scale({x: 1}, {x: 2})
+  p.x
+}

@@ -35,6 +35,84 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-27 · pin 542ea5a353823b76 (TRANSITION m3 == m4) · ARITHMETIC DEMANDS A NUMBER OF ITS OPERAND.
+  L1 of the Pulse sprint — the third of the four foundation defects the
+  refuter found. **The shape:** `emit_binop_for`'s arithmetic arm read only
+  the operands' emitted WIDTHS (`repr_join(tail_expr_repr(l),
+  tail_expr_repr(r))`), and `repr_of` floors every non-word to RI32, so
+  `{x: 1} * {x: 2}` type-checked (arithmetic unifies its operands and asks
+  nothing else of them), emitted `i32.mul` over the two ADDRESSES with zero
+  diagnostics, and trapped at run time reading a field off the product
+  (boot 5bf55b68: exit 134 with no diagnostic — worse than the exit 0 the
+  plan predicted). The comparison arm had been fixed for this exact class
+  nine days earlier (`emit_struct_cmp` reads the TYPE); the arithmetic arm
+  beside it had not.
+  **The form, and the two forms it took.** The first build classified the
+  operand's type at lower (a bound aggregate refused before the executable
+  gate) and again at emit under the twin bracket (a variable narrated over
+  the width join; an aggregate reached through a generic fn reported, and a
+  second gate after the emit refused by exit code). It passed every gate —
+  micros 152/152, crown 100/100, frontier 409/0/2 — and repinned CLEAN at
+  1ff80ffb. THREE KILLS then refuted it, every one from the artifact: (1)
+  `mentl check` accepted both aggregate programs with exit 0 — only the
+  executable refused, so the daily loop said nothing; (2) the "born at
+  zero" count for the narration had been read off the L0 boot's m2.err, an
+  artifact that could not carry the class, and the first march whose boot
+  carried it went RED at the new ratchet — ONE narration, the floor twin of
+  verify.mn's `lo_add`, a generic `Option(t)` add called only at Int,
+  "unproven" over a `t` the judgment had seen added; (3) so the emit was
+  re-deriving a fact inference held, and every piece of the first form was
+  a compensation for inference not knowing that `+` demands a number.
+  **The demand is a gate on the type cell** (`NumericGate`, types.mn — the
+  gate mechanism's second arm beside A3's row gate; `graph_numeric_gate_add`
+  / `graph_numeric_gates_of`, a trailed column of `graph_handler` with
+  `MSetNumericGate` popping it on rollback): `infer_binop`'s arithmetic arm
+  and unary negation judge a bound operand on the spot (`numeric_demand`)
+  and enter the gate on a free cell; the one writer — the two var-alias
+  binds in `unify` and the free-root bind in `unify_types`, where the row
+  gate already hooks a function type — judges every type that enters a
+  gated cell (`numeric_judge_push`: a word passes, a variable inherits the
+  gates, an aggregate refuses once naming the demand's site);
+  `build_inst_mapping` copies the gates onto the fresh var; a copy minted
+  before the demand is reached through the instance column the row gate
+  already keeps. The refusal is `E_ArithOnAggregate` at the judgment, armed
+  at birth (wheel census 0), and `mentl check` says so. At emit NOTHING is
+  decided: a word emits at its type's repr; a variable still free there is
+  a floor twin's quantified var and a word at the floor width by
+  construction — a wide instantiation mints its own twin and binds the var
+  under it, through a reference included — with the gate's absence an
+  `E_InternalInvariant`, which now refuses the executable as the compiler's
+  own broken claim should; an aggregate at emit is the same invariant.
+  DELETED with the first form: the lower-time check, the narration class
+  and its ratchet, the emit's report and the post-emit gate (verification
+  happens ONCE — a second read of the ledger after the emit was the override
+  the docs forbid), and the gate script's emit-time refusal contract.
+  **Measured:** the wheel compiles itself with zero errors and no invariant
+  report — every arithmetic variable at emit is gated; its own check is at
+  zero diagnostics; m2 ≠ m3 at exactly the four pre-arm field-offset floors,
+  whose `(unreachable)` comment renders a row var's display id with the
+  judgment's epoch, which the gates move — the transition m3 == m4 rules.
+  The peak ceiling is raised 1,042,000 → 1,058,000 with the fixed-input
+  measurement beside it in tools/verify-baseline.txt: the new compiler on
+  the prior commit's source reads 1,033,860–1,038,344 KB against that boot's
+  own 1,032,440 (the machinery a few MB at most — a gate record per free
+  arithmetic operand, a copy per instantiation, an allocation-free bucket
+  read at every var bind), and the wheel's own growth by the gate's fifteen
+  functions is the rest, through a compiler that reclaims nothing (the
+  first march refused the repin at 1,042,508 KB, 508 KB over).
+  Gates RED-first on boot 5bf55b68: `mn-arith-on-aggregate` (trap 134 →
+  refusal at the operator), `mn-arith-on-aggregate-twin` (trap 134 →
+  refusal at the argument edge, "demanded at" `*`'s site),
+  `mn-arith-on-aggregate-instance` (trap 134 → refusal through the instance
+  column), the check leg (exit 0 → exit 1);
+  `tests/micros/mn-arith-generic-ref-float.mn` pins the reference theorem
+  the emit stands on (40 on both boots before the gate, held).
+  **Named, not built:** the comparison class keeps the face the first form
+  exposed — a generic fn's floor twin narrates its compares even when every
+  call resolves to a specialized twin (`lo_join` beside `lo_add`) — because
+  `==` on a floor twin genuinely has no structure to read where `+` on one
+  has a proof.
+  m4 leg 10.68s wall · 1012MB peak RSS (1036928 KB) — the pinned wheel compiling itself; 438,821 WAT lines; census 0; frontier 411/0/2.
 - 2026-09-27 · pin 5bf55b682d952871 (CLEAN m2 == m3) · A HELD SINGLE RESUME IS REIFIED; A MULTI-SHOT PERFORM IS PRICED.
   L0 of the Pulse sprint — two foundation defects found by reading the
   emit against the ultimate instead of against itself, the day Morgan

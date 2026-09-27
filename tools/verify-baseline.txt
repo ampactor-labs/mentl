@@ -1076,7 +1076,21 @@ authored_ref_max: 721
 # +2.5, the rest host-side), the source growth's bill compounded through
 # a compiler that reclaims nothing. Same rule: ~1% over the highest reading.
 # The way down is unchanged and named above: the per-decl arena.
-selfcompile_peak_kb_max: 1042000
+# RAISED 1,042,000 -> 1,058,000 at L1 of the Pulse sprint (2026-09-27): the
+# numeric gate on the type cell. Fixed-input measurement first, as above:
+# the new compiler on the OLD source (the prior commit's src+lib) reads
+# 1,033,860–1,038,344 (two runs) against the prior boot's own 1,032,440 —
+# the machinery's RUNTIME cost is a few MB at most: a gate record per
+# arithmetic site whose operand is still free, a copy per instantiation of
+# such a var, a trail entry per entry, and an allocation-free bucket read
+# at every var bind (wmap_get_all answers an empty bucket with the shared
+# empty list). The new compiler on the NEW source reads 1,039,328–1,046,964
+# (five runs, the march's m3/m4 legs among them; the m3 leg's min of three
+# was 1,042,508, over the ceiling by 508 KB) — the wheel grew by the gate's
+# own fifteen functions and their comments, and every phase paid its
+# per-node cost through a compiler that reclaims nothing. Same rule: ~1%
+# over the highest reading. The way down is unchanged: the per-decl arena.
+selfcompile_peak_kb_max: 1058000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

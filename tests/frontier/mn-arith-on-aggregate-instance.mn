@@ -1,0 +1,11 @@
+// The instance column's case: a signature'd fn's self-reference
+// instantiates its quantified scheme BEFORE `x + x` demands a number of
+// the parameter's cell, and `h({x: 1})` binds that copy to a record. The
+// demand, arriving after, reaches the noted copy and refuses.
+fn f(x: t) -> t = {
+  let h = f
+  let q = h({x: 1})
+  x + x
+}
+
+fn main() = f(1)

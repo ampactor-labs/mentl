@@ -5246,6 +5246,72 @@ territory (`Hβ.effects.arm-world-static-rule`, A6). The op-level join is
 sound (it over-approximates) and is the waypoint; the per-install charge
 is the form.
 
+`Hβ.emit.arith-on-aggregate-is-pointer-arith` — CLOSED 2026-09-27 (L1 of
+the Pulse sprint, pin 542ea5a353823b76). THE SHAPE: `emit_binop_for`'s arithmetic arm
+dispatched on a WIDTH join of the operands' emitted reprs, and `repr_of`
+floors every non-word to RI32, so `{x: 1} * {x: 2}` type-checked
+(arithmetic unifies its operands and asks nothing else), emitted `i32.mul`
+over the two ADDRESSES with zero diagnostics, and trapped at run time
+reading a field off the product (boot 5bf55b68, exit 134) — the
+`T_EqTypeUnprovable` class one operator over, the comparison arm having
+been fixed for it nine days earlier and the arithmetic arm beside it not.
+Found by the refuter over the first Pulse-differentiation design. THE FORM
+IT TOOK FIRST, AND THE KILLS: a classification of the operand's TYPE read
+at lower (a bound aggregate refused before the executable gate) and at
+emit under the twin bracket (a variable narrated; an aggregate reached
+through a generic fn reported and a gate after the emit refused by exit
+code). It passed every gate and repinned CLEAN at 1ff80ffb, and the
+artifact killed it three times: `mentl check` accepted both programs with
+exit 0 (only the executable refused); the narration's "born at zero" had
+been read off the L0 boot's m2.err — an artifact that could not carry the
+class — and the first march whose boot carried it went RED at ONE, the
+floor twin of verify.mn's `lo_add` narrated "unproven" over a `t` the
+judgment had already seen added; so the emit was re-deriving a fact
+inference held, and every piece of that form was a compensation for
+inference not knowing that `+` demands a number. THE FORM: the demand is a
+GATE ON THE TYPE CELL — `NumericGate({op, span})` (types.mn), the gate
+mechanism's second arm beside A3's row gate, a trailed column of
+`graph_handler` (`graph_numeric_gate_add` / `graph_numeric_gates_of`,
+`MSetNumericGate` on rollback). `numeric_demand` at `infer_binop`'s
+arithmetic arm and at unary negation judges a bound operand on the spot
+(`arith_operand_class`, which carries the variable's handle out as
+`AoUnproven(h)`) and enters the gate on a free cell (`numeric_gate_install`
+— dedup by site, judge what the cell already holds, reach every noted
+instance, follow an alias to the free terminal); the one writer — the two
+var-alias binds in `unify` (`numeric_check_alias`) and the free-root bind
+in `unify_types` — judges every type entering a gated cell
+(`numeric_judge_push`: a word passes, a variable inherits, an aggregate
+refuses once naming the demand's site); `build_inst_mapping` copies the
+gates onto the fresh var (`numeric_gates_copy`, the qualified-type reading
+`∀t. numeric(t) ⇒ …`). `E_ArithOnAggregate` refuses at the judgment, armed
+at birth (wheel census 0); `mentl check` says so. AT EMIT NOTHING IS
+DECIDED: a word emits at its type's repr; a free variable is a floor
+twin's quantified var — a wide instantiation mints its own twin and binds
+the var under its bracket, THROUGH A REFERENCE INCLUDED (measured:
+`fold(0.0, add, [1.5, 2.5])` over a generic `add` answers 4.0 on both
+boots, `tests/micros/mn-arith-generic-ref-float.mn`) — so it is a word at
+the floor width by construction, its gate's absence an
+`E_InternalInvariant` (now a refusing class); an aggregate at emit is the
+same invariant. DELETED: the lower check, the narration class
+`T_ArithTypeUnprovable` and its ratchet, the emit's report, the post-emit
+gate (a second read of the ledger after the emit — verification happens
+ONCE), and the gate script's emit-time contract. MEASURED: the wheel
+compiles itself with zero errors and no invariant report; m2 ≠ m3 at
+exactly the four pre-arm field-offset floors, whose `(unreachable)`
+comment renders a row var's display id with the judgment's epoch (the
+gates move it) — the transition m3 == m4 rules. HOW THE MOST POWERFUL
+MEDIUM DOES IT: a user type's arithmetic is neither pointer arithmetic nor
+a trait — it is a numeric projection's RULES read at the install
+(`Hβ.lower.ad-is-a-demanded-projection`), the same mechanism that makes a
+chain differentiable, so `Dual * Dual` gets a meaning the moment a
+projection supplies one and a refusal until then. FACE KEPT BY THE
+COMPARISON CLASS: a generic fn's floor twin narrates its compares even
+when every call resolves to a specialized twin (`lo_join` beside
+`lo_add`), because `==` on a floor twin genuinely has no structure to read
+where `+` on one has a proof; and a twin-bracket narration renders at
+`<stdin>:0:0-0:0` (`Hβ.cursor.module-of-a-span-is-containment`'s
+neighbourhood).
+
 `Hβ.lower.classifier-rerun-at-lower` — OPEN, NAMED 2026-09-27.
 `resume_bindings` (lower.mn) calls `classify_fixpoint(stmts)` a second time
 over the statements infer already classified (`infer_program_once` →

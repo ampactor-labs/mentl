@@ -1875,6 +1875,25 @@ for i in "${!compilers[@]}"; do
   # Hβ.lower.parameter-product-calling-convention.
   run_refusal "$compiler" tuple-into-binary \
     "$ROOT/tests/frontier/mn-tuple-into-binary.mn" E_TypeMismatch "$dir"
+  # ── L1: arithmetic demands a number of its operand (2026-09-27) ──
+  # `+ - * / %` gate their operand's type cell numeric at the judgment: a
+  # bound aggregate refuses at the operator; a generic fn's instantiation at
+  # a record refuses at the call that binds the copied gate; a copy minted
+  # before the demand (a sig'd self-reference) is reached through the
+  # instance column. All three refuse at the JUDGMENT — zero WAT — and the
+  # check leg is the felt claim: `mentl check` says so.
+  run_refusal "$compiler" arith-on-aggregate \
+    "$ROOT/tests/frontier/mn-arith-on-aggregate.mn" E_ArithOnAggregate "$dir"
+  run_refusal "$compiler" arith-on-aggregate-twin \
+    "$ROOT/tests/frontier/mn-arith-on-aggregate-twin.mn" E_ArithOnAggregate "$dir"
+  run_refusal "$compiler" arith-on-aggregate-instance \
+    "$ROOT/tests/frontier/mn-arith-on-aggregate-instance.mn" E_ArithOnAggregate "$dir"
+  aoa_n=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-arith-on-aggregate-twin.mn" 2>&1 | grep -cE 'E_ArithOnAggregate')
+  if [ "$aoa_n" -ge 1 ]; then
+    pass "arith-on-aggregate check: the judgment refuses (E_ArithOnAggregate=$aoa_n)"
+  else
+    fail "arith-on-aggregate check (E_ArithOnAggregate=$aoa_n — mentl check passed a product into a generic arithmetic)"
+  fi
   run_refusal "$compiler" pair-arm-as-binary-callback \
     "$ROOT/tests/frontier/mn-pair-arm-as-binary-callback.mn" E_TypeMismatch "$dir"
 
