@@ -1245,18 +1245,20 @@ fn resume_bind_assoc(binds, name: String, i) = if i >= len(binds) {
 
 // THE CUT (bank Ruling 6 + A3) — the resume-capability bindings: from each
 // handler arm whose op grades MultiShot, the transitive closure of called
-// resume-bearing fns (summary ≥ UOne — the classifier's fixpoint, re-run
-// here over the same stmts; collect_free_vars over-approximates the call
+// resume-bearing fns (summary other than RNone — the classifier's fixpoint,
+// re-run here over the same stmts infer already classified, which is
+// Hβ.lower.classifier-rerun-at-lower; collect_free_vars over-approximates the call
 // edge, which only ever binds a dormant wrap). Each bound fn lowers under
 // its handler's arm context (disc MultiShot, the redrive's hname, the
 // state fields read live from the decl) and every call to it from a
 // MultiShot context threads the "__resume" k evidence. A fn reached from
 // arms of TWO handlers is E_ResumeAmbiguousOp — narrow the call graph;
 // the first binding stands (productive-under-error).
-fn resume_bindings(stmts) = {
-  let summaries = classify_fixpoint(stmts)
-  let decls = collect_fn_decls_list(stmts, [])
-  bind_from_handlers(stmts, summaries, decls, [])
+fn resume_bindings(stmts) = match classify_fixpoint(stmts) {
+  (summaries, _) => {
+    let decls = collect_fn_decls_list(stmts, [])
+    bind_from_handlers(stmts, summaries, decls, [])
+  },
 }
 
 fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
@@ -1317,18 +1319,19 @@ fn bind_closure(names, hname, summaries, decls, binds) = if len(names) == 0 {
 }
 
 fn usage_is_marked(u) = match u {
-  UZero => false,
-  UOne => true,
-  UMany => true,
+  RNone => false,
+  RTail => true,
+  RDeep => true,
+  RMany => true,
 }
 
 fn collect_free_vars_of_decl(decls, name: String) = {
-  let hits = filter({ (n, _) => n == name }, decls)
+  let hits = filter({ (n, _, _) => n == name }, decls)
   if len(hits) == 0 {
     []
   } else {
     match head(hits) {
-      (_, body) => collect_free_vars(body, []),
+      (_, body, _) => collect_free_vars(body, []),
     }
   }
 }

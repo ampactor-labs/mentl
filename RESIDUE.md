@@ -5184,6 +5184,177 @@ the row element's provenance to the perform sites and the tee that re-added
 it, so a root refusal names its path the way a gate refusal names its
 declaration.
 
+`Hβ.lower.oneshot-nontail-resume-drops-post-code` — CLOSED 2026-09-27 (L0
+of the Pulse sprint, pin 5bf55b682d952871). THE SHAPE: `handler dbl { ask() => { let r
+= resume(1); r * 2 } }` over `fn body() = ask() + 1` answered 2; the
+deep-handler contract says 4 (tests/micros/mn-oneshot-nontail-resume.mn,
+RED on boot 83428bcc at exit 2). THE ROOT: `resume_grade` graded every
+resume `UOne`, `arm_disc_of` mapped it to `OneShot`, and
+`lower_resume_oneshot` is `LReturn` — a wasm `return` at the resume — so
+every statement after a held resume was dead and the install answered the
+remainder's own value. One-shot was conflated with tail-resumptive (Koka
+separates `fun` from `ctl`; Mentl carried no position fact). Found by the
+adversarial pass over the first Pulse-differentiation design
+(`Hβ.lower.ad-is-a-demanded-projection` below), which died on it. THE FORM:
+the classifier's grade is `ResumeUse = RNone | RTail | RDeep | RMany`
+(types.mn) — the multiplicity lattice extended by the POSITION of the one
+use, ownership's return-transfer distinction read on the continuation; every
+construct that consumes a child's value wraps it in `resume_interior`,
+every sequence folds `resume_seq` in source order, and a held single use
+(`RDeep`) takes the reified path (`arm_disc_of` → MultiShot: the record is
+the representation, and it is called once). MEASURED on the wheel: the emit
+is unchanged in every k fn, redrive driver and twin (3 / 0 / 1,407 before
+and after) — no wheel arm held a resume — and the micros battery's eleven
+multi-shot fixtures lost their positive caps (the sibling entry). THE
+REMAINDER, named: `Hβ.lower.held-resume-record-is-not-reclaimed` — the held
+one-shot record is allocated per perform and dropped after its one call
+with nothing reclaiming it; with frames in the image (PLAN §11 10.1
+keystone 1) the reclaim is O(1), and the spine grammar (`k_spine_next` — a
+perform inside a `let` is off-spine and parks at `k2_floor_wrap`) is the
+same limit the MultiShot path already carries.
+
+`Hβ.effects.multishot-perform-allocates-unrowed` — CLOSED 2026-09-27 (L0,
+pin 5bf55b682d952871). A MultiShot perform emits `LMakeContinuation` through
+`emit_alloc` and NO row charged it (every `construction_row()` caller was a
+literal or constructor site), so `fn quiet() with !Alloc = flip()` under a
+two-resume handler compiled clean and ran to 3 — §0's property (2) false at
+a shape the crown never wrote (tests/micros/mn-multishot-perform-alloc.mn,
+RED on boot 83428bcc). THE FORM: the op's PUBLISHED ROW carries the
+remainder record — `scheme_with_disc_cost` unions `Memory + Alloc` into the
+op's TFun row at the discipline join in `draw_op_edges`, so every reader of
+the op's row (the call site, the address surface, the root gate) sees it
+with no per-site logic. AND THE FACT IS SETTLED BEFORE ANY BODY IS JUDGED:
+`infer_program_once` classifies before it pre-registers, and
+`pre_register_handler_sig` draws the op edges, so an op's discipline and
+cost no longer depend on whether its handler precedes its performers in
+source order (they did — the edges were drawn only at the walk's
+registration). FALLOUT, honest: twelve fixtures (eleven micros and the
+frontier's `world-resume-frozen`) declared `with Choice` / `with Cell` /
+`with Pick + Emitt` over MultiShot ops — inventories written when the op's
+row read the op's own name alone — and refused `Choice vs Choice + Memory +
+Alloc`; the caps are deleted (the positive row is inferred and projected,
+A4) and every one runs to its banked exit. NOT charged, named rather than guessed: an Abandon
+op's dummy-k yield (`Hβ.lower.multishot-uzero-abort`'s path), unmeasured.
+HOW THE MOST POWERFUL MEDIUM DOES IT, and where this form stops short: the
+charge here is the JOIN over every handler of the op, so an op served by
+one two-resume handler and one tail-resumptive handler carries `Alloc` at
+every perform, including the ones the tail handler serves for free. The
+cost of a perform is a fact of the INSTALL that serves it — under the
+static-singleton tier the tee knows which handler that is — so the precise
+form charges at the `~>` edge, per install, which is install identity's
+territory (`Hβ.effects.arm-world-static-rule`, A6). The op-level join is
+sound (it over-approximates) and is the waypoint; the per-install charge
+is the form.
+
+`Hβ.lower.classifier-rerun-at-lower` — OPEN, NAMED 2026-09-27.
+`resume_bindings` (lower.mn) calls `classify_fixpoint(stmts)` a second time
+over the statements infer already classified (`infer_program_once` →
+`set_summaries`). The op DISCIPLINE lower reads is the published scheme
+(Carried-Truth), but the per-fn summaries that drive `bind_closure` are
+re-derived: one judgment, read twice. The summaries belong on the fn's
+scheme, or cross the infer→lower seam as a value, never as a second walk.
+
+`Hβ.infer.tail-transparency-is-the-ownership-grade` — OPEN, NAMED
+2026-09-27 at the landing that built its seed. `tail_transparent_params`
+(infer.mn) is a syntactic, first-order walker: a parameter qualifies when
+every mention of it is a callee at a tail position of the body. That is a
+second walker computing what the ownership grade already knows one lattice
+over — a parameter called at the tail is RETURN-TRANSFERRED (own.mn's
+`usage_of`, the mode-paired `(consume, read)` walk; `Hβ.own.region-return-
+transfer`), and a continuation captured in a closure handed to it is
+consumed exactly once, at the result. The most powerful medium reads the
+one grade: the closure's `own` transfer through the callee IS the proof
+that its resume is the arm's tail, transitively (`fn call_thunk(f) =
+run(f)` qualifies when `run` transfers), where the syntactic walk stops at
+the first indirection. The walker dissolves into `usage_of` when the
+ownership grade is read on continuation values; until then it is the seed,
+named rather than absorbed into habit.
+
+`Hβ.lower.offspine-perform-is-the-frame-not-in-the-image` — OPEN, NAMED
+2026-09-27, sharpened from the `k2_floor_wrap` comment's own confession
+("the off-spine k2 boundary's positive-form home until its spine form
+lands"). A reified op performed anywhere but the frame's first-evaluated
+chain (`k_spine_next`: bare position, BinOp left-descent, statement-free
+block) parks at a runtime `$yield_flag` trap with no diagnostic — a
+`let`-bound perform of a held-resume op exits 134 and says nothing. The
+spine grammar is a compensation for continuations living on the wasm call
+stack: the remainder builder can only re-create what it can name. The
+most powerful medium keeps FRAMES IN THE IMAGE (PLAN §11 10.1 keystone 1,
+written for native and true one substrate earlier): a frame is a record,
+a continuation is that record's extent, capture is a copy and any
+position reifies — which also makes a checkpoint inside an arm resumable
+(the refuter's F correction) and the held record's reclaim O(1)
+(`Hβ.lower.held-resume-record-is-not-reclaimed` closes with it). Until
+then: the floor REPORTS. A perform of a reified op at an off-spine
+position is a compile-time finding at the site (the `T_FieldOffsetUnprovable`
+precedent: a floor written and never said is the class), never a bare
+trap, and the finding is the first thing this peer lands.
+
+`Hβ.lower.ad-is-a-demanded-projection` — OPEN, DESIGNED 2026-09-27 (L4 of
+the Pulse sprint; supersedes and RETRACTS `Hβ.ml.autodiff-as-multishot`,
+which lived only in lib/ml/autodiff.mn's comment and PLAN §11 9.1, and which
+named the wrong axis — reverse-mode AD needs no multi-shot resumption, it
+needs a projection). THE CLAIM: Pulse's crown scene is ONE chain that is a
+real-time-safe effect under the substrate reading and a differentiable model
+under `~> grad(w)`, without being written twice. THE SURVIVING FORM, after
+one Fable refuter at max effort killed the first design: the install
+becomes the emit. `(loss(w, xs)) ~> grad(w)` returns `(value, dvalue/dw)`;
+lower reads the install lexically (the `schedule_in_stack` read's sibling —
+one roster of projection classes, an ADT, before a fifth `if` is added) and
+DERIVES the twin: LINEARIZE (each op's JVP rule — the handler's arms READ AS
+REWRITES through `rewrite_to`, never run as resumptions, so a user-declared
+handler over their own primitive IS a custom derivative) then TRANSPOSE the
+linear sub-graph (fan-out becomes accumulation into frame locals; a `<~`
+register transposes to a backward register — BPTT through IIR filters as a
+graph fact). The forward tree stays byte-identical; the twin is emitted as
+a DEMANDED symbol (an `EfkAdj` arm beside `EfkK`/`EfkLambda`, `lp_step$adj`)
+exactly as `__k_<ph>` fns and `$sp` twins are — the key is which projection
+was demanded, a lower-time fact, no install in the type. The twin is
+ordinary code with a ROW: a fixed chain's adjoint program is `!Alloc`, which
+is the unlock — learning inside the real-time callback, provably. Falsifiers
+on the board: forward bit-identity over a sweep; a 2-parameter waveshaper's
+gradient against a finite-difference oracle; BPTT through one `<~ delay(1)`
+over three steps against an unrolled oracle; `!Alloc` PROVEN on the twin of
+a fixed chain; `!Alloc` REFUSED where the twin allocates. Deletes
+lib/ml/autodiff.mn's tape. Inherits `Hβ.lower.schedule-specialized-callee`'s
+fence (a stage called from under the install is twinned only when demanded
+at the site).
+THE KILLS, banked because the refutation was the design's whole value: (1)
+"arithmetic is topology like `><`" — `><` is zero effects in the ROW yet
+lowers to `spawn`/`join` performs the row never sees; the precedent is a row
+blind spot compensated by a lower-time gate. (2) "the word projection
+dispatches on `lookup_ty`" — the arithmetic arm of `emit_binop_for`
+dispatches on a WIDTH join; a record operand emits `i32.mul` on addresses
+(`Hβ.emit.arith-on-aggregate-is-pointer-arith`, L1). (3) "post-resume code
+runs as the unwinding" — dead on the one-shot tier (the entry above; L0).
+(4) "no tape, no side-ledger" — `wmap_add` is an in-place `store_i32` into a
+mutable table; the tape was renamed. (5) "the chain's row stays `!Alloc`
+under both readings" — MultiShot performs allocated unrowed (the entry
+above; L0). (6) "forward denotation bit-identical under a runtime
+`reverse_mode`" — unmeasurable while (3) held. (7) "BPTT through `<~` is
+handle identity" — the prior is a `global.get` at the feedback node's own
+repr, and the line is shared across twins
+(`Hβ.emit.feedback-line-shared-across-twins`, L2). (8) "the projection is a
+monomorphization axis picked by the install" — the twin key is the
+quantified vars' encoding; a monomorphic Float stage has no key; 1,407 `$sp`
+twins in m2.wat, none keyed by an install. (9) "a closure crossing worlds
+falls to the polymorphic tier" — `PdWalk` needs an effect NAME; a nameless
+op has no runtime tier. (10) "`grad_of` reads the outer state after the
+install closes" — with (3) dead nothing was ever written. (11) "interval,
+units, fixed-point are handlers on the same aspect" — they are width and
+refinement facts the gradient already carries. (12) "`RHandled` is one more
+Repr selected on the lower stack" — `repr_of` is `with Pure` over `Ty` with
+no stack in scope, read at 34 emit sites after the lower stack is gone.
+(13) the `<~` line is keyed on the site handle alone, declared once at
+module scope at the floor's width, shared by every twin. (14) "`~> Simd`
+changes a `><` tuple's repr without changing its type" — `LSimdLanes` leaves
+a v128 under a `TTuple` node whose `repr_of` reads RI32; scaffold. (15)
+"autodiff-as-multishot names the deeper form" — the wrong axis. What HELD:
+the A5 arm-world rule at runtime and at the install; per-branch installs
+under `~> Thread`; `E_EffectMismatch` refusing `!Alloc` at the install
+site; the Schedule read as a lower-time lexical precedent; persist between
+steps (a mid-arm checkpoint is unresumable by the world law).
+
 `Hβ.continuations.remainder-row-charged-at-perform-site` — OPEN, BORN
 2026-09-27, the row-only root gate's one measured INCOMPLETENESS. A
 multi-shot remainder's effects are charged at their PERFORM site's frames

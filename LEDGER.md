@@ -35,6 +35,94 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-27 · pin 5bf55b682d952871 (CLEAN m2 == m3) · A HELD SINGLE RESUME IS REIFIED; A MULTI-SHOT PERFORM IS PRICED.
+  L0 of the Pulse sprint — two foundation defects found by reading the
+  emit against the ultimate instead of against itself, the day Morgan
+  corrected "byte-identical to today's emit" from a ceiling back to a
+  regression oracle. One Fable refuter at max effort, sent to kill my first
+  Pulse-differentiation design, found both on the way to killing it.
+  **Defect 1 — code after `resume(v)` in an arm was DEAD.** `resume_grade`
+  graded every resume `UOne`, `arm_disc_of` mapped it to `OneShot`, and
+  `lower_resume_oneshot` is `LReturn` — a wasm `return` at the resume — so
+  `handler dbl { ask() => { let r = resume(1); r * 2 } }` over `ask() + 1`
+  answered 2 where the deep-handler contract says 4
+  (tests/micros/mn-oneshot-nontail-resume.mn, RED on boot 83428bcc at exit
+  2). One-shot was conflated with tail-resumptive: the classifier carried
+  no position fact. **The form:** `ResumeUse = RNone | RTail | RDeep |
+  RMany` (types.mn) — the multiplicity lattice extended by the POSITION of
+  the one use, ownership's return-transfer distinction read on the
+  continuation. Every value-consuming construct wraps its child in
+  `resume_interior`; every sequence folds `resume_seq` in SOURCE ORDER (the
+  old fold ran last-first because `usage_seq` was symmetric; `resume_seq` is
+  not); a held single use (`RDeep`) takes the reified path — the MultiShot
+  record, called once. No refusal: the general tier is the record used
+  once, and its O(1) reclaim is `Hβ.lower.held-resume-record-is-not-
+  reclaimed`. **What the fix exposed — a lambda-wrapped resume.**
+  tests/micros/mn-oneshot-lambda-commit.mn (`bump() => call_thunk(() =>
+  resume(s) with s = s + 5)`) trapped at 134 once the lambda's resume was
+  graded held: its perform site is `let`-bound, off the k spine, and parked
+  at `k2_floor_wrap`. The shape had been correct by ACCIDENT — `call_thunk`
+  returns its thunk's value untouched — and wrong wherever the caller did
+  not: `fn plus_one(f) = f() + 1` under the same arm answered 22 where 21 is
+  correct (tests/micros/mn-held-resume-in-thunk.mn, RED on the boot). The
+  accident became a PROOF: `tail_transparent_params` reads, at collection,
+  which parameters a fn calls ONLY at its tail positions; `resume_grade`
+  puts a lambda handed to such a parameter at the call's result and holds
+  every other one. The commit fixture keeps its stack path by proof; the
+  plus_one fixture takes the record and answers 21.
+  **Defect 2 — a multi-shot perform allocated and no row said so.** The
+  perform site emits `LMakeContinuation` through `emit_alloc`, and every
+  `construction_row()` caller was a literal or constructor site, so `fn
+  quiet() with !Alloc = flip()` under a two-resume handler compiled clean
+  and ran to 3 — §0's property (2) false at a shape the crown never wrote
+  (tests/micros/mn-multishot-perform-alloc.mn, RED on the boot). **The
+  form:** the op's PUBLISHED ROW carries the remainder record —
+  `scheme_with_disc_cost` unions `Memory + Alloc` into the op's TFun row at
+  the discipline join in `draw_op_edges` — so every reader of the op's row
+  sees it with no per-site logic. AND THE JOIN MOVED TO PRE-REGISTRATION:
+  `infer_program_once` classifies before it pre-registers and
+  `pre_register_handler_sig` draws the op edges, so an op's discipline and
+  cost stopped being facts of source order (they were: the edges were drawn
+  only at the walk's registration, so a fn declared before its handler read
+  the op as OneShot and Pure).
+  **Fallout, honest.** Twelve fixtures — eleven micros and the frontier's
+  `world-resume-frozen` — declared `with Choice` / `with Cell` / `with Pick
+  + Emitt` over multi-shot ops: inventories written when the op's row read
+  the op's own name alone. They refused `Choice vs Choice + Memory + Alloc`
+  (A3-pos's cap gate doing its job); the caps are deleted and every one
+  runs to its banked exit. The wheel's own emit moved in no k fn, redrive
+  driver or twin at the first m2 (3 / 0 / 1,407 before and after — no wheel
+  arm held a resume); the tail-transparency landing added fns and twins of
+  its own.
+  **The kills, counted.** (1) "refuse `NonTailOnce` until a tier exists"
+  (the refuter's own build plan) — the tier existed: the MultiShot record
+  used once; the refusal was the lowered form. (2) "a lambda-wrapped resume
+  is always held" — true only when the caller is not tail-transparent; the
+  commit fixture's trap was the measurement. (3) "charge Alloc at the
+  perform site" — order-dependent; the op's row at pre-registration is the
+  one home. (4) `mn-backtrack-full` "refusing with twelve claims" — my own
+  invocation without its runtime libs; the battery links them. (5) The
+  tail-transparency proof's first form walked every parameter of every
+  declaration through a free-variable collection: the march measured the
+  self-compile peak at 1,135,720 KB (min of three) against the 1,042,000 KB
+  ceiling and REFUSED the repin — ~100 MB of transient lists for a fact
+  almost no declaration has. The tail spine's callee names are read first
+  (O(depth), no allocation) and the collection runs only for parameters
+  that appear there: 1,037,324 KB, four MB over the prior pin. A cost with
+  no law behind it is a defect, not a ceiling to raise.
+  **Named, not built:** `Hβ.lower.classifier-rerun-at-lower` (lower runs
+  `classify_fixpoint` a second time); the off-spine floor a held-resume
+  op's `let`-bound perform now reaches is the MultiShot path's own limit
+  (`k2_floor_wrap`, cited in the residue). Records: SYNTAX §Resume
+  discipline; PLAN §7; RESIDUE (both closures, the classifier peer, and
+  `Hβ.lower.ad-is-a-demanded-projection` with the refuter's fifteen kills).
+  m3 leg 10.21s wall · 1008MB peak RSS (1032440 KB); 436,349 WAT lines; census 0.
+  The landing pinned twice: ae288fea1d0a029c on the source as edited, then this
+  pin on the same source after the pre-commit fmt rung canonicalized two files
+  (a tuple-destructuring `let` rendered as its one-arm match, three long lines
+  wrapped) — a formatting change moves emitted symbol names, so the committed
+  source reproduces only the canonical pin. The fmt fixpoint is a gate, and it
+  fired.
 - 2026-09-27 · pin 83428bcc2900c881 (CLEAN m2 == m3) · THE ARM-WORLD RULE, PER INSTALL.
   PROGRAM Track A's A5 (LENS §2.4): resuming inside an arm of h continues the
   remainder under h, so the arm's row carries the remainder's requirement

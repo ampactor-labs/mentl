@@ -25,6 +25,6 @@ handler twice {
   }
 }
 
-fn body() with Choice = pick() * pick()
+fn body() = pick() * pick()
 
 fn main() = { body() } ~> twice

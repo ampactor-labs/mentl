@@ -14,7 +14,7 @@ effect Choice {
   pick() -> Int
 }
 
-fn drive() with Choice = {
+fn drive() = {
   let a = resume(1)
   let b = resume(2)
   a + b
@@ -24,6 +24,6 @@ handler twice {
   pick() => drive()
 }
 
-fn body() with Choice = pick() + 3
+fn body() = pick() + 3
 
 fn main() = { body() } ~> twice

@@ -30,6 +30,6 @@ handler scaler(f) {
   emitt(n) => resume(n * f)
 }
 
-fn stage() with Pick + Emitt = pick() + emitt(3)
+fn stage() = pick() + emitt(3)
 
 fn main() = ({ stage() } ~> scaler(2)) ~> chooser

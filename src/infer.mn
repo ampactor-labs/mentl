@@ -1054,6 +1054,17 @@ fn pre_register_handler_sig(hname, config, state, arms) = {
     Declared(hname),
     HandlerKind(r_handle, config_tparams, state, arms)
   )
+  // The op→handler edges — each arm's discipline JOINED onto its op's
+  // scheme, and the MultiShot cost onto the op's row — are drawn HERE,
+  // before any body is judged: an arm's grade is parse structure plus the
+  // classifier's summaries, both in hand before pre-registration, so a
+  // perform judged ahead of its handler in source order reads the same op
+  // the one judged after it does. Until 2026-09-27 the edges were drawn
+  // only at the walk's registration, so an op's discipline and cost were
+  // facts of source ORDER. register_handler still draws them for a handler
+  // declared inside a body, which this walk never reaches; the join is
+  // idempotent.
+  draw_op_edges(arms, hname)
 }
 
 fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
@@ -1164,18 +1175,20 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
 // kept the wheel above the warm-start line.
 fn infer_program_once(stmts, parse_end) = {
   register_primitives()
+  // The summaries classify ONCE, here, BEFORE pre-registration — the grades
+  // read arm STRUCTURE, which no pass changes, and the value is name-keyed
+  // (parse-independent). Pre-registration draws each handler's op edges
+  // from these grades, so every op's discipline — and the MultiShot cost on
+  // its row — is settled before any body is judged.
+  match classify_fixpoint(stmts) {
+    (summ, tails) => set_summaries(summ, tails),
+  }
   pre_register_decls(stmts)
   // The completion prune's boundary: everything below this frontier is a
   // prereg cell (a decl's live accumulator — kept as a shared link);
   // everything minted above it during the walk is judgment scratch (a
   // still-free one drops as pure at its decl's finalize).
   set_mint_ceiling(graph_next())
-  // The summaries classify ONCE, here — the grades read arm STRUCTURE,
-  // which no pass changes, and the value is name-keyed (parse-
-  // independent), so the final REUSES this value instead of re-walking
-  // the whole tree (Carried-Truth at the pass boundary).
-  let summ = classify_fixpoint(stmts)
-  set_summaries(summ)
   // The DAG is PARSE truth, read before any judgment: free names +
   // decl names give the Tarjan BINDING GROUPS, so the trial itself
   // walks callee-first with each cycle judged as one unit under the
@@ -8657,9 +8670,9 @@ fn draw_op_edges(arms, hname) = if len(arms) == 0 {
 } else {
   let arm = last(arms)
   let op_name = handler_arm_op_name(arm)
-  // The arm's resume cardinality, computed from the body infer just typed
-  // (resume_grade — the Usage fold), JOINED onto the op's scheme. This is
-  // the write: cardinality is inference's, carried on the op's type, read
+  // The arm's resume cardinality, read off the arm's parse structure
+  // (resume_grade — the ResumeUse fold), JOINED onto the op's scheme. This
+  // is the write: cardinality is inference's, carried on the op's type, read
   // live by lower — no second hand-walk at lower. The join is monotone
   // toward MultiShot, so a re-drawn arm only ever raises disc.
   let grade = resume_grade(handler_arm_body(arm))
@@ -8698,7 +8711,12 @@ fn draw_op_edges(arms, hname) = if len(arms) == 0 {
           } else {
             (cur_default, true)
           } {
-            (nd, na) => env_extend(op_name, scheme, reason, EffectOpScheme(ename, nd, na, disc)),
+            (nd, na) => env_extend(
+              op_name,
+              scheme_with_disc_cost(scheme, disc),
+              reason,
+              EffectOpScheme(ename, nd, na, disc)
+            ),
           }
         },
         _ => (),
@@ -8707,6 +8725,30 @@ fn draw_op_edges(arms, hname) = if len(arms) == 0 {
     None => (),
   }
   draw_op_edges(drop_last(arms), hname)
+}
+
+// A MultiShot op's row carries the remainder record. The perform site
+// reifies the continuation as a heap record (LMakeContinuation, through the
+// one allocator), so performing the op IS an allocation, and the row says
+// so — `!Alloc` over a two-resume op refuses
+// (tests/micros/mn-multishot-perform-alloc.mn, which compiled clean while
+// the row read Pure: a false absence proof at a shape the crown never
+// wrote). The row is the one home every reader already reads — the call
+// site, the address surface, the root gate — so no site charges it twice;
+// the union is idempotent, so a re-drawn arm never doubles it.
+fn scheme_with_disc_cost(scheme, disc) = match disc {
+  MultiShot => match scheme {
+    Frozen(q, ty) => Frozen(q, ty_with_row_added(ty, construction_row())),
+    Live(h) => Live(h),
+  },
+  OneShot => scheme,
+  Either => scheme,
+  Abandon => scheme,
+}
+
+fn ty_with_row_added(ty, extra) = match ty {
+  TFun(ps, ret, row) => TFun(ps, ret, union_row(row, extra)),
+  other => other,
 }
 
 // Walk each state field's init ONCE per decl; the init's inferred
@@ -8775,22 +8817,24 @@ fn bind_handler_state_names(state_binds, hname, span: ValidSpan) = each(
 // an arm's grade sees resumes in called fns and choose/enumerate_inhabitants
 // flip MultiShot on machinery that can carry them.
 effect ResumeSummaries {
-  summary_of(String) -> Usage
-  set_summaries([(String, Usage)])
+  summary_of(String) -> ResumeUse
+  tail_params_of(String) -> [Int]
+  set_summaries([(String, ResumeUse)], [(String, [Int])])
 }
 
 // The standing ctx — every judgment pass installs it; the fixpoint's result lives
 // here for every later resume_grade call (draw_op_edges at each handler).
-handler resume_summaries_ctx with entries = [] {
+handler resume_summaries_ctx with entries = [], tails = [] {
   summary_of(name) => resume(usage_summary_lookup(entries, name, 0)),
-  set_summaries(es) => resume() with entries = es,
+  tail_params_of(name) => resume(tail_params_lookup(tails, name, 0)),
+  set_summaries(es, ts) => resume() with entries = es, tails = ts,
 }
 
 // Linear summary lookup — kept for the COLD readers (resume_summaries_ctx, read
 // once per handler arm by draw_op_edges; lower.mn:1012's per-fn grade read). The
 // HOT per-round fixpoint path uses the O(1) summary_index below (summaries_frozen).
 fn usage_summary_lookup(entries, name: String, i) = if i >= len(entries) {
-  UZero
+  RNone
 } else {
   match list_index(entries, i) {
     (n, u) => if n == name { u } else { usage_summary_lookup(entries, name, i + 1) },
@@ -8808,22 +8852,32 @@ fn usage_summary_lookup(entries, name: String, i) = if i >= len(entries) {
 // a miss is UZero (the identity grade), unwrapped from smap's Option. Reverse
 // insertion keeps the first-match grade byte-identical to the old linear scan
 // when a nested fn shadows a top-level name.
-handler summaries_frozen(idx) {
+handler summaries_frozen(idx, tidx) {
   summary_of(name) => resume(match smap_get(idx, name) {
     Some(g) => g,
-    None => UZero,
+    None => RNone,
+  }),
+  tail_params_of(name) => resume(match smap_get(tidx, name) {
+    Some(t) => t,
+    None => [],
   }),
 }
 
+// Answers (summaries, tails): the per-fn resume grade at the fixpoint, and
+// the per-fn tail-transparent parameter indices (a parse fact, computed
+// once at collection, read by every round through the same frozen ctx).
 fn classify_fixpoint(stmts) = {
   // Flatten decls ONCE — collect_fn_decls builds a cons-list, so the classifier's
   // list_index(decls, i) would be O(N²) per round (§5.O: read a flat array O(1),
   // never re-walk a spine). Both decls and the entries are flat hereafter.
   let decls = list_to_flat(collect_fn_decls_list(stmts, []))
-  classify_rounds(decls, list_to_flat(map({ (n, _) => (n, UZero) }, decls)))
+  let tails = list_to_flat(map({ (n, _, t) => (n, t) }, decls))
+  let summaries =
+    classify_rounds(decls, smap_build(tails), list_to_flat(map({ (n, _, _) => (n, RNone) }, decls)))
+  (summaries, tails)
 }
 
-fn classify_rounds(decls, entries) = {
+fn classify_rounds(decls, tidx, entries) = {
   // A body-level RECURSION under the install, never a map-lambda: a perform
   // inside a lambda under an install resolves Tier-1 to the enclosing
   // frame's __hstate local — out of scope in the lambda's emitted body (the
@@ -8832,16 +8886,108 @@ fn classify_rounds(decls, entries) = {
   let idx = smap_build(entries)
   let next = list_to_flat({
     classify_grade_all(decls, 0)
-  } ~> summaries_frozen(idx))
-  if usage_entries_eq(entries, next, 0) { next } else { classify_rounds(decls, next) }
+  } ~> summaries_frozen(idx, tidx))
+  if usage_entries_eq(entries, next, 0) { next } else { classify_rounds(decls, tidx, next) }
 }
 
 fn classify_grade_all(decls, i) = if i >= len(decls) {
   []
 } else {
   match list_index(decls, i) {
-    (n, b) => // drift-audit: ignore — prepend-cons recursion, O(N) total
+    (n, b, _) => // drift-audit: ignore — prepend-cons recursion, O(N) total
     [(n, resume_grade(b))] ++ classify_grade_all(decls, i + 1),
+  }
+}
+
+// ─── Tail-transparent parameters — a proof, never an accident ─────────
+// `fn call_thunk(f) = f()` calls its parameter ONLY at its own result
+// position, so a lambda handed to it runs at the CALL's result: a resume
+// inside that lambda is still the arm's tail, and the stack return is
+// exact. `fn twice(f) = f() + f()`, `fn wrap(f) = run(f)` and
+// `fn keep(f) = () => f()` are not — a resume handed to them is HELD, and
+// the arm's grade says so. Before 2026-09-27 a lambda-wrapped resume was
+// graded as if the lambda's caller were transparent, which was true of
+// the thunk caller in tests/micros/mn-oneshot-lambda-commit.mn by accident
+// and false of the one in tests/micros/mn-held-resume-in-thunk.mn, which
+// answered 22 where the deep-handler contract says 21. Read off the
+// callee's parse structure at collection: every mention of the parameter
+// in the body must be a callee at a tail position (a block's final, both
+// branches, every arm); a mention anywhere else — as an argument, in a
+// condition, inside a returned closure — disqualifies it. The indices are
+// what `resume_grade` reads through `tail_params_of`, positionally against
+// the call's arguments.
+// The cost is on the board: the first form walked every parameter of every
+// declaration through a free-variable collection and raised the wheel's
+// self-compile peak by ~100MB of transient lists (the march refused the
+// repin). Almost no declaration calls a parameter at its tail, so the tail
+// spine is read FIRST — an O(depth) walk with no allocation — and the
+// collection runs only for the parameters that appear there.
+fn tail_transparent_params(params, body) = {
+  let callees = tail_callee_names(body, [])
+  if len(callees) == 0 { [] } else { tail_transparent_loop(params, body, callees, 0, []) }
+}
+
+fn tail_transparent_loop(params, body, callees, i, acc) = if i >= len(params) {
+  acc
+} else {
+  let pname = param_name(list_index(params, i))
+  let acc2 =
+    if string_in_list(callees, pname) && tail_transparent(body, pname) { push(acc, i) } else { acc }
+  tail_transparent_loop(params, body, callees, i + 1, acc2)
+}
+
+// The names in callee position at the body's tail positions — the block's
+// final, both branches, every arm — and nothing else.
+fn tail_callee_names(node, acc) = match node {
+  N(b, _, _) => match b {
+    NExpr(BlockExpr(_, final)) => tail_callee_names(final, acc),
+    NExpr(IfExpr(_, t, e)) => tail_callee_names(e, tail_callee_names(t, acc)),
+    NExpr(MatchExpr(_, arms)) => tail_callee_names_arms(arms, acc),
+    NExpr(CallExpr(f, _)) => match f {
+      N(fb, _, _) => match fb {
+        NExpr(VarRef(n)) => push(acc, n),
+        _ => acc,
+      },
+    },
+    _ => acc,
+  },
+}
+
+fn tail_callee_names_arms(arms, acc) = if len(arms) == 0 {
+  acc
+} else {
+  match last(arms) {
+    (_, body) => tail_callee_names_arms(drop_last(arms), tail_callee_names(body, acc)),
+  }
+}
+
+// Every mention of `p` in `node` is a callee at a tail position.
+fn tail_transparent(node, p: String) = match node {
+  N(b, _, _) => match b {
+    NExpr(BlockExpr(stmts, final)) => match free_vars_stmts(stmts, [], []) {
+      (frees, _) => !string_in_list(frees, p) && tail_transparent(final, p),
+    },
+    NExpr(IfExpr(c, t, e)) => !string_in_list(collect_free_vars(c, []), p) && tail_transparent(t, p) && tail_transparent(e, p),
+    NExpr(MatchExpr(scrut, arms)) => !string_in_list(collect_free_vars(scrut, []), p) && all({ (_, body) => tail_transparent(body, p) }, arms),
+    NExpr(CallExpr(f, args)) => match f {
+      N(fb, _, _) => match fb {
+        NExpr(VarRef(n)) => if n == p {
+          !any({ a => string_in_list(collect_free_vars(a, []), p) }, args)
+        } else {
+          !string_in_list(collect_free_vars(node, []), p)
+        },
+        _ => !string_in_list(collect_free_vars(node, []), p),
+      },
+    },
+    _ => !string_in_list(collect_free_vars(node, []), p),
+  },
+}
+
+fn tail_params_lookup(entries, name: String, i) = if i >= len(entries) {
+  []
+} else {
+  match list_index(entries, i) {
+    (n, t) => if n == name { t } else { tail_params_lookup(entries, name, i + 1) },
   }
 }
 
@@ -8852,22 +8998,26 @@ fn usage_entries_eq(a, b, i) = if i >= len(a) {
 } else {
   match list_index(a, i) {
     (_, ua) => match list_index(b, i) {
-      (_, ub) => if usage_eq(ua, ub) { usage_entries_eq(a, b, i + 1) } else { false },
+      (_, ub) => if resume_use_eq(ua, ub) { usage_entries_eq(a, b, i + 1) } else { false },
     },
   }
 }
 
-fn usage_eq(a, b) = match a {
-  UZero => match b {
-    UZero => true,
+fn resume_use_eq(a, b) = match a {
+  RNone => match b {
+    RNone => true,
     _ => false,
   },
-  UOne => match b {
-    UOne => true,
+  RTail => match b {
+    RTail => true,
     _ => false,
   },
-  UMany => match b {
-    UMany => true,
+  RDeep => match b {
+    RDeep => true,
+    _ => false,
+  },
+  RMany => match b {
+    RMany => true,
     _ => false,
   },
 }
@@ -8883,8 +9033,8 @@ fn collect_fn_decls_list(nodes, acc) = if len(nodes) == 0 {
 
 fn collect_fn_decls(node, acc) = match node {
   N(body, _, _) => match body {
-    NStmt(FnStmt(name, _, _, _, b)) => // drift-audit: ignore — decl-count-bounded cons, not a hot loop
-    collect_fn_decls(b, [(name, b)] ++ acc),
+    NStmt(FnStmt(name, params, _, _, b)) => // drift-audit: ignore — decl-count-bounded cons, not a hot loop
+    collect_fn_decls(b, [(name, b, tail_transparent_params(params, b))] ++ acc),
     NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => collect_fn_decls_arms(arms, acc),
     NStmt(LetStmt(_, v, _)) => collect_fn_decls(v, acc),
     NStmt(ExprStmt(e)) => collect_fn_decls(e, acc),
@@ -8971,9 +9121,16 @@ fn collect_fn_decls_updates(updates, acc) = if len(updates) == 0 {
 // (`abort -> Option`) must abandon, delivering the arm value to the
 // install through the driver → MultiShot.
 fn arm_disc_of(grade, ret) = match grade {
-  UMany => MultiShot,
-  UOne => OneShot,
-  UZero => match ret {
+  RMany => MultiShot,
+  RDeep => // ONE use, HELD: the arm computes after the remainder returns, so the
+  // remainder is reified as the continuation record and called once — the
+  // deep form on the record path (the record is the representation; how
+  // often the arm calls it is the arm's own business). Graded UOne and
+  // lowered as the stack return until 2026-09-27, which deleted the code
+  // after the resume (tests/micros/mn-oneshot-nontail-resume.mn).
+  MultiShot,
+  RTail => OneShot,
+  RNone => match ret {
     TVar(_) => // bottom: `fail -> a` — the free var unifies with any consumer; the arm terminates
     OneShot,
     TUnit => // `abort -> !` (parsed TUnit) / unit — no value to abandon; Hβ.lower.uzero-unit-abandon names the rare genuine-unit case
@@ -9008,99 +9165,148 @@ fn disc_join(a, b) = match a {
   Either => b,
 }
 
+// The grade is a `ResumeUse` (types.mn): the multiplicity of the arm's
+// resumes AND the position of the one use. A node hands its own grade up
+// as "at my result"; every construct that CONSUMES a child's value —
+// an operand, an argument, an element, a field, a let RHS, a lambda body —
+// wraps the child in `resume_interior`, and every sequence runs
+// `resume_seq` in source order, so a use with code after it is held.
 fn resume_grade(node) = match node {
   N(body, _, _) => match body {
-    NExpr(ResumeExpr(_, _)) => UOne,
-    NExpr(BlockExpr(stmts, final)) => usage_seq(grade_nodes(stmts), resume_grade(final)),
-    NExpr(IfExpr(c, t, e)) => usage_seq(resume_grade(c), usage_join(resume_grade(t), resume_grade(e))),
-    NExpr(MatchExpr(scrut, arms)) => usage_seq(resume_grade(scrut), grade_join_arms(arms)),
+    NExpr(ResumeExpr(_, _)) => RTail,
+    NExpr(BlockExpr(stmts, final)) => resume_seq(grade_nodes(stmts), resume_grade(final)),
+    NExpr(IfExpr(c, t, e)) => resume_seq(resume_grade(c), resume_join(resume_grade(t), resume_grade(e))),
+    NExpr(MatchExpr(scrut, arms)) => resume_seq(resume_grade(scrut), grade_join_arms(arms)),
     NExpr(CallExpr(f, args)) => // THE CUT (bank Ruling 6): call-substitution — a call to a fn with a
     // resume summary contributes that summary (the classifier fixpoint
-    // wrote it; summary_of answers UZero for unknown names, params, and
+    // wrote it; summary_of answers RNone for unknown names, params, and
     // ops). This is what makes backtrack's try_each recursion saturate
-    // to UMany by round 2 and lets an arm's grade see resumes in CALLED
-    // fns (yield_inhabitants' shape) — the classifier gap closed.
+    // to RMany by round 2 and lets an arm's grade see resumes in CALLED
+    // fns (yield_inhabitants' shape) — the classifier gap closed. The
+    // callee's uses sit at the CALL's result: a tail call into a helper
+    // that resumes at its own tail is still the stack return, while a
+    // resume inside an argument is held by the call that follows it.
     match f {
-      N(fb, _, _) => {
-        let callee_g = match fb {
-          NExpr(VarRef(cn)) => summary_of(cn),
-          _ => UZero,
-        }
-        usage_seq(callee_g, usage_seq(resume_grade(f), grade_nodes(args)))
+      N(fb, _, _) => match match fb {
+        NExpr(VarRef(cn)) => (summary_of(cn), tail_params_of(cn)),
+        _ => (RNone, []),
+      } {
+        (callee_g, tails) => // Arguments in order, the callee's own uses, then the arguments the
+        // callee calls at its tail — those run at the CALL's result
+        // (tail_transparent_params), so a lambda there keeps its body's
+        // grade and a reference there contributes its summary.
+        resume_seq(
+          resume_seq(resume_seq(resume_grade(f), grade_args_interior(args, tails, 0, RNone)), callee_g),
+          grade_args_tail(args, tails, 0, RNone)
+        ),
       },
     },
-    NExpr(BinOpExpr(_, l, r)) => usage_seq(resume_grade(l), resume_grade(r)),
-    NExpr(UnaryOpExpr(_, x)) => resume_grade(x),
-    NExpr(LambdaExpr(_, lbody)) => resume_grade(lbody),
-    NExpr(MakeListExpr(elems)) => grade_nodes(elems),
-    NExpr(MakeTupleExpr(elems)) => grade_nodes(elems),
-    NExpr(MakeRecordExpr(fields)) => grade_fields(fields),
-    NExpr(RecordUpdateExpr(base, fields)) => usage_seq(resume_grade(base), grade_fields(fields)),
-    NExpr(NamedRecordExpr(_, fields)) => grade_fields(fields),
-    NExpr(FieldExpr(b, _)) => resume_grade(b),
-    NExpr(IndexExpr(receiver, index)) => usage_seq(resume_grade(receiver), resume_grade(index)),
-    NExpr(PipeExpr(_, l, r)) => usage_seq(resume_grade(l), resume_grade(r)),
-    NExpr(FanoutExpr(branches)) => grade_nodes(branches),
-    NExpr(RestExpr(_)) => UZero,
-    NExpr(MakeStringExpr(frags)) => grade_nodes(frags),
-    NExpr(ShowExpr(inner)) => resume_grade(inner),
+    NExpr(BinOpExpr(_, l, r)) => resume_interior(resume_seq(resume_grade(l), resume_grade(r))),
+    NExpr(UnaryOpExpr(_, x)) => resume_interior(resume_grade(x)),
+    NExpr(LambdaExpr(_, lbody)) => // A resume inside a lambda runs when the lambda is called, from wherever
+    // that is — never provably at the arm's result, so the arm holds it.
+    resume_interior(resume_grade(lbody)),
+    NExpr(MakeListExpr(elems)) => resume_interior(grade_nodes(elems)),
+    NExpr(MakeTupleExpr(elems)) => resume_interior(grade_nodes(elems)),
+    NExpr(MakeRecordExpr(fields)) => resume_interior(grade_fields(fields)),
+    NExpr(RecordUpdateExpr(base, fields)) => resume_interior(resume_seq(resume_grade(base), grade_fields(fields))),
+    NExpr(NamedRecordExpr(_, fields)) => resume_interior(grade_fields(fields)),
+    NExpr(FieldExpr(b, _)) => resume_interior(resume_grade(b)),
+    NExpr(IndexExpr(receiver, index)) => resume_interior(resume_seq(resume_grade(receiver), resume_grade(index))),
+    NExpr(PipeExpr(_, l, r)) => resume_interior(resume_seq(resume_grade(l), resume_grade(r))),
+    NExpr(FanoutExpr(branches)) => resume_interior(grade_nodes(branches)),
+    NExpr(RestExpr(_)) => RNone,
+    NExpr(MakeStringExpr(frags)) => resume_interior(grade_nodes(frags)),
+    NExpr(ShowExpr(inner)) => resume_interior(resume_grade(inner)),
     NExpr(LabeledArg(_, v)) => resume_grade(v),
-    NStmt(LetStmt(_, v, _)) => resume_grade(v),
+    NStmt(LetStmt(_, v, _)) => resume_interior(resume_grade(v)),
     NStmt(ExprStmt(e)) => resume_grade(e),
     NStmt(FnStmt(_, _, _, _, _)) => // A nested fn DECLARATION is not an execution — its resumes count at
     // its CALL sites via the summary substitution (the pre-cut descend
-    // double-counted a define-once-call-once helper into UMany).
-    UZero,
+    // double-counted a define-once-call-once helper into RMany).
+    RNone,
     NStmt(TypeDefStmt(_, _)) => // Decls nested in an arm carry no resume of THIS arm's continuation; leaves
-    // carry no children. Both are the grade identity UZero (explicit, never a
+    // carry no children. Both are the grade identity RNone (explicit, never a
     // wildcard fabricating a grade for an un-enumerated child-bearing variant).
-    UZero,
-    NStmt(EffectDeclStmt(_, _, _)) => UZero,
-    NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => UZero,
-    NStmt(ImportStmt(_)) => UZero,
-    NStmt(RefineStmt(_, _, _)) => UZero,
-    NStmt(AliasStmt(_, _)) => UZero,
-    NStmt(RowAliasStmt(_, _)) => UZero,
-    NExpr(LitInt(_)) => UZero,
-    NExpr(LitFloat(_)) => UZero,
-    NExpr(LitString(_)) => UZero,
-    NExpr(LitBool(_)) => UZero,
-    NExpr(LitUnit) => UZero,
-    NExpr(VarRef(_)) => UZero,
-    NExpr(ExprPlaceholder) => UZero,
-    NHole(_) => UZero,
-    NPat(_) => UZero,
-    NModule(_) => UZero,
-    NTypeAnn(_) => UZero,
+    RNone,
+    NStmt(EffectDeclStmt(_, _, _)) => RNone,
+    NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => RNone,
+    NStmt(ImportStmt(_)) => RNone,
+    NStmt(RefineStmt(_, _, _)) => RNone,
+    NStmt(AliasStmt(_, _)) => RNone,
+    NStmt(RowAliasStmt(_, _)) => RNone,
+    NExpr(LitInt(_)) => RNone,
+    NExpr(LitFloat(_)) => RNone,
+    NExpr(LitString(_)) => RNone,
+    NExpr(LitBool(_)) => RNone,
+    NExpr(LitUnit) => RNone,
+    NExpr(VarRef(_)) => RNone,
+    NExpr(ExprPlaceholder) => RNone,
+    NHole(_) => RNone,
+    NPat(_) => RNone,
+    NModule(_) => RNone,
+    NTypeAnn(_) => RNone,
   },
 }
 
 // Sequential composition over a node list (block stmts, call args, list
-// elems, string frags): all execute on one path, so ⊗-combine. last/drop_last
-// are the O(1) snoc-end reads, so the fold is O(N); usage_seq is order-
-// insensitive (UMany absorbs, UZero is identity), so last-first is fine.
+// elems, string frags): all execute on one path, in SOURCE ORDER. The
+// order is load-bearing — `resume_seq` is not symmetric, because a use
+// followed by more code is a held use — so the fold seqs everything before
+// `last` first and puts `last` at the sequence's result. last/drop_last are
+// the O(1) snoc-end reads, so the fold is O(N).
 fn grade_nodes(nodes) = if len(nodes) == 0 {
-  UZero
+  RNone
 } else {
-  usage_seq(resume_grade(last(nodes)), grade_nodes(drop_last(nodes)))
+  resume_seq(grade_nodes(drop_last(nodes)), resume_grade(last(nodes)))
+}
+
+// A call's arguments other than the callee's tail-transparent ones, in
+// source order, each consumed by the call that follows it.
+fn grade_args_interior(args, tails, i, acc) = if i >= len(args) {
+  acc
+} else {
+  let g = if int_in(tails, i, 0) { RNone } else { resume_grade(list_index(args, i)) }
+  grade_args_interior(args, tails, i + 1, resume_seq(acc, g))
+}
+
+// The arguments the callee calls only at its tail: a lambda's BODY grade
+// (its resume is at the call's result, not inside a value the arm holds),
+// a reference's summary. Joined — the callee's tail runs one of them per
+// path.
+fn grade_args_tail(args, tails, i, acc) = if i >= len(args) {
+  acc
+} else {
+  let g = if int_in(tails, i, 0) {
+    match list_index(args, i) {
+      N(ab, _, _) => match ab {
+        NExpr(LambdaExpr(_, lbody)) => resume_grade(lbody),
+        NExpr(VarRef(an)) => summary_of(an),
+        _ => resume_grade(list_index(args, i)),
+      },
+    }
+  } else {
+    RNone
+  }
+  grade_args_tail(args, tails, i + 1, resume_join(acc, g))
 }
 
 // Alternation over match arms ((pat, body) tuples): exactly one arm runs, so
 // ⊔-join their grades — two resumes in sibling arms is still one per path.
 fn grade_join_arms(arms) = if len(arms) == 0 {
-  UZero
+  RNone
 } else {
   match last(arms) {
-    (_, b) => usage_join(resume_grade(b), grade_join_arms(drop_last(arms))),
+    (_, b) => resume_join(resume_grade(b), grade_join_arms(drop_last(arms))),
   }
 }
 
-// Record fields ((name, value) tuples) all evaluate on one path — ⊗ the values.
+// Record fields ((name, value) tuples) all evaluate on one path, in order.
 fn grade_fields(fields) = if len(fields) == 0 {
-  UZero
+  RNone
 } else {
   match last(fields) {
-    (_, v) => usage_seq(resume_grade(v), grade_fields(drop_last(fields))),
+    (_, v) => resume_seq(grade_fields(drop_last(fields)), resume_grade(v)),
   }
 }
 

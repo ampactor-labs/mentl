@@ -1090,6 +1090,33 @@ and this is the STATE.
   `with Abort` on a try/catch HOF refused on arming and lost their caps —
   LENS §2.2's predicted class. On the wheel a positive row is a refused
   inventory; in user code it is a decision the medium enforces.
+- **A HELD SINGLE RESUME IS REIFIED, AND A MULTI-SHOT PERFORM IS PRICED —
+  CLOSED 2026-09-27 (L0 of the Pulse sprint).** Two foundation defects found
+  by reading the emit against the ultimate instead of against itself, the
+  day Morgan corrected "byte-identical to today's emit" from a ceiling back
+  to a regression oracle. (1) Code after `resume(v)` in an arm was DEAD:
+  every resume graded `UOne`, `UOne` lowered as the stack `return`, so
+  `handler dbl { ask() => { let r = resume(1); r * 2 } }` over `ask() + 1`
+  answered 2 where the deep-handler contract says 4 — one-shot conflated
+  with tail-resumptive. The grade is `ResumeUse` now (multiplicity × the
+  position of the one use — ownership's return-transfer distinction read on
+  the continuation), and a HELD single use takes the reified path, called
+  once (`Hβ.lower.oneshot-nontail-resume-drops-post-code`; the record's
+  O(1) reclaim is `Hβ.lower.held-resume-record-is-not-reclaimed`). (2) A
+  multi-shot perform allocates its remainder record and no row said so:
+  `fn quiet() with !Alloc = flip()` under a two-resume handler compiled
+  clean — property (2) false at a shape the crown never wrote. The op's
+  published row carries `Memory + Alloc` at the discipline join, and the
+  join is drawn at PRE-REGISTRATION from the classifier's summaries, so an
+  op's discipline and cost stopped being facts of source order
+  (`Hβ.effects.multishot-perform-allocates-unrowed`). The wheel's emit
+  moved in no k fn, driver or twin; twelve fixtures lost the `with Choice`
+  caps that had been inventories all along. A lambda-wrapped resume is held
+  unless its callee is PROVEN tail-transparent in that parameter
+  (`tail_transparent_params`, gated on the tail spine's callee names so the
+  proof costs nothing where no declaration calls a parameter at its tail —
+  the first form's ~100 MB of per-parameter free-variable lists refused the
+  repin at the cost ratchet, the ratchet doing its job).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -2433,7 +2460,12 @@ first-class — DONE statement (2) whole.
   lesson honored), `Hβ.driver.per-module-env-overlay`'s image face, and
   the multishot polish: `Hβ.lower.either-install-negotiation`,
   `.multishot-uzero-abort`, `Hβ.infer.tail-recursion-resume-cardinality`,
-  `Hβ.ml.autodiff-as-multishot` as the demonstration workload. Felt faces
+  `Hβ.lower.held-resume-record-is-not-reclaimed` (the held single
+  resume's record, O(1) once frames live in the image). The demonstration
+  workload is Pulse's learned effect, and it is a PROJECTION, not a
+  resumption: `Hβ.lower.ad-is-a-demanded-projection` retracted the
+  autodiff-as-multishot peer on 2026-09-27 (reverse mode needs no
+  multi-shot; it needs the install to become the emit). Felt faces
   land WITH it: `Hβ.felt.time-travel-debug-forked-cursor` and
   `.hole-is-dormant-continuation` (Hazel fill-and-resume = the record).
 - **9.2 · The parallel cursors.** §5.O layer 4:

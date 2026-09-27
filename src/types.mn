@@ -465,16 +465,19 @@ type ResumeDiscipline
 // How many times a value is used, as a join-semilattice. THE shared
 // use-count lattice of the medium: OWNERSHIP reads it on a param's
 // VarRefs (own.mn classify_usage: 0/1/2+ → Unmarked/Own/Ref — arm 5)
-// and RESUME CARDINALITY reads it on an arm's ResumeExprs (0/1/≥2 →
-// OneShot/OneShot/MultiShot — the TIME axis). One lattice, two
-// projections: the continuation is just a value, and its multiplicity
-// IS its ownership grade — `own`/consumed-once ↔ OneShot, `ref`/shared
-// ↔ MultiShot. No other effect-handler language shares these (Koka /
-// Effekt compute resumption multiplicity as a bespoke analysis); here
-// they are one read of a value's use-count. `usage_seq` (⊗) composes
-// sequentially — two uses on one path is UMany; `usage_join` (⊔)
-// alternates — disjoint branches join, not add (only one branch runs),
-// so a branch-and-resume-once arm keeps the OneShot fast path.
+// and RESUME CARDINALITY reads it through `ResumeUse` below — this
+// multiplicity extended by the POSITION of the one use (at the arm's
+// result, or interior), the same extension ownership's return-transfer
+// makes; projected back here it reads 0/1/≥2 → OneShot/OneShot-or-
+// reified/MultiShot (the TIME axis). One lattice, two projections: the
+// continuation is just a value, and its multiplicity IS its ownership
+// grade — `own`/consumed-once ↔ OneShot, `ref`/shared ↔ MultiShot. No
+// other effect-handler language shares these (Koka / Effekt compute
+// resumption multiplicity as a bespoke analysis); here they are one read
+// of a value's use-count. `usage_seq` (⊗) composes sequentially — two
+// uses on one path is UMany; `usage_join` (⊔) alternates — disjoint
+// branches join, not add (only one branch runs), so a
+// branch-and-resume-once arm keeps the OneShot fast path.
 // (Ownership's own.mn grade reads the SAME lattice through usage_of's
 // mode-paired walk — Hβ.infer.usage-grade-unifies-cardinality-ownership
 // realized at §11 4.2: one lattice, two walks, this ADT their one home.)
@@ -500,6 +503,74 @@ fn usage_join(a, b) = match a {
     UMany => UMany,
     _ => UOne,
   },
+}
+
+// ─── ResumeUse — the resume classifier's grade: multiplicity × position ──
+// A continuation is a value and `resume(v)` is its use. The count alone
+// decided the representation until 2026-09-27, when the measurement was
+// `handler dbl { ask() => { let r = resume(1); r * 2 } }` over `ask() + 1`
+// answering 2 where the deep-handler contract says 4: the single use bound
+// by `let` lowered as the stack return, so the code after it was dead and
+// the install answered the remainder's own value
+// (tests/micros/mn-oneshot-nontail-resume.mn). WHERE the one use sits
+// decides whether the arm ever HOLDS the continuation: at the RESULT
+// position of the arm (through if/match/block tails and a tail call into a
+// resuming helper) the arm hands it straight back — the stack return; at an
+// INTERIOR position (a let RHS, an operand, an argument, an element, a
+// lambda body) the arm keeps computing after the remainder returns, so the
+// remainder must exist as a record the arm can call — the reified path,
+// called once. That is ownership's own distinction (a value returned is
+// transferred; a value used inside is consumed), so this is the
+// multiplicity lattice extended by the position mode: RNone/RTail/RDeep/
+// RMany project onto Usage as UZero/UOne/UOne/UMany.
+type ResumeUse = RNone | RTail | RDeep | RMany
+
+// `a` then `b`, with `b` at the result position of the sequence: any use in
+// `a` has code after it, so a tail use in `a` becomes a held one, and two
+// uses on one path are many. Not symmetric — the fold that applies it runs
+// in source order.
+fn resume_seq(a, b) = match a {
+  RNone => b,
+  RMany => RMany,
+  RTail => match b {
+    RNone => RDeep,
+    RTail => RMany,
+    RDeep => RMany,
+    RMany => RMany,
+  },
+  RDeep => match b {
+    RNone => RDeep,
+    RTail => RMany,
+    RDeep => RMany,
+    RMany => RMany,
+  },
+}
+
+// Alternatives — exactly one branch runs, so the grades join, never add.
+fn resume_join(a, b) = match a {
+  RNone => b,
+  RMany => RMany,
+  RTail => match b {
+    RNone => RTail,
+    RTail => RTail,
+    RDeep => RDeep,
+    RMany => RMany,
+  },
+  RDeep => match b {
+    RNone => RDeep,
+    RTail => RDeep,
+    RDeep => RDeep,
+    RMany => RMany,
+  },
+}
+
+// The value is consumed at an interior position — an operand, an argument,
+// an element, a lambda body — so a tail use becomes a held one.
+fn resume_interior(a) = match a {
+  RNone => RNone,
+  RTail => RDeep,
+  RDeep => RDeep,
+  RMany => RMany,
 }
 
 // ─── Binding (spec 04) — what the env holds (rung 3 landing A) ──────

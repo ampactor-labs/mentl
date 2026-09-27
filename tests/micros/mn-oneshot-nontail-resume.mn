@@ -1,0 +1,20 @@
+// expect: 4
+// THE DEEP-HANDLER CONTRACT at one resume: code AFTER `resume(v)` in an arm
+// runs when the remainder RETURNS, and the arm's value is what the install
+// answers. `ask() + 1` resumes with 1 → the remainder answers 2 → the arm
+// doubles it → 4. Measured 2026-09-27 on boot 83428bcc: exit 2 — the single
+// resume graded UOne lowered as the stack return, so `r * 2` was dead and
+// the tee answered the remainder's own value. A single NON-TAIL resume needs
+// the remainder reified (Hβ.lower.oneshot-nontail-resume-drops-post-code).
+effect Ask { ask() -> Int }
+
+handler dbl {
+  ask() => {
+    let r = resume(1)
+    r * 2
+  }
+}
+
+fn body() = ask() + 1
+
+fn main() = { body() } ~> dbl
