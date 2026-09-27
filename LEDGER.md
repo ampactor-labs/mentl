@@ -35,6 +35,58 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-27 · pin 83428bcc2900c881 (CLEAN m2 == m3) · THE ARM-WORLD RULE, PER INSTALL.
+  PROGRAM Track A's A5 (LENS §2.4): resuming inside an arm of h continues the
+  remainder under h, so the arm's row carries the remainder's requirement
+  minus h's absorption — enforced where the remainder is KNOWN, at each
+  install, never joined into the handler's one row.
+  **What the build found first: the handler's `with` row was never there.**
+  `parse_handler_decl` skipped `with !E` and `with E [+ E]` to the arms' `{`
+  as "WAT-invisible" (its own comment naming the confession peer), so
+  SYNTAX's "negation guards on handlers" described a mechanism with no
+  substrate — `handler h with !F { op() => resume(1) }` installed over
+  `op() + fop()` compiled clean on boot 39b00d84 with no diagnostic. The
+  clause rides `HandlerDeclStmt` now (a sixth field; twenty-seven
+  destructures, one coordinated edit), the formatter renders it back at its
+  fixpoint (`handler h with !F {` — byte-stable on a second pass), and
+  `register_handler` enters its frame with the clause and judges it at exit
+  exactly as a fn's (`enforce_handler_clause`: the pure collapse, instance
+  resolution, the declared row, the gate on the arms' row) — then stores the
+  NEGATION half on the residual cell, where the tee reads it.
+  **The rule, as built.** At the tee, `remainder_gates_check` judges the body
+  row's folded value against each gate on the handler's residual cell seen
+  through the handler's absorption (`gate_through_mask` with the handled
+  names as the mask) and pushes it onto the body row's free terminals, so a
+  callback a later caller resolves is judged the same way. The handled names
+  are computed BEFORE the body is judged, because the install mark carries
+  them now: `inf_mark_install_frame(handled)`, and the perform-site boundary's
+  world is `inf_remainder_world` — the union of every frame's live row cell
+  from the site up to the body frame of the nearest enclosing tee absorbing
+  the effect (or the whole stack), read off those marks. The continuation's
+  render already projects it; no resume reads it until band B's first-class
+  `k`.
+  **The kill, before a line was written.** The rule's first form — charge
+  `world(k) − handled(h)` into the arm's row at `resume` — reads the op's
+  continuation type, a JOIN across every perform site in the program; the
+  wheel's `graph_handler` is installed at eleven sites whose remainders carry
+  every effect the wheel performs, so one row joining them would re-add all
+  of it at every `~> graph_handler` and every enclosing negation would refuse.
+  A per-site fact cannot be charged into a per-handler row; the per-install
+  check is the same rule at the altitude where it is exact. The interior
+  field read the frame walk needed floored (`T_FieldOffsetUnprovable` 4 → 5
+  on the first m2) until it went through an annotated projection
+  (`frame_row_handle`), the wheel's own Intent-Boundary idiom.
+  **Crucibles:** `tests/crown/leak-arm-resume-remainder` (RED-first: exit 0,
+  no diagnostic on 39b00d84; refuses `!F + Any vs E + F … declared as h`
+  through m2), `sound-arm-resume-remainder`, `sound-arm-resume-remainder-
+  masked` (F absorbed by an inner install never reaches h's remainder),
+  `sound-arm-negates-own-op` (the absorption empties the check). The wheel
+  authors no handler clause: census zero at birth. `skip_to_lbrace` died
+  with its last caller.
+  Board: crown 100/100 · micros 149/149 · frontier 407/0/2 · verify green
+  (quiet 62/721 — the ratchet lowered to 721 with the dead fn's marker) · m3
+  leg 13.43 s · 1009 MB (1,033,748 KB under the 1,042,000 ceiling; +10 MB
+  for the remainder edges) · IDE gate GREEN on this boot, both legs (295 ms).
 - 2026-09-27 · pin 39b00d84c7ed0d59 (CLEAN m2 == m3) · THE SOLO SWEEP IS ONE JUDGMENT.
   PROGRAM Track F's F0b: `E_MissingImport` refuses at the reference inside the
   ScopeAll judgment; the 63-process per-module sweep is deleted.

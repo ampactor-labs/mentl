@@ -5122,18 +5122,47 @@ never band A's. Five root crucibles, three red on the prior boot; crown
 94/94. What the row cannot see is named at
 `Hβ.effects.arm-world-static-rule`.
 
-`Hβ.effects.arm-world-static-rule` — OPEN, BORN 2026-09-27 as the one
-shape the row-only root gate refuses that runs: `((twice()) ~> h) ~> h`
-where h's `twice` arm performs `op()`. The inner install's arm ask resolves
-to the outer install (legal forwarding, exit 20), and the outer install's
-own `twice` arm can never run — every perform inside the outer extent is
-inside the inner one — but the row re-adds `row(h)` at the outer tee and E
-reaches the root. The static rule that sees it is A5's (LENS §2.4, the
-arm-world rule) and its identity half is A6's; the crucible is the removed
-`sound-root-nested`, to return with that landing. The wheel does not need
-the nesting: dispatch_invocation's row carried no GraphRead once the
-graph_handler's arms stopped asking their own handler, so the nested graph
-installs were never load-bearing for the row.
+`Hβ.effects.arm-world-static-rule` — RULE HALF LANDED 2026-09-27 (A5, pin
+83428bcc2900c881; LEDGER carries it), IDENTITY HALF OPEN for A6. Born the
+same day as the one shape the row-only root gate refuses that runs:
+`((twice()) ~> h) ~> h` where h's `twice` arm performs `op()`. The inner
+install's arm ask resolves to the outer install (legal forwarding, exit
+20), and the outer install's own `twice` arm can never run — every perform
+inside the outer extent is inside the inner one — but the row re-adds
+`row(h)` at the outer tee and E reaches the root. Seeing THAT needs install
+identity (A6, LENS §2.5); the crucible is the removed `sound-root-nested`,
+to return with that landing. The wheel does not need the nesting:
+dispatch_invocation's row carried no GraphRead once the graph_handler's
+arms stopped asking their own handler, so the nested graph installs were
+never load-bearing for the row.
+THE RULE HALF, AS BUILT. LENS §2.4's rule — resuming inside an arm of h
+continues the remainder under h, so the arm's row must carry the remainder's
+requirement minus h's absorption — is enforced PER INSTALL, where the
+remainder is known: `remainder_gates_check` judges the tee body's row minus
+what the handler absorbs against the handler's own declared negation, which
+its registration stores on the residual cell (`enforce_handler_clause`) and
+pushes onto the body row's free terminals. The per-op join the first form
+implied (charge every perform site's remainder into the handler's ONE row
+at `resume`) was refuted before a line was written: the wheel's
+`graph_handler` is installed at eleven sites whose remainders carry every
+effect the wheel performs, and one row joining them would re-add all of it
+at every tee. The boundary's captured world became the rule's value too —
+`inf_remainder_world` unions the frames from the perform site up to the
+nearest enclosing tee that absorbs the effect, read off install marks that
+now carry what each tee absorbs — projected by the continuation's render,
+read by no resume until band B's first-class `k`.
+WHAT THE BUILD FOUND: the handler's `with` row was never there. `parse_
+handler_decl` skipped `with !E` and `with E [+ E]` to the arms' `{` as
+"WAT-invisible" (its own comment named the confession peer
+`Hβ.parser-handler-effect-row-record`), so SYNTAX's "negation guards on
+handlers" described a mechanism with no substrate: `handler h with !F {
+op() => resume(1) }` over `op() + fop()` compiled clean on boot 39b00d84.
+The clause rides `HandlerDeclStmt` now (a sixth field, twenty-seven
+destructures), the formatter renders it back at its fixpoint, and it is
+judged at registration exactly as a fn's clause is. Crucibles:
+`tests/crown/leak-arm-resume-remainder` (seen RED), `sound-arm-resume-
+remainder`, `sound-arm-resume-remainder-masked`, `sound-arm-negates-own-op`;
+the wheel authors no handler clause, so the census is zero at birth.
 
 `Hβ.voice.run-ops-have-no-performer` — OPEN, BORN 2026-09-27. Interact's
 `run_compile`, `run_check`, `run_audit` are performed by nobody (`mentl query

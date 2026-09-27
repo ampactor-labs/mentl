@@ -605,7 +605,7 @@ fn decl_names_of(d) = match d {
     FnStmt(n, _, _, _, _) => [n],
     TypeDefStmt(n, ctors) => [n] ++ map({ (cn, _, _) => cn }, ctors),
     EffectDeclStmt(n, _, ops) => [n] ++ map({ (on, _, _, _) => on }, ops),
-    HandlerDeclStmt(n, _, _, _, _) => [n],
+    HandlerDeclStmt(n, _, _, _, _, _) => [n],
     _ => [],
   },
   _ => [],
@@ -2051,7 +2051,7 @@ fn scan_handler_for_op(op_name, i, n) with !Mutate = if i >= n {
   None
 } else {
   match graph_node_body(i) {
-    NStmt(HandlerDeclStmt(hname, _eff, _cfg, _state, arms)) => if arms_include_op(arms, op_name) { Some(hname) } else { scan_handler_for_op(op_name, i + 1, n) },
+    NStmt(HandlerDeclStmt(hname, _eff, _cfg, _state, arms, _effs)) => if arms_include_op(arms, op_name) { Some(hname) } else { scan_handler_for_op(op_name, i + 1, n) },
     _ => scan_handler_for_op(op_name, i + 1, n),
   }
 }

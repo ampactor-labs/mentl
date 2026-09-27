@@ -564,7 +564,7 @@ fn render_stmt_tokens(s) with !Mutate = match s {
   // same product projection the handler head uses (format∘parse
   // identity over SYNTAX §«Parameterized effect»).
   "effect {name}{render_config_params(params)} \{\n{indent_block(strip_trailing_nl(render_effect_ops(ops, 0)))}\n\}",
-  HandlerDeclStmt(hname, _ename, config, states, arms) => "handler {hname}{render_config_params(config)}{render_state_inits(states, 0)} \{\n{indent_block(strip_trailing_nl(render_handler_arms(arms, 0)))}\n\}",
+  HandlerDeclStmt(hname, _ename, config, states, arms, effs) => "handler {hname}{render_config_params(config)}{render_handler_clause(effs, states)} \{\n{indent_block(strip_trailing_nl(render_handler_arms(arms, 0)))}\n\}",
   RefineStmt(name, ty, pred) => "type {name} = {render_type_tokens(ty)} where {render_predicate_tokens(pred)}",
 }
 
@@ -1206,6 +1206,12 @@ fn render_state_inits(ref states, i) with !Mutate = if i >= len(states) {
   let lead = if i == 0 { " with " } else { ", " }
   "{lead}{one}{render_state_inits(states, i + 1)}"
 }
+
+// A handler's `with` is one slot read by position (SYNTAX §«With-clauses»):
+// its own effect row when it authors one, else its state inits — the
+// parse's inverse over what the node carries.
+fn render_handler_clause(effs, states) with !Mutate =
+  if len(effs) > 0 { " with {render_row_triples(effs, 0)}" } else { render_state_inits(states, 0) }
 
 fn render_handler_arms(ref arms, i) with !Mutate = if i >= len(arms) {
   ""

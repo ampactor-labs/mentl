@@ -798,19 +798,27 @@ and this is the STATE.
   (`Hβ.persist.cross-machine-resume`) is not.
   **The cost of this sentence being wrong was real**: a session reading it
   would have built the memcpy that already existed.
-- **`TCont` effect-WORLD** is INERT on OneShot — tag carried, not enforced,
-  and the tag is not what the design says it is (read 2026-09-25): the world
-  is minted per arm inside `register_handler`'s own frame as
-  `inf_current_world()`, which is the HANDLER's live row cell — never a
-  performer's remainder — and `ResumeExpr` reads only `R` and `S`. There is no
-  first-class `k`; a residual-at-resume rule, if plumbed to the performer's
-  frame, would turn `sound-masking-negation` red (LENS §2.4 carries the static
-  rule that survives: the remainder's frames minus the arm's own absorption).
-  "Inert" means the stack-only path never becomes a rehydratable continuation
-  value, so no changed-world comparison can fire there. The fix is not a special
-  OneShot patch; it is the single continuation/image value model: capture the
-  world at reify, persist/fork it as an image record, and refuse mismatched
-  resume through the same row check every `~>` edge already uses.
+- **`TCont` effect-WORLD** is INERT on OneShot as a VALUE and LIVE as a RULE
+  (A5, 2026-09-27). The perform-site boundary's world is LENS §2.4's static
+  remainder now — the union of every frame's live row cell from the site up
+  to the nearest enclosing tee that absorbs the effect, read off the frame
+  stack whose install marks carry what each tee absorbs
+  (`inf_remainder_world`) — and the arm-world rule is enforced where the
+  remainder is known: at every install, the tee body's row minus what the
+  handler absorbs is judged against the handler's own declared negation
+  (`remainder_gates_check`), so `handler h with !F` installed over a body
+  whose remainder performs F refuses at the install naming `h`. That clause
+  had been SKIPPED by the parser since the seed ("WAT-invisible"), so a
+  handler's `with !F` bound nothing until this landing; it rides the
+  `HandlerDeclStmt` and is judged at registration like a fn's. The arm's own
+  `TCont` world at registration is still the arm frame's cell, and there is
+  no first-class `k`: "inert" means the stack-only path never becomes a
+  rehydratable continuation value, so no changed-world comparison can fire
+  there. The remainder is the single continuation/image value model — capture
+  the world at reify, persist/fork it as an image record, refuse a mismatched
+  resume through the row check every `~>` edge already uses — and the
+  identity half (an outer install shadowed by an inner one of the same
+  handler, `Hβ.effects.arm-world-static-rule`) is A6's.
 - **O(1) complexity** is the DIRECTION, not built. Honest contract: O(1) chase,
   O(changed cone) incremental, O(reachable) image, O(1) reclaim-after-proof.
 - **Executable refusal** is PARTIAL — read `diag_refuses` for the live list and

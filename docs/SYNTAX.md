@@ -1281,7 +1281,7 @@ handler name(cfg_p1: T1, cfg_p2: T2) with state_a = init_a, state_b = init_b {
 
 Three parts:
 1. **Config parameters** in `(...)` — closure-captured at install site.
-2. **State** after `with` — internal state evolving across arms.
+2. **State** after `with` — internal state evolving across arms. The same slot, read by position, may instead carry the handler's own effect row (`handler h with !F { … }` — §«Negation guards on handlers»): a `!`, or a name not followed by `=`, opens a row; a name followed by `=` opens the state inits.
 3. **Op arms** in `{...}` — one arm per effect operation handled.
 
 ### Examples
@@ -1364,7 +1364,9 @@ handler affine_ledger with !Consume {
 }
 ```
 
-`with !Consume` on the handler itself means: the arms cannot recurse through `consume`. Boolean effect algebra gates this at compile time.
+`with !Consume` on the handler itself is the handler's own row — the same signed clause a fn signature carries, verified the same way — and it binds at TWO altitudes (A5, 2026-09-27, LENS §2.4's arm-world rule): the ARMS may not perform `Consume` themselves (the registration-time gate), and at every install the REMAINDER the arms resume into — the tee body's row with what this handler absorbs removed — may not perform it either, because resuming inside an arm continues that remainder under the handler. So `handler h with !F { op() => resume(1) }` installed over `op() + fop()` refuses at the install, naming `h`; installed over `op() + op()`, or over a body whose `fop()` an inner install absorbs, it holds; and `handler h with !E` over the ops it handles has nothing to check, since the absorption removes them. The check is per install — the body is read where it is known, never joined across installs into the handler's one row.
+
+*(Until 2026-09-27 the parser SKIPPED a handler's effect-row `with` to the arms as "WAT-invisible", so this clause bound nothing: `handler h with !F` accepted a remainder performing F with no diagnostic, measured RED on boot 39b00d84 by `tests/crown/leak-arm-resume-remainder.mn`. The clause rides the `HandlerDeclStmt` now and the formatter renders it back.)*
 
 ---
 

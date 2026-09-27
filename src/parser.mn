@@ -747,20 +747,6 @@ fn skip_to_rparen(ref tokens, p) = if at(tokens, p, TRParen) {
   skip_to_rparen(tokens, p + 1)
 }
 
-// Advance to (not past) the next TLBrace. For handler `with !E` /
-// `with E [+ E]` effect-row guards, which the seed skips to the arms
-// block. Structural effect-row extraction is the seed's own named
-// post-L1 peer Hβ.parser-handler-effect-row-record; effects are
-// WAT-invisible so skip-vs-parse is byte-equivalent at L1. TEof-
-// bounded, mirrors skip_to_rparen.
-fn skip_to_lbrace(ref tokens, p) = if at(tokens, p, TLBrace) {
-  p
-} else if at(tokens, p, TEof) {
-  p
-} else {
-  skip_to_lbrace(tokens, p + 1)
-}
-
 // Returns (params, destructure-lets, pos). The lets are the prepend-bindings
 // for any destructuring params (empty when all params are bare names);
 // parse_fn / the lambda paths fold them into the body via
@@ -1348,32 +1334,35 @@ fn parse_handler_decl(ref tokens, pos) = {
   } else {
     ([], p_after_name)
   } {
-    (config, p_after_config) => // Optional `with` clause. Seed parser_handler.wat $parse_handler_state
-    // disambiguation:
-    //   with !E              — effect-row guard (SYNTAX.md §904-912)
-    //   with E [+ E]         — effect-row (IDENT not followed by `=`)
-    //   with f = init [, ..] — state-init
-    // Effect-row → skip to the arms `{`, empty state. Structural row
-    // extraction is the seed's OWN named post-L1 peer
-    // Hβ.parser-handler-effect-row-record (effects are WAT-invisible;
-    // skip == parse at L1 byte-faithfulness — not drift 9).
+    (config, p_after_config) => // Optional `with` clause, disambiguated by position (SYNTAX §«With-
+    // clauses»: one keyword, read as "carries"):
+    //   with !E / with E [+ E]  — the handler's own effect row, the same
+    //                             signed triples a fn signature carries
+    //   with f = init [, ..]    — state-init
+    // The row is PARSED and carried on the statement (A5, 2026-09-27). It
+    // used to be skipped to the arms' `{` as "WAT-invisible", so `handler h
+    // with !F` bound nothing and the crown accepted a handler resuming into
+    // the effect it negated; the row rides the node now and infer enforces
+    // it on the arms and on every install's remainder.
     match if at(tokens, skip_ws(tokens, p_after_config), TWith) {
       let p_w = skip_ws(tokens, p_after_config)
       let p_with = skip_ws(tokens, p_w + 1)
-      if at(tokens, p_with, TBang) {
-        ([], skip_to_lbrace(tokens, p_with))
-      } else if is_param_name_tok(tokens, p_with) && !at(tokens, skip_ws(tokens, p_with + 1), TEq) {
-        ([], skip_to_lbrace(tokens, p_with))
+      if at(tokens, p_with, TBang) || is_param_name_tok(tokens, p_with) && !at(tokens, skip_ws(tokens, p_with + 1), TEq) {
+        match parse_effect_list(tokens, p_with) {
+          (effs, p_after_row) => ([], effs, p_after_row),
+        }
       } else {
-        parse_handler_state_fields(tokens, p_with)
+        match parse_handler_state_fields(tokens, p_with) {
+          (state, p_after_state) => (state, [], p_after_state),
+        }
       }
     } else {
-      ([], p_after_config)
+      ([], [], p_after_config)
     } {
-      (state, p_after_state) => {
+      (state, effs, p_after_state) => {
         let p_open = expect(tokens, skip_ws(tokens, p_after_state), TLBrace)
         match parse_handler_arms(tokens, skip_ws(tokens, p_open)) {
-          (arms, p_close) => (HandlerDeclStmt(name, "", config, state, arms), p_close),
+          (arms, p_close) => (HandlerDeclStmt(name, "", config, state, arms, effs), p_close),
         }
       },
     },
@@ -3704,7 +3693,7 @@ fn free_vars_stmt(s, bound) = match s {
   ExprStmt(expr) => collect_free_vars(expr, bound),
   TypeDefStmt(_, _) => [],
   EffectDeclStmt(_, _, _) => [],
-  HandlerDeclStmt(_, _, config, state, arms) => {
+  HandlerDeclStmt(_, _, config, state, arms, _) => {
     // Inits evaluate in the installer's scope with the config in hand; an
     // arm additionally binds the state names and its own args. `resume` is
     // a keyword and never a reference.

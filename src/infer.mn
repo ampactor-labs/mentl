@@ -69,6 +69,13 @@ effect InferCtx {
   inf_add_row(EffRow)
   inf_current_row() -> EffRow
   inf_current_world() -> EffRow
+  // A5 (LENS §2.4): the world a perform site's REMAINDER requires — the
+  // union of every frame's live row cell from the site up to the nearest
+  // lexically enclosing tee that absorbs the named effect, read off the
+  // frame stack; a tee absorbing nothing of it is crossed, and with none
+  // the union reaches the declaration's own frame. None names no effect (a
+  // pipe or fanout boundary) and takes the whole stack.
+  inf_remainder_world(Option(String)) -> EffRow
   inf_current_answer() -> Int
   inf_enter_arm(Int)
   inf_exit_arm()
@@ -78,7 +85,9 @@ effect InferCtx {
   // join by position; any other frame is a plain accumulation (joining a
   // caller's independent callee instances unified Float with Int across
   // the wheel — the 286-error m3 census).
-  inf_mark_install_frame()
+  // The mark carries what the tee ABSORBS, so the remainder world knows
+  // which enclosing tee delimits a perform site's continuation.
+  inf_mark_install_frame([EffName])
   inf_frame_is_install() -> Bool
   // The pass's prereg ceiling — graph_next at the moment pre-registration
   // completed, set once per pass by its driver. The finalize's completion
@@ -201,15 +210,16 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     // enforcement site reads it from the resume value, no ambient read.
     // An install mark on THIS depth pops with its frame.
     let marks2 = if len(install_marks) > 0 {
-      if last(install_marks) == len(stack) { drop_last(install_marks) } else { install_marks }
+      if mark_depth(last(install_marks)) == len(stack) { drop_last(install_marks) } else { install_marks }
     } else {
       install_marks
     }
     resume((frame.declared, frame.row_handle, published, frame.fn_span)) with stack = drop_last(stack), install_marks = marks2
   },
-  inf_mark_install_frame() => // drift-audit: ignore — bounded-depth mark PUSH paired with the exit's pop (§9 push-at-END), not a loop accumulator
-  resume() with install_marks = push(install_marks, len(stack)),
-  inf_frame_is_install() => resume(if len(install_marks) == 0 { false } else { last(install_marks) == len(stack) }),
+  inf_mark_install_frame(handled) => // drift-audit: ignore — bounded-depth mark PUSH paired with the exit's pop (§9 push-at-END), not a loop accumulator
+  resume() with install_marks = push(install_marks, (len(stack), handled)),
+  inf_frame_is_install() => resume(if len(install_marks) == 0 { false } else { mark_depth(last(install_marks)) == len(stack) }),
+  inf_remainder_world(ename) => resume(remainder_world(stack, install_marks, ename)),
   inf_add_effect(name) => if len(stack) == 0 {
     resume()
   } else {
@@ -464,7 +474,7 @@ fn comment_decl_index(ref stmts, i, idx) = if i >= len(stmts) {
         NStmt(FnStmt(name, _, _, _, _)) => smap_add(idx, name, h),
         NStmt(TypeDefStmt(name, ctors)) => ctor_index_add(ctors, 0, smap_add(idx, name, h), h),
         NStmt(EffectDeclStmt(name, _, ops)) => op_index_add(ops, 0, smap_add(idx, name, h), h),
-        NStmt(HandlerDeclStmt(name, _, _, _, _)) => smap_add(idx, name, h),
+        NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => smap_add(idx, name, h),
         _ => idx,
       }
       comment_decl_index(stmts, i + 1, idx2)
@@ -698,7 +708,7 @@ fn comment_owner(h) = match graph_node_body(h) {
   NStmt(FnStmt(name, _, _, _, _)) => name,
   NStmt(TypeDefStmt(name, _)) => name,
   NStmt(EffectDeclStmt(name, _, _)) => name,
-  NStmt(HandlerDeclStmt(name, _, _, _, _)) => name,
+  NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => name,
   _ => "node {int_to_str(h)}",
 }
 
@@ -707,7 +717,7 @@ fn comment_owner(h) = match graph_node_body(h) {
 // arm args; a comment on an effect its ops. They live ON the owning node.
 fn comment_locals(h) = match graph_node_body(h) {
   NStmt(FnStmt(_, params, _, _, fbody)) => body_binders(fbody, cl_param_names(params, 0, [])),
-  NStmt(HandlerDeclStmt(_, _, config, states, arms)) => cl_arm_names(arms, 0, cl_state_names(states, 0, cl_param_names(config, 0, []))),
+  NStmt(HandlerDeclStmt(_, _, config, states, arms, _)) => cl_arm_names(arms, 0, cl_state_names(states, 0, cl_param_names(config, 0, []))),
   NStmt(EffectDeclStmt(_, _, ops)) => cl_op_names(ops, 0, []),
   NStmt(LetStmt(pat, val, _)) => body_binders(val, pat_binders(pat)),
   NStmt(TypeDefStmt(_, ctors)) => cl_ctor_names(ctors, 0, []),
@@ -973,7 +983,7 @@ fn pre_register_stmt(seen, ref node) = match node {
       register_type_constructors(name, variants)
       seen
     },
-    NStmt(HandlerDeclStmt(hname, _ename, config, state, arms)) => {
+    NStmt(HandlerDeclStmt(hname, _ename, config, state, arms, _effs)) => {
       pre_register_handler_sig(hname, config, state, arms)
       seen
     },
@@ -1772,7 +1782,7 @@ fn stmt_declared_names(node) = match node_body_of(node) {
     FnStmt(name, _, _, _, _) => [name],
     TypeDefStmt(name, variants) => [name] ++ map({ (vname, _, _) => vname }, variants),
     EffectDeclStmt(name, _, ops) => [name] ++ map({ (op, _, _, _) => op }, ops),
-    HandlerDeclStmt(name, _, _, _, _) => [name],
+    HandlerDeclStmt(name, _, _, _, _, _) => [name],
     LetStmt(pat, _, _) => pat_binders(pat),
     RefineStmt(name, _, _) => [name],
     AliasStmt(name, _) => [name],
@@ -1788,7 +1798,7 @@ fn stmt_decl_name(ref node) = match node {
     NStmt(FnStmt(name, _, _, _, _)) => name,
     NStmt(TypeDefStmt(name, _)) => name,
     NStmt(EffectDeclStmt(name, _, _)) => name,
-    NStmt(HandlerDeclStmt(name, _, _, _, _)) => name,
+    NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => name,
     NStmt(LetStmt(pat, _, _)) => match pat {
       PVar(name) => name,
       _ => // drift-audit: ignore — the documented no-key contract (a destructured let contributes no index entry; equal depths keep source order)
@@ -2056,13 +2066,13 @@ fn infer_stmt(ref node) = match node {
     },
     NStmt(TypeDefStmt(_, _)) => (),
     NStmt(EffectDeclStmt(_, _, _)) => (),
-    NStmt(HandlerDeclStmt(hname, ename, config, state, arms)) => {
+    NStmt(HandlerDeclStmt(hname, ename, config, state, arms, effs)) => {
       // The decls column, third writer. An ARM is an emittable entry whose
       // name is composed at lower and cannot be parsed back to (handler,
       // op), so the arm's origin is its handler decl's node — noted here,
       // where the decl is judged.
       graph_decl_note(handle)
-      register_handler(hname, ename, config, state, arms, span)
+      register_handler(hname, ename, config, state, arms, effs, span)
     },
     NStmt(ExprStmt(expr)) => infer_expr(expr),
     NStmt(ImportStmt(_)) => (),
@@ -4467,7 +4477,7 @@ fn stage_continuation_boundary(cname: String, resume_input_h) = {
   let answer_h = if current_answer_h < 0 { resume_input_h } else { current_answer_h }
   graph_boundary_set(
     resume_input_h,
-    PendingContinuationBoundary(resume_input_h, answer_h, continuation_h, inf_current_world())
+    PendingContinuationBoundary(resume_input_h, answer_h, continuation_h, inf_remainder_world(op_effect_of(cname)))
   )
 }
 
@@ -4535,8 +4545,18 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
       // drift-audit: ignore — two independent frame inputs (row handle, answer handle) — one frame record's fields, not parallel arrays
       // The tee body is ONE install's scope — its effect-instance fragments
       // join at the accumulation seam (inf_add_row_unified's gate).
+      // The FULL handled set — every distinct effect the arms touch — read
+      // from the HandlerKind the identity comes from, BEFORE the body is
+      // judged: the install mark carries it, so a perform site inside the
+      // body knows which enclosing tee delimits its remainder (A5). A single-
+      // name subtraction left a multi-effect handler's sibling effect on the
+      // caller's row.
+      let arm_names = match handler_arms_of(right) {
+        Some(arms) => derive_handler_enames(arms, 0, []),
+        None => [],
+      }
       inf_enter_fn(body_row_h, body_answer_h, span, [])
-      inf_mark_install_frame()
+      inf_mark_install_frame(arm_names)
       infer_expr(left)
       exit_frame()
       infer_expr(right)
@@ -4550,14 +4570,15 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
             // type. This is what makes `field` in `map((field)=>field.name, xs)`
             // resolve to xs's element. The dispatch gradient applied to data.
             unify_install_payload(body_row, handled, right, span)
-            // The subtraction takes the FULL handled set — every distinct effect
-            // the arms touch — read from the same HandlerKind the identity came
-            // from. A single-name subtraction left a multi-effect handler's
-            // sibling effect on the caller's row.
-            let handled_names = match handler_arms_of(right) {
-              Some(arms) => derive_handler_enames(arms, 0, []),
-              None => [ENamed(intern_str(handled))],
-            }
+            let handled_names = if len(arm_names) == 0 { [ENamed(intern_str(handled))] } else { arm_names }
+            // A5 — the arm-world rule at the install (LENS §2.4): resuming
+            // inside an arm of h continues the REMAINDER under h, so h's own
+            // declared negation binds the remainder's requirement with h's
+            // absorption removed. The remainder is this install's body, so
+            // the check is here, per install, where the body is known — never
+            // a join across installs into the handler's one row, which would
+            // charge every install with every other install's remainder.
+            remainder_gates_check(resid_h, body_row, handled_names, span)
             inf_add_row(absorb_row(
               body_row,
               mk_ef_closed(handled_names),
@@ -4595,6 +4616,116 @@ fn handler_arms_of(right) = match callee_name(right) {
       },
     },
     None => None,
+  },
+}
+
+// The stack depth an install mark was pushed at; the tee body frame is the
+// one below it.
+fn mark_depth(mark) = match mark {
+  (depth, _handled) => depth,
+}
+
+// A5 (LENS §2.4): the remainder's requirement at a perform site — every
+// frame's live row cell from the site (the top of the stack) down to the
+// body frame of the nearest enclosing tee that absorbs the effect, as one
+// open row over those cells. No absorbing tee, or no effect named: the
+// whole stack, the declaration's own frame included — its row flows to the
+// caller, whose tee is then the delimiter.
+fn remainder_world(stack, marks, ename) = if len(stack) == 0 {
+  mk_ef_pure()
+} else {
+  let stop = absorbing_frame(marks, ename, len(marks) - 1)
+  ef_make([], [], EtOpen(frame_edges(stack, stop, len(stack) - 1, [])))
+}
+
+// The index of the body frame under the innermost mark absorbing the
+// effect, or 0 when none does.
+fn absorbing_frame(marks, ename, i) = match ename {
+  None => 0,
+  Some(en) => if i < 0 {
+    0
+  } else {
+    match list_index(marks, i) {
+      (depth, handled) => if name_set_contains(handled, ENamed(intern_str(en))) {
+        if depth > 0 { depth - 1 } else { 0 }
+      } else {
+        absorbing_frame(marks, Some(en), i - 1)
+      },
+    }
+  },
+}
+
+fn frame_edges(stack, i, top, acc) = if i > top {
+  acc
+} else {
+  frame_edges(stack, i + 1, top, push(acc, bare_edge(frame_row_handle(list_index(stack, i))))
+}
+
+// A frame's row cell, read through the frame record's declared shape — the
+// Intent Boundary an INTERIOR field read needs: an element of the frame
+// stack arrives at emit with its row unresolved, and an unprovable offset
+// is a floor (T_FieldOffsetUnprovable), never a read.
+fn frame_row_handle(frame: {accumulated_row: EffRow, answer_handle: Int, declared: [(EffName, Bool, EConn)], fn_span: Span, params: [Int], row_handle: Int}) -> Int = frame.row_handle
+
+// The effect an op name performs; None for a name that is not an op (a
+// pipe or fanout boundary stages under its own operator's name).
+fn op_effect_of(cname: String) = match env_lookup(cname) {
+  Some(entry) => match entry {
+    (_, _, kind) => match kind {
+      EffectOpScheme(en, _, _, _) => Some(en),
+      FnScheme => None,
+      ConstructorScheme(_, _) => None,
+      RecordSchemeKind(_) => None,
+      EffectDeclKind(_) => None,
+      HandlerKind(_, _, _, _) => None,
+      ParamScheme(_) => None,
+      RowAliasKind(_) => None,
+      TypeVariants(_) => None,
+    },
+  },
+  None => None,
+}
+
+// The handler's authored row at its exit — the fn path's own steps (the
+// pure collapse, the instance resolution and its argument check, the
+// declared row, the gate on the arms' row) — then the NEGATION half stored
+// on the residual cell itself, so every install reads it against its own
+// remainder (remainder_gates_check).
+fn enforce_handler_clause(hname: String, declared_effs, r_handle, span: ValidSpan) = if len(declared_effs) == 0 {
+  ()
+} else {
+  let has_pure = has_pure_declared(declared_effs)
+  let resolved_effs = resolve_declared_instances(declared_effs)
+  check_instance_args(resolved_effs, span)
+  let declared_row = build_declared_row(resolved_effs)
+  enforce_row_gate(hname, declared_row, has_pure, r_handle, span)
+  match declared_row {
+    EfRow(_, absent, _) => if len(absent) == 0 {
+      ()
+    } else {
+      graph_gate_add(r_handle, mk_gate(mk_ef_neg(absent), Located(span, Declared(hname))))
+    },
+  }
+}
+
+// A5: the remainder's requirement at one install of h, judged against h's
+// own negation seen through h's absorption — the gate its registration
+// stored on the residual cell, minus the effects this install handles —
+// and pushed onto the body row's free terminals, so a callback a later
+// caller resolves is judged the same way.
+fn remainder_gates_check(resid_h, body_row, handled_names, span: ValidSpan) = match gates_at(resid_h) {
+  [] => (),
+  gs => {
+    let v = resolve_row(body_row)
+    each(
+      {
+        g => match gate_through_mask(g, handled_names) {
+          Some(g2) => gate_judge_push(g2, v, span),
+          None => (),
+        },
+      },
+      gs
+    )
   },
 }
 
@@ -8339,7 +8470,7 @@ fn derive_handler_ename(arms, fallback: String) = if len(arms) == 0 {
   }
 }
 
-fn register_handler(hname, ename_parsed, config, state, arms, span: ValidSpan) = {
+fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidSpan) = {
   // The handler's identity (effect, instance, config, HandlerKind) was registered
   // at pre_register_handler_sig — a parsed fact, not an inferred one. The main
   // walk reads the pre-registered r_handle from the env so forward references
@@ -8419,7 +8550,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, span: ValidSpan) =
   // to a function-valued config arg) into r_handle via inf_add_effect/
   // inf_add_row. On
   // exit, r_handle binds to R — the row `~> h` adds to the caller.
-  inf_enter_fn(r_handle, s_h, span, [])
+  inf_enter_fn(r_handle, s_h, span, effs)
   inf_frame_params(tparam_cells(config_tparams) ++ [s_h])
   // EVERYTHING THE INSTALL EVALUATES BELONGS INSIDE THIS SCOPE — the config
   // DEFAULTS and the state INITS both, because both run where the arms' own
@@ -8470,8 +8601,14 @@ fn register_handler(hname, ename_parsed, config, state, arms, span: ValidSpan) =
   // here exactly as at a named decl's exit — with an empty keep the
   // residual dropped the config-fn edge and folded nothing (measured:
   // zero residual edges on the leak-handler-residual crucible).
-  exit_frame()
+  let declared_effs = exit_frame()
   env_scope_exit()
+  // The handler's own `with` row, judged exactly as a fn's at its exit (one
+  // path for fns and handlers): the arms' row against the clause, the
+  // negation gated onto the row's free terminals — and, for the install
+  // sites, the negation half stored on the residual cell itself, where the
+  // tee reads it against each remainder (A5).
+  enforce_handler_clause(hname, declared_effs, r_handle, span)
   // Re-store the handler's scheme now that the arms have unified the instance's
   // result position with the state and config (r_h ~ acc ~ init). generalize
   // chase_deeps scheme_body to its roots and quantifies every free var, so the
@@ -8742,7 +8879,7 @@ fn collect_fn_decls(node, acc) = match node {
   N(body, _, _) => match body {
     NStmt(FnStmt(name, _, _, _, b)) => // drift-audit: ignore — decl-count-bounded cons, not a hot loop
     collect_fn_decls(b, [(name, b)] ++ acc),
-    NStmt(HandlerDeclStmt(_, _, _, _, arms)) => collect_fn_decls_arms(arms, acc),
+    NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => collect_fn_decls_arms(arms, acc),
     NStmt(LetStmt(_, v, _)) => collect_fn_decls(v, acc),
     NStmt(ExprStmt(e)) => collect_fn_decls(e, acc),
     NExpr(BlockExpr(stmts, final)) => collect_fn_decls(final, collect_fn_decls_list(stmts, acc)),
@@ -8913,7 +9050,7 @@ fn resume_grade(node) = match node {
     // wildcard fabricating a grade for an un-enumerated child-bearing variant).
     UZero,
     NStmt(EffectDeclStmt(_, _, _)) => UZero,
-    NStmt(HandlerDeclStmt(_, _, _, _, _)) => UZero,
+    NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => UZero,
     NStmt(ImportStmt(_)) => UZero,
     NStmt(RefineStmt(_, _, _)) => UZero,
     NStmt(AliasStmt(_, _)) => UZero,
@@ -9117,7 +9254,7 @@ fn walk_refinement(node, path_pred) = match node {
     walk_refinement(fbody, PTrue),
     NStmt(TypeDefStmt(_, _)) => (),
     NStmt(EffectDeclStmt(_, _, _)) => (),
-    NStmt(HandlerDeclStmt(_, _, _, _, _)) => (),
+    NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => (),
     NStmt(ImportStmt(_)) => (),
     NStmt(RefineStmt(_, _, _)) => (),
     NStmt(AliasStmt(_, _)) => (),

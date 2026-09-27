@@ -1,0 +1,9 @@
+// CROWN A5 (LENS §2.4): a handler that negates the very effect it handles
+// forbids its ARMS from recursing through it (the registration-time gate)
+// while its remainder's performs of that effect are the ones it absorbs —
+// the negation seen through the handler's own absorption is empty, so the
+// install has nothing to check. Expect NO E_EffectMismatch.
+effect E { op() -> Int }
+handler h with !E { op() => resume(1) }
+fn work() = op() + op()
+fn main() = (work()) ~> h

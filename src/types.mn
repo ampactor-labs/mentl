@@ -1728,8 +1728,12 @@ type Stmt
   // same [TParam] product fn params and handler config ride; they
   // register as the effect's env scheme (the instance signature every
   // authored `Sample(44100)` judges against).
-  | HandlerDeclStmt(String, String, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}])
-  // handler name, effect name, config-params, state-fields, arms
+  | HandlerDeclStmt(String, String, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}], [(EffName, Bool, EConn)])
+  // handler name, effect name, config-params, state-fields, arms, the
+  // authored `with` row (the same signed triples a FnStmt carries — until
+  // 2026-09-27 the parser skipped it to the arms, so a handler's `!F` bound
+  // nothing; A5 carries it: enforced on the arms at registration and on
+  // every install's remainder through the handler's own absorption)
   // config: [TParam] — the fn-param carrier (SYNTAX §«Handler
   //   declarations»: the config list IS a parameter product, so
   //   each param carries the product's default slot); values are

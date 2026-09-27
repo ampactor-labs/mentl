@@ -857,7 +857,7 @@ fn doc_render_cell(entry_module: String, cell) = match cell {
 
 fn doc_render_decl(d) = match d {
   N(NStmt(FnStmt(name, _, _, _, _)), _, h) => doc_render_line(name, h),
-  N(NStmt(HandlerDeclStmt(name, _, _, _, _)), _, h) => doc_render_line(name, h),
+  N(NStmt(HandlerDeclStmt(name, _, _, _, _, _)), _, h) => doc_render_line(name, h),
   N(NStmt(TypeDefStmt(name, _)), _, h) => doc_render_line(name, h),
   N(NStmt(EffectDeclStmt(name, _, _)), _, h) => doc_render_line(name, h),
   _ => (),
@@ -1534,7 +1534,7 @@ fn node_query_line(h, kind) = match graph_node_body(h) {
   NStmt(AliasStmt(name, ty)) => "{name} = {show_type(ty)}",
   NStmt(TypeDefStmt(name, variants)) => "{name} — {int_to_str(len(variants))} variant(s)",
   NStmt(EffectDeclStmt(name, _, ops)) => "effect {name} — {int_to_str(len(ops))} op(s)",
-  NStmt(HandlerDeclStmt(name, _, _, state, arms)) => "handler {name} — {int_to_str(len(arms))} arm(s), {int_to_str(len(state))} state field(s)",
+  NStmt(HandlerDeclStmt(name, _, _, state, arms, _)) => "handler {name} — {int_to_str(len(arms))} arm(s), {int_to_str(len(state))} state field(s)",
   NStmt(RowAliasStmt(name, _)) => "{name} — a named effect row",
   NHole(_) => // An UNDETERMINED hole never leaks the raw var — substrate
   // vocabulary at the exact moment the medium should ASK (§1's law: the

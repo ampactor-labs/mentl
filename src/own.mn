@@ -621,7 +621,7 @@ fn usage_of(ref name: String, ref node, mode) = match node {
     pair_zero(),
     NStmt(TypeDefStmt(_, _)) => pair_zero(),
     NStmt(EffectDeclStmt(_, _, _)) => pair_zero(),
-    NStmt(HandlerDeclStmt(_, _, _, _, _)) => pair_zero(),
+    NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => pair_zero(),
     NStmt(ImportStmt(_)) => pair_zero(),
     NStmt(RefineStmt(_, _, _)) => pair_zero(),
     NStmt(AliasStmt(_, _)) => pair_zero(),

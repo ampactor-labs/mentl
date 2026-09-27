@@ -1265,7 +1265,7 @@ fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
   match last(stmts) {
     N(b, _, _) => {
       let binds2 = match b {
-        NStmt(HandlerDeclStmt(hname, _, _, _, arms)) => bind_from_arms(arms, hname, summaries, decls, binds),
+        NStmt(HandlerDeclStmt(hname, _, _, _, arms, _)) => bind_from_arms(arms, hname, summaries, decls, binds),
         _ => binds,
       }
       bind_from_handlers(drop_last(stmts), summaries, decls, binds2)
@@ -1605,7 +1605,7 @@ fn flow_edges_stmt(s) = match s {
   ExprStmt(expr) => flow_edges(expr),
   TypeDefStmt(_, _) => ([], []),
   EffectDeclStmt(_, _, _) => ([], []),
-  HandlerDeclStmt(_, _, _, _, _) => ([], []),
+  HandlerDeclStmt(_, _, _, _, _, _) => ([], []),
   ImportStmt(_) => ([], []),
   RefineStmt(_, _, _) => ([], []),
   AliasStmt(_, _) => ([], []),
@@ -3633,7 +3633,7 @@ fn lower_stmt_body(s, handle, span) = match s {
   },
   TypeDefStmt(_name, _variants) => LConst(handle, LInt(0)),
   EffectDeclStmt(_name, _params, _ops) => LConst(handle, LInt(0)),
-  HandlerDeclStmt(name, _ename, config, state, arms) => {
+  HandlerDeclStmt(name, _ename, config, state, arms, _effs) => {
     // H1.4: each handler arm becomes a callable wasm function. With
     // the Hβ.first-light.handler-arm-fn-name-discriminator landing,
     // arm fns are named `op_<handler_name>_<op_name>` — unique even
@@ -5548,7 +5548,7 @@ fn collect_top_level_names_loop(stmts, i, n, buf, count) = if i >= n {
     N(body, _, _) => match match body {
       NStmt(FnStmt(name, _, _, _, _)) => push_name(buf, count, name),
       NStmt(LetStmt(PVar(name), _, _)) => push_name(buf, count, name),
-      NStmt(HandlerDeclStmt(name, _, _, _, _)) => // A handler decl IS a top-level name — `~> h` references it as a
+      NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => // A handler decl IS a top-level name — `~> h` references it as a
       // global, never a captured upvalue (the phantom-capture fence lie:
       // each install counted as a capture inflated the ev-region base by
       // 4×installs while every caller built the record at ncap=0).
@@ -5905,7 +5905,7 @@ fn reach_stmt_defers(node) = match node {
   N(body, _, _) => match body {
     NStmt(s) => match s {
       FnStmt(_, _, _, _, _) => true,
-      HandlerDeclStmt(_, _, _, _, arms) => len(arms) > 0,
+      HandlerDeclStmt(_, _, _, _, arms, _) => len(arms) > 0,
       LetStmt(_, _, _) => false,
       TypeDefStmt(_, _) => false,
       EffectDeclStmt(_, _, _) => false,
@@ -5937,7 +5937,7 @@ fn reach_name_map(stmts, i, n, map) = if i >= n {
     N(body, _, _) => match body {
       NStmt(FnStmt(name, _, _, _, _)) => smap_add(map, name, i),
       NStmt(LetStmt(PVar(name), _, _)) => smap_add(map, name, i),
-      NStmt(HandlerDeclStmt(hname, _, _, _, arms)) => fold(map, (m, arm) => smap_add(m, arm_fn_name(hname, arm.op_name), i), arms),
+      NStmt(HandlerDeclStmt(hname, _, _, _, arms, _)) => fold(map, (m, arm) => smap_add(m, arm_fn_name(hname, arm.op_name), i), arms),
       _ => // no name keys this stmt — phase A owns it
       map,
     },
