@@ -1067,9 +1067,15 @@ and this is the STATE.
   161 → 62. `type Judging` (2026-09-21's named capability) lost its last
   user and is deleted. `T_OverDeclared` reads the positive half only: a
   negation-only signature is never "over-declared" (it narrated
-  `!Mutate + Any` against a Pure body). A positive cap on an open row is
-  still admissible USER intent — A3-pos makes it a gate; on the wheel it is
-  a refused inventory.
+  `!Mutate + Any` against a Pure body). **And a surviving positive row is a
+  GATE (A3-pos, the same day):** `declared_gate` installs the closed row
+  itself, so `fn run(f) with E = f()` refuses `run(() => op_f())` at the
+  argument edge (accepted by boot d27fc81d, where only the negation half
+  installed) and a `~>` mask inside the body widens the cap (`Pg ∪ mask`);
+  crown `leak-cap-callback` / `sound-cap-admits` pin it. Two micros carrying
+  `with Abort` on a try/catch HOF refused on arming and lost their caps —
+  LENS §2.2's predicted class. On the wheel a positive row is a refused
+  inventory; in user code it is a decision the medium enforces.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

@@ -65,8 +65,23 @@ through the half-swept tree). The medium authored its own migration — 1,148 +
 the third) — and 529 clauses remain, 273 negation-only and 256 `Pure`. The
 wheel judged clean through the fully inferred rows with ZERO
 `E_EffectMismatch`; the m3 leg's warnings fell 161 → 62; `type Judging` lost
-its last user and is deleted. A positive cap on a HOF stays legal user intent
-and constrains nothing until A3-pos gates it.
+its last user and is deleted. A positive cap on a HOF stays legal user intent,
+and since A3-pos (the same day) it is a GATE: `declared_gate` installs the
+closed row itself, so a callback performing beyond the cap refuses at the
+argument edge — crown `leak-cap-callback` / `sound-cap-admits`.
+
+`Hβ.frontier.census-judge-races-its-pool` — OPEN, OBSERVED ONCE 2026-09-27
+(A3-pos's pre-march frontier, `--compiler fresh`, while the crown and the
+micro battery ran beside it). `run_census` judged `record-pattern` and
+`record-pattern-open` — the two shapes that share line 40 of
+`mn-census-verbs` — as "misses its own site", and the children's output
+files read afterwards carry `mn-census-verbs:40:1-40:43`, exactly what the
+judge greps for; no `.rc` was written, so neither query died. The re-run
+alone was green (404/0/2). The judge `cat`s every `census-40*.out` after
+`xargs -P` returns, so a child finishing late is not the mechanism on paper;
+what is, is unmeasured — a stale-file read, a write not yet flushed to the
+name the judge globs, or the pool's exit racing the redirect. Not a fix:
+the observation, kept so a second sighting has a first.
 
 `Hβ.infer.ground-differs-by-route` — OPEN, NAMED 2026-09-27 by A4's sweep.
 The stdin compile (the whole wheel as ONE module, `find lib src | cat`)
@@ -3134,7 +3149,8 @@ instance refuse, a provably distinct one is admitted). Crown 89/89, the 36
 probes a 36/36 battery, the wheel at zero diagnostics through the new
 wheel. What stays open beside it: the executable root gate's install-
 anywhere credit (`Hβ.effects.root-gate-credits-an-install-that-had-not-
-opened`), the positive cap (A3-pos, after A4), and
+opened` — CLOSED 2026-09-27), the positive cap (A3-pos — LANDED
+2026-09-27 after A4: the closed declared row is the gate), and
 `Hβ.diag.row-polymorphic-body`. The entry below is the record of the dig
 that priced it, kept whole because its kills are what made the landing's
 form legible; the "fork" it ends on was answered as branch A and branch A

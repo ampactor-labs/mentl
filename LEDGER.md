@@ -35,6 +35,41 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-27 · pin b145b836cbe0f162 (CLEAN m2 == m3) · A SURVIVING POSITIVE ROW IS A GATE.
+  PROGRAM Step 4's A3-pos, the crown's positive half.
+  **The hole, measured on boot d27fc81d.** `fn run(f) with E = f() + op_e()`
+  with `run(() => op_f())` compiled (7,938 WAT bytes, one narration): a
+  declared positive row on a HOF installed nothing — `declared_gate` took
+  the negation half of a clause and dropped the rest — so "at most E" was a
+  sentence, not a constraint, and the callback performed F through it.
+  **The mechanism is one arm.** The closed declared row IS the gate:
+  `declared_gate` installs `EfRow(P, A, EtClosed)` on the body row's free
+  terminals through each edge's mask, and the machinery A3 built already
+  spoke the closed form — `gate_through_mask`'s closed arm (`Pg ∪ mask`,
+  `A ∖ mask`), `gate_judge`'s `row_subsumes` against a closed cap, the
+  instance walk. `run(() => op_f())` refuses `E_EffectMismatch` (E vs F)
+  naming `run`'s declaration; `fn run2(f) with E = ((f()) ~> hf) + op_e()`
+  admits a callback performing F because the mask absorbs it before the
+  gate. `T_RowInventory`'s open-row arm — which narrated a cap as an
+  inventory for exactly one landing, while it constrained nothing, and is
+  how A4 swept the wheel's 164 open-row caps — says nothing now: a cap is a
+  decision the medium enforces.
+  **What it refused: the class LENS §2.2 predicted.** Two micros carried
+  `with Abort` on a try/catch HOF (`twac`, `try_with`) whose thunks
+  allocate and choose — "a row to allow the outer scope's effects to
+  flow, which a positive row cannot say" — and refused on arming
+  (`Abort vs Memory`, `Abort vs Abort + Memory + Alloc`); their caps came
+  off and the rows are inferred. Nothing else moved: the wheel authors no
+  positive row (A4), crown 96/96 with `leak-cap-callback` (accepted by the
+  boot, refused now) and `sound-cap-admits` (runs to 22), micros 149/149,
+  frontier 404/0/2 through the fresh m2 — on a second run: the first judged
+  the two line-40 census shapes missing while their output files, read
+  afterwards, carried the site, with the crown and the micro battery running
+  beside it; not reproduced, and kept as `Hβ.frontier.census-judge-races-its-
+  pool` so a second sighting has a first.
+  **Measured.** m3 leg 13.20s wall · 992MB peak RSS (1015808 KB). With A4 and A3-pos landed the declared row is
+  whole: what a signature says is what the medium enforces — a negation,
+  an instance pin, `Pure`, or a cap — and nothing else is written.
 - 2026-09-27 · pin d27fc81db6ceff64 (CLEAN m2 == m3) · THE POSITIVE ROW IS INFERRED AND
   PROJECTED — THE WHEEL AUTHORS NONE. PROGRAM Step 4's A4.
   **The measurement.** 1,626 `with` clauses in src/ and lib/; 1,336 carried

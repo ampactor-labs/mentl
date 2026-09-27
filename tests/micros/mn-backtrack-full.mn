@@ -32,7 +32,10 @@ handler my_catch {
   abort() => None
 }
 
-fn twac(try_fn, catch_fn) with Abort = {
+// A positive row on a HOF is a CAP on its callbacks (A3-pos, 2026-09-27):
+// `with Abort` here refused the thunks' Memory + Alloc + Choice, so the row
+// is inferred — the cap was never a decision.
+fn twac(try_fn, catch_fn) = {
   let attempted = (try_fn()) ~> my_catch
   match attempted {
     Some(value) => value,

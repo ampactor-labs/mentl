@@ -1443,11 +1443,20 @@ worth reading. Three mechanisms carry it:
   wide-row count, 19 → 12) lost its last user and is deleted: a capability
   nobody authors needs no name.
 
-A positive row on a HOF stays LEGAL user intent — a cap on what its callbacks
-may perform — and today it constrains nothing; the landing that makes a
-surviving cap a gate (`Pg ∪ mask` on push, the negation gate's twin) is where
-`T_RowInventory`'s open-row arm stops narrating and `T_OverDeclared` becomes
-the projection's business.
+**A positive row that survives is a CAP, and the cap is a gate (real,
+2026-09-27, A3-pos).** `fn run(f) with E = f()` says `run`'s body, callbacks
+included, performs at most E: the argument edge for `run(() => op_f())`
+refuses `E_EffectMismatch` naming `run`'s declaration, exactly as a negation
+does, and a `~>` mask inside the body widens what reaches the gate (`Pg ∪
+mask` on the push: `fn run2(f) with E = ((f()) ~> hf) + op_e()` admits a
+callback performing F, because `hf` absorbs it before the gate). Before this
+landing a positive cap installed nothing — only its negation half did — and
+that program compiled. So a positive row on a HOF is a decision the medium
+enforces; write one when the cap is meant, and let inference project the row
+otherwise. The two micros that carried `with Abort` on a try/catch HOF whose
+thunks allocate and choose refused on arming and lost their caps — the class
+LENS §2.2 predicted (`try_with_abort_catch`: a row "to allow the outer scope's
+effects to flow", which a positive row cannot say).
 
 **Dissolved:** the `capability` keyword and the `TCapability` token. `capability X
 = <row>` was structurally `type X = <row>` (the doc's own prior admission, peer

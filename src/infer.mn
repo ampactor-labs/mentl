@@ -2915,13 +2915,13 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
           report(TOverDeclared(declared_row, g, name, span))
         },
         None => // An OPEN body row (a callback's row rides its tail): the bare
-        // positive names are a CAP on what the callbacks may perform — and
-        // a positive cap installs no gate today (`declared_gate` below: a
-        // positive row alone installs nothing), so the clause constrains
-        // nothing and re-states the row inference projects. Narrated as the
-        // inventory it is; when positive caps become gates (A3-pos) this arm
-        // is where the cap starts to mean something and stops narrating.
-        report(TRowInventory(declared_row, body_row, name, span)),
+        // positive names are a CAP on what the callbacks may perform, and
+        // the cap is a GATE (`declared_gate` below, A3-pos) — a deliberate
+        // narrowing, not an inventory. This arm narrated the cap as an
+        // inventory for exactly one landing (A4), while a positive row
+        // installed nothing, which is how the wheel's 164 open-row caps
+        // were swept; with the gate armed, nothing is said here.
+        (),
       },
       None => (),
     }
@@ -2947,16 +2947,22 @@ fn declared_bare_row(declared_row) = match declared_row {
   },
 }
 
-// The gate a declaration installs: its empty closed cap, its negation, or
-// the negation half of a mixed clause. A positive row alone installs
-// nothing this landing (the inventory census above).
+// The gate a declaration installs: its empty closed cap (`Pure`), its
+// negation (`!E`, a universe-minus row), or — A3-pos, 2026-09-27 — the
+// CLOSED row itself: a declared `with E + !F` is a cap, "at most E, never
+// F", and it reaches every free terminal of the body's row through each
+// edge's mask (`gate_through_mask`'s closed arm: `Pg ∪ mask`, `A ∖ mask`),
+// so a HOF's callbacks may perform at most what the cap admits. It used to
+// install the negation half alone, and a positive cap constrained nothing:
+// `fn run(f) with E = f()` accepted `run(() => op_f())` (measured on boot
+// d27fc81d before this landing).
 fn declared_gate(declared_row, has_pure, why) = if has_pure {
   Some(mk_gate(mk_ef_pure(), why))
 } else {
   match declared_row {
-    EfRow(_, a, t) => match t {
+    EfRow(_, _, t) => match t {
       EtAll => Some(mk_gate(declared_row, why)),
-      EtClosed => if len(a) == 0 { None } else { Some(mk_gate(mk_ef_neg(a), why)) },
+      EtClosed => Some(mk_gate(declared_row, why)),
       EtOpen(_) => None,
     },
   }

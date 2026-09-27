@@ -3200,10 +3200,7 @@ fn diag_message(d) with !Mutate = match d {
   EPatternAlternationBindingMismatch(detail, _) => detail,
   EIfMissingElse(_) => "`if` without `else` requires a unit body",
   TOverDeclared(declared, used, name, _) => "function '{name}' declares {show_effrow(declared)} but body only uses {show_effrow(used)} — tighten the signature to unlock capabilities",
-  TRowInventory(declared, used, name, _) => match used {
-    EfRow(_, _, EtOpen(_)) => "function '{name}' declares {show_effrow(declared)} over a body whose row is open (a callback's row rides its tail) — a positive cap installs no gate, so the clause constrains nothing and re-states what inference projects; author only what inference cannot say (a negation, an instance pin, Pure); `mentl tighten` writes the residue",
-    _ => "function '{name}' declares {show_effrow(declared)}, which is exactly what the body proves ({show_effrow(used)}) — an inventory: the positive row is projected at the address surface, so author only what inference cannot say (a negation, an instance pin, Pure); `mentl tighten` writes the residue",
-  },
+  TRowInventory(declared, used, name, _) => "function '{name}' declares {show_effrow(declared)}, which is exactly what the body proves ({show_effrow(used)}) — an inventory: the positive row is projected at the address surface, so author only what inference cannot say (a negation, an instance pin, Pure, or a cap on a callback's row); `mentl tighten` writes the residue",
   TPolyRecursionSignature(name, _) => "the infinite type runs through '{name}''s own parameter or return — if '{name}' calls itself at a different type (polymorphic recursion), a FULL signature on '{name}' (every parameter and the return annotated) buys the poly self-call",
   TOwnUnconsumed(msg, _) => msg,
   TOwnAcrossReplay(msg, _) => msg,
