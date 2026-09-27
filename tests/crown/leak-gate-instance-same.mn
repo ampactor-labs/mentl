@@ -1,0 +1,8 @@
+// CROWN — the same instance refuses through the gate: a callback
+// performing `Sample(44100)` meets `!Sample(44100)` on f's cell. Accepted
+// by boot 2974547b. Expect E_EffectMismatch.
+effect Sample(rate: Int) { tick() -> Int }
+handler h { tick() => resume(1) }
+fn cb() with Sample(44100) = tick()
+fn run(f) with !Sample(44100) = f()
+fn main() = (run(cb)) ~> h

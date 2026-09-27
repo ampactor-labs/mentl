@@ -1,0 +1,16 @@
+// CROWN — the assumed scheme's copy: polymorphic recursion (`[x]` where
+// `x` was) sends this declaration through the Mycroft rounds, whose
+// self-calls instantiate the ASSUMED scheme's fresh cells rather than the
+// judgment's, so the copy bound to `() => op()` is noted under a cell the
+// exit install never reaches. The accept transfers the published cells'
+// gates onto their assumed twins, and the twin's noted copy is judged.
+// The `+ 0` grounds f's return in round 2 so the rounds STABILIZE and the
+// accept path runs (without it round 3 publishes a more specific type,
+// the belt refuses the accept, and the mono re-run catches the leak by
+// sharing f's cell — measured 2026-09-27). Accepted by the Mycroft path
+// before the transfer. Expect E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn depth(x) = 0
+fn run(f, x) with !E = if depth(x) > 0 { run(() => op(), [x]) } else { f() + 0 }
+fn main() = (run(() => 1, 1)) ~> h

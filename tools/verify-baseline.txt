@@ -957,7 +957,12 @@ frontier_expected_red: eq-in-arm-pointer
 # 2026-09-21: 60 -> 58. Two left with src/oracle.mn — a whole module deleted
 # takes its unprovable compares with it, which is the cheapest way this
 # counter ever falls and the least instructive: the class is unchanged.
-eq_type_unprovable_max: 58
+# 2026-09-27: 58 -> 57 (via 59). The gate landing gave lib/imap.mn's wmap
+# multi-map read its first caller, and its key compare entered the count
+# as an address compare over the erased bucket tuple; pinning the key `Int`
+# at every wmap entry (the primitive's own law: the key IS a word) proved
+# both bucket compares at once, the scan's included.
+eq_type_unprovable_max: 57
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
@@ -1038,7 +1043,7 @@ authored_own_max: 63
 # oracle's deletion; four more were dropped from the SMT helpers while
 # refuting them as a cause of the pointer-render defect — they were not the
 # cause, and they were also not needed, which is the grade doing its job.
-authored_ref_max: 728
+authored_ref_max: 724
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1092,7 +1097,22 @@ authored_ref_max: 728
 # §5.O's own accounting — and a ceiling that only ever rises to meet a breach
 # has stopped ratcheting. Raising it is an explicit in-commit act, which is
 # what this paragraph is; the next move on this line should be down.
-selfcompile_peak_kb_max: 1022000
+#
+# RAISED 2026-09-27, 1,022,000 -> 1,042,000, for the gate carried by the cell
+# (PROGRAM A3), and the accounting is a 2x2 measured before the raise, not a
+# guess: the new compiler on the OLD source reads 1,017,580–1,018,372 (three
+# runs) — at or under the boot's own readings — so the machinery's RUNTIME
+# cost is nil, and its counters say why: 2,302 gates and 2,039 instance
+# notes on the whole self-compile, a few hundred KB of records and trail.
+# The new compiler on the NEW source reads 1,028,104–1,031,596 (five runs,
+# the march's m4 leg among them), and the judgment's own handle count says
+# why: 251,993 -> 254,375 (+2,382, +0.95%) — the wheel grew by the gate
+# machinery's own thirty functions, and every phase paid its per-node cost
+# (heap at the high-water +2.4 MB, lower +0.4, reachability +2.1, emit
+# +2.5, the rest host-side), the source growth's bill compounded through
+# a compiler that reclaims nothing. Same rule: ~1% over the highest reading.
+# The way down is unchanged and named above: the per-decl arena.
+selfcompile_peak_kb_max: 1042000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

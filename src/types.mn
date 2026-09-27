@@ -664,6 +664,22 @@ type EffTail
 // variant was a word per edge that said nothing.
 type RowEdge = RowEdge({cell: Int, mask: [EffName]})
 
+// A GATE is a constraint carried by a row CELL — the negation half of a
+// declaration (`with !E` — `([], [E], EtAll)`, instance-aware through
+// eff_forbids) or the empty closed cap (`with Pure`), with the Reason
+// that declared it. It outlives the cell's binding: a gated cell that is
+// bound, later taught (the join) or re-finalized is checked at every one
+// of those writes, so the gate lives beside the node kinds (a per-handle
+// fact in graph_handler's state), never as a payload on NRowFree. The
+// negation's `EtAll` appears in gates and nowhere else: a row VALUE is
+// never the universe, and the two unify arms that used to store one
+// install a gate instead. A declared negation over a body row that
+// resolves to free terminals used to be vacuous — `fn run(f) with !E =
+// f()` accepted `run(() => op())` — because nothing was written that an
+// instantiation downstream could refuse; the gate is that write
+// (Hβ.infer.declared-row-vacuous-against-a-free-body-row).
+type Gate = Gate({reason: Reason, row: EffRow})
+
 // The ONE row-edge content read — every edge walk (resolve, flatten,
 // compress, occurs, free, subst, the lower readers) dispatches an
 // edge's chased cell through this projection, so the set of
@@ -991,6 +1007,11 @@ type Mutation
   | MSetBoundary(Int, ExecutableBoundary)
   // handle allocated (undo = shrink)
   | MFreshNode(Int)
+  // a gate entered on the cell (undo = pop the newest gate; the gate
+  // column is a LIFO multi-map, so the inverse needs no old value)
+  | MSetGate(Int)
+  // an instance noted under its root (undo = pop the newest note)
+  | MInstanceNote(Int)
 
 // 14 variants, one per operator form in SYNTAX.md's operator
 // precedence table. Exhaustive set; add a variant here AND update
@@ -2100,6 +2121,16 @@ effect GraphRead {
   // still a floor, but it is now ONE floor at ONE key, so a caller and a
   // callee cannot floor differently: that difference was the miscompile.
   graph_sig_at(String) -> Option(EmitSig)
+  // The GATE column's read: every gate carried by this cell, newest
+  // first. A cell with none answers the empty list — the common case,
+  // one bucket read.
+  graph_gates_of(Int) -> [Gate]
+  // The INSTANCE column's read: every fresh copy instantiate minted from
+  // this cell while its declaration was still open — the copies an exit
+  // install would otherwise miss (a self-reference or a cycle member
+  // instantiating a pre-registered or assumed scheme before the
+  // declaration's own exit gated the root).
+  graph_instances_of(Int) -> [Int]
 }
 
 effect GraphWrite {
@@ -2132,6 +2163,15 @@ effect GraphWrite {
   graph_finalize_row(Int, EffRow, Reason)
   // union-find path compression at the row sort — an OPTIMIZATION write, distinct from the judgment bind: a BRANCH cursor's arm skips it (a branch writing shared chain cells makes sibling chases schedule-dependent — the measured k2 yield-floor flips; the root's sequential walks re-compress), the root's arm rebinds the chain link to its resolved terminal
   graph_compress_row(Int, EffRow)
+  // enter a gate on a cell — trailed (MSetGate), so a speculative
+  // judgment's gates roll back with its bindings; the checking writer
+  // (effects.mn gate_install) is the one caller, and it judges the
+  // cell's current content and every noted instance in the same move
+  graph_gate_add(Int, Gate)
+  // note a fresh instance under the root it was copied from — trailed
+  // (MInstanceNote); build_inst_mapping is the one writer, and a gate
+  // installed on the root later reaches the copy through this column
+  graph_instance_note(Int, Int)
   graph_bind_record_row(Int, [(String, Ty)], RecordRowTail, Reason)
   graph_rollback(Int)
   // The speculation's ACCEPT: pop the newest checkpoint WITHOUT
@@ -2370,8 +2410,11 @@ type DiagKind
   // reached 0 at the Phase 4.1 landing and held. A narration held at zero
   // is a counter standing in for a proof — so it became the proof.
   | EUseAfterMove(String, Span)
-  // declared vs inferred
-  | EEffectMismatch(EffRow, EffRow, Span)
+  // declared vs inferred, and the Reason that DECLARED the row it holds
+  // the value to — a gate carries its declaration's own reason to the
+  // writing site, so a refusal at a call names the fn whose `!E` it
+  // violates (Hβ.diag.effect-mismatch-reason, first face)
+  | EEffectMismatch(EffRow, EffRow, Reason, Span)
   // the offending row
   // ─── verify / own / graph / driver ───────────────────────────────
   | EPurityViolated(EffRow, Span)
@@ -2592,7 +2635,7 @@ fn diag_span(d) with Pure = match d {
   TOwnUnconsumed(_, s) => s,
   TOwnAcrossReplay(_, s) => s,
   EUseAfterMove(_, s) => s,
-  EEffectMismatch(_, _, s) => s,
+  EEffectMismatch(_, _, _, s) => s,
   EPurityViolated(_, s) => s,
   ERefinementRejected(_, s) => s,
   EVerifyUnencodable(s) => s,
@@ -2662,7 +2705,7 @@ fn diag_source(d) with Pure = match d {
   TOwnUnconsumed(_, _) => "ownership",
   TOwnAcrossReplay(_, _) => "ownership",
   EUseAfterMove(_, _) => "ownership",
-  EEffectMismatch(_, _, _) => "effects",
+  EEffectMismatch(_, _, _, _) => "effects",
   EPurityViolated(_, _) => "effects",
   ERefinementRejected(_, _) => "verify",
   EVerifyUnencodable(_) => "verify",
@@ -2732,7 +2775,7 @@ fn diag_code(d) with Pure = match d {
   TOwnUnconsumed(_, _) => "T_OwnUnconsumed",
   TOwnAcrossReplay(_, _) => "T_OwnAcrossReplay",
   EUseAfterMove(_, _) => "E_UseAfterMove",
-  EEffectMismatch(_, _, _) => "E_EffectMismatch",
+  EEffectMismatch(_, _, _, _) => "E_EffectMismatch",
   EPurityViolated(_, _) => "E_PurityViolated",
   ERefinementRejected(_, _) => "E_RefinementRejected",
   EVerifyUnencodable(_) => "E_VerifyUnencodable",
@@ -2992,7 +3035,7 @@ fn diag_refuses(d) with Pure = match d {
   // 0 — every handler in it has a pure init, which is why no gate saw the
   // shape until one was written for it.
   True,
-  EEffectMismatch(_, _, _) => // ARMED 2026-09-25 — the crown's own verdict, and it was not armed:
+  EEffectMismatch(_, _, _, _) => // ARMED 2026-09-25 — the crown's own verdict, and it was not armed:
   // a declared row's refusal printed and the program RAN. Measured on the
   // boot the day it was armed: `fn f() with !E = op()` under an outer
   // handler reported the mismatch and exited 7 (the op's value); the
@@ -3134,7 +3177,7 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   TOwnUnconsumed(msg, _) => msg,
   TOwnAcrossReplay(msg, _) => msg,
   EUseAfterMove(msg, _) => msg,
-  EEffectMismatch(declared, inferred, _) => "effect row mismatch: {show_effrow(declared)} vs {show_effrow(inferred)}",
+  EEffectMismatch(declared, inferred, why, _) => "effect row mismatch: {show_effrow(declared)} vs {show_effrow(inferred)} — {show_reason(why)}",
   EPurityViolated(row, _) => "expected Pure but found effects: {show_effrow(row)}",
   ERefinementRejected(pred, _) => "refinement predicate proven false at compile time: {show_predicate(pred)}",
   EVerifyUnencodable(_) => // drift-audit: ignore — diagnostic message string

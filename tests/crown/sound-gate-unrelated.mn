@@ -1,0 +1,6 @@
+// CROWN — an unrelated negation admits the callback: `!WASI` gates f's
+// cell against WASI alone, and E is not WASI. Expect NO E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn run(f) with !WASI = f()
+fn main() = (run(() => op())) ~> h

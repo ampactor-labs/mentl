@@ -1,0 +1,8 @@
+// CROWN — `with Pure` over a parameter's row is the empty closed cap on
+// that cell: a performing callback violates it at the argument edge.
+// Accepted by boot 2974547b (the same vacuous class as leak-gate-vacuous).
+// Expect E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn run(f) with Pure = f()
+fn main() = (run(() => op())) ~> h

@@ -2168,18 +2168,59 @@ mismatch are banked expectations to re-derive by hand (§9.11), exactly as
 `mn-hof-row-gate` and the MCP refusal count were at E_EffectMismatch's
 arming.
 
-`Hβ.test.lens-probes-are-a-bash-loop` — OPEN, 2026-09-25. The 36 negation
-probes under tests/lens/negation are measured by a shell loop over `mentl
-check` / `mentl run` into EXPECT.md, while the medium owns the verb that does
-exactly this: `mentl test` reads each fixture's own first-line `// expect: N`
-or `// expect: refuse E_Class` (src/main.mn `test_run`). The probes carry no
-such header because most are red-first contracts for the gate landing
-(LENS §2.2 rules 1–4) and a red member would fail the battery today. They
-gain their headers IN the landing that turns them green, and the bash table
-retires into the verb's own report.
+`Hβ.test.lens-probes-are-a-bash-loop` — CLOSED 2026-09-27, in the gate
+landing exactly as banked. The 36 negation probes carry `// expect:`
+headers (23 `refuse E_EffectMismatch`, 6 `refuse E_EffectUnhandled`, 7 run
+values) and tools/verify.sh's negation leg runs them through `mentl test`
+beside the micros, 36/36. The first battery run through the pinned boot
+found that the two fanout probes' banked "56" was a TUPLE'S HEAP ADDRESS
+(the in-process exec seam answered 1048632, the same address one megabyte
+up) — a run value nobody had read as one; they return `a + b` now. The
+bash loop and EXPECT.md's hand table are history; EXPECT.md keeps the
+before/after measurement with the battery named as the live contract.
+
+`Hβ.infer.mycroft-recheck-one-round-short` — OPEN, BORN 2026-09-27, measured
+while landing the gate's Mycroft transfer. `infer_fn_speculative` runs
+K = 3 rounds: plain, assumed, recheck-under-the-round-2-result, and the
+stability belt (`ty_alpha_eq`) refuses the accept unless round 3 publishes
+the round-2 scheme up to renaming. On `fn run(f, x) with !E = if depth(x)
+> 0 { run(() => op(), [x]) } else { f() }` round 2 publishes `(f: () -> v,
+x: t) -> v` — the assumed scheme connects nothing, so the self-call's
+result stays a var — and round 3, instantiating THAT result, unifies the
+callback's `-> Int` through to the return and publishes `(f: () -> Int, x:
+t) -> Int`: more specific, not alpha-equal, refused; the plain re-run
+then judges the body MONO (f's cell shared with the self-call's argument),
+which is why the shape refused on the boot and why `sound`/`leak` pairs
+on it were never exercising the accept path. A fourth round under the
+round-3 result would publish the same scheme and stabilize. The
+fixtures landed with `f() + 0`, which grounds round 2 and makes the accept
+run; the general form is iterate-to-fixpoint (compare round n+1 against
+round n, bounded by K), and the belt's own comment names the row half as
+the v1 boundary. Not a soundness hole: the fallback is HM's mono floor,
+and it refuses correctly by sharing — it is the accept path silently
+unreachable on one shape, and a shape the poly-recursion fragment claims.
+
+`Hβ.diag.effect-mismatch-reason` — FIRST FACE LANDED 2026-09-27.
+`EEffectMismatch` carries a Reason beside its two rows, and `diag_message`
+renders it: a gate's refusal at a call site reads `!E + Any vs E — at
+<decl span>: declared as run`, and an authored negation on a function-type
+parameter reads `param 0 of both → inferred from param of 'both'` (the
+gate's reason is the parameter cell's own). What remains: the two spans as
+two LOCATIONS the address surface can walk (the declaration and the
+writing site are one line today), and the unify arms' construction
+reasons (`Inferred("…")`) rendered as the developer's own words rather
+than the algebra's.
 
 `Hβ.infer.nested-frame-prune-drops-parameter-row` — CLOSED 2026-09-25 (the
-pin that armed E_EffectMismatch). The completion prune ran at EVERY frame
+pin that armed E_EffectMismatch), and its SIBLING closed 2026-09-27: the
+keep-set now carries the ENCLOSING frames' own row cells too. A mono
+self-reference inside a lambda charges the enclosing declaration's live
+accumulator — a judgment-era free cell in no signature — and the prune
+dropped it as scratch, so `() => a(1)` inside `fn a(n) = if n > 0 { op() }
+else { run(() => a(1)) }` published Pure while calling a fn that performs
+E; with run's `!E` gate live the push reached nothing (adv-self-arg, the
+one probe still running 7 after the gate). The declaration's own exit
+still cuts the edge to itself. The completion prune ran at EVERY frame
 exit with the frame's OWN signature as its keep-set — the tee body and both
 fanout thunks passed nothing, the lambda its own params — so a parameter's
 row cell, which escapes through the ENCLOSING declaration's signature, was
@@ -2994,8 +3035,31 @@ the extractors answer `Option(String)`, and every caller that can meet a
 non-name refuses at the token's own span — the census is the caller list, and
 the wildcard-fabricates count drops by the two `""` arms.
 
-`Hβ.infer.declared-row-vacuous-against-a-free-body-row` — **STAMPED
-2026-08-18, and the fork it was banked as is ANSWERED.** Morgan's
+`Hβ.infer.declared-row-vacuous-against-a-free-body-row` — **CLOSED
+2026-09-27 (PROGRAM A3; LEDGER carries the mechanism and the kills).** The
+gate is carried by the CELL: a declaration's exit installs its negation
+(or its empty cap) on every free terminal of its resolved body row,
+through each edge's mask, and every writer into a gated cell judges the
+folded value and pushes the gate onto the value's free terminals — the
+argument edge, the unify arms, the three finalizes, a function type bound
+onto a gated type cell. Copies minted while the declaration is open are
+noted under their root and reached by the install; every other copy
+carries its root's gates from the mint; the Mycroft accept transfers gates
+onto the assumed scheme's cells. `fn run(f) with !E = f()` refuses
+`run(() => op())` at the argument edge naming run's declaration; so do the
+two-parameter body, the masked tee's second negation, the sig'd and
+cycle-member self-references, the three-member chain, the outer wrapper,
+the stored HOF and callback, the instance-precise negation (bare and same
+instance refuse, a provably distinct one is admitted). Crown 89/89, the 36
+probes a 36/36 battery, the wheel at zero diagnostics through the new
+wheel. What stays open beside it: the executable root gate's install-
+anywhere credit (`Hβ.effects.root-gate-credits-an-install-that-had-not-
+opened`), the positive cap (A3-pos, after A4), and
+`Hβ.diag.row-polymorphic-body`. The entry below is the record of the dig
+that priced it, kept whole because its kills are what made the landing's
+form legible; the "fork" it ends on was answered as branch A and branch A
+turned out to be the Carried-Truth Law, not a choice.
+THE STAMP OF 2026-08-18, and the fork it was banked as, ANSWERED. Morgan's
 criterion (SOTA-surpassing, most empowering to Mentl's own parts, most
 empowering to developers, exemplary of the ultimate form) resolves it to
 branch A — a declared row constrains its params' rows — and A turns out
@@ -3006,7 +3070,7 @@ DISCARDED constraint, not a missing feature, so the fix is less
 machinery rather than more. Branch B (the modal capability-at-tee) is
 not the alternative — it answers escape and persisted worlds, the TIME
 half — and doing A spends none of its budget.
-THE MEASUREMENTS, all this turn:
+THE MEASUREMENTS, all that turn:
   · `fn run(f) with Pure = f()` + `run(() => op())` → 0 errors, runs 7.
   · The same with `with !E` → 0 errors, runs 7. **The negation leaks
     identically**, which the entry below never recorded — this is

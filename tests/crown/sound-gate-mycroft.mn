@@ -1,0 +1,8 @@
+// CROWN — the control for leak-gate-mycroft: the same stable Mycroft
+// shape with a quiet self-callback; the transferred gate judges a pure
+// copy and admits it. Expect NO E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn depth(x) = 0
+fn run(f, x) with !E = if depth(x) > 0 { run(() => 1, [x]) } else { f() + 0 }
+fn main() = (run(() => 1, 1)) ~> h

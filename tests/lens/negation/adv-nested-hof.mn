@@ -1,3 +1,4 @@
+// expect: 6
 effect E { op() -> Int }
 effect F { fop() -> Int }
 handler h { op() => resume(7) }

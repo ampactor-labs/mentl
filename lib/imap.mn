@@ -27,37 +27,78 @@
 // ─── wmap: the primitive ─────────────────────────────────────────────────
 // `n` is the bucket count and MUST be a power of two — the bucket index is a
 // mask, not a modulo, so a non-power-of-two silently loses the high keys.
+//
+// A bucket is a SNOC STACK: add pushes at the END, the reads scan from the
+// end (newest first), and wmap_pop drops the newest entry by reading the
+// snoc's parent — the same push-at-END / drop_last discipline every Mentl
+// stack keeps (graph_handler's checkpoint_stack). That discipline is what
+// lets a trail-backed map be undone inside a speculation region: the pop
+// allocates nothing and the surviving bucket is the pre-add object, so a
+// rollback that runs before the region's heap_reset never leaves a bucket
+// pointing into freed memory (a rebuilt bucket would be minted in the
+// region and die with it). The former prepend-and-scan-forward form had no
+// pop and no way to grow one without that hazard.
 fn wmap_new(n) with Memory + Alloc = list_filled(n, [])
 
-fn wmap_bucket(ref idx, k) with Memory = i32_and(k, len(idx) - 1)
+// The key is pinned `Int` at every entry: the primitive's own law is that
+// the key IS a word, and the pin is what makes the bucket's key compare a
+// proven word compare rather than an address compare over the erased
+// tuple (T_EqTypeUnprovable's class — the collect walk entered the wheel's
+// count the day it gained a caller).
+fn wmap_bucket(ref idx, k: Int) with Memory = i32_and(k, len(idx) - 1)
 
-fn wmap_add(idx, k, val) with Memory + Alloc = {
+fn wmap_add(idx, k: Int, val) with Memory + Alloc = {
   let b = wmap_bucket(idx, k)
-  list_set(idx, b, [(k, val)] ++ list_index(idx, b))
+  list_set(idx, b, push(list_index(idx, b), (k, val)))
 }
 
-fn wmap_get(ref idx, k) with Memory + Alloc =
-  wmap_bucket_scan(list_index(idx, wmap_bucket(idx, k)), k, 0)
+fn wmap_get(ref idx, k: Int) with Memory + Alloc = {
+  let bucket = list_index(idx, wmap_bucket(idx, k))
+  wmap_bucket_scan(bucket, k, len(bucket) - 1)
+}
 
-fn wmap_bucket_scan(ref bucket, k, i) with Memory + Alloc = if i >= len(bucket) {
+fn wmap_bucket_scan(ref bucket, k: Int, i) with Memory + Alloc = if i < 0 {
   None
 } else {
   match list_index(bucket, i) {
-    (bk, val) => if bk == k { Some(val) } else { wmap_bucket_scan(bucket, k, i + 1) },
+    (bk, val) => if bk == k { Some(val) } else { wmap_bucket_scan(bucket, k, i - 1) },
   }
 }
 
-// The MULTI-map read — every value entered under K, newest first (add
-// prepends), collected in one bucket scan: O(bucket), never O(map).
-fn wmap_get_all(ref idx, k) with Memory + Alloc =
-  wmap_bucket_collect(list_index(idx, wmap_bucket(idx, k)), k, 0, [])
+// ONE empty result for every miss: the multi-map read runs at the graph's
+// hottest writers (every row bind asks a cell for its gates and its
+// notes), and a fresh `[]` per miss was an allocation that said nothing —
+// the same law as effects.mn's shared empty mask. A hit pushes onto it,
+// which allocates the snoc and never touches the shared list.
+let wmap_none = []
 
-fn wmap_bucket_collect(ref bucket, k, i, acc) with Memory + Alloc = if i >= len(bucket) {
+// The MULTI-map read — every value entered under K, newest first,
+// collected in one bucket scan: O(bucket), never O(map).
+fn wmap_get_all(ref idx, k: Int) with Memory + Alloc = {
+  let bucket = list_index(idx, wmap_bucket(idx, k))
+  wmap_bucket_collect(bucket, k, len(bucket) - 1, wmap_none)
+}
+
+fn wmap_bucket_collect(ref bucket, k: Int, i, acc) with Memory + Alloc = if i < 0 {
   acc
 } else {
   match list_index(bucket, i) {
-    (bk, val) => wmap_bucket_collect(bucket, k, i + 1, if bk == k { push(acc, val) } else { acc }),
+    (bk, val) => wmap_bucket_collect(bucket, k, i - 1, if bk == k { push(acc, val) } else { acc }),
   }
+}
+
+// The LIFO undo: drop the newest entry, which the caller asserts was
+// entered under K. Only a trail walked BACKWARD calls this, so every add
+// that landed in the bucket after K's was undone first and the bucket's
+// last entry is K's — a different key here is a trail out of order, and
+// it traps rather than silently dropping someone else's entry.
+fn wmap_pop(idx, k: Int) with Memory + Alloc = {
+  let b = wmap_bucket(idx, k)
+  let bucket = list_index(idx, b)
+  match last(bucket) {
+    (bk, _) => if bk == k { 0 } else { load_i32(0 - 1) },
+  }
+  list_set(idx, b, drop_last(bucket))
 }
 
 // ─── smap: the String projection ─────────────────────────────────────────

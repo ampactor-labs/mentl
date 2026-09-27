@@ -1,3 +1,4 @@
+// expect: refuse E_EffectUnhandled
 effect E { op() -> Int }
 fn run(f) = {
   let g = f

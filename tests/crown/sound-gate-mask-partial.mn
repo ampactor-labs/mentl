@@ -1,0 +1,8 @@
+// CROWN — the control for leak-gate-mask-partial: the callback performs
+// the effect the tee absorbs, and `!F` is untouched. Expect NO
+// E_EffectMismatch.
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h { op() => resume(7) }
+fn run(f) with !E + !F = (f()) ~> h
+fn main() = run(() => op())

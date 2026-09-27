@@ -35,6 +35,119 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-27 · pin 674154f6541234a2 (TRANSITION m3 == m4) · THE NEGATION
+  GATE IS CARRIED BY THE CELL. PROGRAM A3.
+  **The defect, measured on the prior boot.** A declared `!E` over a body
+  row that resolves to a free terminal — a HOF calling its parameter —
+  constrained nothing: the exit check's free arm did nothing, and nothing
+  was written that a later instantiation could refuse. `fn run(f) with !E
+  = f()` accepted `run(() => op())` and ran (exit 7); so did `with Pure`,
+  the two-parameter body, the masked tee with a second negation, the
+  sig'd self-reference, the cycle's forward reference, the three-member
+  chain, the outer wrapper `outer(k) = run(k)`, the stored HOF and the
+  stored callback, and a self-reference passing its own argument
+  (tests/lens/negation, LENS §2.6/§7.1). One sound program was falsely
+  refused: `fn both(f: () -> Int with !E, g) with !F = f() + g()` read
+  `!F + Any vs Any`, because the authored negation on the parameter's
+  type was a universe VALUE that dropped its sibling terminal at the fold.
+  **The mechanism.** A gate is a constraint carried by a cell —
+  `Gate({reason, row})`, the negation `([], [E], EtAll)` or the empty cap
+  (`with Pure`), with the declaration's Reason — kept as a list per cell
+  in a sparse handle-keyed column of `graph_handler`'s state (lib/imap.mn's
+  wmap, now a snoc stack with `wmap_pop`, so a speculative judgment's
+  gates roll back LIFO with the trail: `MSetGate`, `MInstanceNote`). The
+  declaration's exit reads its body row FOLDED (`resolve_row`, never
+  `graph_chase` — a single-edge alias chases to the bare free cell and a
+  two-edge tail is its own terminal) and installs the gate on every free
+  terminal's root through the edge's mask: a negation forgets the masked
+  names, the cap admits them (`G ∪ m`, LENS §2.3 derived). Every writer
+  into a gated cell judges the folded incoming value (`row_subsumes`) and
+  pushes the gate onto its free terminals: the argument edge and the unify
+  arms (`bind_edges_to`), the three finalizes (`exit_frame` — the finalize
+  left the infer_ctx arm for the body's world, so its refusal reaches
+  every capture bracket; the group completion fold; the instance pin), and
+  a function type bound onto a gated type cell. The two unify arms that
+  stored `EtAll` into cells install gates instead; an authored `!E` on a
+  function-type parameter mints a gated free row var (`quantify_ctor_row`)
+  — the universe appears in gates and nowhere else. A copy minted while
+  its root's declaration is open (a self-reference instantiating the
+  pre-registered or assumed scheme, a cycle member instantiating an
+  unjudged co-member's) is noted under the root — bounded by the prereg
+  ceiling and the open declaration's entry mint (`inf_open_decl`) — the
+  note follows the alias the checking writer draws, and an install walks
+  the notes; every other copy carries its root's gates from the mint. The
+  Mycroft accept transfers the published cells' gates onto the assumed
+  scheme's cells (position-paired), whose noted copies are the round-3
+  self-calls' arguments. `E_EffectMismatch` carries the gate's Reason: a
+  refusal at a call names the declaration whose negation it violates. The
+  deferral machinery — `defer_row_gate`, `drain_row_gates`,
+  `set_group_members`, `group_member`, `row_gate_unresolved`,
+  `edges_any_free_beyond`, `sig_owns`, `drain_deferred_row_gates`,
+  `assert_row_gates_drained`, `assert_gates_walk`, the park decision and
+  the signature-frees partition — is deleted: with the gate on the free
+  edge, the write that resolves it is the check, so the exit installs
+  unconditionally and nothing parks.
+  **Measured.** Crown 89/89 — 67 held, 22 new (fourteen leaks, eight
+  sounds; eleven leaks accepted by the prior boot, one sound falsely
+  refused). The 36 LENS probes are a battery now (`// expect:` headers,
+  verify's negation leg, 36/36): every leak a refusal — 23
+  `E_EffectMismatch`, 6 `E_EffectUnhandled` at the root — and 7 run
+  values; the two fanout probes' "56" was a tuple's heap address and they
+  return `a + b` now. `mentl check src/main.mn` through the new wheel:
+  zero diagnostics — no wheel negation violated, none falsely refused.
+  Unprovable compares 58 → 57 (the wmap key pinned `Int`); authored ref
+  728 → 724 (the deleted deferral fns). Frontier 394 pass / 0 red / 2
+  expected-red at the pin, after the two reds of kill (7). Two marches:
+  the first pinned 0a29fda3 with m2 ≠ m3 by 13,088 lines (the handle
+  renumbering crossing one generation) and its board red on the two
+  frontier legs; the second, from that wheel, m2 ≠ m3 by 8 lines, m3 == m4
+  at 427,894 lines, census 0 — the pin. Cost: m4 leg 12.49s wall · 1002MB
+  peak RSS (1026740 KB).
+  **The kills.** (1) "Install at pre-registration on every signature row
+  var" — refuted by the latent/performed rule (`fn make(f) with !E = () =>
+  f()` returns its callback uncalled; gating f's cell would refuse
+  `make(() => op())`): the install is at exit, on the body's terminals,
+  and the copies an exit misses are the notes. (2) The first exit walk
+  chased: `graph_chase` on `run`'s row reports the bare free cell, and
+  installs on the alias reach no write — `resolve_row` plus
+  `graph_chase_handle` to the root. (3) The Mycroft crucible's first shape
+  refused on the boot through the MONO fallback, not the transfer: probed,
+  round 3 published `-> Int` where round 2 had published `-> v` (the
+  recheck under the round-2 result grounds the return from the callback),
+  so the stability belt refuses the accept and the plain re-run judges by
+  sharing — K = 3 is one round short of the fixpoint on that shape
+  (`Hβ.infer.mycroft-recheck-one-round-short`); the crucible's `+ 0`
+  grounds round 2 so the accept runs and the transfer is the refusal.
+  (4) `adv-self-arg` still leaked with the gate live: the lambda's exit
+  pruned its edge to the enclosing declaration's live row cell as scratch,
+  so `() => a(1)` published Pure while calling a fn that performs E and
+  the gate pushed onto it reached nothing; the keep-set carries the
+  enclosing frames' row handles now. (5) The first `wmap_pop` returned a
+  list from one branch and a trap from the other. (6) Three ratchets
+  refused before the pin: authored ref +18 from `ref` markers on the new
+  fns (the inference grades them — removed, the count fell); one
+  backticked `f` posing as a reference in prose; unprovable compares 59
+  (the multi-map read's first caller — the key pinned `Int`, 57). (7) The
+  first pin's board caught two more, both frontier legs, both the form's
+  own consequences. A parameter typed `() -> Int with !WASI` inside a body
+  declared `!WASI` carried TWO gates with one row on one cell — the
+  param's, then the exit's install — and the argument edge refused twice
+  for one violation: a gate is a BOUND, so `gate_present` dedups by row
+  and the first declaring Reason is the bound's (the noisy hof-gate face's
+  "exactly one mismatch" contract measured it). And the persist replay
+  barrier (`row_severs_replay`) matched the universe VALUE `EfRow(_,
+  absent, EtAll)` of an authored `!WASI + !Filesystem + !Network` thunk
+  type, which A3 moved into a gate on a free terminal, so
+  `T_OwnAcrossReplay` never fired; the read follows the row to its one
+  terminal and reads the gates there (the value form stays readable). The
+  first cut of that reader authored `with Memory + Alloc` and the wheel
+  refused it — the name compare reaches `Intern` — so it carries no
+  authored positive row at all, A4's rule applied one fn early.
+  **Not closed.** The executable root gate still credits an install
+  anywhere (Step 2 next, `Hβ.effects.root-gate-credits-an-install-that-had-
+  not-opened`); a positive declared row installs no cap until A4 deletes
+  the wheel's inventories (A3-pos); `Hβ.diag.row-polymorphic-body`.
+
 - 2026-09-26 · pin 2974547b80a7c09c (TRANSITION m3 == m4) · A `~>` MASK BELONGS
   TO THE EDGE IT FILTERS. PROGRAM A3's prerequisite.
   **The defect, measured on the prior boot.** A row held one absent set for

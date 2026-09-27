@@ -959,29 +959,234 @@ fn row_subsumes(ref body_row, ref gate_row) with Memory + Alloc + GraphRead = {
 fn unify_row(ref a, ref b, ref span, ref reason) with !Mutate =
   unify_row_canonical(resolve_row_compress(a), resolve_row_compress(b), span, reason)
 
+// ─── the gate — a declared negation, carried by the cell ─────────────
+//
+// A gate is an upper bound on a cell's solutions: `G ⊆ U`, read as
+// `!E` (`([], [E], EtAll)` — everything but E) or as the empty closed cap
+// (`with Pure` — nothing). The invariant every writer keeps is that a
+// gated cell never holds a row outside its gate, and it holds in two
+// halves at each write of a value `(P, EtOpen(edges))` into a gated cell:
+//   ground — `P ⊆ G`, checked now on the FOLDED value (row_subsumes);
+//   push   — each free terminal `(v, m)` of the value receives `G ∪ m`,
+//            since `σ(v) ∖ m ⊆ G ⟺ σ(v) ⊆ G ∪ m`: a negation loses the
+//            names the path absorbs, a closed cap gains them (LENS §2.3,
+//            derived rather than asserted; the mask rides the edge so the
+//            push is exact per path).
+// A cell carries a LIST of gates (each with its declaring Reason) and is
+// judged against every one — two declarations meeting on one cell need no
+// meet operation, and a refusal names the declaration it violates. The
+// gate follows the cell's aliases (an alias's write pushes onto its
+// terminal), its instances (every copy build_inst_mapping minted while the
+// declaration was open, through the instance column), and its content (a
+// copy bound before its root was gated is judged at the install). This is
+// what makes `fn run(f) with !E = f()` refuse `run(() => op())` at the
+// argument edge, under polymorphism, through masks, across forward
+// references and sig'd recursion
+// (Hβ.infer.declared-row-vacuous-against-a-free-body-row).
+fn gate_row(g: Gate) = g.row
+
+fn gate_reason(g: Gate) = g.reason
+
+fn mk_gate(row, reason) = Gate{reason: reason, row: row}
+
+// The gates a WRITE into `cell` must satisfy: the cell's own and its
+// root's (a single-edge alias chases to the terminal that installs
+// carry to; a write into the alias is read through it).
+fn gates_at(cell) with Memory + Alloc + GraphRead = {
+  let own_gates = graph_gates_of(cell)
+  let r = graph_chase_handle(cell)
+  if r == cell {
+    own_gates
+  } else {
+    let root_gates = graph_gates_of(r)
+    if len(own_gates) == 0 {
+      root_gates
+    } else if len(root_gates) == 0 {
+      own_gates
+    } else {
+      own_gates ++ root_gates
+    }
+  }
+}
+
+// Dedup at the install, BY ROW: a gate is a bound, and a bound already
+// held enters no second time — the same declaration reaching one cell on
+// two paths (a two-path meet, a re-finalize, the alias hop), and two
+// declarations stating one bound (a parameter typed `() -> a with !E`
+// inside a body declared `!E`: the param's gate and the exit's install
+// coincide on the parameter's cell). The first declaring Reason is the
+// bound's; a second witness of the same bound would refuse the same edge
+// twice for one violation (the noisy hof-gate face measured two).
+fn gate_present(gs: [Gate], g: Gate) with Memory + Alloc = match gs {
+  [] => false,
+  [h, ...rest] => if gate_row(h) == gate_row(g) { true } else { gate_present(rest, g) },
+}
+
+// The gate as it reaches a terminal through the edge's mask: a negation
+// forgets the masked names (an absorbed name never reaches the row); a
+// closed cap admits them. A gate whose forbidden set the mask exhausts is
+// satisfied by the mask alone and pushes nothing.
+fn gate_through_mask(g: Gate, m) with Memory + Alloc = match gate_row(g) {
+  EfRow(p, a, t) => match t {
+    EtAll => {
+      let a2 = name_set_diff(a, m)
+      if len(a2) == 0 { None } else { Some(mk_gate(ef_make(p, a2, EtAll), gate_reason(g))) }
+    },
+    EtClosed => Some(mk_gate(ef_make(name_set_union(p, m), name_set_diff(a, m), EtClosed), gate_reason(g))),
+    EtOpen(_) => None,
+  },
+}
+
+// Judge a FOLDED value against one gate — the ground half; the refusal
+// carries the gate's own reason so it names the declaration it violates.
+fn gate_judge(g: Gate, v, span) = if row_subsumes(v, gate_row(g)) {
+  ()
+} else {
+  report_effect_mismatch(gate_row(g), v, span, gate_reason(g))
+}
+
+// The push half: every free terminal of the folded value takes the gate
+// through its own mask. Structural walk (the resolver's discipline).
+fn gate_push(g: Gate, v, span) = match v {
+  EfRow(_, _, t) => match t {
+    EtOpen(vs) => gate_push_edges(g, vs, span),
+    _ => (),
+  },
+}
+
+fn gate_push_edges(g: Gate, vs: [RowEdge], span) = match vs {
+  [] => (),
+  [e, ...rest] => {
+    match gate_through_mask(g, edge_mask(e)) {
+      Some(g2) => gate_install(edge_cell(e), g2, span),
+      None => (),
+    }
+    gate_push_edges(g, rest, span)
+  },
+}
+
+fn gate_judge_push(g: Gate, v, span) = {
+  gate_judge(g, v, span)
+  gate_push(g, v, span)
+}
+
+fn gates_judge_push(gs: [Gate], v, span) = match gs {
+  [] => (),
+  [g, ...rest] => {
+    gate_judge_push(g, v, span)
+    gates_judge_push(rest, v, span)
+  },
+}
+
+// Install a gate on a cell: enter it, judge what the cell ALREADY holds
+// (a copy bound before its root was gated — the sig'd self-reference
+// whose recursive call instantiated the scheme before the declaration's
+// exit), reach every noted instance, and follow a single-edge alias to
+// the free terminal the writes land on. The entry precedes the recursion
+// so a copy bound back to its own root (a recursive call passing its own
+// callback parameter straight through) terminates at the dedup.
+fn gate_install(cell, g: Gate, span) = if gate_present(graph_gates_of(cell), g) {
+  ()
+} else {
+  graph_gate_add(cell, g)
+  match graph_chase(cell) {
+    GNode(kind, _) => match edge_row_of(kind) {
+      Some(content) => gate_judge_push(g, resolve_row(content), span),
+      None => (),
+    },
+  }
+  gate_install_instances(graph_instances_of(cell), g, span)
+  let r = graph_chase_handle(cell)
+  if r == cell { () } else if row_var_is_free_cell(r) { gate_install(r, g, span) } else { () }
+}
+
+fn gate_install_instances(is, g: Gate, span) = match is {
+  [] => (),
+  [i, ...rest] => {
+    gate_install(i, g, span)
+    gate_install_instances(rest, g, span)
+  },
+}
+
+// A free cell of either sort in row position (the NFree tolerance
+// row_var_is_free names in infer.mn, read here at the mechanism layer).
+fn row_var_is_free_cell(v) with Memory + GraphRead = match graph_chase(v) {
+  GNode(NRowFree(_), _) => true,
+  GNode(NFree(_), _) => true,
+  _ => false,
+}
+
+// THE CHECKING WRITER's half, before the raw bind: every gate on the
+// target judges the incoming value and rides its free terminals, and the
+// target's noted instances follow the alias the bind draws (a note taken
+// under a pre-registered cell must be reachable from the judgment cell it
+// is bound to, or the declaration's exit install misses the copy). A cell
+// with neither gates nor notes — the common case — costs two bucket reads.
+fn gate_check_push(cell, row, span) = {
+  let gs = gates_at(cell)
+  let notes = graph_instances_of(cell)
+  if len(gs) == 0 && len(notes) == 0 {
+    ()
+  } else {
+    let v = resolve_row(row)
+    gates_judge_push(gs, v, span)
+    notes_follow(notes, v)
+  }
+}
+
+fn notes_follow(notes, v) = match v {
+  EfRow(_, _, t) => match t {
+    EtOpen(vs) => notes_follow_edges(notes, vs),
+    _ => (),
+  },
+}
+
+fn notes_follow_edges(notes, vs: [RowEdge]) = match vs {
+  [] => (),
+  [e, ...rest] => {
+    notes_enter(graph_chase_handle(edge_cell(e)), notes)
+    notes_follow_edges(notes, rest)
+  },
+}
+
+fn notes_enter(root, notes) = match notes {
+  [] => (),
+  [i, ...rest] => {
+    graph_instance_note(root, i)
+    notes_enter(root, rest)
+  },
+}
+
 // Bind one row into EVERY edge of a set — the multi-edge bind the five
-// unify arms share. Structural walk (mechanism layer, the resolver's
-// own discipline).
-fn bind_edges_to(ref ws: [RowEdge], row, ref span, ref reason) with Memory + Alloc + GraphWrite = match ws {
+// unify arms share, and the one judged writer the gate reads at: the
+// check and the push run before the raw op. Structural walk (mechanism
+// layer, the resolver's own discipline).
+fn bind_edges_to(ref ws: [RowEdge], row, ref span, ref reason) = match ws {
   [] => (),
   [w, ...rest] => {
+    gate_check_push(edge_cell(w), row, span)
     graph_bind_row(edge_cell(w), row, Located(span, reason))
     bind_edges_to(rest, row, span, reason)
   },
 }
 
-// The negative capability carried onto each edge: the edge's cell may
-// perform anything the forbidden set does not name — minus what the edge's
-// own mask already subtracts, since a name the path absorbs never reaches
-// the row (LENS §2.3's push, G ∪ mask).
-fn bind_edges_neg(ws: [RowEdge], forbidden, span, reason) with Memory + Alloc + GraphWrite = match ws {
+// The negative capability carried onto each edge — as a GATE on the
+// edge's cell, minus what the edge's own mask already subtracts (a name
+// the path absorbs never reaches the row). This used to BIND the cell to
+// `([], forbidden, EtAll)`: a universe VALUE in the graph, which every
+// fold beside it then read as "anything", dropping sibling terminals
+// (`fn both(f: () -> Int with !E, g) with !F = f() + g()` refused
+// `!F + Any vs Any` for a g that performed nothing forbidden — measured
+// 2026-09-27). The cell stays free; the constraint is the gate.
+fn bind_edges_neg(ws: [RowEdge], forbidden, span, reason) = match ws {
   [] => (),
   [w, ...rest] => {
-    graph_bind_row(
-      edge_cell(w),
-      EfRow([], name_set_diff(forbidden, edge_mask(w)), EtAll),
-      Located(span, reason)
-    )
+    let f2 = name_set_diff(forbidden, edge_mask(w))
+    if len(f2) == 0 {
+      ()
+    } else {
+      gate_install(edge_cell(w), mk_gate(mk_ef_neg(f2), Located(span, reason)), span)
+    }
     bind_edges_neg(rest, forbidden, span, reason)
   },
 }
@@ -1086,13 +1291,11 @@ fn unify_row_canonical(ref a, ref b, ref span, ref reason) with Memory + Alloc +
   },
 }
 
-// The reason rides to the report site so the mismatch can NAME its
-// construction (it pinned the E_EffectMismatch quartet to one call form
-// in a single read). Carrying it into the rendered diagnostic is the
-// named peer Hβ.diag.effect-mismatch-reason — DiagKind's ctor widens
-// with a Reason field and diag_message renders it through show_reason.
+// The reason rides INTO the diagnostic: a gate's refusal at a call site
+// names the declaration whose negation it violates, and a unify arm's
+// names its construction (Hβ.diag.effect-mismatch-reason, first face).
 fn report_effect_mismatch(ref a, ref b, ref span, ref reason) with !Mutate =
-  report(EEffectMismatch(a, b, span))
+  report(EEffectMismatch(a, b, reason, span))
 
 // Ground: no open edge anywhere the dispatch would need resolved.
 fn row_is_ground(ref row) with Pure = match row {

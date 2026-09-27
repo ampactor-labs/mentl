@@ -1,0 +1,8 @@
+// CROWN — the control for sound-gate-cap-sibling: the callback in the
+// `!E`-typed position performs E and refuses at the argument edge,
+// naming the parameter's declaration. Expect E_EffectMismatch.
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h { op() => resume(7) }
+fn both(f: () -> Int with !E, g) with !F = f() + g()
+fn main() = (both(() => op(), () => 1)) ~> h

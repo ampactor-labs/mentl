@@ -1,3 +1,4 @@
+// expect: refuse E_EffectMismatch
 effect E { op() -> Int }
 fn both(f, g) with !E = f() + g()
 fn main() with !E = both(() => op(), () => 1)

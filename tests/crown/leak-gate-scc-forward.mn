@@ -1,0 +1,14 @@
+// CROWN — the cycle's forward reference: `a` instantiates `run`'s
+// pre-registered scheme before run is judged, so its copy of f's cell is
+// noted under the PREREG cell; run's judgment binds that cell to its
+// judgment cell (the note follows the alias), and run's exit install
+// reaches a's copy through it. A CONTROL rather than a red-first fixture:
+// boot 2974547b refused it too, through the cycle's mono view sharing f's
+// TYPE cell with a's argument (the row rode the shared type), which is
+// the mono-recursion floor and not the gate; under the gate the refusal
+// names run's declaration. Expect E_EffectMismatch.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn a(n) = if n > 0 { run(() => op(), n) } else { 0 }
+fn run(f, n) with !E = if n > 5 { a(0) } else { f() }
+fn main() = (a(1)) ~> h

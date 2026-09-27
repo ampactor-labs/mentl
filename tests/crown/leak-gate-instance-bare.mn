@@ -1,0 +1,9 @@
+// CROWN — a bare instance is never provably distinct from a pinned one:
+// a callback performing bare `Sample` meets `!Sample(44100)` on f's cell
+// and refuses (the conservative side, as at the declared-row check).
+// Accepted by boot 2974547b. Expect E_EffectMismatch.
+effect Sample(rate: Int) { tick() -> Int }
+handler h { tick() => resume(1) }
+fn cb() = tick()
+fn run(f) with !Sample(44100) = f()
+fn main() = (run(cb)) ~> h

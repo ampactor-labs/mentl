@@ -1222,6 +1222,21 @@ fn pure_op(x: Int) -> Int with !Alloc + !IO =
 
 `!E` proves ABSENCE of effect E. Stronger than not-mentioning E because it propagates transitively through the call graph: any callee that performs E causes the whole declaration to fail with `E_EffectMismatch`.
 
+**And through the declaration's own parameters (real, 2026-09-27).** A
+negation on a function that calls a callback is a GATE on that callback's
+row: `fn run(f) with !E = f()` refuses `run(() => op())` at the call, and the
+refusal names `run`'s declaration — under polymorphism, through a `~>`
+mask (`fn run(f) with !E + !F = (f()) ~> h` with `h` absorbing E gates `f`
+with `!F` alone), across forward references, sig'd recursion and stored
+callbacks, and instance-precisely (`!Sample(44100)` admits a callback
+performing `Sample(48000)`). A callback that is only RETURNED, never called,
+performs nothing in the declaring body and stays admissible. The same gate
+is what an authored negation on a function-TYPE parameter is: `f: () -> Int
+with !E` constrains `f`'s row at every call of `f`, and beside it a sibling
+parameter's row is judged on its own. Until this landed the negation over a
+body whose row was a parameter's was vacuous — the program compiled and
+ran.
+
 When used alone (e.g., `with !Mutate`), it creates a **negative capability stance** representing "anything except this effect" (universe-minus). This is how Mentl expresses region-freezes and borrows (`ref`) mathematically without a separate borrow-checker.
 
 **Modal-readiness is a mechanism, not a claim (`PLAN.md §4③`, forward-pointer).** The modal effect synthesis (rows + capabilities unified, closing the higher-order leak) threads effects as *lexical capabilities* through the EXISTING `~>` binding: `~> h` lexically scopes the effect `h` absorbs — that IS the capability mechanism. So the modal form adds only a typing rule (a row variable becomes a lexical capability handle at `~>`), no new surface form: rows give `!E`, `~>` gives the lexical capability, modal is their unification on forms that already exist. Sequenced post-real (§5).

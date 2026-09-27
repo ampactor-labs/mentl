@@ -283,7 +283,17 @@ fn poly_teach_line(owner: String, reason) with Memory + Alloc =
 // over the SHARED spine with a private planned range — the root install is
 // bare and the defaults are the empty graph. Handler state records live in
 // shared heap; the install chain stays per-instance, correctly private.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [] {
+// The gate and instance columns are SPARSE — a handle-keyed multi-map each
+// (lib/imap.mn's wmap, the own.mn region_index precedent), because a gate
+// sits on the few cells a declared negation reaches and an instance note on
+// the few copies a still-open declaration hands out; a dense spine column
+// would pay 64KB per page for either. Both are allocated at the install,
+// not lazily at the first write: every graph_handler install is a ROOT
+// install (eleven, all at verb entries), never per decl, so the eager table
+// costs one 4KB word-list per process — and a table minted lazily inside a
+// speculation region would outlive the region's heap_reset as a dangling
+// state pointer.
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024) {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -652,6 +662,26 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
     }
   },
+  graph_gate_add(handle, gate) => // The gate column's one write: a LIFO push under the cell's handle,
+  // trailed as MSetGate(handle) so a checkpoint's rollback pops it — a
+  // speculative judgment (the ??-fan's candidate, a Mycroft round) that
+  // installs gates and is rejected leaves none behind. In place, like every
+  // cell write: the table never moves, so no state rebind rides the store
+  // beyond the trail's own.
+  {
+    wmap_add(gates, handle, gate)
+    let new_trail = trail_append(trail, trail_len, MSetGate(handle))
+    let new_epoch = epoch + 1
+    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetGate(handle)) }
+    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+  },
+  graph_instance_note(root, fresh) => {
+    wmap_add(instances, root, fresh)
+    let new_trail = trail_append(trail, trail_len, MInstanceNote(root))
+    resume() with trail = new_trail, trail_len = trail_len + 1
+  },
+  graph_gates_of(handle) => resume(wmap_get_all(gates, handle)),
+  graph_instances_of(handle) => resume(wmap_get_all(instances, handle)),
   graph_bind_record_row(handle, fields, tail, reason) => // The record-row residual bind — a `...R` rest's remaining fields, under
   // its OWN node kind (NRecordRowBound). Binding residuals under NRowBound
   // made the row slot an untagged EffRow-or-Ty union every row walk's
@@ -680,6 +710,8 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   //   MSetRow(h, old)  → restore the nodes cell at h to old
   //   MSetBoundary(h, old) -> restore the boundaries cell at h
   //   MFreshNode(h)    → decrement next (un-allocate)
+  //   MSetGate(h)      → pop the newest gate entered on h
+  //   MInstanceNote(h) → pop the newest instance noted under h
   // Reset trail_len = target; entries above are stale and get
   // overwritten on next append — no slicing, no allocation. Epoch is
   // NOT rolled back — it stays monotonic so query observers keyed on
@@ -811,7 +843,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       // inverse lands on its live cell — and MFreshNode entries count next
       // back down. Bands stay open (cells above the restored next are
       // stale-and-overwritten at re-mint, the logical-length discipline).
-      let new_next = revert_trail(spine, spine_open, trail, trail_len, target_idx, next)
+      let new_next = revert_trail(spine, spine_open, trail, trail_len, target_idx, next, gates, instances)
       resume() with next = new_next, trail_len = target_idx
     } else {
       // Walk the CURRENT trail backward, undoing each write in place into
@@ -823,7 +855,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       // closes in-fork bands by COUNT (their table cells are stale above
       // it and get overwritten at the next band-open).
       let cp = last(checkpoint_stack)
-      revert_trail_into(cp.spine, cp.spine_open, trail, trail_len, target_idx)
+      revert_trail_into(cp.spine, cp.spine_open, trail, trail_len, target_idx, gates, instances)
       // drop_last, never slice: the pop runs BEFORE the caller's
       // heap_reset, so a slice node minted here dies with the
       // region and the next fork walks a zeroed cell. On the
@@ -1293,7 +1325,11 @@ fn occurs_in_eff_args_loop(spine, mint_bound, handle, ref args, i, n) with !Muta
 // open-count guard — its page dies with the region, and writing into it
 // would resurrect the doomed-allocation class. MFreshNode needs no step
 // here: the checkpoint restores `next` wholesale.
-fn revert_trail_into(ref spine, spine_open, ref trail, current, target) with Memory = if current <= target {
+// The gate and instance columns are NOT paged, so their two arms carry no
+// open-band guard: a pop lands on the live table whatever band the handle
+// is in, and the table itself outlives every fork (allocated at the root
+// install).
+fn revert_trail_into(ref spine, spine_open, ref trail, current, target, gates, instances) with Memory + Alloc = if current <= target {
   ()
 } else {
   let idx = current - 1
@@ -1301,24 +1337,32 @@ fn revert_trail_into(ref spine, spine_open, ref trail, current, target) with Mem
   match mutation {
     MSetNode(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail_into(spine, spine_open, trail, idx, target)
+      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances)
     },
     MSetRow(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail_into(spine, spine_open, trail, idx, target)
+      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances)
     },
     MSetBoundary(h, old) => {
       if spine_band(h) < spine_open { spine_put_boundary(spine, h, old) }
-      revert_trail_into(spine, spine_open, trail, idx, target)
+      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances)
     },
-    MFreshNode(_) => revert_trail_into(spine, spine_open, trail, idx, target),
+    MFreshNode(_) => revert_trail_into(spine, spine_open, trail, idx, target, gates, instances),
+    MSetGate(h) => {
+      wmap_pop(gates, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances)
+    },
+    MInstanceNote(h) => {
+      wmap_pop(instances, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances)
+    },
   }
 }
 
 // The unpaired walker: same in-place undo (every touched band is open —
 // the guard is kept uniform as the belt), with MFreshNode counting `next`
 // back down.
-fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle) with Memory = if current <= target {
+fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, gates, instances) with Memory + Alloc = if current <= target {
   next_handle
 } else {
   let idx = current - 1
@@ -1326,17 +1370,25 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle) 
   match mutation {
     MSetNode(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances)
     },
     MSetRow(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances)
     },
     MSetBoundary(h, old) => {
       if spine_band(h) < spine_open { spine_put_boundary(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances)
     },
-    MFreshNode(_) => revert_trail(spine, spine_open, trail, idx, target, next_handle - 1),
+    MFreshNode(_) => revert_trail(spine, spine_open, trail, idx, target, next_handle - 1, gates, instances),
+    MSetGate(h) => {
+      wmap_pop(gates, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances)
+    },
+    MInstanceNote(h) => {
+      wmap_pop(instances, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances)
+    },
   }
 }
 

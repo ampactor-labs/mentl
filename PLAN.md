@@ -940,6 +940,26 @@ and this is the STATE.
   it exposed: the executable root gate still credits an install ANYWHERE, so
   `fn main() = op() + ((op()) ~> h)` — row `E`, correct — compiles and traps
   (`Hβ.effects.root-gate-credits-an-install-that-had-not-opened`).
+- **THE NEGATION GATE IS CARRIED BY THE CELL — CLOSED 2026-09-27.** A
+  declared `!E` over a body row that resolved to a parameter's free cell
+  constrained nothing: `fn run(f) with !E = f()` accepted `run(() => op())`
+  and ran, and so did every shape LENS §2.6 lists — two parameters, a
+  masked tee's second negation, a sig'd self-reference, a cycle member, a
+  chain, an outer wrapper, a stored callback. A gate is a constraint the
+  CELL carries (`Gate({reason, row})`): the declaration's exit installs it
+  on the resolved row's free terminals through each edge's mask, every
+  writer into a gated cell judges the folded value and pushes the gate
+  onto its free terminals, copies minted while the declaration is open are
+  noted under their root, and the refusal names the declaration. The
+  universe row appears in gates and nowhere else (an authored `!E` on a
+  function-type parameter is a gated free cell, which un-refused
+  `fn both(f: () -> Int with !E, g) with !F = f() + g()`). Crown 89/89, the
+  36 probes a 36/36 battery, the wheel at zero diagnostics
+  (`Hβ.infer.declared-row-vacuous-against-a-free-body-row`, LEDGER). What
+  it exposed: K = 3 Mycroft rounds are one short of the fixpoint on a
+  shape whose recheck grounds the return from the callback, so the accept
+  path was unreachable there and the mono re-run judged it
+  (`Hβ.infer.mycroft-recheck-one-round-short`).
 - **A REACHABLE PERFORM WITH NO INSTALL ANYWHERE COMPILES CLEAN** — measured
   2026-09-21 and open. `silence_predicate` (src/voice.mn) is reachable, is
   called from a handler arm at voice:1177, and performs `query_project_queue`;
@@ -1756,14 +1776,17 @@ form the whole time. The arcs, in order:
 once → board once → repin once. A march sweep per micro-edit spends the
 session on ceremony; a gate that was skipped is UNKNOWN, never green.
 
-**Preemption exception:** `Hβ.infer.declared-row-vacuous-against-a-free-body-row`
-stands ABOVE the spine — §0's negative-is-provable failing at the shape most
-likely to carry a real negation; between arcs the loop may take it or the
-6.3 modal sweep rule-by-rule as loop-sized residue, their verdicts reported
-by state.sh, never this block. Nothing else jumps the queue without a
-MEASURED demo-blocking fault. "It will surely land" is never a selection
-reason — the completion-gradient is a named drift; the iteration's report
-opens by naming the priority served.
+**Preemption exception:** the soundness spine stands ABOVE the Space spine —
+§0's negative-is-provable failing at a shape a real program writes.
+`Hβ.infer.declared-row-vacuous-against-a-free-body-row` was the first such
+item and CLOSED 2026-09-27 (the gate carried by the cell);
+`Hβ.effects.root-gate-credits-an-install-that-had-not-opened` is the next
+(the executable root gate reads the row and nothing else — PROGRAM Step 2),
+then the 6.3 modal sweep rule-by-rule as loop-sized residue, their verdicts
+reported by state.sh, never this block. Nothing else jumps the queue
+without a MEASURED demo-blocking fault. "It will surely land" is never a
+selection reason — the completion-gradient is a named drift; the
+iteration's report opens by naming the priority served.
 
 ---
 

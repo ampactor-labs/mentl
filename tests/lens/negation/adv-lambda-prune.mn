@@ -1,3 +1,4 @@
+// expect: 7
 effect E { op() -> Int }
 handler h { op() => resume(7) }
 fn run(f) = {
