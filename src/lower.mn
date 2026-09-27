@@ -2947,6 +2947,163 @@ fn executable_boundary_row(thunk_h) = match lookup_ty(thunk_h) {
   },
 }
 
+// THE RACE RULE (B1, 2026-09-27). A spawned branch runs in the world it
+// was spawned in — the task record carries the live install chain and the
+// fresh instance installs it before the closure runs — so every perform
+// inside the branch walks the SAME chain the fanout's frame holds, from a
+// second instance. For each effect the branch's row carries, the handler
+// that walk reaches must be PROVABLE here (installed in this frame, before
+// the fence — the lexical read the schedule itself uses, never across a
+// call) and must WRITE NO STATE (two instances resuming `with n = n + 1`
+// on one shared state record is a definite race; a state only READ is
+// shared read-only — a config parameter in costume — and runs), or the
+// effect is absorbed inside the branch and never in its row at all. A
+// substrate name grounds vacuously; anything else refuses at lowering,
+// naming the effect and the two fixes (E_ThreadedBranchEffect, armed, born
+// at wheel-zero: the wheel installs no threaded schedule). SYNTAX's
+// "provably race-free" sentence, given its gate; the row of the thunk is
+// the whole input, and the refusal lands on the BRANCH the developer wrote
+// (`branch_h`) — the thunk is a synthesized node with no span of its own.
+//
+// THE WALK IS TRANSITIVE, and the first form was not (measured the same
+// day, before the pin): a handler's ARM runs in the performing instance —
+// the spawned one — and its performs resolve OUTER of its own install, so
+// a stateless handler at the frame whose arm performs into a stateful one
+// further out is the same race one hop later (`resume(bump())` under
+// `~> h ~> counter` compiled and ran). So a stateless covering handler is
+// not an acceptance; it is a step: every effect its residual row carries
+// (`handler_arm_effects` — the row the tee re-adds, read from the same
+// residual cell) is checked against the stack BELOW it, until every path
+// ends at a stateless handler whose arms perform nothing, a substrate
+// name, or a refusal.
+fn threaded_branch_check(branch_h, thunk_row) = match lower_fanout_schedule() {
+  Threaded => if schedule_spawns(lower_handler_stack_now()) {
+    each(
+      { ename => threaded_effect_check(branch_h, lower_handler_stack_now(), "", ename) },
+      effects_of_row(thunk_row)
+    )
+  } else {
+    ()
+  },
+  _ => (),
+}
+
+// Whether the Thread handler the fanout runs under actually SPAWNS: its
+// arms perform WasiThreads (`parallel_compose`'s `spawn` performs
+// `spawn_task`). `sequential_compose` covers the same Thread surface at
+// degree 1 and runs each task inline in THIS instance, so there is no
+// second instance to race with — the schedule is a handler decision, and
+// the rule reads the handler's own row, never the verb (SYNTAX §`><`). The
+// first form read the schedule CLASS and refused the sequential twin
+// (measured on the frontier's scheduled-effect leg before the pin).
+fn schedule_spawns(stack) = match threaded_handler_for(stack, "Thread") {
+  Some((hname, _)) => index_of_name(handler_arm_effects(hname), "WasiThreads", 0) >= 0,
+  None => false,
+}
+
+fn threaded_effect_check(branch_h, stack, via: String, ename: String) = if effect_ops_substrate_grounded(ename) {
+  ()
+} else {
+  match threaded_handler_for(stack, ename) {
+    Some((hname, below)) => if handler_state_is_written(hname) {
+      report_at(
+        branch_h,
+        EThreadedBranchEffect(
+          ename,
+          "{via}the handler it reaches at the fanout's frame, `{hname}`, WRITES its state from an arm (`resume … with`) — one record, two instances",
+          parse_span_of(branch_h)
+        )
+      )
+    } else {
+      each(
+        {
+          inner => threaded_effect_check(
+            branch_h,
+            below,
+            "reached through `{hname}`, which absorbs the branch's {ename} statelessly at the fanout's frame and performs {inner} from an arm (an arm runs in the spawned instance too) — and ",
+            inner
+          ),
+        },
+        handler_arm_effects(hname)
+      )
+    },
+    None => report_at(
+      branch_h,
+      EThreadedBranchEffect(
+        ename,
+        "{via}no handler for it is installed at the fanout's own frame (an install beyond the frame fence — a caller's — is not provable from here)",
+        parse_span_of(branch_h)
+      )
+    ),
+  }
+}
+
+// The innermost handler covering `ename` in the lexical stack, stopping at
+// the frame fence — the schedule read's own walk, one effect at a time —
+// with the stack BELOW that handler, where its arms' own performs resolve.
+fn threaded_handler_for(stack, ename: String) = if len(stack) == 0 {
+  None
+} else {
+  let e = last(stack)
+  let below = drop_last(stack)
+  if field_name_eq(stack_entry_name(e), "") {
+    None
+  } else if handler_covers_effect(stack_entry_name(e), ename) {
+    Some((stack_entry_name(e), below))
+  } else {
+    threaded_handler_for(below, ename)
+  }
+}
+
+// What a handler's arms perform: its residual row, the cell `register_handler`
+// judged the arms under and the tee re-adds as `row(h)` — read live from the
+// env entry's HandlerKind, never re-derived from the arms' text.
+fn handler_arm_effects(hname: String) = match env_lookup(hname) {
+  Some(entry) => match entry {
+    (_, _, kind) => match kind {
+      HandlerKind(r, _, _, _) => effects_of_row(mk_ef_open([], r)),
+      _ => [],
+    },
+  },
+  None => [],
+}
+
+// A handler is stateful FOR THE RACE RULE when an arm WRITES the state
+// record — a `resume … with` update, the one writer SYNTAX gives state —
+// read off the decl's arms through the one total child projection
+// (`body_child_handles`, graph.mn). Declaring state is not writing it: a
+// handler whose arms only read `n` shares one immutable record across
+// instances, exactly as a config parameter would. The walk is structural
+// over the AST (a finite tree), so it carries no fuel to run out of — a
+// missed write would be a false acceptance.
+fn handler_state_is_written(hname: String) = match handler_decl_of(hname) {
+  Some((_, _, arms)) => any_arm_writes_state(arms),
+  None => false,
+}
+
+fn any_arm_writes_state(arms) = match arms {
+  [] => false,
+  [a, ...rest] => if subtree_writes_state(node_handle(handler_arm_body(a))) {
+    true
+  } else {
+    any_arm_writes_state(rest)
+  },
+}
+
+fn subtree_writes_state(h) = {
+  let body = graph_node_body(h)
+  let here = match body {
+    NExpr(ResumeExpr(_, updates)) => len(updates) > 0,
+    _ => false,
+  }
+  if here { true } else { subtree_writes_state_children(body_child_handles(body)) }
+}
+
+fn subtree_writes_state_children(hs) = match hs {
+  [] => false,
+  [ch, ...rest] => if subtree_writes_state(ch) { true } else { subtree_writes_state_children(rest) },
+}
+
 // Run the exact zero-argument boundary and immediately project its one-field
 // carrier back to the semantic result representation. The scheduler only ever
 // transports the carrier pointer; f64/f32/v128 remain unboxed in field 0.
@@ -3110,6 +3267,7 @@ fn synthesize_diverge_thunks(parent_handle, input_h, input_local_name, branch_no
                 let captures_handles = [input_h] ++ b_handles
                 match executable_boundary_row(thunk_h) {
                   Ok(thunk_row) => {
+                    threaded_branch_check(branch_h, thunk_row)
                     // A branch thunk takes nothing — its input rides capture
                     // slot 0 — so the param vector is empty by construction
                     // and the result is the thunk node's own judged type.
@@ -3169,6 +3327,7 @@ fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, bound
         match resolve_captures_outer(free_names, parent_handle) {
           (captures_names, captures_exprs, captures_handles) => match executable_boundary_row(thunk_h) {
             Ok(thunk_row) => {
+              threaded_branch_check(branch_h, thunk_row)
               graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkThunk, name: thunk_name, origin: thunk_h, params: [], ret: Some(lookup_ty(thunk_h))})
               // THE DIRECT SWAP (α, the fanout pair's one projector):
               // None = the `><` distribute — the branch evaluated as its
@@ -5076,6 +5235,39 @@ fn partial_param_tys(callee_h, n) = match lookup_ty(callee_h) {
 // type through the one ty_handle_of projection (TVar → handle; ground → 0).
 // param_handles_of reads the inferred TFun instead.
 fn lower_param_handles(params) = map((p) => ty_handle_of(param_ty(p)), params)
+
+// Every op of the effect projects to a substrate instruction (the
+// Memory/Alloc table, the WASI import set) — or the name owns no ops at
+// all (a compiler attribution: a row fact, never an evidence dispatch).
+// Two readers, one home beside the predicates it is made of: the
+// executable root gate (pipeline.mn) and the threaded-branch race rule
+// below, which skip a substrate name the way they skip nothing else.
+fn effect_ops_substrate_grounded(ename: String) = match env_snapshot() {
+  Env(bindings) => grounded_scan(bindings, 0, len(bindings), ename),
+}
+
+fn grounded_scan(bindings, i, n, ename: String) = if i >= n {
+  true
+} else {
+  match list_index(bindings, i) {
+    (opname, _, _, kind) => {
+      let ok = match kind {
+        EffectOpScheme(op_effect, _, _, _) => // Substrate projection or WASI import only. A DEFAULT HANDLER does
+        // NOT ground: the perform's singleton tier direct-calls it, but a
+        // STATEFUL default with no live install reads its zero state
+        // global — the silent-wrong the runtime guard refuses
+        // (SingletonUninstalled; in the retired keyed-evidence era the
+        // same shape broke at assembly, the sst build's ev_lookup).
+        // The intrinsic families (to_string/hash) never reach the perform
+        // dispatch, so they ground through the not-performed conjunct,
+        // never through a default field.
+        if op_effect == ename { is_substrate_mem_op(opname) || is_wasi_import_op(opname) } else { true },
+        _ => true,
+      }
+      if ok { grounded_scan(bindings, i + 1, n, ename) } else { false }
+    },
+  }
+}
 
 // Stage 4a: WASI import-name predicate. Recognized op names bridge
 // to the WASM-level import via LWasiCall instead of LPerform's

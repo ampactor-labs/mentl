@@ -1,0 +1,9 @@
+// B1's race rule, the sound stateful form: each branch installs its OWN
+// counter, so the perform is absorbed inside the branch — the branch's row
+// carries no Counter, each spawned instance resumes into its own state
+// record, nothing is shared. Expected exit: 10 (5 + 5, two fresh counters).
+effect Counter { bump() -> Int }
+handler counter with n = 5 { bump() => resume(n) with n = n + 1 }
+fn main() = match (0 <| ({ _ => (bump()) ~> counter }, { _ => (bump()) ~> counter })) ~> parallel_compose {
+  (a, b) => a + b,
+}

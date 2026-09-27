@@ -2,13 +2,14 @@
 # the IDE gate — the browser leg of the runner migration, held green.
 #
 # Leg 1: the node twin (ide/test-shim.mjs) drives ide/wheel-worker.js — the
-#   SAME execution host the page uses — through four faces: the stub-spawn
-#   RED control (the pre-worker shim must REFUSE the spawning boot), the
-#   compile-stdin through real spawned tasks, the address CursorView, and
-#   the ?? Propose socket.
+#   SAME execution host the page uses — through its faces: compile-stdin,
+#   the stub-spawn RED control (armed only while the judgment spawns —
+#   VACUOUS and said so otherwise: the judgment has spawned nothing since
+#   pin 7c9dc538), the address CursorView, the ?? Propose socket, and the
+#   resident session. The twin loads boot/mentl.wasm itself (2026-09-27).
 # Leg 2: the browser itself — mentl space serves the page, headless chrome
 #   loads /ide/?smoke, and the page's own console wire reports the compile
-#   verdict (exit, spawned task count, wat lines). Skipped, loudly, when
+#   verdict (exit, wat lines, spawned task count — reported). Skipped, loudly, when
 #   no browser or the mentl shim is absent. The browser is FOUND, not
 #   assumed: $MENTL_CHROME, then google-chrome / chromium /
 #   chromium-browser on PATH, then a Playwright chromium under
@@ -48,10 +49,15 @@ if [ -n "$browser" ] && command -v mentl >/dev/null 2>&1; then
   case "$line" in
     "SMOKE exit=0 "*)
       tasks=$(echo "$line" | grep -oE 'tasks=[0-9]+' | cut -d= -f2)
-      if [ "${tasks:-0}" -gt 0 ]; then
-        echo "  browser leg: PASS — the spawning wheel compiled through $tasks worker tasks"
+      watlines=$(echo "$line" | grep -oE 'watlines=[0-9]+' | cut -d= -f2)
+      # The WAT is the verdict; the task count is a measurement. "spawned
+      # nothing" was the stub era's shape when the judgment spawned per
+      # stmt; since pin 7c9dc538 it spawns nothing by design (judge once),
+      # and the 2026-09-25 tasks=259 measured the eight-week-old IDE copy.
+      if [ "${watlines:-0}" -gt 1 ]; then
+        echo "  browser leg: PASS — the boot compiled in the page ($watlines wat lines; ${tasks:-0} worker tasks, reported)"
       else
-        echo "  browser leg: FAIL — compiled but spawned nothing (the stub era's shape)"; fail=1
+        echo "  browser leg: FAIL — exit 0 but no WAT came back (watlines=${watlines:-0})"; fail=1
       fi ;;
     *) echo "  browser leg: FAIL"; fail=1 ;;
   esac

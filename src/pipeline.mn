@@ -374,36 +374,6 @@ fn report_unhandled_names(ref names, i, n, ref performed, ref span) = if i >= n 
   report_unhandled_names(names, i + 1, n, performed, span)
 }
 
-// Every op of the effect projects to a substrate instruction (the
-// Memory/Alloc table, the WASI import set) — or the name owns no ops at
-// all (a compiler attribution: a row fact, never an evidence dispatch).
-fn effect_ops_substrate_grounded(ename: String) = match env_snapshot() {
-  Env(bindings) => grounded_scan(bindings, 0, len(bindings), ename),
-}
-
-fn grounded_scan(ref bindings, i, n, ename: String) = if i >= n {
-  true
-} else {
-  match list_index(bindings, i) {
-    (opname, _, _, kind) => {
-      let ok = match kind {
-        EffectOpScheme(op_effect, _, _, _) => // Substrate projection or WASI import only. A DEFAULT HANDLER does
-        // NOT ground: the perform's singleton tier direct-calls it, but a
-        // STATEFUL default with no live install reads its zero state
-        // global — the silent-wrong the runtime guard refuses
-        // (SingletonUninstalled; in the retired keyed-evidence era the
-        // same shape broke at assembly, the sst build's ev_lookup).
-        // The intrinsic families (to_string/hash) never reach the perform
-        // dispatch, so they ground through the not-performed conjunct,
-        // never through a default field.
-        if op_effect == ename { is_substrate_mem_op(opname) || is_wasi_import_op(opname) } else { true },
-        _ => true,
-      }
-      if ok { grounded_scan(bindings, i + 1, n, ename) } else { false }
-    },
-  }
-}
-
 // The teaching half: which declared handlers absorb this effect — read
 // from the env's own HandlerKind arms (each arm's op resolves to its
 // effect through the op scheme), never a name table. No handler in scope

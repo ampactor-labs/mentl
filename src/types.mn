@@ -2458,6 +2458,11 @@ type DiagKind
   // the effect reaches the executable
   // root with no absorbing install
   | EEffectUnhandled(String, String, Span)
+  // an effect performed inside a THREADED fanout branch whose handler is
+  // not provable at the fanout's own frame, or is stateful there (two
+  // instances resuming with a state update on one shared record): the
+  // effect name and the reason (B1's race rule, 2026-09-27)
+  | EThreadedBranchEffect(String, String, Span)
   // authored value-position hole surviving
   // into the reachable executable (SYNTAX
   // §«Partial application» — productive,
@@ -2651,6 +2656,7 @@ fn diag_span(d) with Pure = match d {
   EEmittedNameCollision(_, s) => s,
   EUnresolvedType(_, _, s) => s,
   EEffectUnhandled(_, _, s) => s,
+  EThreadedBranchEffect(_, _, s) => s,
   EUnresolvedHole(_, s) => s,
   TFieldOffsetUnprovable(_, s) => s,
   TEqTypeUnprovable(_, s) => s,
@@ -2721,6 +2727,7 @@ fn diag_source(d) with Pure = match d {
   EEmittedNameCollision(_, _) => "emit",
   EUnresolvedType(_, _, _) => "lower",
   EEffectUnhandled(_, _, _) => "effects",
+  EThreadedBranchEffect(_, _, _) => "lower",
   EUnresolvedHole(_, _) => "verify",
   TFieldOffsetUnprovable(_, _) => "lower",
   TEqTypeUnprovable(_, _) => "lower",
@@ -2791,6 +2798,7 @@ fn diag_code(d) with Pure = match d {
   EEmittedNameCollision(_, _) => "E_EmittedNameCollision",
   EUnresolvedType(_, _, _) => "E_UnresolvedType",
   EEffectUnhandled(_, _, _) => "E_EffectUnhandled",
+  EThreadedBranchEffect(_, _, _) => "E_ThreadedBranchEffect",
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
   TFieldOffsetUnprovable(_, _) => "T_FieldOffsetUnprovable",
   TEqTypeUnprovable(_, _) => "T_EqTypeUnprovable",
@@ -2941,6 +2949,13 @@ fn diag_refuses(d) with Pure = match d {
   // fact read from parsed structure — no resolution dependency. Census on
   // the wheel blob at arming: 0 (the one Level pair lives in two tutorial
   // files, both outside the blob and compiled standalone).
+  True,
+  EThreadedBranchEffect(_, _, _) => // ARMED at birth (2026-09-27), the same licence as the root gate one arm
+  // down: a LOWER-TIME fact read off the branch thunk's row and the
+  // fanout's own lexical install stack, born at wheel-ZERO by construction
+  // (the wheel installs no threaded schedule). A stateful handler two
+  // spawned instances resume into is a definite race on one shared state
+  // record; a handler beyond the frame fence is unprovable from the site.
   True,
   EEffectUnhandled(_, _, _) => // ARMED at birth (2026-07-22): an EXECUTABLE-root fact read from main's
   // resolved row at the gate — the row representation is true (the triple),
@@ -3101,6 +3116,7 @@ fn diag_applicability(d) with Pure = match d {
   Unspecified,
   EPatternInexhaustive(_, _, _) => HasPlaceholders,
   EEffectUnhandled(_, _, _) => MaybeIncorrect,
+  EThreadedBranchEffect(_, _, _) => MaybeIncorrect,
   EUnresolvedHole(_, _) => HasPlaceholders,
   TFieldOffsetUnprovable(_, _) => MaybeIncorrect,
   TEqTypeUnprovable(_, _) => MaybeIncorrect,
@@ -3194,6 +3210,7 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   EEmittedNameCollision(symbol, _) => "two different functions both emit as `{symbol}` — the dedup keeps the first, so every call meaning the second would reach the first instead. This is the compiler's own naming, not your program: report it",
   EUnresolvedType(h, epoch, _) => "handle {int_to_str(h)} @epoch={int_to_str(epoch)}",
   EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",
+  EThreadedBranchEffect(ename, why, _) => "effect {ename} is performed inside a threaded branch and {why} — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for {ename} at the fanout's own frame, or install the handler inside the branch",
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
   TFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed, so this load has no provable slot and the emit writes a trap here; close the row (annotate the receiver at its Intent Boundary, or give the call site a shape the twin can key on)",
   TEqTypeUnprovable(why, _) => "{why} — the operand's type is still a variable at emit, so the comparison has no structure to read and falls to a one-word compare (right for a word, an address lie for anything else); prove the operand: give the call site a shape the twin can key on, or name the type at its Intent Boundary",

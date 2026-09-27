@@ -1509,11 +1509,22 @@ fn render_at(view, h, pspan, target: String) = match view {
         VNone => (),
         VFill(survivor, reason) => print("Propose: {render_candidate_source(survivor)}  — {show_reason(reason)}\n"),
         VAsk(divergence, survivors) => {
+          // A tie is a QUESTION, never a list (§11.1): the members render
+          // while a glance can hold them — three — and past that width the
+          // surface carries the count and the computed question alone. A
+          // five-member list under a question was the medium admitting it
+          // did not know and then reading the admission aloud (measured on
+          // the shape tie, 2026-09-27); the question is what the developer
+          // answers, and the count is what tells them how much it narrows.
           print("Propose: {int_to_str(len(survivors))} proven survivors — a tie:\n")
-          each(
-            { (node, reason) => print("  {render_candidate_source(node)}  — {show_reason(reason)}\n") },
-            survivors
-          )
+          if len(survivors) <= 3 {
+            each(
+              { (node, reason) => print("  {render_candidate_source(node)}  — {show_reason(reason)}\n") },
+              survivors
+            )
+          } else {
+            ()
+          }
           print("  {show_divergence(divergence)}\n")
         },
       },

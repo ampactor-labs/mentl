@@ -1,0 +1,13 @@
+// B1's race rule, the STATEFUL refusal: two spawned branches performing
+// `bump` into ONE `counter` install at the fanout's frame would resume
+// `with n = n + 1` on one shared state record from two instances — a
+// definite race, refused at lowering (E_ThreadedBranchEffect names Counter
+// and the stateful handler). Each branch installing its own counter runs
+// (mn-threaded-branch-inner-install); a stateless handler runs
+// (mn-threaded-branch-stateless).
+// Expected: REFUSE E_ThreadedBranchEffect.
+effect Counter { bump() -> Int }
+handler counter with n = 5 { bump() => resume(n) with n = n + 1 }
+fn main() = match (0 <| ({ _ => bump() }, { _ => bump() })) ~> parallel_compose ~> counter {
+  (a, b) => a + b,
+}

@@ -2470,7 +2470,14 @@ fn parse_arm_list(tokens, pos, start_span: ValidSpan) = {
     (final_buf, final_count, p) => match fresh_param_under(al_prefix, start_span) {
       (fresh, param) => {
         let arms = slice(final_buf, 0, final_count)
-        let body = nexpr(MatchExpr(nexpr(VarRef(fresh), start_span), arms), start_span)
+        // The literal's span is its WHOLE extent, `{` through `}` (the arm
+        // parser returns the position past the closing brace): a lambda's
+        // span is head through body (SYNTAX §«Comments»), and the literal
+        // that replaced the lambda was born with the `{` token alone —
+        // measured 2026-09-27 when a lowering refusal landed on one
+        // character of a branch.
+        let whole = span_join(start_span, span_at(tokens, p - 1))
+        let body = nexpr(MatchExpr(nexpr(VarRef(fresh), start_span), arms), whole)
         (nexpr(LambdaExpr([param], body), lambda_span(start_span, body)), p)
       },
     },

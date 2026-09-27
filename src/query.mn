@@ -1491,94 +1491,11 @@ fn wildcard_body_fabricates(b) with GraphRead = match b {
   },
 }
 
-// ── the one total child projection — the weave's tree edge ──────────
+// The one total child projection over NodeBody — `body_child_handles` and
+// its Expr/Stmt halves — lives beside `node_handle` in graph.mn (moved
+// 2026-09-27 so lower's race rule can walk a handler's arms with the same
+// edge the census walks; every tree walk here reads it, never a copy).
 //
-// expr_child_handles — the type-handles of an Expr's direct child Nodes.
-// One arm per Expr variant that carries children (the row algebra over
-// the value space — H6 exhaustive); leaf literals carry none.
-fn expr_child_handles(e) with Alloc + Memory = match e {
-  BinOpExpr(_, l, r) => [node_handle(l), node_handle(r)],
-  UnaryOpExpr(_, n) => [node_handle(n)],
-  CallExpr(f, args) => [node_handle(f)] ++ map(node_handle, args),
-  LambdaExpr(_, body) => [node_handle(body)],
-  IfExpr(c, t, f) => [node_handle(c), node_handle(t), node_handle(f)],
-  BlockExpr(stmts, fin) => // order-free: membership test only
-  [node_handle(fin)] ++ map(node_handle, stmts),
-  MatchExpr(scrut, arms) => // an arm's BODY is a child node — dropping the arms left the
-  // projection partial and tree containment blind below any match
-  // (the enclosing-decl guard's measured hole).
-  [node_handle(scrut)] ++ map({ (_, b) => node_handle(b) }, arms),
-  ResumeExpr(v, updates) => // A resume-with update is the parser's {name, init} record — the handle
-  // lives on its init edge (record_field_handle's exact sibling).
-  [node_handle(v)] ++ map(record_field_handle, updates),
-  MakeListExpr(elems) => map(node_handle, elems),
-  MakeTupleExpr(elems) => map(node_handle, elems),
-  MakeRecordExpr(fields) => // Record LITERALS carry the parser's (name, value) tuples
-  // (parse_record_fields); only resume updates are {name, init} records.
-  map(tuple_field_handle, fields),
-  RecordUpdateExpr(base, flds) => [node_handle(base)] ++ map(tuple_field_handle, flds),
-  NamedRecordExpr(_, flds) => map(tuple_field_handle, flds),
-  IndexExpr(recv, idx) => [node_handle(recv), node_handle(idx)],
-  MakeStringExpr(frags) => map(node_handle, frags),
-  ShowExpr(inner) => [node_handle(inner)],
-  FieldExpr(recv, _) => [node_handle(recv)],
-  PipeExpr(_, l, r) => [node_handle(l), node_handle(r)],
-  FanoutExpr(branches) => map(node_handle, branches),
-  LabeledArg(_, v) => // the labeled value is a child node
-  [node_handle(v)],
-  _ => // LitInt/LitFloat/LitString/LitBool/LitUnit/VarRef/ExprPlaceholder — no child Nodes
-  [],
-}
-
-// The field IS the parser's {name, init} record — read the init edge by
-// name (the tuple destructure read a record as positions and met Node).
-fn record_field_handle(field) with Pure = node_handle(field.init)
-
-fn tuple_field_handle(field) with Pure = match field {
-  (_, v) => node_handle(v),
-}
-
-// stmt_child_handles — expr_child_handles' Stmt sibling (the projection
-// made TOTAL, Hβ.cursor.enclosing-decl-edge's dep): the VALUE-position
-// child nodes of a statement. Type-level carriers (a variant's or op's
-// comment node, an import, a refinement's predicate) hold no value
-// holes and contribute none.
-fn stmt_child_handles(s) with Alloc + Memory = match s {
-  LetStmt(_pat, value, ann) => match ann {
-    N(NTypeAnn(_), _, _) => // the annotation channel is a child only when it IS one: the absent
-    // form ALIASES the value node (the parser's no-fresh-mint sentinel,
-    // all three LetStmt mints), so listing the alias double-visits every
-    // unannotated let's value subtree — measured as count_var_uses
-    // doubling through statement-position lets. Same read infer makes
-    // (its NTypeAnn arm skips a non-annotation node).
-    [node_handle(value), node_handle(ann)],
-    _ => [node_handle(value)],
-  },
-  FnStmt(_name, _params, _ret, _effs, body) => [node_handle(body)],
-  ExprStmt(e) => [node_handle(e)],
-  HandlerDeclStmt(_hname, _ename, _config, states, arms) => map(record_field_handle, states) ++ map(arm_body_handle, arms),
-  TypeDefStmt(_, _) => [],
-  EffectDeclStmt(_, _, _) => [],
-  ImportStmt(_) => [],
-  RefineStmt(_, _, _) => [],
-  AliasStmt(_, _) => [],
-  RowAliasStmt(_, _) => [],
-}
-
-fn arm_body_handle(arm) with Pure = node_handle(arm.body)
-
-// body_child_handles — the ONE total child projection over NodeBody:
-// tree walks (containment, the enclosing-decl descent) read this,
-// never a per-altitude copy.
-fn body_child_handles(body) with Alloc + Memory = match body {
-  NExpr(e) => expr_child_handles(e),
-  NStmt(s) => stmt_child_handles(s),
-  NPat(_) => [],
-  NHole(_) => [],
-  NModule(_) => [],
-  NTypeAnn(_) => [],
-}
-
 // ── the tier detectors — the census IS their home ────────────────────
 //
 // The audit tiers (`anonymity_shape_of` per fn, below; pipeline.mn's

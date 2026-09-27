@@ -827,10 +827,24 @@ and this is the STATE.
   (`solo_violations_max: 0`). The overlay is the stamped second half.
 - **Thread schedule** is REAL (host threads over shared image; measured
   2026-09-25 at 2×: two 1.5e9-iteration branches, bare 4.50 s wall / 4.47 s
-  user, `~> parallel_compose` 2.31 s / 4.57 s) — and AN EFFECT PERFORMED INSIDE
-  A SPAWNED BRANCH TRAPS (`Hβ.threads.perform-inside-spawned-branch-traps`:
-  the fresh instance's per-instance dispatch state starts at zero; the
-  identity fixture passes only because `thread_id()` is a direct WASI op).
+  user, `~> parallel_compose` 2.31 s / 4.57 s) — and A BRANCH RUNS IN THE
+  WORLD IT WAS SPAWNED IN (2026-09-27): the task record carries the spawning
+  frame's world and the fresh instance installs it before the thunk runs, so
+  an effect performed inside a spawned branch reaches the handler at the
+  fanout's frame (`Hβ.threads.perform-inside-spawned-branch-traps` CLOSED —
+  it faulted at the 0x100000000 belt before; the identity fixture had passed
+  only because `thread_id()` is a direct WASI op). What sharing the chain
+  exposes is refused at lowering, `E_ThreadedBranchEffect` (armed): every
+  effect a branch's row carries must reach, at the fanout's own frame and
+  before the frame fence, a STATELESS handler — transitively through each
+  covering handler's own residual row, because an arm runs in the spawned
+  instance and its performs resolve outer. A stateful handler at the frame,
+  an install beyond the fence, and a stateless front over a stateful back
+  refuse (the third was accepted by the rule's first form and RAN, measured
+  before the pin); each branch installing its own handler runs. SYNTAX's
+  "provably race-free" sentence has its gate, and the gate reads WRITES: a
+  handler is stateful when an arm carries a `resume … with` update, so a
+  state only read shares one immutable record across instances and runs.
   The thread gate's ratchet counts host `clone`s and was RED on a fresh host
   with no wheel change (`Hβ.threads.gate-counts-host-clones`). Safety gated on
   band A. SIMD/GPU remain scaffold (bands E/O). **PERSIST IS NOT IN THAT LIST
@@ -2654,11 +2668,24 @@ landed in 5–10; this phase is the finish that makes it FELT.
   until 2026-09-25, when both legs ran GREEN (leg 2: `SMOKE exit=0 tasks=259
   ms=2049`; the skip was the literal command name `google-chrome` — the
   gate FINDS a browser now: `$MENTL_CHROME`, the usual names on PATH, then
-  Playwright's chromium). What the browser run does NOT show: the page's
-  `session-call` re-instantiates and zero-fills memory per call, the pinned
-  `ide/mentl-ide.wasm` is the 2026-07-29 wheel, and "sub-50 ms" has no timer
-  anywhere (`Hβ.ide.session-call-reinstantiates-per-call`,
-  `Hβ.ide.pinned-wasm-lags-boot`).
+  Playwright's chromium). **THAT GREEN MEASURED A WHEEL THE TREE NO LONGER
+  HAD** (2026-09-27): the 259 tasks were the eight-week-old IDE copy judging
+  per stmt, and the twin's first legs DEMANDED spawns — a stub spawn that
+  must refuse, `tasks > 0` — where the judgment has spawned nothing since
+  the fan's direct spawn was deleted at pin 7c9dc538. Loading the boot
+  itself turned them red; the task count is a measurement now, the stub
+  control is armed only while the judgment spawns and prints VACUOUS
+  otherwise, and the page compiles the boot in 353 ms (`SMOKE exit=0
+  tasks=0 watlines=4399 ms=353`). What the browser run does NOT show: the page's
+  `session-call` re-instantiates and zero-fills memory per call, and
+  "sub-50 ms" has no timer anywhere
+  (`Hβ.ide.session-call-reinstantiates-per-call`). The page runs THE BOOT
+  ITSELF since 2026-09-27: the wheel's memory minimum is 32 pages and its
+  allocator grows the memory on demand, so the page fetches
+  `../boot/mentl.wasm` through `mentl space`, the node twin loads the same
+  file, and the hand-derived `ide/mentl-ide.wasm` copy — the 2026-07-29
+  wheel, eight weeks behind the boot — is deleted
+  (`Hβ.ide.pinned-wasm-lags-boot` closed).
   Every reader-facing page leads with the person at
   the keyboard; the docs themselves pass the source standard.
 - **11.3 · DONE, measured.** The seven statements run as gates, each

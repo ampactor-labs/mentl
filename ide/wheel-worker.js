@@ -129,7 +129,17 @@ function makeShim({ memory, argv, stdin, vfs, spawnFn }) {
     path_create_directory() { return 44; }, path_unlink_file() { return 44; }, path_rename() { return 44; },
   };
   const proxy = new Proxy(P, { get(t, k) { return k in t ? t[k] : () => 8; } });
-  return { imports: { env: { memory }, wasi_snapshot_preview1: proxy, wasi: { "thread-spawn": spawnFn } }, out, err };
+  // The exec seam (`mentl_host.wat_write` / `mentl_host.exec`, tools/runner)
+  // is what runs a COMPILED program — `mentl run`, the micro battery — and
+  // the page never asks for it. The boot imports the pair, and a browser
+  // refuses to instantiate a module whose import module is absent, so the
+  // seam is present here as the same thing wasmtime makes of an unknown
+  // import: a trap the moment it is reached, never a value. Running the
+  // compiled program in the page is `Hβ.felt.ide-run-in-page` (an in-page
+  // assembler); until it lands this is the honest socket, and it is loud.
+  const seam = (name) => () => { throw new Error(`mentl_host.${name}: the exec seam has no in-page assembler (Hβ.felt.ide-run-in-page)`); };
+  const mentl_host = { wat_write: seam("wat_write"), exec: seam("exec") };
+  return { imports: { env: { memory }, wasi_snapshot_preview1: proxy, wasi: { "thread-spawn": spawnFn }, mentl_host }, out, err };
 }
 
 /* ── the pre-armed task pool over a shared-memory queue ────────────────────

@@ -2321,23 +2321,47 @@ the gate (LENS §2.2, A3) a positive row on a HOF becomes a CAP on its
 callbacks and `try_with_abort_catch`'s `with Abort` refuses by the theorem;
 deleting positive rows on HOFs is the fix, never widening 163 hand-copies.
 
-`Hβ.threads.perform-inside-spawned-branch-traps` — OPEN, measured 2026-09-25.
+`Hβ.threads.perform-inside-spawned-branch-traps` — CLOSED 2026-09-27 (the
+pin after bbc0cc2c; LEDGER carries it). Measured 2026-09-25:
 `fn work() = { let r = burn(7e8, 0); current_id() * 10 }` as both branches of
-`(work()) >< (work()) ~> parallel_compose` traps in the spawned thread:
+`(work()) >< (work()) ~> parallel_compose` trapped in the spawned thread:
 `wasi-thread-1 trapped: memory fault at 0x100000000 … ev_declaring_node ←
 work ← compose_0 ← wasi_thread_start`. The identity fixture
-(`mn-real-spawn-identity`, exit 60) passes only because `thread_id()` is a
-direct WASI op; an EFFECT op performed inside a spawned branch dispatches
-through per-instance state (the world chain top, the evidence base) that
-the fresh instance starts at zero. Parallelism itself is real and measured
-(two 1.5e9-iteration branches: bare 4.50 s wall / 4.47 s user; threaded
-2.31 s / 4.57 s). Design: the task record the spawn hands over carries the
-spawning frame's world-chain head (the chain lives in the shared image),
-installed by `$wasi_thread_start` before the thunk runs. Gate red-first: a
-threaded branch performing an op absorbed by a handler installed outside
-the fanout returns the handler's value. Until then `~> Thread` is unusable
-for effectful branches, which the crown's `!Thread` crucibles never
-exercised.
+(`mn-real-spawn-identity`, exit 60) passed only because `thread_id()` is a
+direct WASI op; an EFFECT op performed inside a spawned branch dispatched
+through per-instance state (the world chain top) that the fresh instance
+started at zero. Parallelism itself is real and measured (two
+1.5e9-iteration branches: bare 4.50 s wall / 4.47 s user; threaded 2.31 s /
+4.57 s). CLOSED as designed: the task record carries the spawning frame's
+world (`[closure@0][completion@4][result@8][world@12]`, `$spawn_task_impl`
+stores `$world_g`, `$wasi_thread_start` installs it before the thunk runs —
+the chain and every handler record live in the shared image, so the walk
+reads them from any instance). `tests/frontier/mn-threaded-branch-stateless`
+(two branches performing `op` into a handler installed at the fanout's
+frame) exits 14 where the prior boot exited 134. What sharing the chain
+exposes is refused at lowering, `E_ThreadedBranchEffect` (armed at birth,
+born at wheel-zero — the wheel installs no threaded schedule): for each
+effect a branch's row carries, the handler the walk reaches must be
+installed at the fanout's own frame, before the frame fence, and STATELESS,
+and the walk is TRANSITIVE through each covering handler's own residual row
+— an arm runs in the spawned instance and its performs resolve outer, so a
+stateless front over a stateful back (`~> h ~> counter`,
+`mn-threaded-branch-transitive`) is the same race one hop later; the first
+form stopped at the first stateless handler and that program compiled and
+ran (11 on six runs, serialized by luck). A stateful handler at the frame
+(`-stateful`), an install beyond the fence (`-caller`) and the transitive
+shape refuse; each branch installing its own counter (`-inner-install`)
+runs to 10. The rule reads WRITES, not declarations: a handler is stateful
+when an arm carries a `resume … with` update (the one writer SYNTAX gives
+state), read off the decl's arms through the one total child projection —
+which moved from query.mn to graph.mn beside `node_handle` for it — so a
+state only read (`-readonly-state`, `handler k with n = 5 { bump() =>
+resume(n) }`) shares one immutable record across instances and runs to 10.
+And the rule fires only when the schedule handler SPAWNS — its residual
+row carries `WasiThreads`, which `parallel_compose`'s `spawn` arm performs
+and `sequential_compose`'s (each task inline, in this instance) does not;
+the first form read the schedule CLASS and refused the sequential twin on
+the frontier's scheduled-effect leg (exit 25) before the pin.
 
 `Hβ.threads.gate-counts-host-clones` — OPEN, measured 2026-09-25. The thread
 gate's ratchet (`judge_spawn_delta_max: 0`) counts `clone` under strace and
@@ -2358,13 +2382,21 @@ projection is a full `_start`; the browser's only recorded number is a
 skipped on every prior board because `tools/ide-gate.sh:20` tests for the
 literal command name `google-chrome`; a two-line wrapper un-skips it.
 
-`Hβ.ide.pinned-wasm-lags-boot` — OPEN, read 2026-09-25. `ide/mentl-ide.wasm`
-is the 2026-07-29 wheel (1.79 MB, pinned at fe5b2c05) while `boot/mentl.wasm`
-is two months and one megabyte newer; the page demos a compiler the tree no
-longer has. `mentl space` should serve the boot, or the pin should be the
-boot by construction. Beside it, unverified: the headless screenshot shows
-the editor's code with its spaces collapsed (`fnmain()withMemory+Alloc=`) —
-a font artifact or a CSS defect, to check in a real browser.
+`Hβ.ide.pinned-wasm-lags-boot` — CLOSED 2026-09-27 (the pin after bbc0cc2c;
+LEDGER carries it). Read 2026-09-25: `ide/mentl-ide.wasm` was the 2026-07-29
+wheel (1.79 MB, pinned at fe5b2c05) while `boot/mentl.wasm` was two months
+and one megabyte newer; the page demoed a compiler the tree no longer had,
+and the copy existed because the wheel declared a 65536-page memory minimum
+no browser will allocate. CLOSED at the root: the wheel declares a 32-page
+minimum and `$alloc` grows the memory on demand (`$memory_reach`, in the
+shared and the single-instance allocator and before `$image_restore`'s
+copy — a failed `memory.grow` is `unreachable`, a loud OOM, never a silent
+wrap); the page fetches `../boot/mentl.wasm` through `mentl space` and the
+node twin loads the same file; the copy and the README's derivation recipe
+are deleted. The pin IS the boot by construction now. Still unverified,
+PROGRAM E5's: the headless screenshot shows the editor's code with its
+spaces collapsed (`fnmain()withMemory+Alloc=`) — a font artifact or a CSS
+defect, to check in a real browser.
 
 `Hβ.teach.one-kind-and-a-constant-facet` — HALF CLOSED 2026-09-25 (the
 pin after 3cc9fdec; LEDGER carries it). Teach now reads what the

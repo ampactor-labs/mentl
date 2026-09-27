@@ -1045,7 +1045,11 @@ authored_own_max: 63
 # cause, and they were also not needed, which is the grade doing its job.
 # 724 -> 723 (2026-09-27): report_unhandled_names lost its `ref installed`
 # parameter with the install-anywhere credit.
-authored_ref_max: 723
+# 723 -> 722 (2026-09-27, the same day): grounded_scan moved from pipeline.mn
+# to lower.mn for the race rule and its `ref bindings` moved with it — the
+# per-file quiet gate refused lower.mn's rise, and the grade reads the
+# parameter's two uses without the marker.
+authored_ref_max: 722
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the

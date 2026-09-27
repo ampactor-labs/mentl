@@ -318,7 +318,7 @@
   </div></main>
 <div class="wavefront" id="wavefront"></div>
 <footer>
-  <span><b>compiler</b> mentl-ide.wasm — the live spawning boot; a Worker per judged stmt</span>
+  <span><b>compiler</b> boot/mentl.wasm — the pinned fixpoint itself, unmodified, judging in a Worker; the pool behind wasi.thread-spawn stands for <code>~&gt; Thread</code></span>
   <span><b>loop</b> keystroke → compile → project → the live CursorView</span>
   <span><b>server</b> mentl space — mentl, serving mentl</span>
   <span><b>run</b> download .wat + wat2wasm — in-page run lands with binary emit (band N)</span>
@@ -635,9 +635,10 @@ function projectAspects(parse, off, diags){
 
 /* ── the wheel's execution host — ide/wheel-worker.js ─────────────────────
    The pinned boot is a SPAWNING module (shared-image import +
-   wasi.thread-spawn; the converged judgment spawns a host thread per
-   stmt), and the task join's memory.atomic.wait32 is FORBIDDEN on the
-   browser main thread — so the page NEVER instantiates the module. Every
+   wasi.thread-spawn — the substrate `~> Thread` schedules through; the
+   judgment itself spawns nothing since pin 7c9dc538, judge once), and the
+   task join's memory.atomic.wait32 is FORBIDDEN on the browser main
+   thread — so the page NEVER instantiates the module. Every
    run posts to a fresh worker (ide/wheel-worker.js, the same file the
    node twin drives), whose shim spawns nested workers per task and
    provides the WASI surface: compile-stdin when argv is empty, the
@@ -827,7 +828,7 @@ async function boot(){
   try {
     if (!crossOriginIsolated) throw new Error("page is not cross-origin isolated — start it with `mentl space` (the compiler's shared memory needs COOP/COEP headers)");
     const [wasm, ...texts] = await Promise.all([
-      fetch("mentl-ide.wasm").then(r => { if(!r.ok) throw new Error("mentl-ide.wasm missing"); return r.arrayBuffer(); }),
+      fetch("../boot/mentl.wasm").then(r => { if(!r.ok) throw new Error("boot/mentl.wasm missing — `mentl space` serves it from the repo root"); return r.arrayBuffer(); }),
       ...VFS_LIBS.map(([, u]) => fetch(u).then(r => r.ok ? r.text() : "")),
     ]);
     const byKey = {};

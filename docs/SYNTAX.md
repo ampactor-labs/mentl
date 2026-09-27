@@ -601,6 +601,24 @@ real-time region can declare `with !Thread` and the medium PROVES, transitively,
 that no spawn occurs (provable like `!Alloc` — Rayon/Faust cannot state this).
 `mentl where` badges the chosen strategy: `>< [Thread ×4]`, output not input.
 
+**The race-freedom claim has its gate (real, 2026-09-27).** A spawned branch
+runs in the world it was spawned in — the task record carries the spawning
+frame's install chain and the fresh instance installs it before the branch
+runs — so an effect a branch performs reaches the handler installed at the
+fanout's frame, from a second instance. `E_ThreadedBranchEffect` (armed)
+refuses at lowering any effect in a branch's row whose covering handler at
+that frame is STATEFUL (two instances resuming `with n = n + 1` on one state
+record), lies beyond the frame fence (a caller's install — the site cannot
+prove which handler is reached, or that it is stateless), or is stateless but
+performs, from an arm, into a stateful one further out (an arm runs in the
+spawned instance and its performs resolve outer, so the walk follows each
+handler's own residual row down the stack). The fix is stated in the refusal:
+install a stateless handler at the fanout's frame, or install the handler
+inside the branch, where each instance gets its own state record. The rule
+reads WRITES, not declarations: a handler is stateful when an arm carries a
+`resume … with` update (the one writer this document gives state), so a
+state that is only read is shared read-only across instances and runs.
+
 **`><` is a structural N-ary construct the formatter renders in one of two layouts** (a presentation choice, never a parse distinction — there are no semantic "forms," only render shapes):
 
 **Vertical layout (formatter-canonical for multi-line branches):**
@@ -2177,6 +2195,7 @@ token, so there is nothing to lift.*
 | `E_OwnershipViolation`| `own` consumed twice / escapes ref scope      | `Unspecified`        | restructure to single-consume or use `ref`     |
 | `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident — the bump heap never frees — so it is a use-after-free the day §5.O layer 3's arena gives `Consume` a real reclaim | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
 | `E_HandlerUninstallable` | handler arms need effects context disallows | `MaybeIncorrect`   | widen ambient row or restructure handler       |
+| `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame writes its state (`resume … with`), lies beyond the frame fence, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |
 | `E_ImportNameCollision` | two selective imports bind the same name    | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
 | `E_UnknownArgLabel`   | a labeled arg names no declared parameter     | `MaybeIncorrect`     | check the label against the parameter names    |

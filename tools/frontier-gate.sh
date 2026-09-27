@@ -587,6 +587,25 @@ run_refusal() {
   fi
 }
 
+# run_refusal's runtime-linked sibling: the fixture links lib/ (a schedule
+# handler, the prelude) and must still refuse — no WAT, nonzero exit, the
+# class named at least once.
+run_refusal_linked() {
+  local compiler="$1" label="$2" source="$3" expected_code="$4" dir="$5"
+  local wat="$dir/$label.wat" err="$dir/$label.compile.err"
+  local rc count size
+
+  cat "${RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err"
+  rc=$?
+  count=$(grep -c "$expected_code error:" "$err" 2>/dev/null || true)
+  size=$(wc -c < "$wat" 2>/dev/null || echo 0)
+  if [ "$rc" -ne 0 ] && [ "$count" -gt 0 ] && [ "$size" -eq 0 ]; then
+    pass "$label refusal ($expected_code=$count exit=$rc wat=0B)"
+  else
+    fail "$label refusal (exit=$rc $expected_code=$count wat=${size}B; see $err)"
+  fi
+}
+
 run_diagnostic() {
   local compiler="$1" label="$2" source="$3" expected_code="$4" dir="$5"
   local wat="$dir/$label.wat" err="$dir/$label.compile.err"
@@ -1247,6 +1266,28 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-scheduled-fanout-closure.mn" 34 yes "$dir"
   run_program "$compiler" scheduled-effect \
     "$ROOT/tests/frontier/mn-scheduled-fanout-effect.mn" 25 yes "$dir"
+  # ── B1: an effect performed INSIDE a spawned branch (2026-09-27) ──
+  # A branch runs in the world it was spawned in (the task record carries
+  # the live install chain; the fresh instance installs it before the
+  # closure runs), so a perform inside a branch walks to the handler at
+  # the fanout's frame. The RACE RULE at lowering: that handler must be
+  # provable at the fanout's own frame and stateless, or installed inside
+  # the branch — a stateful one is two instances resuming on one shared
+  # record, one beyond the frame fence is unprovable (E_ThreadedBranchEffect,
+  # armed, born at zero). RED on the prior boot: the stateless case faulted
+  # at the 0x100000000 belt (world 0 in the branch), the refusals compiled.
+  run_program "$compiler" threaded-branch-stateless \
+    "$ROOT/tests/frontier/mn-threaded-branch-stateless.mn" 14 yes "$dir"
+  run_program "$compiler" threaded-branch-inner-install \
+    "$ROOT/tests/frontier/mn-threaded-branch-inner-install.mn" 10 yes "$dir"
+  run_refusal_linked "$compiler" threaded-branch-stateful \
+    "$ROOT/tests/frontier/mn-threaded-branch-stateful.mn" E_ThreadedBranchEffect "$dir"
+  run_refusal_linked "$compiler" threaded-branch-caller \
+    "$ROOT/tests/frontier/mn-threaded-branch-caller.mn" E_ThreadedBranchEffect "$dir"
+  run_refusal_linked "$compiler" threaded-branch-transitive \
+    "$ROOT/tests/frontier/mn-threaded-branch-transitive.mn" E_ThreadedBranchEffect "$dir"
+  run_program "$compiler" threaded-branch-readonly-state \
+    "$ROOT/tests/frontier/mn-threaded-branch-readonly-state.mn" 10 yes "$dir"
   run_program "$compiler" scheduled-persist-float \
     "$ROOT/tests/frontier/mn-scheduled-fanout-persist-float.mn" 60 persist "$dir"
   # The rooted-image persist (B-i landing 1): ONE build, TWO processes. Leg A
@@ -2070,11 +2111,16 @@ for i in "${!compilers[@]}"; do
   # candidate performing E is admissible. Born RED 2026-09-25: the proposer
   # read only the authored clause (Pure for an undeclared fn) and refused
   # `eff_one` "by the target row Pure".
+  # The tie here is four wide (eff_one() beside the integer ladder), and
+  # past width three the surface renders the count and the QUESTION, never
+  # the members (C2, 2026-09-27) — so the fact is read off the question: a
+  # ROW split, "E against Pure", can only be raised by an admitted E
+  # performer. The member line this leg used to grep is no longer written.
   qa=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-hole-row-absorbed.mn:15:21 2>/dev/null)
-  if printf '%s' "$qa" | grep -q '^  eff_one()' && ! printf '%s' "$qa" | grep -q 'refused eff_one'; then
-    pass "hole row: a candidate performing what the enclosing ~> absorbs is proposed"
+  if printf '%s' "$qa" | grep -q '4 proven survivors' && printf '%s' "$qa" | grep -q 'E against Pure' && ! printf '%s' "$qa" | grep -q 'refused eff_one'; then
+    pass "hole row: a candidate performing what the enclosing ~> absorbs is proposed (the tie's question is the row split, E against Pure)"
   else
-    fail "hole row absorbed (got: $(printf '%s' "$qa" | grep -E 'eff_one|Propose' | head -2 | tr '\n' ' '))"
+    fail "hole row absorbed (got: $(printf '%s' "$qa" | grep -E 'eff_one|Propose|against' | head -3 | tr '\n' ' '))"
   fi
   # A PIPE STAGE IS PROPOSED BY REFERENCE, searched outward from the hole's
   # module (PROGRAM C3). Born RED 2026-09-25 on all three: `5 |> ??` offered
@@ -2099,10 +2145,15 @@ for i in "${!compilers[@]}"; do
   # SHAPE: the constant read stops at a branch, so the medium will not claim
   # two unread bodies agree — the arm that keeps DivName honest.
   qs=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-shape-tie.mn:19:31 2>/dev/null)
-  if printf '%s' "$qs" | grep -q 'differ in SHAPE'; then
-    pass "computed question: shape (an unread body never reads as agreement)"
+  # C2 (2026-09-27): a tie past width three renders the COUNT and the
+  # QUESTION, never the member list — the five survivors here print as
+  # "5 proven survivors" and the one question line (exactly one indented
+  # line under Propose); the two-survivor stage tie above still lists both.
+  qs_members=$(printf '%s\n' "$qs" | grep -cE '^  ' || true)
+  if printf '%s' "$qs" | grep -q 'differ in SHAPE' && printf '%s' "$qs" | grep -q '5 proven survivors' && [ "$qs_members" -eq 1 ]; then
+    pass "computed question: shape (an unread body never reads as agreement; past width three the count and the question alone)"
   else
-    fail "computed question: shape (got: $(printf '%s' "$qs" | tail -2))"
+    fail "computed question: shape (members=$qs_members; got: $(printf '%s' "$qs" | tail -2))"
   fi
   # ── the render register (DiagScope) ────────────────────────────────
   # A user-target projection over the FULL weave (repo root mounted, so
@@ -2439,7 +2490,10 @@ for i in "${!compilers[@]}"; do
   # USED near the hole outranks earlier-declared unused siblings. Seen
   # RED on the pre-ranker boot: kerning() surfaced first (enumeration
   # order); the rank lifts width() (one use edge in the enclosing body).
-  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." "$compiler" tests/frontier/mn-ranker-local-intent.mn:10:15 >"$dir/ranker.out" 2>/dev/null
+  # The hole is Positive, so the tie is three wide (width, kerning, the
+  # ladder's 1) and the members render — the ORDER is only observable in
+  # the member list, which the surface writes up to width three (C2).
+  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." "$compiler" tests/frontier/mn-ranker-local-intent.mn:13:24 >"$dir/ranker.out" 2>/dev/null
   first_survivor=$(grep -A1 'Propose:' "$dir/ranker.out" | tail -1)
   if printf '%s' "$first_survivor" | grep -q 'width()'; then
     pass "ranker: local intent lifts the used name (width first)"

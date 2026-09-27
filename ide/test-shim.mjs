@@ -4,11 +4,17 @@
 // (shared-image import + wasi.thread-spawn, a host thread per judged stmt).
 //   node ide/test-shim.mjs
 //
-// Leg 0 — RED CONTROL: the old stub (thread-spawn -> -1) against this wasm
-//   must FAIL LOUDLY (the wheel refuses a failed spawn) — the gate that can
-//   fail, and the measured reason the pre-worker page pinned an older wheel.
-// Leg 1 — COMPILE-STDIN: argc 0, source on stdin -> WAT on stdout, with the
-//   judgment's per-stmt tasks running as REAL worker threads (tasks > 0).
+// Leg 0 — COMPILE-STDIN: argc 0, source on stdin -> WAT on stdout. The
+//   spawned-task count is REPORTED, never required: the judgment has
+//   spawned nothing since the fan's direct spawn was deleted (pin 7c9dc538,
+//   2026-09-19 — judge once, sequential by property); the worker pool is the
+//   substrate for `~> Thread` and returns to this path when the judgment
+//   schedules (PLAN §11 9.2). The 2026-09-25 "tasks=259" measured the
+//   eight-week-old ide/mentl-ide.wasm copy, not the boot.
+// Leg 1 — RED CONTROL: the old stub (thread-spawn -> -1) against this wasm
+//   must FAIL LOUDLY (the wheel refuses a failed spawn) — ARMED only while
+//   leg 0 spawned; with zero spawns the control is VACUOUS and says so (a
+//   control that cannot fail is not a control), never a PASS.
 // Leg 2 — ADDRESS MODE: a virtual filesystem + argv so the compiler's own
 //   cursor-address transport (`mentl main.mn:L:C` -> src/main.mn at_run ->
 //   cursor_at_handle) projects the eight-aspect CursorView the ring reads.
@@ -21,7 +27,11 @@ const HERE = new URL('.', import.meta.url);
 const REPO = new URL('../', HERE);
 const te = new TextEncoder();
 const WORKER = fileURLToPath(new URL('wheel-worker.js', HERE));
-const WASM = process.env.MENTL_IDE_WASM || fileURLToPath(new URL('mentl-ide.wasm', HERE));
+// The twin runs the boot itself — the same bytes the page fetches at
+// ../boot/mentl.wasm — since the wheel's memory minimum fell to 32 pages
+// and its allocator grows on demand (2026-09-27); the hand-derived
+// ide/mentl-ide.wasm copy is deleted.
+const WASM = process.env.MENTL_IDE_WASM || fileURLToPath(new URL('../boot/mentl.wasm', HERE));
 const MODULE = await WebAssembly.compile(await readFile(WASM));
 
 function runWheel(req, timeoutMs = 120000) {
@@ -37,19 +47,23 @@ function runWheel(req, timeoutMs = 120000) {
 const PROG = 'fn double(x) = x * 2\nfn main() = double(21)\n';
 let bad = 0;
 
-// ── Leg 0: the stub spawn REFUSES this wasm (seen-RED control) ──────────────
-{
-  const r = await runWheel({ argv: [], stdin: te.encode(PROG), stubSpawn: true }, 30000);
-  const succeeded = !r.trapped && r.exit === 0 && r.out.includes('(module');
-  console.log(`[0] stub-spawn control: exit ${r.exit} · trapped ${r.trapped ? JSON.stringify(String(r.trapped).slice(0, 60)) : 'no'} -> ${succeeded ? 'FAIL (a stub shim ran the spawning wheel?!)' : 'PASS (refused loudly)'}`);
-  if (succeeded) bad++;
-}
-// ── Leg 1: compile-stdin through REAL spawned tasks ─────────────────────────
+// ── Leg 0: compile-stdin — the boot judges in the worker ────────────────────
+let spawned = 0;
 {
   const r = await runWheel({ argv: [], stdin: te.encode(PROG) });
-  const ok = !r.trapped && r.out.includes('(module') && r.out.includes('$double') && r.tasks > 0;
-  console.log(`[1] compile-stdin: exit ${r.exit} · has (module ${r.out.includes('(module')} · has $double ${r.out.includes('$double')} · tasks ${r.tasks} -> ${ok ? 'PASS' : 'FAIL'}`);
+  spawned = r.tasks;
+  const ok = !r.trapped && r.out.includes('(module') && r.out.includes('$double');
+  console.log(`[0] compile-stdin: exit ${r.exit} · has (module ${r.out.includes('(module')} · has $double ${r.out.includes('$double')} · tasks ${r.tasks} (reported, not required) -> ${ok ? 'PASS' : 'FAIL'}`);
   if (!ok) { bad++; console.log('    err: ' + r.err.trim().split('\n').slice(0, 6).join('\n    ') + (r.trapped ? '\n    trap: ' + r.trapped : '')); }
+}
+// ── Leg 1: the stub spawn REFUSES this wasm — armed only while leg 0 spawned ─
+if (spawned > 0) {
+  const r = await runWheel({ argv: [], stdin: te.encode(PROG), stubSpawn: true }, 30000);
+  const succeeded = !r.trapped && r.exit === 0 && r.out.includes('(module');
+  console.log(`[1] stub-spawn control: exit ${r.exit} · trapped ${r.trapped ? JSON.stringify(String(r.trapped).slice(0, 60)) : 'no'} -> ${succeeded ? 'FAIL (a stub shim ran the spawning wheel?!)' : 'PASS (refused loudly)'}`);
+  if (succeeded) bad++;
+} else {
+  console.log('[1] stub-spawn control: VACUOUS — the judgment spawned nothing on this path (judge once, since pin 7c9dc538); the control re-arms when the judgment schedules (PLAN §11 9.2)');
 }
 // ── Leg 2: address mode projects the REAL CursorView (the ring wire) ────────
 const libs = ['lib/memory.mn', 'lib/strings.mn', 'lib/lists.mn', 'lib/threading.mn', 'lib/io.mn', 'lib/prelude.mn', 'src/types.mn'];
@@ -135,7 +149,10 @@ class ResidentWorkerSession {
     'main.mn': te.encode('fn double(x) = x * 2\n\nfn main() with Memory + Alloc =\n  [1, 2, 3]\n    |> map(double)\n    |> fold(0, (acc, x) => acc + x)\n'),
   };
   const r1 = await sess.call(['mentl', 'main.mn:1:4'], null, vfsDelta);
-  const ok1 = r1.exit === 0 && !r1.trapped && r1.out.includes('Query: double(');
+  // The line rule reaches the DECLARATION at 1:4 and renders its source
+  // (`Query: fn double(x) = x * 2 : …`); the old `Query: double(` matched a
+  // render the wheel no longer writes.
+  const ok1 = r1.exit === 0 && !r1.trapped && /^Query: .*double/m.test(r1.out);
   const r2 = await sess.call(['mentl', 'main.mn:5:8']);
   const ok2 = r2.exit === 0 && !r2.trapped && r2.out.includes('Query: map(');
   const ok = ok1 && ok2;

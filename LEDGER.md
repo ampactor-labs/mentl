@@ -35,6 +35,113 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-27 · pin a25144cf4fcbff6c (CLEAN m2 == m3) · A BRANCH RUNS
+  IN THE WORLD IT WAS SPAWNED IN; THE PAGE RUNS THE BOOT; A TIE PAST WIDTH
+  THREE RENDERS ITS QUESTION. PROGRAM Step 3: B1 + E3 + C2, one board.
+  **B1, the trap.** An effect performed inside a spawned branch faulted at
+  the 0x100000000 belt (`ev_declaring_node ← compose_0 ← wasi_thread_start`):
+  the fresh instance's `$world_g` started at zero, so the first perform
+  walked from nowhere. The task record carries the spawning frame's world
+  now (`[closure@0][completion@4][result@8][world@12]`; `$spawn_task_impl`
+  stores `$world_g`, `$wasi_thread_start` installs it before the thunk) —
+  the chain and every handler record live in the shared image, so the walk
+  reads them from any instance. RED-first on boot bbc0cc2c: the stateless
+  fixture compiled and exited 134; the stateful and caller fixtures
+  COMPILED (the class did not exist) and exited 134; through the new m2 the
+  stateless fixture exits 14.
+  **B1, the race rule — and the two holes its first form had.** Sharing
+  the chain exposes the race: two instances performing into one handler at
+  the fanout's frame. `E_ThreadedBranchEffect` (armed at birth, born at
+  wheel-zero — the wheel installs no threaded schedule) refuses, at
+  lowering, every effect a branch's row carries whose covering handler at
+  the fanout's own frame (`lower_handler_stack_now()`, stopping at the frame
+  fence) writes its state or is not there at all. The first form stopped at
+  the first STATELESS covering handler; reasoning from the measured arm
+  semantics (an arm runs in the performing instance, its performs resolve
+  OUTER of its own install) said that is the same race one hop later, and
+  the fixture agreed before the pin: `handler h { op() => resume(bump()) }`
+  under `~> h ~> counter` compiled under the first form and ran — 11 on six
+  runs, a race serialized by luck. The walk is transitive now: a stateless
+  covering handler is a step, and its residual row (`handler_arm_effects`,
+  the cell the tee re-adds as `row(h)`, read from the env's HandlerKind) is
+  checked against the stack BELOW it. Then "stateful" measured too coarse:
+  it read "declares a state init", so a handler whose arms only read `n` —
+  one immutable record, no race — refused. It reads WRITES now: a `resume …
+  with` update in any arm, walked through the one total child projection,
+  which moved from query.mn to graph.mn beside `node_handle` so lower can
+  reach it. And the first pin's board was RED on the frontier's
+  scheduled-effect leg: `schedule_in_stack` calls ANY Thread-covering
+  handler `Threaded`, and `sequential_compose` covers the same Thread
+  surface at degree 1 — it runs each task inline in THIS instance — so
+  the rule refused a program with no second instance to race. The rule
+  reads whether the schedule handler SPAWNS (`schedule_spawns`: its
+  residual row carries `WasiThreads`, which `parallel_compose`'s `spawn`
+  arm performs and `sequential_compose`'s does not) — the schedule is a
+  handler decision, and the rule reads the handler, never the verb. Six
+  fixtures on the frontier: stateless 14, inner-install 10 (each branch
+  its own counter), readonly-state 10; stateful, caller (the install
+  beyond the fence) and transitive refuse; the sequential twin runs to 25.
+  **The span the refusal landed on was one character.** The arm-list
+  literal's synthesized match body carried only the `{` token's span, so
+  the literal `{ _ => bump() }` was one column wide at every surface; it
+  spans `{` through `}` now (`parse_arm_list` — the arm parser returns the
+  position past the closing brace), and `mentl <file:line:col>` inside the
+  literal renders its whole source.
+  **E3.** The wheel declared a 65536-page memory minimum no browser will
+  allocate, which is why `ide/mentl-ide.wasm` — a hand-derived copy with the
+  minimum shrunk, eight weeks behind the boot — existed. The minimum is 32
+  pages (the heap starts at 1 MB; the data segments end at 146,867 bytes)
+  and `$alloc` grows on demand: `$memory_reach(end)` grows by at least 256
+  pages, clamped to the 65536 maximum, `unreachable` on a refused grow or an
+  unreachable need — a loud OOM, never a silent wrap — called from the
+  shared and the single-instance allocator and before `$image_restore`'s
+  copy. The page fetches `../boot/mentl.wasm` through `mentl space`, the
+  node twin loads the same file, the copy and the README's derivation
+  recipe are deleted. Peak RSS of the self-compile is unchanged by the
+  growth path (m4 leg 999MB / 1,023,980 KB against 998MB at the prior pin):
+  the pages touched are the same, only the reservation differs. The boot
+  imports the exec seam (`mentl_host.wat_write` / `.exec`, tools/runner),
+  which a browser will not instantiate without; the worker provides it as
+  wasmtime does an unknown import — a trap the moment it is reached, named
+  (`Hβ.felt.ide-run-in-page`), never a value.
+  **THE RESIDENT-SESSION GATE HAD MEASURED A WHEEL THAT NO LONGER EXISTED.**
+  Loading the boot turned the twin's first two legs red: they demanded
+  spawned tasks (`tasks > 0`, and a stub spawn that must REFUSE), and the
+  judgment has spawned nothing since the fan's direct spawn was deleted at
+  pin 7c9dc538 (judge once, sequential by property) — the 2026-09-25
+  `tasks=259` was the 07-29 copy judging per stmt. The task count is a
+  measurement now, never a requirement; the stub-spawn control is ARMED
+  only while the judgment spawns and prints VACUOUS otherwise (a control
+  that cannot fail is not a control); leg 4's `Query: double(` matched a
+  render the wheel no longer writes. Both legs GREEN on the new boot: the
+  page compiled the boot itself in 353 ms (2,049 ms for the copy), 4,399
+  WAT lines, zero tasks — reported. The pool behind `wasi.thread-spawn`
+  stands for `~> Thread` and returns to this path at 9.2.
+  **C2.** `render_at`'s tie arm listed every survivor; §11.1 says the
+  answer is never a list. Members render up to width three; past it the
+  count and the computed question alone — the five-survivor shape tie
+  prints `5 proven survivors — a tie:` and its one question line, and the
+  frontier's leg counts exactly one indented line under Propose. Two
+  proposer legs had read facts off the member list: the hole-row leg now
+  reads them off the QUESTION (a row split, "E against Pure", can only be
+  raised by an admitted E performer), and the ranker leg's hole is
+  `Positive`, so the integer ladder contributes one member and the tie
+  stays three wide — the order is observable only where members render.
+  **Measured.** Three marches for one pin: the first ruled TRANSITION (the
+  memory declaration and the task record change every module) and pinned
+  4596519b with a RED board — the scheduled-effect leg above — and was
+  superseded by the clean repin after the spawn read landed; the third,
+  after the quiet gate refused the authored `ref bindings` that moved to
+  lower.mn with `grounded_scan`, reproduced the same pin byte-for-byte with
+  the marker deleted (`authored_ref_max` 723 → 722 — the grade reads the
+  parameter's two uses). The pin's block: m3 leg 13.40s wall · 997MB peak
+  RSS (1021008 KB), frontier 404 pass / 0 red / 2 expected-red; m3 through
+  m2 at zero errors, zero threaded-branch refusals, the wheel's warning
+  count unchanged (161). Peers closed:
+  `Hβ.threads.perform-inside-spawned-branch-traps`,
+  `Hβ.ide.pinned-wasm-lags-boot`. Still open beside them:
+  `Hβ.ide.session-call-reinstantiates-per-call`,
+  `Hβ.threads.gate-counts-host-clones`.
 - 2026-09-27 · pin bbc0cc2cd8ebca0b (CLEAN m2 == m3) · THE EXECUTABLE ROOT
   GATE READS THE ROW AND NOTHING ELSE. PROGRAM Step 2.
   **The defect, measured on the prior boot.** `report_unhandled_names`

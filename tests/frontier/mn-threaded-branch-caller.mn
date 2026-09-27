@@ -1,0 +1,14 @@
+// B1's race rule, the UNPROVABLE refusal: the fanout sits inside `fan`,
+// and the only install of E is the CALLER's. The branch's row carries E,
+// nothing at the fanout's own frame handles it — the frame fence is where
+// the lexical read stops — so the site cannot prove which handler two
+// spawned instances would reach, or that it is stateless. Refused at
+// lowering; the fix is stated in the diagnostic: install the handler at the
+// fanout's frame, or inside the branch.
+// Expected: REFUSE E_ThreadedBranchEffect.
+effect E { op() -> Int }
+handler h { op() => resume(7) }
+fn fan() = match (0 <| ({ _ => op() }, { _ => op() })) ~> parallel_compose {
+  (a, b) => a + b,
+}
+fn main() = (fan()) ~> h
