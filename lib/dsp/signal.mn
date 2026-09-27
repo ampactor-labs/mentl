@@ -84,7 +84,7 @@ fn linear_to_db(x: Float) -> Float with Pure = 20.0 * log(x) / log(10.0)
 //
 // The average magnitude at one frequency across every hop-spaced frame — the
 // frequency's mean spectral energy over the whole signal.
-fn stft_avg_loop(xs, freq: Int, sr: Int, win: Int, hop: Int, num_frames: Int, f: Int, acc: Float) with Memory + Alloc = if f >= num_frames {
+fn stft_avg_loop(xs, freq: Int, sr: Int, win: Int, hop: Int, num_frames: Int, f: Int, acc: Float) = if f >= num_frames {
   acc / float_of_int(num_frames)
 } else {
   match dft_bin(xs, f * hop, win, freq, sr) {
@@ -92,7 +92,7 @@ fn stft_avg_loop(xs, freq: Int, sr: Int, win: Int, hop: Int, num_frames: Int, f:
   }
 }
 
-fn stft_avg_mag(xs, freq: Int, sr: Int, win: Int, hop: Int) with Memory + Alloc = {
+fn stft_avg_mag(xs, freq: Int, sr: Int, win: Int, hop: Int) = {
   let num_frames = (len(xs) - win) / hop + 1
   stft_avg_loop(xs, freq, sr, win, hop, num_frames, 0, 0.0)
 }
@@ -102,7 +102,7 @@ fn stft_avg_mag(xs, freq: Int, sr: Int, win: Int, hop: Int) with Memory + Alloc 
 // signal this names the carrier — the STFT's own verdict, independent of the
 // coupling grid. `best_v` threads the running peak as an annotated float
 // accumulator (the CFC representation discipline, below).
-fn stft_dominant_loop(xs, probes, sr: Int, win: Int, hop: Int, k: Int, np: Int, best_k: Int, best_v: Float) with Memory + Alloc = if k >= np {
+fn stft_dominant_loop(xs, probes, sr: Int, win: Int, hop: Int, k: Int, np: Int, best_k: Int, best_v: Float) = if k >= np {
   best_k
 } else {
   let v = stft_avg_mag(xs, list_index(probes, k), sr, win, hop)
@@ -113,7 +113,7 @@ fn stft_dominant_loop(xs, probes, sr: Int, win: Int, hop: Int, k: Int, np: Int, 
   }
 }
 
-fn stft_dominant(xs, probes, sr: Int, win: Int, hop: Int) with Memory + Alloc = stft_dominant_loop(
+fn stft_dominant(xs, probes, sr: Int, win: Int, hop: Int) = stft_dominant_loop(
   xs,
   probes,
   sr,
@@ -152,7 +152,7 @@ fn bandpass_step(x: Float, a_hp: Float, a_lp: Float) -> Float = {
   ((prev) => a_lp * lp1 + (1.0 - a_lp) * prev) <~ delay(1)
 }
 
-fn bandpass_loop(xs, a_hp: Float, a_lp: Float, i: Int, n: Int, out) with Memory + Alloc = if i >= n {
+fn bandpass_loop(xs, a_hp: Float, a_lp: Float, i: Int, n: Int, out) = if i >= n {
   out
 } else {
   bandpass_loop(xs, a_hp, a_lp, i + 1, n, list_set(out, i, bandpass_step(xs[i], a_hp, a_lp)))
@@ -166,20 +166,19 @@ fn bandpass_loop(xs, a_hp: Float, a_lp: Float, i: Int, n: Int, out) with Memory 
 // context the `<~` needs — no Sample-clock handler required (the extinct
 // E_FeedbackNoContext check, PLAN §7; the structural re-enforcement is the named
 // peer Hβ.effects.iterate-class-declaration).
-fn bandpass(xs, lo_hz: Float, hi_hz: Float, sr: Int) with Memory + Alloc =
+fn bandpass(xs, lo_hz: Float, hi_hz: Float, sr: Int) =
   bandpass_loop(xs, band_coeff(lo_hz, sr), band_coeff(hi_hz, sr), 0, len(xs), make_list(len(xs)))
 
 // Single-bin DFT magnitude at `freq` over the whole signal — the plain
 // (unwindowed) energy at one frequency, for reading a filtered signal's spectrum.
-fn band_energy_loop(xs, freq: Int, sr: Int, i: Int, n: Int, re: Float, im: Float) with Memory = if i >= n {
+fn band_energy_loop(xs, freq: Int, sr: Int, i: Int, n: Int, re: Float, im: Float) = if i >= n {
   sqrt(re * re + im * im)
 } else {
   let ang = two_pi() * float_of_int(freq) * float_of_int(i) / float_of_int(sr)
   band_energy_loop(xs, freq, sr, i + 1, n, re + xs[i] * cos(ang), im + xs[i] * sin(ang))
 }
 
-fn band_energy(xs, freq: Int, sr: Int) with Memory =
-  band_energy_loop(xs, freq, sr, 0, len(xs), 0.0, 0.0)
+fn band_energy(xs, freq: Int, sr: Int) = band_energy_loop(xs, freq, sr, 0, len(xs), 0.0, 0.0)
 
 // ─── Comodulogram — the `<~` bandpass composed with the windowed-DFT PAC ───
 //
@@ -208,7 +207,7 @@ fn band_energy(xs, freq: Int, sr: Int) with Memory =
 // resonators + per-band quadrature) that would let `<~` drive the whole
 // comodulogram — and sharpen the LOW-frequency resolution the windowed-DFT floor
 // limits — is the named peer Hβ.dsp.resonator-filter-bank.
-fn pac_comodulogram(xs, sr: Int, low_freqs, high_freqs, win: Int, hop: Int, band_lo: Float, band_hi: Float) with Memory + Alloc =
+fn pac_comodulogram(xs, sr: Int, low_freqs, high_freqs, win: Int, hop: Int, band_lo: Float, band_hi: Float) =
   comodulogram(bandpass(xs, band_lo, band_hi, sr), sr, low_freqs, high_freqs, win, hop)
 
 // Peak-vs-median separation without a sort: floor(peak/median) >= k is
@@ -216,7 +215,7 @@ fn pac_comodulogram(xs, sr: Int, low_freqs, high_freqs, win: Int, hop: Int, band
 // 9 cells (the count that puts the 9th-smallest at or below the threshold) sit
 // at or below peak/k. `cells_below` is that count — the coupling stands above
 // the noise floor when the bulk of the grid sits far below the peak.
-fn cells_below_loop(matrix, num_high: Int, thresh: Float, k: Int, total: Int, acc: Int) with Memory = if k >= total {
+fn cells_below_loop(matrix, num_high: Int, thresh: Float, k: Int, total: Int, acc: Int) = if k >= total {
   acc
 } else {
   let li = k / num_high
@@ -225,5 +224,5 @@ fn cells_below_loop(matrix, num_high: Int, thresh: Float, k: Int, total: Int, ac
   cells_below_loop(matrix, num_high, thresh, k + 1, total, acc + inc)
 }
 
-fn cells_below(matrix, num_low: Int, num_high: Int, thresh: Float) with Memory =
+fn cells_below(matrix, num_low: Int, num_high: Int, thresh: Float) =
   cells_below_loop(matrix, num_high, thresh, 0, num_low * num_high, 0)

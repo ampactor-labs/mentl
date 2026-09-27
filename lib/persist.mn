@@ -89,7 +89,7 @@ effect Persist {
 // in. Every wire read lands in a local before the swap; after image_restore
 // returns, this process's pre-swap heap values are dead — the caller reads
 // its typed roots (the restored top-level lets), never its own old heap.
-fn image_resume(path) with Memory + Alloc + WASI + Fail = {
+fn image_resume(path) = {
   let wire = fs_read_file_impl(path)
   let p = str_payload(wire)
   if load_i32(p) != image_key() {
@@ -136,7 +136,7 @@ fn image_resume(path) with Memory + Alloc + WASI + Fail = {
 // is what must be built out here. The EXTENT carries no world at all — it is
 // just the bytes at [0, size) — so the arm writes it, and nothing has to be
 // copied to get it there.
-fn image_header(k) with Memory + Alloc = {
+fn image_header(k) = {
   let size = heap_mark()
   let gsz = globals_area()
   let hdr = bytes_buf(16 + gsz)
@@ -174,7 +174,7 @@ fn image_header(k) with Memory + Alloc = {
 //
 // So the write states its own outcome and the file only survives if the
 // extent it declares is the extent that landed.
-fn image_write_wire(ref hdr, ref path) with Memory + Alloc + WASI = {
+fn image_write_wire(ref hdr, ref path) = {
   let p = str_payload(hdr)
   let size = load_i32(p + 8)
   if fs_write_image_impl(path, p, byte_len(hdr), 0, size) {
@@ -207,7 +207,7 @@ fn image_write_wire(ref hdr, ref path) with Memory + Alloc + WASI = {
 // `Hβ.persist.branch-world-tag` exactly, now with the measurement the peer
 // never had: the same shape on the `persist` arm trapped warm-inc at
 // ev_declaring_node, Persist slot 0.
-fn persist_write(k, ref path) with Memory + Alloc + WASI = image_write_wire(image_header(k), path)
+fn persist_write(k, ref path) = image_write_wire(image_header(k), path)
 
 // persist_to_disk — the default disk policy for the rooted-image wire.
 handler persist_to_disk with branch_results = [] {

@@ -69,7 +69,7 @@ import io
 // Reverse projection over the comment-ref pairs: which comment owners
 // reference this node. Linear over the pair list — the pair count is the
 // program's authored cross-references, small by construction.
-fn comment_ref_owners(ref pairs, referent, i, acc) with Memory + Alloc = if i >= len(pairs) {
+fn comment_ref_owners(ref pairs, referent, i, acc) = if i >= len(pairs) {
   acc
 } else {
   match list_index(pairs, i) {
@@ -106,14 +106,14 @@ fn spine_slot(h) = h % spine_slots
 // {nodes, ...} receiver computes field offsets over the partial demanded set
 // (the trecordopen-wrong-field class — measured here as `.nodes` reading
 // offset 0, the boundaries column, before the annotation).
-fn spine_page(ref spine, h) -> SpinePage with Memory = list_index(spine, spine_band(h))
+fn spine_page(ref spine, h) -> SpinePage = list_index(spine, spine_band(h))
 
 // Open bands through band b — the MINT path only: every other write lands
 // at an already-minted handle, whose band is open by construction. Returns
 // the (possibly grown) table and the new open count; the table grows by
 // list_extend_to (rare — once per 16384 mints), the pages themselves never
 // move.
-fn spine_ensure(own spine, spine_open, b) with Memory + Alloc + ImageAlloc = if b < spine_open {
+fn spine_ensure(own spine, spine_open, b) = if b < spine_open {
   (spine, spine_open)
 } else {
   // IMAGE family (1) of six (arena 2a-ii, Hβ.perf.per-decl-arena): the
@@ -125,7 +125,7 @@ fn spine_ensure(own spine, spine_open, b) with Memory + Alloc + ImageAlloc = if 
   grown
 }
 
-fn spine_open_loop(own spine, opened, b) with Memory + Alloc = if opened > b {
+fn spine_open_loop(own spine, opened, b) = if opened > b {
   (spine, opened)
 } else {
   let page =
@@ -135,17 +135,17 @@ fn spine_open_loop(own spine, opened, b) with Memory + Alloc = if opened > b {
 
 // In-place cell writes — the page never moves, so no write returns a new
 // spine and no handler-state rebind rides a cell store.
-fn spine_put_node(ref spine, h, own node) with Memory = {
+fn spine_put_node(ref spine, h, own node) = {
   let _ = list_set(spine_page(spine, h).nodes, spine_slot(h), node)
   ()
 }
 
-fn spine_put_body(ref spine, h, own body) with Memory = {
+fn spine_put_body(ref spine, h, own body) = {
   let _ = list_set(spine_page(spine, h).program, spine_slot(h), body)
   ()
 }
 
-fn spine_put_comment(ref spine, h, own cell) with Memory = {
+fn spine_put_comment(ref spine, h, own cell) = {
   let _ = list_set(spine_page(spine, h).comments, spine_slot(h), cell)
   ()
 }
@@ -155,7 +155,7 @@ fn spine_put_comment(ref spine, h, own cell) with Memory = {
 // discarded whole, and a re-mint at the same handle restamps — there is no
 // state to invert. The column is TOTAL by construction: a mint always runs
 // inside some module, because entering one is what parsing a file IS.
-fn spine_put_module(ref spine, h, m) with Memory = {
+fn spine_put_module(ref spine, h, m) = {
   let _ = list_set(spine_page(spine, h).module, spine_slot(h), m)
   ()
 }
@@ -166,7 +166,7 @@ fn spine_put_module(ref spine, h, m) with Memory = {
 // of its own install (the wrong-instance class this guard family already
 // pays for) and because charging GraphRead into this handler's residual is
 // the row leak its comment names.
-fn spine_module_name(ref spine, spine_open, m) with Memory + Cast + Alloc = match spine_body_at(spine, spine_open, m) {
+fn spine_module_name(ref spine, spine_open, m) = match spine_body_at(spine, spine_open, m) {
   NModule(mm) => mm.path,
   _ => {
     load_i32(0 - 1)
@@ -174,49 +174,49 @@ fn spine_module_name(ref spine, spine_open, m) with Memory + Cast + Alloc = matc
   },
 }
 
-fn spine_put_canon(ref spine, h, to) with Memory = {
+fn spine_put_canon(ref spine, h, to) = {
   let _ = list_set(spine_page(spine, h).canon, spine_slot(h), to)
   ()
 }
 
-fn spine_put_narrowing(ref spine, h, pred) with Memory = {
+fn spine_put_narrowing(ref spine, h, pred) = {
   let _ = list_set(spine_page(spine, h).narrowing, spine_slot(h), pred)
   ()
 }
 
-fn spine_put_boundary(ref spine, h, own boundary) with Memory = {
+fn spine_put_boundary(ref spine, h, own boundary) = {
   let _ = list_set(spine_page(spine, h).boundaries, spine_slot(h), boundary)
   ()
 }
 
-fn spine_put_bind(ref spine, h, bh) with Memory = {
+fn spine_put_bind(ref spine, h, bh) = {
   let _ = list_set(spine_page(spine, h).bind, spine_slot(h), bh)
   ()
 }
 
-fn spine_put_dispatch(spine, h, dt) with Memory = {
+fn spine_put_dispatch(spine, h, dt) = {
   let _ = list_set(spine_page(spine, h).dispatch, spine_slot(h), dt)
   ()
 }
 
-fn spine_put_slots(spine, h, sh) with Memory = {
+fn spine_put_slots(spine, h, sh) = {
   let _ = list_set(spine_page(spine, h).slots, spine_slot(h), sh)
   ()
 }
 
-fn spine_put_install(spine, h, ish) with Memory = {
+fn spine_put_install(spine, h, ish) = {
   let _ = list_set(spine_page(spine, h).installs, spine_slot(h), ish)
   ()
 }
 
-fn spine_put_span(ref spine, h, own span) with Memory = {
+fn spine_put_span(ref spine, h, own span) = {
   let _ = list_set(spine_page(spine, h).spans, spine_slot(h), span)
   ()
 }
 
 // The sparse-column reads, each answering its absent-contract for a closed
 // band or a virgin cell.
-fn spine_body_at(ref spine, spine_open, h) with Memory + Cast + Alloc = if spine_band(h) >= spine_open {
+fn spine_body_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   NHole(0)
 } else {
   let cell = list_index(spine_page(spine, h).program, spine_slot(h))
@@ -226,34 +226,34 @@ fn spine_body_at(ref spine, spine_open, h) with Memory + Cast + Alloc = if spine
 // The birth-span column read — a virgin cell (never parse-indexed) is
 // span_zero, the same absent-contract every position consumer already
 // treats as "no source site".
-fn spine_span_at(ref spine, spine_open, h) with Memory + Cast + Alloc = if spine_band(h) >= spine_open {
+fn spine_span_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   span_zero()
 } else {
   let cell = list_index(spine_page(spine, h).spans, spine_slot(h))
   if addr(cell) == 0 { span_zero() } else { cell }
 }
 
-fn spine_comment_at(ref spine, spine_open, h) with Memory + Alloc + Cast = if spine_band(h) >= spine_open {
+fn spine_comment_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   ("", span_zero())
 } else {
   let cell = list_index(spine_page(spine, h).comments, spine_slot(h))
   if addr(cell) == 0 { ("", span_zero()) } else { cell }
 }
 
-fn spine_canon_at(ref spine, spine_open, h) with Memory = if spine_band(h) >= spine_open {
+fn spine_canon_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   h
 } else {
   let to = list_index(spine_page(spine, h).canon, spine_slot(h))
   if to == 0 { h } else { to }
 }
 
-fn spine_narrowing_at(ref spine, spine_open, h) with Memory = if spine_band(h) >= spine_open {
+fn spine_narrowing_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   0
 } else {
   list_index(spine_page(spine, h).narrowing, spine_slot(h))
 }
 
-fn spine_boundary_at(ref spine, spine_open, h) with Memory = if spine_band(h) >= spine_open {
+fn spine_boundary_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   NoBoundary
 } else {
   list_index(spine_page(spine, h).boundaries, spine_slot(h))
@@ -263,7 +263,7 @@ fn spine_boundary_at(ref spine, spine_open, h) with Memory = if spine_band(h) >=
 // pre-check sites (unify's typed-render occurs report), which hold no
 // spine: one seed read, then a zero-op walk. The arms call the family
 // directly with their own state and never come here.
-fn occurs_in_live(handle, ref ty) with GraphRead + Memory + Alloc + Cast + !Mutate = match graph_branch_seed() {
+fn occurs_in_live(handle, ref ty) with !Mutate = match graph_branch_seed() {
   (spine, _open, _spans) => occurs_in(spine, graph_next(), handle, ty),
 }
 
@@ -271,12 +271,12 @@ fn occurs_in_live(handle, ref ty) with GraphRead + Memory + Alloc + Cast + !Muta
 // reads, because the arm that speaks it cannot see its own instance (an
 // arm's performs resolve OUTER). A real infinite type still deserves its
 // span (SYNTAX principle 5); the typed render lives at unify's pre-check.
-fn occurs_guard_line(handle, reason) with Memory + Alloc =
+fn occurs_guard_line(handle, reason) =
   "infer: E_OccursCheck error: infinite type at t{handle} (the graph write guard) at {show_span(reason_span_or_zero(reason))}\n"
 
 // The teach's line beside the refusal — coordinates + name only, the
 // guard's own render discipline (no graph ops from the arm).
-fn poly_teach_line(owner: String, reason) with Memory + Alloc =
+fn poly_teach_line(owner: String, reason) =
   "infer: T_PolyRecursionSignature Warning: the infinite type runs through '{owner}''s own parameter or return — if '{owner}' calls itself at a different type (polymorphic recursion), a FULL signature on '{owner}' buys the poly self-call at {show_span(reason_span_or_zero(reason))}\n"
 
 // Config: a BRANCH CURSOR (the parallel fan's per-thread instance) installs
@@ -1005,7 +1005,7 @@ fn chase_handle(ref spine, mint_bound, handle, depth) with !Mutate = if depth > 
 // fold the known names forward through the chain. free_handle is the
 // handle we chased INTO — needed to reconstruct the var-tailed triple
 // when the chain terminates at NRowFree (the free variable).
-fn merge_chased_row(ref chased, ref names, ref absents, free_handle) with Memory + Alloc = match chased {
+fn merge_chased_row(ref chased, ref names, ref absents, free_handle) = match chased {
   GNode(ck, cr) => match ck {
     NRowBound(inner) => GNode(NRowBound(merge_row(names, absents, inner)), cr),
     _ => // EVERY non-bound terminal preserves the accumulated reading — the
@@ -1029,7 +1029,7 @@ fn merge_chased_row(ref chased, ref names, ref absents, free_handle) with Memory
 // former EtAll special case (return the deeper row whole) was
 // reading-equal only when this level carried no absents — with the
 // masks riding, the uniform arm is the truth for it too.
-fn merge_row(ref names, ref absents, ref row) with Memory + Alloc = match row {
+fn merge_row(ref names, ref absents, ref row) = match row {
   EfRow(p, a, t) => ef_make(name_set_union(names, name_set_diff(p, absents)), name_set_union(absents, a), t),
 }
 
@@ -1054,7 +1054,7 @@ fn flatten_row_stored(ref spine, mint_bound, row) with !Mutate = match row {
   },
 }
 
-fn flatten_row_edges(ref spine, mint_bound, ref vs: [RowEdge], acc) with !Mutate + Memory + Alloc + Cast = match vs {
+fn flatten_row_edges(ref spine, mint_bound, ref vs: [RowEdge], acc) with !Mutate = match vs {
   [] => acc,
   [e, ...rest] => match acc {
     (p, am, res, saw_all) => {
@@ -1076,7 +1076,7 @@ fn flatten_row_edges(ref spine, mint_bound, ref vs: [RowEdge], acc) with !Mutate
 // final mints running under its trial measure — the cell stays virgin);
 // the word-face guard answers those and any never-minted defensive read
 // with the synthesized NFree, and a live handle reads its cell directly.
-fn graph_node_at(ref spine, mint_bound, idx) with Memory + Alloc + Cast = if idx >= mint_bound {
+fn graph_node_at(ref spine, mint_bound, idx) = if idx >= mint_bound {
   GNode(NFree(0), Fresh(idx))
 } else {
   let cell = list_index(spine_page(spine, idx).nodes, spine_slot(idx))
@@ -1329,7 +1329,7 @@ fn occurs_in_eff_args_loop(spine, mint_bound, handle, ref args, i, n) with !Muta
 // open-band guard: a pop lands on the live table whatever band the handle
 // is in, and the table itself outlives every fork (allocated at the root
 // install).
-fn revert_trail_into(ref spine, spine_open, ref trail, current, target, gates, instances) with Memory + Alloc = if current <= target {
+fn revert_trail_into(ref spine, spine_open, ref trail, current, target, gates, instances) = if current <= target {
   ()
 } else {
   let idx = current - 1
@@ -1362,7 +1362,7 @@ fn revert_trail_into(ref spine, spine_open, ref trail, current, target, gates, i
 // The unpaired walker: same in-place undo (every touched band is open —
 // the guard is kept uniform as the belt), with MFreshNode counting `next`
 // back down.
-fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, gates, instances) with Memory + Alloc = if current <= target {
+fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, gates, instances) = if current <= target {
   next_handle
 } else {
   let idx = current - 1
@@ -1423,7 +1423,7 @@ fn node_handle(node) = match node {
 // expr_child_handles — the type-handles of an Expr's direct child Nodes.
 // One arm per Expr variant that carries children (the row algebra over
 // the value space — H6 exhaustive); leaf literals carry none.
-fn expr_child_handles(e) with Alloc + Memory = match e {
+fn expr_child_handles(e) = match e {
   BinOpExpr(_, l, r) => [node_handle(l), node_handle(r)],
   UnaryOpExpr(_, n) => [node_handle(n)],
   CallExpr(f, args) => [node_handle(f)] ++ map(node_handle, args),
@@ -1470,7 +1470,7 @@ fn tuple_field_handle(field) with Pure = match field {
 // child nodes of a statement. Type-level carriers (a variant's or op's
 // comment node, an import, a refinement's predicate) hold no value
 // holes and contribute none.
-fn stmt_child_handles(s) with Alloc + Memory = match s {
+fn stmt_child_handles(s) = match s {
   LetStmt(_pat, value, ann) => match ann {
     N(NTypeAnn(_), _, _) => // the annotation channel is a child only when it IS one: the absent
     // form ALIASES the value node (the parser's no-fresh-mint sentinel,
@@ -1497,7 +1497,7 @@ fn arm_body_handle(arm) with Pure = node_handle(arm.body)
 // body_child_handles — the ONE total child projection over NodeBody:
 // tree walks (containment, the enclosing-decl descent) read this,
 // never a per-altitude copy.
-fn body_child_handles(body) with Alloc + Memory = match body {
+fn body_child_handles(body) = match body {
   NExpr(e) => expr_child_handles(e),
   NStmt(s) => stmt_child_handles(s),
   NPat(_) => [],
@@ -1518,14 +1518,14 @@ fn body_child_handles(body) with Alloc + Memory = match body {
 // module-of-position is a LIVE projection of the NModule spans, never a
 // per-mint side-ledger. The O(next) scan's O(1) destiny is the
 // handle-indexed span weave (the §5.O name-is-handle sibling).
-fn module_path_of_span(span) with GraphRead + !Mutate = {
+fn module_path_of_span(span) with !Mutate = {
   let snapshot = graph_snapshot()
   match snapshot {
     Graph(next, _spans) => scan_for_enclosing_module(span, 0, next),
   }
 }
 
-fn scan_for_enclosing_module(target, i, n) with GraphRead + !Mutate = if i >= n {
+fn scan_for_enclosing_module(target, i, n) with !Mutate = if i >= n {
   ""
 } else {
   match graph_node_body(i) {
@@ -1551,7 +1551,7 @@ fn scan_for_enclosing_module(target, i, n) with GraphRead + !Mutate = if i >= n 
 // it — the same law driver_collect_visit's visited set keys on, and the same
 // one the census dedup needed. LAST wins, matching env_snapshot's dedup-to-
 // latest for the same reason: the final generation is the judged one.
-fn module_cells() with Memory + Alloc + GraphRead + !Mutate = {
+fn module_cells() with !Mutate = {
   let snapshot = graph_snapshot()
   match snapshot {
     Graph(next, _spans) => dedup_module_cells(collect_module_cells(0, next), []),
@@ -1562,7 +1562,7 @@ fn module_cells() with Memory + Alloc + GraphRead + !Mutate = {
 // The walk is handle-ascending, so the last cell is the FINAL generation's —
 // the judged one, whose decls are the nodes the returned ast actually holds.
 // Keeping the first would hand every consumer the trial's shadow tree.
-fn dedup_module_cells(ref cells, acc) with Memory + Alloc = if len(cells) == 0 {
+fn dedup_module_cells(ref cells, acc) = if len(cells) == 0 {
   acc
 } else {
   match cells[0] {
@@ -1573,7 +1573,7 @@ fn dedup_module_cells(ref cells, acc) with Memory + Alloc = if len(cells) == 0 {
   }
 }
 
-fn cell_path_in(ref acc, ref path: String, i) with Memory + Alloc = if i >= len(acc) {
+fn cell_path_in(ref acc, ref path: String, i) = if i >= len(acc) {
   false
 } else {
   match acc[i] {
@@ -1598,7 +1598,7 @@ fn cell_path_in(ref acc, ref path: String, i) with Memory + Alloc = if i >= len(
 // every consumer that wanted a module's own content re-derive it from
 // text — which is how 52 dead imports sat unseen: a grep cannot tell a
 // used name from one named in a comment, and the graph can.
-fn collect_module_cells(i, n) with Memory + Alloc + GraphRead + !Mutate = if i >= n {
+fn collect_module_cells(i, n) with !Mutate = if i >= n {
   []
 } else {
   match graph_node_body(i) {
@@ -1607,8 +1607,7 @@ fn collect_module_cells(i, n) with Memory + Alloc + GraphRead + !Mutate = if i >
   }
 }
 
-fn module_paths() with Memory + Alloc + GraphRead + !Mutate =
-  map({ (_h, p, _s, _d) => p }, module_cells())
+fn module_paths() with !Mutate = map({ (_h, p, _s, _d) => p }, module_cells())
 
 // The module handle a path names — the inverse of `module_name_of_handle`,
 // read from the same deduped cells, so it lands on the JUDGED generation's
@@ -1625,24 +1624,23 @@ fn module_paths() with Memory + Alloc + GraphRead + !Mutate =
 // the moment each module's spans became its own 1-based coordinates.
 // LAST wins, matching `module_cells`' own dedup-to-latest: the cells arrive in
 // mint order and the final generation is the judged one.
-fn module_handle_of_path(path: String) with Memory + Alloc + GraphRead + !Mutate =
+fn module_handle_of_path(path: String) with !Mutate =
   fold(None, module_handle_pick(path), module_cells())
 
-fn module_handle_pick(path: String, acc, c) with Memory + Alloc = match c {
+fn module_handle_pick(path: String, acc, c) = match c {
   (h, p, _s, _d) => if p == path { Some(h) } else { acc },
 }
 
 // The path a module HANDLE names — `module_handle_of_path` read the other
 // way, over the same cells, so the two directions cannot disagree.
-fn module_path_of_handle(mh) with Memory + Alloc + GraphRead + !Mutate =
-  fold("", module_path_pick(mh), module_cells())
+fn module_path_of_handle(mh) with !Mutate = fold("", module_path_pick(mh), module_cells())
 
 // `mh: Int` is the Intent Boundary carrying the eq PROOF, not decoration:
 // the fold's accumulator leaves `mh` a bare variable at emit, so `h == mh`
 // falls to a one-word compare and `T_EqTypeUnprovable` says so — right for
 // a handle by luck, an address lie by construction. The sibling
 // `module_handle_pick` annotates `path: String` for the same reason.
-fn module_path_pick(mh: Int, acc, c) with Memory + Alloc = match c {
+fn module_path_pick(mh: Int, acc, c) = match c {
   (h, p, _s, _d) => if h == mh { p } else { acc },
 }
 
@@ -1663,7 +1661,7 @@ fn module_path_pick(mh: Int, acc, c) with Memory + Alloc = match c {
 // A HANDLE-facing entry, because that is what callers hold: a node's
 // module is stamped at its mint, so both sides arrive as handles and the
 // same-module case is one word compare with no path materialized at all.
-fn module_reaches(from_mh, target_mh) with GraphRead + Alloc + Memory + !Mutate = if from_mh == target_mh {
+fn module_reaches(from_mh, target_mh) with !Mutate = if from_mh == target_mh {
   true
 } else {
   module_imports(module_path_of_handle(from_mh), module_path_of_handle(target_mh), [])
@@ -1672,14 +1670,14 @@ fn module_reaches(from_mh, target_mh) with GraphRead + Alloc + Memory + !Mutate 
 // Does module `from` import `target` (transitively)? Reads the live
 // ImportStmt edges in `from`'s NModule decls; the `seen` accumulator
 // breaks import cycles. The module graph IS graph content — no side-ledger.
-fn module_imports(from, target, seen) with GraphRead + Alloc + Memory + !Mutate = if from == "" || contains_path(seen, from) {
+fn module_imports(from, target, seen) with !Mutate = if from == "" || contains_path(seen, from) {
   false
 } else {
   let direct = module_import_paths(from)
   if contains_path(direct, target) { true } else { any_imports(direct, target, [from] ++ seen) }
 }
 
-fn any_imports(paths, target, seen) with GraphRead + Alloc + Memory + !Mutate = if len(paths) == 0 {
+fn any_imports(paths, target, seen) with !Mutate = if len(paths) == 0 {
   false
 } else if module_imports(last(paths), target, seen) {
   true
@@ -1687,7 +1685,7 @@ fn any_imports(paths, target, seen) with GraphRead + Alloc + Memory + !Mutate = 
   any_imports(drop_last(paths), target, seen)
 }
 
-fn contains_path(paths, target) with Memory + Alloc = if len(paths) == 0 {
+fn contains_path(paths, target) = if len(paths) == 0 {
   false
 } else if last(paths) == target {
   true
@@ -1696,14 +1694,14 @@ fn contains_path(paths, target) with Memory + Alloc = if len(paths) == 0 {
 }
 
 // The direct import paths declared in module `path`'s NModule decls.
-fn module_import_paths(path) with GraphRead + !Mutate + Alloc + Memory = {
+fn module_import_paths(path) with !Mutate = {
   let snapshot = graph_snapshot()
   match snapshot {
     Graph(next, _spans) => scan_module_imports(path, 0, next),
   }
 }
 
-fn scan_module_imports(path, i, n) with GraphRead + !Mutate + Alloc + Memory = if i >= n {
+fn scan_module_imports(path, i, n) with !Mutate = if i >= n {
   []
 } else {
   match graph_node_body(i) {
@@ -1712,9 +1710,9 @@ fn scan_module_imports(path, i, n) with GraphRead + !Mutate + Alloc + Memory = i
   }
 }
 
-fn import_paths_of_decls(decls) with Alloc + Memory = decls |> filter_map_imports
+fn import_paths_of_decls(decls) = decls |> filter_map_imports
 
-fn filter_map_imports(decls) with Alloc + Memory = if len(decls) == 0 {
+fn filter_map_imports(decls) = if len(decls) == 0 {
   []
 } else {
   let head_imports = match node_body_of(last(decls)) {
@@ -1743,7 +1741,7 @@ fn node_body_of(node) with Pure = match node {
 // too small does not go red; it goes BLIND, and accepts every rise beneath the
 // number it now reports (§11 tripwire 4). Summing the per-module extents is
 // what "total source" meant all along; it is only now that the two differ.
-fn weave_line_extent() with Memory + Alloc + GraphRead + !Mutate = fold(
+fn weave_line_extent() with !Mutate = fold(
   0,
   (acc, c) => match c {
     (_h, _p, s, _d) => match s {
@@ -1762,7 +1760,7 @@ fn weave_line_extent() with Memory + Alloc + GraphRead + !Mutate = fold(
 // allocation-free scan then measured O(n^2) over the snoc-spined log
 // (a 600s timeout at the same scale). The column is the same one write
 // projected by handle — the log survives for containment scans.
-fn parse_span_of(handle) with GraphRead = graph_span_of(handle)
+fn parse_span_of(handle) = graph_span_of(handle)
 
 // The ONLY route from a TypeHandle to a resolved Ty. Delegates to
 // graph_chase. No cache. No staleness. Every observer reads live.
@@ -1787,7 +1785,7 @@ effect LookupTy {
 // by root handle — tiny, and maximally shared: every word instantiation IS
 // the floor emission ([Int], String, records — byte-identical, Law 7); only
 // a genuinely wide var mints a twin ($min$sp2 = min with its one var at f64).
-fn spec_pairs_find(pairs, root) with Memory + Alloc = match find({ (v, _) => v == root }, pairs) {
+fn spec_pairs_find(pairs, root) = match find({ (v, _) => v == root }, pairs) {
   Some(p) => match p {
     (_, t) => Some(t),
   },
@@ -1802,12 +1800,12 @@ fn spec_pairs_find(pairs, root) with Memory + Alloc = match find({ (v, _) => v =
 // floor TVar. This is the precision the interim free-leaf rule (every free =
 // the one wide type) could not have, and it lifts the one-wide-type demand
 // guard: multi-type generics (a := Float, b := Int) twin correctly.
-fn spec_pair_or_var(u, pairs) with GraphRead + Memory + Alloc = match spec_pairs_find(pairs, graph_chase_handle(u)) {
+fn spec_pair_or_var(u, pairs) = match spec_pairs_find(pairs, graph_chase_handle(u)) {
   Some(c) => c,
   None => TVar(u),
 }
 
-fn spec_subst_pairs(t, pairs) with GraphRead + Memory + Alloc = match t {
+fn spec_subst_pairs(t, pairs) = match t {
   TVar(u) => match graph_chase(u) {
     GNode(kind, _r) => match kind {
       NBound(t2) => spec_subst_pairs(t2, pairs),

@@ -241,7 +241,7 @@ type BoundaryInvariant
   // loud if the invariant ever breaks.
   | ProjectionOriginShape(Int)
 
-fn show_boundary_invariant(invariant) with Memory + Alloc = match invariant {
+fn show_boundary_invariant(invariant) = match invariant {
   MissingFanoutBoundary => "missing fanout boundary",
   WrongFanoutBoundaryKind => "wrong boundary kind at fanout",
   MissingFanoutEdge(i) => "missing fanout edge at ordinal {int_to_str(i)}",
@@ -613,7 +613,7 @@ fn lexpr_handle(e) with Pure = match e {
 // Without this, lex_from / scan_decimal recursive calls compile as
 // regular call_indirect and exhaust the WASM stack on long inputs.
 // Called by FnStmt / LambdaExpr / handler-arm-body lowering after lower_expr.
-fn mark_tail(e) with Memory + Alloc = match e {
+fn mark_tail(e) = match e {
   LCall(h, fn_, args) => LTailCall(h, fn_, args),
   LDirectCall(h, fh, n, _, args) => LDirectCall(h, fh, n, true, args),
   LIf(h, cond, then_b, else_b) => LIf(h, cond, mark_tail_last_in(then_b), mark_tail_last_in(else_b)),
@@ -625,7 +625,7 @@ fn mark_tail(e) with Memory + Alloc = match e {
 // Return a fresh flat list with the last element replaced by mark_tail(last).
 // Materializes via list_to_flat so callers can pass any list shape (concat,
 // slice, snoc) — substrate-honest per list_set's tag=0 contract.
-fn mark_tail_last_in(stmts) with Memory + Alloc = {
+fn mark_tail_last_in(stmts) = {
   let n = len(stmts)
   if n == 0 {
     stmts
@@ -636,7 +636,7 @@ fn mark_tail_last_in(stmts) with Memory + Alloc = {
   }
 }
 
-fn mark_tail_arms(arms) with Memory + Alloc = map({ (pat, body) => (pat, mark_tail(body)) }, arms)
+fn mark_tail_arms(arms) = map({ (pat, body) => (pat, mark_tail(body)) }, arms)
 
 // True when the row carries no effect names — the callee performs
 // nothing, so no handler evidence is needed at the call site.
@@ -1691,10 +1691,9 @@ fn collect_fn_bases(stmts) = flatten(map(
 // Keeps its own build (the position IS the list index i, extracted from each
 // base's 4-tuple — not a field), calling smap_new/smap_add; the primitive is
 // smap. base names are unique, so first-match is byte-identical.
-fn build_base_index(bases) with Memory + Alloc =
-  build_base_index_from(bases, len(bases) - 1, smap_new())
+fn build_base_index(bases) = build_base_index_from(bases, len(bases) - 1, smap_new())
 
-fn build_base_index_from(bases, i, idx) with Memory + Alloc = if i < 0 {
+fn build_base_index_from(bases, i, idx) = if i < 0 {
   idx
 } else {
   match list_index(bases, i) {
@@ -3950,7 +3949,7 @@ fn lower_pat_typed(pat, ty, srep) = match pat {
 // record — structural TRecord directly, or a nominal TName through the env's
 // RecordSchemeKind (nominal_record_fields — the one channel's fourth
 // reader). None = genuinely unresolved (the floor's honest input).
-fn record_pat_full_fields(ty) with GraphRead + EnvRead + Memory + Alloc = match tuple_pat_strip(ty) {
+fn record_pat_full_fields(ty) = match tuple_pat_strip(ty) {
   TRecord(full) => Some(map({ (n, _) => n }, full)),
   TName(nm, _) => match nominal_record_fields(nm) {
     Some(declared) => Some(map({ (n, _) => n }, declared)),
@@ -3975,7 +3974,7 @@ fn lower_pat_record_fields_full(flds, full_names) = map(
   enumerate(flds)
 )
 
-fn name_index_in(ref names, target, i) with Memory = if i >= len(names) {
+fn name_index_in(ref names, target, i) = if i >= len(names) {
   0 - 1
 } else {
   if field_name_eq(list_index(names, i), target) { i } else { name_index_in(names, target, i + 1) }
@@ -3983,12 +3982,12 @@ fn name_index_in(ref names, target, i) with Memory = if i >= len(names) {
 
 // The residual specs: every receiver field the pattern does not name,
 // carried as (field, src_index) — the copy plan for emit's build.
-fn lower_rest_specs(rest, flds, full_names) with Memory + Alloc = match rest {
+fn lower_rest_specs(rest, flds, full_names) = match rest {
   None => None,
   Some(rn) => Some((rn, residual_specs(full_names, flds, 0))),
 }
 
-fn residual_specs(ref full_names, ref flds, i) with Memory + Alloc = if i >= len(full_names) {
+fn residual_specs(ref full_names, ref flds, i) = if i >= len(full_names) {
   []
 } else {
   let fname = list_index(full_names, i)
@@ -3999,7 +3998,7 @@ fn residual_specs(ref full_names, ref flds, i) with Memory + Alloc = if i >= len
   }
 }
 
-fn pat_names_field(ref flds, fname, i) with Memory = if i >= len(flds) {
+fn pat_names_field(ref flds, fname, i) = if i >= len(flds) {
   false
 } else {
   match list_index(flds, i) {
@@ -4014,7 +4013,7 @@ fn lower_rest_unresolved(rest) = match rest {
 
 // Strip alias/refinement and chase a top-level TVar to its bound type so a
 // tuple scrutinee typed as `TVar -> TTuple` resolves to its element list.
-fn tuple_pat_strip(ty) with GraphRead = match ty {
+fn tuple_pat_strip(ty) = match ty {
   TVar(h) => match graph_chase(h) {
     GNode(NBound(inner), _) => tuple_pat_strip(inner),
     _ => ty,
@@ -4066,15 +4065,15 @@ fn lower_pat_con_uniform(subs, i) = if i >= len(subs) {
 // a sub-pattern need the patterns; both project from the ONE source LPCon
 // carries, computed at the arm rather than re-read from the env by name — the
 // pairing is where the correctness lives, and these cannot disagree.
-fn ty_of_pairs(pairs) with Memory + Alloc = map(pair_ty, pairs)
+fn ty_of_pairs(pairs) = map(pair_ty, pairs)
 
-fn pat_of_pairs(pairs) with Memory + Alloc = map(pair_pat, pairs)
+fn pat_of_pairs(pairs) = map(pair_pat, pairs)
 
-fn pair_ty(pair) with Memory + Alloc = match pair {
+fn pair_ty(pair) = match pair {
   (t, _) => t,
 }
 
-fn pair_pat(pair) with Memory + Alloc = match pair {
+fn pair_pat(pair) = match pair {
   (_, p) => p,
 }
 
@@ -4086,14 +4085,14 @@ fn pair_pat(pair) with Memory + Alloc = match pair {
 // through chase_deep before stripping, the same fold boundary the eq and show
 // collectors run at their dispatch entry. Without it a `match a` whose `a` is
 // a bound var answered with no specs at all, and every payload floored.
-fn con_payload_tys_at(cname: String, scrutinee_ty) with EnvRead + GraphRead + Memory + Alloc + WASI = match find(spec_named(cname), variant_named_specs_at(fold_strip(chase_deep(scrutinee_ty)))) {
+fn con_payload_tys_at(cname: String, scrutinee_ty) = match find(spec_named(cname), variant_named_specs_at(fold_strip(chase_deep(scrutinee_ty)))) {
   Some(spec) => match spec {
     (_, _, tys) => tys,
   },
   None => [],
 }
 
-fn spec_named(cname: String, spec) with Memory + Alloc = match spec {
+fn spec_named(cname: String, spec) = match spec {
   (_, n, _) => n == cname,
 }
 
@@ -4143,7 +4142,7 @@ fn lower_pat_record_fields(flds, base) = map(
   enumerate(flds)
 )
 
-fn lower_lit_value(v) with Memory + Alloc = match v {
+fn lower_lit_value(v) = match v {
   LVInt(n) => LInt(n),
   LVFloat(f) => LFloat(f),
   LVString(s) => LString(s),
@@ -5951,7 +5950,7 @@ fn reach_name_map(stmts, i, n, map) = if i >= n {
 // whole-list pre-filter scan is deleted with it. A dead decl's wide
 // sites no longer seed (nothing will twin for them); reach_enqueue's
 // set discipline absorbs the family's re-arrivals.
-fn spec_entry_seed(d) with Alloc + Memory + LookupTy + EnvRead + GraphRead + WASI = match spec_scan_expr(d, ([], [])) {
+fn spec_entry_seed(d) = match spec_scan_expr(d, ([], [])) {
   (sites, _ophs) => if any(spec_site_is_wide, sites) { spec_wide_family() } else { [] },
 }
 
@@ -6121,7 +6120,7 @@ fn reach_enqueue(refs, rbuf, rn, fbuf, fcount) = if len(refs) == 0 {
 // generation, so the session-weave multiplicity that forces the cursor's
 // authored_hole onto the caret test (cursor.mn) cannot occur here; the two
 // reads re-unify under Hβ.cursor.session-weave-epoch-scope.
-fn executable_hole(handle) with GraphRead + Memory + Alloc + !Mutate = match graph_node_body(handle) {
+fn executable_hole(handle) with !Mutate = match graph_node_body(handle) {
   NHole(id) => id != 0 && !span_eq(parse_span_of(handle), span_zero()),
   _ => false,
 }
@@ -6217,7 +6216,7 @@ fn wide_binop_seed(op, l) = if ty_has_wide_seq(lookup_ty(lexpr_handle(l)), []) {
 // contract; int_to_str / float_to_str do not, and the aggregate body calls
 // them directly). sig_has_d reads the fold signature for a float ANYWHERE
 // in the shape — the same one-scan the leaf generators key on.
-fn sig_has_d(sig, i) with Memory = if i >= byte_len(sig) {
+fn sig_has_d(sig, i) = if i >= byte_len(sig) {
   false
 } else if byte_at(sig, i) == 100 {
   true
@@ -6225,7 +6224,7 @@ fn sig_has_d(sig, i) with Memory = if i >= byte_len(sig) {
   sig_has_d(sig, i + 1)
 }
 
-fn show_reach_names(x) with LookupTy + Memory + Alloc = {
+fn show_reach_names(x) = {
   let ty = fold_strip(lookup_ty(lexpr_handle(x)))
   match ty {
     TList(TByte) => [],
@@ -6239,12 +6238,12 @@ fn show_reach_names(x) with LookupTy + Memory + Alloc = {
   }
 }
 
-fn show_agg_reach(ty) with Memory + Alloc = {
+fn show_agg_reach(ty) = {
   let sig = fold_sig(ty)
   if sig_has_d(sig, 0) { ["float_to_str", "int_to_str"] } else { ["int_to_str"] }
 }
 
-fn hash_reach_names(x) with LookupTy + Memory + Alloc = {
+fn hash_reach_names(x) = {
   let ty = fold_strip(lookup_ty(lexpr_handle(x)))
   match ty {
     TList(e) => {
@@ -6275,7 +6274,7 @@ fn hash_reach_names(x) with LookupTy + Memory + Alloc = {
   }
 }
 
-fn hash_agg_reach(ty) with Memory + Alloc = {
+fn hash_agg_reach(ty) = {
   let sig = fold_sig(ty)
   if sig_has_d(sig, 0) {
     ["float_to_str", "str_hash", "list_hash"]
@@ -6313,7 +6312,7 @@ fn hash_agg_reach(ty) with Memory + Alloc = {
 // spec_pairs_find lives in graph.mn with its consumers (spec_pair_or_var /
 // spec_subst_pairs / lookup_ty_graph) — the specialization projection reads
 // the graph, and both this module and the bracket (infer.mn) reach it there.
-fn spec_pairs_add(pairs, root, t) with Memory + Alloc = match spec_pairs_find(pairs, root) {
+fn spec_pairs_add(pairs, root, t) = match spec_pairs_find(pairs, root) {
   Some(_) => // first binding wins; the unifier proved consistency
   pairs,
   None => [(root, t)] ++ pairs,
@@ -6332,10 +6331,9 @@ fn spec_pairs_add(pairs, root, t) with Memory + Alloc = match spec_pairs_find(pa
 // that can be wrong wrote). The Bool change-walk returns words — zero
 // allocation on the unchanged path — and the build recurses through the
 // sharing face so unchanged subtrees re-share at every level.
-fn spec_resolve(t) with LookupTy + Memory + Alloc + GraphRead =
-  if spec_resolve_changes(t) { spec_resolve_build(t) } else { t }
+fn spec_resolve(t) = if spec_resolve_changes(t) { spec_resolve_build(t) } else { t }
 
-fn spec_resolve_changes(t) with LookupTy + Memory = match t {
+fn spec_resolve_changes(t) = match t {
   TVar(h) => match lookup_ty(h) {
     TVar(h2) => h2 != h,
     _ => true,
@@ -6364,7 +6362,7 @@ fn spec_resolve_changes(t) with LookupTy + Memory = match t {
 // Raw-recursion loops (the battery's own law): a closure-taking any()
 // would mint one record per node and the check-walk's whole point is the
 // zero-allocation unchanged path.
-fn spec_resolve_changes_list(ref xs, i) with LookupTy + Memory = if i >= len(xs) {
+fn spec_resolve_changes_list(ref xs, i) = if i >= len(xs) {
   false
 } else if spec_resolve_changes(xs[i]) {
   true
@@ -6372,7 +6370,7 @@ fn spec_resolve_changes_list(ref xs, i) with LookupTy + Memory = if i >= len(xs)
   spec_resolve_changes_list(xs, i + 1)
 }
 
-fn spec_resolve_changes_params(ref ps, i) with LookupTy + Memory = if i >= len(ps) {
+fn spec_resolve_changes_params(ref ps, i) = if i >= len(ps) {
   false
 } else if spec_resolve_changes(param_ty(ps[i])) {
   true
@@ -6380,7 +6378,7 @@ fn spec_resolve_changes_params(ref ps, i) with LookupTy + Memory = if i >= len(p
   spec_resolve_changes_params(ps, i + 1)
 }
 
-fn spec_resolve_changes_fields(ref fs, i) with LookupTy + Memory = if i >= len(fs) {
+fn spec_resolve_changes_fields(ref fs, i) = if i >= len(fs) {
   false
 } else {
   match fs[i] {
@@ -6388,7 +6386,7 @@ fn spec_resolve_changes_fields(ref fs, i) with LookupTy + Memory = if i >= len(f
   }
 }
 
-fn spec_resolve_build(t) with LookupTy + Memory + Alloc + GraphRead = match t {
+fn spec_resolve_build(t) = match t {
   TVar(h) => match lookup_ty(h) {
     TVar(h2) => // genuinely free — the floor terminal
     TVar(h2),
@@ -6433,7 +6431,7 @@ fn spec_resolve_build(t) with LookupTy + Memory + Alloc + GraphRead = match t {
 // are the quantified ones — pairing the outer var coarse ({e -> (F, I)})
 // leaves the twin's pattern reads keyless (pat_elem_repr found no pair for
 // u/v and floored the destructure to offset 4 inside a minted twin).
-fn spec_pairs_walk(st0, it0, acc) with GraphRead + Memory + Alloc = {
+fn spec_pairs_walk(st0, it0, acc) = {
   let st = fold_strip(st0)
   match st {
     TVar(v) => match graph_chase(v) {
@@ -6489,13 +6487,13 @@ fn spec_pairs_walk(st0, it0, acc) with GraphRead + Memory + Alloc = {
   }
 }
 
-fn spec_pairs_walk_list(sts, its, acc) with Memory + Alloc + GraphRead = if len(sts) == 0 || len(its) == 0 {
+fn spec_pairs_walk_list(sts, its, acc) = if len(sts) == 0 || len(its) == 0 {
   acc
 } else {
   spec_pairs_walk_list(rest(sts), rest(its), spec_pairs_walk(sts[0], its[0], acc))
 }
 
-fn spec_pairs_walk_params(ps, ips, acc) with Memory + Alloc + GraphRead = if len(ps) == 0 || len(ips) == 0 {
+fn spec_pairs_walk_params(ps, ips, acc) = if len(ps) == 0 || len(ips) == 0 {
   acc
 } else {
   spec_pairs_walk_params(rest(ps), rest(ips), spec_pairs_walk(param_ty(ps[0]), param_ty(ips[0]), acc))
@@ -6503,7 +6501,7 @@ fn spec_pairs_walk_params(ps, ips, acc) with Memory + Alloc + GraphRead = if len
 
 // Fields pair by NAME (both sides parse-sorted); a missing partner is an
 // error path — skip, never fabricate.
-fn spec_pairs_walk_fields(fs, ifs, acc) with Memory + Alloc + GraphRead = if len(fs) == 0 {
+fn spec_pairs_walk_fields(fs, ifs, acc) = if len(fs) == 0 {
   acc
 } else {
   match fs[0] {
@@ -6520,7 +6518,7 @@ fn spec_pairs_walk_fields(fs, ifs, acc) with Memory + Alloc + GraphRead = if len
 }
 
 // Sorted by root handle — the canonical order the enc digits read.
-fn spec_pairs_sorted_insert(sorted, p) with Memory + Alloc = if len(sorted) == 0 {
+fn spec_pairs_sorted_insert(sorted, p) = if len(sorted) == 0 {
   [p]
 } else {
   match p {
@@ -6530,7 +6528,7 @@ fn spec_pairs_sorted_insert(sorted, p) with Memory + Alloc = if len(sorted) == 0
   }
 }
 
-fn spec_pairs_sort(pairs) with Memory + Alloc = fold([], spec_pairs_sorted_insert, pairs)
+fn spec_pairs_sort(pairs) = fold([], spec_pairs_sorted_insert, pairs)
 
 fn spec_repr_digit(t) with Pure = match repr_of(t) {
   RI32 => "0",
@@ -6546,7 +6544,7 @@ fn spec_repr_digit(t) with Pure = match repr_of(t) {
 // name-safe type signature. A repr digit cannot say WHICH record closed
 // the var, and the all-'0' floor test was silently ejecting every
 // structure-bound site from candidacy (the field-heal gate).
-fn spec_pair_code(t) with Memory = match fold_strip(t) {
+fn spec_pair_code(t) = match fold_strip(t) {
   TInt => spec_repr_digit(t),
   TByte => spec_repr_digit(t),
   TUnit => spec_repr_digit(t),
@@ -6555,7 +6553,7 @@ fn spec_pair_code(t) with Memory = match fold_strip(t) {
   _ => fold_sig(t),
 }
 
-fn spec_enc(pairs) with Memory + Alloc = fold(
+fn spec_enc(pairs) = fold(
   "",
   (acc, p) => match p {
     (_, t) => acc ++ spec_pair_code(t),
@@ -6563,9 +6561,9 @@ fn spec_enc(pairs) with Memory + Alloc = fold(
   pairs
 )
 
-fn spec_enc_is_floor(enc) with Memory = spec_enc_floor_loop(enc, 0, byte_len(enc))
+fn spec_enc_is_floor(enc) = spec_enc_floor_loop(enc, 0, byte_len(enc))
 
-fn spec_enc_floor_loop(enc, i, n) with Memory = if i >= n {
+fn spec_enc_floor_loop(enc, i, n) = if i >= n {
   true
 }
 // '0'
@@ -6590,7 +6588,7 @@ fn arm_fn_name(hname: String, op: String) with Pure = "op_{hname}_{op}"
 // The site's instantiation pairs — [] when the name is not generic: a value
 // let, a monomorphic fn, or an internal synthesized name. The scheme's
 // quantified vars are the roots; the site's chased type carries the bindings.
-fn spec_site_pairs_resolved(name: String, rt) with EnvRead + Memory + Alloc + GraphRead + WASI = match env_lookup(name) {
+fn spec_site_pairs_resolved(name: String, rt) = match env_lookup(name) {
   None => [],
   Some(entry) => match entry {
     (scheme, _r, kind) => match kind {
@@ -6603,12 +6601,11 @@ fn spec_site_pairs_resolved(name: String, rt) with EnvRead + Memory + Alloc + Gr
   },
 }
 
-fn spec_site_pairs(h, name: String) with EnvRead + LookupTy + GraphRead + WASI + Memory + Alloc =
-  spec_site_pairs_resolved(name, spec_resolve(lookup_ty(h)))
+fn spec_site_pairs(h, name: String) = spec_site_pairs_resolved(name, spec_resolve(lookup_ty(h)))
 
 // The ONE naming projection every reference-emitting arm reads: the site's
 // key, mangled when any var lands wide, the plain name at the floor.
-fn spec_global_name(h, name: String) with EnvRead + LookupTy + GraphRead + WASI + Memory + Alloc = {
+fn spec_global_name(h, name: String) = {
   let pairs = spec_site_pairs(h, name)
   if len(pairs) == 0 {
     name
@@ -6626,7 +6623,7 @@ fn spec_global_name(h, name: String) with EnvRead + LookupTy + GraphRead + WASI 
 // LDirectCall, with their handles — the key-projection inputs) and the repr-sensitive
 // operand handles (arith / comparison / equality operands — the floor-is-
 // wrong witnesses the worthiness predicate reads). acc = (sites, ophs).
-fn spec_scan_expr(expr, acc) with Memory + Alloc = match expr {
+fn spec_scan_expr(expr, acc) = match expr {
   LGlobal(h, n) => match acc {
     (s, o) => ([(h, n)] ++ s, o),
   },
@@ -6701,12 +6698,12 @@ fn spec_scan_expr(expr, acc) with Memory + Alloc = match expr {
   LUpval(_, _) => acc,
 }
 
-fn spec_scan_list(exprs, acc) with Memory + Alloc = fold(acc, (a, e) => spec_scan_expr(e, a), exprs)
+fn spec_scan_list(exprs, acc) = fold(acc, (a, e) => spec_scan_expr(e, a), exprs)
 
 // A tuple destructure at ANY depth reads positional layout: a tuple nested
 // under a con payload / record field / list slot sits behind a word pointer,
 // and its OWN element offsets are the same instantiation-sensitive read.
-fn lowpat_has_tuple(pat) with Memory + Alloc = match pat {
+fn lowpat_has_tuple(pat) = match pat {
   LPTuple(_) => true,
   LPAs(_, inner) => lowpat_has_tuple(inner),
   LPCon(_, _, pairs) => any(lowpat_has_tuple, pat_of_pairs(pairs)),
@@ -6719,7 +6716,7 @@ fn lowpat_has_tuple(pat) with Memory + Alloc = match pat {
   LPLit(_) => false,
 }
 
-fn spec_scan_arms(arms, acc) with Memory + Alloc = fold(
+fn spec_scan_arms(arms, acc) = fold(
   acc,
   (a, arm) => match arm {
     (_, b) => spec_scan_expr(b, a),
@@ -6732,10 +6729,9 @@ fn spec_scan_arms(arms, acc) with Memory + Alloc = fold(
 // sites). Seeded whenever ANY site projects a wide key — a cheap, precise-
 // enough over-approximation in the emit_runtime_contract tradition; a
 // program with no wide instantiation adds nothing.
-fn spec_wide_family() with Memory + Alloc =
-  ["float_to_str", "list_compare_f64", "list_eq_f64", "list_hash_f64"]
+fn spec_wide_family() = ["float_to_str", "list_compare_f64", "list_eq_f64", "list_hash_f64"]
 
-fn spec_site_is_wide(site) with EnvRead + LookupTy + GraphRead + WASI + Memory + Alloc = match site {
+fn spec_site_is_wide(site) = match site {
   (h, n) => {
     let pairs = spec_site_pairs(h, n)
     if len(pairs) == 0 { false } else { !spec_enc_is_floor(spec_enc(pairs)) }
@@ -6945,8 +6941,7 @@ fn ls_find_str_local_loop(lst: [String], target: String, i, n) = if i >= n {
 // The keyed read: the type's own entry carries its variant specs
 // (TypeVariants, minted at registration). The whole-env backward scan
 // this replaces re-derived the grouping per read.
-fn variant_specs_of(type_name) with EnvRead + Memory + Alloc + GraphRead =
-  variant_specs_at(TName(type_name, []))
+fn variant_specs_of(type_name) = variant_specs_at(TName(type_name, []))
 
 // ─── The variant specs AT AN INSTANTIATION ───────────────────────────
 //
@@ -6974,15 +6969,14 @@ fn variant_specs_of(type_name) with EnvRead + Memory + Alloc + GraphRead =
 // This one GROUNDS, var→Ty, over the type arguments a nominal application
 // carries. Forcing the two into one walk would need a sum over codomains on
 // the compiler's hottest path to buy nothing; they are two operations.
-fn variant_specs_at(applied) with EnvRead + Memory + Alloc + GraphRead =
-  map(drop_variant_name, variant_named_specs_at(applied))
+fn variant_specs_at(applied) = map(drop_variant_name, variant_named_specs_at(applied))
 
-fn drop_variant_name(spec) with Memory + Alloc = match spec {
+fn drop_variant_name(spec) = match spec {
   (t, _, tys) => (t, tys),
 }
 
 // The same read carrying each variant's constructor NAME — show prints it.
-fn variant_named_specs_at(applied) with EnvRead + Memory + Alloc + GraphRead = match applied {
+fn variant_named_specs_at(applied) = match applied {
   TName(name, args) => match env_lookup_variants(name) {
     Some(entry) => match entry {
       (binding, _r, kind) => match kind {
@@ -7005,7 +6999,7 @@ fn variant_named_specs_at(applied) with EnvRead + Memory + Alloc + GraphRead = m
 // TypeVariants entry is registered Frozen at its own declaration, and going
 // through the general reader would drag generalize's whole row — including
 // WASI — into every emit-side payload read for a shape that cannot occur.
-fn type_params_of(binding) with Memory + Alloc = match binding {
+fn type_params_of(binding) = match binding {
   Frozen(_, ty) => match ty {
     TName(_, params) => params,
     _ => [],
@@ -7016,7 +7010,7 @@ fn type_params_of(binding) with Memory + Alloc = match binding {
   [],
 }
 
-fn ground_variant_spec(params, args, spec) with GraphRead + Memory + Alloc = match spec {
+fn ground_variant_spec(params, args, spec) = match spec {
   (t, cn, tys) => (t, cn, map(ground_ty(params, args), tys)),
 }
 
@@ -7028,7 +7022,7 @@ fn ground_variant_spec(params, args, spec) with GraphRead + Memory + Alloc = mat
 // arguments are TYPES, so a row parameter is not constructible at this
 // boundary today. When it is, the row grounds through the same positions
 // (`Hβ.types.nominal-row-parameter`).
-fn ground_ty(params, args, ty) with GraphRead + Memory + Alloc = match ty {
+fn ground_ty(params, args, ty) = match ty {
   TVar(h) => ground_var(params, args, h, ty),
   TList(elem) => TList(ground_ty(params, args, elem)),
   TTuple(elems) => TTuple(map(ground_ty(params, args), elems)),
@@ -7046,11 +7040,11 @@ fn ground_ty(params, args, ty) with GraphRead + Memory + Alloc = match ty {
   TByte => ty,
 }
 
-fn ground_field(params, args, field) with GraphRead + Memory + Alloc = match field {
+fn ground_field(params, args, field) = match field {
   (n, fty) => (n, ground_ty(params, args, fty)),
 }
 
-fn ground_param(params, args, p) with GraphRead + Memory + Alloc = match p {
+fn ground_param(params, args, p) = match p {
   TParam(n, pty, authored, resolved, dflt) => TParam(n, ground_ty(params, args, pty), authored, resolved, dflt),
 }
 
@@ -7060,14 +7054,14 @@ fn ground_param(params, args, p) with GraphRead + Memory + Alloc = match p {
 // is not a parameter stays itself: a payload may carry vars the type does not
 // quantify, and inventing a grounding for one would be the fabrication this
 // whole read exists to end.
-fn ground_var(params, args, h, ty) with GraphRead + Memory + Alloc = match find(param_at_root(h), enumerate(params)) {
+fn ground_var(params, args, h, ty) = match find(param_at_root(h), enumerate(params)) {
   Some(hit) => match hit {
     (i, _) => if i < len(args) { list_index(args, i) } else { ty },
   },
   None => ty,
 }
 
-fn param_at_root(h, indexed) with GraphRead + Memory + Alloc = match indexed {
+fn param_at_root(h, indexed) = match indexed {
   (_, p) => match p {
     TVar(ph) => graph_chase_handle(ph) == graph_chase_handle(h),
     _ => false,
@@ -7079,7 +7073,7 @@ fn param_at_root(h, indexed) with GraphRead + Memory + Alloc = match indexed {
 //
 // The constructor's payload types, in field order: a fielded ctor's TFun params
 // (each TParam carries its ty); a nullary ctor (bare TName) has none.
-fn ctor_payload_tys(ty) with Memory + Alloc = match ty {
+fn ctor_payload_tys(ty) = match ty {
   TFun(params, _ret, _) => param_tys_of(params, 0, len(params)),
   _ => [],
 }
@@ -7090,7 +7084,7 @@ fn ctor_result_is(ty, type_name: String) with Pure = match ty {
   _ => false,
 }
 
-fn param_tys_of(params, i, n) with Alloc + Memory =
+fn param_tys_of(params, i, n) =
   if i >= n { [] } else { [param_ty(list_index(params, i))] ++ param_tys_of(params, i + 1, n) }
 
 // ctor_payload_tys_of — the payload types of a constructor BY NAME, read live

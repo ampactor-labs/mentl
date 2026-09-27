@@ -11,7 +11,7 @@ import lexer
 
 import strings
 
-fn intern_probe(ref bucket, ref src, s, e, i, n) with Memory + Alloc = if i >= n {
+fn intern_probe(ref bucket, ref src, s, e, i, n) = if i >= n {
   None
 } else {
   let row = list_index(bucket, i)

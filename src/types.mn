@@ -184,7 +184,7 @@ fn repr_of(ty) with Pure = match ty {
 // repr. An unresolved chain (NFree) honestly stays RI32 (a 32-bit word — the
 // productive-under-error floor, never a fabricated width). One chase per
 // element, read live; no parallel width table.
-fn repr_of_resolved(ty) with GraphRead = match ty {
+fn repr_of_resolved(ty) = match ty {
   TVar(h) => match graph_chase(h) {
     GNode(NBound(inner), _) => repr_of_resolved(inner),
     _ => RI32,
@@ -284,7 +284,7 @@ fn fold_strip(ty) with Pure = match ty {
 // Two types share a sig iff they fold identically (the same structural-eq the
 // cursor derives for records — the proof IS the name). Alias/refinement-stripped
 // first, like every other fold-through.
-fn fold_sig(ty) with Memory = match fold_strip(ty) {
+fn fold_sig(ty) = match fold_strip(ty) {
   TInt => "i",
   TFloat => "d",
   TUnit => "u",
@@ -319,10 +319,10 @@ fn fold_sig(ty) with Memory = match fold_strip(ty) {
   TReprPin(_, base) => fold_sig(base),
 }
 
-fn fold_sig_list(elems, i, n) with Memory =
+fn fold_sig_list(elems, i, n) =
   if i >= n { "" } else { "_{fold_sig(list_index(elems, i))}{fold_sig_list(elems, i + 1, n)}" }
 
-fn fold_sig_fields(fields: [(String, Ty)], i, n) with Memory = if i >= n {
+fn fold_sig_fields(fields: [(String, Ty)], i, n) = if i >= n {
   ""
 } else {
   match list_index(fields, i) {
@@ -693,7 +693,7 @@ type Gate = Gate({reason: Reason, row: EffRow})
 // behind Hβ.infer.forward-hof-row-underpublish (a declared allocator
 // publishing Pure). An alias-wrapped fn binding (TAlias over TFun) is
 // named residue here, not silently absorbed: extend when measured.
-fn edge_row_of(kind) with Memory + Alloc = match kind {
+fn edge_row_of(kind) = match kind {
   NRowBound(inner) => Some(inner),
   NBound(ty) => match ty {
     TFun(_, _, frow) => Some(frow),
@@ -1233,9 +1233,9 @@ type SpinePage
   = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
-fn count_lines(ref s) with Memory = count_lines_from(s, byte_len(s), 0, 0)
+fn count_lines(ref s) = count_lines_from(s, byte_len(s), 0, 0)
 
-fn count_lines_from(ref s, n, i, acc) with Memory = if i >= n {
+fn count_lines_from(ref s, n, i, acc) = if i >= n {
   acc
 } else {
   let step = if byte_at(s, i) == 10 { 1 } else { 0 }
@@ -1252,7 +1252,7 @@ type Span = Span(Int, Int, Int, Int)
 // it — and every consumer boundary collapses by typed identity (the
 // weave carried ~85 re-demanded copies of this one obligation at call
 // sites before the return was declared, measured 2026-07-30).
-fn span_join(a, b) -> ValidSpan with Memory + Alloc = match a {
+fn span_join(a, b) -> ValidSpan = match a {
   Span(sl, sc, _, _) => match b {
     Span(_, _, el, ec) => Span(sl, sc, el, ec),
   },
@@ -1276,12 +1276,12 @@ fn span_overlaps(a, b) with Pure = match a {
 // Ground construction — the R3 fragment discharges span_valid(0,0,0,0)
 // outright, so this producer's proof costs nothing and every consumer
 // reads ValidSpan by type.
-fn span_zero() -> ValidSpan with Memory + Alloc = Span(0, 0, 0, 0)
+fn span_zero() -> ValidSpan = Span(0, 0, 0, 0)
 
 // The span a Reason edge carries, when it carries one — Located wraps the
 // site; anything else is genuinely unlocated. The occurs-check's coordinates
 // read THIS instead of flooring to 0:0 (SYNTAX principle 5).
-fn reason_span_or_zero(ref reason) with Memory + Alloc = match reason {
+fn reason_span_or_zero(ref reason) = match reason {
   Located(span, _) => span,
   _ => span_zero(),
 }
@@ -1630,7 +1630,7 @@ type Region = Region(Int, Span)
 // the current-top region onto an alloc return; check_escape
 // compares a returned value's region against the ambient region
 // on fn return.
-fn mk_tok(kind, sl, sc, el, ec) with Memory + Alloc = Tok(kind, Span(sl, sc, el, ec))
+fn mk_tok(kind, sl, sc, el, ec) = Tok(kind, Span(sl, sc, el, ec))
 
 effect RegionTrack {
   region_enter(Span) -> Int
@@ -2388,6 +2388,12 @@ type DiagKind
   | EIfMissingElse(Span)
   // declared, used, fn name
   | TOverDeclared(EffRow, EffRow, String, Span)
+  // A4 (2026-09-27): the declared row's bare positive names are exactly
+  // what the body proves — an inventory, the projected row written by
+  // hand. Declared row, proven row, fn name, decl span. MachineApplicable:
+  // `mentl tighten` authors the residue (negations, instance pins), or
+  // deletes the clause.
+  | TRowInventory(EffRow, EffRow, String, Span)
   // The poly-recursion teach (§11 5.3): rides the occurs REFUSAL when
   // the infinite type runs through a named fn's own param/return mint —
   // the question beats the guess; the concrete signature derivation
@@ -2636,6 +2642,7 @@ fn diag_span(d) with Pure = match d {
   EPatternAlternationBindingMismatch(_, s) => s,
   EIfMissingElse(s) => s,
   TOverDeclared(_, _, _, s) => s,
+  TRowInventory(_, _, _, s) => s,
   TPolyRecursionSignature(_, s) => s,
   TOwnUnconsumed(_, s) => s,
   TOwnAcrossReplay(_, s) => s,
@@ -2707,6 +2714,7 @@ fn diag_source(d) with Pure = match d {
   EPatternAlternationBindingMismatch(_, _) => "infer",
   EIfMissingElse(_) => "infer",
   TOverDeclared(_, _, _, _) => "infer",
+  TRowInventory(_, _, _, _) => "infer",
   TPolyRecursionSignature(_, _) => "infer",
   TOwnUnconsumed(_, _) => "ownership",
   TOwnAcrossReplay(_, _) => "ownership",
@@ -2778,6 +2786,7 @@ fn diag_code(d) with Pure = match d {
   EPatternAlternationBindingMismatch(_, _) => "E_PatternAlternationBindingMismatch",
   EIfMissingElse(_) => "E_IfMissingElse",
   TOverDeclared(_, _, _, _) => "T_OverDeclared",
+  TRowInventory(_, _, _, _) => "T_RowInventory",
   TPolyRecursionSignature(_, _) => "T_PolyRecursionSignature",
   TOwnUnconsumed(_, _) => "T_OwnUnconsumed",
   TOwnAcrossReplay(_, _) => "T_OwnAcrossReplay",
@@ -2819,6 +2828,7 @@ fn diag_severity(d) with Pure = match d {
   PExpectedToken(_, _) => SWarning,
   PUnexpectedToken(_, _) => SWarning,
   TOverDeclared(_, _, _, _) => SWarning,
+  TRowInventory(_, _, _, _) => SWarning,
   TPolyRecursionSignature(_, _) => SWarning,
   TOwnUnconsumed(_, _) => SWarning,
   TOwnAcrossReplay(_, _) => SWarning,
@@ -3106,6 +3116,7 @@ fn diag_applicability(d) with Pure = match d {
   WRedundantWhere(_) => MachineApplicable,
   WCommentRefUnresolved(_, _, _) => MaybeIncorrect,
   TOverDeclared(_, _, _, _) => MachineApplicable,
+  TRowInventory(_, _, _, _) => MachineApplicable,
   TPolyRecursionSignature(_, _) => HasPlaceholders,
   TOwnUnconsumed(_, _) => // Not mechanically applicable: the fix is a consume the developer
   // must place (or an honest widening to `ref`), never a patch.
@@ -3141,7 +3152,7 @@ fn diag_applicability(d) with Pure = match d {
 // The rendered message — operands read LIVE from the constructor, never a
 // String copied at the call site. This is the Carried-Truth win: the fact
 // is structured; the prose is its projection.
-fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d {
+fn diag_message(d) with !Mutate = match d {
   PExpectedToken(note, _) => "expected token: {note}",
   POrphanDocstring(_) => "comment has no following declaration to attach to",
   PUnclosedConstruct(detail, _) => detail,
@@ -3189,6 +3200,10 @@ fn diag_message(d) with GraphRead + Memory + Alloc + !Mutate + Intern = match d 
   EPatternAlternationBindingMismatch(detail, _) => detail,
   EIfMissingElse(_) => "`if` without `else` requires a unit body",
   TOverDeclared(declared, used, name, _) => "function '{name}' declares {show_effrow(declared)} but body only uses {show_effrow(used)} — tighten the signature to unlock capabilities",
+  TRowInventory(declared, used, name, _) => match used {
+    EfRow(_, _, EtOpen(_)) => "function '{name}' declares {show_effrow(declared)} over a body whose row is open (a callback's row rides its tail) — a positive cap installs no gate, so the clause constrains nothing and re-states what inference projects; author only what inference cannot say (a negation, an instance pin, Pure); `mentl tighten` writes the residue",
+    _ => "function '{name}' declares {show_effrow(declared)}, which is exactly what the body proves ({show_effrow(used)}) — an inventory: the positive row is projected at the address surface, so author only what inference cannot say (a negation, an instance pin, Pure); `mentl tighten` writes the residue",
+  },
   TPolyRecursionSignature(name, _) => "the infinite type runs through '{name}''s own parameter or return — if '{name}' calls itself at a different type (polymorphic recursion), a FULL signature on '{name}' (every parameter and the return annotated) buys the poly self-call",
   TOwnUnconsumed(msg, _) => msg,
   TOwnAcrossReplay(msg, _) => msg,
@@ -3461,7 +3476,7 @@ effect Filesystem {
 // "rides along unread" — so this was a rendered fact one parameter from being
 // an address. Measured 2026-09-14 by a representation probe whose ~135 type
 // errors named lines in fifteen different files and no file at all.
-fn diag_line(diag, dmod) with GraphRead + Memory + Alloc + !Mutate + Intern = {
+fn diag_line(diag, dmod) with !Mutate = {
   let src = diag_source(diag)
   let code = diag_code(diag)
   let kindw = diag_kind(diag)
@@ -3506,8 +3521,7 @@ fn diag_line(diag, dmod) with GraphRead + Memory + Alloc + !Mutate + Intern = {
 // token span and leave the hole to their caller, so recovery must change
 // before they can report at a node. Until then this takes the handle and the
 // diag keeps its span.
-fn report_at(h, diag) with Diagnostic + GraphRead + Memory + Alloc + Intern =
-  diag_report_at(diag, module_name_of_handle(graph_module_of(h)))
+fn report_at(h, diag) = diag_report_at(diag, module_name_of_handle(graph_module_of(h)))
 
 // The parse-phase form: a report inside the module being parsed, where the
 // module in force IS the right one because the parser never leaves a file.
@@ -3515,14 +3529,12 @@ fn report_at(h, diag) with Diagnostic + GraphRead + Memory + Alloc + Intern =
 // this is the same read — and NOT a second boundary: a site that has a node
 // reports at it, and a site that reaches for this instead of its handle after
 // the parse is reporting from the wrong place.
-fn report(diag) with Diagnostic + GraphRead + Memory + Alloc + Intern =
-  report_at(graph_module_current(), diag)
+fn report(diag) = report_at(graph_module_current(), diag)
 
 // The module is read ONCE and used twice — in the rendered address and as the
 // register's own scope key — so the render and the carried module cannot drift
 // apart into two answers about one report.
-fn diag_report_at(diag, dmod) with Diagnostic + GraphRead + Memory + Alloc + Intern =
-  diag_report(diag, diag_line(diag, dmod), dmod)
+fn diag_report_at(diag, dmod) = diag_report(diag, diag_line(diag, dmod), dmod)
 
 // A module handle's own name, read from its node. The non-NModule arm REFUSES
 // rather than answering "": every value in the module column was written by
@@ -3531,7 +3543,7 @@ fn diag_report_at(diag, dmod) with Diagnostic + GraphRead + Memory + Alloc + Int
 // module — a defect in the caller. Answering with an empty name would hand
 // every downstream reader a file called nothing and make the defect invisible,
 // which is the wildcard-fabrication the census convicts.
-fn module_name_of_handle(h) with GraphRead + Memory + Alloc = match graph_node_body(h) {
+fn module_name_of_handle(h) = match graph_node_body(h) {
   NModule(m) => m.path,
   _ => {
     load_i32(0 - 1)
@@ -3543,7 +3555,7 @@ fn module_name_of_handle(h) with GraphRead + Memory + Alloc = match graph_node_b
 // A raw handle only appears when chase terminates on NFree/NRowFree —
 // the query layer reads that as "unresolved at epoch e." No cached
 // display. Same discipline as lowering: live observer, never mirror.
-fn show_type(ref ty) with GraphRead + !Mutate + Alloc + Memory + Intern = match ty {
+fn show_type(ref ty) with !Mutate = match ty {
   TInt => "Int",
   TFloat => "Float",
   TUnit => "()",
@@ -3567,7 +3579,7 @@ fn show_type(ref ty) with GraphRead + !Mutate + Alloc + Memory + Intern = match 
 // them as though they could is the wrong-slot class at the projection
 // layer — `{ }` from a closed partner is a proof, `{ }` from two partial
 // sets is a guess, and they used to print identically.
-fn show_record_row_residual(fields, tail) with GraphRead + Memory + Alloc + !Mutate + Intern = match tail {
+fn show_record_row_residual(fields, tail) with !Mutate = match tail {
   RowClosed => show_type(TRecord(fields)),
   RowAssumed => "{show_type(TRecord(fields))} assumed",
   RowContinues(v) => "{show_type(TRecord(fields))} | {show_handle(v)}",
@@ -3577,7 +3589,7 @@ fn show_record_row_residual(fields, tail) with GraphRead + Memory + Alloc + !Mut
 // bound type; free handles show the raw handle with allocation epoch
 // so query can surface "unresolved at epoch e"; error holes show the
 // failure reason inline.
-fn show_handle(h) with GraphRead + Memory + Alloc + !Mutate + Intern = {
+fn show_handle(h) with !Mutate = {
   let node = graph_chase(h)
   match node {
     GNode(NBound(ty), _) => show_type(ty),
@@ -3603,7 +3615,7 @@ fn show_handle(h) with GraphRead + Memory + Alloc + !Mutate + Intern = {
 // no copy, no cache). [] when the callee's scheme isn't a ground function
 // (an unbound forward ref, a param-position fn) — then there are no labels to
 // resolve and the args pass through positionally.
-fn callee_params(name) with EnvRead + GraphRead + Memory + Alloc = match env_lookup(name) {
+fn callee_params(name) = match env_lookup(name) {
   Some(entry) => match entry {
     (scheme, _, _) => match scheme {
       Live(h) => // A live cell and a frozen TVar are the same read one hop apart: chase
@@ -3632,7 +3644,7 @@ fn callee_params(name) with EnvRead + GraphRead + Memory + Alloc = match env_loo
 // no arg reaches is filled by the param's default node (the absent product
 // field's fallback construction). An unknown label is E_UnknownArgLabel —
 // Located, productive-under-error (the arg is dropped, parsing continues).
-fn resolve_call_args(cname, args) with EnvRead + GraphRead + Memory + Alloc + Diagnostic + Intern = {
+fn resolve_call_args(cname, args) = {
   let params = callee_params(cname)
   // No declared params (forward ref / fn-param callee / constructor): no labels
   // to resolve against. Strip any stray LabeledArg wrappers to their value so
@@ -3653,7 +3665,7 @@ fn unwrap_labeled_arg(arg) with Pure = match arg {
 // labeled args claim their named slot first (skip-over); positional args then
 // fill the remaining unfilled slots left-to-right. Then collect each slot to
 // its placed value or its param default.
-fn fill_arg_slots(params, args, cname) with Memory + Alloc + GraphRead + Intern + Diagnostic = {
+fn fill_arg_slots(params, args, cname) = {
   let n = len(params)
   let claimed = place_labeled(params, args, 0, make_list(n), cname)
   let filled = place_positional(args, 0, 0, claimed, n)
@@ -3663,7 +3675,7 @@ fn fill_arg_slots(params, args, cname) with Memory + Alloc + GraphRead + Intern 
 // Pass 1 — place each LabeledArg at its named param slot; positional args are
 // skipped here. An unknown label is E_UnknownArgLabel (Located, productive:
 // the arg is dropped, the remaining args resolve). Returns the slot buffer.
-fn place_labeled(params, args, i, slots, cname: String) with GraphRead + Memory + Alloc + Diagnostic + Intern = if i >= len(args) {
+fn place_labeled(params, args, i, slots, cname: String) = if i >= len(args) {
   slots
 } else {
   let arg = list_index(args, i)
@@ -3723,7 +3735,7 @@ fn place_positional(args, cur, slot, slots, n) = if cur >= len(args) {
 fn slot_present(w) with Pure = w != 0
 
 // The first slot at or after `from` still absent; n when none remain.
-fn next_free_slot(slots, from, n) with Memory = if from >= n {
+fn next_free_slot(slots, from, n) = if from >= n {
   n
 } else if slot_present(list_index(slots, from)) {
   next_free_slot(slots, from + 1, n)
@@ -3732,7 +3744,7 @@ fn next_free_slot(slots, from, n) with Memory = if from >= n {
 }
 
 // The param index whose name is `label`, or -1 when no param bears it.
-fn param_index(params, label, i) with Memory = if i >= len(params) {
+fn param_index(params, label, i) = if i >= len(params) {
   -1
 } else {
   if param_name(list_index(params, i)) == label { i } else { param_index(params, label, i + 1) }
@@ -3742,7 +3754,7 @@ fn param_index(params, label, i) with Memory = if i >= len(params) {
 // sentinel — the param's default node. A sentinel slot with no default is
 // dropped (a genuinely-missing required arg is infer's arity check, surfaced
 // at the call). The contiguous prefix of present args is returned in order.
-fn collect_slot_nodes(params, slots, i, n, out, count) with Memory + Alloc = if i >= n {
+fn collect_slot_nodes(params, slots, i, n, out, count) = if i >= n {
   slice(out, 0, count)
 } else {
   let placed = list_index(slots, i)
@@ -3756,7 +3768,7 @@ fn collect_slot_nodes(params, slots, i, n, out, count) with Memory + Alloc = if 
   }
 }
 
-fn show_tparam(ref tp) with Alloc + GraphRead + Intern + Memory = {
+fn show_tparam(ref tp) = {
   let base = "{param_name(tp)}: {show_type(param_ty(tp))}"
   match param_authored(tp) {
     Unmarked => match param_resolved(tp) {
@@ -3780,14 +3792,14 @@ fn show_discipline(d) with Pure = match d {
   Abandon => "Abandon",
 }
 
-fn show_field(ref field: (String, Ty)) with GraphRead + !Mutate + Alloc + Memory + Intern = match field {
+fn show_field(ref field: (String, Ty)) with !Mutate = match field {
   (name, ty) => "{name}: {show_type(ty)}",
 }
 
-fn show_type_args(ref args) with GraphRead + Memory + !Mutate + Intern + Alloc =
+fn show_type_args(ref args) with !Mutate =
   if len(args) == 0 { "" } else { "({show_list(args, show_type, ", ")})" }
 
-fn show_row_suffix(ref row) with GraphRead + !Mutate + Intern + Memory + Alloc = match row {
+fn show_row_suffix(ref row) with !Mutate = match row {
   EfRow([], [], EtClosed) => "",
   _ => " with {show_effrow(row)}",
 }
@@ -3795,7 +3807,7 @@ fn show_row_suffix(ref row) with GraphRead + !Mutate + Intern + Memory + Alloc =
 // An edge in the row's own algebra: the cell alone, or `(r - E - F)` when a
 // `~>` on its path subtracts — the difference SYNTAX already spells, so the
 // projection names which computation each absorption covered.
-fn show_row_edge(e: RowEdge) with GraphRead + Memory + Alloc + !Mutate + Intern = if len(e.mask) == 0 {
+fn show_row_edge(e: RowEdge) with !Mutate = if len(e.mask) == 0 {
   show_handle(e.cell)
 } else {
   "({show_handle(e.cell)} - {show_list(e.mask, show_eff_name, " - ")})"
@@ -3803,7 +3815,7 @@ fn show_row_edge(e: RowEdge) with GraphRead + Memory + Alloc + !Mutate + Intern 
 
 // The triple's voice: presents joined with `+`, the absent set as `!X`
 // terms, the tail as its var handle; an empty closed row is Pure.   // drift-audit: ignore — human-facing rendering string for diagnostics/show; not an effect-keyed lookup; tracked by Hβ.perf.name-is-handle; effect-rendering normalization
-fn show_effrow(ref row) with GraphRead + Memory + !Mutate + Alloc + Intern = match row {
+fn show_effrow(ref row) with !Mutate = match row {
   EfRow(p, a, t) => {
     let parts = show_list(p, show_eff_name, " + ")
     let negs = show_list(a, (n) => "!{show_eff_name(n)}", " + ")
@@ -3835,7 +3847,7 @@ fn show_effrow(ref row) with GraphRead + Memory + !Mutate + Alloc + Intern = mat
 // infinity symbol for the side that is not, and TOP says the truth the
 // unbounded-domain residue names (`Hβ.synth.unbounded-domain-asks`): nothing
 // here narrows the position, which is why the medium is asking at all.
-fn show_domain(d) with Memory + Alloc = match d {
+fn show_domain(d) = match d {
   DRange(lo, hi) => match (lo, hi) {
     (Some(l), Some(h)) => "the type admits {int_to_str(l)} through {int_to_str(h)}",
     (Some(l), None) => "the type admits {int_to_str(l)} and up",
@@ -3850,7 +3862,7 @@ fn show_domain(d) with Memory + Alloc = match d {
 // the vocabulary of whatever separates the survivors. Never "one more
 // constraint collapses it" — that sentence was the same words at every tie,
 // which is a placeholder wearing a teaching voice.
-fn show_divergence(d) with GraphRead + Memory + !Mutate + Alloc + Intern = match d {
+fn show_divergence(d) with !Mutate = match d {
   DivRow(a, b) => "these differ in what they may DO — {show_effrow(a)} against {show_effrow(b)}: which capability does this position carry?",
   DivName => "every survivor denotes the same value — the question is which name carries the intent",
   DivValue(dom) => "the survivors differ in VALUE and {show_domain(dom)}: which one does this position mean?",
@@ -3858,7 +3870,7 @@ fn show_divergence(d) with GraphRead + Memory + !Mutate + Alloc + Intern = match
   DivBehavior => "these are different computations of the same type — an example of the result, or a refinement on it, decides which one this position means",
 }
 
-fn show_eff_name(ref name) with Intern + Memory + Alloc + GraphRead + !Mutate = match name {
+fn show_eff_name(ref name) with !Mutate = match name {
   ENamed(h) => intern_name_of(h),
   EParameterized(h, args) => "{intern_name_of(h)}({show_list(args, show_eff_arg, ", ")})",
   EPure => // drift-audit: ignore — variant→surface-label render, not a name key
@@ -3877,7 +3889,7 @@ fn show_eff_name(ref name) with Intern + Memory + Alloc + GraphRead + !Mutate = 
   "«invalid-effect»",
 }
 
-fn show_eff_arg(ref arg) with GraphRead + !Mutate + Alloc + Memory + Intern = match arg {
+fn show_eff_arg(ref arg) with !Mutate = match arg {
   EAInt(n) => int_to_str(n),
   EAFloat(f) => float_to_str(f),
   EAString(s) => "\"{s}\"",
@@ -3901,7 +3913,7 @@ fn show_eff_arg(ref arg) with GraphRead + !Mutate + Alloc + Memory + Intern = ma
   EACon(h) => intern_name_of(h),
 }
 
-fn show_predicate(ref pred) with GraphRead + Memory + Alloc = match pred {
+fn show_predicate(ref pred) = match pred {
   PTrue => "true",
   PCompare(op, a, b) => "{show_pred_operand(a)} {show_cmp_op(op)} {show_pred_operand(b)}",
   PAnd(a, b) => "{show_predicate(a)} && {show_predicate(b)}",
@@ -3925,7 +3937,7 @@ fn show_cmp_op(ref op) with Pure = match op {
 }
 
 // Resolve a predicate operand HANDLE to its Expr live and render it.
-fn show_pred_operand(handle) with GraphRead + Alloc + Memory = match graph_node_body(handle) {
+fn show_pred_operand(handle) = match graph_node_body(handle) {
   NExpr(VarRef(name)) => name,
   NExpr(LitInt(n)) => int_to_str(n),
   NExpr(LitFloat(f)) => float_to_str(f),
@@ -3960,7 +3972,7 @@ fn show_callee_name(ref callee) with Pure = match callee {
   },
 }
 
-fn show_reason(ref reason) with GraphRead + Memory + Alloc + !Mutate + Intern = match reason {
+fn show_reason(ref reason) with !Mutate = match reason {
   Declared(name) => "declared as {name}",
   Inferred(ctx) => "inferred from {ctx}",
   Fresh(id) => "fresh {show_handle(id)}",
@@ -3989,7 +4001,7 @@ fn show_reason(ref reason) with GraphRead + Memory + Alloc + !Mutate + Intern = 
   VerifyWitness(model) => "proved by SMT witness: {model}",
 }
 
-fn show_span(ref span) with Memory + Alloc = match span {
+fn show_span(ref span) = match span {
   Span(sl, sc, el, ec) => "{int_to_str(sl)}:{int_to_str(sc)}-{int_to_str(el)}:{int_to_str(ec)}",
 }
 
@@ -4053,7 +4065,7 @@ fn show_list_from(ref items, ref render, ref sep, i, n) with !Mutate = if i >= n
 // H6: exhaustive over all 15 Ty constructors.
 // GraphRead + EnvRead: predicate_flow_label follows PBoolNode handles into graph;
 // TName arm follows the type's env entry to read its predicate.
-fn query_flow_label(ref ty) with GraphRead + Memory + Alloc + EnvRead = match ty {
+fn query_flow_label(ref ty) = match ty {
   TRefined(base, pred) => flow_label_join(pred |> predicate_flow_label, query_flow_label(base)),
   TName(name, _) => // Follow the type's env entry to its TypeDecl predicate — graph-native.
   // A nominal type with a refinement predicate (e.g. `type SecretKey = Bytes
@@ -4107,7 +4119,7 @@ fn query_flow_label(ref ty) with GraphRead + Memory + Alloc + EnvRead = match ty
 // sensitive raises the label. This reads the AUTHORED name
 // from the graph — not re-deriving, reading what the graph holds.
 // H6: exhaustive over all 8 Predicate variants (7 + PFlowLe).
-fn predicate_flow_label(ref pred) with GraphRead + Memory + Alloc = match pred {
+fn predicate_flow_label(ref pred) = match pred {
   PTrue => Public,
   PCompare(_, _, _) => // numeric comparison: not a secrecy annotation
   Public,

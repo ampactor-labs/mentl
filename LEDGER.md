@@ -35,6 +35,61 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-27 · pin d27fc81db6ceff64 (CLEAN m2 == m3) · THE POSITIVE ROW IS INFERRED AND
+  PROJECTED — THE WHEEL AUTHORS NONE. PROGRAM Step 4's A4.
+  **The measurement.** 1,626 `with` clauses in src/ and lib/; 1,336 carried
+  bare positive names (132 signatures at four effects, 155 at five, a tail
+  to NINETEEN), 34 were negation-only, 256 `Pure`, 242 mixed. SYNTAX says
+  the declared row is "a CONSTRAINT verified against the row inferred from
+  the body", so each of those names was a hand-copy of a fact inference
+  computes, and the one `!E` worth reading sat in a list the author typed.
+  **The mechanism, three parts.** (1) `T_RowInventory` (infer,
+  MachineApplicable): a clause whose bare positive names the body proves
+  exactly, OR whose body row is OPEN — a callback's row rides its tail and
+  a positive cap installs no gate (`declared_gate`), so the clause
+  constrains nothing and re-states what inference projects. Beside it
+  `T_OverDeclared` reads the POSITIVE half only: it had narrated
+  `!Mutate + Any` against a Pure body at every negation-only signature —
+  false at exactly the signature A4 makes normal. (2) `mentl tighten`
+  writes each narrated clause's RESIDUE — its negations and instance pins
+  (`clause_residue`, read off the declared row the judgment folded) or no
+  clause at all — never the proven row: the old form wrote type-instances
+  the with-clause grammar cannot read back (`Cast(GNode)`, 2026-09-04),
+  and its whole authorability family is deleted with that risk. (3)
+  `CsAuthoredPositiveRow` replaces `CsWideRow` (a wide row is a positive
+  row; `wide_row_width` is gone) and `src/board.mn` bounds the wheel at
+  ZERO — seen RED at 164 through the half-swept tree.
+  **The medium authored its own migration.** Five runs of `mentl tighten`
+  through the fresh m2: 991 + 157 (the patcher learned a clause whose `=`
+  ends the line — every "skipped" site was that shape) + 15 (modules the
+  entry never links, `combinators`, swept by name) + 164 (the open-row
+  caps, once the narration read them) + 6. 529 clauses remain — 273
+  negation-only, 256 `Pure` — every one a decision, and `type Judging`
+  (2026-09-21's named capability for seven sixteen-name rows) lost its
+  last user and is deleted: a capability nobody authors needs no name.
+  **What the sweep exposed: nothing, which is the finding.** PLAN expected
+  fallout — negation gates newly checked against callbacks' rows, the
+  root gate newly seeing names — and the wheel judged clean through the
+  fully inferred rows with ZERO `E_EffectMismatch` and zero new root
+  refusals: the negations had been true all along, and the 163 measured
+  under-counts were caps that constrained nothing. The m3 leg's warnings
+  fell 161 → 62 (T_EqTypeUnprovable 57, T_FieldOffsetUnprovable 4, the
+  wheel's own E_RedundantBraces in lib).
+  **A route divergence, named.** The stdin compile (one module) grounded
+  sixteen rows the entry's weave judgment left open (`edges_masked`,
+  `row_of_fold`, `build_string_index`, …), so `mentl tighten main` saw no
+  inventory where the m3 leg narrated one; the open-row arm dissolved the
+  difference for this landing, and the divergence itself — the same fn's
+  row ground on one route and open on the other — is
+  `Hβ.infer.ground-differs-by-route`.
+  **Measured.** m3 leg 12.74s wall · 991MB peak RSS (1015240 KB) — the
+  lowest peak since the second pass went (the deleted clauses are 1,300
+  fewer rows to fold); crown, frontier (the tighten leg reads the residue
+  form: `fn helper() = 42`, no clause), micros, IDE gate on the board.
+  Peers closed: `Hβ.syntax.positive-row-is-authored-by-hand`,
+  `Hβ.effects.declared-positive-rows-under-count-callbacks`. Named:
+  `Hβ.infer.ground-differs-by-route`. Next: A3-pos (a surviving positive
+  cap becomes a gate) and F0b.
 - 2026-09-27 · pin a25144cf4fcbff6c (CLEAN m2 == m3) · A BRANCH RUNS
   IN THE WORLD IT WAS SPAWNED IN; THE PAGE RUNS THE BOOT; A TIE PAST WIDTH
   THREE RENDERS ITS QUESTION. PROGRAM Step 3: B1 + E3 + C2, one board.

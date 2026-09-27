@@ -47,25 +47,47 @@ world-index is open. The map renders THREE states — provably absent / present 
 not yet provable — with the third counted and ratcheting. A two-colour map is
 the lie.
 
-`Hβ.syntax.positive-row-is-authored-by-hand` — OPEN, BORN 2026-09-21, MEASURED.
-132 signatures declare four effects, 155 declare five, and a tail runs 13, 14,
-16, 17 (four), 18, 19. Every name in a declared row is a hand-copy of a fact
-inference computed — SYNTAX's own words are that the declared row is "a
-CONSTRAINT verified against the row inferred from the body" — so a wide row is a
-re-derivation, is not intent under the Intent Boundary Rule, and buries the one
-`!E` worth reading.
-STEP ONE IS LANDED AND MEASURED: `CsWideRow` counts signatures past
-`wide_row_width` (eight, read off the corpus's own gap), `src/board.mn` bounds
-it, seen RED at 18 against its measured 19 — and the count moved **19 → 12** in
-the same landing by naming the capability seven of them shared (`type Judging`,
-src/driver.mn). The remaining twelve are emit, cursor, infer and synth_proposer:
-four more unnamed capabilities, each one landing.
-STEP TWO IS THIS PEER: the positive row becomes INFERRED AND PROJECTED, and only
-negations, instance pins and genuine narrowings are authored, so `with !Alloc +
-!Thread` is the normal signature and the full row is read at the address surface
-beside repr width and resume cardinality. The migration is the medium's own —
-`mentl tighten` already authors row patches — and the count reaching zero is
-what retires the board line.
+`Hβ.syntax.positive-row-is-authored-by-hand` — CLOSED 2026-09-27 (A4; LEDGER
+carries the pin). BORN 2026-09-21, MEASURED: 132 signatures declared four
+effects, 155 five, and a tail ran 13, 14, 16, 17 (four), 18, 19. Every name in
+a declared row is a hand-copy of a fact inference computed — SYNTAX's own
+words are that the declared row is "a CONSTRAINT verified against the row
+inferred from the body" — so a wide row is a re-derivation, is not intent
+under the Intent Boundary Rule, and buries the one `!E` worth reading. STEP
+ONE (`CsWideRow`, `type Judging`, 19 → 12) was the count of a symptom. STEP
+TWO is landed: `T_RowInventory` narrates a clause whose bare names the body
+proves exactly or whose body row is open (a positive cap installs no gate);
+`mentl tighten` writes the RESIDUE — negations and instance pins, or no
+clause; `CsAuthoredPositiveRow` bounds the wheel at ZERO (seen RED at 164
+through the half-swept tree). The medium authored its own migration — 1,148 +
+157 + 164 + 21 patches over five runs (the patcher learned the line-ending
+`=` on the second, and the modules the entry never links — combinators — on
+the third) — and 529 clauses remain, 273 negation-only and 256 `Pure`. The
+wheel judged clean through the fully inferred rows with ZERO
+`E_EffectMismatch`; the m3 leg's warnings fell 161 → 62; `type Judging` lost
+its last user and is deleted. A positive cap on a HOF stays legal user intent
+and constrains nothing until A3-pos gates it.
+
+`Hβ.infer.ground-differs-by-route` — OPEN, NAMED 2026-09-27 by A4's sweep.
+The stdin compile (the whole wheel as ONE module, `find lib src | cat`)
+judged sixteen rows GROUND — `edges_masked`, `edges_masked_walk`,
+`tail_set_insert`, `tail_set_union`, `row_of_fold`, `edge_content_into`
+(effects.mn), `build_string_index`, `string_index_add`, `hash_node_of`,
+`show_hash_ty`, `show_node_of`, `field_sel_offset`,
+`field_offset_unprovable_why`, `report_cmp_unprovable` (backends/wasm.mn),
+`chase_probe_tag` (infer.mn) — where the entry's weave judgment (`mentl
+tighten main`, per-module through the import DAG) left the same rows OPEN,
+so the stdin route narrated `T_RowInventory` on clauses the weave route
+never banked. The narration's open-row arm dissolved the difference for the
+sweep, and the divergence stands: the same declaration's row is ground on
+one route and open on the other, which is an order- or grouping-dependent
+"is this row resolved" — the one-judge question (PLAN §11's "order-
+independent verdicts on the DAG path") at the row's ground read. Design:
+compile the wheel both ways and diff the rows at every declaration exit
+(`row_is_ground` per fn, both routes, one fixture); the route that leaves a
+row open where nothing free remains is re-deriving a quantified var it
+should have chased. Every one of the sixteen is a helper in a mutual
+recursion pair or an SCC of two.
 
 `Hβ.march.determinism-is-never-probed` — OPEN, BORN 2026-09-21, MEASURED.
 `march.sh --fixpoint` forces the m4 leg on a clean run, and **nothing invokes
@@ -2306,11 +2328,13 @@ any install of it exists anywhere, so twin-tee without a declared negation
 still compiles and traps — the row is now true, and the gate is
 `Hβ.effects.root-gate-credits-an-install-that-had-not-opened`'s to fix.
 
-`Hβ.effects.declared-positive-rows-under-count-callbacks` — OPEN, measured
-2026-09-25, DECIDED (Morgan): the positive row is inferred and projected;
-only negations, instance pins and deliberate narrowings stay authored
-(`Hβ.syntax.positive-row-is-authored-by-hand` is the mechanism, `mentl
-tighten` its author). The nested-frame prune had hidden, at every HOF whose
+`Hβ.effects.declared-positive-rows-under-count-callbacks` — CLOSED 2026-09-27
+(A4, with `Hβ.syntax.positive-row-is-authored-by-hand`): every positive row on
+the wheel is deleted, the under-counting caps included — `T_RowInventory`'s
+open-row arm narrates a cap that installs no gate, and the sweep wrote its
+residue. Measured 2026-09-25, DECIDED (Morgan): the positive row is inferred
+and projected; only negations, instance pins and deliberate narrowings stay
+authored. The nested-frame prune had hidden, at every HOF whose
 parameter is invoked inside a lambda, a tee or a fanout, the effects that
 parameter's callbacks perform — so the wheel's declared positive rows are
 systematically narrower than what the code does. The pass-through scratch

@@ -76,12 +76,12 @@ type VerbSpec = VerbSpec(String, String, ([String]) -> EntryHandlerInvocation, S
 // req_target — the shared shape of the target-REQUIRED verbs (compile / run /
 // check / audit): argv[2] resolved to a module, or a ParseError that names the
 // verb and shows its usage. `mk` builds the variant from the resolved module.
-fn req_target(argv, mk, msg) with Memory + Alloc =
+fn req_target(argv, mk, msg) =
   if len(argv) >= 3 { Invocation(mk(path_to_module(argv[2]))) } else { ParseError(msg) }
 
 // The run verb keeps everything after its target: those words are the
 // PROGRAM's argv, not the wheel's, and the executor passes them through.
-fn run_verb_args(a) with Memory + Alloc = if len(a) >= 3 {
+fn run_verb_args(a) = if len(a) >= 3 {
   Invocation(VRun(path_to_module(a[2]), drop(3, a)))
 } else {
   ParseError("run needs a target: mentl run <path> [args…]")
@@ -90,7 +90,7 @@ fn run_verb_args(a) with Memory + Alloc = if len(a) >= 3 {
 // The verbs, in help-presentation order (the parser matches by name, so order
 // here is the human's reading order, never the dispatch order). A `""` hint is
 // a no-argument verb.
-fn where_verb_args(a) with Memory + Alloc = if len(a) >= 4 {
+fn where_verb_args(a) = if len(a) >= 4 {
   Invocation(VQuery(path_to_module(a[2]), "where {a[3]}"))
 } else {
   ParseError("where needs a target and a name: mentl where <path> <name>")
@@ -98,13 +98,13 @@ fn where_verb_args(a) with Memory + Alloc = if len(a) >= 4 {
 
 // The bare why verb (SYNTAX's lag list, first name retired): the same
 // Reason-chain walk the query facet serves, surfaced as its own verb.
-fn why_verb_args(a) with Memory + Alloc = if len(a) >= 4 {
+fn why_verb_args(a) = if len(a) >= 4 {
   Invocation(VQuery(path_to_module(a[2]), "why {a[3]}"))
 } else {
   ParseError("why needs a target and a name: mentl why <path> <name>")
 }
 
-fn verb_specs() with Memory + Alloc = [VerbSpec(
+fn verb_specs() = [VerbSpec(
   "run",
   "<path> [args…]",
   run_verb_args,
@@ -181,7 +181,7 @@ fn verb_specs() with Memory + Alloc = [VerbSpec(
   "tighten",
   "[path]",
   (a) => Invocation(VTighten(optional_target(a, 2))),
-  "apply the first proven row tightening — the medium authors, you accept"
+  "author each declared row's residue — its negations and pins; the positive row is projected"
 ), VerbSpec(
   "fmt",
   "<path>",
@@ -219,7 +219,7 @@ fn verb_specs() with Memory + Alloc = [VerbSpec(
 
 // find_verb — the name → spec projection over the table (names are unique, so
 // either end serves; last/drop_last is the O(1) snoc walk). None when no match.
-fn find_verb(name, specs) with Memory + Alloc = if len(specs) == 0 {
+fn find_verb(name, specs) = if len(specs) == 0 {
   None
 } else {
   let spec = last(specs)
@@ -234,7 +234,7 @@ fn find_verb(name, specs) with Memory + Alloc = if len(specs) == 0 {
 // VCompileStdin (Unix `cmd <input`). `--with <name>` is the universal
 // escape hatch. A target-requiring verb given no target is a ParseError
 // here (the one boundary), never a fabricated "" downstream.
-fn parse_cli_args(argv) with Memory + Alloc = if len(argv) < 2 {
+fn parse_cli_args(argv) = if len(argv) < 2 {
   Invocation(VCompileStdin)
 } else {
   let mode = argv[1]
@@ -263,7 +263,7 @@ fn parse_cli_args(argv) with Memory + Alloc = if len(argv) < 2 {
 // numeric segments all-digits. Shape parse only (a byte walk over the flat
 // string); existence/resolution is the runner's question. Returns None for
 // anything else, falling through to the verb ladder.
-fn parse_address(ref s) with Memory + Alloc = {
+fn parse_address(ref s) = {
   let n = byte_len(s)
   let c1 = addr_colon_from(s, 0, n)
   if c1 <= 0 {
@@ -288,15 +288,14 @@ fn parse_address(ref s) with Memory + Alloc = {
 }
 
 // The first ':' at or after i; -1 when none.
-fn addr_colon_from(ref s, i, n) with Memory =
+fn addr_colon_from(ref s, i, n) =
   if i >= n { 0 - 1 } else if byte_at(s, i) == 58 { i } else { addr_colon_from(s, i + 1, n) }
 
 // The all-digits segment [i, end) as Some(value); None when empty or any
 // non-digit byte (so `web:site.mn` never parses as an address).
-fn addr_int(ref s, i, end) with Memory + Alloc =
-  if i >= end { None } else { addr_int_loop(s, i, end, 0) }
+fn addr_int(ref s, i, end) = if i >= end { None } else { addr_int_loop(s, i, end, 0) }
 
-fn addr_int_loop(ref s, i, end, acc) with Memory + Alloc = if i >= end {
+fn addr_int_loop(ref s, i, end, acc) = if i >= end {
   Some(acc)
 } else {
   let ch = byte_at(s, i)
@@ -307,13 +306,12 @@ fn addr_int_loop(ref s, i, end, acc) with Memory + Alloc = if i >= end {
 // / teach / test). Returns Some(module-name) when present; None
 // otherwise. Strips src/ / lib/ prefixes + .mn suffix per
 // path_to_module.
-fn optional_target(argv, idx) with Memory + Alloc =
-  if len(argv) > idx { Some(path_to_module(argv[idx])) } else { None }
+fn optional_target(argv, idx) = if len(argv) > idx { Some(path_to_module(argv[idx])) } else { None }
 
 // path_to_module — accept either a module name ("main") or a file
 // path ("src/main.mn"). Strip "src/" or "lib/" prefix and ".mn"
 // suffix when present. Idempotent on bare module names.
-fn path_to_module(arg) with Alloc + Memory = {
+fn path_to_module(arg) = {
   let stripped_prefix = if starts_with(arg, "src/") {
     str_slice(arg, 4, byte_len(arg))
   } else if starts_with(arg, "lib/") {

@@ -209,7 +209,7 @@ handler synth_default {
 // Each strategy yields a small set; verify_each_enriched discards
 // candidates whose tentative apply doesn't unify under the
 // allowed_effects row.
-fn enumerate_typed(target_ty, allowed_effects, context) with EnvRead + Memory + Alloc + GraphRead + WASI + GraphWrite + LookupTy = match target_ty {
+fn enumerate_typed(target_ty, allowed_effects, context) = match target_ty {
   TName(name, args) => enumerate_constructors(name, args, context),
   TFun(params, ret, row) => enumerate_lambdas(params, ret, row, context),
   TInt => enumerate_int_literals(context),
@@ -243,8 +243,7 @@ fn enumerate_typed(target_ty, allowed_effects, context) with EnvRead + Memory + 
 // list is a fold's tuple component, whose element type the graph cannot
 // prove at the ++ site (the [LowExpr] precedent — the author states the
 // element identity once, both operands ground).
-fn concat_candidates(a: [EnrichedCandidate], b: [EnrichedCandidate]) -> [EnrichedCandidate] with Alloc + Memory =
-  a ++ b
+fn concat_candidates(a: [EnrichedCandidate], b: [EnrichedCandidate]) -> [EnrichedCandidate] = a ++ b
 
 // ─── The vocabulary enumerator — the finite in-scope call space ──────
 //
@@ -267,7 +266,7 @@ fn concat_candidates(a: [EnrichedCandidate], b: [EnrichedCandidate]) -> [Enriche
 // Calls that take arguments are the recursive-hole general form
 // (Hβ.synth.vocabulary-arg-holes); the reach walk's O(1) form is the
 // call-edge index (Hβ.synth.vocabulary-reach-index).
-fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with GraphRead + WASI + GraphWrite + Intern + Alloc + Memory + !Mutate = match context {
+fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with !Mutate = match context {
   Context(scope_bindings, _active, enclosing, _hole_h) => fold(
     ([], []),
     (acc, entry) => match acc {
@@ -490,10 +489,10 @@ fn same_head(a, b) with Pure = match a {
 // every other expression in the language — by unifying the candidate's own
 // cell with the hole's, inside the segment, with rollback. The proof
 // becomes the dispatch.
-fn vocabulary_call_candidate(name, row, allowed_row, ring) with GraphRead + GraphWrite + Intern + !Mutate + Alloc + Memory =
+fn vocabulary_call_candidate(name, row, allowed_row, ring) with !Mutate =
   EnrichedCandidate({node: synth_node(CallExpr(synth_node(VarRef(name)), [])), origin: ProposerVocabulary(ring), reason: Inferred("an in-scope call {name}() — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}")})
 
-fn vocabulary_ref_candidate(name, row, allowed_row, ring) with GraphRead + GraphWrite + Intern + !Mutate + Alloc + Memory =
+fn vocabulary_ref_candidate(name, row, allowed_row, ring) with !Mutate =
   EnrichedCandidate({node: synth_node(VarRef(name)), origin: ProposerVocabulary(ring), reason: Inferred("the in-scope function {name} — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}")})
 
 // Could a function of this arity, parameters and return fill a
@@ -524,7 +523,7 @@ fn params_heads_agree(pair) with Pure = match pair {
 // is the field's FIRST reader — cost was a write-only literal before
 // (the resume_kinds pattern: a score claiming gradient-ness that read
 // nothing).
-fn candidate_rank(name, decl_reason, hole_span) with GraphRead + !Mutate + Alloc + Memory = {
+fn candidate_rank(name, decl_reason, hole_span) with !Mutate = {
   let decl_near = scope_distance_decay(hole_span, caret_span_from_reason(decl_reason))
   // The sites carry their module now, and destructuring them SURFACES a
   // defect this fold has always had: scope_distance_decay compares two line
@@ -554,7 +553,7 @@ fn candidate_rank(name, decl_reason, hole_span) with GraphRead + !Mutate + Alloc
 // constants, and a swapped e-class member rode a stale number).
 // Computed ONCE per candidate at sort entry — the same refs walk the
 // stored form paid at enrichment, moved to the read point.
-fn rank_of(c, hole_span) with GraphRead + EnvRead + !Mutate + Alloc + Memory = match c {
+fn rank_of(c, hole_span) with !Mutate = match c {
   EnrichedCandidate(cr) => match cr.node {
     N(body, _, _) => match body {
       NExpr(CallExpr(callee, _)) => match callee {
@@ -588,7 +587,7 @@ fn context_hole_handle(context) with Pure = match context {
 // fields beside it. parse_span_of and the live node kind answer each one
 // at the moment it is asked, so neither can describe a cell that has since
 // moved.
-fn context_hole_span(context) with GraphRead = parse_span_of(context_hole_handle(context))
+fn context_hole_span(context) = parse_span_of(context_hole_handle(context))
 
 // Read RESOLVED: a hole's cell can be bound to a type whose parts are
 // themselves cells the judgment has since bound, and the head index reads
@@ -608,10 +607,10 @@ fn context_target_ty(context) = match context_hole_handle(context) {
 // vocabulary plus the shape enumerators). The ORDER is the only thing
 // rank decides; a constraint-tie still teaches (the render's collapse
 // line is unchanged — rank is a prior, never a guess).
-fn rank_sort(hole_span, cands) with GraphRead + EnvRead + !Mutate + Memory + Alloc =
+fn rank_sort(hole_span, cands) with !Mutate =
   cands |> map((c) => (rank_of(c, hole_span), c)) |> fold([], rank_insert) |> map({ (_, c) => c })
 
-fn rank_insert(sorted, rc) with Memory + Alloc = match sorted {
+fn rank_insert(sorted, rc) = match sorted {
   [] => [rc],
   [h, ...rest] => match rc {
     (r, _) => match h {
@@ -624,7 +623,7 @@ fn rank_insert(sorted, rc) with Memory + Alloc = match sorted {
 // Does `name`'s free-name closure reach `target`? collect_free_vars
 // over-approximates the call edge (a reference without a call also
 // excludes — the safe direction). `seen` breaks cycles.
-fn reaches_decl(name: String, target: String, seen) with GraphRead + Memory + Alloc + !Mutate = if target == "" {
+fn reaches_decl(name: String, target: String, seen) with !Mutate = if target == "" {
   false
 } else if name == target {
   true
@@ -638,7 +637,7 @@ fn reaches_decl(name: String, target: String, seen) with GraphRead + Memory + Al
   }
 }
 
-fn contains_name(names, target: String) with Memory + Alloc = any((n) => n == target, names)
+fn contains_name(names, target: String) = any((n) => n == target, names)
 
 // A named fn's body node, read from the program weave directly — the
 // same walk enclosing_fn_decl_at does, keyed by name instead of span.
@@ -646,14 +645,14 @@ fn contains_name(names, target: String) with Memory + Alloc = any((n) => n == ta
 // weave does not always carry — main() leaked past the reach exclusion
 // because its body was unreachable through it; the weave is the one
 // truth both walks read.)
-fn fn_body_by_name(name: String) with GraphRead + !Mutate + Memory + Alloc = {
+fn fn_body_by_name(name: String) with !Mutate = {
   let snapshot = graph_snapshot()
   match snapshot {
     Graph(next, _spans) => fn_body_scan(name, 0, next),
   }
 }
 
-fn fn_body_scan(name: String, i, n) with GraphRead + !Mutate + Memory + Alloc = if i >= n {
+fn fn_body_scan(name: String, i, n) with !Mutate = if i >= n {
   None
 } else {
   match graph_node_body(i) {
@@ -669,7 +668,7 @@ fn fn_body_scan(name: String, i, n) with GraphRead + !Mutate + Memory + Alloc = 
 // ConstructorScheme entries whose scheme result type is
 // TName(type_name, _). Read the live env snapshot and filter — never
 // a second env-access effect (the EnvLookup re-derivation is dissolved).
-fn enumerate_constructors(type_name, args, context) with EnvRead + GraphRead + WASI + GraphWrite + Alloc + !Mutate + Memory = match env_snapshot() {
+fn enumerate_constructors(type_name, args, context) with !Mutate = match env_snapshot() {
   Env(entries) => ctors_of_type(entries, type_name, context),
 }
 
@@ -681,12 +680,12 @@ fn enumerate_constructors(type_name, args, context) with EnvRead + GraphRead + W
 // Forward walk preserves the enrichment's effect order (oldest entry
 // enriched first, exactly as the rest-before-head recursion ran);
 // reverse restores the newest-first result order consumers saw.
-fn ctors_of_type(entries, type_name, context) with GraphRead + WASI + GraphWrite + Memory + Alloc + !Mutate = {
+fn ctors_of_type(entries, type_name, context) with !Mutate = {
   let n = len(entries)
   reverse(ctors_of_type_from(entries, type_name, 0, n, make_list(n), 0))
 }
 
-fn ctors_of_type_from(entries, type_name, i, n, own buf, count) with GraphRead + WASI + GraphWrite + Memory + Alloc + !Mutate = if i >= n {
+fn ctors_of_type_from(entries, type_name, i, n, own buf, count) with !Mutate = if i >= n {
   slice(buf, 0, count)
 } else {
   match list_index(entries, i) {
@@ -705,10 +704,10 @@ fn ctors_of_type_from(entries, type_name, i, n, own buf, count) with GraphRead +
   }
 }
 
-fn ctor_to_enriched_candidate(name, scheme, reason) with GraphRead + WASI + GraphWrite + !Mutate + Memory + Alloc =
+fn ctor_to_enriched_candidate(name, scheme, reason) with !Mutate =
   EnrichedCandidate({node: synthesize_ctor_call_node(name, scheme), origin: ProposerEnumerative, reason: VarLookup(name, reason)})
 
-fn enumerate_lambdas(params, ret, row, context) with Alloc + Memory + GraphWrite = {
+fn enumerate_lambdas(params, ret, row, context) = {
   // Single anonymous-fn candidate: (param_names) => ?? body. The
   // body becomes a nested Synth invocation; the chain re-enters
   // recursively at parse-time when the user accepts.
@@ -739,7 +738,7 @@ fn enumerate_lambdas(params, ret, row, context) with Alloc + Memory + GraphWrite
 // than propose silence. That projection is named residue
 // (`Hβ.synth.empty-domain-teaches`), and until it lands the empty seed set
 // falls through to the vocabulary, which is honest but quiet.
-fn enumerate_domain(ty, allowed_effects, context) with GraphRead + Memory + Alloc + GraphWrite + !Mutate + EnvRead + WASI + LookupTy = {
+fn enumerate_domain(ty, allowed_effects, context) with !Mutate = {
   let d = ty_domain(ty)
   match d {
     DFinite(vs) => vs |> map(lit_candidate),
@@ -753,7 +752,7 @@ fn enumerate_domain(ty, allowed_effects, context) with GraphRead + Memory + Allo
 
 // The bounds themselves, plus the interior value nearest zero — deduped, so a
 // bound that IS that value yields one seed rather than two of it.
-fn domain_bounds_seeds(lo, hi) with Memory + Alloc = {
+fn domain_bounds_seeds(lo, hi) = {
   let ends = [] |> push_opt(lo) |> push_opt(hi)
   match interior_near_zero(lo, hi) {
     Some(z) => if ends |> any(int_same(z, ??)) { ends } else { ends ++ [z] },
@@ -761,7 +760,7 @@ fn domain_bounds_seeds(lo, hi) with Memory + Alloc = {
   }
 }
 
-fn push_opt(v, xs) with Memory + Alloc = match v {
+fn push_opt(v, xs) = match v {
   Some(n) => xs ++ [n],
   None => xs,
 }
@@ -770,17 +769,17 @@ fn int_same(a, b) with Pure = a == b
 
 // Zero when the range admits it; otherwise the open end has no interior to
 // name and the closed end already seeded it.
-fn interior_near_zero(lo, hi) with Memory + Alloc =
+fn interior_near_zero(lo, hi) =
   if bound_admits_lo(lo, 0) && bound_admits_hi(hi, 0) { Some(0) } else { None }
 
-fn lit_candidate(v) with GraphRead + GraphWrite + !Mutate + Memory + Alloc = match v {
+fn lit_candidate(v) with !Mutate = match v {
   LVInt(n) => int_literal_candidate(n),
   LVFloat(f) => float_literal_candidate(f),
   LVString(s) => EnrichedCandidate({node: synthesize_string_literal_node(s), origin: ProposerEnumerative, reason: Inferred("the type's string inhabitants")}),
   LVBool(b) => EnrichedCandidate({node: synth_node(LitBool(b)), origin: ProposerEnumerative, reason: Inferred("the type's boolean inhabitants")}),
 }
 
-fn enumerate_int_literals(context) with Alloc + Memory + GraphWrite = {
+fn enumerate_int_literals(context) = {
   // Literal seeds: 0, 1, -1. Three candidates per the Numerical
   // Survey discipline (least-trivial inhabitants of TInt).
   let buf = make_list(3)
@@ -790,20 +789,20 @@ fn enumerate_int_literals(context) with Alloc + Memory + GraphWrite = {
   buf
 }
 
-fn int_literal_candidate(n) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
+fn int_literal_candidate(n) with !Mutate =
   EnrichedCandidate({node: synthesize_int_literal_node(n), origin: ProposerEnumerative, reason: Inferred("the type's integer inhabitants")})
 
-fn enumerate_float_literals(context) with Alloc + Memory + GraphWrite = {
+fn enumerate_float_literals(context) = {
   let buf = make_list(2)
   list_set(buf, 0, float_literal_candidate(0.0))
   list_set(buf, 1, float_literal_candidate(1.0))
   buf
 }
 
-fn float_literal_candidate(f) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
+fn float_literal_candidate(f) with !Mutate =
   EnrichedCandidate({node: synthesize_float_literal_node(f), origin: ProposerEnumerative, reason: Inferred("the type's float inhabitants")})
 
-fn enumerate_string_literals(context) with Alloc + Memory + GraphWrite = {
+fn enumerate_string_literals(context) = {
   let buf = make_list(1)
   list_set(
     buf,
@@ -813,7 +812,7 @@ fn enumerate_string_literals(context) with Alloc + Memory + GraphWrite = {
   buf
 }
 
-fn one_unit_candidate(context) with Alloc + Memory + GraphWrite = {
+fn one_unit_candidate(context) = {
   let buf = make_list(1)
   list_set(
     buf,
@@ -823,7 +822,7 @@ fn one_unit_candidate(context) with Alloc + Memory + GraphWrite = {
   buf
 }
 
-fn one_hole_candidate(context) with Alloc + Memory + GraphWrite = {
+fn one_hole_candidate(context) = {
   // ?? at unbound positions. The recursive case: hole-fills-with-
   // hole, leaving the gradient to narrow further at the next layer.
   let buf = make_list(1)
@@ -835,7 +834,7 @@ fn one_hole_candidate(context) with Alloc + Memory + GraphWrite = {
   buf
 }
 
-fn one_continuation_candidate(context) with Alloc + Memory + GraphWrite = {
+fn one_continuation_candidate(context) = {
   let buf = make_list(1)
   list_set(
     buf,
@@ -845,7 +844,7 @@ fn one_continuation_candidate(context) with Alloc + Memory + GraphWrite = {
   buf
 }
 
-fn enumerate_records(fields, context) with Alloc + Memory + GraphWrite = {
+fn enumerate_records(fields, context) = {
   let buf = make_list(1)
   list_set(
     buf,
@@ -855,7 +854,7 @@ fn enumerate_records(fields, context) with Alloc + Memory + GraphWrite = {
   buf
 }
 
-fn enumerate_list_candidates(elem, context) with Alloc + Memory + GraphWrite = {
+fn enumerate_list_candidates(elem, context) = {
   // Two candidates: empty list, single-element with elem-hole.
   let buf = make_list(2)
   list_set(
@@ -871,7 +870,7 @@ fn enumerate_list_candidates(elem, context) with Alloc + Memory + GraphWrite = {
   buf
 }
 
-fn enumerate_tuple_candidates(elems, context) with Alloc + Memory + GraphWrite = {
+fn enumerate_tuple_candidates(elems, context) = {
   let buf = make_list(1)
   list_set(
     buf,
@@ -963,7 +962,7 @@ fn judge_in_segment(hole_h, base, seed, iseed, candidate) = {
 // developer cannot see refused is a guess they cannot audit (the same
 // sentence the row prune has carried since it was written). The medium's
 // OWN rendering of what went wrong is the reason; nothing is invented here.
-fn refusal_reason(inner) with GraphRead + Memory + Alloc + !Mutate + Intern = match inner {
+fn refusal_reason(inner) with !Mutate = match inner {
   (_, dfacts, _, _) => if len(dfacts) == 0 {
     Inferred("the hole's refinement is not satisfied")
   } else {
@@ -1002,10 +1001,10 @@ fn segment_judge(node, hole_h, reason, base, seed, iseed) = {
   segment_bracket(body, base, iseed)
 }
 
-fn keep_survivors(candidates, verdicts) with Memory + Alloc =
+fn keep_survivors(candidates, verdicts) =
   candidates |> enumerate |> filter(verdict_at(verdicts)) |> map(indexed_value)
 
-fn verdict_at(verdicts, indexed) with Memory + Alloc = match indexed {
+fn verdict_at(verdicts, indexed) = match indexed {
   (i, _) => match verdicts[i] {
     (ok, _) => ok,
   },
@@ -1016,10 +1015,10 @@ fn verdict_at(verdicts, indexed) with Memory + Alloc = match indexed {
 // callee_name_of answers None — so only vocabulary refusals surface, which
 // is the honest line: the developer can act on "empty() was refused
 // because …" and cannot act on "the one-element list shape was refused".
-fn named_refusals(candidates, verdicts) with Memory + Alloc =
+fn named_refusals(candidates, verdicts) =
   candidates |> enumerate |> fold([], keep_named_refusal(verdicts))
 
-fn keep_named_refusal(verdicts, acc, indexed) with Memory + Alloc = match indexed {
+fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
   (i, cand) => match verdicts[i] {
     (ok, reason) => if ok {
       acc
@@ -1033,7 +1032,7 @@ fn keep_named_refusal(verdicts, acc, indexed) with Memory + Alloc = match indexe
   },
 }
 
-fn indexed_value(indexed) with Memory + Alloc = match indexed {
+fn indexed_value(indexed) = match indexed {
   (_, v) => v,
 }
 
@@ -1081,7 +1080,7 @@ fn candidate_proven(node, hole_h, reason) = {
 // The hole's type AFTER the unify — read live, because the unify may have
 // bound it and the refinement must be discharged against what the cell now
 // says, never against what it said before the candidate arrived.
-fn hole_ty_live(hole_h) with GraphRead + Memory + Alloc = match graph_chase(hole_h) {
+fn hole_ty_live(hole_h) = match graph_chase(hole_h) {
   GNode(kind, _) => ty_of_kind(hole_h, kind),
 }
 
@@ -1108,7 +1107,7 @@ fn hole_ty_live(hole_h) with GraphRead + Memory + Alloc = match graph_chase(hole
 // and that loss IS the measurement: nothing spawns a task any more, so the
 // judgment no longer reaches the threading vocabulary at all. The medium
 // named it (`T_OverDeclared`) the moment the spawn left.
-fn verify_each_enriched(candidates, hole_h, cand_start) with GraphRead + GraphWrite + LookupTy + Memory + Alloc + EnvRead + EnvWrite + Consume + Verify + Intern + WASI + BranchEnv + Diagnostic + Cast + !Mutate = {
+fn verify_each_enriched(candidates, hole_h, cand_start) with !Mutate = {
   let verdicts = segment_verify(candidates, hole_h)
   let refusals = named_refusals(candidates, verdicts)
   let survivors = keep_survivors(candidates, verdicts)
@@ -1128,7 +1127,7 @@ fn verify_each_enriched(candidates, hole_h, cand_start) with GraphRead + GraphWr
 // fires only on a REAL disagreement of meaning. Keyed on the extracted
 // handle — the e-class root the canon weave already carries, never a
 // re-derived structural compare.
-fn collapse_equivalent(cands) with Memory + Alloc = cands |> fold(
+fn collapse_equivalent(cands) = cands |> fold(
   [],
   (acc, c) => if acc |> any((k) => node_handle(candidate_node(k)) == node_handle(candidate_node(c))) {
     acc
@@ -1154,7 +1153,7 @@ fn candidate_reason(candidate) with Pure = match candidate {
 // here — a refused `MkBox(…)` is exactly the kind of refusal a developer
 // needs to see, and it has an arg. A skeleton with no head name teaches
 // nothing and stays out.
-fn candidate_head_name(node) with Memory + Alloc = match node {
+fn candidate_head_name(node) = match node {
   N(body, _, _) => match body {
     NExpr(CallExpr(callee, _)) => match callee {
       N(cb, _, _) => match cb {
@@ -1171,7 +1170,7 @@ fn candidate_head_name(node) with Memory + Alloc = match node {
 // e-class. The extraction is a live chase of the canon weave (the same
 // union-find the type layer uses); an unmoved handle keeps the node it
 // already had, so a candidate with no cheaper equivalent pays nothing.
-fn extract_optimal(candidate) with GraphRead + Memory + Alloc = match candidate {
+fn extract_optimal(candidate) = match candidate {
   EnrichedCandidate(c) => {
     let h = node_handle(c.node)
     let cheapest = egraph_extract(h)
@@ -1229,8 +1228,7 @@ fn is_not_lambda_candidate(c) with Pure = match c {
   },
 }
 
-fn map_to_proposals(enriched) with Alloc + Memory =
-  map({ EnrichedCandidate(c) => (c.node, c.reason) }, enriched)
+fn map_to_proposals(enriched) = map({ EnrichedCandidate(c) => (c.node, c.reason) }, enriched)
 
 // ─── The verdict — computed ONCE, where the survivors are known ──────
 //
@@ -1394,33 +1392,25 @@ fn denotes_value(first: LitValue, d: Option(LitValue)) = match d {
 // Each helper produces a Node value the verify gate can apply to the
 // graph. The actual construction reuses parser_infra's nexpr/nstmt
 // constructors via the wheel's existing Node ADT (types.mn:376-379).
-fn synthesize_int_literal_node(n) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(LitInt(n))
+fn synthesize_int_literal_node(n) with !Mutate = synth_node(LitInt(n))
 
-fn synthesize_float_literal_node(f) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(LitFloat(f))
+fn synthesize_float_literal_node(f) with !Mutate = synth_node(LitFloat(f))
 
-fn synthesize_string_literal_node(s) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(LitString(s))
+fn synthesize_string_literal_node(s) with !Mutate = synth_node(LitString(s))
 
-fn synthesize_unit_literal_node() with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(LitUnit)
+fn synthesize_unit_literal_node() with !Mutate = synth_node(LitUnit)
 
-fn synthesize_hole_node() with Memory + Alloc + GraphWrite = synth_hole_node()
+fn synthesize_hole_node() = synth_hole_node()
 
-fn synthesize_resume_node() with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(ResumeExpr(synth_unit_node(), []))
+fn synthesize_resume_node() with !Mutate = synth_node(ResumeExpr(synth_unit_node(), []))
 
-fn synthesize_empty_list_node() with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(MakeListExpr([]))
+fn synthesize_empty_list_node() with !Mutate = synth_node(MakeListExpr([]))
 
-fn synthesize_singleton_list_node(elem) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(MakeListExpr([synth_hole_node()]))
+fn synthesize_singleton_list_node(elem) with !Mutate = synth_node(MakeListExpr([synth_hole_node()]))
 
-fn synthesize_tuple_node(elems) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  synth_node(MakeTupleExpr(synth_holes_for(elems)))
+fn synthesize_tuple_node(elems) with !Mutate = synth_node(MakeTupleExpr(synth_holes_for(elems)))
 
-fn synthesize_record_node(fields) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
+fn synthesize_record_node(fields) with !Mutate =
   synth_node(MakeRecordExpr(synth_record_holes_for(fields)))
 
 // Builds a constructor candidate: a bare `VarRef` when the scheme is nullary,
@@ -1442,7 +1432,7 @@ fn synthesize_record_node(fields) with GraphRead + GraphWrite + !Mutate + Memory
 // constructor filter already reads (nullary ctors carry TName directly;
 // fielded ones carry TFun(_, TName, _)), so this is a read, never a new
 // fact: SYNTAX's own surface says `let nothing = None`.
-fn synthesize_ctor_call_node(name, scheme) with GraphRead + WASI + GraphWrite + !Mutate + Memory + Alloc = match judgment_ty(scheme) {
+fn synthesize_ctor_call_node(name, scheme) with !Mutate = match judgment_ty(scheme) {
   TFun(params, _, _) => synth_node(CallExpr(synth_node(VarRef(name)), synth_holes_for(params))),
   _ => synth_node(VarRef(name)),
 }
@@ -1450,7 +1440,7 @@ fn synthesize_ctor_call_node(name, scheme) with GraphRead + WASI + GraphWrite + 
 // params arrive as the scheme's own [TParam] — LambdaExpr's exact
 // carrier; rebuilding name lists from them was the mismatch the
 // converged judge caught (the param-product law reaching synth).
-fn synthesize_lambda_node(params, ret) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
+fn synthesize_lambda_node(params, ret) with !Mutate =
   synth_node(LambdaExpr(params, synth_hole_node()))
 
 // ─── Synthesis primitives — structured Node construction ───────────
@@ -1463,15 +1453,13 @@ fn synthesize_lambda_node(params, ret) with GraphRead + GraphWrite + !Mutate + M
 // edge-links the body into the graph weave so verify_candidate's
 // infer_expr walk binds the candidate's own handle (Carried-Truth: the
 // graph holds the node; the gate reads it live).
-fn synth_node(expr_body) with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  mint_node(NExpr(expr_body), span_zero())
+fn synth_node(expr_body) with !Mutate = mint_node(NExpr(expr_body), span_zero())
 
-fn synth_unit_node() with Memory + Alloc + GraphWrite = synth_node(LitUnit)
+fn synth_unit_node() = synth_node(LitUnit)
 
-fn synth_hole_node() with GraphRead + GraphWrite + !Mutate + Memory + Alloc =
-  mint_node(NHole(0), span_zero())
+fn synth_hole_node() with !Mutate = mint_node(NHole(0), span_zero())
 
-fn synth_holes_for(elems) with Memory + Alloc + GraphWrite = if len(elems) == 0 {
+fn synth_holes_for(elems) = if len(elems) == 0 {
   []
 } else {
   let n = len(elems)
@@ -1479,7 +1467,7 @@ fn synth_holes_for(elems) with Memory + Alloc + GraphWrite = if len(elems) == 0 
   synth_holes_loop(0, n, buf)
 }
 
-fn synth_holes_loop(i, n, buf) with Memory + Alloc + GraphWrite = if i >= n {
+fn synth_holes_loop(i, n, buf) = if i >= n {
   buf
 } else {
   list_set(buf, i, synth_hole_node())
@@ -1489,8 +1477,7 @@ fn synth_holes_loop(i, n, buf) with Memory + Alloc + GraphWrite = if i >= n {
 // A record literal's carrier is the parser's (name, value) pair list —
 // bare holes lost the names (the converged judge's catch); each demanded
 // field keeps its name with a hole as its value.
-fn synth_record_holes_for(fields) with Memory + Alloc + GraphWrite =
-  map({ (fname, _) => (fname, synth_hole_node()) }, fields)
+fn synth_record_holes_for(fields) = map({ (fname, _) => (fname, synth_hole_node()) }, fields)
 
 // ─── Composition with cursor_default + delta_default ────────────────
 //

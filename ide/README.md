@@ -69,9 +69,10 @@ modes, not features. Five surfaces:
   The badge is `real` ONLY for a fact the compiler graph actually returned.
 - **The Lens** — the real `stderr` diagnostics, gradient-ranked to one teaching
   step in Mentl's voice, click-to-jump, with genuine text-fixes for the
-  canonicalizations the parser reports (`E_RedundantBraces`,
-  `E_RedundantPerform`) and for `T_OverDeclared` (the tightening — the
-  message carries the proven row, the same patch `mentl tighten` authors).
+  canonicalizations the parser reports (`E_RedundantBraces`) and for
+  `T_OverDeclared` / `T_RowInventory` (the tightening — the clause's
+  residue, the same patch `mentl tighten` authors; the positive row is
+  projected, never written back).
 - **The Proposal strip** — the cursor line's standing MachineApplicable
   patch as a ghost preview under the editor (was → now), accepted with
   Tab (no proposal: Tab indents — the copilot convention). An

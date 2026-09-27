@@ -275,8 +275,7 @@ handler emit_site_module {
 // The fold boundary for show/hash (the eq entry's law): chase_deep
 // resolves every interior bound var once, so the family's sigs, dedup,
 // and dispatch agree on one resolution.
-fn show_hash_ty(x) with LookupTy + Memory + Alloc + WASI + GraphRead =
-  fold_strip(chase_deep(lookup_ty(lexpr_handle(x))))
+fn show_hash_ty(x) = fold_strip(chase_deep(lookup_ty(lexpr_handle(x))))
 
 fn spec_is_agg(ty) with Pure = match ty {
   TList(TByte) => false,
@@ -290,7 +289,7 @@ fn spec_is_agg(ty) with Pure = match ty {
 
 // The scalar/word face of show — the synthesized call (aggregates never
 // reach this; emit_show dispatches them to the direct leaf call).
-fn show_node_of(h, x) with Memory + LookupTy + Alloc + WASI + GraphRead = {
+fn show_node_of(h, x) = {
   let ty = show_hash_ty(x)
   match ty {
     TList(TByte) => x,
@@ -304,7 +303,7 @@ fn show_node_of(h, x) with Memory + LookupTy + Alloc + WASI + GraphRead = {
   }
 }
 
-fn hash_node_of(h, x) with Memory + LookupTy + Alloc + WASI + GraphRead = {
+fn hash_node_of(h, x) = {
   let ty = show_hash_ty(x)
   match ty {
     TList(e) => // The byte face hashes as TEXT (str_hash) — the same projection a
@@ -378,7 +377,7 @@ fn emit_hash(h, x) = {
 // its table index redirected — captures, self-binding, and local naming keep
 // the ORIGINAL name (the record local is the closure value; only the offset-0
 // index points at the twin body). Outside a bracket enc is "" — floor.
-fn spec_closure_name(name: String) with SpecTwins + LookupTy + Memory = if !spec_twins_exist() {
+fn spec_closure_name(name: String) = if !spec_twins_exist() {
   name
 } else {
   let e = spec_enc_active()
@@ -390,7 +389,7 @@ fn spec_closure_name(name: String) with SpecTwins + LookupTy + Memory = if !spec
   }
 }
 
-fn spec_target_name(h, name: String) with SpecTwins + EnvRead + LookupTy + GraphRead + WASI + Memory + Alloc = if !spec_twins_exist() {
+fn spec_target_name(h, name: String) = if !spec_twins_exist() {
   name
 } else {
   let m = spec_global_name(h, name)
@@ -402,12 +401,12 @@ fn spec_target_name(h, name: String) with SpecTwins + EnvRead + LookupTy + Graph
 // template). str_eq inside the small bucket carries the same content
 // equality the old `target: String` pin did: a content-equal COPY of a
 // registered string keys the same offset.
-fn string_index_new() with Memory + Alloc = list_filled(4096, [])
+fn string_index_new() = list_filled(4096, [])
 
-fn build_string_index(entries) with Memory + Alloc =
+fn build_string_index(entries) =
   build_string_index_from(entries, len(entries) - 1, string_index_new())
 
-fn build_string_index_from(entries, i, idx) with Memory + Alloc = if i < 0 {
+fn build_string_index_from(entries, i, idx) = if i < 0 {
   idx
 } else {
   match list_index(entries, i) {
@@ -415,17 +414,17 @@ fn build_string_index_from(entries, i, idx) with Memory + Alloc = if i < 0 {
   }
 }
 
-fn string_index_add(idx, s: String, offset) with Memory + Alloc = {
+fn string_index_add(idx, s: String, offset) = {
   let b = i32_and(str_hash(s), 4095)
   list_set(idx, b, [(s, offset)] ++ list_index(idx, b))
 }
 
-fn string_index_get(ref idx, s: String) with Memory = {
+fn string_index_get(ref idx, s: String) = {
   let b = i32_and(str_hash(s), 4095)
   string_bucket_scan(list_index(idx, b), s, 0)
 }
 
-fn string_bucket_scan(ref bucket, s: String, i) with Memory = if i >= len(bucket) {
+fn string_bucket_scan(ref bucket, s: String, i) = if i >= len(bucket) {
   0
 } else {
   match list_index(bucket, i) {
@@ -449,17 +448,16 @@ fn string_bucket_scan(ref bucket, s: String, i) with Memory = if i >= len(bucket
 // references, never operated on) stay at the floor, which the word protocol
 // keeps correct; (3) the worthy candidates ARE the twin set, seeded into
 // spec_registry and emitted as the same records under the spec_pairs state.
-fn spec_find_rec(recs, target: String) with Memory + Alloc =
-  find({ (n, _p, _b, _f) => n == target }, recs)
+fn spec_find_rec(recs, target: String) = find({ (n, _p, _b, _f) => n == target }, recs)
 
-fn spec_demand_named(ds, m: String) with Memory + Alloc = any({ (dm, _b, _p, _e) => dm == m }, ds)
+fn spec_demand_named(ds, m: String) = any({ (dm, _b, _p, _e) => dm == m }, ds)
 
 // A site becomes a candidate when ANY quantified var lands wide — the exact
 // root-keyed substitution answers each var through its own pair (word-bound
 // vars included), so mixed instantiations (a := Float, b := Int) twin
 // correctly. The former one-wide-type guard was the free-leaf rule's
 // requirement; the fracture fix retired both.
-fn spec_candidate_of_site(site, acc) with EnvRead + LookupTy + GraphRead + WASI + Memory + Alloc = match site {
+fn spec_candidate_of_site(site, acc) = match site {
   (h, n) => {
     let rt = spec_resolve(lookup_ty(h))
     let pairs = spec_site_pairs_resolved(n, rt)
@@ -477,8 +475,7 @@ fn spec_candidate_of_site(site, acc) with EnvRead + LookupTy + GraphRead + WASI 
   },
 }
 
-fn spec_candidates_from_sites(sites, acc) with EnvRead + LookupTy + GraphRead + WASI + Memory + Alloc =
-  fold(acc, (a, s) => spec_candidate_of_site(s, a), sites)
+fn spec_candidates_from_sites(sites, acc) = fold(acc, (a, s) => spec_candidate_of_site(s, a), sites)
 
 // The accepted set is a FLAT BUFFER with its count, not a `[d] ++ done`
 // concat spine. Both reads the fix makes of it — membership by mangled
@@ -487,7 +484,7 @@ fn spec_candidates_from_sites(sites, acc) with EnvRead + LookupTy + GraphRead + 
 // accepted count. The buffer-counter is this codebase's own answer to that
 // bug class (reach_grow's shape). Measured before: spec_base_count alone
 // was 7.95% of the entire self-compile.
-fn spec_candidates_fix(work, acc, recs) with EnvRead + LookupTy + GraphRead + WASI + Memory + Alloc = if len(work) == 0 {
+fn spec_candidates_fix(work, acc, recs) = if len(work) == 0 {
   acc
 } else {
   let d = work[0]
@@ -536,11 +533,11 @@ fn spec_candidates_fix(work, acc, recs) with EnvRead + LookupTy + GraphRead + WA
 
 // The accepted set's three operations, one home: append at the count, and
 // the two reads the fix makes, each walking the flat slots directly.
-fn spec_demand_accept(acc, d) with Memory + Alloc = match acc {
+fn spec_demand_accept(acc, d) = match acc {
   (dbuf, dn) => (list_set(list_extend_to(dbuf, dn + 1), dn, d), dn + 1),
 }
 
-fn spec_buf_demanded(ref dbuf, dn, m: String, i) with Memory = if i >= dn {
+fn spec_buf_demanded(ref dbuf, dn, m: String, i) = if i >= dn {
   false
 } else {
   match list_index(dbuf, i) {
@@ -550,7 +547,7 @@ fn spec_buf_demanded(ref dbuf, dn, m: String, i) with Memory = if i >= dn {
 
 // The cap's meter: how many of BASE's specializations the fix has already
 // accepted (entries share the (m, base, pairs, enc) shape).
-fn spec_buf_base_count(ref dbuf, dn, base: String, i, acc) with Memory = if i >= dn {
+fn spec_buf_base_count(ref dbuf, dn, base: String, i, acc) = if i >= dn {
   acc
 } else {
   match list_index(dbuf, i) {
@@ -563,7 +560,7 @@ fn spec_buf_base_count(ref dbuf, dn, base: String, i, acc) with Memory = if i >=
 // TRecord / TRecordOpen / the env's RecordSchemeKind); an index through the
 // positional product's width-summed fold. Both read lookup_ty LIVE under the
 // active bracket, so a twin's instantiation closes a generic receiver.
-fn field_sel_offset(ref rec, sel) with EnvRead + LookupTy + GraphRead + Memory + Alloc = match sel {
+fn field_sel_offset(ref rec, sel) = match sel {
   FByName(fname) => resolve_field_offset(lexpr_handle(rec), fname),
   FByIndex(i) => match lookup_ty(lexpr_handle(rec)) {
     TTuple(elems) => tuple_elem_offset(elems, i, 0, 0),
@@ -580,12 +577,12 @@ fn field_sel_offset(ref rec, sel) with EnvRead + LookupTy + GraphRead + Memory +
 // here is the projection the marker stood in for. An open row renders with
 // its residual — `{ zeta: Int | { } }` is an empty remainder assumed rather
 // than proven, which is the wrong-slot class stated in one line.
-fn field_offset_unprovable_why(rec, sel) with LookupTy + GraphRead + Memory + Alloc + Intern = match sel {
+fn field_offset_unprovable_why(rec, sel) = match sel {
   FByName(fname) => "field '{fname}' on {show_type(lookup_ty(lexpr_handle(rec)))}",
   FByIndex(i) => "element {int_to_str(i)} on {show_type(lookup_ty(lexpr_handle(rec)))}",
 }
 
-fn spec_demands_of(lowered, recs) with EnvRead + LookupTy + GraphRead + WASI + Memory + Alloc = match spec_scan_list(lowered, ([], [])) {
+fn spec_demands_of(lowered, recs) = match spec_scan_list(lowered, ([], [])) {
   (sites, _o) => {
     let seed = spec_candidates_from_sites(sites, [])
     // ONE body scan per candidate, total, and the accumulator enters with
@@ -632,7 +629,7 @@ fn spec_demands_of(lowered, recs) with EnvRead + LookupTy + GraphRead + WASI + M
 // shipping wheel on other fields (op_name / name / init / body), which is
 // what makes this the next thing to build rather than a curiosity. The
 // record form is the gate that fix has to pass, and it goes back in there.
-fn spec_fold_collect(spec_recs, acc0) with LookupTy + EnvRead + Memory + Alloc + GraphRead + WASI = fold(
+fn spec_fold_collect(spec_recs, acc0) = fold(
   acc0,
   (acc, rp) => match rp {
     (rec2, pairs, enc, _base) => match rec2 {
@@ -650,7 +647,7 @@ fn spec_fold_collect(spec_recs, acc0) with LookupTy + EnvRead + Memory + Alloc +
 // Two demands can nest the SAME lambda under the SAME enc (two parents,
 // one inner record, one instantiation) — the twin emits once; keep-first
 // by mangled name, the emission seam's own dedup discipline.
-fn spec_recs_dedup(recs) with Memory + Alloc = fold(
+fn spec_recs_dedup(recs) = fold(
   [],
   (acc, rp) => match rp {
     (rec2, _p, _e, _base) => match rec2 {
@@ -660,7 +657,7 @@ fn spec_recs_dedup(recs) with Memory + Alloc = fold(
   recs
 )
 
-fn spec_rec_name_seen(ref recs, ref m: String, i) with Memory = if i >= len(recs) {
+fn spec_rec_name_seen(ref recs, ref m: String, i) = if i >= len(recs) {
   false
 } else {
   match list_index(recs, i) {
@@ -670,7 +667,7 @@ fn spec_rec_name_seen(ref recs, ref m: String, i) with Memory = if i >= len(recs
   }
 }
 
-fn spec_rec_names(spec_recs) -> [String] with Memory + Alloc = map(
+fn spec_rec_names(spec_recs) -> [String] = map(
   {
     (rec2, _p, _e, _base) => match rec2 {
       (m, _ps, _b, _f) => m,
@@ -1231,10 +1228,9 @@ fn project_emit_state(lowered, closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show:
 // a record contributes its delimiters + each "name: "; a tuple its parens; a
 // list its brackets + ", "; a sum each "Ctor("/")"/nullary name. Runs inside
 // project_emit_state where string_literal_collector catches visit_string.
-fn register_show_literals(show_tys) with EmitStringLiteralOp + EnvRead + Memory + Alloc + GraphRead =
-  register_show_literals_list(show_tys, [])
+fn register_show_literals(show_tys) = register_show_literals_list(show_tys, [])
 
-fn register_show_literals_list(tys, seen) with EmitStringLiteralOp + EnvRead + Alloc + Memory + GraphRead = if len(tys) == 0 {
+fn register_show_literals_list(tys, seen) = if len(tys) == 0 {
   ()
 } else {
   let ty = last(tys)
@@ -1250,7 +1246,7 @@ fn register_show_literals_list(tys, seen) with EmitStringLiteralOp + EnvRead + A
 // The literal set of one type's $show_<sig> helper. The "" separator is always
 // registered (the join + the list-body's empty terminal). visit_string dedups
 // (string_entry_exists), so registering a literal twice is harmless.
-fn register_one_show_literals(ty) with EmitStringLiteralOp + EnvRead + Memory + Alloc + GraphRead = match fold_strip(ty) {
+fn register_one_show_literals(ty) = match fold_strip(ty) {
   TName(_, _) => register_show_sum_literals(variant_named_specs_at(fold_strip(ty)), 0),
   TList(_) => {
     visit_string("[")
@@ -1272,7 +1268,7 @@ fn register_one_show_literals(ty) with EmitStringLiteralOp + EnvRead + Memory + 
   },
 }
 
-fn register_show_field_name_literals(fields: [(String, Ty)], i, is_record) with EmitStringLiteralOp + Memory = if i >= len(fields) {
+fn register_show_field_name_literals(fields: [(String, Ty)], i, is_record) = if i >= len(fields) {
   ()
 } else {
   match list_index(fields, i) {
@@ -1283,7 +1279,7 @@ fn register_show_field_name_literals(fields: [(String, Ty)], i, is_record) with 
   }
 }
 
-fn register_show_sum_literals(specs, i) with EmitStringLiteralOp + Memory = if i >= len(specs) {
+fn register_show_sum_literals(specs, i) = if i >= len(specs) {
   visit_string(", ")
 } else {
   match list_index(specs, i) {
@@ -1601,7 +1597,7 @@ fn emit_state_globals(slots) = each(
 // (1 = a MultiShot perform is unwinding), $yield_op (the interned op-name key
 // the install drivers compare), $yield_k (the reified continuation record).
 // Emitted only when the module yields (the sixth projection).
-fn emit_yield_globals() with WasmOut = {
+fn emit_yield_globals() = {
   wat_emit("  (global $yield_flag (mut i32) (i32.const 0))\n")
   wat_emit("  (global $yield_op (mut i32) (i32.const 0))\n")
   wat_emit("  (global $yield_k (mut i32) (i32.const 0))\n")
@@ -1649,7 +1645,7 @@ fn emit_driver_arg_loads(n, i) = if i >= n {
 // handler with a MultiShot-graded arm, under the yield gate; an
 // UNINSTALLED handler's op keys intern nowhere and compare against offset
 // 0 — dead code, assembles clean.
-fn emit_redrive_fns(emitted_names) with WasmOut + EnvRead + Memory + Alloc + StringTable = {
+fn emit_redrive_fns(emitted_names) = {
   let hnames = match env_snapshot() {
     Env(entries) => ms_handler_names(entries, []),
   }
@@ -1751,7 +1747,7 @@ fn emit_one_redrive(hname) = {
 // type trap (Hβ.emit.compose-width-floor; the f64 composer variant is the
 // named after), never a silent truncation. Dormant until a k2 boundary or a
 // junction calls $__k_extend; emitted only when the module yields (Law 7).
-fn emit_k_compose_pair() with WasmOut = {
+fn emit_k_compose_pair() = {
   // $__k_world(k) — the frozen-world read: the record's LAST word at the
   // FIXED offset 16 + 4*capture_count (head 8 + captures + state_idx +
   // ret_slot precede it; no keyed region, no sentinel walk — the region
@@ -1921,7 +1917,7 @@ type FnRecordVerdict = FrFresh | FrIdentical | FrCollision
 // comes first: with the record compared, a genuine duplicate still dedups
 // (which is the deletion content naming is FOR) and a collision refuses
 // instead of dropping a body while its callers keep pointing at another.
-fn dedup_fn_records(records) with Diagnostic + Memory + Alloc + GraphRead + Intern = {
+fn dedup_fn_records(records) = {
   let n = len(records)
   dedup_fn_records_flat(records, 0, n, make_list(n), 0)
 }
@@ -1942,7 +1938,7 @@ fn fn_record_verdict(records, r, i, n) = if i >= n {
   }
 }
 
-fn dedup_fn_records_flat(records, i, n, out, count) with Diagnostic + Memory + Alloc + GraphRead + Intern = if i >= n {
+fn dedup_fn_records_flat(records, i, n, out, count) = if i >= n {
   slice(out, 0, count)
 } else {
   let r = list_index(records, i)
@@ -1963,7 +1959,7 @@ fn fn_record_name(r) = match r {
 // The record carries no span of its own, and it does not need one: its body's
 // first statement is a graph node, and the graph is where every coordinate
 // already lives. An empty body has nothing to point at and says so.
-fn fn_record_span(r) with GraphRead + Memory + Alloc + !Mutate = match r {
+fn fn_record_span(r) with !Mutate = match r {
   (_, _, body, _) => if len(body) == 0 { span_zero() } else { parse_span_of(lexpr_handle(list_index(body, 0))) },
 }
 
@@ -2301,7 +2297,7 @@ fn emit_byte_escape(b) = {
 // One glyph of the shared hex table (lib/strings.mn hex_glyphs — the same
 // bytes the formatter's `\xHH` renders), as the one-byte string wat_emit
 // takes.
-fn hex_digit(d) with Memory + Alloc = str_slice(hex_glyphs(), d, d + 1)
+fn hex_digit(d) = str_slice(hex_glyphs(), d, d + 1)
 
 // Every call_indirect references a function type index. We emit a
 // type for each arity the program's call sites use: the program
@@ -3117,7 +3113,7 @@ fn emit_reason_comment_for_fn(name, body) = if len(body) == 0 {
 // Render a Reason chain as a one-line comment string. The full
 // structured walk lives in show_reason (types.mn); emit's variant
 // truncates to a single line so WAT stays readable.
-fn emit_reason_summary(handle) with GraphRead + Alloc + Memory = match graph_chase(handle) {
+fn emit_reason_summary(handle) = match graph_chase(handle) {
   GNode(_, reason) => emit_render_reason_oneline(reason),
 }
 
@@ -3130,7 +3126,7 @@ fn emit_reason_summary(handle) with GraphRead + Alloc + Memory = match graph_cha
 // phantoms) while missing nine that do — the seed compiled the phantom
 // patterns without membership checking and the sentinel guard trapped
 // the first LetBinding-reasoned node (a match inside a handler arm).
-fn emit_render_reason_oneline(reason) with Alloc + Memory = match reason {
+fn emit_render_reason_oneline(reason) = match reason {
   Declared(n) => "declared as {n}",
   Inferred(ctx) => "inferred from {ctx}",
   Located(_, inner) => emit_render_reason_oneline(inner),
@@ -3433,7 +3429,7 @@ fn walk_locals_pat_list(pats, acc) = if len(pats) == 0 {
 // bind floored while the compare read wide). TVar(0) is lower's explicit
 // no-proof floor (the null handle — never chased); a var lookup_ty returns
 // unchanged is genuinely free — the honest word floor.
-fn pat_elem_repr(ty) with LookupTy + Memory + Alloc = match ty {
+fn pat_elem_repr(ty) = match ty {
   TVar(h) => if h == 0 {
     RI32
   } else {
@@ -3453,7 +3449,7 @@ fn pat_elem_repr(ty) with LookupTy + Memory + Alloc = match ty {
 // ebs' element types resolved through pat_elem_repr, so bind, decl, and
 // test agree with the stored layout under any bracket. -1 past the end
 // (unprovable, never a silent 0), mirroring tuple_elem_offset.
-fn pat_tuple_off(ebs, target, i, off) with LookupTy + Memory + Alloc = if i >= len(ebs) {
+fn pat_tuple_off(ebs, target, i, off) = if i >= len(ebs) {
   -1
 } else {
   match list_index(ebs, i) {
@@ -5146,7 +5142,7 @@ fn emit_struct_eq(left_h, neg) = if left_h == 0 {
 // reaching the site, or a type named at an Intent Boundary where the
 // polymorphism is over words), and the arming commit turns the narration
 // into the refusal.
-fn report_cmp_unprovable(left_h, opname) with Diagnostic + LookupTy + GraphRead + Memory + Alloc + Intern + EmitSite = report_at(
+fn report_cmp_unprovable(left_h, opname) = report_at(
   left_h,
   TEqTypeUnprovable(
     "`{opname}` on {show_type(lookup_ty(left_h))}, emitting {emit_site()}",
@@ -5286,28 +5282,28 @@ fn emit_eq_sum_call(sig, neg) = {
 // operation fact.
 type FoldOp = FoldCompare | FoldEq | FoldHash | FoldShow
 
-fn fold_closures_empty() with Memory + Alloc = ({cmp: [], eq: [], hash: [], show: []})
+fn fold_closures_empty() = ({cmp: [], eq: [], hash: [], show: []})
 
 // The closed-record pins are load-bearing (Intent Boundary): an unannotated
 // acc infers a partial OPEN record per accessor, and an open receiver's field
 // offsets are computed over the partial set while the record sorts over the
 // full one (Hβ.lower.trecordopen-wrong-field — this fn's first compile hit
 // that floor at runtime).
-fn fold_acc_eq(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, lh) with LookupTy + EnvRead + Alloc + Memory + WASI + GraphRead =
+fn fold_acc_eq(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, lh) =
   ({cmp: acc.cmp, eq: eq_operand_contrib(lh, acc.eq), hash: acc.hash, show: acc.show})
 
 // The ordering contribution IS the eq contribution (cmp_agg_operand_contrib
 // was a byte-copy of eq_operand_contrib — deleted; one reach, two slots).
-fn fold_acc_cmp(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, lh) with LookupTy + EnvRead + Alloc + Memory + WASI + GraphRead =
+fn fold_acc_cmp(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, lh) =
   ({cmp: eq_operand_contrib(lh, acc.cmp), eq: acc.eq, hash: acc.hash, show: acc.show})
 
-fn fold_acc_hash(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, arg) with LookupTy + EnvRead + Alloc + Memory + WASI + GraphRead =
+fn fold_acc_hash(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, arg) =
   ({cmp: acc.cmp, eq: acc.eq, hash: hash_operand_contrib(arg, acc.hash), show: acc.show})
 
-fn fold_acc_show(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, arg) with LookupTy + EnvRead + Alloc + Memory + WASI + GraphRead =
+fn fold_acc_show(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, arg) =
   ({cmp: acc.cmp, eq: acc.eq, hash: acc.hash, show: show_operand_contrib(arg, acc.show)})
 
-fn fold_trigger_binop(op, lh, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) with LookupTy + EnvRead + Alloc + Memory + WASI + GraphRead = match op {
+fn fold_trigger_binop(op, lh, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = match op {
   BEq => fold_acc_eq(acc, lh),
   BNe => fold_acc_eq(acc, lh),
   BLt => fold_acc_cmp(acc, lh),
@@ -5317,7 +5313,7 @@ fn fold_trigger_binop(op, lh, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}
   _ => acc,
 }
 
-fn collect_fold_tys_list(stmts, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) with LookupTy + EnvRead + Memory + Alloc + WASI + GraphRead = if len(stmts) == 0 {
+fn collect_fold_tys_list(stmts, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = if len(stmts) == 0 {
   acc
 } else {
   collect_fold_tys_list(drop_last(stmts), collect_fold_tys_expr(last(stmts), acc))
@@ -5334,7 +5330,7 @@ fn collect_fold_tys_arms_from(arms, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show:
   }
 }
 
-fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) with LookupTy + EnvRead + Alloc + Memory + WASI + GraphRead = match expr {
+fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = match expr {
   LShow(_h, x) => collect_fold_tys_expr(x, fold_acc_show(acc, x)),
   LHash(_h, x) => collect_fold_tys_expr(x, fold_acc_hash(acc, x)),
   LCall(_h, f, args) => collect_fold_tys_expr(f, collect_fold_tys_list(args, acc)),
@@ -5375,7 +5371,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
 
 // The one dedup walk: emit each distinct fold_sig's helper ONCE, the leaf
 // generator selected by the op.
-fn emit_distinct_fold_leaves(op, tys, seen) with EnvRead + Alloc + Memory + WasmOut + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic + EmitSite = if len(tys) == 0 {
+fn emit_distinct_fold_leaves(op, tys, seen) = if len(tys) == 0 {
   ()
 } else {
   let ty = last(tys)
@@ -5395,7 +5391,7 @@ fn emit_distinct_fold_leaves(op, tys, seen) with EnvRead + Alloc + Memory + Wasm
 
 // The four leaves behind the one walk. Emission order (eq, compare, hash,
 // show) preserves the module layout the four separate entry fns produced.
-fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) with EnvRead + Memory + Alloc + WasmOut + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic + EmitSite = {
+fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = {
   // One region over the four leaf families: the closures record lives
   // outside the mark; every generated helper streams as it is built.
   //
@@ -5425,7 +5421,7 @@ fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
 // nested walkers exist transitively); a byte / float / word LIST element
 // keeps its runtime family — the names arrive as values from each
 // walker's own generator, never a mode key.
-fn seq_elem_leaf_callee(prefix: String, rt_byte: String, rt_f64: String, rt_word: String, face) with Memory + Alloc + LookupTy = match face {
+fn seq_elem_leaf_callee(prefix: String, rt_byte: String, rt_f64: String, rt_word: String, face) = match face {
   TList(inner) => match seq_elem_face(inner) {
     TByte => rt_byte,
     TFloat => rt_f64,
@@ -5434,7 +5430,7 @@ fn seq_elem_leaf_callee(prefix: String, rt_byte: String, rt_f64: String, rt_word
   _ => "{prefix}_{fold_sig(face)}",
 }
 
-fn emit_eq_leaf_seq(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
+fn emit_eq_leaf_seq(sig, elem) = {
   wat_emit("  (func $eq_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
@@ -5451,7 +5447,7 @@ fn emit_eq_leaf_seq(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
   emit_eq_seq_body(sig, elem)
 }
 
-fn emit_eq_seq_body(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
+fn emit_eq_seq_body(sig, elem) = {
   let callee = seq_elem_leaf_callee("eq", "str_eq", "list_eq_f64", "list_eq", seq_elem_face(elem))
   wat_emit("  (func $eq_listbody_")
   wat_emit(sig)
@@ -5475,7 +5471,7 @@ fn emit_eq_seq_body(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
 // The 3-way walker mirrors list_compare_loop's protocol exactly:
 // elementwise first-difference; exhaustion decides (both spent → 0,
 // a spent → -1, b spent → 1).
-fn emit_cmp_leaf_seq(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
+fn emit_cmp_leaf_seq(sig, elem) = {
   wat_emit("  (func $compare_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
@@ -5488,7 +5484,7 @@ fn emit_cmp_leaf_seq(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
   emit_cmp_seq_body(sig, elem)
 }
 
-fn emit_cmp_seq_body(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
+fn emit_cmp_seq_body(sig, elem) = {
   let callee = seq_elem_leaf_callee(
     "compare",
     "str_compare",
@@ -5522,7 +5518,7 @@ fn emit_cmp_seq_body(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
 // seeds the basis, each ELEMENT'S OWN HASH replaces the raw word in the
 // xor-then-prime fold, so structural-equal lists hash equal (eq ⇒ hash,
 // the agreement the fold enforces).
-fn emit_hash_leaf_seq(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
+fn emit_hash_leaf_seq(sig, elem) = {
   wat_emit("  (func $hash_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (result i32)")
@@ -5534,7 +5530,7 @@ fn emit_hash_leaf_seq(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
   emit_hash_seq_body(sig, elem)
 }
 
-fn emit_hash_seq_body(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
+fn emit_hash_seq_body(sig, elem) = {
   let callee =
     seq_elem_leaf_callee("hash", "str_hash", "list_hash_f64", "list_hash", seq_elem_face(elem))
   wat_emit("  (func $hash_listbody_")
@@ -5560,7 +5556,7 @@ fn emit_hash_seq_body(sig, elem) with Memory + Alloc + WasmOut + LookupTy = {
 // specs and emits sentinel-guard + tag-compare + per-tag payload recursion;
 // a SEQUENCE-of-struct walks elements through its own recursive body
 // (emit_eq_leaf_seq). One generator per leaf family — divergence is unsayable.
-fn emit_one_eq_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy + GraphRead = match fold_strip(ty) {
+fn emit_one_eq_helper(sig, ty) = match fold_strip(ty) {
   TName(_, _) => emit_eq_leaf_sum(sig, fold_strip(ty)),
   TList(elem) => emit_eq_leaf_seq(sig, elem),
   _ => {
@@ -5593,7 +5589,7 @@ fn emit_one_eq_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupT
 // uniform i32 slots) via emit_field_eq — a sum payload field re-enters this
 // family. Recursive ADTs (Tree) call $eq_nTree again: a runtime call, finite
 // on the value, never inline-infinite. The env's variant specs are read LIVE.
-fn emit_eq_leaf_sum(sig, applied) with EnvRead + Alloc + Memory + WasmOut + LookupTy + GraphRead = {
+fn emit_eq_leaf_sum(sig, applied) = {
   let specs = variant_specs_at(applied)
   wat_emit("  (func $eq_")
   wat_emit(sig)
@@ -5901,7 +5897,7 @@ fn emit_cmp_sign_test(op) = {
 // returning the first non-zero field-compare (else 0); a SUM (TName payload-ADT)
 // compares tags first (sign of the tag difference), then the matched variant's
 // payload fields. One generator, two of the five leaves — divergence unsayable.
-fn emit_one_compare_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy + GraphRead = match fold_strip(ty) {
+fn emit_one_compare_helper(sig, ty) = match fold_strip(ty) {
   TName(_, _) => emit_one_compare_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_cmp_leaf_seq(sig, elem),
   _ => {
@@ -5924,7 +5920,7 @@ fn emit_one_compare_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + Lo
 //     order (declaration order = tag id = sentinel value).
 //   - else both heap records: compare tags (sign of difference); if equal,
 //     descend the matched variant's payload conjunction (first non-zero wins).
-fn emit_one_compare_sum_helper(sig, applied) with EnvRead + Alloc + Memory + WasmOut + LookupTy + GraphRead = {
+fn emit_one_compare_sum_helper(sig, applied) = {
   let specs = variant_specs_at(applied)
   wat_emit("  (func $compare_")
   wat_emit(sig)
@@ -6130,7 +6126,7 @@ fn emit_field_agg_cmp(sig) = {
 // tuple) order — the field set the fold descends. Read live from the proven
 // type (the fields TRecord/TTuple already carry; a tuple's positional elems
 // ARE its product fields). Non-product types have no field set (empty).
-fn product_field_tys(ty) with Memory + Alloc = match fold_strip(ty) {
+fn product_field_tys(ty) = match fold_strip(ty) {
   TRecord(fields) => field_tys_of(fields, 0, len(fields)),
   TRecordOpen(fields, _) => field_tys_of(fields, 0, len(fields)),
   TTuple(elems) => elems,
@@ -6241,7 +6237,7 @@ fn eq_subtys_variants(specs, i, n, seen, acc) = if i >= n {
 // each assembling via FOLDED `(call $str_concat (local.get $__state) <l> <r>)`
 // s-expressions — the value, the field-loads, and the recursive show calls are
 // sub-expressions of the concat tree (correct stack discipline, no interleave).
-fn emit_one_show_helper(sig, ty) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = match fold_strip(ty) {
+fn emit_one_show_helper(sig, ty) = match fold_strip(ty) {
   TName(_, _) => emit_one_show_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_one_show_list_helper(sig, elem),
   _ => emit_one_show_product_helper(sig, ty),
@@ -6262,7 +6258,7 @@ fn emit_show_header(sig) = {
 // structural projection. The fold runs over the canonically-sorted fields at
 // their width-summed offsets (the SAME align_for + repr_width the eq leaf and
 // the store side run — Carried-Truth).
-fn emit_one_show_product_helper(sig, ty) with EnvRead + WasmOut + Memory + Alloc + EmitMemory + GraphRead + LookupTy + SpecTwins + StringTable + WASI + Intern + Diagnostic + EmitSite = {
+fn emit_one_show_product_helper(sig, ty) = {
   emit_show_header(sig)
   let is_record = ty_is_record(fold_strip(ty))
   let open = if is_record { "\{" } else { "(" }
@@ -6290,21 +6286,21 @@ fn ty_is_record(ty) with Pure = match ty {
 // canonical sort order; a tuple's elements as positional ("" names). Read live
 // from the proven type — the SAME field set product_field_tys gives eq, plus
 // the names show prints.
-fn show_named_fields(ty) with Memory + Alloc = match ty {
+fn show_named_fields(ty) = match ty {
   TRecord(fields) => fields,
   TRecordOpen(fields, _) => fields,
   TTuple(elems) => name_positional(elems, 0, len(elems)),
   _ => [],
 }
 
-fn name_positional(elems, i, n) with Alloc + Memory =
+fn name_positional(elems, i, n) =
   if i >= n { [] } else { [("", list_index(elems, i))] ++ name_positional(elems, i + 1, n) }
 
 // Render the field set as a right-nested concat: each field is
 // concat( <name-prefix + ", " sep>, concat( show(field), <rest> ) ). The first
 // field has no leading ", "; a record field is prefixed "name: ". The byte
 // offset is width-summed (align_for + repr_width). Terminates with "" at the end.
-fn emit_show_product_fields(fields, i, off, is_record) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = if i >= len(fields) {
+fn emit_show_product_fields(fields, i, off, is_record) = if i >= len(fields) {
   emit_show_str_literal("")
 } else {
   match list_index(fields, i) {
@@ -6379,7 +6375,7 @@ fn emit_show_field_load(off, r) = {
 // "Ctor(" ++ f0 ++ ", " ++ f1 ++ ")". The variant names + payload types are read
 // LIVE from the env (variant_named_specs_of). A recursive ADT re-enters
 // $show_n<Name> (finite on the value). Mirrors emit_eq_leaf_sum's guard.
-fn emit_one_show_sum_helper(sig, applied) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = {
+fn emit_one_show_sum_helper(sig, applied) = {
   let specs = variant_named_specs_at(applied)
   wat_emit("  (func $show_")
   wat_emit(sig)
@@ -6405,7 +6401,7 @@ fn emit_one_show_sum_helper(sig, applied) with EmitMemory + StringTable + Alloc 
 // ($a in the nullary arm, $ta in the heap arm). A nullary variant renders its
 // bare name; a fielded variant renders "Ctor(" ++ payloads ++ ")". The cascade
 // terminal is "" (the env enumerates every variant; control lands on one arm).
-fn emit_show_sum_tag_dispatch(specs, i, n, scrutinee) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = if i >= n {
+fn emit_show_sum_tag_dispatch(specs, i, n, scrutinee) = if i >= n {
   emit_show_str_literal("")
 } else {
   match list_index(specs, i) {
@@ -6497,7 +6493,7 @@ fn emit_show_variant_load(off, pty) = {
 // LIST show: "[" ++ <element loop, joined by ", "> ++ "]". The element count is
 // runtime (len); $show_listbody_<sig> folds str_concat over list_index(a, i),
 // joining ", ". The element leaf is read from the proven element type.
-fn emit_one_show_list_helper(sig, elem) with EmitMemory + StringTable + Alloc + Memory + GraphRead + EnvRead + SpecTwins + LookupTy + WasmOut + WASI + Intern + Diagnostic + EmitSite = {
+fn emit_one_show_list_helper(sig, elem) = {
   emit_show_header(sig)
   emit_show_concat_open()
   emit_show_str_literal("[")
@@ -6659,7 +6655,7 @@ fn show_subtys_variants(specs, i, n, seen, acc) = if i >= n {
 
 // show_operand_contrib — the arg of a $show_<sig> LCall contributes its
 // aggregate closure. The arg handle carries the proven type (AST-in-graph).
-fn show_operand_contrib(arg, acc) with LookupTy + Alloc + Memory + EnvRead + WASI + GraphRead = {
+fn show_operand_contrib(arg, acc) = {
   let h = lexpr_handle(arg)
   if h == 0 { acc } else { show_subtys(fold_strip(chase_deep(lookup_ty(h))), [], acc) }
 }
@@ -6680,7 +6676,7 @@ fn show_operand_contrib(arg, acc) with LookupTy + Alloc + Memory + EnvRead + WAS
 // canonical offset; a SUM seeds the mix with the tag, then mixes the matched
 // variant's payload. The FNV offset basis (2166136261) and prime (16777619)
 // are the SAME str_hash / hash_source share — one hash family, no divergence.
-fn emit_one_hash_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + LookupTy + GraphRead = match fold_strip(ty) {
+fn emit_one_hash_helper(sig, ty) = match fold_strip(ty) {
   TName(_, _) => emit_one_hash_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_hash_leaf_seq(sig, elem),
   _ => {
@@ -6701,7 +6697,7 @@ fn emit_one_hash_helper(sig, ty) with EnvRead + Memory + WasmOut + Alloc + Looku
 // [tag@0][f0@4]…, so: seed $h with the FNV basis; if the operand is a sentinel
 // (< heap_base) mix the word itself; else mix tag@0, then the matched variant's
 // payload fields. Two structurally-equal ADT values fold identically.
-fn emit_one_hash_sum_helper(sig, applied) with EnvRead + Alloc + Memory + WasmOut + LookupTy + GraphRead = {
+fn emit_one_hash_sum_helper(sig, applied) = {
   let specs = variant_specs_at(applied)
   wat_emit("  (func $hash_")
   wat_emit(sig)
@@ -6834,7 +6830,7 @@ fn emit_field_hash_agg_call(off, sig) = {
   wat_emit(" (local.get $a)))")
 }
 
-fn hash_operand_contrib(arg, acc) with LookupTy + Alloc + Memory + EnvRead + WASI + GraphRead = {
+fn hash_operand_contrib(arg, acc) = {
   let h = lexpr_handle(arg)
   if h == 0 { acc } else { eq_subtys(fold_strip(chase_deep(lookup_ty(h))), [], acc) }
 }

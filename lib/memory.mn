@@ -239,7 +239,7 @@ effect ImageAlloc {
 // failed to the assembler would say so loudly (two definitions of one
 // symbol). The same constraint cost a whole build the day the reification
 // landed; it is not a hedge, it is the ladder having two rungs.
-fn world_declaring_from(n, target, slot) with Memory = if n == 0 {
+fn world_declaring_from(n, target, slot) = if n == 0 {
   0
 } else if load_i32(n) == target && node_arm_at(n, slot) != 0 {
   n
@@ -247,14 +247,14 @@ fn world_declaring_from(n, target, slot) with Memory = if n == 0 {
   world_declaring_from(load_i32(n + 8), target, slot)
 }
 
-fn node_arm_at(n, slot) with Memory = {
+fn node_arm_at(n, slot) = {
   let entry = load_i32(n + 4)
   let record = load_i32(entry)
   let base = load_i32(entry + 4)
   load_i32(record + 8 + 4 * load_i32(record + 4) + 4 * (base + slot))
 }
 
-fn ev_declaring_node(top, target, slot) with Memory = match world_declaring_from(top, target, slot) {
+fn ev_declaring_node(top, target, slot) = match world_declaring_from(top, target, slot) {
   0 => {
     store_i32(0, target)
     load_i32(0 - 1)

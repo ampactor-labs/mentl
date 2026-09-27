@@ -38,26 +38,26 @@
 // pointing into freed memory (a rebuilt bucket would be minted in the
 // region and die with it). The former prepend-and-scan-forward form had no
 // pop and no way to grow one without that hazard.
-fn wmap_new(n) with Memory + Alloc = list_filled(n, [])
+fn wmap_new(n) = list_filled(n, [])
 
 // The key is pinned `Int` at every entry: the primitive's own law is that
 // the key IS a word, and the pin is what makes the bucket's key compare a
 // proven word compare rather than an address compare over the erased
 // tuple (T_EqTypeUnprovable's class — the collect walk entered the wheel's
 // count the day it gained a caller).
-fn wmap_bucket(ref idx, k: Int) with Memory = i32_and(k, len(idx) - 1)
+fn wmap_bucket(ref idx, k: Int) = i32_and(k, len(idx) - 1)
 
-fn wmap_add(idx, k: Int, val) with Memory + Alloc = {
+fn wmap_add(idx, k: Int, val) = {
   let b = wmap_bucket(idx, k)
   list_set(idx, b, push(list_index(idx, b), (k, val)))
 }
 
-fn wmap_get(ref idx, k: Int) with Memory + Alloc = {
+fn wmap_get(ref idx, k: Int) = {
   let bucket = list_index(idx, wmap_bucket(idx, k))
   wmap_bucket_scan(bucket, k, len(bucket) - 1)
 }
 
-fn wmap_bucket_scan(ref bucket, k: Int, i) with Memory + Alloc = if i < 0 {
+fn wmap_bucket_scan(ref bucket, k: Int, i) = if i < 0 {
   None
 } else {
   match list_index(bucket, i) {
@@ -74,12 +74,12 @@ let wmap_none = []
 
 // The MULTI-map read — every value entered under K, newest first,
 // collected in one bucket scan: O(bucket), never O(map).
-fn wmap_get_all(ref idx, k: Int) with Memory + Alloc = {
+fn wmap_get_all(ref idx, k: Int) = {
   let bucket = list_index(idx, wmap_bucket(idx, k))
   wmap_bucket_collect(bucket, k, len(bucket) - 1, wmap_none)
 }
 
-fn wmap_bucket_collect(ref bucket, k: Int, i, acc) with Memory + Alloc = if i < 0 {
+fn wmap_bucket_collect(ref bucket, k: Int, i, acc) = if i < 0 {
   acc
 } else {
   match list_index(bucket, i) {
@@ -92,7 +92,7 @@ fn wmap_bucket_collect(ref bucket, k: Int, i, acc) with Memory + Alloc = if i < 
 // that landed in the bucket after K's was undone first and the bucket's
 // last entry is K's — a different key here is a trail out of order, and
 // it traps rather than silently dropping someone else's entry.
-fn wmap_pop(idx, k: Int) with Memory + Alloc = {
+fn wmap_pop(idx, k: Int) = {
   let b = wmap_bucket(idx, k)
   let bucket = list_index(idx, b)
   match last(bucket) {
@@ -102,11 +102,11 @@ fn wmap_pop(idx, k: Int) with Memory + Alloc = {
 }
 
 // ─── smap: the String projection ─────────────────────────────────────────
-fn smap_new() with Memory + Alloc = list_filled(4096, [])
+fn smap_new() = list_filled(4096, [])
 
-fn smap_build(pairs) with Memory + Alloc = smap_build_from(pairs, len(pairs) - 1, smap_new())
+fn smap_build(pairs) = smap_build_from(pairs, len(pairs) - 1, smap_new())
 
-fn smap_build_from(pairs, i, idx) with Memory + Alloc = if i < 0 {
+fn smap_build_from(pairs, i, idx) = if i < 0 {
   idx
 } else {
   match list_index(pairs, i) {
@@ -114,17 +114,17 @@ fn smap_build_from(pairs, i, idx) with Memory + Alloc = if i < 0 {
   }
 }
 
-fn smap_add(idx, name: String, val) with Memory + Alloc = {
+fn smap_add(idx, name: String, val) = {
   let b = i32_and(str_hash(name), 4095)
   list_set(idx, b, [(name, val)] ++ list_index(idx, b))
 }
 
-fn smap_get(ref idx, name: String) with Memory + Alloc = {
+fn smap_get(ref idx, name: String) = {
   let b = i32_and(str_hash(name), 4095)
   smap_bucket_scan(list_index(idx, b), name, 0)
 }
 
-fn smap_bucket_scan(ref bucket, name: String, i) with Memory + Alloc = if i >= len(bucket) {
+fn smap_bucket_scan(ref bucket, name: String, i) = if i >= len(bucket) {
   None
 } else {
   match list_index(bucket, i) {
@@ -136,12 +136,12 @@ fn smap_bucket_scan(ref bucket, name: String, i) with Memory + Alloc = if i >= l
 // (add prepends). The reverse-edge column's read face: N smap_add calls
 // per name are N bucket entries, and this collects them all in one
 // bucket scan — O(bucket), never O(map).
-fn smap_get_all(ref idx, name: String) with Memory + Alloc = {
+fn smap_get_all(ref idx, name: String) = {
   let b = i32_and(str_hash(name), 4095)
   smap_bucket_collect(list_index(idx, b), name, 0, [])
 }
 
-fn smap_bucket_collect(ref bucket, name: String, i, acc) with Memory + Alloc = if i >= len(bucket) {
+fn smap_bucket_collect(ref bucket, name: String, i, acc) = if i >= len(bucket) {
   acc
 } else {
   match list_index(bucket, i) {

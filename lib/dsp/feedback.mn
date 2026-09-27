@@ -103,7 +103,7 @@ fn compute_alpha(cutoff: Hz, sr: Int) -> Float with Pure + !Alloc = {
 //
 // Primitive #3 (`<~`) drawn; primitive #5 (own input consumed);
 // primitive #6 (Sample / Hz refinements discharged at boundaries).
-fn lowpass_iir(input: Sample, cutoff: Hz, sr: Int) -> Sample with Memory + Alloc = {
+fn lowpass_iir(input: Sample, cutoff: Hz, sr: Int) -> Sample = {
   let alpha = compute_alpha(cutoff, sr)
   ((prev) => input * alpha + (1.0 - alpha) * prev) <~ delay(1)
 }
@@ -111,7 +111,7 @@ fn lowpass_iir(input: Sample, cutoff: Hz, sr: Int) -> Sample with Memory + Alloc
 // One-pole high-pass IIR filter — HP = signal - LP. The prior output
 // y[n-1] is the smoothed (low-pass) component; subtracting it from the
 // input leaves the high-frequency residue. Same `<~ delay(1)` substrate.
-fn highpass_iir(input: Sample, cutoff: Hz, sr: Int) -> Sample with Memory + Alloc = {
+fn highpass_iir(input: Sample, cutoff: Hz, sr: Int) -> Sample = {
   let alpha = compute_alpha(cutoff, sr)
   ((prev) => input - (alpha * input + (1.0 - alpha) * prev)) <~ delay(1)
 }
@@ -120,14 +120,13 @@ fn highpass_iir(input: Sample, cutoff: Hz, sr: Int) -> Sample with Memory + Allo
 // pole R near unity. Removes DC bias at the signal-chain entry. Here
 // prev is the prior OUTPUT y[n-1]; the standard form folds the input
 // difference into the recurrence with R = 0.995.
-fn dc_blocker(input: Sample) -> Sample with Sample + Memory + Alloc =
-  ((prev) => input + 0.995 * prev) <~ delay(1)
+fn dc_blocker(input: Sample) -> Sample = ((prev) => input + 0.995 * prev) <~ delay(1)
 
 // Envelope follower — tracks signal magnitude. The envelope persists
 // across ticks via `<~ delay(1)`; each sample relaxes the prior
 // envelope toward the current magnitude: env[n] = α·|x[n]| + (1-α)·env[n-1].
 // Refinement keeps attack + release as positive Hz values.
-fn envelope_follower(input: Sample, attack: Hz, release: Hz, sr: Int) -> Sample with Memory + Alloc = {
+fn envelope_follower(input: Sample, attack: Hz, release: Hz, sr: Int) -> Sample = {
   let abs_input = if input >= 0.0 { input } else { 0.0 - input }
   let alpha = compute_alpha(attack, sr)
   ((prev) => abs_input * alpha + (1.0 - alpha) * prev) <~ delay(1)
@@ -140,7 +139,7 @@ fn envelope_follower(input: Sample, attack: Hz, release: Hz, sr: Int) -> Sample 
 // `<~ delay(1)`'s state-machine emission. The row carries the
 // constructor charge through its callees; the allocation-free claim
 // rides Hβ.dsp.state-element-install-once with theirs.
-fn audio_chain(input: Sample, cutoff: Hz, sr: Int) -> Sample with Sample + Memory + Alloc =
+fn audio_chain(input: Sample, cutoff: Hz, sr: Int) -> Sample =
   input |> dc_blocker |> ((x) => lowpass_iir(x, cutoff, sr)) |> soft_clip
 
 // ─── Parallel topology: a stereo chain (the §5.U PARALLEL DSP demo) ───
@@ -160,7 +159,7 @@ fn audio_chain(input: Sample, cutoff: Hz, sr: Int) -> Sample with Sample + Memor
 // precision and JAX's trace-baked schedule) stands unchanged. Install
 // `~> parallel_compose` (lib/threading.mn) at the call site for
 // true-parallel stereo.
-fn stereo_chain(left: Sample, right: Sample, cutoff: Hz, sr: Int) -> (Sample, Sample) with Sample + Memory + Alloc =
+fn stereo_chain(left: Sample, right: Sample, cutoff: Hz, sr: Int) -> (Sample, Sample) =
   left |> dc_blocker |> ((x) => audio_chain(x, cutoff, sr)) >< right |> dc_blocker |> ((x) => audio_chain(x, cutoff, sr))
 
 // ─── Peer sub-handles (named per drift mode 9 — deferred-by-omission) ─

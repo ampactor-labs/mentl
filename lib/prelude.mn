@@ -126,14 +126,14 @@ effect Iterate {
 // the Iterate instance args died exactly there, orphaning every
 // fold-family element.  Source order kills this instance; the class
 // (order-independent verdicts) is the named peer in PLAN.
-fn iterate_from(xs, i, n) with Memory + Iterate = if i < n {
+fn iterate_from(xs, i, n) = if i < n {
   yield(xs[i])
   iterate_from(xs, i + 1, n)
 } else {
   ()
 }
 
-fn iterate(xs) with Iterate + Alloc + Memory = iterate_from(list_to_flat(xs), 0, len(xs))
+fn iterate(xs) = iterate_from(list_to_flat(xs), 0, len(xs))
 
 // ─── Collection Operations (single fused handlers on Iterate) ────────
 // One handler per `~>` install: transform + materialize fused into
@@ -331,7 +331,7 @@ fn reduce(xs, f) = fold(head(xs), f, rest(xs))
 // under thousands of compile frames and sat ~1,000 fns from that death
 // (found 2026-08-07 by the total-twinning forensics; mn-zip-deep pins
 // 200,000 on a fresh stack).  Declared callee-first (iterate_from's law).
-fn zip_with_fill(f, xs, ys, buf, i, n) with Memory =
+fn zip_with_fill(f, xs, ys, buf, i, n) =
   if i < n { zip_with_fill(f, xs, ys, list_set(buf, i, f(xs[i], ys[i])), i + 1, n) } else { buf }
 
 fn zip_with(f, xs, ys) = {

@@ -41,7 +41,7 @@ fn is_whitespace(b) with Pure = b == 32 || b == 9 || b == 13
 //
 // Keyword classification — returns `Some(TokenKind)` if `word` is a
 // reserved keyword; `None` otherwise (caller emits `TIdent(word)`).
-fn keyword_kind(ref word) with Memory + Alloc = if word == "fn" {
+fn keyword_kind(ref word) = if word == "fn" {
   Some(TFn)
 } else if word == "let" {
   Some(TLet)
@@ -86,7 +86,7 @@ else if word == "Pure" {
 // no string comparison.
 //
 // ==
-fn two_char_kind(a, b) with Memory + Alloc = if a == 61 && b == 61 {
+fn two_char_kind(a, b) = if a == 61 && b == 61 {
   Some(TEqEq)
 }
 // !=
@@ -150,7 +150,7 @@ else if a == 63 && b == 63 {
 
 // Returns `Some(TokenKind)` if `b` is a recognized punctuation byte,
 // `None` otherwise (caller skips the character).
-fn single_char_kind(b) with Memory + Alloc = if b == 40 {
+fn single_char_kind(b) = if b == 40 {
   Some(TLParen)
 } else if b == 41 {
   Some(TRParen)

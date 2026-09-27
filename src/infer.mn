@@ -2899,8 +2899,30 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
     } else {
       None
     }
-    match ground {
-      Some(g) => if row_subsumes(declared_row, g) { () } else { report(TOverDeclared(declared_row, g, name, span)) },
+    // THE TEACHING READS THE POSITIVE HALF ONLY (A4, 2026-09-27). A
+    // negation is a proof claim, never an inventory, and comparing the
+    // whole declared row narrated `!Mutate + Any` as "over-declared"
+    // against a Pure body — false at every negation-only signature, which
+    // is the normal signature once the positive row is inferred. So the
+    // bare declared names are judged alone: beyond the proven row they are
+    // over-declared; within it they are an inventory (the projected row
+    // written by hand); absent, there is nothing to teach.
+    match declared_bare_row(declared_row) {
+      Some(bare) => match ground {
+        Some(g) => if row_subsumes(bare, g) {
+          report(TRowInventory(declared_row, g, name, span))
+        } else {
+          report(TOverDeclared(declared_row, g, name, span))
+        },
+        None => // An OPEN body row (a callback's row rides its tail): the bare
+        // positive names are a CAP on what the callbacks may perform — and
+        // a positive cap installs no gate today (`declared_gate` below: a
+        // positive row alone installs nothing), so the clause constrains
+        // nothing and re-states the row inference projects. Narrated as the
+        // inventory it is; when positive caps become gates (A3-pos) this arm
+        // is where the cap starts to mean something and stops narrating.
+        report(TRowInventory(declared_row, body_row, name, span)),
+      },
       None => (),
     }
   } else if has_pure {
@@ -2912,6 +2934,17 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
     Some(g) => gate_terminals(g, body_row, row_handle, span),
     None => (),
   }
+}
+
+// The declared row's bare positive names as a closed row of their own —
+// what an inventory or an over-declaration is made of. Instance pins
+// (`Sample(44100)`) are decisions and stay out of it; so do negations.
+// None when the clause authors no bare positive name.
+fn declared_bare_row(declared_row) = match declared_row {
+  EfRow(p, _, _) => {
+    let bare = filter({ ENamed(_) => true, _ => false }, p)
+    if len(bare) == 0 { None } else { Some(EfRow(bare, [], EtClosed)) }
+  },
 }
 
 // The gate a declaration installs: its empty closed cap, its negation, or
@@ -4143,7 +4176,7 @@ fn fn_arg_directional_positions(dps, arg_handles, span: ValidSpan, i) = if i >= 
 // A declared param row is a CAP exactly when its tail is concrete —
 // EtClosed (`with Tick`) or EtAll (`with !WASI`); an open tail is the
 // polymorphic flow channel. Bound edges resolve through the chase.
-fn row_cap_form(row) with GraphRead + Memory + Alloc + WASI = match chase_row_deep(row, 0) {
+fn row_cap_form(row) = match chase_row_deep(row, 0) {
   EfRow(_, _, EtClosed) => true,
   EfRow(_, _, EtAll) => true,
   _ => false,
@@ -4180,7 +4213,7 @@ fn masked_params_walk(ref handles, ref masked, i) = if i >= len(handles) {
   [slot] ++ masked_params_walk(handles, masked, i + 1)
 }
 
-fn int_in(ref xs, target, i) with Memory = if i >= len(xs) {
+fn int_in(ref xs, target, i) = if i >= len(xs) {
   false
 } else {
   if list_index(xs, i) == target { true } else { int_in(xs, target, i + 1) }
@@ -4251,7 +4284,7 @@ fn report_owns_across(ref owns, ref frees, span: ValidSpan) = each(
 // The message's one mint, String-pinned (spec_mangle's law — the each
 // lambda judges datum-last while the name is still free; the pin
 // anchors at the named call, unconsumed_msg's twin).
-fn across_replay_msg(name: String) with Memory + Alloc =
+fn across_replay_msg(name: String) =
   "'{name}' is an open own captured across a replay boundary — a resumed run consumes it again; finish it before the persist, or move its whole lifetime inside the thunk"
 
 fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
@@ -5961,12 +5994,12 @@ fn arity_mismatch(la, lb, span: ValidSpan) = report(EFnArityMismatch(la, lb, spa
 // for value-boundary folds, not a mid-judgment probe). An unbound or
 // non-tuple root answers TUnit here, which no tuple arm matches — the
 // caller falls to the generic force.
-fn index_receiver_shallow(rh) with GraphRead = match graph_chase(rh) {
+fn index_receiver_shallow(rh) = match graph_chase(rh) {
   GNode(NBound(rty), _) => fold_strip(rty),
   _ => TUnit,
 }
 
-fn infer_index_force(rh, handle, span: ValidSpan) with FreshHandle + GraphWrite + GraphRead + Memory + Alloc + Cast + Diagnostic + Intern + EnvRead + WASI + InferCtx = {
+fn infer_index_force(rh, handle, span: ValidSpan) = {
   let elem_h = mint(Inferred("subscript element"))
   let exp_r = mint(Inferred("subscript receiver"))
   graph_bind(exp_r, TList(TVar(elem_h)), Located(span, Inferred("subscript receiver")))
@@ -6775,7 +6808,7 @@ fn judgment_pair(b) = match b {
 // crossing it IS the cycle, reported once with the shape in hand.
 fn chase_deep(ty) = chase_deep_at(ty, 0)
 
-fn chase_probe_tag(ty) with Memory + Alloc = match ty {
+fn chase_probe_tag(ty) = match ty {
   TVar(h) => "TVar({int_to_str(h)})",
   TFun(ps, _, _) => "TFun/{int_to_str(len(ps))}",
   TList(_) => "TList",
@@ -7956,8 +7989,7 @@ fn qmap_find(qmap, name: String) = if len(qmap) == 0 {
 // literal, and the real-time `!Alloc` teaching unsound against them.
 // Presents, no edges (values — freshness moot); nullary tags and the
 // tuple-const READ charge nothing (immediate words, no allocation).
-fn construction_row() with Memory + Alloc + Intern =
-  mk_ef_closed([ENamed(intern_str("Memory")), ENamed(intern_str("Alloc"))])
+fn construction_row() = mk_ef_closed([ENamed(intern_str("Memory")), ENamed(intern_str("Alloc"))])
 
 fn register_one_variant(type_name: String, result_ty, qhandles, field_types, variant, tag_id, total) = match variant {
   (ctor_name, _, _) => {
@@ -8976,10 +9008,9 @@ fn grade_fields(fields) = if len(fields) == 0 {
 // primitive-type-special-case for refinement); 8 (Predicate is the
 // ADT — no string-keyed pred-name flag); 9 (every NarrowingSite
 // NExpr arm enumerated; no wildcard fabricating ()).
-fn infer_refinement_narrowing(body) with GraphRead + GraphWrite + Memory + Alloc =
-  walk_refinement(body, PTrue)
+fn infer_refinement_narrowing(body) = walk_refinement(body, PTrue)
 
-fn walk_refinement(node, path_pred) with Memory + Alloc = match node {
+fn walk_refinement(node, path_pred) = match node {
   N(body, _, _) => match body {
     NExpr(IfExpr(c, t, e)) => {
       let cond_pred = predicate_of_bool_expr(c)
@@ -9075,7 +9106,7 @@ fn walk_refinement(node, path_pred) with Memory + Alloc = match node {
 // before walking the arm body. The narrowing is per-arm-scope; once
 // the arm body is walked, its refinement contributions don't leak
 // to other arms (they're branch-disjoint; map-per-arm semantics).
-fn walk_refinement_arms(scrut, arms, path_pred) with Memory + Alloc = if len(arms) == 0 {
+fn walk_refinement_arms(scrut, arms, path_pred) = if len(arms) == 0 {
   ()
 } else {
   // A match arm is a (pat, body) TUPLE (parser push_node (pat, body); the
@@ -9095,7 +9126,7 @@ fn walk_refinement_arms(scrut, arms, path_pred) with Memory + Alloc = if len(arm
 // rest of the block. Threads path_pred through; each assert
 // A fanout's branches walk under the SAME path predicate — parallel
 // peers, no sequential strengthening between them.
-fn walk_refinement_branches(branches, path_pred) with Memory + Alloc = if len(branches) == 0 {
+fn walk_refinement_branches(branches, path_pred) = if len(branches) == 0 {
   ()
 } else {
   walk_refinement(last(branches), path_pred)
@@ -9103,7 +9134,7 @@ fn walk_refinement_branches(branches, path_pred) with Memory + Alloc = if len(br
 }
 
 // strengthens the predicate for subsequent stmts + final expression.
-fn walk_refinement_block(stmts, final, path_pred) with Memory + Alloc = if len(stmts) == 0 {
+fn walk_refinement_block(stmts, final, path_pred) = if len(stmts) == 0 {
   walk_refinement(final, path_pred)
 } else {
   let stmt = last(stmts)
@@ -9112,7 +9143,7 @@ fn walk_refinement_block(stmts, final, path_pred) with Memory + Alloc = if len(s
   walk_refinement_block(drop_last(stmts), final, strengthened)
 }
 
-fn strengthen_path_pred(path_pred, stmt) with Memory + Alloc = match stmt {
+fn strengthen_path_pred(path_pred, stmt) = match stmt {
   N(body, _, _) => match body {
     NStmt(ExprStmt(e)) => match e {
       N(ebody, _, _) => match ebody {
@@ -9133,17 +9164,16 @@ fn strengthen_path_pred(path_pred, stmt) with Memory + Alloc = match stmt {
 // inference doesn't add the predicate to the caller's path_pred (the
 // callee's body is independently walked); the relationship surfaces
 // via signature unification at call site.
-fn walk_refinement_args_with_param_preds(f, args, path_pred) with GraphRead + GraphWrite + Memory + Alloc =
-  walk_refinement_list(args, path_pred)
+fn walk_refinement_args_with_param_preds(f, args, path_pred) = walk_refinement_list(args, path_pred)
 
-fn walk_refinement_list(nodes, path_pred) with Memory + Alloc = if len(nodes) == 0 {
+fn walk_refinement_list(nodes, path_pred) = if len(nodes) == 0 {
   ()
 } else {
   walk_refinement(last(nodes), path_pred)
   walk_refinement_list(drop_last(nodes), path_pred)
 }
 
-fn walk_refinement_fields(fields, path_pred) with Memory + Alloc = if len(fields) == 0 {
+fn walk_refinement_fields(fields, path_pred) = if len(fields) == 0 {
   ()
 } else {
   // A record-literal field is a (name, value) TUPLE (types.mn
@@ -9184,7 +9214,7 @@ fn is_assert_call(callee) with Pure = match callee {
   },
 }
 
-fn predicate_of_assert_arg(args) with Memory + Alloc =
+fn predicate_of_assert_arg(args) =
   if len(args) == 0 { PTrue } else { predicate_of_bool_expr(last(args)) }
 
 // Config is [TParam] (the fn-param carrier): the graph-registered var is

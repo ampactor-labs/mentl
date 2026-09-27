@@ -244,7 +244,7 @@ fn mentl_edit_session(entry_module) = match driver_entry_with_ranges(entry_modul
 // because a caret could only be expressed in that one coordinate space. Spans
 // are local from birth now, so the answer is the constant it always meant and
 // the search had nothing to find that the file did not already say.
-fn entry_start_caret() with Memory + Alloc =
+fn entry_start_caret() =
   Caret(0, Located(Span(1, 1, 1, 1), Inferred("mentl edit session start — at the entry")))
 
 // ─── space_run — the ide, served by the wheel (`mentl space`)
@@ -256,7 +256,7 @@ fn entry_start_caret() with Memory + Alloc =
 // The host preopens the repo dir and the listener
 // (-S tcplisten=127.0.0.1:7378 — the install shim's space seam);
 // find_listener reads the preopen table, so the fd never lives in source.
-fn space_mime_for(path: String) with Memory + Alloc = if ends_with(path, ".html") {
+fn space_mime_for(path: String) = if ends_with(path, ".html") {
   "text/html; charset=utf-8"
 } else if ends_with(path, ".wasm") {
   "application/wasm"
@@ -285,7 +285,7 @@ fn space_mime_for(path: String) with Memory + Alloc = if ends_with(path, ".html"
 // One read is the whole request for the GETs a static IDE makes. The bytes
 // materialize as a proper [count][tag][bytes@+8] String record (bytes_buf +
 // str_of_buf — io.mn's fd_read_all form).
-fn space_read_request(conn) with Memory + Alloc + WASI = {
+fn space_read_request(conn) = {
   let cap = 65536
   let buf = alloc(cap)
   let n = sock_read(conn, buf, cap)
@@ -297,7 +297,7 @@ fn space_read_request(conn) with Memory + Alloc + WASI = {
 
 // The request line's path: bytes between the first two spaces, query
 // stripped. Empty on a malformed line (the caller 400s).
-fn space_request_path(req: String) with Memory + Alloc = {
+fn space_request_path(req: String) = {
   let n = byte_len(req)
   let sp1 = find_char(req, n, 0, 32)
   if sp1 < 0 {
@@ -317,14 +317,14 @@ fn space_request_path(req: String) with Memory + Alloc = {
 
 // Routing: "/" and any directory path serve its index.html; the leading
 // slash strips (fs paths are preopen-relative); ".." refuses.
-fn space_route(path: String) with Memory + Alloc = if path == "" || path == "/" {
+fn space_route(path: String) = if path == "" || path == "/" {
   "ide/index.html"
 } else {
   let full = if ends_with(path, "/") { str_concat(path, "index.html") } else { path }
   str_slice(full, 1, byte_len(full))
 }
 
-fn space_respond(conn, code_line: String, mime: String, body: String) with Memory + Alloc + WASI = {
+fn space_respond(conn, code_line: String, mime: String, body: String) = {
   let len_s = int_to_str(byte_len(body))
   // ONE line, escapes only — a string literal is CONTENT and the layout
   // engine must never reflow inside the quotes: the fmt pass split this
@@ -339,7 +339,7 @@ fn space_respond(conn, code_line: String, mime: String, body: String) with Memor
   ()
 }
 
-fn space_conn(conn) with Memory + Alloc + WASI + Filesystem = {
+fn space_conn(conn) = {
   let req = space_read_request(conn)
   let path = space_request_path(req)
   if byte_len(path) == 0 {
@@ -362,12 +362,12 @@ fn space_conn(conn) with Memory + Alloc + WASI + Filesystem = {
 
 // The accept loop — constant stack forever (the tail form carrying its
 // own server).
-fn space_loop(lfd) with Memory + Alloc + WASI + Filesystem = {
+fn space_loop(lfd) = {
   space_conn(sock_accept_blocking(lfd))
   space_loop(lfd)
 }
 
-fn space_run() with Memory + Alloc + WASI = {
+fn space_run() = {
   let lfd = find_listener()
   if lfd < 0 {
     // drift-audit: ignore — the flagged keyword is inside the teaching string (a quoted shell invocation), not control flow
@@ -596,7 +596,7 @@ fn fmt_run(target) = {
 // nowhere in the render's lex prints with its line number — the report
 // that retired the external diff for good (up to eight, the shape is
 // what matters).
-fn print_lost_comments(ref src_toks, ref out_toks, i, shown) with WASI + Memory + Alloc = if i >= len(src_toks) || shown >= 8 {
+fn print_lost_comments(ref src_toks, ref out_toks, i, shown) = if i >= len(src_toks) || shown >= 8 {
   ()
 } else {
   match token_kind(src_toks[i]) {
@@ -610,7 +610,7 @@ fn print_lost_comments(ref src_toks, ref out_toks, i, shown) with WASI + Memory 
   }
 }
 
-fn comment_text_present(ref toks, t: String, i) -> Bool with Memory = if i >= len(toks) {
+fn comment_text_present(ref toks, t: String, i) -> Bool = if i >= len(toks) {
   false
 } else {
   match token_kind(toks[i]) {
@@ -621,7 +621,7 @@ fn comment_text_present(ref toks, t: String, i) -> Bool with Memory = if i >= le
 
 // One TComment token per authored prose line — the lexical census the
 // fmt conservation gate reads on both sides of the round trip.
-fn count_comment_tokens(ref tokens, i, acc) with Memory = if i >= len(tokens) {
+fn count_comment_tokens(ref tokens, i, acc) = if i >= len(tokens) {
   acc
 } else {
   match token_kind(tokens[i]) {
@@ -654,77 +654,23 @@ fn tighten_run(target_opt) = {
   infer_context(() => match driver_entry_with_ranges(entry_module) {
     (_ast, ranges) => {
       let cands = tightenables()
-      let authorable = filter({ (_, used, _, _, _) => row_is_authorable(used) }, cands)
-      if len(authorable) == 0 {
-        print_string("mentl tighten: nothing to tighten ({int_to_str(len(cands))} over-declared, none authorable)\n")
+      if len(cands) == 0 {
+        print_string("mentl tighten: nothing to tighten — no declared row is an inventory or over-declared\n")
         0
       } else {
         // Batch-apply: every proposal was computed against the CURRENT
-        // (wider) declarations, so a batch member's row is never too
-        // narrow — at worst it leaves slack a tightened callee exposes,
-        // which the NEXT run's re-judgment catches (the ratchet
-        // converges). Per file, patch bottom-up so line offsets hold.
-        let n = apply_tightenings(authorable)
-        print_string("tighten: {int_to_str(n)} of {int_to_str(len(authorable))} authorable applied — the medium authored these; verify with a fresh check + the gates\n")
+        // declarations, and the patch is the clause's RESIDUE — the
+        // negations and instance pins the judgment cannot infer (A4,
+        // 2026-09-27) — so a batch member never narrows below what the body
+        // proves: the positive row it drops is projected, not lost, and
+        // nothing authored is ever a row the parser cannot read back. Per
+        // file, patch bottom-up so line offsets hold.
+        let n = apply_tightenings(cands)
+        print_string("tighten: {int_to_str(n)} of {int_to_str(len(cands))} applied — the medium authored these; verify with a fresh check + the gates\n")
         if n > 0 { 0 } else { 1 }
       }
     },
   } ~> tighten_collector ~> wasi_filesystem ~> mentl_default)
-}
-
-// Authorable = the proven row RENDERS AS SOURCE THE PARSER READS BACK. A
-// self-authoring verb has exactly one soundness property, and this is it:
-// author nothing you cannot re-parse.
-//
-// Two ways a proven row fails that. An OPEN tail renders as edge handles,
-// which no signature can name. And a TYPE-PARAMETERIZED instance —
-// `Cast(GNode)`, `Iterate(a)` — renders an effect argument the with-clause
-// grammar does not accept: SYNTAX §«Parameterized effect» takes a VALUE arg
-// (`Sample(44100)`), so a type there re-parses as a constructor pattern.
-//
-// Measured 2026-09-04, and the shape of the failure is worth keeping: a run
-// authored 132 tightenings, of which the type-instance ones turned
-// `with … + Cast` into `with … + Cast(GNode)`, and the wheel then reported
-// 20 × E_ConstructorArity ("constructor Cast takes 0 fields; the pattern
-// binds 1") beside 20 × E_EffectMismatch whose two sides PRINT IDENTICALLY
-// — `Memory + Alloc + Cast(GNode)` against itself. Rows that render the same
-// and compare unequal is exactly what a broken round-trip looks like. The
-// census gate caught it and refused the pin.
-//
-// The instance survives in the graph either way; what is refused is writing
-// it down. Making the surface able to say it is
-// `Hβ.syntax.type-instance-in-with-clause`.
-fn row_is_authorable(ref used) = match used {
-  EfRow(present, absent, t) => match t {
-    EtClosed => every_eff_authorable(present, 0) && every_eff_authorable(absent, 0),
-    EtOpen(_) => false,
-    EtAll => false,
-  },
-}
-
-fn every_eff_authorable(effs, i) = if i >= len(effs) {
-  true
-} else if eff_name_authorable(effs[i]) {
-  every_eff_authorable(effs, i + 1)
-} else {
-  false
-}
-
-// A bare name always writes, and so does Pure (the identity `with Pure`).
-// An instance writes only when every argument does — and a type does not.
-fn eff_name_authorable(name) = match name {
-  ENamed(_) => true,
-  EPure => true,
-  EParameterized(_, args) => every_eff_arg_authorable(args, 0),
-}
-
-fn every_eff_arg_authorable(args, i) = if i >= len(args) {
-  true
-} else {
-  match args[i] {
-    EAType(_) => false,
-    _ => every_eff_arg_authorable(args, i + 1),
-  }
 }
 
 // The batch applier: locate every candidate (drop unmappable spans),
@@ -759,72 +705,46 @@ fn tighten_fold(items: [(String, Int, String, EffRow, EffRow)], i, cur_path, cur
         if byte_len(cur_path) > 0 { fs_write_file(cur_path, cur_text) }
         fs_read_file(path)
       }
-      if !effrow_writable(used) {
-        // The row is TRUE and unwritable: an argument of it has no source
-        // spelling, so the render that serves a reader would enter the file
-        // as a debug handle. Decline the site and say which reason it is.
-        eprint_string("mentl tighten: {name} at {path}:{int_to_str(line1)} — the proven row has an argument with no source spelling; skipped\n")
-        tighten_fold(items, i + 1, path, text0, applied)
-      } else {
-        match patch_with_clause(text0, line1, used) {
-          Some(t2) => {
-            print_string("tighten: {name} ({path}:{int_to_str(line1)})  with {show_effrow(declared)}  →  with {show_effrow(used)}\n")
-            tighten_fold(items, i + 1, path, t2, applied + 1)
-          },
-          None => {
-            eprint_string("mentl tighten: {name} at {path}:{int_to_str(line1)} — no single-line with-clause; skipped\n")
-            tighten_fold(items, i + 1, path, text0, applied)
-          },
-        }
+      match patch_clause_residue(text0, line1, declared) {
+        Some(t2) => {
+          let residue = clause_residue(declared)
+          let wrote =
+            if byte_len(residue) == 0 { "(no clause — the row is projected)" } else { "with {residue}" }
+          print_string("tighten: {name} ({path}:{int_to_str(line1)})  with {show_effrow(declared)}  →  {wrote}\n")
+          tighten_fold(items, i + 1, path, t2, applied + 1)
+        },
+        None => {
+          eprint_string("mentl tighten: {name} at {path}:{int_to_str(line1)} — no single-line with-clause; skipped\n")
+          tighten_fold(items, i + 1, path, text0, applied)
+        },
       }
     },
   }
 }
 
-// CAN THIS ROW BE WRITTEN AS SOURCE? One render serves two consumers whose
-// contracts differ: a PROJECTION for a reader may say "unresolved at epoch
-// e", because that is the honest answer to a human's question, and an
-// AUTHORED PATCH may not, because source is not a place to say "I don't
-// know". Measured 2026-08-18 — `mentl tighten` spliced
-// `Iterate(t42546@e1, t42548@e1)` into lib/prelude.mn and the wheel refused
-// itself with fifteen unresolved-hole errors on those very columns.
-//
-// EANode already learned this discipline AT THE RENDERER (a bare VarRef
-// writes its own name; any other shape takes the honest placeholder, and
-// its comment records the fmt re-parse fixpoint that taught it). EAType
-// never did: a free type variable renders as its debug handle. This is the
-// authoring half — the display half is the sibling peer.
-fn effarg_writable(a) with GraphRead + Memory + Alloc + !Mutate = match a {
-  EAInt(_) => True,
-  EAFloat(_) => True,
-  EAString(_) => True,
-  EAType(t) => len(free_in_ty(t)) == 0,
-  EANode(h) => match graph_node_body(h) {
-    NExpr(VarRef(_)) => True,
-    _ => False,
+// The RESIDUE of an authored clause — what inference cannot say: its
+// negations and its instance pins. Bare positive names are the projected
+// row written by hand (an inventory) and leave. Read from the DECLARED row
+// the judgment folded (negations in the absent set, pins as parameterized
+// presents), never re-parsed from the page; an empty residue means the
+// clause itself goes. Everything rendered here is authored source already,
+// so it re-parses by construction — the old form wrote the PROVEN row,
+// whose type-instances (`Cast(GNode)`) the with-clause grammar cannot
+// read back (measured 2026-09-04: twenty E_ConstructorArity from one run).
+fn clause_residue(ref declared) = match declared {
+  EfRow(p, a, _) => {
+    let pins = map(show_eff_name, filter({ EParameterized(_, _) => true, _ => false }, p))
+    let negs = map({ n => "!{show_eff_name(n)}" }, a)
+    show_list(pins ++ negs, { s => s }, " + ")
   },
-  EAEffect(_) => True,
-  EACon(_) => True,
 }
 
-fn effname_writable(en) with GraphRead + Memory + Alloc + !Mutate = match en {
-  ENamed(_) => True,
-  EPure => True,
-  EParameterized(_, args) => all(effarg_writable, args),
-}
-
-fn effrow_writable(r) with GraphRead + Memory + Alloc + !Mutate = match r {
-  EfRow(present, absent, _) => all(effname_writable, present) && all(effname_writable, absent),
-}
-
-// Rewrite one decl line's with-clause to the proven row. The terminator
-// is the first " = " after the clause — the row text itself contains no
-// " = ", so the match is the head's binder. None = the decl shape is not
-// a single-line with-clause head (never mangle; skip and say so). ONE
-// verdict, one meaning: the row's own writability is the caller's check,
-// because the caller is where the reason is spoken and a `None` carrying
-// two reasons would make the skip line lie about which.
-fn patch_with_clause(ref text, line1, ref used) = {
+// Rewrite one decl line's with-clause to its residue, or delete the
+// clause. The terminator is the first " = " after the clause — the row
+// text itself contains no " = ", so the match is the head's binder. None =
+// the decl shape is not a single-line with-clause head (never mangle; skip
+// and say so).
+fn patch_clause_residue(ref text, line1, ref declared) = {
   let ls = line_start_offset(text, line1)
   let le = line_end_offset(text, ls)
   let line = str_slice(text, ls, le)
@@ -833,12 +753,18 @@ fn patch_with_clause(ref text, line1, ref used) = {
     None
   } else {
     let after = str_slice(line, wi + 6, byte_len(line))
-    let eq = index_of(after, " = ")
+    // The binder is " = " inside the line, or " =" ending it (a body that
+    // starts on the next line) — 157 of the wheel's clauses had the second
+    // shape and the first sweep skipped every one of them.
+    let eq_in = index_of(after, " = ")
+    let eq =
+      if eq_in >= 0 { eq_in } else if ends_with(after, " =") { byte_len(after) - 2 } else { 0 - 1 }
     if eq < 0 {
       None
     } else {
-      let new_line =
-        "{str_slice(line, 0, wi + 6)}{show_effrow(used)}{str_slice(after, eq, byte_len(after))}"
+      let residue = clause_residue(declared)
+      let clause = if byte_len(residue) == 0 { "" } else { " with {residue}" }
+      let new_line = "{str_slice(line, 0, wi)}{clause}{str_slice(after, eq, byte_len(after))}"
       Some("{str_slice(text, 0, ls)}{new_line}{str_slice(text, le, byte_len(text))}")
     }
   }
@@ -1058,7 +984,7 @@ fn check_run(target) = if pipeline_check(target) > 0 { 1 } else { 0 }
 // generation. A stale-only span (a position the edit removed, whose
 // coordinates match nothing current) is the named residue the
 // generation floor retires (the session-epoch face).
-fn field_positions(handles, fstart, nlines) with GraphRead + Memory + Alloc + !Mutate = field_dedup_spans(filter(
+fn field_positions(handles, fstart, nlines) with !Mutate = field_dedup_spans(filter(
   (h) => match caret_span_of_handle(h) {
     Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
   },
@@ -1069,7 +995,7 @@ fn field_positions(handles, fstart, nlines) with GraphRead + Memory + Alloc + !M
 // reshapes a decl changes its extent but not its position, so full
 // span equality missed the generation pair (measured: the tightened
 // decl's shorter head left its ghost standing).
-fn field_dedup_spans(handles) with GraphRead + Memory + Alloc + !Mutate = filter(
+fn field_dedup_spans(handles) with !Mutate = filter(
   (h) => !any((h2) => h2 > h && span_start_eq(caret_span_of_handle(h2), caret_span_of_handle(h)), handles),
   handles
 )
@@ -1092,7 +1018,7 @@ fn span_start_eq(ref a, ref b) with Pure = match a {
 // the representation Intent Boundary at the polymorphic boundary (the
 // CFC precedent) until instantiation carries bound structure across
 // the converged rounds.
-fn field_ranked(handles, caret0) -> [(Float, Handle)] with GraphRead + Memory + Teach + Alloc + !Mutate = reverse(sort(map(
+fn field_ranked(handles, caret0) -> [(Float, Handle)] with !Mutate = reverse(sort(map(
   (h) => match score_one_position(h, caret0) {
     Cursor(_, _, sc) => (sc, h),
   },
@@ -1154,7 +1080,7 @@ fn render_field(target: String, fstart, nlines) = {
 // range, each rendered at its own span with the obligation and its
 // Reason (the Why-walk's edge). Ledger order IS accrual order ≈ source
 // order.
-fn field_pending(debt, fstart, nlines) with Memory + Alloc = filter(
+fn field_pending(debt, fstart, nlines) = filter(
   {
     (_modh, dspan, _, _) => match dspan {
       Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
@@ -1181,7 +1107,7 @@ fn render_pending_tier(pending, target: String, fstart, i) = if i >= len(pending
 // The tightening tier — every T_OverDeclared the judgment banked whose
 // decl sits in the file's range: the declared row, the proven row, and
 // the standing patch invitation (`mentl tighten` authors it).
-fn field_tightenables(cands, fstart, nlines) with Memory + Alloc = filter(
+fn field_tightenables(cands, fstart, nlines) = filter(
   {
     (_, _, _, tspan, _) => match tspan {
       Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
@@ -1209,8 +1135,14 @@ fn render_tighten_tier(tights, target: String, fstart, i) = if i >= len(tights) 
 // (spec_mangle's law): destructured from the candidate tuple the
 // element is free at the splice, and the show floor rendered the fn
 // name as a pointer numeral — the named call anchors the binder.
-fn tighten_line(name: String, declared, used) =
-  "Tighten: {name} declares {show_effrow(declared)} — the body proves {show_effrow(used)}\n"
+fn tighten_line(name: String, declared, used) = match declared_bare_row(declared) {
+  Some(bare) => if row_subsumes(bare, used) {
+    "Tighten: {name} declares {show_effrow(declared)}, which the body proves — the row is projected; author only its negations and pins\n"
+  } else {
+    "Tighten: {name} declares {show_effrow(declared)} — the body proves {show_effrow(used)}\n"
+  },
+  None => "Tighten: {name} declares {show_effrow(declared)} — the body proves {show_effrow(used)}\n",
+}
 
 // ─── at_run — the cursor-address transport (`mentl <file>:L[:C]`)
 //
@@ -1312,7 +1244,7 @@ fn address_project(ranges, target: String, line, col) = match range_of_module(ra
   },
 }
 
-fn span_index_of_snapshot() with GraphRead = match graph_snapshot() {
+fn span_index_of_snapshot() = match graph_snapshot() {
   Graph(_x, spans) => spans,
 }
 
@@ -1332,10 +1264,9 @@ fn span_index_of_snapshot() with GraphRead = match graph_snapshot() {
 // already has its own spelling: `mentl <file>:0`, the ranked field, which
 // takes a different branch entirely. Excluding it lets case (c) do its job
 // and answer with the nearest real node instead.
-fn spans_of_module(spans, mh) with Memory + Alloc + GraphRead =
-  list_to_flat(filter(span_in_module(mh), spans))
+fn spans_of_module(spans, mh) = list_to_flat(filter(span_in_module(mh), spans))
 
-fn span_in_module(mh, e) with GraphRead = match e {
+fn span_in_module(mh, e) = match e {
   (_s, h) => h != mh && graph_module_of(h) == mh,
 }
 
@@ -1347,7 +1278,7 @@ fn span_in_module(mh, e) with GraphRead = match e {
 // concatenation fold, and the fifth machine that fold required. The module is
 // the addressed one and the span is already its own coordinate, so the
 // question the search answered no longer has to be asked.
-fn file_line(ref target: String, ref span) with Memory + Alloc = match span {
+fn file_line(ref target: String, ref span) = match span {
   Span(sl, _, _, _) => "{target}:{int_to_str(sl)}",
 }
 
@@ -1361,7 +1292,7 @@ fn file_line(ref target: String, ref span) with Memory + Alloc = match span {
 //  (b) else the tightest node COVERING the point (a continuation line);
 //  (c) else the nearest node by start line (the no-Module-root top-level
 //      gap — blank lines between decls are ordinary addresses, not errors).
-fn address_resolve(ref spans, gline, col) with Memory + Alloc + GraphRead = match address_case_a(spans, gline, col, 0, len(spans), None) {
+fn address_resolve(ref spans, gline, col) = match address_case_a(spans, gline, col, 0, len(spans), None) {
   Some(pick) => Some(pick),
   None => {
     let point = Span(gline, if col > 0 { col } else { 1 }, gline, if col > 0 { col } else { 1 })
@@ -1372,7 +1303,7 @@ fn address_resolve(ref spans, gline, col) with Memory + Alloc + GraphRead = matc
   },
 }
 
-fn address_case_a(ref spans, gline, col, i, n, best) with Memory + GraphRead + Alloc = if i >= n {
+fn address_case_a(ref spans, gline, col, i, n, best) = if i >= n {
   best
 } else {
   match list_index(spans, i) {
@@ -1397,7 +1328,7 @@ fn address_case_a(ref spans, gline, col, i, n, best) with Memory + GraphRead + A
 // the TIGHTEST node containing the point, so pointing at a `??` reaches
 // the hole node itself (and its Propose facet), never the enclosing decl
 // that also contains the column. Ties break leftward in both modes.
-fn address_better_a(col, best, cand) with Memory + Alloc + GraphRead = match best {
+fn address_better_a(col, best, cand) = match best {
   None => Some(cand),
   Some(b) => match b {
     (bs, bh) => match cand {
@@ -1439,19 +1370,19 @@ fn address_better_a(col, best, cand) with Memory + Alloc + GraphRead = match bes
   },
 }
 
-fn address_bound(h) with GraphRead = match graph_chase(h) {
+fn address_bound(h) = match graph_chase(h) {
   GNode(NBound(_), _) => true,
   _ => false,
 }
 
-fn span_pick_of(ref spans, h) with Memory + Alloc = match find({ (_, eh) => eh == h }, spans) {
+fn span_pick_of(ref spans, h) = match find({ (_, eh) => eh == h }, spans) {
   Some(e) => match e {
     (s, _) => Some((s, h)),
   },
   None => None,
 }
 
-fn address_case_c(ref spans, gline, i, n, best) with Memory + Alloc = if i >= n {
+fn address_case_c(ref spans, gline, i, n, best) = if i >= n {
   best
 } else {
   match list_index(spans, i) {
@@ -1592,7 +1523,7 @@ fn render_at(view, h, pspan, target: String) = match view {
 // themselves). Each arm below reads the declaration's OWN node — the
 // refinement's base and predicate, the alias's target, the handler's
 // effect and arm count — never a re-derivation.
-fn node_query_line(h, kind) with GraphRead + WASI + EnvRead + Memory + Alloc + Intern = match graph_node_body(h) {
+fn node_query_line(h, kind) = match graph_node_body(h) {
   NStmt(FnStmt(name, _, _, _, _)) => match env_lookup(name) {
     Some(entry) => match entry {
       (scheme, _, _) => show_type(judgment_ty(scheme)),
@@ -1630,7 +1561,7 @@ fn node_query_line(h, kind) with GraphRead + WASI + EnvRead + Memory + Alloc + I
 // The addressed line's own text. The containment scan that placed a weave
 // line inside a module range is gone: the module is the one being addressed
 // and the line is its own, so this opens that file and reads that line.
-fn source_slice(ref span, ref target: String) with Filesystem + Memory + Alloc = match span {
+fn source_slice(ref span, ref target: String) = match span {
   Span(sl, sc, el, ec) => {
     let p = driver_module_path(target)
     if fs_exists(p) {
@@ -1654,7 +1585,7 @@ fn source_slice(ref span, ref target: String) with Filesystem + Memory + Alloc =
 }
 
 // Byte offset of the k-th line (0-based) — a forward newline walk.
-fn nth_line_offset(ref text, k, i, line) with Memory = if line >= k {
+fn nth_line_offset(ref text, k, i, line) = if line >= k {
   i
 } else if i >= byte_len(text) {
   i
@@ -1664,7 +1595,7 @@ fn nth_line_offset(ref text, k, i, line) with Memory = if line >= k {
   nth_line_offset(text, k, i + 1, line)
 }
 
-fn line_end_from(ref text, i) with Memory = if i >= byte_len(text) {
+fn line_end_from(ref text, i) = if i >= byte_len(text) {
   i
 } else if byte_at(text, i) == 10 {
   i
@@ -1719,7 +1650,7 @@ fn render_why_deeper(inner, target: String, depth) = match inner {
   _ => print_string(""),
 }
 
-fn reason_phrase(inner) with Memory + GraphRead + Alloc + Intern = match inner {
+fn reason_phrase(inner) = match inner {
   VarLookup(name, _) => "{name} flows in here",
   LetBinding(name, _) => "let {name}",
   Declared(name) => "declared {name}",
@@ -1736,7 +1667,7 @@ fn reason_phrase(inner) with Memory + GraphRead + Alloc + Intern = match inner {
 // The value + comment ledes at a binding hop — both read LIVE from the
 // graph (the let's value node via node_const; the attached comment via
 // the comment weave). Empty strings when the graph carries neither.
-fn binding_ledes(span, inner) with GraphRead + Memory + Alloc = match inner {
+fn binding_ledes(span, inner) = match inner {
   LetBinding(_, _) => {
     let spans = span_index_of_snapshot()
     match address_case_a(spans, span_line_of(span), 0, 0, len(spans), None) {
@@ -1754,7 +1685,7 @@ fn span_line_of(ref s) with Pure = match s {
   Span(sl, _, _, _) => sl,
 }
 
-fn value_lede(sh) with GraphRead + Alloc + Memory = match graph_node_body(sh) {
+fn value_lede(sh) = match graph_node_body(sh) {
   NStmt(LetStmt(_, value, _)) => match value {
     N(_, _, vh) => match node_const(vh) {
       Some(LVInt(n)) => " = {int_to_str(n)}",
@@ -1768,17 +1699,17 @@ fn value_lede(sh) with GraphRead + Alloc + Memory = match graph_node_body(sh) {
   "",
 }
 
-fn comment_lede(sh) with GraphRead + Alloc + Memory = {
+fn comment_lede(sh) = {
   let c = graph_comment_at(sh)
   if byte_len(c) == 0 { "" } else { ", {comment_first_line(c)}" }
 }
 
-fn comment_first_line(ref c) with Memory + Alloc = {
+fn comment_first_line(ref c) = {
   let cut = addr_newline_at(c, 0, byte_len(c))
   if cut < 0 { c } else { str_slice(c, 0, cut) }
 }
 
-fn addr_newline_at(ref s, i, n) with Memory =
+fn addr_newline_at(ref s, i, n) =
   if i >= n { 0 - 1 } else if byte_at(s, i) == 10 { i } else { addr_newline_at(s, i + 1, n) }
 
 // ─── test_run — Test effect handler chain
@@ -1836,7 +1767,7 @@ fn test_check_run(entry_module) =
 // armed refusals gets a FAILC line and NO WAT (the same
 // errors-holes-refusals read executable_gate makes; here the boundary is the
 // batch, so the verdict is a manifest line instead of proc_exit).
-fn battery_libs() -> String with Memory + Alloc + WASI =
+fn battery_libs() -> String =
   fs_read_file_impl("lib/memory.mn") ++ fs_read_file_impl("lib/strings.mn") ++ fs_read_file_impl("lib/lists.mn") ++ fs_read_file_impl("lib/prelude.mn")
 
 // The fixture's own contract, first line — the expectation lives ON the
@@ -1853,7 +1784,7 @@ type Expect = ExpectRun(Int) | ExpectRefuse(String)
 // The micro's own expectation: first line `// expect: N` or
 // `// expect: refuse E_Class`. None = not a battery member (skipped
 // loudly by the manifest consumer).
-fn battery_expect(src) with Memory + Alloc = {
+fn battery_expect(src) = {
   let prefix = "// expect: "
   if byte_len(src) < 12 {
     None
@@ -1869,7 +1800,7 @@ fn battery_expect(src) with Memory + Alloc = {
 }
 
 // The class name: bytes from `start` to the first whitespace/newline.
-fn battery_expect_word(src, start, i) with Memory + Alloc = if i >= byte_len(src) {
+fn battery_expect_word(src, start, i) = if i >= byte_len(src) {
   str_slice(src, start, i)
 } else {
   let b = byte_at(src, i)
@@ -1880,7 +1811,7 @@ fn battery_expect_word(src, start, i) with Memory + Alloc = if i >= byte_len(src
   }
 }
 
-fn battery_expect_digits(src, i, acc) with Memory = if i >= byte_len(src) {
+fn battery_expect_digits(src, i, acc) = if i >= byte_len(src) {
   acc
 } else {
   let b = byte_at(src, i)
@@ -2269,13 +2200,13 @@ fn print_error_and_help(msg) = {
 // user reads can never disagree with the parser that reads them. The bare
 // `mentl` line (the directory projection, not a named verb) frames the list;
 // every verb line is verb_specs()[i] rendered uniformly.
-fn verb_catalog() with Memory + Alloc =
+fn verb_catalog() =
   "the verbs:\n  mentl                          — project this directory (a pipe compiles stdin)\n" ++ catalog_lines(verb_specs(), 0, len(verb_specs()), "") ++ "\na target is a module name or a file path, from any directory.\n" ++ "the surface: PLAN.md §11 (the production bar) · docs/SYNTAX.md (the language)\n"
 
 // One catalog line per spec: `  mentl <name> <hint>` padded to a column, then
 // `— <desc>`. The `++` accumulator IS the O(1) concat rope (§4①), not a loop
 // re-alloc — the string grows by pointer, never by copy.
-fn catalog_lines(specs, i, n, acc) with Memory + Alloc = if i >= n {
+fn catalog_lines(specs, i, n, acc) = if i >= n {
   acc
 } else {
   match specs[i] {
@@ -2288,7 +2219,7 @@ fn catalog_lines(specs, i, n, acc) with Memory + Alloc = if i >= n {
 
 // pad_right — right-pad with spaces to width w (the alignment column). A no-op
 // once s already reaches w. Small, bounded, one home for the help alignment.
-fn pad_right(s, w) with Memory + Alloc = if byte_len(s) >= w { s } else { pad_right(s ++ " ", w) }
+fn pad_right(s, w) = if byte_len(s) >= w { s } else { pad_right(s ++ " ", w) }
 
 fn print_help() = eprint_string(verb_catalog())
 

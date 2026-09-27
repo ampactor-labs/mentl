@@ -38,13 +38,13 @@
 // (repr RI32), ground-equal to Int at check level (same_ground), so byte
 // arithmetic and comparisons read naturally; the SLOT stays stride-1, guarded
 // by the carrier on reads and the store_strided range trap on writes.
-fn byte_len(s) with Memory = len(s)
+fn byte_len(s) = len(s)
 
-fn byte_at(s, i) with Memory = list_index(s, i)
+fn byte_at(s, i) = list_index(s, i)
 
 // Equality and ordering — walk via byte_at so view/flat dispatch is
 // transparent at observer sites. byte_len gives the comparable length.
-fn str_eq_loop(a, b, slen, i) -> Bool with Memory = if i >= slen {
+fn str_eq_loop(a, b, slen, i) -> Bool = if i >= slen {
   true
 } else {
   if byte_at(a, i) != byte_at(b, i) { false } else { str_eq_loop(a, b, slen, i + 1) }
@@ -54,7 +54,7 @@ fn str_eq_loop(a, b, slen, i) -> Bool with Memory = if i >= slen {
 // `==` derivation (SYNTAX §Equality). Surface `==` on strings lowers HERE
 // (emit_eq_for_ty's byte-sequence arm) — pointer comparison is unsayable.
 // The name survives for the runtime's own walkers; user code writes `==`.
-fn str_eq(a, b) -> Bool with Memory = {
+fn str_eq(a, b) -> Bool = {
   let la = byte_len(a)
   let lb = byte_len(b)
   if la != lb { false } else { str_eq_loop(a, b, la, 0) }
@@ -64,12 +64,12 @@ fn str_eq(a, b) -> Bool with Memory = {
 // intern probe's compare (a canonical instance against a source range).
 // Same byte walk as str_eq; the range spelling is what lets a repeat
 // identifier occurrence resolve with zero allocation.
-fn str_eq_at(a, src, s, e) -> Bool with Memory = {
+fn str_eq_at(a, src, s, e) -> Bool = {
   let n = byte_len(a)
   if n != e - s { false } else { str_eq_at_loop(a, src, s, 0, n) }
 }
 
-fn str_eq_at_loop(a, src, s, i, n) -> Bool with Memory = if i >= n {
+fn str_eq_at_loop(a, src, s, i, n) -> Bool = if i >= n {
   true
 } else if byte_at(a, i) != byte_at(src, s + i) {
   false
@@ -77,7 +77,7 @@ fn str_eq_at_loop(a, src, s, i, n) -> Bool with Memory = if i >= n {
   str_eq_at_loop(a, src, s, i + 1, n)
 }
 
-fn str_lt_loop(a, b, la, lb, i) -> Bool with Memory = if i >= la && i >= lb {
+fn str_lt_loop(a, b, la, lb, i) -> Bool = if i >= la && i >= lb {
   false
 } else if i >= la {
   true
@@ -90,7 +90,7 @@ fn str_lt_loop(a, b, la, lb, i) -> Bool with Memory = if i >= la && i >= lb {
 }
 
 // str_lt — lexicographic less-than. Returns Bool.
-fn str_lt(a, b) -> Bool with Memory = {
+fn str_lt(a, b) -> Bool = {
   let la = byte_len(a)
   let lb = byte_len(b)
   str_lt_loop(a, b, la, lb, 0)
@@ -103,7 +103,7 @@ fn str_lt(a, b) -> Bool with Memory = {
 // signal). Byte-exact, walking via byte_at so view/flat dispatch is
 // transparent; the first differing byte decides, else the shorter string is
 // less (the [a]/[Byte] instance of length-then-element ordering).
-fn str_compare_loop(a, b, la, lb, i) -> Int with Memory = if i >= la && i >= lb {
+fn str_compare_loop(a, b, la, lb, i) -> Int = if i >= la && i >= lb {
   0
 } else if i >= la {
   0 - 1
@@ -115,7 +115,7 @@ fn str_compare_loop(a, b, la, lb, i) -> Int with Memory = if i >= la && i >= lb 
   if ca < cb { 0 - 1 } else if ca > cb { 1 } else { str_compare_loop(a, b, la, lb, i + 1) }
 }
 
-fn str_compare(a, b) -> Int with Memory = {
+fn str_compare(a, b) -> Int = {
   let la = byte_len(a)
   let lb = byte_len(b)
   str_compare_loop(a, b, la, lb, 0)
@@ -129,7 +129,7 @@ fn str_compare(a, b) -> Int with Memory = {
 // +Alloc honestly (each window is a 16-byte view record) until band-I
 // fusion tightens the view away. Used by the IFC flow-label heuristic
 // (query.mn: a `secret`/`classified`/`sensitive` name flows Secret).
-fn str_contains(haystack: String, needle: String) -> Bool with Memory + Alloc = {
+fn str_contains(haystack: String, needle: String) -> Bool = {
   let hlen = byte_len(haystack)
   let nlen = byte_len(needle)
   if nlen == 0 {
@@ -146,10 +146,10 @@ fn str_contains(haystack: String, needle: String) -> Bool with Memory + Alloc = 
 // str_hash equal — the eq/hash agreement the whole fold enforces). The SAME
 // FNV mix cache.mn's hash_source uses (offset basis 2166136261, prime 16777619);
 // the generated $hash_<sig> fold mixes a string field by calling this.
-fn str_hash_loop(s, i, n, h) -> Int with Memory =
+fn str_hash_loop(s, i, n, h) -> Int =
   if i >= n { h } else { str_hash_loop(s, i + 1, n, i32_xor(h, byte_at(s, i)) * 16777619) }
 
-fn str_hash(s) -> Int with Memory = str_hash_loop(s, 0, byte_len(s), -2128831035)
+fn str_hash(s) -> Int = str_hash_loop(s, 0, byte_len(s), -2128831035)
 
 // Concatenation and slicing — a String IS [byte] (§4①), so these ARE the
 // sequence ops: concat IS ++ (list_concat, an O(1) lazy concat node — strictly
@@ -158,7 +158,7 @@ fn str_hash(s) -> Int with Memory = str_hash_loop(s, 0, byte_len(s), -2128831035
 // The String pins are Intent Boundaries: they resolve the body's `++` to the
 // byte-sequence concat at emit (an unresolved-element `++` refuses, the
 // no-silent-fallback law).
-fn str_concat(a: String, b: String) with Memory + Alloc = a ++ b
+fn str_concat(a: String, b: String) = a ++ b
 
 // str_concat_all — the N-ary materialize: two tail-recursive passes (sum the
 // lengths, then pack each part's contiguous payload into one fresh byte
@@ -166,7 +166,7 @@ fn str_concat(a: String, b: String) with Memory + Alloc = a ++ b
 // would build O(N) stack and a depth-N tree (the call-stack exhaustion the
 // first ladder run measured); the pairwise `++` rope stays the right shape
 // for CHAINS, the packer for N-ary joins.
-fn str_concat_all(xs: [String]) with Memory + Alloc = {
+fn str_concat_all(xs: [String]) = {
   let n = len(xs)
   let total = sum_byte_lens(xs, 0, n, 0)
   let dest = bytes_buf(total)
@@ -174,10 +174,10 @@ fn str_concat_all(xs: [String]) with Memory + Alloc = {
   str_of_buf(dest)
 }
 
-fn sum_byte_lens(xs: [String], i, n, acc) with Memory =
+fn sum_byte_lens(xs: [String], i, n, acc) =
   if i >= n { acc } else { sum_byte_lens(xs, i + 1, n, acc + byte_len(list_index(xs, i))) }
 
-fn fill_concat_all(xs: [String], i, n, dest, w) with Memory + Alloc = if i >= n {
+fn fill_concat_all(xs: [String], i, n, dest, w) = if i >= n {
   ()
 } else {
   let s = list_index(xs, i)
@@ -186,7 +186,7 @@ fn fill_concat_all(xs: [String], i, n, dest, w) with Memory + Alloc = if i >= n 
   fill_concat_all(xs, i + 1, n, dest, w + m)
 }
 
-fn str_slice(s, start, end) with Memory + Alloc = slice(s, start, end)
+fn str_slice(s, start, end) = slice(s, start, end)
 
 // str_payload(s) — a raw pointer to s's byte_len(s) CONTIGUOUS stride-1 bytes:
 // THE materialization boundary. A rope/slice flattens first (list_to_flat, a
@@ -195,7 +195,7 @@ fn str_slice(s, start, end) with Memory + Alloc = slice(s, start, end)
 // stride is representation freedom under the carrier — REPACKS to stride 1
 // here, exactly where WASI demands contiguity. fd_write / sock_write / the
 // path syscalls all read this one projection.
-fn str_payload(s) with Memory + Alloc = {
+fn str_payload(s) = {
   let flat = flat_raw(s)
   if seq_stride(flat) == 1 { flat + 8 } else { str_repack_stride1(flat, seq_stride(flat)) + 8 }
 }
@@ -203,14 +203,14 @@ fn str_payload(s) with Memory + Alloc = {
 // The stride-1 repack: copy each element word into a fresh byte record. The
 // values are byte-ranged by type ([byte]); store_strided's range trap keeps a
 // violation loud, never a silent wrap.
-fn str_repack_stride1(flat, stride) with Memory + Alloc = {
+fn str_repack_stride1(flat, stride) = {
   let n = load_i32(flat)
   let dest = bytes_buf(n)
   str_repack_loop(flat, dest, stride, 0, n)
   dest
 }
 
-fn str_repack_loop(flat, dest, stride, i, n) with Memory = if i >= n {
+fn str_repack_loop(flat, dest, stride, i, n) = if i >= n {
   ()
 } else {
   store_i8(dest + 8 + i, load_strided(flat + 8, i, stride))
@@ -230,13 +230,13 @@ fn str_repack_loop(flat, dest, stride, i, n) with Memory = if i >= n {
 // exit 0, with no diagnostic (measured 2026-07-31). Both arguments are
 // String, so nothing in the type system could catch it — the signature
 // order IS the contract.
-fn split(sep: String, s: String) with Memory + Alloc = {
+fn split(sep: String, s: String) = {
   let n = byte_len(s)
   let seplen = byte_len(sep)
   if seplen == 0 { [s] } else { split_walk(s, sep, n, seplen, 0, 0, make_list(0), 0) }
 }
 
-fn split_walk(s, sep, n, seplen, i, start, buf, count) with Memory + Alloc = if i + seplen > n {
+fn split_walk(s, sep, n, seplen, i, start, buf, count) = if i + seplen > n {
   let grown = list_extend_to(buf, count + 1)
   list_set(grown, count, str_slice(s, start, n))
   slice(grown, 0, count + 1)
@@ -248,7 +248,7 @@ fn split_walk(s, sep, n, seplen, i, start, buf, count) with Memory + Alloc = if 
   split_walk(s, sep, n, seplen, i + 1, start, buf, count)
 }
 
-fn sep_at(s, sep, i, seplen, j) with Memory = if j >= seplen {
+fn sep_at(s, sep, i, seplen, j) = if j >= seplen {
   true
 } else if byte_at(s, i + j) == byte_at(sep, j) {
   sep_at(s, sep, i, seplen, j + 1)
@@ -267,7 +267,7 @@ fn sep_at(s, sep, i, seplen, j) with Memory = if j >= seplen {
 // alloc, no per-byte str_concat. A `\xHH` consumes four source bytes
 // (backslash, x, hex, hex) and decodes to one byte, so the count and fill
 // passes step by four and emit one byte for that form.
-fn str_unescape(s) with Memory + Alloc = {
+fn str_unescape(s) = {
   let n = byte_len(s)
   let dlen = str_unescape_count(s, 0, n, 0)
   let ptr = bytes_buf(dlen)
@@ -284,10 +284,10 @@ fn hex_val(b) with Pure =
 
 // is_hex_escape — true when source bytes at `i` begin a complete `\xHH`
 // (backslash, x, two hex digits) within the [i, n) window.
-fn is_hex_escape(s, i, n) with Memory =
+fn is_hex_escape(s, i, n) =
   i + 3 < n && byte_at(s, i) == 92 && byte_at(s, i + 1) == 120 && is_hex_byte(byte_at(s, i + 2)) && is_hex_byte(byte_at(s, i + 3))
 
-fn str_unescape_count(s, i, n, acc) with Memory = if i >= n {
+fn str_unescape_count(s, i, n, acc) = if i >= n {
   acc
 } else if is_hex_escape(s, i, n) {
   str_unescape_count(s, i + 4, n, acc + 1)
@@ -297,7 +297,7 @@ fn str_unescape_count(s, i, n, acc) with Memory = if i >= n {
   str_unescape_count(s, i + 1, n, acc + 1)
 }
 
-fn str_unescape_into(s, i, n, dest, w) with Memory = if i >= n {
+fn str_unescape_into(s, i, n, dest, w) = if i >= n {
   ()
 } else if is_hex_escape(s, i, n) {
   let decoded = hex_val(byte_at(s, i + 2)) * 16 + hex_val(byte_at(s, i + 3))
@@ -335,7 +335,7 @@ fn str_unescape_into(s, i, n, dest, w) with Memory = if i >= n {
 // no walk threads an index (the iteration-shape tier's own law).
 // A control byte with no short spelling renders as `\xHH`, lowercase — the
 // emitter's own data escapes spell hex the same way, from the same glyphs.
-fn str_escape(s) with Memory + Alloc = {
+fn str_escape(s) = {
   let ptr = s |> fold(0, escape_len_acc) |> bytes_buf
   s |> each(escape_emit) ~> byte_sink(ptr)
   str_of_buf(ptr)
@@ -356,7 +356,7 @@ handler byte_sink(dest) with w = 0 {
 }
 
 // One byte's spelling, streamed: itself, `\` and a letter, or `\xHH`.
-fn escape_emit(b) with ByteSink + Memory = {
+fn escape_emit(b) = {
   let k = escape_len(b)
   if k == 1 {
     emit_byte(b)
@@ -390,7 +390,7 @@ fn escape_tail(b) with Pure =
 // of it, the emitter's `\HH` data escapes read a one-glyph slice.
 fn hex_glyphs() with Pure = "0123456789abcdef"
 
-fn hex_nibble(v) with Memory = byte_at(hex_glyphs(), v)
+fn hex_nibble(v) = byte_at(hex_glyphs(), v)
 
 // Integer conversion
 //
@@ -399,7 +399,7 @@ fn hex_nibble(v) with Memory = byte_at(hex_glyphs(), v)
 // Digit-wise: no sprintf, no lookup table beyond '0'+digit.
 //
 // "0"
-fn int_to_str(n) with Memory + Alloc = if n == 0 {
+fn int_to_str(n) = if n == 0 {
   str_of_single_byte(48)
 } else if n == 0 - 2147483648 {
   // INT_MIN can't be negated in i32 (0 - INT_MIN = INT_MIN).
@@ -477,20 +477,20 @@ fn str_of_buf(buf) with Pure = buf
 // the unified sequence record: [count=n @0][tag_word=pack_tag(0,1) @+4][bytes
 // @+8]. THE one home for byte-string construction; every builder fills its
 // bytes at ptr + 8, so list_index reads them at stride 1 through the carrier.
-fn bytes_buf(n) with Memory + Alloc = {
+fn bytes_buf(n) = {
   let ptr = alloc(8 + n)
   store_i32(ptr, n)
   store_i32(ptr + 4, pack_tag(0, 1))
   ptr
 }
 
-fn str_of_single_byte(b) with Memory + Alloc = {
+fn str_of_single_byte(b) = {
   let ptr = bytes_buf(1)
   store_i8(ptr + 8, b)
   str_of_buf(ptr)
 }
 
-fn int_to_str_positive(n) with Memory + Alloc = {
+fn int_to_str_positive(n) = {
   // Worst case: 10 decimal digits for i32 max (2147483647).
   // Write digits right-to-left into a raw 10-byte scratch area, then copy.
   let scratch = alloc(10)
@@ -504,7 +504,7 @@ fn int_to_str_positive(n) with Memory + Alloc = {
 
 // int_write_digits — write decimal digits right-to-left into buf[0..10).
 // Returns the start offset of the first written digit (so length = 10 - start).
-fn int_write_digits(buf, pos, n) with Memory = if n == 0 {
+fn int_write_digits(buf, pos, n) = if n == 0 {
   pos
 } else {
   let digit = n - n / 10 * 10
@@ -520,7 +520,7 @@ fn int_write_digits(buf, pos, n) with Memory = if n == 0 {
 //
 // NOT an alias of int_to_str. Float and Int are distinct types with
 // distinct bit representations and distinct printing requirements.
-fn float_to_str(f) with Memory + Alloc = if float_is_nan(f) {
+fn float_to_str(f) = if float_is_nan(f) {
   "NaN"
 } else if float_is_inf(f) {
   if float_is_negative(f) { "-Inf" } else { "Inf" }
@@ -559,7 +559,7 @@ fn float_to_str(f) with Memory + Alloc = if float_is_nan(f) {
 // (the 9-ripple case falls through to a longer run — always exact,
 // occasionally one digit past optimal); seventeen digits always suffice
 // for an f64, so the ascent terminates at today's render.
-fn float_render_positive(f: Float) with Memory + Alloc = {
+fn float_render_positive(f: Float) = {
   let exp = float_floor_log10(f)
   // Normalize by the EXACT positive power: 10^k is representable through
   // k = 22, so a negative exponent MULTIPLIES — one correctly-rounded
@@ -587,7 +587,7 @@ fn float_render_positive(f: Float) with Memory + Alloc = {
 // short witness): its digit extraction is float-stepped and can sit a ulp
 // off — Hβ.runtime.float-render-17-digit-exact names the exact-extraction
 // upgrade (digit generation from the stored bits read through memory).
-fn float_render_shortest(f: Float, scaled: Float, exp, nd) with Memory + Alloc = {
+fn float_render_shortest(f: Float, scaled: Float, exp, nd) = {
   let digits = float_extract_digits(scaled, 0, nd, make_list(nd))
   let cand = float_format_digits(digits, exp)
   if nd >= 17 {
@@ -635,7 +635,7 @@ else if f < 1.0 {
 // bump list_set into the snoc chain, whose headers sit where flat
 // elements would, so the bump never took effect and every ascent fell
 // to the 17-digit tail.
-fn float_extract_digits(scaled: Float, count, max_digits, acc) with Memory = if count >= max_digits {
+fn float_extract_digits(scaled: Float, count, max_digits, acc) = if count >= max_digits {
   acc
 } else {
   let digit = float_to_int(scaled)
@@ -645,13 +645,13 @@ fn float_extract_digits(scaled: Float, count, max_digits, acc) with Memory = if 
 
 // float_format_digits: format a digit list and exponent into a decimal string.
 // Uses fixed notation for -4 <= exp <= 14, scientific otherwise.
-fn float_format_digits(digits, exp) with Memory + Alloc = if exp >= 0 - 4 && exp <= 14 {
+fn float_format_digits(digits, exp) = if exp >= 0 - 4 && exp <= 14 {
   float_format_fixed(digits, exp)
 } else {
   float_format_scientific(digits, exp)
 }
 
-fn float_format_fixed(digits, exp) with Memory + Alloc = {
+fn float_format_fixed(digits, exp) = {
   // exp=2 and digits=[1,2,3] → "123.0"
   // exp=0 and digits=[1,2,3] → "1.23"
   // exp=-1 and digits=[1,2,3] → "0.123"
@@ -682,7 +682,7 @@ fn float_format_fixed(digits, exp) with Memory + Alloc = {
 }
 
 // Build a string of n '0' characters for fractional padding.
-fn float_zero_pad(n) with Memory + Alloc = if n <= 0 {
+fn float_zero_pad(n) = if n <= 0 {
   str_of_buf(bytes_buf(0))
 } else {
   let dest = bytes_buf(n)
@@ -690,14 +690,14 @@ fn float_zero_pad(n) with Memory + Alloc = if n <= 0 {
   str_of_buf(dest)
 }
 
-fn float_fill_zeros(ptr, i, n) with Memory = if i >= n {
+fn float_fill_zeros(ptr, i, n) = if i >= n {
   ()
 } else {
   store_i8(ptr + i, 48)
   float_fill_zeros(ptr, i + 1, n)
 }
 
-fn float_format_scientific(digits, exp) with Memory + Alloc = {
+fn float_format_scientific(digits, exp) = {
   let mantissa = float_format_fixed(digits, 0)
   // 'e'
   let e_char = str_of_single_byte(101)
@@ -709,7 +709,7 @@ fn float_format_scientific(digits, exp) with Memory + Alloc = {
 // Pads with '0' if the requested range exceeds available digits.
 //
 // "0" minimum
-fn float_digits_to_str(digits, start, end) with Memory + Alloc = if start >= end {
+fn float_digits_to_str(digits, start, end) = if start >= end {
   str_of_single_byte(48)
 } else {
   let len = end - start
@@ -718,7 +718,7 @@ fn float_digits_to_str(digits, start, end) with Memory + Alloc = if start >= end
   str_of_buf(dest)
 }
 
-fn float_fill_digit_bytes(buf, digits, start, end, i) with Memory = if i >= end {
+fn float_fill_digit_bytes(buf, digits, start, end, i) = if i >= end {
   ()
 } else {
   // digits[i], NOT digits[i - start]: i already walks [start, end) over
@@ -783,9 +783,9 @@ fn float_is_negative_zero(f) = f == 0.0 - 0.0 && 1.0 / f < 0.0
 // makes float_digits_to_str's documented zero-padding TRUE (the raw
 // list_index here trapped the first time a SHORT digit list arrived; the
 // old seventeen-digit caller never exposed it).
-fn digit_at(digits, i) with Memory = if i < len(digits) { list_index(digits, i) } else { 0 }
+fn digit_at(digits, i) = if i < len(digits) { list_index(digits, i) } else { 0 }
 
-fn parse_int_digits(s, slen, i, acc) with Memory = if i >= slen {
+fn parse_int_digits(s, slen, i, acc) = if i >= slen {
   acc
 } else {
   let ch = byte_at(s, i)
@@ -794,7 +794,7 @@ fn parse_int_digits(s, slen, i, acc) with Memory = if i >= slen {
 
 // digits and at most one '.' — the dot contributes nothing; any other
 // byte (the exponent marker included) ends the mantissa
-fn parse_mantissa_f64(s, slen, i, acc: Float) -> Float with Memory = if i >= slen {
+fn parse_mantissa_f64(s, slen, i, acc: Float) -> Float = if i >= slen {
   acc
 } else {
   let ch = byte_at(s, i)
@@ -807,7 +807,7 @@ fn parse_mantissa_f64(s, slen, i, acc: Float) -> Float with Memory = if i >= sle
   }
 }
 
-fn count_mantissa_digits(s, slen, i) with Memory = if i >= slen {
+fn count_mantissa_digits(s, slen, i) = if i >= slen {
   0
 } else {
   let ch = byte_at(s, i)
@@ -826,7 +826,7 @@ fn float_scale10(m: Float, k) -> Float with Pure = if k == 0 {
   if k < 0 - 22 { float_scale10(m / float_pow10(22), k + 22) } else { m / float_pow10(0 - k) }
 }
 
-fn parse_int_sign(s, slen, i) with Memory = if i >= slen {
+fn parse_int_sign(s, slen, i) = if i >= slen {
   0
 } else {
   let first = byte_at(s, i)
@@ -839,7 +839,7 @@ fn parse_int_sign(s, slen, i) with Memory = if i >= slen {
   }
 }
 
-fn find_char(s, slen, start, ch) with Memory = if start >= slen {
+fn find_char(s, slen, start, ch) = if start >= slen {
   0 - 1
 } else if byte_at(s, start) == ch {
   start
@@ -847,7 +847,7 @@ fn find_char(s, slen, start, ch) with Memory = if start >= slen {
   find_char(s, slen, start + 1, ch)
 }
 
-fn find_char_either(s, slen, start, ch1, ch2) with Memory = if start >= slen {
+fn find_char_either(s, slen, start, ch1, ch2) = if start >= slen {
   0 - 1
 } else {
   let b = byte_at(s, start)
@@ -860,7 +860,7 @@ fn find_char_either(s, slen, start, ch1, ch2) with Memory = if start >= slen {
 // family (callee-first in-file order): the DAG judgment is single-pass, so
 // a forward reference reads the loose pre-registered scheme and floors the
 // f64 mantissa to a word — measured as an assembly refusal in mentl run.
-fn parse_float(s) -> Float with Memory = {
+fn parse_float(s) -> Float = {
   let slen = byte_len(s)
   if slen == 0 {
     0.0
@@ -873,7 +873,7 @@ fn parse_float(s) -> Float with Memory = {
   }
 }
 
-fn parse_float_body(s, slen, i) -> Float with Memory = {
+fn parse_float_body(s, slen, i) -> Float = {
   // The mantissa accumulates as ONE f64 integer — exact through 2^53,
   // which covers every authored literal — and the decimal point only
   // COUNTS digits, so the single scale by the exact power of ten is the
@@ -899,9 +899,9 @@ fn parse_float_body(s, slen, i) -> Float with Memory = {
 // invariant and produce O(N+M) merges, O(log N) membership.
 //
 // set_contains — O(log N) binary search over a sorted set.
-fn set_contains(set, target) with Memory = set_bsearch(set, target, 0, len(set))
+fn set_contains(set, target) = set_bsearch(set, target, 0, len(set))
 
-fn set_bsearch(set, target, lo, hi) with Memory = if lo >= hi {
+fn set_bsearch(set, target, lo, hi) = if lo >= hi {
   false
 } else {
   let mid = (lo + hi) / 2
@@ -917,7 +917,7 @@ fn set_bsearch(set, target, lo, hi) with Memory = if lo >= hi {
 
 // set_union: merge two sorted sets into a fresh sorted, deduped set.
 // O(M + N) — single-pass two-pointer merge into a pre-sized buffer.
-fn set_union(a, b) with Memory + Alloc = {
+fn set_union(a, b) = {
   let len_a = len(a)
   let len_b = len(b)
   let buf = make_list(len_a + len_b)
@@ -925,7 +925,7 @@ fn set_union(a, b) with Memory + Alloc = {
   set_trim(buf, final_len)
 }
 
-fn set_union_merge(a, b, buf, ai, bi, oi, len_a, len_b) with Memory = if ai >= len_a {
+fn set_union_merge(a, b, buf, ai, bi, oi, len_a, len_b) = if ai >= len_a {
   if bi >= len_b {
     oi
   } else {
@@ -946,7 +946,7 @@ fn set_union_merge(a, b, buf, ai, bi, oi, len_a, len_b) with Memory = if ai >= l
 }
 
 // set_diff: a minus b. Both sorted; output sorted. O(M + N).
-fn set_diff(a, b) with Memory + Alloc = {
+fn set_diff(a, b) = {
   let len_a = len(a)
   let len_b = len(b)
   let buf = make_list(len_a)
@@ -954,7 +954,7 @@ fn set_diff(a, b) with Memory + Alloc = {
   set_trim(buf, final_len)
 }
 
-fn set_diff_merge(a, b, buf, ai, bi, oi, len_a, len_b) with Memory = if ai >= len_a {
+fn set_diff_merge(a, b, buf, ai, bi, oi, len_a, len_b) = if ai >= len_a {
   oi
 } else if bi >= len_b {
   set_diff_merge(a, b, list_set(buf, oi, list_index(a, ai)), ai + 1, bi, oi + 1, len_a, len_b)
@@ -971,13 +971,13 @@ fn set_diff_merge(a, b, buf, ai, bi, oi, len_a, len_b) with Memory = if ai >= le
 }
 
 // set_eq: structural equality of two sorted sets. O(N).
-fn set_eq(a, b) with Memory = {
+fn set_eq(a, b) = {
   let la = len(a)
   let lb = len(b)
   if la != lb { false } else { set_eq_loop(a, b, 0, la) }
 }
 
-fn set_eq_loop(a, b, i, n) with Memory = if i >= n {
+fn set_eq_loop(a, b, i, n) = if i >= n {
   true
 } else if str_eq(list_index(a, i), list_index(b, i)) {
   set_eq_loop(a, b, i + 1, n)
@@ -990,18 +990,18 @@ fn set_eq_loop(a, b, i, n) with Memory = if i >= n {
 // normalization for consumers that receive raw input from parser /
 // AST. Hot-path callers should already maintain the invariant and
 // skip this step.
-fn set_canonicalize(lst) with Memory + Alloc = {
+fn set_canonicalize(lst) = {
   let n = len(lst)
   set_canonicalize_loop(lst, [], 0, n)
 }
 
-fn set_canonicalize_loop(lst, acc, i, n) with Memory + Alloc =
+fn set_canonicalize_loop(lst, acc, i, n) =
   if i >= n { acc } else { set_canonicalize_loop(lst, set_insert(acc, list_index(lst, i)), i + 1, n) }
 
 // set_insert: insert into sorted set, maintaining order and dedup.
 // O(N) due to position scan + copy; hot-path callers should prefer
 // set_union with a singleton set when inserting into large sets.
-fn set_insert(set, name) with Memory + Alloc = {
+fn set_insert(set, name) = {
   let n = len(set)
   let pos = set_find_pos(set, name, 0, n)
   // The guard written as the nested if it means. Under the old eager `&&`
@@ -1015,7 +1015,7 @@ fn set_insert(set, name) with Memory + Alloc = {
   if present { set } else { set_insert_at(set, name, pos, n) }
 }
 
-fn set_find_pos(set, name, i, n) with Memory = if i >= n {
+fn set_find_pos(set, name, i, n) = if i >= n {
   n
 } else if str_lt(list_index(set, i), name) {
   set_find_pos(set, name, i + 1, n)
@@ -1023,7 +1023,7 @@ fn set_find_pos(set, name, i, n) with Memory = if i >= n {
   i
 }
 
-fn set_insert_at(set, name, pos, n) with Memory + Alloc = {
+fn set_insert_at(set, name, pos, n) = {
   let buf = make_list(n + 1)
   let buf_with_prefix = list_copy_into(set, buf, 0, pos)
   let buf_with_ins = list_set(buf_with_prefix, pos, name)
@@ -1031,7 +1031,7 @@ fn set_insert_at(set, name, pos, n) with Memory + Alloc = {
 }
 
 // Copy src[src_idx..n) into dst[src_idx+1..n+1) — shift suffix by 1.
-fn copy_suffix_shifted(src, dst, src_idx, dst_idx, n) with Memory = if src_idx >= n {
+fn copy_suffix_shifted(src, dst, src_idx, dst_idx, n) = if src_idx >= n {
   dst
 } else {
   copy_suffix_shifted(
@@ -1043,13 +1043,13 @@ fn copy_suffix_shifted(src, dst, src_idx, dst_idx, n) with Memory = if src_idx >
   )
 }
 
-fn set_trim(buf, n) with Memory + Alloc = {
+fn set_trim(buf, n) = {
   let trimmed = make_list(n)
   list_copy_into(buf, trimmed, 0, n)
 }
 
 // set_intersect: a ∩ b. Both sorted; output sorted, <= min(|a|,|b|). // drift-audit: ignore
-fn set_intersect(a, b) with Memory + Alloc = {
+fn set_intersect(a, b) = {
   let len_a = len(a)
   let len_b = len(b)
   let cap = if len_a < len_b { len_a } else { len_b }
@@ -1058,7 +1058,7 @@ fn set_intersect(a, b) with Memory + Alloc = {
   set_trim(buf, final_len)
 }
 
-fn set_intersect_merge(a, b, buf, ai, bi, oi, len_a, len_b) with Memory = if ai >= len_a || bi >= len_b {
+fn set_intersect_merge(a, b, buf, ai, bi, oi, len_a, len_b) = if ai >= len_a || bi >= len_b {
   oi
 } else {
   let xa = list_index(a, ai)
@@ -1073,9 +1073,9 @@ fn set_intersect_merge(a, b, buf, ai, bi, oi, len_a, len_b) with Memory = if ai 
 }
 
 // set_subset: every element of `sub` appears in `sup`. O(|sub| * log|sup|). // drift-audit: ignore
-fn set_subset(sub, sup) with Memory = set_subset_loop(sub, sup, 0, len(sub))
+fn set_subset(sub, sup) = set_subset_loop(sub, sup, 0, len(sub))
 
-fn set_subset_loop(sub, sup, i, n) with Memory = if i >= n {
+fn set_subset_loop(sub, sup, i, n) = if i >= n {
   true
 } else if set_contains(sup, list_index(sub, i)) {
   set_subset_loop(sub, sup, i + 1, n)
@@ -1084,9 +1084,9 @@ fn set_subset_loop(sub, sup, i, n) with Memory = if i >= n {
 }
 
 // set_disjoint: no element of `a` appears in `b`. O(|a| * log|b|). // drift-audit: ignore
-fn set_disjoint(a, b) with Memory = set_disjoint_loop(a, b, 0, len(a))
+fn set_disjoint(a, b) = set_disjoint_loop(a, b, 0, len(a))
 
-fn set_disjoint_loop(a, b, i, n) with Memory = if i >= n {
+fn set_disjoint_loop(a, b, i, n) = if i >= n {
   true
 } else if set_contains(b, list_index(a, i)) {
   false
@@ -1097,14 +1097,14 @@ fn set_disjoint_loop(a, b, i, n) with Memory = if i >= n {
 // strip_underscores — remove all underscore (95) bytes from a string.
 // Used by lex_from to normalize 1_000_000 → "1000000" before parsing.
 // Buffer-counter substrate: list_extend_to + list_set + counter + slice.
-fn strip_underscores(ref s) with Memory + Alloc = {
+fn strip_underscores(ref s) = {
   let n = byte_len(s)
   let buf = make_list(n)
   let final_count = strip_underscores_loop(s, 0, n, buf, 0)
   str_slice_from_list(buf, final_count)
 }
 
-fn strip_underscores_loop(ref s, i, n, own buf, count) with Memory + Alloc = if i >= n {
+fn strip_underscores_loop(ref s, i, n, own buf, count) = if i >= n {
   count
 } else {
   let b = byte_at(s, i)
@@ -1119,13 +1119,13 @@ fn strip_underscores_loop(ref s, i, n, own buf, count) with Memory + Alloc = if 
 
 // str_slice_from_list: materialise the first `n` bytes of a byte-list
 // into a fresh flat string. Used only by strip_underscores above.
-fn str_slice_from_list(ref lst, n) with Memory + Alloc = {
+fn str_slice_from_list(ref lst, n) = {
   let dest = bytes_buf(n)
   str_slice_from_list_loop(lst, dest, 0, n)
   str_of_buf(dest)
 }
 
-fn str_slice_from_list_loop(ref lst, dest, i, n) with Memory = if i >= n {
+fn str_slice_from_list_loop(ref lst, dest, i, n) = if i >= n {
   ()
 } else {
   store_i8(dest + 8 + i, list_index(lst, i))

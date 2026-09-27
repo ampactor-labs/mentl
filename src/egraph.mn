@@ -42,9 +42,9 @@ import io
 // rule-set bug, surfaced by hitting it), never a silent truncation. Because
 // graph_canon_set always points `from` at a strictly-cheaper `to`, a chain is
 // monotone and terminates well under the cap.
-fn egraph_extract(handle) with GraphRead = extract_chase(handle, 0)
+fn egraph_extract(handle) = extract_chase(handle, 0)
 
-fn extract_chase(handle, depth) with GraphRead = if depth > 1000 {
+fn extract_chase(handle, depth) = if depth > 1000 {
   handle
 } else {
   let to = graph_canon_at(handle)
@@ -72,14 +72,13 @@ fn extract_chase(handle, depth) with GraphRead = if depth > 1000 {
 // the only sound per-node signal, and the type row catches the closure case the
 // body form would miss. (When infer grows a per-expr row binding, is_pure reduces
 // to effs_at alone — peer Hβ.egraph.per-expr-effect-row.)
-fn is_pure(handle) with GraphRead + LookupTy + Memory + Alloc =
-  body_is_pure(handle) && row_subsumes(effs_at(handle), mk_ef_pure())
+fn is_pure(handle) = body_is_pure(handle) && row_subsumes(effs_at(handle), mk_ef_pure())
 
 // The structural purity of a node's EVALUATION — read live from its body. A
 // literal/var performs nothing; arithmetic over pure operands is pure; ANY other
 // form (a call, a perform, a hole) may run effects, so it is NOT provably pure.
 // This is the per-node signal the frame-keyed effect row cannot give.
-fn body_is_pure(handle) with GraphRead + LookupTy + Memory + Alloc = match graph_node_body(handle) {
+fn body_is_pure(handle) = match graph_node_body(handle) {
   NExpr(LitInt(_)) => true,
   NExpr(LitFloat(_)) => true,
   NExpr(LitString(_)) => true,
@@ -94,7 +93,7 @@ fn body_is_pure(handle) with GraphRead + LookupTy + Memory + Alloc = match graph
 // row in TFun's third field — a closure over effectful evidence is caught here; a
 // value node carries NONE, which IS the pure row (a value performs nothing to BE a
 // value). No fabrication, no AST re-derivation: the row is read where infer wrote it.
-fn effs_at(handle) with LookupTy = match lookup_ty(handle) {
+fn effs_at(handle) = match lookup_ty(handle) {
   TFun(_, _, row) => row,
   _ => mk_ef_pure(),
 }
@@ -112,7 +111,7 @@ fn effs_at(handle) with LookupTy = match lookup_ty(handle) {
 //
 // Draw `from ≡ to` iff it is a NEW edge (idempotent at the fixpoint). Returns
 // whether a fresh fact was recorded — the saturation progress signal.
-fn rewrite_to(from, to) with GraphRead + GraphWrite = if graph_canon_at(from) == to {
+fn rewrite_to(from, to) = if graph_canon_at(from) == to {
   false
 } else {
   graph_canon_set(from, to)
@@ -120,7 +119,7 @@ fn rewrite_to(from, to) with GraphRead + GraphWrite = if graph_canon_at(from) ==
 }
 
 // x + 0 ≡ x  and  0 + x ≡ x  — the survivor is kept, never gated.
-fn rw_add_identity(handle) with GraphRead + GraphWrite = match graph_node_body(handle) {
+fn rw_add_identity(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(BAdd, l, r)) => {
     let lh = egraph_extract(node_handle(l))
     let rh = egraph_extract(node_handle(r))
@@ -136,7 +135,7 @@ fn rw_add_identity(handle) with GraphRead + GraphWrite = match graph_node_body(h
 }
 
 // x * 1 ≡ x  and  1 * x ≡ x  — survivor kept, never gated.
-fn rw_mul_identity(handle) with GraphRead + GraphWrite = match graph_node_body(handle) {
+fn rw_mul_identity(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(BMul, l, r)) => {
     let lh = egraph_extract(node_handle(l))
     let rh = egraph_extract(node_handle(r))
@@ -154,7 +153,7 @@ fn rw_mul_identity(handle) with GraphRead + GraphWrite = match graph_node_body(h
 // x * 0 ≡ 0  and  0 * x ≡ 0  — DROPS the non-zero operand, so it fires only
 // when that operand is provably pure (the effect gate, read LIVE from the row).
 // The canonical target is the zero literal node, already in the fabric.
-fn rw_mul_absorb(handle) with GraphRead + GraphWrite + LookupTy + Memory + Alloc = match graph_node_body(handle) {
+fn rw_mul_absorb(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(BMul, l, r)) => {
     let lh = egraph_extract(node_handle(l))
     let rh = egraph_extract(node_handle(r))
@@ -170,7 +169,7 @@ fn rw_mul_absorb(handle) with GraphRead + GraphWrite + LookupTy + Memory + Alloc
 }
 
 // x - 0 ≡ x — survivor kept, never gated. (0 - x is NOT x, so left only.)
-fn rw_sub_identity(handle) with GraphRead + GraphWrite = match graph_node_body(handle) {
+fn rw_sub_identity(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(BSub, l, r)) => {
     let rh = egraph_extract(node_handle(r))
     if is_zero(rh) { rewrite_to(handle, egraph_extract(node_handle(l))) } else { false }
@@ -179,7 +178,7 @@ fn rw_sub_identity(handle) with GraphRead + GraphWrite = match graph_node_body(h
 }
 
 // x / 1 ≡ x — survivor kept, never gated.
-fn rw_div_identity(handle) with GraphRead + GraphWrite = match graph_node_body(handle) {
+fn rw_div_identity(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(BDiv, l, r)) => {
     let rh = egraph_extract(node_handle(r))
     if is_one(rh) { rewrite_to(handle, egraph_extract(node_handle(l))) } else { false }
@@ -187,12 +186,12 @@ fn rw_div_identity(handle) with GraphRead + GraphWrite = match graph_node_body(h
   _ => false,
 }
 
-fn is_zero(handle) with GraphRead = match graph_node_body(handle) {
+fn is_zero(handle) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => n == 0,
   _ => false,
 }
 
-fn is_one(handle) with GraphRead = match graph_node_body(handle) {
+fn is_one(handle) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => n == 1,
   _ => false,
 }
@@ -207,12 +206,12 @@ fn is_one(handle) with GraphRead = match graph_node_body(handle) {
 // payoff for fold). Div/mod by zero does NOT fold: the trap is the program's
 // meaning, not a constant. The edge is drawn idempotently (rewrite_to), so a
 // re-fold pass mints nothing new and converges.
-fn const_int(handle) with GraphRead + Memory + Alloc = match graph_node_body(handle) {
+fn const_int(handle) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => Some(n),
   _ => None,
 }
 
-fn fold_int(op, a, b) with Memory + Alloc = match op {
+fn fold_int(op, a, b) = match op {
   BAdd => Some(a + b),
   BSub => Some(a - b),
   BMul => Some(a * b),
@@ -221,7 +220,7 @@ fn fold_int(op, a, b) with Memory + Alloc = match op {
   _ => None,
 }
 
-fn rw_const_fold(handle) with GraphRead + GraphWrite + Memory + Alloc = match graph_node_body(handle) {
+fn rw_const_fold(handle) = match graph_node_body(handle) {
   NExpr(BinOpExpr(op, l, r)) => match const_int(egraph_extract(node_handle(l))) {
     Some(a) => match const_int(egraph_extract(node_handle(r))) {
       Some(b) => match fold_int(op, a, b) {
@@ -240,7 +239,7 @@ fn rw_const_fold(handle) with GraphRead + GraphWrite + Memory + Alloc = match gr
   _ => false,
 }
 
-fn mint_fold(handle, v) with GraphWrite + Memory + Alloc = {
+fn mint_fold(handle, v) = {
   let h = graph_fresh_ty(Inferred("const-fold"))
   graph_register_node(h, NExpr(LitInt(v)))
   graph_bind(h, TInt, Inferred("const-fold result : Int"))
@@ -259,8 +258,7 @@ fn mint_fold(handle, v) with GraphWrite + Memory + Alloc = {
 // const-fold mints new literal nodes ABOVE that bound, but they are already in
 // canonical form (a bare literal matches no rule's LHS), so the bound need not
 // chase them — the relation reaches its fixpoint over the original program space.
-fn saturate(bound) with GraphRead + GraphWrite + LookupTy + Memory + Alloc =
-  saturate_until(bound, 0)
+fn saturate(bound) = saturate_until(bound, 0)
 
 // ─── The FORM half of the fork/merge composition (PLAN §5) ───────────
 //
@@ -275,10 +273,9 @@ fn saturate(bound) with GraphRead + GraphWrite + LookupTy + Memory + Alloc =
 // one cursor position must not re-saturate a session's whole graph.
 // apply_rules_from already takes its start, so the range costs one
 // parameter and no new machinery.
-fn saturate_range(start, bound) with GraphRead + GraphWrite + LookupTy + Memory + Alloc =
-  saturate_range_until(start, bound, 0)
+fn saturate_range(start, bound) = saturate_range_until(start, bound, 0)
 
-fn saturate_range_until(start, bound, pass) with GraphRead + GraphWrite + LookupTy + Memory + Alloc = if pass > bound - start {
+fn saturate_range_until(start, bound, pass) = if pass > bound - start {
   ()
 } else {
   let fired = apply_rules_from(start, bound, 0)
@@ -289,7 +286,7 @@ fn saturate_range_until(start, bound, pass) with GraphRead + GraphWrite + Lookup
 // (graph_next bounds it at entry), then pass the program through unchanged — the
 // equivalence edges are the side effect lower reads via egraph_extract. A `|>`
 // stage between frontend and lower in the pipeline spine.
-fn saturate_pass(program) with GraphRead + GraphWrite + LookupTy + Memory + Alloc = {
+fn saturate_pass(program) = {
   saturate(graph_next())
   program
 }
@@ -297,7 +294,7 @@ fn saturate_pass(program) with GraphRead + GraphWrite + LookupTy + Memory + Allo
 // The outer cap is `bound` passes: each productive pass draws at least one edge
 // and the relation only grows toward roots, so `bound` passes suffice; the cap is
 // a total-function guard, never reached at fixpoint (fired hits 0 first).
-fn saturate_until(bound, pass) with GraphRead + GraphWrite + LookupTy + Memory + Alloc = if pass > bound {
+fn saturate_until(bound, pass) = if pass > bound {
   ()
 } else {
   let fired = apply_rules_from(0, bound, 0)
@@ -309,7 +306,7 @@ fn saturate_until(bound, pass) with GraphRead + GraphWrite + LookupTy + Memory +
 // identities match var-involving forms; the cases are disjoint, so `||`
 // short-circuits to the single rule that can fire. Returns the count of FRESH
 // equivalence edges drawn this pass (the convergence signal).
-fn apply_rules_from(i, bound, acc) with GraphRead + GraphWrite + LookupTy + Memory + Alloc = if i >= bound {
+fn apply_rules_from(i, bound, acc) = if i >= bound {
   acc
 } else {
   let fired =

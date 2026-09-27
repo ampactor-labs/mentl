@@ -582,6 +582,9 @@ handler tighten_collector with found = [] {
     diag_report(diag, line, dmod)
     match diag {
       TOverDeclared(declared, used, name, span) => resume() with found = push(found, (declared, used, name, span, dmod)),
+      TRowInventory(declared, used, name, span) => // An inventory is a tightening too (A4): the patch for both is the
+      // clause's residue, so both bank in the one place the verb reads.
+      resume() with found = push(found, (declared, used, name, span, dmod)),
       _ => resume(),
     }
   },
@@ -645,11 +648,11 @@ fn teach_project(ast) = {
 fn audit_project(ast) =
   map_fn_stmts(ast, (name, handle) => (name, handle)) |> audit_walk(verify_debt(), tightenables(), 0) |> render_audit
 
-fn decl_start_line(handle) with GraphRead = match parse_span_of(handle) {
+fn decl_start_line(handle) = match parse_span_of(handle) {
   Span(sl, _, _, _) => sl,
 }
 
-fn audit_walk(debt, tights, i, fns) with GraphRead + EnvRead + LookupTy + Memory + Alloc + Intern + WASI = if i >= len(fns) {
+fn audit_walk(debt, tights, i, fns) = if i >= len(fns) {
   []
 } else {
   match fns[i] {
@@ -899,7 +902,7 @@ fn render_gradient_result(result) = match result {
   },
 }
 
-fn join_unlock_labels(labels) with Memory + Alloc = if len(labels) == 0 {
+fn join_unlock_labels(labels) = if len(labels) == 0 {
   "(no capabilities)"
 } else {
   let first = head(labels)
@@ -980,27 +983,24 @@ fn audit_severable(entry) = match entry {
 // carries only what the module's fact does not already prove. A developer
 // reading `severs module-wide: Network` learns the whole module is
 // sandboxable — which 98 repetitions of that sentence actively hid.
-fn module_severance(entries) with Memory + Alloc = match entries {
+fn module_severance(entries) = match entries {
   [] => [],
   [first, ...more] => more |> fold(audit_severable(first), intersect_severance),
 }
 
-fn intersect_severance(acc, entry) with Memory + Alloc =
-  acc |> filter({ e => name_in_list(audit_severable(entry), e) })
+fn intersect_severance(acc, entry) = acc |> filter({ e => name_in_list(audit_severable(entry), e) })
 
 // A function's own severance ABOVE its module's — the delta, which is the
 // only part of its candidate set that is news.
-fn severance_beyond(module_sev, sev) with Memory + Alloc =
-  sev |> filter({ e => not_in_names(module_sev, e) })
+fn severance_beyond(module_sev, sev) = sev |> filter({ e => not_in_names(module_sev, e) })
 
-fn not_in_names(names, target: EffName) with Memory + Alloc = !name_in_list(names, target)
+fn not_in_names(names, target: EffName) = !name_in_list(names, target)
 
 // The candidates whose absence buys a NAMED capability — the teaching half.
 // The rest are true and carry nothing to act on, so they ride as one count
 // at the module, where they describe the capability MAP's gap rather than
 // the developer's code.
-fn severance_named(sev) with Memory + Alloc + Intern =
-  sev |> filter({ e => len(capabilities_for_severance(e)) > 0 })
+fn severance_named(sev) = sev |> filter({ e => len(capabilities_for_severance(e)) > 0 })
 
 // Severance candidates: every effect DECLARED in scope that the body
 // does not reach — adding `!E` for each is provable and unlocks what
@@ -1014,7 +1014,7 @@ fn severance_named(sev) with Memory + Alloc + Intern =
 // own "this name is an effect" edge (register_effect_ops draws it);
 // reading it live means a newly-declared effect enters the audit by
 // construction, and the literal list (with its drift marker) deletes.
-fn severance_vocabulary() with EnvRead + Intern + Memory + Alloc = match env_snapshot() {
+fn severance_vocabulary() = match env_snapshot() {
   Env(bindings) => bindings |> fold(
     [],
     (acc, b) => match b {
@@ -1089,7 +1089,7 @@ fn render_audit(entries) = {
 // — effects every body provably never reaches that no capability names. The
 // second line is a statement about the MEDIUM, not about the code, which is
 // why it belongs here once and nowhere per function.
-fn render_module_severance(module_sev) with Memory + Alloc + Intern + GraphRead = {
+fn render_module_severance(module_sev) = {
   let named = severance_named(module_sev)
   let unnamed = len(module_sev) - len(named)
   let named_line = if len(named) == 0 {
@@ -1202,10 +1202,9 @@ fn audit_report_lines(fn_name: String, row_str: String, beyond, referenced_by: [
 // from the graph: the span is the node's own coordinate, the module is the
 // column's. This is what span_render_local produced by scanning every
 // module's range for one containing a weave line — one read now, no scan.
-fn render_census_sites(ref sites) with GraphRead + Memory + Alloc =
-  sites |> map(census_site_line) |> str_concat_all
+fn render_census_sites(ref sites) = sites |> map(census_site_line) |> str_concat_all
 
-fn census_site_line(site) with Memory + Alloc = match site {
+fn census_site_line(site) = match site {
   (path, s) => "\n  at {path}:{show_span(s)}",
 }
 
@@ -1214,17 +1213,15 @@ fn census_site_line(site) with Memory + Alloc = match site {
 // The seam walk is GONE: the span is already the developer's own coordinate
 // and the module rides the obligation, so a line is one read and a name, with
 // no containment scan over every node to place it.
-fn render_debt_lines(obligations) with GraphRead + Memory + Alloc =
-  obligations |> map(render_debt_line) |> str_concat_all
+fn render_debt_lines(obligations) = obligations |> map(render_debt_line) |> str_concat_all
 
-fn render_debt_line(ob) with GraphRead + Memory + Alloc = match ob {
+fn render_debt_line(ob) = match ob {
   (modh, s, pred, _) => "\n  {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(s)}",
 }
 
-fn render_smt_lines(obligations) with GraphRead + Memory + Alloc + Diagnostic + Intern =
-  obligations |> map(render_smt_line) |> str_concat_all
+fn render_smt_lines(obligations) = obligations |> map(render_smt_line) |> str_concat_all
 
-fn render_smt_line(ob) with GraphRead + Memory + Alloc + Diagnostic + Intern = match ob {
+fn render_smt_line(ob) = match ob {
   (modh, s, pred, _) => "\n; {module_name_of_handle(modh)}:{show_span(s)}\n{predicate_to_smt_lib(pred)}",
 }
 
@@ -1244,7 +1241,7 @@ fn import_row_is_dead(row) with Pure = match row {
   (_, _, used) => !used,
 }
 
-fn render_import_rows(rows) with Memory + Alloc =
+fn render_import_rows(rows) =
   "→ {int_to_str(len(rows))} import edge(s); {int_to_str(count(import_row_is_dead, rows))} bring nothing the importing module references\n{str_join_indented(map(render_import_row, rows))}"
 
 // The declared names rendered as the roster's dead half. The header states
@@ -1277,7 +1274,7 @@ fn unref_row_is_dead(row) with Pure = match row {
 // standing beside unreached ones is carrying weight. No path convention
 // decides it — not `src/` versus `lib/`, which is a directory habit the graph
 // knows nothing about — the reachability walk does, from edges it already has.
-fn render_unreach_rows(rows) with Memory + Alloc = {
+fn render_unreach_rows(rows) = {
   let groups = unreach_groups(rows)
   let carrying = groups |> filter(group_carries_dead)
   let surface = groups |> filter(group_is_surface)
@@ -1301,22 +1298,22 @@ fn render_unreach_rows(rows) with Memory + Alloc = {
 // render its two-space step compounds: the module rows printed at 2, 4, 4 and
 // their decls at 6, 8, 8, which is what the first run of this projection did
 // and what renamed that helper.
-fn render_carrying_group(g) with Memory + Alloc = match g {
+fn render_carrying_group(g) = match g {
   (m, total, dead) => "  {m} — {int_to_str(len(dead))} of {int_to_str(total)} unreached\n{dead |> map(render_unreach_name) |> str_concat_all}",
 }
 
-fn render_unreach_name(name: String) with Memory + Alloc = "      {name}\n"
+fn render_unreach_name(name: String) = "      {name}\n"
 
-fn render_surface_group(g) with Memory + Alloc = match g {
+fn render_surface_group(g) = match g {
   (m, total, _) => "  {m} — all {int_to_str(total)}\n",
 }
 
 // One pass over the rows, which arrive in module order because the cells do.
 // `last` / `drop_last` are the snoc end's O(1) reads, so extending the open
 // group costs nothing per row (SYNTAX §Vocabulary — the names say which end).
-fn unreach_groups(rows) with Memory + Alloc = rows |> fold([], unreach_group_add)
+fn unreach_groups(rows) = rows |> fold([], unreach_group_add)
 
-fn unreach_group_add(acc, row) with Memory + Alloc = match row {
+fn unreach_group_add(acc, row) = match row {
   (m, name, hit) => if len(acc) == 0 {
     [(m, 1, unreach_dead_one(name, hit))]
   } else {
@@ -1334,19 +1331,19 @@ fn unreach_group_add(acc, row) with Memory + Alloc = match row {
 // for: both operands arrive free out of a tuple destructure, and a bare `==`
 // on an unproven operand word-floors to pointer-eq — every group would open
 // fresh and the roster would read one module per decl.
-fn same_module_path(a: String, b: String) with Memory + Alloc = a == b
+fn same_module_path(a: String, b: String) = a == b
 
-fn unreach_dead_one(name, hit) with Memory + Alloc = if hit == 0 { [name] } else { [] }
+fn unreach_dead_one(name, hit) = if hit == 0 { [name] } else { [] }
 
-fn group_carries_dead(g) with Memory + Alloc = match g {
+fn group_carries_dead(g) = match g {
   (_, total, dead) => len(dead) > 0 && len(dead) < total,
 }
 
-fn group_is_surface(g) with Memory + Alloc = match g {
+fn group_is_surface(g) = match g {
   (_, total, dead) => len(dead) > 0 && len(dead) == total,
 }
 
-fn render_unref_rows(rows) with Memory + Alloc =
+fn render_unref_rows(rows) =
   "→ {int_to_str(len(rows))} declared name(s); {int_to_str(count(unref_row_is_dead, rows))} that nothing outside their own declaration references\n{str_join_indented(map(render_unref_row, filter(unref_row_is_dead, rows)))}"
 
 // Each effect with how many of its ops anything performs. A handler ARM is
@@ -1355,7 +1352,7 @@ fn render_unref_rows(rows) with Memory + Alloc =
 // body names only the rest, because a surface at k<n is either half built,
 // bypassed at its callers, or dead with its handler still installed, and
 // those three are the finds of the last three landings.
-fn render_perform_row(row) with Memory + Alloc = match row {
+fn render_perform_row(row) = match row {
   (m, name, total, done) => {
     let mark = if done == 0 { "NONE" } else { "PART" }
     "  {mark}  {m} -> {name}  {int_to_str(done)}/{int_to_str(total)} ops performed"
@@ -1366,18 +1363,18 @@ fn perform_row_is_partial(row) with Pure = match row {
   (_, _, total, done) => done < total,
 }
 
-fn render_perform_rows(rows) with Memory + Alloc =
+fn render_perform_rows(rows) =
   "→ {int_to_str(len(rows))} effect(s); {int_to_str(count(perform_row_is_partial, rows))} with ops nothing performs\n{str_join_indented(map(render_perform_row, filter(perform_row_is_partial, rows)))}"
 
 // A declaration nothing references, carrying prose that explains how it is
 // used. The bytes are the weight of the belief; the zero is the graph
 // disagreeing with it. Read the prose to decide — this names the sites, it
 // does not judge them.
-fn render_orphan_row(row) with Memory + Alloc = match row {
+fn render_orphan_row(row) = match row {
   (m, name, bytes) => "  CLAIMED  {m} -> {name}  ({int_to_str(bytes)} bytes of prose, 0 references)",
 }
 
-fn render_orphan_rows(rows) with Memory + Alloc =
+fn render_orphan_rows(rows) =
   "→ {int_to_str(len(rows))} declaration(s) explained at length and referenced by nothing\n{str_join_indented(map(render_orphan_row, rows))}"
 
 fn render_query_result(result) = match result {
@@ -1455,9 +1452,9 @@ fn str_join_indented(lines) with Pure = match lines {
 // The site badges: the schedule word at the fanout's own line —
 // `>< [Thread] at file:line` — the exact fact lower reads ambiently,
 // projected statically (the where stamp's exactness law).
-fn render_where_sites(sites) with GraphRead + Memory + Alloc = render_where_sites_from(sites)
+fn render_where_sites(sites) = render_where_sites_from(sites)
 
-fn render_where_sites_from(sites) with Memory + Alloc = match sites {
+fn render_where_sites_from(sites) = match sites {
   [] => "",
   [(word, s), ...t] => "\n  >< [{word}] at {show_span(s)}{render_where_sites_from(t)}",
 }
@@ -1557,7 +1554,7 @@ fn parse_query_string(q) = {
 // build_question — pair the classified verb with its argument. Nullary verbs
 // (unresolved/verification) ignore the arg; unary verbs carry it. A verb whose
 // arity its arg cannot satisfy projects to QUnknown(raw) — the honest unknown.
-fn build_question(verb, arg, raw) with Memory + Alloc = match verb {
+fn build_question(verb, arg, raw) = match verb {
   QVUnresolved => QUnresolved,
   QVVerification => QVerifyDebt,
   QVType => QTypeOf(arg),
@@ -1590,7 +1587,7 @@ fn build_question(verb, arg, raw) with Memory + Alloc = match verb {
 // show_pipe_kind (the one glyph projection — the constructor roster
 // appears exactly here, where the external string enters). An
 // unrecognized shape is the honest QUnknown.
-fn census_shape_of(arg) with Memory + Alloc = if arg == "anonymous" {
+fn census_shape_of(arg) = if arg == "anonymous" {
   Some(CsAnonymous)
 } else if arg == "eta" {
   Some(CsEta)
@@ -1620,8 +1617,8 @@ fn census_shape_of(arg) with Memory + Alloc = if arg == "anonymous" {
   Some(CsDefaultParam)
 } else if arg == "declared-row-hof" {
   Some(CsDeclaredRowHof)
-} else if arg == "wide-row" {
-  Some(CsWideRow)
+} else if arg == "positive-row" {
+  Some(CsAuthoredPositiveRow)
 } else if arg == "record-pattern" {
   Some(CsRecordPattern)
 } else if arg == "record-pattern-open" {
@@ -1639,6 +1636,6 @@ fn census_shape_of(arg) with Memory + Alloc = if arg == "anonymous" {
 // The verb is the FIRST word (`<verb> [arg]` — the documented query
 // grammar); the prior read of last(ws) made every 3+-word query's verb
 // and argument the SAME final word.
-fn query_head(ws) with Memory = if len(ws) == 0 { "" } else { head(ws) }
+fn query_head(ws) = if len(ws) == 0 { "" } else { head(ws) }
 
-fn query_last(ws) with Memory = if len(ws) == 0 { "" } else { list_index(ws, len(ws) - 1) }
+fn query_last(ws) = if len(ws) == 0 { "" } else { list_index(ws, len(ws) - 1) }

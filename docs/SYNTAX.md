@@ -1417,31 +1417,37 @@ document's own:
 3. **It buries the signal.** `!E` is the crown. In a nineteen-name row the one
    negation worth reading is a needle in a haystack the author typed.
 
-**The form, and it needs no new syntax.** A row is a type-level value, so a
-capability is a `type` alias (above), and the alias is transparent — the checked
-row is identical, nothing proven is lost. The wheel's own worst seven signatures
-shared a sixteen-name core that had never been named; `type Judging = …` gave it
-one, and they became:
+**The form, and it needs no new syntax — it is the ABSENCE of the clause.**
+The POSITIVE row is inferred and PROJECTED (real, 2026-09-27, A4): what a
+signature authors is a decision — a negation, an instance pin, `Pure` — and the
+full positive row is read at the address surface (`mentl <file:line>` renders
+`-> T with Memory + Alloc`) the way `repr` width and resume cardinality already
+are. So the normal signature is `with !Alloc + !Thread`: shorter *and* the part
+worth reading. Three mechanisms carry it:
 
-```
-fn driver_check_module(ref entry) with Judging = …
-fn driver_entry_scoped(ref m, scope) with Judging + Filesystem = …
-fn driver_compile_entry(ref m) with Judging + Filesystem + Persist + Fail = …
-```
+- **`T_RowInventory`** narrates a clause whose bare positive names are exactly
+  what the body proves — or whose body row is OPEN (a callback's row rides
+  its tail), where a positive cap installs no gate and so constrains nothing.
+  `T_OverDeclared` keeps the case where a declared name is beyond the proven
+  row, and reads the positive half only: a negation-only signature is never
+  "over-declared" (it used to narrate `!Mutate + Any` against a Pure body).
+- **`mentl tighten`** writes each narrated clause's RESIDUE — its negations and
+  instance pins, or no clause at all — never the proven row (the old form
+  wrote type-instances the grammar cannot read back). The medium authored its
+  own migration: 1,490 clauses over five runs, the wheel judging clean through
+  the inferred rows with zero `E_EffectMismatch` — its negations had been true
+  all along.
+- **`mentl verify` bounds the shape** (`CsAuthoredPositiveRow`, `src/board.mn`)
+  at ZERO on the wheel, seen RED at 164 through the half-swept tree. The
+  sixteen-name capability `type Judging` that the first landing named (the
+  wide-row count, 19 → 12) lost its last user and is deleted: a capability
+  nobody authors needs no name.
 
-What survives on the page is what a reader should read: `+ Filesystem` where a
-pass touches disk, `+ Persist` where it writes an image, `+ Fail` where it can
-refuse. `+ Intern` was never a decision. `mentl verify` bounds the shape
-(`CsWideRow`, `src/board.mn`), so this is a count that must fall rather than a
-style note that can be ignored.
-
-**The endpoint, which takes the count to zero:** the POSITIVE row is inferred
-and PROJECTED, and only negations, instance pins and genuine narrowings are
-authored — `with !Alloc + !Thread` as the normal signature, shorter *and* the
-part worth reading, with the full positive row available at the address surface
-the way `repr` width and resume cardinality already are. The peer is
-`Hβ.syntax.positive-row-is-authored-by-hand`; the migration is the medium's own
-work, since `mentl tighten` already authors row patches.
+A positive row on a HOF stays LEGAL user intent — a cap on what its callbacks
+may perform — and today it constrains nothing; the landing that makes a
+surviving cap a gate (`Pg ∪ mask` on push, the negation gate's twin) is where
+`T_RowInventory`'s open-row arm stops narrating and `T_OverDeclared` becomes
+the projection's business.
 
 **Dissolved:** the `capability` keyword and the `TCapability` token. `capability X
 = <row>` was structurally `type X = <row>` (the doc's own prior admission, peer
@@ -2216,7 +2222,8 @@ token, so there is nothing to lift.*
 
 | Code                  | Trigger                                       | Applicability        | Action                                          |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
-| `T_OverDeclared`      | declared row wider than body uses             | `MachineApplicable`  | tighten the signature to unlock capabilities    |
+| `T_OverDeclared`      | a declared bare positive name beyond the proven row (the positive half only — a negation is a proof claim, never over-declared) | `MachineApplicable`  | `mentl tighten` writes the clause's residue |
+| `T_RowInventory`      | a declared clause whose bare positive names are exactly what the body proves, or a positive cap over an OPEN body row (which installs no gate and so constrains nothing) — the projected row written by hand (§«A signature is not an inventory») | `MachineApplicable` | `mentl tighten` writes the residue — negations, instance pins, or no clause |
 | `T_FieldOffsetUnprovable` | a reachable field access whose slot the graph cannot prove — the receiver's row never closed, so emit has no offset and writes `(unreachable)`. The diagnostic renders the selector and the receiver's own live type at the receiver's span. BORN 2026-09-15, and the shape of its birth is the lesson: the floor had been emitted since the offset read existed and was never REPORTED, so a program carrying one compiled clean, passed `mentl check`, and trapped at the instruction that admits it — §0's "nothing executes unproven" inverted at the one boundary that claimed it. Pre-arm (the wheel's own census is four); `tests/frontier/mn-field-offset-unprovable.mn` holds the contract and moves to a refusal in the commit that arms it | `MaybeIncorrect` | close the receiver's row — annotate it at its Intent Boundary, or give the call site a shape the twin can key on |
 | `T_EqTypeUnprovable` | a comparison (`==`, `!=`, `<`, …) whose operand type is still a variable at emit — no structure to read, so it falls to a one-word compare: value-equality for a word, an ADDRESS lie for anything else. The diagnostic carries the operator and the operand's live type at the operand's span. BORN 2026-09-18 as narration: a handler arm over quantified op parameters answered `"ab" != "ab"` (`tests/frontier/mn-eq-in-arm-pointer.mn`, declared red), and the wheel carries such compares itself — the trap form was refuted by the wheel dying on its own compile. Pre-arm; `eq_type_unprovable_max` in tools/verify-baseline.txt is the count's one home and the countdown, `T_FieldOffsetUnprovable`'s sibling on the same ladder. IT SEES ONE ALTITUDE ONLY, and the limit is measured rather than suspected: a polymorphic sum's payload compared by address inside a GENERATED leaf, where no authored comparison stands for this diagnostic to attach to, so the count held unchanged across that defect's whole discovery. That one is closed (`Hβ.eq.polymorphic-sum-payload-is-pointer-eq`); the altitude limit is not, and the generated leaf's own refusal is `Hβ.emit.generated-leaf-swallows-an-unresolved-payload` | `MaybeIncorrect` | prove the operand — give the call site a shape the twin can key on, or name the type at its Intent Boundary |
 | `T_Gradient`          | an annotation INPUT would narrow the cursor's projection | `MachineApplicable` | accept the suggestion to narrow             |

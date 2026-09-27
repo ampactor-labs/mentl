@@ -36,35 +36,6 @@ import persist
 
 import verify
 
-// ─── Judging — the whole-program judgment's capability, finally named ────
-//
-// Sixteen effects that a pass needs to JUDGE a program: mint into the image,
-// read and write the graph and the env, intern, look up types, discharge
-// obligations, report, track regions, consume, and reach the host. They are
-// not sixteen decisions. They are ONE capability, and every function below
-// that judges needs exactly it.
-//
-// IT WAS WRITTEN OUT LONGHAND AT SEVEN SIGNATURES, and the census that named
-// the shape is what made that countable: `mentl query <file> "census
-// wide-row"` found nineteen signatures declaring more than eight effects, of
-// which seven were this same core spelled again — the widest at NINETEEN
-// names. That is not a type annotation, it is an inventory, and it violates
-// the law it is written in: SYNTAX says a declared row is "a CONSTRAINT
-// verified against the row inferred from the body", so each of those names
-// is a hand-copy of something the graph computed, and widening one leaf
-// edited seven signatures at once. I paid that tax twice in one session.
-//
-// SYNTAX's §«Named effect rows» already had the answer — a row is a
-// type-level value, so naming one IS a type alias, with the full Boolean
-// algebra available on it. Nothing here is new machinery; the capability
-// simply had no name, which is why it could not be said once.
-//
-// What the callers add is now what a reader should actually read: `+
-// Filesystem` where a pass touches disk, `+ Persist` where it writes an
-// image, `+ Fail` where it can refuse. Those are decisions. `+ Intern` was
-// never a decision.
-type Judging = Memory + Alloc + ImageAlloc + WASI + EnvRead + EnvWrite + GraphRead + GraphWrite + Diagnostic + DiagRegister + LookupTy + Verify + Intern + Cast + Consume + RegionTrack
-
 // Resolve a module name to a file path — four homes, tried in order:
 //   the DIRECT read (an arg naming an existing file resolves as itself —
 //     `mentl check foo` beside foo.mn in ANY directory; `sub/thing` and
@@ -85,7 +56,7 @@ type Judging = Memory + Alloc + ImageAlloc + WASI + EnvRead + EnvWrite + GraphRe
 // (the tree scan's erased list) routes the word floor — paths minted as
 // pointer numerals, fs_exists false for every module, the warm manifest
 // all zeros, and the incremental compile blind to every edit.
-fn driver_module_path(ref module_name: String) with Filesystem = {
+fn driver_module_path(ref module_name: String) = {
   let direct = "{module_name}.mn"
   if fs_exists(direct) {
     direct
@@ -123,7 +94,7 @@ fn driver_module_path(ref module_name: String) with Filesystem = {
 // emitted a module that could not assemble ($ev_lookup undefined —
 // Hβ.driver.wheel-imports-are-the-manifest, the fleet's measured
 // finding).
-fn driver_collect_dag(ref entry_module) with Memory + Alloc + Filesystem + Intern + GraphRead = {
+fn driver_collect_dag(ref entry_module) = {
   let buf = make_list(16)
   let visited = []
   // The seed is conditional on RESOLUTION: the prelude is pre-imported where
@@ -169,7 +140,7 @@ fn driver_collect_dag(ref entry_module) with Memory + Alloc + Filesystem + Inter
 // declaration in it then collided with itself. Resolution moves ABOVE
 // the check and the set keys the path, so a second edge to a module
 // already walked is the no-op that drawing an existing edge is.
-fn driver_collect_visit(ref module_name, own collected, own visited) with Memory + Alloc + Filesystem + Intern + GraphRead + !Diagnostic = {
+fn driver_collect_visit(ref module_name, own collected, own visited) with !Diagnostic = {
   let path = driver_module_path(module_name)
   if set_contains(visited, path) {
     (collected, visited)
@@ -228,7 +199,7 @@ fn module_imports_of(entry) with Pure = match entry {
   (_n, _p, _s, i) => i,
 }
 
-fn driver_collect_visit_list(ref modules, own collected, own visited) with Memory + Alloc + Filesystem + Intern + GraphRead + !Diagnostic = fold(
+fn driver_collect_visit_list(ref modules, own collected, own visited) with !Diagnostic = fold(
   (collected, visited),
   (acc, m) => match acc {
     (c, v) => driver_collect_visit(m, c, v),
@@ -252,8 +223,7 @@ fn driver_collect_visit_list(ref modules, own collected, own visited) with Memor
 // reporting pass. Its file-local spans are unplaceable, and the weave
 // parse re-reports every one of them placeably, so the unabsorbed form
 // printed each lex diagnostic TWICE.
-fn driver_extract_imports(ref source) with Memory + Alloc + Intern + GraphRead =
-  source |> lex |> import_edges ~> diag_quiet
+fn driver_extract_imports(ref source) = source |> lex |> import_edges ~> diag_quiet
 
 // Infer one module: its exports install into env_handler as the
 // converged judgment walks (the graph IS the record of what this module
@@ -272,7 +242,7 @@ fn driver_extract_imports(ref source) with Memory + Alloc + Intern + GraphRead =
 // fs_exists test the ADT already answers. That is the same re-derivation
 // this file's header names for every OTHER consumer of the walk; the
 // per-module check was the last one still following a name.
-fn driver_check_module(ref entry) with Judging = match module_source_of(entry) {
+fn driver_check_module(ref entry) = match module_source_of(entry) {
   None => report(EMissingModule(module_name_of(entry), module_path_of(entry), span_zero())),
   Some(source) => {
     source |> infer_program_converged
@@ -308,7 +278,7 @@ fn driver_check_module(ref entry) with Judging = match module_source_of(entry) {
 // Each module either loads from cache or re-infers; envs install in
 // dependency order so every imported name is in `env_handler` before
 // the entry module's inference runs.
-fn driver_check(ref entry_module) with Judging + Filesystem =
+fn driver_check(ref entry_module) =
   entry_module |> driver_collect_dag_with_deps |> driver_partition_layers |> each((layer) => each(driver_check_module, layer))
 
 // The COMPILE form of the entry read: an executable IS the one-namespace
@@ -336,7 +306,7 @@ fn driver_check(ref entry_module) with Judging + Filesystem =
 // Hβ.infer.order-independent-verdicts). One canon, one truth: the DAG
 // discovers the SET; the sort fixes the WEAVE to the blob's own order, so
 // the two build paths read one input.
-fn driver_canonical_order(modules) with Memory + Alloc = {
+fn driver_canonical_order(modules) = {
   let keyed = map((m) => (driver_module_order_key(module_path_of(m)), m), modules)
   map({ (_, m) => m }, driver_sort_keyed(keyed))
 }
@@ -346,13 +316,11 @@ fn driver_canonical_order(modules) with Memory + Alloc = {
 // The rank reads the src/ SEGMENT, not a position-0 prefix: under an
 // installed mount the resolver returns /mentl-home/src/..., and a prefix
 // test would re-rank every src module as lib (a mount-dependent weave).
-fn driver_module_order_key(p) with Memory + Alloc =
-  if str_contains(p, "src/") { "0{p}" } else { "1{p}" }
+fn driver_module_order_key(p) = if str_contains(p, "src/") { "0{p}" } else { "1{p}" }
 
-fn driver_sort_keyed(pairs) with Memory + Alloc =
-  fold([], (acc, p) => driver_insert_keyed(p, acc), pairs)
+fn driver_sort_keyed(pairs) = fold([], (acc, p) => driver_insert_keyed(p, acc), pairs)
 
-fn driver_insert_keyed(pair, sorted) with Memory + Alloc = if len(sorted) == 0 {
+fn driver_insert_keyed(pair, sorted) = if len(sorted) == 0 {
   [pair]
 } else {
   match pair {
@@ -368,8 +336,7 @@ fn driver_insert_keyed(pair, sorted) with Memory + Alloc = if len(sorted) == 0 {
 
 // A module's weave range off the fold's own map — homed beside the fold
 // that mints it; at_run and the session read it through this same edge.
-fn range_of_module(ref ranges, ref target) with Memory + Alloc =
-  find({ (m, _, _) => m == target }, ranges)
+fn range_of_module(ref ranges, ref target) = find({ (m, _, _) => m == target }, ranges)
 
 // The tree's identity as a value — the resident session's staleness
 // read: each WOVEN module's (path hash, byte length, content hash),
@@ -400,9 +367,9 @@ fn range_of_module(ref ranges, ref target) with Memory + Alloc =
 // "main has 4 lines" after the edit that made it longer, and `tree moved`
 // fired zero times). An identity read whose whole job is to notice the world
 // changed cannot be served from memory.
-fn driver_manifest(ref ranges) with Memory + Alloc + Filesystem = map(module_identity, ranges)
+fn driver_manifest(ref ranges) = map(module_identity, ranges)
 
-fn module_identity(r) with Memory + Alloc + Filesystem = match r {
+fn module_identity(r) = match r {
   (_m, p, _text) => if fs_exists(p) {
     let text = fs_read_file(p)
     (str_hash(p), byte_len(text), str_hash(text))
@@ -423,7 +390,7 @@ fn module_identity(r) with Memory + Alloc + Filesystem = match r {
 // nothing left to answer once the span-containment cut was deleted. A
 // parameter nothing reads is a fact re-supplied at four sites to be dropped
 // at one — Carried-Truth with the arrow reversed.
-fn driver_module_ast(ref ast, ref target) with Memory + Alloc + GraphRead + !Mutate =
+fn driver_module_ast(ref ast, ref target) with !Mutate =
   module_decls_of(module_cells(), target, ast)
 
 // A module's own top-level nodes, READ from its NModule node — which holds
@@ -434,7 +401,7 @@ fn driver_module_ast(ref ast, ref target) with Memory + Alloc + GraphRead + !Mut
 // — reading the node instead of re-filtering is the O(1) form once the mint
 // keeps an edge to it." The mint keeps it now. The whole-ast fallback stands
 // for a target that is not a woven module (the stdin/blob path).
-fn module_decls_of(ref cells, ref target, ref ast) with Memory + Alloc = if len(cells) == 0 {
+fn module_decls_of(ref cells, ref target, ref ast) = if len(cells) == 0 {
   ast
 } else {
   match cells[0] {
@@ -451,10 +418,10 @@ fn module_decls_of(ref cells, ref target, ref ast) with Memory + Alloc = if len(
 // modules and therefore no cross-module reference to find. A mechanism that
 // picks its readers' policy leaves one of them with no way to ask.
 // `Hβ.voice.comment-ref-gate-reads-the-flattened-link` carries the record.
-fn driver_entry_with_ranges(entry_module) with Judging + Filesystem =
+fn driver_entry_with_ranges(entry_module) =
   driver_entry_scoped(entry_module, ScopeModule(entry_module))
 
-fn driver_entry_scoped(ref entry_module, dscope) with Judging + Filesystem = {
+fn driver_entry_scoped(ref entry_module, dscope) = {
   // Discovery is a STRUCTURE read: the DAG walk parses each module only
   // for its imports, and the weave parse below re-reports every shape
   // with weave spans — so discovery narration is a duplicate in
@@ -527,8 +494,7 @@ let warm_entry = [""]
 
 let warm_asts = [[]]
 
-fn warm_program() with Memory + Alloc =
-  list_index(warm_asts, 0) |> map({ (_, ss) => ss }) |> flatten
+fn warm_program() = list_index(warm_asts, 0) |> map({ (_, ss) => ss }) |> flatten
 
 // ─── The ONE tree scan ────────────────────────────────────────────────
 // Discovery walks the DAG once; then ONE content pass per module yields
@@ -541,7 +507,7 @@ fn warm_program() with Memory + Alloc =
 // matched against it to build the downstream closure, so a spelling here
 // against paths there would drop an importer out of the cone and leave a
 // stale judgment standing after its dep was edited.
-fn driver_tree_scan(ref entry_module) with Memory + Alloc + Filesystem + Intern + GraphRead = {
+fn driver_tree_scan(ref entry_module) = {
   let modules = driver_canonical_order(driver_collect_dag(entry_module))
   let paths = map(module_path_of, modules)
   map(
@@ -556,7 +522,7 @@ fn driver_tree_scan(ref entry_module) with Memory + Alloc + Filesystem + Intern 
   )
 }
 
-fn scan_pairs(ref scan) with Memory + Alloc = map({ (m, h, _) => (m, h) }, scan)
+fn scan_pairs(ref scan) = map({ (m, h, _) => (m, h) }, scan)
 
 // The cache path is keyed by ENTRY alone — the weave's state lives in
 // the manifest INSIDE the image, so a changed tree still finds its old
@@ -568,10 +534,10 @@ fn scan_pairs(ref scan) with Memory + Alloc = map({ (m, h, _) => (m, h) }, scan)
 // session; probe runs work under .build/probe, never /tmp. Nothing
 // prunes sibling images yet (19 entries held 7.2GB) — keep-newest-N
 // retention is this writer's own named follow-up.
-fn driver_warm_path(ref entry_module) with Memory + Alloc =
+fn driver_warm_path(ref entry_module) =
   ".build/warm-compile-e{int_to_str(str_hash(entry_module))}.img"
 
-fn driver_warm_ready(path) with Memory + Alloc + Filesystem = if fs_exists(path) {
+fn driver_warm_ready(path) = if fs_exists(path) {
   let wire = fs_read_file(path)
   if byte_len(wire) >= 16 {
     let p = str_payload(wire)
@@ -583,7 +549,7 @@ fn driver_warm_ready(path) with Memory + Alloc + Filesystem = if fs_exists(path)
   false
 }
 
-fn driver_compile_entry(ref entry_module) with Judging + Filesystem + Persist + Fail = {
+fn driver_compile_entry(ref entry_module) = {
   let path = driver_warm_path(entry_module)
   if driver_warm_ready(path) {
     eprint_string("warm: restoring the analyzed image\n")
@@ -629,7 +595,7 @@ fn driver_compile_entry(ref entry_module) with Judging + Filesystem + Persist + 
 // per-decl arena's image/scratch split, which the old comment named as
 // the thing the capacity would dissolve with — that split makes the image
 // SMALLER, a good and separate win; it was never what made it unwritable.
-fn driver_warm_persist(ref entry_module, ref asts, ref pairs) with Memory + Alloc + Cast + Persist + WASI + Filesystem + Diagnostic = if diag_errors() == 0 {
+fn driver_warm_persist(ref entry_module, ref asts, ref pairs) = if diag_errors() == 0 {
   fs_mkdir(".build")
   list_set(warm_asts, 0, asts)
   list_set(warm_manifest, 0, pairs)
@@ -656,7 +622,7 @@ fn driver_warm_persist(ref entry_module, ref asts, ref pairs) with Memory + Allo
 // weave range. Each module's parse now returns its own decls and its NModule
 // node holds them, so the cut has already happened — at the only moment it
 // could be exact rather than inferred from coordinates.
-fn split_weave_by_module(ref ast, ref ranges) with Memory + Alloc + GraphRead + !Mutate = {
+fn split_weave_by_module(ref ast, ref ranges) with !Mutate = {
   // module_cells, not the raw collect: the trial and the final each mint an
   // NModule per file, and the raw walk's FIRST match is the trial's shadow
   // tree. The deduped projection keeps the judged generation.
@@ -667,11 +633,11 @@ fn split_weave_by_module(ref ast, ref ranges) with Memory + Alloc + GraphRead + 
 // The stage law's own shape: the cells are CONFIG, the module the flowing
 // datum, so the caller passes a hole-product rather than an anonymous fn
 // carrying a row nobody can read at the call site.
-fn module_bucket(ref cells, r) with Memory + Alloc = match r {
+fn module_bucket(ref cells, r) = match r {
   (m, p, _text) => (p, module_decls_of(cells, m, [])),
 }
 
-fn assoc_stmts(ref pairs, name: String) with Memory + Alloc = match find({ (m, _) => m == name }, pairs) {
+fn assoc_stmts(ref pairs, name: String) = match find({ (m, _) => m == name }, pairs) {
   Some(pr) => match pr {
     (_, ss) => ss,
   },
@@ -687,7 +653,7 @@ fn assoc_stmts(ref pairs, name: String) with Memory + Alloc = match find({ (m, _
 // a nonempty cone (every DAG module is one of its transitive deps, so
 // the downstream closure of any change reaches it). The re-judged state
 // re-persists, so the image tracks the tree edit by edit.
-fn driver_incremental() with Judging + Filesystem + Persist = {
+fn driver_incremental() = {
   let entry = list_index(warm_entry, 0)
   let scan = driver_tree_scan(entry)
   let cur_pairs = scan_pairs(scan)
@@ -730,10 +696,10 @@ fn driver_incremental() with Judging + Filesystem + Persist = {
 // the manifest never saw it. A VANISHED module needs no arm of its own:
 // whoever imported it changed by text (the dropped import), and a module
 // nothing imports is not in the DAG at all.
-fn changed_modules(ref old_pairs, ref cur_pairs) with Memory + Alloc =
+fn changed_modules(ref old_pairs, ref cur_pairs) =
   cur_pairs |> filter({ (m, h) => manifest_hash_of(old_pairs, m) != h }) |> map({ (m, _) => m })
 
-fn manifest_hash_of(ref pairs, name: String) with Memory + Alloc = match find({ (m, _) => m == name }, pairs) {
+fn manifest_hash_of(ref pairs, name: String) = match find({ (m, _) => m == name }, pairs) {
   Some(pr) => match pr {
     (_, h) => h,
   },
@@ -744,13 +710,13 @@ fn manifest_hash_of(ref pairs, name: String) with Memory + Alloc = match find({ 
 // when any of its deps is in it; iterate to the fixpoint, then project
 // the cone in the scan's canonical (deps-first) order so re-derivation
 // reads every re-judged dep before its importer.
-fn downstream_closure(ref scan, changed) with Memory + Alloc = {
+fn downstream_closure(ref scan, changed) = {
   let dag = map({ (m, _, deps) => (m, deps) }, scan)
   let cone = closure_fix(dag, changed)
   scan |> map({ (m, _, _) => m }) |> filter((m) => module_in(cone, m))
 }
 
-fn closure_fix(ref dag, cone) with Memory + Alloc = {
+fn closure_fix(ref dag, cone) = {
   let grown = fold(
     cone,
     (acc, md) => match md {
@@ -767,10 +733,9 @@ fn closure_fix(ref dag, cone) with Memory + Alloc = {
   if len(grown) == len(cone) { cone } else { closure_fix(dag, grown) }
 }
 
-fn module_in(ref xs, m: String) with Memory + Alloc = any((x) => x == m, xs)
+fn module_in(ref xs, m: String) = any((x) => x == m, xs)
 
-fn names_join(ref xs) with Memory + Alloc =
-  fold("", (acc, m) => if byte_len(acc) == 0 { m } else { "{acc} {m}" }, xs)
+fn names_join(ref xs) = fold("", (acc, m) => if byte_len(acc) == 0 { m } else { "{acc} {m}" }, xs)
 
 // Re-judge the cone in canonical order (deps before importers by the
 // closure's own projection): each module parses fresh and infers into
@@ -782,7 +747,7 @@ fn names_join(ref xs) with Memory + Alloc =
 // is the read — the driver_module_path call that stood here re-resolved a
 // name the scan had already resolved, and against a path it would not have
 // resolved at all.
-fn rederive_cone(ref cone) with Judging + Filesystem = map(
+fn rederive_cone(ref cone) = map(
   (m) => {
     // The module is judged UNDER ITS OWN NAME. This read
     // infer_program_converged, which names its single module "<stdin>" — so
@@ -813,7 +778,7 @@ fn rederive_cone(ref cone) with Judging + Filesystem = map(
 // is the identity bug wearing an ordering costume. The PAIR carries the
 // whole entry, so the per-module check reads the name for its diagnostic
 // and the path for its read instead of re-resolving either by name.
-fn driver_collect_dag_with_deps(ref entry_module) with Memory + Alloc + Filesystem + Intern + GraphRead = {
+fn driver_collect_dag_with_deps(ref entry_module) = {
   let modules = driver_collect_dag(entry_module)
   let paths = map(module_path_of, modules)
   map(
@@ -825,14 +790,12 @@ fn driver_collect_dag_with_deps(ref entry_module) with Memory + Alloc + Filesyst
   )
 }
 
-fn contains_module(ref modules: [String], ref target: String) with Memory + Alloc =
-  any((m) => m == target, modules)
+fn contains_module(ref modules: [String], ref target: String) = any((m) => m == target, modules)
 
 // Partition modules-with-deps into topological layers. Each pass
 // peels off the "ready set" — modules whose deps are all processed.
 // Iteration bound: DAG depth (typically ≤ 10 for a wheel-class graph).
-fn driver_partition_layers(ref modules_with_deps) with Memory + Alloc =
-  driver_partition_peel(modules_with_deps, [], [])
+fn driver_partition_layers(ref modules_with_deps) = driver_partition_peel(modules_with_deps, [], [])
 
 // processed / layers_rev pinned (the Intent Boundary): both thread from []
 // through the recursion, so their element types have no other source — an
@@ -841,7 +804,7 @@ fn driver_partition_layers(ref modules_with_deps) with Memory + Alloc =
 // PATHS — the same key the dep edges and the visited set use, because a
 // wait condition comparing a different key than the edges is the identity
 // bug one layer up. The layers themselves carry whole entries.
-fn driver_partition_peel(ref remaining, ref processed: [String], ref layers_rev: [[ModuleEntry]]) with Memory + Alloc = if len(remaining) == 0 {
+fn driver_partition_peel(ref remaining, ref processed: [String], ref layers_rev: [[ModuleEntry]]) = if len(remaining) == 0 {
   reverse(layers_rev)
 } else {
   let layer_pairs =

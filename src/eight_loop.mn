@@ -268,11 +268,10 @@ handler interrogate_default {
 //   <~  feedback closing on gradient density stability
 //
 // The Hμ.eight-interrogation-loop's ULTIMATE FORM realized by topology.
-fn enumerate_handles(i, n) with Alloc + Memory =
-  if i >= n { [] } else { [i] ++ enumerate_handles(i + 1, n) }
+fn enumerate_handles(i, n) = if i >= n { [] } else { [i] ++ enumerate_handles(i + 1, n) }
 
 // ─── Per-interrogation helpers ──────────────────────────────────────
-fn handler_verdict_for(handle, kind, reason) with GraphRead + !Mutate + Memory + Alloc = {
+fn handler_verdict_for(handle, kind, reason) with !Mutate = {
   // The handler stack IS graph content: an install draws a `~>` edge
   // (PipeExpr(PTee, body, handler)) and the body subtree it governs is
   // exactly the capability stack (PLAN §2 — "the handler chain IS the
@@ -296,14 +295,14 @@ fn handler_verdict_for(handle, kind, reason) with GraphRead + !Mutate + Memory +
 // body is the PTee's LEFT subtree; a position is covered when it sits inside
 // some PTee body in the weave. Live read of the install edges — the handler
 // chain IS the graph (PLAN §2), never a transient stack copy.
-fn handle_under_tee_install(handle) with GraphRead + !Mutate = {
+fn handle_under_tee_install(handle) with !Mutate = {
   let snapshot = graph_snapshot()
   match snapshot {
     Graph(next, _spans) => scan_for_tee_governing(handle, 0, next),
   }
 }
 
-fn scan_for_tee_governing(target, i, n) with GraphRead + !Mutate = if i >= n {
+fn scan_for_tee_governing(target, i, n) with !Mutate = if i >= n {
   false
 } else {
   match graph_node_body(i) {
@@ -320,7 +319,7 @@ fn is_pure_row(row) with Pure = match row {
   _ => false,
 }
 
-fn handler_invite_for(handle, reason) with Memory + Alloc = AnnotationSuggestion(
+fn handler_invite_for(handle, reason) = AnnotationSuggestion(
   SuggestEffectRow,
   "~> <handler>   // an effect is unhandled at this position",
   [],
@@ -339,7 +338,7 @@ fn handler_invite_for(handle, reason) with Memory + Alloc = AnnotationSuggestion
 // body IS a pipe-shaped flow but unclassified would invite — today every
 // node has a definite weave position, so the four PipeContext cases all
 // clear (the topology is READ, never absent).
-fn verb_verdict_for(handle, kind, reason) with GraphRead + !Mutate + Memory + Alloc = match pipe_context_of_handle(handle) {
+fn verb_verdict_for(handle, kind, reason) with !Mutate = match pipe_context_of_handle(handle) {
   NoPipe => VerdictClears(reason),
   InsidePipe(_) => VerdictClears(reason),
   StartingPipe => VerdictClears(reason),
@@ -348,7 +347,7 @@ fn verb_verdict_for(handle, kind, reason) with GraphRead + !Mutate + Memory + Al
 
 // Row clears when the binding's row is bound (resolved at
 // inference). Free row variables surface as invites.
-fn row_verdict_for(handle, kind, reason) with Memory + Alloc = match kind {
+fn row_verdict_for(handle, kind, reason) = match kind {
   NBound(ty) => if row_is_ground(row_of_kind(kind)) {
     VerdictClears(reason)
   } else {
@@ -361,12 +360,12 @@ fn row_verdict_for(handle, kind, reason) with Memory + Alloc = match kind {
 // Ownership clears when authored OR resolved is non-Unmarked.
 // Otherwise the gradient could suggest one (see Hμ.gradient-delta
 // delta_ownership).
-fn ownership_verdict_for(handle, kind, reason) with Memory + Alloc = match ownership_of_kind(kind) {
+fn ownership_verdict_for(handle, kind, reason) = match ownership_of_kind(kind) {
   Unmarked => VerdictInvites(ownership_invite_for(handle, reason)),
   _ => VerdictClears(reason),
 }
 
-fn refinement_verdict_for(handle, reason) with Verify + GraphRead + Memory + Alloc + !Mutate = {
+fn refinement_verdict_for(handle, reason) with !Mutate = {
   // Refinement clears when no Verify-pending predicates attach to
   // this handle. Pending obligations surface as invites (the
   // gradient could resolve them via SMT or refinement annotation).
@@ -379,21 +378,21 @@ fn refinement_verdict_for(handle, reason) with Verify + GraphRead + Memory + All
 }
 
 // ─── Invite constructors — each builds an AnnotationSuggestion ─────
-fn graph_invite_for(handle, reason) with Memory + Alloc = AnnotationSuggestion(
+fn graph_invite_for(handle, reason) = AnnotationSuggestion(
   SuggestEffectRow,
   "?? — graph hole; gradient proposes a candidate",
   [],
   Located(span_zero(), Inferred("eight-fold: Graph interrogation invites — NFree at this handle"))
 )
 
-fn row_invite_for(handle, reason) with Memory + Alloc = AnnotationSuggestion(
+fn row_invite_for(handle, reason) = AnnotationSuggestion(
   SuggestEffectRow,
   "with <inferred-row>",
   ["CMemoize", "CCompileTimeEval"],
   Located(span_zero(), Inferred("eight-fold: Row interrogation invites — row-free at this binding"))
 )
 
-fn ownership_invite_for(handle, reason) with Memory + Alloc = AnnotationSuggestion(
+fn ownership_invite_for(handle, reason) = AnnotationSuggestion(
   SuggestOwnership,
   "own <param> | ref <param>",
   ["CDeterministicDrop", "CZeroCopy"],
@@ -403,14 +402,14 @@ fn ownership_invite_for(handle, reason) with Memory + Alloc = AnnotationSuggesti
   )
 )
 
-fn refinement_invite_for(handle, reason, predicate) with Memory + Alloc = AnnotationSuggestion(
+fn refinement_invite_for(handle, reason, predicate) = AnnotationSuggestion(
   SuggestRefinement,
   "where <predicate>",
   ["CEliminateBoundsCheck"],
   Located(span_zero(), Inferred("eight-fold: Refinement interrogation invites — Verify-pending"))
 )
 
-fn reason_invite_for(handle, reason) with Memory + Alloc = AnnotationSuggestion(
+fn reason_invite_for(handle, reason) = AnnotationSuggestion(
   SuggestEffectRow,
   "<documented-edge>",
   [],
@@ -451,7 +450,7 @@ fn verdict_is_clear(v) with Pure = match v {
 // project-wide gradient-density at various granularities.
 // Total-clear count: positions where ALL EIGHT clear. Reading
 // ULTIMATE FORM as the limit.
-fn total_clear_positions(reports) with Memory + Alloc = count(all_eight_clear, reports)
+fn total_clear_positions(reports) = count(all_eight_clear, reports)
 
 fn all_eight_clear(report) with Pure = match report {
   InterrogationReport(r) => verdict_is_clear(r.graph_v) && verdict_is_clear(r.handler_v) && verdict_is_clear(r.verb_v) && verdict_is_clear(r.row_v) && verdict_is_clear(r.ownership_v) && verdict_is_clear(r.refinement_v) && verdict_is_clear(r.gradient_v) && verdict_is_clear(r.reason_v),

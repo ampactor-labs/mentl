@@ -117,7 +117,7 @@ type Cadence
   | CadOnAsk
 
 // Default cadence per the cursor walkthrough §10.4: ~250ms idle-debounced.
-fn default_cadence() with Memory + Alloc = CadDebounced(250)
+fn default_cadence() = CadDebounced(250)
 
 // ─── TransportState — one record-shape carried by all handlers ──────
 //
@@ -135,7 +135,7 @@ type TransportState
 // monotonically incrementing
 //
 // why-chain of last surfaced view
-fn transport_state_init(initial_caret) with Memory + Alloc =
+fn transport_state_init(initial_caret) =
   TransportState({cadence: default_cadence(), caret: initial_caret, cursor: Cursor(0, Inferred("session-init"), 0.0), last_render: Inferred("none"), session_id: 0})
 
 // ─── terminal_transport — text-mode rendering ───────────────────────
@@ -163,7 +163,7 @@ handler terminal_transport with state = transport_state_init(Caret(0, Inferred("
 // labeled aspects into ONE string; the transport arm writes it at
 // the WASI boundary in one print_string. Any text-mode surface
 // (terminal, CI log, doc snapshot) reads the same projection.
-fn render_cursor_block(cursor, view) with GraphRead + Alloc + Memory + !Mutate + Intern = match view {
+fn render_cursor_block(cursor, view) with !Mutate = match view {
   CursorView(query, propose, topology, row, trace, verify, teach, why) => "Mentl @ " ++ show_handle_label(cursor) ++ "\n────────────────────────────────────────────\n" ++ "Query    │ " ++ show_node_kind(query) ++ "\nPropose  │ " ++ show_proposals(propose) ++ "\nTopology │ " ++ show_pipe_context(topology) ++ "\nRow      │ " ++ show_effrow(row) ++ "\nTrace    │ " ++ show_ownership(trace) ++ "\nVerify   │ " ++ show_verify_count(verify) ++ "\nTeach    │ " ++ show_suggestion(teach) ++ "\nWhy      │ " ++ show_reason(why) ++ "\n",
 }
 
@@ -205,7 +205,7 @@ fn render_cursor_block(cursor, view) with GraphRead + Alloc + Memory + !Mutate +
 // hand-rolled tail-recursion (cursor_loop calling itself per arm) was the
 // `<~` verb un-named — the exact drift the prime directive forbids. The
 // state threads through `<~ accumulate`; cursor_step is one cycle.
-fn cursor_session(initial_caret) with Surface + CursorRead + GraphRead + PatchWrite + Memory + Alloc = {
+fn cursor_session(initial_caret) = {
   surface_handshake()
   transport_state_init(initial_caret) |> cursor_step <~ accumulate(transport_state_init(initial_caret))
 }
@@ -214,7 +214,7 @@ fn cursor_session(initial_caret) with Surface + CursorRead + GraphRead + PatchWr
 // read the human action, fold it into the next state. The `<~` closure
 // feeds this next state back as the cycle's input (no self-recursion —
 // the feedback verb carries the loop).
-fn cursor_step(state) with Surface + GraphRead + CursorRead + !Mutate + Memory + PatchWrite + Alloc = match state {
+fn cursor_step(state) with !Mutate = match state {
   TransportState(s) => {
     // Compute the cursor: gradient argmax with caret bias.
     let cursor = cursor_argmax(s.caret)
@@ -239,23 +239,23 @@ fn cursor_step(state) with Surface + GraphRead + CursorRead + !Mutate + Memory +
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
-fn state_advance(state, latest_cursor) with Memory + Alloc = match state {
+fn state_advance(state, latest_cursor) = match state {
   TransportState(s) => match latest_cursor {
     Cursor(_, reason, _) => TransportState({cadence: s.cadence, caret: s.caret, cursor: latest_cursor, last_render: reason, session_id: s.session_id + 1}),
   },
 }
 
-fn state_with_render(state, cursor) with Memory + Alloc = match state {
+fn state_with_render(state, cursor) = match state {
   TransportState(s) => match cursor {
     Cursor(_, reason, _) => TransportState({cadence: s.cadence, caret: s.caret, cursor: cursor, last_render: reason, session_id: s.session_id}),
   },
 }
 
-fn state_with_caret(state, new_caret) with Memory + Alloc = match state {
+fn state_with_caret(state, new_caret) = match state {
   TransportState(s) => TransportState({cadence: s.cadence, caret: new_caret, cursor: s.cursor, last_render: s.last_render, session_id: s.session_id + 1}),
 }
 
-fn span_of_cursor(cursor) with GraphRead + Memory + Alloc = match cursor {
+fn span_of_cursor(cursor) = match cursor {
   Cursor(handle, _, _) => span_of_handle(handle),
 }
 
@@ -263,7 +263,7 @@ fn span_of_cursor(cursor) with GraphRead + Memory + Alloc = match cursor {
 // Substrate-honest peer Hβ.graph.handle-at-span-effect-op would
 // promote this to a handle-at-span op on GraphRead;
 // blocked on adding the op to graph.mn's effect declaration.
-fn apply_suggestion(cursor, view) with GraphRead + PatchWrite + Memory + !Mutate + Alloc = match cursor {
+fn apply_suggestion(cursor, view) with !Mutate = match cursor {
   Cursor(handle, _, _) => match view {
     CursorView(_, propose, _, _, _, _, teach, _) => // A hole accepts its PROPOSE survivor: the verdict says whether there
     // is one, and the accept path READS it rather than re-deriving it from
@@ -284,7 +284,7 @@ fn apply_suggestion(cursor, view) with GraphRead + PatchWrite + Memory + !Mutate
   },
 }
 
-fn apply_teach_suggestion(teach) with PatchWrite + Memory + Alloc = match teach {
+fn apply_teach_suggestion(teach) = match teach {
   None => (),
   Some(suggestion) => match suggestion {
     AnnotationSuggestion(_kind, ann_text, _unlocks, reason) => apply_patch_at_cursor(span_of_reason(reason), ann_text),
@@ -296,7 +296,7 @@ fn apply_teach_suggestion(teach) with PatchWrite + Memory + Alloc = match teach 
 // is the honest no-op, never a spliced fabrication; the general candidate
 // renderer is the formatter projection (Hβ.felt.candidate-render-is-format),
 // unreached while the enumerators seed literals.
-fn render_candidate_source(node) with GraphRead + Memory + !Mutate + Alloc = match node {
+fn render_candidate_source(node) with !Mutate = match node {
   N(body, _, h) => match callee_name_of(node) {
     Some(name) => "{name}()",
     None => // A BARE NAME renders as itself. A nullary constructor is a value, not
@@ -310,7 +310,7 @@ fn render_candidate_source(node) with GraphRead + Memory + !Mutate + Alloc = mat
   },
 }
 
-fn render_literal_source(h) with GraphRead + Alloc + Memory + !Mutate = match node_const(h) {
+fn render_literal_source(h) with !Mutate = match node_const(h) {
   Some(LVInt(n)) => int_to_str(n),
   Some(LVFloat(f)) => float_to_str(f),
   Some(LVString(lit)) => "\"{lit}\"",
@@ -319,7 +319,7 @@ fn render_literal_source(h) with GraphRead + Alloc + Memory + !Mutate = match no
 }
 
 // ─── Format / parse helpers per transport ──────────────────────────
-fn show_handle_label(cursor) with Memory + Alloc = match cursor {
+fn show_handle_label(cursor) = match cursor {
   Cursor(handle, _, _) => "handle={int_to_str(handle)}",
 }
 
@@ -332,7 +332,7 @@ fn show_node_kind(kind) with Pure = match kind {
   NErrorHole(_) => "error-hole",
 }
 
-fn show_proposals(props) with GraphRead + Alloc + Memory + Intern + !Mutate = match props {
+fn show_proposals(props) with !Mutate = match props {
   Proposal(p) => {
     let verdict_block = show_verdict(p.verdict)
     // The rejections TEACH: each row-refused name keeps its Why on the same
@@ -349,7 +349,7 @@ fn show_proposals(props) with GraphRead + Alloc + Memory + Intern + !Mutate = ma
 // The edit transport's own voice for the verdict. A tie carries its
 // divergence here too — the question is computed once in synth, so every
 // surface says the same thing about the same tie.
-fn show_verdict(verdict) with GraphRead + Alloc + Memory + Intern + !Mutate = match verdict {
+fn show_verdict(verdict) with !Mutate = match verdict {
   VNone => "(none)",
   VFill(node, reason) => "1 candidate(s){show_one_proposal((node, reason))}",
   VAsk(divergence, survivors) => "{int_to_str(len(survivors))} candidate(s){str_concat_all(map(show_one_proposal, survivors))} · {show_divergence(divergence)}",
@@ -358,14 +358,14 @@ fn show_verdict(verdict) with GraphRead + Alloc + Memory + Intern + !Mutate = ma
 // The pair pin is an Intent Boundary (spec_mangle's law): name's only
 // use is the splice, so unpinned it generalizes and the floor renders
 // the rejected candidate as a pointer numeral instead of its name.
-fn show_one_rejection(pair: (String, Reason)) with GraphRead + !Mutate + Alloc + Memory + Intern = match pair {
+fn show_one_rejection(pair: (String, Reason)) with !Mutate = match pair {
   (name, reason) => " · rejected {name} — {show_reason(reason)}",
 }
 
 // Each survivor: its source text and its Reason — the pair the Synth
 // contract carries (the seed reason lives in the candidate record, not on
 // the node's mint placeholder).
-fn show_one_proposal(proposal) with GraphRead + Memory + !Mutate + Alloc + Intern = match proposal {
+fn show_one_proposal(proposal) with !Mutate = match proposal {
   (node, reason) => " · {render_candidate_source(node)} — {show_reason(reason)}",
 }
 
@@ -376,10 +376,10 @@ fn show_pipe_context(ctx) with Pure = match ctx {
   EndingPipe => "ends pipe",
 }
 
-fn show_verify_count(preds) with Alloc + Memory =
+fn show_verify_count(preds) =
   if len(preds) == 0 { "no obligations" } else { "{int_to_str(len(preds))} pending" }
 
-fn show_suggestion(opt) with Memory + Alloc = match opt {
+fn show_suggestion(opt) = match opt {
   None => "(no next-step)",
   Some(suggestion) => match suggestion {
     AnnotationSuggestion(_, ann_text, unlocks, _) => "add `{ann_text}` to unlock {int_to_str(len(unlocks))} capability(ies)",
@@ -429,7 +429,7 @@ handler patch_to_file with target_module = "" {
 
 // Replace the byte range a source span covers. Lines and columns are
 // 1-based (the lexer's token spans); the end column is exclusive.
-fn splice_span(ref source, ref span, ref text: String) with Memory + Alloc = {
+fn splice_span(ref source, ref span, ref text: String) = {
   let n = byte_len(source)
   match span {
     Span(sl, sc, el, ec) => {
@@ -442,13 +442,13 @@ fn splice_span(ref source, ref span, ref text: String) with Memory + Alloc = {
 
 fn indent_annotation(ref text: String) with Pure = "  {text}\n"
 
-fn splice_before_line(ref source, target_line, ref insert: String) with Memory + Alloc = {
+fn splice_before_line(ref source, target_line, ref insert: String) = {
   let n = byte_len(source)
   let pos = find_line_start(source, target_line, 1, 0, n)
   "{str_slice(source, 0, pos)}{insert}{str_slice(source, pos, n)}"
 }
 
-fn find_line_start(ref source, target, current, idx, n) with Memory = if current >= target {
+fn find_line_start(ref source, target, current, idx, n) = if current >= target {
   idx
 } else if idx >= n {
   n

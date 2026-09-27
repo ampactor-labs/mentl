@@ -1048,20 +1048,28 @@ and this is the STATE.
   ide-gate shape one layer down — **a leg that only runs on failure has never
   been exercised on success** — and `Hβ.march.determinism-is-never-probed`
   carries it.
-- **A SIGNATURE CAN BE AN INVENTORY, and it is now a number.** The wheel's
-  declared-row distribution is 132 signatures at four effects and 155 at five
-  — then a tail at 13, 14, 16, 17 (four), 18 and NINETEEN. A nineteen-name
-  `with` clause breaks the law it is written in: SYNTAX says the declared row
-  is "a CONSTRAINT verified against the row inferred from the body", so every
-  name is a hand-copy of a computed fact, widening one leaf edits seven
-  signatures, and the one `!E` worth reading is buried in a list the author
-  typed. `CsWideRow` counts it (`> wide_row_width`, eight), `src/board.mn`
-  bounds it, and the first landing moved it **19 → 12** by naming the
-  capability seven of them shared (`type Judging`, src/driver.mn). The
-  remainder are emit, cursor, infer and synth_proposer — four more unnamed
-  capabilities. The deeper retirement, which takes it to zero, is
-  `Hβ.syntax.positive-row-is-authored-by-hand`: author the negations, the
-  pins and the genuine narrowings; infer and PROJECT the positive row.
+- **THE POSITIVE ROW IS INFERRED AND PROJECTED — the wheel authors none
+  (A4, 2026-09-27).** A signature used to be an inventory: 1,336 of the
+  wheel's 1,626 `with` clauses carried bare positive names (132 signatures at
+  four effects, 155 at five, a tail to NINETEEN), each a hand-copy of a fact
+  inference computes — SYNTAX says the declared row is "a CONSTRAINT verified
+  against the row inferred from the body" — and every one buried the `!E`
+  worth reading. `T_RowInventory` narrates a clause whose bare names the body
+  proves exactly, OR whose body row is open (a cap that installs no gate
+  constrains nothing), `mentl tighten` writes each clause's RESIDUE — its
+  negations and instance pins, or no clause — and `CsAuthoredPositiveRow`
+  bounds the wheel at ZERO (seen RED at 164 through the swept-halfway tree).
+  The medium authored the sweep itself, 1,148 + 157 + 164 + 21 patches over
+  five runs; 529 clauses remain, 273 negation-only and 256 `Pure`, every one
+  a decision. What the sweep exposed: NOTHING — the wheel judged clean
+  through the fully inferred rows with zero `E_EffectMismatch`, the
+  negations having been true all along, and the m3 leg's warnings fell
+  161 → 62. `type Judging` (2026-09-21's named capability) lost its last
+  user and is deleted. `T_OverDeclared` reads the positive half only: a
+  negation-only signature is never "over-declared" (it narrated
+  `!Mutate + Any` against a Pure body). A positive cap on an open row is
+  still admissible USER intent — A3-pos makes it a gate; on the wheel it is
+  a refused inventory.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

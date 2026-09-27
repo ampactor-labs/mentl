@@ -426,7 +426,7 @@ fn silence_predicate(situation) with Pure = match situation {
 // ParenQualifier instances with their canonical phrase strings.
 // Keyed on Tentacle (not FormKind — three tentacles share FOffering
 // but have distinct subsets per §2.7.4 lines 559-567). H6 discipline.
-fn applicable_modifiers_for_tentacle(tentacle) with Memory + Alloc = match tentacle {
+fn applicable_modifiers_for_tentacle(tentacle) = match tentacle {
   TentQuery => [ParenQualifier(" (L{N})"), ParenQualifier(" (graph-direct)")],
   TentPropose => [EmphasisClose(" fits here."), EmphasisClose(" — try it?")],
   TentTopology => [EmphasisClose(" draws it better."), EmphasisClose(" — try it?")],
@@ -480,7 +480,7 @@ fn situation_hash(situation) with Pure = match situation {
 // via hash mod pool length. Empty pool returns NoMod (defensive — no
 // pool is empty per §2.7.4, but the substrate refuses to fabricate
 // when the invariant ever shifts).
-fn pick_from_pool(tentacle, hash) with Memory + Alloc = {
+fn pick_from_pool(tentacle, hash) = {
   let pool = applicable_modifiers_for_tentacle(tentacle)
   let n = len(pool)
   if n == 0 { NoMod } else { list_index(pool, hash % n) }
@@ -491,7 +491,7 @@ fn pick_from_pool(tentacle, hash) with Memory + Alloc = {
 // §2.7.4 line 532). RPlayful and RExplain pick from the per-tentacle
 // applicable subset via hash-mod-len. Same Situation + same Register
 // → same Modifier, every call. H6 discipline on Register match.
-fn select_modifier(situation, register) with Memory + Alloc = match situation {
+fn select_modifier(situation, register) = match situation {
   Situation(s) => match register {
     RTerse => NoMod,
     RPlayful => pick_from_pool(s.tentacle, situation_hash(situation)),
@@ -516,7 +516,7 @@ fn topic_ident_or_empty(topic) with Pure = match topic {
 // without a natural span (TopicIdent / TopicHandle / TopicAsk) yield
 // the zero-Span sentinel. Used for SSpan slot construction at render
 // time. H6 exhaustive over Topic.
-fn topic_span_or_zero(topic) with Memory + Alloc = match topic {
+fn topic_span_or_zero(topic) = match topic {
   TopicIdent(_) => Span(0, 0, 0, 0),
   TopicHandle(_) => Span(0, 0, 0, 0),
   TopicSpan(span) => span,
@@ -529,7 +529,7 @@ fn topic_span_or_zero(topic) with Memory + Alloc = match topic {
 // identifier from topic, the inferred type from row_at_topic context,
 // and the row itself. silence_predicate gated upstream — fires only
 // when reason_at_topic is Some (per MV §2.7.5 TentQuery arm).
-fn render_query_arm(situation) with Memory + Alloc = match situation {
+fn render_query_arm(situation) = match situation {
   Situation(s) => {
     let name = topic_ident_or_empty(s.topic)
     let row_slot = match s.row_at_topic {
@@ -550,7 +550,7 @@ fn render_query_arm(situation) with Memory + Alloc = match situation {
 // Topic discriminates: TopicHandle (hole at handle) → "Hole expects
 // `Type`"; TopicError (typo / missing) → "Did you mean ...?";
 // TopicAsk (explicit ask) → echoes ask. silence_predicate gated.
-fn render_propose_arm(situation) with Memory + Alloc = match situation {
+fn render_propose_arm(situation) = match situation {
   Situation(s) => match s.facts {
     TopicFacts(f) => {
       let body = match s.topic {
@@ -580,7 +580,7 @@ fn render_propose_arm(situation) with Memory + Alloc = match situation {
 // FOffering with STYLE_NUDGE stance. Per AT4: nested-call depth >= 3
 // surfaces a "use |> instead" suggestion. silence_predicate gated on
 // nested_call_depth >= 3 (TopicFacts substrate from D.1.c).
-fn render_topology_arm(situation) with Memory + Alloc = match situation {
+fn render_topology_arm(situation) = match situation {
   Situation(s) => match s.facts {
     TopicFacts(f) => VoiceLine(
       TentTopology,
@@ -595,7 +595,7 @@ fn render_topology_arm(situation) with Memory + Alloc = match situation {
 // FCapability with EXCITED stance. Surfaces a capability that the
 // gradient_next would unlock. silence_predicate gated on gradient_next
 // AND gradient_unlocks_capability(gradient_next).
-fn render_unlock_arm(situation) with Memory + Alloc = match situation {
+fn render_unlock_arm(situation) = match situation {
   Situation(s) => {
     let body = match s.gradient_next {
       None => [SLit("")],
@@ -612,7 +612,7 @@ fn render_unlock_arm(situation) with Memory + Alloc = match situation {
 // violation / dropped capability / missing import — Trace surfaces
 // the violation site. silence_predicate gated on ownership_at_topic
 // being Some OR row_subsumption_fails.
-fn render_trace_arm(situation) with Memory + Alloc = match situation {
+fn render_trace_arm(situation) = match situation {
   Situation(s) => {
     let body = match s.ownership_at_topic {
       Some(_) => [SLit("Ownership at "), SSpan(topic_span_or_zero(s.topic)), SLit(" — consumed; can't have it both ways")],
@@ -626,7 +626,7 @@ fn render_trace_arm(situation) with Memory + Alloc = match situation {
 // FRefinement with THE-MATH-SAYS stance. Per AT2: refinement
 // obligations + discharges. silence_predicate gated on
 // list_non_empty(refinements).
-fn render_verify_arm(situation) with Memory + Alloc = match situation {
+fn render_verify_arm(situation) = match situation {
   Situation(s) => VoiceLine(
     TentVerify,
     FRefinement,
@@ -640,7 +640,7 @@ fn render_verify_arm(situation) with Memory + Alloc = match situation {
 // canonical "next step" voice — surface gradient_next as one
 // annotation that unlocks one capability. silence_predicate gated on
 // gradient_next being Some.
-fn render_teach_arm(situation) with Memory + Alloc = match situation {
+fn render_teach_arm(situation) = match situation {
   Situation(s) => {
     let body = match s.gradient_next {
       None => [SLit("")],
@@ -656,7 +656,7 @@ fn render_teach_arm(situation) with Memory + Alloc = match situation {
 // REFLECTIVE stance. Per AT6: walks the Reason chain when the user
 // explicitly asked a Why question. silence_predicate gated on
 // TopicAsk(QWhy(_)) — only fires for explicit asks per MV §2.7.5.
-fn render_why_arm(situation) with Memory + Alloc = match situation {
+fn render_why_arm(situation) = match situation {
   Situation(s) => {
     let body = match s.reason_at_topic {
       None => [SLit("")],
@@ -669,7 +669,7 @@ fn render_why_arm(situation) with Memory + Alloc = match situation {
 // render_for_tentacle — dispatches to the right per-tentacle render
 // arm. H6 exhaustive 8-arm match. Each arm produces a VoiceLine
 // (assumed silence_predicate has already passed for this tentacle).
-fn render_for_tentacle(situation) with Alloc + Memory = match situation {
+fn render_for_tentacle(situation) = match situation {
   Situation(s) => match s.tentacle {
     TentQuery => render_query_arm(situation),
     TentPropose => render_propose_arm(situation),
@@ -730,7 +730,7 @@ fn render_for_tentacle(situation) with Alloc + Memory = match situation {
 // The MV.2.e.Q.ident peer sub-handle wires env→handle resolution.
 //
 // H6 exhaustive over CaretTarget — no `_` wildcard.
-fn resolve_cursor_target(target, current_handle: Handle) -> Handle with GraphRead + Memory + Alloc = match target {
+fn resolve_cursor_target(target, current_handle: Handle) -> Handle = match target {
   TargetHandle(h) => h,
   TargetSpan(s) => {
     let g = graph_snapshot()
@@ -748,7 +748,7 @@ fn resolve_cursor_target(target, current_handle: Handle) -> Handle with GraphRea
 // gesture. Per MV §2 Q5 + primitive #8: every cursor write threads a
 // Reason so the Why tentacle can later answer "why this cursor?". H6
 // exhaustive over CaretTarget.
-fn focus_reason(target) with Memory + Alloc = match target {
+fn focus_reason(target) = match target {
   TargetHandle(_) => Inferred("explicit handle focus"),
   TargetSpan(s) => Located(s, Inferred("span focus gesture")),
   TargetIdent(name) => Inferred("identifier focus: {name}"),
@@ -771,7 +771,7 @@ fn tentacle_for_question(question) with Pure = match question {
 // natural Span; other variants project to span_zero. The TurnRecord's
 // span_at field captures this for next-turn observation deltas. H6
 // exhaustive over Question via pattern alternation.
-fn question_span(question) with Memory + Alloc = match question {
+fn question_span(question) = match question {
   QTypeAt(s) => s,
   QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QUnknown(_) => span_zero(),
 }
@@ -793,7 +793,7 @@ fn question_span(question) with Memory + Alloc = match question {
 // second instance of sparse Situation composition; one more (likely
 // run_query for batch path) earns the abstraction. Until then,
 // parallel forms honest about not-yet-generic.
-fn compose_propose_situation(target_handle, target_reason, prior_turn) with Memory + Alloc = match match prior_turn {
+fn compose_propose_situation(target_handle, target_reason, prior_turn) = match match prior_turn {
   None => (None, None),
   Some(rec) => match rec {
     TurnRecord(r) => (Some(r.topic), Some(r.tentacle)),
@@ -824,7 +824,7 @@ fn compose_propose_situation(target_handle, target_reason, prior_turn) with Memo
 // rather than a fabricated Reason. QRError → AnsSilence: an ill-posed or
 // unprovable question is a valid Silence (voice.mn:265). H6 exhaustive over
 // QueryResult's 15 variants — no wildcard.
-fn query_result_to_answer(result) with Memory + Alloc = match result {
+fn query_result_to_answer(result) = match result {
   QRType(ty, reason) => AnsType(ty, reason),
   QRWhy(reason) => AnsReason(reason),
   QRRefs(sites) => // refs-of carries (module, span) sites now, so it drops its module half at
@@ -879,7 +879,7 @@ fn query_result_to_answer(result) with Memory + Alloc = match result {
   QRError(_) => AnsSilence,
 }
 
-fn site_spans(sites) with Memory + Alloc = match sites {
+fn site_spans(sites) = match sites {
   [] => [],
   [(_, s), ...t] => [s] ++ site_spans(t),
 }
@@ -895,7 +895,7 @@ fn census_site_span(site) with Pure = match site {
   (_m, s) => s,
 }
 
-fn diagnostics_from_debt(debt) with Alloc + Memory = if len(debt) == 0 {
+fn diagnostics_from_debt(debt) = if len(debt) == 0 {
   []
 } else {
   match last(debt) {
@@ -912,7 +912,7 @@ fn findings_from_debt(debt) with Pure = debt
 // addressing scheme (voice.mn §FileHandle), so the artifact path is derived
 // from the handle deterministically — a stable address tied to the real
 // handle, not a fabricated "emitted" literal.
-fn emitted_artifact_path(fh) with Memory + Alloc = match fh {
+fn emitted_artifact_path(fh) = match fh {
   FileHandle(i) => Path(".build/unit-{int_to_str(i)}.wasm"),
 }
 
@@ -937,15 +937,15 @@ fn emitted_artifact_path(fh) with Memory + Alloc = match fh {
 // it. This is a WIRING gap, not dead code — deleting the renderer would
 // delete the voice — and it is named rather than quietly kept:
 // `Hβ.voice.voiceline-renders-to-nobody`.
-fn render_voiceline(line) with GraphRead + Memory + Alloc + !Mutate + Intern = match line {
+fn render_voiceline(line) with !Mutate = match line {
   Silence => "",
   VoiceLine(_, _, slots, modif) => "{render_slots(slots)}{render_modifier(modif)}",
 }
 
-fn render_slots(slots) with GraphRead + Intern + Memory + Alloc + !Mutate =
+fn render_slots(slots) with !Mutate =
   if len(slots) == 0 { "" } else { "{render_slot(last(slots))}{render_slots(drop_last(slots))}" }
 
-fn render_slot(slot) with GraphRead + Memory + Alloc + !Mutate + Intern = match slot {
+fn render_slot(slot) with !Mutate = match slot {
   SIdent(name) => "`{name}`",
   SType(ty) => show_type(ty),
   SRow(row) => show_effrow(row),
@@ -985,8 +985,7 @@ fn intent_id_eq(a, b) with Pure = match a {
 // length is bounded by user-declared intent count (small N typical),
 // so the simple form is honest. Substrate idiom (list_extend_to +
 // counter) reserved for genuinely-large N — this is not it.
-fn intents_without(intents, id) with Alloc + Memory =
-  filter({ (head_id, _) => !intent_id_eq(head_id, id) }, intents)
+fn intents_without(intents, id) = filter({ (head_id, _) => !intent_id_eq(head_id, id) }, intents)
 
 // ─── mentl_voice_default — Interact handler ───────────────────────────
 //
@@ -1208,7 +1207,7 @@ fn handles_text(table, fh) = match handles_table_lookup(table, fh) {
   },
 }
 
-fn handles_table_lookup(table, target_handle) with Memory + Alloc = if len(table) == 0 {
+fn handles_table_lookup(table, target_handle) = if len(table) == 0 {
   None
 } else {
   let head = last(table)
@@ -1235,7 +1234,7 @@ fn file_handle_eq(a, b) with Pure = match a {
 // bounded by total label length. The capabilities_for_annotation
 // substrate produces lists of size ≤ 3 today, so a flat fold is
 // honest.
-fn join_capability_labels(labels) with Memory + Alloc = if len(labels) == 0 {
+fn join_capability_labels(labels) = if len(labels) == 0 {
   ""
 } else {
   let head = last(labels)
@@ -1249,7 +1248,7 @@ fn join_capability_labels(labels) with Memory + Alloc = if len(labels) == 0 {
 // so the span is one peel away. Falls back to span_zero on
 // non-Located reasons (theoretical; suggestion_reason always
 // produces Located).
-fn suggestion_site_from_reason(reason) with Memory + Alloc = match reason {
+fn suggestion_site_from_reason(reason) = match reason {
   Located(sp, _) => sp,
   _ => span_zero(),
 }
@@ -1395,7 +1394,7 @@ handler mentl_voice_filesystem with handles_table = [], next_handle_id = 1, proj
   },
 }
 
-fn replace_span_in_text(ref source, span, ref replacement: String) with Memory + Alloc = {
+fn replace_span_in_text(ref source, span, ref replacement: String) = {
   let n = byte_len(source)
   match span {
     Span(sl, sc, el, ec) => {
@@ -1406,7 +1405,7 @@ fn replace_span_in_text(ref source, span, ref replacement: String) with Memory +
   }
 }
 
-fn byte_offset_at(ref source, target_l, target_c, idx, line, col, n) with Memory = if line >= target_l && col >= target_c {
+fn byte_offset_at(ref source, target_l, target_c, idx, line, col, n) = if line >= target_l && col >= target_c {
   idx
 } else if idx >= n {
   n
@@ -1416,13 +1415,13 @@ fn byte_offset_at(ref source, target_l, target_c, idx, line, col, n) with Memory
   byte_offset_at(source, target_l, target_c, idx + 1, line, col + 1, n)
 }
 
-fn update_file_text(ref table, fh, ref path, ref text) with Memory + Alloc = {
+fn update_file_text(ref table, fh, ref path, ref text) = {
   let n = len(table)
   let buf = make_list(n)
   update_file_text_loop(table, fh, path, text, 0, n, buf)
 }
 
-fn update_file_text_loop(ref table, fh, ref path, ref text, i, n, own buf) with Memory + Alloc = if i >= n {
+fn update_file_text_loop(ref table, fh, ref path, ref text, i, n, own buf) = if i >= n {
   buf
 } else {
   let entry = list_index(table, i)
@@ -1435,7 +1434,7 @@ fn update_file_text_loop(ref table, fh, ref path, ref text, i, n, own buf) with 
   }
 }
 
-fn path_to_module_name(ref s) with Memory + Alloc = {
+fn path_to_module_name(ref s) = {
   let stripped_prefix = if starts_with(s, "src/") {
     str_slice(s, 4, byte_len(s))
   } else if starts_with(s, "lib/") {

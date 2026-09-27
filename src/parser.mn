@@ -248,7 +248,7 @@ fn op_prec(k) with Pure = match k {
 
 // Pipe-verb token → PipeKind. One token, one kind — `~>` is PTee
 // always; scope is precedence's job, layout is the formatter's.
-fn op_to_pipe_kind(k) with Memory + Alloc = match k {
+fn op_to_pipe_kind(k) = match k {
   TTildeGt => Some(PTee),
   TPipeGt => Some(PForward),
   TLtPipe => // `<|` and `><` are ONE PFanout topology; the glyph authors the
@@ -273,7 +273,7 @@ fn op_to_pipe_kind(k) with Memory + Alloc = match k {
 // Future form (named peer 11.B.1.R): refinement-typed parameter
 //   `fn op_to_binop(k) -> BinOp where binop(k)`
 // exercises primitive #6 and eliminates the `Option` entirely.
-fn op_to_binop(k) with Memory + Alloc = match k {
+fn op_to_binop(k) = match k {
   TPlus => Some(BAdd),
   TMinus => Some(BSub),
   TStar => Some(BMul),
@@ -324,7 +324,7 @@ fn push_node(buf, count, node) = {
 // replacing match mints after the dead let at the same span and wins.
 // Runs attach in REVERSE source order so the weave's prepend-merge reads
 // source-ordered.
-fn attach_comment_weave(ref tokens, h_from) with GraphRead + GraphWrite + Memory + Alloc = {
+fn attach_comment_weave(ref tokens, h_from) = {
   // Flatten ONCE before the per-node bsearches (the iterate-flattens-once
   // law): the push-built runs list is snoc-spined, so every bsearch probe's
   // runs[mid] walked the spine — O(R) per probe, O(nodes × R log R) per
@@ -354,7 +354,7 @@ fn attach_comment_weave(ref tokens, h_from) with GraphRead + GraphWrite + Memory
 // walkers compile once; an open element row floored their field reads).
 type CwRun = CwRun({end_line: Int, run_span: Span, start_line: Int, text: String, trailing: Bool})
 
-fn cw_collect_runs(ref tokens, i, prev_line, acc) -> [CwRun] with Memory + Alloc = if i >= len(tokens) {
+fn cw_collect_runs(ref tokens, i, prev_line, acc) -> [CwRun] = if i >= len(tokens) {
   acc
 } else {
   match token_kind(tokens[i]) {
@@ -375,7 +375,7 @@ fn cw_collect_runs(ref tokens, i, prev_line, acc) -> [CwRun] with Memory + Alloc
   }
 }
 
-fn cw_join_run(ref tokens, i, own acc, last_line) with Memory + Alloc = match token_kind(tokens[i]) {
+fn cw_join_run(ref tokens, i, own acc, last_line) = match token_kind(tokens[i]) {
   TComment(next) => match span_at(tokens, i) {
     Span(sl, _, _, _) => if sl <= last_line + 1 {
       cw_join_run(tokens, i + 1, "{acc}\n{next}", sl)
@@ -398,13 +398,13 @@ fn cw_join_run(ref tokens, i, own acc, last_line) with Memory + Alloc = match to
 
 // A candidate slot: (start_line, start_col, end_line, end_col, handle).
 // handle 0 = empty (the graph's Module root is never a comment target).
-fn cw_seed_slots(n, buf, i) with Memory + Alloc =
+fn cw_seed_slots(n, buf, i) =
   if i >= n { buf } else { cw_seed_slots(n, list_set(buf, i, (0, 0, 0, 0, 0)), i + 1) }
 
 // The one walk over the span index: each entry competes for the run it
 // could serve — trailing runs keyed by their start line, leading runs by
 // nearest-preceding-run bsearch. O(N log C).
-fn cw_scan_index(ref idx, i, h_from, ref runs: [CwRun], leads, trails) with Memory + Alloc = if i >= len(idx) {
+fn cw_scan_index(ref idx, i, h_from, ref runs: [CwRun], leads, trails) = if i >= len(idx) {
   ()
 } else {
   match idx[i] {
@@ -426,7 +426,7 @@ fn cw_scan_index(ref idx, i, h_from, ref runs: [CwRun], leads, trails) with Memo
 
 // bsearch: the run whose start_line == line (runs are token-ordered, so
 // start lines are strictly increasing).
-fn cw_find_run_on_line(ref runs: [CwRun], lo, hi, line) with Memory = if lo > hi {
+fn cw_find_run_on_line(ref runs: [CwRun], lo, hi, line) = if lo > hi {
   0 - 1
 } else {
   let mid = (lo + hi) / 2
@@ -443,7 +443,7 @@ fn cw_find_run_on_line(ref runs: [CwRun], lo, hi, line) with Memory = if lo > hi
 // bsearch: the run with the largest end_line strictly below the node's
 // start line — the nearest preceding run this node could be the leading
 // target of.
-fn cw_find_run_before(ref runs: [CwRun], lo, hi, line, best) with Memory = if lo > hi {
+fn cw_find_run_before(ref runs: [CwRun], lo, hi, line, best) = if lo > hi {
   best
 } else {
   let mid = (lo + hi) / 2
@@ -457,7 +457,7 @@ fn cw_find_run_before(ref runs: [CwRun], lo, hi, line, best) with Memory = if lo
 
 // Trailing competition: widest span starting on the line (earliest col,
 // then largest end); a full tie goes to the later mint (larger handle).
-fn cw_compete_trail(trails, k, sl, sc, el, ec, h) with Memory + Alloc = match trails[k] {
+fn cw_compete_trail(trails, k, sl, sc, el, ec, h) = match trails[k] {
   (bsl, bsc, bel, bec, bh) => {
     let better = if bh == 0 {
       true
@@ -481,7 +481,7 @@ fn cw_compete_trail(trails, k, sl, sc, el, ec, h) with Memory + Alloc = match tr
 
 // Leading competition: minimal start past the run (earliest line then
 // col), widest at that start, later mint on a full tie.
-fn cw_compete_lead(leads, k, sl, sc, el, ec, h) with Memory + Alloc = match leads[k] {
+fn cw_compete_lead(leads, k, sl, sc, el, ec, h) = match leads[k] {
   (bsl, bsc, bel, bec, bh) => {
     let better = if bh == 0 {
       true
@@ -505,7 +505,7 @@ fn cw_compete_lead(leads, k, sl, sc, el, ec, h) with Memory + Alloc = match lead
   },
 }
 
-fn cw_attach_all(ref runs: [CwRun], ref leads, ref trails, k, next_target) with Memory + GraphWrite = if k < 0 {
+fn cw_attach_all(ref runs: [CwRun], ref leads, ref trails, k, next_target) = if k < 0 {
   ()
 } else {
   let r = runs[k]
@@ -893,7 +893,7 @@ fn parse_effect_list(ref tokens, pos) = parse_effect_list_from(tokens, pos, EcUn
 // the "phantom" that struck three times on 2026-07-30). The declared
 // row closes the tail deterministically; the attractors cease to
 // exist.
-fn parse_effect_list_from(ref tokens, pos, conn) with Memory + Alloc + GraphRead + GraphWrite + Diagnostic + Intern = match parse_one_effect(tokens, pos) {
+fn parse_effect_list_from(ref tokens, pos, conn) = match parse_one_effect(tokens, pos) {
   (name, negated, p) => {
     let entry = (name, negated, conn)
     let p2 = skip_ws(tokens, p)
@@ -919,7 +919,7 @@ fn parse_effect_list_from(ref tokens, pos, conn) with Memory + Alloc + GraphRead
 // parameterized `Sample(44100)`, or negated parameterized
 // `!Sample(44100)`. Args are scalar literals (int/float/string);
 // identifier / expression args land in a v2 walkthrough.
-fn parse_one_effect(ref tokens, pos) with Memory + Alloc + GraphRead + GraphWrite + Diagnostic + Intern = match if at(tokens, pos, TBang) { (true, pos + 1) } else { (false, pos) } {
+fn parse_one_effect(ref tokens, pos) = match if at(tokens, pos, TBang) { (true, pos + 1) } else { (false, pos) } {
   (negated, p) => // `Pure` lexes to TPure (a reserved word) — it IS the union identity, so the
   // parser emits the EPure EffName directly. build_declared_row maps it to
   // the pure row; the EPure variant replaces the old string-keyed Pure term (drift-3).   // drift-audit: ignore — describes the dissolution
@@ -1136,7 +1136,7 @@ fn at_ident_word(ref tokens, pos, w: String) = match kind_at(tokens, pos) {
   _ => false,
 }
 
-fn repr_of_width_name(w: String) with Memory + Alloc = if w == "i32" {
+fn repr_of_width_name(w: String) = if w == "i32" {
   Some(RI32)
 } else if w == "i64" {
   Some(RI64)
@@ -2957,7 +2957,7 @@ fn parse_resume(ref tokens, pos, span: ValidSpan) = {
 // never spoke at its own line (measured 2026-09-17: `Lede:` at `:4:5`,
 // none at `:4`). The node's span is the node's extent; a head-only span is
 // a copy of the wrong fact.
-fn lambda_span(head, body) with Memory + Alloc = match body {
+fn lambda_span(head, body) = match body {
   N(_, bsp, _) => span_join(head, bsp),
 }
 

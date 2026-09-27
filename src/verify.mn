@@ -57,11 +57,11 @@ handler verify_ledger with debt = [] {
 // (node_const_at). litval_compare folds the comparison; cross-kind equality is
 // Some(false), cross-kind ordering is None. PAnd/POr/PNot recurse with
 // three-valued short-circuit; PWithSelf rebinds `self` over its inner predicate.
-fn predicate_decide(ref pred) with GraphRead + Memory + Alloc = predicate_decide_at(pred, 0)
+fn predicate_decide(ref pred) = predicate_decide_at(pred, 0)
 
 // self_h is the value-node handle `self` resolves to (0 = no `self` in scope,
 // so `self` is undecidable). PWithSelf(sh, inner) rebinds it over inner.
-fn predicate_decide_at(ref pred, self_h) with GraphRead + Memory + Alloc = match pred {
+fn predicate_decide_at(ref pred, self_h) = match pred {
   PTrue => Some(true),
   PCompare(op, l, r) => compare_decide_at(op, l, r, self_h),
   PAnd(a, b) => and_decide(predicate_decide_at(a, self_h), predicate_decide_at(b, self_h)),
@@ -80,7 +80,7 @@ fn predicate_decide_at(ref pred, self_h) with GraphRead + Memory + Alloc = match
 // A comparison decides iff BOTH operands reduce to ground constants under the
 // current `self` binding — or, with a ground LEFT and a structural right, the
 // interval fragment proves `n <= X` from X's lower bound; otherwise None.
-fn compare_decide_at(op, lh, rh, self_h) with GraphRead + Memory + Alloc = match node_const_at(lh, self_h) {
+fn compare_decide_at(op, lh, rh, self_h) = match node_const_at(lh, self_h) {
   Some(lv) => match node_const_at(rh, self_h) {
     Some(rv) => litval_compare(op, lv, rv),
     None => interval_ge_decide(op, lv, rh, self_h),
@@ -91,7 +91,7 @@ fn compare_decide_at(op, lh, rh, self_h) with GraphRead + Memory + Alloc = match
 // `n <= X` / `n < X` with ground left: proves when X's structural LOWER BOUND
 // reaches n. PROVES only, never refutes — a bound that fails to reach n says
 // nothing about X's values (None keeps the obligation live and honest).
-fn interval_ge_decide(ref op, ref lv, rh, self_h) with GraphRead + Memory + Alloc = match lv {
+fn interval_ge_decide(ref op, ref lv, rh, self_h) = match lv {
   LVInt(n) => match node_lo_tr(rh, self_h) {
     Some(lo) => match op {
       BLe => if n <= lo { Some(true) } else { None },
@@ -110,9 +110,9 @@ fn interval_ge_decide(ref op, ref lv, rh, self_h) with GraphRead + Memory + Allo
 // negates its ground operand. NO node is minted — every leaf is read live and
 // folded in place (the e-graph const-fold mints nodes and runs AFTER Verify;
 // this is a pure read-and-fold at the proof gate). Carry the handle, read live.
-fn node_const(handle) with GraphRead + Memory + Alloc = node_const_at(handle, 0)
+fn node_const(handle) = node_const_at(handle, 0)
 
-fn node_const_at(handle, self_h) with GraphRead + Memory + Alloc = match graph_node_body(handle) {
+fn node_const_at(handle, self_h) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => Some(LVInt(n)),
   NExpr(LitFloat(f)) => Some(LVFloat(f)),
   NExpr(LitString(s)) => Some(LVString(s)),
@@ -132,7 +132,7 @@ fn node_const_at(handle, self_h) with GraphRead + Memory + Alloc = match graph_n
 // `self` resolves to the bound value node (read as a ground constant); any other
 // free variable is genuinely non-constant. self_h == 0 means no `self` is in
 // scope — undecidable, never a chase of handle 0.
-fn resolve_self_operand(name: String, self_h) with GraphRead + Memory + Alloc =
+fn resolve_self_operand(name: String, self_h) =
   if name == "self" { if self_h == 0 { None } else { node_const_at(self_h, 0) } } else { None }
 
 // ─── The interval fragment — a lower-bound read over node structure ──
@@ -159,7 +159,7 @@ fn resolve_self_operand(name: String, self_h) with GraphRead + Memory + Alloc =
 // target's), and a call's bound is read off the CALLEE's own published
 // TFun return (the assume-the-signature induction — the callee's fact,
 // not the site's class).
-fn node_lo_tr(handle, self_h) with GraphRead + Memory + Alloc = match graph_node_body(handle) {
+fn node_lo_tr(handle, self_h) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => Some(n),
   NExpr(VarRef(name)) => if name == "self" { if self_h == 0 { None } else { node_lo_tr(self_h, 0) } } else { None },
   NExpr(IfExpr(_, t, e)) => lo_join(node_lo_tr(node_handle(t), self_h), node_lo_tr(node_handle(e), self_h)),
@@ -175,7 +175,7 @@ fn node_lo_tr(handle, self_h) with GraphRead + Memory + Alloc = match graph_node
 
 // The opaque face — the node's cell is outside the target's class, so
 // its chased type is its OWN producer's fact and reads soundly.
-fn node_lo_op(handle, self_h) with GraphRead + Memory + Alloc = match graph_node_body(handle) {
+fn node_lo_op(handle, self_h) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => Some(n),
   NExpr(BinOpExpr(op, l, r)) => match op {
     BAdd => lo_add(node_lo_op(node_handle(l), self_h), node_lo_op(node_handle(r), self_h)),
@@ -188,12 +188,12 @@ fn node_lo_op(handle, self_h) with GraphRead + Memory + Alloc = match graph_node
 // A call's bound comes from the CALLEE's published function type — its
 // declared return read through the callee node's chase, never the call
 // site's class. len/byte_len bound by the sequence representation.
-fn call_lo(ref callee) with GraphRead + Memory + Alloc = match graph_node_body(node_handle(callee)) {
+fn call_lo(ref callee) = match graph_node_body(node_handle(callee)) {
   NExpr(VarRef(cname)) => if cname == "len" || cname == "byte_len" { Some(0) } else { callee_ret_lo(node_handle(callee)) },
   _ => callee_ret_lo(node_handle(callee)),
 }
 
-fn callee_ret_lo(ch) with GraphRead + Memory + Alloc = match graph_chase(ch) {
+fn callee_ret_lo(ch) = match graph_chase(ch) {
   GNode(kind, _) => match kind {
     NBound(TFun(_, ret, _)) => ty_lo(ret),
     _ => None,
@@ -201,7 +201,7 @@ fn callee_ret_lo(ch) with GraphRead + Memory + Alloc = match graph_chase(ch) {
 }
 
 // The join of two branch bounds — min, both must answer.
-fn lo_join(ea, eb) with Memory + Alloc = match ea {
+fn lo_join(ea, eb) = match ea {
   Some(a) => match eb {
     Some(b) => if a < b { Some(a) } else { Some(b) },
     None => None,
@@ -210,7 +210,7 @@ fn lo_join(ea, eb) with Memory + Alloc = match ea {
 }
 
 // The sum of two operand bounds — both must answer.
-fn lo_add(ea, eb) with Memory + Alloc = match ea {
+fn lo_add(ea, eb) = match ea {
   Some(a) => match eb {
     Some(b) => Some(a + b),
     None => None,
@@ -220,7 +220,7 @@ fn lo_add(ea, eb) with Memory + Alloc = match ea {
 
 // Min over every match arm's bound; None until the first arm answers,
 // None the moment any arm cannot.
-fn arms_lo(ref arms, self_h, i, acc) with GraphRead + Memory + Alloc = if i >= len(arms) {
+fn arms_lo(ref arms, self_h, i, acc) = if i >= len(arms) {
   acc
 } else {
   match arms[i] {
@@ -241,14 +241,14 @@ fn arms_lo(ref arms, self_h, i, acc) with GraphRead + Memory + Alloc = if i >= l
 
 // The type-identity leg: the node's chased type already carries the
 // bound as its own refinement — read it, never re-derive it.
-fn ty_lo_at(handle) with GraphRead + Memory + Alloc = match graph_chase(handle) {
+fn ty_lo_at(handle) = match graph_chase(handle) {
   GNode(kind, _) => match kind {
     NBound(ty) => ty_lo(ty),
     _ => None,
   },
 }
 
-fn ty_lo(ty) with GraphRead + Memory + Alloc = match ty {
+fn ty_lo(ty) = match ty {
   TAlias(_, inner) => ty_lo(inner),
   TRefined(base, pred) => lo_best(ty_lo(base), domain_lo(pred_domain(pred))),
   TReprPin(_, base) => // A width pin narrows representation, never value bounds.
@@ -268,13 +268,13 @@ fn ty_lo(ty) with GraphRead + Memory + Alloc = match ty {
 
 // Either source may carry the bound; the tighter (larger) lower bound wins,
 // which is the meet with the larger-of-two pick.
-fn lo_best(ea, eb) with Memory + Alloc = bound_meet(int_max, ea, eb)
+fn lo_best(ea, eb) = bound_meet(int_max, ea, eb)
 
 // The domain a TYPE states about its inhabitants — the same walk `ty_lo`
 // makes, answering the whole fact instead of one end. An alias is transparent,
 // a refinement meets its base with its predicate's reading, a width pin
 // narrows representation and never values, and a var reads the cell live.
-fn ty_domain(ty) with GraphRead + Memory + Alloc = match ty {
+fn ty_domain(ty) = match ty {
   TAlias(_, inner) => ty_domain(inner),
   TRefined(base, pred) => domain_meet(ty_domain(base), pred_domain(pred)),
   TReprPin(_, base) => ty_domain(base),
@@ -282,7 +282,7 @@ fn ty_domain(ty) with GraphRead + Memory + Alloc = match ty {
   _ => dom_top(),
 }
 
-fn ty_domain_at(handle) with GraphRead + Memory + Alloc = match graph_chase(handle) {
+fn ty_domain_at(handle) = match graph_chase(handle) {
   GNode(kind, _) => match kind {
     NBound(ty) => ty_domain(ty),
     _ => dom_top(),
@@ -300,7 +300,7 @@ fn ty_domain_at(handle) with GraphRead + Memory + Alloc = match graph_chase(hand
 //
 // It is an OVER-approximation by contract (Domain, types.mn): the reader may
 // decide what to construct from it, never what to admit.
-fn pred_domain(pred) with GraphRead + Memory + Alloc = match pred {
+fn pred_domain(pred) = match pred {
   PTrue => dom_top(),
   PCompare(op, lh, rh) => compare_domain(op, lh, rh),
   PAnd(a, b) => domain_meet(pred_domain(a), pred_domain(b)),
@@ -316,9 +316,9 @@ fn pred_domain(pred) with GraphRead + Memory + Alloc = match pred {
   PWithSelf(_, inner) => pred_domain(inner),
 }
 
-fn dom_top() with Memory + Alloc = DRange(None, None)
+fn dom_top() = DRange(None, None)
 
-fn is_self_node(handle) with GraphRead + Memory + Alloc = match graph_node_body(handle) {
+fn is_self_node(handle) = match graph_node_body(handle) {
   NExpr(VarRef(name)) => name == "self",
   _ => false,
 }
@@ -326,7 +326,7 @@ fn is_self_node(handle) with GraphRead + Memory + Alloc = match graph_node_body(
 // One comparison, read from whichever side `self` stands on: the other side
 // must fold to a ground constant, or the fragment stops (DUndecided) rather
 // than guessing.
-fn compare_domain(op, lh, rh) with GraphRead + Memory + Alloc = if is_self_node(lh) {
+fn compare_domain(op, lh, rh) = if is_self_node(lh) {
   match node_const(rh) {
     Some(v) => self_op_const(op, v),
     None => DUndecided,
@@ -353,7 +353,7 @@ fn flip_cmp(op) with Pure = match op {
 // `self OP v`. The strict bounds step by one, which is why DRange is integral;
 // a non-Int operand answers DUndecided for the ordering ops and still answers
 // exactly for equality, where no predecessor is needed.
-fn self_op_const(op, v) with Memory + Alloc = match op {
+fn self_op_const(op, v) = match op {
   BEq => DFinite([v]),
   BNe => // The complement of one point is not a range; top is the honest superset.
   dom_top(),
@@ -382,7 +382,7 @@ fn self_op_const(op, v) with Memory + Alloc = match op {
 // side yields to the readable one: the intersection is a SUBSET of either side,
 // so keeping the decided side stays the over-approximation the contract
 // requires, and nothing real is cut.
-fn domain_meet(a, b) with Memory + Alloc = match a {
+fn domain_meet(a, b) = match a {
   DUndecided => b,
   DFinite(vs) => match b {
     DUndecided => a,
@@ -400,7 +400,7 @@ fn domain_meet(a, b) with Memory + Alloc = match a {
 // must COVER it. Two ranges give their hull; two finite sets give their
 // concatenation, which is exact; anything mixed or unreadable widens to the
 // top, because a bound that cannot cover the union would cut inhabitants.
-fn domain_join(a, b) with Memory + Alloc = match a {
+fn domain_join(a, b) = match a {
   DUndecided => dom_top(),
   DFinite(vs) => match b {
     DFinite(ws) => DFinite(vs ++ ws),
@@ -414,16 +414,16 @@ fn domain_join(a, b) with Memory + Alloc = match a {
   },
 }
 
-fn lit_same(a, b) with Memory + Alloc = match litval_eq(a, b) {
+fn lit_same(a, b) = match litval_eq(a, b) {
   Some(x) => x,
   None => false,
 }
 
-fn lit_in(v, ws) with Memory + Alloc = ws |> any(lit_same(v, ??))
+fn lit_in(v, ws) = ws |> any(lit_same(v, ??))
 
 // A value outside the range is cut; a value the integral range cannot speak
 // about is KEPT, because the meet may only over-approximate.
-fn lit_in_range(v, lo, hi) with Memory + Alloc = match v {
+fn lit_in_range(v, lo, hi) = match v {
   LVInt(n) => bound_admits_lo(lo, n) && bound_admits_hi(hi, n),
   _ => true,
 }
@@ -445,7 +445,7 @@ fn bound_admits_hi(hi, n) with Pure = match hi {
 // combined is the comparator, not a flag — the four near-identical combiners
 // this replaces differed by one glyph each and were a family where a pair of
 // higher-order reads belongs.
-fn bound_meet(pick, ea, eb) with Memory + Alloc = match ea {
+fn bound_meet(pick, ea, eb) = match ea {
   Some(a) => match eb {
     Some(b) => Some(pick(a, b)),
     None => ea,
@@ -453,7 +453,7 @@ fn bound_meet(pick, ea, eb) with Memory + Alloc = match ea {
   None => eb,
 }
 
-fn bound_join(pick, ea, eb) with Memory + Alloc = match ea {
+fn bound_join(pick, ea, eb) = match ea {
   Some(a) => match eb {
     Some(b) => Some(pick(a, b)),
     None => None,
@@ -468,13 +468,13 @@ fn int_min(a, b) with Pure = if a < b { a } else { b }
 // The bounds a domain states, for the readers that want one end. A finite set
 // bounds itself; a member the integral bound cannot speak about leaves the end
 // open rather than inventing one.
-fn domain_lo(d) with Memory + Alloc = match d {
+fn domain_lo(d) = match d {
   DRange(lo, _) => lo,
   DFinite(vs) => if vs |> all(is_lv_int) { vs |> fold(None, min_of_lit) } else { None },
   DUndecided => None,
 }
 
-fn domain_hi(d) with Memory + Alloc = match d {
+fn domain_hi(d) = match d {
   DRange(_, hi) => hi,
   DFinite(vs) => if vs |> all(is_lv_int) { vs |> fold(None, max_of_lit) } else { None },
   DUndecided => None,
@@ -488,7 +488,7 @@ fn is_lv_int(v) with Pure = match v {
 // The guard above admits only integral members, so the other arm carries the
 // accumulator untouched rather than inventing a bound for a value it cannot
 // read.
-fn min_of_lit(acc, v) with Memory + Alloc = match v {
+fn min_of_lit(acc, v) = match v {
   LVInt(n) => match acc {
     Some(a) => if n < a { Some(n) } else { Some(a) },
     None => Some(n),
@@ -496,7 +496,7 @@ fn min_of_lit(acc, v) with Memory + Alloc = match v {
   _ => acc,
 }
 
-fn max_of_lit(acc, v) with Memory + Alloc = match v {
+fn max_of_lit(acc, v) = match v {
   LVInt(n) => match acc {
     Some(a) => if n > a { Some(n) } else { Some(a) },
     None => Some(n),
@@ -511,7 +511,7 @@ fn max_of_lit(acc, v) with Memory + Alloc = match v {
 // instead — PWithSelf(value_handle, pred) — and predicate_decide_at threads it
 // into every node_const_at. One binder resolves every `self`, top-level and
 // nested, the same way; carry the handle, read live, mint nothing.
-fn subst_self(pred, value_handle) with Memory + Alloc = PWithSelf(value_handle, pred)
+fn subst_self(pred, value_handle) = PWithSelf(value_handle, pred)
 
 // The candidate gate's refinement half: a candidate SURFACES only when the
 // target's refinement DECIDES true on it (PLAN §5 sample-then-filter — the
@@ -519,7 +519,7 @@ fn subst_self(pred, value_handle) with Memory + Alloc = PWithSelf(value_handle, 
 // proof, and assume-true is the Dafny {:axiom} cautionary the ledger
 // exists to refuse. Transparent aliases recurse; an unrefined target
 // admits by type alone.
-fn refinement_admits(ty, value_handle) with GraphRead + Memory + Alloc = match ty {
+fn refinement_admits(ty, value_handle) = match ty {
   TAlias(aname, inner) => // A candidate whose INFERRED type is the SAME refined alias is admitted
   // by TYPED IDENTITY — which proves the callee's DECLARATION, never its
   // discharge. The layering is deliberate, each proof question at its one
@@ -550,7 +550,7 @@ fn refinement_admits(ty, value_handle) with GraphRead + Memory + Alloc = match t
 // class, and reading that as proof laundered a runtime -1 through a
 // `0 <= self` return, measured 2026-07-30). A computation raises; the
 // ground fold and the interval fragment prove the provable.
-fn value_flows_class(value_handle) with GraphRead = match graph_node_body(value_handle) {
+fn value_flows_class(value_handle) = match graph_node_body(value_handle) {
   NExpr(BinOpExpr(_, _, _)) => false,
   NExpr(UnaryOpExpr(_, _)) => false,
   _ => true,
@@ -558,7 +558,7 @@ fn value_flows_class(value_handle) with GraphRead = match graph_node_body(value_
 
 // The alias NAME of a value node's inferred type ("" when unaliased) —
 // read live through the chase after the candidate's infer pass.
-fn inferred_alias_name(value_handle) with GraphRead = match graph_chase(value_handle) {
+fn inferred_alias_name(value_handle) = match graph_chase(value_handle) {
   GNode(kind, _) => match kind {
     NBound(TAlias(aname, _)) => aname,
     _ => // drift-audit: ignore — "" IS the documented no-alias sentinel this projection's one caller compares against (an alias name is never empty)
@@ -567,7 +567,7 @@ fn inferred_alias_name(value_handle) with GraphRead = match graph_chase(value_ha
 }
 
 // Fold a comparison over two constant operand values.
-fn litval_compare(ref op, ref a, ref b) with Memory + Alloc = match op {
+fn litval_compare(ref op, ref a, ref b) = match op {
   BEq => litval_eq(a, b),
   BLt => litval_lt(a, b),
   BLe => litval_le(a, b),
@@ -576,7 +576,7 @@ fn litval_compare(ref op, ref a, ref b) with Memory + Alloc = match op {
 
 // Equality over constants. Same-kind compares; cross-kind is Some(false)
 // (different-kind constants are unequal — a stronger refusal than None).
-fn litval_eq(ref a, ref b) with Memory + Alloc = match a {
+fn litval_eq(ref a, ref b) = match a {
   LVInt(na) => match b {
     LVInt(nb) => Some(na == nb),
     LVFloat(_) => Some(false),
@@ -605,7 +605,7 @@ fn litval_eq(ref a, ref b) with Memory + Alloc = match a {
 
 // Strict order over numeric constants; strings/bools carry no order
 // here (None — defer); cross-kind numeric is None.
-fn litval_lt(ref a, ref b) with Memory + Alloc = match a {
+fn litval_lt(ref a, ref b) = match a {
   LVInt(na) => match b {
     LVInt(nb) => Some(na < nb),
     LVFloat(_) => None,
@@ -622,7 +622,7 @@ fn litval_lt(ref a, ref b) with Memory + Alloc = match a {
   LVBool(_) => None,
 }
 
-fn litval_le(ref a, ref b) with Memory + Alloc = match a {
+fn litval_le(ref a, ref b) = match a {
   LVInt(na) => match b {
     LVInt(nb) => Some(na <= nb),
     LVFloat(_) => None,
@@ -641,7 +641,7 @@ fn litval_le(ref a, ref b) with Memory + Alloc = match a {
 
 // Fold an arithmetic BinOp over two OPTIONAL ground operands (the decidable
 // fragment); either None makes the fold None.
-fn litval_arith_opt(op, ref ea, ref eb) with Memory + Alloc = match ea {
+fn litval_arith_opt(op, ref ea, ref eb) = match ea {
   Some(a) => match eb {
     Some(b) => litval_arith(op, a, b),
     None => None,
@@ -659,7 +659,7 @@ fn litval_arith_opt(op, ref ea, ref eb) with Memory + Alloc = match ea {
 // one would LIE; None keeps the obligation live and honest). Float folds use the
 // compiler's own f64 ops (identical wasm IEEE-754 semantics; f64 `/ 0.0` is
 // inf/nan, not a trap). No float modulo; a comparison/logical op defers to None.
-fn litval_arith(ref op, ref a, ref b) with Memory + Alloc = match a {
+fn litval_arith(ref op, ref a, ref b) = match a {
   LVInt(na) => match b {
     LVInt(nb) => match op {
       BAdd => Some(LVInt(na + nb)),
@@ -692,12 +692,12 @@ fn litval_arith(ref op, ref a, ref b) with Memory + Alloc = match a {
 // Fold a unary op over an OPTIONAL ground operand. UNeg negates a numeric
 // constant (the source of `-1.0` / `-3`); UNot is boolean, outside the
 // arithmetic fragment (defer to None).
-fn litval_unary_opt(op, ref e) with Memory + Alloc = match e {
+fn litval_unary_opt(op, ref e) = match e {
   Some(v) => litval_unary(op, v),
   None => None,
 }
 
-fn litval_unary(ref op, ref v) with Memory + Alloc = match op {
+fn litval_unary(ref op, ref v) = match op {
   UNeg => match v {
     LVInt(n) => Some(LVInt(0 - n)),
     LVFloat(f) => Some(LVFloat(0.0 - f)),
@@ -712,7 +712,7 @@ fn litval_unary(ref op, ref v) with Memory + Alloc = match op {
 // decides true; mixed Some(true) + None defers to None (the unknown
 // branch is still load-bearing); Some(true) + Some(true) is the only
 // fully-decidable true.
-fn and_decide(ref ea, ref eb) with Memory + Alloc = match ea {
+fn and_decide(ref ea, ref eb) = match ea {
   Some(false) => Some(false),
   Some(true) => match eb {
     Some(false) => Some(false),
@@ -726,7 +726,7 @@ fn and_decide(ref ea, ref eb) with Memory + Alloc = match ea {
   },
 }
 
-fn or_decide(ref ea, ref eb) with Memory + Alloc = match ea {
+fn or_decide(ref ea, ref eb) = match ea {
   Some(true) => Some(true),
   Some(false) => match eb {
     Some(true) => Some(true),
@@ -740,7 +740,7 @@ fn or_decide(ref ea, ref eb) with Memory + Alloc = match ea {
   },
 }
 
-fn not_decide(ref e) with Memory + Alloc = match e {
+fn not_decide(ref e) = match e {
   Some(true) => Some(false),
   Some(false) => Some(true),
   None => None,
@@ -792,7 +792,7 @@ fn debt_lines(ref debt, ref scope, i) = if i >= len(debt) {
   debt_lines(debt, scope, i + 1)
 }
 
-fn debt_in_scope(modh, ref scope) with GraphRead + Memory + Alloc = match scope {
+fn debt_in_scope(modh, ref scope) = match scope {
   ScopeAll => true,
   ScopeNone => false,
   ScopeModule(name) => module_name_of_handle(modh) == name,
@@ -866,13 +866,12 @@ handler verify_smt with witnesses = [], debt = [] {
 // list, read live — the cursor's projection of what the solver established
 // and what it could not. (Surpasses Dafny/F*: the witness is a walkable Reason
 // edge, not a separate counterexample dump.)
-fn verify_residual(ref debt, ref witnesses) with Memory + Alloc =
+fn verify_residual(ref debt, ref witnesses) =
   debt ++ map({ (modh, span, pred, model) => (modh, span, pred, VerifyWitness(model)) }, witnesses)
 
-fn predicate_to_smt_lib(ref pred) with Memory + Alloc + GraphRead + Diagnostic + Intern =
-  "(assert {predicate_to_smt(pred)})\n(check-sat)"
+fn predicate_to_smt_lib(ref pred) = "(assert {predicate_to_smt(pred)})\n(check-sat)"
 
-fn predicate_to_smt(ref pred) with GraphRead + Memory + Alloc + Diagnostic + Intern = match pred {
+fn predicate_to_smt(ref pred) = match pred {
   PTrue => "true",
   PCompare(op, l, r) => "({smt_cmp_op(op)} {handle_to_smt(l)} {handle_to_smt(r)})",
   PAnd(a, b) => smt_logop("and", a, b),
@@ -894,8 +893,7 @@ fn smt_cmp_op(ref op) with Pure = match op {
   _ => "=",
 }
 
-fn smt_logop(ref op, ref a, ref b) with GraphRead + Memory + Alloc + Diagnostic + Intern =
-  "({op} {predicate_to_smt(a)} {predicate_to_smt(b)})"
+fn smt_logop(ref op, ref a, ref b) = "({op} {predicate_to_smt(a)} {predicate_to_smt(b)})"
 
 // ONE SMT-render projection, keyed on HANDLES throughout (Carried-Truth: the
 // predicate's operands ARE handles into the one graph; every operand — top-
@@ -920,7 +918,7 @@ fn smt_logop(ref op, ref a, ref b) with GraphRead + Memory + Alloc + Diagnostic 
 // moved but stayed wrong), which is the only reason this one is trustworthy.
 //
 // The one read, inline, exactly as the sibling does it.
-fn handle_to_smt(handle) with GraphRead + Memory + Alloc + Diagnostic + Intern = match graph_node_body(handle) {
+fn handle_to_smt(handle) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => int_to_str(n),
   NExpr(LitFloat(f)) => float_to_str(f),
   NExpr(LitString(s)) => "\"{s}\"",
@@ -948,7 +946,7 @@ fn handle_to_smt(handle) with GraphRead + Memory + Alloc + Diagnostic + Intern =
 // (the operand-Node channel PCompare already uses); the fname is the callee's
 // name read live from its node body, or the unencodable sentinel if it is not a
 // bare name reference.
-fn smt_call(callee, args) with GraphRead + Memory + Alloc + Diagnostic + Intern = match callee {
+fn smt_call(callee, args) = match callee {
   N(cbody, _, _) => {
     let fname = match cbody {
       NExpr(VarRef(n)) => n,
@@ -963,7 +961,7 @@ fn smt_call(callee, args) with GraphRead + Memory + Alloc + Diagnostic + Intern 
 
 // Each arg is a handle — map through handle_to_smt and join (map/fold, never an
 // imperative i/n counter; Anchor 6).
-fn smt_arg_terms(args) with GraphRead + Memory + Alloc + Diagnostic + Intern = fold(
+fn smt_arg_terms(args) = fold(
   "",
   (acc, arg) => match arg {
     N(_, _, h) => "{acc} {handle_to_smt(h)}",
@@ -971,13 +969,13 @@ fn smt_arg_terms(args) with GraphRead + Memory + Alloc + Diagnostic + Intern = f
   args
 )
 
-fn smt_binop(op, l, r) with GraphRead + Memory + Alloc + Diagnostic + Intern = match l {
+fn smt_binop(op, l, r) = match l {
   N(_, _, lh) => match r {
     N(_, _, rh) => "({smt_binop_sym(op)} {handle_to_smt(lh)} {handle_to_smt(rh)})",
   },
 }
 
-fn smt_unop(op, x) with GraphRead + Memory + Alloc + Diagnostic + Intern = match x {
+fn smt_unop(op, x) = match x {
   N(_, _, xh) => match op {
     UNot => "(not {handle_to_smt(xh)})",
     UNeg => "(- {handle_to_smt(xh)})",

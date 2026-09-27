@@ -157,7 +157,7 @@ handler mentl_default with annotations = [], performed = [] {
 // text / unlocked-capability labels / Reason — the public shape Cursor
 // reads off CursorView.teach.
 fn gradient_next(handle, performed) = match graph_node_body(handle) {
-  // The gradient teaches at a DECLARATION, where an annotation can be
+  NStmt(FnStmt(_, _, _, effs, _)) => // The gradient teaches at a DECLARATION, where an annotation can be
   // written, and only while it carries no authored row. A row the author
   // wrote is either already tight or proven over-declared, and that proof —
   // the judgment's T_OverDeclared, banked for `mentl tighten` — is the teach
@@ -165,7 +165,7 @@ fn gradient_next(handle, performed) = match graph_node_body(handle) {
   // (2026-09-25): `fn step(x) with !Alloc` and `fn add_pure(a, b) with Pure`
   // were both told to add `!Alloc`, and the address surface fired at call
   // sites (`fold(`, a fn used as a value) where no annotation can be written.
-  NStmt(FnStmt(_, _, _, effs, _)) => if len(effs) > 0 { None } else { gradient_at_decl(handle, performed) },
+  if len(effs) > 0 { None } else { gradient_at_decl(handle, performed) },
   _ => None,
 }
 
@@ -319,7 +319,7 @@ fn suggestion_kind_of(ann) with Pure = match ann {
 
 // Capability ADT to display label list. Used by AnnotationSuggestion.unlocks.
 // Composition over `show_capability` (already in mentl.mn).
-fn capability_labels(caps) with Memory + Alloc = map(show_capability, caps)
+fn capability_labels(caps) = map(show_capability, caps)
 
 // Suggestion's Reason edge. Wraps the candidate's anchor reason in a
 // Located/Unmarked chain that the Why-tentacle walks. Span comes from
@@ -455,7 +455,7 @@ fn narrow_row_proven(handle, base_ty, narrow, source_span) = match base_ty {
   _ => false,
 }
 
-fn unwrap_source_span(opt) with Memory + Alloc = match opt {
+fn unwrap_source_span(opt) = match opt {
   Some(s) => s,
   None => span_zero(),
 }
@@ -469,7 +469,7 @@ fn unwrap_source_span(opt) with Memory + Alloc = match opt {
 // live; the string table that re-derived this is dissolved. A name
 // that binds no handler (not found, or a non-handler kind) absorbs
 // nothing.
-fn catalog_handled_effects(handler_name) with Intern + Memory + EnvRead + !Mutate + Alloc = match env_lookup(handler_name) {
+fn catalog_handled_effects(handler_name) with !Mutate = match env_lookup(handler_name) {
   None => [],
   Some(entry) => match entry {
     (_scheme, _reason, kind) => match kind {
@@ -486,7 +486,7 @@ fn catalog_handled_effects(handler_name) with Intern + Memory + EnvRead + !Mutat
 // effect this map does not name severs just as provably and buys nothing
 // the audit can say, which is why the unnamed ones ride as one count at
 // the module — a gap in THIS function, not in the developer's code.
-fn capabilities_for_annotation(ann) with Memory + Alloc + Intern = match ann {
+fn capabilities_for_annotation(ann) = match ann {
   APure(_) => [CMemoize, CCompileTimeEval, CParallelize],
   ARefined(_, _, _) => [],
   AOwn(_, _) => [CDeterministicDrop, CZeroCopy],
@@ -585,7 +585,8 @@ fn keep_more_leverage(acc, candidate) = match acc {
   },
 }
 
-fn concrete_leverage(ann) = capabilities_for_annotation(ann) |> filter(is_concrete_capability) |> len
+fn concrete_leverage(ann) =
+  capabilities_for_annotation(ann) |> filter(is_concrete_capability) |> len
 
 fn is_concrete_capability(cap) with Pure = match cap {
   CProvenAbsence(_) => false,
