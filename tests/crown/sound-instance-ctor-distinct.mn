@@ -6,4 +6,7 @@ type Sink = Wasi | Store
 effect Flow(src: Int, sink: Sink) { move(x: Int) -> Int }
 fn inner() with Flow(1, Store) = move(1)
 fn ok() with !Flow(1, Wasi) = inner()
-fn main() = ok()
+// The handler at main makes the program EXECUTABLE (the root gate reads
+// the row alone, 2026-09-27).
+handler h { move(x) => resume(x) }
+fn main() = (ok()) ~> h

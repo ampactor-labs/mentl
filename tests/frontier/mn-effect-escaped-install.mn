@@ -17,12 +17,16 @@
 // unconstructible rather than undesirable, so the conscious choice this leg
 // was written to force is made here — the dead extent refuses.
 //
-// WHAT IS STILL BAND A'S: refusing at COMPILE time. The row cannot see a
-// dead extent, and the executable gate clears Ping because ponger is
-// installed somewhere, so this program compiles clean and refuses at the
-// dispatch. Loud, not silent — nothing executes unproven — but a runtime
-// verdict where identity would give a static one.
-// Expected exit: 134 (the walk's refusal).
+// THE COMPILE-TIME REFUSAL LANDED 2026-09-27, and it was never band A's.
+// The row always saw this: the thunk's Ping rides its value row out of
+// make_pinger's install and is PERFORMED at main with no enclosing install,
+// so Ping is in main's row. What let the program compile was the
+// executable root gate clearing a name because a handler for it was
+// installed SOMEWHERE — no extent, no nesting. That credit is deleted; the
+// gate reads the row and the emit census alone, and this program refuses
+// before a byte of WAT: E_EffectUnhandled naming Ping, nonzero exit. The
+// walk's 134 stays as the belt beneath the gate, never reached from here.
+// Expected: REFUSE at compile (E_EffectUnhandled names Ping, no WAT).
 
 effect Ping { ping() -> Int }
 

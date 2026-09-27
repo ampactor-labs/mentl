@@ -126,7 +126,7 @@ import cli
 fn main(argv) = match parse_cli_args(argv) {
   ParseError(msg) => print_error_and_help(msg),
   Invocation(verb) => dispatch_invocation(verb),
-} ~> verify_ledger ~> diagnostics_handler ~> intern_table
+} ~> diagnostics_handler ~> intern_table
 
 // dispatch_invocation — the substrate handlers (env/graph/diagnostics)
 // install ONCE at this outermost dispatch boundary: the program boundary
@@ -178,7 +178,7 @@ fn dispatch_invocation(verb) = match verb {
   VNew(name) => new_project(name),
   VWith(hname, target) => with_run(hname, target),
   VWelcome => welcome_run(),
-} ~> env_handler(make_list(0), 0, env_index_new()) ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler
+} ~> verify_ledger ~> env_handler(make_list(0), 0, env_index_new()) ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler
 
 // ─── edit_run — canonical Web IDE (browser-WASM; per IE walkthrough)
 //

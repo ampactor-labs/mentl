@@ -128,11 +128,24 @@ fn infer_context(body) =
 
 // The LOWERING/EMIT stack's one home — infer_context's peer on the far side
 // of the cursor. Every route that lowers installs exactly this: string_table
-// (compile-time interned string offsets), emit_memory_bump (the swap point
-// for emit_memory_arena), mentl_default, lower_scope,
+// (compile-time interned string offsets), mentl_default, lower_scope,
 // lower_handler_stack_ctx (the lexical evidence fence's own stack),
 // arm_state_ctx, spec_registry. A caller supplies only its SINK and its
 // filesystem/persist prefix, because that is the only part that ever differs.
+//
+// The allocation strategy (emit_memory_bump, the swap point for
+// emit_memory_arena) is NOT in this chain. Its arm performs `wat_emit`, and
+// an arm's performs resolve OUTER of its own install — so a strategy
+// installed here wrote to whatever sink enclosed this chain, and every route
+// that installs its sink inside the body (a march's file, a battery's host
+// buffer, the MCP judge's fd) had the strategy asking a handler that was not
+// there. The row said so: WasmOut re-added at this tee reached the executable
+// root on every lowering route, and the root gate's one-row read refused the
+// wheel (2026-09-27). The strategy installs where the emitter ALLOCATES,
+// inside whatever sink is live there: each per-fn bracket beside its own
+// `wat_to_string` (backends/wasm.mn), the init lets' bracket, and the fold
+// leaves' emission in emit_module. One home per fact — the emitter owns how
+// it allocates — and the sink is the caller's alone.
 //
 // It exists because its absence was already paid for: seven routes
 // hand-copied this chain, `mentl march`'s copy omitted
@@ -141,7 +154,7 @@ fn infer_context(body) =
 // its own generation while tools/march.sh, which the board actually calls,
 // stayed green. A chain with one home cannot lose a handler to a copy.
 fn emit_context(body) =
-  body() ~> string_table ~> emit_memory_bump ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> emit_site_module
+  body() ~> string_table ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> emit_site_module
 
 // A route that LOWERS installs both stacks, emit inside analysis, and that
 // nesting order is itself a fact — so it has one home too rather than being
@@ -277,16 +290,7 @@ fn report_unhandled_effects(lowered) = match env_lookup("main") {
             walk_lemit(lowered)
             drain_effect_census()
           } ~> effect_census_collector ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> state_slots_collector ~> yield_seen_collector ~> wasi_ops_collector
-          match census {
-            (demands, installed) => report_unhandled_names(
-              p,
-              0,
-              len(p),
-              demands_to_enames(demands, 0, []),
-              installed,
-              reason_span_or_zero(reason)
-            ),
-          }
+          report_unhandled_names(p, 0, len(p), demands_to_enames(census, 0, []), reason_span_or_zero(reason))
         },
       },
       _ => (),
@@ -331,7 +335,7 @@ fn demands_to_enames(ref demands, i, acc) = if i >= len(demands) {
   demands_to_enames(demands, i + 1, if string_in_list(acc, en) { acc } else { push(acc, en) })
 }
 
-fn report_unhandled_names(ref names, i, n, ref performed, ref installed, ref span) = if i >= n {
+fn report_unhandled_names(ref names, i, n, ref performed, ref span) = if i >= n {
   ()
 } else {
   let ename = eff_name_str(list_index(names, i))
@@ -343,28 +347,22 @@ fn report_unhandled_names(ref names, i, n, ref performed, ref installed, ref spa
   // declared-but-never-performed row (`with Sample`, SYNTAX's own lowpass)
   // is the iterative-class canon, never an evidence hole.
   //
-  // AND the `installed` licence, which survives BY MEASUREMENT after being
-  // deleted and refuted in one build. Deleting it looked right — the row is
-  // authoritative, and a per-candidate `~>` is lexically present where it
-  // runs — but the wheel refused on `GraphRead`: `graph_handler`'s arms
-  // perform sibling GraphRead ops, and that is legal FORWARDING, because the
-  // wheel NESTS graph installs (dispatch_invocation installs one, each
-  // compile installs another that shadows it), so an inner arm's sibling
-  // perform reaches the outer handler. The row cannot see that nesting — it
-  // is a whole-program fact about install identity, which is band A's seat
-  // exactly as this file already said. So an install anywhere still clears.
-  //
-  // What that licence therefore CANNOT catch is the same shape with no outer
-  // install: `format_default` re-emits `Format` from its own arm, reaching
-  // the root, cleared because format_default is "installed somewhere" — it
-  // compiled clean and trapped in `mentl fmt`. That gap is real and named
-  // (Hβ.effects.handler-re-emits-what-it-handles); the decl-site narration
-  // below is what makes it visible today, and band A is what refuses it.
+  // There is no third conjunct. An "installed somewhere" licence stood here
+  // and cleared a name because a handler for it was installed ANYWHERE in
+  // the post-reach tree — no extent, no nesting — and it let `fn main() =
+  // op() + ((op()) ~> h)` compile and trap, and `format_default` re-emit
+  // `Format` from its own arm into `mentl fmt`'s trap. The row already
+  // models what the runtime does: an arm's performs resolve OUTER, never
+  // self (the arm dispatch runs the arm in the install's own world), and
+  // `row(expr ~> h) = row(expr) - handled(h) + row(h)` re-adds exactly
+  // what the arms perform, so an arm asking for an op of the effect it
+  // handles reaches the enclosing install in the row as at runtime. The
+  // wheel's own nested graph installs are legal by that same rule — the
+  // inner arm's sibling perform reaches the outer handler — and the root
+  // row carries only what the OUTERMOST install's arms ask of nobody.
   if effect_ops_substrate_grounded(ename) {
     ()
   } else if !string_in_list(performed, ename) {
-    ()
-  } else if string_in_list(installed, ename) {
     ()
   } else {
     // Sequenced effectful read BEFORE the construction (the record-
@@ -373,7 +371,7 @@ fn report_unhandled_names(ref names, i, n, ref performed, ref installed, ref spa
     let proposal = absorbing_proposal(ename)
     report(EEffectUnhandled(ename, proposal, span))
   }
-  report_unhandled_names(names, i + 1, n, performed, installed, span)
+  report_unhandled_names(names, i + 1, n, performed, span)
 }
 
 // Every op of the effect projects to a substrate instruction (the
@@ -894,7 +892,8 @@ fn render_gradients(tights, gradients: [(String, Option(AnnotationSuggestion))])
 // element was still free, and the show floor read the word — every teach
 // line rendered under a pointer numeral. The named call anchors the
 // binder to String before the splice judges.
-fn render_gradient_line(name: String, result, tights) = "{name}: {teach_result_text(name, result, tights)}\n"
+fn render_gradient_line(name: String, result, tights) =
+  "{name}: {teach_result_text(name, result, tights)}\n"
 
 // One fn's teach: the gradient's proven annotation when it has one, else
 // the tightening the judgment already proved and banked for it (a

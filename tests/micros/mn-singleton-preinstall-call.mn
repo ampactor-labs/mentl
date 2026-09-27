@@ -1,23 +1,20 @@
-// expect: 134
+// expect: refuse E_EffectUnhandled
 // A STATEFUL singleton op called BEFORE its handler's install has
-// executed. The compile gate ADMITS this program by the belt-backed
-// tier: a stateful-singleton demand with an install anywhere clears,
-// because the row alone cannot split a dead extent from live dynamic
-// coverage (the backtrack family's per-candidate installs are the
-// legitimate face; the modal install-identity frontier, band A, owns
-// the split). The SingletonUninstalled guard is the LOUD belt: at
-// runtime early() finds the state global still 0 and refuses at the
-// site (exit 134). On the pre-guard wheel this ran SILENTLY WRONG —
-// the arm read its `n` field from the null page and wrote the state
-// update back (the address-12 corruption class). The STATELESS twin's
-// root-reaching escape refuses too, at its DISPATCH rather than at
-// compile (tests/frontier/mn-effect-escaped-install.mn, re-banked
-// 2026-09-11): the uniform world bracket leaves a dead extent with no
-// world to run an arm under, so the walk refuses where the old
-// stateless licence direct-called. A STATIC verdict there is band A's
-// install identity — the row cannot see a closed extent, and the
-// executable gate clears the effect because the handler is installed
-// somewhere.
+// executed. THE STATIC VERDICT LANDED 2026-09-27: the executable root
+// gate reads the row alone — main's row carries Counter because early()
+// performs it outside the only install — and the program refuses before a
+// byte of WAT (E_EffectUnhandled naming Counter). This fixture pinned the
+// runtime belt (exit 134) for as long as the gate cleared a name because
+// its handler was installed SOMEWHERE — "the row alone cannot split a
+// dead extent from live dynamic coverage; band A owns the split" — and
+// that reading was wrong at this shape: the row splits it exactly, the
+// perform sits outside every install's extent and the row says so. The
+// SingletonUninstalled guard stays as the belt beneath the gate, never
+// reached from this program; on the pre-guard wheel this ran SILENTLY
+// WRONG (the arm read its `n` field from the null page and wrote the state
+// update back — the address-12 corruption class). The STATELESS twin
+// (tests/frontier/mn-effect-escaped-install.mn) refuses at compile the
+// same day.
 
 effect Counter {
   bump() -> Int

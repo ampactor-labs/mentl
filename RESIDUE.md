@@ -286,8 +286,16 @@ whose silence rule ("Mentl is silent only when the project queue is empty")
 must be re-expressed against the frontier before its caller at voice:1177
 loses it, or the voice loses its silence gate rather than its dead queue.
 
-`Hβ.effects.reachable-perform-with-no-install-compiles` — OPEN, BORN 2026-09-21,
-MEASURED while deleting the peer above.
+`Hβ.effects.reachable-perform-with-no-install-compiles` — CLOSED 2026-09-27
+with `Hβ.effects.root-gate-credits-an-install-that-had-not-opened`: the
+executable root gate reads main's row and the emit's demand census alone,
+so a reachable perform with no install anywhere is a name present at the
+root with no enclosing install and refuses `E_EffectUnhandled` before a byte
+of WAT (crown `leak-root-direct`, `leak-root-escape`). The wheel's own case
+(`silence_predicate`'s `query_project_queue`) was already gone with its
+caller by the time the credit was deleted; the wheel refused on four OTHER
+names at its root the moment the credit went, each a real latent trap
+(LEDGER 2026-09-27). BORN 2026-09-21, MEASURED while deleting the peer above.
 With `ic_compile_loop` removed, `project_queue_merger` has NO install site
 anywhere in the tree, and `silence_predicate` (src/voice.mn) — reachable, called
 from a handler arm at voice:1177 — performs `query_project_queue`. **`mentl check
@@ -1093,9 +1101,25 @@ runtime message carrying no number — 502 produces the identical message. The
 law that the number form of a claim must be READ FROM THE ARTIFACT applies
 to a number you reasoned your way to just as much as to one you remembered.
 
-`Hβ.effects.an-arm-may-not-perform-its-own-handlers-ops` — NAMED 2026-09-10,
-MEASURED, and OPEN. The uniform world bracket made the deep-handler law true
-everywhere, and the wheel does not obey it.
+`Hβ.effects.an-arm-may-not-perform-its-own-handlers-ops` — CLOSED 2026-09-27,
+and not by the lexical refusal the form below asked for: the ROW already says
+it. An arm's performs resolve outer of its install, `row(expr ~> h) = row(expr)
+- handled(h) + row(h)` re-adds exactly what the arms perform, so an arm asking
+for an op only its own handler declares carries that effect to the enclosing
+install and, with none, to the executable root — where the root gate reads the
+row alone now and refuses `E_EffectUnhandled` (crown `leak-root-arm-self`,
+`leak-root-inner-install`; the sound twin `sound-root-outer` installs the
+serving handler OUTSIDE). The wheel's sites, found by the refusal and
+restructured as the deletion below prescribes: `interrogate_all` mapping the
+`interrogate_at` OP (a plain fn both arms call), the voice's run arms asking
+`file_text` (moved beside the handles table they read). The sub-question — is
+re-installing (`~> self`) a legitimate second form — is answered for the row
+and open for the world: `((twice()) ~> h) ~> h` runs to 20 (the inner arm's
+ask reaches the outer install) and REFUSES, because the row cannot see that
+the outer install's own arms are shadowed for its whole extent. That is
+install identity, `Hβ.effects.arm-world-static-rule` (A5/A6); the wheel
+needs no such nesting. NAMED 2026-09-10, MEASURED. The uniform world bracket
+made the deep-handler law true everywhere, and the wheel did not obey it.
 
 THE MEASUREMENT, from the frontier against pin f862677e (368 pass / 10 red;
 five of the ten are this one root, `mentl fmt` and `mentl session` and the
@@ -4938,7 +4962,95 @@ extent analysis to sharpen, and the two want different builds.
 emit boundary, independent of the modal install-identity frontier that
 the entry below is blocked on.
 
-`Hβ.effects.root-gate-credits-an-install-that-had-not-opened` — AN OP
+`Hβ.effects.root-gate-credits-an-install-that-had-not-opened` — CLOSED
+2026-09-27: THE CREDIT IS DELETED. `report_unhandled_names` (pipeline.mn)
+reads main's resolved row and the emit's demand census, nothing else; the
+census's install half — read by nothing but the credit — is deleted with it.
+The 2026-08-18 refutation below ("deleting the credit is refuted: the wheel
+refused on GraphRead") was a measurement of the WHEEL, not of the gate, and
+the wheel was wrong: with the credit gone it refused FOUR names at its root
+— Interrogate, Interact, WasmOut, GraphRead — and every one was a latent
+trap the credit had covered. Measured first at four micros on the boot
+(compile clean, abort 134): an arm asking its own handler for a sibling op
+with one install; an arm asking for an effect whose handler is installed
+INSIDE it; the wheel's own emit-context shape (a strategy handler outside
+the body's sink); an escaped closure called bare. The wheel's four:
+`interrogate_all` mapped the `interrogate_at` OP over every position (a
+plain fn `interrogation_at` now, both arms call it); the voice's run arms
+asked `file_text` of a handler the documented composition installs inside
+them (moved into `mentl_voice_filesystem`, reading its own table); the
+allocation strategy stood in emit_context OUTSIDE every sink a march or a
+battery installs inside (it installs where the emitter allocates — the
+per-fn brackets, the init lets, and now the fold leaves — and the
+whole-compile install is deleted; the gate named EmitMemory the moment it
+went and the fold-leaf bracket answered it); `verify_ledger` at main read
+the graph outside graph_handler's extent (inside the dispatch chain now).
+The crown judge counted only `E_EffectMismatch`; counting the root's
+`E_EffectUnhandled` too showed seven sound crucibles refusing on every
+boot since their birth for lack of any handler (executable now), and
+`sound-escape-birth-evidence`'s premise — the escaped closure served by a
+"static singleton direct call" — described tiers that no longer exist (the
+bare call aborted 134 on the boot; `leak-root-escape` is its refusal).
+The frontier's `effect-escaped-install` leg is a compile-time refusal where
+it pinned a runtime 134 and reserved the static verdict for band A — it was
+never band A's. Five root crucibles, three red on the prior boot; crown
+94/94. What the row cannot see is named at
+`Hβ.effects.arm-world-static-rule`.
+
+`Hβ.effects.arm-world-static-rule` — OPEN, BORN 2026-09-27 as the one
+shape the row-only root gate refuses that runs: `((twice()) ~> h) ~> h`
+where h's `twice` arm performs `op()`. The inner install's arm ask resolves
+to the outer install (legal forwarding, exit 20), and the outer install's
+own `twice` arm can never run — every perform inside the outer extent is
+inside the inner one — but the row re-adds `row(h)` at the outer tee and E
+reaches the root. The static rule that sees it is A5's (LENS §2.4, the
+arm-world rule) and its identity half is A6's; the crucible is the removed
+`sound-root-nested`, to return with that landing. The wheel does not need
+the nesting: dispatch_invocation's row carried no GraphRead once the
+graph_handler's arms stopped asking their own handler, so the nested graph
+installs were never load-bearing for the row.
+
+`Hβ.voice.run-ops-have-no-performer` — OPEN, BORN 2026-09-27. Interact's
+`run_compile`, `run_check`, `run_audit` are performed by nobody (`mentl query
+src/main.mn performs`: Interact 8/21 ops performed), and `run_audit` hands
+the file's TEXT to `audit(entry_module)`, which wants a module path — a wrong
+call that no execution has ever reached. The arms were moved beside the
+handles table so they no longer ask their own effect; the surface they were
+designed for (MV.2.e, the IDE/MCP run ops) either gets a performer or the
+three ops retire.
+
+`Hβ.query.why-of-a-root-row-name` — OPEN, BORN 2026-09-27, the projection
+this landing paid for by hand. `mentl why src/main.mn GraphRead` answered
+"declared as GraphRead": the Why of an EFFECT NAME resolves the declaration,
+not the reason the name is in a row. What the dig needed — which perform,
+through which arm or install, put E in main's row — was read from `mentl doc
+<module>` rows one declaration at a time and from a hand scan of handler arms
+for their own ops. The verb: `mentl why <entry> <Effect>` at the root walks
+the row element's provenance to the perform sites and the tee that re-added
+it, so a root refusal names its path the way a gate refusal names its
+declaration.
+
+`Hβ.continuations.remainder-row-charged-at-perform-site` — OPEN, BORN
+2026-09-27, the row-only root gate's one measured INCOMPLETENESS. A
+multi-shot remainder's effects are charged at their PERFORM site's frames
+(tests/micros/mn-backtrack-full: `abort()` inside `attempt`, inside `body`)
+and flow outward past the install of the handler that captured them (`~>
+bt` handles Choice, not Abort), so Abort reaches the root in the row — while
+every execution of that abort runs inside a resumption under the arm's own
+`~> my_catch` bracket and is served. The remainder ALSO rides the resume
+(`try_fn()`'s row carries it, twac's bracket absorbs it), so the row
+double-charges: once where the perform is written, once where it runs. The
+gate refused the program; the fixture installs `~> my_catch` at the root as
+the honest declaration of who serves an escaping Abort (exit 30 unchanged —
+the innermost live my_catch is twac's at every actual abort). The precise
+verdict is band B's: `TCont`'s world minted at the resume site, the
+remainder's effects charged in the world its resumptions run in and
+subtracted at the capturing install when every resume site absorbs them.
+Until then a multi-shot program whose remainder performs an effect only the
+arm's bracket serves declares a root handler, and the medium's refusal names
+the effect (`E_EffectUnhandled`) rather than trapping.
+
+The record as it was: AN OP
 BEFORE THE EXTENT OPENS IS THE MIRROR OF THE ONE AFTER IT CLOSES, and only
 one of them is caught. Measured 2026-08-18 at pin c3410610ce41: four runs,
 three projections. SUPERSEDED IN AIM by the entry above — the shape it

@@ -1,15 +1,18 @@
 // CROWN modal (§11 6.3's opening walk, measured 2026-08-08; the
-// mechanism narration corrected same day): a closure performing E,
-// ESCAPING its install, called outside — the shape capabilities forbid
-// and the modal calculus re-admits under proof. Mentl ADMITS it: with
-// one E-handler in the program the op dispatches by the STATIC
-// SINGLETON tier (a direct call — the escaped call runs the handler's
-// value); under multiple handlers the dynamic innermost install wins
-// (mn-escape-innermost pins 20); with NO handler reaching the root the
-// executable REFUSES (E_EffectUnhandled, armed — nothing executes
-// unproven). No negation in scope here: expect NO E_EffectMismatch.
+// mechanism narration corrected same day, and the PREMISE corrected
+// 2026-09-27): a closure performing E, born UNDER an install, escaping
+// it — the latent/performed distinction. E rides the closure's VALUE row;
+// `escaped`'s own row stays pure, so no negation anywhere refuses the
+// birth (expect NO E_EffectMismatch). What the escaped closure needs is a
+// live install AT THE CALL: this file used to call it bare at main and
+// claimed the "static singleton tier" served it — the tiers are deleted,
+// every perform walks the live chain, and the bare call ABORTED at
+// runtime (exit 134) while the compile gate cleared E because h was
+// installed somewhere. The root gate reads the row alone now, so the bare
+// call is leak-root-escape's refusal; here the call runs under h and the
+// program runs to 1.
 effect E { op() -> Int }
 handler h { op() => resume(1) }
 fn make() = () => op()
 fn escaped() = (make()) ~> h
-fn main() = escaped()()
+fn main() = (escaped()()) ~> h

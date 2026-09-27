@@ -1490,13 +1490,20 @@ for i in "${!compilers[@]}"; do
   # the bracket's CONTENT is the install's world, so an arm reached after its
   # install's extent closed has no world to run under. The fixture's own text
   # reserved this split for band A's install identity; making the walk uniform
-  # answered it as a side effect, so it is answered deliberately here. 134 is
-  # the walk's loud refusal — nothing executes unproven. The COMPILE-time
-  # refusal is still band A's: the row cannot see a dead extent, and the
-  # executable gate clears the effect because the handler is installed
-  # somewhere.
-  run_program "$compiler" effect-escaped-install \
-    "$ROOT/tests/frontier/mn-effect-escaped-install.mn" 134 no "$dir"
+  # answered it as a side effect, so it is answered deliberately here. 134 was
+  # the walk's loud refusal — nothing executes unproven. THE COMPILE-TIME
+  # REFUSAL LANDED 2026-09-27 and it was never band A's: the executable root
+  # gate reads the row alone now (the "installed somewhere" credit is deleted),
+  # and the escaped thunk's `ping()` is in main's row with no enclosing
+  # install — E_EffectUnhandled names Ping, no WAT, nonzero exit. The runtime
+  # walk's 134 stays as the belt beneath it, never reached from this program.
+  cat "${RTLIBS[@]}" "$ROOT/tests/frontier/mn-effect-escaped-install.mn" | wt_run "$compiler" > "$dir/effect-escaped-install.wat" 2> "$dir/effect-escaped-install.err"
+  esc_rc=$?
+  if [ "$esc_rc" != "0" ] && [ ! -s "$dir/effect-escaped-install.wat" ] && grep -q 'E_EffectUnhandled.*Ping' "$dir/effect-escaped-install.err"; then
+    pass "effect-escaped-install refuses at COMPILE (E_EffectUnhandled names Ping, no WAT)"
+  else
+    fail "effect-escaped-install (rc=$esc_rc wat=$(wc -c < "$dir/effect-escaped-install.wat"); see $dir/effect-escaped-install.err)"
+  fi
   run_program "$compiler" effect-residual-absence \
     "$ROOT/tests/frontier/mn-effect-residual-absence.mn" 42 no "$dir"
   run_program "$compiler" effect-absorbed \

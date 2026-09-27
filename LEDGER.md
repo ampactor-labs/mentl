@@ -35,6 +35,98 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-27 · pin bbc0cc2cd8ebca0b (CLEAN m2 == m3) · THE EXECUTABLE ROOT
+  GATE READS THE ROW AND NOTHING ELSE. PROGRAM Step 2.
+  **The defect, measured on the prior boot.** `report_unhandled_names`
+  cleared a name at the executable root because a handler for it was
+  installed ANYWHERE in the post-reach tree — no extent, no nesting. Four
+  micros compiled clean on the boot and aborted at the runtime walk (exit
+  134): `fn main() = op() + ((op()) ~> h)`; a handler arm performing an op
+  of its own effect under one install (`twice() => resume(op() + op())`);
+  an arm asking for an effect whose handler is installed INSIDE it
+  (`(f_op()) ~> he ~> hf`); an escaped closure called bare at main. Each
+  is the row saying E at the root and the gate crediting an install. The
+  runtime semantics behind all four, measured rather than assumed: the
+  arm dispatch sets `$world_g` to the install's saved world around the arm
+  call, so an arm's performs resolve OUTER of its own install, never self
+  and never into the body it wraps; `((twice()) ~> h) ~> h` runs to 20
+  because the inner arm's ask reaches the outer install.
+  **The mechanism.** The credit is deleted: the gate reads main's resolved
+  row and the emit's demand census (present, not substrate-grounded,
+  performed somewhere reachable) and refuses `E_EffectUnhandled`. The
+  census's install half — `visit_effect_install`, the `installs` state, the
+  pair return — had no other reader and is deleted with it. The crown judge
+  counts both refusals (`E_EffectMismatch`, `E_EffectUnhandled`).
+  **The wheel, refused by its own gate.** The moment the credit went, the
+  wheel refused four names at its root, and each was a latent trap: (1)
+  `interrogate_all` mapped the `interrogate_at` OP over every position —
+  its own handler's op, resolved outer, served by nobody; the eight-aspect
+  read is a plain fn `interrogation_at` both arms call. (2) The voice's
+  `run_compile`/`run_check`/`run_audit` arms asked `file_text` of
+  `mentl_voice_filesystem`, which the documented composition installs
+  INSIDE `mentl_voice_default`; they live in the filesystem handler now,
+  reading its own handles table (`handles_text`, the one read the
+  `file_text` arm shares). (3) The allocation strategy `emit_memory_bump`
+  stood in emit_context OUTSIDE every sink a march, a battery or the MCP
+  judge installs inside the body, so its arm's `wat_emit` asked a handler
+  that was not there; it installs where the emitter allocates, inside the
+  live sink — the per-fn brackets and the init lets already did, the fold
+  leaves' emission does now — and the whole-compile install is deleted
+  (the gate named EmitMemory the instant it went, which is how the fold
+  leaves' unbracketed allocation was found). (4) `verify_ledger` at main
+  read the graph (`predicate_decide`) outside graph_handler's extent; it
+  sits inside the dispatch chain under graph_handler now. Then the wheel
+  compiled clean through the new m2.
+  **Measured.** Crown 94/94: five root crucibles (`leak-root-direct`,
+  `-arm-self`, `-inner-install`, `-escape`; `sound-root-outer`), three
+  accepted by the prior boot. Counting `E_EffectUnhandled` showed SEVEN
+  sound crucibles refusing at the root on every boot since their birth —
+  no handler at all — hidden by a judge that counted one class; they carry
+  handlers at main now and run. `sound-escape-birth-evidence`'s premise
+  (the escaped closure served by the "static singleton" direct call) named
+  tiers that no longer exist — the bare call aborted 134 on the boot — so
+  its sound form calls the closure under h and `leak-root-escape` is the
+  bare call's refusal. The frontier's `effect-escaped-install` leg refuses
+  at COMPILE where it pinned a runtime 134 and reserved the static verdict
+  for band A: 391 pass / 1 red (that leg, before its rewrite) / 2 expected
+  on the pre-pin m2. Negation battery 36/36; the wheel checks at zero
+  diagnostics. The micro battery refused the first march at two fixtures:
+  `mn-singleton-preinstall-call` pinned the runtime belt (exit 134) and
+  said the static verdict was band A's — it is a compile-time refusal
+  contract now (`// expect: refuse E_EffectUnhandled`); `mn-backtrack-full`
+  (the multi-shot acid, exit 30) refused at the root because the row
+  charges the remainder's `abort()` at its perform site as well as at the
+  resume site twac's bracket absorbs — the one measured incompleteness of
+  the row-only gate, named (`Hβ.continuations.remainder-row-charged-at-
+  perform-site`); the fixture installs `~> my_catch` at the root, exit 30
+  unchanged. CLEAN: m2 == m3 at 427,895 lines, census 0 — the prior boot
+  already carried the gate arc and this landing moves no emit, only what
+  the wheel's own root row holds — the pin is m2. Frontier 392 pass / 0
+  red / 2 expected-red at the pin; authored ref 724 → 723 (the deleted
+  `ref installed` parameter). Cost: m3 leg 12.69s wall · 998MB peak RSS
+  (1022300 KB).
+  **The kills.** (1) "The wheel NESTS graph installs, so an inner arm's
+  sibling perform legally reaches the outer handler — the row cannot see
+  that nesting, band A's seat" (the credit's own comment, 2026-08-18):
+  refuted by the artifact — dispatch_invocation's row carried no GraphRead
+  at all, graph_handler's arms no longer ask their own handler, and the
+  GraphRead at main came from verify_ledger. (2) "The static singleton tier
+  direct-calls the one handler for an escaped closure" (the crucible's
+  premise): the tiers are deleted, every perform walks, and the boot's own
+  binary aborted. (3) The first cut deleted emit_context's strategy install
+  outright; the gate answered EmitMemory at the root — the fold leaves
+  allocate outside any bracket — so the strategy went to that site instead
+  of back to the chain. (4) `sound-root-nested` (`((twice()) ~> h) ~> h`)
+  runs and refuses: the shadowed outer install is A5/A6's
+  (`Hβ.effects.arm-world-static-rule`), removed from the crown until then.
+  (5) The projection this dig lacked: `mentl why <entry> <Effect>` at the
+  root answers "declared as" — the row element's path was read from `mentl
+  doc <module>` rows and a hand scan of arms (`Hβ.query.why-of-a-root-row-
+  name`). (6) The run ops have no performer and `run_audit` hands file text
+  where an entry module is expected (`Hβ.voice.run-ops-have-no-performer`).
+  **Not closed.** A5's static rule for the shadowed install; A4's positive
+  rows; `Hβ.diag.row-polymorphic-body`.
+
 - 2026-09-27 · pin 674154f6541234a2 (TRANSITION m3 == m4) · THE NEGATION
   GATE IS CARRIED BY THE CELL. PROGRAM A3.
   **The defect, measured on the prior boot.** A declared `!E` over a body

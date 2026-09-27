@@ -58,4 +58,15 @@ fn attempt(v) with Abort + Memory + Alloc = if v > 25 { Some(v) } else { abort()
 
 fn body() with Choice + Abort + Memory + Alloc = pick_one() |> attempt
 
-fn main() = { body() } ~> bt
+// THE ROOT INSTALL OF my_catch (2026-09-27): the executable root gate reads
+// the row alone now, and the row charges the remainder's `abort()` at its
+// PERFORM site (attempt, inside body) as well as at the resume site where
+// twac's bracket absorbs it — so Abort reaches the root in the row although
+// every execution of attempt runs inside a resumption under my_catch. The
+// root install is the honest form of that gap: the program declares who
+// serves an Abort that escapes, and the innermost live my_catch (twac's,
+// at every actual abort) still serves at runtime — exit 30 unchanged. The
+// precise verdict — a multi-shot remainder's effects charged in the world
+// its resumption runs in — is band B's TCont world at the resume site
+// (Hβ.continuations.remainder-row-charged-at-perform-site).
+fn main() = { body() } ~> bt ~> my_catch

@@ -163,69 +163,78 @@ effect Interrogate {
 // cursor_default's helpers for Topology + Row + Ownership + Refinement,
 // synth_default for Propose). The eight reads compose into one
 // InterrogationReport.
-handler interrogate_default {
-  interrogate_at(handle) => // The eight interrogations fan out via `<|` — `(handle, kind, reason)`
-  // borrowed to eight branches, each branch running one tentacle's
-  // verdict, output is the 8-tuple of InterrogationVerdicts in
-  // primitive-order. Same shape as cursor_at — Cursor's eight aspects
-  // surface as human-readable; InterrogationReport's eight verdicts
-  // surface as structured artifacts the IDE walks. SAME eight, FIVE
-  // roles, ONE method (per the recursive realization at the bottom).
-  //
-  // Drift refused per branch: 1 (each branch is a closure call, no
-  // dispatch table); 6 (eight uniform branches; no primitive special
-  // case); 7 (one record output, not parallel-arrays); 9 (all eight
-  // bodied; no "later"); 11 (no acc-append in loop; <| outputs tuple).
-  match graph_chase(handle) {
-    GNode(kind, reason) => {
-      let span = span_of_handle(handle)
-      let pos = (handle, kind, reason)
-      match pos <| (
-        // 1. Graph
-        {
-          (_, k, r) => match k {
-            NBound(_) => VerdictClears(r),
-            NRowBound(_) => VerdictClears(r),
-            NRecordRowBound(_, _) => VerdictClears(r),
-            NFree(_) => VerdictInvites(graph_invite_for(0, r)),
-            NRowFree(_) => VerdictInvites(graph_invite_for(0, r)),
-            NErrorHole(_) => VerdictInvites(graph_invite_for(0, r)),
-          },
+// The eight interrogations at one handle — the projection both arms of
+// interrogate_default read, as a plain function so the project-wide walk
+// never asks its own handler for it: an arm's performs resolve OUTER of
+// its install, so `interrogate_all` mapping the `interrogate_at` OP over
+// every position was asking a handler that is not there, and the row
+// carried Interrogate to the executable root through every install of
+// this handler (the root gate's one-row read measured it, 2026-09-27).
+// `(handle, kind, reason)` is borrowed to eight branches via `<|`, each
+// branch running one tentacle's verdict, output the 8-tuple of
+// InterrogationVerdicts in primitive-order. Same shape as cursor_at —
+// Cursor's eight aspects surface as human-readable; InterrogationReport's
+// eight verdicts surface as structured artifacts the IDE walks. SAME
+// eight, FIVE roles, ONE method (per the recursive realization at the
+// bottom).
+//
+// Drift refused per branch: 1 (each branch is a closure call, no
+// dispatch table); 6 (eight uniform branches; no primitive special
+// case); 7 (one record output, not parallel-arrays); 9 (all eight
+// bodied; no "later"); 11 (no acc-append in loop; <| outputs tuple).
+fn interrogation_at(handle) = match graph_chase(handle) {
+  GNode(kind, reason) => {
+    let span = span_of_handle(handle)
+    let pos = (handle, kind, reason)
+    match pos <| (
+      // 1. Graph
+      {
+        (_, k, r) => match k {
+          NBound(_) => VerdictClears(r),
+          NRowBound(_) => VerdictClears(r),
+          NRecordRowBound(_, _) => VerdictClears(r),
+          NFree(_) => VerdictInvites(graph_invite_for(0, r)),
+          NRowFree(_) => VerdictInvites(graph_invite_for(0, r)),
+          NErrorHole(_) => VerdictInvites(graph_invite_for(0, r)),
         },
-        // 2. Handler
-        { (h, k, r) => handler_verdict_for(h, k, r) },
-        // 3. Verb
-        { (h, k, r) => verb_verdict_for(h, k, r) },
-        // 4. Row
-        { (h, k, r) => row_verdict_for(h, k, r) },
-        // 5. Ownership
-        { (h, k, r) => ownership_verdict_for(h, k, r) },
-        // 6. Refinement
-        { (h, _, r) => refinement_verdict_for(h, r) },
-        // 7. Gradient
-        {
-          (h, _, r) => match teach_gradient(h) {
-            None => VerdictClears(r),
-            Some(suggestion) => VerdictInvites(suggestion),
-          },
+      },
+      // 2. Handler
+      { (h, k, r) => handler_verdict_for(h, k, r) },
+      // 3. Verb
+      { (h, k, r) => verb_verdict_for(h, k, r) },
+      // 4. Row
+      { (h, k, r) => row_verdict_for(h, k, r) },
+      // 5. Ownership
+      { (h, k, r) => ownership_verdict_for(h, k, r) },
+      // 6. Refinement
+      { (h, _, r) => refinement_verdict_for(h, r) },
+      // 7. Gradient
+      {
+        (h, _, r) => match teach_gradient(h) {
+          None => VerdictClears(r),
+          Some(suggestion) => VerdictInvites(suggestion),
         },
-        // 8. Reason
-        {
-          (_, _, r) => match r {
-            Inferred(_) => VerdictClears(r),
-            Declared(_) => VerdictClears(r),
-            Located(_, _) => VerdictClears(r),
-            _ => VerdictInvites(reason_invite_for(0, r)),
-          },
-        }
-      ) {
-        (graph_v, handler_v, verb_v, row_v, ownership_v, refinement_v, gradient_v, reason_v) => resume(InterrogationReport({gradient_v: gradient_v, graph_v: graph_v, handle: handle, handler_v: handler_v, ownership_v: ownership_v, reason_v: reason_v, refinement_v: refinement_v, row_v: row_v, span: span, verb_v: verb_v})),
+      },
+      // 8. Reason
+      {
+        (_, _, r) => match r {
+          Inferred(_) => VerdictClears(r),
+          Declared(_) => VerdictClears(r),
+          Located(_, _) => VerdictClears(r),
+          _ => VerdictInvites(reason_invite_for(0, r)),
+        },
       }
-    },
+    ) {
+      (graph_v, handler_v, verb_v, row_v, ownership_v, refinement_v, gradient_v, reason_v) => InterrogationReport({gradient_v: gradient_v, graph_v: graph_v, handle: handle, handler_v: handler_v, ownership_v: ownership_v, reason_v: reason_v, refinement_v: refinement_v, row_v: row_v, span: span, verb_v: verb_v}),
+    }
   },
+}
+
+handler interrogate_default {
+  interrogate_at(handle) => resume(interrogation_at(handle)),
   interrogate_all() => // interrogate_all walks every binding-bearing node — map's tail
   // loop across positions, `<|` per-position eight-aspect fanout
-  // inside interrogate_at: the project-wide audit IS the cursor
+  // inside interrogation_at: the project-wide audit IS the cursor
   // projection scaled to N handles. N-core interrogation is a `><`
   // fanout under its own `~> Thread` at this site (the schedule is
   // read at the fanout's install, never across a call —
@@ -235,7 +244,7 @@ handler interrogate_default {
     match snapshot {
       Graph(next, _spans) => {
         let positions = enumerate_handles(0, next)
-        let reports = positions |> map(interrogate_at)
+        let reports = positions |> map(interrogation_at)
         resume(reports)
       },
     }

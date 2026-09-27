@@ -38,7 +38,11 @@ pass=0; fail=0
 for f in tests/crown/*.mn; do
   name=$(basename "$f" .mn)
   err=$("$WT" run "${WT_RUN_FLAGS[@]}" "$M" < "$f" 2>&1 >/dev/null)
-  n=$(printf '%s' "$err" | grep -c 'E_EffectMismatch')
+  # The crown's two refusals: a row violated at a declaration or a gated
+  # cell (E_EffectMismatch), and a row that reaches the executable root
+  # with no enclosing install (E_EffectUnhandled — the root gate reading
+  # the row alone, 2026-09-27). A leak crucible may refuse by either.
+  n=$(printf '%s' "$err" | grep -c 'E_EffectMismatch\|E_EffectUnhandled')
   case "$name" in
     leak-*)  want="reject"; ok=$([ "$n" -ge 1 ] && echo 1 || echo 0);;
     sound-*) want="accept"; ok=$([ "$n" -eq 0 ] && echo 1 || echo 0);;

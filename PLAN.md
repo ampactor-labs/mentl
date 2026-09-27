@@ -937,9 +937,9 @@ and this is the STATE.
   the edge now (`RowEdge(cell, mask)`,
   `Hβ.effects.mask-spills-onto-sibling-edges`), `diff_row` writes nothing,
   and paths to one cell meet by intersection. The gate A3 installs pushes exactly this per-edge mask. What
-  it exposed: the executable root gate still credits an install ANYWHERE, so
-  `fn main() = op() + ((op()) ~> h)` — row `E`, correct — compiles and traps
-  (`Hβ.effects.root-gate-credits-an-install-that-had-not-opened`).
+  it exposed: the executable root gate still credited an install ANYWHERE, so
+  `fn main() = op() + ((op()) ~> h)` — row `E`, correct — compiled and
+  trapped; CLOSED 2026-09-27, the bullet after next.
 - **THE NEGATION GATE IS CARRIED BY THE CELL — CLOSED 2026-09-27.** A
   declared `!E` over a body row that resolved to a parameter's free cell
   constrained nothing: `fn run(f) with !E = f()` accepted `run(() => op())`
@@ -960,18 +960,38 @@ and this is the STATE.
   shape whose recheck grounds the return from the callback, so the accept
   path was unreachable there and the mono re-run judged it
   (`Hβ.infer.mycroft-recheck-one-round-short`).
-- **A REACHABLE PERFORM WITH NO INSTALL ANYWHERE COMPILES CLEAN** — measured
-  2026-09-21 and open. `silence_predicate` (src/voice.mn) is reachable, is
-  called from a handler arm at voice:1177, and performs `query_project_queue`;
-  the only handler that ever absorbed it was installed by a function with zero
-  callers, now deleted. `mentl check src/main.mn` passes with zero diagnostics.
-  This is strictly worse than
-  `Hβ.effects.root-gate-credits-an-install-that-had-not-opened` (6.3), which
-  credited an install whose extent had not opened — here the install does not
-  exist. §0's first property is that nothing executes unproven, and the
-  executable root gate is exactly where that promise is kept, so this is the
-  promise failing at its own boundary.
-  `Hβ.effects.reachable-perform-with-no-install-compiles` carries it.
+- **THE EXECUTABLE ROOT GATE READS THE ROW AND NOTHING ELSE — CLOSED
+  2026-09-27.** It cleared a name because a handler for it was installed
+  ANYWHERE in the post-reach tree — no extent, no nesting — so `fn main() =
+  op() + ((op()) ~> h)` compiled and trapped, an arm asking its own handler
+  for a sibling op compiled and aborted (the arm runs in the install's own
+  world, so its performs resolve OUTER — measured at four shapes), an escaped
+  closure called bare at main compiled and aborted, and a reachable perform
+  with no install anywhere passed `mentl check` (2026-09-21's finding). The
+  credit is deleted; the gate reads main's row and the emit's demand census,
+  and the install half of that census — read by nothing else — with it. The
+  wheel refused FOUR effects at its own root the moment the credit went, and
+  every one was a real latent trap the credit had covered: `interrogate_all`
+  mapping the `interrogate_at` OP over every position (now a plain fn both
+  arms call); the voice's run arms asking `file_text` of a handler the
+  documented composition installs INSIDE them (moved beside the handles table
+  they read); the allocation strategy installed in emit_context OUTSIDE every
+  sink a march or a battery installs inside (it installs where the emitter
+  allocates, inside the live sink — the fold leaves' bracket added, and the
+  strategy's whole-compile install deleted); and verify_ledger at main
+  reading the graph outside graph_handler's extent (moved inside the
+  dispatch chain). Seven crown sound crucibles had refused at the root on
+  every boot since birth — no handler at all — behind a judge that counted
+  one class; the judge counts both refusals now and the crucibles carry
+  handlers. Crown 94/94 (five root crucibles, three red on the prior boot),
+  the frontier's escaped-install leg a compile-time refusal where it pinned
+  a runtime 134. What the row still cannot see: an outer install whose arms
+  are shadowed by an inner install of the same handler (`((twice()) ~> h)
+  ~> h` runs to 20 and refuses) — install identity, A5/A6
+  (`Hβ.effects.arm-world-static-rule`).
+  (`Hβ.effects.root-gate-credits-an-install-that-had-not-opened`,
+  `Hβ.effects.reachable-perform-with-no-install-compiles`,
+  `Hβ.effects.an-arm-may-not-perform-its-own-handlers-ops` — all CLOSED.)
 - **THE MEDIUM'S OWN PROJECTIONS WENT UNASKED, and asking them was the whole
   audit of 2026-09-21.** Six findings, one law — *a fact with two homes, or a
   fact restated where an edge already carried it* — and every one was found by
@@ -1780,9 +1800,9 @@ session on ceremony; a gate that was skipped is UNKNOWN, never green.
 §0's negative-is-provable failing at a shape a real program writes.
 `Hβ.infer.declared-row-vacuous-against-a-free-body-row` was the first such
 item and CLOSED 2026-09-27 (the gate carried by the cell);
-`Hβ.effects.root-gate-credits-an-install-that-had-not-opened` is the next
-(the executable root gate reads the row and nothing else — PROGRAM Step 2),
-then the 6.3 modal sweep rule-by-rule as loop-sized residue, their verdicts
+`Hβ.effects.root-gate-credits-an-install-that-had-not-opened` CLOSED the
+same day (the executable root gate reads the row and nothing else); next is
+the 6.3 modal sweep rule-by-rule as loop-sized residue, their verdicts
 reported by state.sh, never this block. Nothing else jumps the queue
 without a MEASURED demo-blocking fault. "It will surely land" is never a
 selection reason — the completion-gradient is a named drift; the
@@ -2232,12 +2252,13 @@ The spine root finishes. Order inside the phase is the dependency order.
   question those two left — an init performing the effect its OWN handler
   handles — measured to a GATE finding rather than a row one: the row is
   correct (a declared `!F` catches it) and the executable-root gate
-  clears the name because a handler for it is installed SOMEWHERE, so the
-  program compiles and traps. It is the mirror of the install-extent rule
+  cleared the name because a handler for it was installed SOMEWHERE, so the
+  program compiled and trapped. It is the mirror of the install-extent rule
   this sweep already pins — an op before the extent OPENS rather than
   after it closes — stamped as
-  `Hβ.effects.root-gate-credits-an-install-that-had-not-opened`, with its
-  general fix DEP-named on band A's modal install-identity; the
+  `Hβ.effects.root-gate-credits-an-install-that-had-not-opened` and
+  CLOSED 2026-09-27 without band A: the credit is deleted and the root
+  gate reads the row alone (§7); the
   sweep continues rule-by-rule), and the
   capability-at-tee PROJECTION — ✅ LANDED 2026-08-08 (pin
   2dcd736eb4e6): `mentl where` renders every install as

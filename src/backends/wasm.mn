@@ -194,10 +194,13 @@ handler emit_memory_bump {
 // to bump except for the pointer name — the region-enter/exit
 // emission is a future refinement once a `~>` install that absorbs
 // Alloc opens a region (peer Hβ.infer.region-on-tee-alloc-absorb,
-// E3). The SHAPE is what matters: pipeline can swap
-// `~> emit_memory_bump` for `~> emit_memory_arena` with zero source
-// changes, producing different WAT. DESIGN Ch 7.3 "the handler IS
-// the backend" — memory strategy is a handler swap.
+// E3). The SHAPE is what matters: the emitter can swap
+// `~> emit_memory_bump` for `~> emit_memory_arena` at its allocating
+// brackets (the per-fn emission, the init lets, the fold leaves — each
+// installed INSIDE the sink live there, because this arm performs
+// wat_emit and an arm's performs resolve outer of its own install) with
+// no other source change, producing different WAT. DESIGN Ch 7.3 "the
+// handler IS the backend" — memory strategy is a handler swap.
 handler emit_memory_arena {
   emit_alloc(size, target_local) => {
     // Same strategy-invariant call site; the arena's region-reset semantics live
@@ -961,8 +964,16 @@ fn emit_module(lowered) = {
       // $<leaf>_<sig> helper per distinct signature in each closure, all read
       // from the ONE collection walk above (the unified each). Plain top-level
       // fns, called directly like $str_eq; a program with no aggregate sites
-      // collects none (byte-identical, Law 7).
-      emit_fold_leaf_helpers(fold_closures)
+      // collects none (byte-identical, Law 7). The leaves allocate (a show
+      // leaf's concat tree, an aggregate leaf's call record), so the
+      // allocation strategy installs HERE, inside the live sink: the
+      // strategy's arm performs `wat_emit`, an arm's performs resolve outer
+      // of its own install, and this is the one whole-compile emission with
+      // no per-fn bracket of its own (the init lets carry theirs). The
+      // whole-compile install that used to stand in emit_context wrote past
+      // every sink installed inside a compile — the row carried WasmOut to the
+      // executable root and the root gate refused the wheel (2026-09-27).
+      emit_fold_leaf_helpers(fold_closures) ~> emit_memory_bump
       // band B M1.2 — the composer pair + world reader: $__k_compose (the
       // self-re-composing junction k, table-resident above), $__k_extend (the one
       // bubble op), $__k_world (the frozen-world read). Dormant until a k2
@@ -1060,25 +1071,27 @@ handler yield_seen_collector with n = 0 {
 effect EmitEffectCensus {
   // an ekey (ename) or a yield's op name — the gate resolves ops to enames
   visit_effect_demand(String)
-  // an ename an install's arm groups absorb
-  visit_effect_install(String)
   // a singleton direct perform, with the handler name its dispatch will
   // look up. Ignored everywhere except inside an install's own inits,
   // where preinstall_init_scope compares it to that install's handler.
   visit_direct_perform(String, String)
-  // (demands, installs)
-  drain_effect_census() -> ([String], [String])
+  // the demands. The census used to carry a second list — every ename an
+  // install's arm groups absorb, anywhere in the tree — whose one reader
+  // was the executable root gate's "installed somewhere" credit, deleted
+  // 2026-09-27: the row already carries every install's subtraction at
+  // its own extent, so a name-keyed list of installs re-derived a fact the
+  // row holds exactly, and cleared performs no install enclosed.
+  drain_effect_census() -> [String]
 }
 
-handler effect_census_collector with demands = [], installs = [] {
+handler effect_census_collector with demands = [] {
   visit_effect_demand(n) => if string_in_list(demands, n) { resume() } else { resume() with demands = push(demands, n) },
-  visit_effect_install(n) => if string_in_list(installs, n) { resume() } else { resume() with installs = push(installs, n) },
   visit_direct_perform(_, _) => // Outside an inits walk a direct perform says nothing about extent —
   // the world lookup is a live runtime read and the belt beneath it is
   // the honest answer (1016 such guards in the wheel's own emit, every
   // one under a live install at runtime).
   resume(),
-  drain_effect_census() => resume((demands, installs)),
+  drain_effect_census() => resume(demands),
 }
 
 // THE INITS' OWN SCOPE, drawn as an install rather than threaded as a flag.
@@ -1301,7 +1314,6 @@ fn walk_install_groups(ref groups: [{arms: [String], ename: String}], i) = if i 
 } else {
   match list_index(groups, i) {
     {arms: _, ename: en} => {
-      visit_effect_install(en)
       // The install ename is a WORLD-chain key at emit ($world_push's
       // (i32.const string_offset)) — intern it through the one channel every
       // dispatch key flows through, else an ename no perform references

@@ -1115,35 +1115,11 @@ handler mentl_voice_default with caret_now = Caret(0, Inferred("session start"))
       TurnRecord({line: voiceline, span_at: span_zero(), tentacle: tentacle, topic: TopicHandle(0)})
     resume() with prior_turn = Some(new_turn), turns = [new_turn] ++ turns
   },
-  run_compile(fh) => // ─── Run ops (4) — MV.2.e.V (run_check) + MV.2.e.Run (rest) ──────
-  // The outcomes are READ LIVE from the graph the pipeline wrote, never
-  // fabricated. compile_source/check_source/audit run the pipeline for effect
-  // (inference + verify write their results into the live ledger); the arm
-  // then projects the LIVE verify-debt — the pending obligations the graph
-  // proves it could NOT discharge statically — into the outcome. Compilation
-  // failed iff obligations remain; success carries the emitted path. No
-  // CompileOk(Path("emitted")) literal, no empty-list-regardless.
-  {
-    let text = file_text(fh)
-    compile_source(text)
-    let debt = verify_debt()
-    match debt {
-      [] => resume(CompileOk(emitted_artifact_path(fh))),
-      [_, ..._] => resume(CompileFailed(diagnostics_from_debt(debt))),
-    }
-  },
-  run_check(fh) => {
-    let text = file_text(fh)
-    check_source(text)
-    let debt = verify_debt()
-    resume(CheckOutcome(diagnostics_from_debt(debt), debt))
-  },
-  run_audit(fh) => {
-    let text = file_text(fh)
-    audit(text)
-    resume(AuditReport(findings_from_debt(verify_debt())))
-  },
-  run_query(question) => // run_query — batch/CLI surface of consult. Same live forensic path:
+  run_query(question) => // ─── Run ops — MV.2.e.Run: run_query here; run_compile / run_check /
+  // run_audit live in mentl_voice_filesystem beside the handles table
+  // they read (an arm's performs resolve OUTER of its own install, so a
+  // run arm here asking `file_text` asked a handler installed INSIDE it).
+  // run_query — batch/CLI surface of consult. Same live forensic path:
   // `perform ask` reads query.mn's QueryResult, query_result_to_answer
   // projects it. CLI invokes directly (per Interact §"Run ops"); the
   // only difference from consult is the invocation surface, so the body
@@ -1222,6 +1198,16 @@ handler mentl_voice_default with caret_now = Caret(0, Inferred("session start"))
 // matching a target FileHandle. Returns Option<(FileHandle, Path,
 // String)>. Single-pass cons recursion; small N typical (handles
 // table holds open editor sessions, not arbitrary file enumerations).
+// The cached text of an open FileHandle, read off the handles table — the
+// one read the file_text arm and the run arms share; an unknown handle
+// answers the empty text (the surface distinguishes via fs_exists).
+fn handles_text(table, fh) = match handles_table_lookup(table, fh) {
+  None => "",
+  Some(triple) => match triple {
+    (_, _, text) => text,
+  },
+}
+
 fn handles_table_lookup(table, target_handle) with Memory + Alloc = if len(table) == 0 {
   None
 } else {
@@ -1349,14 +1335,42 @@ handler mentl_voice_filesystem with handles_table = [], next_handle_id = 1, proj
   file_text(fh) => /// file_text — return the cached text snapshot for an open
   /// FileHandle. Invalid handle returns empty string (honest
   /// fallback; surface distinguishes via fs_exists if needed).
+  resume(handles_text(handles_table, fh)),
+  run_compile(fh) => // ─── Run ops (3) — MV.2.e.V (run_check) + MV.2.e.Run (rest) ──────
+  // These arms live beside the handles table they read. They stood in
+  // mentl_voice_default and asked `file_text` for the text — but an arm's
+  // performs resolve OUTER of its own install, and the documented
+  // composition installs this handler INSIDE the voice, so the ask
+  // reached no handler at all, and the row carried Interact to the
+  // executable root through every install of that handler (the root
+  // gate's one-row read measured it, 2026-09-27). The text is a state
+  // read here; the arm performs nothing of its own effect.
+  // The outcomes are READ LIVE from the graph the pipeline wrote, never
+  // fabricated. compile_source/check_source/audit run the pipeline for effect
+  // (inference + verify write their results into the live ledger); the arm
+  // then projects the LIVE verify-debt — the pending obligations the graph
+  // proves it could NOT discharge statically — into the outcome. Compilation
+  // failed iff obligations remain; success carries the emitted path. No
+  // CompileOk(Path("emitted")) literal, no empty-list-regardless.
   {
-    let entry = handles_table_lookup(handles_table, fh)
-    match entry {
-      None => resume(""),
-      Some(triple) => match triple {
-        (_, _, text) => resume(text),
-      },
+    let text = handles_text(handles_table, fh)
+    compile_source(text)
+    let debt = verify_debt()
+    match debt {
+      [] => resume(CompileOk(emitted_artifact_path(fh))),
+      [_, ..._] => resume(CompileFailed(diagnostics_from_debt(debt))),
     }
+  },
+  run_check(fh) => {
+    let text = handles_text(handles_table, fh)
+    check_source(text)
+    let debt = verify_debt()
+    resume(CheckOutcome(diagnostics_from_debt(debt), debt))
+  },
+  run_audit(fh) => {
+    let text = handles_text(handles_table, fh)
+    audit(text)
+    resume(AuditReport(findings_from_debt(verify_debt())))
   },
   edit(fh, patch) => {
     let entry = handles_table_lookup(handles_table, fh)

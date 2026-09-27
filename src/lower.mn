@@ -224,10 +224,12 @@ type BoundaryInvariant
   // address 0+offset (the null page) as its state — below every region mark,
   // never reset — and the corruption surfaces compiles later as a stale
   // pointer walk (the address-12 census root, 2026-07-22). The compile-time
-  // gate (E_EffectUnhandled) refuses whole-program absence; this guard is the
-  // runtime floor for the per-extent gap the row algebra cannot see: an
-  // effect installed SOMEWHERE satisfies the row while a second walk extent
-  // performs it uninstalled.
+  // gate (E_EffectUnhandled) refuses every name main's row carries with no
+  // enclosing install — it reads the row alone since 2026-09-27, so a
+  // perform outside every install's extent refuses before a byte of WAT;
+  // this guard is the runtime floor beneath it, reachable only where the
+  // row is coarser than the world (an install's own arms shadowed by an
+  // inner install of the same handler, A5's rule).
   | MissingName(String)
   // the handler name
   | SingletonUninstalled(String)

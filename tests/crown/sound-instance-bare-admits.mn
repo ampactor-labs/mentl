@@ -5,4 +5,8 @@
 effect Sample(rate: Int) { tick() -> Int }
 fn inner() with Sample(44100) = tick()
 fn ok() with Sample = inner()
-fn main() = ok()
+// The handler at main makes the program EXECUTABLE (the root gate reads
+// the row alone, 2026-09-27; an instance-unpinned handler bridges the
+// pinned instance — SYNTAX's explicit handler bridge).
+handler h { tick() => resume(1) }
+fn main() = (ok()) ~> h

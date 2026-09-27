@@ -8,4 +8,7 @@ effect Log { note(x: Int) -> Int }
 effect Flow(src: Int, sink: Int) { move(x: Int) -> Int }
 fn inner() with Flow(1, Store) = move(1)
 fn ok() with !Flow(1, Log) = inner()
-fn main() = ok()
+// The handler at main makes the program EXECUTABLE (the root gate reads
+// the row alone, 2026-09-27).
+handler h { move(x) => resume(x) }
+fn main() = (ok()) ~> h
