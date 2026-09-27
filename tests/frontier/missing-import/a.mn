@@ -1,0 +1,2 @@
+// The declaring module: `helper` lives here and nowhere else.
+fn helper(x) = x + 1

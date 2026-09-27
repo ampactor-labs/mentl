@@ -660,54 +660,47 @@ if C=$(wt_m2_ensure); then
   # instrument.
   # Read off the same ScopeAll judgment as the board: every module's missing
   # names, where `check` saw the entry's narrowed report.
-  mmiss=$(grep -cE 'E_MissingVariable' "$vj_err" || true)
+  mmiss=$(grep -cE 'E_MissingVariable|E_MissingImport' "$vj_err" || true)
   rm -f "$vj_out" "$vj_err"
-  say "· manifest: $mmiss missing name(s) on the wheel's own DAG judgment"
+  say "· manifest: $mmiss missing name(s) on the wheel's own DAG judgment (E_MissingImport: a name a module reaches only through the whole link)"
   if [[ "$mmiss" -gt 0 ]]; then
     say "✗ MANIFEST: a name resolves in the blob but not the import DAG — a module"
     say "  is missing an import edge (the canon.mn class). Probe: mentl check src/main.mn"
     fail=1
   fi
-  # THE PER-MODULE SOLO SWEEP — every shipped module checked ON ITS OWN, so a
-  # module that uses a name it never imports is caught although the whole
-  # link resolves it (solo_violations_max, monotone down; 0 retires the drift
-  # catalog). It lived in the frontier until 2026-09-26, the one frontier leg
-  # that read src/, which made the frontier's verdict depend on every comment
-  # edit in the wheel; it is a census of the wheel's own source, so it belongs
-  # here, judged by the wheel under test. One cursor per module, in parallel:
-  # each check is process-isolated and judged by artifact.
-  sv_max=$(grep -E '^solo_violations_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  svkey=$(wt_memo_key_run "$C/m2.wasm" src lib "=solo_violations_max:$sv_max")
-  if svmemo=$(wt_memo_hit solo-sweep "$svkey"); then
-    say "$svmemo (memo)"
+  # THE ISLANDS — modules the entry never links. The per-module solo sweep
+  # (63 processes, ~2 min per source change) is gone: a reference whose
+  # binding was declared in a module its own module never imports refuses
+  # E_MissingImport inside the ONE judgment above (F0b, 2026-09-27), so
+  # every module the entry links is judged there. What that judgment cannot
+  # see is a module NOBODY links from the entry — lib/combinators and the
+  # tutorials today — and each of those is its own closure's root: one
+  # small check per island, judged by the same wheel, memoized like the rest.
+  islkey=$(wt_memo_key_run "$C/m2.wasm" src lib)
+  if islmemo=$(wt_memo_hit islands "$islkey"); then
+    say "$islmemo (memo)"
   else
-    sv_specs=()
-    for svf in src/*.mn src/backends/*.mn lib/*.mn lib/dsp/*.mn lib/ml/*.mn lib/tutorial/*.mn; do
-      sv_specs+=("$ROOT/$svf")
-    done
-    sv_pool_dir=$(mktemp -d)
-    printf '%s\0' "${sv_specs[@]}" | SEED_ART="$ROOT/$C/m2.wasm" SV_POOL_DIR="$sv_pool_dir" \
-          SV_ROOT="$ROOT" xargs -0 -n 1 -P "${FRONTIER_POOL:-$(nproc)}" bash -c '
-            source "$SV_ROOT/tools/wt-env.sh" >/dev/null 2>&1
-            h=$(printf %s "$1" | cksum | cut -d" " -f1)
-            n=$(wt_run --dir "$SV_ROOT" --dir /tmp --dir "$SV_ROOT::/mentl-home" "$SEED_ART" check "$1" 2>&1 | grep -cE "E_MissingVariable")
-            printf "%s\n" "$n" > "$SV_POOL_DIR/$h"' sv-child
-    sv_landed=$(find "$sv_pool_dir" -type f 2>/dev/null | wc -l)
-    if [[ "$sv_landed" != "${#sv_specs[@]}" ]]; then
-      say "✗ per-module solo sweep: the flight dropped results ($sv_landed/${#sv_specs[@]} landed)"
-      fail=1
-    else
-      sv_total=$(awk '{s+=$1} END{print s+0}' "$sv_pool_dir"/*)
-      svline="· per-module solo sweep: $sv_total violation(s) within the $sv_max ceiling across ${#sv_specs[@]} modules"
-      if [[ -n "$sv_max" && "$sv_total" -le "$sv_max" ]]; then
-        say "$svline"
-        wt_memo_put solo-sweep "$svkey" "$svline"
-      else
-        say "✗ per-module solo sweep: rose to $sv_total against ceiling ${sv_max:-unset} — a module newly under-imports its names"
-        fail=1
+    isl_linked=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" query src/main.mn modules 2>/dev/null | grep -oE '[A-Za-z_][A-Za-z_0-9/.-]*' | sort -u)
+    isl_bad=0; isl_n=0
+    for islf in src/*.mn src/backends/*.mn lib/*.mn lib/dsp/*.mn lib/ml/*.mn lib/tutorial/*.mn; do
+      islm=${islf#src/}; islm=${islm#lib/}; islm=${islm%.mn}
+      if ! printf '%s\n' "$isl_linked" | grep -qx "$islm"; then
+        isl_n=$((isl_n + 1))
+        isl_miss=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$C/m2.wasm" check "$islf" 2>&1 | grep -cE 'E_MissingVariable|E_MissingImport')
+        if [[ "$isl_miss" -gt 0 ]]; then
+          isl_bad=$((isl_bad + 1))
+          say "✗ island $islf: $isl_miss missing name(s) on its own closure"
+        fi
       fi
+    done
+    islline="· islands: $isl_n module(s) the entry never links, each judged as its own root — $isl_bad with a missing name"
+    if [[ "$isl_bad" -eq 0 ]]; then
+      say "$islline"
+      wt_memo_put islands "$islkey" "$islline"
+    else
+      say "✗ $islline"
+      fail=1
     fi
-    rm -rf "$sv_pool_dir"
   fi
   } > "$census_out"
   cat "$census_out"

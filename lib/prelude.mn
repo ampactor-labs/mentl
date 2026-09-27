@@ -281,9 +281,7 @@ fn fold(init, f, xs) = {
   result()
 } ~> fold_handler(f, init)
 
-fn each(f, xs) = {
-  iterate(xs)
-} ~> each_handler(f)
+fn each(f, xs) = iterate(xs) ~> each_handler(f)
 
 fn any(pred, xs) = {
   iterate(xs)

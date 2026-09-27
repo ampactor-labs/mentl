@@ -35,6 +35,73 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-27 · pin 39b00d84c7ed0d59 (CLEAN m2 == m3) · THE SOLO SWEEP IS ONE JUDGMENT.
+  PROGRAM Track F's F0b: `E_MissingImport` refuses at the reference inside the
+  ScopeAll judgment; the 63-process per-module sweep is deleted.
+  **The gate.** A reference whose name is declared at module level in a module
+  its own module never imports — directly, transitively, or through the
+  prelude's closure, which the driver links into every compile unasked —
+  refuses at the reference naming both modules, ARMED at birth (the wheel:
+  zero; the sweep it replaces held `solo_violations_max: 0`). The declarer is
+  the statement's own column, read once per judgment into a table off each
+  module's decls (`inf_decl_module`); the closure is one table per judgment
+  (`inf_module_reaches` — the comment-reference gate reads it too, its per-hop
+  graph scan gone); whether a resolution is module-level is the env's answer
+  by position (`env_lookup_is_global`, the base carrying its own module-level
+  extent for a branch); the import edges ride the NModule as identities the
+  driver resolved (`imports`), never an authored spelling re-resolved. Cost:
+  the wheel's linked judgment 5.3 s / 720 MB against the boot's 5.3 s /
+  712 MB. verify.sh keeps the islands leg — 11 modules the entry never links,
+  each judged as its own root, 0 missing. RED-first: the two-module fixture
+  `tests/frontier/missing-import` accepted on boot b145b836 (exit 0, no
+  diagnostic), refused through m2 naming b and a.
+  **The kills, in order.** (1) The design as the peer named it — every env
+  entry carries its declaring module, set per statement — was built and
+  refuted by the wheel: 3,541 refusals, 3,413 naming the runtime libraries
+  (the ambient prelude) and the rest naming a PUBLISHER, not a declarer — a
+  handler's registration re-publishes its ops under the handler's module, a
+  caller's resolution re-publishes a HOF's row — so `graph_chase` read as
+  `graph`'s and `lowpat_has_tuple` as `backends/wasm`'s. The fifth field, the
+  declaring word and the per-statement wrappers are gone: the env carries no
+  module. (2) That measurement took 101 s and 4.3 GB and trapped at the 4 GB
+  ceiling: the diagnostic read its module names through
+  `module_path_of_handle`, a walk over every graph node per call, twice per
+  report; `module_name_of_handle`, the O(1) column read, already existed.
+  (3) The first m2 trapped on every program with a variable — `indirect call
+  type mismatch` inside this landing's own fold: the callback was written as
+  the pair-destructuring arm literal where fold calls two arguments. The boot
+  ACCEPTED that shape: `pair_fn_params` decomposed a single tuple parameter
+  against N parameters ("parameters ARE tuples", a rule whose comment
+  promised `|>` a splat-free pair delivery) and the emit never carried it —
+  `(1, 2) |> add` checked clean and trapped, `add((1, 2))` returned 0
+  silently, `apply2({ (a, x) => a + x })` trapped, a two-parameter fn passed
+  to a pair-calling HOF trapped. The rule is deleted (the wheel's m2 built
+  with zero hits), the shapes refuse, `E_FnArityMismatch` is armed, two
+  frontier legs hold the contract, and the capability is
+  `Hβ.lower.parameter-product-calling-convention`. (4) The runner exited 134
+  on a trap with no message; it prints the backtrace now — the instrument
+  that pinned (3) in one read after a probe cycle would have cost hours.
+  (5) The first frontier: 12 red. `warm-inc`, because the warm cone judged
+  its modules under PATHS while restored cells carried NAMES, so a cone
+  module's one import named nothing — the cone judges under the name, its
+  import edges the scan's resolved deps. The other eleven were one root: the
+  proposer minted every candidate under whichever module the judgment entered
+  last, so a same-module candidate read as a stranger's and was refused —
+  `synth_propose` enters the hole's module first
+  (`Hβ.synth.leaked-diagnostic-lands-in-a-stranger`, module half closed).
+  (6) The quiet gate refused +5, then +3, authored `ref` markers; inference
+  grades them, and the m2 bytes were identical without them. Beside it:
+  prelude's `each` was the wheel's one `E_RedundantBraces`, at its formatter's
+  fixpoint again.
+  Board: crown 96/96 · micros 149/149 · frontier 407/0/2 (three new legs:
+  missing-import, tuple-into-binary, pair-arm-as-binary-callback) · verify
+  green (quiet 62/722, comment-refs 0, manifest 0, islands 11/0, doc-truth) ·
+  m3 leg 13.17 s · 999 MB (1,023,240 KB under the 1,042,000 ceiling) · IDE
+  gate GREEN on this boot, both legs (the page compiled in 372 ms, 4,399 WAT
+  lines) · thread gate RED once on the first board (1 decl 10, 61 decls 11 —
+  the host-clone count `Hβ.threads.gate-counts-host-clones` names), then
+  delta 0 alone, on the board's re-run, and on the previous boot under the
+  same runner; the board WHOLE.
 - 2026-09-27 · pin b145b836cbe0f162 (CLEAN m2 == m3) · A SURVIVING POSITIVE ROW IS A GATE.
   PROGRAM Step 4's A3-pos, the crown's positive half.
   **The hole, measured on boot d27fc81d.** `fn run(f) with E = f() + op_e()`

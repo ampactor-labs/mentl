@@ -137,46 +137,55 @@ type EnrichedCandidate = EnrichedCandidate({node: Node, origin: ProposerKind, re
 // vocabulary. Each proposer emits CANDIDATES; the kernel's
 // verify_after_apply is the proof gate.
 handler synth_default {
-  synth_propose(allowed_effects, context) => // The TARGET is read from the hole's own cell, once, at entry — the
-  // Context carries the handle and the type is one dereference away.
-  // Threading it locally is a binding; carrying it across the op
-  // boundary was a copy.
-  match context_target_ty(context) {
-    target_ty => // The in-scope VOCABULARY first (PLAN §1's second moat: type-directed
-    // search over what is already in scope, pruned by the row at every
-    // step), then the shape enumerators; every candidate through the ONE
-    // proof gate. Row-rejected vocabulary keeps its Reasons.
-    // The candidate space's own frontier, read BEFORE any enumeration
-    // mints into it: the form half saturates exactly the range this propose
-    // minted (PLAN §5's fork/merge duality — the range is what keeps merging
-    // cheap at a cursor position).
-    match graph_next() {
-      cand_start => match enumerate_vocabulary_calls(
-        target_ty,
-        allowed_effects,
-        context,
-        vocabulary_rings(context_hole_handle(context))
-      ) {
-        (vocab, row_rejected) => match search_outward(vocab, row_rejected, context_hole_handle(context), cand_start) {
-          (found, vocab_refused) => match verify_each_enriched(
-            enumerate_typed(target_ty, allowed_effects, context),
-            context_hole_handle(context),
-            cand_start
-          ) {
-            (shaped, shape_refused) => {
-              let survivors =
-                concat_candidates(found, shaped) |> collapse_equivalent |> rank_sort(context_hole_span(context)) |> reference_before_mint |> map_to_proposals
-              // Both refusal channels, one list: the ROW pruned a candidate
-              // before it was ever judged, the CELL refused one that was.
-              // A developer auditing the proposal sees every name the medium
-              // considered and why each is not here — in the rings the
-              // search reached, never the whole link.
-              resume(Proposal({rejected: vocab_refused ++ shape_refused, verdict: verdict_of(survivors, target_ty, context)}))
+  synth_propose(allowed_effects, context) => {
+    // Every candidate is minted INTO THE HOLE'S MODULE. The judgment leaves
+    // whichever module it entered last in force, so a candidate born after
+    // it read as that stranger's: its diagnostics landed at `strings:0:0`,
+    // and once the import gate read module identity every same-module
+    // reference was refused as a cross-module one (F0b's first frontier
+    // run: twelve legs, one root). The hole's column is the fact.
+    graph_module_enter(graph_module_of(context_hole_handle(context)))
+    // The TARGET is read from the hole's own cell, once, at entry — the
+    // Context carries the handle and the type is one dereference away.
+    // Threading it locally is a binding; carrying it across the op
+    // boundary was a copy.
+    match context_target_ty(context) {
+      target_ty => // The in-scope VOCABULARY first (PLAN §1's second moat: type-directed
+      // search over what is already in scope, pruned by the row at every
+      // step), then the shape enumerators; every candidate through the ONE
+      // proof gate. Row-rejected vocabulary keeps its Reasons.
+      // The candidate space's own frontier, read BEFORE any enumeration
+      // mints into it: the form half saturates exactly the range this propose
+      // minted (PLAN §5's fork/merge duality — the range is what keeps merging
+      // cheap at a cursor position).
+      match graph_next() {
+        cand_start => match enumerate_vocabulary_calls(
+          target_ty,
+          allowed_effects,
+          context,
+          vocabulary_rings(context_hole_handle(context))
+        ) {
+          (vocab, row_rejected) => match search_outward(vocab, row_rejected, context_hole_handle(context), cand_start) {
+            (found, vocab_refused) => match verify_each_enriched(
+              enumerate_typed(target_ty, allowed_effects, context),
+              context_hole_handle(context),
+              cand_start
+            ) {
+              (shaped, shape_refused) => {
+                let survivors =
+                  concat_candidates(found, shaped) |> collapse_equivalent |> rank_sort(context_hole_span(context)) |> reference_before_mint |> map_to_proposals
+                // Both refusal channels, one list: the ROW pruned a candidate
+                // before it was ever judged, the CELL refused one that was.
+                // A developer auditing the proposal sees every name the medium
+                // considered and why each is not here — in the rings the
+                // search reached, never the whole link.
+                resume(Proposal({rejected: vocab_refused ++ shape_refused, verdict: verdict_of(survivors, target_ty, context)}))
+              },
             },
           },
         },
       },
-    },
+    }
   },
   verify_candidate(candidate, hole_h) => // The real proof gate (PLAN.md §1: checkpoint -> INFER -> Verify ->
   // rollback). The candidate is a real minted node in the graph; run

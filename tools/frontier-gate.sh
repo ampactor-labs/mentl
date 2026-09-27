@@ -1847,6 +1847,37 @@ for i in "${!compilers[@]}"; do
     fail "tighten fixpoint (see $dir/tighten2.out)"
   fi
 
+  # ── E_MissingImport — the solo sweep as ONE judgment (F0b) ──────────
+  # entry imports a and b; b calls a's `helper` without importing a. The
+  # whole link resolves the name; on its own b would not compile. The
+  # judgment refuses at the reference, naming both modules — where the
+  # per-module solo sweep used to spend a process per module. RED-first on
+  # boot b145b836 (accepted: exit 0, no diagnostic).
+  midir="$dir/missing-import"
+  mkdir -p "$midir"
+  cp "$ROOT"/tests/frontier/missing-import/*.mn "$midir/"
+  (cd "$midir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$midir" --dir /tmp "$compiler" check entry.mn) >"$dir/missing-import.out" 2>&1
+  mirc=$?
+  micount=$(grep -c 'E_MissingImport error' "$dir/missing-import.out" || true)
+  if [ $mirc -ne 0 ] && [ "$micount" -ge 1 ] && grep -q 'declared in `a`, which `b` never imports' "$dir/missing-import.out"; then
+    pass "missing import refuses at the reference (E_MissingImport names b and a; exit=$mirc)"
+  else
+    fail "missing import (exit=$mirc E_MissingImport=$micount; see $dir/missing-import.out)"
+  fi
+
+  # ── parameters pair arity for arity — the tuple-decomposition rule is gone ──
+  # Two shapes the deleted "parameters ARE tuples" unification admitted and
+  # the emit never carried: a pair piped into a two-parameter fn, and a
+  # pair-destructuring arm literal handed where a two-argument callback is
+  # called (the shape the wheel's own build wrote into a fold, 2026-09-27).
+  # Both checked clean and trapped `indirect call type mismatch` on boot
+  # b145b836; both refuse now. Green again only at
+  # Hβ.lower.parameter-product-calling-convention.
+  run_refusal "$compiler" tuple-into-binary \
+    "$ROOT/tests/frontier/mn-tuple-into-binary.mn" E_TypeMismatch "$dir"
+  run_refusal "$compiler" pair-arm-as-binary-callback \
+    "$ROOT/tests/frontier/mn-pair-arm-as-binary-callback.mn" E_TypeMismatch "$dir"
+
   # ── mentl fmt — layout is projection, never contract ────────────────
   # The render is TOTAL over the surface and precedence-inverse (an
   # operand looser than its parent re-wraps in the parens the parse

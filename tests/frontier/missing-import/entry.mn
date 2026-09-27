@@ -1,0 +1,5 @@
+// The entry links both: `mentl check entry.mn` must REFUSE E_MissingImport
+// at b's reference to `helper`, naming b and a.
+import a
+import b
+fn main() = use_it(20)

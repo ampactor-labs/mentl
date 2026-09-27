@@ -96,9 +96,32 @@ effect InferCtx {
   // were installed before the copy was minted and are copied at the mint.
   inf_open_decl(Int)
   inf_decl_entry() -> Int
+  // Does module `from` import module `to`, transitively? Read off the
+  // module DAG's reachability table, built once per judgment from the
+  // graph's own import edges (F0b): does `from` import `to` transitively,
+  // or is `to` in the prelude's closure, which the driver links into every
+  // compile unasked.
+  inf_module_reaches(Int, Int) -> Bool
+  // The module a module-level name is DECLARED in — 0 when no module-level
+  // statement declares it — read off each module's own decls once per
+  // judgment, never off the env: an entry is re-published wherever a
+  // judgment further on refines it, so the publisher's module is not the
+  // declarer's.
+  inf_decl_module(String) -> Int
 }
 
-handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceiling = 0, decl_entry = 0 {
+handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceiling = 0, decl_entry = 0, reach = [], decl_modules = [] {
+  inf_module_reaches(from, to) => {
+    let table = if len(reach) == 0 { module_reach_table() } else { reach }
+    resume(reach_table_has(table, from, to)) with reach = table
+  },
+  inf_decl_module(name) => {
+    let table = if len(decl_modules) == 0 { decl_module_table() } else { decl_modules }
+    resume(match smap_get(table, name) {
+      None => 0,
+      Some(m) => m,
+    }) with decl_modules = table
+  },
   inf_enter_fn(h, answer_h, fn_span, effs) => // stack = [InferFrame, ...] where each InferFrame is a record:
   //   {accumulated_row: EffRow, answer_handle: Int, declared: List,
   //    fn_span: Span, row_handle: Int}
@@ -601,7 +624,7 @@ fn crc_judge_dollars(ref dollars, i, ref lvix, ref cdix) = if i >= len(dollars) 
             // backticks. The report one branch down already read the
             // comment's module from `h` for its own span; the hit test was
             // the half that ignored it.
-            module_reaches(graph_module_of(h), graph_module_of(dh)),
+            inf_module_reaches(graph_module_of(h), graph_module_of(dh)),
             None => false,
           },
         }
@@ -1252,7 +1275,7 @@ handler poly_capture with held = [] {
 // to carry: the column is total because entering a module is what parsing is.
 fn infer_program_converged(src) = {
   enter_link_root()
-  infer_modules_converged([("<stdin>", src)])
+  infer_modules_converged([("<stdin>", [], src)])
 }
 
 // ─── The per-module parse — one text per module, never one weave ─────────
@@ -1281,22 +1304,25 @@ fn infer_program_converged(src) = {
 // inside it.
 fn enter_link_root() = {
   let rspan = Span(1, 0, 1, 0)
-  match mint_node(NModule({decls: [], path: "<link>", span: rspan}), rspan) {
+  match mint_node(NModule({decls: [], imports: [], path: "<link>", span: rspan}), rspan) {
     N(_, _, h) => graph_module_enter(h),
   }
 }
 
 fn parse_modules(ref mods) = mods |> map(parse_one_module) |> flatten
 
+// One module: (identity, import identities, source). The imports are the
+// driver's resolved edges, carried onto the NModule so the module DAG is
+// graph content read by identity — never an authored spelling re-resolved.
 fn parse_one_module(m) = match m {
-  (path, text) => {
+  (path, imports, text) => {
     let mspan = Span(1, 0, count_lines(text) + 2, 0)
-    let mh = match mint_node(NModule({decls: [], path: path, span: mspan}), mspan) {
+    let mh = match mint_node(NModule({decls: [], imports: imports, path: path, span: mspan}), mspan) {
       N(_, _, h) => h,
     }
     graph_module_enter(mh)
     let stmts = lex(text) |> parse_program
-    graph_register_node(mh, NModule({decls: stmts, path: path, span: mspan}))
+    graph_register_node(mh, NModule({decls: stmts, imports: imports, path: path, span: mspan}))
     stmts
   },
 }
@@ -1726,6 +1752,37 @@ fn judge_stmt_one(ref node) = {
 // no single name (a destructured let, an expression statement) contributes
 // no key; missing edges DEGRADE TO SOURCE ORDER (equal depths walk in
 // source order), never reorder a dependent before its dependency.
+// Every module-level name → the module that declares it, one walk over the
+// module cells' own decls (F0b): a statement declares its head name and the
+// names it mints beside it — a type's constructors, an effect's ops, a let
+// pattern's binders. Built once per judgment (infer_ctx caches it); the
+// reference check reads it where the env's entry would have named the
+// publisher instead of the declarer.
+fn decl_module_table() with !Mutate = fold(smap_new(), decl_module_cell, module_cells())
+
+fn decl_module_cell(acc, cell) = match cell {
+  (h, _p, _s, decls) => fold(acc, decl_module_add(h), decls),
+}
+
+fn decl_module_add(m: Int, acc, node) =
+  fold(acc, (t, name) => smap_add(t, name, m), stmt_declared_names(node))
+
+fn stmt_declared_names(node) = match node_body_of(node) {
+  NStmt(stmt) => match stmt {
+    FnStmt(name, _, _, _, _) => [name],
+    TypeDefStmt(name, variants) => [name] ++ map({ (vname, _, _) => vname }, variants),
+    EffectDeclStmt(name, _, ops) => [name] ++ map({ (op, _, _, _) => op }, ops),
+    HandlerDeclStmt(name, _, _, _, _) => [name],
+    LetStmt(pat, _, _) => pat_binders(pat),
+    RefineStmt(name, _, _) => [name],
+    AliasStmt(name, _) => [name],
+    RowAliasStmt(name, _) => [name],
+    ExprStmt(_) => [],
+    ImportStmt(_) => [],
+  },
+  _ => [],
+}
+
 fn stmt_decl_name(ref node) = match node {
   N(body, _, _) => match body {
     NStmt(FnStmt(name, _, _, _, _)) => name,
@@ -1815,8 +1872,8 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 // is reachable, and the trail records the segment's binds where a diff can
 // read them.
 fn segment_bracket(body, base, iseed) = match base {
-  (bb, bc, bi) => match iseed {
-    (ib, ie, ic) => body() ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
+  (bb, bc, bi, bg) => match iseed {
+    (ib, ie, ic) => body() ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi, bg) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
   },
 }
 
@@ -3668,6 +3725,21 @@ fn infer_var_ref(name, handle, span: ValidSpan) = {
     },
     Some(entry) => match entry {
       (scheme, reason, kind) => {
+        // F0b (2026-09-27): a name that resolves only because the whole link
+        // carries it — declared at module level in a module this reference's
+        // module never imports — refuses HERE, at the reference, where the
+        // per-module solo sweep used to spend a process per module to find
+        // it. The declarer is its statement's own column and the reference's
+        // module its node's; the closure is one table per judgment; and a
+        // local that shadows a module-level name is the env's own answer
+        // (env_lookup_is_global), never a guess from the name.
+        let dm = inf_decl_module(name)
+        let rm = graph_module_of(handle)
+        if dm != 0 && rm != 0 && dm != rm && env_lookup_is_global(name) && !inf_module_reaches(rm, dm) {
+          report(EMissingImport(name, module_name_of_handle(rm), module_name_of_handle(dm), span))
+        } else {
+          ()
+        }
         // A seq-op MENTION types as its FACE, never the raw body's scheme
         // (the substrate boundary: list_set's `l + 8` types l Int, and
         // only the op's own body may read that; the saturated and holed
@@ -5914,77 +5986,23 @@ fn unify_param_lists(ref a, ref b, span: ValidSpan, reason) = if len(a) == 0 || 
   unify_param_lists(drop_last(a), drop_last(b), span, reason)
 }
 
-// Parameters ARE tuples (DESIGN Ch 2 Insight 7). The one unification
-// rule that lets `|>` deliver a tuple to an N-ary function without a
-// splat operator. Three cases:
-//
-//   `len(pa) == len(pb)`          — pair positionally (the ordinary path)
-//   `len(pa) == 1`, head is tuple — decompose, pair element-wise
-//   `len(pa) == 1`, head is TVar  — bind TVar to TTuple(pb param types)
-//   symmetric for pb; otherwise   — arity mismatch
-//
-// Inference reads the shape and pairs structurally — the same discipline
-// that pairs TInt with TInt or TList(a) with TList(b).
-fn pair_fn_params(pa, pb, span: ValidSpan, reason) = {
-  let la = len(pa)
-  let lb = len(pb)
-  if la == lb {
-    unify_param_lists(pa, pb, span, reason)
-  } else if la == 1 {
-    try_tuple_decompose(last(pa), pb, span, reason)
-  } else if lb == 1 {
-    try_tuple_decompose(last(pb), pa, span, reason)
-  } else {
-    arity_mismatch(la, lb, span)
-  }
-}
-
-// Given a single param whose type is either a `TTuple` or a `TVar`,
-// reconcile it against a multi-param list.
-//   `TTuple(elems)` of matching arity — pair element-wise with params
-//   `TVar(_)`                         — unify TVar with TTuple of param types
-//   otherwise                         — arity mismatch
-fn try_tuple_decompose(single_param, many_params, span: ValidSpan, reason) = {
-  let pty = param_ty(single_param)
-  let lm = len(many_params)
-  match pty {
-    TTuple(elems) => if len(elems) == lm {
-      unify_tuple_elems_with_params(elems, many_params, span, reason, 0, lm)
-    } else {
-      arity_mismatch(len(elems), lm, span)
-    },
-    TVar(_) => {
-      let tup_ty = TTuple(param_types_flat(many_params))
-      unify_types(pty, tup_ty, span, reason)
-    },
-    _ => arity_mismatch(1, lm, span),
-  }
-}
-
-// Pair tuple element i with param i, flat-indexed to avoid snoc-walk
-// allocation on either input.
-fn unify_tuple_elems_with_params(elems, params, span: ValidSpan, reason, i, n) = if i >= n {
-  ()
+// Parameters pair POSITIONALLY, arity for arity. This fn carried a second
+// rule until 2026-09-27 — "parameters ARE tuples": a single tuple-typed or
+// free parameter decomposed against N parameters, so a pipe could deliver
+// a pair to a two-parameter function without a splat. The emit never
+// realized that rule on any shape, measured the day a pair-destructuring
+// arm literal handed to fold trapped inside the wheel's own build: piping
+// a pair into a two-parameter function trapped at the indirect call,
+// calling one with a single pair returned 0 silently, and a two-parameter
+// function passed where a pair-taking callback was called trapped — four
+// programs that checked clean and executed unproven. A type-layer rule
+// the calling convention does not carry is a miscompile with a signature,
+// so the shapes REFUSE here (E_FnArityMismatch) and the capability is the
+// calling-convention landing, `Hβ.lower.parameter-product-calling-convention`.
+fn pair_fn_params(pa, pb, span: ValidSpan, reason) = if len(pa) == len(pb) {
+  unify_param_lists(pa, pb, span, reason)
 } else {
-  let e = list_index(elems, i)
-  let pt = param_ty(list_index(params, i))
-  unify_types(e, pt, span, reason)
-  unify_tuple_elems_with_params(elems, params, span, reason, i + 1, n)
-}
-
-// Extract param types into a fresh flat list — O(1) amortized per
-// element via `list_set` into a pre-sized buffer. The resulting list
-// is tag=0 (flat); any subsequent `list_index` on it is O(1).
-fn param_types_flat(params) = {
-  let n = len(params)
-  param_types_loop(params, 0, n, make_list(n))
-}
-
-fn param_types_loop(params, i, n, own acc) = if i >= n {
-  acc
-} else {
-  let t = param_ty(list_index(params, i))
-  param_types_loop(params, i + 1, n, list_set(acc, i, t))
+  arity_mismatch(len(pa), len(pb), span)
 }
 
 fn arity_mismatch(la, lb, span: ValidSpan) = report(EFnArityMismatch(la, lb, span))

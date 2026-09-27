@@ -823,8 +823,14 @@ and this is the STATE.
   universal, and the ZERO-held ones are not ratchet work at all — a class
   measured at zero is armed, not counted (`diag_refuses`' own licence: "born at
   ZERO on every program measured, which is the point").
-- **Per-module manifest** — CLOSED at entry, OPEN per-module
-  (`solo_violations_max: 0`). The overlay is the stamped second half.
+- **Per-module manifest** — CLOSED at entry AND per-module (2026-09-27): a
+  name a module reaches only through the whole link refuses
+  `E_MissingImport` at the reference inside the one judgment — the declarer
+  read off the statement's own column, the closure one table per judgment
+  with the prelude's closure ambient — armed at zero on the wheel; the
+  63-process solo sweep and `solo_violations_max` are deleted, and verify.sh
+  keeps only the islands leg (the modules the entry never links). The overlay
+  is the stamped second half.
 - **Thread schedule** is REAL (host threads over shared image; measured
   2026-09-25 at 2×: two 1.5e9-iteration branches, bare 4.50 s wall / 4.47 s
   user, `~> parallel_compose` 2.31 s / 4.57 s) — and A BRANCH RUNS IN THE

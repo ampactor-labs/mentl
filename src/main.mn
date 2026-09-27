@@ -178,7 +178,7 @@ fn dispatch_invocation(verb) = match verb {
   VNew(name) => new_project(name),
   VWith(hname, target) => with_run(hname, target),
   VWelcome => welcome_run(),
-} ~> verify_ledger ~> env_handler(make_list(0), 0, env_index_new()) ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler
+} ~> verify_ledger ~> env_handler(make_list(0), 0, env_index_new(), 0) ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler
 
 // ─── edit_run — canonical Web IDE (browser-WASM; per IE walkthrough)
 //

@@ -400,6 +400,8 @@ weights |> filter({ (name, w) => w > 0 })
 
 **The literal takes exactly ONE parameter** — the value its arms match. Several arguments are a product the arms destructure (`{ (a, b) => a + b }` takes a pair), which is the parameter-list-as-product rule (§«Labeled call arguments») read at the literal.
 
+**And a pair is ONE argument, at every altitude.** A call's argument count is its callee's parameter count: `{ (a, b) => a + b }` is called as `f((1, 2))`, never `f(1, 2)`, and it is not a two-argument callback — `fold(0, { (acc, x) => … }, xs)` is refused, because `fold` calls its stage with two arguments; the binder form `(acc, x) => …` or a reference is the two-parameter value. Until 2026-09-27 the type layer decomposed a single tuple parameter against N parameters ("parameters ARE tuples") while the emit did not, so `(1, 2) |> add` checked clean and trapped at the indirect call; the rule is gone and the shapes refuse (`E_TypeMismatch`, its arity face). The calling convention that would make the two one value is `Hβ.lower.parameter-product-calling-convention`.
+
 **A brace opens a literal when a PATTERN ends at a `=>`.** That question is answered by a bounded token scan, never by parsing a pattern speculatively and never by layout: one pattern atom — an ident (optionally applied), a literal, or a balanced group — joined to further atoms only by `@` or `|`. Two adjacent atoms are never a pattern, so `{ setup()` newline `(x) => run(x) }` is the block it looks like. Record literal and block discrimination are unchanged and follow (§«Records», §«Function declarations»).
 
 ### The residue — `(params) => body`
@@ -2213,6 +2215,7 @@ token, so there is nothing to lift.*
 | `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame writes its state (`resume … with`), lies beyond the frame fence, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |
 | `E_ImportNameCollision` | two selective imports bind the same name    | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
+| `E_MissingImport`     | a name resolves only because the whole link carries it: declared at module level in a module the referencing module never imports, directly or transitively (the prelude's closure is ambient — the driver links it into every compile). ARMED at birth, 2026-09-27: the per-module solo sweep as one read of the one judgment, naming both modules at the reference | `MaybeIncorrect` | add `import <declaring module>` to the referencing module |
 | `E_UnknownArgLabel`   | a labeled arg names no declared parameter     | `MaybeIncorrect`     | check the label against the parameter names    |
 | `E_TypeMismatch`      | unification failed                            | `Unspecified`        | adjust types; widen / narrow                   |
 | `E_OccursCheck`       | infinite type                                 | `Unspecified`        | restructure to break cycle                     |

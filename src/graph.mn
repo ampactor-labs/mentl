@@ -1658,13 +1658,65 @@ fn module_path_pick(mh: Int, acc, c) = match c {
 // reason that comment already gives — graph.mn is the DAG bottom, so
 // every reader imports it.
 //
-// A HANDLE-facing entry, because that is what callers hold: a node's
-// module is stamped at its mint, so both sides arrive as handles and the
-// same-module case is one word compare with no path materialized at all.
-fn module_reaches(from_mh, target_mh) with !Mutate = if from_mh == target_mh {
-  true
-} else {
-  module_imports(module_path_of_handle(from_mh), module_path_of_handle(target_mh), [])
+// The judgment's readers (the comment-reference gate, the F0b import
+// check) ask it as handles through infer_ctx's cached table below; the
+// cursor's proximity rank still asks `module_imports` by path per call,
+// which walks the graph per hop and dies with the rank
+// (`Hβ.cursor.module-of-a-span-is-containment`).
+//
+// The whole module DAG's reachability in ONE graph walk (F0b, 2026-09-27):
+// every module cell, its direct import paths read off its own decls, and
+// each module's closure by a walk over that small graph. Built once per
+// judgment (infer_ctx caches it) so the per-reference import check is a
+// table read, never a graph scan per VarRef.
+fn module_reach_table() with !Mutate = {
+  let cells = module_cells()
+  // The prelude is linked into every compile unasked (driver_collect_dag
+  // seeds it before the entry), so its closure is every module's — the
+  // ambient world, absent only where no prelude resolves.
+  let ambient = match fold([], cell_handle_for("prelude"), cells) {
+    [] => [],
+    [ph, ..._] => module_closure(ph, cells),
+  }
+  fold(wmap_new(64), reach_table_add(cells, ambient), cells)
+}
+
+fn reach_table_add(cells, ambient, table, cell) = match cell {
+  (h, _p, _s, _d) => wmap_add(table, h, module_closure(h, cells) ++ ambient),
+}
+
+fn module_closure(h, cells) = closure_walk(cells, [h], [])
+
+fn closure_walk(cells, frontier, seen) = match frontier {
+  [] => seen,
+  [m, ...rest] => if handles_contain(seen, m) {
+    closure_walk(cells, rest, seen)
+  } else {
+    closure_walk(cells, rest ++ direct_import_handles(m, cells), push(seen, m))
+  },
+}
+
+// A module's direct imports are the identities the driver resolved and
+// carried onto its NModule — read by identity against the cells, never an
+// authored spelling re-resolved here.
+fn direct_import_handles(m: Int, cells) = match graph_node_body(m) {
+  NModule(mod) => paths_to_handles(mod.imports, cells),
+  _ => [],
+}
+
+fn paths_to_handles(paths, cells) = fold([], path_handle_join(cells), paths)
+
+fn path_handle_join(cells, acc, path: String) = fold(acc, cell_handle_for(path), cells)
+
+fn cell_handle_for(path: String, acc, c) = match c {
+  (h, p, _s, _d) => if p == path { push(acc, h) } else { acc },
+}
+
+fn handles_contain(xs, h: Int) = any({ x => x == h }, xs)
+
+fn reach_table_has(table, from: Int, to: Int) = match wmap_get(table, from) {
+  None => false,
+  Some(closure) => handles_contain(closure, to),
 }
 
 // Does module `from` import `target` (transitively)? Reads the live

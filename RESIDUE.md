@@ -853,6 +853,13 @@ rather than the address surface, and `report_at` already takes a module name
 so a report whose handle is known can name its module. The open question is the
 reports raised where no handle is in hand — a zero span is a report that never
 had an address, not one that lost it.
+THE MODULE HALF CLOSED 2026-09-27 (the F0b pin): `synth_propose` enters the
+hole's module before it mints, so every candidate node is born where the hole
+is, its diagnostics name that module, and the import gate reads a candidate's
+reference as the hole's own. That is how the half was found — with module
+identity load-bearing, twelve frontier legs refused every same-module candidate
+as a stranger's. The SPAN half stands: a candidate is minted at `span_zero()`,
+so a report against it still lands at the hole's module at `0:0-0:0`.
 CLOSE: a fixture whose refuted candidate raises a located diagnostic, asserting
 the report names the module the candidate was judged in; and a `0:0-0:0` span
 reaching a user-facing report becomes a refusal rather than a coordinate.
@@ -1602,21 +1609,63 @@ the one judged graph — the absorption the scaffold's destiny names. The
 destiny is unchanged: `mentl verify` owning the suite, the memo a graph fact
 about the pin rather than a directory of files.
 
-`Hβ.verify.solo-sweep-is-one-judgment` — OPEN, NAMED 2026-09-26 by F0's
-timing. With the board memoized, the slowest thing a source change still pays
-is the per-module solo sweep: 63 separate `check` judgments (~2 minutes on
-four cores) to learn whether any module uses a name it never imports although
-the whole link resolves it. One ScopeAll judgment already resolves every
-reference; what it does not keep is WHERE each binding came from. The design:
-every env entry records the module handle that declared it (the decls column
-already holds the per-decl module; the entry needs the edge to it), and the
-reference site's module is `graph_module_of(h)`. A reference whose defining
-module is outside the referencing module's transitive import closure (the
-imports facet's edges) reports `E_MissingImport` at the reference, naming
-both modules. The sweep then becomes a board line read off the one judgment
-`mentl verify` already runs, `solo_violations_max: 0` becomes an armed
-refusal (born at zero on the wheel, `diag_refuses`' own licence), and
-verify.sh's sweep and its memo delete.
+`Hβ.verify.solo-sweep-is-one-judgment` — CLOSED 2026-09-27 (LEDGER, the F0b
+pin). With the board memoized, the slowest thing a source change still paid
+was the per-module solo sweep: 63 separate `check` judgments (~2 minutes on
+four cores) to learn whether any module used a name it never imported although
+the whole link resolved it. It is one read of the ScopeAll judgment now: a
+reference whose declaring module is outside its own module's import closure
+reports `E_MissingImport` at the reference, naming both modules — ARMED at
+birth (the wheel measures zero; the sweep it replaces held
+`solo_violations_max: 0`). The sweep, its memo and that key are deleted; what
+verify.sh keeps is the islands leg — the modules the entry never links
+(lib/combinators, the tutorials), each checked as its own closure's root.
+THE DESIGN AS NAMED HERE WAS REFUTED BY THE WHEEL, and the record is the
+transferable half. "Every env entry records the module that declared it" was
+built first — a fifth tuple field set per statement — and the wheel's linked
+judgment answered 3,541 refusals: 3,413 named the runtime libraries (every
+module reaches `lists`, `memory`, `strings` and `prelude` without importing
+them, because the driver links the prelude into every compile unasked — so its
+closure is the ambient world, unioned into every module's), and the rest named
+a PUBLISHER, not a declarer: an entry is re-published wherever a later
+judgment refines it — a handler's registration re-publishes its ops under the
+handler's module, a caller's resolution re-publishes a HOF's row — so
+`graph_chase` read as declared in `graph` and `lowpat_has_tuple` in
+`backends/wasm`. The declarer is the statement's own column, so the fact is a
+table built once per judgment off each module's decls (`inf_decl_module`); the
+env carries no module at all, and whether a resolution is module-level is the
+env's own answer by position (`env_lookup_is_global`), never a guess from the
+name. Three more things the build found, each closed in the same landing: the
+diagnostic's module names came from a per-call walk over every graph node
+(3,541 reports took 101 s and 4.3 GB where the boot checks the wheel in 5 s;
+the O(1) column read `module_name_of_handle` already existed); the warm route
+re-judged its cone under module PATHS while restored cells carried NAMES, so a
+cone module's one import named nothing — the import edges ride the NModule as
+identities the driver resolved, and the cone judges under the name; and the
+proposer minted every candidate under whichever module the judgment entered
+last, so twelve frontier legs refused same-module candidates as a stranger's
+(`Hβ.synth.leaked-diagnostic-lands-in-a-stranger`, its module half).
+
+`Hβ.lower.parameter-product-calling-convention` — OPEN, NAMED 2026-09-27 by
+the deletion that refuses its absence. `pair_fn_params` carried a second
+unification rule — "parameters ARE tuples": a single tuple-typed or free
+parameter decomposed against N parameters so a pipe could deliver a pair to a
+two-parameter function without a splat — and the emit never realized it on any
+shape. Measured the day a pair-destructuring arm literal handed to `fold`
+trapped inside the wheel's own build: `(1, 2) |> add` checked clean and trapped
+`indirect call type mismatch`; `add((1, 2))` returned 0 silently; `apply2({ (a,
+x) => a + x })` with `apply2(g) = g(1, 2)` trapped; a two-parameter fn passed
+where a pair-taking callback is called trapped — four programs that executed
+unproven. The rule is deleted, the shapes refuse (`E_FnArityMismatch`, armed
+the same day; the wheel carries none), and two frontier legs hold the contract
+(`tests/frontier/mn-tuple-into-binary.mn`,
+`tests/frontier/mn-pair-arm-as-binary-callback.mn`). What this names is the
+capability the rule promised: a function of N parameters and a function of one
+N-tuple are ONE value at the CALLING CONVENTION — the parameter product SYNTAX
+§«Labeled call arguments» describes, realized at lower as one representation
+(or one adapter minted where the two meet), so that a pair really can pipe into
+`add`. Until then the surface says what the emit does: a call's argument count
+is its callee's parameter count, and a pair is one argument.
 
 `Hβ.repr.option-of-word-niche` — NAMED 2026-08-18, by the landing that
 made the cost real. `base_digit(base, byte)` answers IS-this-a-digit and
@@ -2408,6 +2457,10 @@ was RED in a fresh container with no wheel change ("delta 1 exceeds 0 — 1
 decl 10, 61 decls 11"): a host-sensitive number standing in for a wheel
 fact. The count belongs to the medium — emitted spawn sites and the
 judgment's own spawns as a `mentl query` facet; strace stays a control.
+SECOND MEASUREMENT 2026-09-27 (the F0b pin): the same "1 decl 10, 61 decls
+11" on one board run, then delta 0 (10/10) on the gate alone, on the board's
+re-run, and on the previous boot under the same rebuilt runner — three draws
+each. The wheel did not move the number; one host clone did.
 
 `Hβ.ide.session-call-reinstantiates-per-call` — OPEN, read 2026-09-25.
 `ide/wheel-worker.js:278-288` re-instantiates the wasm and zero-fills

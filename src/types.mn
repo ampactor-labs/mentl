@@ -1452,7 +1452,10 @@ type NodeBody
   // decls lists every top-level Handle so a doc/render projection can
   // walk the module without re-parsing source.
   | NHole(Int)
-  | NModule({decls: [Node], path: String, span: Span})
+  // imports: the modules this one imports, as the IDENTITIES their own
+  // cells carry — resolved by the driver's walk once and carried here as
+  // edges (F0b), so no reader re-resolves an authored spelling.
+  | NModule({decls: [Node], imports: [String], path: String, span: Span})
   // An authored type annotation carried live in the graph — the `-> RetTy`
   // return annotation (SYNTAX.md «Return type omission»: absent = inferred,
   // present = a CONSTRAINT). parse_type_expr mints this carrying the real Ty
@@ -1983,7 +1986,12 @@ fn show_flow_label(label) with Pure = match label {
 // Scoped bindings via push/pop mark. Env is never passed as argument.
 // Every read performs env_lookup; every write performs env_extend.
 // Entries are 4-tuples (name, Binding, Reason, SchemeKind) — SchemeKind
-// carries construction-origin metadata that lower dispatches on.
+// carries construction-origin metadata that lower dispatches on. The
+// module a name is DECLARED in is deliberately not an entry field: an
+// entry is re-published wherever a judgment further on refines it (a handler's
+// registration re-publishes its ops, a caller's resolution a HOF's row),
+// so the publisher's module is not the declarer's. The declarer is the
+// statement's own column, read once per judgment (`inf_decl_module`, F0b).
 // The OP VOCABULARY declares HERE — the lowest module every performer
 // imports — while the handlers live at their subsystem (pipeline.mn);
 // the effects prepass phase (pre_register_effect) makes the pair
@@ -1996,6 +2004,11 @@ effect EnvRead {
   env_lookup_type(String) -> Option((Binding, Reason, SchemeKind))
   env_lookup_ctor(String) -> Option((Binding, Reason, SchemeKind))
   env_lookup_variants(String) -> Option((Binding, Reason, SchemeKind))
+  // Whether the name's live binding is MODULE-LEVEL: published below every
+  // open scope mark. The env is the scope stack, so the entry's position
+  // is the fact — false for a parameter, a let, a nested fn, and for a
+  // name bound nowhere.
+  env_lookup_is_global(String) -> Bool
   env_snapshot() -> Env
 }
 
@@ -2017,7 +2030,10 @@ effect BranchEnv {
   // PARAMETERIZE the effect and the handler-arm binding refuses a
   // parameterized/bare mix on one handler (measured: BranchEnv(t) vs
   // EnvWrite at both arm sites).
-  env_base_view() -> ([(String, Binding, Reason, SchemeKind)], Int, [[(String, Int)]])
+  // The fourth component is the base's MODULE-LEVEL extent — the root's
+  // first open scope mark, or its count when no scope is open — so a
+  // branch instance answers env_lookup_is_global for a base hit exactly.
+  env_base_view() -> ([(String, Binding, Reason, SchemeKind)], Int, [[(String, Int)]], Int)
   env_publishes() -> [(String, Binding, Reason, SchemeKind)]
 }
 
@@ -2334,6 +2350,10 @@ type DiagKind
   | EOccursCheck(Int, Ty, Span)
   // the unresolved context (name / "constructor: X" / ...)
   | EMissingVariable(String, Span)
+  // F0b (2026-09-27): the name resolves only because the whole link carries
+  // it — declared in a module the referencing module never imports. Name,
+  // the referencing module's path, the declaring module's path.
+  | EMissingImport(String, String, String, Span)
   // the type name
   | ENotARecordType(String, Span)
   | EResumeOutsideArm(Span)
@@ -2622,6 +2642,7 @@ fn diag_span(d) with Pure = match d {
   EFnArityMismatch(_, _, s) => s,
   EOccursCheck(_, _, s) => s,
   EMissingVariable(_, s) => s,
+  EMissingImport(_, _, _, s) => s,
   ENotARecordType(_, s) => s,
   EResumeOutsideArm(s) => s,
   EResumeAmbiguousOp(_, s) => s,
@@ -2694,6 +2715,7 @@ fn diag_source(d) with Pure = match d {
   EFnArityMismatch(_, _, _) => "infer",
   EOccursCheck(_, _, _) => "graph",
   EMissingVariable(_, _) => "infer",
+  EMissingImport(_, _, _, _) => "infer",
   ENotARecordType(_, _) => "infer",
   EResumeOutsideArm(_) => "infer",
   EResumeAmbiguousOp(_, _) => "lower",
@@ -2766,6 +2788,7 @@ fn diag_code(d) with Pure = match d {
   EFnArityMismatch(_, _, _) => "E_TypeMismatch",
   EOccursCheck(_, _, _) => "E_OccursCheck",
   EMissingVariable(_, _) => "E_MissingVariable",
+  EMissingImport(_, _, _, _) => "E_MissingImport",
   ENotARecordType(_, _) => "E_NotARecordType",
   EResumeOutsideArm(_) => "E_ResumeOutsideArm",
   EResumeAmbiguousOp(_, _) => "E_ResumeAmbiguousOp",
@@ -3005,6 +3028,10 @@ fn diag_refuses(d) with Pure = match d {
   // contract in the same landing and seen RED first (exit 0, 4,474 WAT bytes
   // against the unarmed tree).
   True,
+  EMissingImport(_, _, _, _) => // ARMED at birth (F0b, 2026-09-27): born at zero on the wheel — the solo
+  // sweep it replaces held `solo_violations_max: 0` across 63 modules — and
+  // the class is exactly what that sweep ran 63 processes to find.
+  True,
   EMissingVariable(_, _) => // ARMED 2026-07-18, the manifest arc's dividend: wheel census 0, and the
   // user-path licence MEASURED — a no-import stdlib program (map / fold /
   // len / any) resolves via the DAG's prelude seed and runs; the stdin
@@ -3088,6 +3115,14 @@ fn diag_refuses(d) with Pure = match d {
   // candidates are unaffected: `segment_bracket` judges each under its own
   // `diag_branch`, and only a proven candidate joins the root — which it
   // does carrying no diagnostic, since a diagnostic is what refuses it.
+  True,
+  EFnArityMismatch(_, _, _) => // ARMED 2026-09-27, the day the tuple-decomposition rule left
+  // pair_fn_params: a call whose argument count is not its callee's
+  // parameter count has no calling convention to emit into — the four
+  // shapes that rule admitted trapped at the indirect call or returned 0.
+  // Its surface name is E_TypeMismatch, the arity face of the class armed
+  // above, on the same licence: the wheel's census is zero (the m2 built
+  // under the refusal with no diagnostic).
   True,
   EComputedDelayDepth(_) => // ARMED at birth (2026-08-12), the same literal licence its sibling
   // rides: the judgment is "was a literal written here", read from the
@@ -3178,6 +3213,7 @@ fn diag_message(d) with !Mutate = match d {
   EFnArityMismatch(a, b, _) => "function arity mismatch: {int_to_str(a)} param(s) vs {int_to_str(b)} param(s)",
   EOccursCheck(h, ty, _) => "infinite type: {int_to_str(h)} occurs in {show_type(ty)}",
   EMissingVariable(what, _) => what,
+  EMissingImport(name, rm, dm, _) => "`{name}` resolves only because the whole link carries it: it is declared in `{dm}`, which `{rm}` never imports — on its own, `{rm}` would not compile. Add `import {dm}` to `{rm}`",
   ENotARecordType(name, _) => "{name} is not a record type",
   EResumeOutsideArm(_) => "`resume` outside a handler arm",
   EResumeAmbiguousOp(name, _) => "'{name}' resumes under arms of two different handlers — the k record's op binding is ambiguous",

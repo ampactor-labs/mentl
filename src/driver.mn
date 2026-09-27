@@ -199,6 +199,28 @@ fn module_imports_of(entry) with Pure = match entry {
   (_n, _p, _s, i) => i,
 }
 
+// The import edges of the module named `name`, as the IDENTITIES the
+// link's cells carry — each dep's own entry name (F0b). The walk resolved
+// every authored spelling to a path once; this reads the entry that path
+// belongs to, so two spellings of one file are one edge and a spelling no
+// entry resolves to names nothing.
+fn entry_import_names(modules, name: String) = match find((e) => module_name_of(e) == name, modules) {
+  Some(entry) => fold(
+    [],
+    (acc, spelling) => match entry_name_of_path(modules, driver_module_path(spelling)) {
+      Some(dep) => push(acc, dep),
+      None => acc,
+    },
+    module_imports_of(entry)
+  ),
+  None => [],
+}
+
+fn entry_name_of_path(modules, path: String) = match find((e) => module_path_of(e) == path, modules) {
+  Some(entry) => Some(module_name_of(entry)),
+  None => None,
+}
+
 fn driver_collect_visit_list(ref modules, own collected, own visited) with !Diagnostic = fold(
   (collected, visited),
   (acc, m) => match acc {
@@ -472,7 +494,8 @@ fn driver_entry_scoped(ref entry_module, dscope) = {
       // module's decls out of the weave by span containment — has no work
       // left, and rehome_seam_comments goes with it: the parser attaches
       // comments within ONE module now, so no comment can cross a seam.
-      let ast = infer_modules_converged(map({ (m, _p, text) => (m, text) }, mods))
+      let ast =
+        infer_modules_converged(map({ (m, _p, text) => (m, entry_import_names(modules, m), text) }, mods))
       (ast, mods)
     },
   }
@@ -507,6 +530,10 @@ fn warm_program() = list_index(warm_asts, 0) |> map({ (_, ss) => ss }) |> flatte
 // matched against it to build the downstream closure, so a spelling here
 // against paths there would drop an importer out of the cone and leave a
 // stale judgment standing after its dep was edited.
+// The fourth component is the module's NAME — the identity its cell carries
+// on every route (F0b): the cone re-judges a module under it, so a warm
+// cell and the cold cell it replaces are one identity, and the import edges
+// carried on the NModule resolve against restored and fresh cells alike.
 fn driver_tree_scan(ref entry_module) = {
   let modules = driver_canonical_order(driver_collect_dag(entry_module))
   let paths = map(module_path_of, modules)
@@ -515,14 +542,30 @@ fn driver_tree_scan(ref entry_module) = {
       Some(text) => (module_path_of(entry), str_hash(text), filter(
         (dep_path) => contains_module(paths, dep_path),
         map(driver_module_path, module_imports_of(entry))
-      )),
-      None => (module_path_of(entry), 0, []),
+      ), module_name_of(entry)),
+      None => (module_path_of(entry), 0, [], module_name_of(entry)),
     },
     modules
   )
 }
 
-fn scan_pairs(ref scan) = map({ (m, h, _) => (m, h) }, scan)
+fn scan_pairs(ref scan) = map({ (m, h, _, _) => (m, h) }, scan)
+
+// The name a scan entry carries for a path, and the names of a path's deps —
+// the identities the cone's judgment and its NModule import edges use.
+fn scan_name_of_path(scan, path: String) = match find({ (p, _, _, _) => p == path }, scan) {
+  Some(entry) => match entry {
+    (_, _, _, name) => name,
+  },
+  None => path,
+}
+
+fn scan_deps_of_path(scan, path: String) = match find({ (p, _, _, _) => p == path }, scan) {
+  Some(entry) => match entry {
+    (_, _, deps, _) => deps,
+  },
+  None => [],
+}
 
 // The cache path is keyed by ENTRY alone — the weave's state lives in
 // the manifest INSIDE the image, so a changed tree still finds its old
@@ -678,14 +721,14 @@ fn driver_incremental() = {
   } else {
     let cone = downstream_closure(scan, changed)
     eprint_string("warm: re-deriving {names_join(cone)}\n")
-    let fresh = rederive_cone(cone)
+    let fresh = rederive_cone(cone, scan)
     let old_asts = list_index(warm_asts, 0)
     // The full program reassembles in the scan's own canonical order: an
     // unchanged module contributes its restored (already-inferred)
     // bucket, a cone module its fresh one — lower and emit see the whole
     // weave either way.
     let merged = scan |> map({
-      (m, _, _) => (m, if module_in(cone, m) { assoc_stmts(fresh, m) } else { assoc_stmts(old_asts, m) }),
+      (m, _, _, _) => (m, if module_in(cone, m) { assoc_stmts(fresh, m) } else { assoc_stmts(old_asts, m) }),
     })
     driver_warm_persist(entry, merged, cur_pairs)
     flatten(map({ (_, ss) => ss }, merged))
@@ -711,9 +754,9 @@ fn manifest_hash_of(ref pairs, name: String) = match find({ (m, _) => m == name 
 // the cone in the scan's canonical (deps-first) order so re-derivation
 // reads every re-judged dep before its importer.
 fn downstream_closure(ref scan, changed) = {
-  let dag = map({ (m, _, deps) => (m, deps) }, scan)
+  let dag = map({ (m, _, deps, _) => (m, deps) }, scan)
   let cone = closure_fix(dag, changed)
-  scan |> map({ (m, _, _) => m }) |> filter((m) => module_in(cone, m))
+  scan |> map({ (m, _, _, _) => m }) |> filter((m) => module_in(cone, m))
 }
 
 fn closure_fix(ref dag, cone) = {
@@ -747,15 +790,20 @@ fn names_join(ref xs) = fold("", (acc, m) => if byte_len(acc) == 0 { m } else { 
 // is the read — the driver_module_path call that stood here re-resolved a
 // name the scan had already resolved, and against a path it would not have
 // resolved at all.
-fn rederive_cone(ref cone) = map(
+fn rederive_cone(ref cone, scan) = map(
   (m) => {
-    // The module is judged UNDER ITS OWN NAME. This read
+    // The module is judged UNDER ITS OWN NAME — the identity the cold route
+    // gave its cell, read off the scan. This once read
     // infer_program_converged, which names its single module "<stdin>" — so
     // every re-derived module in the cone claimed to be stdin, and the warm
     // emission diverged from the cold one at exactly the modules the cone
-    // touched (measured: warm-start and warm-inc both RED the day the parse
-    // moved). A module's identity is what it resolves to.
-    let ast = infer_modules_converged([(m, fs_read_file(m))])
+    // touched; then it judged under the PATH, which restored cold cells never
+    // carry, so the cone's import edges named modules the image called
+    // something else (F0b's first warm run refused a two-module program at
+    // its one import). Its import edges are the scan's resolved deps, as
+    // names; the pair stays keyed by path for the reassembly.
+    let ast =
+      infer_modules_converged([(scan_name_of_path(scan, m), map((d) => scan_name_of_path(scan, d), scan_deps_of_path(scan, m)), fs_read_file(m))])
     (m, ast)
   },
   cone

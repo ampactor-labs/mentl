@@ -813,48 +813,6 @@ field_offset_unprovable_max: 4
 # entry above was written and the ceiling was left at 8 to spare a gate cycle.
 fs_impl_bypass_max: 7
 
-# 2026-08-07: the PER-MODULE ratchet (PLAN §11 Phase 3.5's first half) —
-# E_MissingVariable across every src module's SOLO check, monotone DOWN.
-# Seeded 36 after the two one-line import fixes (verify→graph+io killed
-# 12+1, format→parser killed 5; the sweep measured 53 before them). The
-# residual 36 IS two architectural seams, not under-imports: the
-# infer→pipeline handler pair (env_handler/intern_view installed in
-# infer.mn:2310 but declared a layer up — the declarations relocate DOWN,
-# ~20 violations across nine closures) and the mcp→main verb grammar
-# (parse_cli_args + VerbSpec shared across two transports but declared
-# at the entry — the grammar relocates to a home both import, 16
-# violations). The frontier's solo-sweep leg enforces this ceiling; it
-# reaches 0 when the seams close and the per-module check becomes the
-# drift-catalog retirement gate.
-# RATCHETED DOWN 36 → 16 at the handler relocation (env_handler + the
-# env machinery → src/env.mn; intern_table/intern_view + intern_probe →
-# src/intern.mn; infer imports both, healing all nine closures at once).
-# RATCHETED DOWN 16 → 0 at the verb-grammar relocation (EntryVerb, the
-# VerbSpec table, parse_cli_args + address/target helpers → src/cli.mn;
-# main and mcp both import it — one grammar, two transports, one home).
-# ZERO IS THE FLOOR AND THE CONTRACT: every module's solo check resolves
-# every name through its own declared imports. Per §11 3.5 this gates
-# the drift-catalog retirement.
-# INTERROGATED 2026-09-15 and KEPT — the measurement is recorded so the
-# next session does not re-derive it. The day E_UseAfterMove was armed and
-# use_after_move_max retired, this key was the obvious next candidate: it
-# reads ZERO, and the thing it counts (E_MissingVariable) is ALREADY in
-# diag_refuses, which looks exactly like a counter standing beside a proof.
-# It is not. E_MissingVariable refuses the program the wheel actually
-# LINKS — one concatenated blob in which every name resolves whether or
-# not its module declared the dep. This sweep checks each module ALONE,
-# which is a judgment the wheel never performs on itself, so the zero here
-# is not a held invariant but a genuine measurement of something otherwise
-# unobserved. That is §11 tripwire (3) — the board is blind to what the
-# wheel never does — and lib/** joining the sweep in 2026-08-16 found 20
-# unresolved names the very first run, which is the proof that retiring it
-# would delete a real channel rather than a duplicate. Its honest
-# retirement is the per-module env overlay (§7: "CLOSED at entry, OPEN
-# per-module … the overlay is the stamped second half",
-# Hβ.driver.per-module-env-overlay), after which the link itself judges
-# per module and the sweep has nothing left to discover.
-solo_violations_max: 0
-
 # 2026-08-07: the ANONYMITY ratchet (PLAN §11 Phase 2.5, second half) —
 # the census tier's convictions on the wheel link, monotone DOWN. Two
 # keys, not one, because the classes fall differently: an eta-wrapper
