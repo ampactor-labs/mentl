@@ -154,7 +154,7 @@ fn infer_context(body) =
 // its own generation while tools/march.sh, which the board actually calls,
 // stayed green. A chain with one home cannot lose a handler to a copy.
 fn emit_context(body) =
-  body() ~> string_table ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> emit_site_module
+  body() ~> string_table ~> line_registry ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> emit_site_module
 
 // A route that LOWERS installs both stacks, emit inside analysis, and that
 // nesting order is itself a fact — so it has one home too rather than being
@@ -289,7 +289,7 @@ fn report_unhandled_effects(lowered) = match env_lookup("main") {
           let census = {
             walk_lemit(lowered)
             drain_effect_census()
-          } ~> effect_census_collector ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> state_slots_collector ~> yield_seen_collector ~> wasi_ops_collector
+          } ~> effect_census_collector ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> fn_lines_collector ~> yield_seen_collector ~> wasi_ops_collector
           report_unhandled_names(p, 0, len(p), demands_to_enames(census, 0, []), reason_span_or_zero(reason))
         },
       },

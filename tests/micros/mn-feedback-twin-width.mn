@@ -1,0 +1,18 @@
+// expect: 40
+// One generic recurrence reached at Int and at Float from one program is
+// two twins of `step`, and each twin owns its own line at its own width:
+// the Float twin's ring holds f64 slots where the floor's holds words.
+// On boot 542ea5a3 the two twins shared ONE module line declared at the
+// floor's width, and the Float twin's `local.set` of an f64 into an i32
+// slot refused to assemble.
+fn step(x, a) = ((prev) => a * x + prev) <~ delay(1)
+
+fn drive_int(n, acc) = if n == 0 { acc } else { drive_int(n - 1, step(1, 2)) }
+
+fn drive_float(n, acc) = if n == 0 { acc } else { drive_float(n - 1, step(1.5, 2.0)) }
+
+fn main() = {
+  let i = drive_int(3, 0)
+  let f = drive_float(3, 0.0)
+  if i == 6 && f == 9.0 { 40 } else { 41 }
+}

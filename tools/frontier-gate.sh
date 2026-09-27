@@ -1252,6 +1252,26 @@ for i in "${!compilers[@]}"; do
   capture_math_shadow "$compiler" "$dir" || continue
   run_program "$compiler" dsp-crucible \
     "$ROOT/tests/frontier/dsp-crucible/dsp-demo.mn" 42 math "$dir"
+
+  # The `<~` line is a ring in the image owned by the record that holds the
+  # cycle (L2, 2026-09-27): a 24,000-deep echo driven 2,000,000 ticks. The
+  # verdict is the value (84 = ⌈2,000,000 / 24,000⌉); the ticks per second
+  # print beside it as the board's number for the cost of a deep line — a
+  # wall clock is a host fact and is never ratcheted. On boot 542ea5a3 the
+  # line was 24,000 module globals shifted per tick.
+  run_program "$compiler" feedback-deep-line \
+    "$ROOT/tests/frontier/mn-feedback-deep-line.mn" 84 yes "$dir"
+  if [ -f "$dir/feedback-deep-line.wasm" ]; then
+    dl_t0=$(date +%s%N)
+    "$WT" run "${WT_RUN_FLAGS[@]}" "$dir/feedback-deep-line.wasm" >/dev/null 2>&1 || true
+    dl_t1=$(date +%s%N)
+    dl_ms=$(( (dl_t1 - dl_t0) / 1000000 ))
+    if [ "$dl_ms" -gt 0 ]; then
+      echo "  · deep line: 2,000,000 ticks at depth 24,000 in ${dl_ms} ms ($(( 2000000000 / dl_ms )) ticks/s)"
+    else
+      echo "  · deep line: 2,000,000 ticks at depth 24,000 in <1 ms"
+    fi
+  fi
   run_program "$compiler" ml-crucible \
     "$ROOT/tests/frontier/ml-crucible/ml-demo.mn" 42 math "$dir"
   run_program "$compiler" adaptive-crucible \

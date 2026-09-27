@@ -15,17 +15,22 @@ fn echo(mix, x) with Clock(48_000) =
   ((prev) => x + mix * prev) <~ delay(24_000)
 ```
 
-`<~` means "feeds back." The `Clock(48_000)` in the row is the iterative
-context the loop runs under — a `<~` outside one is a compile error
-(`E_FeedbackNoContext`), because feedback without a tick has no meaning.
-The right side is a memory element: it hands back what you gave it 24,000
+`<~` means "feeds back." What advances the loop is a tick — here the
+function's own next call, at the rate `Clock(48_000)` in the row declares:
+the medium infers a cycle's clock from the cycle's own site (a `<~` is a
+per-site line whose previous iteration is the enclosing function's next
+call), so the row names the rate the program runs at, never a context the
+loop must find before it may exist. The right side is a memory element: it hands back what you gave it 24,000
 ticks ago, and at 48,000 ticks a second that is half a second — the slap of
 a stone room. The left side is what to do each tick: `prev` is the echo's
 own past arriving back; the new sample is now plus a share of before. The
 whole physics of an echo, in one line you can read aloud. And a promise
 rides inside it: `prev` is not a box secretly allocated each tick — the
-medium inlines the loop into a register, which is why this same echo can
-sit inside a function that has sworn never to allocate, and the oath holds.
+line's memory belongs to the record of the function that holds the loop
+(one line per closure, per handler install, per module for a top-level
+fn), allocated once where that record is built and read as a register
+every tick, which is why this same echo can sit inside a function that has
+sworn never to allocate, and the oath holds.
 Lesson `03-verbs` (`mentl run lib/tutorial/03-verbs.mn`) builds the context
 from nothing and walks all five verbs.
 
@@ -65,8 +70,9 @@ is a claim the compiler refuses at the line that broke it.
 
 ## The modules
 
-- `clock.mn` — the tick contexts (`Clock`, the Iterate-class effects `<~`
-  requires).
+- `clock.mn` — the four peer notions of time (`Clock`, `Tick`, `Sample`,
+  `Deadline`), the rates a program declares it runs at; `<~` infers its
+  clock and requires none of them.
 - `feedback.mn` — the memory elements: `delay(n)`, `accumulate(init)`, the
   IIR state carriers the recurrence form binds `prev` against.
 - `processors.mn` — gain, filters, clip: the everyday stages.

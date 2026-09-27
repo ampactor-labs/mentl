@@ -5246,6 +5246,76 @@ territory (`Hβ.effects.arm-world-static-rule`, A6). The op-level join is
 sound (it over-approximates) and is the waypoint; the per-install charge
 is the form.
 
+`Hβ.emit.feedback-line-shared-across-twins` — CLOSED 2026-09-27 (L2 of the
+Pulse sprint, pin 43aeb30f3bcc3848), WITH ITS TWO SIBLING FACES, named and
+closed in the same landing: `Hβ.emit.feedback-line-shared-across-closure-
+instances` and `Hβ.emit.feedback-line-shared-across-installs`. THE SHAPE: a
+`<~` site's line was N module globals `$s<h>` … `$s<h>_<N−1>` keyed by the
+site handle ALONE, declared once at the floor's width and shifted N−1 global
+moves per tick. One root, three silent wrongs, each measured on boot
+542ea5a3 before the fix: two twins of one generic recurrence shared one line
+(`fn step(x, a) = ((prev) => a * x + prev) <~ delay(1)` at `(1, 2)` and
+`(1.5, 2.0)` — the Float twin's `local.set` of an f64 into the i32 line
+refused to ASSEMBLE); two closures minted from one lambda shared the lambda's
+line (`let f = make(1); let g = make(100)` answered 41 with zero diagnostics,
+`g`'s first tick reading `f`'s prior — the two-channel bug every stereo
+stage writes); two installs of one handler shared the arm's line (a second
+`~> smooth` carried on at 4, 5, 6 where a fresh filter reads 1, 2, 3); and
+`delay(24_000)` was 24,070 globals, 2.48 MB of WAT and 0.44–0.52 s for
+50,000 ticks. THE FORM: handler = state = closure, read at the site — a
+cycle's memory belongs to the record of the function that contains it.
+`LineHome = LhStatic | LhSlot(Int)` (types.mn): the lower frame carries
+`line_base` (a closure's capture count; an arm's fence plus the lines of the
+arms lowered before it, threaded through the arm fold; a k's captures plus
+its three-word tail; −1 for a top-level fn's frame) and its `lines`, a site
+takes the innermost frame's next slot before its body lowers
+(`ls_line_slot`), and the `LowFn`'s seventh field carries the `(handle,
+depth, home)` triples every record minter reads: `LMakeClosure` and
+`LMakeContinuation` allocate one `[head][slot × depth]` ring per site at the
+site's repr under the active bracket and store its address at the site's
+slot (`emit_line_mints`); `LHandleWith` sizes the install record by the sum
+over the handler's arm fns (`handler_arm_lines`, from the `line_registry`
+the one emit-state walk seeds) and mints past the arms; a top-level fn's
+site — its record the module's immutable data record, which wasi-threads
+re-applies on every spawn — reads an instance global `$__line_<site>_<symbol>`,
+one per emitted twin, filled by `$__init_lines` in `_start` and
+`$wasi_thread_start`. The tick is a load, a store and a bounded increment at
+any depth: 2,000,000 ticks at depth 24,000 in ~20 ms wall including the
+process floor (`tests/frontier/mn-feedback-deep-line.mn`, exit 84; the leg
+prints ticks per second, never ratcheting a wall clock). Micros
+`mn-feedback-{twin-width,closure-instances,arm-instances,deep-line}`. THE
+KILLS: the refusal banked for arms and remainders (`E_FeedbackInHandlerArm`)
+died at the install layout — the arm's `__state` IS the install record, the
+line's natural owner; a positional `(handle, depth)` list died at the
+install's per-effect arm order against lower's declaration order (the triple
+carries the slot); the remainder-owned line, built by the same rule, has no
+witness — a let-bound multi-shot perform is off the k2 spine and floors
+before any line ticks (L0's `Hβ.lower.held-resume-record-is-not-reclaimed`
+neighbourhood; the spine grammar). The `ref` the init-lines body copied
+from its sibling tripped the quiet-gate ratchet (721 → 722) and went.
+
+`Hβ.threads.closure-line-shared-across-branches` — NAMED 2026-09-27 (L2).
+A closure or install record reached from two threaded branches shares its
+`<~` ring — the record is one image record — and the race rule
+(`E_ThreadedBranchEffect`) reads a branch's EFFECT row, not the cycle state
+its body writes, so `(f(1)) >< (f(1)) ~> parallel_compose` over one
+recurrence-bearing closure `f` races on the ring with no diagnostic. The
+rule's next arm: a cycle's tick is a write the row must see (the inferred
+clock, `Hβ.dataflow.clock-calculus-sample-rate`, is what makes it an effect
+the row carries), and then the same walk that refuses a stateful handler
+refuses a shared line. Fixture to write RED: the fanout above, expecting
+the refusal.
+
+`Hβ.threads.static-line-is-per-instance` — NAMED 2026-09-27 (L2). A
+top-level fn's `<~` line rides an instance global (a mutable word cannot
+live in the module's data record under wasi-threads, which re-applies data
+segments on every spawn), so each spawned instance allocates its own set in
+`$wasi_thread_start` — the semantics the module globals always had, now
+stated: two branches calling one top-level recurrence run two independent
+lines with no diagnostic. Whether that is the right reading (each branch its
+own clock) or a silent split of one filter is the inferred clock's question
+— the same peer as above, from the other side.
+
 `Hβ.emit.arith-on-aggregate-is-pointer-arith` — CLOSED 2026-09-27 (L1 of
 the Pulse sprint, pin 542ea5a353823b76). THE SHAPE: `emit_binop_for`'s arithmetic arm
 dispatched on a WIDTH join of the operands' emitted reprs, and `repr_of`
@@ -9115,11 +9185,13 @@ must not die at the assembler; the diagnostic belongs at the site, and
 the emit belongs at the arity the product proves. Measured 2026-08-12
 with a two-param named fn under `map`.
 THE NAMED REMAINDER is `Hβ.dataflow.delay-line-runtime-depth` — a line
-whose depth is a runtime value, which wants the image-backed sequence
-(a view whose start advances IS the ring) rather than a register file,
-and therefore rides the value ontology's view/slice work (5.4) and the
-arena (4.3). Until it lands the refusal is the honest surface: the
-medium says it cannot hold that line instead of quietly holding a
+whose depth is a runtime value. Since L2 (2026-09-27) every line IS a ring
+in the image — `[head][slot × depth]`, owned by the record of the function
+that holds the cycle — so a runtime depth is the same ring with a cap word
+beside the head and the site's modulus read from the record instead of an
+`i32.const`: it no longer waits on the view/slice work or the arena, only
+on a program that needs it. Until then the refusal is the honest surface:
+the medium says it cannot hold that line instead of quietly holding a
 different one. `Hβ.fold.show-leaf`'s sibling shape applies to LF.2/LF.3
 (Accumulate's typed carrier, FilterSpec's taps), which are the same
 read growing arms, not new machinery.

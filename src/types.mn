@@ -3491,10 +3491,33 @@ type Resolution
 // the enclosing frame — the LowExpr describing the captured value's
 // type. RGlobal returns the var-ref's enclosing handle (caller-side
 // fallback). This is the W7 + A1 capture-handle correctness fix.
+// Where a `<~` site's delay line lives — the record of the function that
+// contains the cycle. `LhSlot(i)` is word `i` past the record header (a
+// closure's captures, a handler record's state and arms, a continuation's
+// metadata tail all precede it): the site reads the ring's address at
+// `8 + 4*i` off its own `__state`, so every closure minted from one lambda,
+// every install of one handler and every reified remainder owns its own
+// line. `LhStatic` is a top-level fn's site: its record is the module's
+// immutable data record, so the line address rides an instance global
+// instead (`$__line_<site>_<symbol>`, one per emitted twin, allocated at
+// start — a spawned instance allocates its own, the semantics the module
+// globals had).
+type LineHome = LhStatic | LhSlot(Int)
+
 effect LowerScope {
-  // fn_name, locals_names, locals_handles, captures_names, captures_handles, lambda_h (-1 = not a lambda frame)
-  ls_enter_frame(String, [String], [Int], [String], [Int])
-  ls_exit_frame()
+  // fn_name, locals_names, locals_handles, captures_names, captures_handles,
+  // line_base — the record slot the frame's FIRST `<~` line takes (the
+  // words before it: a closure's captures, a handler record's state and
+  // arms, a k record's captures and metadata tail); -1 for a top-level
+  // fn's frame, whose lines are static
+  ls_enter_frame(String, [String], [Int], [String], [Int], Int)
+  // the frame's `<~` sites as (site handle, depth, home) — the LowFn carries
+  // them so the record's minter sizes the record and fills each line's slot
+  ls_exit_frame() -> [(Int, Int, LineHome)]
+  // a `<~` site (handle, depth) takes the innermost frame's next line slot
+  ls_line_slot(Int, Int) -> LineHome
+  // how many frames are open — 0 at a top-level declaration's own entry
+  ls_frame_depth() -> Int
   // append (name, handle); returns slot
   ls_bind_local(String, Int) -> Int
   // (LF.B) push a `<~` lambda param → feedback handle's prior local

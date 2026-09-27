@@ -35,6 +35,99 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-27 · pin 43aeb30f3bcc3848 (TRANSITION m3 == m4) · THE `<~` LINE IS A RING OWNED BY THE RECORD THAT HOLDS THE CYCLE.
+  L2 of the Pulse sprint — the fourth of the four foundation defects the
+  refuter found. **The shape:** the line was N module globals `$s<h>` …
+  `$s<h>_<N−1>` keyed by the site handle ALONE, declared once at the
+  floor's width (`state_slot_globals` read `repr_of(lookup_ty(h))` outside
+  any twin bracket) and shifted N−1 global moves per tick
+  (`emit_delay_shift`). Three silent wrongs shared that one root, each
+  measured on boot 542ea5a3 before a line was written: two twins of one
+  generic recurrence shared one line — `fn step(x, a) = ((prev) => a * x +
+  prev) <~ delay(1)` reached at `(1, 2)` and `(1.5, 2.0)` wrote f64 into an
+  i32 slot and REFUSED TO ASSEMBLE (`type mismatch in local.set, expected
+  [f64] but got [i32]`); two closures minted from one lambda shared the
+  lambda's line — `let f = make(1); let g = make(100)` answered 41 with
+  zero diagnostics, `g`'s first tick reading `f`'s prior (the two-channel
+  bug every stereo stage writes); two installs of one handler shared the
+  arm's line (a second `~> smooth` carried on at 4, 5, 6 where a fresh
+  filter reads 1, 2, 3 — exit 41, zero diagnostics); and `delay(24_000)`
+  was 24,070 globals and 2.48 MB of WAT for a one-line echo, 50,000 ticks
+  in 0.44–0.52 s.
+  **The form — handler = state = closure, read at the site.** A cycle's
+  memory belongs to the record of the function that contains it.
+  `LineHome = LhStatic | LhSlot(Int)` (types.mn); the lower frame carries a
+  `line_base` (where its record's line slots begin: a closure's capture
+  count, an arm's fence plus the lines of the arms lowered before it —
+  threaded through the arm fold — a k's capture count plus its
+  three-word tail; −1 for a top-level fn's frame, entered with no frame
+  below it) and a `lines` list; a `<~` site takes the innermost frame's
+  next slot BEFORE its body lowers (`ls_line_slot`), and the frame's exit
+  returns its `(handle, depth, home)` triples, which ride the `LowFn`'s
+  seventh field. Every record minter reads them: `LMakeClosure` sizes
+  `8 + 4nc + 4·lines` and stores one ring per site past the captures
+  (`emit_line_mints`); `LMakeContinuation` past its tail;
+  `LHandleWith` sizes the install record by the sum over the handler's arm
+  fns (`handler_arm_lines`, read from the `line_registry` the one
+  emit-state walk seeds — `fn_lines_collector`, the state-slot collector's
+  replacement, keyed by fn name) and mints past the arms. A top-level
+  fn's record is the module's immutable data record — and under
+  wasi-threads a data segment is re-applied on every spawn, so a mutable
+  word cannot live there — so a static site reads `$__line_<site>_<symbol>`,
+  one instance global per emitted twin (the twin's name from
+  `emit_site()`, the floor's from the record), declared from
+  `static_line_owners` and filled by `$__init_lines` before `$__init_lets`
+  in `_start` and in `$wasi_thread_start` (per instance, the semantics the
+  globals had). The ring is `[head@0][pad][slot × depth @8]` at the site's
+  repr under the active bracket (`line_ring_bytes`); the tick reads the
+  ring's address once, loads the oldest slot (`head`-indexed; a depth-1
+  ring has no head), emits the body, stores over that slot and advances
+  the head modulo the depth — four memory ops at any depth. Persist
+  carries the rings as image records; the globals record carries one
+  address word per static site where it carried N slots.
+  **Measured:** 2,000,000 ticks at depth 24,000 in 20–23 ms wall
+  INCLUDING the process floor (`tests/frontier/mn-feedback-deep-line.mn`,
+  exit 84 = ⌈2,000,000 / 24,000⌉; the leg prints the ticks per second and
+  never ratchets a wall clock), where the boot took 0.44–0.52 s for
+  50,000; the same program is 71 globals and 39 KB of WAT where it was
+  24,070 and 2.48 MB. The wheel's one site (`cursor_session`) is the
+  WHOLE m2/m3 divergence: 25 lines — the global renamed, the build key,
+  the globals save/restore slot, the ring locals and tick, `$__init_lines`
+  and its call in `_start`. Micros 157/157 (four new: `mn-feedback-twin-
+  width`, `-closure-instances`, `-arm-instances`, `-deep-line`, each RED
+  on the prior boot); frontier 414/0/2; crown green; m3 leg 10.65 s /
+  1,049,576 KB, m4 10.87 s / 1,049,152 KB under the 1,058,000 ceiling.
+  **The kills, so the record is examined and not lucky:** (1) the design
+  banked before this session REFUSED a `<~` inside a handler arm or a
+  continuation body (`E_FeedbackInHandlerArm`); reading the install emit
+  killed it — the arm's `__state` IS the install record, the natural owner
+  of an arm's line, and building the slot past the arms cost one fold and
+  one registry where a refusal would have named the crown-jewel shape (a
+  handler that IS an audio effect with internal state) as unsupported.
+  (2) The first `LowFn` line list carried `(handle, depth)` and let the
+  minter derive slots by position; the install emit lays arms in per-EFFECT
+  group order while lower slots them in DECLARATION order, so position
+  would have put arm B's ring at arm A's slot — the triple carries the
+  slot lower assigned, and the install's order only has to be complete.
+  (3) The remainder-owned line was built by the same rule and given a
+  fixture — which trapped IDENTICALLY on the boot and on m2, at the
+  multishot yield floor: a let-bound multi-shot perform is off the k2
+  spine (L0's named remainder), so no `<~` after one can tick today and
+  the k-owned slot has no witness. (4) The repin march refused before its
+  m2 leg at the quiet-gate ratchet (authored `ref` 721 → 722): the new
+  init-lines body had copied its sibling's `ref` marker; the marker went,
+  the inference grades it. Banked and named: a closure or install record
+  shared by two threaded branches shares its ring and the race rule reads
+  effects, not cycle state (`Hβ.threads.closure-line-shared-across-
+  branches`); a top-level fn's line is per instance, so two branches
+  calling one recurrence run two lines with no diagnostic
+  (`Hβ.threads.static-line-is-per-instance`);
+  `Hβ.dataflow.delay-line-runtime-depth` is the same ring with a cap word
+  beside the head and no longer waits on the view/slice work. lib/dsp's
+  README and clock.mn header claimed `<~` REQUIRES an Iterate-class
+  handler and cited `E_FeedbackNoContext`; both are raised to SYNTAX's
+  inferred-clock rule. Peers closed: `Hβ.emit.feedback-line-shared-across-
+  twins` (with its closure-instance and install faces).
 - 2026-09-27 · pin 542ea5a353823b76 (TRANSITION m3 == m4) · ARITHMETIC DEMANDS A NUMBER OF ITS OPERAND.
   L1 of the Pulse sprint — the third of the four foundation defects the
   refuter found. **The shape:** `emit_binop_for`'s arithmetic arm read only

@@ -1,0 +1,11 @@
+// expect: 3
+// A half-second echo at 48 kHz is a 24,000-deep line. Driven 50,000 ticks
+// with a constant input of 1: y[n] = 1 + y[n - 24000], so the last tick
+// answers 3. The line is a ring — a load, a store and a bounded increment
+// per tick at any depth — where boot 542ea5a3 declared 24,000 globals and
+// moved every one of them per tick (2.5 MB of WAT for this program).
+fn echo(x) = ((prev) => x + prev) <~ delay(24000)
+
+fn drive(n, acc) = if n == 0 { acc } else { drive(n - 1, echo(1)) }
+
+fn main() = drive(50000, 0)

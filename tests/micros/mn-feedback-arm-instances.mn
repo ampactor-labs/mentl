@@ -1,0 +1,20 @@
+// expect: 40
+// A handler arm's `<~` line belongs to the INSTALL: the arm's record is
+// the install record, and the line sits in it past the arms, so two
+// installs of one handler are two filters. Under one install the three
+// samples read 1, 2, 3 (sum 6); a second install starts from zero again
+// (6). On boot 542ea5a3 the arm's site was a module line and the second
+// install carried on at 4, 5, 6 (exit 41, zero diagnostics).
+effect Sm { sample(x: Int) -> Int }
+
+handler smooth {
+  sample(x) => resume(((prev) => x + prev) <~ delay(1)),
+}
+
+fn run3() = sample(1) + sample(1) + sample(1)
+
+fn main() = {
+  let a = (run3()) ~> smooth
+  let b = (run3()) ~> smooth
+  if a == 6 && b == 6 { 40 } else { 41 }
+}

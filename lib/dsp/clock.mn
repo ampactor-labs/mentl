@@ -10,10 +10,13 @@
 //   Deadline — budget (completion guarantee, independent of wall read)
 //
 // Each is negated independently (`!Clock`, `!Tick`, `!Sample`,
-// `!Deadline`) through spec 01's Boolean algebra. `<~` feedback
-// (spec 10) requires an Iterate-class handler (Clock / Tick / Sample
-// are instances) as iterative context; the IterContext marker is read
-// structurally from the handler stack at inference time.
+// `!Deadline`) through spec 01's Boolean algebra. `<~` feedback infers
+// its clock from its own site (SYNTAX §«<~»: a per-site line whose
+// previous iteration is the enclosing function's next call) and requires
+// none of these; they are the rates a program declares it runs at. The
+// IterContext marker below is the vocabulary an inferred clock calculus
+// will read (`Hβ.dataflow.clock-calculus-sample-rate`); nothing reads it
+// at a `<~` site today.
 //
 // Four handler tiers per effect: real (delegates to host) · test
 // (deterministic) · record (tees to trace) · replay (reads trace).
@@ -50,25 +53,28 @@ effect Deadline {
   remaining() -> Duration
 }
 
-// IterContext — the Iterate-class MARKER capability. `<~` feedback
-// requires the structural presence of an Iterate-class handler (a
-// cycle/iteration-resume context) in the enclosing stack. Membership is
-// a STRUCTURAL property, never a name-allowlist (a name-allowlist is the
-// string-keyed drift, drift mode 8): an effect joins the class by its
-// handler providing this marker. `iter_context()` returns a Bool — pure
-// presence, no string tag (the tag re-derived what the handler stack
-// already proves; Carried-Truth). Inference reads this at the `<~` site.
-// Clock / Tick / Sample are INSTANCES of the class — they provide the
-// marker; any user-defined register of that shape (a value that performs
-// an iterative effect carrying state across ticks) provides it too.
+// IterContext — the Iterate-class MARKER capability: the vocabulary an
+// inferred clock calculus reads when it proves what advances a cycle
+// (`Hβ.dataflow.clock-calculus-sample-rate`). Membership is a STRUCTURAL
+// property, never a name-allowlist (a name-allowlist is the string-keyed
+// drift, drift mode 8): an effect joins the class by its handler providing
+// this marker. `iter_context()` returns a Bool — pure presence, no string
+// tag (the tag re-derived what the handler stack already proves;
+// Carried-Truth). Clock / Tick / Sample are INSTANCES of the class — they
+// provide the marker; any user-defined register of that shape (a value
+// that performs an iterative effect carrying state across ticks) provides
+// it too. A `<~` site does not read it: the site's line is a per-site
+// register the enclosing function's next call advances, so a cycle needs
+// no context to exist, and `E_FeedbackNoContext` has no construction site
+// by design (SYNTAX §«<~»).
 effect IterContext {
   iter_context() -> Bool
 }
 
-// no_iter_context is the identity element — the safe default when no
-// Iterate-class handler is on the stack. `<~` under this handler reads
-// false, which inference surfaces as E_FeedbackNoContext. An Iterate-class
-// time handler (installed nearer the `<~`) shadows it with `true`.
+// no_iter_context is the identity element — the safe default the compile
+// chains install when no Iterate-class handler is on the stack; an
+// Iterate-class time handler (installed nearer a cycle) shadows it with
+// `true`. Read by the clock calculus when it lands, by nothing today.
 handler no_iter_context {
   iter_context() => resume(False),
 }

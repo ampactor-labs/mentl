@@ -23,7 +23,7 @@
 //   left <| (fs)    →  LMakeTuple(h, [f(left) for f in fs])
 //   left >< right   →  LMakeTuple(h, [left, right])
 //   left ~> right   →  LHandleWith(h, left, right)
-//   left <~ spec    →  LFeedback(h, depth, left, spec) — depth from the spec
+//   left <~ spec    →  LFeedback(h, depth, home, left, spec) — depth from the spec, home from the frame
 import graph
 
 import types
@@ -373,11 +373,14 @@ type LowExpr
   // param (`(prev) => ...`) lowers to THIS — the recurrence y[n]=f(x[n],y[n-1])
   // is expressed, not commented. Carried-Truth: the feedback NODE is the value;
   // no register copy, no snapshot — emit reads the one local the cycle writes.
-  // handle, DEPTH, body, spec. The depth is the authored `delay(N)` read
-  // at the site — the number of priors the line carries, so the emit
-  // declares N slots and reads the oldest. It rides the node because the
-  // AST is where the literal lives and this is the pass that sees both.
-  | LFeedback(Int, Int, LowExpr, LowExpr)
+  // handle, DEPTH, HOME, body, spec. The depth is the authored `delay(N)`
+  // read at the site — the number of priors the line carries, so the emit
+  // sizes an N-slot ring and reads the oldest. The home is where that ring
+  // lives (`LineHome`, types.mn): a slot in the record of the function
+  // that contains the cycle, or the instance global a top-level fn's site
+  // reads. Both ride the node because the AST is where the literal lives
+  // and the frame stack is where the owner is known — this pass sees both.
+  | LFeedback(Int, Int, LineHome, LowExpr, LowExpr)
   // handle of the enclosing <~ site
   | LFeedbackPrior(Int)
   // THE ONE PERFORM. It replaced LPerform + LDirectPerform + LEvPerform,
@@ -498,9 +501,12 @@ type PerformDispatch = PdFrame(Int, String, String) | PdWalk(String, Int, String
 
 type LowValue = LInt(Int) | LFloat(Float) | LString(String) | LBool(Bool)
 
-type LowFn = LFn(String, Int, [String], [LowExpr], EffRow, Int)
+type LowFn = LFn(String, Int, [String], [LowExpr], EffRow, Int, [(Int, Int, LineHome)])
 
-// name, arity, param names, body stmts, effect row, fence.
+// name, arity, param names, body stmts, effect row, fence, lines — the
+// fn's `<~` sites as (site handle, depth, home), so the record's minter (a
+// closure mint, an install, a k reification, the static line init) sizes
+// the record by their count and fills each line's own slot with its ring.
 // fence = where this fn's __state evidence region starts,
 // in slots past the 8-byte header: closures pass their
 // capture count; handler arm fns pass nstate+total_arms
@@ -586,7 +592,7 @@ fn lexpr_handle(e) with Pure = match e {
   LMakeVariant(h, _, _) => h,
   LMatch(h, _, _) => h,
   LHandleWith(h, _, _, _, _, _) => h,
-  LFeedback(h, _, _, _) => h,
+  LFeedback(h, _, _, _, _) => h,
   LFeedbackPrior(h) => h,
   LPerform(h, _, _) => h,
   LFieldLoad(h, _, _) => h,
@@ -984,18 +990,27 @@ fn project_lambda_fn(origin, cap_pairs) = match graph_node_body(origin) {
     let cap_names = map({ (n, _) => n }, cap_pairs)
     let cap_handles = map({ (_, h) => h }, cap_pairs)
     let param_names_list = lower_param_names(params)
-    ls_enter_frame("", param_names_list, param_handles_of(origin, params), cap_names, cap_handles)
+    // A lambda's lines follow its captures in the closure record.
+    ls_enter_frame(
+      "",
+      param_names_list,
+      param_handles_of(origin, params),
+      cap_names,
+      cap_handles,
+      len(cap_pairs)
+    )
     lower_frame_fence_push()
     let lo_body = k2_guard(mark_tail(lower_body_reified(body_node)))
     lower_frame_fence_pop()
-    ls_exit_frame()
+    let lines = ls_exit_frame()
     Some(LFn(
       "lambda_{int_to_str(origin)}",
       len(params),
       param_names_list,
       [lo_body],
       mk_ef_pure(),
-      len(cap_pairs)
+      len(cap_pairs),
+      lines
     ))
   },
   _ => None,
@@ -1018,7 +1033,12 @@ fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body
     let base_param_handles = param_handles_of(origin, params)
     let param_handles_list =
       if bind_h == "" { base_param_handles } else { base_param_handles ++ [0, 0] }
-    ls_enter_frame(fn_name, param_names_list, param_handles_list, cap_names, cap_handles)
+    // A top-level fn's frame is entered with no frame below it; its record
+    // is the module's static data record, so its lines are STATIC — an
+    // instance global per site. A nested fn is a closure: its lines follow
+    // its captures in the record its mint builds.
+    let line_base = if ls_frame_depth() == 0 { -1 } else { len(cap_pairs) }
+    ls_enter_frame(fn_name, param_names_list, param_handles_list, cap_names, cap_handles, line_base)
     lower_frame_fence_push()
     let bind_fields = if bind_h == "" {
       []
@@ -1034,8 +1054,16 @@ fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body
       lower_body_reified(body_node)
     } ~> arm_state_ctx(bind_fields, bind_disc, bind_h)))
     lower_frame_fence_pop()
-    ls_exit_frame()
-    Some(LFn(fn_name, len(param_names_list), param_names_list, [lo_body], mk_ef_pure(), len(cap_pairs)))
+    let lines = ls_exit_frame()
+    Some(LFn(
+      fn_name,
+      len(param_names_list),
+      param_names_list,
+      [lo_body],
+      mk_ef_pure(),
+      len(cap_pairs),
+      lines
+    ))
   },
   _ => None,
 }
@@ -1051,7 +1079,7 @@ fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body
 fn project_thunk_fn(thunk_name, thunk_row, cap_pairs, branch_node, result_h, carrier_h, shared_input) = {
   let cap_names = map({ (n, _) => n }, cap_pairs)
   let cap_handles = map({ (_, h) => h }, cap_pairs)
-  ls_enter_frame("", [], [], cap_names, cap_handles)
+  ls_enter_frame("", [], [], cap_names, cap_handles, len(cap_pairs))
   lower_frame_fence_push()
   let inner = match shared_input {
     Some(input_h) => lower_call_default(result_h, branch_node, node_handle(branch_node), [LUpval(input_h, 0)]),
@@ -1059,8 +1087,8 @@ fn project_thunk_fn(thunk_name, thunk_row, cap_pairs, branch_node, result_h, car
   }
   let lo_body = k2_guard(LMakeTuple(carrier_h, [inner]))
   lower_frame_fence_pop()
-  ls_exit_frame()
-  LFn(thunk_name, 0, [], [lo_body], thunk_row, len(cap_pairs))
+  let lines = ls_exit_frame()
+  LFn(thunk_name, 0, [], [lo_body], thunk_row, len(cap_pairs), lines)
 }
 
 fn lower_call_partial(handle, fbody, fh, r_args, n_ps) = match partial_callee_form(handle, fbody, fh) {
@@ -1091,7 +1119,8 @@ fn lower_call_partial(handle, fbody, fh, r_args, n_ps) = match partial_callee_fo
           param_names,
           [apply_callee_form(form, handle, fh, body_args)],
           mk_ef_pure(),
-          len(captures)
+          len(captures),
+          []
         )
         LMakeClosure(handle, fn_ir, captures)
       },
@@ -2692,16 +2721,22 @@ fn lower_pipe(kind, left, right, handle) = match kind {
     LHandleWith(handle, lo_l, lo_r, hname, all_inits, arm_groups)
   },
   PFeedback => {
-    // <~ feedback — requires iterative context. The LFeedback emit declares
-    // and loads $__fb_prev_<h> (the prior-iteration output), so the body can
-    // read it LIVE. (LF.B) When the LHS is (prev) => body, prev binds to
-    // THIS feedback handle's prior node and the recurrence y[n]=f(x[n],y[n-1])
-    // is expressed — not commented. The lambda is INLINED (its body lowers
-    // directly into the cycle), never a closure: the prior is a register read,
-    // and a `<~` recurrence allocating a closure per tick would defeat !Alloc.
+    // <~ feedback. The site's line is a ring owned by the record of the
+    // function that contains the cycle: the site takes the innermost
+    // frame's next line slot here, BEFORE its body lowers, so an outer
+    // cycle's slot precedes any cycle nested in its recurrence. The
+    // LFeedback emit loads the ring's oldest slot into $__fb_prev_<h> (the
+    // prior-iteration output), so the body can read it LIVE. (LF.B) When
+    // the LHS is (prev) => body, prev binds to THIS feedback handle's prior
+    // node and the recurrence y[n]=f(x[n],y[n-1]) is expressed — not
+    // commented. The lambda is INLINED (its body lowers directly into the
+    // cycle), never a closure: the prior is a register read, and a `<~`
+    // recurrence allocating a closure per tick would defeat !Alloc.
+    let depth = feedback_line_depth(right)
+    let home = ls_line_slot(handle, depth)
     let lo_l = lower_feedback_body(left, handle)
     let lo_r = lower_expr(right)
-    LFeedback(handle, feedback_line_depth(right), lo_l, lo_r)
+    LFeedback(handle, depth, home, lo_l, lo_r)
   },
 }
 
@@ -4169,10 +4204,25 @@ fn lower_handler_arms_as_decls(arms, discriminator, config, state) = {
   // construction). Inline handle-exprs have no decl in env → 0 arms.
   let nstate = len(config) + len(state)
   let fence = nstate + sum_group_arm_lens(lookup_handler_arm_names_of(discriminator))
-  map((arm) => lower_one_arm_decl(arm, discriminator, config, state, fence), arms)
+  // The arms share ONE record — the install's — so their `<~` lines share
+  // one slot space past the fence: each arm's lines begin where the arms
+  // before it ended, threaded through the fold (the install's emit sizes
+  // the record by the sum over the same arm fns).
+  match fold(
+    ([], fence),
+    (acc, arm) => match acc {
+      (decls, line_base) => match lower_one_arm_decl(arm, discriminator, config, state, fence, line_base) {
+        LDeclareFn(LFn(n, a, p, b, r, f, lines)) => (decls ++ [LDeclareFn(LFn(n, a, p, b, r, f, lines))], line_base + len(lines)),
+        other => (decls ++ [other], line_base),
+      },
+    },
+    arms
+  ) {
+    (decls, _) => decls,
+  }
 }
 
-fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discriminator, config, state, fence) = {
+fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discriminator, config, state, fence, line_base) = {
   let fn_name = arm_fn_name(discriminator, arm.op_name)
   // Hβ.first-light.arm-body-fresh-frame: each handler-arm body is
   // its own WASM function with __state IS the handler state record
@@ -4224,7 +4274,9 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // during body lowering below) — the tree order every projected kind
   // shares, so the future enumeration reader walks parents first.
   graph_emitfn_note(EmitFnEntry{caps: [], fence: fence, kind: EfkArm, name: fn_name, origin: node_handle(arm.body), params: zip(arm_params, arm_param_tys), ret: Some(lookup_ty(node_handle(arm.body)))})
-  ls_enter_frame(fn_name, arm_params, locals_handles, captures_names, captures_handles)
+  // The arm's `<~` lines live in the install record past the fence, after
+  // the lines of the arms lowered before it (line_base).
+  ls_enter_frame(fn_name, arm_params, locals_handles, captures_names, captures_handles, line_base)
   lower_frame_fence_push()
   // A STATEFUL arm binds `__hrec` to its own $__state — the install
   // record the driver passed — so commits at every depth reach it
@@ -4254,12 +4306,12 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // the dead-arm fixture before the swap).
   graph_hole_drain(fn_name)
   lower_frame_fence_pop()
-  ls_exit_frame()
+  let lines = ls_exit_frame()
   // fence = nstate + total_arms; the arm's LEvPerform reads land on the
   // record's captured-ev region (past state AND arms).
   let body_list =
     if stateful { [LLet(0, "__hrec", LLocal(0, "__state")), lo_body] } else { [lo_body] }
-  let fn_ir = LFn(fn_name, len(arm_params), arm_params, body_list, mk_ef_pure(), fence)
+  let fn_ir = LFn(fn_name, len(arm_params), arm_params, body_list, mk_ef_pure(), fence, lines)
   LDeclareFn(fn_ir)
 }
 
@@ -4799,7 +4851,18 @@ fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
         // own TCont, which the edge already carries. No walk finds this;
         // the edge states it.
         graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkK, name: "__k_{int_to_str(ph)}", origin: ph, params: [(hole, Some(lookup_ty(resume_input_h)))], ret: Some(lookup_ty(answer_h))})
-        ls_enter_frame("", [hole], [resume_input_h], captures_names, captures_handles)
+        // A remainder's `<~` lines live in the k record past its metadata
+        // tail — captures, then state_idx / ret_slot / world, then the
+        // lines — so every resumption of one k shares its line, exactly as
+        // it shares every other heap write the remainder makes.
+        ls_enter_frame(
+          "",
+          [hole],
+          [resume_input_h],
+          captures_names,
+          captures_handles,
+          len(captures_exprs) + 3
+        )
         lower_frame_fence_push()
         let subs = map({ (p, n) => (p, k_hole_read(p, n)) }, outer_holes) ++
         // drift-audit: ignore — one-shot env build, no loop
@@ -4825,8 +4888,8 @@ fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
         }
         let k_body = k2_floor_guard(mark_tail(k_remainder(body_node, subs2)), false)
         lower_frame_fence_pop()
-        ls_exit_frame()
-        let k_fn = LFn("__k_{int_to_str(ph)}", 1, [hole], [k_body], world, len(captures_exprs))
+        let lines = ls_exit_frame()
+        let k_fn = LFn("__k_{int_to_str(ph)}", 1, [hole], [k_body], world, len(captures_exprs), lines)
         if disc == MultiShot {
           LMakeContinuation(continuation_h, k_fn, captures_exprs, ph, resume_input_h)
         } else {
@@ -5037,7 +5100,7 @@ fn k2_floor_guard(e, terminus) = match e {
   LSimdLanes(h, ls) => LSimdLanes(h, k2_floor_list(ls)),
   LMakeRecord(h, fs) => LMakeRecord(h, k2_floor_list(fs)),
   LMakeVariant(h, t, fs) => LMakeVariant(h, t, k2_floor_list(fs)),
-  LFeedback(h, d, b, s) => LFeedback(h, d, k2_floor_guard(b, false), k2_floor_guard(s, false)),
+  LFeedback(h, d, home, b, s) => LFeedback(h, d, home, k2_floor_guard(b, false), k2_floor_guard(s, false)),
   LPerform(h, d, args) => LPerform(h, d, k2_floor_list(args)),
   LWasiCall(h, n, args) => LWasiCall(h, n, k2_floor_list(args)),
   LFieldLoad(h, rec, o) => LFieldLoad(h, k2_floor_guard(rec, false), o),
@@ -5615,19 +5678,40 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
   // handler whose MultiShot arm's call graph reaches it.
   resume() with resume_binds = bs,
   ls_resume_bind_of(name) => resume(resume_bind_assoc(resume_binds, name, 0)),
-  ls_enter_frame(fn_name, locals_in, locals_h, captures_in, captures_h) => // drift-audit: ignore — pre-existing frame-record paired-arrays (locals_h/captures_h); same restructure tracked for 11.C.2
+  ls_enter_frame(fn_name, locals_in, locals_h, captures_in, captures_h, line_base) => // drift-audit: ignore — pre-existing frame-record paired-arrays (locals_h/captures_h); same restructure tracked for 11.C.2
   // Per Hβ.first-light.nested-fn-name-discriminator (2026-05-06):
   // fn_name carries the named-fn discriminator for nested-fn naming
   // (lambda + synthetic frames pass "").
   // Field-sort discipline keeps the frame record alphabetical: capture_handles,
-  // capture_order, captures, fn_name, local_handles, local_order, locals.
+  // capture_order, captures, fn_name, line_base, lines, local_handles,
+  // local_order, locals.
   {
     let frame =
-      {capture_handles: captures_h, capture_order: captures_in, captures: set_canonicalize(captures_in), fn_name: fn_name, local_handles: locals_h, local_order: locals_in, locals: set_canonicalize(locals_in)}
+      {capture_handles: captures_h, capture_order: captures_in, captures: set_canonicalize(captures_in), fn_name: fn_name, line_base: line_base, lines: [], local_handles: locals_h, local_order: locals_in, locals: set_canonicalize(locals_in)}
     // drift-audit: ignore — O(1) push at the end last/drop_last read
     resume() with frames = frames ++ [frame]
   },
-  ls_exit_frame() => if len(frames) == 0 { resume() } else { resume() with frames = drop_last(frames) },
+  ls_exit_frame() => if len(frames) == 0 {
+    resume([])
+  } else {
+    let frame = last(frames)
+    resume(frame.lines) with frames = drop_last(frames)
+  },
+  ls_line_slot(h, depth) => // The `<~` site takes the innermost frame's next line slot — the record
+  // word after the frame's captures (or state and arms, or k tail) and
+  // after the lines registered before it. A top-level fn's frame
+  // (line_base -1) has no record slot: its line is static.
+  if len(frames) == 0 {
+    resume(LhStatic)
+  } else {
+    let frame = last(frames)
+    let home = if frame.line_base < 0 { LhStatic } else { LhSlot(frame.line_base + len(frame.lines)) }
+    let updated =
+      {capture_handles: frame.capture_handles, capture_order: frame.capture_order, captures: frame.captures, fn_name: frame.fn_name, line_base: frame.line_base, lines: frame.lines ++ [(h, depth, home)], local_handles: frame.local_handles, local_order: frame.local_order, locals: frame.locals}
+    // drift-audit: ignore — replace the END frame last() read
+    resume(home) with frames = drop_last(frames) ++ [updated]
+  },
+  ls_frame_depth() => resume(len(frames)),
   ls_push_scope() => if len(frames) == 0 {
     resume(0)
   } else {
@@ -5641,7 +5725,7 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
     let truncated_order = take(checkpoint, frame.local_order)
     let truncated_handles = take(checkpoint, frame.local_handles)
     let updated =
-      {capture_handles: frame.capture_handles, capture_order: frame.capture_order, captures: frame.captures, fn_name: frame.fn_name, local_handles: truncated_handles, local_order: truncated_order, locals: set_canonicalize(truncated_order)}
+      {capture_handles: frame.capture_handles, capture_order: frame.capture_order, captures: frame.captures, fn_name: frame.fn_name, line_base: frame.line_base, lines: frame.lines, local_handles: truncated_handles, local_order: truncated_order, locals: set_canonicalize(truncated_order)}
     // drift-audit: ignore — replace the END frame last() read
     resume() with frames = drop_last(frames) ++ [updated]
   },
@@ -5651,7 +5735,7 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
     let frame = last(frames)
     let slot = len(frame.local_order)
     let updated =
-      {capture_handles: frame.capture_handles, capture_order: frame.capture_order, captures: frame.captures, fn_name: frame.fn_name, local_handles: handle_list_append(frame.local_handles, h), local_order: name_list_append(frame.local_order, name), locals: set_insert(frame.locals, name)}
+      {capture_handles: frame.capture_handles, capture_order: frame.capture_order, captures: frame.captures, fn_name: frame.fn_name, line_base: frame.line_base, lines: frame.lines, local_handles: handle_list_append(frame.local_handles, h), local_order: name_list_append(frame.local_order, name), locals: set_insert(frame.locals, name)}
     // drift-audit: ignore — replace the END frame last() read
     resume(slot) with frames = drop_last(frames) ++ [updated]
   },
@@ -5716,7 +5800,7 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
 // fns were never qualified, and the whole qualification path sat dormant.
 // Field types read from the ls_enter_frame op's own declared signature,
 // not inferred by eye.
-fn ls_outer_fn_name_loop(frames: [{capture_handles: [Int], capture_order: [String], captures: [String], fn_name: String, local_handles: [Int], local_order: [String], locals: [String]}]) = if len(frames) == 0 {
+fn ls_outer_fn_name_loop(frames: [{capture_handles: [Int], capture_order: [String], captures: [String], fn_name: String, line_base: Int, lines: [(Int, Int, LineHome)], local_handles: [Int], local_order: [String], locals: [String]}]) = if len(frames) == 0 {
   ""
 } else {
   let frame = last(frames)
@@ -5803,8 +5887,8 @@ fn reach_names_expr(expr, acc) = match expr {
     reach_names_expr(hn, reach_names_expr(b, reach_arm_group_names(arm_names, acc)))
   ),
   LLet(_h, _n, inner) => reach_names_expr(inner, acc),
-  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f), caps) => reach_names_list(caps, reach_names_list(body, acc)),
-  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f), caps, _, _) => reach_names_list(caps, reach_names_list(body, acc)),
+  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps) => reach_names_list(caps, reach_names_list(body, acc)),
+  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps, _, _) => reach_names_list(caps, reach_names_list(body, acc)),
   LResumeK(_h, k, v) => // The resume invocation reaches through its k expr and value; the __k
   // fn itself reaches via its LMakeContinuation record above.
   reach_names_expr(v, reach_names_expr(k, acc)),
@@ -5813,7 +5897,7 @@ fn reach_names_expr(expr, acc) = match expr {
   reach_names_expr(k, reach_names_list(args, acc)),
   LKExtend(_h, k) => // A k2 boundary reaches through its frame_k record the same way.
   reach_names_expr(k, acc),
-  LDeclareFn(LFn(_n, _a, _p, body, _r, _f)) => reach_names_list(body, acc),
+  LDeclareFn(LFn(_n, _a, _p, body, _r, _f, _l)) => reach_names_list(body, acc),
   LBlock(_h, stmts) => reach_names_list(stmts, acc),
   LIf(_h, c, t, e) => reach_names_list(e, reach_names_list(t, reach_names_expr(c, acc))),
   LBinOp(_h, op, l, r) => // ==/ordering on a wide-element sequence mints list_eq_f64/list_compare_f64
@@ -5836,7 +5920,7 @@ fn reach_names_expr(expr, acc) = match expr {
   LMakeRecord(_h, fs) => reach_names_list(fs, acc),
   LMakeVariant(_h, _t, fs) => reach_names_list(fs, acc),
   LMatch(_h, s, arms) => reach_match_arms(arms, reach_names_expr(s, acc)),
-  LFeedback(_h, _d, b, s) => reach_names_expr(s, reach_names_expr(b, acc)),
+  LFeedback(_h, _d, _home, b, s) => reach_names_expr(s, reach_names_expr(b, acc)),
   LWasiCall(_h, _n, args) => reach_names_list(args, acc),
   LInvariantFailure(_, _) => acc,
   LFieldLoad(_h, rec, _off) => reach_names_expr(rec, acc),
@@ -5851,7 +5935,7 @@ fn reach_names_expr(expr, acc) = match expr {
 // The decl's emitted name — "" for statements that are not named fns
 // (module value lets stay unconditionally; they run in __init_lets).
 fn reach_decl_name(stmt) = match stmt {
-  LDeclareFn(LFn(n, _, _, _, _, _)) => n,
+  LDeclareFn(LFn(n, _, _, _, _, _, _)) => n,
   LLet(_, n, LMakeClosure(_, _, _)) => n,
   LLet(_, n, LMakeContinuation(_, _, _, _, _)) => n,
   _ => // drift-audit: ignore — "" = stmt is not a named fn (module value lets run in __init_lets)
@@ -6068,7 +6152,7 @@ fn reach_collect(outs, rbuf, rn, i, n, buf, count) = if i >= n {
 // any of them was reached (installing a handler makes every arm
 // dispatchable, so arms keep whole-container).
 fn reach_nested_names(d, acc) = match d {
-  LDeclareFn(LFn(n, _, _, body, _, _)) => reach_nested_names_list(body, [n] ++ acc),
+  LDeclareFn(LFn(n, _, _, body, _, _, _)) => reach_nested_names_list(body, [n] ++ acc),
   LBlock(_h, stmts) => reach_nested_names_list(stmts, acc),
   LLet(_h, _n, inner) => reach_nested_names(inner, acc),
   LIf(_h, _c, t, e) => reach_nested_names_list(e, reach_nested_names_list(t, acc)),
@@ -6638,12 +6722,12 @@ fn spec_scan_expr(expr, acc) = match expr {
   LPerform(_h, _d, args) => spec_scan_list(args, acc),
   LHandleWith(_h, b, hn, _hname, inits, _arms) => spec_scan_list(inits, spec_scan_expr(hn, spec_scan_expr(b, acc))),
   LLet(_h, _n, inner) => spec_scan_expr(inner, acc),
-  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f), caps) => spec_scan_list(caps, spec_scan_list(body, acc)),
-  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f), caps, _, _) => spec_scan_list(caps, spec_scan_list(body, acc)),
+  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps) => spec_scan_list(caps, spec_scan_list(body, acc)),
+  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps, _, _) => spec_scan_list(caps, spec_scan_list(body, acc)),
   LResumeK(_h, k, v) => spec_scan_expr(v, spec_scan_expr(k, acc)),
   LYield(_h, _op, args, k) => spec_scan_expr(k, spec_scan_list(args, acc)),
   LKExtend(_h, k) => spec_scan_expr(k, acc),
-  LDeclareFn(LFn(_n, _a, _p, body, _r, _f)) => spec_scan_list(body, acc),
+  LDeclareFn(LFn(_n, _a, _p, body, _r, _f, _l)) => spec_scan_list(body, acc),
   LBlock(_h, stmts) => spec_scan_list(stmts, acc),
   LIf(_h, c, t, e) => spec_scan_list(e, spec_scan_list(t, spec_scan_expr(c, acc))),
   LShow(_h, x) => match spec_scan_expr(x, acc) {
@@ -6687,7 +6771,7 @@ fn spec_scan_expr(expr, acc) = match expr {
       acc2
     }
   },
-  LFeedback(_h, _d, b, s) => spec_scan_expr(s, spec_scan_expr(b, acc)),
+  LFeedback(_h, _d, _home, b, s) => spec_scan_expr(s, spec_scan_expr(b, acc)),
   LWasiCall(_h, _n, args) => spec_scan_list(args, acc),
   LInvariantFailure(_, _) => acc,
   LFieldLoad(_h, rec, _sel) => // A field-load receiver is a STRUCTURE witness: a var-rooted receiver

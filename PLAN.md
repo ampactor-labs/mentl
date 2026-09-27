@@ -1141,6 +1141,40 @@ and this is the STATE.
   reference — measured), and the narration class the first form minted is
   deleted with its ratchet and the post-emit gate
   (`Hβ.emit.arith-on-aggregate-is-pointer-arith`).
+- **THE `<~` LINE IS A RING OWNED BY THE RECORD THAT HOLDS THE CYCLE —
+  CLOSED 2026-09-27 (L2 of the Pulse sprint).** The line was N module
+  globals keyed by the site handle alone, declared at the floor's width
+  and shifted N−1 global moves per tick, so three silent wrongs shared
+  one root: two twins of one generic recurrence shared one line (the
+  Float twin wrote f64 into an i32 slot and refused to assemble), two
+  closures minted from one lambda shared one line (`let lp_l =
+  lowpass(0.3)` and `let lp_r = lowpass(0.3)` filtered through ONE
+  register — the two-channel bug every stereo stage writes), two installs
+  of one handler shared the arm's line, and `delay(24_000)` was 24,000
+  globals moved per tick (2.5 MB of WAT for a one-line echo). Handler =
+  state = closure, read at the site: a cycle's memory belongs to the
+  record of the function that contains it (`LineHome`, types.mn — lower
+  assigns each site a slot in its frame's record past the captures, the
+  state and arms, or the k tail; the record's minter allocates one ring
+  per site; a top-level fn's site, its record being the module's
+  immutable data record, rides an instance global `$__init_lines` fills,
+  one per emitted twin). The ring is `[head][slot × depth]` at the site's
+  repr under the active bracket; the tick is a load, a store and a bounded
+  increment at any depth. Micros `mn-feedback-twin-width`,
+  `-closure-instances`, `-arm-instances`, `-deep-line` each RED on boot
+  542ea5a3; the frontier's deep-line leg prints ticks per second at depth
+  24,000 (a wall clock is never ratcheted). The remainder-owned line
+  (a `<~` after a multi-shot perform) is built by the same rule and has
+  no witness: a let-bound multi-shot perform is off the k2 spine and
+  floors before any line could tick (L0's named remainder). What the
+  ownership exposes and names: a closure or install record shared by two
+  threaded branches shares its ring and the race rule reads effects, not
+  cycle state (`Hβ.threads.closure-line-shared-across-branches`); a
+  top-level fn's line is per INSTANCE, so two branches calling one
+  recurrence run two lines with no diagnostic
+  (`Hβ.threads.static-line-is-per-instance`). lib/dsp's README and
+  clock.mn header, which required an Iterate-class handler and cited
+  `E_FeedbackNoContext`, are raised to SYNTAX's inferred-clock rule.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
