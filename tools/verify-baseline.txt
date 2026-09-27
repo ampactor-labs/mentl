@@ -987,7 +987,7 @@ desugar_vocabulary: 41
 # 2026-09-18 · 67 -> 63 · the fan's copy machinery took four `own` markers
 # with it (`fan_blocks`/`fan_spawn`/`fan_join`'s accumulators and
 # `keep_proven`'s). A judgment on the live graph accumulates nothing to own.
-authored_own_max: 63
+authored_own_max: 62
 # 2026-09-17: 807 -> 805. Two markers retired with the duplicate map
 # primitive's deletion — the honest grade needs no marker where there is no
 # second copy to annotate.
