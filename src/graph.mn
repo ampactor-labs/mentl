@@ -1925,9 +1925,6 @@ effect LookupTy {
   spec_ctx_set([(Int, Ty)], String)
   spec_ctx_clear()
   spec_enc_active() -> String
-  // The bracket in force, so a site that opens its own — an install's
-  // state inits under the install's key — can restore the one it was in.
-  spec_ctx_active() -> ([(Int, Ty)], String)
 }
 
 // ─── the specialization projection — lookup_ty under a twin's pairs ──
@@ -2047,7 +2044,6 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
   spec_ctx_set(prs, e) => resume() with spec_pairs = prs, spec_enc = e,
   spec_ctx_clear() => resume() with spec_pairs = [], spec_enc = "",
   spec_enc_active() => resume(spec_enc),
-  spec_ctx_active() => resume((spec_pairs, spec_enc)),
   lookup_ty(h) => match graph_chase(h) {
     GNode(kind, reason) => if len(spec_pairs) > 0 {
       match kind {

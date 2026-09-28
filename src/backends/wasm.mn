@@ -56,13 +56,6 @@ handler wat_stdout {
 // the collecting sink below banks heap pointers, and a whole-compile
 // install of it reads region-reset records at collect (the in-process
 // battery measured exactly that after the emit-arena landed).
-// CONFIG CAVEAT (Hβ.lower.install-config-capture-read): an install-config
-// argument that references a CLOSURE CAPTURE reads 0 — the install-init
-// emission resolves locals but not captures (measured: march_emit's
-// param-captured fd arrived 0 in this arm across 288k performs while a
-// let-local arrived intact). Until the init path rides the same
-// resolution ladder as ordinary exprs, bind the config value to a LOCAL
-// in the installing scope first.
 handler wat_to_file(fd) {
   wat_emit(s) => {
     fd_write_bytes(fd, str_payload(s), byte_len(s))
@@ -467,8 +460,9 @@ type Demand
   // a symbol by its own name: a decl's base body, an arm, a runtime fn
   = DemandBase(String)
   // a twin: its mangled name, its base, the instantiation pairs and their
-  // encoding
-  | DemandTwin(String, String, [(Int, Ty)], String)
+  // encoding, and its LINEAGE — the twin bases whose body scans produced it,
+  // the recursion meter the cap reads
+  | DemandTwin(String, String, [(Int, Ty)], String, [String])
 
 // The reach's verdict on one top-level decl, by source index.
 type DeclReach = Unreached | Reached
@@ -479,8 +473,9 @@ fn demand_base(n) = DemandBase(n)
 
 // One reference, read under the bracket in force: the key its site
 // projects decides twin or base, the same read `spec_target_name` makes
-// for the emitted call.
-fn ref_demand(r) = match r {
+// for the emitted call. A twin demand carries the LINEAGE it was reached
+// by.
+fn ref_demand(lineage, r) = match r {
   RefName(n) => DemandBase(n),
   RefSite(h, n) => {
     let pairs = spec_site_pairs(h, n)
@@ -488,13 +483,21 @@ fn ref_demand(r) = match r {
       DemandBase(n)
     } else {
       let enc = spec_enc(pairs)
-      if spec_enc_is_floor(enc) { DemandBase(n) } else { DemandTwin(spec_mangle(n, enc), n, pairs, enc) }
+      if spec_enc_is_floor(enc) {
+        DemandBase(n)
+      } else {
+        DemandTwin(spec_mangle(n, enc), n, pairs, enc, lineage)
+      }
     }
   },
   RefArm(ih, n) => {
     let pairs = arm_site_pairs(ih)
     let enc = arm_enc(pairs)
-    if byte_len(enc) == 0 { DemandBase(n) } else { DemandTwin(spec_mangle(n, enc), n, pairs, enc) }
+    if byte_len(enc) == 0 {
+      DemandBase(n)
+    } else {
+      DemandTwin(spec_mangle(n, enc), n, pairs, enc, lineage)
+    }
   },
 }
 
@@ -538,67 +541,84 @@ fn emit_reach_roots(program, library, i, n, live, roots) = if i >= n {
   }
 }
 
-// The fixpoint. The accepted twin set is a FLAT BUFFER with its count, not
-// a `[d] ++ done` concat spine: both reads the fix makes of it (membership
-// by mangled name, the per-base count the cap meters) index it, and
-// indexing a concat spine is O(depth) — measured before the buffer:
-// spec_base_count alone was 7.95% of the entire self-compile. `live` flags
-// the decls emitted, by source index; `wide` records that the runtime
-// family a twin can mint is already demanded.
+// The fixpoint. The accepted twin set is a FLAT BUFFER with its count, read
+// in order when the fix ends, and a name map beside it answers membership by
+// mangled name — the linear scan it replaces grew with the twin set, and the
+// twin set is every instantiation a program makes. `live` flags the decls
+// emitted, by source index; `wide` records that the runtime family a twin
+// can mint is already demanded.
 fn emit_reach_fix(work, st, program, keys, recs) = if len(work) == 0 {
   st
 } else {
   let d = work[0]
   let w2 = rest(work)
   match st {
-    (dbuf, dn, live, wide) => match d {
+    (dbuf, dn, seen, live, wide) => match d {
       DemandBase(nm) => match smap_get(keys, nm) {
         None => emit_reach_fix(w2, st, program, keys, recs),
         Some(i) => match list_index(live, i) {
           Reached => emit_reach_fix(w2, st, program, keys, recs),
           Unreached => {
-            let ds = map(ref_demand, low_refs([], list_index(program, i)))
-            emit_reach_fix(ds ++ w2, (dbuf, dn, list_set(live, i, Reached), wide), program, keys, recs)
+            // A base body's keys are fixed by its own source types, so the
+            // lineage starts again here.
+            let ds = map(ref_demand([], ??), low_refs([], list_index(program, i)))
+            emit_reach_fix(ds ++ w2, (dbuf, dn, seen, list_set(live, i, Reached), wide), program, keys, recs)
           },
         },
       },
-      DemandTwin(m, base, pairs, enc) => if spec_buf_demanded(dbuf, dn, m, 0) {
-        emit_reach_fix(w2, st, program, keys, recs)
-      } else {
-        // THE POLYMORPHIC-RECURSION CAP (the 5.1c guard): a
-        // self-instantiating chain mints a fresh mangle per nesting level
-        // (depth@[w], depth@[[w]], …), so one base's accepted count is the
-        // divergence meter. Past it the twin registers and its body's
-        // sites emit the base names — the uniform word-protocol floor,
-        // correct for every vector because containers are words; the deep
-        // tail pays indirection, never divergence.
-        let capped = spec_buf_base_count(dbuf, dn, base, 0, 0) >= 8
-        let ds = match spec_find_rec(recs, base) {
-          None => [DemandBase(base)],
-          Some(rec) => match rec {
-            (_n, _ps, body, _f) => if capped {
-              map(ref_floor_demand, low_refs_list([], body))
-            } else {
-              // ONE structural scan, taken UNDER the instantiation: the
-              // references a twin's body makes key against the specialized
-              // truth, so the ctx brackets the scan and its read together.
-              spec_ctx_set(pairs, enc)
-              let inner = map(ref_demand, low_refs_list([], body))
-              spec_ctx_clear()
-              inner
+      DemandTwin(m, base, pairs, enc, lineage) => match smap_get(seen, m) {
+        Some(_) => emit_reach_fix(w2, st, program, keys, recs),
+        None => {
+          // THE POLYMORPHIC-RECURSION CAP (the 5.1c guard) meters DEPTH along
+          // the lineage, never breadth across the program. A base sits twice
+          // on one lineage only when its body reaches itself at a NEW key —
+          // the mangle dedup above swallows every same-key recursion — so its
+          // count there is how deep a self-instantiating chain has gone
+          // (depth@[w], depth@[[w]], …). Past it the twin registers and its
+          // body's sites emit the base names: the word-protocol floor, where
+          // the deep tail pays indirection and never divergence. Counting the
+          // base program-wide floored a generic fn's ninth instantiation — a
+          // record-polymorphic chain past eight shapes read a row that never
+          // closed and trapped.
+          let capped = lineage_depth(lineage, base) >= 8
+          let ds = match spec_find_rec(recs, base) {
+            None => [DemandBase(base)],
+            Some(rec) => match rec {
+              (_n, _ps, body, _f) => if capped {
+                map(ref_floor_demand, low_refs_list([], body))
+              } else {
+                // ONE structural scan, taken UNDER the instantiation: the
+                // references a twin's body makes key against the specialized
+                // truth, so the ctx brackets the scan and its read together.
+                spec_ctx_set(pairs, enc)
+                let inner = map(ref_demand([base] ++ lineage, ??), low_refs_list([], body))
+                spec_ctx_clear()
+                inner
+              },
             },
-          },
-        }
-        // the runtime family a twin's emission can mint that its floor did
-        // not (lower seeds the same names per entry, wide_seed)
-        let family = if wide { [] } else { map(demand_base, spec_wide_family()) }
-        match spec_demand_accept((dbuf, dn), (m, base, pairs, enc)) {
-          (dbuf2, dn2) => emit_reach_fix(ds ++ family ++ w2, (dbuf2, dn2, live, true), program, keys, recs),
-        }
+          }
+          // the runtime family a twin's emission can mint that its floor did
+          // not (lower seeds the same names per entry, wide_seed)
+          let family = if wide { [] } else { map(demand_base, spec_wide_family()) }
+          match spec_demand_accept((dbuf, dn), (m, base, pairs, enc)) {
+            (dbuf2, dn2) => emit_reach_fix(
+              ds ++ family ++ w2,
+              (dbuf2, dn2, smap_add(seen, m, 1), live, true),
+              program,
+              keys,
+              recs
+            ),
+          }
+        },
       },
     },
   }
 }
+
+// How many times BASE sits on a demand's lineage — the recursion depth the
+// cap reads.
+fn lineage_depth(lineage, base: String) =
+  fold(0, (n, b) => if b == base { n + 1 } else { n }, lineage)
 
 // The reach whole: the accepted twin demands, and each decl's liveness by
 // source index (1 = emitted).
@@ -614,13 +634,13 @@ fn emit_reach(program, recs) = {
       let argv = if main_param_count() > 0 { ["wasi_args"] } else { [] }
       let entry = if library { [] } else { map(demand_base, ["main"] ++ emit_runtime_contract() ++ argv) }
       match emit_reach_fix(
-        entry ++ map(ref_demand, root_refs),
-        (make_list(64), 0, live0, false),
+        entry ++ map(ref_demand([], ??), root_refs),
+        (make_list(64), 0, smap_new(), live0, false),
         program,
         keys,
         recs
       ) {
-        (dbuf, dn, live, _wide) => (slice(dbuf, 0, dn), live),
+        (dbuf, dn, _seen, live, _wide) => (slice(dbuf, 0, dn), live),
       }
     },
   }
@@ -674,28 +694,9 @@ fn record_named_in(bases, rec) = match rec {
   },
 }
 
-// The accepted set's three operations, one home: append at the count, and
-// the two reads the fix makes, each walking the flat slots directly.
+// The accepted set grows at its count.
 fn spec_demand_accept(acc, d) = match acc {
   (dbuf, dn) => (list_set(list_extend_to(dbuf, dn + 1), dn, d), dn + 1),
-}
-
-fn spec_buf_demanded(ref dbuf, dn, m: String, i) = if i >= dn {
-  false
-} else {
-  match list_index(dbuf, i) {
-    (dm, _b, _p, _e) => if dm == m { true } else { spec_buf_demanded(dbuf, dn, m, i + 1) },
-  }
-}
-
-// The cap's meter: how many of BASE's specializations the fix has already
-// accepted (entries share the (m, base, pairs, enc) shape).
-fn spec_buf_base_count(ref dbuf, dn, base: String, i, acc) = if i >= dn {
-  acc
-} else {
-  match list_index(dbuf, i) {
-    (_, b, _, _) => spec_buf_base_count(dbuf, dn, base, i + 1, if b == base { acc + 1 } else { acc }),
-  }
 }
 
 // The ONE selector→offset projection for the field-load emitter: a name
@@ -1088,7 +1089,12 @@ fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demand
       // sites reads a record whose offset-0 slot is the twin's table index).
       let table_all = table_fn_names ++ spec_names
       let wide_all = wide_fn_names ++ spec_wide
-      emit_fn_table(table_all, wide_all, any(vector_is_wide, vectors))
+      emit_fn_table(
+        table_all,
+        wide_all,
+        any(vector_is_wide, vectors),
+        adapted_names(fn_records, spec_recs)
+      )
       emit_fn_index_globals(table_all, fn_table_base())
       emit_static_top_closures(top_fn_names ++ spec_names, table_all, 0)
       // Module VALUE bindings: ONE projection feeds the declaration half and
@@ -1098,13 +1104,15 @@ fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demand
       emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, table_all, string_entries)
       emit_functions(fn_records)
       emit_wide_wrappers(fn_records)
+      each(emit_base_adapter, fn_records)
       // The twins: the SAME per-fn emission, each under its instantiation
       // handler — monomorphization as a handler swap. A wide twin also gets its
       // $wf$ word-face wrapper under the same install (its table slot speaks the
-      // word-arity face like every other wide fn).
+      // word-arity face like every other wide fn), and an arm twin whose face
+      // its op does not declare gets its op-face adapter.
       each(
         {
-          (rec2, pairs, enc, _base) => {
+          (rec2, pairs, enc, base) => {
             // The twin's emission is a region too: pairs/enc live OUTSIDE the
             // mark (allocated with spec_recs above), the registry commit stores
             // pre-mark pointers, and both strings stream before the reset.
@@ -1112,6 +1120,7 @@ fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demand
             let m = heap_mark()
             wat_emit(emit_one_fn_to_string(rec2))
             wat_emit(if fn_record_is_wide(rec2) { emit_one_wrapper_to_string(rec2) } else { "" })
+            wat_emit(twin_adapter_text(rec2, base))
             heap_reset(m)
             spec_ctx_clear()
           },
@@ -1626,10 +1635,12 @@ fn walk_lemit_expr(expr) = match expr {
     walk_install_groups(arm_names, 0)
     walk_lemit_expr(b)
     walk_lemit_expr(hn)
-    // The inits walk under this install's own name. A direct perform of an
-    // op THIS handler answers cannot reach it: the world_push is below.
-    // The span comes off the install's own node — the reason the graph
-    // already carries, never a coordinate re-derived here.
+    // The config arguments (a default among them) walk under this install's
+    // own name. A direct perform of an op THIS handler answers cannot reach
+    // it: the world_push is below. The span comes off the install's own node
+    // — the reason the graph already carries, never a coordinate re-derived
+    // here. The state inits walk under the same scope inside the init fn
+    // (the LStateInit arm).
     {
       walk_lemit_list(inits)
     } ~> preinstall_init_scope(hname, reason_span_or_zero(graph_reason_at(ih)))
@@ -1681,6 +1692,12 @@ fn walk_lemit_expr(expr) = match expr {
   LFieldLoad(_, rec, _) => walk_lemit_expr(rec),
   LConvert(_, _, operand) => walk_lemit_expr(operand),
   LStateSlotStore(_, _, v, _) => walk_lemit_expr(v),
+  LStateInit(h, hname, _, v) => // A state init walks under its own handler's name: the init fn runs before
+  // the install's world_push, so a direct perform of an op THIS handler
+  // answers cannot reach it. The span is the init's own.
+  {
+    walk_lemit_expr(v)
+  } ~> preinstall_init_scope(hname, reason_span_or_zero(graph_reason_at(h))),
 }
 
 fn walk_lemit_list(exprs) = walk_lemit_list_loop(exprs, 0)
@@ -2229,7 +2246,7 @@ fn fn_record_span(r) with !Mutate = match r {
 // (`$native_face` past the word face) and passes its values as themselves: no
 // cell, no wrapper, nothing allocated. The native half exists only in a module
 // with such a site, so a word-only module's table is unchanged.
-fn emit_fn_table(fn_names, wide_names, native_half) = {
+fn emit_fn_table(fn_names, wide_names, native_half, adapted) = {
   let n = len(fn_names)
   if n == 0 {
     ()
@@ -2246,13 +2263,25 @@ fn emit_fn_table(fn_names, wide_names, native_half) = {
     if native_half {
       wat_emit("  (global $native_face i32 (i32.const {int_to_str(n)}))\n")
       wat_emit("  (elem $fns_native (i32.const {int_to_str(fn_table_base() + n)})")
-      emit_fn_refs(fn_names, [])
+      emit_native_refs(fn_names, adapted)
       wat_emit(")\n")
     } else {
       ()
     }
   }
 }
+
+// The native half: each symbol at its own face, save an arm whose face its op
+// does not declare, which sits here behind its op-face adapter — the half a
+// slot dispatch through a wide declared vector reads.
+fn emit_native_refs(names, adapted) = each(
+  (name) => {
+    let via_adapter = any((a) => field_name_eq(a, name), adapted)
+    wat_emit(if via_adapter { " $of$" } else { " $" })
+    wat_emit(name)
+  },
+  names
+)
 
 // A call vector with a wide slot — the sites that reach the native face.
 fn vector_is_wide(v) = match v {
@@ -2717,6 +2746,7 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LFieldLoad(_h, rec, _o) => collect_call_vectors_expr(rec, acc),
   LConvert(_h, _, operand) => collect_call_vectors_expr(operand, acc),
   LStateSlotStore(_h, _o, v, _) => collect_call_vectors_expr(v, acc),
+  LStateInit(_h, _hn, _s, v) => collect_call_vectors_expr(v, acc),
   LConst(_, _) => acc,
   LLocal(_, _) => acc,
   LFeedbackPrior(_) => acc,
@@ -3258,6 +3288,132 @@ fn emit_wide_wrapper(record) = match record {
   },
 }
 
+// ─── The op-face adapters (an arm reached at its op's declared face) ────────
+// An arm is CALLED at its op's declared face — the one every performer emits
+// its arguments at (`op_abi`) and every slot dispatch through a wide declared
+// vector calls — while its BODY runs at the handler's instance, which an
+// install may key further: its header reads the op's types there
+// (`op_instance_subst`, lower.mn). Where the two faces differ the arm is
+// reached through `$of$<arm>`, which speaks the op's face: an argument the op
+// passes as a word and the arm reads wide is unboxed, the arm is called, and
+// a wide result the op declares as a word is boxed. It holds the arm's native
+// table slot and is what a direct perform calls. Measured before it existed
+// (2026-09-28): a handler whose instance is ground Float over an op parameter
+// typed by the effect's variable did not assemble, the performer boxing what
+// the arm read as f64, and a Float-keyed install over an op declaring a width
+// elsewhere (`put(x: Float, y: a)`) kept its base arms, which added `y`'s
+// box pointer. An arm its driver reaches is never adapted: the driver calls
+// every arm at the word face, through the arm's `$wf$` wrapper.
+fn adapter_op(sym: String, base: String) = match direct_arm_op(base) {
+  None => None,
+  Some(op) => if face_differs(sym, op) { Some(op) } else { None },
+}
+
+// The op a symbol answers as an arm the performer calls directly.
+fn direct_arm_op(base: String) = match graph_emitfn_at(base) {
+  [] => None,
+  entries => match last(entries) {
+    EmitFnEntry(e) => match e.kind {
+      EfkArm(op) => if op_answers_its_driver(op) { None } else { Some(op) },
+      EfkInit => None,
+      EfkPartial => None,
+      EfkLambda => None,
+      EfkThunk => None,
+      EfkNested => None,
+      EfkK => None,
+    },
+  },
+}
+
+fn face_differs(sym: String, op: String) = match op_abi(op) {
+  (ops, orr) => match sig_of_symbol(sym, len(ops)) {
+    (ps, r) => ps != ops || r != orr,
+  },
+}
+
+// The symbol a direct call of an op's arm names.
+fn op_face_symbol(base: String, sym: String) = match adapter_op(sym, base) {
+  Some(_) => "of${sym}",
+  None => sym,
+}
+
+// Every emitted symbol reached through an adapter — the arms as lowered and
+// the twins — for the native table half.
+fn adapted_names(fn_records, spec_recs) =
+  flat_map(adapted_base_name, fn_records) ++ flat_map(adapted_twin_name, spec_recs)
+
+fn adapted_base_name(r) = match r {
+  (name, _ps, _b, _f) => match adapter_op(name, name) {
+    Some(_) => [name],
+    None => [],
+  },
+}
+
+fn adapted_twin_name(sr) = match sr {
+  (rec2, _pairs, _enc, base) => match rec2 {
+    (m, _ps, _b, _f) => match adapter_op(m, base) {
+      Some(_) => [m],
+      None => [],
+    },
+  },
+}
+
+fn emit_base_adapter(r) = match r {
+  (name, _ps, _b, _f) => match adapter_op(name, name) {
+    Some(op) => emit_op_face_adapter(name, op),
+    None => (),
+  },
+}
+
+fn twin_adapter_text(rec2, base: String) = match rec2 {
+  (m, _ps, _b, _f) => match adapter_op(m, base) {
+    Some(op) => emit_one_adapter_to_string(m, op),
+    None => "",
+  },
+}
+
+fn emit_one_adapter_to_string(sym: String, op: String) = {
+  emit_op_face_adapter(sym, op)
+  wat_collect()
+} ~> emit_memory_bump ~> wat_to_string
+
+fn emit_op_face_adapter(sym: String, op: String) = match op_abi(op) {
+  (ops, orr) => match sig_of_symbol(sym, len(ops)) {
+    (ps, r) => {
+      wat_emit("  (func $of${sym} (param $__state i32)")
+      each({ (i, o) => wat_emit(" (param $op{int_to_str(i)} {repr_wat(o)})") }, enumerate(ops))
+      wat_emit(" (result {repr_wat(orr)}) (local $f64_tmp f64) (local $wide_cell i32)\n")
+      wat_emit("    (local.get $__state)\n")
+      each(
+        {
+          (i, o) => {
+            wat_emit("    (local.get $op{int_to_str(i)})\n")
+            emit_face_convert(o, list_index(ps, i))
+          },
+        },
+        enumerate(ops)
+      )
+      wat_emit("    (call ${sym})\n")
+      emit_face_convert(r, orr)
+      wat_emit("  )\n")
+    },
+  },
+}
+
+// One value crossing between two faces: as itself where they agree, by
+// reference where a wide value meets a word, by dereference the other way.
+// Two different wide widths never meet here — an op's ground width is its
+// arms' too — and the floor says so if they ever do.
+fn emit_face_convert(from, to) = if from == to {
+  ()
+} else if to == RI32 {
+  emit_wide_ref(from)
+} else if from == RI32 {
+  emit_wide_deref(to)
+} else {
+  wat_emit("    (unreachable) ;; face conversion between two wide widths\n")
+}
+
 // Per-fn emit-to-buffer. Installs wat_to_string locally; emit_fn_body's
 // perform wat_emit calls go to that handler's buffer; wat_collect
 // returns the buffer when the scoped block completes.
@@ -3330,6 +3486,7 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LFieldLoad(_h, rec, _off) => collect_fn_emit_records_expr(rec),
   LConvert(_h, _, operand) => collect_fn_emit_records_expr(operand),
   LStateSlotStore(_h, _o, v, _) => collect_fn_emit_records_expr(v),
+  LStateInit(_h, _hn, _s, v) => collect_fn_emit_records_expr(v),
   LConst(_, _) => // H6: exhaustive LowExpr. Leaves with no fn-containing
   // descendants contribute no records.
   [],
@@ -3609,6 +3766,7 @@ fn walk_locals_expr(expr, acc) = match expr {
   LFieldLoad(_h, rec, _off) => walk_locals_expr(rec, acc),
   LConvert(_h, _, operand) => walk_locals_expr(operand, acc),
   LStateSlotStore(_h, _o, v, _) => walk_locals_expr(v, acc),
+  LStateInit(_h, _hn, _s, v) => walk_locals_expr(v, acc),
   LConst(_, _) => // H6: exhaustive LowExpr. Leaves declare no locals; LUpval,
   // LConst, LLocal, LGlobal are pure reads. New LIR
   // variants with let-bindings inside must add their recursion
@@ -3933,6 +4091,7 @@ fn emit_body_seq(stmts, i) = if i >= len(stmts) {
 fn lexpr_leaves_value(e) = match e {
   LLet(_, _, _) => false,
   LStateSlotStore(_, _, _, _) => false,
+  LStateInit(_, _, _, _) => false,
   LInvariantFailure(_, _) => false,
   LDeclareFn(_) => false,
   LReturn(_, _) => false,
@@ -4050,89 +4209,23 @@ fn emit_wasi_thread_start(has_lets, has_lines) = {
   wat_emit("  (export \"wasi_thread_start\" (func $wasi_thread_start))\n")
 }
 
-// Emit a sequence of `(local.get $<state_local>) <init_emit> (i32.store
-// offset=<8+i*4>)` for each init in source order. Used by LHandleWith's
-// emit arm to populate the freshly-allocated state record before the
-// global-set. Per PLAN §5.U
-// (ONE record, FOUR roles) — state slots live at 8+i*4, matching
-// resolve_state_slot_offset in lower.mn:1195 so arm-body reads match.
-//
-// Drift refused:
-// - 11 list-accumulator concat in loop: recursion uses last /
-//   drop_last directly; no append-by-one accumulator pattern.
-// - 9 deferred-by-omission: closes #145 in this commit alongside the
-//   lower-side threading.
-fn emit_state_init_writes(state_local, inits, base_idx) = each(
+// An install's config arguments, written into its record's first slots in
+// source order — expressions of the installing frame, emitted as that
+// frame's own. The slot ABI is words (the arms read it), so a wide value
+// crosses by reference, the same box the argument boundary uses (the fold
+// twin's raw f64 once fed i32.store and failed assembly,
+// Hβ.emit.twin-state-width).
+fn emit_config_writes(record_local, args) = each(
   {
-    (i, init) => {
-      wat_emit("(local.get $")
-      wat_emit(state_local)
-      wat_emit(")")
-      // A `with field = config_arg` init is a config reference: LUpval(slot)
-      // reads config slot `slot` of THIS record (config region written first).
-      // The handler record IS the closure — the state slot reads the config
-      // slot of the same record. Everywhere else, emit the value normally.
-      // A WIDE config value is a cell address, and the state must own a cell
-      // of its own: its commits write in place (the LStateSlotStore arm), so
-      // sharing the config's cell would rewrite the config the handler was
-      // built with. The word case copies the word, as it always has.
-      match init {
-        LUpval(_, slot) => {
-          wat_emit("(local.get $")
-          wat_emit(state_local)
-          wat_emit(")(i32.load offset=")
-          wat_emit(int_to_str(8 + slot * 4))
-          wat_emit(")")
-          let r = tail_expr_repr(init)
-          if repr_is_wide(r) {
-            wat_emit("({repr_load_op(r)})\n")
-            emit_wide_ref(r)
-          } else {
-            ()
-          }
-        },
-        _ => {
-          emit_expr(init)
-          // The slot ABI is floor words (the SHARED arm fns read it), so
-          // a twin's repr-true wide init crosses BY REFERENCE — the same
-          // box the arg boundary uses. The floor's word inits no-op here
-          // byte-for-byte (Law 7); the fold twin's raw f64 init fed
-          // i32.store and failed assembly (Hβ.emit.twin-state-width).
-          emit_wide_ref(tail_expr_repr(init))
-        },
-      }
-      wat_emit("(i32.store offset=")
-      wat_emit(int_to_str(8 + (base_idx + i) * 4))
-      wat_emit(")\n")
+    (i, arg) => {
+      wat_emit("(local.get ${record_local})")
+      emit_expr(arg)
+      emit_wide_ref(tail_expr_repr(arg))
+      wat_emit("(i32.store offset={int_to_str(8 + i * 4)})\n")
     },
   },
-  enumerate(inits)
+  enumerate(args)
 )
-
-// How many of an install's inits are its config arguments — the install
-// column's own count, which the declaration's state inits follow.
-fn install_config_count(h) = match graph_install_at(h) {
-  NoInstall => 0,
-  InstallOf(_, cfg_hs, _) => len(cfg_hs),
-}
-
-// The declaration's state inits read the install's config through the
-// declaration's own types, so they evaluate under the key the install's arms
-// run under: a `with n = cfg.x` init reads the field at the install's layout,
-// and a wide config copied into state gets a cell of its own, the one the
-// twinned arms read and commit through. The bracket the install stands in is
-// restored after.
-fn emit_decl_inits_keyed(state_local, inits, base_idx, pairs, enc) = if byte_len(enc) == 0 {
-  emit_state_init_writes(state_local, inits, base_idx)
-} else {
-  match spec_ctx_active() {
-    (outer_pairs, outer_enc) => {
-      spec_ctx_set(pairs, enc)
-      emit_state_init_writes(state_local, inits, base_idx)
-      spec_ctx_set(outer_pairs, outer_enc)
-    },
-  }
-}
 
 // Total arm-slot count across a handler's per-effect groups — the record's
 // contiguous arm region size.
@@ -4543,12 +4636,7 @@ fn emit_expr(expr) = match expr {
     wat_emit(int_to_str(string_offset(op_name)))
     wat_emit(") (global.set $yield_op)\n")
     wat_emit("    (i32.const 1) (global.set $yield_flag)\n")
-    match repr_of(lookup_ty(h)) {
-      RF64 => wat_emit("    (f64.const 0)\n"),
-      RF32 => wat_emit("    (f32.const 0)\n"),
-      RI64 => wat_emit("    (i64.const 0)\n"),
-      _ => wat_emit("    (i32.const 0)\n"),
-    }
+    emit_zero_at(repr_of(lookup_ty(h)))
   },
   LKExtend(h, k_expr) => {
     // band B M1.3 — the k2 boundary's yield path: compose the frame's
@@ -4561,12 +4649,7 @@ fn emit_expr(expr) = match expr {
     // bracket).
     emit_expr(k_expr)
     wat_emit("    (call $__k_extend)\n")
-    match repr_of(lookup_ty(h)) {
-      RF64 => wat_emit("    (f64.const 0)\n"),
-      RF32 => wat_emit("    (f32.const 0)\n"),
-      RI64 => wat_emit("    (i64.const 0)\n"),
-      _ => wat_emit("    (i32.const 0)\n"),
-    }
+    emit_zero_at(repr_of(lookup_ty(h)))
   },
   LIf(_h, cond, then_body, else_body) => {
     // The if's result WIDTH is the branches' proven join, read live
@@ -4696,13 +4779,18 @@ fn emit_expr(expr) = match expr {
     // the resolved record read on LStateSlotStore (the __hrec ladder),
     // so anonymous and named installs are ONE shape — no global binds.
     let local_name = "__hstate_{int_to_str(h)}"
-    let nstate = len(inits)
+    // INITS are the install's config arguments; the declaration's state
+    // follows them, written by its init fn.
+    let nfields = handler_state_count(hname)
+    let nstate = len(inits) + nfields
     let total_arms = sum_arm_name_lens(arm_names)
     // The arms' `<~` lines follow the arms in this record — one ring per
     // site per INSTALL, so two installs of one handler are two filters.
-    // Read off the same registered arm names the fence is summed from;
-    // each line carries the slot lower assigned it past the fence.
-    let arm_lines = handler_arm_lines(arm_names)
+    // Read off the same registered arm names the fence is summed from, and
+    // the init fn's after them; each line carries the slot lower assigned it
+    // past the fence.
+    let arm_lines =
+      handler_arm_lines(arm_names) ++ if nfields > 0 { fn_lines_of(init_fn_name(hname)) } else { [] }
     let size = 8 + 4 * (nstate + total_arms + len(arm_lines))
     // alloc the handler-state record through the one aligned $alloc
     wat_emit("    (local.set $")
@@ -4717,17 +4805,22 @@ fn emit_expr(expr) = match expr {
     wat_emit(int_to_str(nstate))
     wat_emit(")(i32.store offset=4)\n")
     // The install's key (`arm_site_pairs`), read under the bracket this
-    // install stands in: the arms it runs, and the declaration's state inits.
-    let pairs = arm_site_pairs(h)
-    let enc = arm_enc(pairs)
-    let nconfig = install_config_count(h)
-    // state-field inits at 8+i*4 (config first, then `with` fields)
-    emit_state_init_writes(local_name, take(nconfig, inits), 0)
-    emit_decl_inits_keyed(local_name, drop(nconfig, inits), nconfig, pairs, enc)
+    // install stands in: the arms it runs and the init fn it calls.
+    let enc = arm_enc(arm_site_pairs(h))
+    // the config arguments at 8+i*4, first
+    emit_config_writes(local_name, inits)
     // each effect-group's arms contiguous + its [record, base] entry
     emit_handler_effect_entries(local_name, nstate, arm_names, enc)
     // the arms' `<~` rings, past the arms
     emit_line_mints(arm_lines, local_name)
+    // The state, written by the declaration's init fn with this record as its
+    // $__state — before the world push below, so an init performs in the
+    // installer's world.
+    if nfields > 0 {
+      wat_emit("(local.get ${local_name})(call ${arm_symbol(init_fn_name(hname), enc)})(drop)\n")
+    } else {
+      ()
+    }
     // The WORLD bracket — every install draws its runtime edge: save the
     // live chain, cons one [key][entry][parent][install_world] node per
     // absorbed effect group (entry = the group's [record][base] view built
@@ -4913,7 +5006,16 @@ fn emit_expr(expr) = match expr {
         wat_emit(")\n")
         emit_install_world(disp, hs)
         match perform_target(disp) {
-          Some(target) => wat_emit("    (call ${ref_symbol(target)})\n"),
+          Some(target) => {
+            // A direct call of an op's arm speaks the op's declared face,
+            // the one its arguments were emitted at (`op_face_symbol`).
+            let sym = match target {
+              RefArm(_, base) => op_face_symbol(base, ref_symbol(target)),
+              RefName(n) => op_face_symbol(n, n),
+              RefSite(_, _) => ref_symbol(target),
+            }
+            wat_emit("    (call ${sym})\n")
+          },
           None => {
             wat_emit("    (call_indirect (type ")
             wat_emit(perform_ft(disp, args))
@@ -5177,8 +5279,8 @@ fn emit_expr(expr) = match expr {
   // name-resolution miss (productive-under-error): emit the value as
   // drop, no store.
   //
-  // A WIDE value lives in the cell its install boxed it into — the slot holds
-  // the cell's address (`emit_state_init_writes`) — so the commit writes
+  // A WIDE value lives in the cell its handler's init fn made for it — the
+  // slot holds the cell's address (LStateInit) — so the commit writes
   // THROUGH the slot, in place: no new cell, nothing allocated per resume, a
   // handler's per-sample state as cheap to update as a local. The first form
   // stored the f64 into the word slot itself, eight bytes over a four-byte
@@ -5198,6 +5300,15 @@ fn emit_expr(expr) = match expr {
       wat_emit("    (i32.store offset={int_to_str(slot_offset)})\n")
     }
   },
+  LStateInit(_h, _hname, slot, value) => {
+    // A state field's first store, in its handler's init fn, whose $__state
+    // IS the install record. A wide value takes a cell of its own here — the
+    // slot ABI is words, and every later commit writes through this cell.
+    wat_emit("    (local.get $__state)\n")
+    emit_expr(value)
+    emit_wide_ref(tail_expr_repr(value))
+    wat_emit("    (i32.store offset={int_to_str(8 + slot * 4)})\n")
+  },
   LDeclareFn(_fn_ir) => // H1.4: module-level fn declaration. The fn body is emitted
   // by emit_fns_expr's deep walk; this expression-position
   // appearance is a no-op (returns 0 as the LBlock placeholder
@@ -5215,12 +5326,8 @@ fn emit_expr_list_at(exprs, i, n) = if i >= n {
   emit_expr_list_at(exprs, i + 1, n)
 }
 
-// emit_const — productive-under-error per Hazel discipline: unknown
-// LowValue shapes emit `(i32.const 0)` placeholder instead of trapping
-// at the match-exhaustiveness fallthrough. The trap was a Hβ.lower
-// drift surfacing here; named peer Hβ.lower.lconst-adt-canonical
-// closes the upstream gap. Until then, the diagnostic is the
-// wat-comment + sentinel — one mechanism, no silent failure.
+// emit_const — every LowValue enumerated, so a new constant shape cannot be
+// emitted before it is given its width.
 fn emit_const(v, h) = match v {
   LInt(n) => {
     wat_emit("    (i32.const ")
@@ -5249,10 +5356,18 @@ fn emit_const(v, h) = match v {
     wat_emit(int_to_str(offset))
     wat_emit(")\n")
   },
-  _ => {
-    wat_emit("    ;; emit_const: unknown LowValue shape\n")
-    wat_emit("    (i32.const 0)\n")
-  },
+  LZero => emit_zero_at(repr_of(lookup_ty(h))),
+}
+
+// The zero of a representation — the value every width-agreeing placeholder
+// emits (a yield's dummy through the frame's result, a k2 boundary's, the
+// floor if's dropped else), read where the width is known.
+fn emit_zero_at(r) = match r {
+  RI32 => wat_emit("    (i32.const 0)\n"),
+  RI64 => wat_emit("    (i64.const 0)\n"),
+  RF64 => wat_emit("    (f64.const 0)\n"),
+  RF32 => wat_emit("    (f32.const 0)\n"),
+  RV128 => wat_emit("    (v128.const i32x4 0 0 0 0)\n"),
 }
 
 // emit_float_const — a float literal rendered at its proven representation.
@@ -5911,6 +6026,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
   LFieldLoad(_h, rec, _o) => collect_fold_tys_expr(rec, acc),
   LConvert(_h, _, operand) => collect_fold_tys_expr(operand, acc),
   LStateSlotStore(_h, _o, v, _) => collect_fold_tys_expr(v, acc),
+  LStateInit(_h, _hn, _s, v) => collect_fold_tys_expr(v, acc),
   LConst(_, _) => acc,
   LLocal(_, _) => acc,
   LFeedbackPrior(_) => acc,
@@ -8417,6 +8533,9 @@ fn emit_low_value_const(lv) = match lv {
     wat_emit(int_to_str(offset))
     wat_emit(")\n")
   },
+  LZero => // No pattern is written with a placeholder zero; a literal pattern's word
+  // compare would read it as the word 0.
+  wat_emit("    (i32.const 0)\n"),
 }
 
 // The repr a low-value (a literal) projects: a float literal is RF64 (the

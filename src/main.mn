@@ -447,16 +447,12 @@ fn march_run() = {
 // reads INSIDE the same install (the count and the counter are one
 // handler — pipeline_check's own law).
 fn march_emit(source, fd) = compile_context(() => {
-  // The outer thunk captures fd; the install-config caveat at
-  // wat_to_file's decl means a capture-referencing config arg reads 0 —
-  // the local bind is the sound shape until the init path resolves
-  // captures. body() ~> chain is infer_context's own idiom.
-  let sink_fd = fd + 0
+  // body() ~> chain is infer_context's own idiom.
   let body = () => {
     source |> infer_program_converged |> compile_remainder
     diag_errors()
   }
-  body() ~> wat_to_file(sink_fd) ~> wasi_filesystem
+  body() ~> wat_to_file(fd) ~> wasi_filesystem
 })
 
 // The wheel's canonical file set: every .mn under lib then src (tutorials

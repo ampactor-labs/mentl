@@ -1039,13 +1039,15 @@ type DispatchTier = DtLexical(String, String) | DtSingleton(String) | DtEvidence
 type StateSlotHome = SlotPairs([(String, Int)])
 
 // The install-shape column's value (lowering-is-a-column step i): a `~>`
-// install site's handler name, its config-arg PROGRAM handles, and the
-// per-effect arm-name groups — the decl-side state inits stay readable
-// at the handler decl through the name. The config handles are where the
-// install's instantiation is read, which is what keys the arms it runs
+// install site's handler name, the PROGRAM handle of its handler expression,
+// its config-arg program handles, and the per-effect arm-name groups — the
+// decl-side state inits stay readable at the handler decl through the name.
+// The handler expression's type is the instantiated `Handler(inst)`, the
+// effect instance this install serves, and the config handles are where the
+// config's instantiation is read: together they key the arms it runs
 // (`arm_site_pairs`, lower.mn). `NoInstall` comes first so a virgin cell
 // reads as it, the `BindUnwritten` precedent.
-type InstallShape = NoInstall | InstallOf(String, [Int], [{arms: [String], ename: String}])
+type InstallShape = NoInstall | InstallOf(String, Int, [Int], [{arms: [String], ename: String}])
 
 // The emittable-fn enumeration's entry kind (lowering-is-a-column, the
 // no-mint resolution): each synthesized fn shape is a PROJECTION of
@@ -1056,8 +1058,11 @@ type InstallShape = NoInstall | InstallOf(String, [Int], [{arms: [String], ename
 // (kind, origin handle, deterministic name, fence) is what lower's
 // seven LFn writers know at construction and k2_floor never rewrites
 // (the pass carries LowFn interiors through untouched — each body is
-// floored at its own construction).
-type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm | EfkK
+// floored at its own construction). An arm carries the op it answers,
+// because it is CALLED at that op's declared face whatever its own
+// signature says (`adapter_op`, wasm.mn); a handler's state init is a fn
+// of its own that the install calls directly.
+type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm(String) | EfkInit | EfkK
 
 // THE ENUMERATION'S ENTRY — one record per emittable symbol, written by
 // lower's seven LFn writers at construction. A record, not a widening

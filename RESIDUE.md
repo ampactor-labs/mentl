@@ -1570,7 +1570,14 @@ the type fixed.
 `Hβ.tools.cost-ratchet-reads-one-sample` — RESOLVED 2026-09-07, the banked
 fix built as prescribed. `read_cost` (tools/march.sh) no longer convicts on
 one reading: a sample over the ceiling triggers two more m3 legs and the
-ratchet rules on the MINIMUM of three. Peak RSS is a one-sided measurement —
+ratchet rules on the MINIMUM of three. ▶ THE RE-READS RAN THE WRONG
+COMPILER FOR THE m4 LEG until 2026-09-28 (R0c): the recheck always ran
+m2, so an m4 breach was re-measured on the previous generation's
+footprint and the minimum could clear a peak the m4 leg held. It would
+have cleared R0c's: its m4 leg reads 857,452–864,524 KB, where m2 over the
+same source reads ~827 MB, because the m4 compiler is a 3.14 MB module to
+m2's 2.54 MB and the host pays that difference. `read_cost` takes the
+leg's own compiler now. Peak RSS is a one-sided measurement —
 allocator and OS jitter can only push an OBSERVED peak ABOVE the true
 requirement, never below — so the lone sample is biased HIGH and the minimum
 is the honest estimator; a genuine regression survives it undiminished. The
@@ -2577,7 +2584,11 @@ type and the stub are deleted, and the directory-listing gap stays a named
 peer rather than an arm.
 
 `Hβ.emit.eq-on-unresolved-operand-is-pointer-eq` — OPEN, measured 2026-09-18,
-RED contract banked the same day. The eq leaf's wildcard arm (`emit_eq_for_ty`,
+RED contract banked the same day. ▶ THE ARM CASE CLOSED 2026-09-28 (R0c),
+step (2) below as written: the handler's arms twin at the install's
+instance, so `eq-in-arm-pointer` runs green with the fixture unannotated and
+left the declared-red list. The bulk the entry renamed below (comparisons
+out of containers the graph never closed) stands. The eq leaf's wildcard arm (`emit_eq_for_ty`,
 backends/wasm.mn) answers an operand whose type is still a VARIABLE at emit with
 `i32.eq` — "a handle IS a word" — so two byte-equal Strings compare by ADDRESS
 wherever no call-site twin reaches the compare. The `++` arm beside it refuses
@@ -3915,7 +3926,41 @@ reading needs it: `derive.mn`'s `deriving(prev, …)` reads its config's
 fields in five arms. Gates: the e2 fixture and a3 turn green, and two
 installs of one handler with two config shapes each read their own.
 
-`Hβ.emit.arm-twin-converts-at-its-face` — R0b's named remainder. An arm
+`Hβ.emit.arm-twin-converts-at-its-face` — **THE INSTANCE HALF CLOSED
+2026-09-28 (R0c), pin 0bc8383e8b6ced84; the answer half is
+`Hβ.continuations.redrive-reads-the-answer-as-a-word`.** An install keys its
+arms at its effect's instance: its handler expression is typed
+`Handler(inst)` and `InstallOf` carries that expression's handle, so a
+handler with no config keys too. An arm's header reads the op's types at
+the handler's instance (`op_instance_subst`, lower.mn), which a twin then
+substitutes. The performer and every slot dispatch call at the op's
+DECLARED face (`op_abi`), so where an arm's own signature differs from it
+the arm is reached through its op-face adapter `$of$<arm>`: a direct
+perform calls it, and it holds the arm's native table slot, the half a
+dispatch through a wide declared vector reads. The emit entry carries the
+op an arm answers (`EfkArm(op)`), which is what `adapter_op` reads; the
+old note that recovering an arm's op meant splitting its composed name is
+answered by the kind. THE ADAPTER IS NOT A TWIN MECHANISM, and the build
+said so before the design did: the first form compared a twin against its
+BASE's published signature, the base was no longer emitted (R0′), so its
+face floored to all words, and the adapter was wrong for `put(x: Float, y:
+a)`. Asking what the base's face actually IS found a second defect of the
+same law, pre-existing: a handler whose instance is GROUND Float (`handler
+fsum with s = 0.5`) over an op parameter typed by the effect's variable did
+not assemble on 30a35888 (`undefined local variable "$x.f64"`: the header
+signed the op's word while the body read f64), and signing the header at
+the instance only moved the mismatch to the call. Both are one rule: an arm
+is called at its op's declared face and runs at its instance. Gates, RED on
+30a35888: `mn-arm-instance-float-sum` (1; 134), `mn-arm-instance-mixed-face`
+(1; 134, a direct perform and a walked one through the native half),
+`mn-arm-ground-instance-face` (1; does not assemble), and
+`mn-arm-instance-configless` (1; 0). Fixed by it: `mn-payload`,
+`mn-payload2` and `mn-payloaddirect` (a configless `collect` reading
+`v.beta` off a performed record) re-banked from 134 to 2: each header had
+named arm specialization as what would close its trap, and the first had
+written down 2. The wheel's one adapter is its Float `fold_handler`'s
+`result()` twin boxing into the op's word face.
+THE ENTRY AS WRITTEN AT R0b: R0b's named remainder. An arm
 signs its op's DECLARED signature: a performer converts to it, and a slot
 dispatch calls through it. Every type variable an op mentions is an
 argument of its effect's instance, so an install whose key binds one of
@@ -3945,7 +3990,68 @@ first: base arms under a wide answer may already refuse at assembly).
 `eq-in-arm-pointer`'s declared-standing failure is this class on
 comparison; it should close with it. R0c's third part.
 
-`Hβ.emit.twin-cap-meters-breadth-not-divergence` — THE CAP COUNTS THE
+`Hβ.continuations.redrive-reads-the-answer-as-a-word` — A MULTI-SHOT
+INSTALL WHOSE ANSWER IS WIDE DOES NOT ASSEMBLE, after a clean check.
+Measured 2026-09-28 on 30a35888 and on R0c's m2 alike: `effect C {
+choose() -> Float }` under `handler both(cfg) { choose() => resume(cfg.x) +
+resume(cfg.y) }`, installed over `choose() * 10.0`, fails at `(call
+$op___redrive_both)` with `expected [i32, i32] but got [i32, f64]`; so does
+an Int op under a Float answer (`both(init)` with `init = 0.25`). The
+install parks its body's result at the tee's representation (`$__hres_<h>`,
+f64 here) and hands it to the driver, whose accumulator is a word, as the
+k's result is; the redrive speaks the word protocol it was written in. The
+Int twin of the same program answers 35 on both compilers, so the protocol
+works and only its width is missing. This is the clause the arm face rule
+still keeps (`arm_face_roots`, lower.mn): a key that binds a multi-shot or
+abandon arm's answer to a wide scalar keeps the base arms, and no program
+can reach that path until this lands. THE FORM: the answer crosses the
+driver at the tee's representation, as an op's value crosses at its
+declared face: a wide answer is boxed where the install parks it and
+unboxed where the install reads the driver's result, or the redrive and
+the k are minted per answer representation. The first keeps one driver per
+handler and costs an allocation per yield on a wide answer, which the row
+must price (L0's Memory + Alloc on a multi-shot perform already charges the
+k record); the second allocates nothing. Gates: the two programs above,
+RED today by assembly; then the face rule's answer clause deletes, and
+`arm_face_roots` with it.
+
+`Hβ.emit.twin-key-is-what-the-body-reads` — A TWIN IS KEYED BY MORE THAN
+ITS BODY READS. `spec_pair_code` encodes every non-scalar pair by its
+structural signature (`fold_sig`), so two instantiations whose bodies emit
+identically are two twins. Measured on R0c's m3 (2026-09-28, bodies
+compared with their own name and every twin suffix normalized): 3,030 twins
+over 98,976 lines, 975 distinct bodies, 49,348 duplicate lines; `map` 192
+twins / 2 distinct bodies, `iterate` 137 / 1, `map_collector$init` 192 / 1,
+`fold` 104 / 3. R0c's breadth fix is what made the duplication visible
+(the cap had been hiding it at eight per base), and it is most of that
+landing's cost. THE FORM: a pair keys by STRUCTURE only where the body
+observes it — a field load or a record or variant pattern on a value whose
+type mentions the variable, a structural leaf (eq, compare, hash, show)
+over it, or a callee that observes the variable it is passed (a fixpoint
+over the call edges, taken at the base) — and by REPRESENTATION everywhere
+else. Sound by over-approximation: an unobserved structure can only merge
+bodies that emit the same bytes. The cost of a miss is a silent wrong
+layout, so the analysis must be conservative and the gate is a fixture per
+observation kind, RED where two shapes would merge wrongly. It reclaims
+R0c's cost (the ceiling's way down, verify-baseline) and is the
+precondition for L4a's derivative twins fitting under it.
+
+`Hβ.emit.twin-cap-meters-breadth-not-divergence` — **CLOSED 2026-09-28
+(R0c), pin 0bc8383e8b6ced84.** A twin demand carries its LINEAGE, the twin bases whose
+body scans produced it (`DemandTwin`'s fifth field, backends/wasm.mn), and
+the cap reads the base's count ON ITS OWN LINEAGE (`lineage_depth`), which
+grows only when a body reaches itself at a new key; a base scan starts a
+fresh lineage, since a base body's keys are fixed by its source types.
+Membership is a name map beside the accepted buffer, so
+`spec_buf_demanded`'s scan and `spec_buf_base_count` are deleted. Gates:
+`mn-twin-breadth-past-eight` (0; 134 on 30a35888), and the sig'd
+polymorphic-recursion leg stays green (its chain still caps). ▶ WHAT IT
+COST, measured on fixed input: the boot compiled its own source at 739,028
+KB; R0c's compiler on that SAME source reads 813,888–819,448 KB, so the
+machinery is the cost, not the source. Defined fns went 5,036 -> 6,661
+(`map_collector`'s arms from 8 twins to 192), and half the twin mass is
+copies, which is `Hβ.emit.twin-key-is-what-the-body-reads`.
+THE ENTRY AS WRITTEN: THE CAP COUNTS THE
 WRONG THING. `emit_reach_fix` caps a twin when its base already has eight
 accepted twins anywhere in the program (`spec_buf_base_count`); past the
 cap the twin still registers, but every reference in its body demands a
@@ -6592,7 +6698,26 @@ THE GATE LANDS WITH THE FIX. The fixture is RED today by construction,
 and gating today's behaviour GREEN would canonize the bug — §9.11's own
 warning that a banked expectation can be the bug canonized.
 
-`Hβ.lower.handler-state-init-reads-config` — ▶ THE ROOT, MEASURED
+`Hβ.lower.handler-state-init-reads-config` — **CLOSED 2026-09-28 (R0c), pin
+0bc8383e8b6ced84, by the form below.** A stateful handler's inits lower once, at the
+declaration, in the arms' frame, into `<hname>$init` (`lower_init_decl`,
+lower.mn): each field stores at its slot through `LStateInit`, a wide value
+in a cell of its own, and the init fn is keyed exactly as the arms are. The
+install writes its config arguments as ordinary expressions
+(`emit_config_writes`) and calls the init with its record before its world
+push, so an init still performs in the installer's world, and
+`E_InitPerformsOwnOp` still refuses at the site, because the init's value
+walk runs inside `preinstall_init_scope`. Both special cases are deleted
+(`lower_state_init`'s bare-config `LUpval`, `emit_state_init_writes`), with
+`lookup_handler_state_inits_of`, and so is `spec_ctx_active`, which existed
+so the install could evaluate its inits under its own key's bracket inside
+the enclosing one. Found by the build: the multi-shot k2
+floor's dummy value baked its width at lower, and a twin whose bracket
+widened it did not assemble (`if (result f64)` over `(i32.const 0)`); the
+dummy is `LZero` now, the zero of the representation its handle reads at
+emit (`emit_zero_at`). Gate: `mn-handler-init-reads-config` (35; 134 on
+30a35888).
+THE ROOT AS MEASURED
 2026-09-28 at R0b's pin (the fix is R0c's second half): the install
 LOWERS THE DECLARATION'S STATE INITS AT EVERY INSTALL, in the
 INSTALLER's scope (`lookup_handler_state_inits_of`, lower.mn). A handler
@@ -6650,7 +6775,13 @@ alternative route stands if the substrate fix proves deep — put the
 region fact in a spine column (§11 5.5's test) and the per-install fill
 has nothing left to fill.
 
-`Hβ.lower.install-config-capture-read` — a config argument that is a
+`Hβ.lower.install-config-capture-read` — **CLOSED 2026-09-28 (R0c), pin
+0bc8383e8b6ced84, with `Hβ.lower.handler-state-init-reads-config`.** The config
+arguments are installer-frame expressions now, so a captured `fd` reads
+the enclosing closure's record like any capture. `march_emit`'s `let
+sink_fd = fd + 0` and the CONFIG CAVEAT at `wat_to_file` are deleted.
+Gate: the frontier leg `install-config-capture` (12; 0 on 30a35888).
+THE ENTRY AS WRITTEN: a config argument that is a
 CAPTURED variable of the installing closure arrives as 0. Banked in the
 march_emit dig (the unregistered fixture `tests/frontier/mn-install-
 config-capture.mn`, expect 12), with a diagnosis that was half wrong:
@@ -6671,7 +6802,12 @@ unregistered: A3-pos made its authored positive rows caps, and they
 refuse its own WASI callback; de-capped it exits 0 on 30a35888 where 12
 is right, and it registers as a frontier leg with the fix.
 
-`Hβ.own.region-index-per-install` — MEASURED and its first fix REFUTED,
+`Hβ.own.region-index-per-install` — UNBLOCKED 2026-09-28 (R0c): a
+handler's init now reads its config (`Hβ.lower.handler-state-init-reads-config`,
+closed), so `region_tracker(n)` sizing its own index from `n` is a program
+the medium compiles. The bisection below was never run and is no longer
+needed; the next move is the config param and a march.
+MEASURED and its first fix REFUTED,
 2026-08-17, pin 5a61fc4eba. With the branch spawn deleted the profile is
 unambiguous: `branch_bracket` 55.95% inclusive, `list_filled_from`
 specialised on Span 25.91% SELF, and 24.04% of the whole run reached

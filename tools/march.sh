@@ -356,8 +356,8 @@ echo "m3: exit=$m3rc, $(wc -l < "$OUT/m3.wat" 2>/dev/null) lines, census=$(grep 
 # the battery does — the verdict stays a correctness fact.
 costok=1
 BASELINE=tools/verify-baseline.txt
-read_cost() {  # read_cost <leg> — sets MARCH_COST from $OUT/<leg>.time, ratchets the peak
-  local leg="$1" wall rss_kb peak_max
+read_cost() {  # read_cost <leg> <compiler> — sets MARCH_COST from $OUT/<leg>.time, ratchets the peak
+  local leg="$1" compiler="$2" wall rss_kb peak_max
   [ -s "$OUT/$leg.time" ] || return 0
   read -r wall rss_kb < <(tail -1 "$OUT/$leg.time")
   MARCH_COST="$leg leg ${wall}s wall · $(( ${rss_kb:-0} / 1024 ))MB peak RSS (${rss_kb:-0} KB)"
@@ -376,11 +376,14 @@ read_cost() {  # read_cost <leg> — sets MARCH_COST from $OUT/<leg>.time, ratch
   # measured run-variance — which is the reading that named the defect. The
   # answer to a noisy gate is a better estimator, never a raised ceiling:
   # bumping it launders jitter as headroom and the ratchet stops meaning
-  # anything. Hβ.tools.cost-ratchet-reads-one-sample.)
+  # anything. Hβ.tools.cost-ratchet-reads-one-sample.) The re-reads run the
+  # LEG'S OWN compiler: until 2026-09-28 they always ran m2, so an m4 breach
+  # was "re-measured" on the previous generation's footprint and the minimum
+  # could clear a peak the m4 leg genuinely held.
   local best="$rss_kb" i r_wall r_rss
   echo "· peak ${rss_kb}KB over the ${peak_max}KB ceiling — re-measuring before convicting"
   for i in 1 2; do
-    gen "$OUT/m2.wasm" "$OUT/$leg-recheck.wat" "$OUT/$leg-recheck.err"
+    gen "$compiler" "$OUT/$leg-recheck.wat" "$OUT/$leg-recheck.err"
     if [ -s "$OUT/$leg-recheck.time" ]; then
       read -r r_wall r_rss < <(tail -1 "$OUT/$leg-recheck.time")
       echo "·   re-read $i: ${r_rss}KB"
@@ -396,7 +399,7 @@ read_cost() {  # read_cost <leg> — sets MARCH_COST from $OUT/<leg>.time, ratch
     MARCH_COST="$leg leg ${wall}s wall · $(( best / 1024 ))MB peak RSS (${best} KB, min of 3)"
   fi
 }
-read_cost m3
+read_cost m3 "$OUT/m2.wasm"
 # ── the CENSUS gate (the 25-divergence lesson, 2026-08-08): a repin with a
 # rising census rode the TRANSITION path — verify's ratchet caught it only
 # post-pin, after the boot was already blessed. The march reads the same
@@ -473,7 +476,7 @@ elif [ "$m3rc" = 0 ]; then
     if "${W2W[@]}" "$OUT/m3.wat" -o "$OUT/m3.wasm" 2> "$OUT/m3w.err"; then
       gen "$OUT/m3.wasm" "$OUT/m4.wat" "$OUT/m4.err"; m4rc=$?; m4done=1
       echo "m4: exit=$m4rc, $(wc -l < "$OUT/m4.wat" 2>/dev/null) lines"
-      read_cost m4
+      read_cost m4 "$OUT/m3.wasm"
       if [ "$m4rc" = 0 ] && diff -q "$OUT/m3.wat" "$OUT/m4.wat" >/dev/null 2>&1; then
         echo "✓✓ TRANSITION: m3 == m4 — the NEW wheel reproduces itself; the m2/m3 diff was the emit change crossing one generation."
         if [ "${MARCH_REPIN:-0}" = 1 ]; then

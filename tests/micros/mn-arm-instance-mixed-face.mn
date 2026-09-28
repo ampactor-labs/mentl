@@ -1,0 +1,33 @@
+// expect: 1
+// mn-arm-instance-mixed-face — an arm twin is reached at its op's declared
+// face when that face is already wide somewhere.
+//
+// `put` declares its first parameter a ground Float and its second the
+// effect's type variable, so the op's face is (f64, word): a performer passes
+// `x` natively and boxes `y`. The install at `1.5` keys the arms at Float,
+// and the twin signs (f64, f64). Both ways in reach it through its op-face
+// adapter, which unboxes `y` and calls the twin: `main`'s own perform calls
+// the adapter directly, and `feed`'s walks to the record and dispatches
+// through the table's native half, where the adapter holds the twin's slot.
+// So `s` sums natively: 1.5 + 1.25 + 2.5 = 5.25.
+//
+// RED on boot 30a35888: 134. A face declared wide anywhere kept the install
+// on its base arms, which added `y`'s box pointer to the state's with no
+// diagnostic, and the compare read the sum as an address.
+effect Mix {
+  put(x: Float, y: a)
+  total() -> a
+}
+
+handler summer(init) with s = init {
+  put(x, y) => resume() with s = s + y,
+  total() => resume(s),
+}
+
+fn feed() = put(0.5, 2.5)
+
+fn main() -> Int = {
+  put(0.5, 1.25)
+  feed()
+  if total() == 5.25 { 1 } else { 0 }
+} ~> summer(1.5)

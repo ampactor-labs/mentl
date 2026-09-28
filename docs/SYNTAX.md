@@ -1369,6 +1369,8 @@ handler bounded_log(prefix: String) with count = 0, max = 100 {
 }
 ```
 
+A state init may read the handler's config — `handler window(size) with buf = make_list(size)`, `with n = cfg.x` — because each install builds its state from the config it was given, as a function of its own record, before the handler is installed: an init performs in the installer's world, and one that performs its own handler's ops is `E_InitPerformsOwnOp`. *(Real 2026-09-28, R0c: until then the install lowered the declaration's inits in its own scope, where the config does not exist, so only a bare `with n = cfg` worked and anything more reached a floor and trapped.)*
+
 ### State updates via `with` on resume
 
 When an arm wants to evolve state, it uses a `with` clause on `resume`:

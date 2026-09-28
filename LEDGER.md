@@ -35,6 +35,75 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-28 · pin 0bc8383e8b6ced84 (TRANSITION m3 == m4) · AN ARM RUNS AT ITS INSTALL'S WHOLE INSTANTIATION.
+  R0c, the three things R0b exposed, each RED on boot 30a35888, and a
+  fourth the build found. **(1) The cap counts recursion.** `emit_reach_fix`
+  capped a base at eight accepted twins program-wide, so `outer(u) =
+  inner(u)` over ten record shapes floored the ninth and tenth into base
+  `inner` and trapped. A twin demand carries its LINEAGE, the twin bases
+  whose scans produced it, and the cap reads the base's count on its own
+  lineage (`lineage_depth`), which grows only when a body reaches itself at
+  a new key; membership is a name map. **(2) A handler's state inits are a
+  function of its record.** The install re-lowered the declaration's inits
+  in the INSTALLER's scope, where the config names do not exist: `with n =
+  cfg.x` hit the unbound-name floor, and the init list's `LUpval` arm read
+  every capture as the install record's own slot, so a captured config
+  argument was written with that slot. The inits lower once, at the
+  declaration, in the arms' frame, into `<hname>$init` (`lower_init_decl`,
+  `LStateInit`), keyed as the arms are; the install writes its config
+  arguments as plain expressions and calls the init before its world push.
+  `march_emit`'s `sink_fd` workaround and `spec_ctx_active` are deleted.
+  **(3) An install keys its arms at its effect's instance.** Its handler
+  expression is typed `Handler(inst)` and `InstallOf` carries that
+  expression's handle, so a handler with no config keys too. An arm's header
+  reads the op's types through the handler's instance (`op_instance_subst`),
+  which a twin substitutes. **(4) An arm is called at its op's declared
+  face and runs at its instance** — where the two differ it is reached
+  through its op-face adapter `$of$<arm>`: a direct perform calls it, and it
+  holds the arm's native table slot. The emit entry carries the op an arm
+  answers (`EfkArm(op)`); a stateful handler's init is `EfkInit`. The face
+  rule keeps only the answer a multi-shot arm hands its driver.
+  **Kills:** "the adapter compares a twin with its base's signature" — the
+  base is not emitted since R0′, so its face floored to all words, and the
+  mixed-face micro did not assemble (`expected [i32, i32, i32] but got [i32,
+  f64, i32]`); asking what the base's face IS found (4)'s second witness, a
+  ground-Float handler over an effect-variable op parameter, which did not
+  assemble on the boot either (`undefined local variable "$x.f64"`). "The
+  adapter step's +1,598 WAT lines and +12 MB come from narrowing the face
+  rule" — a counterfactual compiler with the old rule restored emitted a
+  BYTE-IDENTICAL m3, so the rule costs the wheel nothing. "The probes exit
+  0" — a shell measurement (`$(basename …)` reset `$?`), not the runner. "A
+  multi-shot arm's wide answer keeps its base arms and is otherwise fine" —
+  no multi-shot install with a wide answer assembles at all, on the boot or
+  on m2 (`Hβ.continuations.redrive-reads-the-answer-as-a-word`).
+  **Found by the build, fixed:** the k2 floor's dummy value baked its width
+  at lower, and a twin that widened it did not assemble (`if (result f64)`
+  over `(i32.const 0)`) — `LZero` is the zero of the width read at emit;
+  `E_InitPerformsOwnOp` vanished when the inits moved into their own fn and
+  is back (the init's value walk runs in `preinstall_init_scope`); the
+  march's cost recheck re-measured an m4 breach with m2, which would have
+  cleared this very landing (`read_cost` takes the leg's compiler).
+  **Fixtures:** micros `mn-twin-breadth-past-eight` (0; 134),
+  `mn-handler-init-reads-config` (35; 134), `mn-arm-instance-float-sum` (1;
+  134), `mn-arm-instance-mixed-face` (1; 134), `mn-arm-ground-instance-face`
+  (1; does not assemble), `mn-arm-instance-configless` (1; 0); the three
+  payload micros re-banked 134 -> 2 (each named arm specialization as what
+  would close its trap, and the first wrote down 2); frontier
+  `install-config-capture` (12; 0), `eq-in-arm-pointer` off the declared-red
+  list, `field-offset-unprovable` moved to a shape nothing closes (its old
+  shape proves now and answers 9).
+  **Measured:** the breadth fix is the cost — the boot compiled its own
+  source at 739,028 KB, R0c's compiler on that same source reads
+  813,888–819,448 KB; defined fns 5,036 -> 6,661; half the twin mass is
+  copies (3,030 twins, 975 distinct bodies, 49,348 of 98,976 lines), named
+  `Hβ.emit.twin-key-is-what-the-body-reads` and the ceiling's way down.
+  selfcompile_peak_kb_max 820,000 -> 873,000 with that accounting.
+  m3 leg 12.86s · 808MB; m4 leg 13.12s · 837MB peak (857496 KB); 459,524
+  WAT lines (+44,911); crown, proof-exactness, effect-identity green;
+  frontier 434 / 0 / 1 expected-red (why-coordinates); micros 177/177
+  through the candidate; census 0; unprovable comparisons 34, shows 1,
+  field offsets 0.
+
 - 2026-09-28 · pin 30a3588811818aa8 (TRANSITION m3 == m4) · A HANDLER'S ARMS ARE KEYED BY ITS INSTALL.
   R0b. An arm is lowered once, from the handler's declaration, so every
   install ran one arm set reading its config through the declaration's own

@@ -1669,6 +1669,13 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-arm-config-record.mn" 42 yes "$dir"
   run_program "$compiler" arm-config-show-float \
     "$ROOT/tests/frontier/mn-arm-config-show-float.mn" 1 yes "$dir"
+  # A config argument that is a captured variable arrives intact, now that a
+  # handler's state inits are its own init fn and the install's config
+  # arguments are plain expressions of its frame (R0c, 2026-09-28). RED on
+  # boot 30a35888: exit 0, the config slot written with itself. Banked
+  # unregistered since the march_emit dig; registered with the fix.
+  run_program "$compiler" install-config-capture \
+    "$ROOT/tests/frontier/mn-install-config-capture.mn" 12 io-rec "$dir"
   # The root-row governance gate's three tiers, each pinned: an
   # EVIDENCE-floor demand refuses even with an install elsewhere (a
   # dead-chain perform walks garbage evidence, no belt — the one strict
@@ -3613,14 +3620,11 @@ for i in "${!compilers[@]}"; do
   # projects five arms at a fn declaration and none at a type
   # declaration, so this leg holds the surface while that one is built.
   run_program "$compiler" eight-arms "$ROOT/tests/frontier/mn-eight-arms.mn" 42 yes "$dir"
-  # `==` on an operand whose type is still a variable at emit — a handler
-  # arm over quantified op parameters, where no call-site twin reaches —
-  # emits i32.eq on two heap addresses: two byte-equal Strings compare
-  # unequal, exit 1, no diagnostic (measured 2026-09-18, nine lines). The
-  # contract is exit 0; the leg is declared RED in frontier_expected_red
-  # until the eq leaf refuses the unresolved operand at its span
-  # (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq), and it turns green
-  # the day that refusal lands with the twin reaching the arm.
+  # `==` in a handler arm over its op's quantified parameters: the arm is
+  # twinned at the install's instance (`Handler(String)`), so the compare
+  # reads String and two byte-equal Strings are equal (0). It compared their
+  # ADDRESSES and answered 1 with no diagnostic from 2026-09-18, declared RED,
+  # until R0c keyed arms by the install's instance.
   run_program "$compiler" eq-in-arm-pointer "$ROOT/tests/frontier/mn-eq-in-arm-pointer.mn" 0 yes "$dir"
   # A constructor's payload types come from the INSTANTIATION the graph
   # proved, never from the declaration that quantified them. These two

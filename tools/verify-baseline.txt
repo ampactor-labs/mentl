@@ -896,13 +896,13 @@ fs_impl_bypass_max: 7
 # count MEANS at zero is that no named fn in the wheel hides behind a lambda
 # that only forwards to it.
 frontier_expected_red: why-coordinates
-# 2026-09-18: `==` on an operand whose type is still a variable at emit (a
-# handler arm over quantified op parameters — no call-site twin reaches it)
-# emits i32.eq on two heap addresses; tests/frontier/mn-eq-in-arm-pointer.mn
-# answers 1 for two byte-equal Strings with no diagnostic. Declared RED the day
-# it was measured; retires when the eq leaf refuses the unresolved operand
-# (Hβ.emit.eq-on-unresolved-operand-is-pointer-eq) and the gate SAYS so.
-frontier_expected_red: eq-in-arm-pointer
+# 2026-09-18 → 2026-09-28: `eq-in-arm-pointer` was declared RED here — `==`
+# in a handler arm over its op's quantified parameters compared two
+# byte-equal Strings by ADDRESS, because no twin reached the arm. RETIRED by
+# R0c: an install's handler expression is typed `Handler(inst)`, the arms are
+# twinned at that instance, and a twin wide where the op declares words is
+# reached through its word face, so the compare reads String and the leg
+# answers its contract (0).
 # 2026-09-18: `eq-polymorphic-sum` was declared RED here for one landing and
 # RETIRED by proof in the next — the whole life of an expected-red entry, in a
 # day. It read: `==` on a POLYMORPHIC sum compares its payload by ADDRESS,
@@ -1059,7 +1059,10 @@ authored_own_max: 62
 # lesser copy and the index-threaded param render left with two more.
 # 719 -> 717 (2026-09-28, R0′): `spec_rec_name_seen`'s two markers left with
 # it — the twin-record dedup is one pass over a name map now, not a scan.
-authored_ref_max: 717
+# 717 -> 715 (2026-09-28, R0c): the demand buffer's two `ref dbuf` params
+# left with `spec_buf_demanded` and `spec_buf_base_count` — the twin cap reads
+# the demand's own lineage, so nothing scans the buffer.
+authored_ref_max: 715
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1152,7 +1155,25 @@ authored_ref_max: 717
 # the judgment's high-water is 313,704,904 bytes and the march read the m3
 # leg at 815,228 KB and the m4 leg at 816,024 KB. Held ~0.5% over the
 # higher reading, inside the measured noise band recorded above.
-selfcompile_peak_kb_max: 820000
+# RAISED 820,000 -> 873,000 at R0c (2026-09-28): the twin cap meters
+# recursion along each demand's lineage instead of breadth, so a generic fn
+# reached at its ninth distinct instantiation gets its own twin rather than
+# the silently-wrong capped base (mn-twin-breadth-past-eight, 134 on the
+# boot). Fixed input first: the boot (30a35888) compiled its own source at
+# 739,028 KB; the new compiler on that SAME source reads 813,888–819,448 KB
+# (two runs), so the machinery is the cost, not the source. The new
+# compiler on the new source reads 827,168–827,448 KB (m3 leg) and
+# 857,452–864,524 KB (m4 leg, the binary that becomes the boot). The guest
+# heap lines of the two legs are byte-identical (318,118,184 at the
+# judgment's high-water, 722,382,360 when the module is written), so the
+# m4 leg's extra ~35 MB is host-side: JIT-compiling a 3.14 MB module where
+# the boot was 2.53 MB. Defined fns went 5,036 -> 6,661, and HALF the twins'
+# mass is copies: 3,030 twins, 98,976 lines, 975 distinct bodies once the
+# names are normalized, 49,348 duplicate lines (`map_collector$init`: 192
+# twins, one body). That is the way down, named: key a twin by what its
+# body observes (Hβ.emit.twin-key-is-what-the-body-reads). Same rule: ~1%
+# over the highest reading.
+selfcompile_peak_kb_max: 873000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

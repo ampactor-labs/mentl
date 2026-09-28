@@ -1,0 +1,33 @@
+// expect: 1
+// mn-arm-ground-instance-face — an arm whose handler fixes its effect's
+// instance is still called at the op's declared face.
+//
+// `add` declares its parameter the effect's type variable, so every performer
+// passes it as a word: a performer does not know which handler will answer.
+// `fsum` fixes the instance at Float, so its arm reads `x` as f64. The arm is
+// reached through its op-face adapter, which unboxes the word and calls the
+// arm — from `main`'s own perform directly, and from `feed`'s through the
+// named arm the walk resolves. 0.5 + 1.25 + 2.5 = 4.25.
+//
+// RED on boot 30a35888: the module did not assemble after a clean check
+// (`undefined local variable "$x.f64"` — the arm's header signed the op's word
+// while its body read f64). Signing the header at the handler's instance
+// instead only moved the mismatch to the call (`expected [i32, f64] but got
+// [i32, i32]`), which is what named the adapter.
+effect Acc {
+  add(x: a)
+  get() -> a
+}
+
+handler fsum with s = 0.5 {
+  add(x) => resume() with s = s + x,
+  get() => resume(s),
+}
+
+fn feed() = add(2.5)
+
+fn main() -> Int = {
+  add(1.25)
+  feed()
+  if get() == 4.25 { 1 } else { 0 }
+} ~> fsum

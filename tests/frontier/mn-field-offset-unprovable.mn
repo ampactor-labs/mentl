@@ -1,8 +1,15 @@
 // A field access whose offset the graph cannot prove is a REPORT, not a
-// silent trap. The receiver here is a quantified op parameter: the effect
-// declares note's argument as the type variable v (lowercase is the
-// declaration, SYNTAX's case rule), so the arm binds a universally
-// quantified value and there is no record shape to take a slot from.
+// silent trap. The receiver here is a quantified op parameter performed with
+// main's own parameter: the effect declares note's argument as the type
+// variable v (lowercase is the declaration, SYNTAX's case rule), and the
+// value performed is one nothing in the program closes, so the install's
+// instance is an open row and there is no record shape to take a slot from.
+//
+// Until R0c this fixture performed a record literal, `note({alpha: 7, zeta:
+// 9})`, and the arm floored anyway, because no twin reached an arm through its
+// effect's instance. That shape PROVES now and answers 9 — the limitation was
+// the contract's witness, not the contract. What survives is a row nothing
+// closes.
 //
 // Before this class existed the compile said NOTHING. The emit wrote
 // (unreachable) into the module with a WAT comment naming the field, the
@@ -20,8 +27,12 @@
 // surfaces on stderr with no other error beside it. The class arms when
 // the wheel's own census of it reaches zero, and on that day this fixture
 // moves to run_refusal in the same commit.
-effect Col { note(v) -> Int }
+effect Col {
+  note(v) -> Int
+}
 
-handler colh { note(v) => resume(v.zeta), }
+handler colh {
+  note(v) => resume(v.zeta),
+}
 
-fn main() = note({alpha: 7, zeta: 9}) ~> colh
+fn main(q) = note(q) ~> colh

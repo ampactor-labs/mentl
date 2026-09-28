@@ -1254,16 +1254,28 @@ and this is the STATE.
   (`Hβ.emit.dead-base-emitted-beside-its-twins`). And a handler's arms read
   their config through the declaration's row, one arm set for every
   install (R0b, pin 30a35888): an install is a reference site, its config
-  arguments key the arms it runs, and the record stores the twins — except
-  where a key would move the op's face, which stays on the word protocol
-  (`Hβ.emit.handler-arms-specialize-per-install`,
-  `Hβ.emit.arm-twin-converts-at-its-face`). R0b exposed two more, both
-  measured and next: the twin cap counts a base's twins program-wide, so
-  ten record shapes through a two-level chain trap where eight run
-  (`Hβ.emit.twin-cap-meters-breadth-not-divergence`); and the install
-  lowers a handler's state inits in the installer's scope, where its config
-  does not exist — the one root of `Hβ.lower.handler-state-init-reads-config`
-  and `Hβ.lower.install-config-capture-read`.
+  arguments key the arms it runs, and the record stores the twins
+  (`Hβ.emit.handler-arms-specialize-per-install`). What R0b exposed CLOSED
+  at R0c (pin 0bc8383e8b6ced84). The twin cap meters recursion along each demand's
+  lineage instead of a base's twins program-wide, so ten record shapes
+  through a two-level chain run where eight did
+  (`Hβ.emit.twin-cap-meters-breadth-not-divergence`). A handler's state
+  inits lower once, at the declaration, into an init fn of the record, so
+  they read the config and a captured config argument arrives
+  (`Hβ.lower.handler-state-init-reads-config`,
+  `Hβ.lower.install-config-capture-read`). An install keys its arms at its
+  effect's instance, config or not, and an arm is called at its op's
+  declared face while it runs at its instance, reached through an op-face
+  adapter where the two differ — which also closed a pre-existing
+  ground-Float handler that did not assemble
+  (`Hβ.emit.arm-twin-converts-at-its-face`). What R0c costs and exposes:
+  the breadth fix took defined fns 5,036 → 6,661 and the self-compile's
+  peak from 735 MB to 837 MB, and half the twin mass is byte-identical
+  copies, the
+  next landing (`Hβ.emit.twin-key-is-what-the-body-reads`); and no
+  multi-shot install with a wide answer assembles, because the redrive
+  reads the answer as a word
+  (`Hβ.continuations.redrive-reads-the-answer-as-a-word`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

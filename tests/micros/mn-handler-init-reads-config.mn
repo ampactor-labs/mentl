@@ -1,0 +1,16 @@
+// expect: 35
+// A handler's state init reads its config through an expression. The
+// inits were lowered at every INSTALL, in the installer's scope, where the
+// config names do not exist, so `cfg.x` lowered to the unbound-name floor
+// and trapped (boot 30a35888: exit 134). They are a function of the
+// install record now, lowered once at the declaration in the arms' frame,
+// and keyed like the arms: two installs read two layouts (5 + 3 * 10).
+effect Q {
+  q() -> Int
+}
+
+handler h(cfg) with n = cfg.x {
+  q() => resume(n),
+}
+
+fn main() -> Int = (q() ~> h({x: 5, y: 1})) + (q() ~> h({a: 9, x: 3})) * 10

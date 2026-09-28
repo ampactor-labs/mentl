@@ -1,0 +1,21 @@
+// expect: 1
+// mn-arm-instance-configless — a handler with no config keys at its
+// install's instance.
+//
+// `larger` is generic only in its effect's variable, so nothing but the
+// install's own type — `Handler(Pick(Float))`, read off its handler
+// expression — says what its arm compares. The install keys the arm at Float
+// and `x > y` compares 2.5 with 1.5.
+//
+// RED on boot 30a35888: 0. No config meant no key, so the declared arm ran
+// and compared the two boxes' addresses (a T_EqTypeUnprovable narration),
+// and the later box won.
+effect Pick {
+  pick(x: a, y: a) -> a
+}
+
+handler larger {
+  pick(x, y) => resume(if x > y { x } else { y }),
+}
+
+fn main() -> Int = if (pick(2.5, 1.5) ~> larger) == 2.5 { 1 } else { 0 }

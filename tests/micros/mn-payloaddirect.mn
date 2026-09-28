@@ -1,4 +1,8 @@
-// expect: 134
+// expect: 2
+// EXPECTATION TRUED AGAIN (2026-09-28, R0c): the install is typed at the
+// instance its perform proves, so the arm is twinned at the record and
+// v.beta reads offset 4, answering 2: the arm specialization the paragraph
+// below was waiting for. Before, the trap (134):
 // EXPECTATION TRUED (2026-07-25, the resolved-or-loud offset landing): the
 // old banked value was the PARTIAL-SET offset read — the arm's demanded
 // {beta | rho} summed offsets over {beta} alone, so .beta read offset 0,
@@ -7,7 +11,14 @@
 // arm's rho is genuinely free (the op param is polymorphic across
 // performs), so the trap is the honest answer until arm specialization
 // (the spec-twin machinery at handler arms) closes the payload residual.
-effect Probe { emit(x) -> Int }
-handler collect { emit(v) => resume(v.beta) }
+effect Probe {
+  emit(x) -> Int
+}
+
+handler collect {
+  emit(v) => resume(v.beta),
+}
+
 fn run() with Probe + Memory + Alloc = emit({alpha: 1, beta: 2, gamma: 3})
+
 fn main(q) = run() ~> collect

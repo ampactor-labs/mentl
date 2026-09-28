@@ -1,0 +1,27 @@
+// expect: 1
+// mn-arm-instance-float-sum — an arm computes on its effect's instance at
+// Float.
+//
+// `add`'s parameter and `get`'s result are the `Acc` effect's type variable,
+// so the op's declared face is words and the performer boxes the Floats. The
+// install at `1.5` keys the arms at Float: the twin adds natively
+// (1.5 + 1.25 + 2.5 = 5.25), and the performs reach it through its word-face
+// wrapper.
+//
+// RED on boot 30a35888: 134. The face rule kept the declared arm, which
+// added the two BOX POINTERS (`i32.add`), with no diagnostic.
+effect Acc {
+  add(x: a)
+  get() -> a
+}
+
+handler keep_sum(init) with s = init {
+  add(x) => resume() with s = s + x,
+  get() => resume(s),
+}
+
+fn main() -> Int = {
+  add(1.25)
+  add(2.5)
+  if get() == 5.25 { 1 } else { 0 }
+} ~> keep_sum(1.5)
