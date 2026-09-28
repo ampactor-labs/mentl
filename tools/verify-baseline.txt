@@ -727,7 +727,24 @@ comment_refs_max: 0
 # wheel though the op that fills it declares EmitFnEntry, which is the
 # Carried-Truth Law at the element type. Drive them to zero, then arm, then
 # this line and the pre-arm fixture both retire.
-field_offset_unprovable_max: 4
+#
+# 2026-09-28 · 4 -> 8 · R0, the record row made a union-find citizen, and the
+# four are not new floors: they are four GUESSES the census could not see.
+# `ring_of_name` (rings.home / rings.imported) and `emitted_sig_of_entry`
+# (params / ret) each read two fields of an unannotated record, so their base
+# bodies' rows were the union of those two fields with nothing standing for
+# the rest — the assumed residual — and the emit baked offsets from it, right
+# only because the one record either sees happens to hold exactly those
+# fields. The rest is a variable now, so a base nothing closes floors, and
+# says so. Measured on the m3 leg (the R0 wheel compiling itself): 8 floors,
+# the four pre-existing sites unchanged, and the four new ones all in base
+# bodies nothing calls — m3.wat calls only `ring_of_name`'s twin
+# `$spr_homellb_importedllb_` (its base is called only from a base lambda of
+# `enumerate_vocabulary_calls`, whose own base is never called) and only
+# `emitted_sig_of_entry`'s twin. What drives those four back down is not
+# emitting a base whose every reference resolved to a twin
+# (`Hβ.emit.dead-base-emitted-beside-its-twins`).
+field_offset_unprovable_max: 8
 
 # The effect seam: filesystem impl calls outside the handler that owns them.
 # MEASURED 24 before this landing and 13 after (both read from the artifact,

@@ -35,6 +35,67 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-28 · pin c5439637261f50ab (TRANSITION m3 == m4) · RECORD ROW VARIABLES ARE UNION-FIND CITIZENS.
+  R0, preempting L4a by the soundness law: L4a's derivative walk was
+  built whole, and its first m2 trapped in the compiler's own
+  `facts_moved` twin, laying `prev` out as the five fields it names while
+  the runtime record held eight. The medium's projection named the shape
+  (`prev: { x | { y } assumed }`) and a reduction on boot 730e097a named
+  the class: `fn pick(u) = u.x * 10 + u.y` over `{x: 1, y: 2}` and `{a: 5,
+  x: 3, y: 4}` answered 54 for 46, with zero diagnostics. **Any helper
+  reading two fields of an unannotated record, called with two record
+  shapes, read the wrong slots for every shape but one.** The second
+  access met the first as two open rows, and `unify_two_open_records`
+  wrote each side's missing fields as the other's WHOLE remainder, tagged
+  `RowAssumed`: a union with no row variable left, so the scheme was
+  monomorphic in its rest, no twin could key it, `open_record_full_fields`
+  baked the partial set, and `subst_ty` shared the bound chain across
+  every instance. The 2026-09-01 one-field fix kept a free variable and
+  was sound; the second field is what reached this.
+  **The form:** `RecordRowTail = RowClosed | RowContinues(Int)`; the
+  assumed tail and `absorb_into_residual` are deleted. `record_row_full`
+  (graph.mn) is the one chain walk; two open rows meet at an alias, at one
+  side's rest, or at ONE fresh variable both continue into (`rows_meet`);
+  a free terminal against a closed record binds exactly the closed
+  residual or refuses (`row_end_closes`). Only free terminals are
+  written, so no chain fact is overwritten (open-against-closed used to
+  bind the row's head). Instantiation walks the chain mapping-first at
+  every link (`subst_row_walk`), and the occurs guard, free-variable
+  collection, alpha-equality, the Mycroft pair collector, the spec
+  substitution and the twin key (the scheme's free terminal paired with
+  the site's full closed record) all read the flattened row.
+  **Fixtures, RED on 730e097a:** `mn-row-two-fields-two-shapes` (54 → 46),
+  `mn-row-through-caller` (54 → 46), `mn-row-open-caller-reads` (an
+  address → 42), `mn-row-nominal-and-anonymous` (115 → 46); the
+  residual-mark gate in verify.sh reads two states, `proven` and `free`.
+  **Kills:** a config/parameter name collision (renamed, still wrong);
+  recursion (the minimal form has none); the one-field handler-config
+  floor (a3, the known loud form, not this); "two open-row parameters" as
+  the trigger (r1–r3 pass; the second FIELD and a second SHAPE or an open
+  caller are what reach it); and my own r7/r8 expectations (42 was right,
+  the arithmetic was mine). Inline adversarial pass (no dispatch — the
+  rate-limited model and the one-model rule): termination holds because
+  only free terminals are bound; mapping-first instantiation agrees with
+  the TVar rule; the hole it found, nominal records at a site with no
+  structural key, was probed on this boot and holds (the site's
+  instantiated type is the scheme's row, bound).
+  **What it exposed, named:** (1) a handler's arms read their config
+  through the declaration's open row, one arm set for every install, so
+  the e2 shape moved from a silent wrong read to the loud floor (exit 134)
+  — `Hβ.emit.handler-arms-specialize-per-install`, R0b. (2) Four base
+  bodies nothing calls used to bake an assumed layout and now floor,
+  lifting `field_offset_unprovable_max` 4 → 8 by honest accounting, and a
+  user program's row-polymorphic helper narrates its dead base's floors
+  (`pick`: two `T_FieldOffsetUnprovable` at `<stdin>:0:0-0:0`, measured
+  on this boot; the prior boot printed none) —
+  `Hβ.emit.dead-base-emitted-beside-its-twins`, R0′, whose design unifies
+  the two reference walkers so emit's reachability reads references under
+  their brackets. L4a is stashed whole and resumes after R0′ and R0b (its
+  own `deriving` handler reads its config in five arms — R0b's shape).
+  m3 leg 12.28s · 795MB; m4 leg 13.22s · 791MB peak (810108 KB, min of
+  3); crown, proof-exactness, effect-identity green; frontier 420 / 0 /
+  2; micros 164/164 through m2; census 0.
+
 - 2026-09-28 · pin 730e097a2531522c (TRANSITION m3 == m4) · THE FIRST PROGRAM THAT IS NOT THE COMPILER.
   L3 of the Pulse sprint — scene 1. `examples/pulse/render/main.mn` (460
   lines) renders ten seconds of 48 kHz stereo to a WAV through `mentl run`:

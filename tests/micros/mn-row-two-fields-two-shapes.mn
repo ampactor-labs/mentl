@@ -1,0 +1,16 @@
+// expect: 46
+// mn-row-two-fields-two-shapes — the row-polymorphic helper, read twice.
+//
+// `pick` reads two fields of a record it never names the type of, so its
+// parameter is an open row: at least `x` and `y`, and whatever else the
+// caller's record holds. Two callers hand it two different records, and
+// each must read its own `x` and `y`: 1·10 + 2 and 3·10 + 4.
+//
+// RED on boot 730e097a: 54. The second field access met the first as two
+// open rows and wrote the union as the whole row with no variable for the
+// rest, so the scheme was monomorphic in it and every call site shared one
+// residual — the last caller's shape won and the first read the wrong
+// slots, silently.
+fn pick(u) = u.x * 10 + u.y
+
+fn main() -> Int = pick({x: 1, y: 2}) + pick({a: 5, x: 3, y: 4})

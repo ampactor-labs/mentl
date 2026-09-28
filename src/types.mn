@@ -928,29 +928,21 @@ type NodeKind
   // already holds, not a new graph dimension.
   | NErrorHole(Reason)
 
-// WHAT A RESIDUAL BIND KNEW ABOUT EVERYTHING PAST ITS FIELDS. The old
-// `Option(Int)` said only whether the chain continued, and that folded two
-// different writes into one shape: the open-CLOSED writer PROVES its
-// remainder (the other side is closed, so the residual is exactly what is
-// left), while the open-OPEN writer only ASSUMES one — it has seen two
-// partial sets and their union, never the whole. `open_record_full_fields`
-// read both as "the full set is fields ++ residual", so a proof and a guess
-// produced the same field offset, and the guess is where the wrong-slot
-// class lives (`Hβ.lower.open-row-field-offset-from-known-set`).
-//
-// Measured, both repros on the shipping rule: findtag's open-open bind
-// carries nothing (both sides know `{handle}`) and its offset is right only
-// because `handle` sorts first; the second-field micro's carries one field
-// each way and is right by proof. Same writer, different inputs — so the
-// mark belongs on the WRITE, where the writer knows which it made, never
-// re-derived later from the fields alone.
+// WHAT LIES PAST A RESIDUAL'S FIELDS: nothing, proven — or the rest of the
+// record, which is a row variable like any other. There is no third answer.
+// A third one stood here until 2026-09-28, the ASSUMED tail, written when two
+// open rows met: the union of what each side knew, with nothing standing for
+// what neither had seen. Nothing to generalize meant nothing to instantiate,
+// so every caller of a helper that reads two fields shared ONE residual and
+// the last caller's record decided every caller's offsets —
+// `fn pick(u) = u.x * 10 + u.y` over `{x: 1, y: 2}` and `{a: 5, x: 3, y: 4}`
+// answered 54 for 46 (tests/micros/mn-row-two-fields-two-shapes.mn). The
+// unseen rest IS a variable; naming it is what lets each caller close it.
 type RecordRowTail
   // proven: these fields and no more
   = RowClosed
   // the remainder is another row var's residual
   | RowContinues(Int)
-  // a union of partial sets; the rest is unseen
-  | RowAssumed
 
 type GNode = GNode(NodeKind, Reason)
 
@@ -3812,7 +3804,6 @@ fn show_type(ref ty) with !Mutate = match ty {
 // sets is a guess, and they used to print identically.
 fn show_record_row_residual(fields, tail) with !Mutate = match tail {
   RowClosed => show_type(TRecord(fields)),
-  RowAssumed => "{show_type(TRecord(fields))} assumed",
   RowContinues(v) => "{show_type(TRecord(fields))} | {show_handle(v)}",
 }
 

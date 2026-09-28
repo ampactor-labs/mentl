@@ -1234,6 +1234,24 @@ and this is the STATE.
   check walked row PATHS, exponential in a cycle's depth, and keeping a
   table of entered cells took the judgment's high-water from 565 MB at the
   previous pin to 314 MB (`Hβ.infer.occurs-check-walks-row-paths`).
+- **THE UNSEEN REST OF A RECORD IS A ROW VARIABLE — CLOSED 2026-09-28
+  (R0, preempting L4a).** A helper reading two fields of an unannotated
+  record, called with two record shapes, read the wrong slots for every
+  shape but one, silently: the second access met the first as two open
+  rows and their union was written as the whole row, tagged "assumed",
+  with no variable left for a twin to key on. It was found by the
+  derivative walk trapping inside the compiler's own twin of a
+  two-record fn, not by any fixture, because every row-polymorphic helper
+  the board ran read one field or took one shape. Two open rows meet at
+  one fresh variable now, only free terminals are ever written, and every
+  reader walks the chain through `record_row_full`
+  (`Hβ.infer.record-row-vars-are-not-unioned`). What it exposed is named
+  and next: a handler's arms read their config through the declaration's
+  row, one arm set for every install
+  (`Hβ.emit.handler-arms-specialize-per-install`), and a base body whose
+  every reference resolves to a twin is emitted anyway, its floors
+  narrated at a developer who never calls it
+  (`Hβ.emit.dead-base-emitted-beside-its-twins`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

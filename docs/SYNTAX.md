@@ -846,6 +846,16 @@ symptom), and `record-field-through-list`. A row that nothing closes still
 refuses — `tests/floors/mn-unprovable-offset`, where the receiver is
 main's own parameter.
 
+**The SECOND field reached the same class again (closed 2026-09-28).** A
+body reading two fields met them as two open rows and wrote each side's
+missing fields as the other's whole remainder, leaving no variable to
+generalize, so `fn pick(u) = u.x * 10 + u.y` over `{x: 1, y: 2}` and `{a:
+5, x: 3, y: 4}` read one layout for both and answered 54 for 46, silently
+(`tests/micros/mn-row-two-fields-two-shapes.mn`). The unseen rest of a
+record is always a row variable now, never an assumed remainder: two open
+rows meet at one fresh variable both continue into, so every record shape
+still mints its own twin.
+
 ### Nominal record types
 
 When a brand is wanted (distinct identity, not just shape):

@@ -3439,48 +3439,21 @@ fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, bound
 // word-0 as the field value (a graph pointer) and `wat_emit` dumped the heap:
 // the emit corruption. The ultimate form refuses to guess an offset it cannot
 // prove; the loud trap names the unresolved receiver instead of masking it.
-// The full field set of an OPEN receiver, resolved through the row
-// residual the graph carries behind the row var (NRecordRowBound, or a
-// chain of further open rows), canonically sorted. None while any tail is
-// genuinely unresolved: the layout sorts over the FULL set, so an offset
-// prefix-summed over the partial demanded set is the wrong-slot class
-// (measured live — a {nodes, ...} demand read offset 0, the receiver's
-// first sorted field), and the unprovable case must floor loudly, never
-// return a partial sum.
-fn open_record_full_fields(fields, v) = match graph_chase(v) {
-  GNode(NRecordRowBound(residual, RowClosed), _) => Some(sort_record_type_fields(fields ++ residual)),
-  GNode(NRecordRowBound(residual, RowAssumed), _) => // The residual was CARRIED, not proven: a union of two partial sets,
-  // with nothing known about what lies past it. This arm answers exactly
-  // as RowClosed does, which is today's measured behaviour and is what
-  // keeps a correct program correct — refusing here turns mn-findtag into
-  // a trap, measured twice. The mark makes the difference legible at the
-  // query and the floor while that stays true; what an assumed remainder
-  // should DO is the open half of
-  // `Hβ.infer.record-row-residual-is-learned-or-assumed`.
-  Some(sort_record_type_fields(fields ++ residual)),
-  GNode(NRecordRowBound(residual, RowContinues(next_v)), _) => // The chain CONTINUES at another row var: these residual fields are
-  // known, the rest is not yet. Chasing on keeps the answer honest —
-  // a still-free tail reaches the None arm below and floors.
-  open_record_full_fields(fields ++ residual, next_v),
-  GNode(NBound(TRecordOpen(more, v2)), _) => open_record_full_fields(fields ++ more, v2),
-  GNode(NBound(TRecord(more)), _) => Some(sort_record_type_fields(fields ++ more)),
-  _ => None,
-}
-
-// The same walk held to the TWIN KEY's standard, which is stricter than the
-// offset read's. An assumed remainder is a carried union with nothing known
-// past it; the offset read tolerates it because refusing there turns a
-// correct program into a trap (measured twice), but a key has no such excuse
-// — two sites keyed on a guess mint two bodies that disagree, which is the
-// wrong-slot class with extra steps. Unproven, it declines and the site keeps
-// the floor.
-fn open_record_proven_fields(fields, v) = match graph_chase(v) {
-  GNode(NRecordRowBound(residual, RowClosed), _) => Some(sort_record_type_fields(fields ++ residual)),
-  GNode(NRecordRowBound(_, RowAssumed), _) => None,
-  GNode(NRecordRowBound(residual, RowContinues(next_v)), _) => open_record_proven_fields(fields ++ residual, next_v),
-  GNode(NBound(TRecordOpen(more, v2)), _) => open_record_proven_fields(fields ++ more, v2),
-  GNode(NBound(TRecord(more)), _) => Some(sort_record_type_fields(fields ++ more)),
-  _ => None,
+// The full field set of an OPEN receiver: its row read to its end
+// (record_row_full, the one walk), canonically sorted. None while the rest
+// is still a free variable: the layout sorts over the FULL set, so an offset
+// prefix-summed over a partial set is the wrong-slot class (measured live —
+// a {nodes, ...} demand read offset 0, the receiver's first sorted field),
+// and the unprovable case floors loudly, never a partial sum. The offset
+// read and the twin key read this one answer; they held two until
+// 2026-09-28, because a residual written as the union of two partial sets
+// with nothing standing for the rest had to be trusted by one and refused by
+// the other. That residual no longer exists: the rest is a variable.
+fn open_record_full_fields(fields, v) = match record_row_full(fields, v) {
+  (all, end) => match end {
+    RowEndClosed => Some(sort_record_type_fields(all)),
+    RowEndFree(_) => None,
+  },
 }
 
 fn resolve_field_offset(rec_handle, field_name) = match lookup_ty(rec_handle) {
@@ -5596,7 +5569,9 @@ fn lower_record_update(handle, base, overrides) = {
 // env to its RecordSchemeKind (same shape resolve_field_offset reads).
 fn record_fields_of_handle(handle) = match lookup_ty(handle) {
   TRecord(fields) => fields,
-  TRecordOpen(fields, _) => fields,
+  TRecordOpen(fields, v) => match record_row_full(fields, v) {
+    (all, _) => sort_record_type_fields(all),
+  },
   TName(name, _) => match env_lookup(name) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
@@ -6635,12 +6610,18 @@ fn spec_resolve_build(t) = match t {
   TFun(ps, r, eff) => TFun(map((p) => param_with_ty(p, spec_resolve(param_ty(p))), ps), spec_resolve(r), eff),
   TName(n, args) => TName(n, map(spec_resolve, args)),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_resolve(ft)) }, fs)),
-  TRecordOpen(fs, v) => // The row var read through the same live channel as every other var: when
-  // the site closed it, that record IS the resolved receiver and the open
-  // form is gone. Anything else keeps the open form with resolved fields.
-  match lookup_ty(v) {
-    TRecord(full) => TRecord(full),
-    _ => mk_record_open(map({ (n, ft) => (n, spec_resolve(ft)) }, fs), v),
+  TRecordOpen(fs, v) => // The row read to its end, its rest through the same live channel as every
+  // other var: when the site closed it, that record IS the resolved receiver
+  // and the open form is gone. Anything else keeps the open form, every
+  // learned field resolved.
+  match record_row_full(fs, v) {
+    (all, end) => match end {
+      RowEndClosed => TRecord(field_canonicalize(map({ (n, ft) => (n, spec_resolve(ft)) }, all))),
+      RowEndFree(t) => match lookup_ty(t) {
+        TRecord(full) => TRecord(full),
+        _ => mk_record_open(map({ (n, ft) => (n, spec_resolve(ft)) }, all), t),
+      },
+    },
   },
   TRefined(b, p) => TRefined(spec_resolve(b), p),
   TAlias(n, i) => TAlias(n, spec_resolve(i)),
@@ -6682,27 +6663,25 @@ fn spec_pairs_walk(st0, it0, acc) = {
     },
     TRecord(fs) => match fold_strip(it0) {
       TRecord(ifs) => spec_pairs_walk_fields(fs, ifs, acc),
-      TRecordOpen(ifs, _) => spec_pairs_walk_fields(fs, ifs, acc),
-      _ => acc,
-    },
-    TRecordOpen(fs, v) => // The ROW VAR is a quantified var like any other, and it keys the twin.
-    // Dropping it made every record shape share one body, so the offset came
-    // from the decl's own row — which never learned a residual — instead of
-    // the call's proven set: two shapes through one open-row callee answered
-    // 10 and 6 where both are 6, silently. It pairs only against a CLOSED
-    // site, because only there is the remainder proven; an open-against-open
-    // site has nothing to key on and keeps the floor.
-    match fold_strip(it0) {
-      TRecord(ifs) => spec_pairs_add(spec_pairs_walk_fields(fs, ifs, acc), graph_chase_handle(v), TRecord(ifs)),
-      TRecordOpen(ifs, iv) => // The site stays TRecordOpen even when its row is BOUND — the residual
-      // lives on the row var, which is why the offset read reconstructs the
-      // set rather than matching TRecord. Read it the same way and key on the
-      // proven whole; unproven, nothing is keyed.
-      match open_record_proven_fields(ifs, iv) {
-        Some(full) => spec_pairs_add(spec_pairs_walk_fields(fs, full, acc), graph_chase_handle(v), TRecord(full)),
-        None => spec_pairs_walk_fields(fs, ifs, acc),
+      TRecordOpen(ifs, iv) => match record_row_full(ifs, iv) {
+        (iall, _) => spec_pairs_walk_fields(fs, iall, acc),
       },
       _ => acc,
+    },
+    TRecordOpen(fs, v) => // The ROW's free REST is a quantified var like any other, and it keys the
+    // twin. Dropping it made every record shape share one body, so the offset
+    // came from the decl's own row instead of the call's proven set: two
+    // shapes through one open-row callee answered 10 and 6 where both are 6,
+    // silently. Both sides are read to their ends — the scheme's rest is the
+    // chain's terminal, never a link, and the site's record is whatever its
+    // chain spells — and the rest pairs only against a site whose row is
+    // closed, because only there is the remainder proven; an open site has
+    // nothing to key on and keeps the floor.
+    match record_row_full(fs, v) {
+      (sall, send) => match site_record_full(it0) {
+        Some(full) => spec_pairs_key_rest(send, full, spec_pairs_walk_fields(sall, full, acc)),
+        None => spec_pairs_walk_fields(sall, site_record_known(it0), acc),
+      },
     },
     TCont(i1, a1, _, _) => match fold_strip(it0) {
       TCont(i2, a2, _, _) => spec_pairs_walk(a1, a2, spec_pairs_walk(i1, i2, acc)),
@@ -6711,6 +6690,53 @@ fn spec_pairs_walk(st0, it0, acc) = {
     _ => // scalars carry no vars
     acc,
   }
+}
+
+// The site's record when its row is proven whole, read to its end.
+fn site_record_full(it0) = match fold_strip(it0) {
+  TRecord(ifs) => Some(ifs),
+  TRecordOpen(ifs, iv) => open_record_full_fields(ifs, iv),
+  TInt => None,
+  TFloat => None,
+  TUnit => None,
+  TByte => None,
+  TList(_) => None,
+  TTuple(_) => None,
+  TFun(_, _, _) => None,
+  TVar(_) => None,
+  TName(_, _) => None,
+  TRefined(_, _) => None,
+  TReprPin(_, _) => None,
+  TCont(_, _, _, _) => None,
+  TAlias(_, _) => None,
+}
+
+// Every field the site's row has learned, whether or not its rest is known.
+fn site_record_known(it0) = match fold_strip(it0) {
+  TRecord(ifs) => ifs,
+  TRecordOpen(ifs, iv) => match record_row_full(ifs, iv) {
+    (iall, _) => iall,
+  },
+  TInt => [],
+  TFloat => [],
+  TUnit => [],
+  TByte => [],
+  TList(_) => [],
+  TTuple(_) => [],
+  TFun(_, _, _) => [],
+  TVar(_) => [],
+  TName(_, _) => [],
+  TRefined(_, _) => [],
+  TReprPin(_, _) => [],
+  TCont(_, _, _, _) => [],
+  TAlias(_, _) => [],
+}
+
+// A scheme row's free rest keys the proven record; a closed scheme row is a
+// monomorphic record with nothing to key.
+fn spec_pairs_key_rest(send, full, acc) = match send {
+  RowEndFree(t) => spec_pairs_add(acc, t, TRecord(full)),
+  RowEndClosed => acc,
 }
 
 fn spec_pairs_walk_list(sts, its, acc) = if len(sts) == 0 || len(its) == 0 {

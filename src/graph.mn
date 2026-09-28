@@ -1168,7 +1168,7 @@ fn occurs_in(spine, mint_bound, handle, ref ty) with !Mutate = match ty {
     } else {
       match chase_node(spine, mint_bound, root, 0) {
         GNode(NBound(inner), _) => occurs_in(spine, mint_bound, handle, inner),
-        GNode(NRecordRowBound(fields, _), _) => occurs_in_fields(spine, mint_bound, handle, fields),
+        GNode(NRecordRowBound(fields, tail), _) => occurs_in_fields(spine, mint_bound, handle, fields) || occurs_in_row_tail(spine, mint_bound, handle, tail),
         _ => false,
       }
     }
@@ -1185,8 +1185,12 @@ fn occurs_in(spine, mint_bound, handle, ref ty) with !Mutate = match ty {
     if vroot == handle {
       true
     } else {
+      // The row is a CHAIN, and the guard walks all of it — the same links
+      // record_row_full reads, so the three walks of a record row (free
+      // variables, substitution, occurs) agree about where it ends.
       match chase_node(spine, mint_bound, vroot, 0) {
-        GNode(NRecordRowBound(rest, _), _) => occurs_in_fields(spine, mint_bound, handle, rest),
+        GNode(NRecordRowBound(rest, tail), _) => occurs_in_fields(spine, mint_bound, handle, rest) || occurs_in_row_tail(spine, mint_bound, handle, tail),
+        GNode(NBound(inner), _) => occurs_in(spine, mint_bound, handle, inner),
         _ => false,
       }
     }
@@ -1330,9 +1334,13 @@ fn occurs_in_record_fields(spine, mint_bound, handle, ref fields) with !Mutate =
 // continues at the very handle being bound is the row sort's own infinite
 // type, and subst would walk it forever. The other two arms carry no
 // handle, so there is nothing to close.
+fn occurs_in_row_tail(spine, mint_bound, handle, tail) with !Mutate = match tail {
+  RowClosed => false,
+  RowContinues(next) => occurs_in(spine, mint_bound, handle, TRecordOpen([], next)),
+}
+
 fn record_row_tail_is(tail, handle) with Pure = match tail {
   RowClosed => false,
-  RowAssumed => false,
   RowContinues(v) => v == handle,
 }
 
@@ -1925,6 +1933,31 @@ fn spec_pairs_find(pairs, root) = match find({ (v, _) => v == root }, pairs) {
   None => None,
 }
 
+// A RECORD ROW READ TO ITS END: every field its chain has learned, and what
+// lies past them — nothing, proven, or the one free row variable the rest
+// still is. Unify writes the chain and every reader walks it here (the
+// offset, the twin key, the substitution, the free-variable collection), so
+// no reader can stop one link short and call a partial set the whole.
+type RowEnd = RowEndClosed | RowEndFree(Int)
+
+fn record_row_full(fields, v) = match graph_chase(v) {
+  GNode(kind, _) => match kind {
+    NRecordRowBound(residual, RowClosed) => (fields ++ residual, RowEndClosed),
+    NRecordRowBound(residual, RowContinues(next)) => record_row_full(fields ++ residual, next),
+    NBound(t) => match t {
+      TRecordOpen(more, next) => record_row_full(fields ++ more, next),
+      TRecord(more) => (fields ++ more, RowEndClosed),
+      _ => // A row cell bound to any other type is ill-sorted; its rest is not
+      // known, and a reader that needs it floors.
+      (fields, RowEndFree(graph_chase_handle(v))),
+    },
+    NFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
+    NRowFree(_) => (fields, RowEndFree(graph_chase_handle(v))),
+    NErrorHole(_) => (fields, RowEndFree(graph_chase_handle(v))),
+    NRowBound(_) => (fields, RowEndFree(graph_chase_handle(v))),
+  },
+}
+
 // Exact root-keyed substitution — the twin's one rule. Sound since the
 // subscript fracture fix (Force = UNIFY at IndexExpr): a generic body's
 // element classes and the scheme's quantified vars are ONE union-find root,
@@ -1949,12 +1982,10 @@ fn spec_subst_pairs(t, pairs) = match t {
       NRecordRowBound(_, _) => // A RECORD row var is a quantified var like any other, and the site that
       // closed it proved the whole field set. Returning it verbatim left the
       // substitution unable to answer for the one var whose binding decides
-      // every field offset, so the TRecordOpen arm below had to work around it
-      // — and an INTERIOR site, a call inside another twin's own body, went
-      // through neither and read the decl's unlearned row again. Unpaired,
-      // spec_pair_or_var answers TVar(u), which is exactly what these arms
-      // returned; paired, it answers the record that was proven.
-      spec_pair_or_var(u, pairs),
+      // every field offset — and an INTERIOR site, a call inside another
+      // twin's own body, read the decl's unlearned row again. A bound cell is
+      // a link in a chain, so it answers as the record the chain spells.
+      spec_subst_pairs(TRecordOpen([], u), pairs),
       NRowFree(_) => spec_pair_or_var(u, pairs),
     },
   },
@@ -1968,15 +1999,19 @@ fn spec_subst_pairs(t, pairs) = match t {
   TName(n, args) => TName(n, map((x) => spec_subst_pairs(x, pairs), args)),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs)),
   TRecordOpen(fs, v) => // A row var is a var, and the site that closed it proved the WHOLE field
-  // set. Substituting the known fields' types while keeping `v` verbatim
-  // discarded that proof, and the discard is what the wrong-slot class was
-  // made of: the receiver stayed open in the twin, so the offset came from
-  // the known set's own ordering instead of the record's. Paired, the open
-  // row resolves to the closed record it was proven to be, and every offset
-  // downstream reads the full sorted set.
-  match spec_pairs_find(pairs, graph_chase_handle(v)) {
-    Some(closed) => closed,
-    None => mk_record_open(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs), v),
+  // set. The row is read to its END first: a key sits on the chain's free
+  // terminal, never on a link, so a receiver whose row learned fields
+  // across several unifies answers as the one record every link spells.
+  // Paired, the rest resolves to the closed record the site proved;
+  // unpaired, the row stays open at its terminal; closed, it is the record.
+  match record_row_full(fs, v) {
+    (all, end) => match end {
+      RowEndFree(t) => match spec_pairs_find(pairs, t) {
+        Some(closed) => closed,
+        None => mk_record_open(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, all), t),
+      },
+      RowEndClosed => TRecord(field_canonicalize(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, all))),
+    },
   },
   TRefined(b, p) => TRefined(spec_subst_pairs(b, pairs), p),
   TAlias(n, i) => TAlias(n, spec_subst_pairs(i, pairs)),

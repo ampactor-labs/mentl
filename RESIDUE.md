@@ -3863,6 +3863,42 @@ across the concatenated weave). If it does, ordering is a second problem
 and the refusal waits on it; if it never does, the refusal is free. That
 measurement is the gate and it has not been taken.
 
+`Hβ.emit.handler-arms-specialize-per-install` — A HANDLER IS GENERIC AND ITS
+ARMS ARE NOT. `handler facting(cfg) { facts_now() => … cfg.x … }` reads its
+config through an open row, and an install `(…) ~> facting(prev)` proves
+the whole record at the install the way a call proves an argument — but the
+install instantiates the handler's scheme, lowers to ONE set of arm fns
+(`op_facting_facts_now`) and stores their indices, so every install runs
+arms judged against the DECLARATION's own open row. One field floors loudly
+(a3: `resume(cfg.x)` over `{w: 9, x: 3}` traps with
+`T_FieldOffsetUnprovable`); before R0 two fields baked an assumed union
+and were silently right or wrong by the shape of the record, and since R0
+they floor too. Measured on the R0 m2: `mn-row-config-read-in-arm`
+(banked in the scratchpad for this landing) exits 134 where 42 is right.
+THE FORM: the install site IS a reference site. The handler name at the
+install carries its instantiated type; its spec pairs come from the same
+walk a call's do (`spec_site_pairs_resolved`, which answers `[]` for a
+`HandlerKind` today); a non-floor key demands a twin of every arm fn under
+those pairs, and the install stores the twins' indices. The derivative
+reading needs it: `derive.mn`'s `deriving(prev, …)` reads its config's
+fields in five arms. Gates: the e2 fixture and a3 turn green, and two
+installs of one handler with two config shapes each read their own.
+
+`Hβ.emit.dead-base-emitted-beside-its-twins` — A BASE BODY WHOSE EVERY
+REFERENCE RESOLVED TO A TWIN IS EMITTED ANYWAY. Total monomorphization
+twins every keyed call site, but reachability runs at lower, on plain
+names, before the keys exist — so the base (floor) body of a generic
+function is emitted beside its twins even when nothing calls it, carrying
+floors for every open row it reads. Measured at R0 on the m3 leg: four of
+the eight field-offset floors sit in such bases (`ring_of_name` is called
+only from a base lambda of `enumerate_vocabulary_calls`, whose own base is
+never called; `emitted_sig_of_entry`'s base is never called), which is
+what lifted `field_offset_unprovable_max` 4 → 8. THE FORM: reachability
+over the EMITTED graph — each body's references resolved under its own
+bracket, from main and the init lets — so a base is emitted only when some
+reference names it; "nothing is derived that was not demanded" at the
+emit. The census falls by exactly the dead bases' floors.
+
 `Hβ.emit.field-offset-floor-is-never-reported` — RESOLVED 2026-09-15. THE
 FLOOR WAS WRITTEN AND NEVER SAID. `emit_expr`'s `LFieldLoad` arm answered an
 unprovable offset with `(unreachable)` plus a WAT comment naming the field,
@@ -3992,8 +4028,57 @@ operand handles were the worthiness predicate's input; 5.1a deleted the
 predicate and left the collection. A collected-and-never-read accumulator half
 is the write-only-ledger shape at the emit layer.
 
-`Hβ.infer.record-row-vars-are-not-unioned` — RECORD ROW VARS ARE SECOND
-CLASS IN THE UNION-FIND, and that is what survives the offset fix below.
+`Hβ.infer.record-row-vars-are-not-unioned` — **CLOSED 2026-09-28 (R0),
+pin c5439637261f50ab.** The unseen rest of a record is a ROW VARIABLE, and there is
+no third answer: `RecordRowTail = RowClosed | RowContinues(Int)`, the
+assumed tail deleted. Two open rows that meet are read to their ends
+(`record_row_full`, graph.mn — the one walk every reader and writer
+takes), their shared fields unify, and each free rest learns what the other
+side knew: an alias when both know the same fields, one side continuing at
+the other's rest when one knows nothing more, otherwise both continuing at
+ONE fresh variable (`rows_meet`, infer.mn). Only free terminals are ever
+written, so no chain fact is overwritten (open-against-closed used to bind
+the row's HEAD and replaced whatever residual it held). Instantiation walks
+the chain mapping-first at every link (`subst_row_walk`) — `subst_ty`
+stopped at the head and SHARED every link past it across all callers —
+and the twin key, `spec_subst_pairs`, the offset read, `spec_resolve`, the
+occurs guard, the free-variable collection and Mycroft's alpha-equality all
+read the same flattened row.
+▶ THE MEASURED CLASS WAS WIDER THAN THIS ENTRY KNEW, and it was found by
+L4a's own code: the derivative reading's fixpoint trapped in the compiler's
+`facts_moved` twin, which laid `prev` out as the five fields it names while
+the record held eight. Reduced on boot 730e097a to the most basic
+row-polymorphic program there is — `fn pick(u) = u.x * 10 + u.y` over
+`{x: 1, y: 2}` and `{a: 5, x: 3, y: 4}` answered 54 for 46, silently
+(`tests/micros/mn-row-two-fields-two-shapes.mn`). Any helper reading TWO
+fields of an unannotated record, called with two record shapes, read the
+wrong slots for every shape but the last, because the second access met the
+first as two open rows and wrote their union as the whole row: no variable
+to generalize, so every caller shared one residual. The one-field case the
+2026-09-01 fix covered keeps a free variable and was sound; the second field
+is what reached this. Also RED before and GREEN after:
+`mn-row-through-caller` (the same through an unannotated caller, 54 → 46)
+`mn-row-open-caller-reads` (two helpers reading one record an open
+caller holds: an address → 42) and `mn-row-nominal-and-anonymous` (a
+nominal and an anonymous record through one helper: 115 → 46).
+▶ KILLS ON THE WAY, each by a probe: a name collision between a handler's
+config parameter and a function's parameter (renamed, still wrong);
+recursion (the minimal form has none); the one-field handler-config floor
+(a3 — the known LOUD floor, not this); "two open-row params" as the shape
+(r1, r2, r3 pass — the trigger is a second FIELD read through one
+parameter together with a second record SHAPE or an open caller; one field,
+or two fields at one shape, stayed right).
+▶ WHAT IT EXPOSED, named: (1) a handler arm reading its CONFIG's fields has
+no twin per install, so the e2 shape (`mn-row-config-read-in-arm`, banked
+for its own landing) moved from a silent wrong read to the known loud floor
+— `Hβ.emit.handler-arms-specialize-per-install`. (2) Four base bodies that
+used to bake offsets from an assumed union now floor, every one in a base
+nothing calls; the census rose 4 → 8 by honest accounting
+(`Hβ.emit.dead-base-emitted-beside-its-twins`).
+▶ THE HISTORY BELOW IS THE RECORD OF HOW THE ROOT WAS FOUND, kept because
+the three refuted repairs and the discriminator defect are the instructive
+part. RECORD ROW VARS WERE SECOND CLASS IN THE UNION-FIND, and that is what
+survived the offset fix below.
 **THIS ENTRY IS THE ROOT AFTER ALL.** It was briefly re-rooted onto emit
 hygiene on 2026-09-16 and that claim was RETRACTED the same day by building
 the prune and measuring 0 dropped: the four floor bases are referenced and
@@ -4662,6 +4747,14 @@ into a trap, which is measured, so the answer is not "floor on assumed".
 The two candidates are narrowing the assumed row at the call site so the
 question never arises, and specializing the receiver's layout per call
 site. Both are the standing fork, and the fork is Morgan's.
+▶ THE FORK DISSOLVED (2026-09-28, R0 — `Hβ.infer.record-row-vars-are-not-
+unioned`'s closing). It was never a choice between two readings of the
+assumed residual, because the assumed residual was the defect: a union of
+partial sets with nothing standing for the rest. The rest is a variable
+now, so the question "what should an assumed remainder do" has no subject
+— a remainder is proven or it is a variable each caller closes, which is
+both candidates at once: the call site narrows the variable, and the
+narrowing keys the receiver's twin.
 ▶ A GREEN GATE LANDED FOR THE ADJACENT SHAPE, because the class needs
 oracles on both sides of the line. `tests/micros/mn-open-row-second-field`
 runs findtag's exact flow but reads `region_id`, the SECOND-sorting field,

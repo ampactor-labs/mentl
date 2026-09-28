@@ -1,0 +1,13 @@
+// expect: 46
+// mn-row-through-caller — the row's rest crosses an unannotated caller.
+//
+// `via` passes its record straight through to `pick`, so neither function
+// knows the record's shape; each call of `via` must still reach `pick` with
+// its own layout: 1·10 + 2 and 3·10 + 4.
+//
+// RED on boot 730e097a: 54, the same shared residual one call deeper.
+fn pick(u) = u.x * 10 + u.y
+
+fn via(u) = pick(u)
+
+fn main() -> Int = via({x: 1, y: 2}) + via({a: 5, x: 3, y: 4})

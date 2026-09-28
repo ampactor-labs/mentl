@@ -344,59 +344,49 @@ if C=$(wt_m2_ensure); then
 
   # 2d. THE RESIDUAL MARK — the projection must say which KIND of remainder
   #     it holds, and each fixture declares the kind it expects on a
-  #     `// residual: proven|assumed` header. Both readings are gated,
-  #     because a projection saying "assumed" everywhere or nowhere passes a
-  #     one-sided check.
+  #     `// residual: proven|free` header. Both readings are gated, because a
+  #     projection saying "open" everywhere or nowhere passes a one-sided
+  #     check.
   #
-  #     The header replaced a bare "must contain assumed" on 2026-09-03, and
-  #     the reason is the finding rather than a convenience: the mark that
-  #     check asserted was itself manufactured. absorb_into_residual bound
-  #     `[] assumed` onto cells that knew nothing, so a decl's own row
-  #     rendered "assumed" because a guess had been written on it. With that
-  #     write gone a decl's unclosed row projects FREE — honestly — and a
-  #     residual the call proves projects its fields. The gate now tests the
-  #     projection's honesty in whichever state the graph is actually in.
+  #     There were three kinds until 2026-09-28. The third, "assumed", was
+  #     the union of two partial sets written as a whole row with nothing
+  #     standing for the rest — and it was the defect, not a state: every
+  #     caller of a helper that reads two fields shared one such residual.
+  #     Two open rows now continue at one fresh variable, so an unproven
+  #     remainder is always a variable and projects open.
   rm_n=0; rm_bad=0
   for rf in tests/rows/*.mn; do
     [[ -e "$rf" ]] || continue
     rm_n=$((rm_n+1))
     r=$(basename "$rf" .mn)
     rwant=$(sed -n '1s|^// expect: \([0-9]\+\)$|\1|p' "$rf")
-    rkind=$(sed -nE 's#^// residual: (proven|assumed|free)$#\1#p' "$rf" | head -1)
+    rkind=$(sed -nE 's#^// residual: (proven|free)$#\1#p' "$rf" | head -1)
     if [[ -z "$rkind" ]]; then
-      say "✗ row $r: no '// residual: proven|assumed|free' header — the expected mark is the gate"
+      say "✗ row $r: no '// residual: proven|free' header — the expected mark is the gate"
       rm_bad=$((rm_bad+1)); continue
     fi
     rout=$(tools/run-micro.sh "$rf" "$rwant" "${RTLIBS[@]}" 2>/dev/null | grep -E '^(PASS|FAIL)' | tail -1)
     [[ "$rout" == PASS* ]] || { say "✗ row $r: ${rout:-no output}"; rm_bad=$((rm_bad+1)); continue; }
     rproj=$(wt_run --dir . "$C/m2.wasm" query "$rf" "type pick" 2>/dev/null)
-    # Three states, not two. A remainder is PROVEN (rendered as its fields),
-    # ASSUMED (rendered with the mark), or genuinely FREE — and the third was
-    # invisible while absorb_into_residual stamped `[] assumed` onto cells that
-    # knew nothing, which is what made "assumed" look like the only unproven
-    # state there was.
+    # Two states. A remainder is PROVEN (rendered as its fields) or FREE
+    # (rendered open, `| r…`), and a free one is a variable each caller closes.
     case "$rkind:$rproj" in
-      assumed:*assumed*) ;;
-      assumed:*) say "✗ row $r: declares an assumed remainder, projection does not mark one"; rm_bad=$((rm_bad+1)) ;;
-      proven:*assumed*) say "✗ row $r: declares a proven remainder, projection marks it assumed"; rm_bad=$((rm_bad+1)) ;;
       proven:*'|'*) say "✗ row $r: declares a proven remainder, projection still shows an open row"; rm_bad=$((rm_bad+1)) ;;
       proven:*) ;;
-      free:*assumed*) say "✗ row $r: declares a free remainder, projection marks it assumed — a guess was written on it"; rm_bad=$((rm_bad+1)) ;;
       free:*'|'*) ;;
       free:*) say "✗ row $r: declares a free remainder, projection shows it resolved"; rm_bad=$((rm_bad+1)) ;;
     esac
   done
   ctl=$(wt_run --dir . "$C/m2.wasm" query tests/micros/mn-findtag.mn "type pick" 2>/dev/null)
   case "$ctl" in
-    *assumed*) say "✗ row control: findtag's proven residual is marked assumed"; rm_bad=$((rm_bad+1)) ;;
     *region_id*) ;;
     *) say "✗ row control: findtag's residual did not project at all"; rm_bad=$((rm_bad+1)) ;;
   esac
   if [[ "$rm_n" -eq 0 ]]; then
-    say "✗ residual mark: no fixtures — proven and assumed remainders need both sides"
+    say "✗ residual mark: no fixtures — a remainder's kind needs a declared fixture"
     fail=1
   elif [[ "$rm_bad" -eq 0 ]]; then
-    say "✓ residual mark: $rm_n assumed remainder(s) project as assumed; the proven control does not"
+    say "✓ residual mark: $rm_n fixture(s) project the remainder they declare; the proven control resolves"
   else
     say "✗ residual mark: $rm_bad check(s) failed"
     fail=1
