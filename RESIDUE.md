@@ -2481,16 +2481,30 @@ and `sequential_compose`'s (each task inline, in this instance) does not;
 the first form read the schedule CLASS and refused the sequential twin on
 the frontier's scheduled-effect leg (exit 25) before the pin.
 
-`Hβ.threads.gate-counts-host-clones` — OPEN, measured 2026-09-25. The thread
-gate's ratchet (`judge_spawn_delta_max: 0`) counts `clone` under strace and
-was RED in a fresh container with no wheel change ("delta 1 exceeds 0 — 1
-decl 10, 61 decls 11"): a host-sensitive number standing in for a wheel
-fact. The count belongs to the medium — emitted spawn sites and the
-judgment's own spawns as a `mentl query` facet; strace stays a control.
-SECOND MEASUREMENT 2026-09-27 (the F0b pin): the same "1 decl 10, 61 decls
-11" on one board run, then delta 0 (10/10) on the gate alone, on the board's
-re-run, and on the previous boot under the same rebuilt runner — three draws
-each. The wheel did not move the number; one host clone did.
+`Hβ.threads.gate-counts-host-clones` — CLOSED 2026-09-28 (the R0e board).
+The thread gate's ratchet (`judge_spawn_delta_max: 0`) counted `clone` under
+strace as the delta between a 61-declaration and a 1-declaration compile,
+and went RED three times with no wheel change: "1 decl 10, 61 decls 11" in
+a fresh container (2026-09-25), the same on the F0b pin's board and then
+delta 0 on every re-draw (2026-09-27), and "1 decl 9, 61 decls 10" on the
+R0e board (2026-09-28). The third red is the stop, and the root was in the
+boot's own import section: since 9f766769 (the fan stopped spawning,
+2026-09-19) the wheel imports no `wasi.thread-spawn`, so the compile CANNOT
+create a guest thread, and every clone the delta saw was the host's. The
+gate reads two exact facts now and requires them to agree: the ARTIFACT (a
+module imports `wasi.thread-spawn` exactly when its reached tree performs
+`spawn_task`, and the runner creates a guest thread only through that
+import) and the CLAIM (`main`'s row carries `WasiThreads`, through `mentl
+query <file> "type main"`). The positive control reads both for the
+real-spawn fixture and its sequential twin, which must split SPAWN/NONE;
+strace, the delta and `judge_spawn_delta_max` are deleted. Seen RED the day
+it landed, on the tree at b0edc631 (the last boot that spawned), and the red
+was not the one predicted: the boot imported `wasi.thread-spawn` while the
+row at `main` rendered no `WasiThreads` — the source's claim about its own
+width was false at that pin, which is the disagreement the gate exists to
+catch. Where that row lost the effect was not measured; `E_EffectMismatch`
+was not armed until 2026-09-25 and authored rows were inventories until A4.
+What remains is the projection: `Hβ.march.concurrency-is-a-projection`.
 
 `Hβ.ide.session-call-reinstantiates-per-call` — OPEN, read 2026-09-25.
 `ide/wheel-worker.js:278-288` re-instantiates the wasm and zero-fills
@@ -4079,34 +4093,34 @@ floor, no diagnostic), `mn-arm-config-pattern` (65 for 46),
 the key itself and was seen RED only through a copy of this landing's
 compiler with every shape mark stubbed out (134).
 
-`Hβ.lower.bind-handle-typed-subpattern` — OPEN, THE LIST HALF (entered
-2026-09-28, R0d; the peer had been cited only in lower.mn's comment above
-`bind_pat_locals_floor`, which is a gap that did not exist by this file's
-own rule). A sub-pattern's binder is declared at the width of the type it
-matched. The constructor half CLOSED 2026-09-18 and the record half at R0d,
-each because a floored binder beside an f64 read names two different
-locals. THE LIST HALF IS LIVE AND LOUD: a list pattern binding a Float
-element does not assemble, on boot 0bc8383e and on R0d's compiler alike —
-`let [a, b] = [1.5, 3.0]` (`$a.f64` undefined), `match [1.5, 3.0] { [x,
-y] => x + y, … }` (`$x.f64`), and a generic `fn head_or(xs, d) = match xs
-{ [h, ..._] => h, [] => d }` at its Float twin (`$h.f64`). `mentl check`
-passes all three. A rest binder over the same lists runs, since the rest is
-a list and a list is a word. THE CAUSE, read at both ends: `bind_pat_locals`
-binds a list's elements at the floor (`bind_pat_locals_floor`), and the
-emit declares each element binder a word (`walk_locals_pat_list`) and binds
-it at `RI32` (`emit_pat_subs_binds`, `_flat`), while the body reads the
-binder at its own type. THE FORM, with the carrier R0d already built:
-`lower_pat_at` types each element sub-pattern by `list_elem_ty`, so
-`LPList` carries its element type beside its sub-patterns; the binder side
-reads `list_elem_ty` where it reads the floor; the emit declares and binds
-each element at `slot_repr(elem)`. A list element's word face is its
-value for a word and its ADDRESS for a wide element (lib/lists.mn's word
-protocol: "a typed site cashes the width through load_f64 at the
-boundary"), so the bind of a wide element loads the width through the
-address `$list_index` answers, and a literal predicate on a wide element
-reads the same. The flat license (`SRFlat`, raw `8 + 4i` loads) stays
-word-stride only, as its proof says. Gates: the three programs above as
-micros, each RED today by assembly.
+`Hβ.lower.bind-handle-typed-subpattern` — **CLOSED 2026-09-28 (R0e), pin
+dbbfd10784e308c3**, its last half. A sub-pattern's binder is declared at the width of
+the type its position matched: a constructor's payload (2026-09-18), a
+record's field (R0d), and now a list's element. `LPList` carries its
+element type (`list_elem_ty`, read in `lower_pat_at`), the binder side
+reads the same type, and the emit declares and binds each element at its
+slot width under the twin; a wide element's word face is its address, so
+the read loads its width through it (`emit_wide_deref` at the `PIdx` leaf).
+The raw read of a proven-flat list became an emit-time decision
+(`list_elem_read`), because the element's width is the twin's: a generic
+list literal matched in place is born packed at eight bytes a slot under a
+Float twin, and a license decided at lower would have read it at four.
+Witnesses, each failing to assemble on boots 0bc8383e and 2d784560 with
+`mentl check` clean: micros `mn-list-pattern-float-let` (`$a.f64`),
+`-float-match` (`$y.f64`), `-generic-float` (`$h.f64`), `-flat-twin`
+(`$x.f64`).
+▶ THE BUILD FOUND A SILENT WRONG BESIDE IT, on every boot: the list
+pattern's TEST walker paired its sub-patterns from the wrong end, so `[1,
+y]` compared element 1 against 1 — through a parameter and on a literal
+matched in place alike. `f([1, 5]) * 20 + direct` answered 65 for 116
+(`mn-list-pattern-literal-position`, measured on 2d784560). The bind walker
+beside it had been corrected for exactly this, its comment naming "the
+wrong-end class"; the test walker had not. It survived every board because
+none of the wheel's 177 list-pattern arms carries a refutable sub-pattern
+— §11 tripwire 3, the board blind to what the wheel never writes. The test
+and the bind are one walk each over the enumerated sub-patterns, in element
+order, and the raw and indexed reads are one `ElemRead` value rather than
+two copies of each walker.
 
 `Hβ.infer.record-update-closes-an-open-base` — OPEN, NAMED 2026-09-28
 (R0d). A record update over a generic base types its result as the base's
@@ -6938,18 +6952,18 @@ spine column, written at the one writer, and the per-install fill has
 nothing left to fill.
 
 `Hβ.march.concurrency-is-a-projection` — the thread gate's own retirement,
-banked 2026-09-06 the hour the gate landed. `tools/thread-gate.sh` counts
-the compile's guest OS threads from OUTSIDE, at clone/clone3 under strace,
-as a delta between a 61-declaration program and a 1-declaration one. Every
-line of it is a hand tool standing where a projection belongs: the medium
-performs `wasi_thread_spawn` through its own WasiThreads effect, so it
-already holds the number the script reconstructs from syscalls, and the
-honest form is `mentl march` printing concurrency beside the cost line it
-prints today — the row made visible, one more fact the self-compile reports
-about itself. Until then the gate is the scaffold tier and says so in its
-own header. The DEP is small and named: a spawn counter on the WasiThreads
-handler, read at march time; it rides Phase 9.2, where the number stops
-being 0 and starts being the width the parallel walk is supposed to have.
+banked 2026-09-06 the hour the gate landed. `tools/thread-gate.sh` counted
+the compile's OS threads from OUTSIDE, at clone/clone3 under strace, until
+2026-09-28, when three host-thread reds retired the count
+(`Hβ.threads.gate-counts-host-clones`); it reads the boot's import section
+and `main`'s row now. Half of that is already the medium — the row is
+`mentl query`'s answer — and the import read is still a hand tool standing
+where a projection belongs: the emit decides the spawn import from the
+module's own proof and no verb says so. The honest form is `mentl march`
+printing the width beside the cost line it prints today — the row and the
+import made one visible fact the self-compile reports about itself. It rides
+Phase 9.2, where the width stops being one instance and starts being the
+width the parallel walk is supposed to have.
 WHY IT IS WORTH BUILDING RATHER THAN LEAVING TO BASH: the class it guards
 (`Hβ.infer.serialized-judge-still-spawns`, below) was invisible for ten days
 to a wholly green board, and the reason is exactly that nothing on the board

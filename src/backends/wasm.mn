@@ -1751,7 +1751,7 @@ fn walk_lemit_pat(pat) = match pat {
   LPLit(_) => (),
   LPCon(_, _, pairs) => each(walk_lemit_pat, pat_of_pairs(pairs)),
   LPTuple(elems) => each({ (_, sp) => walk_lemit_pat(sp) }, elems),
-  LPList(prefix, _, _) => each(walk_lemit_pat, prefix),
+  LPList(_, prefix, _, _) => each(walk_lemit_pat, prefix),
   LPRecord(_, _, fs, _) => each({ (_, sp) => walk_lemit_pat(sp) }, fs),
   LPAlt(branches) => each(walk_lemit_pat, branches),
   LPAs(_, inner) => walk_lemit_pat(inner),
@@ -3858,7 +3858,7 @@ fn walk_locals_pat(pat, r, acc) = match pat {
   // word floor so the (dead — predicate false) arm body still assembles.
   fold(acc, (a, p) => walk_locals_pat(p, RI32, a), sub_pats),
   LPTuple(elem_binds) => walk_locals_pat_tuple(elem_binds, acc),
-  LPList(sub_pats, rest, _) => walk_locals_pat_rest(rest, walk_locals_pat_list(sub_pats, acc)),
+  LPList(elem, sub_pats, rest, _) => walk_locals_pat_rest(rest, walk_locals_pat_list(sub_pats, slot_repr(elem), acc)),
   LPRecord(_, rty, field_binds, rest) => walk_locals_pat_rest(rest, walk_locals_pat_record(record_full_fields(rty), rty, field_binds, acc)),
   LPWild => acc,
   LPLit(_) => acc,
@@ -3919,10 +3919,12 @@ fn pat_field_ty(full, rty, name: String) = match full {
 }
 
 // List elements are word-slotted (emit_pat_subs_binds' RI32 leaf).
-fn walk_locals_pat_list(pats, acc) = if len(pats) == 0 {
+// Each list-element sub-pattern declares at the element's slot width, the
+// SAME width `emit_pat_subs_binds` reads it at.
+fn walk_locals_pat_list(pats, r, acc) = if len(pats) == 0 {
   acc
 } else {
-  walk_locals_pat_list(drop_last(pats), walk_locals_pat(last(pats), RI32, acc))
+  walk_locals_pat_list(drop_last(pats), r, walk_locals_pat(last(pats), r, acc))
 }
 
 // The pattern-side offset of tuple element `target`: the align_for +
@@ -7701,23 +7703,8 @@ fn self_capture_name(captures, closure_h) = match captures {
   },
 }
 
-// Emit the stores for each field in an ADT variant record.
-// Fields are indexed from 0; each stored at offset 4 + 4*i (offset 0
-// holds the tag_id). Mirrors emit_capture_stores; the only delta is
-// the base offset (4 vs 8) — closures reserve slot 1 for capture
-// count, variants don't.
-//
-// Variant payloads are UNIFORM 4-byte i32 slots end-to-end — this store, the
-// eq read (emit_eq_variant_payload_conjunction at 4+4*i RI32) AND the LPCon
-// match-bind (emit_pat_subs_predicate base+i*4 + emit_load_chain i32.load) all
-// agree at i32 width, so store and load project ONE offset (Carried-Truth holds
-// at the variant's chosen width). Migrating the variant to the width-summed
-// product layout (an unboxed f64 variant payload) is the SAME projection
-// records now use, but it requires threading each variant's field reprs through
-// the pattern-walk read (emit_load_chain carries no per-step width today) —
-// store-only would be a silent multi-shot miscompile (Law 7). Named peer:
-// Hβ.emit.variant-payload-repr-width — the coordinated store+eq+match-bind
-// migration; the record path (emit_field_stores_acc) is the form it adopts.
+// Emit the stores for each payload of an ADT variant record, after the tag
+// word at offset 0 (`emit_variant_stores_acc`).
 fn emit_variant_field_stores_at(fields, base_i, local_name) =
   emit_variant_stores_acc(fields, 0, len(fields), 4, local_name)
 
@@ -7908,7 +7895,7 @@ fn pat_always_matches(pat) = match pat {
   LPLit(_) => false,
   LPCon(_, _, _) => false,
   LPUnresolvedCon(_, _) => false,
-  LPList(_, _, _) => false,
+  LPList(_, _, _, _) => false,
   LPTuple(ebs) => tuple_pats_always_match(ebs),
   LPRecord(_, _, fbs, _) => record_pats_always_match(fbs),
   LPAlt(branches) => alt_any_always_matches(branches),
@@ -8064,13 +8051,13 @@ fn emit_pat_predicate_at(pat, path, path_len) = match pat {
       emit_record_pattern_floor(rh, rty, !record_pat_has_binds(fbs, rest))
     },
   },
-  LPList(sub_pats, rest, srep) => {
+  LPList(elem, sub_pats, rest, srep) => {
     // count@0 is the ONE universal sequence header (every representation —
-    // flat, snoc, rope, slice — carries it). Elements: a PROVEN-flat
-    // word-stride scrutinee (the lower-time chase's license) reads raw
-    // POff(8+4i) — the direct loads, bounds-proven by this very length
-    // test; every other representation reads through $list_index (PIdx),
-    // the total reader. The proof becomes the dispatch, per receiver.
+    // flat, snoc, rope, slice — carries it). Elements: a proven-flat list
+    // whose element is a word held by value (`list_elem_read`) reads raw
+    // POff(8+4i) — the direct loads, bounds-proven by this very length test;
+    // every other list reads through $list_index (PIdx), the total reader.
+    // The proof becomes the dispatch, per receiver and per twin.
     emit_scrut_at(path, path_len)
     wat_emit("    (i32.load offset=0)\n")
     wat_emit("    (i32.const ")
@@ -8080,33 +8067,11 @@ fn emit_pat_predicate_at(pat, path, path_len) = match pat {
       None => wat_emit("    (i32.eq)\n"),
       Some(_) => wat_emit("    (i32.ge_u)\n"),
     }
-    match srep {
-      SRFlat => emit_pat_subs_predicate_flat(sub_pats, 0, path, path_len),
-      _ => emit_pat_subs_predicate(sub_pats, 0, path, path_len),
-    }
+    emit_pat_subs_predicate(sub_pats, list_elem_read(srep, elem), path, path_len)
   },
   LPAlt(branches) => emit_pat_alt_predicate(branches, path, path_len),
   LPAs(_, inner) => // The binder never affects MATCHING — the predicate is the inner's.
   emit_pat_predicate_at(inner, path, path_len),
-}
-
-// AND-composition over sibling sub-patterns at base + 4*i. A bool is
-// on the stack when called; each refutable sub wraps it in
-// (if (result i32) (then <sub-pred> <rest>) (else (i32.const 0))) —
-// short-circuit, so a failed outer test never evaluates inner loads.
-fn emit_pat_subs_predicate(subs, i, path, path_len) = if len(subs) == 0 {
-  ()
-} else {
-  let p = last(subs)
-  if pat_always_matches(p) {
-    emit_pat_subs_predicate(drop_last(subs), i + 1, path, path_len)
-  } else {
-    wat_emit("    (if (result i32)\n      (then\n")
-    let extended = list_set(path, path_len, PIdx(i))
-    emit_pat_predicate_at(p, extended, path_len + 1)
-    emit_pat_subs_predicate(drop_last(subs), i + 1, path, path_len)
-    wat_emit("      )\n      (else (i32.const 0)))\n")
-  }
 }
 
 // Each refutable field sub-pattern tests at its field's offset in the WHOLE
@@ -8223,11 +8188,8 @@ fn emit_pat_binds_at(pat, path, path_len, val_repr) = match pat {
     },
     None => if record_pat_has_binds(fbs, rest) { emit_record_pattern_floor(rh, rty, true) } else { () },
   },
-  LPList(sub_pats, rest, srep) => {
-    match srep {
-      SRFlat => emit_pat_subs_binds_flat(sub_pats, 0, path, path_len),
-      _ => emit_pat_subs_binds(sub_pats, 0, path, path_len),
-    }
+  LPList(elem, sub_pats, rest, srep) => {
+    emit_pat_subs_binds(sub_pats, list_elem_read(srep, elem), path, path_len, slot_repr(elem))
     emit_pat_list_rest_bind(len(sub_pats), rest, path, path_len)
   },
   LPAlt(branches) => emit_pat_alt_binds(branches, path, path_len),
@@ -8242,44 +8204,63 @@ fn emit_pat_binds_at(pat, path, path_len, val_repr) = match pat {
   },
 }
 
-// List-element binders use uniform i32 slots (list elems are word-slotted; an
-// f64-element list rides the RV128 lane cash-out peer, not this path) — RI32
-// leaf load, byte-identical.
-// The LICENSED twins: a proven-flat word-stride scrutinee's elements sit
-// at 8+4i — the exact raw layout the pre-PIdx emitter assumed for every
-// list; the chase's proof restores those bytes per receiver.
-fn emit_pat_subs_predicate_flat(subs, i, path, path_len) = if len(subs) == 0 {
-  ()
-} else {
-  let p = last(subs)
-  if pat_always_matches(p) {
-    emit_pat_subs_predicate_flat(drop_last(subs), i + 1, path, path_len)
-  } else {
+// How a list pattern reaches its elements. `$list_index` (PIdx) answers each
+// element's word face — its value for a word, its address for a wide element
+// (lib/lists.mn's word protocol) — so a wide leaf loads its width through
+// the address (`emit_load_chain_repr`). A proven-flat list whose element is
+// a word held by value keeps element i at 8 + 4i, read raw.
+type ElemRead = ReadRaw | ReadIndexed
+
+// The raw read is licensed when the list is proven flat and its slot holds
+// the element by value in one word: the element's type under the twin
+// strides four bytes and is not wide. A packed byte, a wide element and
+// every other representation read through `$list_index`. It is decided
+// here, per twin, because the element's width is the twin's: a generic list
+// literal matched in place is born packed at eight bytes a slot under a
+// Float twin.
+fn list_elem_read(srep, elem) = match srep {
+  SRFlat => {
+    let t = slot_ty(elem)
+    if stride_of(t) == 4 && !repr_is_wide(repr_of(t)) { ReadRaw } else { ReadIndexed }
+  },
+  SRSnoc | SRRope | SRSlice | SRUnknown => ReadIndexed,
+}
+
+fn elem_step(read, i) = match read {
+  ReadRaw => POff(8 + i * 4),
+  ReadIndexed => PIdx(i),
+}
+
+// AND-composition over a list pattern's element sub-patterns, in element
+// order. A bool is on the stack when called; each sub that can fail opens
+// (if (result i32) (then <its test> …) and the closes follow, one per open —
+// short-circuit, so a failed test never evaluates a later element's read.
+fn emit_pat_subs_predicate(subs, read, path, path_len) = {
+  let tests = filter(elem_test_can_fail, enumerate(subs))
+  each(emit_elem_test(??, read, path, path_len), tests)
+  each(emit_elem_test_close, tests)
+}
+
+fn elem_test_can_fail(e) = match e {
+  (_, p) => !pat_always_matches(p),
+}
+
+fn emit_elem_test(e, read, path, path_len) = match e {
+  (i, p) => {
     wat_emit("    (if (result i32)\n      (then\n")
-    let extended = list_set(path, path_len, POff(8 + i * 4))
-    emit_pat_predicate_at(p, extended, path_len + 1)
-    emit_pat_subs_predicate_flat(drop_last(subs), i + 1, path, path_len)
-    wat_emit("      )\n      (else (i32.const 0)))\n")
-  }
+    emit_pat_predicate_at(p, list_set(path, path_len, elem_step(read, i)), path_len + 1)
+  },
 }
 
-fn emit_pat_subs_binds_flat(subs, i, path, path_len) = if len(subs) == 0 {
-  ()
-} else {
-  let extended = list_set(path, path_len, POff(8 + i * 4))
-  emit_pat_binds_at(list_index(subs, 0), extended, path_len + 1, RI32)
-  emit_pat_subs_binds_flat(rest(subs), i + 1, path, path_len)
-}
+fn emit_elem_test_close(test) = wat_emit("      )\n      (else (i32.const 0)))\n")
 
-fn emit_pat_subs_binds(subs, i, path, path_len) = if len(subs) == 0 {
-  ()
-} else {
-  // Sub i pairs with element i — the walker consumes from the FRONT. The
-  // prior last(subs)+i pairing gave the LAST sub index 0's offset:
-  // every multi-element pattern bound REVERSED (the wrong-end class).
-  let extended = list_set(path, path_len, PIdx(i))
-  emit_pat_binds_at(list_index(subs, 0), extended, path_len + 1, RI32)
-  emit_pat_subs_binds(rest(subs), i + 1, path, path_len)
+// Each element sub-pattern binds at the element's slot width `r`, in
+// element order: sub i is element i.
+fn emit_pat_subs_binds(subs, read, path, path_len, r) =
+  each(emit_elem_bind(??, read, path, path_len, r), enumerate(subs))
+
+fn emit_elem_bind(e, read, path, path_len, r) = match e {
+  (i, p) => emit_pat_binds_at(p, list_set(path, path_len, elem_step(read, i)), path_len + 1, r),
 }
 
 // con-payload binders: each sub-pattern at its width-summed payload offset
@@ -8449,7 +8430,7 @@ fn lowpat_has_binders(pat) = match pat {
   LPUnresolvedCon(_, sub_pats) => lowpats_have_binders(sub_pats),
   LPTuple(ebs) => tuple_pats_have_binders(ebs),
   LPRecord(_, _, fbs, rest) => record_pat_has_binds(fbs, rest),
-  LPList(sub_pats, rest, _) => if lowpats_have_binders(sub_pats) {
+  LPList(_, sub_pats, rest, _) => if lowpats_have_binders(sub_pats) {
     true
   } else {
     match rest {
@@ -8538,14 +8519,16 @@ fn emit_load_chain_repr(path, k, path_len, leaf_repr) = if k == path_len {
     PIdx(i) => // A sequence element reads through the runtime's total reader — the
     // SAME tag- and stride-dispatch every subscript takes, so a rope,
     // snoc, or slice scrutinee matches exactly like a flat list. The
-    // result is the element word (a wide element's word face is its
-    // address — the word protocol), so the chain composes unchanged.
+    // result is the element's word face (a wide element's is its address —
+    // the word protocol), so a deeper step chains unchanged and a wide leaf
+    // loads its width through the address.
     {
       wat_emit("    (i32.const ")
       wat_emit(int_to_str(i))
       wat_emit(")\n")
       emit_fold_state_insert()
       wat_emit("    (call $list_index)\n")
+      if k + 1 == path_len { emit_wide_deref(leaf_repr) } else { () }
       emit_load_chain_repr(path, k + 1, path_len, leaf_repr)
     },
   }

@@ -35,6 +35,54 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-28 · pin dbbfd10784e308c3 (CLEAN m2 == m3) · A LIST PATTERN BINDS AND TESTS EACH ELEMENT AT ITS OWN WIDTH AND POSITION.
+  R0e, the list half of `Hβ.lower.bind-handle-typed-subpattern` that R0d
+  found and entered. A list pattern binding a Float element did not
+  assemble — the binder side floored its elements to words while the body
+  read floats — on boot 0bc8383e and on R0d's own boot, `mentl check`
+  clean. `LPList` carries its element type (`list_elem_ty`); the binder
+  side reads it; the emit declares and binds each element at its slot width
+  under the twin, and a wide element's read loads its width through the
+  address `$list_index` answers (`emit_wide_deref` at the `PIdx` leaf). The
+  raw `8 + 4i` read of a proven-flat list became the emit's decision
+  (`list_elem_read`), because the element's width is the twin's: a generic
+  literal matched in place is born packed at eight bytes a slot under a
+  Float twin. `slot_ty` is the one bracket-aware resolution and `slot_repr`
+  reads through it.
+  **Found by the build, fixed:** the test walker paired a list pattern's
+  sub-patterns from the wrong end, so `[1, y]` compared element 1 against
+  1 — silently, on every boot, through a parameter and on a literal matched
+  in place (65 for 116). The bind walker had been corrected for the same
+  class and the test walker beside it had not; none of the wheel's 177
+  list-pattern arms carries a refutable sub-pattern, so no board saw it,
+  and the march was CLEAN for the same reason. The four index-threaded
+  walkers are one walk each over the enumerated sub-patterns, the raw and
+  indexed reads one `ElemRead` value.
+  **Kills:** "the match fixture's float literal test reads the wrong width"
+  — its WAT read `(i32.const 1)` for the literal at position 0, the
+  walker's END, and the fixture's Int twin answered 65 on the boot, which
+  named the defect as older than this landing.
+  **Also deleted:** a comment above the variant store describing uniform
+  four-byte payload slots the code beneath it had not had since the
+  width-summed layout, citing a peer (`variant-payload-repr-width`) that
+  existed nowhere else.
+  **Fixtures**, each RED on 2d784560: micros `mn-list-pattern-float-let`,
+  `-float-match`, `-generic-float`, `-flat-twin` (did not assemble), and
+  `mn-list-pattern-literal-position` (65 for 116).
+  **Found at the board:** the thread gate went red, "1 decl 9, 61 decls
+  10", the host-clone class's third measurement, and the boot imports no
+  `wasi.thread-spawn`, so the compile could not have spawned. The gate
+  reads the boot's imports and `main`'s row now, which must agree, and a
+  control pair must split SPAWN/NONE; strace and `judge_spawn_delta_max`
+  are deleted. It was seen RED on the tree at b0edc631, where the boot
+  spawned and the row said it did not
+  (`Hβ.threads.gate-counts-host-clones`, CLOSED).
+  **Measured:** WAT 389,596 → 389,544 lines; census 0; unprovable
+  comparisons 2, shows 0, field offsets 0. m3 leg 10.71s · 703MB (720852
+  KB); crown, proof-exactness, effect-identity green; frontier 434 / 0 / 1
+  expected-red (why-coordinates); micros 191/191 through the candidate;
+  instrument, threads (the re-founded gate) and IDE green — the board whole.
+
 - 2026-09-28 · pin 2d7845607e804eb4 (TRANSITION m3 == m4) · A TWIN IS KEYED BY WHAT ITS BODY OBSERVES.
   R0d. R0c measured the twin set's mass as copies — 3,030 twins over 975
   distinct bodies — because every non-scalar pair keyed by its

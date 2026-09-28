@@ -14,38 +14,44 @@
 # lines above it said "every layer branch runs as a REAL task", both were
 # accurate, and prose adjacency caught nothing. Only a measurement did.
 #
-# WHY A DIFFERENTIAL AND NOT AN ABSOLUTE COUNT. wasmtime creates its own host
-# threads for I/O and its pool, and how many is its business and changes with
-# its version — an absolute ceiling here would be a ratchet on somebody else's
-# implementation detail, red on an upgrade that changed nothing about us.
-# Guest layer-branch spawns have a property host overhead does not: they SCALE
-# WITH THE NUMBER OF LAYER BRANCHES. So the gate compiles two programs whose
-# only difference is declaration count and reads the DELTA. Host overhead is
-# identical in both and cancels; per-branch spawning cannot hide in it.
-# Measured at this landing: 1 decl -> 11 clones, 61 decls -> 11 clones,
-# delta 0. At the 433-thread shape the delta is the layer count.
+# WHAT IT READS, AND WHY IT STOPPED COUNTING THREADS. The first form counted
+# host OS threads at clone/clone3 under strace, as the delta between a
+# 61-declaration program and a 1-declaration one. It went RED three times
+# with no wheel change (2026-09-25, 09-27, 09-28: one host clone, "1 decl 9,
+# 61 decls 10"), and the reason was in the boot's own import section: since
+# the fan stopped spawning (9f766769, 2026-09-19) the wheel imports no
+# `wasi.thread-spawn`, so the compile CANNOT create a guest thread and every
+# clone the delta saw was the host's. The number stood in for two facts the
+# medium already states exactly:
+#   · the ARTIFACT — a module imports `wasi.thread-spawn` exactly when its
+#     reached tree performs `spawn_task` (emit_module, src/backends/wasm.mn),
+#     and the runner creates a guest thread only through that import;
+#   · the CLAIM — `main`'s inferred row carries `WasiThreads` exactly when
+#     the program performs a spawn, read by the medium's own `query` verb.
+# Both are exact, neither sees a thread the host makes for itself, and a
+# DISAGREEMENT between them is the class above: the source saying one width
+# while the artifact runs another.
 #
 # THE POSITIVE CONTROL IS THE LOAD-BEARING HALF and it is not optional: a
-# counter that reads zero because it cannot see threads passes this gate
+# reader that answers "no spawn" because it cannot see one passes this gate
 # forever while the defect walks through it. instrument-gate.sh was built
 # after thirty roster items shipped gates that could not fail, and its own
-# first run was vacuous. So leg 1 compiles and runs a fixture that really
-# spawns and REQUIRES a delta above the floor. If leg 1 cannot go red, the
-# other legs are evidence of nothing and this script says so and exits 1.
+# first run was vacuous. So leg 1 reads a program that really spawns and its
+# sequential twin, and REQUIRES both readers to tell them apart. If leg 1
+# cannot go red, the other legs are evidence of nothing and this script says
+# so and exits 1.
 #
-# WHEN PHASE 9.2 RESTORES judge_window = 8 the ratchet does not get deleted —
-# it gets RE-BASELINED to the width the parallel walk is supposed to have, and
-# it starts answering the question that matters then: is concurrency the width
-# we think it is, still. Leg 3 is the half that survives unchanged, because a
-# race's only symptom is run-to-run variance and that is precisely the symptom
-# that hid the last one.
+# WHEN PHASE 9.2 GIVES THE JUDGMENT A WIDTH, leg 2 is re-baselined in the
+# landing that does it, not deleted: the question becomes whether the boot
+# spawns exactly at the fanouts its source schedules. Leg 3 survives
+# unchanged, because a race's only symptom is run-to-run variance and that is
+# precisely the symptom that hid the last one.
 #
-# THE CONFESSION (CLAUDE.md ⟳): every line below is a hand tool standing where
-# a projection belongs. The medium performs wasi_thread_spawn through its own
-# WasiThreads effect, so the honest form is the wheel reporting its own spawn
-# count — `mentl march` printing concurrency beside the cost line it already
-# prints, the row it already carries made visible. Named
-# Hβ.march.concurrency-is-a-projection in RESIDUE; this script retires into it.
+# THE CONFESSION (CLAUDE.md ⟳): the import read is a hand tool — the emit
+# decides the import and no verb projects it. The honest endpoint is the
+# self-compile reporting its own width beside the cost line it already prints
+# (Hβ.march.concurrency-is-a-projection in RESIDUE); this script retires into
+# it.
 #
 # Usage: tools/thread-gate.sh
 # Exit:  0 the width is what we think it is, 1 it is not (or cannot be read).
@@ -59,102 +65,123 @@ T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
 fail=0
 say() { printf '%s\n' "$*"; }
 
-# The instrument must exist. A missing strace is UNKNOWN, never green — the
-# skipped-gate-reads-as-pass shape is the one PLAN §10 names outright.
-if ! command -v strace >/dev/null 2>&1; then
-  say "✗ thread gate: strace absent — the width is UNKNOWN, which is not green"
-  exit 1
-fi
+m() { "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir "$T" --dir /tmp --dir "$ROOT::/mentl-home" "$BOOT" "$@"; }
 
-# clones <argv…> — distinct OS threads the run created, counted at the
-# syscall. Exact, not sampled: the polling method that first measured this
-# class reads a task table at intervals and a short-lived thread can live and
-# die between two reads. clone/clone3 cannot be missed.
-clones() {
-  strace -f -c -e trace=clone,clone3 -o "$T/st" "$@" >/dev/null 2>&1
-  awk '/clone/{s+=$4} END{print s+0}' "$T/st"
+# spawn_import <module.wasm> — SPAWN when the module imports wasi.thread-spawn,
+# NONE when it does not, UNREAD when the file is not a module. The import
+# section is walked entry by entry, so a later entry's name is never read out
+# of a misaligned offset.
+spawn_import() {
+  python3 - "$1" <<'PY'
+import sys
+def leb(b, i):
+    r = s = 0
+    while True:
+        x = b[i]; i += 1
+        r |= (x & 0x7f) << s; s += 7
+        if x < 0x80:
+            return r, i
+def name(b, i):
+    n, i = leb(b, i)
+    return b[i:i + n].decode(), i + n
+def limits(b, j):
+    flags, j = leb(b, j); _, j = leb(b, j)
+    if flags & 1:
+        _, j = leb(b, j)
+    return j
+b = open(sys.argv[1], 'rb').read()
+if b[:4] != b'\0asm':
+    print('UNREAD'); sys.exit()
+i, found = 8, False
+while i < len(b):
+    sid = b[i]; size, j = leb(b, i + 1)
+    if sid == 2:
+        n, j = leb(b, j)
+        for _ in range(n):
+            mod, j = name(b, j); field, j = name(b, j)
+            found = found or (mod, field) == ('wasi', 'thread-spawn')
+            kind = b[j]; j += 1
+            if kind == 0:
+                _, j = leb(b, j)
+            elif kind == 1:
+                j = limits(b, j + 1)
+            elif kind == 2:
+                j = limits(b, j)
+            elif kind == 3:
+                j += 2
+            elif kind == 4:
+                _, j = leb(b, j + 1)
+        break
+    i = j + size
+print('SPAWN' if found else 'NONE')
+PY
 }
 
-m() { "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$T" --dir /tmp --dir "$ROOT::/mentl-home" "$BOOT" "$@"; }
-
-# ── leg 1 · POSITIVE CONTROL — the counter can see a guest thread ──────────
-# The fixture is the frontier's own real-spawn case: `2 <| (widen, widen)`
-# under ~> parallel_compose, branches on host threads over the shared image.
-# Linked and piped through STDIN exactly as frontier-gate builds it. The WAT
-# byte count is asserted because a refused compile emits zero bytes and
-# wat2wasm will happily assemble an empty module that "runs" at exit 0 —
-# which is how the first draft of this leg measured nothing and passed.
-cat "$ROOT/lib/memory.mn" "$ROOT/lib/strings.mn" "$ROOT/lib/lists.mn" \
-    "$ROOT/lib/threading.mn" "$ROOT/lib/prelude.mn" \
-    "$ROOT/tests/frontier/mn-real-spawn.mn" > "$T/spawn.mn"
-wt_run "$BOOT" < "$T/spawn.mn" > "$T/spawn.wat" 2>"$T/spawn.err"
-spawn_bytes=$(wc -c < "$T/spawn.wat")
-if [ "$spawn_bytes" -lt 1000 ]; then
-  say "✗ control: the spawn fixture emitted $spawn_bytes bytes — nothing was measured"
-  exit 1
-fi
-wt_asm "$T/spawn.wat" "$T/spawn.wasm" 2>/dev/null || { say "✗ control: spawn fixture will not assemble"; exit 1; }
-
-# THE CONTROL IS A TWIN, NOT A FLOOR. It compared the spawn fixture against
-# `boot help` until 2026-09-06, and that is two DIFFERENT modules — 2.4MB
-# against ~11KB — so the engine's own per-module compile threads rode in the
-# baseline. Under the CLI the confound happened to point the right way (8 vs
-# 15) and the leg passed; the moment the gates moved to the embedded runner it
-# inverted (8 vs 6) and the control correctly declared the counter blind. It
-# was right to fail, and it was right for the wrong reason: an absolute floor
-# read off a different module is not a control at all.
-# mn-scheduled-fanout-int is the SAME source one schedule apart — the `><`
-# thesis twin, sequential_compose against parallel_compose, identical link set
-# and near-identical size. Its delta is guest threads and nothing else, which
-# is the property the ratchet below already relies on and the control had not
-# been holding itself to.
-cat "$ROOT/lib/memory.mn" "$ROOT/lib/strings.mn" "$ROOT/lib/lists.mn" \
-    "$ROOT/lib/threading.mn" "$ROOT/lib/prelude.mn" \
-    "$ROOT/tests/frontier/mn-scheduled-fanout-int.mn" > "$T/seq.mn"
-wt_run "$BOOT" < "$T/seq.mn" > "$T/seq.wat" 2>"$T/seq.err"
-seq_bytes=$(wc -c < "$T/seq.wat")
-if [ "$seq_bytes" -lt 1000 ]; then
-  say "✗ control: the sequential twin emitted $seq_bytes bytes — nothing was measured"
-  exit 1
-fi
-wt_asm "$T/seq.wat" "$T/seq.wasm" 2>/dev/null || { say "✗ control: sequential twin will not assemble"; exit 1; }
-seq_c=$(clones "$WT" run "${WT_RUN_FLAGS[@]}" "$T/seq.wasm")
-spawn_c=$(clones "$WT" run "${WT_RUN_FLAGS[@]}" "$T/spawn.wasm")
-if [ "$spawn_c" -gt "$seq_c" ]; then
-  say "  ✓ control: one source, two schedules — parallel reads $spawn_c vs sequential $seq_c; the counter sees guest threads"
-else
-  say "  ✗ control: parallel reads $spawn_c, sequential twin $seq_c — THE COUNTER IS BLIND, every leg below is vacuous"
-  exit 1
-fi
-
-# ── leg 2 · THE RATCHET — guest spawns do not scale with the program ───────
-printf 'fn main() = 7\n' > "$T/one.mn"
-python3 - "$T/many.mn" <<'PY'
-import sys
-# 60 independent declarations: 60 layer branches for the planned sweep, one
-# for the trivial control. Independent on purpose — a dep chain would
-# serialize the partition and hide per-branch spawning behind its own
-# ordering, which would make this leg agree with a broken tree.
-n = 60
-with open(sys.argv[1], "w") as f:
-    f.write("\n".join(f"fn f{i}(x) = x + {i}" for i in range(n)))
-    f.write("\nfn main() = f0(1) + f%d(2)\n" % (n - 1))
-PY
-one_c=$(clones "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$T" --dir "$ROOT::/mentl-home" "$BOOT" check "$T/one.mn")
-many_c=$(clones "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$T" --dir "$ROOT::/mentl-home" "$BOOT" check "$T/many.mn")
-delta=$((many_c - one_c))
-BASELINE="$ROOT/tools/verify-baseline.txt"
-want=$(grep -E '^judge_spawn_delta_max:' "$BASELINE" 2>/dev/null | head -1 | cut -d: -f2 | tr -d ' ')
-if [ -z "$want" ]; then
-  say "  · ratchet: judge_spawn_delta_max absent from verify-baseline.txt — not yet enforced"
-else
-  if [ "$delta" -le "$want" ]; then
-    say "  ✓ ratchet: 1 decl -> $one_c threads, 61 decls -> $many_c, delta $delta (ceiling $want)"
+# spawn_row <file.mn> — SPAWN when the medium's row at `main` carries
+# WasiThreads, NONE when it does not, UNREAD when the medium printed no row (a
+# query that answered nothing measured nothing).
+spawn_row() {
+  local row
+  row=$(m query "$1" "type main" 2>/dev/null | grep -m1 '^→')
+  if [ -z "$row" ]; then
+    echo UNREAD
+  elif printf '%s\n' "$row" | grep -qw WasiThreads; then
+    echo SPAWN
   else
-    say "  ✗ ratchet: delta $delta exceeds $want — per-branch spawning is back (1 decl $one_c, 61 decls $many_c)"
-    say "    the judgment is one sequential pass since 2026-09-17; only the ??-fan (synth_proposer.mn, judge_window) may spawn."
-    fail=1
+    echo NONE
   fi
+}
+
+# ── leg 1 · POSITIVE CONTROL — both readers can see a spawn ─────────────────
+# The frontier's own real-spawn case (`2 <| (widen, widen)` under
+# ~> parallel_compose, branches on host threads over the shared image) and
+# its sequential twin — one source, one schedule apart, §`><`'s thesis pair.
+# Each is read twice: compiled, and its module's imports read; judged, and
+# its row at main read. The four answers must split exactly by schedule. The
+# WAT byte count is asserted because a refused compile emits zero bytes and
+# wat2wasm will happily assemble an empty module — which is how the first
+# draft of this gate's control measured nothing and passed.
+control() {
+  local f="$1" want="$2" src="$T/$1.mn"
+  { printf 'import threading\n'; cat "$ROOT/tests/frontier/$f.mn"; } > "$src"
+  m compile "$src" > "$T/$f.wat" 2>"$T/$f.err"
+  local bytes a b
+  bytes=$(wc -c < "$T/$f.wat")
+  if [ "$bytes" -lt 1000 ]; then
+    say "  ✗ control: $f emitted $bytes bytes — nothing was measured"
+    exit 1
+  fi
+  wt_asm "$T/$f.wat" "$T/$f.wasm" 2>/dev/null || { say "  ✗ control: $f will not assemble"; exit 1; }
+  a=$(spawn_import "$T/$f.wasm")
+  b=$(spawn_row "$src")
+  if [ "$a" = "$want" ] && [ "$b" = "$want" ]; then
+    say "  ✓ control: $f reads $want twice — its module's imports and its row at main"
+  else
+    say "  ✗ control: $f should read $want; its imports say $a, its row says $b — THE READERS ARE BLIND, every leg below is vacuous"
+    exit 1
+  fi
+}
+control mn-real-spawn SPAWN
+control mn-scheduled-fanout-int NONE
+
+# ── leg 2 · THE BOOT — the compile runs on one instance ─────────────────────
+# The judgment is one sequential pass since 2026-09-17 and the fan stopped
+# spawning on 2026-09-19, so the boot must import no spawn, the wheel's row at
+# main must carry none, and the two must agree.
+a=$(spawn_import "$BOOT")
+b=$(spawn_row "$ROOT/src/main.mn")
+if [ "$a" = NONE ] && [ "$b" = NONE ]; then
+  say "  ✓ boot: one instance — the boot imports no wasi.thread-spawn and main's row carries no WasiThreads"
+elif [ "$a" = UNREAD ] || [ "$b" = UNREAD ]; then
+  say "  ✗ boot: a reader answered nothing (imports $a, row $b) — the width was not read"
+  fail=1
+elif [ "$a" != "$b" ]; then
+  say "  ✗ boot: the source and the artifact DISAGREE — main's row says $b, the boot's imports say $a"
+  fail=1
+else
+  say "  ✗ boot: the compile spawns — the boot imports wasi.thread-spawn and main's row carries WasiThreads"
+  say "    a width for the judgment is Phase 9.2's decision, and the landing that makes it re-baselines this leg."
+  fail=1
 fi
 
 # ── leg 3 · DETERMINISM — two draws, byte-identical ───────────────────────
@@ -164,7 +191,15 @@ fi
 # agreed while the emit differed, so anything coarser than a byte compare
 # reported agreement. Cheap enough to run every time, which is the point —
 # a determinism check you only run when you already suspect a race is a check
-# that confirms suspicions rather than raising them.
+# that confirms suspicions rather than raising them. Sixty independent
+# declarations, so a future parallel walk has branches to race over.
+python3 - "$T/many.mn" <<'PY'
+import sys
+n = 60
+with open(sys.argv[1], "w") as f:
+    f.write("\n".join(f"fn f{i}(x) = x + {i}" for i in range(n)))
+    f.write("\nfn main() = f0(1) + f%d(2)\n" % (n - 1))
+PY
 m compile "$T/many.mn" > "$T/d1.wat" 2>/dev/null
 m compile "$T/many.mn" > "$T/d2.wat" 2>/dev/null
 d1=$(wc -c < "$T/d1.wat"); d2=$(wc -c < "$T/d2.wat")

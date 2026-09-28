@@ -1190,24 +1190,3 @@ authored_ref_max: 708
 # becomes the boot: 2,168,067 bytes where the prior boot was 3,137,880).
 # Same rule: ~1% over the highest reading.
 selfcompile_peak_kb_max: 775000
-
-# ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
-# Guest OS threads the compile creates, counted at clone/clone3, as the
-# DELTA between a 61-declaration program and a 1-declaration one. The delta
-# and not an absolute: wasmtime's own host threads are identical in both and
-# cancel, while guest layer-branch spawns scale with the branch count — so
-# this ratchet measures US and stays true across runner upgrades, where an
-# absolute ceiling would go red on somebody else's implementation detail.
-#
-# The line above ratcheted the MEMORY the 433-thread defect cost. Nothing
-# ratcheted the threads themselves, which is why judge_window = 1 could sit
-# beside a spawn-per-branch for ten days with the whole board green — the
-# gate that would have caught it on day one is this one, and it did not
-# exist. Zero is the honest floor today (measured: 5 clones at 1 decl, 5 at
-# 61, both host overhead) because a singleton judge block runs BrDirect.
-#
-# WHEN PHASE 9.2 RESTORES judge_window = 8 THIS IS RE-BASELINED, NOT DELETED:
-# the number becomes the width the parallel walk is supposed to have, and the
-# gate goes on answering the same question one octave up. Seen RED at ceiling
-# -1 before it was trusted.
-judge_spawn_delta_max: 0

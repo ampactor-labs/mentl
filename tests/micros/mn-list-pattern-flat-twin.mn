@@ -1,0 +1,12 @@
+// expect: 7
+// A list literal matched in place reads its elements raw, at 8 + 4i, when
+// the list is proven flat and word-strided. The stride is the TWIN's: at
+// Float the literal is born packed at 8 bytes a slot, so the license read
+// before the twin existed would place `y` in the middle of `x`. Measured on
+// boots 0bc8383e and 2d784560: did not assemble (`$x.f64` undefined).
+fn add_pair(a, b) = match [a, b] {
+  [x, y] => x + y,
+  _ => a,
+}
+
+fn main() = if add_pair(1.5, 2.5) > 3.5 && add_pair(3, 4) == 7 { 7 } else { 1 }

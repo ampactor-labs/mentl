@@ -1,0 +1,10 @@
+// expect: 7
+// A list pattern's element binders are declared at the element's width. A
+// list's elements are words to the runtime, and a Float element's word is
+// its address, so the pattern cashes the width where it binds. The binder
+// was declared a word while the body read it as a float. Measured on boot
+// 0bc8383e and 2d784560: did not assemble (`$a.f64` undefined), `mentl
+// check` clean.
+fn main() = match [1.5, 3.0] {
+  [a, b] => if a + b > 4.0 { 7 } else { 1 },
+}

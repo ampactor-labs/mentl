@@ -859,8 +859,10 @@ and this is the STATE.
   "provably race-free" sentence has its gate, and the gate reads WRITES: a
   handler is stateful when an arm carries a `resume … with` update, so a
   state only read shares one immutable record across instances and runs.
-  The thread gate's ratchet counts host `clone`s and was RED on a fresh host
-  with no wheel change (`Hβ.threads.gate-counts-host-clones`). Safety gated on
+  The thread gate reads the compile's width off the boot's import section
+  and `main`'s row, which must agree (2026-09-28): its host-`clone` ratchet
+  went red three times on a module that cannot spawn
+  (`Hβ.threads.gate-counts-host-clones`, CLOSED). Safety gated on
   band A. SIMD/GPU remain scaffold (bands E/O). **PERSIST IS NOT IN THAT LIST
   and this bullet said it was until 2026-09-15** — six lines above, the
   persist-is-built bullet exists *because* the absence claim was named "doc rot
@@ -1276,13 +1278,16 @@ and this is the STATE.
   outside the twin, which one slot width answers now, and a record pattern
   resolves at emit by name, which closed the 2026-08-17 parameter-receiver
   silent wrong (`Hβ.emit.twin-key-is-what-the-body-reads`,
-  `Hβ.lower.record-pattern-param-receiver`). Open from this chain: no
-  multi-shot install with a wide answer assembles, because the redrive
-  reads the answer as a word
-  (`Hβ.continuations.redrive-reads-the-answer-as-a-word`); a list pattern
-  binding a Float element does not assemble
-  (`Hβ.lower.bind-handle-typed-subpattern`); and a record update over a
-  generic base closes its result to the base's known fields
+  `Hβ.lower.record-pattern-param-receiver`). What R0d named CLOSED at R0e
+  (pin dbbfd10784e308c3): a list pattern binds and tests each element at its own
+  width and position. It had not assembled over a Float element, and its
+  test walker read its sub-patterns from the wrong end on every boot,
+  silently, because none of the wheel's list-pattern arms carries a
+  refutable sub-pattern (`Hβ.lower.bind-handle-typed-subpattern`). Open
+  from this chain: no multi-shot install with a wide answer assembles,
+  because the redrive reads the answer as a word
+  (`Hβ.continuations.redrive-reads-the-answer-as-a-word`); and a record
+  update over a generic base closes its result to the base's known fields
   (`Hβ.infer.record-update-closes-an-open-base`).
 
 Everything else requires the board that measured it. A skipped, stale, or

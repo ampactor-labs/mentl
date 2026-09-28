@@ -554,10 +554,13 @@ type LowPat
   // would freeze the word floor into the twin
   | LPTuple([(Ty, LowPat)])
   | LPLit(LowValue)
-  // prefix pats, optional rest name,
-  // the scrutinee's PROVEN representation
-  // (SRFlat licenses raw element loads)
-  | LPList([LowPat], Option(String), SeqRep)
+  // (element type, prefix pats, optional rest name, the scrutinee's proven
+  // representation). The element type is the one this position matched, a
+  // generic body's own variable included, so the emit reads each element's
+  // width through it under whatever twin it emits, and reads a proven-flat
+  // list raw only where that width is a word held by value
+  // (`list_elem_read`).
+  | LPList(Ty, [LowPat], Option(String), SeqRep)
   // (scrutinee handle, receiver type, [(field_name, sub_pat)], rest binder).
   // The receiver's type is the one this position matched, a generic body's
   // own variables included, so the emit reads the WHOLE field set through
@@ -3554,30 +3557,31 @@ fn field_byte_offset_acc(fields, target, i, n, acc) = if i >= n {
   }
 }
 
-// THE WIDTH OF A SLOT whose type is `ty`, read live. A variable answers
-// through lookup_ty, so under a twin's bracket it is the site's
-// instantiation and at the floor it is what the graph bound; a variable
-// lookup_ty returns unchanged is free, and a free slot is the word. TVar(0)
-// is lower's explicit no-proof floor (the null handle, never chased). Every
-// layout reader takes a slot's width here — construction, field load, tuple
-// index, the record and constructor patterns, the fold leaves — because a
-// layout computed two ways is two layouts. Measured 2026-09-28 before it was
-// one: `let r = {a: 1.5, b: 7}` then `r.b` answered 0, the load reading `a`
-// at its type variable's word default where the construction had stored it
-// f64-wide, and a generic constructor's payload under a Float twin read its
-// neighbour's slot.
-fn slot_repr(ty) = match ty {
+// THE WIDTH OF A SLOT whose type is `ty`, read live through `slot_ty`: under
+// a twin's bracket a variable is the site's instantiation, at the floor it
+// is what the graph bound, a free one is the word, and TVar(0) is lower's
+// explicit no-proof floor. Every layout reader takes a slot's width here —
+// construction, field load, tuple index, the record, constructor and list
+// patterns, the fold leaves — because a layout computed two ways is two
+// layouts.
+fn slot_repr(ty) = repr_of(slot_ty(ty))
+
+// The type a slot holds under the twin being emitted: a variable is read
+// through `lookup_ty`, which answers the bracket's instantiation, and an
+// alias or refinement through its base. TVar(0), the no-proof type, is never
+// chased; an unbound variable stays itself, the word floor.
+fn slot_ty(ty) = match ty {
   TVar(h) => if h == 0 {
-    RI32
+    ty
   } else {
     match lookup_ty(h) {
-      TVar(h2) => if h2 == h { RI32 } else { slot_repr(TVar(h2)) },
-      t => slot_repr(t),
+      TVar(h2) => if h2 == h { ty } else { slot_ty(TVar(h2)) },
+      t => slot_ty(t),
     }
   },
-  TAlias(_, inner) => slot_repr(inner),
-  TRefined(base, _) => slot_repr(base),
-  _ => repr_of(ty),
+  TAlias(_, inner) => slot_ty(inner),
+  TRefined(base, _) => slot_ty(base),
+  _ => ty,
 }
 
 // v128 lanes want 16-byte alignment for aligned loads/stores; every other
@@ -3805,9 +3809,11 @@ fn lower_stmt_as_expr(s, handle, span) = lower_stmt_body(s, handle, span)
 
 // Pattern lowering
 fn lower_match_arms(scrut_h, arms) = {
-  // ONE scrutinee, ONE license — hoisted out of the per-arm map (the chase
-  // is per-value, never per-arm).
-  let srep = seq_pat_rep(scrut_h)
+  // ONE scrutinee, ONE representation proof — hoisted out of the per-arm
+  // map (the chase is per-value, never per-arm). Whether a flat list's
+  // elements may be read raw is the emit's question: it depends on the
+  // element's width, which only the twin being emitted knows.
+  let srep = seq_rep_of(scrut_h)
   map(
     {
       (pat, body) => {
@@ -3863,20 +3869,14 @@ fn bind_pat_locals(pat, ty) = match pat {
     ls_bind_local(name, ty_handle_of(ty))
     bind_pat_locals(inner, ty)
   },
-  PCon(name, sub_pats) => // A constructor's binders take the payload types the SCRUTINEE proved,
-  // the same zip PTuple has done since its own elements stopped flooring.
-  // This arm read `bind_pat_locals_floor(sub_pats)`, so `Some(v)`'s local
-  // was bound with no type handle while the emit later read `v` at its
-  // proven f64 — the two halves named different locals and the module did
-  // not assemble. An unresolved receiver still floors, through the zip's
-  // own short list.
+  PCon(name, sub_pats) => // A binder takes the type its position matched — a constructor's payload
+  // at the scrutinee's own instantiation, a tuple's element, a list's
+  // element, a record's field — so its local and the emit's read of it name
+  // one width. A position no type reached takes the no-proof type.
   bind_pat_locals_zip(sub_pats, con_payload_tys_at(name, ty), 0),
-  PTuple(sub_pats) => match tuple_pat_strip(ty) {
-    TTuple(elems) => bind_pat_locals_zip(sub_pats, elems, 0),
-    _ => bind_pat_locals_floor(sub_pats),
-  },
+  PTuple(sub_pats) => bind_pat_locals_zip(sub_pats, tuple_elem_tys(ty), 0),
   PList(sub_pats, rest) => {
-    bind_pat_locals_floor(sub_pats)
+    each(bind_pat_locals(??, list_elem_ty(ty)), sub_pats)
     bind_pat_rest(rest)
   },
   PRecord(flds, rest) => {
@@ -3892,9 +3892,8 @@ fn bind_pat_locals(pat, ty) = match pat {
   PLit(_) => (),
 }
 
-// Each PTuple sub-pattern lands with its element TYPE (read live from the
-// stripped TTuple); a String element's local then carries a String-resolving
-// handle. Elements past the known list floor to unresolved TVar(0).
+// Each positional sub-pattern lands with its position's TYPE; positions
+// past the known list take TVar(0), the no-proof type.
 fn bind_pat_locals_zip(subs, elems, i) = if i >= len(subs) {
   ()
 } else {
@@ -3902,16 +3901,6 @@ fn bind_pat_locals_zip(subs, elems, i) = if i >= len(subs) {
   bind_pat_locals(list_index(subs, i), elem_ty)
   bind_pat_locals_zip(subs, elems, i + 1)
 }
-
-// The floor for the sub-patterns whose element types are still unread: PList
-// elements, the remainder of the named peer
-// `Hβ.lower.bind-handle-typed-subpattern` (additive, same TVar->handle carry).
-// TVar(0) = i32.eq, byte-identical to the prior sentinel — never a silent
-// wrong type. The PCon half of that peer CLOSED 2026-09-18 and the PRecord
-// half on 2026-09-28, each for the same reason: flooring was not
-// byte-identical once a slot was an f64 — the binder and the emit named
-// different locals and the module did not assemble.
-fn bind_pat_locals_floor(pats) = each((p) => bind_pat_locals(p, TVar(0)), pats)
 
 fn bind_pat_rest(rest) = match rest {
   None => (),
@@ -4011,23 +4000,6 @@ fn seq_rep_arms(ref arms, i, acc, first, fuel) = if i >= len(arms) {
   }
 }
 
-// The pattern LICENSE: SRFlat survives only when the element stride is the
-// word (a byte-packed or wide-element flat list still needs the total
-// reader). A licensed scrutinee's list pattern emits the raw POff loads —
-// the exact bytes the pre-PIdx emitter assumed, now proven per receiver.
-fn seq_pat_rep(scrut_h) = match seq_rep_of(scrut_h) {
-  SRFlat => match seq_elem_stride_word(lookup_ty(scrut_h)) {
-    true => SRFlat,
-    false => SRUnknown,
-  },
-  _ => SRUnknown,
-}
-
-fn seq_elem_stride_word(ty) = match fold_strip(ty) {
-  TList(elem) => stride_of(elem) == 4,
-  _ => false,
-}
-
 // Lowers `pat`, matched against a value of type `ty`, keeping that type on
 // every sub-pattern: a tuple's element, a constructor's payload at the
 // scrutinee's own instantiation, a record's field, a list's element. No
@@ -4044,7 +4016,7 @@ fn lower_pat_at(pat, ty, srep, rh) = match pat {
   PList(sub, rest) => // The scrutinee's proven representation rides the TOP list pattern —
   // nested sequences are reached through elements (rep unknown) and stay
   // on the total reader.
-  LPList(map(lower_pat_at(??, list_elem_ty(ty), SRUnknown, rh), sub), rest, srep),
+  lower_pat_list(list_elem_ty(ty), sub, rest, srep, rh),
   PCon(name, sub) => // Resolve the constructor's tag_id at lower time; emit dispatches on
   // the int tag without re-walking the env. The receiver's type grounds the
   // constructor's payloads, so a binder takes the width the graph PROVED
@@ -4073,6 +4045,11 @@ fn lower_pat_at(pat, ty, srep, rh) = match pat {
 fn lower_pat_field(ty, rh, fld) = match fld {
   (name, sub) => (name, lower_pat_at(sub, record_field_ty(ty, name), SRUnknown, rh)),
 }
+
+// A list pattern: every element sub-pattern matched against the list's one
+// element type `elem`, carried on the pattern for the emit to read.
+fn lower_pat_list(elem, sub, rest, srep, rh) =
+  LPList(elem, map(lower_pat_at(??, elem, SRUnknown, rh), sub), rest, srep)
 
 // The type a record pattern's field has at the receiver: the fields the
 // receiver's row knows, closed or open, or a nominal record's declaration.
