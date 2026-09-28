@@ -4286,8 +4286,37 @@ child projection `low_children`, whose per-node lists measured +16 MB at the
 self-compile's peak), and refusing needed the plan split from the write,
 because an armed report raised after the gate is counted by nothing.
 
-`Hβ.lower.module-scope-has-no-frame` — OPEN, measured 2026-09-28 (R0″),
-the next landing (R0f). A module-scope value let's init is lowered with NO
+`Hβ.lower.module-scope-has-no-frame` — ✅ CLOSED 2026-09-28 (R0f). Module
+scope is a frame: a value let's init is lowered inside the frame of
+`$__init_lets`, named for its binding, with static lines (lower.mn
+`lower_module_init`), so a block local is that function's local, a nested fn
+is a closure minted there with slot lines, and a `<~` directly in an init
+owns an instance ring under `$__init_lets` (wasm.mn `init_lets_lines`, one
+more owner of `static_line_owners`, and the inits emit under that site).
+The fourth shape was not a lowering fact at all: the parser now births a
+module-scope `let name = <function literal>` as the `FnStmt` it is (parser.mn
+`let_at_scope`), which also made it recursive and generalized — both were
+refusals on boot 2d18aedd — and `mentl fmt` writes it as `fn`, except the
+arm-list form, which keeps `let name = { … }` because its parameter is
+minted. **A FIFTH SHAPE, found by the landing's own probes:** a module VALUE
+holding a closure (`let add3 = make_adder(3)`) was called as `call $add3`,
+because every value binding was registered as `FnScheme` — the kind lower
+cashes into a direct call of the declared symbol — while two lower comments
+already spoke of "a value binding" and "value schemes" as a different kind.
+Value bindings carry `ValueScheme` now (types.mn), at their six writers.
+**Kills.** (1) "The kind change is local to calls": the partial
+fork read `FnScheme` too, and the boot ran `add3(1, ??)` over a module value
+(exit 6) through the closure — the first build floored it, seen on the
+landing's own probe before the pin; the partial arm takes `ValueScheme`, and
+at lower time only module entries answer there, a local's binding having
+left the env with its scope. (2) "Desugar block-scope lets as well": a block
+`let f = (x) => f(x) * 10` calls the `f` bound before it (measured 30), and
+as a letrec declaration that `f` would call itself. Found on the way: the
+comment-ref index held no module value let, so a comment naming one
+resolved nowhere; it holds them now. The four shapes and the fifth run to
+the values their sources compute (tests/micros/mn-module-let-*.mn,
+mn-module-value-closure.mn). The record as it stood: OPEN, measured
+2026-09-28 (R0″). A module-scope value let's init is lowered with NO
 frame, and every fact a frame carries is wrong inside it. Four shapes, each
 checking clean and each broken on boot dbbfd107: (1) a block local —
 `let total = { let a = 3; let f = (x) => x + a; f(4) + a }` — resolves as a

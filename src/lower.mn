@@ -907,8 +907,9 @@ fn partial_split(r_args, n_args, n_ps, handle, i, ci) = if i >= n_ps {
 // apply_callee_form needs and nothing the site could re-derive.
 type PartialCalleeForm = PcfCall(String) | PcfVariant(TagId) | PcfPerform(PerformDispatch)
 
-// The callee shapes a partial can synthesize a body for: a top-level fn
-// (direct LCall) and ADT construction (LMakeVariant) — for both, infer's
+// The callee shapes a partial can synthesize a body for: a top-level fn or
+// module value (LCall through its global) and ADT construction
+// (LMakeVariant) — for both, infer's
 // dispatch provably took the partial fork too (their schemes pre-register
 // as fn types), so type and lowering agree by construction. A local /
 // closure callee (its value captured at slot 0 + the W7 call), the
@@ -924,7 +925,10 @@ fn partial_callee_form(handle, fbody, fh) = match fbody {
     None
   } else {
     match env_kind_of(name) {
-      Some(FnScheme) => Some(PcfCall(name)),
+      Some(FnScheme) | Some(ValueScheme) => // A module value holding a closure is called through its global
+      // exactly as a declared fn's static closure is. Only module-scope
+      // entries answer here: a local's binding left the env with its scope.
+      Some(PcfCall(name)),
       Some(ConstructorScheme(tag_id, _)) => Some(PcfVariant(tag_id)),
       Some(EffectOpScheme(_, _, _, _)) => // An OP reified as a value, and it passes None for the lexical
       // answer — not to disable a tier, but because it HAS no lexical
@@ -3651,6 +3655,30 @@ fn lower_stmt_list_loop(stmts, i, n, buf, count) = if i >= n {
   lower_stmt_list_loop(stmts, i + 1, n, written, count + 1)
 }
 
+// Module scope is a frame: the frame of `$__init_lets`, the one function
+// every module value let's init runs in. Its locals are that function's
+// locals, a fn nested in an init is a closure minted there (its lines are
+// slots in its own record), and a `<~` directly in an init is static, its
+// ring an instance global owned by `$__init_lets`. The frame is named for
+// the binding, so a nested fn qualifies as it would inside a fn of that
+// name. Lowered with no frame, a block local resolved as a global and a
+// nested fn took a static home it had no record for
+// (Hβ.lower.module-scope-has-no-frame). The frame's lines are not kept:
+// every one is static and rides its own `LFeedback`, where the emit reads
+// it.
+fn lower_module_init(pat, handle, expr) = {
+  let frame_name = match pat {
+    PVar(name) => name,
+    _ => "init{int_to_str(handle)}",
+  }
+  ls_enter_frame(frame_name, [], [], [], [], -1)
+  lower_frame_fence_push()
+  let lo = lower_expr(expr)
+  lower_frame_fence_pop()
+  ls_exit_frame()
+  lo
+}
+
 // H6: exhaustive NodeBody enumeration. NPat and NHole at
 // statement position are degenerate; lowering to LConst(0)
 // is the "unreachable-in-well-formed-source" fallback. Named
@@ -3672,7 +3700,7 @@ fn lower_stmt(node) = match node {
 
 fn lower_stmt_body(s, handle, span) = match s {
   LetStmt(pat, expr, _) => {
-    let lo = lower_expr(expr)
+    let lo = if ls_frame_depth() == 0 { lower_module_init(pat, handle, expr) } else { lower_expr(expr) }
     match pat {
       PVar(name) => // Register the name in the current scope (a local for subsequent
       // VarRef lookups; the bound expr's handle IS the local's type handle).

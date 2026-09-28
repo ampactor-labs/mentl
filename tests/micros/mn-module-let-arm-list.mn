@@ -1,0 +1,7 @@
+// expect: 4
+// An arm-list literal bound at module scope is a declaration too; its one
+// parameter is minted by the literal, and `mentl fmt` keeps the page's
+// `let pick = { … }`. Boot 2d18aedd called `$pick`, which was never emitted.
+let pick = { Some(v) => v, None => 0 }
+
+fn main() = pick(Some(4)) + pick(None)

@@ -35,6 +35,57 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-28 · pin 51f332d71a7baae1 (CLEAN m2 == m3) · MODULE SCOPE IS A FRAME, AND A MODULE BINDING IS WHAT IT IS.
+  R0f, `Hβ.lower.module-scope-has-no-frame`, which R0″'s settle audit
+  found. A module value let's init was lowered with no frame, so every fact
+  a frame carries was wrong inside it: a block local resolved as a global
+  the lowering could not see, a fn nested in the block took a static `<~`
+  home while its closure was minted at run time, and a `<~` directly in an
+  init named its ring global with the emit site's diagnostic label
+  (`module scope`, a space inside a WAT identifier). The init lowers
+  inside the frame of `$__init_lets` now (`lower_module_init`), named for
+  its binding and with static lines; `init_lets_lines` reads those lines
+  off the `LFeedback` nodes that carry them, `$__init_lets` joins the
+  static line owners, and the inits emit under that site. The fourth
+  shape was not a lowering fact: `let inc = (x) => x + 1` was judged a
+  value, lowered as a lambda named for its handle, and called as `$inc`.
+  The parser births a module-scope `let` bound to a function literal as
+  the `FnStmt` it is (`let_at_scope`, with `StmtScope` threaded through
+  `parse_stmt`), which made it recursive and generalized as well; fmt
+  writes the binder form as `fn`, and keeps an arm-list one as
+  `let name = { … }` (`module_arm_list`), since its parameter is minted.
+  The fifth shape the probes found: every value binding was registered
+  as `FnScheme`, the kind lower cashes into a direct call, so a module
+  value holding a closure (`let add3 = make_adder(3)`) was called as the
+  symbol `$add3`. Value bindings carry `ValueScheme` at their six writers
+  (infer.mn); the direct call, the partial fork, synth's vocabulary and
+  the two exhaustive enumerations read it. The comment-ref index gained
+  module value lets, which are declarations.
+  **Kills.** (1) "The kind change is local to calls": the partial fork
+  read `FnScheme` too, and the boot ran `add3(1, ??)` over a module value
+  (exit 6) through the closure; the first build floored it, seen on the
+  landing's own probe before the pin (mn-module-value-partial now holds
+  it). (2) "Desugar block-scope lets as well": a block
+  `let f = (x) => f(x) * 10` calls the `f` bound before it (measured 30),
+  and as a letrec declaration that `f` would call itself. A process slip,
+  recorded because it would otherwise read as a measurement: the partial
+  fix went into src/lower.mn while the first frontier ran, so that run's
+  435 / 0 / 1 judged the compiler before it, and the frontier was run
+  again on the rebuilt one.
+  **Fixtures, each RED on boot 2d18aedd, all checking clean there.**
+  mn-module-let-block-local (a refusal → 10), -nested-fn (refused → 11),
+  -nested-line (refused → 10), -line (did not assemble → 1), -lambda (did
+  not assemble: `lambda_7430` emitted, `$inc` called → 10), -arm-list (did
+  not assemble → 4), -recursive (E_MissingVariable → 24), -poly
+  (E_TypeMismatch → 5), mn-module-value-closure (did not assemble → 7);
+  mn-module-value-partial holds the kill above (6 on the boot, refused by
+  the first build). The fmt fixture carries a module let-lambda and an
+  arm-list let, and the frontier's fmt leg asserts their renders.
+  **Measured at the pin:** m3 leg 8.68 s wall · 722 MB peak RSS (740,320
+  KB) · 393,716 WAT lines, m2 == m3, census 0 · micros 204/204 · frontier
+  435 pass / 0 red / 1 expected-red · crown, proof-exactness,
+  effect-identity green.
+
 - 2026-09-28 · pin 2d18aeddf7fc9b46 (CLEAN m2 == m3) · EVERY FLOOR THE EMIT WRITES IS SAID BEFORE THE FIRST BYTE.
   R0″, `Hβ.emit.emit-time-class-cannot-refuse`. Three classes — a field
   offset the graph cannot prove, a comparison's or a show's operand still a

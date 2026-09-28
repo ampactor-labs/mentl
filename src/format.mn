@@ -486,20 +486,7 @@ fn render_expr_tokens(e) with !Mutate = match e {
   // body-interior).
   "\{\n{indent_block("{render_block_stmts(stmts, 0)}{render_grouped_body(final)}")}\n\}",
   LambdaExpr(params, body) => match arm_list_of(params, body) {
-    Some(arms) => // The literal renders as the arms alone — the head it would
-    // otherwise carry is the wrapper this form exists to delete, and
-    // `match`'s own renderer is the one that draws arms. Inline when it
-    // fits, because the commonest literal is one short destructuring arm
-    // and spending six lines on `map({ (name, _) => name }, xs)` would
-    // trade a wrapper for a worse page.
-    {
-      let one_line = "\{ {render_arm_list_inline(arms, 0)} \}"
-      if !str_contains(one_line, "\n") && fits_inline(one_line) {
-        one_line
-      } else {
-        "\{\n{indent_block(strip_trailing_nl(render_match_arms(arms, 0)))}\n\}"
-      }
-    },
+    Some(arms) => render_arm_literal(arms),
     None => match resugar_head(params, body) {
       Some(pair) => match pair {
         (plist, inner) => "({plist}) => {render_grouped_body(inner)}",
@@ -521,22 +508,12 @@ fn render_expr_tokens(e) with !Mutate = match e {
 }
 
 fn render_stmt_tokens(s) with !Mutate = match s {
-  FnStmt(name, params, retty, effs, body) => // A pattern-shaped fn param rides the same desugar as a lambda's
-  // (one parse_one_param), so the head re-sugars through the same
-  // recognizer.
-  match match resugar_head(params, body) {
-    Some(pair) => pair,
-    None => (render_param_list(params), body),
-  } {
-    (plist, b_node) => {
-      let head = "fn {name}({plist}){render_retty(retty)}{render_with_clause(effs)} ="
-      let b = render_grouped_body(b_node)
-      if str_contains(b, "\n") || fits_inline("{head} {b}") {
-        "{head} {b}"
-      } else {
-        "{head}\n{indent_block(b)}"
-      }
-    },
+  FnStmt(name, params, retty, effs, body) => match module_arm_list(params, body) {
+    Some(arms) => // A module-scope `let name = { arms }` is born a declaration whose one
+    // parameter the literal minted (parser.mn `let_at_scope`), so it renders
+    // as the literal it was written as: the fresh name never reaches the page.
+    "let {name} = {render_arm_literal(arms)}",
+    None => render_fn_decl(name, params, retty, effs, body),
   },
   ImportStmt(path) => "import {path}",
   ExprStmt(e) => // A unit expression statement is the file-tail prose CARRIER (and a
@@ -673,6 +650,45 @@ fn render_one_param(p) with !Mutate = {
 // miss falls back to the literal render, productive never refusing.
 fn resugar_head(ref params, body) with !Mutate = resugar_walk(params, 0, body, "")
 
+// A declared fn's head and body. A pattern-shaped param rides the same
+// desugar as a lambda's (one parse_one_param), so the head re-sugars
+// through the same recognizer.
+fn render_fn_decl(name, params, retty, effs, body) with !Mutate = match match resugar_head(params, body) {
+  Some(pair) => pair,
+  None => (render_param_list(params), body),
+} {
+  (plist, b_node) => {
+    let head = "fn {name}({plist}){render_retty(retty)}{render_with_clause(effs)} ="
+    let b = render_grouped_body(b_node)
+    if str_contains(b, "\n") || fits_inline("{head} {b}") {
+      "{head} {b}"
+    } else {
+      "{head}\n{indent_block(b)}"
+    }
+  },
+}
+
+// The arms of a declaration whose only parameter an arm-list literal
+// minted — never a parameter an author named, since `fn f(o) = match o
+// { … }` is written that way on purpose.
+fn module_arm_list(params, body) =
+  if len(params) == 1 && is_al_name(param_name(params[0])) { arm_list_of(params, body) } else { None }
+
+// The literal renders as the arms alone — the head it would otherwise
+// carry is the wrapper this form exists to delete, and `match`'s own
+// renderer is the one that draws arms. Inline when it fits, because the
+// commonest literal is one short destructuring arm and spending six lines
+// on `map({ (name, _) => name }, xs)` would trade a wrapper for a worse
+// page.
+fn render_arm_literal(arms) with !Mutate = {
+  let one_line = "\{ {render_arm_list_inline(arms, 0)} \}"
+  if !str_contains(one_line, "\n") && fits_inline(one_line) {
+    one_line
+  } else {
+    "\{\n{indent_block(strip_trailing_nl(render_match_arms(arms, 0)))}\n\}"
+  }
+}
+
 fn resugar_walk(ref params, i, body, acc) with !Mutate = if i >= len(params) {
   Some((acc, body))
 } else {
@@ -697,6 +713,11 @@ fn resugar_walk(ref params, i, body, acc) with !Mutate = if i >= len(params) {
 // is the whole point of their being two (parser.mn `fresh_param_under`).
 fn is_dp_name(nm) =
   byte_len(nm) >= byte_len(dp_prefix) && str_slice(nm, 0, byte_len(dp_prefix)) == dp_prefix
+
+// The arm-list literal's own minted parameter, read back through
+// `al_prefix`, the spelling's one home.
+fn is_al_name(nm) =
+  byte_len(nm) >= byte_len(al_prefix) && str_slice(nm, 0, byte_len(al_prefix)) == al_prefix
 
 // The arms on ONE line — the literal's inline layout. A trailing comma is
 // the multi-line form's separator discipline, not the inline one's.

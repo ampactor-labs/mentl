@@ -490,6 +490,9 @@ fn comment_decl_index(ref stmts, i, idx) = if i >= len(stmts) {
     N(body, _, h) => {
       let idx2 = match body {
         NStmt(FnStmt(name, _, _, _, _)) => smap_add(idx, name, h),
+        NStmt(LetStmt(PVar(name), _, _)) => // A module value let is a declaration too (the decls column notes
+        // it), so a comment naming one draws an edge to it.
+        smap_add(idx, name, h),
         NStmt(TypeDefStmt(name, ctors)) => ctor_index_add(ctors, 0, smap_add(idx, name, h), h),
         NStmt(EffectDeclStmt(name, _, ops)) => op_index_add(ops, 0, smap_add(idx, name, h), h),
         NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => smap_add(idx, name, h),
@@ -4758,6 +4761,7 @@ fn op_effect_of(cname: String) = match env_lookup(cname) {
       ParamScheme(_) => None,
       RowAliasKind(_) => None,
       TypeVariants(_) => None,
+      ValueScheme => None,
     },
   },
   None => None,
@@ -6737,7 +6741,7 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
     name,
     Frozen([], TVar(handle)),
     Located(span, LetBinding(name, Inferred("pattern"))),
-    FnScheme
+    ValueScheme
   ),
   PWild => (),
   PLit(v) => {
@@ -6823,7 +6827,7 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
           rn,
           Frozen([], TVar(rest_h)),
           Located(span, LetBinding(rn, Inferred("record pattern rest"))),
-          FnScheme
+          ValueScheme
         )
       },
       None => (),
@@ -6851,7 +6855,7 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
       name,
       Frozen([], TVar(as_h)),
       Located(span, LetBinding(name, Inferred("as-pattern"))),
-      FnScheme
+      ValueScheme
     )
     infer_pat(inner, handle, span)
   },
@@ -6978,7 +6982,7 @@ fn infer_pat_list(pats, rest, parent_handle, span: ValidSpan) = {
         name,
         Frozen([], list_ty),
         Located(span, LetBinding(name, Inferred("list rest pattern"))),
-        FnScheme
+        ValueScheme
       )
     },
   }
@@ -7172,7 +7176,12 @@ fn bind_arm_args(args, params, op_name, span: ValidSpan) = {
       (name, param) => {
         let h = mint(Located(span, LetBinding(name, Declared(op_name))))
         graph_bind(h, param_ty(param), Located(span, Declared(op_name)))
-        env_extend(name, Frozen([], TVar(h)), Located(span, LetBinding(name, Declared(op_name))), FnScheme)
+        env_extend(
+          name,
+          Frozen([], TVar(h)),
+          Located(span, LetBinding(name, Declared(op_name))),
+          ValueScheme
+        )
       },
     },
     zip(args, params)
@@ -8928,7 +8937,7 @@ fn register_one_op(effect_name, eff_name, op) = match op {
     match env_lookup(op_name) {
       Some(prior) => match prior {
         (_, prior_reason, prior_kind) => match prior_kind {
-          FnScheme => match prior_reason {
+          FnScheme | ValueScheme => match prior_reason {
             Located(fn_span, _) => report(EFnShadowsOp(op_name, effect_name, fn_span)),
             _ => (),
           },
@@ -9309,7 +9318,12 @@ fn bind_handler_config_params(config_tparams, hname) = each(
 
 fn bind_handler_state_names(state_binds, hname, span: ValidSpan) = each(
   {
-    (name, ih) => env_extend(name, Frozen([], TVar(ih)), Located(span, LetBinding(name, Declared(hname))), FnScheme),
+    (name, ih) => env_extend(
+      name,
+      Frozen([], TVar(ih)),
+      Located(span, LetBinding(name, Declared(hname))),
+      ValueScheme
+    ),
   },
   state_binds
 )

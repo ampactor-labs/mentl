@@ -1,0 +1,8 @@
+// expect: 24
+// A module-scope let bound to a function literal is a declaration, so its
+// own name is in scope in its body, as a fn's is. Boot 2d18aedd judged the
+// let as a value binding, which cannot see itself, and refused the recursive
+// call (E_MissingVariable).
+let fact = (n) => if n == 0 { 1 } else { n * fact(n - 1) }
+
+fn main() = fact(4)

@@ -2108,6 +2108,17 @@ for i in "${!compilers[@]}"; do
   else
     fail "fmt destructure re-sugar (see $fdemo2/rich.mn)"
   fi
+  # A module-scope `let` bound to a function literal is born a declaration
+  # (parser.mn `let_at_scope`): the binder form renders as `fn`, and the
+  # arm-list form keeps `let name = { arms }`, since its one parameter is
+  # minted. RED through boot 2d18aedd, where the fixture did not assemble.
+  if grep -q '^fn twice_of(x) = x \* 2$' "$fdemo2/rich.mn" \
+     && grep -q '^let or_zero = { Some(v) => v, None => 0 }$' "$fdemo2/rich.mn" \
+     && ! grep -q '__al' "$fdemo2/rich.mn"; then
+    pass "fmt renders a module let-lambda as the fn it is, an arm-list one as its literal"
+  else
+    fail "fmt module let-lambda (see $fdemo2/rich.mn)"
+  fi
   # The annotation carry expects the SURFACE-canonical spelling — the
   # authored `{kind: String, level: Int}` byte-for-byte (space-free,
   # parse-sorted). The earlier banked `{ level: Int, kind: String }` was

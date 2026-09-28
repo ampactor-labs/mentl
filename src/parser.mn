@@ -553,13 +553,17 @@ fn parse_stmt_list(ref tokens, pos, own buf, count) = {
   if at(tokens, p, TEof) {
     (buf, count, p)
   } else {
-    match parse_stmt(tokens, p) {
+    match parse_stmt(tokens, p, AtModule) {
       (stmt, next) => match push_node(buf, count, stmt) {
         (b1, c1) => parse_stmt_list(tokens, skip_seps_only(tokens, next), b1, c1),
       },
     }
   }
 }
+
+// Where a statement stands, which decides what a `let` binding a function
+// literal IS (`let_at_scope`).
+type StmtScope = AtModule | AtBlock
 
 // Statements
 //
@@ -571,7 +575,7 @@ fn parse_stmt_list(ref tokens, pos, own buf, count) = {
 // own token, so a declaration could never be the widest node on its own line
 // and lost its address to its own predicate — and FnStmt was right only
 // because someone remembered span_join. Remembering is what this deletes.
-fn parse_stmt(ref tokens, pos) = match kind_at(tokens, pos) {
+fn parse_stmt(ref tokens, pos, scope) = match kind_at(tokens, pos) {
   TComment(first_line) => // A comment is graph content (SYNTAX.md Comments): collect the contiguous
   // // run, parse the following declaration, and attach the joined prose to
   // that decl's handle in the comment weave (graph_attach_comment) — the Why
@@ -596,12 +600,12 @@ fn parse_stmt(ref tokens, pos) = match kind_at(tokens, pos) {
           (carrier, p2)
         } else {
           // The decl parses; the weave pass attaches the run by span.
-          parse_stmt(tokens, p2)
+          parse_stmt(tokens, p2, scope)
         }
       },
     }
   },
-  _ => match parse_stmt_form(tokens, pos) {
+  _ => match parse_stmt_form(tokens, pos, scope) {
     (stmt, p) => (nstmt(stmt, span_join(span_at(tokens, pos), span_at(tokens, skip_ws_back(tokens, p - 1)))), p),
   },
 }
@@ -609,9 +613,11 @@ fn parse_stmt(ref tokens, pos) = match kind_at(tokens, pos) {
 // The forms themselves: each returns its Stmt and the index one past it. A
 // comment is not among them — it is graph content the dispatcher attaches to
 // the declaration that follows, never a statement form of its own.
-fn parse_stmt_form(ref tokens, pos) = match kind_at(tokens, pos) {
+fn parse_stmt_form(ref tokens, pos, scope) = match kind_at(tokens, pos) {
   TFn => parse_fn(tokens, pos + 1),
-  TLet => parse_let(tokens, pos + 1),
+  TLet => match parse_let(tokens, pos + 1) {
+    (stmt, p) => (let_at_scope(stmt, scope), p),
+  },
   TType => parse_type_decl(tokens, pos + 1),
   TEffect => parse_effect_decl(tokens, pos + 1),
   THandler => parse_handler_decl(tokens, pos + 1),
@@ -1023,6 +1029,30 @@ fn parse_let(ref tokens, pos) = {
       }
     },
   }
+}
+
+// A MODULE-SCOPE `let name = <function literal>` IS the declaration `fn
+// name(params) = body`, and it is born as one: judged recursive and
+// generalized, emitted as the symbol `$name` its callers call directly.
+// SYNTAX states the identity; until 2026-09-28 nothing in the medium held
+// it — the let was judged a value, lowered as a lambda named for its
+// handle, and called as a symbol that did not exist (`let inc = (x) => x +
+// 1` checked clean and did not assemble). A block-scope `let` stays a
+// closure VALUE, since it may capture what its block bound, and an
+// annotated let keeps its annotation's constraint as a value.
+fn let_at_scope(stmt, scope) = match scope {
+  AtBlock => stmt,
+  AtModule => match stmt {
+    LetStmt(PVar(name), val, ann) => if node_handle(ann) == node_handle(val) {
+      match val {
+        N(NExpr(LambdaExpr(params, body)), vspan, _) => FnStmt(name, params, nexpr(LitUnit, vspan), [], body),
+        _ => stmt,
+      }
+    } else {
+      stmt
+    },
+    _ => stmt,
+  },
 }
 
 // Parse `type X = V1 | V2(fields) | ...` or `type X = T where P`.
@@ -2739,7 +2769,7 @@ fn parse_block_body(ref tokens, pos, own buf, count) = {
       _ => false,
     }
     if is_decl {
-      match parse_stmt(tokens, p) {
+      match parse_stmt(tokens, p, AtBlock) {
         (stmt, p2) => match push_node(buf, count, stmt) {
           (b1, c1) => parse_block_body(tokens, p2, b1, c1),
         },

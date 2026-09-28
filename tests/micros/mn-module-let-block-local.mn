@@ -1,12 +1,12 @@
-// expect: refuse E_InternalInvariant
-// A module-scope value let whose init is a block with locals. The init is
-// lowered with no frame, so the lowering sees no binding for `a` or `f` —
-// though the judgment resolved both — and writes the missing-name floor.
-// Boot dbbfd107 compiled this with zero diagnostics and trapped at run time
-// (exit 134); the settle point refuses it as the invariant it is (R0″,
-// 2026-09-28). Module scope gets its own frame with
-// `Hβ.lower.module-scope-has-no-frame`, and this contract flips to a run
-// answering 10 the day it lands.
+// expect: 10
+// A module-scope value let whose init is a block with locals. Module scope
+// is a frame — the frame of $__init_lets, where every module init runs —
+// so `a` and `f` are that function's locals and `f` closes over `a`. Boot
+// dbbfd107 compiled this with zero diagnostics and trapped at run time (exit
+// 134): the init was lowered with no frame, so both names resolved as
+// globals the lowering could not see. Boot 2d18aedd refused it as the
+// internal invariant that was; module scope got its frame the next landing
+// (R0f, 2026-09-28, Hβ.lower.module-scope-has-no-frame).
 let total = {
   let a = 3
   let f = (x) => x + a

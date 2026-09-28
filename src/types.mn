@@ -611,11 +611,12 @@ fn resume_interior(a) = match a {
 type Binding = Frozen([Int], Ty) | Live(Int)
 
 // SchemeKind discriminates env entries by their CONSTRUCTION ORIGIN.
-// Same Scheme shape, three different downstream stories: lower
-// dispatches on this — FnScheme → LCall/LDirectCall, ConstructorScheme
-// → LMakeVariant with a known tag_id, EffectOpScheme → LPerform with
-// the declaring effect already attributed. The graph stores the
-// distinction directly rather than re-deriving it from type shape.
+// Same Scheme shape, different downstream stories: lower dispatches on
+// this — FnScheme → LDirectCall of the declared symbol, ValueScheme →
+// LCall through the value, ConstructorScheme → LMakeVariant with a known
+// tag_id, EffectOpScheme → LPerform with the declaring effect already
+// attributed. The graph stores the distinction directly rather than
+// re-deriving it from type shape.
 //
 // ConstructorScheme(tag_id, variant count):
 //   tag_id is this variant's ordinal within its declaring type
@@ -692,6 +693,15 @@ type SchemeKind
   // cache-serialized — live-only; cross-file handler caching reconstructs them
   // from the decl, peer Hβ.cache.handler-decl-from-source, post-L1.)
   | TypeVariants([(TagId, String, [Ty])])
+  // A VALUE binding — a let, a pattern variable, a handler arm's argument
+  // or state field: a name for a value computed at run time, never a
+  // declared function's symbol. These were FnScheme until 2026-09-28, and
+  // the difference is not a label: lower cashes a FnScheme callee into a
+  // direct call of `$name`, and a module value holding a closure has no
+  // such symbol (`let add3 = make_adder(3)` checked clean and did not
+  // assemble). Two lower readers had already written "a value binding" and
+  // "value schemes" as if this kind existed.
+  | ValueScheme
 
 // The Boolean algebra lives as functions in effects.mn; the ADT lives
 // here so every module that speaks types can speak rows.

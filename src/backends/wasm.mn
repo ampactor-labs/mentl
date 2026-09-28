@@ -1294,7 +1294,12 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       {
         fn_records: fn_records,
         fold_closures: fold_closures,
-        line_owners: static_line_owners(top_fn_names, fn_lines, spec_recs),
+        line_owners: static_line_owners(
+          top_fn_names,
+          fn_lines,
+          spec_recs,
+          init_lets_lines(collect_top_value_lets(lowered))
+        ),
         lowered: lowered,
         redrives: redrives,
         spec_names: spec_names,
@@ -2036,10 +2041,11 @@ fn line_global_name(h: Int, site: String) = "__line_{int_to_str(h)}_{site}"
 // The static line owners — (symbol, lines, pairs, enc): every emitted
 // top-level fn with lines at the floor bracket, then every twin whose base's
 // lines are static, the twin under its own instantiation pairs (the bracket
-// its ring bytes and its body's slot width both read). A twin's static-ness
-// is read off its base's lines, where each site's home is recorded — so a
-// base the module does not emit still gives its twins their lines.
-fn static_line_owners(top_fn_names, fn_lines, spec_recs) = filter(
+// its ring bytes and its body's slot width both read), then `$__init_lets`
+// for the module inits' own sites. A twin's static-ness is read off its
+// base's lines, where each site's home is recorded — so a base the module
+// does not emit still gives its twins their lines.
+fn static_line_owners(top_fn_names, fn_lines, spec_recs, init_lines) = filter(
   { (name, _lines, _p, _e) => ls_find_str_local(top_fn_names, name, 0) >= 0 },
   map({ (name, lines) => (name, lines, [], "") }, fn_lines)
 ) ++ flat_map(
@@ -2052,7 +2058,24 @@ fn static_line_owners(top_fn_names, fn_lines, spec_recs) = filter(
     },
   },
   spec_recs
-)
+) ++ match init_lines {
+  [] => [],
+  lines => [("__init_lets", lines, [], "")],
+}
+
+// The static sites of the module inits — the lines of the frame they are
+// lowered in (lower.mn `lower_module_init`), read off the nodes that carry
+// them. The walk stops at a minted fn, whose lines are slots in its own
+// record.
+fn init_lets_lines(value_lets) = flat_map({ (_, init) => init_static_lines(init) }, value_lets)
+
+fn init_static_lines(expr) = match expr {
+  LFeedback(h, d, LhStatic, b, s) => [(h, d, LhStatic)] ++ init_static_lines(b) ++ init_static_lines(s),
+  LMakeClosure(_, _, caps) => flat_map(init_static_lines, caps),
+  LMakeContinuation(_, _, caps, _, _) => flat_map(init_static_lines, caps),
+  LDeclareFn(_) => [],
+  _ => flat_map(init_static_lines, low_children(expr)),
+}
 
 fn line_is_static(line) = match line {
   (_h, _d, home) => match home {
@@ -2793,10 +2816,12 @@ fn emit_init_lets(value_lets) = if len(value_lets) > 0 {
   wat_emit("    (i32.const 0)\n  )\n")
 }
 
+// The inits emit as `$__init_lets`' own body, so a static `<~` in one names
+// its ring global for that owner (`init_lets_lines`).
 fn emit_init_lets_body(ref value_lets) = {
   emit_init_lets_loop(value_lets, 0, len(value_lets))
   wat_collect()
-} ~> emit_memory_bump ~> wat_to_string
+} ~> emit_site_named("__init_lets") ~> emit_memory_bump ~> wat_to_string
 
 fn emit_init_lets_loop(ref value_lets, i, n) = if i >= n {
   ()

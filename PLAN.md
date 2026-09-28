@@ -1303,11 +1303,26 @@ and this is the STATE.
   `LInvariantFailure` wrote its trap with no word at all (a block local in a
   module-scope `let` compiled clean and trapped), and a static-home belt was
   guarding a live hole — module scope is lowered with no frame, four shapes
-  (`Hβ.lower.module-scope-has-no-frame`, the next landing). And `mentl fmt`
+  (`Hβ.lower.module-scope-has-no-frame`, closed at R0f below). And `mentl fmt`
   had been rewriting `(run() ~> h).beta` as `run() ~> h.beta` under "names
   conserved": the postfix heads lacked the precedence inverse (fixed), and
   a render that parses to a different tree is still refused by nothing
   (`Hβ.fmt.render-must-parse-to-the-same-tree`).
+- **MODULE SCOPE IS A FRAME, AND A MODULE BINDING IS WHAT IT IS — CLOSED
+  2026-09-28 (R0f, pin 51f332d71a7baae1).** A module value let's init was lowered
+  with no frame, so a block local resolved as a global, a nested fn took a
+  static line home it had no record for, and a `<~` in an init named its
+  ring global with the emit site's diagnostic label. The init lowers inside
+  the frame of `$__init_lets` now, and its static lines have that function
+  as their owner. A module `let inc = (x) => x + 1` was judged a value and
+  called as a symbol nothing emitted; the parser births it as the `FnStmt`
+  it is, recursive and generalized, and fmt writes it as `fn` (an arm-list
+  one keeps `let name = { … }`, its parameter being minted). And every
+  value binding had been registered as `FnScheme`, so a module value
+  holding a closure was called directly by a name that was never a
+  function; value bindings carry `ValueScheme`. Each of the five shapes
+  checked clean on boot 2d18aedd and either refused or did not assemble;
+  each now runs to the value its source computes.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

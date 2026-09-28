@@ -281,7 +281,9 @@ fn enumerate_vocabulary_calls(target_ty, allowed_row, context, rings) with !Muta
     (acc, entry) => match acc {
       (accepted, rejected) => match entry {
         (name, scheme, reason, kind) => match kind {
-          FnScheme => match judgment_ty(scheme) {
+          FnScheme | ValueScheme => // A value binding of function type is vocabulary exactly as a
+          // declared fn is: a reference to it fills a function-typed hole.
+          match judgment_ty(scheme) {
             TFun(params, ret, row) => if len(params) == 0 && heads_may_unify(ret, target_ty) && !reaches_decl(name, enclosing, []) {
               if row_subsumes(row, allowed_row) {
                 // drift-audit: ignore — bounded by the in-scope zero-arg vocabulary, not a loop accumulator

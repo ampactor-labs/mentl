@@ -1,0 +1,11 @@
+// expect: 1
+// A `<~` directly in a module-scope let's init sits in the module frame, so
+// its line is static and its ring an instance global owned by
+// $__init_lets. It ticks once, against the zero prior. Boot 2d18aedd wrote
+// the global's name with the emit site's diagnostic label — `module scope`,
+// a space inside a WAT identifier — and the module did not assemble.
+fn ramp(prev) = prev + 1
+
+let seeded = ((prev) => ramp(prev)) <~ delay(1)
+
+fn main() = seeded

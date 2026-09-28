@@ -1,0 +1,15 @@
+// expect: 6
+// A partial application over a module VALUE that holds a closure calls
+// through that closure, as a declared fn's partial calls through its static
+// one. Boot 2d18aedd ran this (6) because the value was registered as a
+// FnScheme; the first build of R0f gave value bindings their own kind and
+// the partial fork floored them (an internal invariant, seen before the
+// pin). The partial arm reads both kinds (2026-09-28).
+fn make_adder(n) = (x, y) => x + y + n
+
+let add3 = make_adder(3)
+
+fn main() = {
+  let g = add3(1, ??)
+  g(2)
+}
