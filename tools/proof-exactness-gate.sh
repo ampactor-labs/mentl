@@ -32,11 +32,15 @@ esac
   exit 2
 }
 
-# The memo (Hβ.tools.gate-stamp-is-uniform): three fixtures through one
+# The memo (Hβ.tools.gate-stamp-is-uniform): the fixtures through one
 # compiler; a green run on exactly these bytes answers again. FORCE_GATES=1
 # re-runs.
 pe_key=$(wt_memo_key_run "$compiler" tests/frontier/mn-hole-executable-refusal.mn \
   tests/frontier/mn-proof-debt-surfaced.mn tests/frontier/mn-partial-hole-executable.mn \
+  tests/frontier/mn-refine-join-discharges.mn tests/frontier/mn-refine-join-refuses.mn \
+  tests/frontier/mn-refine-join-pending.mn tests/frontier/mn-refine-fn-result-refuses.mn \
+  tests/frontier/mn-refine-fn-result-discharges.mn tests/frontier/mn-refine-fn-param-pending.mn \
+  tests/frontier/mn-refine-fn-param-discharges.mn \
   lib tools/proof-exactness-gate.sh)
 if pe_memo=$(wt_memo_hit "proof-exactness-$label" "$pe_key"); then
   printf '%s\n' "$pe_memo"
@@ -162,6 +166,44 @@ expect_executable \
   partial-hole \
   "$ROOT/tests/frontier/mn-partial-hole-executable.mn" \
   42
+# A claim over a JOIN decides as the AND of the claim over each tail: every
+# tail constant and inside the bound discharges (no debt), one tail outside
+# refuses, one tail not constant stays honest debt — the three verdicts of
+# one distribution (src/verify.mn decide_with_self).
+expect_executable \
+  join-discharges \
+  "$ROOT/tests/frontier/mn-refine-join-discharges.mn" \
+  40
+expect_refusal \
+  join-refuses \
+  "$ROOT/tests/frontier/mn-refine-join-refuses.mn" \
+  'E_RefinementRejected'
+expect_surfaced \
+  join-pending \
+  "$ROOT/tests/frontier/mn-refine-join-pending.mn" \
+  'V_?Pending'
+# A FUNCTION crossing an argument edge carries its refinements both ways
+# (src/infer.mn fun_refinement_crossing): the RESULT the callee demands is
+# judged on the lambda's own body — refused or discharged there — and a
+# PARAMETER refinement the callee never proves is honest debt at the edge.
+# Every leg read green-by-silence on boot 43aeb30f: the refusal compiled and
+# the debt never surfaced.
+expect_refusal \
+  fn-result-refuses \
+  "$ROOT/tests/frontier/mn-refine-fn-result-refuses.mn" \
+  'E_RefinementRejected'
+expect_executable \
+  fn-result-discharges \
+  "$ROOT/tests/frontier/mn-refine-fn-result-discharges.mn" \
+  40
+expect_surfaced \
+  fn-param-pending \
+  "$ROOT/tests/frontier/mn-refine-fn-param-pending.mn" \
+  'V_?Pending'
+expect_executable \
+  fn-param-discharges \
+  "$ROOT/tests/frontier/mn-refine-fn-param-discharges.mn" \
+  40
 
 echo "proof-exactness: $passes pass / $reds red"
 [ "$reds" -eq 0 ] && wt_memo_put "proof-exactness-$label" "$pe_key" "proof-exactness: $passes pass / $reds red"

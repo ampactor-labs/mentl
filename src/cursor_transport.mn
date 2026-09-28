@@ -135,8 +135,13 @@ type TransportState
 // monotonically incrementing
 //
 // why-chain of last surfaced view
-fn transport_state_init(initial_caret) =
-  TransportState({cadence: default_cadence(), caret: initial_caret, cursor: Cursor(0, Inferred("session-init"), 0.0), last_render: Inferred("none"), session_id: 0})
+fn transport_state_init(initial_caret) = TransportState({
+  cadence: default_cadence(),
+  caret: initial_caret,
+  cursor: Cursor(0, Inferred("session-init"), 0.0),
+  last_render: Inferred("none"),
+  session_id: 0,
+})
 
 // ─── terminal_transport — text-mode rendering ───────────────────────
 //
@@ -241,7 +246,13 @@ fn cursor_step(state) with !Mutate = match state {
 // ─── Helpers ────────────────────────────────────────────────────────
 fn state_advance(state, latest_cursor) = match state {
   TransportState(s) => match latest_cursor {
-    Cursor(_, reason, _) => TransportState({cadence: s.cadence, caret: s.caret, cursor: latest_cursor, last_render: reason, session_id: s.session_id + 1}),
+    Cursor(_, reason, _) => TransportState({
+      cadence: s.cadence,
+      caret: s.caret,
+      cursor: latest_cursor,
+      last_render: reason,
+      session_id: s.session_id + 1,
+    }),
   },
 }
 
@@ -252,7 +263,13 @@ fn state_with_render(state, cursor) = match state {
 }
 
 fn state_with_caret(state, new_caret) = match state {
-  TransportState(s) => TransportState({cadence: s.cadence, caret: new_caret, cursor: s.cursor, last_render: s.last_render, session_id: s.session_id + 1}),
+  TransportState(s) => TransportState({
+    cadence: s.cadence,
+    caret: new_caret,
+    cursor: s.cursor,
+    last_render: s.last_render,
+    session_id: s.session_id + 1,
+  }),
 }
 
 fn span_of_cursor(cursor) = match cursor {

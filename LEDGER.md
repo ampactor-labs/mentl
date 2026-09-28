@@ -35,6 +35,103 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-28 · pin 730e097a2531522c (TRANSITION m3 == m4) · THE FIRST PROGRAM THAT IS NOT THE COMPILER.
+  L3 of the Pulse sprint — scene 1. `examples/pulse/render/main.mn` (460
+  lines) renders ten seconds of 48 kHz stereo to a WAV through `mentl run`:
+  seventeen stages minted by makers, twenty-seven live `<~` lines,
+  `render_frame` declared `!Alloc + !Sample(44100)` and measured at zero
+  heap growth over 480,000 frames; `lib/audio/wav.mn` writes the RIFF
+  header and PCM16; `effect Sample(rate: Int)` and `handler sample_at(rate)`
+  home the rate in lib/dsp/clock.mn; the DSP library's filters are makers.
+  **Every defect the walk found was silent to the board** (tripwire 3: the
+  wheel never captures a ground Float, matches on one, passes one through
+  an indirect call, or runs `compile` after `run`). Ten, each with a fixture
+  seen RED on boot 43aeb30f:
+  a closure capturing a ground Float did not assemble (`unknown local $fb`:
+  the capture read its binder's handle, which a ground binder does not
+  have — one read of a resolved name now, captures carry the USE handle;
+  `mn-capture-ground-wide`); a match on a Float did not assemble (the
+  scrutinee parked in the word scratch — the root is read at its repr;
+  `mn-match-float-scrutinee`); a Float crossing any indirect call was
+  boxed, so `fn step(f, x: Float) with !Alloc = f(x)` allocated under its
+  own `!Alloc`, and a handler over a Float op did not assemble — the table
+  carries two faces, the word face every `fn_ptr` names and the native face
+  at `fn_ptr + $native_face` for sites that prove a wide vector, and an
+  op's declared signature is its ABI (`mn-wide-closure-call-alloc-free`,
+  `mn-wide-op-state-alloc-free`); two instances of one effect collapsed to
+  the first, so `fast() + slow()` escaped `!Sample(44100)` while the other
+  order refused — collision is the complement of provable distinctness
+  (`row_entry_collides`; crown `leak-instance-order`); a claim over an
+  `if`/`match` was never decided — a join decides as the AND over its tails
+  (`mn-refine-join-*`); a refinement crossing a function-typed argument was
+  DROPPED, so a 70,900 Hz sweep reached an `Hz` filter — the result is
+  judged on the lambda's body, a parameter the callee does not carry is
+  honest `V_Pending` (`mn-refine-fn-*`); `compile` after `run` printed
+  nothing — the warm image carried run's output sink, and images are filed
+  under `world_key()` (frontier `warm-world`); a fn body's `{` had its own
+  copy of the brace discrimination (`brace_form` is the one home) and the
+  formatter projected the gap (body records in parens, a record never
+  broke); and the DSP library held one filter per program, a DC blocker
+  with a DC gain of 200, a high-pass reading its own output, an envelope
+  follower ignoring `release`.
+  **Two more on the way to the pin, both caught by a gate.** (1) The
+  render leg went red after the library was formatted: `mentl fmt` had
+  turned `effect Sample(rate: Int)` into `effect Sample(rate)` while
+  reporting "prose conserved". fmt now spends every identifier and literal
+  of the source against its render and refuses to write on any loss; seen
+  firing on an op-name probe first (`lost: msg`, `lost: times`); a census
+  of all 613 `.mn` files under it found three shapes — the effect/handler
+  head (a lesser copy of `render_one_param`, deleted into it), op parameter
+  names (the parser consumed them; ops carry `[TParam]` now, `_` for a bare
+  type) and a pinned alias's base (`Float repr f64` → `f64`; position
+  decides the spelling) — plus two correct refusals (an unparseable fixture
+  and `Hβ.fmt.literal-spelling-is-intent`). Fixing the head exposed a call
+  whose result the judgment left free inside the formatter's cycle,
+  spliced as `(66036)`; the show floor it sat on had 22 silent sites and
+  now narrates `T_ShowTypeUnprovable`, held by `show_type_unprovable_max`.
+  (2) The cost ratchet refused: the m3 leg's peak rose 1,049,152 →
+  1,328,912 KB and the judgment's high-water 565 → 835 MB on the same boot.
+  Bisected by file, then by hunk (`render_record` calling `render_field_lines`,
+  which reaches `render_tokens_for`), then by per-group heap marks patched
+  into the probe binary: the formatter's 46-member binding group cost 272
+  MB where other groups that size cost about 4 MB, one more member doubled
+  it, and `render_pred_node` — a one-line body — held 531 MB. A census of
+  every function's calls across that member: 45 occurs checks entered
+  `occurs_in_edges` 17.4 million times. The occurs check walked row PATHS
+  with no memory of entered cells; it keeps a table now, made where a row
+  walk begins. Judgment high-water 313,704,904 bytes (−44% on the previous
+  pin, which had been paying ~266 MB for this walk since before the
+  landing).
+  **Bootstrap, stated:** the prior boot's parser read a fn body's `{` as a
+  block, so the six fn-body record literals were written with parens to
+  build this pin (m2 from the prior boot refused them bare with 64
+  `E_MissingVariable`s), then canonicalized by the new boot's fmt; a second
+  `MARCH_REPIN` found m2 == m3 at the same sha — the parens never reached
+  the bytes, and the landing has one pin.
+  **KILLS** (each by one probe): the first dedup form collided on
+  structural sameness and the wheel's compile hung (type-var instances
+  stopped merging); both first dedup forms matched a pair scrutinee and ran
+  the compile out of memory; the two-instances TYPE face is not a dedup bug
+  (an effect's type variables are shared across its ops by declaration); the
+  Pulse `Int vs t@e0` refusal was not the dedup change (the boot reproduced
+  it — fmt had deleted `: Int`); and in the cost dig, row resolution walking
+  paths (73 calls), instantiation cloning a huge scheme (3), the row half of
+  the deep chase (2), and a few huge buffers (none over 1 MB).
+  **Gates:** micros 161/161, crown 102/102, proof-exactness 30/30, frontier
+  420/0/2 (six new legs: pulse-render and its three twins, warm-world, the
+  fmt parameter face), the census 613 files with two correct refusals,
+  prelude floor 2822 → 2794, authored ref 721 → 719, effectful lambdas
+  236 → 234 (three minted and refused by the board, then written as
+  references), the self-compile peak ceiling 1058000 → 820000.
+  **Named:** `Hβ.verify.higher-order-refinement` (three faces),
+  `Hβ.effects.handler-pins-its-instance`, `Hβ.lang.lambda-param-annotation`,
+  `Hβ.dataflow.delay-tap`, `Hβ.diag.effect-mismatch-at-the-call`,
+  `Hβ.diag.raw-row-variables-in-mismatch`, `Hβ.dsp.hz-ceiling-ambient-sample-rate`,
+  `Hβ.lower.binder-is-a-node`, `Hβ.emit.generic-op-box-is-unrowed`,
+  `Hβ.lower.multishot-float-answer-redrive`, `Hβ.emit.show-free-floor`
+  (homed), and the env overlay measured on a real program.
+  **Cost:** m4 leg 13.61s wall · 796MB peak RSS (816024 KB); the m3 leg 12.33s · 815228 KB against the previous pin's 1049152 KB.
+
 - 2026-09-27 · pin 43aeb30f3bcc3848 (TRANSITION m3 == m4) · THE `<~` LINE IS A RING OWNED BY THE RECORD THAT HOLDS THE CYCLE.
   L2 of the Pulse sprint — the fourth of the four foundation defects the
   refuter found. **The shape:** the line was N module globals `$s<h>` …

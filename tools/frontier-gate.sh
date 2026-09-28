@@ -71,11 +71,12 @@ esac
 
 # THE MEMO (Hβ.tools.gate-stamp-is-uniform): this gate's verdict is a function
 # of the compiler bytes it runs and the files it reads — tests/, lib/ (every
-# fixture links the prelude), ide/, this script and the expected-red names in
-# the baseline. When a green run already judged exactly those, the verdict is
+# fixture links the prelude), ide/, examples/ (the flagship program the
+# pulse-render leg renders), this script and the expected-red names in the
+# baseline. When a green run already judged exactly those, the verdict is
 # read back instead of re-derived; a byte-identical repin used to pay this
 # whole gate a second time. FORCE_GATES=1 re-runs it.
-frontier_key=$(wt_memo_key_run "${compilers[@]}" tests lib ide tools/frontier-gate.sh tools/verify-baseline.txt)
+frontier_key=$(wt_memo_key_run "${compilers[@]}" tests lib ide examples tools/frontier-gate.sh tools/verify-baseline.txt)
 if frontier_memo=$(wt_memo_hit "frontier-$selection" "$frontier_key"); then
   printf '%s\n' "$frontier_memo"
   echo "  (memo: these compilers already ran every leg against these inputs green — FORCE_GATES=1 re-runs)"
@@ -503,6 +504,72 @@ run_warm_start() {
   fi
 }
 
+# The flagship program (Track G, Pulse scene 1): examples/pulse/render
+# rendered through the compiler under test by `mentl run`, and the WAV judged
+# by an oracle that shares nothing with the medium
+# (tests/frontier/pulse-render/oracle.py: the header, both channels'
+# loudness, no full-scale sample, and each of the score's eight notes
+# standing 20 dB over the others). Then its three refusal twins, each the
+# program with ONE line changed — patched here, so the program keeps one
+# home and a twin can never drift from it:
+#   alloc  an allocation on the per-sample path   → E_EffectMismatch
+#   range  a constant outside `Sample` handed to the WAV writer
+#                                                 → E_RefinementRejected
+#   rate   a clock reader pinned at 44.1 kHz under the path's
+#          `!Sample(44100)`                       → E_EffectMismatch
+# A patch that stops applying is a failure, never a skipped twin. The render's
+# wall time prints beside ten seconds of audio; a wall clock is a host fact
+# and is never ratcheted.
+run_pulse_render() {
+  local compiler="$1" dir="$2" label="pulse-render"
+  local pdir="$dir/$label.proj" rc t0 t1
+  rm -rf "$pdir"
+  mkdir -p "$pdir"
+  cp "$ROOT/examples/pulse/render/main.mn" "$pdir/main.mn"
+  t0=$(date +%s%N)
+  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" run main \
+    > "$dir/$label.wav" 2> "$dir/$label.err"
+  rc=$?
+  t1=$(date +%s%N)
+  if [ "$rc" -ne 0 ] || [ ! -s "$dir/$label.wav" ]; then
+    fail "$label render (exit=$rc; see $dir/$label.err)"
+  elif python3 "$ROOT/tests/frontier/pulse-render/oracle.py" "$dir/$label.wav" > "$dir/$label.oracle" 2>&1; then
+    pass "$label: ten seconds rendered in $(( (t1 - t0) / 1000000 )) ms, the oracle holds ($(grep -c '^PASS' "$dir/$label.oracle") checks)"
+  else
+    fail "$label oracle ($(grep '^FAIL' "$dir/$label.oracle" | head -1); see $dir/$label.oracle)"
+  fi
+  local twin pattern replacement class tdir
+  for twin in alloc range rate; do
+    case "$twin" in
+      alloc) pattern='^  let n = now()$'
+             replacement='  let n = now()\n  let label = int_to_str(n)'
+             class=E_EffectMismatch;;
+      range) pattern='^  wav_frame(buf, n, channel(dry_l, echo_l, room_l, gain), channel(dry_r, echo_r, room_r, gain))$'
+             replacement='  wav_frame(buf, n, 1.5, channel(dry_r, echo_r, room_r, gain))'
+             class=E_RefinementRejected;;
+      rate)  pattern='^fn clock_rate() with Sample(48000) = sample_rate()$'
+             replacement='fn clock_rate() with Sample(44100) = sample_rate()'
+             class=E_EffectMismatch;;
+    esac
+    tdir="$dir/$label-$twin.proj"
+    rm -rf "$tdir"
+    mkdir -p "$tdir"
+    if [ "$(grep -c "$pattern" "$ROOT/examples/pulse/render/main.mn")" != "1" ]; then
+      fail "$label-$twin: the patch no longer applies to the program (pattern: $pattern)"
+      continue
+    fi
+    sed "s/$pattern/$replacement/" "$ROOT/examples/pulse/render/main.mn" > "$tdir/main.mn"
+    wt_run --dir "$tdir::." --dir "$ROOT::/mentl-home" "$compiler" check main \
+      > "$dir/$label-$twin.out" 2> "$dir/$label-$twin.err"
+    rc=$?
+    if [ "$rc" -ne 0 ] && grep -q "$class" "$dir/$label-$twin.err"; then
+      pass "$label-$twin refuses ($class)"
+    else
+      fail "$label-$twin: expected $class and a refusal (exit=$rc; see $dir/$label-$twin.err)"
+    fi
+  done
+}
+
 # The incremental cursor gate (B-i landing 3): a three-module DAG, one
 # edit, one truth. Run 1 compiles cold and persists; b.mn is patched; run
 # 2 restores the image, names the re-derived cone (b main — a stays
@@ -510,6 +577,34 @@ run_warm_start() {
 # (the fixture is lambda-free, so handle numbering cannot leak into the
 # wat and byte-equality is the honest oracle at today's pin; the
 # deterministic handle partition generalizes it).
+# Two verbs, one file, two worlds: `run` persists its analyzed image under
+# the world its handlers built, and a `compile` after it must not restore
+# that image into its own output — the image is filed under world_key(), so
+# the compile finds none and derives, and the second verb's WAT is whole.
+run_warm_world() {
+  local compiler="$1" dir="$2" label="warm-world"
+  local wdir="$dir/$label.proj" rc lines
+  rm -rf "$wdir"
+  mkdir -p "$wdir/.build"
+  printf 'fn main() = 9\n' > "$wdir/main.mn"
+  wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" run main \
+    > "$dir/$label.run.out" 2> "$dir/$label.run.err"
+  rc=$?
+  if [ "$rc" -ne 9 ]; then
+    fail "$label: run exit=$rc, want 9 (see $dir/$label.run.err)"
+    return
+  fi
+  wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
+    > "$dir/$label.wat" 2> "$dir/$label.err"
+  rc=$?
+  lines=$(wc -l < "$dir/$label.wat")
+  if [ "$rc" -eq 0 ] && grep -q '(module' "$dir/$label.wat"; then
+    pass "$label: compile after run emits the module ($lines WAT lines)"
+  else
+    fail "$label: compile after run emitted $lines WAT lines (exit=$rc; see $dir/$label.err)"
+  fi
+}
+
 run_warm_incremental() {
   local compiler="$1" dir="$2" label="warm-inc"
   local wdir="$dir/$label.proj" refdir="$dir/$label.ref" rc
@@ -1327,6 +1422,14 @@ for i in "${!compilers[@]}"; do
   # changed weave missed the weave-keyed cache and re-derived everything
   # with no cone line.
   run_warm_incremental "$compiler" "$dir"
+  # A warm image carries the handler world that wrote it, output sink
+  # included. RED on boot 43aeb30f: `run` then `compile` on one file printed
+  # ZERO lines — the compile restored run's image and emitted into run's
+  # sink. Images are filed under world_key() now (run_warm_world's header).
+  run_warm_world "$compiler" "$dir"
+  # Pulse scene 1: the flagship renders, the oracle judges the file, and its
+  # three one-line twins refuse (run_pulse_render's own header).
+  run_pulse_render "$compiler" "$dir"
   # Real host-thread spawn over the shared image (the task-record substrate:
   # import-shape memory, shared-cell allocator, $spawn_task_impl/$join_task_impl).
   # Seen RED on the pre-task-record boot: 134, unaligned atomic in the join.
@@ -2003,6 +2106,15 @@ for i in "${!compilers[@]}"; do
     pass "fmt carries the signed row, the retty, the handler arm; braces never accrete"
   else
     fail "fmt row/retty/handler/brace carry (see $fdemo2/voicey.mn)"
+  fi
+  # The parameter face — RED on boot 43aeb30f: the effect and handler heads
+  # rendered each parameter's NAME alone, so the render deleted an authored
+  # annotation (effect Tick(rate: Int) became effect Tick(rate)) and the
+  # declared instance Tick(2) then refused against a bare variable.
+  if grep -qF 'effect Tick(rate: Int)' "$fdemo2/voicey.mn" && grep -qF 'handler ticker(r: Int)' "$fdemo2/voicey.mn"; then
+    pass "fmt carries effect and handler parameter annotations"
+  else
+    fail "fmt parameter annotations dropped (see $fdemo2/voicey.mn)"
   fi
   cp "$fdemo2/voicey.mn" "$fdemo2/vpass1.mn"
   (cd "$fdemo2" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$fdemo2" --dir /tmp "$compiler" fmt voicey.mn) >/dev/null 2>&1
@@ -3386,7 +3498,13 @@ for i in "${!compilers[@]}"; do
   # shape tier convicted the index-threaded form). A bare program formats
   # nothing, so it links the encoder for no reason at all — the same
   # sentence as the line above, and the same peer takes it back.
-  cost_ceiling=2822
+  # 2794 (2026-09-28): FELL 2822 → 2794. lib/memory.mn carried a second copy
+  # of the world walk (`world_declaring_from`, `node_arm_at` and
+  # `ev_declaring_node`) that nothing called — the emitted preamble's walk is
+  # the one dispatch reads — and it is deleted; `world_key`, which files a
+  # warm image under the handler world that wrote it, took eight of those
+  # lines back.
+  cost_ceiling=2794
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

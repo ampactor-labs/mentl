@@ -27,7 +27,7 @@
 //   mentl_default       → mentl.mn
 //   query_default       → query.mn
 //   affine_ledger       → own.mn
-//   clock_real, tick_real, sample_real, deadline_real → clock.mn
+//   clock_real, tick_real, sample_at, deadline_real → clock.mn
 import graph
 
 import types

@@ -1112,7 +1112,15 @@ fn lower_call_partial(handle, fbody, fh, r_args, n_ps) = match partial_callee_fo
         // published the whole arrow as the ABI's return where the arrow's
         // RESULT is meant.
         // One home for the fact, both shapes correct.
-        graph_emitfn_note(EmitFnEntry{caps: [], fence: len(captures), kind: EfkPartial, name: "partial_{int_to_str(handle)}", origin: handle, params: zip(param_names, partial_param_tys(fh, len(param_names))), ret: ret_ty_of(fh)})
+        graph_emitfn_note(EmitFnEntry{
+          caps: [],
+          fence: len(captures),
+          kind: EfkPartial,
+          name: "partial_{int_to_str(handle)}",
+          origin: handle,
+          params: zip(param_names, partial_param_tys(fh, len(param_names))),
+          ret: ret_ty_of(fh),
+        })
         let fn_ir = LFn(
           "partial_{int_to_str(handle)}",
           len(param_names),
@@ -1943,7 +1951,11 @@ fn build_handler_arm_names(hname, arms) = {
     (arm) => {
       let op = handler_arm_op_name(arm)
       let ename = lower_effect_name_of_op(op)
-      ({ename: if ename == "" { op } else { ename }, name: arm_fn_name(hname, op), slot: lower_compute_ev_slot_for_op(op)})
+      {
+        ename: if ename == "" { op } else { ename },
+        name: arm_fn_name(hname, op),
+        slot: lower_compute_ev_slot_for_op(op),
+      }
     },
     arms
   )
@@ -1962,8 +1974,10 @@ fn build_handler_arm_names(hname, arms) = {
 // layout rather than at each reader, and it is what makes the runtime walk's
 // "does this node declare the op" test READABLE — an unimplemented slot is
 // now present and zero, where before it was absent and whatever came after.
-fn pad_group_to_effect_ops(g: {arms: [String], ename: String}) =
-  ({arms: grow_to_with_gaps(group_arms(g), len(lookup_effect_op_names(group_ename(g)))), ename: group_ename(g)})
+fn pad_group_to_effect_ops(g: {arms: [String], ename: String}) = {
+  arms: grow_to_with_gaps(group_arms(g), len(lookup_effect_op_names(group_ename(g)))),
+  ename: group_ename(g),
+}
 
 // Place one arm at its op-slot in its effect-group's arm_list, find-or-
 // create the group. The arm_list is dense [0, max_slot] with the empty-
@@ -2283,18 +2297,10 @@ fn lower_expr_body(e, handle, span) = match e {
   },
   LitUnit => LConst(handle, LInt(0)),
   VarRef(name) => match ls_resolve(name) {
-    (res, local_h) => // For LLocal/LUpval the LowExpr's handle should describe the
-    // captured value's type (the local's handle from binding time),
-    // not the VarRef's own handle. Fall back to VarRef's handle for
-    // RGlobal where there's no separate local-binding handle.
-    //
-    // A GROUND binding (ty_handle_of returns 0 — a ctor's TFloat
-    // payload, a tuple's String element) has no binding-time handle;
-    // the USE node's own handle carries the same truth (infer_var_ref
-    // bound it to the resolved type, and a local is monomorphic), so
-    // the type-directed reads (the eq/binop gradient, ++'s element
-    // dispatch) read the graph instead of the h=0 word floor — zero
-    // new writes, the handle the graph already holds.
+    (res, local_h) => // For LLocal/LUpval the LowExpr's handle is the one that types the
+    // read — `local_ty_handle` decides it, for this site and every other
+    // read of a resolved local. Fall back to VarRef's handle for RGlobal
+    // where there's no separate local-binding handle.
     //
     // SchemeKind dispatch (H3): a VarRef whose env entry is a
     // nullary ConstructorScheme is a value-position constructor
@@ -2315,8 +2321,8 @@ fn lower_expr_body(e, handle, span) = match e {
         }
       )
       match res {
-        RLocal => LLocal(if local_h == 0 { handle } else { local_h }, name),
-        RUpval(slot) => LUpval(if local_h == 0 { handle } else { local_h }, slot),
+        RLocal => LLocal(local_ty_handle(local_h, handle), name),
+        RUpval(slot) => LUpval(local_ty_handle(local_h, handle), slot),
         RFbPrior(fb_h) => // (LF.B) a `<~` lambda param resolves to the feedback site's prior local,
         // read LIVE — the recurrence's y[n-1] term IS this node.
         LFeedbackPrior(fb_h),
@@ -2517,14 +2523,22 @@ fn lower_expr_body(e, handle, span) = match e {
     // re-seeds from its own enclosing frame). Where no k is in scope the
     // seed adds nothing. One dormant word per arm-context closure that
     // never uses it — the price of a walk-free, stateless rule.
-    let free_names0 = collect_free_vars(body_node, param_names_list)
-    let free_names = lower_seed_hrec(lower_seed_k(free_names0))
-    match resolve_captures_outer(free_names, handle) {
+    let free_uses0 = collect_free_uses(body_node, param_names_list)
+    let free_uses = lower_seed_hrec(lower_seed_k(free_uses0))
+    match resolve_captures_outer(free_uses, handle) {
       (captures_names, captures_exprs, captures_handles) => {
         // Lambda is anonymous — empty fn_name; ls_outer_fn_name skips it.
         // lambda_h = THIS lambda's own handle (the handle LMakeClosure uses
         // below).
-        graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkLambda, name: lambda_name, origin: handle, params: zip(param_names_list, entry_param_tys(handle, params)), ret: ret_ty_of(handle)})
+        graph_emitfn_note(EmitFnEntry{
+          caps: zip(captures_names, captures_handles),
+          fence: len(captures_exprs),
+          kind: EfkLambda,
+          name: lambda_name,
+          origin: handle,
+          params: zip(param_names_list, entry_param_tys(handle, params)),
+          ret: ret_ty_of(handle),
+        })
         // THE DIRECT SWAP (landing shape α): the LowFn is built by the
         // COLUMN-SEEDED projector — the one construction, program+
         // columns in, LowFn out. The site keeps what FEEDS the columns
@@ -3298,8 +3312,8 @@ fn synthesize_diverge_thunks(parent_handle, input_h, input_local_name, branch_no
             // the parent's let-local, undefined in the thunk (the input miss); and it
             // captured NONE of the branch's frees (the `k` miss). Both were invisible
             // because no micro exercised `<|` — only `><`.
-            let free_names = collect_free_vars(branch_node, [])
-            match resolve_captures_outer(free_names, parent_handle) {
+            let free_uses = collect_free_uses(branch_node, [])
+            match resolve_captures_outer(free_uses, parent_handle) {
               (b_names, b_exprs, b_handles) => {
                 let captures_names = [input_local_name] ++ b_names
                 let captures_exprs = [LLocal(input_h, input_local_name)] ++ b_exprs
@@ -3310,7 +3324,15 @@ fn synthesize_diverge_thunks(parent_handle, input_h, input_local_name, branch_no
                     // A branch thunk takes nothing — its input rides capture
                     // slot 0 — so the param vector is empty by construction
                     // and the result is the thunk node's own judged type.
-                    graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkThunk, name: thunk_name, origin: thunk_h, params: [], ret: Some(lookup_ty(thunk_h))})
+                    graph_emitfn_note(EmitFnEntry{
+                      caps: zip(captures_names, captures_handles),
+                      fence: len(captures_exprs),
+                      kind: EfkThunk,
+                      name: thunk_name,
+                      origin: thunk_h,
+                      params: [],
+                      ret: Some(lookup_ty(thunk_h)),
+                    })
                     // THE DIRECT SWAP (α, the fanout pair's one projector):
                     // Some(input_h) = the `<|` share — the branch applied to
                     // the input riding capture slot 0 through the normal call
@@ -3362,12 +3384,20 @@ fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, bound
     Ok(edge) => match edge {
       BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h) => {
         let thunk_name = "compose_{side_label}_{int_to_str(parent_handle)}"
-        let free_names = collect_free_vars(branch_node, [])
-        match resolve_captures_outer(free_names, parent_handle) {
+        let free_uses = collect_free_uses(branch_node, [])
+        match resolve_captures_outer(free_uses, parent_handle) {
           (captures_names, captures_exprs, captures_handles) => match executable_boundary_row(thunk_h) {
             Ok(thunk_row) => {
               threaded_branch_check(branch_h, thunk_row)
-              graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkThunk, name: thunk_name, origin: thunk_h, params: [], ret: Some(lookup_ty(thunk_h))})
+              graph_emitfn_note(EmitFnEntry{
+                caps: zip(captures_names, captures_handles),
+                fence: len(captures_exprs),
+                kind: EfkThunk,
+                name: thunk_name,
+                origin: thunk_h,
+                params: [],
+                ret: Some(lookup_ty(thunk_h)),
+              })
               // THE DIRECT SWAP (α, the fanout pair's one projector):
               // None = the `><` distribute — the branch evaluated as its
               // own value. Synthetic parallel-thunk: empty fn_name, not a
@@ -3626,9 +3656,9 @@ fn lower_stmt_body(s, handle, span) = match s {
     // The same "__k" seeding the lambda mint applies (an UNBOUND nested
     // fn inside an arm may still call a bound sibling); a bound fn's own
     // __k param shadows the seed harmlessly.
-    let free_names0 = collect_free_vars(body_node, param_names_list)
-    let free_names = if bind_h == "" { lower_seed_hrec(lower_seed_k(free_names0)) } else { free_names0 }
-    match resolve_captures_outer(free_names, handle) {
+    let free_uses0 = collect_free_uses(body_node, param_names_list)
+    let free_uses = if bind_h == "" { lower_seed_hrec(lower_seed_k(free_uses0)) } else { free_uses0 }
+    match resolve_captures_outer(free_uses, handle) {
       (captures_names, captures_exprs, captures_handles) => {
         // Per Hβ.first-light.nested-fn-name-discriminator (2026-05-06):
         // query the closest enclosing named-fn BEFORE entering this fn's
@@ -3645,7 +3675,15 @@ fn lower_stmt_body(s, handle, span) = match s {
         //
         let outer = ls_outer_fn_name()
         let fn_name = if outer == "" { name } else { "{outer}_{name}" }
-        graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkNested, name: fn_name, origin: handle, params: zip(param_names_list, param_tys_list), ret: ret_ty_of(handle)})
+        graph_emitfn_note(EmitFnEntry{
+          caps: zip(captures_names, captures_handles),
+          fence: len(captures_exprs),
+          kind: EfkNested,
+          name: fn_name,
+          origin: handle,
+          params: zip(param_names_list, param_tys_list),
+          ret: ret_ty_of(handle),
+        })
         // THE DIRECT SWAP (landing shape α, second kind): the LowFn is
         // built by the column-seeded projector. The resume-binding
         // context (THE CUT, bank A3 — the arm_state_ctx install, the
@@ -4258,8 +4296,12 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // The arm's param edges are the OP's declared arg types, read from the
   // same EffectOpScheme entry the discipline came from one line up; the
   // leading __k a MultiShot/Abandon arm carries is the driver's own word
-  // and floors. The arm's RESULT needs no lookup at all — its origin IS
-  // the body node, so the result edge is that node's judged type.
+  // and floors. The arm's RESULT depends on who receives it: a OneShot arm
+  // is called by the PERFORMER and returns the resumed value, the op's
+  // declared R; a MultiShot or Abandon arm returns the handler's answer to
+  // its driver, the body's own type. Signing a OneShot arm with the body's
+  // type (the answer, S) floored every wide R to a word the performer then
+  // read as f64 — a Float op's handler did not assemble.
   let arm_arg_tys = op_param_tys(arm.op_name)
   let arm_param_tys = if len(arm_arg_tys) == len(arm.args) {
     match disc {
@@ -4273,7 +4315,20 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // The enumeration note fires PARENT-BEFORE-CHILD (nested mints note
   // during body lowering below) — the tree order every projected kind
   // shares, so the future enumeration reader walks parents first.
-  graph_emitfn_note(EmitFnEntry{caps: [], fence: fence, kind: EfkArm, name: fn_name, origin: node_handle(arm.body), params: zip(arm_params, arm_param_tys), ret: Some(lookup_ty(node_handle(arm.body)))})
+  let arm_ret = match disc {
+    MultiShot => Some(lookup_ty(node_handle(arm.body))),
+    Abandon => Some(lookup_ty(node_handle(arm.body))),
+    _ => op_ret_ty(arm.op_name),
+  }
+  graph_emitfn_note(EmitFnEntry{
+    caps: [],
+    fence: fence,
+    kind: EfkArm,
+    name: fn_name,
+    origin: node_handle(arm.body),
+    params: zip(arm_params, arm_param_tys),
+    ret: arm_ret,
+  })
   // The arm's `<~` lines live in the install record past the fence, after
   // the lines of the arms lowered before it (line_base).
   ls_enter_frame(fn_name, arm_params, locals_handles, captures_names, captures_handles, line_base)
@@ -4429,7 +4484,8 @@ fn lower_resume_callk(handle, val, state_updates) = {
     resume_commit_prefix(handle, val, state_updates, fields, resolve_hrec(handle))
   } {
     (prefix, val_name) => {
-      let val_lo = if len(state_updates) == 0 { lower_expr(val) } else { LLocal(handle, val_name) }
+      let val_lo =
+        if len(state_updates) == 0 { lower_expr(val) } else { LLocal(node_handle(val), val_name) }
       LBlock(
         handle,
         prefix ++ [LLet(handle, kr, LResumeK(handle, resolve_resume_k(handle), val_lo)), LLet(
@@ -4488,8 +4544,8 @@ fn lower_resume_callk(handle, val, state_updates) = {
 // fn_ptr load of address 0, never silently.
 fn resume_k_arg(handle) = match ls_resolve("__k") {
   (res, lh) => match res {
-    RLocal => LLocal(if lh == 0 { handle } else { lh }, "__k"),
-    RUpval(slot) => LUpval(if lh == 0 { handle } else { lh }, slot),
+    RLocal => LLocal(local_ty_handle(lh, handle), "__k"),
+    RUpval(slot) => LUpval(local_ty_handle(lh, handle), slot),
     RFbPrior(_) => LConst(handle, LInt(0)),
     RGlobal => LConst(handle, LInt(0)),
   },
@@ -4498,22 +4554,22 @@ fn resume_k_arg(handle) = match ls_resolve("__k") {
 // Merge "__k" into a closure mint's free set when a k is lexically in
 // scope (the arm's param, a bound fn's appended param, or an enclosing
 // capture) — read through the SAME ls_resolve ladder the resumes use.
-fn lower_seed_k(free_names) = match ls_resolve("__k") {
+fn lower_seed_k(free_uses) = match ls_resolve("__k") {
   (res, _lh) => match res {
-    RLocal => free_vars_merge(["__k"], free_names),
-    RUpval(_) => free_vars_merge(["__k"], free_names),
-    _ => free_names,
+    RLocal => free_uses_merge([("__k", 0)], free_uses),
+    RUpval(_) => free_uses_merge([("__k", 0)], free_uses),
+    _ => free_uses,
   },
 }
 
 // __hrec rides the same rule — the commit's record threads to closures
 // exactly as the k does: one ladder, both values the frame was born
 // holding. Where no stateful arm encloses the mint, the seed adds nothing.
-fn lower_seed_hrec(free_names) = match ls_resolve("__hrec") {
+fn lower_seed_hrec(free_uses) = match ls_resolve("__hrec") {
   (res, _lh) => match res {
-    RLocal => free_vars_merge(["__hrec"], free_names),
-    RUpval(_) => free_vars_merge(["__hrec"], free_names),
-    _ => free_names,
+    RLocal => free_uses_merge([("__hrec", 0)], free_uses),
+    RUpval(_) => free_uses_merge([("__hrec", 0)], free_uses),
+    _ => free_uses,
   },
 }
 
@@ -4552,8 +4608,8 @@ fn resume_hrec_arg(handle) = match ls_resolve("__hrec") {
 
 fn resolve_resume_k(handle) = match ls_resolve("__k") {
   (res, lh) => match res {
-    RLocal => LLocal(if lh == 0 { handle } else { lh }, "__k"),
-    RUpval(slot) => LUpval(if lh == 0 { handle } else { lh }, slot),
+    RLocal => LLocal(local_ty_handle(lh, handle), "__k"),
+    RUpval(slot) => LUpval(local_ty_handle(lh, handle), slot),
     RFbPrior(_) => LInvariantFailure(handle, ResumeKOutsideLadder),
     RGlobal => LInvariantFailure(handle, ResumeKOutsideLadder),
   },
@@ -4804,8 +4860,8 @@ fn k_remainder(node, subs) = match k_sub_for(subs, node) {
 // a walker-divergence bug — the loud floor, never a fabricated read.
 fn k_hole_read(ph, name) = match ls_resolve(name) {
   (res, lh) => match res {
-    RLocal => LLocal(if lh == 0 { ph } else { lh }, name),
-    RUpval(slot) => LUpval(if lh == 0 { ph } else { lh }, slot),
+    RLocal => LLocal(local_ty_handle(lh, ph), name),
+    RUpval(slot) => LUpval(local_ty_handle(lh, ph), slot),
     RFbPrior(_) => LYield(ph, "", [], LConst(ph, LInt(0))),
     RGlobal => LYield(ph, "", [], LConst(ph, LInt(0))),
   },
@@ -4839,9 +4895,11 @@ fn reify_frame_k(body_node, ph, outer_holes) = match continuation_boundary_at(ph
 fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
   ContinuationEdge(resume_input_h, answer_h, continuation_h, disc, world) => {
     let hole = k_hole_name(ph)
-    let free_names =
-      free_vars_merge(map({ (_, n) => n }, outer_holes), collect_free_vars(body_node, [hole]))
-    match resolve_captures_outer(free_names, ph) {
+    // An enclosing level's hole is read at its own perform site, the handle
+    // `k_hole_read` types it by.
+    let free_uses =
+      free_uses_merge(map({ (p, n) => (n, p) }, outer_holes), collect_free_uses(body_node, [hole]))
+    match resolve_captures_outer(free_uses, ph) {
       (captures_names, captures_exprs, captures_handles) => {
         // Parent-before-child note order — the tree order every
         // projected kind shares (nested k reifications note during the
@@ -4850,7 +4908,15 @@ fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
         // the captured remainder's answer — the R and S of the boundary's
         // own TCont, which the edge already carries. No walk finds this;
         // the edge states it.
-        graph_emitfn_note(EmitFnEntry{caps: zip(captures_names, captures_handles), fence: len(captures_exprs), kind: EfkK, name: "__k_{int_to_str(ph)}", origin: ph, params: [(hole, Some(lookup_ty(resume_input_h)))], ret: Some(lookup_ty(answer_h))})
+        graph_emitfn_note(EmitFnEntry{
+          caps: zip(captures_names, captures_handles),
+          fence: len(captures_exprs),
+          kind: EfkK,
+          name: "__k_{int_to_str(ph)}",
+          origin: ph,
+          params: [(hole, Some(lookup_ty(resume_input_h)))],
+          ret: Some(lookup_ty(answer_h)),
+        })
         // A remainder's `<~` lines live in the k record past its metadata
         // tail — captures, then state_idx / ret_slot / world, then the
         // lines — so every resumption of one k shares its line, exactly as
@@ -5167,7 +5233,11 @@ fn lower_resume_snapshot(handle, val, updates, fields) = match resume_commit_pre
   (prefix, val_name) => LBlock(
     handle,
     // drift-audit: ignore — one-shot stmt-list concat, no loop
-    prefix ++ [LReturn(handle, LLocal(handle, val_name))]
+    // The snapshot is read back at the VALUE's handle — the node whose type
+    // the scratch was declared at — never the resume node's, whose type is
+    // the handler's answer (a Float resume value read at the answer's word
+    // width named a local that was never declared).
+    prefix ++ [LReturn(handle, LLocal(node_handle(val), val_name))]
   ),
 }
 
@@ -5193,11 +5263,13 @@ fn resume_commit_prefix(handle, val, updates, fields, record) = {
   // (field, offset) pairs note at the resume node — the same one-home
   // resolver the stores read, so column and tree cannot drift apart.
   graph_state_slots_note(handle, SlotPairs(map(resume_upd_pair(??, fields), updates)))
+  // Each commit reads its scratch at the update's own value handle — the
+  // width the scratch was declared at.
   let stores = map(
     (upd) => LStateSlotStore(
       handle,
       resolve_state_slot_offset(state_field_name(upd), fields),
-      LLocal(handle, resume_upd_local(upd, handle)),
+      LLocal(node_handle(state_field_init(upd)), resume_upd_local(upd, handle)),
       record
     ),
     updates
@@ -5390,10 +5462,18 @@ fn lower_index(handle, receiver, index) = match receiver {
 // the bounds check"). Carried-Truth: the proof is READ live from the graph, never
 // re-derived; an un-narrowed index (the 0 default) stays the checked list_index,
 // byte-identical to the prior form.
+//
+// The reader is a NAMED function, so it is called DIRECTLY at its own
+// signature (LDirectCall), never through its static closure as a value: its
+// word result for a wide element is the element's ADDRESS (the stride
+// carrier reads one body for every width), and the direct call's result arm
+// dereferences exactly that. Called as a closure value it met the site's own
+// vector — `(i32, i32, i32) -> f64` against a callee that signs a word — the
+// moment a closure call stopped boxing, and every `[Float]` index trapped.
 fn lower_index_runtime(handle, receiver, index) = match index {
   N(_, _, ih) => {
     let callee = if graph_narrow_at(ih) != 0 { "list_index_proven" } else { "list_index" }
-    LCall(handle, LGlobal(handle, callee), [lower_expr(receiver), lower_expr(index)])
+    LDirectCall(handle, handle, callee, false, [lower_expr(receiver), lower_expr(index)])
   },
 }
 
@@ -5537,27 +5617,48 @@ fn find_override(overrides, target: String) = match overrides {
   [(n, v), ...t] => if n == target { Some(v) } else { find_override(t, target) },
 }
 
+// The handle that types a read of a resolved local: the binder's own, or —
+// when the binder has none — the handle of the node doing the reading.
+//
+// A local bound at a GROUND type has no binding-time handle (`ty_handle_of`
+// answers 0 for a ctor's Float payload, a tuple's String element, a `Float`
+// parameter), and a local is monomorphic, so the reading node carries the
+// same truth: inference bound its cell to the local's type. Every read of a
+// resolved local asks this ONE rule — the VarRef lowering, the two `__k`
+// resolvers, the k-hole read and the capture a closure mint stores. Through
+// 2026-09-27 it was written inline at the first four and absent at the
+// fifth, so a captured Float floored to a word at the mint while the body
+// read it wide (`fn make(fb: Float) = (x) => x + fb` checked clean and did
+// not assemble). The rule retires when a binder is a graph node with its own
+// cell, so no binder is ever handle 0 (`Hβ.lower.binder-is-a-node`).
+fn local_ty_handle(binder_h, use_h) = if binder_h == 0 { use_h } else { binder_h }
+
 // W7.1 — called at `LambdaExpr` / `FnStmt` lower-time, BEFORE entering
-// the new frame. Each free name is resolved against the CURRENT (enclosing)
+// the new frame. Each free USE is resolved against the CURRENT (enclosing)
 // scope via `ls_resolve`:
 //   `RLocal`      — name is a local of the enclosing frame; capture loads its slot value.
 //   `RUpval(slot)` — name was itself captured; capture loads through `__state` offset.
 //   `RGlobal`     — name is a top-level symbol; NOT captured. Dropped from the list.
+// The capture's value is read at `local_ty_handle(binder, use)`, so a wide
+// local is stored wide (and boxed into its word slot by the mint).
 //
 // Returns `(captures_names, captures_exprs, captures_handles)` — parallel
 // triples. The names half feeds `ls_enter_frame`; the exprs half feeds
-// `LMakeClosure`'s heap-record materialization at emit time.
-fn resolve_captures_outer(names: [String], owner_h) = if len(names) == 0 {
+// `LMakeClosure`'s heap-record materialization at emit time. The handles
+// half stays the BINDER's handle, so each read inside the new frame keeps
+// typing itself at its own use.
+fn resolve_captures_outer(uses, owner_h) = if len(uses) == 0 {
   ([], [], [])
 } else {
-  let name = last(names)
-  match ls_resolve(name) {
-    (res, local_h) => match resolve_captures_outer(drop_last(names), owner_h) {
-      (rest_names, rest_exprs, rest_handles) => match res {
-        RGlobal => (rest_names, rest_exprs, rest_handles),
-        RLocal => ([name] ++ rest_names, [LLocal(local_h, name)] ++ rest_exprs, [local_h] ++ rest_handles),
-        RUpval(slot) => ([name] ++ rest_names, [LUpval(local_h, slot)] ++ rest_exprs, [local_h] ++ rest_handles),
-        RFbPrior(fb_h) => ([name] ++ rest_names, [LFeedbackPrior(fb_h)] ++ rest_exprs, [local_h] ++ rest_handles),
+  match last(uses) {
+    (name, use_h) => match ls_resolve(name) {
+      (res, local_h) => match resolve_captures_outer(drop_last(uses), owner_h) {
+        (rest_names, rest_exprs, rest_handles) => match res {
+          RGlobal => (rest_names, rest_exprs, rest_handles),
+          RLocal => ([name] ++ rest_names, [LLocal(local_ty_handle(local_h, use_h), name)] ++ rest_exprs, [local_h] ++ rest_handles),
+          RUpval(slot) => ([name] ++ rest_names, [LUpval(local_ty_handle(local_h, use_h), slot)] ++ rest_exprs, [local_h] ++ rest_handles),
+          RFbPrior(fb_h) => ([name] ++ rest_names, [LFeedbackPrior(fb_h)] ++ rest_exprs, [local_h] ++ rest_handles),
+        },
       },
     },
   }
@@ -5686,8 +5787,17 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
   // capture_order, captures, fn_name, line_base, lines, local_handles,
   // local_order, locals.
   {
-    let frame =
-      {capture_handles: captures_h, capture_order: captures_in, captures: set_canonicalize(captures_in), fn_name: fn_name, line_base: line_base, lines: [], local_handles: locals_h, local_order: locals_in, locals: set_canonicalize(locals_in)}
+    let frame = {
+      capture_handles: captures_h,
+      capture_order: captures_in,
+      captures: set_canonicalize(captures_in),
+      fn_name: fn_name,
+      line_base: line_base,
+      lines: [],
+      local_handles: locals_h,
+      local_order: locals_in,
+      locals: set_canonicalize(locals_in),
+    }
     // drift-audit: ignore — O(1) push at the end last/drop_last read
     resume() with frames = frames ++ [frame]
   },
@@ -5706,8 +5816,17 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
   } else {
     let frame = last(frames)
     let home = if frame.line_base < 0 { LhStatic } else { LhSlot(frame.line_base + len(frame.lines)) }
-    let updated =
-      {capture_handles: frame.capture_handles, capture_order: frame.capture_order, captures: frame.captures, fn_name: frame.fn_name, line_base: frame.line_base, lines: frame.lines ++ [(h, depth, home)], local_handles: frame.local_handles, local_order: frame.local_order, locals: frame.locals}
+    let updated = {
+      capture_handles: frame.capture_handles,
+      capture_order: frame.capture_order,
+      captures: frame.captures,
+      fn_name: frame.fn_name,
+      line_base: frame.line_base,
+      lines: frame.lines ++ [(h, depth, home)],
+      local_handles: frame.local_handles,
+      local_order: frame.local_order,
+      locals: frame.locals,
+    }
     // drift-audit: ignore — replace the END frame last() read
     resume(home) with frames = drop_last(frames) ++ [updated]
   },
@@ -5724,8 +5843,17 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
     let frame = last(frames)
     let truncated_order = take(checkpoint, frame.local_order)
     let truncated_handles = take(checkpoint, frame.local_handles)
-    let updated =
-      {capture_handles: frame.capture_handles, capture_order: frame.capture_order, captures: frame.captures, fn_name: frame.fn_name, line_base: frame.line_base, lines: frame.lines, local_handles: truncated_handles, local_order: truncated_order, locals: set_canonicalize(truncated_order)}
+    let updated = {
+      capture_handles: frame.capture_handles,
+      capture_order: frame.capture_order,
+      captures: frame.captures,
+      fn_name: frame.fn_name,
+      line_base: frame.line_base,
+      lines: frame.lines,
+      local_handles: truncated_handles,
+      local_order: truncated_order,
+      locals: set_canonicalize(truncated_order),
+    }
     // drift-audit: ignore — replace the END frame last() read
     resume() with frames = drop_last(frames) ++ [updated]
   },
@@ -5734,8 +5862,17 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
   } else {
     let frame = last(frames)
     let slot = len(frame.local_order)
-    let updated =
-      {capture_handles: frame.capture_handles, capture_order: frame.capture_order, captures: frame.captures, fn_name: frame.fn_name, line_base: frame.line_base, lines: frame.lines, local_handles: handle_list_append(frame.local_handles, h), local_order: name_list_append(frame.local_order, name), locals: set_insert(frame.locals, name)}
+    let updated = {
+      capture_handles: frame.capture_handles,
+      capture_order: frame.capture_order,
+      captures: frame.captures,
+      fn_name: frame.fn_name,
+      line_base: frame.line_base,
+      lines: frame.lines,
+      local_handles: handle_list_append(frame.local_handles, h),
+      local_order: name_list_append(frame.local_order, name),
+      locals: set_insert(frame.locals, name),
+    }
     // drift-audit: ignore — replace the END frame last() read
     resume(slot) with frames = drop_last(frames) ++ [updated]
   },

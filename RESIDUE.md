@@ -1545,6 +1545,27 @@ somewhere, disagreed.
 bytes, which is the better k anyway) and did not paper it: this entry is the
 record, band A owns the fix, and the repro is two `addr` calls at different
 types in one body.
+▶ RE-MEASURED 2026-09-28 (Pulse scene 1) — TWO FACES, ONE CLOSED. The VALUE
+face was a dedup collapse and is CLOSED: the row set kept the first of two
+same-named instances, so `fast() + slow()` (48 kHz then 44.1 kHz) escaped a
+declared `!Sample(44100)` while `slow() + fast()` refused. Collision is now
+the complement of provable distinctness (`row_entry_collides`), and
+`tests/crown/leak-instance-order.mn` holds it. The TYPE face is not a dedup
+bug and stays open here: `register_effect_ops` shares an effect's type
+variables by name across its ops, so `Cast` is `Cast(a)` and a handler serves
+ONE `a` — the install unifies every instance (`unify_instances_to`), which is
+the refusal this entry first measured. Two instantiations of a generic op in
+one extent are a type error by the effect's own declaration. The direct probe
+(`addr(p) + addr(xs)`, `Pt` and `[Int]`) checks clean on boot 43aeb30f and on
+this landing's m2 only because `addr` is substrate-lowered and meets no
+install; what it does show is the projection under-reporting — with both
+parameters annotated, `T_OverDeclared` narrates "body only uses Cast(Pt)",
+the merged member rendering as its first instance. THE FORM: a type variable
+the handler's arm is polymorphic in is quantified per PERFORM (the op is
+generic, like a polymorphic function), and one the arms share — State's `s`,
+read by `get` and written by `set` — stays the effect's parameter. The
+handler declaration decides it, since only the arms know whether they hold
+the type fixed.
 
 `Hβ.tools.cost-ratchet-reads-one-sample` — RESOLVED 2026-09-07, the banked
 fix built as prescribed. `read_cost` (tools/march.sh) no longer convicts on
@@ -5491,6 +5512,312 @@ under `~> Thread`; `E_EffectMismatch` refusing `!Alloc` at the install
 site; the Schedule read as a lower-time lexical precedent; persist between
 steps (a mid-arm checkpoint is unresumable by the world law).
 
+`Hβ.lower.capture-of-a-ground-local-stores-at-the-floor` — CLOSED 2026-09-28
+(L3 of the Pulse sprint, the felt walk's first find). `fn make(fb: Float) =
+(x) => x + fb` passed `mentl check` and the module did not ASSEMBLE (`unknown
+local $fb`, the param being `$fb.f64`). A ground-typed binder's handle is 0
+(`ty_handle_of` — a ground type is a value, not a node), and the compensation
+— read the local at the USE node's handle, sound because a local is
+monomorphic — sat inline at every reader but one: the capture store. The
+free-name walk now returns uses (`collect_free_uses` → `(name, use handle)`),
+and ONE projection, `local_ty_handle(binder_h, use_h)`, answers which handle
+types a read; VarRef, both `__k` resolvers, the k-hole read and the capture
+store call it. Kills on the way: none — the backtrace named the store.
+`tests/micros/mn-capture-ground-wide.mn` (RED on boot 43aeb30f). The root it
+compensates for is `Hβ.lower.binder-is-a-node`.
+
+`Hβ.lower.binder-is-a-node` — OPEN, NAMED 2026-09-28. A binder of ground type
+has handle 0, so every read of a local asks `local_ty_handle` which node
+carries its type. The finished medium gives every binder a graph node and a
+cell of its own; the conditional deletes, and so does the use-handle channel
+the capture walk grew to feed it.
+
+`Hβ.emit.match-scrutinee-parks-in-the-word-scratch` — CLOSED 2026-09-28 (L3).
+A match on a Float did not assemble: `$scrut_tmp` was a fixed i32 prologue
+local, the root binders were declared at RI32, and the float-literal
+predicate read the root f64-wide. Every arm-list literal over a Float is a
+match on its parameter, so the first `{ x => … }` over a sample refused. One
+decider — `sr = tail_expr_repr(scrutinee)` — and every root reader takes it
+(`scrut_local(sr)`, the binds, the literal predicates, the postmortem,
+`walk_locals_expr`'s declaration); deeper paths start from the word scratch,
+because every step past the root is a pointer chase. Byte-identical wherever
+`sr` is RI32, which is the whole wheel. `tests/micros/mn-match-float-scrutinee.mn`.
+
+`Hβ.verify.claim-over-a-join-never-decided` — CLOSED 2026-09-28 (L3). `fn
+note_hz(k) -> Hz = match k { 0 => 220.0, … }` stayed V_Pending over eight
+literals: the constant fragment folded literals, `self` and arithmetic and had
+no arm for `if` / `match` / block, while the interval fragment beside it
+already joined over exactly those. `PWithSelf` now decides through
+`decide_with_self`: a join decides as the three-valued AND of the claim over
+its tails — true when every tail proves it, false the moment one refutes it,
+open otherwise. Structure only, so the contamination law holds. A tail the
+text writes is judged even where no execution reaches it: the signature
+claims every tail. `tests/frontier/mn-refine-join-{discharges,refuses,pending}.mn`,
+legs in tools/proof-exactness-gate.sh.
+
+`Hβ.emit.wide-value-boxed-at-every-indirect-call` — CLOSED 2026-09-28 (L3).
+The indirect call spoke the 2026-07-21 word protocol everywhere: arity
+`$ftN`, every wide argument spilled to a fresh 8-byte cell, every wide callee
+reached through its `$wf$` wrapper, which spilled its result into another.
+So `fn step(f, x: Float) with !Alloc = f(x)` compiled clean and allocated 16
+bytes per call (measured on boot: 16,000 bytes over a thousand calls) — the
+absence proof false at the closure boundary — and a handler whose op carries
+a Float did not ASSEMBLE (the arm signed its params f64 and its result as the
+handler's answer while the performer boxed). THE FORM — TWO FACES, ONE INDEX:
+a closure's `fn_ptr` names its WORD face, which a caller blind to its type
+reaches (a generic handler arm, `$__k_compose`, a resume); a site that PROVES
+a wide vector reaches the NATIVE face `$native_face` past it and passes its
+values as themselves (`emit_closure_call`); the native half exists only in a
+module with such a site, so the wheel's table is unchanged. An op's DECLARED
+signature is its ABI (`op_abi`): every arm signs it, the performer speaks it,
+and only an effect type variable's position boxes. A wide handler state
+commits in place through the cell its install boxed. The reader of a wide
+list element is named, so it is a direct call at its own signature. THE KILL,
+recorded because it shaped the form: the first build typed EVERY indirect
+site by its vector and broke eleven frontier Float runs with `indirect call
+type mismatch` — floor callers and `list_index` by value had been reaching
+wide callees through the word face all along, and the fix was a second face,
+not a second protocol. `tests/micros/mn-wide-closure-call-alloc-free.mn`,
+`mn-wide-op-state-alloc-free.mn`. The remainder: `Hβ.emit.generic-op-box-is-unrowed`.
+
+`Hβ.emit.generic-op-box-is-unrowed` — OPEN, NAMED 2026-09-28. An op whose
+declared parameter is an effect TYPE VARIABLE is signed at the word floor, so a
+performer handing it a Float boxes the value into a fresh cell
+(`emit_args_at_abi`) — an allocation at a perform that no row charges. The
+honest form charges `Memory + Alloc` on the op's published row exactly when a
+wide instantiation reaches a variable position (the L0 discipline-cost
+precedent, `scheme_with_disc_cost`); the ultimate one monomorphizes the arm
+per instantiation, as total monomorphization already does for functions.
+
+`Hβ.driver.warm-image-restores-a-foreign-world` — CLOSED 2026-09-28 (L3).
+`mentl run x.mn` then `mentl compile x.mn` printed zero lines of WAT, and the
+reverse order printed the module and executed nothing (exit 134). THE CAUSE,
+measured by the reverse-order prediction before a line changed: a persisted
+image carries the handler world that wrote it — handler = state, so the
+graph's own handlers must return with the graph — and with them the
+persisting verb's OUTPUT sink; the warm path was filed under the entry
+alone, so a second verb resumed the first verb's world. Images are filed
+under `world_key()` beside the entry hash: the install chain from
+`world_top()` hashed over each node's effect key and its handler's slot-0 arm
+word, so two compositions answer two keys and the same composition the same
+key whatever its state (lib/memory.mn, ordinary Mentl over `load_i32` — the
+first build emitted it as a new substrate intrinsic, which the boot could not
+compile in one rung). It is the image-level instance of the continuation's
+world law (`E_ResumeWorldMismatch`): an image resumes only into its own world.
+`mentl resume <image>` is unchanged — it re-enters an image's world whole, by
+intent.
+
+`Hβ.verify.refinement-dropped-at-a-function-crossing` — CLOSED 2026-09-28 in
+its decidable form (L3); the rest is `Hβ.verify.higher-order-refinement`.
+Unification meets a refined position with a concrete base by checking the base
+alone — it holds no value to judge — so a refinement riding a function-typed
+argument was dropped in both directions: `run(() => 30000.0)` into `fn run(f)
+= alpha(f())` checked clean over an `Hz` parameter, and Pulse's filter took a
+70,900 Hz sweep and checked clean. `fun_refinement_crossing` (infer.mn), at the
+argument construction site: the RESULT the callee demands is judged on the
+lambda's own body, join-aware, at the body's span (or covered by a
+declaration naming the same refinement); a PARAMETER refinement the argument
+demands and the callee's position does not carry is honest V_Pending at the
+edge. The wheel's pending set is unchanged (16, identical). Legs:
+`tests/frontier/mn-refine-fn-{result-refuses,result-discharges,param-pending,param-discharges}.mn`.
+
+`Hβ.verify.higher-order-refinement` — OPEN (PLAN §11 8.2 has cited it; this is
+its first home). THE FORM: refinement VARIABLES on function-typed parameters —
+a HOF's parameter `f: (Float) -> r` carries a template `(v: Float | κ)`, the
+calls of `f` inside the body generate `value ⊨ κ` at each value's own site,
+and a call of the HOF with a function demanding `P` solves `κ ⇒ P` — so the
+debt the crossing writes today becomes value-bearing obligations decided
+where each value is made (Liquid Types' κ, carried as a gate on the cell: the
+A3 mechanism's third arm, beside the row gate and `NumericGate`). THREE
+MEASURED FACES it owns: (1) the parameter-side debt above; (2) ARITHMETIC
+SPREADS A REFINEMENT TO ITS OPERANDS — `+` unifies its operands, a refined
+alias rides the unification, and `fn f(fb: Gain, x) = x + fb * 2.0` refuses
+`f(0.5, -3.0)` though nothing in `f` needs `x ≥ 0` (sound, over-demanding;
+measured on boot and m2), and Pulse's echo demanded a `Decay` of its input
+until its stage declared `x: Float`; (3) a RECORD OF FUNCTIONS — a rig field's
+function type crosses the argument edge as a record, which the crossing does
+not yet read, so a refinement riding a field is dropped as the direct
+argument's was.
+
+`Hβ.effects.distinct-instances-collapse-in-the-row` — CLOSED 2026-09-28 (L3).
+The row's name-set dedup keyed on the effect NAME and kept the first of two
+instances, so `fn bad() with !Sample(44100) = fast() + slow()` — a 48 kHz
+reader then a 44.1 kHz one — carried `Sample(48000)` alone and ADMITTED the
+instance it forbids, while `slow() + fast()` refused: a negation's verdict
+depended on the order of two calls, found when Pulse's rate twin compiled
+clean. `row_entry_collides`: two instances are two members exactly when they
+are PROVABLY DISTINCT — the negation's own predicate, so the set and
+`eff_forbids` cannot disagree — and `collision_upgrades` keeps the one that
+says less. KILLS, two, both measured on the wheel's own compile: the first
+form collided on structural sameness (`frag_args_same`), and instances over
+type variables — a fresh variable per instantiation — stopped merging, so the
+rows grew each round and a fixpoint over them never settled (the wheel's
+compile hung at 99% CPU for ten minutes); and both first forms matched on a
+PAIR scrutinee, a heap tuple per comparison on inference's hottest path,
+which ran the compile out of memory before it could hang. Crown
+`leak-instance-order` (RED on boot) / `sound-instance-order`. The type-argument
+face — two instances UNIFYING rather than deduping — stays
+`Hβ.effects.two-instances-of-one-effect-do-not-join`.
+
+`Hβ.effects.handler-pins-its-instance` — OPEN, NAMED 2026-09-28 (Pulse). An
+install serves every instance of its effect: `~> sample_at(48_000)` answers a
+`Sample(44100)` reader with 48,000, so a chain mixing rates compiles unless a
+negation stands above it, and Pulse writes its rate rule as `!Sample(44100)`
+on the per-sample path. The form: a handler's config parameter named in the
+instance position (`handler sample_at(rate)` serves `Sample(rate)`), the tee
+subtracting that instance alone — a perform of another rate beneath it is
+unhandled at the root. It is install identity's instance face
+(`Hβ.effects.arm-world-static-rule`, A6).
+
+`Hβ.parser.body-brace-has-its-own-discrimination` — CLOSED 2026-09-28 (L3).
+`fn rig() = { lead: saw() }` parsed as a BLOCK and refused its field names as
+unexpected tokens: the fn-body slot held its own copy of the brace decision
+that knew arm lists and blocks only, while every expression brace went through
+`parse_brace_expr`. One home, `brace_form` (update / arm list / record /
+block), read by both slots; a body differs only in its block parser, which
+reports a statement-free block. The formatter's projection of the gap went
+with it: a body record had been wrapped in parens the parser consumed, and a
+long record never broke (Pulse's rig rendered as one 300-column line);
+`render_record` breaks past the width, one field per line, each closed by its
+comma — SYNTAX §«Records»' own layout.
+
+`Hβ.fmt.literal-spelling-is-intent` — OPEN, MEASURED 2026-09-28. `mentl fmt`
+renders a numeric literal from its VALUE: `0x46464952` became `1179011410`,
+`48_000` became `48000`, `0b1010` became `10`. The radix and the grouping are
+the author's, and the lexeme is gone by the time the literal is a node. The
+wheel writes no such literal, so its fixpoint never saw this. THE FORM: a
+literal's authored spelling is surface content the way prose is — the lexer
+holds the lexeme, the weave carries it by span onto the literal's node, and the
+renderer writes it back when it re-lexes to the same value.
+
+`Hβ.lang.lambda-param-annotation` — OPEN (Pulse). `(freq: Float, vib) =>` is
+`P_ExpectedToken`: a lambda's parameter takes no annotation, so a refinement
+or a width cannot be written on a closure's parameter, and a closure cannot
+declare its row. A nested `fn` is the closure that can, and every maker in
+lib/dsp/feedback.mn and Pulse is written that way. SYNTAX §«Function literals»
+decides whether the binder form grows annotations or the nested fn is the one
+annotated closure.
+
+`Hβ.dataflow.delay-tap` — OPEN (Pulse). A `<~` site hands its body only its
+OWN prior, and a bare-expression LHS computes on the current input, so a pure
+delay tap — `x[n−D]`, Faust's `@` — is not expressible: FIR filters, the
+textbook allpass and a chorus all need one. Pulse's reverb writes the allpass
+through the comb it contains (`w[n] = x[n] + g·w[n−D]`, `y = ((1 − g²)·w −
+x) / g`, the same transfer function one line deep). The form is a site whose
+stored value and returned value may differ.
+
+`Hβ.diag.effect-mismatch-at-the-call` — OPEN (M1's second test). An allocation
+added beneath `render_frame` refuses with `E_EffectMismatch` at the
+DECLARATION's span; the test asks for the Reason at the allocating call.
+The gate's Reason already names the allocation's home in the library
+(`lists:461`); the refusal's primary span should be the call in the
+declaring body that reaches it.
+
+`Hβ.diag.raw-row-variables-in-mismatch` — OPEN (Pulse). `E_EffectMismatch`
+prints row variables (`r18196@e608 + r18802@e837`) beside the named effects;
+a reader needs the names and the count of what is still open, never the
+variables' handles.
+
+`Hβ.dsp.hz-ceiling-ambient-sample-rate` — OPEN (PLAN cites it; this is its
+first home). `type Hz` (lib/dsp/signal.mn) caps at 22,050 — 44.1 kHz's
+Nyquist — whatever rate the program runs at; at 48 kHz the true ceiling is
+24,000. The form reads the ceiling off the installed `Sample(rate)` instance,
+a refinement over an effect argument.
+
+`Hβ.lower.multishot-float-answer-redrive` — OPEN (L3·D's probes). A multi-shot
+handler whose remainder answers a Float does not assemble: the redrive driver
+is typed at the word answer (`$op___redrive_<h>` takes `(i32, i32)` where the
+answer is f64), and a `let`-bound perform of it floors off the k2 spine before
+that (`Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`). Its sibling:
+a resume inside a nested fn used at an interior position types the nested fn's
+return at the word (`type mismatch in return, expected [f64] but got [i32]`).
+Both refuse at the assembler, never silently.
+
+`Hβ.dsp.per-instance-feedback-state` — CLOSED 2026-09-28 (L2's ring ownership
+plus L3's makers). It lived only in lib/dsp/signal.mn's comment: a `<~` site
+was one module global, so filtering one signal after another carried the
+first's tail into the second. A cycle's memory belongs to the record that
+holds it, and the library's filters are makers — the bandpass mints a fresh
+four-section stage per pass. `tests/repro-wf/fb-state-leak.mn` still exits 7,
+by design: a TOP-LEVEL recurrence is one line per program instance.
+
+`Hβ.tools.crown-judge-counts-a-foreign-refusal` — CLOSED 2026-09-28 (L3). The
+crown judge counted `E_EffectMismatch` or `E_EffectUnhandled` for every leak
+crucible, and 24 negation crucibles install no handler, so each refused at the
+root whether or not its negation held — a negation regression would have
+passed unseen. A leak refuses by its own class now: `leak-root-*` by
+`E_EffectUnhandled`, every other leak by `E_EffectMismatch`; a sound crucible
+raises neither.
+
+`Hβ.infer.occurs-check-walks-row-paths` — CLOSED 2026-09-28 (L3), found by
+the cost ratchet. The m3 leg's peak rose from 1,049,152 KB to 1,328,912 KB
+when the formatter learned to break a record, and the judgment's high-water
+(the `heap:` line) went from 565 MB to 835 MB on the SAME boot, so the cost
+was in judging the new source. Bisected by source, then by per-group heap
+marks patched into the probe binary: one SCC, the formatter's 46 members,
+cost 272 MB where every other group of that size cost about 4 MB, and one
+more member (`render_field_lines`, which renders a field through
+`render_tokens_for` and so joined the cycle) doubled it to 537 MB. Per
+member, `render_pred_node` — a one-line body — held 531 MB of it. A census
+of every function's calls across that one member's judgment named the walk:
+45 occurs checks entered `occurs_in_edges` 17.4 million times and flat-copied
+a names list 20.9 million times. The occurs check descended into every bound
+row edge with no memory of the cells it had entered, and a binding group's
+rows reach one another along every call path of the cycle, so the walk was
+exponential in the group's depth. It keeps a table of entered roots now,
+made where a row walk begins; a cell's content answers the same question
+however it was reached, so a second arrival reads only the edge's own mask.
+The m3 leg's judgment high-water fell to 313,704,904 bytes — 44% under the
+previous pin's 565 MB, which had been paying 266 MB for this walk since
+before the landing — and peak RSS to 816,960 KB (−22% on the pin). KILLS,
+four, each one probe: the row resolution walking paths (73 `resolve_edge`
+calls in the member); instantiation cloning a huge scheme (3 calls); the
+row half of the deep chase (2 calls); a few huge buffers (no single
+allocation over 1 MB inside the member). The three vars-of-a-row walks
+still differ in HOW they traverse: `free_in_row` and `subst_row` were cold
+here and carry no table.
+
+`Hβ.fmt.render-deletes-authored-intent` — CLOSED 2026-09-28 (L3), found by
+the Pulse render leg going red after its library was formatted: `mentl fmt`
+had turned `effect Sample(rate: Int)` into `effect Sample(rate)`, and the
+declared `Sample(48000)` then refused against a bare variable. Three
+deletions, one class: an effect's and a handler's head rendered each
+parameter's NAME alone (a lesser copy of `render_one_param`, deleted into
+it); an effect op's parameter names were consumed by the parser (the op
+stored `[Ty]`; it stores `[TParam]` now, `_` for a bare type as a function
+type's params already are, and the scheme keeps `_0`, `_1` for those); and a
+pinned alias rendered bare (`Float repr f64` → `f64`; the position decides
+the spelling now). The class-level fix is the gate: fmt spends every
+identifier and literal of the source against its render's and refuses to
+write on any loss, naming each, where it had counted prose lines and written
+regardless. Seen firing on the op-name probe (`lost: msg`, `lost: times`)
+before the names were carried; a census of every `.mn` in the tree under the
+gate then found the three shapes above and nothing else but two correct
+refusals: a fixture that does not parse (fmt used to write a lossy render of
+it) and `2166136261` rendering as `-2128831035`
+(`Hβ.fmt.literal-spelling-is-intent`, the value kept and the spelling not).
+Fixing the head render exposed `render_param_list`'s result as a free
+variable at a new call site inside the formatter's cycle, spliced as an
+integer (`handler find_handler(66036)`); written as `join` over `map` its
+result is the library's and the site resolved — the show floor below.
+
+`Hβ.emit.show-free-floor` — OPEN, homed 2026-09-28 (it was cited in
+wasm.mn, LEDGER and PROVENANCE and held nowhere here). A show or
+interpolation splice whose operand type is still a variable at emit falls to
+`int_to_str` of the word: right for an Int, an address printed as a number
+for anything else. It had a WAT comment (`;; show on unresolved operand`,
+52 on the wheel once, 22 at pin 43aeb30f) and no voice, so a 23rd entered
+this landing unseen until a handler head rendered as `(66036)`. It narrates
+`T_ShowTypeUnprovable` now, the eq sibling's ladder one leaf over, and
+`show_type_unprovable_max: 22` holds the count (tools/verify-baseline.txt).
+Most of the 22 are floor twins of generics never executed at a non-word
+type — `argv_wire`'s String twin is correct — which is why it is a countdown
+rather than a list of bugs. The live shape this landing met is a call inside
+a binding group whose result the judgment never connected to the member it
+names (the declaration projected `-> String`, the call `t54540`); the
+disconnected-reference class the group's mono views exist to prevent, seen
+here at one site and not yet explained.
+
 `Hβ.continuations.remainder-row-charged-at-perform-site` — OPEN, BORN
 2026-09-27, the row-only root gate's one measured INCOMPLETENESS. A
 multi-shot remainder's effects are charged at their PERFORM site's frames
@@ -9231,6 +9558,20 @@ second half builds: env_extend (the tag), the driver (the closure
 masks from the DAG it already walks), env_lookup (the filter,
 context-threaded), the check/query/fmt verbs (the asking-module
 context), and the sweep leg's ceiling falling to 0.
+▶ MEASURED ON A PROGRAM THAT IS NOT THE COMPILER (2026-09-28, Pulse scene
+1). The renderer declared `fn envelope`, and dsp/processors declares
+`handler envelope`; in the one link the user's declaration shadowed the
+library's, so the LIBRARY's own reference resolved to the renderer's fn —
+the silent-rebinding shape the overlay exists to make impossible. It did
+not stay silent: `E_MissingImport` (F0b) refused the reference, because
+the resolved declarer (the renderer) is outside dsp/processors' import
+closure. The refusal is right and its words are wrong — it blamed
+dsp/processors for a missing import when the defect is a shadow — and the
+overlay is what makes the reference resolve to the declaration its own
+closure holds. The same link held a second collision inside the library:
+dsp/feedback's new filter maker `lowpass` met processors' `handler
+lowpass` (`E_TypeMismatch Handler(DSP) vs …`), and the maker is named
+`lowpass_filter` rather than waiting on the overlay.
 
 `Hβ.types.named-effect-rows` — BUILT 2026-08-07 against this stamp (pin
 6768ffac9dfa; the fixture's alias-of-alias `Both - B` grouping case
@@ -9607,9 +9948,12 @@ named residual: recursion that survives is sig-priced (the
 signature-price law generalized — the price of name-keyed recursion,
 period).
 
-`Hβ.dsp.state-element-install-once` — the `<~` RHS's construction is a
-lower-time constant (named 2026-08-01, the constructor-charge landing's
-DSP decision). A feedback site's state-element spec (`delay(1)`,
+`Hβ.dsp.state-element-install-once` — CLOSED (the 2026-09-25 feedback
+transport made the judgment read the spec as the constant it is; confirmed
+2026-09-28, when every stage lib/dsp/feedback.mn's makers mint declares
+`!Alloc` over its `<~` line and compiles). The record as it stood: the `<~`
+RHS's construction is a lower-time constant (named 2026-08-01, the
+constructor-charge landing's DSP decision). A feedback site's state-element spec (`delay(1)`,
 `accumulate(init)`, `filter_spec(...)`) constructs ONCE per site at the
 register's establishment, never per tick — but the constructor-row
 charge reads the RHS ctor call as a per-call construction, so the six

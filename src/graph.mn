@@ -128,8 +128,20 @@ fn spine_ensure(own spine, spine_open, b) = if b < spine_open {
 fn spine_open_loop(own spine, opened, b) = if opened > b {
   (spine, opened)
 } else {
-  let page =
-    SpinePage{bind: make_list(spine_slots), boundaries: make_list(spine_slots), canon: make_list(spine_slots), comments: make_list(spine_slots), dispatch: make_list(spine_slots), installs: make_list(spine_slots), module: make_list(spine_slots), narrowing: make_list(spine_slots), nodes: make_list(spine_slots), program: make_list(spine_slots), slots: make_list(spine_slots), spans: make_list(spine_slots)}
+  let page = SpinePage{
+    bind: make_list(spine_slots),
+    boundaries: make_list(spine_slots),
+    canon: make_list(spine_slots),
+    comments: make_list(spine_slots),
+    dispatch: make_list(spine_slots),
+    installs: make_list(spine_slots),
+    module: make_list(spine_slots),
+    narrowing: make_list(spine_slots),
+    nodes: make_list(spine_slots),
+    program: make_list(spine_slots),
+    slots: make_list(spine_slots),
+    spans: make_list(spine_slots),
+  }
   spine_open_loop(list_set(spine, opened, page), opened + 1, b)
 }
 
@@ -360,7 +372,15 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   {
     resume(trail_len) with checkpoint_stack = push(
       checkpoint_stack,
-      {comment_refs: comment_refs, next: next, span_index: span_index, spine: spine, spine_open: spine_open, trail: trail, trail_len: trail_len}
+      {
+        comment_refs: comment_refs,
+        next: next,
+        span_index: span_index,
+        spine: spine,
+        spine_open: spine_open,
+        trail: trail,
+        trail_len: trail_len,
+      }
     )
   },
   graph_fresh_ty(reason) => // ─── Write ops ───────────────────────────────────────────────────
@@ -1235,7 +1255,21 @@ fn occurs_in_fields_loop(spine, mint_bound, handle, ref fields, i, n) with !Muta
 // ONE triple, one walk: the names on both fields plus the tail var —
 // the three vars-of-a-row walks (free/occurs/subst) agree by having
 // one shape to agree about.
-fn occurs_in_row(spine, mint_bound, handle, ref eff) with !Mutate = match eff {
+// ONE WALK VISITS EACH ROW CELL ONCE. A row is a graph, not a tree: the
+// cells of a binding group's rows are reached through one another along
+// every call path of the cycle, so a walk that re-entered a cell per path
+// was exponential in the group's depth. Measured 2026-09-28 on the wheel:
+// the formatter's 46-member group spent 266 MB of the judgment's 565 MB
+// high-water in one member's occurs checks (45 of them walked 17.4 million
+// edges), and one more member doubled it. A cell's content answers the same
+// question however it was reached, so the walk keeps a table of the roots
+// already entered and a second arrival reads only the edge's own mask. The
+// table is made where a row walk begins, which most occurs checks never
+// reach.
+fn occurs_in_row(spine, mint_bound, handle, ref eff) with !Mutate =
+  occurs_in_row_seen(spine, mint_bound, handle, eff, wmap_new(16))
+
+fn occurs_in_row_seen(spine, mint_bound, handle, eff, seen) with !Mutate = match eff {
   EfRow(p, a, t) => if occurs_in_eff_names(spine, mint_bound, handle, p) {
     true
   } else {
@@ -1248,14 +1282,14 @@ fn occurs_in_row(spine, mint_bound, handle, ref eff) with !Mutate = match eff {
         // reach the same leaves through EVERY edge (the trio law over
         // rows — any edge occurring is the row occurring). Structural
         // walk — the mechanism layer's own discipline.
-        occurs_in_edges(spine, mint_bound, handle, vs),
+        occurs_in_edges(spine, mint_bound, handle, vs, seen),
         _ => false,
       }
     }
   },
 }
 
-fn occurs_in_edges(spine, mint_bound, handle, ref vs: [RowEdge]) with !Mutate = match vs {
+fn occurs_in_edges(spine, mint_bound, handle, ref vs: [RowEdge], seen) with !Mutate = match vs {
   [] => false,
   [e, ...rest] => {
     let v = edge_cell(e)
@@ -1267,14 +1301,20 @@ fn occurs_in_edges(spine, mint_bound, handle, ref vs: [RowEdge]) with !Mutate = 
     } else if occurs_in_eff_names(spine, mint_bound, handle, edge_mask(e)) {
       true
     } else {
-      match chase_node(spine, mint_bound, r, 0) {
-        GNode(kind, _) => match edge_row_of(kind) {
-          Some(inner) => occurs_in_row(spine, mint_bound, handle, inner),
-          None => false,
+      match wmap_get(seen, r) {
+        Some(_) => false,
+        None => {
+          wmap_add(seen, r, r)
+          match chase_node(spine, mint_bound, r, 0) {
+            GNode(kind, _) => match edge_row_of(kind) {
+              Some(inner) => occurs_in_row_seen(spine, mint_bound, handle, inner, seen),
+              None => false,
+            },
+          }
         },
       }
     }
-    if here { true } else { occurs_in_edges(spine, mint_bound, handle, rest) }
+    if here { true } else { occurs_in_edges(spine, mint_bound, handle, rest, seen) }
   },
 }
 

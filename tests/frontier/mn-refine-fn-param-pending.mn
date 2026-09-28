@@ -1,0 +1,20 @@
+// A function crossing an argument edge carries its PARAMETERS' refinements
+// the other way: the lambda hands its argument to `alpha`, so it demands an
+// `Hz` of every value it is called with, and `drive` calls it with
+// `sweep(t)` — a Float nothing proves is below the ceiling (sweep(1.0) is
+// 70,900). Those values live inside `drive`'s body, not at this edge, so the
+// claim cannot be decided here: the compile SURFACES it as V_Pending debt
+// and runs. On boot 43aeb30f the predicate was dropped at the unification,
+// with no debt and no refusal — the Pulse renderer's filter took a 70,900 Hz
+// sweep and checked clean. Reaching the values inside the callee is
+// `Hβ.verify.higher-order-refinement`'s refinement variables.
+
+type Hz = Float where 0.0 < self && self < 22050.0
+
+fn alpha(c: Hz) -> Float = c * 2.0
+
+fn sweep(t: Float) -> Float = 900.0 + 70000.0 * t
+
+fn drive(f, t: Float) = f(sweep(t))
+
+fn main() = if drive((c) => alpha(c), 1.0) > 0.0 { 0 } else { 1 }

@@ -21,24 +21,39 @@
 // bytes (tests/frontier/signal-crucible) — the representation-stress oracle the
 // m3==m4 fixpoint is structurally blind to.
 //
-// ── The `<~` state substrate, artifact-proven this run ──
-// A `<~ delay(1)` site's prior/current values live in ONE module global per
-// site, threaded across calls and never reset. That is exactly right for a
-// SINGLE filter instance over one pass (the bandpass cascade below), but a
-// single site cannot serve a filter BANK over N data-driven frequencies: the
-// second frequency's pass would inherit the first's final state (measured:
-// filtering a zeros signal after a ones signal through one `<~` site returns the
-// leaked tail, not zero). This is why the `<~` sections here are the broad-band
-// single-instance conditioner, while the frequency-selective per-bin analysis is
-// the windowed DFT (a fresh integral per bin, no carried state). The ultimate
-// form — per-instance resettable `<~` state so a sharp resonator BANK could draw
-// `<~` for every band — is the named peer Hβ.dsp.per-instance-feedback-state
-// (lib/dsp/feedback.mn's LF.M per-handler-state-slots migration).
+// ── Where a filter's memory lives ──
+// A `<~` site's memory belongs to the record of the function that contains
+// it, so the bandpass below is MADE per pass: each call mints a fresh
+// four-section filter, and filtering one signal after another carries no
+// tail between them (a top-level recurrence would — its line is one per
+// program instance). A filter bank over N frequencies is N made filters.
+// The per-bin analysis stays the windowed DFT for a different reason:
+// single-pole sections are too gentle to localise a band (measured on the
+// comodulogram grid, below).
 import dsp/processors
 
 import math
 
 import dsp/cfc
+
+// ── The signal's value types ───────────────────────────────────
+//
+// Homed here, in the module every other dsp module imports, so a stage
+// anywhere in the library can say what its values are.
+//
+// Sample — one audio sample, normalized to the unit range. A claim that a
+// value is a Sample is judged where it is written: a constant outside the
+// range refuses, a join decides per tail, a call result is the callee's
+// own claim.
+type Sample = Float where 0.0 - 1.0 <= self && self <= 1.0
+
+// Hz — an audio frequency below the Nyquist ceiling. The ceiling is
+// 44.1 kHz's (22,050 Hz) for every program today; reading it off the
+// installed `Sample(rate)` instead is `Hβ.dsp.hz-ceiling-ambient-sample-rate`.
+type Hz = Float where 0.0 < self && self < 22050.0
+
+// Gain — a linear gain factor: unity at 1.0, attenuation below it.
+type Gain = Float where 0.0 <= self
 
 // ── DSP Effects ─────────────────────────────────────────────
 effect DSP {
@@ -51,10 +66,6 @@ effect Network {
   fetch_param(String) -> String
 }
 
-effect Feedback {
-  delay_tap(Int, Float) -> Float
-}
-
 // ── Pure Processors (pipeable, data-first) ───────────────────
 fn clip(x: Float, threshold: Float) -> Float with Pure = clamp(x, 0.0 - threshold, threshold)
 
@@ -63,7 +74,13 @@ fn gain(x: Float, factor: Float) -> Float with Pure = x * factor
 fn mix(wet: Float, dry: Float, amount: Float) -> Float with Pure =
   dry * (1.0 - amount) + wet * amount
 
-fn soft_clip(x: Float) -> Float with Pure = if x >= 0.0 { x / (1.0 + x) } else { x / (1.0 - x) }
+// Soft saturation into the open unit interval: x / (1 + |x|). Every finite
+// input lands strictly inside (−1, 1), which is the `Sample` claim the
+// result makes — so a stage returning `soft_clip(…)` as a Sample rests on
+// this one claim instead of carrying its own. The claim over these two
+// divisions is the Float interval tier's (Phase 8.3), so it is the one
+// pending obligation the library owns here, once, never one per caller.
+fn soft_clip(x: Float) -> Sample with Pure = if x >= 0.0 { x / (1.0 + x) } else { x / (1.0 - x) }
 
 fn db_to_linear(db: Float) -> Float with Pure = exp(db * log(10.0) / 20.0)
 
@@ -128,46 +145,34 @@ fn stft_dominant(xs, probes, sr: Int, win: Int, hop: Int) = stft_dominant_loop(
 // ─── Bandpass filter bank — cascaded single-pole `<~` sections ──────
 //
 // Each section is the feedback verb's recurrence y[n] = a*x[n] + (1-a)*y[n-1],
-// drawn with `<~ delay(1)`: `(prev)` binds the prior output y[n-1], read live
-// from the site's state global. A single-pole highpass is the input minus its
-// lowpass; a bandpass is a highpass cascade (rejects below the band) into a
-// lowpass cascade (rejects above). The coefficient a = 1 - exp(-2*pi*fc/sr) sets
-// each section's cutoff fc; `band_coeff` computes it.
-//
-// The cascade is FOUR distinct `<~` sites (two highpass at a_hp, two lowpass at
-// a_lp), each with its own state global, all advanced once per sample as
-// `bandpass_step` runs down the per-sample `bandpass_loop`. Float `<~` threads
-// each section's f64 state live (the emit reads repr_of the feedback node — the
-// feedback-slot repr fix this run). This is the single-instance real-time face
-// of the recurrence; the comodulogram's demodulation below is the bank face.
+// drawn with `<~ delay(1)`: `(prev)` binds the prior output y[n-1], read live.
+// A single-pole highpass is the input minus its lowpass; a bandpass is a
+// highpass cascade (rejects below the band) into a lowpass cascade (rejects
+// above). The coefficient a = 1 - exp(-2*pi*fc/sr) sets each section's cutoff
+// fc; `band_coeff` computes it.
 fn band_coeff(fc: Float, sr: Int) -> Float with Pure =
   1.0 - exp(0.0 - two_pi() * fc / float_of_int(sr))
 
-fn bandpass_step(x: Float, a_hp: Float, a_lp: Float) -> Float = {
-  let lo1 = ((prev) => a_hp * x + (1.0 - a_hp) * prev) <~ delay(1)
-  let hp1 = x - lo1
-  let lo2 = ((prev) => a_hp * hp1 + (1.0 - a_hp) * prev) <~ delay(1)
-  let hp2 = hp1 - lo2
-  let lp1 = ((prev) => a_lp * hp2 + (1.0 - a_lp) * prev) <~ delay(1)
-  ((prev) => a_lp * lp1 + (1.0 - a_lp) * prev) <~ delay(1)
-}
-
-fn bandpass_loop(xs, a_hp: Float, a_lp: Float, i: Int, n: Int, out) = if i >= n {
-  out
-} else {
-  bandpass_loop(xs, a_hp, a_lp, i + 1, n, list_set(out, i, bandpass_step(xs[i], a_hp, a_lp)))
+// One bandpass: FOUR `<~` sections (two highpass at a_hp, two lowpass at
+// a_lp), their four lines owned by the stage this call mints, all advanced
+// once per sample.
+fn bandpass_stage(a_hp: Float, a_lp: Float) = {
+  fn stage(x: Float) -> Float with !Alloc = {
+    let lo1 = ((prev) => a_hp * x + (1.0 - a_hp) * prev) <~ delay(1)
+    let hp1 = x - lo1
+    let lo2 = ((prev) => a_hp * hp1 + (1.0 - a_hp) * prev) <~ delay(1)
+    let hp2 = hp1 - lo2
+    let lp1 = ((prev) => a_lp * hp2 + (1.0 - a_lp) * prev) <~ delay(1)
+    ((prev) => a_lp * lp1 + (1.0 - a_lp) * prev) <~ delay(1)
+  }
+  stage
 }
 
 // Bandpass a signal through a passband [lo_hz, hi_hz]: two highpass sections at
 // lo_hz reject below, two lowpass sections at hi_hz reject above. One pass over
-// the signal — the `<~` sites thread their state across it. The row is the honest
-// Memory + Alloc of the list build: the recurrence's state is a compiler-managed
-// per-site global, and the tail-recursive loop is the structural iteration
-// context the `<~` needs — no Sample-clock handler required (the extinct
-// E_FeedbackNoContext check, PLAN §7; the structural re-enforcement is the named
-// peer Hβ.effects.iterate-class-declaration).
+// the signal, in order, through a filter made for this pass alone.
 fn bandpass(xs, lo_hz: Float, hi_hz: Float, sr: Int) =
-  bandpass_loop(xs, band_coeff(lo_hz, sr), band_coeff(hi_hz, sr), 0, len(xs), make_list(len(xs)))
+  xs |> map(bandpass_stage(band_coeff(lo_hz, sr), band_coeff(hi_hz, sr)))
 
 // Single-bin DFT magnitude at `freq` over the whole signal — the plain
 // (unwindowed) energy at one frequency, for reading a filtered signal's spectrum.

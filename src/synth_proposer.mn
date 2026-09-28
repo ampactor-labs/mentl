@@ -391,7 +391,10 @@ fn vocabulary_rings(hole_h) = match graph_node_body(graph_module_of(hole_h)) {
   NModule(m) => {
     let cells = module_cells()
     let reached = authored_reach(cells, import_paths_of_decls(m.decls), [])
-    ({home: map(stmt_decl_name, m.decls), imported: cells |> filter(cell_reached(reached)) |> map(cell_decl_names) |> flatten})
+    {
+      home: map(stmt_decl_name, m.decls),
+      imported: cells |> filter(cell_reached(reached)) |> map(cell_decl_names) |> flatten,
+    }
   },
   _ => {
     // The module column is written only with NModule handles, so a hole
@@ -399,7 +402,7 @@ fn vocabulary_rings(hole_h) = match graph_node_body(graph_module_of(hole_h)) {
     // defect in the caller, which traps rather than answering with an
     // empty vocabulary nobody could tell from a real one.
     load_i32(0 - 1)
-    ({home: [], imported: []})
+    {home: [], imported: []}
   },
 }
 
@@ -498,11 +501,17 @@ fn same_head(a, b) with Pure = match a {
 // every other expression in the language — by unifying the candidate's own
 // cell with the hole's, inside the segment, with rollback. The proof
 // becomes the dispatch.
-fn vocabulary_call_candidate(name, row, allowed_row, ring) with !Mutate =
-  EnrichedCandidate({node: synth_node(CallExpr(synth_node(VarRef(name)), [])), origin: ProposerVocabulary(ring), reason: Inferred("an in-scope call {name}() — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}")})
+fn vocabulary_call_candidate(name, row, allowed_row, ring) with !Mutate = EnrichedCandidate({
+  node: synth_node(CallExpr(synth_node(VarRef(name)), [])),
+  origin: ProposerVocabulary(ring),
+  reason: Inferred("an in-scope call {name}() — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}"),
+})
 
-fn vocabulary_ref_candidate(name, row, allowed_row, ring) with !Mutate =
-  EnrichedCandidate({node: synth_node(VarRef(name)), origin: ProposerVocabulary(ring), reason: Inferred("the in-scope function {name} — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}")})
+fn vocabulary_ref_candidate(name, row, allowed_row, ring) with !Mutate = EnrichedCandidate({
+  node: synth_node(VarRef(name)),
+  origin: ProposerVocabulary(ring),
+  reason: Inferred("the in-scope function {name} — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}"),
+})
 
 // Could a function of this arity, parameters and return fill a
 // function-typed hole? The sound index again: equal arity (a function type
@@ -713,16 +722,22 @@ fn ctors_of_type_from(entries, type_name, i, n, own buf, count) with !Mutate = i
   }
 }
 
-fn ctor_to_enriched_candidate(name, scheme, reason) with !Mutate =
-  EnrichedCandidate({node: synthesize_ctor_call_node(name, scheme), origin: ProposerEnumerative, reason: VarLookup(name, reason)})
+fn ctor_to_enriched_candidate(name, scheme, reason) with !Mutate = EnrichedCandidate({
+  node: synthesize_ctor_call_node(name, scheme),
+  origin: ProposerEnumerative,
+  reason: VarLookup(name, reason),
+})
 
 fn enumerate_lambdas(params, ret, row, context) = {
   // Single anonymous-fn candidate: (param_names) => ?? body. The
   // body becomes a nested Synth invocation; the chain re-enters
   // recursively at parse-time when the user accepts.
   let buf = make_list(1)
-  let candidate =
-    EnrichedCandidate({node: synthesize_lambda_node(params, ret), origin: ProposerEnumerative, reason: Inferred("an anonymous fn matching the hole's shape; its body is the next hole")})
+  let candidate = EnrichedCandidate({
+    node: synthesize_lambda_node(params, ret),
+    origin: ProposerEnumerative,
+    reason: Inferred("an anonymous fn matching the hole's shape; its body is the next hole"),
+  })
   list_set(buf, 0, candidate)
   buf
 }
@@ -784,8 +799,16 @@ fn interior_near_zero(lo, hi) =
 fn lit_candidate(v) with !Mutate = match v {
   LVInt(n) => int_literal_candidate(n),
   LVFloat(f) => float_literal_candidate(f),
-  LVString(s) => EnrichedCandidate({node: synthesize_string_literal_node(s), origin: ProposerEnumerative, reason: Inferred("the type's string inhabitants")}),
-  LVBool(b) => EnrichedCandidate({node: synth_node(LitBool(b)), origin: ProposerEnumerative, reason: Inferred("the type's boolean inhabitants")}),
+  LVString(s) => EnrichedCandidate({
+    node: synthesize_string_literal_node(s),
+    origin: ProposerEnumerative,
+    reason: Inferred("the type's string inhabitants"),
+  }),
+  LVBool(b) => EnrichedCandidate({
+    node: synth_node(LitBool(b)),
+    origin: ProposerEnumerative,
+    reason: Inferred("the type's boolean inhabitants"),
+  }),
 }
 
 fn enumerate_int_literals(context) = {
@@ -798,8 +821,11 @@ fn enumerate_int_literals(context) = {
   buf
 }
 
-fn int_literal_candidate(n) with !Mutate =
-  EnrichedCandidate({node: synthesize_int_literal_node(n), origin: ProposerEnumerative, reason: Inferred("the type's integer inhabitants")})
+fn int_literal_candidate(n) with !Mutate = EnrichedCandidate({
+  node: synthesize_int_literal_node(n),
+  origin: ProposerEnumerative,
+  reason: Inferred("the type's integer inhabitants"),
+})
 
 fn enumerate_float_literals(context) = {
   let buf = make_list(2)
@@ -808,15 +834,22 @@ fn enumerate_float_literals(context) = {
   buf
 }
 
-fn float_literal_candidate(f) with !Mutate =
-  EnrichedCandidate({node: synthesize_float_literal_node(f), origin: ProposerEnumerative, reason: Inferred("the type's float inhabitants")})
+fn float_literal_candidate(f) with !Mutate = EnrichedCandidate({
+  node: synthesize_float_literal_node(f),
+  origin: ProposerEnumerative,
+  reason: Inferred("the type's float inhabitants"),
+})
 
 fn enumerate_string_literals(context) = {
   let buf = make_list(1)
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_string_literal_node(""), origin: ProposerEnumerative, reason: Inferred("the type's string inhabitants")})
+    EnrichedCandidate({
+      node: synthesize_string_literal_node(""),
+      origin: ProposerEnumerative,
+      reason: Inferred("the type's string inhabitants"),
+    })
   )
   buf
 }
@@ -826,7 +859,11 @@ fn one_unit_candidate(context) = {
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_unit_literal_node(), origin: ProposerEnumerative, reason: Inferred("the unit type's one inhabitant")})
+    EnrichedCandidate({
+      node: synthesize_unit_literal_node(),
+      origin: ProposerEnumerative,
+      reason: Inferred("the unit type's one inhabitant"),
+    })
   )
   buf
 }
@@ -838,7 +875,11 @@ fn one_hole_candidate(context) = {
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_hole_node(), origin: ProposerEnumerative, reason: Inferred("a nested ?? — the shape narrows, the fill recurses")})
+    EnrichedCandidate({
+      node: synthesize_hole_node(),
+      origin: ProposerEnumerative,
+      reason: Inferred("a nested ?? — the shape narrows, the fill recurses"),
+    })
   )
   buf
 }
@@ -848,7 +889,11 @@ fn one_continuation_candidate(context) = {
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_resume_node(), origin: ProposerEnumerative, reason: Inferred("the continuation's own resume(...)")})
+    EnrichedCandidate({
+      node: synthesize_resume_node(),
+      origin: ProposerEnumerative,
+      reason: Inferred("the continuation's own resume(...)"),
+    })
   )
   buf
 }
@@ -858,7 +903,11 @@ fn enumerate_records(fields, context) = {
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_record_node(fields), origin: ProposerEnumerative, reason: Inferred("the type's record construction")})
+    EnrichedCandidate({
+      node: synthesize_record_node(fields),
+      origin: ProposerEnumerative,
+      reason: Inferred("the type's record construction"),
+    })
   )
   buf
 }
@@ -869,12 +918,20 @@ fn enumerate_list_candidates(elem, context) = {
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_empty_list_node(), origin: ProposerEnumerative, reason: Inferred("the type's list inhabitants — the empty list")})
+    EnrichedCandidate({
+      node: synthesize_empty_list_node(),
+      origin: ProposerEnumerative,
+      reason: Inferred("the type's list inhabitants — the empty list"),
+    })
   )
   list_set(
     buf,
     1,
-    EnrichedCandidate({node: synthesize_singleton_list_node(elem), origin: ProposerEnumerative, reason: Inferred("the type's list inhabitants — one element, itself a hole")})
+    EnrichedCandidate({
+      node: synthesize_singleton_list_node(elem),
+      origin: ProposerEnumerative,
+      reason: Inferred("the type's list inhabitants — one element, itself a hole"),
+    })
   )
   buf
 }
@@ -884,7 +941,11 @@ fn enumerate_tuple_candidates(elems, context) = {
   list_set(
     buf,
     0,
-    EnrichedCandidate({node: synthesize_tuple_node(elems), origin: ProposerEnumerative, reason: Inferred("the type's tuple construction — each element a hole")})
+    EnrichedCandidate({
+      node: synthesize_tuple_node(elems),
+      origin: ProposerEnumerative,
+      reason: Inferred("the type's tuple construction — each element a hole"),
+    })
   )
   buf
 }
@@ -1194,7 +1255,11 @@ fn extract_optimal(candidate) = match candidate {
       // EDGE — the one kernel write that carries no Reason today
       // (Hβ.egraph.canon-edge-carries-reason); until it does, the
       // candidate's seed Reason is the honest chain.
-      EnrichedCandidate({node: N(graph_node_body(cheapest), node_span(c.node), cheapest), origin: c.origin, reason: c.reason})
+      EnrichedCandidate({
+        node: N(graph_node_body(cheapest), node_span(c.node), cheapest),
+        origin: c.origin,
+        reason: c.reason,
+      })
     }
   },
 }

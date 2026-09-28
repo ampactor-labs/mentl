@@ -341,12 +341,23 @@ fn emit_show(h, x) = {
   // A FREE operand at the show floor is the word-face guess — int_to_str
   // of whatever word arrives, wrong for a pointer. The marker makes the
   // floor census-able in any emitted artifact (the comment-marked-floor
-  // convention: grep the marker, read the enclosing fn): a firing site
-  // names a generic the twin machinery did not serve — HOF-passed
-  // lambdas keep the word protocol — so the source pins the fragment's
-  // type or the twin routes it (Hβ.emit.show-free-floor).
+  // convention: grep the marker, read the enclosing fn), and the
+  // narration makes it census-able in the compile's own voice: a firing
+  // site names a generic the twin machinery did not serve — HOF-passed
+  // lambdas keep the word protocol — or a call whose result the judgment
+  // never connected, so the source pins the fragment's type or the twin
+  // routes it (Hβ.emit.show-free-floor).
   match ty {
-    TVar(_) => wat_emit("    ;; show on unresolved operand\n"),
+    TVar(_) => {
+      wat_emit("    ;; show on unresolved operand\n")
+      report_at(
+        lexpr_handle(x),
+        TShowTypeUnprovable(
+          "a show of {show_type(ty)}, emitting {emit_site()}",
+          parse_span_of(lexpr_handle(x))
+        )
+      )
+    },
     _ => (),
   }
   if spec_is_agg(ty) { emit_agg_leaf_call("show_", ty, x) } else { emit_expr(show_node_of(h, x)) }
@@ -629,20 +640,27 @@ fn spec_demands_of(lowered, recs) = match spec_scan_list(lowered, ([], [])) {
 // shipping wheel on other fields (op_name / name / init / body), which is
 // what makes this the next thing to build rather than a curiosity. The
 // record form is the gate that fix has to pass, and it goes back in there.
-fn spec_fold_collect(spec_recs, acc0) = fold(
-  acc0,
-  (acc, rp) => match rp {
-    (rec2, pairs, enc, _base) => match rec2 {
-      (_m, _ps, body, _f) => {
-        spec_ctx_set(pairs, enc)
-        let acc2 = collect_fold_tys_list(body, acc)
-        spec_ctx_clear()
-        acc2
-      },
+fn spec_fold_collect(spec_recs, acc0) =
+  fold(acc0, spec_bracketed(collect_fold_tys_list, ??, ??), spec_recs)
+
+// The call vectors the same way: each twin's body walked under its own
+// bracket, so a Float twin's closure call declares the f64 vector its site
+// names — a vector the floor's walk never sees.
+fn spec_vector_collect(spec_recs, acc0) =
+  fold(acc0, spec_bracketed(collect_call_vectors_list, ??, ??), spec_recs)
+
+// One twin's body walked under its own specialization bracket — the one
+// shape both collections above share.
+fn spec_bracketed(walk, acc, rp) = match rp {
+  (rec2, pairs, enc, _base) => match rec2 {
+    (_m, _ps, body, _f) => {
+      spec_ctx_set(pairs, enc)
+      let acc2 = walk(body, acc)
+      spec_ctx_clear()
+      acc2
     },
   },
-  spec_recs
-)
+}
 
 // Two demands can nest the SAME lambda under the SAME enc (two parents,
 // one inner record, one instantiation) — the twin emits once; keep-first
@@ -900,8 +918,12 @@ fn emit_module(lowered) = {
       set_fn_lines(fn_lines)
       let line_owners = static_line_owners(top_fn_names, fn_lines, spec_recs)
       let line_globals = line_global_slots(line_owners)
+      // The call vectors, collected ONCE — the floor tree and every twin under
+      // its own bracket — and read twice: the type section declares the face
+      // each site names, the table grows its native half iff a site reaches it.
+      let vectors = spec_vector_collect(spec_recs, collect_call_vectors_list(lowered, []))
       emit_header()
-      emit_type_section(lowered, yield_seen)
+      emit_type_section(vectors, yield_seen)
       emit_runtime_imports(wasi_ops)
       // The module's memory OWNERSHIP is read from its own proof (the fifth
       // projection): a module that spawns IMPORTS the shared image (every
@@ -934,7 +956,7 @@ fn emit_module(lowered) = {
       // sites reads a record whose offset-0 slot is the twin's table index).
       let table_all = table_fn_names ++ spec_names
       let wide_all = wide_fn_names ++ spec_wide
-      emit_fn_table(table_all, wide_all)
+      emit_fn_table(table_all, wide_all, any(vector_is_wide, vectors))
       emit_fn_index_globals(table_all, fn_table_base())
       emit_static_top_closures(top_fn_names ++ spec_names, table_all, 0)
       // Module VALUE bindings: ONE projection feeds the declaration half and
@@ -2025,20 +2047,41 @@ fn fn_record_span(r) with !Mutate = match r {
 // refuses loudly at every one of those sites instead of dispatching into
 // an unrelated body — the accident named and made a contract at the one
 // writer, which is where table indices are minted.
-fn emit_fn_table(fn_names, wide_names) = {
+// TWO FACES, ONE INDEX. A closure's fn_ptr names its WORD face — the slot a
+// caller blind to its type reaches (a generic handler arm, the continuation
+// composer, any floor body), where a wide fn sits behind its $wf$ wrapper. A
+// caller that PROVES a wide vector reaches the NATIVE face one half later
+// (`$native_face` past the word face) and passes its values as themselves: no
+// cell, no wrapper, nothing allocated. The native half exists only in a module
+// with such a site, so a word-only module's table is unchanged.
+fn emit_fn_table(fn_names, wide_names, native_half) = {
   let n = len(fn_names)
   if n == 0 {
     ()
   } else {
+    let faces = if native_half { 2 } else { 1 }
     wat_emit("  (table $fns ")
-    wat_emit(int_to_str(fn_table_base() + n))
+    wat_emit(int_to_str(fn_table_base() + faces * n))
     wat_emit(" funcref)\n")
     wat_emit("  (elem $fns (i32.const ")
     wat_emit(int_to_str(fn_table_base()))
     wat_emit(")")
     emit_fn_refs(fn_names, wide_names)
     wat_emit(")\n")
+    if native_half {
+      wat_emit("  (global $native_face i32 (i32.const {int_to_str(n)}))\n")
+      wat_emit("  (elem $fns_native (i32.const {int_to_str(fn_table_base() + n)})")
+      emit_fn_refs(fn_names, [])
+      wat_emit(")\n")
+    } else {
+      ()
+    }
   }
+}
+
+// A call vector with a wide slot — the sites that reach the native face.
+fn vector_is_wide(v) = match v {
+  (ps, r) => repr_is_wide(r) || any(repr_is_wide, ps),
 }
 
 // The first index an emitted function may occupy. One home, read by both
@@ -2380,36 +2423,58 @@ fn emit_byte_escape(b) = {
 // takes.
 fn hex_digit(d) = str_slice(hex_glyphs(), d, d + 1)
 
-// Every call_indirect references a function type index. We emit a
-// type for each arity the program's call sites use: the program
-// carries calls of arity 0..N where N is determined by walking the
-// lowered IR. In ultimate-form Mentl with evidence-passing, the
-// polymorphic-call path uses these same types: the evidence pointer
-// is a normal i32 slot, so effectful calls of arity K use $ft(K+1).
-fn emit_type_section(lowered, yield_seen) = {
-  // ONE walk (the Universal Audit): the repr-vector collection visits every
-  // indirect-dispatch site, and the arity-keyed all-i32 $ftN types ARE the
-  // all-RI32 instances of those SAME vectors (PLAN §5.U — the arity-$ftN
-  // fork dissolves into the repr-vector key). The max arity is therefore a
-  // PROJECTION of the collected vectors; the prior shallow parallel arity
-  // walk — a second reader of the same fact that missed every call nested
-  // inside a fn body — is DELETED. _start calls main via $ft1 (__state
-  // alone); floor 1 keeps that entry for call-free programs. A YIELDING
-  // module floors at 2: the composer's own W7 indirects (inner(v),
-  // frame_k(r)) are 2-arg all-i32 = $ft2, and a yielding module with only
-  // UZero arms may carry no other 2-arg site (the bank's FT SEAM, Ruling 1)
-  // — the miss would be a loud assembly error, so the floor interns it.
-  let vectors = collect_call_vectors_list(lowered, [])
+// The function types every call_indirect names, projected from the module's
+// call vectors (collected once in emit_module): the arity family $ftN the
+// word face speaks, then one typed face per distinct wide vector.
+fn emit_type_section(vectors, yield_seen) = {
+  // The arity-keyed all-i32 $ftN types ARE the all-RI32 instances of the
+  // collected vectors (PLAN §5.U — the arity-$ftN fork dissolves into the
+  // repr-vector key), so the max arity is a PROJECTION of them. _start calls
+  // main via $ft1 (__state alone); floor 1 keeps that entry for call-free
+  // programs. A YIELDING module floors at 2: the composer's own W7 indirects
+  // (inner(v), frame_k(r)) are 2-arg all-i32 = $ft2, and a yielding module
+  // with only UZero arms may carry no other 2-arg site (the bank's FT SEAM,
+  // Ruling 1) — the miss would be a loud assembly error, so the floor
+  // interns it.
   let observed = max_vector_arity(vectors, 0)
   let floor = if yield_seen > 0 { 2 } else { 1 }
   let max_arity = if observed < floor { floor } else { observed }
   emit_type_decls(0, max_arity)
+  emit_typed_ft_decls(vectors, [])
 }
 
-// EVERY vector's max param count — the $ftN ceiling. Under the word-protocol
-// boundary every indirect site dispatches at its ARITY's word face (a wide
-// vector is word-faced through spills/wrappers), so the ceiling reads all
-// vectors, not only the all-i32 ones.
+// The typed faces: each DISTINCT vector with a wide slot, declared once under
+// the name its call sites spell (`vector_ft_name`). The all-word vectors are
+// the arity family `emit_type_decls` declared above; a program with no wide
+// call site declares none here (the wheel's own bytes do not move).
+fn emit_typed_ft_decls(vectors, seen) = if len(vectors) == 0 {
+  ()
+} else {
+  let v = last(vectors)
+  let name = vector_ft_name(v)
+  let typed = match v {
+    (ps, r) => !(all(repr_is_i32, ps) && repr_is_i32(r)),
+  }
+  if typed && !string_in_list(seen, name) {
+    match v {
+      (ps, r) => {
+        wat_emit("  (type {name} (func")
+        each(emit_param_decl, ps)
+        wat_emit(" (result {repr_wat(r)})))\n")
+      },
+    }
+    // drift-audit: ignore — the distinct-name set of one module's vectors, bounded by its call sites
+    emit_typed_ft_decls(drop_last(vectors), [name] ++ seen)
+  } else {
+    emit_typed_ft_decls(drop_last(vectors), seen)
+  }
+}
+
+fn emit_param_decl(r) = wat_emit(" (param {repr_wat(r)})")
+
+// EVERY vector's max param count — the $ftN ceiling. It reads the wide
+// vectors too: a wide callee's $wf$ face is its arity's $ftN, and a floor
+// caller may reach it at that arity.
 fn max_vector_arity(vectors, acc) = if len(vectors) == 0 {
   acc
 } else {
@@ -2444,21 +2509,16 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LShow(h, x) => collect_call_vectors_expr(show_node_of(h, x), acc),
   LHash(h, x) => collect_call_vectors_expr(hash_node_of(h, x), acc),
   LDirectCall(_h, _fh, _n, _t, args) => collect_call_vectors_list(args, acc),
-  LCall(h, f, args) => collect_call_vectors_expr(
-    f,
-    collect_call_vectors_list(args, vec_push(args, repr_of(lookup_ty(h)), acc))
-  ),
-  LTailCall(h, f, args) => collect_call_vectors_expr(
-    f,
-    collect_call_vectors_list(args, vec_push(args, repr_of(lookup_ty(h)), acc))
-  ),
-  LResumeK(h, k, v) => // The resume invocation delegates through the SAME LCall shape its emit
-  // arm constructs — registration identical by construction.
-  collect_call_vectors_expr(LCall(h, k, [v]), acc),
-  LPerform(h, _d, args) => // Every perform's call vector is registered — the walked forms dispatch
-  // through call_indirect and need the type; the direct ones cost nothing to
-  // include and the set is deduped. One arm, one rule.
-  collect_call_vectors_list(args, vec_push(args, repr_of(lookup_ty(h)), acc)),
+  LCall(h, f, args) => collect_call_vectors_expr(f, collect_call_vectors_list(args, [call_site_vector(args, h)] ++ acc)),
+  LTailCall(h, f, args) => collect_call_vectors_expr(f, collect_call_vectors_list(args, [call_site_vector(args, h)] ++ acc)),
+  LResumeK(_h, k, v) => // The resume speaks the word face (`emit_word_face_call`) — its arity's
+  // all-word vector, exactly what the emit names.
+  collect_call_vectors_expr(k, collect_call_vectors_expr(v, [word_vector(1)] ++ acc)),
+  LPerform(_h, d, args) => // Every perform's vector is registered — the walked forms dispatch through
+  // call_indirect and need the type; the direct ones cost nothing to include
+  // and the set is deduped. The op's declared vector, or a driver's word
+  // face — the same choice the emit arm makes.
+  collect_call_vectors_list(args, [perform_vector(d, args)] ++ acc),
   LLet(_h, _n, inner) => collect_call_vectors_expr(inner, acc),
   LBinOp(_h, _op, l, r) => collect_call_vectors_expr(r, collect_call_vectors_expr(l, acc)),
   LUnaryOp(_h, _op, i) => collect_call_vectors_expr(i, acc),
@@ -2490,12 +2550,17 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LInvariantFailure(_, _) => acc,
 }
 
-// Push a call site's repr-vector (the i32 state slot, then arg reprs, then
-// the result repr) onto the accumulator — the same vector call_ft_name reads.
-// Prepended (cons), not appended: the emit order of distinct function types is
-// immaterial (call_indirect matches by structural type, not declaration
-// order), so the O(1) cons is the residue form of the O(N²) append.
-fn vec_push(args, result_repr, acc) = [([RI32] ++ arg_reprs(args), result_repr)] ++ acc
+// The all-word vector of an n-argument call — the arity face, state first.
+// Vectors are prepended (cons), not appended: the emit order of distinct
+// function types is immaterial (call_indirect matches by structural type,
+// not declaration order), so the O(1) cons is the residue form of the append.
+fn word_vector(n_args) = (map((_) => RI32, range(0, n_args + 1)), RI32)
+
+// A perform's vector — the op's declared one, or a driver's word face.
+fn perform_vector(d, args) = match perform_op_name(d) {
+  Some(op) => op_vector(op),
+  None => word_vector(len(args)),
+}
 
 // Emit each DISTINCT non-i32 repr-vector once. The seen list carries the ft_names
 // already emitted; an all-i32 vector is skipped (its $ftN already exists from
@@ -2528,36 +2593,17 @@ fn repr_is_i32(r) with Pure = match r {
   _ => false,
 }
 
-// call_ft_name — the $ft a call site references: ALWAYS the word-arity face.
-// The indirect boundary speaks the WORD PROTOCOL (the $ft2 continuation
-// precedent, generalized): a wide value crosses as the address of its bytes
-// (emit_wide_ref spills the arg; emit_wide_deref cashes the result), and a
-// wide-faced fn reaches the table through its $wf$ word wrapper — so every
-// call_indirect matches structurally by arity alone. The per-site repr-vector
-// $ft (the prior design) was sound only when the site's proof matched the
-// callee's emission — exactly what a POLYMORPHIC site cannot know (the
-// measured float-evidence-ft trap class, four hits). Native widths live at
-// direct calls and inside bodies; only the polymorphic boundary pays.
-fn call_ft_name(args, _result_repr) = "$ft{int_to_str(len(args) + 1)}"
+// call_ft_name — the WORD face's type: the arity family, spoken only by a
+// caller blind to its callee (`emit_word_face_call`, a driver's perform).
+// There a wide value crosses as the address of its bytes and the callee sits
+// in the table behind its $wf$ wrapper. It was the convention for EVERY
+// indirect call from 2026-07-21, chosen because a polymorphic site could not
+// know its callee's emission (the float-evidence-ft trap class, four hits);
+// total monomorphization gave every ordinary site that knowledge, so a site
+// that proves a wide vector reaches the native face (`emit_closure_call`) and
+// allocates nothing.
+fn call_ft_name(args) = "$ft{int_to_str(len(args) + 1)}"
 
-// Each arg's repr in SOURCE order — the canonical vector order every ft
-// projection reads (name, definition, callee params, caller stack). The
-// prior last-first cons REVERSED the vector at birth. Structural recursion
-// (recurse front-part, append last) rather than a map-lambda: lookup_ty is
-// a PERFORM, and the seed drops a lambda-captured effect's evidence
-// (px/h2 repro: every float call-arg vector floored to `i` while the arg
-// emit pushed f64) — named peer Hβ.seed.effectful-lambda-ev-capture.
-fn arg_reprs(args) = arg_reprs_from(args, 0)
-
-fn arg_reprs_from(args, i) = if i >= len(args) {
-  []
-} else {
-  [repr_of(lookup_ty(lexpr_handle(list_index(args, i))))] ++ arg_reprs_from(args, i + 1)
-}
-
-// Emit one `(type $ft_<sig> (func (param <wat>)... (result <wat>)))` for a
-// repr-vector. Used for the DISTINCT non-i32 vectors collected from the
-// program's call sites — the arity-keyed all-i32 types stay in emit_type_decls.
 fn emit_header() = wat_emit("(module\n")
 
 fn emit_footer() = wat_emit(")\n")
@@ -2938,8 +2984,9 @@ fn emit_functions(fn_records) = each(
 )
 
 // ─── The word-face wrappers (§5.U at the table boundary) ──────────────
-// A fn whose NATIVE signature carries a wide slot cannot sit in the table
-// as itself — every call_indirect speaks the word-arity face. Its $wf$
+// A fn whose NATIVE signature carries a wide slot cannot sit at its word
+// index as itself — a caller blind to its type (a generic handler arm, the
+// continuation composer, any floor body) speaks the word-arity face. Its $wf$
 // twin derefs each wide argument's reference, direct-calls the native body
 // (full native speed inside), and spills a wide result back to a cell. It
 // READS the wrapped symbol's settled signature — the same column read the
@@ -3321,7 +3368,16 @@ fn walk_locals_expr(expr, acc) = match expr {
   walk_locals_list(lanes, if len(lanes) > 0 { ["simd_{int_to_str(h)} v128"] ++ acc } else { acc }),
   LMakeRecord(_h, fs) => walk_locals_list(fs, acc),
   LMakeVariant(h, _t, fs) => walk_locals_list(fs, if len(fs) > 0 { ["variant_{int_to_str(h)} i32"] ++ acc } else { acc }),
-  LMatch(_h, s, arms) => walk_locals_arms(arms, walk_locals_expr(s, acc)),
+  LMatch(_h, s, arms) => {
+    // The root's scratch at the scrutinee's repr — the word scratch is every
+    // prologue's own, so only a wide root declares one here.
+    let sr = tail_expr_repr(s)
+    let with_scratch = match sr {
+      RI32 => walk_locals_expr(s, acc),
+      _ => [scrut_local(sr) ++ " " ++ repr_wat(sr)] ++ walk_locals_expr(s, acc),
+    }
+    walk_locals_arms(arms, sr, with_scratch)
+  },
   LHandleWith(h, b, hn, hname, inits, arm_names) => {
     // The install's OWN minted locals — the handler record, the scoped-
     // singleton save (named installs only), and one [record, base] entry
@@ -3432,11 +3488,11 @@ fn param_local_entries(names, preprs, acc) = if len(names) == 0 {
 // Two arms binding the same name share one register — the entry set
 // dedupes at emit_named_locals. Bodies are walked for nested LLet
 // locals as usual.
-fn walk_locals_arms(arms, acc) = if len(arms) == 0 {
+fn walk_locals_arms(arms, sr, acc) = if len(arms) == 0 {
   acc
 } else {
   match last(arms) {
-    (pat, body) => walk_locals_arms(drop_last(arms), walk_locals_expr(body, walk_locals_pat(pat, RI32, acc))),
+    (pat, body) => walk_locals_arms(drop_last(arms), sr, walk_locals_expr(body, walk_locals_pat(pat, sr, acc))),
   }
 }
 
@@ -3470,11 +3526,11 @@ fn walk_locals_pat(pat, r, acc) = match pat {
     [] => acc,
     [b0, ..._] => walk_locals_pat(b0, r, acc),
   },
-  LPAs(name, inner) => // The as-binder is the whole matched VALUE — a heap word (records,
-  // lists, sums are pointers; the word slot is the pattern-binder
-  // floor the rest/record binders share). The inner pattern's
-  // binders follow at the same repr.
-  walk_locals_pat(inner, r, [name ++ " i32"] ++ acc),
+  LPAs(name, inner) => // The as-binder is the whole matched VALUE at the repr its position
+  // proves — a word for records, lists and sums (pointers), the root's
+  // own width over a Float scrutinee. The inner pattern's binders follow
+  // at the same repr.
+  walk_locals_pat(inner, r, [local_wat_name(name, r) ++ " " ++ repr_wat(r)] ++ acc),
 }
 
 // Each con-payload sub declares at its payload's PROVEN repr — sub i pairs
@@ -3841,6 +3897,10 @@ fn emit_state_init_writes(state_local, inits, base_idx) = each(
       // reads config slot `slot` of THIS record (config region written first).
       // The handler record IS the closure — the state slot reads the config
       // slot of the same record. Everywhere else, emit the value normally.
+      // A WIDE config value is a cell address, and the state must own a cell
+      // of its own: its commits write in place (the LStateSlotStore arm), so
+      // sharing the config's cell would rewrite the config the handler was
+      // built with. The word case copies the word, as it always has.
       match init {
         LUpval(_, slot) => {
           wat_emit("(local.get $")
@@ -3848,6 +3908,13 @@ fn emit_state_init_writes(state_local, inits, base_idx) = each(
           wat_emit(")(i32.load offset=")
           wat_emit(int_to_str(8 + slot * 4))
           wat_emit(")")
+          let r = tail_expr_repr(init)
+          if repr_is_wide(r) {
+            wat_emit("({repr_load_op(r)})\n")
+            emit_wide_ref(r)
+          } else {
+            ()
+          }
         },
         _ => {
           emit_expr(init)
@@ -4074,59 +4141,8 @@ fn emit_expr(expr) = match expr {
       },
     }
   },
-  LCall(h, func, args) => {
-    // W7 closure call convention with per-handle scratch isolation:
-    //   1. Evaluate closure (puts pointer on stack), save into $call_<h>.
-    //   2. Push closure ptr as implicit first arg (for __state).
-    //   3. Push user args.
-    //   4. Load fn_ptr from closure offset 0.
-    //   5. call_indirect with $ft(N+1) — arity includes __state.
-    // Per-handle $call_<h> avoids the shared-$state_tmp clobber that
-    // surfaced when nested LCalls (e.g. `list_index(list_concat(L, R), i)`)
-    // overwrote each other's saved closure ptr. Mirrors the seed's
-    // Hβ.emit.lcall-per-handle-state-scratch substrate (#115).
-    emit_expr(func)
-    wat_emit("    (local.set $call_")
-    wat_emit(int_to_str(h))
-    wat_emit(")\n    (local.get $call_")
-    wat_emit(int_to_str(h))
-    wat_emit(")\n")
-    emit_args_word(args)
-    wat_emit("    (local.get $call_")
-    wat_emit(int_to_str(h))
-    wat_emit(") (i32.load offset=0)\n")
-    // The word-protocol dispatch: arity face, wide args by reference (spilled
-    // above), a wide result cashed back native below.
-    wat_emit("    (call_indirect (type ")
-    wat_emit(call_ft_name(args, repr_of(lookup_ty(h))))
-    wat_emit("))\n")
-    emit_wide_deref(repr_of(lookup_ty(h)))
-  },
-  LTailCall(h, func, args) => {
-    emit_expr(func)
-    wat_emit("    (local.set $call_")
-    wat_emit(int_to_str(h))
-    wat_emit(")\n    (local.get $call_")
-    wat_emit(int_to_str(h))
-    wat_emit(")\n")
-    emit_args_word(args)
-    wat_emit("    (local.get $call_")
-    wat_emit(int_to_str(h))
-    wat_emit(") (i32.load offset=0)\n")
-    // A wide result cannot return_call through the word face (the enclosing
-    // fn's native result is wide, the face's is a word): demote to a plain
-    // indirect call + deref — the value falls through as the tail value.
-    if repr_is_wide(repr_of(lookup_ty(h))) {
-      wat_emit("    (call_indirect (type ")
-      wat_emit(call_ft_name(args, repr_of(lookup_ty(h))))
-      wat_emit("))\n")
-      emit_wide_deref(repr_of(lookup_ty(h)))
-    } else {
-      wat_emit("    (return_call_indirect (type ")
-      wat_emit(call_ft_name(args, repr_of(lookup_ty(h))))
-      wat_emit("))\n")
-    }
-  },
+  LCall(h, func, args) => emit_closure_call(h, func, args, false),
+  LTailCall(h, func, args) => emit_closure_call(h, func, args, true),
   LReturn(_h, inner) => {
     emit_expr(inner)
     // drift-audit: ignore
@@ -4422,9 +4438,17 @@ fn emit_expr(expr) = match expr {
     //     srep-licensed list reads).
     // Empty arm list emits the POSTMORTEM trap — exhaustiveness violation
     // at runtime, complementing the inference-time check.
+    //
+    // The ROOT value parks at its own width: `scrut_local` names the
+    // scratch at the scrutinee's repr, the one decider every root reader
+    // takes (the binds, the literal predicates, the postmortem, and
+    // `walk_locals_expr`, which declares a wide scratch). A Float scrutinee
+    // parked in the word scratch did not assemble — every arm-list literal
+    // over a Float is a match on its parameter.
+    let sr = tail_expr_repr(scrutinee)
     emit_expr(scrutinee)
-    wat_emit("    (local.set $scrut_tmp)\n")
-    emit_match_arms(arms, match_arms_repr(arms), h)
+    wat_emit("    (local.set ${scrut_local(sr)})\n")
+    emit_match_arms(arms, match_arms_repr(arms), h, sr)
   },
   LResumeK(h, k_expr, val_expr) => {
     // The MultiShot resume invoking its continuation record — the ONE site
@@ -4443,7 +4467,10 @@ fn emit_expr(expr) = match expr {
     wat_emit("    (global.set $world_g (call $__k_world ")
     emit_expr(k_expr)
     wat_emit("))\n")
-    emit_expr(LCall(h, k_expr, [val_expr]))
+    // A continuation is the one closure kind a runtime helper also calls
+    // blind to its type ($__k_compose), so its table face is the WORD face
+    // and the resume speaks it (`emit_word_face_call`).
+    emit_word_face_call(h, k_expr, [val_expr])
     wat_emit("    (local.set $__rk_val_{int_to_str(h)})\n")
     wat_emit("    (global.set $world_g (local.get $__rk_wprev_{int_to_str(h)}))\n")
     wat_emit("    (local.get $__rk_val_{int_to_str(h)})\n")
@@ -4489,7 +4516,7 @@ fn emit_expr(expr) = match expr {
     // around the arm call), restore after the extent (the same
     // save/restore shape as the scoped-singleton global below, world
     // outermost). ONE key: the interned effect name at key@0, walked by
-    // world_declaring_from, which reads the arm slot through the entry to
+    // $ev_declaring_node, which reads the arm slot through the entry to
     // pick the node that DECLARES the op. The second key — the interned
     // handler name at hkey@16, five bytes on every node of every install —
     // existed only so a second walk could find a handler BY NAME, and that
@@ -4621,15 +4648,21 @@ fn emit_expr(expr) = match expr {
       PdWalk(ekey, slot, _, _) => emit_declaring_node(hs, ekey, slot),
       PdDriver(_) => wat_emit("    (local.get $__state)\n"),
     }
-    // The arm fn is SHARED between the floor and every twin, so its ABI
-    // is floor words: a twin's repr-true wide arg crosses BY REFERENCE
-    // (emit_args_word — the same box the arg boundary uses) and a wide
-    // result crosses BACK by dereference, keyed on the perform node's
-    // own typed repr. The floor's word nodes make both adapters no-ops
-    // byte-for-byte (Law 7); the fold twin's raw f64 fed the word call
-    // unboxed and its result left i32 where f64 was declared
-    // (Hβ.emit.twin-state-width — the two assembly refusals).
-    emit_args_word(args)
+    // THE OP'S DECLARED SIGNATURE IS THE ABI. Every arm of an op signs the
+    // op's declared parameters and, for a OneShot arm, its declared result —
+    // one home, the effect declaration (`op_abi`) — so the performer converts
+    // to exactly that: a value already at its declared width crosses as
+    // itself (a Float op costs a Float call), and only a wide value at an
+    // effect TYPE VARIABLE crosses by reference, because there the shared
+    // arm really does see a word. The first form boxed every wide argument
+    // and signed no arm to match it: a Float op's handler never assembled. A
+    // driver is not an op and keeps the word protocol it was written in.
+    match perform_op_name(disp) {
+      Some(op) => match op_abi(op) {
+        (preprs, _) => emit_args_at_abi(args, preprs),
+      },
+      None => emit_args_word(args),
+    }
     // (2) the arm's identity, where the target does not already name it: the
     // slot form pushes the fn index out of the record's own arm region.
     // (3) THE WORLD BRACKET, once, for every dispatch — the deep-handler law
@@ -4643,8 +4676,17 @@ fn emit_expr(expr) = match expr {
         wat_emit(")\n")
       },
       _ => {
+        // The record holds the arm's WORD face, as every fn_ptr does; an op
+        // whose declared vector is wide dispatches at its native face.
         match disp {
-          PdWalk(_, slot, _, ArmSlot) => emit_arm_index(hs, slot),
+          PdWalk(_, slot, op_name, ArmSlot) => {
+            emit_arm_index(hs, slot)
+            if vector_is_wide(op_vector(op_name)) {
+              wat_emit("    (global.get $native_face) (i32.add)\n")
+            } else {
+              ()
+            }
+          },
           _ => (),
         }
         wat_emit("    (global.get $world_g)(local.set $evw_")
@@ -4659,7 +4701,7 @@ fn emit_expr(expr) = match expr {
           },
           None => {
             wat_emit("    (call_indirect (type ")
-            wat_emit(call_ft_name(args, repr_of(lookup_ty(h))))
+            wat_emit(perform_ft(disp, args))
             wat_emit("))\n")
           },
         }
@@ -4668,7 +4710,12 @@ fn emit_expr(expr) = match expr {
         wat_emit("))\n")
       },
     }
-    emit_wide_deref(repr_of(lookup_ty(h)))
+    match perform_op_name(disp) {
+      Some(op) => match op_abi(op) {
+        (_, rrepr) => emit_result_from_abi(rrepr, h),
+      },
+      None => emit_wide_deref(repr_of(lookup_ty(h))),
+    }
   },
   LWasiCall(_h, import_name, args) => {
     // Stage 4a: direct substrate dispatch. Memory/Alloc ops project to
@@ -4914,17 +4961,27 @@ fn emit_expr(expr) = match expr {
   // value's proven repr. Negative slot_offset = lower-time
   // name-resolution miss (productive-under-error): emit the value as
   // drop, no store.
+  //
+  // A WIDE value lives in the cell its install boxed it into — the slot holds
+  // the cell's address (`emit_state_init_writes`) — so the commit writes
+  // THROUGH the slot, in place: no new cell, nothing allocated per resume, a
+  // handler's per-sample state as cheap to update as a local. The first form
+  // stored the f64 into the word slot itself, eight bytes over a four-byte
+  // slot and its neighbor, where the read side expected an address.
   if slot_offset < 0 {
     emit_expr(value)
     wat_emit("    (drop)\n")
   } else {
+    let r = tail_expr_repr(value)
     emit_expr(record)
-    emit_expr(value)
-    wat_emit("    (")
-    wat_emit(repr_wat(repr_of(lookup_ty(lexpr_handle(value)))))
-    wat_emit(".store offset=")
-    wat_emit(int_to_str(slot_offset))
-    wat_emit(")\n")
+    if repr_is_wide(r) {
+      wat_emit("    (i32.load offset={int_to_str(slot_offset)})\n")
+      emit_expr(value)
+      wat_emit("    ({repr_store_op(r)})\n")
+    } else {
+      emit_expr(value)
+      wat_emit("    (i32.store offset={int_to_str(slot_offset)})\n")
+    }
   },
   LDeclareFn(_fn_ir) => // H1.4: module-level fn declaration. The fn body is emitted
   // by emit_fns_expr's deep walk; this expression-position
@@ -5238,6 +5295,123 @@ fn repr_is_wide(r) with Pure = match r {
   _ => true,
 }
 
+// The op a dispatch performs — None for a driver, which is not an op.
+fn perform_op_name(disp) = match disp {
+  PdFrame(_, _, op_name) => Some(op_name),
+  PdWalk(_, _, op_name, _) => Some(op_name),
+  PdDriver(_) => None,
+}
+
+// An op's ABI: its declared parameter reprs and its declared result's, read
+// from the effect declaration — the binding every arm's header signs
+// (`op_param_tys` / `op_ret_ty`, lower's `lower_one_arm_decl`). An effect's
+// type variable resolves to nothing here, so it signs the word floor, which
+// is exactly what a shared arm sees.
+fn op_abi(op_name) = (map(declared_repr, op_param_tys(op_name)), declared_repr(op_ret_ty(op_name)))
+
+fn declared_repr(oty) = match oty {
+  Some(ty) => repr_of(ty),
+  None => RI32,
+}
+
+// The indirect arm call's vector: the record word, then the declared ABI.
+fn op_vector(op_name) = match op_abi(op_name) {
+  (preprs, rrepr) => ([RI32] ++ preprs, rrepr),
+}
+
+// Each argument at its declared width: as itself where it already is, by
+// reference only where a wide value meets a word slot (an effect variable).
+fn emit_args_at_abi(args, preprs) = each(
+  {
+    (i, a) => {
+      emit_expr(a)
+      let have = tail_expr_repr(a)
+      let want = if i < len(preprs) { list_index(preprs, i) } else { RI32 }
+      if repr_is_wide(have) && !repr_is_wide(want) { emit_wide_ref(have) } else { () }
+    },
+  },
+  enumerate(args)
+)
+
+// The declared result back at the width the perform node proves: native
+// where they agree, by dereference where a word result stands for a wide one.
+fn emit_result_from_abi(rrepr, h) = {
+  let want = repr_of(lookup_ty(h))
+  if repr_is_wide(want) && !repr_is_wide(rrepr) { emit_wide_deref(want) } else { () }
+}
+
+// The indirect arm call's type — the op's declared vector; a driver speaks
+// the word face it was written in.
+fn perform_ft(disp, args) = match perform_op_name(disp) {
+  Some(op) => vector_ft_name(op_vector(op)),
+  None => call_ft_name(args),
+}
+
+// A closure call site's vector: the record word, each argument at the width
+// it is emitted at, and the result the call node proves.
+fn call_site_vector(args, h) = ([RI32] ++ map(tail_expr_repr, args), repr_of(lookup_ty(h)))
+
+// A closure call (W7): the record parks in $call_<h> — per handle, so a call
+// nested in an argument cannot clobber it — and rides as the callee's
+// __state, the arguments follow, and the fn_ptr at the record's offset 0
+// names the callee. THE SITE'S PROVEN VECTOR PICKS THE FACE (`emit_fn_table`).
+// An all-word vector dispatches at fn_ptr itself. A vector with a wide slot
+// reaches the native face `$native_face` past it and passes its values as
+// themselves: a Float closure costs a Float call, not a box. The word protocol
+// that stood here from 2026-07-21 spilled every wide argument to a fresh heap
+// cell and reached every wide callee through its `$wf$` wrapper, so `fn
+// step(f, x: Float) with !Alloc = f(x)` allocated on every call with no row
+// saying so. Total monomorphization is what makes the site's vector the
+// callee's — a closure of a type is minted from a body emitted at that type —
+// and `call_indirect`'s structural match checks it at the boundary, so a
+// disagreement is a LOUD type trap, never a silent value. A tail call keeps
+// its true `return_call` at any width, because the native face's result is
+// the site's own.
+fn emit_closure_call(h, func, args, tail) = {
+  let hs = int_to_str(h)
+  let v = call_site_vector(args, h)
+  let op = if tail { "return_call_indirect" } else { "call_indirect" }
+  emit_expr(func)
+  wat_emit("    (local.set $call_{hs})\n    (local.get $call_{hs})\n")
+  emit_expr_list(args)
+  wat_emit("    (local.get $call_{hs}) (i32.load offset=0)\n")
+  if vector_is_wide(v) { wat_emit("    (global.get $native_face) (i32.add)\n") } else { () }
+  wat_emit("    ({op} (type {vector_ft_name(v)}))\n")
+}
+
+// A vector's function-type NAME: the arity face $ftN when every slot is a
+// word — the all-word instance of the same key — else
+// `$ft_<params>_<result>`, one letter per repr.
+fn vector_ft_name(v) = match v {
+  (ps, r) => if all(repr_is_i32, ps) && repr_is_i32(r) {
+    "$ft{int_to_str(len(ps))}"
+  } else {
+    "$ft_{str_concat_all(map(repr_letter, ps))}_{repr_letter(r)}"
+  },
+}
+
+fn repr_letter(r) with Pure = match r {
+  RI32 => "i",
+  RI64 => "j",
+  RF64 => "d",
+  RF32 => "f",
+  RV128 => "v",
+}
+
+// The word face of the indirect boundary, spoken by a caller BLIND to its
+// callee's type. In user code that is a continuation's resume alone: the
+// composer calls ks it cannot type, so a k is always reached at its word
+// index. A wide argument crosses by reference and a wide result comes back by
+// dereference; the callee's word slot holds its `$wf$` face (`emit_fn_refs`).
+fn emit_word_face_call(h, func, args) = {
+  emit_expr(func)
+  wat_emit("    (local.set $call_{int_to_str(h)})\n    (local.get $call_{int_to_str(h)})\n")
+  emit_args_word(args)
+  wat_emit("    (local.get $call_{int_to_str(h)}) (i32.load offset=0)\n")
+  wat_emit("    (call_indirect (type {call_ft_name(args)}))\n")
+  emit_wide_deref(repr_of(lookup_ty(h)))
+}
+
 // The direct call's signature: THE CALLEE'S OWN, read from the column under
 // the symbol the call actually names (cname2 — the twin's mangled name at a
 // specialized site, the plain name otherwise). Not "the same derivation the
@@ -5448,7 +5622,7 @@ fn emit_eq_sum_call(sig, neg) = {
 // operation fact.
 type FoldOp = FoldCompare | FoldEq | FoldHash | FoldShow
 
-fn fold_closures_empty() = ({cmp: [], eq: [], hash: [], show: []})
+fn fold_closures_empty() = {cmp: [], eq: [], hash: [], show: []}
 
 // The closed-record pins are load-bearing (Intent Boundary): an unannotated
 // acc infers a partial OPEN record per accessor, and an open receiver's field
@@ -5456,18 +5630,18 @@ fn fold_closures_empty() = ({cmp: [], eq: [], hash: [], show: []})
 // full one (Hβ.lower.trecordopen-wrong-field — this fn's first compile hit
 // that floor at runtime).
 fn fold_acc_eq(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, lh) =
-  ({cmp: acc.cmp, eq: eq_operand_contrib(lh, acc.eq), hash: acc.hash, show: acc.show})
+  {cmp: acc.cmp, eq: eq_operand_contrib(lh, acc.eq), hash: acc.hash, show: acc.show}
 
 // The ordering contribution IS the eq contribution (cmp_agg_operand_contrib
 // was a byte-copy of eq_operand_contrib — deleted; one reach, two slots).
 fn fold_acc_cmp(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, lh) =
-  ({cmp: eq_operand_contrib(lh, acc.cmp), eq: acc.eq, hash: acc.hash, show: acc.show})
+  {cmp: eq_operand_contrib(lh, acc.cmp), eq: acc.eq, hash: acc.hash, show: acc.show}
 
 fn fold_acc_hash(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, arg) =
-  ({cmp: acc.cmp, eq: acc.eq, hash: hash_operand_contrib(arg, acc.hash), show: acc.show})
+  {cmp: acc.cmp, eq: acc.eq, hash: hash_operand_contrib(arg, acc.hash), show: acc.show}
 
 fn fold_acc_show(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, arg) =
-  ({cmp: acc.cmp, eq: acc.eq, hash: acc.hash, show: show_operand_contrib(arg, acc.show)})
+  {cmp: acc.cmp, eq: acc.eq, hash: acc.hash, show: show_operand_contrib(arg, acc.show)}
 
 fn fold_trigger_binop(op, lh, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = match op {
   BEq => fold_acc_eq(acc, lh),
@@ -7329,19 +7503,21 @@ fn product_byte_size(fields) = product_byte_size_acc(fields, 0, len(fields), 0)
 // fork, no filtered cascades, no dropped pattern forms. Eliding the
 // guard when the scrutinee's type proves every constructor fielded is
 // a gradient cash-out (graph-driven), not a shape system.
-fn emit_match_arms(arms, w, h) = if len(arms) == 0 {
+fn emit_match_arms(arms, w, h, sr) = if len(arms) == 0 {
   // The exhaustive fallthrough IS an autopsy, never a bare trap: an
   // ill-sorted scrutinee — a value whose representation matches no arm
   // of a total match, always a sort-boundary bug upstream — dies with
   // its evidence in the postmortem window: scratch word 0 = the
-  // scrutinee's raw word ($scrut_tmp still holds the FAILING cascade's
+  // scrutinee's raw word (the scratch still holds the FAILING cascade's
   // own scrutinee — nested matches re-set it on entry), word 4 = the
-  // match node's graph handle. The backtrace names the site; the two
-  // scratch words name the value and the graph address to interrogate —
+  // match node's graph handle. A wide root's bits sit at [8, 8 + width)
+  // so they never overlap the handle word. The backtrace names the site;
+  // the scratch names the value and the graph address to interrogate —
   // the medium narrating its own death instead of dying mute
   // (Hβ.emit.trap-as-exception-postmortem, the larval in-scratch form;
   // the declaring-node walk's own postmortem shape at the match layer).
-  wat_emit("    (i32.const 0)(local.get $scrut_tmp)(i32.store)\n")
+  let at = if repr_width(sr) > 4 { 8 } else { 0 }
+  wat_emit("    (i32.const {int_to_str(at)})(local.get ${scrut_local(sr)})({repr_store_op(sr)})\n")
   wat_emit("    (i32.const 4)(i32.const ")
   wat_emit(int_to_str(h))
   wat_emit(")(i32.store)\n")
@@ -7356,21 +7532,25 @@ fn emit_match_arms(arms, w, h) = if len(arms) == 0 {
   // which is how 28 micros stayed green over the inversion.
   match list_index(arms, 0) {
     (pat, body) => if pat_always_matches(pat) {
-      emit_pat_binds(pat)
+      emit_pat_binds(pat, sr)
       emit_expr(body)
     } else {
       emit_pat_predicate(pat)
       wat_emit("    (if (result ")
       wat_emit(repr_wat(w))
       wat_emit(")\n      (then\n")
-      emit_pat_binds(pat)
+      emit_pat_binds(pat, sr)
       emit_expr(body)
       wat_emit("      )\n      (else\n")
-      emit_match_arms(rest(arms), w, h)
+      emit_match_arms(rest(arms), w, h, sr)
       wat_emit("      ))\n")
     },
   }
 }
+
+// The match scratch — the ROOT value's local, named at its repr through the
+// projection every local's name goes through (`scrut_tmp` for a word).
+fn scrut_local(r) = local_wat_name("scrut_tmp", r)
 
 // The match's result width — every arm tail's repr joined (the same
 // live read the if's branches take; one width types the whole cascade).
@@ -7432,7 +7612,7 @@ fn alt_any_always_matches(branches) = if len(branches) == 0 {
 }
 
 // ── emit_scrut_at — the value at an offset path ─────────────────────
-// path[0..path_len) is the load chain from $scrut_tmp to this
+// path[0..path_len) is the load chain from the root scratch to this
 // pattern's position; path_len 0 is the scrutinee itself. Ω.3
 // buffer-counter discipline: one 8-slot buffer per walk, slot D owned
 // by depth D, siblings overwrite cleanly.
@@ -7454,8 +7634,12 @@ type PatStep = POff(Int) | PIdx(Int)
 
 fn emit_scrut_at(path, path_len) = emit_scrut_at_repr(path, path_len, RI32)
 
+// At path length zero the value IS the root, parked in the scratch named at
+// its own repr; every deeper path starts from a pointer (a step is a chase),
+// so it starts from the word scratch.
 fn emit_scrut_at_repr(path, path_len, leaf_repr) = {
-  wat_emit("    (local.get $scrut_tmp)\n")
+  let root = if path_len == 0 { scrut_local(leaf_repr) } else { scrut_local(RI32) }
+  wat_emit("    (local.get ${root})\n")
   emit_load_chain_repr(path, 0, path_len, leaf_repr)
 }
 
@@ -7642,7 +7826,9 @@ fn emit_pat_alt_predicate(branches, path, path_len) = if len(branches) == 0 {
 // from the con/tuple sub-binds (a payload/element's proven repr), so an f64
 // leaf binder loads f64-wide. RI32 is the byte-identical floor for every
 // pointer/word leaf (Law 7).
-fn emit_pat_binds(pat) = emit_pat_binds_at(pat, make_list(8), 0, RI32)
+// The root value's repr is the scrutinee's (`sr`); every deeper position's
+// comes from the type its path proves.
+fn emit_pat_binds(pat, sr) = emit_pat_binds_at(pat, make_list(8), 0, sr)
 
 fn emit_pat_binds_at(pat, path, path_len, val_repr) = match pat {
   LPVar(name) => {
@@ -7671,12 +7857,13 @@ fn emit_pat_binds_at(pat, path, path_len, val_repr) = match pat {
   },
   LPAlt(branches) => emit_pat_alt_binds(branches, path, path_len),
   LPAs(name, inner) => {
-    // Bind the WHOLE value at this path, then the inner's binders.
-    emit_scrut_at(path, path_len)
+    // Bind the WHOLE value at this path — at its own repr, the one the
+    // path proves — then the inner's binders at the same.
+    emit_scrut_at_repr(path, path_len, val_repr)
     wat_emit("    (local.set $")
-    wat_emit(name)
+    wat_emit(local_wat_name(name, val_repr))
     wat_emit(")\n")
-    emit_pat_binds_at(inner, path, path_len, RI32)
+    emit_pat_binds_at(inner, path, path_len, val_repr)
   },
 }
 
@@ -7945,8 +8132,8 @@ fn emit_pat_alt_binds_dispatch(branches, path, path_len) = if len(branches) == 0
 // the value at a path step is a handle into a deeper aggregate); the FINAL
 // step (k == path_len - 1) loads the matched value at its proven leaf_repr,
 // so an f64 leaf binds f64-wide (the same width the store wrote —
-// Carried-Truth across store/load). Caller has already emitted
-// (local.get $scrut_tmp).
+// Carried-Truth across store/load). Caller has already read the root
+// scratch (`emit_scrut_at_repr`).
 fn emit_load_chain_repr(path, k, path_len, leaf_repr) = if k == path_len {
   ()
 } else {

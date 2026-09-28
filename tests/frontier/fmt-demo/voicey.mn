@@ -8,7 +8,7 @@ effect Ping { ping() -> Int }
 
 effect Pong { pong_op() -> Int }
 
-handler ponger with n = 40 {
+handler ponger with n = 38 {
   ping() => resume(n + 2)
 }
 
@@ -20,4 +20,17 @@ fn probe() -> Int with Ping + !Pong = ping()
 // record).
 fn clampish(n) -> Int = if n > 0 { n } else { 0 }
 
-fn main() = (probe() ~> ponger) + clampish(0 - 5)
+// The parameter face: an effect's instance parameter and a handler's
+// config parameter keep their authored annotations. Pre-fix the render
+// dropped both (effect Tick(rate: Int) became effect Tick(rate)), and the
+// declared Tick(2) then compared its Int against a bare variable and
+// refused a program that ran before the render.
+effect Tick(rate: Int) { tick_rate() -> Int }
+
+handler ticker(r: Int) {
+  tick_rate() => resume(r)
+}
+
+fn rate_of() with Tick(2) = tick_rate()
+
+fn main() = (probe() ~> ponger) + clampish(0 - 5) + ((rate_of()) ~> ticker(2))

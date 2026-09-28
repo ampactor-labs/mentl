@@ -751,9 +751,9 @@ signal
 
 **The causality rule (real, 2026-08-12):** a cycle with no delay has no computable value — the prior would be the very output being computed — so `x <~ delay(0)` is **`E_ZeroDelayFeedback`**, an ARMED refusal at the `<~` site (nonzero exit, zero WAT). Faust makes this unsayable by inserting its delay implicitly; Mentl names the depth, so the depth can be wrong, so the medium refuses it. The refusal is one ARM of the depth read below — the same read that sizes the line judges whether the size is sayable — and both `delay(0)` and `Delay(0)` convict, the two spellings of one FeedbackSpec variant.
 
-**The iterative context is the CLOCK, and the clock is inferred, not required** (measured 2026-08-12). An earlier reading of this section demanded "the structural presence of a cycle/iteration-resume handler in the enclosing stack," with `E_FeedbackNoContext` when absent. The substrate never realized that: a `<~` site is a per-site state register whose *previous iteration* is the enclosing function's next call, which is why `bandpass_step` (`lib/dsp/signal.mn`, four `<~` sites) carries no effect row and is correct. Requiring an ambient effect would refuse correct code — the wheel's own thirteen `<~` sites among it — so `E_FeedbackNoContext` has no construction site, deliberately. Its honest form is the inferred clock (`Hβ.dataflow.clock-calculus-sample-rate`, Lustre's clock calculus): when the medium *proves* what advances a cycle, "nothing advances this one" becomes a measurement, and the refusal is that measurement projected. `Sample`/`Tick`/`Clock` are instances of the class, never a name-allowlist (a name-allowlist would be the string-keyed drift at the handler layer); `IterContext` (`lib/dsp/clock.mn`) is the marker vocabulary waiting on that landing.
+**The iterative context is the CLOCK, and the clock is inferred, not required** (measured 2026-08-12). An earlier reading of this section demanded "the structural presence of a cycle/iteration-resume handler in the enclosing stack," with `E_FeedbackNoContext` when absent. The substrate never realized that: a `<~` site is a per-site state register whose *previous iteration* is the enclosing function's next call, which is why the stage `bandpass_stage` mints (`lib/dsp/signal.mn`, four `<~` sites) carries no clock in its row and is correct. Requiring an ambient effect would refuse correct code — the wheel's own thirteen `<~` sites among it — so `E_FeedbackNoContext` has no construction site, deliberately. Its honest form is the inferred clock (`Hβ.dataflow.clock-calculus-sample-rate`, Lustre's clock calculus): when the medium *proves* what advances a cycle, "nothing advances this one" becomes a measurement, and the refusal is that measurement projected. `Sample`/`Tick`/`Clock` are instances of the class, never a name-allowlist (a name-allowlist would be the string-keyed drift at the handler layer); `IterContext` (`lib/dsp/clock.mn`) is the marker vocabulary waiting on that landing.
 
-**The declared depth IS the line's depth (real, 2026-08-12), and the line is a RING OWNED BY THE RECORD OF THE FUNCTION THAT CONTAINS THE CYCLE (real, 2026-09-27).** `delay(N)` carries N priors: the site's line is an N-slot ring, the prior the cycle reads is its OLDEST slot — y[n−N] — and each tick stores the output over it and advances the head by one, so a tick is a load, a store and a bounded increment at any depth (`delay(24_000)` costs what `delay(1)` costs per tick; `tests/frontier/mn-feedback-deep-line.mn` drives 2,000,000 ticks at that depth and the frontier leg prints the ticks per second). `delay(1)` is the single register it always was; `delay(3)` is genuinely three deep, measured by the same recurrence driven six times answering 6 under `delay(1)` and 2 under `delay(3)`. The ring is allocated ONCE, where its owner is built — never per tick — and its owner is the record of the function the `<~` sits in (handler = state = closure, read at the site): a lambda's line lives in the closure record past its captures, so every closure minted from one lambda is its own filter (`let lp_l = lowpass(0.3)` and `let lp_r = lowpass(0.3)` are two lines, the two-channel shape every stereo stage writes); a handler arm's line lives in the install record past the arms, so every `~> h` is its own filter; a reified remainder's line lives in the k record, shared by that k's resumptions as every heap write of the remainder is; a top-level fn's line — its record being the module's immutable data record — rides an instance global allocated at start, one per emitted twin, so a generic recurrence reached at Int and at Float ticks two lines at two widths. Until this landed the line was N module globals keyed by the site alone: two closures from one lambda, two installs of one handler and two twins of one generic shared one register (the Float twin wrote f64 into an i32 line and refused to assemble), and a deep line was N global moves per tick (`tests/micros/mn-feedback-closure-instances.mn`, `mn-feedback-arm-instances.mn`, `mn-feedback-twin-width.mn`, `mn-feedback-deep-line.mn`, each measured on boot 542ea5a3 before the fix). **The `!Alloc` row survives the cycle (2026-09-25).** The RHS is checked as a `FeedbackSpec` VALUE — its type is what the site reads — but its construction never executes: emit discards the lowered spec and the prior is a register read off the ring, so the site judges the spec in a frame whose row is dropped. Until that landing the constructor's allocation charged the frame: `fn cycle() with !Alloc` around `((prev) => ramp(prev)) <~ Delay(3)` refused with `!Alloc + Any vs Memory + Alloc`, and arming `E_EffectMismatch` turned that false charge into a false refusal of a correct program, which is what closed it (tests/frontier/mn-feedback-transport.mn pins it). The surface question behind it stays open and is the smaller artifact: whether the RHS should stop being an expression and become a static depth annotation, which is what the emit already treats it as (`Hβ.effects.feedback-row-substitutes`, branch B).
+**The declared depth IS the line's depth (real, 2026-08-12), and the line is a RING OWNED BY THE RECORD OF THE FUNCTION THAT CONTAINS THE CYCLE (real, 2026-09-27).** `delay(N)` carries N priors: the site's line is an N-slot ring, the prior the cycle reads is its OLDEST slot — y[n−N] — and each tick stores the output over it and advances the head by one, so a tick is a load, a store and a bounded increment at any depth (`delay(24_000)` costs what `delay(1)` costs per tick; `tests/frontier/mn-feedback-deep-line.mn` drives 2,000,000 ticks at that depth and the frontier leg prints the ticks per second). `delay(1)` is the single register it always was; `delay(3)` is genuinely three deep, measured by the same recurrence driven six times answering 6 under `delay(1)` and 2 under `delay(3)`. The ring is allocated ONCE, where its owner is built — never per tick — and its owner is the record of the function the `<~` sits in (handler = state = closure, read at the site): a lambda's line lives in the closure record past its captures, so every closure minted from one lambda is its own filter (`let lp_l = lowpass(0.3)` and `let lp_r = lowpass(0.3)` are two lines, the two-channel shape every stereo stage writes); a handler arm's line lives in the install record past the arms, so every `~> h` is its own filter; a reified remainder's line lives in the k record, shared by that k's resumptions as every heap write of the remainder is; a top-level fn's line — its record being the module's immutable data record — rides an instance global allocated at start, one per emitted twin, so a generic recurrence reached at Int and at Float ticks two lines at two widths. A filter that must exist once per signal is therefore a MAKER: lib/dsp's `lowpass_filter(sr)`, `highpass_filter(sr)`, `dc_blocker()` and `envelope_follower(attack, release, sr)` each return the stage, and each stage minted owns its line — they were top-level fns until 2026-09-28, one line per program, so a stereo pair through one filter shared one memory. Until this landed the line was N module globals keyed by the site alone: two closures from one lambda, two installs of one handler and two twins of one generic shared one register (the Float twin wrote f64 into an i32 line and refused to assemble), and a deep line was N global moves per tick (`tests/micros/mn-feedback-closure-instances.mn`, `mn-feedback-arm-instances.mn`, `mn-feedback-twin-width.mn`, `mn-feedback-deep-line.mn`, each measured on boot 542ea5a3 before the fix). **The `!Alloc` row survives the cycle (2026-09-25).** The RHS is checked as a `FeedbackSpec` VALUE — its type is what the site reads — but its construction never executes: emit discards the lowered spec and the prior is a register read off the ring, so the site judges the spec in a frame whose row is dropped. Until that landing the constructor's allocation charged the frame: `fn cycle() with !Alloc` around `((prev) => ramp(prev)) <~ Delay(3)` refused with `!Alloc + Any vs Memory + Alloc`, and arming `E_EffectMismatch` turned that false charge into a false refusal of a correct program, which is what closed it (tests/frontier/mn-feedback-transport.mn pins it). The surface question behind it stays open and is the smaller artifact: whether the RHS should stop being an expression and become a static depth annotation, which is what the emit already treats it as (`Hβ.effects.feedback-row-substitutes`, branch B).
 
 **The depth must be a LITERAL.** A line is a fixed set of slots, so a depth the medium can only read at runtime is a depth it cannot hold — and handing such a site one slot is precisely the silent wrong the depth read exists to end. `delay(n - 1)` is **`E_ComputedDelayDepth`**, armed at the `<~` site. A runtime-sized line wants the image-backed sequence rather than a register file, which is `Hβ.dataflow.delay-line-runtime-depth`, riding the value ontology's own view/slice work.
 
@@ -778,7 +778,7 @@ Mentl records are **structural**: a record TYPE is `{name: T1, age: T2}` — no 
 {name: "Morgan", age: 30}
 ```
 
-Fields separated by commas. Each field is `name: value`. Trailing comma allowed (recommended for multi-line):
+Fields separated by commas. Each field is `name: value`. A literal that fits the line renders inline; one past the width, or one whose field carries a comment, renders one field per line, each closed by its comma, so adding a field at the end is a one-line diff — the call-argument law at the record altitude (`mentl fmt` wrote a fourteen-field literal on one 300-column line until 2026-09-28):
 ```
 {
   name: "Morgan",
@@ -889,6 +889,17 @@ match (Person{name: n}) { ... }           // record literal in a header slot
 Everywhere else — bindings, arguments, arm bodies, operands — `TypeName{...}`
 extends as written. Layout is never consulted (principle 1); the slot, not
 whitespace, decides.
+
+**Every other brace reads its `{` through ONE discrimination** (real,
+2026-09-28): `...` opens an update, a pattern ending at `=>` opens an arm
+list (§«Function literals»), a field name followed by `:`, `,` or `}` opens a
+record, and anything else opens a block. A function body is such a slot, so
+`fn origin() = {x: 0, y: 0}` returns a record and needs no parens, and `fn
+f() = {x}` is the punned one-field record — never a block holding `x`, which
+the formatter lifts to `fn f() = x` (`E_RedundantBraces`). Until 2026-09-28 a
+fn body carried its own copy of the decision that read every `{` as a block,
+the formatter wrapped body records in parens to compensate, and `fn f() = {
+field: v }` failed to parse on a page written by hand.
 
 ### Pattern syntax for records
 
@@ -1038,8 +1049,12 @@ type Pixels    = Int repr v128            // four packed lanes
 after any type-decl base) and the bare-width parameter pin (`s: f64`, `s: f32`,
 `i64`, `v128`) mints the same `TReprPin` in type-atom position. The pin types
 transparently — identity is the base's; `repr_of`'s own arm is the one width
-reader — and the formatter renders the bare atom back bare, the alias form with
-its suffix. The i64/f32/v128 pins carry full vocabulary; their emission
+reader — and since both spellings parse to one pin, the formatter decides the
+spelling by POSITION: a pin at a type declaration's right-hand side renders with
+its suffix (`type Coeff = Float repr f64`) and a pin in an annotation renders
+bare (`s: f64`). Until 2026-09-28 a canonical pair rendered bare everywhere, and
+a declaration written as this section writes it came back as `type Coeff = f64`.
+The i64/f32/v128 pins carry full vocabulary; their emission
 cash-outs ride the named wide-producer residue (the RF64 path is fully live).
 
 `repr <width>` is a **gradient INPUT — a PIN, not a constructor** (the peer of
@@ -1109,6 +1124,28 @@ let s: Sample = 0.5      // Verify discharges -1.0 <= 0.5 && 0.5 <= 1.0 statical
 let p: ValidPort = 8080  // statically discharged
 let bad: Sample = 1.5    // E_RefinementRejected — 1.5 violates the Sample bounds
 ```
+
+**A claim over a join decides as the AND over its tails** (real,
+2026-09-28). `fn note_hz(k: Int) -> Hz = match k { 0 => 220.0, 1 => 261.63,
+_ => 440.0 }` discharges because every arm folds inside the bound; one arm
+at `30000.0` refuses at the claim; an arm that is not a constant (`_ => f *
+2.0`) leaves the claim honest `V_Pending`. `if`, `match` and a block's final
+expression are read by STRUCTURE, never by guessing which arm runs, so a dead
+arm that writes an out-of-bound constant refuses too — the claim covers every
+tail. Until this landed a claim over a join was never decided, and a
+note table of eight literals carried eight pending obligations.
+
+**A refinement crossing a function-typed argument is judged** (real,
+2026-09-28). The argument's RESULT, where the callee hands it to a refined
+position, is judged on the lambda's own body: with `fn run(f) =
+alpha(f())` and `alpha(c: Hz)`, `run(() => 30000.0)` refuses and `run(() =>
+440.0)` discharges. The argument's PARAMETERS, where it demands a
+refinement, discharge when the callee's own type says it passes one (`fn
+drive(f, c: Hz) = f(c)`) and are honest `V_Pending` otherwise — the values
+a callee passes are made inside the callee, and judging them there is
+refinement variables' work (`Hβ.verify.higher-order-refinement`). Until
+this landed the refinement was DROPPED at the crossing: a 70,900 Hz sweep
+reached an `Hz` filter and `mentl check` was clean.
 
 The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); the Arc F.1 SMT handler swap discharges those by residual theory — same source, deeper proof engine.
 
@@ -1212,7 +1249,7 @@ effect Budget(limit: Int) {
 }
 ```
 
-The effect name itself carries arguments. **Row algebra treats `Sample(44100)` and `Sample(48000)` as distinct effects.** Equality requires name AND argument value match (scalar literal equality for Int / Bool / String args; structural equality for compound types).
+The effect name itself carries arguments. **Row algebra treats `Sample(44100)` and `Sample(48000)` as distinct effects**, and a body that performs both carries both, in either order: `fast() + slow()` under `!Sample(44100)` refuses exactly as `slow() + fast()` does. Two instances are two row members exactly when they are PROVABLY distinct — the question a negation asks, so the set and the negation cannot disagree — and an instance whose argument nothing grounds (an operand node) stands for every instance it might equal. Until 2026-09-28 a row kept the first of two same-named instances and the verdict depended on the order of the calls (`tests/crown/leak-instance-order.mn`). A TYPE argument is not a value instance: an effect's type variables are shared across its ops, so one handler serves one instantiation and the install unifies the performs; a generic op quantified per perform is `Hβ.effects.two-instances-of-one-effect-do-not-join`.
 
 ### Installation in `with` clauses
 
@@ -1221,7 +1258,7 @@ fn audio_loop() with Sample(44100) + IO + !Alloc =
   ...
 ```
 
-The argument is evaluated at install time and frozen. Two functions declared with `Sample(44100)` and `Sample(48000)` cannot interoperate without an explicit handler bridge.
+The argument is evaluated at install time and frozen. Two functions declared with `Sample(44100)` and `Sample(48000)` cannot interoperate without an explicit handler bridge — at the ROW, today. A handler does not yet pin its instance: `~> sample_at(48000)` answers a `Sample(44100)` perform, so the rate rule a program states is a negation on its path (`render_frame … with !Sample(44100)`), and the install that refuses a foreign instance is `Hβ.effects.handler-pins-its-instance`.
 
 ### Resume discipline — inferred, not annotated
 
@@ -1964,6 +2001,7 @@ The parser accepts any whitespace; the precedence table alone draws the tree (ch
 
 **Render rule** (canonical):
 - The formatter renders code in canonical 2-space / 4-space form on save.
+- **A render that would lose what the author wrote is not written** (real, 2026-09-28). `mentl fmt` lexes its render beside the source and spends every identifier, literal (by value, so `48_000` and `48000` are one) and prose line of the source against the render's; anything left unpaid is a loss, the verb names it with its line, leaves the file untouched, and exits nonzero. Until then the gate counted prose alone and wrote whatever it rendered: it deleted an effect parameter's annotation (`rate: Int`), an op parameter's name (`msg: String`) and a pinned alias's base (`Float repr f64`) while reporting "prose conserved", and it wrote a lossy render of a file that did not parse.
 - The `Format` effect at `src/format.mn` declares `format_program` / `format_at_handle` / `format_chain` ops; `format_default` is the canonical handler.
 - `mentl edit` (built-in) auto-formats continuously — keystroke triggers parse → format → render. The developer never sees badly-indented code because the medium normalizes before display.
 - The LSP transport (external editors via VS Code / vim / Emacs) provides format-on-save through the same `format_default` handler, different transport.
@@ -2284,6 +2322,7 @@ token, so there is nothing to lift.*
 | `T_RowInventory`      | a declared clause whose bare positive names are exactly what the body proves, or a positive cap over an OPEN body row (which installs no gate and so constrains nothing) — the projected row written by hand (§«A signature is not an inventory») | `MachineApplicable` | `mentl tighten` writes the residue — negations, instance pins, or no clause |
 | `T_FieldOffsetUnprovable` | a reachable field access whose slot the graph cannot prove — the receiver's row never closed, so emit has no offset and writes `(unreachable)`. The diagnostic renders the selector and the receiver's own live type at the receiver's span. BORN 2026-09-15, and the shape of its birth is the lesson: the floor had been emitted since the offset read existed and was never REPORTED, so a program carrying one compiled clean, passed `mentl check`, and trapped at the instruction that admits it — §0's "nothing executes unproven" inverted at the one boundary that claimed it. Pre-arm (the wheel's own census is four); `tests/frontier/mn-field-offset-unprovable.mn` holds the contract and moves to a refusal in the commit that arms it | `MaybeIncorrect` | close the receiver's row — annotate it at its Intent Boundary, or give the call site a shape the twin can key on |
 | `T_EqTypeUnprovable` | a comparison (`==`, `!=`, `<`, …) whose operand type is still a variable at emit — no structure to read, so it falls to a one-word compare: value-equality for a word, an ADDRESS lie for anything else. The diagnostic carries the operator and the operand's live type at the operand's span. BORN 2026-09-18 as narration: a handler arm over quantified op parameters answered `"ab" != "ab"` (`tests/frontier/mn-eq-in-arm-pointer.mn`, declared red), and the wheel carries such compares itself — the trap form was refuted by the wheel dying on its own compile. Pre-arm; `eq_type_unprovable_max` in tools/verify-baseline.txt is the count's one home and the countdown, `T_FieldOffsetUnprovable`'s sibling on the same ladder. IT SEES ONE ALTITUDE ONLY, and the limit is measured rather than suspected: a polymorphic sum's payload compared by address inside a GENERATED leaf, where no authored comparison stands for this diagnostic to attach to, so the count held unchanged across that defect's whole discovery. That one is closed (`Hβ.eq.polymorphic-sum-payload-is-pointer-eq`); the altitude limit is not, and the generated leaf's own refusal is `Hβ.emit.generated-leaf-swallows-an-unresolved-payload` | `MaybeIncorrect` | prove the operand — give the call site a shape the twin can key on, or name the type at its Intent Boundary |
+| `T_ShowTypeUnprovable` | a show or interpolation splice whose operand type is still a variable at emit — the render falls to the word's integer: right for an Int, an address printed as a number for anything else. BORN 2026-09-28 as narration, the `T_EqTypeUnprovable` sibling one leaf over: the floor had a WAT comment and no voice, 22 sites in the wheel's own emit, and a 23rd entered unseen until a handler head rendered its config list as `(66036)`. Pre-arm; `show_type_unprovable_max` in tools/verify-baseline.txt holds the count (`Hβ.emit.show-free-floor`) | `MaybeIncorrect` | prove the operand — give the call site a shape the twin can key on, or name the type at its Intent Boundary |
 | `T_Gradient`          | an annotation INPUT would narrow the cursor's projection | `MachineApplicable` | accept the suggestion to narrow             |
 | `W_Suggestion`        | probable Quick Fix available                  | `MaybeIncorrect`     | (Mentl-proposed)                                |
 | `W_RedundantWhere`    | `type X = Y where true` — vacuous predicate   | `MachineApplicable`  | drop the `where true`; alias is transparent     |

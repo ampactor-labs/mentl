@@ -1835,11 +1835,15 @@ type Stmt
   // name, params (TParam), retty, effects, body
   | TypeDefStmt(String, [(String, [Ty], Node)])
   // name, then per variant its name + field types
-  | EffectDeclStmt(String, [TParam], [(String, [Ty], Ty, Node)])
-  // effect name, instance params, ops (each op is (op_name, param_tys,
+  | EffectDeclStmt(String, [TParam], [(String, [TParam], Ty, Node)])
+  // effect name, instance params, ops (each op is (op_name, params,
   // ret_ty, comment-carrier); ResumeDiscipline is inferred at
   // handler-decl time from each arm body, not declared on the effect
-  // op). The instance params are the parameterized effect's signature
+  // op). An op's params are parameters like a fn's: `print(msg: String)`
+  // carries its name, and a bare `print(String)` is the wildcard `_`, the
+  // spelling a function type's params already use. Until 2026-09-28 the
+  // op kept its types alone, so `mentl fmt` rewrote the named form as the
+  // bare one. The instance params are the parameterized effect's signature
   // (SYNTAX §«Parameterized effect»: `effect Sample(rate: Int)`) — the
   // same [TParam] product fn params and handler config ride; they
   // register as the effect's env scheme (the instance signature every
@@ -2509,10 +2513,11 @@ type DiagKind
   // difference between a program that traps and one that never ships
   // (handler name, op name).
   | EInitPerformsOwnOp(String, String, Span)
-  // `<~ delay(n)` where n is a runtime value. The line is a fixed set of
-  // slots declared at emit, so a depth the medium cannot read is a depth
-  // it cannot hold — and giving one prior to a site that asked for n is
-  // the silent wrong the depth read exists to end.
+  // `<~ delay(n)` where n is a runtime value. The line is a ring whose
+  // depth the emit sizes from the literal, allocated where its owner is
+  // built, so a depth the medium cannot read is a depth it cannot hold —
+  // and giving one prior to a site that asked for n is the silent wrong
+  // the depth read exists to end.
   | EComputedDelayDepth(Span)
   // a `...name` rest element outside a destructuring parameter slot
   | ERestOutsideDestructure(Span)
@@ -2640,6 +2645,13 @@ type DiagKind
   // (measured 2026-09-18: a handler arm over quantified op parameters
   // answered "ab" != "ab"). T_FieldOffsetUnprovable's sibling, same ladder.
   | TEqTypeUnprovable(String, Span)
+  // a show or interpolation splice whose operand type is still a VARIABLE at
+  // emit: the render falls to int_to_str of the word, right for an Int and a
+  // pointer printed as a number for anything else. The eq sibling one leaf
+  // over, and it had no voice: measured 2026-09-28, when a handler head
+  // rendered its config list as `(66036)` and 22 such floors in the wheel's
+  // own emit carried a WAT comment and no diagnostic.
+  | TShowTypeUnprovable(String, Span)
   // arithmetic on a product, sum, sequence, function, continuation or unit —
   // no meaning the value ontology gives it. Judged at the operator when the
   // operand is bound and at the one writer when a gated cell is bound later
@@ -2824,6 +2836,7 @@ fn diag_span(d) with Pure = match d {
   EUnresolvedHole(_, s) => s,
   TFieldOffsetUnprovable(_, s) => s,
   TEqTypeUnprovable(_, s) => s,
+  TShowTypeUnprovable(_, s) => s,
   EArithOnAggregate(_, s) => s,
   EReplayExhausted(s) => s,
 }
@@ -2898,6 +2911,7 @@ fn diag_source(d) with Pure = match d {
   EUnresolvedHole(_, _) => "verify",
   TFieldOffsetUnprovable(_, _) => "lower",
   TEqTypeUnprovable(_, _) => "lower",
+  TShowTypeUnprovable(_, _) => "lower",
   EArithOnAggregate(_, _) => "infer",
   EReplayExhausted(_) => "clock",
 }
@@ -2972,6 +2986,7 @@ fn diag_code(d) with Pure = match d {
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
   TFieldOffsetUnprovable(_, _) => "T_FieldOffsetUnprovable",
   TEqTypeUnprovable(_, _) => "T_EqTypeUnprovable",
+  TShowTypeUnprovable(_, _) => "T_ShowTypeUnprovable",
   EArithOnAggregate(_, _) => "E_ArithOnAggregate",
   EReplayExhausted(_) => "E_ReplayExhausted",
 }
@@ -2996,6 +3011,9 @@ fn diag_severity(d) with Pure = match d {
   TOwnAcrossReplay(_, _) => SWarning,
   TEqTypeUnprovable(_, _) => // PRE-ARM beside its sibling below, on the same ladder: the wheel's own
   // census of the class is what the arming commit counts down to zero.
+  SWarning,
+  TShowTypeUnprovable(_, _) => // PRE-ARM, the eq sibling's ladder one leaf over: counted down on the
+  // wheel's own compile, armed at zero.
   SWarning,
   EArithOnAggregate(_, _) => // ARMED at birth: arithmetic on an aggregate has no meaning, and the
   // wheel's census of it is zero (measured at the arming commit).
@@ -3319,6 +3337,7 @@ fn diag_applicability(d) with Pure = match d {
   EUnresolvedHole(_, _) => HasPlaceholders,
   TFieldOffsetUnprovable(_, _) => MaybeIncorrect,
   TEqTypeUnprovable(_, _) => MaybeIncorrect,
+  TShowTypeUnprovable(_, _) => MaybeIncorrect,
   EArithOnAggregate(_, _) => Unspecified,
   ERefinementRejected(_, _) => Unspecified,
   EVerifyUnencodable(_) => Unspecified,
@@ -3416,6 +3435,7 @@ fn diag_message(d) with !Mutate = match d {
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
   TFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed, so this load has no provable slot and the emit writes a trap here; close the row (annotate the receiver at its Intent Boundary, or give the call site a shape the twin can key on)",
   TEqTypeUnprovable(why, _) => "{why} — the operand's type is still a variable at emit, so the comparison has no structure to read and falls to a one-word compare (right for a word, an address lie for anything else); prove the operand: give the call site a shape the twin can key on, or name the type at its Intent Boundary",
+  TShowTypeUnprovable(why, _) => "{why} — the operand's type is still a variable at emit, so the render has no structure to read and falls to the word's integer (right for an Int, an address printed as a number for anything else); prove the operand: give the call site a shape the twin can key on, or name the type at its Intent Boundary",
   EArithOnAggregate(why, _) => "{why} — arithmetic on a product, sum, sequence, function, continuation or unit has no meaning: the operands are addresses, and the result would be arithmetic on where the values live, never on the values. A number is a word (Int, Float, Byte); give this operand one, or read the field you meant",
   EReplayExhausted(_) => "clock replay trace exhausted",
 }

@@ -577,8 +577,13 @@ fn scan_deps_of_path(scan, path: String) = match find({ (p, _, _, _) => p == pat
 // session; probe runs work under .build/probe, never /tmp. Nothing
 // prunes sibling images yet (19 entries held 7.2GB) — keep-newest-N
 // retention is this writer's own named follow-up.
+//
+// AND BY THE WORLD (`world_key`): an image restores the handler world that
+// wrote it, its output sink included, so `mentl run x` then `mentl compile x`
+// under one filename emitted the module into the executor's buffer, and the
+// reverse order printed the module and ran nothing (exit 134).
 fn driver_warm_path(ref entry_module) =
-  ".build/warm-compile-e{int_to_str(str_hash(entry_module))}.img"
+  ".build/warm-compile-e{int_to_str(str_hash(entry_module))}-w{int_to_str(world_key())}.img"
 
 fn driver_warm_ready(path) = if fs_exists(path) {
   let wire = fs_read_file(path)

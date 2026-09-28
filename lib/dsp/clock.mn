@@ -42,7 +42,15 @@ effect Tick {
   current_tick() -> Int
 }
 
-effect Sample {
+// Sample is INSTANCE-PARAMETERIZED (SYNTAX §«Parameterized effect»): the
+// rate rides the effect, so `Sample(44100)` and `Sample(48000)` are distinct
+// row members, and a path that declares `!Sample(44100)` refuses a stage
+// written for the other rate — the canonical audio bug, refused per
+// instance. A program declares the rate it runs at (`with Sample(48_000)`)
+// and reads it back through `sample_rate()`; the number is authored ONCE.
+// The install does not yet check it: `sample_at` answers every instance
+// (`Hβ.effects.handler-pins-its-instance`), so the refusal lives in the row.
+effect Sample(rate: Int) {
   sample_rate() -> Int
   advance_sample()
   current_sample() -> Int
@@ -103,7 +111,12 @@ handler tick_real with counter = 0 {
   current_tick() => resume(counter),
 }
 
-handler sample_real with rate = 44100, count = 0 {
+// sample_at(rate) — the one Sample handler: the rate is its config, the
+// sample count its state. Installed as `~> sample_at(48_000)` under a chain
+// declared `with Sample(48_000)`, it answers the rate the chain declared
+// (real and test tiers differed only in this constant, so they were one
+// handler wearing two names).
+handler sample_at(rate) with count = 0 {
   sample_rate() => resume(rate),
   advance_sample() => resume() with count = count + 1,
   current_sample() => resume(count),
@@ -125,12 +138,6 @@ handler clock_test with clock_state = 1000 {
 handler tick_test with counter = 0 {
   tick() => resume() with counter = counter + 1,
   current_tick() => resume(counter),
-}
-
-handler sample_test with rate = 48000, count = 0 {
-  sample_rate() => resume(rate),
-  advance_sample() => resume() with count = count + 1,
-  current_sample() => resume(count),
 }
 
 handler deadline_test {

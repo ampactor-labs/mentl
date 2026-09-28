@@ -145,8 +145,14 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     // The frame is BORN with its declaration: `effs` = the FnStmt's authored
     // [(EffName, negated)] list (empty for lambdas / tee bodies / arm scopes).
     // No ambient declared-scalar to clobber — a nested fn gets its own.
-    let frame =
-      {accumulated_row: mk_ef_pure(), answer_handle: answer_h, declared: effs, fn_span: fn_span, params: [], row_handle: h}
+    let frame = {
+      accumulated_row: mk_ef_pure(),
+      answer_handle: answer_h,
+      declared: effs,
+      fn_span: fn_span,
+      params: [],
+      row_handle: h,
+    }
     // drift-audit: ignore — bounded-depth frame PUSH (one per fn nesting level, popped at exit; §9 push-at-END), not a loop accumulator
     resume() with stack = stack ++ [frame]
   },
@@ -227,8 +233,14 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     // `name` is an EffName — joined into the row directly. The single-name
     // case of inf_add_row; parameterized effects flow through inf_add_row.
     let extended = union_row(frame.accumulated_row, mk_ef_closed([name]))
-    let updated =
-      {accumulated_row: extended, answer_handle: frame.answer_handle, declared: frame.declared, fn_span: frame.fn_span, params: frame.params, row_handle: frame.row_handle}
+    let updated = {
+      accumulated_row: extended,
+      answer_handle: frame.answer_handle,
+      declared: frame.declared,
+      fn_span: frame.fn_span,
+      params: frame.params,
+      row_handle: frame.row_handle,
+    }
     // drift-audit: ignore — top-frame REPLACE on a bounded-depth stack (§9 push-at-END), not a loop accumulator
     resume() with stack = drop_last(stack) ++ [updated]
   },
@@ -244,8 +256,14 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     // here.
     let frame = last(stack)
     let extended = union_row(frame.accumulated_row, row)
-    let updated =
-      {accumulated_row: extended, answer_handle: frame.answer_handle, declared: frame.declared, fn_span: frame.fn_span, params: frame.params, row_handle: frame.row_handle}
+    let updated = {
+      accumulated_row: extended,
+      answer_handle: frame.answer_handle,
+      declared: frame.declared,
+      fn_span: frame.fn_span,
+      params: frame.params,
+      row_handle: frame.row_handle,
+    }
     // drift-audit: ignore — top-frame REPLACE on a bounded-depth stack (§9 push-at-END), not a loop accumulator
     resume() with stack = drop_last(stack) ++ [updated]
   },
@@ -8060,7 +8078,77 @@ fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
     apply_refinement_constraint(inner, value_handle, span)
   },
   TRefined(_, pred) => verify(graph_module_current(), span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
+  TFun(eps, eret, _) => fun_refinement_crossing(eps, eret, value_handle, span),
+  TVar(h) => match graph_chase(h) {
+    GNode(NBound(TFun(eps, eret, _)), _) => fun_refinement_crossing(eps, eret, value_handle, span),
+    _ => (),
+  },
   _ => (),
+}
+
+// A FUNCTION crossing a construction site carries its refinements across in
+// both directions. Unification meets a refined position with a concrete base
+// by checking the base alone — it holds no value to judge — so until
+// 2026-09-28 both directions were dropped: `run(() => 30000.0)` into `fn
+// run(f) = alpha(f())` checked clean over an `Hz` parameter, and so did a
+// filter demanding `Hz` handed a 70,900 Hz sweep through an inferred
+// parameter (Pulse, measured). Each position is judged where its value is:
+// - the RESULT is the function's own value leaving it (covariant): a
+//   lambda's body is judged against the demanded refinement as a return is,
+//   join-aware, at the body's own span; any other function's result is
+//   covered only by a declaration naming the same refinement;
+// - a PARAMETER is the callee's values arriving (contravariant): nothing at
+//   this edge holds them, so a refinement the argument demands and the
+//   parameter does not carry is honest debt here. The values live in the
+//   callee's body, where `Hβ.verify.higher-order-refinement`'s refinement
+//   variables would reach them.
+fn fun_refinement_crossing(eps, eret, value_handle, span: ValidSpan) = match chase_deep(TVar(value_handle)) {
+  TFun(aps, aret, _) => {
+    each(
+      {
+        (ap, ep) => match surface_refinement(chase_deep(param_ty(ap))) {
+          Some((aname, pred)) => if refined_as(chase_deep(param_ty(ep)), aname) {
+            ()
+          } else {
+            verify(graph_module_current(), span, pred, Refinement(pred, PTrue))
+          },
+          None => (),
+        },
+      },
+      zip(aps, eps)
+    )
+    let want = chase_deep(eret)
+    match surface_refinement(want) {
+      Some((ename, pred)) => if refined_as(chase_deep(aret), ename) {
+        ()
+      } else {
+        match graph_node_body(value_handle) {
+          NExpr(LambdaExpr(_, N(_, bspan, bh))) => apply_refinement_constraint(want, bh, bspan),
+          _ => verify(graph_module_current(), span, pred, Refinement(pred, PTrue)),
+        }
+      },
+      None => (),
+    }
+  },
+  _ => (),
+}
+
+// The refinement a type carries at its surface — the predicate under its
+// alias chain, with the alias it hangs from ("" for an unnamed refinement).
+fn surface_refinement(ty) = match ty {
+  TAlias(name, inner) => match surface_refinement(inner) {
+    Some((_, pred)) => Some((name, pred)),
+    None => None,
+  },
+  TRefined(_, pred) => Some(("", pred)),
+  _ => None,
+}
+
+// Does `ty` carry the named refinement? An unnamed one is never provably the
+// same claim, so it answers false — debt, never a silent pass.
+fn refined_as(ty, name: String) = match surface_refinement(ty) {
+  Some((n, _)) => name != "" && n == name,
+  None => false,
 }
 
 fn build_inferred_params(handles) = map((h) => mk_param("_", TVar(h)), handles)
@@ -8447,18 +8535,23 @@ fn quantify_effect_ops_loop(ops, qmap, i) = if i >= len(ops) {
   ([], qmap)
 } else {
   match list_index(ops, i) {
-    (name, ptys, rty, cn) => match quantify_ty_list(ptys, qmap, Declared(name)) {
+    (name, params, rty, cn) => match quantify_ty_list(map(param_ty, params), qmap, Declared(name)) {
       (qptys, q1) => match quantify_ctor_ty(rty, q1, Declared(name)) {
         (qrty, q2) => match quantify_effect_ops_loop(ops, q2, i + 1) {
-          (rest, q3) => ([(name, qptys, qrty, cn)] ++ rest, q3),
+          (rest, q3) => ([(name, map(requantified_param, zip(params, qptys)), qrty, cn)] ++ rest, q3),
         },
       },
     },
   }
 }
 
+// The param keeps its authored name; only its type is re-minted.
+fn requantified_param(pq) = match pq {
+  (p, qty) => mk_param(param_name(p), qty),
+}
+
 fn effect_type_vars(ops) =
-  ops |> map({ (_, ptys, rty, _) => flatten(map(free_in_ty, ptys)) ++ free_in_ty(rty) }) |> flatten
+  ops |> map({ (_, params, rty, _) => free_in_params(params) ++ free_in_ty(rty) }) |> flatten
 
 // VARIANCE at the op's result. A parameter's unannotated fn-type row is a
 // VAR on purpose — the effect-polymorphic flow channel `map`'s function
@@ -8518,13 +8611,20 @@ fn cap_result_field(f) = match f {
   (n, ft) => (n, cap_result_fn_row(ft)),
 }
 
+// An op's scheme names each parameter: the author's name where one was
+// written, the positional `_0`, `_1` a constructor's fields take where the
+// op wrote a bare type.
+fn op_scheme_param(ip) = match ip {
+  (i, p) => if param_name(p) == "_" { mk_param("_{int_to_str(i)}", param_ty(p)) } else { p },
+}
+
 fn register_one_op(effect_name, eff_name, op) = match op {
-  (op_name, param_types, raw_ret_type, op_node) => // The fourth field is the op's own NTypeAnn node, minted at its span by
+  (op_name, op_params, raw_ret_type, op_node) => // The fourth field is the op's own NTypeAnn node, minted at its span by
   // parse_effect_ops — so the site that must be renamed has a real span here
   // and a diagnostic never has to reach for span_zero.
   {
     let ret_type = cap_result_fn_row(raw_ret_type)
-    let params = build_ctor_params(param_types, 0)
+    let params = map(op_scheme_param, enumerate(op_params))
     // Every op of the effect carries the SAME instance row (eff_name), so the
     // payload flows performer→handler at the install. Generalize over the
     // op's free vars INCLUDING the instance's (free_in_row) ⇒ each op USE is a
@@ -9113,7 +9213,7 @@ fn tail_callee_names_arms(arms, acc) = if len(arms) == 0 {
 fn tail_transparent(node, p: String) = match node {
   N(b, _, _) => match b {
     NExpr(BlockExpr(stmts, final)) => match free_vars_stmts(stmts, [], []) {
-      (frees, _) => !string_in_list(frees, p) && tail_transparent(final, p),
+      (uses, _) => !free_uses_contains(uses, p) && tail_transparent(final, p),
     },
     NExpr(IfExpr(c, t, e)) => !string_in_list(collect_free_vars(c, []), p) && tail_transparent(t, p) && tail_transparent(e, p),
     NExpr(MatchExpr(scrut, arms)) => !string_in_list(collect_free_vars(scrut, []), p) && all({ (_, body) => tail_transparent(body, p) }, arms),

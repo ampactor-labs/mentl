@@ -922,6 +922,21 @@ frontier_expected_red: eq-in-arm-pointer
 # both bucket compares at once, the scan's included.
 eq_type_unprovable_max: 57
 
+# show_type_unprovable_max — show and interpolation splices whose operand type
+# is still a VARIABLE at emit, so the render prints the word as an integer:
+# right for an Int, an address printed as a number for anything else. The
+# eq class's sibling one leaf over, and it had no voice: 22 sites carried a
+# `;; show on unresolved operand` WAT comment at pin 43aeb30f and nothing
+# counted them, so a 23rd entered with this landing unseen (a handler head
+# rendered its config list as `(66036)`; `render_param_list`'s result was a
+# free variable at the call, fixed by writing it as `join` over `map`).
+# Most of the 22 are floor twins of generics never executed at a non-word
+# type — `argv_wire`'s String twin is correct — and the census cannot tell a
+# dead floor from a live one, which is why it is a countdown to arming rather
+# than a list of bugs. Counted from the pinned boot's own compile of the
+# wheel, so it reads 0 until the boot that carries the narration is pinned.
+show_type_unprovable_max: 22
+
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
 # receiver's full sorted field set. Born at ZERO (pin 4ce9914b7360), which
@@ -1007,7 +1022,13 @@ authored_own_max: 62
 # to lower.mn for the race rule and its `ref bindings` moved with it — the
 # per-file quiet gate refused lower.mn's rise, and the grade reads the
 # parameter's two uses without the marker.
-authored_ref_max: 721
+# 721 -> 719 (2026-09-28, L3): the landing's new functions copied the `ref`
+# convention of their neighbours (the parser's brace discrimination, the
+# formatter's record render, fmt's name census, the occurs walk's table,
+# Verify's join decision) and the ratchet refused them at 731. Every one was
+# dropped and the grade reads each parameter without it; the head render's
+# lesser copy and the index-threaded param render left with two more.
+authored_ref_max: 719
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1090,7 +1111,17 @@ authored_ref_max: 721
 # own fifteen functions and their comments, and every phase paid its
 # per-node cost through a compiler that reclaims nothing. Same rule: ~1%
 # over the highest reading. The way down is unchanged: the per-decl arena.
-selfcompile_peak_kb_max: 1058000
+# LOWERED 1,058,000 -> 820,000 at L3 of the Pulse sprint (2026-09-28), and
+# not by the arena. This ceiling REFUSED the landing first — 1,328,912 KB
+# with the formatter's record render in the source — and the refusal was
+# worth more than the feature: bisected to one binding group whose occurs
+# checks walked row paths with no memory of the cells they had entered,
+# exponential in the group's depth, and already costing about 266 MB of the
+# previous pin's 565 MB judgment high-water. With a table of entered cells
+# the judgment's high-water is 313,704,904 bytes and the march read the m3
+# leg at 815,228 KB and the m4 leg at 816,024 KB. Held ~0.5% over the
+# higher reading, inside the measured noise band recorded above.
+selfcompile_peak_kb_max: 820000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

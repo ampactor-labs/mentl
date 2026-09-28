@@ -90,7 +90,13 @@ fn board_bounds() = [
   // own subject for a full landing before anyone read the WITHIN line — which
   // is the argument for a board that reports the counts it is inside, not
   // only the ones it is over.
-  Bound({ceiling: 236, shape: CsEffectfulLambda}),
+  //
+  // 236 -> 234 (2026-09-28, L3): the landing minted three (a second copy of
+  // the specialization bracket for call vectors, an `each` over a param
+  // list, and Verify's per-arm join), the board refused 238, and all three
+  // became references — the two brackets one `spec_bracketed` taken as a
+  // two-hole partial, which retired the pre-existing copy's lambda too.
+  Bound({ceiling: 234, shape: CsEffectfulLambda}),
   // A record pattern whose receiver row never closes reads a field offset
   // the graph cannot prove. `T_FieldOffsetUnprovable` reports that class at
   // the receiver now; this line retires when that diagnostic arms.

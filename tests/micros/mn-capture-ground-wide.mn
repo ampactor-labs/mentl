@@ -1,0 +1,31 @@
+// expect: 40
+// A closure capturing a local bound at a GROUND wide type stores the value
+// at its own width. Such a binder has no binding-time handle (a ground type
+// is a value, not a node), so the mint reads the value at the use that
+// captured it — `local_ty_handle` (lower.mn), the one rule every read of a
+// local asks. On boot 43aeb30f each of the three shapes below failed the
+// same way: the mint stored `(local.get $fb)` beside the parameter
+// `$fb.f64`, and the module did not assemble after `mentl check` had passed
+// it.
+//
+// A Float parameter captured by a lambda.
+fn add_to(fb: Float) = (x) => x + fb
+
+// A Float pattern binder captured by a lambda — the payload's type is
+// ground, so the binder has no handle either.
+fn scaled_by_payload() = match Some(2.0) {
+  Some(v) => (x) => x * v,
+  None => (x) => x,
+}
+
+// A capture carried through two closure levels: the outer lambda captures
+// `fb` for the inner one, and the inner one reads it back from the outer's
+// record.
+fn twice_nested(fb: Float) = (x) => (y) => x + y + fb
+
+fn main() = {
+  let a = add_to(1.5)(2.5)
+  let b = scaled_by_payload()(3.0)
+  let c = twice_nested(0.25)(1.0)(2.0)
+  if a == 4.0 && b == 6.0 && c == 3.25 { 40 } else { 41 }
+}

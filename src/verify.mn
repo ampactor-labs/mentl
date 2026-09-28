@@ -73,8 +73,34 @@ fn predicate_decide_at(ref pred, self_h) = match pred {
   None,
   PFlowLe(a, b) => // IFC: finite lattice, always decidable
   Some(flow_le(a, b)),
-  PWithSelf(sh, inner) => // bind `self` = sh over inner
-  predicate_decide_at(inner, sh),
+  PWithSelf(sh, inner) => // bind `self` = sh over inner, through its tails when sh is a join
+  decide_with_self(inner, sh),
+}
+
+// A claim about a JOIN's value is a claim about every value the join can
+// take, and an `if`, a `match` or a block takes exactly its tails' values —
+// so a claim over one decides as the AND of the claim over each tail
+// (`and_decide`: true when every tail proves it, false the moment one
+// refutes it, open otherwise). It reads STRUCTURE only, never a type, so the
+// contamination law of the interval fragment below holds; it is that
+// fragment's join (`arms_lo`) one altitude over, at the constant fragment.
+// A tail the text writes is judged even where no execution reaches it: the
+// signature claims every tail. Until 2026-09-27 a claim over a join was
+// never decided, so `fn note_hz(k) -> Hz = match k { 0 => 220.0, … }` left a
+// pending obligation behind every literal-armed match.
+fn decide_with_self(inner, sh) = if sh == 0 {
+  predicate_decide_at(inner, 0)
+} else {
+  match graph_node_body(sh) {
+    NExpr(IfExpr(_, t, e)) => and_decide(decide_with_self(inner, node_handle(t)), decide_with_self(inner, node_handle(e))),
+    NExpr(MatchExpr(_, arms)) => fold(Some(true), decide_arm(inner, ??, ??), arms),
+    NExpr(BlockExpr(_, final_expr)) => decide_with_self(inner, node_handle(final_expr)),
+    _ => predicate_decide_at(inner, sh),
+  }
+}
+
+fn decide_arm(inner, acc, arm) = match arm {
+  (_, body) => and_decide(acc, decide_with_self(inner, node_handle(body))),
 }
 
 // A comparison decides iff BOTH operands reduce to ground constants under the

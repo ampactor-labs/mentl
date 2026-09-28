@@ -639,23 +639,52 @@ fn frag_args_same(ref a1, ref a2) = len(a1) == len(a2) && frag_args_same_walk(a1
 
 fn frag_args_same_walk(ref a1, ref a2, i) = if i >= len(a1) {
   true
+} else if frag_arg_same(list_index(a1, i), list_index(a2, i)) {
+  frag_args_same_walk(a1, a2, i + 1)
 } else {
-  let same = match (list_index(a1, i), list_index(a2, i)) {
-    (EAInt(x), EAInt(y)) => x == y,
-    (EAFloat(x), EAFloat(y)) => x == y,
-    (EAString(x), EAString(y)) => x == y,
-    (EAType(tx), EAType(ty2)) => match (tx, ty2) {
-      (TVar(hx), TVar(hy)) => hx == hy,
+  false
+}
+
+// One argument position. Nested matches, never a pair scrutinee: since the
+// row dedup asks this of every same-named instance pair, a tuple per
+// comparison was a heap record per call on inference's hottest path.
+fn frag_arg_same(x, y) = match x {
+  EAInt(p) => match y {
+    EAInt(q) => p == q,
+    _ => false,
+  },
+  EAFloat(p) => match y {
+    EAFloat(q) => p == q,
+    _ => false,
+  },
+  EAString(p) => match y {
+    EAString(q) => p == q,
+    _ => false,
+  },
+  EAType(tx) => match tx {
+    TVar(hx) => match y {
+      EAType(ty2) => match ty2 {
+        TVar(hy) => hx == hy,
+        _ => false,
+      },
       _ => false,
     },
-    (EANode(nx), EANode(ny)) => nx == ny,
-    (EAEffect(hx), EAEffect(hy)) => // The registration fold's constants: one interned identity each, so
+    _ => false,
+  },
+  EANode(nx) => match y {
+    EANode(ny) => nx == ny,
+    _ => false,
+  },
+  EAEffect(hx) => match y {
+    EAEffect(hy) => // The registration fold's constants: one interned identity each, so
     // sameness is the word compare (eff_arg_scalar_unequal's dual).
     hx == hy,
-    (EACon(hx), EACon(hy)) => hx == hy,
     _ => false,
-  }
-  if same { frag_args_same_walk(a1, a2, i + 1) } else { false }
+  },
+  EACon(hx) => match y {
+    EACon(hy) => hx == hy,
+    _ => false,
+  },
 }
 
 // Union (`+` and the accumulation of performs): presents union; a name
@@ -1527,20 +1556,15 @@ fn name_set_dedup_into(ref names, i, n, own buf, count) = if i >= n {
   let x = list_index(names, i)
   let at = name_set_prefix_index(buf, count, x)
   if at >= 0 {
-    // A name collision UPGRADES bare -> parameterized in place: the
-    // instance carries the payload truth the bare name only gestures at
-    // (bare ∪ instance = instance). Keeping the first-arrived bare
-    // erased the instance args wherever a declared pre-row met the
-    // body's inferred instance (iterate_from's recursive self-call
-    // unioned its bare pre-scheme Iterate over the parameterized one —
-    // the fold-family element severance). Two parameterized instances
-    // keep the first (the instance-precision residue,
-    // parameterized-negation-instance).
+    // A name collision can UPGRADE the held entry in place
+    // (collision_upgrades): a bare name to its instance — keeping the
+    // first-arrived bare erased the instance args wherever a declared
+    // pre-row met the body's inferred instance (iterate_from's recursive
+    // self-call unioned its bare pre-scheme Iterate over the parameterized
+    // one, the fold-family element severance) — and a ground instance to
+    // one it cannot be proven distinct from.
     let held = list_index(buf, at)
-    let upgraded = match (held, x) {
-      (ENamed(_), EParameterized(_, _)) => list_set(buf, at, x),
-      _ => buf,
-    }
+    let upgraded = if collision_upgrades(held, x) { list_set(buf, at, x) } else { buf }
     name_set_dedup_into(names, i + 1, n, upgraded, count)
   } else {
     name_set_dedup_into(names, i + 1, n, list_set(buf, count, x), count + 1)
@@ -1554,10 +1578,65 @@ fn name_set_prefix_index(ref buf, count, ref name) with !Mutate =
 
 fn name_set_prefix_index_loop(ref buf, ref name, i, n) = if i >= n {
   0 - 1
-} else if eff_name_handle(list_index(buf, i)) == eff_name_handle(name) {
+} else if row_entry_collides(list_index(buf, i), name) {
   i
 } else {
   name_set_prefix_index_loop(buf, name, i + 1, n)
+}
+
+// Do two row entries name ONE member of the row's set? Two instances are two
+// members exactly when they are PROVABLY DISTINCT — the negation's own
+// predicate (eff_args_provably_distinct), so the set and `eff_forbids` can
+// never disagree about what a row holds. Until 2026-09-28 every same-named
+// pair collided and the loops kept the first, so `fast() + slow()` — a 48 kHz
+// reader then a 44.1 kHz one — carried Sample(48000) alone and a declared
+// `!Sample(44100)` admitted the 44.1 kHz perform, while `slow() + fast()`
+// refused: the verdict depended on the order of two calls. Collision is the
+// complement of provable distinctness, not structural sameness — instances
+// over type variables are one member, or rows grow by a fresh variable per
+// instantiation and a fixpoint over them never settles (the first form did;
+// the wheel's compile hung). Nested matches, never a pair scrutinee: this runs
+// for every entry pair every row operation meets, and a tuple is a heap
+// record per call.
+fn row_entry_collides(a: EffName, b: EffName) = if eff_name_handle(a) != eff_name_handle(b) {
+  false
+} else {
+  match a {
+    EParameterized(_, xa) => match b {
+      EParameterized(_, xb) => !eff_args_provably_distinct(xa, xb, 0),
+      _ => true,
+    },
+    _ => true,
+  }
+}
+
+// Of two colliding entries, which does the set keep? The one that says
+// less. A bare name upgrades to its instance — the instance carries the
+// argument lowering reads, the fold family's element types (see the dedup
+// loops) — and of two instances not provably distinct, one with an argument
+// nothing grounds stands for both: keeping the ground one would let a
+// negation prove distinct what the other may equal.
+fn collision_upgrades(held: EffName, x: EffName) = match held {
+  ENamed(_) => match x {
+    EParameterized(_, _) => true,
+    _ => false,
+  },
+  EParameterized(_, hargs) => match x {
+    EParameterized(_, xargs) => all(eff_arg_ground, hargs) && !all(eff_arg_ground, xargs),
+    _ => false,
+  },
+  EPure => false,
+}
+
+// A scalar the argument names outright — the only kind distinctness reads.
+fn eff_arg_ground(a) with Pure = match a {
+  EAInt(_) => true,
+  EAFloat(_) => true,
+  EAString(_) => true,
+  EAEffect(_) => true,
+  EACon(_) => true,
+  EAType(_) => false,
+  EANode(_) => false,
 }
 
 // Membership against the WRITTEN PREFIX of a buffer under construction.
@@ -1567,12 +1646,10 @@ fn name_set_prefix_contains(ref buf, count, ref name) with !Mutate =
 fn name_set_prefix_contains_loop(ref buf, ref name, i, n) = if i >= n {
   false
 }
-// By NAME, like the membership leaf (name_set_contains_loop) and the
-// negation gate — this is the DEDUP twin (name_set_dedup_into), and it
-// was still `==` (pointer-eq) after cc487f8 fixed membership, so two
-// byte-equal ENamed from distinct sites still failed to dedup HERE, and
-// rows kept bloating past the membership fix. The two must agree.
-else if eff_name_handle(list_index(buf, i)) == eff_name_handle(name) {
+// The DEDUP twin (name_set_dedup_into) — the same collision law, so the
+// identity fast path and the rebuild can never disagree about whether a
+// row is already a set.
+else if row_entry_collides(list_index(buf, i), name) {
   true
 } else {
   name_set_prefix_contains_loop(buf, name, i + 1, n)
@@ -1606,10 +1683,7 @@ fn name_set_dedup_count(ref names, i, n, own buf, count) = if i >= n {
   let at = name_set_prefix_index(buf, count, x)
   if at >= 0 {
     let held = list_index(buf, at)
-    let upgraded = match (held, x) {
-      (ENamed(_), EParameterized(_, _)) => list_set(buf, at, x),
-      _ => buf,
-    }
+    let upgraded = if collision_upgrades(held, x) { list_set(buf, at, x) } else { buf }
     name_set_dedup_count(names, i + 1, n, upgraded, count)
   } else {
     name_set_dedup_count(names, i + 1, n, list_set(buf, count, x), count + 1)
@@ -1623,10 +1697,7 @@ fn name_set_union_rest(ref b, i, n, own buf, count) = if i >= n {
   let at = name_set_prefix_index(buf, count, x)
   if at >= 0 {
     let held = list_index(buf, at)
-    let upgraded = match (held, x) {
-      (ENamed(_), EParameterized(_, _)) => list_set(buf, at, x),
-      _ => buf,
-    }
+    let upgraded = if collision_upgrades(held, x) { list_set(buf, at, x) } else { buf }
     name_set_union_rest(b, i + 1, n, upgraded, count)
   } else {
     name_set_union_rest(b, i + 1, n, list_set(buf, count, x), count + 1)

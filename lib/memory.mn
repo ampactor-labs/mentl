@@ -184,6 +184,24 @@ effect ImageAlloc {
   image_bytes() -> Int
 }
 
+// The live world's identity: the install chain from world_top() down, hashed
+// over each node's effect key and its handler's slot-0 arm word — a table
+// index, so two handlers of one effect differ and two installs of one handler
+// agree whatever state they hold. A persisted image carries the world that
+// wrote it (handler = state: the graph's own handlers return with the graph,
+// and the persisting verb's output sink with them), so it may resume only
+// into that world; the driver files warm images under this key.
+fn world_key() = world_key_from(world_top(), -2128831035)
+
+fn world_key_from(n, h) = if n == 0 {
+  h
+} else {
+  let entry = load_i32(n + 4)
+  let record = load_i32(entry)
+  let arm = load_i32(record + 8 + 4 * (load_i32(record + 4) + load_i32(entry + 4)))
+  world_key_from(load_i32(n + 8), i32_xor(i32_xor(h, load_i32(n)) * 16777619, arm) * 16777619)
+}
+
 // Pure — the empty effect row. Pure is not an effect with operations
 // — it IS the absence of effects. `with Pure` means "this function
 // performs no effects."
@@ -214,50 +232,7 @@ effect ImageAlloc {
 // dynamic fact. A perform miss is a BROKEN PROMISE and traps here, key in
 // hand: the sought key's interned offset goes to scratch word 0 (the
 // postmortem window), then a deterministic out-of-bounds load traps — the
-// backtrace names the perform site, the scratch word the effect.
-//
-// THE WALK ITSELF IS NOT HERE, and this file is not where it belonged. It is
-// `$ev_declaring_node`, emitted into the module preamble beside its own twin
-// $world_push (backends/wasm.mn) — one mechanism, one home. It lived here
-// as ordinary Mentl with ZERO Mentl callers, reached only by emit minting its
-// name, and a name minted at emit links only if the module that defines it is
-// in the program's set. The wheel imports this file so the wheel was fine; a
-// small program that installs a handler and performs is not, and the day more
-// performs took the linked path than before, eleven frontier legs read RED on
-// `undefined function variable "$ev_declaring_node"` for programs whose only
-// crime was being small. The push was never exposed to that because it was
-// always in the preamble. `Hβ.driver.link-is-reachability` is the general
-// answer — an emit-minted name demands its defining module the way an import
-// does — and until it lands, the effect runtime lives in one place rather
-// than half in each.
-//
-// WHAT FOLLOWS IS THE CROSSING GENERATION'S COPY, and it is deleted the pin
-// after this one. boot compiles m2, and boot's emit still mints a call to
-// this name expecting to find it here; the preamble version exists only in
-// what the NEW wheel emits. So m2 links these and m3 does not — nothing in
-// the new wheel reaches them, so reachability prunes them, and if it ever
-// failed to the assembler would say so loudly (two definitions of one
-// symbol). The same constraint cost a whole build the day the reification
-// landed; it is not a hedge, it is the ladder having two rungs.
-fn world_declaring_from(n, target, slot) = if n == 0 {
-  0
-} else if load_i32(n) == target && node_arm_at(n, slot) != 0 {
-  n
-} else {
-  world_declaring_from(load_i32(n + 8), target, slot)
-}
+// backtrace names the perform site, the scratch word the effect. The walk
+// itself is the preamble's $ev_declaring_node, emitted beside its dual
+// $world_push (backends/wasm.mn) — one mechanism, one home.
 
-fn node_arm_at(n, slot) = {
-  let entry = load_i32(n + 4)
-  let record = load_i32(entry)
-  let base = load_i32(entry + 4)
-  load_i32(record + 8 + 4 * load_i32(record + 4) + 4 * (base + slot))
-}
-
-fn ev_declaring_node(top, target, slot) = match world_declaring_from(top, target, slot) {
-  0 => {
-    store_i32(0, target)
-    load_i32(0 - 1)
-  },
-  node => node,
-}

@@ -544,52 +544,111 @@ fn count_newlines_from(s, i, n, acc) = if i >= n {
 // string content, so format∘parse is the identity the module's own
 // comment always claimed. Idempotence is the gate: the second render is
 // byte-identical to the first.
-fn fmt_run(target) = {
-  infer_context(() => {
-    // The verb convention: the arg normalizes to a MODULE name, and the
-    // write-back path is the resolver's own answer — one resolution
-    // home, never the raw argv string carried past it.
-    let entry_module = path_to_module(target)
-    let path = driver_module_path(entry_module)
-    // THE WEAVE, scoped to the entry — the same `driver_entry_with_ranges`
-    // that `check`, the address, `audit`, `teach` and the resident session
-    // read. fmt was the LAST verb on the solo entry route every other verb
-    // had already left, and that route's distinguishing property was an
-    // omission: it never installed a diagnostic scope, so it fell to
-    // `diagnostics_handler`'s default `ScopeAll` and narrated every
-    // dependency at a developer who had named one file. The
-    // measurement: `mentl check` on a one-function file printed one line and
-    // `mentl fmt` on the same file printed every prelude `T_OverDeclared` and
-    // `E_MissingVariable` in the tree. One question — whose diagnostics does
-    // this verb show? — answered in two places, the second by not answering.
-    let ast = match driver_entry_with_ranges(entry_module) {
-      (ast_all, _ranges) => driver_module_ast(ast_all, entry_module),
-    }
-    // The verb writes its own FIXPOINT: render once, re-parse, render
-    // again — a mid-line prose attach moves to its line-start home in
-    // the first render and is stable from the second, so the WRITTEN
-    // file is idempotent in one invocation.
-    let first = format_program(ast)
-    let rendered = format_program(frontend(first))
-    // THE CONSERVATION GATE — the verb lexes its own render beside the
-    // source and compares comment-token counts: the lexer emits one
-    // TComment per authored line, so the difference IS the number of
-    // prose lines the round trip loses (this absorbed the hand-run
-    // comment census — ⟳; and the LEXICAL count sees lines the parse
-    // never attaches, which a weave-to-weave compare was blind to).
-    let src_text = fs_read_file(path)
-    let src_lines = count_comment_tokens(lex(src_text), 0, 0)
-    let out_lines = count_comment_tokens(lex(rendered), 0, 0)
+fn fmt_run(target) = infer_context(() => {
+  // The verb convention: the arg normalizes to a MODULE name, and the
+  // write-back path is the resolver's own answer — one resolution
+  // home, never the raw argv string carried past it.
+  let entry_module = path_to_module(target)
+  let path = driver_module_path(entry_module)
+  // THE WEAVE, scoped to the entry — the same `driver_entry_with_ranges`
+  // that `check`, the address, `audit`, `teach` and the resident session
+  // read. fmt was the LAST verb on the solo entry route every other verb
+  // had already left, and that route's distinguishing property was an
+  // omission: it never installed a diagnostic scope, so it fell to
+  // `diagnostics_handler`'s default `ScopeAll` and narrated every
+  // dependency at a developer who had named one file. The
+  // measurement: `mentl check` on a one-function file printed one line and
+  // `mentl fmt` on the same file printed every prelude `T_OverDeclared` and
+  // `E_MissingVariable` in the tree. One question — whose diagnostics does
+  // this verb show? — answered in two places, the second by not answering.
+  let ast = match driver_entry_with_ranges(entry_module) {
+    (ast_all, _ranges) => driver_module_ast(ast_all, entry_module),
+  }
+  // The verb writes its own FIXPOINT: render once, re-parse, render
+  // again — a mid-line prose attach moves to its line-start home in
+  // the first render and is stable from the second, so the WRITTEN
+  // file is idempotent in one invocation.
+  let first = format_program(ast)
+  let rendered = format_program(frontend(first))
+  // THE CONSERVATION GATE — the verb lexes its own render beside the
+  // source and compares comment-token counts: the lexer emits one
+  // TComment per authored line, so the difference IS the number of
+  // prose lines the round trip loses (this absorbed the hand-run
+  // comment census — ⟳; and the LEXICAL count sees lines the parse
+  // never attaches, which a weave-to-weave compare was blind to).
+  // AND THE NAMES: every identifier and literal the source lexes to must
+  // lex out of the render as well (`lost_atoms`). A render that drops one
+  // says something else — measured 2026-09-28, when the effect head's
+  // parameter render deleted `rate: Int`'s annotation, the declared
+  // `Sample(48000)` then refused, and this gate's sibling reported "prose
+  // conserved" over the loss. A lossy render is NOT WRITTEN, prose or name:
+  // the verb names what would be lost and leaves the file as authored.
+  let src_toks = lex(fs_read_file(path))
+  let out_toks = lex(rendered)
+  let src_lines = count_comment_tokens(src_toks, 0, 0)
+  let out_lines = count_comment_tokens(out_toks, 0, 0)
+  let lost = lost_atoms(src_toks, out_toks)
+  if out_lines < src_lines || len(lost) > 0 {
+    print_string("fmt: {path} NOT written — the canonical render loses {int_to_str(src_lines - out_lines)} of {int_to_str(src_lines)} prose line(s) and {int_to_str(len(lost))} authored name(s) or literal(s)\n")
+    print_lost_comments(src_toks, out_toks, 0, 0)
+    each(print_lost_atom, take(8, lost))
+    1
+  } else {
     fs_write_file(path, rendered)
-    if out_lines < src_lines {
-      print_string("fmt: {path} rendered canonical — {int_to_str(src_lines - out_lines)} of {int_to_str(src_lines)} prose lines would not survive a reparse\n")
-      print_lost_comments(lex(src_text), lex(rendered), 0, 0)
-    } else {
-      print_string("fmt: {path} rendered canonical — prose conserved ({int_to_str(src_lines)} lines)\n")
-    }
+    print_string("fmt: {path} rendered canonical — prose and names conserved ({int_to_str(src_lines)} prose lines)\n")
     0
-  } ~> format_default ~> wasi_filesystem ~> mentl_default)
-  0
+  }
+} ~> format_default ~> wasi_filesystem ~> mentl_default)
+
+// THE NAME CENSUS the conservation gate reads: the render's identifiers and
+// literals counted, then SPENT against the source's, and every source atom
+// left unpaid is a loss. A multiset rather than a sequence, because the
+// canonical render reorders on purpose (record fields sort at parse), and a
+// count rather than a set, because a render that keeps one of two uses of a
+// name has still lost one. A literal is keyed by its VALUE — `48_000` and `48000` are
+// one atom — so a spelling the render changes is not a loss here; that one
+// is `Hβ.fmt.literal-spelling-is-intent`.
+fn lost_atoms(src_toks, out_toks) = match fold((fold(smap_new(), atom_counted, out_toks), []), atom_spent, src_toks) {
+  (_, lost) => lost,
+}
+
+fn atom_counted(counts, t) = match atom_key(t) {
+  Some(k) => smap_add(counts, k, atom_count(counts, k) + 1),
+  None => counts,
+}
+
+fn atom_spent(acc, t) = match acc {
+  (counts, lost) => match atom_key(t) {
+    Some(k) => {
+      let c = atom_count(counts, k)
+      if c > 0 { (smap_add(counts, k, c - 1), lost) } else { (counts, push(lost, t)) }
+    },
+    None => acc,
+  },
+}
+
+fn atom_count(counts, k: String) = match smap_get(counts, k) {
+  Some(c) => c,
+  None => 0,
+}
+
+// What an authored token says, as the census compares it: a name as itself,
+// a literal by its value under a kind mark, so a name and a string that spell
+// it are two atoms. Keywords and punctuation are the render's to choose.
+fn atom_key(t) = match token_kind(t) {
+  TIdent(s) => Some(s),
+  TIntLit(n) => Some("#{int_to_str(n)}"),
+  TFloatLit(f) => Some("#{float_to_str(f)}"),
+  TStringLit(s) => Some("\"{s}"),
+  TStringPart(s) => Some("\"{s}"),
+  _ => None,
+}
+
+fn print_lost_atom(t) = match token_span(t) {
+  Span(line, _, _, _) => match atom_key(t) {
+    Some(k) => print_string("  lost: {k} (line {int_to_str(line)})\n"),
+    None => (),
+  },
 }
 
 // The gate NAMES its losses: each source comment line whose text appears

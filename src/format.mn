@@ -507,9 +507,9 @@ fn render_expr_tokens(e) with !Mutate = match e {
       None => "({render_param_list(params)}) => {render_grouped_body(body)}",
     },
   },
-  MakeRecordExpr(fields) => "\{{render_field_inits(fields, 0)}\}",
-  NamedRecordExpr(tname, fields) => "{tname}\{{render_field_inits(fields, 0)}\}",
-  RecordUpdateExpr(base, fields) => "\{...{render_tokens_for(base)}, {render_field_inits(fields, 0)}\}",
+  MakeRecordExpr(fields) => render_record(fields, ""),
+  NamedRecordExpr(tname, fields) => "{tname}{render_record(fields, "")}",
+  RecordUpdateExpr(base, fields) => render_record(fields, "...{render_tokens_for(base)}"),
   MakeStringExpr(parts) => // Interpolation is the parse's inverse: literal chunks re-escape,
   // every other fragment renders as a live splice.
   "\"{render_string_parts(parts, 0)}\"",
@@ -546,7 +546,7 @@ fn render_stmt_tokens(s) with !Mutate = match s {
     NExpr(LitUnit) => "",
     _ => render_grouped_body(e),
   },
-  AliasStmt(name, ty) => "type {name} = {render_type_tokens(ty)}",
+  AliasStmt(name, ty) => "type {name} = {render_decl_type(ty)}",
   RowAliasStmt(name, effs) => "type {name} = {render_row_triples(effs, 0)}",
   LetStmt(pat, value, ann) => {
     let lhead = "let {render_pat_tokens(pat)}{render_let_ann(ann)} ="
@@ -558,14 +558,25 @@ fn render_stmt_tokens(s) with !Mutate = match s {
     }
   },
   TypeDefStmt(name, variants) => "type {name}{render_variants(variants, 0)}",
-  EffectDeclStmt(name, params, ops) => // Op param NAMES are parse-consumed (the ADT stores types only), and
-  // bare types parse in op position — the render is the parse's inverse
-  // over what the graph carries. The instance params render through the
-  // same product projection the handler head uses (format∘parse
-  // identity over SYNTAX §«Parameterized effect»).
+  EffectDeclStmt(name, params, ops) => // An op's params carry the author's names (a bare type is the wildcard
+  // `_`), so the render is the parse's inverse over both spellings. The
+  // instance params render through the same product projection the
+  // handler head uses (format∘parse identity over SYNTAX §«Parameterized
+  // effect»).
   "effect {name}{render_config_params(params)} \{\n{indent_block(strip_trailing_nl(render_effect_ops(ops, 0)))}\n\}",
   HandlerDeclStmt(hname, _ename, config, states, arms, effs) => "handler {hname}{render_config_params(config)}{render_handler_clause(effs, states)} \{\n{indent_block(strip_trailing_nl(render_handler_arms(arms, 0)))}\n\}",
-  RefineStmt(name, ty, pred) => "type {name} = {render_type_tokens(ty)} where {render_predicate_tokens(pred)}",
+  RefineStmt(name, ty, pred) => "type {name} = {render_decl_type(ty)} where {render_predicate_tokens(pred)}",
+}
+
+// A representation pin at a type declaration's right-hand side renders
+// with its suffix (`Float repr f64`, SYNTAX's representation-pinned alias)
+// and anywhere else as its bare width (`s: f64`). Both spellings parse to
+// one pin, so the position decides the spelling and neither page loses a
+// word: until 2026-09-28 a canonical pair rendered bare everywhere, and a
+// declaration written as SYNTAX writes it came back as `type Coeff = f64`.
+fn render_decl_type(ty) with !Mutate = match ty {
+  TReprPin(r, base) => "{render_type_tokens(base)} repr {repr_wat(r)}",
+  t => render_type_tokens(t),
 }
 
 fn render_pat_tokens(p) = match p {
@@ -629,15 +640,7 @@ fn render_pat_list_from(ref pats, i, sep: String) = if i >= len(pats) {
 // one was written (an unannotated param's ty is the parse-minted TVar —
 // the structural discriminator), and the default. Dropping any of these
 // on round-trip would change semantics the affine/refinement checks read.
-fn render_param_list(ref params) with !Mutate = render_param_list_from(params, 0)
-
-fn render_param_list_from(ref params, i) with !Mutate = if i >= len(params) {
-  ""
-} else if i == len(params) - 1 {
-  render_one_param(params[i])
-} else {
-  "{render_one_param(params[i])}, {render_param_list_from(params, i + 1)}"
-}
+fn render_param_list(ref params) with !Mutate = join(", ", map(render_one_param, params))
 
 fn render_one_param(p) with !Mutate = {
   let marker = match param_authored(p) {
@@ -801,6 +804,49 @@ fn render_stmt_comment(n) with !Mutate = {
   if c == "" { "" } else { "//{replace(c, "\n", "\n//")}\n" }
 }
 
+// A record's braces: inline when the whole literal fits and no field carries
+// prose, else one field per line — the CallExpr arguments' law at the record
+// altitude. A record never broke before, so a fourteen-field literal rendered
+// as one 300-column line. `lead` is an update's `...base`, first on either
+// layout ("" for a literal).
+fn render_record(fields: [(String, Node)], lead: String) with !Mutate = if len(fields) == 0 {
+  "\{{lead}\}"
+} else {
+  let inline = if lead == "" {
+    "\{{render_field_inits(fields, 0)}\}"
+  } else {
+    "\{{lead}, {render_field_inits(fields, 0)}\}"
+  }
+  if fits_inline(inline) && !fields_carry_prose(fields, 0) {
+    inline
+  } else {
+    let lines = render_field_lines(fields, 0)
+    let body = if lead == "" { lines } else { "{lead},\n{lines}" }
+    "\{\n{indent_block(body)}\n\}"
+  }
+}
+
+// One field per line, each closed by its comma — SYNTAX §«Records»' own
+// multi-line layout, so a field added at the end is a one-line diff.
+fn render_field_lines(fields: [(String, Node)], i) with !Mutate = if i >= len(fields) {
+  ""
+} else {
+  match fields[i] {
+    (fname, v) => {
+      let one = "{fname}: {render_tokens_for(v)},"
+      if i == len(fields) - 1 { one } else { "{one}\n{render_field_lines(fields, i + 1)}" }
+    },
+  }
+}
+
+fn fields_carry_prose(fields: [(String, Node)], i) = if i >= len(fields) {
+  false
+} else {
+  match fields[i] {
+    (_, v) => if graph_comment_at(node_handle(v)) == "" { fields_carry_prose(fields, i + 1) } else { true },
+  }
+}
+
 fn render_field_inits(ref fields: [(String, Node)], i) with !Mutate = if i >= len(fields) {
   ""
 } else {
@@ -899,15 +945,13 @@ fn strip_trailing_nl(s) = {
   if n > 0 && byte_at(s, n - 1) == 10 { str_slice(s, 0, n - 1) } else { s }
 }
 
-// A body/statement-lead position reads a leading `{` as the BlockExpr
-// literal (SYNTAX: the braces ARE the block), so a record literal or
-// record update THERE requires the parens the parser consumed — dropping
-// them turned `= ({cmp: [], …})` into a block misparse on the second
-// pass. Operand and argument positions stay bare (the parser reads them
-// greedily); only the five body-lead surfaces route through this.
+// A body-lead position: fn, lambda, arm and let bodies route here. A record
+// literal or update renders bare, because every brace slot reads its `{`
+// through the parser's one discrimination (`brace_form`); until
+// 2026-09-28 a fn body read a leading `{` as a block alone, so this wrapped
+// a body record in parens the parser then consumed — the formatter
+// projecting the parser's gap onto every page.
 fn render_grouped_body(node) with !Mutate = match ast_kind_of(node) {
-  NExpr(MakeRecordExpr(_)) => "({render_tokens_for(node)})",
-  NExpr(RecordUpdateExpr(_, _)) => "({render_tokens_for(node)})",
   NExpr(BlockExpr(stmts, final)) => // The E_RedundantBraces format-lift, at the ONE altitude where braces
   // are genuinely optional (fn/lambda/arm/let bodies route here): a
   // stmt-less block IS its final expression, and emitting its braces
@@ -1154,36 +1198,41 @@ fn render_ty_list(ref tys, i) with !Mutate = if i >= len(tys) {
   "{render_type_tokens(tys[i])}, {render_ty_list(tys, i + 1)}"
 }
 
-fn render_effect_ops(ref ops: [(String, [Ty], Ty, Node)], i) with !Mutate = if i >= len(ops) {
+fn render_effect_ops(ref ops: [(String, [TParam], Ty, Node)], i) with !Mutate = if i >= len(ops) {
   ""
 } else {
   match ops[i] {
-    (oname, ptys, rty, cnode) => {
+    (oname, params, rty, cnode) => {
       let ret = match rty {
         TUnit => "",
         t => " -> {render_type_tokens(t)}",
       }
-      "{render_stmt_comment(cnode)}{oname}({render_ty_list(ptys, 0)}){ret}\n{render_effect_ops(ops, i + 1)}"
+      "{render_stmt_comment(cnode)}{oname}({join(", ", map(render_op_param, params))}){ret}\n{render_effect_ops(ops, i + 1)}"
     },
   }
+}
+
+// An op's parameter as the author wrote it: `msg: String` named, the bare
+// type where the op wrote one (the wildcard `_`, a function type's own
+// spelling for a parameter with no name).
+fn render_op_param(p) with !Mutate = if param_name(p) == "_" {
+  render_type_tokens(param_ty(p))
+} else {
+  "{param_name(p)}: {render_type_tokens(param_ty(p))}"
 }
 
 // Config is [TParam] — render each field as `name` or `name = default`
 // (the product's default is authored surface, carried back verbatim;
 // format∘parse identity over SYNTAX §«Default parameter values»).
+// An effect's instance parameters and a handler's config parameters are
+// parameters, and render as one: `render_one_param` carries the marker, the
+// authored annotation and the default. Until 2026-09-28 this head had its own
+// copy that rendered the name and the default alone, so `mentl fmt` deleted
+// every annotation it met here — `effect Sample(rate: Int)` became `effect
+// Sample(rate)`, and the declared `Sample(48000)` then refused against a bare
+// variable.
 fn render_config_params(ref config) with !Mutate =
-  if len(config) == 0 { "" } else { "({render_config_list(config, 0)})" }
-
-fn render_config_list(ref config, i) with !Mutate = if i >= len(config) {
-  ""
-} else {
-  let p = config[i]
-  let one = match param_default(p) {
-    Some(d) => "{param_name(p)} = {render_tokens_for(d)}",
-    None => param_name(p),
-  }
-  if i == len(config) - 1 { one } else { "{one}, {render_config_list(config, i + 1)}" }
-}
+  if len(config) == 0 { "" } else { "({render_param_list(config)})" }
 
 fn render_name_list(ref names, i) = if i >= len(names) {
   ""

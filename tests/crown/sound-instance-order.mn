@@ -1,0 +1,10 @@
+// CROWN instance order, the sound twin — two readers at the SAME rate under
+// !Sample(44100): both instances are provably distinct from the forbidden
+// one, so the declaration must ACCEPT (the dedup keeps one member for one
+// instance). The bridge handler at the root serves the pinned instance.
+effect Sample(rate: Int) { tick() -> Int }
+handler clock_at(r) { tick() => resume(r) }
+fn fast() with Sample(48000) = tick()
+fn fast_again() with Sample(48000) = tick()
+fn good() with !Sample(44100) = fast() + fast_again()
+fn main() = (good()) ~> clock_at(48000)

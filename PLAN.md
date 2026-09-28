@@ -1175,6 +1175,65 @@ and this is the STATE.
   (`Hβ.threads.static-line-is-per-instance`). lib/dsp's README and
   clock.mn header, which required an Iterate-class handler and cited
   `E_FeedbackNoContext`, are raised to SYNTAX's inferred-clock rule.
+- **THE FIRST PROGRAM THAT IS NOT THE COMPILER FOUND TEN DEFECTS THE BOARD
+  COULD NOT — CLOSED 2026-09-28 (L3, Pulse scene 1).**
+  `examples/pulse/render/main.mn` renders ten seconds of 48 kHz stereo to a
+  WAV through `mentl run`: seventeen stages minted by makers, twenty-seven
+  live `<~` lines, `render_frame` declared `!Alloc + !Sample(44100)` and
+  measured at zero heap growth across 480,000 frames. Every defect it found
+  was silent to the board because the wheel never does the thing (§11
+  tripwire 3): it never captures a ground Float, matches on one, passes one
+  through an indirect call, or runs `compile` after `run`. Two did not
+  ASSEMBLE after a clean `mentl check` — a closure capturing a ground Float
+  (the capture read its binder's handle, which a ground binder does not
+  have; captures carry the USE handle now) and a match on a Float (the
+  scrutinee parked in the word scratch; the root is read at its repr). Two
+  were FALSE ABSENCE PROOFS — a Float crossing any indirect call was boxed,
+  so `fn step(f, x: Float) with !Alloc = f(x)` allocated under its own
+  `!Alloc`, and a handler over a Float op did not assemble (the function
+  table carries two faces now: the word face every `fn_ptr` names, for
+  callers blind to the type, and the native face half a table later, for
+  sites that prove a wide vector — an op's declared signature is its ABI);
+  and two instances of one effect collapsed to the first, so a 44.1 kHz
+  reader after a 48 kHz one escaped `!Sample(44100)` while the other order
+  refused (collision is the complement of provable distinctness). Two were
+  claims NEVER DECIDED — a refinement over an `if`/`match` stayed pending
+  over eight literals (a join decides as the AND over its tails), and a
+  refinement crossing a function-typed argument was DROPPED, so a
+  70,900 Hz sweep reached an `Hz` filter and checked clean (a result
+  position is judged on the lambda's body; a parameter the callee does not
+  carry is honest `V_Pending`). One was a warm image restoring a FOREIGN
+  WORLD: `compile` after `run` printed nothing, the compile having restored
+  run's image and emitted into run's sink (images are filed under
+  `world_key()`). One was the parser (a fn body's `{` had its own copy of
+  the brace discrimination, so `fn f() = {x: 1}` read as a block —
+  `brace_form` is the one home) and its projection in the formatter (body
+  records wrapped in parens; a record never broke, so a fourteen-field rig
+  rendered on one 300-column line). And the DSP library was WRONG where it
+  had never run: one filter per program for every top-level filter, a DC
+  blocker that was a leaky integrator with a DC gain of 200, a high-pass
+  reading its own output as the low-pass state, an envelope follower that
+  ignored `release`. The filters are makers now, each stage owning its
+  ring. The frontier's `pulse-render` leg renders, judges the WAV against a
+  Goertzel oracle, and refuses three one-line twins (an allocation beneath
+  `render_frame`, a sample out of range, a 44.1 kHz clock);
+  `examples/pulse/render/GRADIENT.md` is the log. Named rather than fixed:
+  `Hβ.verify.higher-order-refinement` (three faces),
+  `Hβ.effects.handler-pins-its-instance`, `Hβ.lang.lambda-param-annotation`,
+  `Hβ.dataflow.delay-tap`, `Hβ.diag.effect-mismatch-at-the-call`,
+  `Hβ.fmt.literal-spelling-is-intent`, and the env overlay measured on a
+  real program (`Hβ.driver.per-module-env-overlay`). Two more surfaced on
+  the way to the pin, both caught by a gate rather than by reading. The
+  render leg went red after the library was formatted: `mentl fmt` had
+  deleted an effect parameter's annotation (and, as a census of every
+  `.mn` in the tree then showed, op parameter names and a pinned alias's
+  base) while reporting "prose conserved"; fmt now refuses to write a
+  render that loses any name or literal of its source
+  (`Hβ.fmt.render-deletes-authored-intent`). And the cost ratchet refused a
+  +27% self-compile peak, which bisected to one binding group: the occurs
+  check walked row PATHS, exponential in a cycle's depth, and keeping a
+  table of entered cells took the judgment's high-water from 565 MB at the
+  previous pin to 314 MB (`Hβ.infer.occurs-check-walks-row-paths`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

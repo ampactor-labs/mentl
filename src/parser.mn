@@ -361,8 +361,13 @@ fn cw_collect_runs(ref tokens, i, prev_line, acc) -> [CwRun] = if i >= len(token
     TComment(first) => match span_at(tokens, i) {
       Span(sl, _, _, _) => match cw_join_run(tokens, i + 1, first, sl) {
         (text, endl, j) => {
-          let run =
-            CwRun{end_line: endl, run_span: span_at(tokens, i), start_line: sl, text: text, trailing: prev_line == sl}
+          let run = CwRun{
+            end_line: endl,
+            run_span: span_at(tokens, i),
+            start_line: sl,
+            text: text,
+            trailing: prev_line == sl,
+          }
           cw_collect_runs(tokens, j, prev_line, push(acc, run))
         },
       },
@@ -1239,7 +1244,7 @@ fn parse_effect_ops(ref tokens, pos) = {
     let op_name = ident_at(tokens, p)
     let p2 = expect(tokens, skip_ws(tokens, p + 1), TLParen)
     match parse_op_params(tokens, skip_ws(tokens, p2)) {
-      (param_tys, p3) => {
+      (params, p3) => {
         // The arrow PROBE must not consume: a miss returns the pre-probe
         // position, or the skip eats the NEXT op's leading comment run (the
         // alternating-drop the memory.mn idempotence diff measured — every
@@ -1249,7 +1254,7 @@ fn parse_effect_ops(ref tokens, pos) = {
           (ret_ty, p5) => {
             let cnode = mint_node(NTypeAnn(ret_ty), op_span)
             match parse_effect_ops(tokens, skip_sep(tokens, p5)) {
-              (rest, p7) => ([(op_name, param_tys, ret_ty, cnode)] ++ rest, p7),
+              (rest, p7) => ([(op_name, params, ret_ty, cnode)] ++ rest, p7),
             }
           },
         }
@@ -1259,12 +1264,9 @@ fn parse_effect_ops(ref tokens, pos) = {
 }
 
 // Parse a single op-param: either a bare type (positional) or
-// `name: Type` (named — SYNTAX.md §678 `print(msg: String)`). Skips
-// the optional `<ident> :` prefix; returns the parsed Ty + new pos.
-// Per Hβ.parser.effect-op-typed-arg-substrate (2026-05-10): the wheel
-// parser accepts both forms; the seed-side substrate already does the
-// same via the `if at p2 TColon` check at parse_one_param shape, so
-// this stays SYNTAX.md-aligned.
+// `name: Type` (named — SYNTAX §«Unparameterized effect», `print(msg:
+// String)`). The name is the author's and the param carries it; a bare
+// type is the wildcard `_`, as a function type's params are.
 fn parse_op_param_one(ref tokens, pos) = {
   let p = skip_ws(tokens, pos)
   // peek `<ident> :` — if present, skip the name + colon and parse the
@@ -1277,9 +1279,13 @@ fn parse_op_param_one(ref tokens, pos) = {
   let is_ident_here = is_param_name_tok(tokens, p)
   let typed_form = is_ident_here && at(tokens, after_ws, TColon)
   if typed_form {
-    parse_type_ty(tokens, skip_ws(tokens, after_ws + 1))
+    match parse_type_ty(tokens, skip_ws(tokens, after_ws + 1)) {
+      (ty, p2) => (mk_param(ident_at(tokens, p), ty), p2),
+    }
   } else {
-    parse_type_ty(tokens, p)
+    match parse_type_ty(tokens, p) {
+      (ty, p2) => (mk_param("_", ty), p2),
+    }
   }
 }
 
@@ -1289,14 +1295,14 @@ fn parse_op_params(ref tokens, pos) = {
     ([], p + 1)
   } else {
     match parse_op_param_one(tokens, p) {
-      (ty, p2) => {
+      (param, p2) => {
         let p3 = skip_ws(tokens, p2)
         if at(tokens, p3, TComma) {
           match parse_op_params(tokens, skip_ws(tokens, p3 + 1)) {
-            (rest, p4) => ([ty] ++ rest, p4),
+            (rest, p4) => ([param] ++ rest, p4),
           }
         } else {
-          ([ty], expect(tokens, p3, TRParen))
+          ([param], expect(tokens, p3, TRParen))
         }
       },
     }
@@ -2507,7 +2513,7 @@ fn arm_list_of(params, body) = if len(params) != 1 {
     N(b, _, _) => match b {
       NExpr(MatchExpr(scrut, arms)) => match scrut {
         N(sb, _, _) => match sb {
-          NExpr(VarRef(snm)) => if snm == nm && !free_vars_contains(free_vars_match_arms(arms, []), nm) { Some(arms) } else { None },
+          NExpr(VarRef(snm)) => if snm == nm && !free_uses_contains(free_vars_match_arms(arms, []), nm) { Some(arms) } else { None },
           _ => None,
         },
       },
@@ -2516,37 +2522,48 @@ fn arm_list_of(params, body) = if len(params) != 1 {
   }
 }
 
-// Disambiguate `{`: arm list vs record literal vs block. Per SYNTAX.md,
-// after the opening brace + whitespace, a pattern-shaped prefix followed
-// by `=>` signals the function literal; an identifier token followed by
-// `:` (typed field) or `,`/`}` (puned field) signals a record literal.
-// Anything else is a block. The lookahead never backtracks and never
-// reports — no ambiguity escapes the parser.
-fn parse_brace_expr(ref tokens, pos, start_span) = {
+// What a `{` opens. Four forms, decided by a bounded lookahead that never
+// backtracks and never reports — no ambiguity escapes the parser.
+type BraceForm = BraceUpdate | BraceArms | BraceRecord | BraceBlock
+
+// The ONE home of the decision, read by every slot that can hold a brace —
+// an expression and a function body alike. Per SYNTAX.md, after the opening
+// brace: a leading `...` is a record update (a block never opens with one);
+// a pattern-shaped prefix ending at `=>` is the arm-list literal; an
+// ident-shaped field name (incl. the contextual keywords own/ref —
+// is_param_name_tok) followed by `:`, `,` or `}` is a record literal;
+// anything else is a block. The body slot used to carry its own copy that
+// knew only arm lists and blocks, so `fn rig() = { lead: saw() }` parsed as
+// a block and refused its field names as unexpected tokens.
+fn brace_form(tokens, p) = if at_ellipsis(tokens, p) {
+  BraceUpdate
+} else if at(tokens, pat_prefix_end(tokens, p), TFatArrow) {
+  BraceArms
+} else if is_param_name_tok(tokens, p) {
+  match kind_at(tokens, skip_ws(tokens, p + 1)) {
+    TColon => BraceRecord,
+    TComma => BraceRecord,
+    TRBrace => BraceRecord,
+    _ => BraceBlock,
+  }
+} else {
+  BraceBlock
+}
+
+// A brace in expression position. `pos` is just past the `{`.
+fn parse_brace_expr(ref tokens, pos, start_span) =
+  parse_brace_form(tokens, pos, start_span, parse_block_expr)
+
+// Each form's parser; the block's is the slot's own, because a body slot
+// reports a statement-free block (`E_RedundantBraces`) and an expression
+// slot does not.
+fn parse_brace_form(tokens, pos, start_span, block_parser) = {
   let p = skip_ws(tokens, pos)
-  // A record literal opens with an ident-shaped field name (incl. the
-  // contextual keywords own/ref/handle — SYNTAX.md §572, #117 class)
-  // followed by `:` / `,` / `}`. Canonical projection is_param_name_tok
-  // (the Bool gate) extends the discrimination uniformly; otherwise a
-  // block. `{ handle: handle, ... }` was mis-read as a block → `:`
-  // unexpected.
-  if at_ellipsis(tokens, p) {
-    // `{...base, f: v}` — non-destructive record update (SYNTAX.md
-    // §«Record update»). The leading spread is unambiguous: a block
-    // never opens with `...`.
-    parse_record_update(tokens, p, start_span)
-  } else if at(tokens, pat_prefix_end(tokens, p), TFatArrow) {
-    parse_arm_list(tokens, p, start_span)
-  } else if is_param_name_tok(tokens, p) {
-    let p2 = skip_ws(tokens, p + 1)
-    match kind_at(tokens, p2) {
-      TColon => parse_record_literal(tokens, pos, start_span),
-      TComma => parse_record_literal(tokens, pos, start_span),
-      TRBrace => parse_record_literal(tokens, pos, start_span),
-      _ => parse_block_expr(tokens, pos, start_span),
-    }
-  } else {
-    parse_block_expr(tokens, pos, start_span)
+  match brace_form(tokens, p) {
+    BraceUpdate => parse_record_update(tokens, p, start_span),
+    BraceArms => parse_arm_list(tokens, p, start_span),
+    BraceRecord => parse_record_literal(tokens, pos, start_span),
+    BraceBlock => block_parser(tokens, pos, start_span),
   }
 }
 
@@ -2994,14 +3011,12 @@ fn parse_body(ref tokens, pos) = {
     // context diagnostics parse_block_expr_checked emits. Converges
     // the brace path to the seed's "route through parse_expr ALWAYS".
     //
-    // The arm-list literal is consulted FIRST, and the reason is that
-    // `pat_prefix_end` has to have ONE home: a body slot is the only
-    // place a brace opens an expression without passing through
-    // `parse_brace_expr`, and leaving it out here would have priced the
-    // literal a pair of parens at every fn body — ceremony the page
-    // pays for a discrimination the parser already knows how to make.
-    // The result still feeds binop_loop, so `{ arms } ~> h` absorbs its
-    // chain exactly as a block body does.
+    // What the brace opens is `brace_form`'s decision, the one every
+    // brace slot reads — a body can open an arm list, a record or a record
+    // update exactly as an expression can, and only its BLOCK differs (the
+    // checked parser, which reports a statement-free block). The result
+    // still feeds binop_loop, so `{ arms } ~> h` absorbs its chain exactly
+    // as a block body does.
     //
     // And the result goes through `postfix_loop` before `binop_loop`,
     // which closes a SILENT WRONG this arc's probe found rather than
@@ -3010,12 +3025,7 @@ fn parse_body(ref tokens, pos) = {
     // loop and a call suffix is postfix — so the application was parsed
     // and discarded. Measured on a block body, which is how far it
     // predates the literal; the literal is what made anyone look.
-    let p_in = skip_ws(tokens, p + 1)
-    match if at(tokens, pat_prefix_end(tokens, p_in), TFatArrow) {
-      parse_arm_list(tokens, p_in, span_at(tokens, p))
-    } else {
-      parse_block_expr_checked(tokens, p + 1, span_at(tokens, p))
-    } {
+    match parse_brace_form(tokens, p + 1, span_at(tokens, p), parse_block_expr_checked) {
       (braced, p_braced) => match postfix_loop(tokens, braced, p_braced, FreeExpr) {
         (applied, p_applied) => binop_loop(tokens, applied, p_applied, 1, FreeExpr),
       },
@@ -3556,14 +3566,10 @@ fn compare_pred(op, l, r) = PCompare(op, node_handle(l), node_handle(r))
 // PARSE TRUTH, homed with the parse: a node's free names are a fact of
 // the source alone — no judgment, no lowering — and BOTH downstream
 // layers read it (lower's closure captures; the converged judgment's
-// stmt layers and incremental cone). Walks a body collecting every
-// `VarRef` whose name is not in the local scope. Nested lambdas augment
-// `bound` with their own params during the walk, so references resolved
-// inside the nested frame are excluded from the OUTER frame's free set.
+// stmt layers and incremental cone). Nested lambdas augment `bound` with
+// their own params during the walk, so references resolved inside the
+// nested frame are excluded from the OUTER frame's free set.
 //
-// Returns `List[String]` — names only, deduplicated. At emit time,
-// closure record slot N stores the value of `captures[N]` from the
-// enclosing scope; the lambda body reads them as `LUpval(h, N)`.
 // SAFE-FOR-SPACE is this walk's INVARIANT (Shao–Appel): a closure
 // record carries exactly the FREE variables of its body — flat
 // copies, never a link to the enclosing frame — so the space a
@@ -3573,13 +3579,25 @@ fn compare_pred(op, l, r) = PCompare(op, node_handle(l), node_handle(r))
 // fanout branch thunks) preserves it; a future channel that captures
 // a FRAME instead of a free set violates the invariant, not a style
 // preference.
-// H6: exhaustive NodeBody enumeration. Patterns and holes
-// contribute no free variable references (they're terminal AST
-// forms). Named explicitly so new NodeBody variants decide
-// whether they can contain VarRefs.
-fn collect_free_vars(node, bound) = match node {
-  N(body, _, _) => match body {
-    NExpr(e) => free_vars_expr(e, bound),
+//
+// The free USES of a node: every name it references but does not bind,
+// once each, with the handle of the reference that saw it first.
+//
+// A closure mint reads the handle. At emit, record slot N stores the value
+// of capture N from the enclosing scope and the body reads it as
+// `LUpval(h, N)`; the store has to know the value's width. A local bound
+// at a GROUND type has no binding-time handle (lower's `ty_handle_of`
+// answers 0 — a ground type is a value, not a node), and a local is
+// monomorphic, so the use node carries the same truth — the rule
+// `local_ty_handle` (lower.mn) states once for every read. Without it a
+// captured Float floored to a word at the mint while the body read it wide:
+// measured 2026-09-27, `fn make(fb: Float) = (x) => x + fb` passed `mentl
+// check` and did not ASSEMBLE. `bound` stays a name set; only the answer
+// carries handles. The NodeBody match is exhaustive (H6): patterns and holes
+// contribute no reference, named so a new variant decides for itself.
+fn collect_free_uses(node, bound) = match node {
+  N(body, _, h) => match body {
+    NExpr(e) => free_vars_expr(e, h, bound),
     NStmt(s) => free_vars_stmt(s, bound),
     NPat(_) => [],
     NHole(_) => [],
@@ -3590,35 +3608,40 @@ fn collect_free_vars(node, bound) = match node {
   },
 }
 
-fn free_vars_expr(e, bound) = match e {
+// The free NAMES — the uses projected to their names, for the readers that
+// ask only who is referenced: the judgment's DAG, tail transparency, the
+// ownership check, the resume-binding closure.
+fn collect_free_vars(node, bound) = free_use_names(collect_free_uses(node, bound))
+
+fn free_vars_expr(e, h, bound) = match e {
   LitInt(_) => [],
   LitFloat(_) => [],
   LitString(_) => [],
   LitBool(_) => [],
   LitUnit => [],
-  VarRef(name) => if free_vars_contains(bound, name) { [] } else { [name] },
-  BinOpExpr(_, l, r) => free_vars_merge(collect_free_vars(l, bound), collect_free_vars(r, bound)),
-  UnaryOpExpr(_, inner) => collect_free_vars(inner, bound),
-  CallExpr(f, args) => free_vars_merge(collect_free_vars(f, bound), free_vars_list(args, bound)),
-  IfExpr(c, t, e) => free_vars_merge(
-    collect_free_vars(c, bound),
-    free_vars_merge(collect_free_vars(t, bound), collect_free_vars(e, bound))
+  VarRef(name) => if free_vars_contains(bound, name) { [] } else { [(name, h)] },
+  BinOpExpr(_, l, r) => free_uses_merge(collect_free_uses(l, bound), collect_free_uses(r, bound)),
+  UnaryOpExpr(_, inner) => collect_free_uses(inner, bound),
+  CallExpr(f, args) => free_uses_merge(collect_free_uses(f, bound), free_vars_list(args, bound)),
+  IfExpr(c, t, e) => free_uses_merge(
+    collect_free_uses(c, bound),
+    free_uses_merge(collect_free_uses(t, bound), collect_free_uses(e, bound))
   ),
   BlockExpr(stmts, final_e) => match free_vars_stmts(stmts, bound, []) {
-    (frees, bound_after) => free_vars_merge(frees, collect_free_vars(final_e, bound_after)),
+    (frees, bound_after) => free_uses_merge(frees, collect_free_uses(final_e, bound_after)),
   },
-  MatchExpr(scrut, arms) => free_vars_merge(collect_free_vars(scrut, bound), free_vars_match_arms(arms, bound)),
+  MatchExpr(scrut, arms) => free_uses_merge(collect_free_uses(scrut, bound), free_vars_match_arms(arms, bound)),
   MakeListExpr(elems) => free_vars_list(elems, bound),
   MakeTupleExpr(elems) => free_vars_list(elems, bound),
   MakeStringExpr(fragments) => free_vars_list(fragments, bound),
-  ShowExpr(inner) => collect_free_vars(inner, bound),
-  IndexExpr(receiver, index) => free_vars_merge(collect_free_vars(receiver, bound), collect_free_vars(index, bound)),
+  ShowExpr(inner) => collect_free_uses(inner, bound),
+  IndexExpr(receiver, index) => free_uses_merge(collect_free_uses(receiver, bound), collect_free_uses(index, bound)),
   MakeRecordExpr(flds) => free_vars_record_fields(flds, bound),
-  RecordUpdateExpr(base, flds) => free_vars_merge(collect_free_vars(base, bound), free_vars_record_fields(flds, bound)),
+  RecordUpdateExpr(base, flds) => free_uses_merge(collect_free_uses(base, bound), free_vars_record_fields(flds, bound)),
   NamedRecordExpr(_, flds) => free_vars_record_fields(flds, bound),
   LambdaExpr(params, body) => {
     let inner_bound = free_vars_merge(bound, free_vars_param_names(params))
-    collect_free_vars(body, inner_bound)
+    collect_free_uses(body, inner_bound)
   },
   ResumeExpr(val, state_updates) => // band B M1.6 (bank Ruling 2/A3): a resume USES the enclosing arm's k,
   // so "__k" is one of its free names. A lambda inside a MultiShot arm
@@ -3629,19 +3652,19 @@ fn free_vars_expr(e, bound) = match e {
   // DROPS it: zero captures added, bytes identical (Law 7 holds on the
   // wheel's own backtrack, whose resume-in-lambda sits under the
   // OneShot-misclassified choose until the cut).
-  free_vars_merge(
-    ["__k"],
-    free_vars_merge(collect_free_vars(val, bound), free_vars_state_updates(state_updates, bound))
+  free_uses_merge(
+    [("__k", 0)],
+    free_uses_merge(collect_free_uses(val, bound), free_vars_state_updates(state_updates, bound))
   ),
-  FieldExpr(rec, _) => collect_free_vars(rec, bound),
-  PipeExpr(_, l, r) => free_vars_merge(collect_free_vars(l, bound), collect_free_vars(r, bound)),
+  FieldExpr(rec, _) => collect_free_uses(rec, bound),
+  PipeExpr(_, l, r) => free_uses_merge(collect_free_uses(l, bound), collect_free_uses(r, bound)),
   FanoutExpr(branches) => collect_free_vars_branches(branches, bound),
   RestExpr(_) => // the rest NAME binds in the lambda path; it is never a free ref
   [],
   ExprPlaceholder => [],
   LabeledArg(_, v) => // A labeled arg's value can reference free vars (closure capture must see
   // them); the label is a param name, not a value-position var.
-  collect_free_vars(v, bound),
+  collect_free_uses(v, bound),
   LitInt(_) => // H6: exhaustive Expr enumeration. Literals contribute no
   // free vars. Named explicitly so new Expr variants must decide
   // their free-var contribution (critical for closure capture).
@@ -3654,7 +3677,7 @@ fn free_vars_expr(e, bound) = match e {
 
 fn collect_free_vars_branches(branches, bound) = match branches {
   [] => [],
-  [h, ...t] => free_vars_merge(collect_free_vars(h, bound), collect_free_vars_branches(t, bound)),
+  [h, ...t] => free_uses_merge(collect_free_uses(h, bound), collect_free_vars_branches(t, bound)),
 }
 
 // Walk free vars through a `resume() with` updates list. Each update's
@@ -3663,7 +3686,7 @@ fn collect_free_vars_branches(branches, bound) = match branches {
 // body). cfv reports those that aren't in `bound`.
 fn free_vars_state_updates(updates, bound) = fold(
   [],
-  (acc, upd) => free_vars_merge(acc, collect_free_vars(state_field_init(upd), bound)),
+  (acc, upd) => free_uses_merge(acc, collect_free_uses(state_field_init(upd), bound)),
   updates
 )
 
@@ -3688,9 +3711,9 @@ fn free_vars_state_updates(updates, bound) = fold(
 // RefineStmt keeps [] for a different reason: its predicate is not yet an
 // expression this walk can descend (Hβ.types.predicate-is-expr).
 fn free_vars_stmt(s, bound) = match s {
-  LetStmt(_, expr, _) => collect_free_vars(expr, bound),
-  FnStmt(_, _, _, _, body_node) => collect_free_vars(body_node, bound),
-  ExprStmt(expr) => collect_free_vars(expr, bound),
+  LetStmt(_, expr, _) => collect_free_uses(expr, bound),
+  FnStmt(_, _, _, _, body_node) => collect_free_uses(body_node, bound),
+  ExprStmt(expr) => collect_free_uses(expr, bound),
   TypeDefStmt(_, _) => [],
   EffectDeclStmt(_, _, _) => [],
   HandlerDeclStmt(_, _, config, state, arms, _) => {
@@ -3699,7 +3722,7 @@ fn free_vars_stmt(s, bound) = match s {
     // a keyword and never a reference.
     let init_bound = free_vars_merge(bound, free_vars_param_names(config))
     let arm_bound = free_vars_merge(init_bound, map((st) => st.name, state))
-    free_vars_merge(
+    free_uses_merge(
       free_vars_list(map((st) => st.init, state), init_bound),
       free_vars_handler_arms(arms, arm_bound)
     )
@@ -3712,27 +3735,27 @@ fn free_vars_stmt(s, bound) = match s {
 
 fn free_vars_handler_arms(arms, bound) = fold(
   [],
-  (acc, arm) => free_vars_merge(acc, collect_free_vars(arm.body, free_vars_merge(bound, arm.args))),
+  (acc, arm) => free_uses_merge(acc, collect_free_uses(arm.body, free_vars_merge(bound, arm.args))),
   arms
 )
 
 fn free_vars_list(nodes, bound) =
-  fold([], (acc, node) => free_vars_merge(acc, collect_free_vars(node, bound)), nodes)
+  fold([], (acc, node) => free_uses_merge(acc, collect_free_uses(node, bound)), nodes)
 
-// Free variables in a record-literal expression: union of frees in
+// Free uses in a record-literal expression: union of the uses in
 // each field's value. Field names are not value-position references
 // (the parser already desugared pun-syntax to `VarRef` nodes).
 fn free_vars_record_fields(flds, bound) = fold(
   [],
   (acc, fld) => match fld {
-    (_, value) => free_vars_merge(acc, collect_free_vars(value, bound)),
+    (_, value) => free_uses_merge(acc, collect_free_uses(value, bound)),
   },
   flds
 )
 
 // Walk a statement list, threading `bound` through `LetStmt`s so
 // subsequent statements see the new bindings. Returns
-// `(accumulated_frees, final_bound)`.
+// `(accumulated_uses, final_bound)`.
 fn free_vars_stmts(stmts, bound, acc_frees) = if len(stmts) == 0 {
   (acc_frees, bound)
 } else {
@@ -3740,20 +3763,20 @@ fn free_vars_stmts(stmts, bound, acc_frees) = if len(stmts) == 0 {
   match stmt {
     N(stmt_body, _, _) => match stmt_body {
       NStmt(LetStmt(pat, expr, _)) => {
-        let frees = collect_free_vars(expr, bound)
+        let frees = collect_free_uses(expr, bound)
         let new_bound = free_vars_merge(bound, free_vars_pat_binds(pat))
-        free_vars_stmts(drop_last(stmts), new_bound, free_vars_merge(acc_frees, frees))
+        free_vars_stmts(drop_last(stmts), new_bound, free_uses_merge(acc_frees, frees))
       },
       NStmt(FnStmt(name, _, _, _, body_node)) => {
         // Nested named fn — its name is in scope for siblings and the
         // final expression (recursive / mutual references resolve via env).
-        let frees = collect_free_vars(body_node, bound)
+        let frees = collect_free_uses(body_node, bound)
         let new_bound = free_vars_merge(bound, [name])
-        free_vars_stmts(drop_last(stmts), new_bound, free_vars_merge(acc_frees, frees))
+        free_vars_stmts(drop_last(stmts), new_bound, free_uses_merge(acc_frees, frees))
       },
       _ => {
-        let frees = collect_free_vars(stmt, bound)
-        free_vars_stmts(drop_last(stmts), bound, free_vars_merge(acc_frees, frees))
+        let frees = collect_free_uses(stmt, bound)
+        free_vars_stmts(drop_last(stmts), bound, free_uses_merge(acc_frees, frees))
       },
     },
   }
@@ -3764,7 +3787,7 @@ fn free_vars_match_arms(arms, bound) = fold(
   (acc, arm) => match arm {
     (pat, body) => {
       let arm_bound = free_vars_merge(bound, free_vars_pat_binds(pat))
-      free_vars_merge(acc, collect_free_vars(body, arm_bound))
+      free_uses_merge(acc, collect_free_uses(body, arm_bound))
     },
   },
   arms
@@ -3825,3 +3848,28 @@ fn free_vars_merge(a, b) = if len(b) == 0 {
 }
 
 fn free_vars_contains(lst, s) = any((x) => x == s, lst)
+
+// The union of two use lists, keyed by NAME: a name already in `a` keeps
+// the handle `a` saw it with, so a use list names each free variable once,
+// at its first reference — the order and the dedup of `free_vars_merge`
+// exactly, which is what keeps the names half of the answer unchanged.
+fn free_uses_merge(a, b) = if len(b) == 0 {
+  a
+} else {
+  let x = last(b)
+  let rest = drop_last(b)
+  match x {
+    (name, _) => if free_uses_contains(a, name) {
+      free_uses_merge(a, rest)
+    } else // drift-audit: ignore — the same set-union family as free_vars_merge above, tracked by Hβ.perf.name-is-handle's buffer-counter sweep.
+    {
+      free_uses_merge(list_concat(a, [x]), rest)
+    },
+  }
+}
+
+fn free_uses_contains(uses, name: String) = any({ (n, _) => n == name }, uses)
+
+// The names of a use list, in order — for the readers that ask only who is
+// referenced.
+fn free_use_names(uses) = map({ (n, _) => n }, uses)

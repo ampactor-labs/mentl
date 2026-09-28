@@ -799,7 +799,23 @@ fn compose_propose_situation(target_handle, target_reason, prior_turn) = match m
     TurnRecord(r) => (Some(r.topic), Some(r.tentacle)),
   },
 } {
-  (prior_topic, prior_tent) => Situation({env_snapshot: [], facts: TopicFacts({error_code_at: None, is_hole: false, nested_call_depth: 0}), gradient_next: None, handle: Some(target_handle), handlers_installed: [], ownership_at_topic: None, prior_turn_tentacle: prior_tent, prior_turn_topic: prior_topic, reason_at_topic: Some(target_reason), refinements: [], register: RPlayful, row_at_topic: None, row_declared: None, tentacle: TentPropose, topic: TopicHandle(target_handle)}),
+  (prior_topic, prior_tent) => Situation({
+    env_snapshot: [],
+    facts: TopicFacts({error_code_at: None, is_hole: false, nested_call_depth: 0}),
+    gradient_next: None,
+    handle: Some(target_handle),
+    handlers_installed: [],
+    ownership_at_topic: None,
+    prior_turn_tentacle: prior_tent,
+    prior_turn_topic: prior_topic,
+    reason_at_topic: Some(target_reason),
+    refinements: [],
+    register: RPlayful,
+    row_at_topic: None,
+    row_declared: None,
+    tentacle: TentPropose,
+    topic: TopicHandle(target_handle),
+  }),
 }
 
 // query_result_to_answer — project query.mn's live QueryResult into the
@@ -1070,8 +1086,12 @@ handler mentl_voice_default with caret_now = Caret(0, Inferred("session start"))
   // the Answer projected back through render (Silence when AnsSilence).
   {
     let answer = ask(question)
-    let new_turn =
-      TurnRecord({line: Silence, span_at: question_span(question), tentacle: tentacle_for_question(question), topic: TopicAsk(question)})
+    let new_turn = TurnRecord({
+      line: Silence,
+      span_at: question_span(question),
+      tentacle: tentacle_for_question(question),
+      topic: TopicAsk(question),
+    })
     resume(query_result_to_answer(answer)) with prior_turn = Some(new_turn), turns = [new_turn] ++ turns
   },
   propose(target) => /// propose — Mentl-initiated proposal at a CaretTarget. Compose
@@ -1125,8 +1145,12 @@ handler mentl_voice_default with caret_now = Caret(0, Inferred("session start"))
   // is the same render-only projection over the one proven result.
   {
     let answer = ask(question)
-    let new_turn =
-      TurnRecord({line: Silence, span_at: question_span(question), tentacle: tentacle_for_question(question), topic: TopicAsk(question)})
+    let new_turn = TurnRecord({
+      line: Silence,
+      span_at: question_span(question),
+      tentacle: tentacle_for_question(question),
+      topic: TopicAsk(question),
+    })
     resume(query_result_to_answer(answer)) with prior_turn = Some(new_turn), turns = [new_turn] ++ turns
   },
   declare_intent(intent) => // ─── Session ops (4) — MV.2.e.Session ────────────────────────────

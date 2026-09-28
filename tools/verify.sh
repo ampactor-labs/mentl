@@ -554,6 +554,22 @@ if C=$(wt_m2_ensure); then
     say "  ↓ unprovable comparisons FELL $eqmax -> $equ — lower eq_type_unprovable_max in $BASELINE;"
     say "    at 0, rename TEqTypeUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
   fi
+  # THE UNPROVABLE-SHOW ratchet — the same floor one leaf over (2026-09-28):
+  # a show or interpolation splice whose operand type is still a variable at
+  # emit falls to the word's integer. It had a WAT marker and no voice until
+  # a handler head rendered its config list as `(66036)`; it narrates
+  # T_ShowTypeUnprovable now, and the count is held so it can only fall.
+  shu=$(grep -c 'T_ShowTypeUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); shu=${shu:-0}
+  shmax=$(grep -E '^show_type_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
+  say "· unprovable shows: $shu operand(s) still a variable at emit — 0 arms the class"
+  if [[ -n "$shmax" && "$shu" -gt "$shmax" ]]; then
+    say "✗ unprovable-show RATCHET: rose $shmax -> $shu — a new word-as-integer render entered the wheel."
+    say "  Prove the operand at the reported span; the diagnostic names the type and the emitting fn."
+    fail=1
+  elif [[ -n "$shmax" && "$shu" -lt "$shmax" ]]; then
+    say "  ↓ unprovable shows FELL $shmax -> $shu — lower show_type_unprovable_max in $BASELINE;"
+    say "    at 0, rename TShowTypeUnprovable to E_, flip it to SError and add it to diag_refuses."
+  fi
   # THE USE-AFTER-MOVE RATCHET IS RETIRED (2026-09-15) — the class is ARMED.
   # It counted T_UseAfterMove narrations on the wheel's own compile and held
   # them at ZERO so that diag_refuses' wheel-zero arming licence stayed

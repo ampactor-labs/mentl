@@ -1,0 +1,12 @@
+// The control beside mn-refine-fn-result-refuses.mn: the same crossing with
+// a result inside the bound. The claim is judged on the lambda's body and
+// decides TRUE from the constant, so it discharges where it is written — no
+// debt, no runtime check — and the program runs.
+
+type Hz = Float where 0.0 < self && self < 22050.0
+
+fn alpha(c: Hz) -> Float = c * 2.0
+
+fn run(f) = alpha(f())
+
+fn main() = if run(() => 440.0) == 880.0 { 40 } else { 41 }

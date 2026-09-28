@@ -1,0 +1,22 @@
+// expect: 40
+// A Float crossing a closure call costs nothing on the heap: a thousand
+// calls through a Float closure leave the heap line where it started. The
+// call site's proven type is the ABI — the argument crosses at its own width
+// and the result comes back native. On boot 43aeb30f every such call spilled
+// the argument into a fresh 8-byte cell and the closure's word-face wrapper
+// spilled the result into another, so a function declared `!Alloc` that
+// called a Float callback allocated on every call with no row saying so
+// (`fn step(f, x: Float) with !Alloc = f(x)` compiled clean). Measured on
+// that boot: 16,000 bytes across this loop.
+fn twice(x: Float) -> Float = x * 2.0
+
+fn step(f, x: Float) with !Alloc = f(x)
+
+fn run(f, i: Int, acc: Float) -> Float = if i == 0 { acc } else { run(f, i - 1, acc + step(f, 0.5)) }
+
+fn main() = {
+  let before = heap_mark()
+  let r = run(twice, 1000, 0.0)
+  let grown = heap_mark() - before
+  if grown == 0 && r == 1000.0 { 40 } else { 41 }
+}

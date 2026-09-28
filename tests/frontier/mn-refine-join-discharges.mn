@@ -1,0 +1,37 @@
+// A refined result over a JOIN whose every tail is a constant is decided
+// per tail: each literal below is inside the `Hz` bound, so each claim
+// discharges where it is written and the compile carries no proof debt —
+// through a match, an if, a block's final expression, and a match nested
+// in an if. On boot 43aeb30f a claim over a join was never decided: each of
+// these four functions left one pending obligation behind.
+
+type Hz = Float where 0.0 < self && self < 24000.0
+
+fn note_hz(k: Int) -> Hz = match k {
+  0 => 220.0,
+  1 => 261.63,
+  2 => 329.63,
+  _ => 440.0,
+}
+
+fn octave_of(high: Bool) -> Hz = if high { 880.0 } else { 440.0 }
+
+fn root_hz() -> Hz = {
+  let unused = 3
+  110.0
+}
+
+fn nested_hz(k: Int, high: Bool) -> Hz = if high {
+  match k {
+    0 => 1760.0,
+    _ => 3520.0,
+  }
+} else {
+  55.0
+}
+
+fn main() = if note_hz(1) > 250.0 && octave_of(true) > 800.0 && root_hz() > 100.0 && nested_hz(0, true) > 1000.0 {
+  40
+} else {
+  41
+}

@@ -225,7 +225,18 @@ fn interrogation_at(handle) = match graph_chase(handle) {
         },
       }
     ) {
-      (graph_v, handler_v, verb_v, row_v, ownership_v, refinement_v, gradient_v, reason_v) => InterrogationReport({gradient_v: gradient_v, graph_v: graph_v, handle: handle, handler_v: handler_v, ownership_v: ownership_v, reason_v: reason_v, refinement_v: refinement_v, row_v: row_v, span: span, verb_v: verb_v}),
+      (graph_v, handler_v, verb_v, row_v, ownership_v, refinement_v, gradient_v, reason_v) => InterrogationReport({
+        gradient_v: gradient_v,
+        graph_v: graph_v,
+        handle: handle,
+        handler_v: handler_v,
+        ownership_v: ownership_v,
+        reason_v: reason_v,
+        refinement_v: refinement_v,
+        row_v: row_v,
+        span: span,
+        verb_v: verb_v,
+      }),
     }
   },
 }

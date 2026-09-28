@@ -51,13 +51,36 @@ The Space spine (resident session, IDE page), the per-decl arena, columns,
 `(arena, offset)`, the oracle fan, the modal world-index, native. Each is an
 issue with its design linked; none is worked unless a `felt` issue needs it.
 
+## Status against the acceptance tests (2026-09-28, the scene-1 landing)
+
+1. Met: `mentl run` renders ten seconds of 48 kHz stereo; the frontier's
+   `pulse-render` leg judges the file with a Goertzel oracle.
+2. Met at the declaration, not at the call: one allocation beneath
+   `render_frame` refuses `E_EffectMismatch` naming `render_frame`'s row;
+   the Reason at the allocating call is `Hβ.diag.effect-mismatch-at-the-call`.
+3. Met: a sample out of range refuses `E_RefinementRejected` (a board twin).
+4. Not met as written: 460 lines, written by Claude with Morgan's direction,
+   `mentl check` clean and `mentl fmt` a no-op.
+5. Not met: there is no `.github/workflows`; the board's CI entry is
+   `tools/ci/run-board.sh`, and a workflow file is a decision still open.
+6. Not run.
+7. Met in part: `examples/pulse/render/GRADIENT.md` records every annotation
+   the medium asked for and every defect the walk found; no `??` was left,
+   so there are no proposal rows yet.
+
 ## Next two, sketched
 
-- **M2 · the medium proposing, on Pulse.** The gradient benchmark published
-  (holes filled with proven survivors and no model; ties that ask the right
-  question; time to first proposal); the thirty-second GIF in the README (a
-  hole filled, a tie that asks, a signature tightened and the cursor moving,
-  an `!Alloc` refusal naming the call); the effect-safety hole closed; the
-  severance map as static HTML; `mentl diagnostics` generating SYNTAX's
-  catalog tables; positioning rewritten to lead with the vision.
-- **M3 · decided from the `felt` issues at the end of M2.**
+- **M2 · Pulse scenes 2 and 3 — real time, then learning.** The render loop
+  becomes 128-sample blocks with voices `><` under `~> Thread` and the race
+  rule holding, the handler pinning its `Sample` instance, and the real-time
+  margin as a number on the board. Then one distortion stage differentiated
+  by `~> grad(w)` (AD as a demanded projection), trained against a target
+  rendered by the reference stage, checkpointed mid-training and resumed,
+  with the same stage bytes still `!Alloc` under the real-time reading.
+- **M3 · Pulse scene 4 — authoring.** The gradient benchmark published from
+  the scene-1 log turned into proposal fixtures (holes filled with proven
+  survivors and no model; ties that ask the right question; time to first
+  proposal); the Severance Map over `examples/pulse` as the thirty-second
+  demo; an accept drawn through the graph; `mentl diagnostics` generating
+  SYNTAX's catalog tables. What follows is decided from the `felt` issues at
+  the end of M3.
