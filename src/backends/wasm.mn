@@ -491,6 +491,11 @@ fn ref_demand(r) = match r {
       if spec_enc_is_floor(enc) { DemandBase(n) } else { DemandTwin(spec_mangle(n, enc), n, pairs, enc) }
     }
   },
+  RefArm(ih, n) => {
+    let pairs = arm_site_pairs(ih)
+    let enc = arm_enc(pairs)
+    if byte_len(enc) == 0 { DemandBase(n) } else { DemandTwin(spec_mangle(n, enc), n, pairs, enc) }
+  },
 }
 
 // A capped twin's body, read at the floor: its interior sites mangle past
@@ -934,26 +939,23 @@ fn emit_module(program) = {
   // The emitted reach (above): the twin demands, and which decls a live
   // reference reaches — the only ones emitted below.
   match emit_reach(program, all_records) {
-    (spec_demands, live) => emit_reached_module(
-      decls_reached(program, live, 0, n, make_list(n), 0),
-      decls_reached(decl_records, live, 0, n, make_list(n), 0) |> flatten |> dedup_fn_records,
-      twin_bases_where(
-        program,
-        decl_records,
-        live,
-        fold(smap_new(), demand_base_note, spec_demands),
-        0,
-        n,
-        make_list(8),
-        0
-      ),
-      all_records,
-      spec_demands
-    ),
+    (spec_demands, live) => {
+      // Every name a twin was demanded of — the unreached decls whose bodies
+      // still feed their twins, and the arms a keyed install runs twinned.
+      let twin_base_set = fold(smap_new(), demand_base_note, spec_demands)
+      emit_reached_module(
+        decls_reached(program, live, 0, n, make_list(n), 0),
+        decls_reached(decl_records, live, 0, n, make_list(n), 0) |> flatten |> dedup_fn_records,
+        twin_bases_where(program, decl_records, live, twin_base_set, 0, n, make_list(8), 0),
+        all_records,
+        spec_demands,
+        twin_base_set
+      )
+    },
   }
 }
 
-fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demands) = {
+fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demands, twin_base_set) = {
   // Named-generic twins (the emitted reach above): each demand's record is
   // the BASE record renamed — the same body, emitted under the spec_pairs
   // state so every repr read resolves through the site's instantiation.
@@ -1044,10 +1046,14 @@ fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demand
       set_fn_lines(fn_lines)
       let line_owners = static_line_owners(top_fn_names, fn_lines, spec_recs)
       let line_globals = line_global_slots(line_owners)
+      // The MultiShot handlers the module runs, each with its one driver.
+      let redrives = if yield_seen > 0 { redrive_handlers(table_fn_names, twin_base_set) } else { [] }
       // The call vectors, collected ONCE — the floor tree and every twin under
       // its own bracket — and read twice: the type section declares the face
       // each site names, the table grows its native half iff a site reaches it.
-      let vectors = spec_vector_collect(spec_recs, collect_call_vectors_list(lowered, []))
+      // A driver's arm call is a site too, at the word face.
+      let vectors =
+        spec_vector_collect(spec_recs, collect_call_vectors_list(lowered, [])) ++ redrive_vectors(redrives)
       emit_header()
       emit_type_section(vectors, yield_seen)
       emit_runtime_imports(wasi_ops)
@@ -1131,10 +1137,10 @@ fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demand
       // bubble op), $__k_world (the frozen-world read). Dormant until a k2
       // boundary calls extend; emitted only when the module yields (Law 7).
       if yield_seen > 0 { emit_k_compose_pair() }
-      // band B M2b — one redrive fn per LIVE MultiShot-armed handler (arm fns
-      // in the emitted set): the dispatch loop's one home (the install bracket
-      // and every resume flag-arm call the same fn).
-      if yield_seen > 0 { emit_redrive_fns(table_fn_names) }
+      // band B M2b — one redrive fn per LIVE MultiShot-armed handler: the
+      // dispatch loop's one home (the install bracket and every resume
+      // flag-arm call the same fn).
+      each(emit_one_redrive, redrives)
       emit_init_lines(line_owners)
       emit_init_lets(value_lets)
       emit_start(top_fn_names, value_lets, len(line_owners) > 0, main_param_count(), yield_seen, spawns)
@@ -1851,30 +1857,56 @@ fn emit_driver_arg_loads(n, i) = if i >= n {
 // second return channel, so the two callers differ with no mode flag: the
 // install bracket falls out with the flag up (the bubble, k1's law), the
 // resume flag-arm meets the still-raised flag and floors LOUDLY
-// (arm-remainder composition is A4/M3 territory). Emitted for every env
-// handler with a MultiShot-graded arm, under the yield gate; an
-// UNINSTALLED handler's op keys intern nowhere and compare against offset
-// 0 — dead code, assembles clean.
-fn emit_redrive_fns(emitted_names) = {
+// (arm-remainder composition is A4/M3 territory). The driver reaches each
+// arm through the record it is handed, at the arm's slot, never by the arm's
+// name: an install whose key twinned its arms stored the twins in that
+// record, so one driver per handler serves every key an install runs.
+//
+// Emission == reachability (the dcac3b8 law, at the redrive seam): the env
+// holds every DECLARED MultiShot handler, dead ones included (the wheel's own
+// backtrack/pick_first are uninstalled dead code), and a dead handler has no
+// install bracket and no resume flag-arm, so no caller either: a handler
+// runs a driver iff each of its MultiShot arms is in the module, declared or
+// twinned.
+fn redrive_handlers(table_names, twin_base_set) = {
   let hnames = match env_snapshot() {
     Env(entries) => ms_handler_names(entries, []),
   }
-  // Emission == reachability (the dcac3b8 law, at the redrive seam): a
-  // redrive dispatches `call $op_<hname>_<op>` — arm fns that exist only
-  // when the handler's container survives reachability. The env holds
-  // every DECLARED MultiShot handler, dead ones included (the wheel's own
-  // backtrack/pick_first are uninstalled dead code — their redrives
-  // referenced dropped arms and m3 failed assembly). A dead handler has
-  // no install bracket and no resume flag-arm, so no caller either: emit
-  // the redrive iff its arm fns are in the emitted set.
-  let live = filter(
+  filter(
     (hname) => all(
-      { (op, _arity) => name_seen_at(emitted_names, arm_fn_name(hname, op), 0, len(emitted_names)) },
+      { (op, _arity) => arm_in_module(table_names, twin_base_set, arm_fn_name(hname, op)) },
       multishot_ops_of(hname)
     ),
     hnames
   )
-  each(emit_one_redrive, live)
+}
+
+fn arm_in_module(table_names, twin_base_set, arm: String) = if name_seen_at(table_names, arm, 0, len(table_names)) {
+  true
+} else {
+  match smap_get(twin_base_set, arm) {
+    Some(_) => true,
+    None => false,
+  }
+}
+
+// Each driver's arm call is a word-face indirect: the record, the k, and
+// the op's arguments.
+fn redrive_vectors(hnames) = flat_map(
+  (hname) => map({ (_op, arity) => (list_filled(2 + arity, RI32), RI32) }, multishot_ops_of(hname)),
+  hnames
+)
+
+// Where an install's record holds an op's arm: past the header, the state
+// (config first) and the arms before it in group order — the layout
+// `emit_handler_effect_entries` writes.
+fn arm_slot_offset(hname, op) = {
+  let nstate = match handler_decl_of(hname) {
+    Some((config, state, _)) => len(config) + len(state),
+    None => 0,
+  }
+  let arms = flatten(map(group_arms, lookup_handler_arm_names_of(hname)))
+  8 + 4 * (nstate + ls_find_str_local(arms, arm_fn_name(hname, op), 0))
 }
 
 // Every declared handler with a MultiShot-graded arm — the same env-live
@@ -1921,11 +1953,8 @@ fn emit_one_redrive(hname) = {
         // Carried-Truth re-derivation of a value in hand.
         wat_emit("        (local.get $__state)(local.get $k)\n")
         emit_driver_arg_loads(arity, 0)
-        wat_emit("        (call $op_")
-        wat_emit(hname)
-        wat_emit("_")
-        wat_emit(op)
-        wat_emit(")\n")
+        wat_emit("        (local.get $__state)(i32.load offset={int_to_str(arm_slot_offset(hname, op))})")
+        wat_emit("(call_indirect (type $ft{int_to_str(2 + arity)}))\n")
         wat_emit("        (local.set $acc)\n")
         wat_emit("        (br $rdrive)\n")
         wat_emit("      ))\n")
@@ -4080,6 +4109,31 @@ fn emit_state_init_writes(state_local, inits, base_idx) = each(
   enumerate(inits)
 )
 
+// How many of an install's inits are its config arguments — the install
+// column's own count, which the declaration's state inits follow.
+fn install_config_count(h) = match graph_install_at(h) {
+  NoInstall => 0,
+  InstallOf(_, cfg_hs, _) => len(cfg_hs),
+}
+
+// The declaration's state inits read the install's config through the
+// declaration's own types, so they evaluate under the key the install's arms
+// run under: a `with n = cfg.x` init reads the field at the install's layout,
+// and a wide config copied into state gets a cell of its own, the one the
+// twinned arms read and commit through. The bracket the install stands in is
+// restored after.
+fn emit_decl_inits_keyed(state_local, inits, base_idx, pairs, enc) = if byte_len(enc) == 0 {
+  emit_state_init_writes(state_local, inits, base_idx)
+} else {
+  match spec_ctx_active() {
+    (outer_pairs, outer_enc) => {
+      spec_ctx_set(pairs, enc)
+      emit_state_init_writes(state_local, inits, base_idx)
+      spec_ctx_set(outer_pairs, outer_enc)
+    },
+  }
+}
+
 // Total arm-slot count across a handler's per-effect groups — the record's
 // contiguous arm region size.
 fn sum_arm_name_lens(groups) = fold(0, (acc, g) => acc + len(group_arms(g)), groups)
@@ -4099,11 +4153,11 @@ fn handler_arm_lines(groups) = flat_map(
 // (= state_local ++ "_" ++ ename). The ev-slot forwards that entry;
 // emit_levperform reads (record, base) from it. Mirrors the seed's
 // $emit_handler_effect_entries.
-fn emit_handler_effect_entries(state_local, nstate, groups) = {
+fn emit_handler_effect_entries(state_local, nstate, groups, enc) = {
   fold(
     0,
     (base, g) => {
-      emit_arm_writes(state_local, nstate, base, group_arms(g), 0)
+      emit_arm_writes(state_local, nstate, base, group_arms(g), enc)
       let entry_name = "{state_local}_{group_ename(g)}"
       // alloc the 8-byte [record, base] entry through the one aligned $alloc
       wat_emit("    (local.set $")
@@ -4128,27 +4182,40 @@ fn emit_handler_effect_entries(state_local, nstate, groups) = {
   ()
 }
 
-// Write each non-gap arm fn-index into the record. The arm's fn-index lives
-// in the global `$<arm_name>_idx` (emitted per LDeclareFn); the install
-// copies it into the record so the perform reads the record, not a global —
-// per-install evidence, not a static vtable. "" gaps (unimplemented ops)
-// are skipped; their slot stays zero.
-fn emit_arm_writes(state_local, nstate, base, arms, k) = if k >= len(arms) {
-  ()
+// Write each non-gap arm fn-index into the record: the arm THIS install
+// runs, under its own key. The fn-index lives in the global `$<arm>_idx`;
+// the install copies it into the record so the perform reads the record,
+// not a global — per-install evidence, never a static vtable. The key is
+// the install's, not the enclosing twin's: the enclosing bracket's suffix
+// named nothing an arm could have. "" gaps (unimplemented ops) are skipped;
+// their slot stays zero.
+fn emit_arm_writes(state_local, nstate, base, arms, enc) = each(
+  {
+    (k, arm_name) => if arm_name == "" {
+      ()
+    } else {
+      wat_emit("(local.get ${state_local})(global.get ${arm_symbol(arm_name, enc)}_idx)(i32.store offset={int_to_str(8 + 4 * nstate + 4 * (base + k))})\n")
+    },
+  },
+  enumerate(arms)
+)
+
+// The symbol a reference names where emit writes it: an install's arm under
+// the install's key, a site under its instantiation, a name as itself.
+fn ref_symbol(r) = match r {
+  RefArm(ih, n) => arm_symbol(n, arm_enc(arm_site_pairs(ih))),
+  RefSite(h, n) => spec_target_name(h, n),
+  RefName(n) => n,
+}
+
+// The arm fn an install runs: the twin its key names, else the arm as
+// declared — a floor key, or a twin past the polymorphic-recursion cap,
+// whose sites read the base as every capped body's do.
+fn arm_symbol(arm: String, enc: String) = if byte_len(enc) == 0 {
+  arm
 } else {
-  let arm_name = arms[k]
-  if arm_name == "" {
-    ()
-  } else {
-    wat_emit("(local.get $")
-    wat_emit(state_local)
-    wat_emit(")(global.get $")
-    wat_emit(spec_closure_name(arm_name))
-    wat_emit("_idx)(i32.store offset=")
-    wat_emit(int_to_str(8 + 4 * nstate + 4 * (base + k)))
-    wat_emit(")\n")
-  }
-  emit_arm_writes(state_local, nstate, base, arms, k + 1)
+  let m = spec_mangle(arm, enc)
+  if spec_twin_known(m) { m } else { arm }
 }
 
 // Exhaustive match on every LowExpr variant; no _ fallback.
@@ -4649,10 +4716,16 @@ fn emit_expr(expr) = match expr {
     wat_emit(")(i32.const ")
     wat_emit(int_to_str(nstate))
     wat_emit(")(i32.store offset=4)\n")
+    // The install's key (`arm_site_pairs`), read under the bracket this
+    // install stands in: the arms it runs, and the declaration's state inits.
+    let pairs = arm_site_pairs(h)
+    let enc = arm_enc(pairs)
+    let nconfig = install_config_count(h)
     // state-field inits at 8+i*4 (config first, then `with` fields)
-    emit_state_init_writes(local_name, inits, 0)
+    emit_state_init_writes(local_name, take(nconfig, inits), 0)
+    emit_decl_inits_keyed(local_name, drop(nconfig, inits), nconfig, pairs, enc)
     // each effect-group's arms contiguous + its [record, base] entry
-    emit_handler_effect_entries(local_name, nstate, arm_names)
+    emit_handler_effect_entries(local_name, nstate, arm_names, enc)
     // the arms' `<~` rings, past the arms
     emit_line_mints(arm_lines, local_name)
     // The WORLD bracket — every install draws its runtime edge: save the
@@ -4839,12 +4912,8 @@ fn emit_expr(expr) = match expr {
         wat_emit(hs)
         wat_emit(")\n")
         emit_install_world(disp, hs)
-        match perform_target_symbol(disp) {
-          Some(sym) => {
-            wat_emit("    (call $op_")
-            wat_emit(sym)
-            wat_emit(")\n")
-          },
+        match perform_target(disp) {
+          Some(target) => wat_emit("    (call ${ref_symbol(target)})\n"),
           None => {
             wat_emit("    (call_indirect (type ")
             wat_emit(perform_ft(disp, args))
@@ -5435,11 +5504,6 @@ fn emit_args_word(args) = each(
   },
   args
 )
-
-fn repr_is_wide(r) with Pure = match r {
-  RI32 => false,
-  _ => true,
-}
 
 // The op a dispatch performs — None for a driver, which is not an op.
 fn perform_op_name(disp) = match disp {

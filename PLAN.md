@@ -1245,16 +1245,25 @@ and this is the STATE.
   the board ran read one field or took one shape. Two open rows meet at
   one fresh variable now, only free terminals are ever written, and every
   reader walks the chain through `record_row_full`
-  (`Hβ.infer.record-row-vars-are-not-unioned`). What it exposed is named
-  and next: a handler's arms read their config through the declaration's
-  row, one arm set for every install
-  (`Hβ.emit.handler-arms-specialize-per-install`). The other exposure, a
-  base body whose every reference resolved to a twin, emitted anyway with
-  its floors narrated at a developer who never calls it, CLOSED the same
-  day (R0′, pin b29e319b): emit runs a second reach over the references
-  under their brackets, a decl nothing live names is not emitted, and the
-  wheel's field-offset floors went 8 → 0
-  (`Hβ.emit.dead-base-emitted-beside-its-twins`).
+  (`Hβ.infer.record-row-vars-are-not-unioned`). Both things it exposed
+  CLOSED the same day. A base body whose every reference resolved to a
+  twin was emitted anyway, its floors narrated at a developer who never
+  calls it (R0′, pin b29e319b): emit runs a second reach over the
+  references under their brackets, a decl nothing live names is not
+  emitted, and the wheel's field-offset floors went 8 → 0
+  (`Hβ.emit.dead-base-emitted-beside-its-twins`). And a handler's arms read
+  their config through the declaration's row, one arm set for every
+  install (R0b, pin 30a35888): an install is a reference site, its config
+  arguments key the arms it runs, and the record stores the twins — except
+  where a key would move the op's face, which stays on the word protocol
+  (`Hβ.emit.handler-arms-specialize-per-install`,
+  `Hβ.emit.arm-twin-converts-at-its-face`). R0b exposed two more, both
+  measured and next: the twin cap counts a base's twins program-wide, so
+  ten record shapes through a two-level chain trap where eight run
+  (`Hβ.emit.twin-cap-meters-breadth-not-divergence`); and the install
+  lowers a handler's state inits in the installer's scope, where its config
+  does not exist — the one root of `Hβ.lower.handler-state-init-reads-config`
+  and `Hβ.lower.install-config-capture-read`.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

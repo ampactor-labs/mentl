@@ -271,6 +271,12 @@ fn spine_boundary_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open 
   list_index(spine_page(spine, h).boundaries, spine_slot(h))
 }
 
+fn spine_install_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
+  NoInstall
+} else {
+  list_index(spine_page(spine, h).installs, spine_slot(h))
+}
+
 // The op-based face of the state-passed occurs family — for bracketed
 // pre-check sites (unify's typed-render occurs report), which hold no
 // spine: one seed read, then a zero-op walk. The arms call the family
@@ -811,6 +817,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     spine_put_install(spine, h, ish)
     resume()
   },
+  graph_install_at(h) => resume(spine_install_at(spine, spine_open, h)),
   graph_emitfn_note(entry) => // The emittable-fn
   // enumeration (the no-mint resolution): one append per synthesized-fn
   // construction, in lower's deterministic walk order. Non-trailed by
@@ -1918,6 +1925,9 @@ effect LookupTy {
   spec_ctx_set([(Int, Ty)], String)
   spec_ctx_clear()
   spec_enc_active() -> String
+  // The bracket in force, so a site that opens its own — an install's
+  // state inits under the install's key — can restore the one it was in.
+  spec_ctx_active() -> ([(Int, Ty)], String)
 }
 
 // ─── the specialization projection — lookup_ty under a twin's pairs ──
@@ -2037,6 +2047,7 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
   spec_ctx_set(prs, e) => resume() with spec_pairs = prs, spec_enc = e,
   spec_ctx_clear() => resume() with spec_pairs = [], spec_enc = "",
   spec_enc_active() => resume(spec_enc),
+  spec_ctx_active() => resume((spec_pairs, spec_enc)),
   lookup_ty(h) => match graph_chase(h) {
     GNode(kind, reason) => if len(spec_pairs) > 0 {
       match kind {

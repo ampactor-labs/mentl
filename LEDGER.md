@@ -35,6 +35,73 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-28 · pin 30a3588811818aa8 (TRANSITION m3 == m4) · A HANDLER'S ARMS ARE KEYED BY ITS INSTALL.
+  R0b. An arm is lowered once, from the handler's declaration, so every
+  install ran one arm set reading its config through the declaration's own
+  types — an open row, a free variable. Measured on boot b29e319b: two
+  installs of one handler with `{x: 1, y: 2}` and `{a: 7, x: 3, y: 4}`
+  trapped at the field-offset floor (exit 134, through an arm and through a
+  helper the arm calls), a multi-shot handler's arms the same, and an arm
+  showing its Float config printed `1048592` for `2.5`.
+  **The form:** an install is a reference site. The install column carries
+  the config arguments' handles (`InstallOf(hname, cfg_hs, groups)`, read by
+  `graph_install_at`), and `arm_site_pairs` (lower.mn) walks the handler
+  scheme's config parameters against those arguments' types — the walk a
+  call's pairs take — so an install's arms are twinned under exactly its
+  instantiation. `RefArm(install, arm)` in `low_refs` makes the emitted
+  reach demand them; `emit_arm_writes` stores the twins' indices in the
+  record; `perform_target` sends a frame-resolved perform to its install's
+  own twin; a handler whose config can key (`handler_may_key`) dispatches
+  every perform through the record's slot, since two installs may run two
+  arm sets; and the multi-shot driver reads its arm through the slot too
+  (`arm_slot_offset` in `redrive_handlers`, where `emit_redrive_fns` called
+  the arm by name). The declaration's state inits evaluate under the
+  install's key. **The face rule:** an arm signs its op's declared
+  signature, and every variable an op mentions is an argument of its
+  effect's instance, so a key binding one of those — or the answer a
+  multi-shot arm hands its driver — to a wide scalar would move a width the
+  op boundary does not convert; that install keeps the base arms, on the
+  word protocol as before (`Hβ.emit.arm-twin-converts-at-its-face`).
+  **Found by the build, both fixed:** (1) the first build answered 0 where
+  1 was right on a generic accumulator keyed at Float: a state init copying
+  its config read it at handle 0, as a word, so the state SHARED the
+  config's cell and every commit rewrote the config (`sum > init` compared
+  one cell with itself). The boot's WAT shows the same sharing on a
+  monomorphic Float config. The read carries the reference's handle now.
+  (2) The annotated twin of that probe was still wrong, and the caret
+  projection said why: `step, : t7516`. `mint_handler_config_tparams`
+  minted a fresh variable per parameter and never read `param_ty`, so a
+  handler's config annotations were dropped; it builds through
+  `build_param_types` now.
+  **Kills:** "keying the arms clears the state-init probe" — `with n =
+  cfg.x` still traps: the offset resolves under the key, and the floor
+  underneath, `unbound name cfg`, is the trap it always was (the boot's
+  field-offset warning named a second floor on the same path). "The
+  iteration handlers' eight arm twins each are a cap on arms" — the cap is
+  on `map` (188 twins, 180 of them capped), whose capped twins demand base
+  names.
+  **Fixtures, RED on b29e319b:** micros `mn-arm-config-two-shapes` (46;
+  134), `mn-arm-config-walked` (46; 134), `mn-arm-config-multishot` (30;
+  134), `mn-handler-float-state` (0; 1), `mn-handler-config-annotated` (0;
+  1); frontier `mn-arm-config-record` (42; 134) and
+  `mn-arm-config-show-float` (1; 0). `mn-arm-key-keeps-the-face` (7) holds
+  the face rule, green on both.
+  **What it exposed, both measured, both R0c:** (1) the twin cap counts a
+  base's twins program-wide, so `outer(u) = inner(u)` over ten record
+  shapes floors the ninth and tenth and traps (eight run) —
+  `Hβ.emit.twin-cap-meters-breadth-not-divergence`. (2) The install lowers
+  the declaration's state inits in the INSTALLER's scope, where the config
+  names do not exist, and the init list's `LUpval` arm reads every `LUpval`
+  as the install record's own slot — so a config argument that is a
+  captured variable is written with the record's unwritten slot (the
+  boot's WAT: `(local.get $__hstate_4070)(i32.load offset=8)(i32.store
+  offset=8)`). That is the root of `Hβ.lower.install-config-capture-read`
+  as well as `Hβ.lower.handler-state-init-reads-config`.
+  m3 leg 11.05s · 721MB; m4 leg 11.30s · 735MB peak (753388 KB); 414,613
+  WAT lines (+5,745); crown, proof-exactness, effect-identity green;
+  frontier 430 / 0 / 2; micros 171/171 through the candidate; census 0;
+  unprovable comparisons 34 and shows 1, unchanged; the board whole.
+
 - 2026-09-28 · pin b29e319b99990abf (TRANSITION m3 == m4) · THE MODULE IS WHAT LIVE CODE NAMES.
   R0′. R0 exposed it: every row-polymorphic helper whose calls all keyed
   twins now narrated its BASE body's floors — `fn pick(u) = u.x * 10 +

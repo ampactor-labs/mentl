@@ -3863,7 +3863,38 @@ across the concatenated weave). If it does, ordering is a second problem
 and the refusal waits on it; if it never does, the refusal is free. That
 measurement is the gate and it has not been taken.
 
-`Hβ.emit.handler-arms-specialize-per-install` — A HANDLER IS GENERIC AND ITS
+`Hβ.emit.handler-arms-specialize-per-install` — **CLOSED 2026-09-28 (R0b),
+pin 30a3588811818aa8.** An install is a reference site. The install column
+carries its config arguments' handles (`InstallOf(hname, cfg_hs, groups)`,
+read by `graph_install_at`, graph.mn), and `arm_site_pairs` (lower.mn) walks
+the handler scheme's config parameters against those arguments' types — the
+walk a call's pairs take — so the arms an install runs are twinned under
+exactly its instantiation, and `emit_arm_writes` stores the twins' indices
+in the record. The emitted reach demands them through `RefArm(install,
+arm)`; a frame-resolved perform calls its install's own twin
+(`perform_target`); a handler whose config can key dispatches every perform
+through the record's slot, since two installs may run two arm sets
+(`handler_may_key`); and the multi-shot driver reads its arm through the
+slot for the same reason (`arm_slot_offset`). The declaration's state inits
+evaluate under the install's key. THE FACE RULE stays: a key binding an
+effect-instance variable, or a multi-shot arm's answer, to a wide scalar
+keeps the base arms (`Hβ.emit.arm-twin-converts-at-its-face`). Gates, each
+RED on boot b29e319b: micros `mn-arm-config-two-shapes` (46; 134),
+`-walked` (46; 134), `-multishot` (30; 134), `mn-handler-float-state` (0;
+1), `mn-handler-config-annotated` (0; 1); frontier `mn-arm-config-record`
+(42; 134) and `mn-arm-config-show-float` (1; 0 — the arm printed `1048592`
+for `2.5`); `mn-arm-key-keeps-the-face` (7) holds the face rule.
+▶ FOUND BY THE BUILD, both closed with it: a state init copying a config
+read it at handle 0, as a word, so a wide config's state SHARED the
+config's cell and every commit rewrote the config (the read carries the
+reference's handle now); and a handler's config ANNOTATIONS were dropped —
+`mint_handler_config_tparams` minted a fresh variable per parameter and
+never read `param_ty` (the caret projection rendered `step, : t7516`), so
+`acc(init: Float, step: Float)` had free config types.
+▶ WHAT IT EXPOSED: `Hβ.emit.twin-cap-meters-breadth-not-divergence`, and
+the root of `Hβ.lower.handler-state-init-reads-config` and
+`Hβ.lower.install-config-capture-read` (one root; both entries carry it).
+THE ENTRY AS WRITTEN AT R0: A HANDLER IS GENERIC AND ITS
 ARMS ARE NOT. `handler facting(cfg) { facts_now() => … cfg.x … }` reads its
 config through an open row, and an install `(…) ~> facting(prev)` proves
 the whole record at the install the way a call proves an argument — but the
@@ -3883,6 +3914,60 @@ those pairs, and the install stores the twins' indices. The derivative
 reading needs it: `derive.mn`'s `deriving(prev, …)` reads its config's
 fields in five arms. Gates: the e2 fixture and a3 turn green, and two
 installs of one handler with two config shapes each read their own.
+
+`Hβ.emit.arm-twin-converts-at-its-face` — R0b's named remainder. An arm
+signs its op's DECLARED signature: a performer converts to it, and a slot
+dispatch calls through it. Every type variable an op mentions is an
+argument of its effect's instance, so an install whose key binds one of
+those — or the answer a multi-shot or abandon arm hands its driver — to a
+wide scalar would move a width that boundary does not convert. Such an
+install keeps the BASE arms (`arm_pairs_of` answers `[]`), and the base
+arm is NOT correct there. ▶ MEASURED the hour R0b pinned, on 30a35888 and
+b29e319b alike: `effect Acc { add(x: a); get() -> a }` under `handler
+keep_sum(init) with s = init { add(x) => resume() with s = s + x, … }`
+installed at `1.5` — the base arm emits `(i32.load offset=12)(local.get
+$x)(i32.add)`, the sum of two BOX POINTERS, with no diagnostic, and the
+program traps (134); the same handler at Int answers 6. L1's emit law — a
+variable still free at emit is a floor twin's quantified var, a word by
+construction, because every wide instantiation mints its own twin — is
+false for arms: the face rule is an instantiation that mints no twin. What
+passes through the arm untouched (a callback's argument,
+`mn-arm-key-keeps-the-face`, 7) is right; what the arm computes on is not.
+THE FORM, and most of it exists: a wide symbol's table slot already holds
+its `$wf$` word-face wrapper, so a SLOT dispatch into a wide arm twin
+crosses the op boundary at the word face with no new mechanism. Only the
+frame-resolved direct call names the twin itself. So: key the arms under
+the instance variables too, and have that direct call name the twin's
+word face when the twin is wide — one rule at the op boundary, no face
+exception. The answer a multi-shot or abandon arm hands its driver stays
+facing until the redrive's own protocol carries a wide answer (measure
+first: base arms under a wide answer may already refuse at assembly).
+`eq-in-arm-pointer`'s declared-standing failure is this class on
+comparison; it should close with it. R0c's third part.
+
+`Hβ.emit.twin-cap-meters-breadth-not-divergence` — THE CAP COUNTS THE
+WRONG THING. `emit_reach_fix` caps a twin when its base already has eight
+accepted twins anywhere in the program (`spec_buf_base_count`); past the
+cap the twin still registers, but every reference in its body demands a
+BASE name. The cap exists for polymorphic recursion — its own comment says
+"a self-instantiating chain mints a fresh mangle per nesting level" — and
+breadth is not recursion. Measured 2026-09-28: the wheel's `map` has 188
+twins and 180 run their interiors at the floor (which is why every
+iteration handler emits exactly eight arm twins); and `fn inner(u) = u.x *
+10 + u.y`, `fn outer(u) = inner(u)` over ten record shapes floors the
+ninth and tenth `outer` twins into base `inner`, whose row never closed —
+two `T_FieldOffsetUnprovable` and exit 134, on boot b29e319b and on R0b's
+pin alike; eight shapes run. R0″ would turn that floor into a refusal of a
+valid program, so this lands first. THE FORM: a demand carries its
+LINEAGE, the twin bases whose body scans produced it; a base appears twice
+on one lineage only when its body reaches itself at a NEW key (the
+mangle dedup swallows every same-key recursion), so its count on its own
+lineage is the recursion depth, and the cap reads that. A base body's
+keys are fixed by its own source types, so a base scan starts a fresh
+lineage. Membership becomes a name map (the linear scan would grow with
+the twin set). Gates: the ten-shape micro (0; 134 on 30a35888), and the
+sig'd polymorphic-recursion leg stays green (`depth([x], n - 1)` still
+caps, now along its own chain).
 
 `Hβ.emit.dead-base-emitted-beside-its-twins` — **CLOSED 2026-09-28 (R0′),
 pin b29e319b99990abf.** The emitted reach (`emit_reach`, backends/wasm.mn) reads
@@ -6507,7 +6592,28 @@ THE GATE LANDS WITH THE FIX. The fixture is RED today by construction,
 and gating today's behaviour GREEN would canonize the bug — §9.11's own
 warning that a banked expectation can be the bug canonized.
 
-`Hβ.lower.handler-state-init-reads-config` — the SYMPTOM of the root
+`Hβ.lower.handler-state-init-reads-config` — ▶ THE ROOT, MEASURED
+2026-09-28 at R0b's pin (the fix is R0c's second half): the install
+LOWERS THE DECLARATION'S STATE INITS AT EVERY INSTALL, in the
+INSTALLER's scope (`lookup_handler_state_inits_of`, lower.mn). A handler
+declaration is top-level and its inits are judged with its config bound,
+so they name only the config and globals — and in the installer's scope
+the config names do not exist. `with n = cfg` worked only through two
+special cases (`lower_state_init` mapped a bare config name to `LUpval`,
+and `emit_state_init_writes` read every `LUpval` as the install record's
+own slot); `with n = cfg.x` lowers `cfg` to `(unreachable) ;;
+executable-boundary invariant: unbound name cfg — infer proved it missing`,
+a comment that is false here, silently (exit 134 on 30a35888, no
+diagnostic; the boot before printed a field-offset warning about a second
+floor on the same path). THE FORM: handler = state = closure — the arms
+are functions of the install record, and so are the inits. Lower them
+once, at the declaration, in the arms' frame (config names are captures at
+slots 0..nconfig-1), as one fn per handler keyed like its arms; the
+install writes its config arguments as ordinary expressions and calls the
+init with the record before its world push, so an init still performs in
+the installer's world. Both special cases delete. RED fixture:
+`mn-handler-init-reads-config` (35 over two shapes; 134).
+THE ENTRY AS WRITTEN 2026-08-17: the SYMPTOM of the root
 above, bisected 2026-08-17 to an exact four-variant repro before the
 root was found. A handler's STATE INITIALIZER cannot read that
 handler's own CONFIG PARAMETER. Four marches, one variable each, on
@@ -6543,6 +6649,27 @@ region-index fill, whose only clean fix is exactly this shape. The
 alternative route stands if the substrate fix proves deep — put the
 region fact in a spine column (§11 5.5's test) and the per-install fill
 has nothing left to fill.
+
+`Hβ.lower.install-config-capture-read` — a config argument that is a
+CAPTURED variable of the installing closure arrives as 0. Banked in the
+march_emit dig (the unregistered fixture `tests/frontier/mn-install-
+config-capture.mn`, expect 12), with a diagnosis that was half wrong:
+"the install-init emission resolves locals but not captures". Captures
+resolve — the argument lowers to `LUpval`, a read of the ENCLOSING
+closure's record. ▶ THE ROOT, MEASURED 2026-09-28 in the boot's WAT: the
+config arguments ride the same list as the state inits, and
+`emit_state_init_writes` reads EVERY `LUpval` in that list as a self-read
+of the INSTALL record, so the captured `fd` is written with the record's
+own unwritten slot — `(local.get $__hstate_4070)(local.get
+$__hstate_4070)(i32.load offset=8)(i32.store offset=8)`, 0 from a fresh
+alloc. One root with `Hβ.lower.handler-state-init-reads-config`, and one
+fix: with the inits a function of the record, the config arguments are
+ordinary installer-frame expressions and the special case deletes. The
+wheel's workarounds go with it — `march_emit`'s `let sink_fd = fd + 0`
+and the CONFIG CAVEAT at `wat_to_file`. The fixture had rotted
+unregistered: A3-pos made its authored positive rows caps, and they
+refuse its own WASI callback; de-capped it exits 0 on 30a35888 where 12
+is right, and it registers as a frontier leg with the fix.
 
 `Hβ.own.region-index-per-install` — MEASURED and its first fix REFUTED,
 2026-08-17, pin 5a61fc4eba. With the branch spawn deleted the profile is

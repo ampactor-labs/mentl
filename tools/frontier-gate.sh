@@ -1660,6 +1660,15 @@ for i in "${!compilers[@]}"; do
   # c5439637, which answered 46 and warned twice about `pick`'s base.
   run_unnarrated "$compiler" dead-base-unnarrated \
     "$ROOT/tests/frontier/mn-dead-base-unnarrated.mn" 46 T_FieldOffsetUnprovable "$dir"
+  # A handler's arms run under the key of the install that runs them (R0b,
+  # 2026-09-28) — its config record's layout, its config value's width. RED
+  # on boot b29e319b: the record read trapped (134) and the Float config
+  # rendered as its box's address (0). The micros hold the prelude-free
+  # shapes (two layouts, a walked perform, a multi-shot driver, Float state).
+  run_program "$compiler" arm-config-record \
+    "$ROOT/tests/frontier/mn-arm-config-record.mn" 42 yes "$dir"
+  run_program "$compiler" arm-config-show-float \
+    "$ROOT/tests/frontier/mn-arm-config-show-float.mn" 1 yes "$dir"
   # The root-row governance gate's three tiers, each pinned: an
   # EVIDENCE-floor demand refuses even with an install elsewhere (a
   # dead-chain perform walks garbage evidence, no belt — the one strict

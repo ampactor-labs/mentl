@@ -493,8 +493,9 @@ type ConvertKind
 // the handler alone and the executable-root census wants the op alone, and a
 // stored fusion serves the first by making the other two unaskable —
 // measured once already in this arc, as three micros that stopped naming
-// E_InitPerformsOwnOp the moment the name went in pre-joined.
-// `perform_target_symbol` spells it; nothing stores it.
+// E_InitPerformsOwnOp the moment the name went in pre-joined. The emit
+// spells the symbol where it calls it — under the install's key for a frame
+// answer (`arm_site_pairs`) — and nothing stores it.
 type ArmTarget = ArmNamed(String) | ArmSlot
 
 type PerformDispatch = PdFrame(Int, String, String) | PdWalk(String, Int, String, ArmTarget) | PdDriver(String)
@@ -2170,8 +2171,13 @@ fn perform_dispatch_at(handle, op_name, ename, slot, lexical) = match lexical {
     Some(hname) => // The arm is static (one handler declares it) and the record is not. The
     // record comes from the SAME walk the unbound case uses — it used to come
     // from a second one keyed on the handler name, which could not answer an
-    // ambiguous op and was the whole of the eta ceiling.
-    {
+    // ambiguous op and was the whole of the eta ceiling. A handler whose
+    // installs may key their arms has no ONE arm to name: the record the walk
+    // finds holds the arm its own install runs.
+    if handler_may_key(hname) {
+      graph_dispatch_note(handle, DtEvidence(ename, slot))
+      PdWalk(ename, slot, op_name, ArmSlot)
+    } else {
       graph_dispatch_note(handle, DtSingleton(hname))
       PdWalk(ename, slot, op_name, ArmNamed(hname))
     },
@@ -2182,19 +2188,21 @@ fn perform_dispatch_at(handle, op_name, ename, slot, lexical) = match lexical {
   },
 }
 
-// The arm fn this dispatch names — None when it reaches the arm through the
+// The fn this dispatch calls — None when it reaches the arm through the
 // record's own slot, which names nothing. An OPTION rather than "", because
 // the empty string is a constructor nobody named: both readers here have to
 // branch on presence, and a sentinel makes that branch a string compare that
 // any other empty name would satisfy. Emit writes the call and reachability
 // keeps the callee alive, so the two read ONE projection — the divergence
 // where emit called a symbol reachability had already pruned is what this fn
-// exists to make unconstructible.
-fn perform_target_symbol(disp) = match disp {
-  PdFrame(_, hname, op_name) => Some("{hname}_{op_name}"),
-  PdWalk(_, _, op_name, ArmNamed(hname)) => Some("{hname}_{op_name}"),
+// exists to make unconstructible. A frame answer's target is the install's
+// arm REFERENCE, not a spelled name: which arm the install runs is its key's
+// to decide, under whatever bracket the two readers stand in.
+fn perform_target(disp) = match disp {
+  PdFrame(ih, hname, op_name) => Some(RefArm(ih, arm_fn_name(hname, op_name))),
+  PdWalk(_, _, op_name, ArmNamed(hname)) => Some(RefName(arm_fn_name(hname, op_name))),
   PdWalk(_, _, _, ArmSlot) => None,
-  PdDriver(name) => Some(name),
+  PdDriver(name) => Some(RefName("op_{name}")),
 }
 
 // The op's UNIQUE default handler, read from the EffectOpScheme edge drawn at
@@ -4377,11 +4385,18 @@ fn lower_state_field_inits(config, state) = {
   map((field) => lower_state_init(config_names, field), state)
 }
 
+// The read carries the reference's own handle, because its width is the
+// config's: a wide config copied into state takes a cell of its own, and the
+// state's commits write through that cell. At handle 0 the read was a word,
+// so the state kept the CONFIG's cell and every commit rewrote the config —
+// `sum > init` compared one cell with itself (measured 2026-09-28 on a
+// generic handler keyed at Float; a monomorphic Float config shared its cell
+// the same way).
 fn lower_state_init(config_names, field: {init: Node, name: String}) = match field.init {
-  N(body, _, _) => match body {
+  N(body, _, vh) => match body {
     NExpr(VarRef(name)) => {
       let slot = index_of_name(config_names, name, 0)
-      if slot >= 0 { LUpval(0, slot) } else { lower_expr(field.init) }
+      if slot >= 0 { LUpval(vh, slot) } else { lower_expr(field.init) }
     },
     _ => lower_expr(field.init),
   },
@@ -5969,12 +5984,16 @@ type LowRef
   // a named reference and the handle its instantiation is read at: an
   // LGlobal, or an LDirectCall's callee
   = RefSite(Int, String)
-  // a name no instantiation keys: a perform's arm target, an install's arm
-  // groups, a runtime fn emit mints for a show, a hash or a wide comparison
+  // an install's arm: the install's handle is where the key it runs the
+  // arm under is read (`arm_site_pairs`)
+  | RefArm(Int, String)
+  // a name no instantiation keys: a walked perform's arm target, a driver,
+  // a runtime fn emit mints for a show, a hash or a wide comparison
   | RefName(String)
 
 fn ref_name(r) = match r {
   RefSite(_, n) => n,
+  RefArm(_, n) => n,
   RefName(n) => n,
 }
 
@@ -5982,20 +6001,20 @@ fn low_refs_list(acc, exprs) = fold(acc, low_refs, exprs)
 
 fn name_ref(acc, n) = [RefName(n)] ++ acc
 
-fn arm_group_refs(acc, grp) = fold(acc, name_ref, group_arms(grp))
+fn arm_refs(acc, ih, groups) =
+  fold(acc, (a, n) => [RefArm(ih, n)] ++ a, flatten(map(group_arms, groups)))
 
 fn arm_body_refs(acc, arm) = match arm {
   (_, body) => low_refs(acc, body),
 }
 
-// Emit calls op_<target> (the arm fn) for a frame-dispatched perform, so
-// the perform reaches that arm by its emitted name — the un-prefixed target
-// matched nothing (installed handlers survive via their reached container,
-// but a singleton dispatch to an UNINSTALLED handler is the arm fn's only
-// reference). A walked dispatch names nothing and reaches its arm through
-// the chain node's record.
-fn perform_target_refs(acc, disp) = match perform_target_symbol(disp) {
-  Some(sym) => name_ref(acc, "op_{sym}"),
+// Emit calls a perform's target by name (`perform_target`), so reachability
+// keeps that name alive: installed handlers survive via their reached
+// container, but a singleton dispatch to an UNINSTALLED handler is the arm
+// fn's only reference. A slot dispatch names nothing and reaches its arm
+// through the chain node's record.
+fn perform_target_refs(acc, disp) = match perform_target(disp) {
+  Some(r) => [r] ++ acc,
   None => acc,
 }
 
@@ -6003,7 +6022,7 @@ fn low_refs(acc, expr) = match expr {
   LGlobal(h, n) => [RefSite(h, n)] ++ acc,
   LDirectCall(_h, fh, n, _t, args) => low_refs_list([RefSite(fh, n)] ++ acc, args),
   LPerform(_h, disp, args) => low_refs_list(perform_target_refs(acc, disp), args),
-  LHandleWith(_h, b, hn, _hname, inits, arm_names) => low_refs_list(low_refs(low_refs(fold(acc, arm_group_refs, arm_names), b), hn), inits),
+  LHandleWith(ih, b, hn, _hname, inits, arm_names) => low_refs_list(low_refs(low_refs(arm_refs(acc, ih, arm_names), b), hn), inits),
   LLet(_h, _n, inner) => low_refs(acc, inner),
   LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps) => low_refs_list(low_refs_list(acc, body), caps),
   LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps, _, _) => low_refs_list(low_refs_list(acc, body), caps),
@@ -6061,6 +6080,7 @@ fn ref_is_wide(r) = match r {
     let pairs = spec_site_pairs(h, n)
     if len(pairs) == 0 { false } else { !spec_enc_is_floor(spec_enc(pairs)) }
   },
+  RefArm(ih, _) => byte_len(arm_enc(arm_site_pairs(ih))) > 0,
   RefName(_) => false,
 }
 
@@ -6869,6 +6889,103 @@ fn spec_site_pairs_resolved(name: String, rt) = match env_lookup(name) {
 }
 
 fn spec_site_pairs(h, name: String) = spec_site_pairs_resolved(name, spec_resolve(lookup_ty(h)))
+
+// THE INSTALL KEYS ITS ARMS. An arm is lowered once, from the handler's
+// declaration, so every install ran one arm set that read its config through
+// the declaration's own types — an open row, a free variable. A record config
+// read field by field floored at every install, and a Float config compared or
+// showed as the address of its box. An install is a reference site like a
+// call: its config arguments are where the declaration's config variables meet
+// the instantiation this install runs at, so the arms it runs are twinned under
+// exactly those pairs, and the install stores the twins in its record.
+//
+// The key may not move an arm's FACE. An arm signs its op's declared
+// signature — what a performer converts to and a slot dispatch calls through —
+// and every type variable an op mentions is an argument of its effect's
+// instance, so the variables the op boundary sees are the handler's instance
+// variables, plus its answer, which a multi-shot or abandon arm hands its
+// driver. A key binding one of those to a wide scalar would change a width
+// that boundary does not convert, so that install keeps the base arms, which
+// carry the value by reference as they always have
+// (`Hβ.emit.arm-twin-converts-at-its-face`).
+fn arm_site_pairs(install_h) = match graph_install_at(install_h) {
+  NoInstall => [],
+  InstallOf(hname, cfg_hs, _) => match env_lookup(hname) {
+    None => [],
+    Some(entry) => match entry {
+      (scheme, _r, kind) => match kind {
+        HandlerKind(_, _, _, arms) => arm_pairs_of(judgment_pair(scheme), cfg_hs, arms),
+        _ => // a name that is not a handler has no arms to key
+        [],
+      },
+    },
+  },
+}
+
+fn arm_pairs_of(jp, cfg_hs, arms) = match jp {
+  (qs, sty) => if len(qs) == 0 {
+    []
+  } else {
+    match sty {
+      TFun(ps, res, _) => {
+        let pairs = fold([], arm_pair_step, zip(ps, cfg_hs))
+        let facing = arm_face_roots(res, arms)
+        if any({ (v, t) => repr_is_wide(repr_of(t)) && any({ f => f == v }, facing) }, pairs) {
+          []
+        } else {
+          spec_pairs_sort(pairs)
+        }
+      },
+      _ => // a handler without config: its install has nothing to key
+      [],
+    }
+  },
+}
+
+fn arm_pair_step(acc, pc) = match pc {
+  (p, h) => spec_pairs_walk(param_ty(p), spec_resolve(lookup_ty(h)), acc),
+}
+
+// The roots the op boundary sees: the instance the scheme hands every
+// install, and the answer every arm body is.
+fn arm_face_roots(res, arms) = {
+  let answer = match arms {
+    [] => [],
+    [a, ..._] => free_in_ty(chase_deep(lookup_ty(node_handle(handler_arm_body(a))))),
+  }
+  map(graph_chase_handle, free_in_ty(res) ++ answer)
+}
+
+// The install's key as a twin suffix — "" when its arms run as declared.
+fn arm_enc(pairs) = if len(pairs) == 0 {
+  ""
+} else {
+  let e = spec_enc(pairs)
+  if spec_enc_is_floor(e) { "" } else { e }
+}
+
+// Whether any install of this handler can run twinned arms: a quantified
+// variable in its config. A perform no install of it answers in its own
+// frame then reaches the arm through the record the walk finds, never
+// through the base arm's symbol, which a keyed install does not run.
+fn handler_may_key(hname) = match env_lookup(hname) {
+  None => false,
+  Some(entry) => match entry {
+    (scheme, _r, kind) => match kind {
+      HandlerKind(_, _, _, _) => match judgment_pair(scheme) {
+        (qs, sty) => if len(qs) == 0 {
+          false
+        } else {
+          match sty {
+            TFun(ps, _, _) => any({ p => len(free_in_ty(param_ty(p))) > 0 }, ps),
+            _ => false,
+          }
+        },
+      },
+      _ => false,
+    },
+  },
+}
 
 // The ONE naming projection every reference-emitting arm reads: the site's
 // key, mangled when any var lands wide, the plain name at the floor.

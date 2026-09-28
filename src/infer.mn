@@ -9890,20 +9890,23 @@ fn is_assert_call(callee) with Pure = match callee {
 fn predicate_of_assert_arg(args) =
   if len(args) == 0 { PTrue } else { predicate_of_bool_expr(last(args)) }
 
-// Config is [TParam] (the fn-param carrier): the graph-registered var is
-// minted HERE, superseding the parse-time placeholder, while the param's
-// NAME and DEFAULT ride through unchanged — the default's one home is the
-// TParam's fifth slot, read by resolve_call_args at every install that
-// omits the field (SYNTAX §«Default parameter values»).
-fn mint_handler_config_tparams(config, hname, base_idx) = map(
-  {
-    (i, p) => {
-      let idx = base_idx + i
-      let h = mint(FnParam(hname, idx, Inferred("config-param of '{hname}'")))
-      TParam(param_name(p), TVar(h), Unmarked, Unmarked, param_default(p))
-    },
-  },
-  enumerate(config)
+// Config is [TParam] (the fn-param carrier), and it mints exactly as a
+// function's parameters do: one graph handle each, superseding the
+// parse-time placeholder, with an authored annotation bound to it
+// (`build_param_types`) and the NAME, markers and DEFAULT riding through —
+// the default's one home is the TParam's fifth slot, read by
+// resolve_call_args at every install that omits the field (SYNTAX
+// §«Default parameter values»). A fresh variable per parameter dropped
+// every annotation, so `handler acc(init: Float, step: Float)` was generic
+// and its arms added and compared the addresses of the install's boxes:
+// `sum > init` answered 1 for 3.0 against 5.0, measured 2026-09-28 on boot
+// b29e319b.
+fn mint_handler_config_tparams(config, hname, base_idx) = build_param_types(
+  config,
+  map(
+    { (i, _) => mint(FnParam(hname, base_idx + i, Inferred("config-param of '{hname}'"))) },
+    enumerate(config)
+  )
 )
 
 // Utilities

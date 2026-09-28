@@ -206,6 +206,17 @@ fn repr_width(r) with Pure = match r {
   RV128 => 16,
 }
 
+// A representation above the word floor — the class a word-signed boundary
+// carries by reference (a box), and the one a twin's key may not move at a
+// face it does not convert.
+fn repr_is_wide(r) with Pure = match r {
+  RI32 => false,
+  RI64 => true,
+  RF64 => true,
+  RF32 => true,
+  RV128 => true,
+}
+
 // stride_of — the byte STRIDE of a sequence's element SLOT, the axis below
 // repr_of. A TByte element packs 1 byte (the §4① String's byte face; a byte
 // VALUE stays a word, but its slot is 1); every other element occupies a full
@@ -1030,9 +1041,11 @@ type StateSlotHome = SlotPairs([(String, Int)])
 // The install-shape column's value (lowering-is-a-column step i): a `~>`
 // install site's handler name, its config-arg PROGRAM handles, and the
 // per-effect arm-name groups — the decl-side state inits stay readable
-// at the handler decl through the name. One all-payload constructor —
-// the sparse column's absent contract is the addr-0 virgin cell.
-type InstallShape = InstallOf(String, [Int], [{arms: [String], ename: String}])
+// at the handler decl through the name. The config handles are where the
+// install's instantiation is read, which is what keys the arms it runs
+// (`arm_site_pairs`, lower.mn). `NoInstall` comes first so a virgin cell
+// reads as it, the `BindUnwritten` precedent.
+type InstallShape = NoInstall | InstallOf(String, [Int], [{arms: [String], ename: String}])
 
 // The emittable-fn enumeration's entry kind (lowering-is-a-column, the
 // no-mint resolution): each synthesized fn shape is a PROJECTION of
@@ -2382,6 +2395,10 @@ effect GraphWrite {
   // the shape at the install node's handle — same in-place, non-trailed
   // contract.
   graph_install_note(Int, InstallShape)
+  // Its read, by the install's handle: the install emit, a perform the
+  // install answers in its own frame, and the emitted reach all key the
+  // install's arms from one home.
+  graph_install_at(Int) -> InstallShape
   // The emittable-fn enumeration's write (the no-mint resolution):
   // each of lower's seven LFn construction sites notes (kind, origin
   // handle, deterministic name, fence, captures) at the moment those

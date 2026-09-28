@@ -1,0 +1,18 @@
+// expect: 30
+// mn-arm-config-multishot — a multi-shot arm reading its config's fields.
+//
+// The arm resumes twice, so the install runs through the handler's driver,
+// and the driver calls the arm the install's record holds — the one keyed
+// at `{x: 1, y: 2}`: (1·10) + (2·10).
+//
+// RED on boot b29e319b: exit 134, the config read through the
+// declaration's open row.
+effect C {
+  choose() -> Int
+}
+
+handler both(cfg) {
+  choose() => resume(cfg.x) + resume(cfg.y),
+}
+
+fn main() -> Int = choose() * 10 ~> both({x: 1, y: 2})

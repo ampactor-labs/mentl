@@ -1,0 +1,21 @@
+// expect: 46
+// mn-arm-config-two-shapes — one handler, two installs, two config records.
+//
+// The arm reads two fields of its config, so the config's type is an open
+// row, and each install hands it a different record: `{x: 1, y: 2}` and
+// `{a: 7, x: 3, y: 4}`. Each install runs the arm under its own record's
+// layout: 1·10 + 2 and 3·10 + 4.
+//
+// RED on boot b29e319b: exit 134. The arm was lowered once, from the
+// declaration, so every install ran one arm that read `cfg` through the
+// declaration's open row, and the field offsets were unprovable — the
+// floor trapped at the first read.
+effect Q {
+  q() -> Int
+}
+
+handler h(cfg) {
+  q() => resume(cfg.x * 10 + cfg.y),
+}
+
+fn main() -> Int = (q() ~> h({x: 1, y: 2})) + (q() ~> h({a: 7, x: 3, y: 4}))

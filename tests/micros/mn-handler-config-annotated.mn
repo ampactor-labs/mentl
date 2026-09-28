@@ -1,0 +1,25 @@
+// expect: 0
+// mn-handler-config-annotated — a handler's config annotation binds.
+//
+// `init: Float` and `step: Float` are the handler's declared parameter
+// types, so its arms compute in Float at every install: 5.0 falls to 3.0
+// after two ticks, which is not above 5.0.
+//
+// RED on boot b29e319b: 1. The config parameters were minted as fresh
+// variables, dropping both annotations, so the handler was generic and its
+// arms added and compared the addresses of the install's boxes.
+effect Tick {
+  tick()
+  total() -> Int
+}
+
+handler acc(init: Float, step: Float) with sum = init {
+  tick() => resume() with sum = sum + step,
+  total() => resume(if sum > init { 1 } else { 0 }),
+}
+
+fn main() -> Int = {
+  tick()
+  tick()
+  total()
+} ~> acc(5.0, -1.0)

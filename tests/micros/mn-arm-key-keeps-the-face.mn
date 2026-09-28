@@ -1,0 +1,25 @@
+// expect: 7
+// mn-arm-key-keeps-the-face — a key the op boundary would see stays unkeyed.
+//
+// `log`'s parameter is a type variable of the `Log` effect, so the arm
+// receives `x` across the op boundary at the word face, and the performer
+// boxes the Float it passes. `fmt` shares that variable, so keying the arm
+// at Float would change a width the boundary does not convert: the install
+// keeps the declared arm, which carries the value by reference.
+effect Log {
+  log(x: a)
+}
+
+handler logger(fmt) {
+  log(x) => {
+    fmt(x)
+    resume()
+  },
+}
+
+fn show_it(v: Float) -> () = ()
+
+fn main() -> Int = {
+  log(1.5) ~> logger(show_it)
+  7
+}
