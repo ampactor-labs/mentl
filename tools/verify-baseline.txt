@@ -948,7 +948,14 @@ frontier_expected_red: why-coordinates
 # 2026-09-28 · 57 -> 34 · R0′: the 23 were in base bodies no live reference
 # reaches, gone with them (the emitted reach). Read off the new compiler's
 # own compile of the wheel at pin b29e319b.
-eq_type_unprovable_max: 34
+# 2026-09-28 · 34 -> 2 · R0d: a variable a body compares keys its twin by
+# the structure it is instantiated at, word types included, so every
+# instantiation compares the type it proved and the base body nothing
+# reaches is not emitted. The two left are `list_compare_loop`'s `<` and `>`:
+# the word-list compare leaf the emit's own dispatch calls by name, a base
+# body by construction whose element is a word at every call it receives.
+# Read off the new boot's own compile of the wheel at pin 2d784560.
+eq_type_unprovable_max: 2
 
 # show_type_unprovable_max — show and interpolation splices whose operand type
 # is still a VARIABLE at emit, so the render prints the word as an integer:
@@ -964,17 +971,13 @@ eq_type_unprovable_max: 34
 # than a list of bugs. Counted from the pinned boot's own compile of the
 # wheel, so it reads 0 until the boot that carries the narration is pinned.
 # 2026-09-28 · 22 -> 1 · R0′: 21 of the 22 sat in unemitted base bodies.
-show_type_unprovable_max: 1
+# 2026-09-28 · 1 -> 0 · R0d: a variable a body shows keys its twin by the
+# structure it is instantiated at, so the last render reads its proven type.
+show_type_unprovable_max: 0
 
-# record_pattern_open_max — record patterns whose RECEIVER row is open, so
-# their field offsets come from the pattern's own index rather than the
-# receiver's full sorted field set. Born at ZERO (pin 4ce9914b7360), which
-# is a contract rather than a tolerance: the wheel's two sites were open
-# until their receivers were annotated one pin earlier, and they were
-# correct only by an author's promise the graph could not check — a
-# complete pattern over an open row is structurally identical to a partial
-# one. Seen RED by falsification: removing one annotation moves the count
-# 0 → 1 with the site located. Class: Hβ.lower.record-pattern-param-receiver.
+# loop_scaffold_refs_max — the distinct tools/*.sh scripts tools/loop-prompt.md
+# still names to run one iteration; monotone DOWN, falling only when a verb
+# replaces a script (the argument is verify.sh's scaffold ratchet).
 loop_scaffold_refs_max: 3
 
 # 2026-08-07: the QUIET gate (§4⑤'s Hylo bar as a banked ceiling, PLAN
@@ -1062,7 +1065,10 @@ authored_own_max: 62
 # 717 -> 715 (2026-09-28, R0c): the demand buffer's two `ref dbuf` params
 # left with `spec_buf_demanded` and `spec_buf_base_count` — the twin cap reads
 # the demand's own lineage, so nothing scans the buffer.
-authored_ref_max: 715
+# 715 -> 708 (2026-09-28, R0d): seven left with the record pattern's
+# lower-time offsets and rest specs, which the emit reads by name now; the
+# emit's two new field-width reads carry none.
+authored_ref_max: 708
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
@@ -1173,7 +1179,17 @@ authored_ref_max: 715
 # twins, one body). That is the way down, named: key a twin by what its
 # body observes (Hβ.emit.twin-key-is-what-the-body-reads). Same rule: ~1%
 # over the highest reading.
-selfcompile_peak_kb_max: 873000
+# LOWERED 873,000 -> 775,000 at R0d (2026-09-28): a twin is keyed by what
+# its body observes. Fixed input first: the boot (0bc8383e) compiled its
+# own source at 859,840 KB; the new compiler on that SAME source reads
+# 764,132–769,204 KB (two runs), so the machinery is the saving — the
+# judgment's high-water rose 17.5 MB (318.1 -> 335.6 MB, the demand marks on
+# the cells) and the written module fell 101.6 MB (722.4 -> 620.8 MB), twin
+# functions 3,033 -> 120. The new compiler on the new source reads
+# 761,252–766,488 KB (m3 legs) and 723,768 KB (m4 leg, the binary that
+# becomes the boot: 2,168,067 bytes where the prior boot was 3,137,880).
+# Same rule: ~1% over the highest reading.
+selfcompile_peak_kb_max: 775000
 
 # ── the compile's CONCURRENCY WIDTH (tools/thread-gate.sh) ────────────────
 # Guest OS threads the compile creates, counted at clone/clone3, as the

@@ -96,16 +96,18 @@ fn board_bounds() = [
   // list, and Verify's per-arm join), the board refused 238, and all three
   // became references — the two brackets one `spec_bracketed` taken as a
   // two-hole partial, which retired the pre-existing copy's lambda too.
-  Bound({ceiling: 234, shape: CsEffectfulLambda}),
-  // A record pattern whose receiver row never closes reads a field offset
-  // the graph cannot prove. `T_FieldOffsetUnprovable` reports that class at
-  // the receiver now; this line retires when that diagnostic arms.
-  Bound({ceiling: 0, shape: CsRecordPatternOpen}),
-  // Drift mode 10 — the nine survivors are documented sentinels, not masked
+  //
+  // 234 -> 231 (2026-09-28, R0d): the count read 232 at pin 0bc8383e, two
+  // under the ceiling the landing before left, and one more left with the
+  // untyped pattern lowering R0d deleted.
+  Bound({ceiling: 231, shape: CsEffectfulLambda}),
+  // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
-  // is exactly why the bound is a count and not zero.
-  Bound({ceiling: 9, shape: CsWildcardZero}),
+  // is exactly why the bound is a count and not zero. 9 -> 7 (2026-09-28,
+  // R0d): the count read 7 at pin 0bc8383e, so the bound admitted two new
+  // masked cases nobody would have seen.
+  Bound({ceiling: 7, shape: CsWildcardZero}),
   // Drift mode 13 — a bug is zero or it is blocking; a masked failure is the
   // surrender-fallback Anchor 2 deletes rather than wraps.
   Bound({ceiling: 0, shape: CsFailureMask}),

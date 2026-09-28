@@ -174,27 +174,6 @@ fn repr_of(ty) with Pure = match ty {
   RI32,
 }
 
-// repr_of_resolved — repr_of through a graph chase. A TTuple's element Tys
-// are TVars (collect_tvar_types at infer.mn:585 binds each element to a fresh
-// TVar handle); repr_of(TVar(_)) reads RI32 because a bare unresolved handle
-// IS a word. But a tuple element's TVar is resolved — it points at the proven
-// element type — so its WIDTH must read the resolved type, not the handle's
-// word default. This is the tuple-element analogue of LFieldLoad's
-// repr_of(lookup_ty(h)): chase the handle to its NBound Ty, THEN project the
-// repr. An unresolved chain (NFree) honestly stays RI32 (a 32-bit word — the
-// productive-under-error floor, never a fabricated width). One chase per
-// element, read live; no parallel width table.
-fn repr_of_resolved(ty) = match ty {
-  TVar(h) => match graph_chase(h) {
-    GNode(NBound(inner), _) => repr_of_resolved(inner),
-    _ => RI32,
-  },
-  TAlias(_, inner) => repr_of_resolved(inner),
-  TRefined(base, _) => repr_of_resolved(base),
-  TReprPin(r, _) => r,
-  _ => repr_of(ty),
-}
-
 // repr_width — the byte width of a representation class, by ADT match
 // (never `== 4`/`== 8` — drift mode 8). STEP 1's resolve_field_offset
 // prefix-sums this over a record's sorted fields; RV128 lanes pad to 16.
@@ -1124,8 +1103,8 @@ type Mutation
   | MSetGate(Int)
   // an instance noted under its root (undo = pop the newest note)
   | MInstanceNote(Int)
-  // a numeric gate entered on a type cell (undo = pop the newest)
-  | MSetNumericGate(Int)
+  // a demand entered on a type cell (undo = pop the newest)
+  | MSetDemand(Int)
 
 // 14 variants, one per operator form in SYNTAX.md's operator
 // precedence table. Exhaustive set; add a variant here AND update
@@ -1228,6 +1207,25 @@ fn binop_to_str(op) with Pure = match op {
 // before the demand is reached through the instance column. One gate per
 // arithmetic site; the op renders the refusal's operator.
 type NumericGate = NumericGate({op: BinOp, span: Span})
+
+// ─── TypeDemand — what an operation asks of its operand's type cell ────
+// One column carries every demand, and they share one mechanism: entered at
+// the judgment's site, carried by a free cell, checked or pushed at the one
+// writer (unify's var binds, a record row's continuation), ridden across an
+// alias, copied at instantiation, reached through the instance column.
+//
+// A NUMBER is arithmetic's demand, judged: a word passes, an aggregate
+// refuses. A SHAPE is a structural read's, and it never refuses — it marks
+// the variables whose structure the body reads, which is what a twin of the
+// body has to key: a comparison, a show or a hash reads its operand WHOLE,
+// every variable in it; a concat reads its operand's OUTER shape (a list or
+// not), a field load or a record pattern its receiver's (which fields the
+// row holds). A variable no shape reaches is read at its width alone, so a
+// twin keys it by its representation digit and never by its structure —
+// which is exactly how many distinct bodies an instantiation can emit.
+type ShapeRead = WholeShape | OuterShape
+
+type TypeDemand = DemandNumber(NumericGate) | DemandShape(ShapeRead)
 
 // Every graph node and every unification records a Reason. Mentl's
 // teach_why (spec 09) walks this DAG. Full provenance falls out.
@@ -1787,11 +1785,10 @@ effect StringTable {
 }
 
 // SpecTwins — the specialization registry (the StringTable pattern one shelf
-// over): emit_module's demand analysis decides ONCE which named-generic twins
-// exist (the worthiness fixpoint over wide-keyed call sites), seeds the
+// over): emit_module's emitted reach decides ONCE which twins exist, seeds the
 // registry, and every reference-emitting arm then asks spec_twin_known before
 // redirecting a site's mangled key to a twin — a site whose key names no twin
-// stays at the word-protocol floor, which is correct for plumbing.
+// stays at the word-protocol floor.
 effect SpecTwins {
   spec_twins_exist() -> Bool
   spec_twin_known(String) -> Bool
@@ -2281,11 +2278,11 @@ effect GraphRead {
   // instantiating a pre-registered or assumed scheme before the
   // declaration's own exit gated the root).
   graph_instances_of(Int) -> [Int]
-  // The NUMERIC gate column's read: every arithmetic demand entered on the
-  // type cell (NumericGate) — read by the checking var binds, by
-  // instantiation's copy, and by the emit's floor-twin arithmetic as the
-  // invariant it stands on.
-  graph_numeric_gates_of(Int) -> [NumericGate]
+  // The DEMAND column's read: every demand entered on the type cell
+  // (TypeDemand) — read by the checking var binds, by instantiation's copy,
+  // and by the twin key, which keys a variable by its structure exactly when
+  // a shape demand reached it.
+  graph_demands_of(Int) -> [TypeDemand]
 }
 
 effect GraphWrite {
@@ -2327,11 +2324,11 @@ effect GraphWrite {
   // (MInstanceNote); build_inst_mapping is the one writer, and a gate
   // installed on the root later reaches the copy through this column
   graph_instance_note(Int, Int)
-  // enter a numeric gate on a type cell — trailed (MSetNumericGate), so a
-  // speculative judgment's demands roll back with its bindings; the
-  // judgment's arithmetic arm, the checking var binds and instantiation's
-  // copy are its callers (infer.mn numeric_gate_install / numeric_gates_copy)
-  graph_numeric_gate_add(Int, NumericGate)
+  // enter a demand on a type cell — trailed (MSetDemand), so a speculative
+  // judgment's demands roll back with its bindings; the judgment's demand
+  // sites, the checking var binds and instantiation's copy are its callers
+  // (infer.mn demand_install / demands_copy)
+  graph_demand_add(Int, TypeDemand)
   graph_bind_record_row(Int, [(String, Ty)], RecordRowTail, Reason)
   graph_rollback(Int)
   // The speculation's ACCEPT: pop the newest checkpoint WITHOUT

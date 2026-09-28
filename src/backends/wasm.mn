@@ -228,13 +228,18 @@ handler string_table with idx = string_index_new() {
 }
 
 // The specialization-twin registry (SpecTwins, types.mn) — seeded once by
-// emit_module's demand analysis, read by every reference-emitting arm
-// (LGlobal / LDirectCall) before it redirects a wide-keyed site to a twin. The
-// twin set is tiny (leaf compute fns), so the membership scan is bounded.
-handler spec_registry with twins = [] {
-  spec_twins_exist() => resume(len(twins) > 0),
-  spec_twin_known(n) => resume(any((t) => t == n, twins)),
-  set_spec_twins(ns) => resume() with twins = ns,
+// emit_module, read by every reference-emitting arm (LGlobal / LDirectCall)
+// before it redirects a keyed site to a twin. Membership is a name map: the
+// scan that stood here, beside a comment calling the set tiny, ran at every
+// generic reference the module emits, over a set that reached three thousand
+// twins on the wheel before twins were keyed by what their bodies read.
+handler spec_registry with twins = smap_new(), count = 0 {
+  spec_twins_exist() => resume(count > 0),
+  spec_twin_known(n) => resume(match smap_get(twins, n) {
+    Some(_) => true,
+    None => false,
+  }),
+  set_spec_twins(ns) => resume() with twins = fold(smap_new(), smap_add(??, ??, 1), ns), count = len(ns),
 }
 
 // The emission in flight, for the diagnostics that stand at a spanless node
@@ -477,28 +482,16 @@ fn demand_base(n) = DemandBase(n)
 // by.
 fn ref_demand(lineage, r) = match r {
   RefName(n) => DemandBase(n),
-  RefSite(h, n) => {
-    let pairs = spec_site_pairs(h, n)
-    if len(pairs) == 0 {
-      DemandBase(n)
-    } else {
-      let enc = spec_enc(pairs)
-      if spec_enc_is_floor(enc) {
-        DemandBase(n)
-      } else {
-        DemandTwin(spec_mangle(n, enc), n, pairs, enc, lineage)
-      }
-    }
-  },
-  RefArm(ih, n) => {
-    let pairs = arm_site_pairs(ih)
-    let enc = arm_enc(pairs)
-    if byte_len(enc) == 0 {
-      DemandBase(n)
-    } else {
-      DemandTwin(spec_mangle(n, enc), n, pairs, enc, lineage)
-    }
-  },
+  RefSite(h, n) => key_demand(n, twin_site_key(h, n), lineage),
+  RefArm(ih, n) => key_demand(n, arm_twin_key(ih), lineage),
+}
+
+// A key's demand: the base at the floor, else the twin it names, emitted under
+// the key's own substitution.
+fn key_demand(n: String, key: {enc: String, pairs: [(Int, Ty)]}, lineage) = if spec_enc_is_floor(key.enc) {
+  DemandBase(n)
+} else {
+  DemandTwin(spec_mangle(n, key.enc), n, key.pairs, key.enc, lineage)
 }
 
 // A capped twin's body, read at the floor: its interior sites mangle past
@@ -712,6 +705,35 @@ fn field_sel_offset(ref rec, sel) = match sel {
   },
 }
 
+// A field load's WIDTH: its slot's in the receiver's layout, from the same
+// fold as its offset — never the width of the node that asks. A record
+// update's copy is a field load under the update's own handle, a whole
+// record, so reading the asker made every copied field a word: `{...r, b: 9}`
+// over `{a: 1.5, b: 7}` copied half of `a` and the construction placed `b`
+// where the load of `s.b` did not look (2026-09-28). Where the receiver's
+// layout is not whole the offset floors, and the width falls to the asker's
+// type, which the floor's locals still declare at.
+fn field_load_repr(h, rec, sel) = match field_sel_slot_ty(rec, sel) {
+  Some(t) => slot_repr(t),
+  None => repr_of(lookup_ty(h)),
+}
+
+fn field_sel_slot_ty(rec, sel) = match sel {
+  FByName(fname) => match record_full_fields(lookup_ty(lexpr_handle(rec))) {
+    Some(full) => match find(field_named(fname, ??), full) {
+      Some(f) => match f {
+        (_, t) => Some(t),
+      },
+      None => None,
+    },
+    None => None,
+  },
+  FByIndex(i) => match lookup_ty(lexpr_handle(rec)) {
+    TTuple(elems) => if i < len(elems) { Some(list_index(elems, i)) } else { None },
+    _ => None,
+  },
+}
+
 // WHAT THE OFFSET READ COULD NOT PROVE, said at the site — the sibling of
 // field_sel_offset over the same two operands: one answers the offset, this
 // one answers why there was none. The floor used to write a bare marker, so
@@ -819,21 +841,14 @@ fn spec_rec_names(spec_recs) -> [String] = map(spec_rec_name, spec_recs)
 // answers differently, and a contract may not be time-varying.
 // The width of ONE signature slot: the enumeration's edge, projected. An
 // ABSENT edge is the slot the graph never judged and takes the word floor
-// honestly — a fabricated width here is the whole bug class. A var resolves
-// through lookup_ty, the bracket-aware chase, so a twin's body reads its OWN
-// instantiation where the raw graph chase would floor it; a ground type
-// answers directly, which is the case a handle could never carry.
+// honestly — a fabricated width here is the whole bug class. A present slot
+// is a slot like any other (`slot_repr`): a var resolves through the
+// bracket-aware chase, so a twin's body reads its OWN instantiation where the
+// raw graph chase would floor it, and a ground type answers directly, which
+// is the case a handle could never carry.
 fn sig_repr_of_ty(slot) = match slot {
   None => RI32,
-  Some(ty) => sig_repr_of_present(ty),
-}
-
-fn sig_repr_of_present(ty) = match ty {
-  TVar(h) => repr_of(lookup_ty(h)),
-  TAlias(_, inner) => sig_repr_of_present(inner),
-  TRefined(base, _) => sig_repr_of_present(base),
-  TReprPin(r, _) => r,
-  _ => repr_of(ty),
+  Some(ty) => slot_repr(ty),
 }
 
 fn sig_slot_repr(slot) = match slot {
@@ -1737,7 +1752,7 @@ fn walk_lemit_pat(pat) = match pat {
   LPCon(_, _, pairs) => each(walk_lemit_pat, pat_of_pairs(pairs)),
   LPTuple(elems) => each({ (_, sp) => walk_lemit_pat(sp) }, elems),
   LPList(prefix, _, _) => each(walk_lemit_pat, prefix),
-  LPRecord(fs, _) => each({ (_, _, sp) => walk_lemit_pat(sp) }, fs),
+  LPRecord(_, _, fs, _) => each({ (_, sp) => walk_lemit_pat(sp) }, fs),
   LPAlt(branches) => each(walk_lemit_pat, branches),
   LPAs(_, inner) => walk_lemit_pat(inner),
   _ => (),
@@ -3301,8 +3316,8 @@ fn emit_wide_wrapper(record) = match record {
 // (2026-09-28): a handler whose instance is ground Float over an op parameter
 // typed by the effect's variable did not assemble, the performer boxing what
 // the arm read as f64, and a Float-keyed install over an op declaring a width
-// elsewhere (`put(x: Float, y: a)`) kept its base arms, which added `y`'s
-// box pointer. An arm its driver reaches is never adapted: the driver calls
+// elsewhere (`put(x: Float, y: a)`) kept its base arms, which added the second
+// argument's box pointer. An arm its driver reaches is never adapted: the driver calls
 // every arm at the word face, through the arm's `$wf$` wrapper.
 fn adapter_op(sym: String, base: String) = match direct_arm_op(base) {
   None => None,
@@ -3844,13 +3859,7 @@ fn walk_locals_pat(pat, r, acc) = match pat {
   fold(acc, (a, p) => walk_locals_pat(p, RI32, a), sub_pats),
   LPTuple(elem_binds) => walk_locals_pat_tuple(elem_binds, acc),
   LPList(sub_pats, rest, _) => walk_locals_pat_rest(rest, walk_locals_pat_list(sub_pats, acc)),
-  LPRecord(field_binds, rest) => walk_locals_pat_rest(
-    match rest {
-      None => None,
-      Some((rn, _)) => Some(rn),
-    },
-    walk_locals_pat_record(field_binds, acc)
-  ),
+  LPRecord(_, rty, field_binds, rest) => walk_locals_pat_rest(rest, walk_locals_pat_record(record_full_fields(rty), rty, field_binds, acc)),
   LPWild => acc,
   LPLit(_) => acc,
   LPAlt(branches) => // Branches bind the same names (infer's alternation law) — branch 0's
@@ -3866,14 +3875,14 @@ fn walk_locals_pat(pat, r, acc) = match pat {
   walk_locals_pat(inner, r, [local_wat_name(name, r) ++ " " ++ repr_wat(r)] ++ acc),
 }
 
-// Each con-payload sub declares at its payload's PROVEN repr — sub i pairs
+// Each con-payload sub declares at its payload's slot width — sub i pairs
 // with payload i, front-consumed (emit_pat_con_subs_binds' twin).
 fn walk_locals_pat_con(ptys, subs, acc) = if len(subs) == 0 {
   acc
 } else {
   let pty = if len(ptys) > 0 { fold_strip(list_index(ptys, 0)) } else { TVar(0) }
   let ptys2 = if len(ptys) > 0 { rest(ptys) } else { ptys }
-  walk_locals_pat_con(ptys2, rest(subs), walk_locals_pat(list_index(subs, 0), repr_of(pty), acc))
+  walk_locals_pat_con(ptys2, rest(subs), walk_locals_pat(list_index(subs, 0), slot_repr(pty), acc))
 }
 
 fn walk_locals_pat_rest(rest, acc) = match rest {
@@ -3881,15 +3890,32 @@ fn walk_locals_pat_rest(rest, acc) = match rest {
   Some(name) => if name == "_" { acc } else { [name ++ " i32"] ++ acc },
 }
 
-// Record-field binders are word slots today (emit_pat_record_binds binds
-// RI32) — the f64 record-field pattern rides the same named peer as the
-// f64 list element (Hβ.emit.f64-aggregate-pattern-width).
-fn walk_locals_pat_record(field_binds, acc) = if len(field_binds) == 0 {
+// Each record-field sub-pattern declares at its field's slot width, the SAME
+// width emit_pat_record_binds loads at.
+fn walk_locals_pat_record(full, rty, field_binds, acc) = if len(field_binds) == 0 {
   acc
 } else {
   match last(field_binds) {
-    (_, _, sub_pat) => walk_locals_pat_record(drop_last(field_binds), walk_locals_pat(sub_pat, RI32, acc)),
+    (name, sub_pat) => walk_locals_pat_record(
+      full,
+      rty,
+      drop_last(field_binds),
+      walk_locals_pat(sub_pat, slot_repr(pat_field_ty(full, rty, name)), acc)
+    ),
   }
+}
+
+// A record pattern's field type: the whole field set's where the receiver
+// resolved, and otherwise the one the receiver's row already knows — the
+// width a binder declares at even where the floor makes its read dead.
+fn pat_field_ty(full, rty, name: String) = match full {
+  Some(fs) => match find(field_named(name, ??), fs) {
+    Some(f) => match f {
+      (_, t) => t,
+    },
+    None => TVar(0),
+  },
+  None => record_field_ty(rty, name),
 }
 
 // List elements are word-slotted (emit_pat_subs_binds' RI32 leaf).
@@ -3899,32 +3925,10 @@ fn walk_locals_pat_list(pats, acc) = if len(pats) == 0 {
   walk_locals_pat_list(drop_last(pats), walk_locals_pat(last(pats), RI32, acc))
 }
 
-// The pattern-element repr, read through the LIVE channel (lookup_ty): under
-// a twin's spec bracket a free element var answers the site's instantiation —
-// the same channel the binop dispatch, field_sel_offset, and the construction
-// stores read. The raw graph chase would answer the word floor and split the
-// twin against its own construction (the $sc.f64 assembly failure: decl and
-// bind floored while the compare read wide). TVar(0) is lower's explicit
-// no-proof floor (the null handle — never chased); a var lookup_ty returns
-// unchanged is genuinely free — the honest word floor.
-fn pat_elem_repr(ty) = match ty {
-  TVar(h) => if h == 0 {
-    RI32
-  } else {
-    match lookup_ty(h) {
-      TVar(h2) => if h2 == h { RI32 } else { pat_elem_repr(TVar(h2)) },
-      t => pat_elem_repr(t),
-    }
-  },
-  TAlias(_, inner) => pat_elem_repr(inner),
-  TRefined(base, _) => pat_elem_repr(base),
-  _ => repr_of(ty),
-}
-
 // The pattern-side offset of tuple element `target`: the align_for +
 // repr_width prefix-sum — the IDENTICAL fold construction
 // (emit_field_stores_acc) and indexing (tuple_elem_offset) run — over the
-// ebs' element types resolved through pat_elem_repr, so bind, decl, and
+// ebs' element types at their slot widths (`slot_repr`), so bind, decl, and
 // test agree with the stored layout under any bracket. -1 past the end
 // (unprovable, never a silent 0), mirroring tuple_elem_offset.
 fn pat_tuple_off(ebs, target, i, off) = if i >= len(ebs) {
@@ -3932,7 +3936,7 @@ fn pat_tuple_off(ebs, target, i, off) = if i >= len(ebs) {
 } else {
   match list_index(ebs, i) {
     (ty, _) => {
-      let r = pat_elem_repr(ty)
+      let r = slot_repr(ty)
       let here = align_for(off, r)
       if i == target { here } else { pat_tuple_off(ebs, target, i + 1, here + repr_width(r)) }
     },
@@ -3946,7 +3950,7 @@ fn walk_locals_pat_tuple(elem_binds, acc) = if len(elem_binds) == 0 {
   acc
 } else {
   match last(elem_binds) {
-    (elem_ty, sub_pat) => walk_locals_pat_tuple(drop_last(elem_binds), walk_locals_pat(sub_pat, pat_elem_repr(elem_ty), acc)),
+    (elem_ty, sub_pat) => walk_locals_pat_tuple(drop_last(elem_binds), walk_locals_pat(sub_pat, slot_repr(elem_ty), acc)),
   }
 }
 
@@ -4013,6 +4017,8 @@ fn tail_expr_repr(expr) = match expr {
   LShow(_h, _x) => RI32,
   LHash(_h, _x) => RI32,
   LTailCall(ch, _callee, _) => repr_of(lookup_ty(ch)),
+  LFieldLoad(h, rec, sel) => // what the load emits, read from the receiver's layout
+  field_load_repr(h, rec, sel),
   other => {
     let h = lexpr_handle(other)
     if h == 0 { RI32 } else { repr_of(lookup_ty(h)) }
@@ -4296,7 +4302,7 @@ fn emit_arm_writes(state_local, nstate, base, arms, enc) = each(
 // The symbol a reference names where emit writes it: an install's arm under
 // the install's key, a site under its instantiation, a name as itself.
 fn ref_symbol(r) = match r {
-  RefArm(ih, n) => arm_symbol(n, arm_enc(arm_site_pairs(ih))),
+  RefArm(ih, n) => arm_symbol(n, arm_install_enc(ih)),
   RefSite(h, n) => spec_target_name(h, n),
   RefName(n) => n,
 }
@@ -4804,9 +4810,9 @@ fn emit_expr(expr) = match expr {
     wat_emit(")(i32.const ")
     wat_emit(int_to_str(nstate))
     wat_emit(")(i32.store offset=4)\n")
-    // The install's key (`arm_site_pairs`), read under the bracket this
+    // The install's key (`arm_twin_key`), read under the bracket this
     // install stands in: the arms it runs and the init fn it calls.
-    let enc = arm_enc(arm_site_pairs(h))
+    let enc = arm_install_enc(h)
     // the config arguments at 8+i*4, first
     emit_config_writes(local_name, inits)
     // each effect-group's arms contiguous + its [record, base] entry
@@ -5196,10 +5202,10 @@ fn emit_expr(expr) = match expr {
   // through field_sel_offset — under the active specialization bracket, so a
   // twin's instantiation closes a generic receiver (the last lower-time
   // layout bake, moved to the read).
-  // The load WIDTH is the field's PROVEN repr (repr_of at the field handle h):
-  // an i32/pointer field is i32.load (byte-identical to the pre-gradient
-  // form, Law 7), an f64 field is f64.load at its width-summed offset — the
-  // genuine 8 inline bytes, no box, no chase.
+  // The load WIDTH is the field's slot width in the same layout
+  // (`field_load_repr`): an i32/pointer field is i32.load (byte-identical to
+  // the pre-gradient form, Law 7), an f64 field is f64.load at its
+  // width-summed offset — the genuine 8 inline bytes, no box, no chase.
   {
     let offset = field_sel_offset(rec, sel)
     if offset < 0 {
@@ -5251,7 +5257,7 @@ fn emit_expr(expr) = match expr {
     } else {
       emit_expr(rec)
       wat_emit("    (")
-      wat_emit(repr_wat(repr_of(lookup_ty(h))))
+      wat_emit(repr_wat(field_load_repr(h, rec, sel)))
       wat_emit(".load offset=")
       wat_emit(int_to_str(offset))
       wat_emit(")\n")
@@ -5493,14 +5499,14 @@ fn emit_arith_for(op, left_h, l, r) = if left_h == 0 {
     AoWord => // The type's own repr: the pin's width where one is authored
     // (repr_of's TReprPin arm), the gradient's default otherwise — the same
     // fact the join of the emitted widths reads, at its one home.
-    emit_binop_repr(op, repr_of_resolved(lookup_ty(left_h))),
+    emit_binop_repr(op, slot_repr(lookup_ty(left_h))),
     AoUnproven(v) => {
       // A variable at emit is a FLOOR twin's quantified var: every wide
       // instantiation minted its own twin and bound the var under its
       // bracket, so this operand is a word at the floor width. The judgment
       // gated the cell numeric at the operator; a var it did not gate is an
       // invariant broken upstream, said loudly rather than emitted quietly.
-      if len(graph_numeric_gates_of(graph_chase_handle(v))) == 0 {
+      if len(numeric_gates_of(graph_chase_handle(v))) == 0 {
         report_at(
           left_h,
           EInternalInvariant(
@@ -7722,12 +7728,12 @@ fn emit_variant_field_stores_at(fields, base_i, local_name) =
 // pre-gradient uniform slotting, Law 7). The SAME fold the eq-leaf
 // (emit_eq_variant_payload_conjunction) and the LPCon match-bind read, so a
 // variant payload's store/load/eq agree at one width (Carried-Truth). The field
-// repr is read LIVE off each field expr's handle.
+// repr is the width the value is emitted at (`tail_expr_repr`, the one decider).
 fn emit_variant_stores_acc(fields, i, n, off, local_name) = if i >= n {
   ()
 } else {
   let fld = list_index(fields, i)
-  let r = repr_of(lookup_ty(lexpr_handle(fld)))
+  let r = tail_expr_repr(fld)
   let here = align_for(off, r)
   wat_emit("    (local.get $")
   wat_emit(local_name)
@@ -7744,13 +7750,17 @@ fn emit_variant_stores_acc(fields, i, n, off, local_name) = if i >= n {
 // variant_payload_offset — the byte offset of payload field `target` in a
 // variant: the width-summed prefix-sum of repr_width over payloads 0..target,
 // starting at 4 (after the tag word). The ONE fold the store, the eq-leaf, and
-// the LPCon match-bind share so a variant's payload layout has one home.
+// the LPCon match-bind share so a variant's payload layout has one home. A
+// payload's width is its slot's (`slot_repr`): the pattern's payload types are
+// the scrutinee's at lower, a generic body's own variables, and a twin reads
+// its instantiation through them — read bracket-blind, `second(Pair(1.5, 7))`
+// under a Float twin found its Int payload at the word after the tag.
 //
 // out of range — unprovable, never a silent 0
 fn variant_payload_offset(ptys, target, i, off) = if i >= len(ptys) {
   0 - 1
 } else {
-  let r = repr_of(fold_strip(list_index(ptys, i)))
+  let r = slot_repr(fold_strip(list_index(ptys, i)))
   let here = align_for(off, r)
   if i == target { here } else { variant_payload_offset(ptys, target, i + 1, here + repr_width(r)) }
 }
@@ -7763,7 +7773,9 @@ fn variant_payload_offset(ptys, target, i, off) = if i >= len(ptys) {
 // via f64.store, every i32/pointer field is i32.store at 4*i (byte-identical to
 // the pre-gradient form, Law 7). Carried-Truth: construction reads the SAME
 // offset+width the load side reads — never a flat 4*i the load re-derives as
-// f64. The field repr is read LIVE off each field expr's handle.
+// f64. The field repr is the width the value is emitted at (`tail_expr_repr`,
+// the one decider): a record update's copied field is a load under the
+// update's own handle, and reading that handle stored every copy as a word.
 fn emit_record_field_stores(fields) = emit_field_stores_acc(fields, 0, len(fields), 0, "record_tmp")
 
 // The shared store-fold: place field i at the width-summed `off`, advance by
@@ -7772,7 +7784,7 @@ fn emit_field_stores_acc(fields, i, n, off, local_name) = if i >= n {
   ()
 } else {
   let fld = list_index(fields, i)
-  let r = repr_of(lookup_ty(lexpr_handle(fld)))
+  let r = tail_expr_repr(fld)
   let here = align_for(off, r)
   wat_emit("    (local.get $")
   wat_emit(local_name)
@@ -7794,7 +7806,7 @@ fn emit_field_stores_acc(fields, i, n, off, local_name) = if i >= n {
 fn product_byte_size_acc(fields, i, n, off) = if i >= n {
   off
 } else {
-  let r = repr_of(lookup_ty(lexpr_handle(list_index(fields, i))))
+  let r = tail_expr_repr(list_index(fields, i))
   let here = align_for(off, r)
   product_byte_size_acc(fields, i + 1, n, here + repr_width(r))
 }
@@ -7898,7 +7910,7 @@ fn pat_always_matches(pat) = match pat {
   LPUnresolvedCon(_, _) => false,
   LPList(_, _, _) => false,
   LPTuple(ebs) => tuple_pats_always_match(ebs),
-  LPRecord(fbs, _) => record_pats_always_match(fbs),
+  LPRecord(_, _, fbs, _) => record_pats_always_match(fbs),
   LPAlt(branches) => alt_any_always_matches(branches),
   LPAs(_, inner) => pat_always_matches(inner),
 }
@@ -7925,7 +7937,7 @@ fn record_pats_always_match(fbs) = if len(fbs) == 0 {
   true
 } else {
   match last(fbs) {
-    (_, _, sub_pat) => if pat_always_matches(sub_pat) { record_pats_always_match(drop_last(fbs)) } else { false },
+    (_, sub_pat) => if pat_always_matches(sub_pat) { record_pats_always_match(drop_last(fbs)) } else { false },
   }
 }
 
@@ -8039,9 +8051,18 @@ fn emit_pat_predicate_at(pat, path, path_len) = match pat {
     wat_emit("    (i32.const 1)\n")
     emit_pat_tuple_subs_predicate(ebs, path, path_len)
   },
-  LPRecord(fbs, _) => {
-    wat_emit("    (i32.const 1)\n")
-    emit_pat_record_subs_predicate(fbs, path, path_len)
+  LPRecord(rh, rty, fbs, rest) => match record_full_fields(rty) {
+    Some(full) => {
+      wat_emit("    (i32.const 1)\n")
+      emit_pat_record_subs_predicate(full, fbs, path, path_len)
+    },
+    None => if record_pats_always_match(fbs) {
+      wat_emit("    (i32.const 1)\n")
+    } else {
+      // The binds report a pattern they have work for; one they do not
+      // reach is said here, so every floored pattern is said once.
+      emit_record_pattern_floor(rh, rty, !record_pat_has_binds(fbs, rest))
+    },
   },
   LPList(sub_pats, rest, srep) => {
     // count@0 is the ONE universal sequence header (every representation —
@@ -8088,20 +8109,45 @@ fn emit_pat_subs_predicate(subs, i, path, path_len) = if len(subs) == 0 {
   }
 }
 
-// Record fields carry pre-resolved byte offsets (lower.mn baked them).
-fn emit_pat_record_subs_predicate(fbs, path, path_len) = if len(fbs) == 0 {
+// Each refutable field sub-pattern tests at its field's offset in the WHOLE
+// field set the receiver resolved to — the offset every field load of the
+// same record reads (`record_field_offset`), under whatever twin this is.
+fn emit_pat_record_subs_predicate(full, fbs, path, path_len) = if len(fbs) == 0 {
   ()
 } else {
   match last(fbs) {
-    (_, offset, sub_pat) => if pat_always_matches(sub_pat) {
-      emit_pat_record_subs_predicate(drop_last(fbs), path, path_len)
+    (name, sub_pat) => if pat_always_matches(sub_pat) {
+      emit_pat_record_subs_predicate(full, drop_last(fbs), path, path_len)
     } else {
       wat_emit("    (if (result i32)\n      (then\n")
-      let extended = list_set(path, path_len, POff(offset))
+      let extended = list_set(path, path_len, POff(field_byte_offset(full, name, 0, len(full))))
       emit_pat_predicate_at(sub_pat, extended, path_len + 1)
-      emit_pat_record_subs_predicate(drop_last(fbs), path, path_len)
+      emit_pat_record_subs_predicate(full, drop_last(fbs), path, path_len)
       wat_emit("      )\n      (else (i32.const 0)))\n")
     },
+  }
+}
+
+// A record pattern whose receiver's field set never closed — the loud floor,
+// said at the scrutinee, the value whose row the reader has to go close. The
+// pattern once took its own field indices as offsets here instead, which is
+// the wrong-slot class with no diagnostic at all.
+fn emit_record_pattern_floor(rh, rty, say) = {
+  let why = "record pattern on {show_type(rty)}"
+  if say { report_at(rh, TFieldOffsetUnprovable(why, parse_span_of(rh))) } else { () }
+  wat_emit("    (unreachable)  ;; field offset unprovable: ")
+  wat_emit(why)
+  wat_emit("\n")
+}
+
+// Whether a record pattern has work in the binds phase: a field that binds,
+// or a rest that is named.
+fn record_pat_has_binds(fbs, rest) = if record_pats_have_binders(fbs) {
+  true
+} else {
+  match rest {
+    None => false,
+    Some(rn) => !field_name_eq(rn, "_"),
   }
 }
 
@@ -8170,9 +8216,12 @@ fn emit_pat_binds_at(pat, path, path_len, val_repr) = match pat {
   // floor: never executes, always assembles.
   each((p) => emit_pat_binds_at(p, path, path_len, RI32), sub_pats),
   LPTuple(ebs) => emit_pat_tuple_binds(ebs, path, path_len),
-  LPRecord(fbs, rest) => {
-    emit_pat_record_binds(fbs, path, path_len)
-    emit_pat_record_rest_bind(rest, path, path_len)
+  LPRecord(rh, rty, fbs, rest) => match record_full_fields(rty) {
+    Some(full) => {
+      emit_pat_record_binds(full, fbs, path, path_len)
+      emit_pat_record_rest_bind(full, fbs, rest, path, path_len)
+    },
+    None => if record_pat_has_binds(fbs, rest) { emit_record_pattern_floor(rh, rty, true) } else { () },
   },
   LPList(sub_pats, rest, srep) => {
     match srep {
@@ -8235,7 +8284,7 @@ fn emit_pat_subs_binds(subs, i, path, path_len) = if len(subs) == 0 {
 
 // con-payload binders: each sub-pattern at its width-summed payload offset
 // (variant_payload_offset — the SAME fold the store/eq/show run), binding at the
-// payload's PROVEN repr so an f64 payload loads f64-wide. Read live from the
+// payload's slot width so an f64 payload loads f64-wide. Read live from the
 // constructor's payload types.
 fn emit_pat_con_subs_binds(ptys, subs, i, path, path_len) = if len(subs) == 0 {
   ()
@@ -8246,7 +8295,7 @@ fn emit_pat_con_subs_binds(ptys, subs, i, path, path_len) = if len(subs) == 0 {
   let pty = if i < len(ptys) { fold_strip(list_index(ptys, i)) } else { TVar(0) }
   let off = variant_payload_offset(ptys, i, 0, 4)
   let extended = list_set(path, path_len, POff(off))
-  emit_pat_binds_at(list_index(subs, 0), extended, path_len + 1, repr_of(pty))
+  emit_pat_binds_at(list_index(subs, 0), extended, path_len + 1, slot_repr(pty))
   emit_pat_con_subs_binds(ptys, rest(subs), i + 1, path, path_len)
 }
 
@@ -8270,14 +8319,17 @@ fn emit_pat_con_subs_predicate(ptys, subs, i, path, path_len) = if len(subs) == 
   }
 }
 
-fn emit_pat_record_binds(fbs, path, path_len) = if len(fbs) == 0 {
+// Each field sub-pattern binds at its field's offset and slot width in the
+// whole field set — an f64 field loads f64 from its 8-byte slot, where a
+// word-width bind once read half of it.
+fn emit_pat_record_binds(full, fbs, path, path_len) = if len(fbs) == 0 {
   ()
 } else {
   match last(fbs) {
-    (_, offset, sub_pat) => {
-      let extended = list_set(path, path_len, POff(offset))
-      emit_pat_binds_at(sub_pat, extended, path_len + 1, RI32)
-      emit_pat_record_binds(drop_last(fbs), path, path_len)
+    (name, sub_pat) => {
+      let extended = list_set(path, path_len, POff(field_byte_offset(full, name, 0, len(full))))
+      emit_pat_binds_at(sub_pat, extended, path_len + 1, slot_repr(pat_field_ty(Some(full), TUnit, name)))
+      emit_pat_record_binds(full, drop_last(fbs), path, path_len)
     },
   }
 }
@@ -8295,7 +8347,7 @@ fn emit_pat_tuple_binds_at(ebs, i, path, path_len) = if i < 0 {
   match list_index(ebs, i) {
     (elem_ty, sub_pat) => {
       let extended = list_set(path, path_len, POff(pat_tuple_off(ebs, i, 0, 0)))
-      emit_pat_binds_at(sub_pat, extended, path_len + 1, pat_elem_repr(elem_ty))
+      emit_pat_binds_at(sub_pat, extended, path_len + 1, slot_repr(elem_ty))
       emit_pat_tuple_binds_at(ebs, i - 1, path, path_len)
     },
   }
@@ -8323,48 +8375,55 @@ fn emit_pat_list_rest_bind(n_prefix, rest, path, path_len) = match rest {
   },
 }
 
-// The record rest: BUILD the remaining-fields record — alloc the
-// residual size, copy each residual slot from the receiver at its
-// full-set offset into the residual's own sorted layout, and bind the
-// declared rest local (the local doubles as the build accumulator, so
-// no scratch is spent). Word-width copies — the record-pattern floor
-// (the f64-aggregate-pattern-width residue owns the widening). Empty
-// specs = the receiver never resolved at lower: the loud floor, the
-// field-offset class's own census-marked refusal.
-fn emit_pat_record_rest_bind(rest, path, path_len) = match rest {
+// The record rest: BUILD the remaining-fields record — the whole field set
+// less the fields the pattern names, in its own sorted layout. Allocate its
+// size, copy each remaining slot from the receiver at its offset and width,
+// and bind the declared rest local (the local doubles as the build
+// accumulator, so no scratch is spent). The residual was computed at lower
+// once, from the receiver's floor type, so a twin whose receiver carried
+// more fields built the floor's residual, and every copy was a word wide.
+fn emit_pat_record_rest_bind(full, fbs, rest, path, path_len) = match rest {
   None => (),
-  Some((name, specs)) => if field_name_eq(name, "_") {
+  Some(name) => if field_name_eq(name, "_") {
     ()
-  } else if len(specs) == 0 {
-    wat_emit("    (unreachable) ;; record rest on unresolved receiver\n")
   } else {
+    let residual = filter(unnamed_by(fbs, ??), full)
     wat_emit("    (local.set $")
     wat_emit(name)
     wat_emit(" (call $alloc (i32.const ")
-    wat_emit(int_to_str(len(specs) * 4))
+    wat_emit(int_to_str(record_byte_size(residual)))
     wat_emit(")))\n")
-    emit_rest_copies(specs, 0, name, path, path_len)
+    each(emit_rest_copy(full, residual, name, path, path_len, ??), residual)
   },
 }
 
-fn emit_rest_copies(ref specs, i, ref name, ref path, path_len) = if i >= len(specs) {
-  ()
-} else {
-  match list_index(specs, i) {
-    (_fname, src_idx) => {
-      wat_emit("    (local.get $")
-      wat_emit(name)
-      wat_emit(")\n")
-      emit_scrut_at(path, path_len)
-      wat_emit("    (i32.load offset=")
-      wat_emit(int_to_str(src_idx * 4))
-      wat_emit(")\n")
-      wat_emit("    (i32.store offset=")
-      wat_emit(int_to_str(i * 4))
-      wat_emit(")\n")
-    },
-  }
-  emit_rest_copies(specs, i + 1, name, path, path_len)
+fn unnamed_by(fbs, f) = match f {
+  (n, _) => !any(pat_names_field(n, ??), fbs),
+}
+
+fn pat_names_field(n: String, fb) = match fb {
+  (m, _) => field_name_eq(m, n),
+}
+
+fn emit_rest_copy(full, residual, name: String, path, path_len, f) = match f {
+  (fname, fty) => {
+    let r = slot_repr(fty)
+    wat_emit("    (local.get ${name})\n")
+    emit_scrut_at(path, path_len)
+    wat_emit("    ({repr_load_op(r)} offset={int_to_str(field_byte_offset(full, fname, 0, len(full)))})\n")
+    wat_emit("    ({repr_store_op(r)} offset={int_to_str(field_byte_offset(residual, fname, 0, len(residual)))})\n")
+  },
+}
+
+// A record's byte size: the width-summed fold over its sorted fields, each
+// at its slot width — the fold every offset in it is read from.
+fn record_byte_size(fields) = fold(0, record_size_step, fields)
+
+fn record_size_step(off, f) = match f {
+  (_, t) => {
+    let r = slot_repr(t)
+    align_for(off, r) + repr_width(r)
+  },
 }
 
 // Alternation binds: branches bind the same names (infer's law), but
@@ -8389,14 +8448,7 @@ fn lowpat_has_binders(pat) = match pat {
   LPCon(_, _, pairs) => lowpats_have_binders(pat_of_pairs(pairs)),
   LPUnresolvedCon(_, sub_pats) => lowpats_have_binders(sub_pats),
   LPTuple(ebs) => tuple_pats_have_binders(ebs),
-  LPRecord(fbs, rest) => if record_pats_have_binders(fbs) {
-    true
-  } else {
-    match rest {
-      None => false,
-      Some(_) => true,
-    }
-  },
+  LPRecord(_, _, fbs, rest) => record_pat_has_binds(fbs, rest),
   LPList(sub_pats, rest, _) => if lowpats_have_binders(sub_pats) {
     true
   } else {
@@ -8421,7 +8473,7 @@ fn record_pats_have_binders(fbs) = if len(fbs) == 0 {
   false
 } else {
   match last(fbs) {
-    (_, _, sub_pat) => if lowpat_has_binders(sub_pat) { true } else { record_pats_have_binders(drop_last(fbs)) },
+    (_, sub_pat) => if lowpat_has_binders(sub_pat) { true } else { record_pats_have_binders(drop_last(fbs)) },
   }
 }
 

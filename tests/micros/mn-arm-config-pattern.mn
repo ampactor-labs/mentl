@@ -1,0 +1,16 @@
+// expect: 46
+// A handler's arm destructuring its record config reads the config's row, so
+// each install keys the arm set by the record it passes. Measured on boot
+// 0bc8383e: 65 — the second install's arm read `a` as `x`.
+effect Ask {
+  ask() -> Int
+}
+
+handler answer(cfg) {
+  ask() => {
+    let {x, y} = cfg
+    resume(x * 10 + y)
+  },
+}
+
+fn main() = ((ask()) ~> answer({x: 1, y: 2})) + ((ask()) ~> answer({a: 5, x: 3, y: 4}))

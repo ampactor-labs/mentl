@@ -1,0 +1,22 @@
+// expect: 47
+// A record pattern reads its receiver's WHOLE field set, whichever spelling
+// writes it. Each helper below destructures an open row and is called with a
+// record carrying a field the pattern does not name, sorted before the ones it
+// does, so an offset taken from the pattern's own field indices reads the
+// wrong slot: `{a: 5, x: 3, y: 4}` destructured as `{x, y}` read `a` as `x`.
+// Measured on boot 0bc8383e: 155 (12 + 53 + 90), silently, in all three.
+// The pattern carries its receiver's type and the emit places each field by
+// the receiver's live layout under the twin the call site keys, which it
+// keys because the pattern is a structural read of the row.
+fn by_let(r) = {
+  let {x, y} = r
+  x * 10 + y
+}
+
+fn by_match(r) = match r {
+  {x, y} => x * 10 + y,
+}
+
+fn by_param({x, y}) = x * 10 + y
+
+fn main() = by_let({x: 1, y: 2}) + by_match({a: 5, x: 3, y: 4}) + by_param({b: 9, x: 0, y: 1})

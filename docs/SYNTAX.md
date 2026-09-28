@@ -920,10 +920,17 @@ let {name: n, age: a} = morgan // bind to renamed locals
 ```
 
 The record-pattern REST is real (2026-07-30): `{name, ...rest}` binds `rest`
-to a fresh record of the remaining fields — the residual resolved through the
-receiver's type at lower, built by copying the residual slots at emit, and
+to a fresh record of the remaining fields, each copied at its own width, and
 `rest`'s own field accesses read the residual's layout. `..._` keeps the
 open-acceptance without a bind, exactly as in list patterns.
+
+**A record pattern reads its fields BY NAME** through its receiver's whole
+field set, which the twin of each caller proves: a parameter's record may
+carry fields the pattern never names, sorted before or after the ones it
+does, and `fn pick(u) = { let {zeta} = u; zeta }` answers `9` over `{alpha:
+7, zeta: 9}` (real, 2026-09-28). Until then a pattern through a parameter
+read the slot of its own field index and answered `7`, silently, and its
+rest trapped (`tests/syntax/record-pattern-param`, `-param-rest`).
 
 ### Field access
 

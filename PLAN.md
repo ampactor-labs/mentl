@@ -1268,14 +1268,22 @@ and this is the STATE.
   declared face while it runs at its instance, reached through an op-face
   adapter where the two differ — which also closed a pre-existing
   ground-Float handler that did not assemble
-  (`Hβ.emit.arm-twin-converts-at-its-face`). What R0c costs and exposes:
-  the breadth fix took defined fns 5,036 → 6,661 and the self-compile's
-  peak from 735 MB to 837 MB, and half the twin mass is byte-identical
-  copies, the
-  next landing (`Hβ.emit.twin-key-is-what-the-body-reads`); and no
+  (`Hβ.emit.arm-twin-converts-at-its-face`). What R0c cost — half the
+  twin mass byte-identical copies — CLOSED at R0d (pin 2d7845607e804eb4):
+  a twin is keyed by what its body reads, the read a demand on the type
+  cell beside the numeric gate, so twin functions went 3,033 → 120. The
+  merged twins had hidden that every product layout read its widths
+  outside the twin, which one slot width answers now, and a record pattern
+  resolves at emit by name, which closed the 2026-08-17 parameter-receiver
+  silent wrong (`Hβ.emit.twin-key-is-what-the-body-reads`,
+  `Hβ.lower.record-pattern-param-receiver`). Open from this chain: no
   multi-shot install with a wide answer assembles, because the redrive
   reads the answer as a word
-  (`Hβ.continuations.redrive-reads-the-answer-as-a-word`).
+  (`Hβ.continuations.redrive-reads-the-answer-as-a-word`); a list pattern
+  binding a Float element does not assemble
+  (`Hβ.lower.bind-handle-typed-subpattern`); and a record update over a
+  generic base closes its result to the base's known fields
+  (`Hβ.infer.record-update-closes-an-open-base`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

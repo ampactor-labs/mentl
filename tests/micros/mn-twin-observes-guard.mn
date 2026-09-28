@@ -1,0 +1,28 @@
+// expect: 28
+// Each generic below reads its variable's structure, through a comparison, a
+// show, a concat or a hash, and one reads it only through a callee (`wrap`).
+// A twin is keyed by exactly those reads: a variable a body reads the
+// structure of keys by its structure, and every other one by its width. A
+// read that failed to key its twin would merge a String instantiation with a
+// list or an Int one, and the merged body would compare, show or concatenate
+// the wrong representation, or floor. Seen RED 2026-09-28 through a copy of
+// the landing's compiler with every shape mark stubbed out: exit 134, after
+// `T_EqTypeUnprovable` on `same` and `T_ShowTypeUnprovable` on `tell`.
+fn same(a, b) = a == b
+
+fn tell(x) = "{x}"
+
+fn wrap(x) = tell(x)
+
+fn cat(a, b) = a ++ b
+
+fn mix(x) = hash(x)
+
+fn main() = {
+  let e = if same(3, 3) { 1 } else { 0 } + if same("ab", "ab") { 1 } else { 0 } + if same([1, 2], [1, 2]) { 1 } else { 0 }
+  let s = byte_len(tell(42)) + byte_len(tell("hey")) + byte_len(tell([1, 2]))
+  let w = byte_len(wrap(7)) + byte_len(wrap("abcd"))
+  let c = len(cat([1], [2, 3])) + byte_len(cat("ab", "cde"))
+  let h = if mix("ab") == mix("ab") { 1 } else { 0 }
+  e + s + w + c + h
+}

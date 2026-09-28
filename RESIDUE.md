@@ -81,7 +81,9 @@ alone was green (404/0/2). The judge `cat`s every `census-40*.out` after
 `xargs -P` returns, so a child finishing late is not the mechanism on paper;
 what is, is unmeasured — a stale-file read, a write not yet flushed to the
 name the judge globs, or the pool's exit racing the redirect. Not a fix:
-the observation, kept so a second sighting has a first.
+the observation, kept so a second sighting has a first. Line 40 carries one
+shape since R0d retired `record-pattern-open` (2026-09-28), so a second
+sighting there would say the race is not the shared line.
 
 `Hβ.infer.ground-differs-by-route` — OPEN, NAMED 2026-09-27 by A4's sweep.
 The stdin compile (the whole wheel as ONE module, `find lib src | cat`)
@@ -3420,7 +3422,16 @@ SYNTAX §«Named effect rows» is not wrong here and must not be edited to
 match the artifact: the identity `E - F = E & !F` is the intended
 semantics and the lathe has not been turned to it.
 
-`Hβ.lower.record-pattern-param-receiver` — A SILENT WRONG AND A TRAP,
+`Hβ.lower.record-pattern-param-receiver` — **CLOSED 2026-09-28 (R0d),
+pin 2d7845607e804eb4**, by the first of the two forks this entry names:
+record twinning keyed by type. A record pattern is a structural read of its
+receiver's row, so each caller's twin is keyed by the record it passes, and
+the emit places each named field and builds the rest by name through that
+twin (`Hβ.emit.twin-key-is-what-the-body-reads`); the fabricated-index
+branch went with the untyped lowering. Both repros landed with the fix, as
+the entry required: `tests/syntax/record-pattern-param` (7 for 9 on
+0bc8383e) and `record-pattern-param-rest` (a trap). The record as measured
+follows. A SILENT WRONG AND A TRAP,
 BOTH GATED ON ONE VARIABLE: whether the destructured record arrived as a
 FUNCTION PARAMETER. Measured 2026-08-17 at pin a6e900f35888, each half
 against its own control.
@@ -4015,26 +4026,104 @@ k record); the second allocates nothing. Gates: the two programs above,
 RED today by assembly; then the face rule's answer clause deletes, and
 `arm_face_roots` with it.
 
-`Hβ.emit.twin-key-is-what-the-body-reads` — A TWIN IS KEYED BY MORE THAN
-ITS BODY READS. `spec_pair_code` encodes every non-scalar pair by its
-structural signature (`fold_sig`), so two instantiations whose bodies emit
-identically are two twins. Measured on R0c's m3 (2026-09-28, bodies
-compared with their own name and every twin suffix normalized): 3,030 twins
-over 98,976 lines, 975 distinct bodies, 49,348 duplicate lines; `map` 192
-twins / 2 distinct bodies, `iterate` 137 / 1, `map_collector$init` 192 / 1,
-`fold` 104 / 3. R0c's breadth fix is what made the duplication visible
-(the cap had been hiding it at eight per base), and it is most of that
-landing's cost. THE FORM: a pair keys by STRUCTURE only where the body
-observes it — a field load or a record or variant pattern on a value whose
-type mentions the variable, a structural leaf (eq, compare, hash, show)
-over it, or a callee that observes the variable it is passed (a fixpoint
-over the call edges, taken at the base) — and by REPRESENTATION everywhere
-else. Sound by over-approximation: an unobserved structure can only merge
-bodies that emit the same bytes. The cost of a miss is a silent wrong
-layout, so the analysis must be conservative and the gate is a fixture per
-observation kind, RED where two shapes would merge wrongly. It reclaims
-R0c's cost (the ceiling's way down, verify-baseline) and is the
-precondition for L4a's derivative twins fitting under it.
+`Hβ.emit.twin-key-is-what-the-body-reads` — **CLOSED 2026-09-28 (R0d),
+pin 2d7845607e804eb4.** A twin is keyed by what its body reads: a variable
+whose STRUCTURE the body reads keys by that structure (`observed_code`, the
+fold_sig), and every other one by its representation digit, and the
+substitution a twin is emitted under is the same fact — an observed variable
+and an unobserved wide one are bound, an unobserved word stays free, so a
+read the judgment missed floors where a census counts it instead of reusing
+another shape's layout (`twin_key`, lower.mn). The read is a DEMAND ON THE
+TYPE CELL, L1's numeric gate one kind over: one column (`TypeDemand =
+DemandNumber(NumericGate) | DemandShape(ShapeRead)`, types.mn); a
+comparison, a show, a hash and `to_string` read the WHOLE shape, a concat, a
+field load, a record update's base and a record pattern the OUTER one; the
+shape is entered where the judgment sees the read, pushed at unify's var
+binds and record-row writes, ridden across an alias, copied at instantiation
+— which is what carries a callee's read into every caller — and reached
+through the instance column. `twin_key` reads one cell per pair
+(`var_structure_read`).
+▶ THE FIRST FORM WAS A TABLE and the table was the re-derivation: a walk of
+every base body after lowering and a fixpoint over the call graph re-running
+what instantiation and unification had already carried. It was correct
+(census 0) and cost 152.5 MB of emit scratch, 66 MB once its reads went live
+and its fixpoint a worklist; deleted whole for the cell. Kills on the way,
+each measured: (1) an observed Int keyed at the floor digit folded back into
+the base, which reads it free (eq 34 → 42) — an observed variable keys by
+fold_sig; (2) an open row's rest left unpaired at an open site told its
+caller nothing (field floors 0 → 2) — the rest is a cell and carries its own
+mark; (3) root-only marking recursed until the stack ran out through an
+instance aliased back to its bound root — a bound cell keeps the mark as its
+visit, and only where it has instances.
+▶ WHAT THE KEY EXPOSED: every product layout reader read its widths at the
+floor, and a merged twin had hidden it. A field load, a tuple offset, a
+constructor payload, a record pattern and a construction store each asked
+`repr_of` outside the bracket; `slot_repr` (lower.mn) is the one width a
+product slot has, read through the twin. A record pattern resolves at emit
+by name (`LPRecord` carries its receiver's type and its fields by name, the
+emit reads the whole field set through `record_full_fields`), which closed
+`Hβ.lower.record-pattern-param-receiver` beside it.
+▶ MEASURED on fixed input: the boot (0bc8383e) compiled its own source at
+859,840 KB; the new compiler on that SAME source reads 764,132–769,204 KB —
+the judgment's high-water +17.5 MB for the demand marks, the written module
+−101.6 MB. Twin functions 3,033 → 120 and defined functions 6,680 → 4,291 by
+one count (every `(func` whose name carries `$sp`); WAT 459,524 → 389,596
+lines. Comparisons unprovable at emit 34 → 2 (`list_compare_loop`'s `<` and
+`>`, the word-list leaf the emit calls by name), shows 1 → 0, field offsets
+0. Fixtures, each RED on 0bc8383e: micros `mn-record-float-fields` (does not
+assemble), `mn-record-pattern-open-row` (155 for 47),
+`mn-record-pattern-through-callee` (67 for 48), `mn-record-update-float` (0
+for 9), `mn-record-rest-float` (1 for 4), `mn-record-rest-generic` (134 at a
+floor, no diagnostic), `mn-arm-config-pattern` (65 for 46),
+`mn-payload-generic-float-twin` (3 for 10); `mn-twin-observes-guard` holds
+the key itself and was seen RED only through a copy of this landing's
+compiler with every shape mark stubbed out (134).
+
+`Hβ.lower.bind-handle-typed-subpattern` — OPEN, THE LIST HALF (entered
+2026-09-28, R0d; the peer had been cited only in lower.mn's comment above
+`bind_pat_locals_floor`, which is a gap that did not exist by this file's
+own rule). A sub-pattern's binder is declared at the width of the type it
+matched. The constructor half CLOSED 2026-09-18 and the record half at R0d,
+each because a floored binder beside an f64 read names two different
+locals. THE LIST HALF IS LIVE AND LOUD: a list pattern binding a Float
+element does not assemble, on boot 0bc8383e and on R0d's compiler alike —
+`let [a, b] = [1.5, 3.0]` (`$a.f64` undefined), `match [1.5, 3.0] { [x,
+y] => x + y, … }` (`$x.f64`), and a generic `fn head_or(xs, d) = match xs
+{ [h, ..._] => h, [] => d }` at its Float twin (`$h.f64`). `mentl check`
+passes all three. A rest binder over the same lists runs, since the rest is
+a list and a list is a word. THE CAUSE, read at both ends: `bind_pat_locals`
+binds a list's elements at the floor (`bind_pat_locals_floor`), and the
+emit declares each element binder a word (`walk_locals_pat_list`) and binds
+it at `RI32` (`emit_pat_subs_binds`, `_flat`), while the body reads the
+binder at its own type. THE FORM, with the carrier R0d already built:
+`lower_pat_at` types each element sub-pattern by `list_elem_ty`, so
+`LPList` carries its element type beside its sub-patterns; the binder side
+reads `list_elem_ty` where it reads the floor; the emit declares and binds
+each element at `slot_repr(elem)`. A list element's word face is its
+value for a word and its ADDRESS for a wide element (lib/lists.mn's word
+protocol: "a typed site cashes the width through load_f64 at the
+boundary"), so the bind of a wide element loads the width through the
+address `$list_index` answers, and a literal predicate on a wide element
+reads the same. The flat license (`SRFlat`, raw `8 + 4i` loads) stays
+word-stride only, as its proof says. Gates: the three programs above as
+micros, each RED today by assembly.
+
+`Hβ.infer.record-update-closes-an-open-base` — OPEN, NAMED 2026-09-28
+(R0d). A record update over a generic base types its result as the base's
+KNOWN fields, closed, so a caller's other fields do not survive it: `fn
+bump(r) = {...r, a: r.a + 1}` with `bump({a: 5, c: 6, z: 1}).c` refuses
+`E_TypeMismatch: { c: t } vs { a: Int }` at the update. Loud — the
+judgment refuses and nothing runs wrong — which is why it was named rather
+than fixed inside R0d. THE FORM: the result is the base's row with the
+overrides written in and its REST kept — the base `{a: t | ρ}` updates to
+`{a: t' | ρ}` — so a caller's fields flow through an update exactly as
+through a parameter. The base is already an outer-shape read (R0d), so each
+caller's twin knows the whole field set, and the emit copies every field
+by name through `record_full_fields` under the twin, the machinery a record
+pattern's rest runs. An update that ADDS a field the base may already carry
+meets the same row question as a record extension and is answered there,
+not by a second rule. Gate: `bump({a: 1, b: 2}).a + bump({a: 5, c: 6, z:
+1}).c` answers 8, refused today.
 
 `Hβ.emit.twin-cap-meters-breadth-not-divergence` — **CLOSED 2026-09-28
 (R0c), pin 0bc8383e8b6ced84.** A twin demand carries its LINEAGE, the twin bases whose
@@ -4147,11 +4236,11 @@ is known and before `emit_header` — already walks every emitted body under
 its own bracket, twice (the fold closures, the call vectors). The three
 questions join that walk as one bracketed collector reporting at the site,
 and the emit refuses (exit 1, zero bytes) when the settle raised an armed
-class. Then the field-offset class arms (wheel census 0): the five
-`mn-payload*` micros move from a banked 134 to a compile refusal, the
-frontier fixture moves to `run_refusal`, the ratchet key retires, and the
-board's `CsRecordPatternOpen` bound retires by its own written condition.
-The eq and show classes arm as their counts reach zero.
+class. Then the field-offset class arms (wheel census 0): the three
+`mn-payload*` micros still banked at 134 (3, 4, 5 — a generic op's payload
+nothing closes) move to a compile refusal, the frontier fixture moves to
+`run_refusal`, and the ratchet key retires. The eq and show classes arm as
+their counts reach zero; show is at zero since R0d, eq at two.
 
 `Hβ.emit.field-offset-floor-is-never-reported` — RESOLVED 2026-09-15. THE
 FLOOR WAS WRITTEN AND NEVER SAID. `emit_expr`'s `LFieldLoad` arm answered an
@@ -5148,7 +5237,12 @@ READ repr"), met at the record.
 
 `Hβ.query.record-pattern-open-receiver` — ✅ RESOLVED 2026-08-17, pin
 4ce9914b7360, as `CsRecordPatternOpen` with the ratchet
-`record_pattern_open_max: 0`. Its build is worth keeping for the KILL:
+`record_pattern_open_max: 0` — and RETIRED 2026-09-28 (R0d) before its
+written condition, the field-offset diagnostic's arming. An open receiver
+is the ordinary polymorphic form now, resolved by name under each caller's
+twin, so a zero bound on it would refuse correct code; what stays
+unresolvable is `T_FieldOffsetUnprovable`'s, held at zero by
+`field_offset_unprovable_max`. Its build is worth keeping for the KILL:
 the first draft filtered only let bindings, marched, and answered 0 for
 the wheel — which read as confirmation that the previous pin's
 annotations had worked. Falsification refused that reading, because

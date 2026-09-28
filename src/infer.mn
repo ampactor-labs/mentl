@@ -3474,8 +3474,12 @@ fn infer_expr(ref node) = match node {
       // half): the inner keeps its own inferred type — the show
       // accepts ANY type by construction (the dispatch is emit's
       // structural read) — and the node itself IS a String, the
-      // handle lower's LShow reads instead of minting a cell.
+      // handle lower's LShow reads instead of minting a cell. The show
+      // reads the inner's whole structure.
       infer_expr(inner)
+      match inner {
+        N(_, _, ih) => shape_demand(ih, WholeShape),
+      }
       graph_bind(handle, ty_string, Located(span, Inferred("splice show")))
     },
     NExpr(MakeRecordExpr(fields)) => {
@@ -3506,6 +3510,8 @@ fn infer_expr(ref node) = match node {
           let expected_h = mint(Inferred("record update base"))
           graph_bind(expected_h, mk_record_open([], base_row_h), Located(span, Inferred("expected record")))
           unify(bh, expected_h, span, Inferred("record spread base"))
+          // The copy reads each field of the base by name.
+          shape_demand(bh, OuterShape)
           infer_record_field_values(overrides)
           inf_add_row(construction_row())
           let base_fields = record_fields_of_node(base)
@@ -3762,6 +3768,8 @@ fn infer_field_access_record(rec, field, handle, span: ValidSpan) = match rec {
         let expected_h = mint(Inferred("record access"))
         graph_bind(expected_h, expected, Located(span, Inferred("expected record")))
         unify(rh, expected_h, span, Inferred("field access"))
+        // The load's offset reads which fields the receiver's row holds.
+        shape_demand(rh, OuterShape)
         graph_bind(handle, TVar(field_h), Located(span, Inferred("field type")))
       },
     }
@@ -3992,8 +4000,8 @@ fn seq_op_sig(cname: String, elem) = match cname {
   "float_format_scientific" => Some(([seq_unconstrained(), TInt], ty_string)),
   "float_digits_to_str" => Some(([seq_unconstrained(), TInt, TInt], ty_string)),
   "slot_present" => Some(([seq_unconstrained()], TName("Bool", []))),
-  "to_string" => Some(([seq_unconstrained()], ty_string)),
-  "hash" => Some(([seq_unconstrained()], TInt)),
+  "to_string" => Some(([seq_read_whole()], ty_string)),
+  "hash" => Some(([seq_read_whole()], TInt)),
   "len" => Some(([TList(elem)], TInt)),
   "drop_last" => Some(([TList(elem)], TList(elem))),
   "list_set" => Some(([TList(elem), TInt, elem], TList(elem))),
@@ -4008,6 +4016,15 @@ fn seq_op_sig(cname: String, elem) = match cname {
 }
 
 fn seq_unconstrained() = TVar(mint(Inferred("unconstrained substrate operand")))
+
+// The show and hash faces' operand: any type, read whole — the demand is the
+// primitive's own typing rule, so it reaches the argument at a call and the
+// callback's parameter where the name is passed as a value.
+fn seq_read_whole() = {
+  let h = mint(Inferred("structurally read operand"))
+  shape_install(h, WholeShape)
+  TVar(h)
+}
 
 fn seq_force_list(ah, ptys, i, span: ValidSpan) = if i >= len(ptys) {
   ()
@@ -5467,14 +5484,14 @@ fn unify(h_a, h_b, span: ValidSpan, reason) = {
       GNode(ka, _) => match nb {
         GNode(kb, _) => match ka {
           NFree(_) => {
-            // The numeric gates the vanishing root carries ride to the
-            // surviving root (numeric_check_alias) before the alias is drawn.
-            numeric_check_alias(ra, rb, span)
+            // The demands the vanishing root carries ride to the surviving
+            // root (demands_ride) before the alias is drawn.
+            demands_ride(ra, rb, span)
             graph_bind(ra, TVar(rb), Located(span, reason))
           },
           NBound(ta) => match kb {
             NFree(_) => {
-              numeric_judge_push(graph_numeric_gates_of(rb), ta, span)
+              demands_push(graph_demands_of(rb), ta, span)
               graph_bind(rb, TVar(ra), Located(span, reason))
             },
             NBound(tb) => unify_types(ta, tb, span, reason),
@@ -5573,9 +5590,9 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
                 TFun(_, _, brow) => gate_check_push(root, brow, span),
                 _ => (),
               }
-              // The same writer's numeric half: a demand the cell carries
-              // judges the type entering it (numeric_judge_push).
-              numeric_judge_push(graph_numeric_gates_of(root), b, span)
+              // The same writer's demand half: every demand the cell carries
+              // judges or reads the type entering it (demands_push).
+              demands_push(graph_demands_of(root), b, span)
               graph_bind(root, b, Located(span, reason))
             },
           }
@@ -5870,7 +5887,7 @@ fn unify_record_open_against_closed(closed_fields, open_fields, open_var, span: 
     match end {
       RowEndFree(t) => // PROVEN. The other side is closed, so its fields are the whole set
       // and the rest is exactly what remains — nothing further can arrive.
-      graph_bind_record_row(t, residual, RowClosed, Located(span, reason)),
+      record_row_write(t, residual, RowClosed, Located(span, reason)),
       RowEndClosed => // Both ends closed: one record, so one field set.
       if len(residual) == 0 {
         ()
@@ -5937,7 +5954,7 @@ fn unify_two_open_records(fa, va, fb, vb, span: ValidSpan, reason) = match recor
 // the open side lacks — and the open side may not know anything the record
 // does not.
 fn row_end_closes(t, rest, stray, closed, open, span: ValidSpan, reason) = if len(stray) == 0 {
-  graph_bind_record_row(t, rest, RowClosed, Located(span, reason))
+  record_row_write(t, rest, RowClosed, Located(span, reason))
 } else {
   type_mismatch(TRecord(closed), TRecord(open), span, reason)
 }
@@ -5960,15 +5977,16 @@ fn rows_meet(ta, extra_b, tb, extra_a, ka, kb, span: ValidSpan, reason) = if ta 
     type_mismatch(TRecord(ka), TRecord(kb), span, reason)
   }
 } else if len(extra_a) == 0 && len(extra_b) == 0 {
+  demands_ride(tb, ta, span)
   graph_bind(tb, TVar(ta), Located(span, reason))
 } else if len(extra_b) == 0 {
-  graph_bind_record_row(tb, extra_a, RowContinues(ta), Located(span, reason))
+  record_row_write(tb, extra_a, RowContinues(ta), Located(span, reason))
 } else if len(extra_a) == 0 {
-  graph_bind_record_row(ta, extra_b, RowContinues(tb), Located(span, reason))
+  record_row_write(ta, extra_b, RowContinues(tb), Located(span, reason))
 } else {
   let unseen = graph_fresh_row(Located(span, reason))
-  graph_bind_record_row(ta, extra_b, RowContinues(unseen), Located(span, reason))
-  graph_bind_record_row(tb, extra_a, RowContinues(unseen), Located(span, reason))
+  record_row_write(ta, extra_b, RowContinues(unseen), Located(span, reason))
+  record_row_write(tb, extra_a, RowContinues(unseen), Located(span, reason))
 }
 
 fn unify_record_fields_loop_shared(fa, fb, names, span: ValidSpan, reason) = if len(names) == 0 {
@@ -6239,13 +6257,21 @@ fn type_mismatch(ref a, ref b, span: ValidSpan, reason) = report(ETypeMismatch(a
 // The one writer — unify's var binds — judges every type that later
 // enters a gated cell: a word passes, a variable inherits the gates, an
 // aggregate refuses E_ArithOnAggregate naming the arithmetic's site.
-// Instantiation copies the gates onto the fresh var (numeric_gates_copy),
-// and a copy minted before the demand is reached through the instance
-// column. So `{x: 1} * {x: 2}` refuses at the operator, a generic `a * b`
-// refuses `{x: 1}` at the call that instantiates it, and a floor twin's
-// arithmetic at emit is a word by construction — a wide instantiation
-// mints its own twin and binds the var under it; an aggregate never
-// reaches a bind.
+// Instantiation copies the gates onto the fresh var (demands_copy), and a
+// copy minted before the demand is reached through the instance column.
+// So `{x: 1} * {x: 2}` refuses at the operator, a generic `a * b` refuses
+// `{x: 1}` at the call that instantiates it, and a floor twin's arithmetic
+// at emit is a word by construction — a wide instantiation mints its own
+// twin and binds the var under it; an aggregate never reaches a bind. The
+// gate is one kind in the cell's demand column (TypeDemand); the shape
+// read below is the other, and both ride the same writer.
+fn numeric_gates_of(cell) = flat_map(demand_number, graph_demands_of(cell))
+
+fn demand_number(d) = match d {
+  DemandNumber(g) => [g],
+  DemandShape(_) => [],
+}
+
 fn numeric_demand(lh, op, span: ValidSpan) = {
   let root = graph_chase_handle(lh)
   match graph_chase(root) {
@@ -6282,10 +6308,10 @@ fn numeric_gate_present(gs: [NumericGate], g: NumericGate) = match gs {
 // copy bound before its root was demanded of), reach every instance the
 // column noted under it, and follow an alias to the free terminal the
 // writes land on — the row gate's gate_install, one sort over.
-fn numeric_gate_install(cell, g: NumericGate, span: ValidSpan) = if numeric_gate_present(graph_numeric_gates_of(cell), g) {
+fn numeric_gate_install(cell, g: NumericGate, span: ValidSpan) = if numeric_gate_present(numeric_gates_of(cell), g) {
   ()
 } else {
-  graph_numeric_gate_add(cell, g)
+  graph_demand_add(cell, DemandNumber(g))
   match graph_chase(cell) {
     GNode(kind, _) => match kind {
       NBound(ty) => numeric_judge_push([g], ty, span),
@@ -6333,33 +6359,230 @@ fn numeric_judge_push(gs: [NumericGate], ty, span: ValidSpan) = match gs {
   },
 }
 
-// The checking writer's numeric half at a var→var bind: the gates the
-// vanishing root carries ride to the surviving root — judged against what
-// it holds, or entered on it while it is free.
-fn numeric_check_alias(ra, rb, span: ValidSpan) = {
-  let gs = graph_numeric_gates_of(ra)
-  if len(gs) == 0 {
+// The checking writer at a var→var bind: every demand the vanishing root
+// carries rides to the surviving root — judged or pushed against what it
+// holds, or entered on it while it is free.
+fn demands_ride(ra, rb, span: ValidSpan) = {
+  let ds = graph_demands_of(ra)
+  if len(ds) == 0 {
     ()
   } else {
     match graph_chase(rb) {
       GNode(kind, _) => match kind {
-        NFree(_) => numeric_gates_install(gs, rb, span),
-        NBound(tb) => numeric_judge_push(gs, tb, span),
+        NFree(_) => demands_install(ds, rb, span),
+        NRowFree(_) => demands_install(ds, rb, span),
+        NBound(tb) => demands_push(ds, tb, span),
+        NRecordRowBound(fields, tail) => each(shape_push_row(??, fields, tail), flat_map(demand_shape, ds)),
         _ => (),
       },
     }
   }
 }
 
+// A type entering a cell that carries demands: each number judges it, each
+// shape pushes into the variables it holds.
+fn demands_push(ds: [TypeDemand], ty, span: ValidSpan) = {
+  numeric_judge_push(flat_map(demand_number, ds), ty, span)
+  each(shape_push(??, ty), flat_map(demand_shape, ds))
+}
+
+fn demands_install(ds: [TypeDemand], cell, span: ValidSpan) =
+  each(demand_install(cell, ??, span), ds)
+
+fn demand_install(cell, d, span: ValidSpan) = match d {
+  DemandNumber(g) => numeric_gate_install(cell, g, span),
+  DemandShape(read) => shape_install(cell, read),
+}
+
+fn demand_shape(d) = match d {
+  DemandNumber(_) => [],
+  DemandShape(read) => [read],
+}
+
 // Instantiation's copy: the fresh var carries every demand its root does
 // (the qualified-type reading, `∀t. numeric(t) ⇒ …`, with the constraint on
-// the variable — the row gate's gates_copy, one sort over).
-fn numeric_gates_copy(gs: [NumericGate], fresh) = match gs {
+// the variable — the row gate's gates_copy, one sort over). For a shape it
+// is the whole propagation: a callee's read, copied onto the instance, meets
+// the caller's own variable at the argument edge and marks it.
+fn demands_copy(ds: [TypeDemand], fresh) = match ds {
   [] => (),
-  [g, ...rest] => {
-    graph_numeric_gate_add(fresh, g)
-    numeric_gates_copy(rest, fresh)
+  [d, ...rest] => {
+    graph_demand_add(fresh, d)
+    demands_copy(rest, fresh)
   },
+}
+
+// ─── The shape read — a structural read's demand on a type cell ───────
+// The emit dispatches on a type's STRUCTURE at a comparison, a show and a
+// hash (the whole type) and at a concat, a field load and a record pattern
+// (the outer shape: a list or not, which fields a row holds); everywhere
+// else it reads a width. So the variables a body reads the structure of are
+// exactly the ones a twin of that body keys by structure, and every other
+// one keys by its representation digit (lower.mn `twin_key`). The judgment
+// holds each such read at its site, so the read is entered there and the
+// cells carry it as they carry the numeric gate: pushed into what a marked
+// cell is bound to, ridden across an alias, copied at instantiation — which
+// is what carries a callee's read into every caller — and reached through
+// the instance column. It never refuses. A read the judgment does not mark
+// meets a free variable at emit and floors loudly, where the census counts
+// it, never onto another instantiation's layout.
+//
+// It replaced a table the emit built after lowering: a walk of every base
+// body and a fixpoint over the call graph that re-ran what instantiation
+// and unification had already carried, measured at 66 MB of scratch per
+// self-compile (2026-09-28).
+fn shape_demand(h, read) = shape_install(graph_chase_handle(h), read)
+
+// A read reaching a cell lands on its root: a free root carries it, and a
+// bound one passes it into what it is bound to, so the variables a key can
+// ask about hold a mark and the rest of the graph does not. The copies
+// instantiation minted from a cell while it was a root are reached through
+// the instance column.
+fn shape_install(cell, read) = {
+  let r = graph_chase_handle(cell)
+  match graph_chase(r) {
+    GNode(kind, _) => match kind {
+      NBound(ty) => {
+        shape_push(read, ty)
+        shape_reach(r, read)
+      },
+      NRecordRowBound(fields, tail) => {
+        shape_push_row(read, fields, tail)
+        shape_reach(r, read)
+      },
+      _ => shape_mark(r, read),
+    },
+  }
+  if r == cell { () } else { shape_reach(cell, read) }
+}
+
+// A free root takes the mark, then its instances do.
+fn shape_mark(r, read) = if any(shape_covers(read, ??), graph_demands_of(r)) {
+  ()
+} else {
+  graph_demand_add(r, DemandShape(read))
+  each(shape_install(??, read), graph_instances_of(r))
+}
+
+// A bound cell's instances, reached once. An instance can alias back to the
+// cell it was copied from — a recursive call unifies its copy with the
+// declaration's own variable — so the cell keeps the mark as the visit, and
+// only where it has instances to reach (without one, the self-compile's
+// first form recursed until the stack ran out).
+fn shape_reach(cell, read) = match graph_instances_of(cell) {
+  [] => (),
+  is => if any(shape_covers(read, ??), graph_demands_of(cell)) {
+    ()
+  } else {
+    graph_demand_add(cell, DemandShape(read))
+    each(shape_install(??, read), is)
+  },
+}
+
+// A whole read covers an outer one. The dedup is also what ends the walk on
+// a cycle.
+fn shape_covers(read, d) = match d {
+  DemandNumber(_) => false,
+  DemandShape(have) => match have {
+    WholeShape => true,
+    OuterShape => match read {
+      OuterShape => true,
+      WholeShape => false,
+    },
+  },
+}
+
+fn shape_push(read, ty) = match read {
+  WholeShape => each(shape_install(??, WholeShape), shape_whole_roots(ty)),
+  OuterShape => each(shape_install(??, OuterShape), shape_outer_roots(ty)),
+}
+
+// A record row variable bound to more fields and what follows them.
+fn shape_push_row(read, fields, tail) = {
+  match read {
+    WholeShape => each(shape_install(??, WholeShape), flat_map(field_whole_roots, fields)),
+    OuterShape => (),
+  }
+  match tail {
+    RowClosed => (),
+    RowContinues(v) => shape_install(graph_chase_handle(v), read),
+  }
+}
+
+// Every variable a whole read reaches: the free terminals of the type, read
+// through the bindings — a record's fields and the rest of its row, a
+// function's parameters and result.
+fn shape_whole_roots(t) = match t {
+  TVar(h) => match graph_chase(h) {
+    GNode(kind, _) => match kind {
+      NBound(bound) => shape_whole_roots(bound),
+      NFree(_) => [graph_chase_handle(h)],
+      _ => [],
+    },
+  },
+  TInt => [],
+  TFloat => [],
+  TUnit => [],
+  TByte => [],
+  TList(e) => shape_whole_roots(e),
+  TTuple(es) => flat_map(shape_whole_roots, es),
+  TFun(ps, r, _) => flat_map(param_whole_roots, ps) ++ shape_whole_roots(r),
+  TName(_, args) => flat_map(shape_whole_roots, args),
+  TRecord(fs) => flat_map(field_whole_roots, fs),
+  TRecordOpen(fs, v) => match record_row_full(fs, v) {
+    (all, end) => flat_map(field_whole_roots, all) ++ row_end_roots(end),
+  },
+  TRefined(b, _) => shape_whole_roots(b),
+  TReprPin(_, b) => shape_whole_roots(b),
+  TCont(i, a, _, _) => shape_whole_roots(i) ++ shape_whole_roots(a),
+  TAlias(_, i) => shape_whole_roots(i),
+}
+
+fn param_whole_roots(p) = shape_whole_roots(param_ty(p))
+
+fn field_whole_roots(f) = match f {
+  (_, ft) => shape_whole_roots(ft),
+}
+
+// The variable an outer read reaches: the one the type is, or the rest of
+// the row a record holds. A list, a tuple or a closed record already has
+// its outer shape.
+fn shape_outer_roots(t) = match t {
+  TVar(h) => match graph_chase(h) {
+    GNode(kind, _) => match kind {
+      NBound(bound) => shape_outer_roots(bound),
+      NFree(_) => [graph_chase_handle(h)],
+      _ => [],
+    },
+  },
+  TRecordOpen(fs, v) => match record_row_full(fs, v) {
+    (_, end) => row_end_roots(end),
+  },
+  TAlias(_, i) => shape_outer_roots(i),
+  TRefined(b, _) => shape_outer_roots(b),
+  TInt => [],
+  TFloat => [],
+  TUnit => [],
+  TByte => [],
+  TList(_) => [],
+  TTuple(_) => [],
+  TFun(_, _, _) => [],
+  TName(_, _) => [],
+  TRecord(_) => [],
+  TReprPin(_, _) => [],
+  TCont(_, _, _, _) => [],
+}
+
+fn row_end_roots(end) = match end {
+  RowEndFree(t) => [graph_chase_handle(t)],
+  RowEndClosed => [],
+}
+
+// A record row variable's write: what it is bound to learns the reads the
+// variable carries, then the bind. Every row writer goes through here.
+fn record_row_write(t, fields, tail, reason) = {
+  each(shape_push_row(??, fields, tail), flat_map(demand_shape, graph_demands_of(t)))
+  graph_bind_record_row(t, fields, tail, reason)
 }
 
 // `BinOp` / `UnaryOp` inference — dispatched on `BinOpKind`.
@@ -6383,6 +6606,9 @@ fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
     },
     BKCmp => {
       unify(lh, rh, span, OpConstraint(lbl, Inferred("left"), Inferred("right")))
+      // A comparison is structural over its operands' whole type, so it
+      // reads the structure of every variable in it.
+      shape_demand(lh, WholeShape)
       graph_bind(
         handle,
         TName("Bool", []),
@@ -6408,6 +6634,8 @@ fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
     },
     BKConcat => {
       unify(lh, rh, span, OpConstraint(lbl, Inferred("left"), Inferred("right")))
+      // A concat reads its operands' outer shape: which sequence it is.
+      shape_demand(lh, OuterShape)
       graph_bind(
         handle,
         TVar(lh),
@@ -6577,6 +6805,8 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
     let field_specs = build_pat_record_field_specs(flds, span)
     let pat_ty = mk_record_open(field_specs, row_h)
     constrain_scrutinee(handle, pat_ty, span, Inferred("record pattern"))
+    // The pattern places each field by the receiver's whole field set.
+    shape_demand(handle, OuterShape)
     infer_pat_record_subs(flds, field_specs, span)
     match rest {
       Some(rn) => if rn == "_" {
@@ -7620,7 +7850,7 @@ fn build_inst_mapping(qs) = map(
     // declaration's own; every other root belongs to an exited declaration
     // whose gates the copy above already carries.
     gates_copy(graph_gates_of(root), fresh)
-    numeric_gates_copy(graph_numeric_gates_of(root), fresh)
+    demands_copy(graph_demands_of(root), fresh)
     if root < inf_mint_ceiling() || root >= inf_decl_entry() {
       graph_instance_note(root, fresh)
     } else {

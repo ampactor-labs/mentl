@@ -1,0 +1,14 @@
+// expect: 9
+// SYNTAX §«Pattern syntax for records» through a PARAMETER — the twin of
+// record-pattern-local. `let {zeta} = u` binds by the field's NAME, and a
+// parameter's record is open: the caller decides the fields beside `zeta`,
+// so the slot is known only under the twin the call keys. The pattern read
+// the slot from its own enumeration index instead, and answered 7 — alpha's
+// value — with no diagnostic (`Hβ.lower.record-pattern-param-receiver`,
+// measured 2026-08-17).
+fn pick(u) = {
+  let {zeta} = u
+  zeta
+}
+
+fn main() = pick({alpha: 7, zeta: 9})

@@ -1,0 +1,12 @@
+// expect: 12
+// A record pattern's REST through a PARAMETER is built from the caller's
+// record, under the twin that knows it. The rest was computed once, at
+// lowering, from the parameter's open row, so the binding had nothing to
+// copy and trapped whether or not `rest` was read
+// (`Hβ.lower.record-pattern-param-receiver`, measured 2026-08-17).
+fn widen(u) = {
+  let {name, ...rest} = u
+  name
+}
+
+fn main() = widen({age: 30, name: 12})

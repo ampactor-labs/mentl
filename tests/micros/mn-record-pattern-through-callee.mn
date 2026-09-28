@@ -1,0 +1,13 @@
+// expect: 48
+// A caller that only PASSES its argument on still has to key its twin by the
+// record's shape when the callee destructures it: the callee's read of the
+// row is carried into the caller at the call, where the callee's variable is
+// instantiated and meets the caller's own. `outer` reads nothing itself.
+// Measured on boot 0bc8383e: 67 — the second shape read `a` as `x`.
+fn inner(r) = match r {
+  {x, y} => x * 10 + y,
+}
+
+fn outer(r) = inner(r) + 1
+
+fn main() = outer({x: 1, y: 2}) + outer({a: 5, x: 3, y: 4})

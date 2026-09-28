@@ -1,0 +1,13 @@
+// expect: 6
+// The rest of a generic record pattern is whatever the caller's record has
+// beyond the named field, so it can only be built under the twin that knows
+// the record. The residual was computed once, at lower, from the generic
+// receiver; its row was open, so the build floored with no diagnostic.
+// Measured on boot 0bc8383e: exit 134 at `record rest on unresolved
+// receiver`, zero diagnostics.
+fn drop_a(r) = {
+  let {a, ...rest} = r
+  rest
+}
+
+fn main() = drop_a({a: 1, b: 2}).b + drop_a({a: 1, b: 3, c: 4}).c

@@ -35,6 +35,83 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-28 · pin 2d7845607e804eb4 (TRANSITION m3 == m4) · A TWIN IS KEYED BY WHAT ITS BODY OBSERVES.
+  R0d. R0c measured the twin set's mass as copies — 3,030 twins over 975
+  distinct bodies — because every non-scalar pair keyed by its
+  structural signature whether or not the body read that structure. **The
+  key.** A variable whose STRUCTURE the body reads keys its twin by that
+  structure (the fold_sig); every other variable keys by its representation
+  digit, and the substitution a twin emits under is the same fact: an
+  observed variable and an unobserved wide one are bound, an unobserved word
+  stays free, so a read the judgment missed floors where a census counts it
+  instead of reusing another shape's layout (`twin_key`). **The observation
+  is a demand on the type cell**, L1's numeric gate one kind over: one
+  column (`TypeDemand = DemandNumber(NumericGate) | DemandShape(ShapeRead)`);
+  a comparison, a show, a hash and `to_string` read the WHOLE shape, a
+  concat, a field load, a record update's base and a record pattern the
+  OUTER one; pushed at unify's var binds and record-row writes, ridden
+  across an alias, copied at instantiation — which carries a callee's read
+  into every caller — and reached through the instance column. **Every
+  product layout reads one slot width.** The merged twins had hidden that
+  the layout readers — field loads, tuple offsets, constructor payloads,
+  record patterns, construction stores — read `repr_of` outside the twin's
+  bracket; `slot_repr` is the one width reader, bracket-aware. **A record
+  pattern resolves at emit by name.** `LPRecord` carries its report handle,
+  receiver type, fields by name and rest binder; the emit reads the whole
+  field set through the twin (`record_full_fields`) for each field's offset
+  and width and for the rest's residual, and a set that never closes
+  reports `T_FieldOffsetUnprovable` at the scrutinee. Pattern lowering is
+  one path typed all the way down (`lower_pat_at`); the untyped lowering
+  and its pattern-index offsets are deleted — the fabricated index the
+  2026-08-17 parameter-receiver entry named.
+  **Kills:** (1) the first form was a TABLE — a walk of every base body
+  after lowering plus a fixpoint over the call graph, re-running what
+  instantiation and unification carry; correct (census 0), 152.5 MB of
+  emit scratch, 66 MB once live; deleted whole for the cell. (2) "an
+  observed Int keys at the floor digit" — it folded back into the base,
+  which reads it free: eq 34 → 42. (3) "an open row's rest can stay
+  unpaired" — its caller learned nothing: field floors 0 → 2. (4) marking
+  only a root recursed until the stack ran out through an instance aliased
+  back to its bound root; a bound cell keeps the mark as its visit, only
+  where it has instances. (5) the record update's copies went 0 for 9 the
+  moment widths were live: a copy is a field load under the UPDATE's
+  handle, a whole record, and a field load's width is its slot's
+  (`field_load_repr`), never the asker's. (6) `ref_is_wide` first read the
+  raw pairs, which the key no longer is; it reads `twin_site_key`.
+  **Retired:** `CsRecordPatternOpen` and the frontier's
+  `record-pattern-open` leg, before their written condition (the
+  field-offset diagnostic's arming): an open receiver is the ordinary
+  polymorphic form now, resolved by name under each caller's twin, and a
+  zero bound on it would refuse correct code. The unresolvable remainder is
+  `T_FieldOffsetUnprovable`'s, held at zero by `field_offset_unprovable_max`.
+  **Found and named:** a record update over a generic open base closes its
+  result to the base's known fields and refuses a caller's other field at
+  inference (`Hβ.infer.record-update-closes-an-open-base`, loud); a list
+  pattern binding a Float element does not assemble, on the boot too —
+  the list half of `Hβ.lower.bind-handle-typed-subpattern`, which was
+  cited only in code and is in RESIDUE now.
+  **Fixtures**, each RED on 0bc8383e: micros `mn-record-float-fields`
+  (does not assemble), `mn-record-pattern-open-row` (155 for 47),
+  `mn-record-pattern-through-callee` (67 for 48), `mn-record-update-float`
+  (0 for 9), `mn-record-rest-float` (1 for 4), `mn-record-rest-generic`
+  (134 at a floor, no diagnostic), `mn-arm-config-pattern` (65 for 46),
+  `mn-payload-generic-float-twin` (3 for 10); `mn-twin-observes-guard` (28)
+  RED only through a copy of this compiler with every shape mark stubbed
+  out (134); syntax `record-pattern-param` (7 for 9) and
+  `record-pattern-param-rest` (a trap), the 2026-08-17 repros landing with
+  their fix as that entry required.
+  **Measured:** fixed input first — the boot compiled its own source at
+  859,840 KB; this compiler on that same source reads 764,132–769,204 KB
+  (judgment high-water +17.5 MB for the demand marks, module written −101.6
+  MB). Twin functions 3,033 → 120, defined functions 6,680 → 4,291; WAT
+  459,524 → 389,596 lines. Comparisons unprovable at emit 34 → 2, shows 1 →
+  0, field offsets 0. selfcompile_peak_kb_max 873,000 → 775,000 with that accounting; the
+  boot binary 3,137,880 → 2,168,067 bytes.
+  m3 leg 12.25s · 743MB; m4 leg 11.05s · 706MB peak (723768 KB); crown,
+  proof-exactness, effect-identity green; frontier 434 / 0 / 1
+  expected-red (why-coordinates); micros 186/186 and syntax 20/20 through
+  the candidate; census 0.
+
 - 2026-09-28 · pin 0bc8383e8b6ced84 (TRANSITION m3 == m4) · AN ARM RUNS AT ITS INSTALL'S WHOLE INSTANTIATION.
   R0c, the three things R0b exposed, each RED on boot 30a35888, and a
   fourth the build found. **(1) The cap counts recursion.** `emit_reach_fix`

@@ -1635,8 +1635,6 @@ fn census_shape_of(arg) = if arg == "anonymous" {
   Some(CsAuthoredPositiveRow)
 } else if arg == "record-pattern" {
   Some(CsRecordPattern)
-} else if arg == "record-pattern-open" {
-  Some(CsRecordPatternOpen)
 } else {
   match find(
     (k) => show_pipe_kind(k) == arg,

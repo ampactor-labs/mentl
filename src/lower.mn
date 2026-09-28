@@ -548,7 +548,7 @@ type LowPat
   // positional product: each element carries its
   // proven Ty — a LIVE var handle in a generic
   // body. (offset, width) project at EMIT through
-  // the bracket-aware channel (pat_elem_repr /
+  // the bracket-aware channel (slot_repr /
   // pat_tuple_off), so a twin's instantiation
   // closes the layout; a lower-time offset bake
   // would freeze the word floor into the twin
@@ -558,13 +558,14 @@ type LowPat
   // the scrutinee's PROVEN representation
   // (SRFlat licenses raw element loads)
   | LPList([LowPat], Option(String), SeqRep)
-  // [(field_name: String, offset_bytes: Int, sub_pat: LowPat)], optional
-  // rest binder (name, [(residual_field, src_index)]) — resolved at
-  // lower through the receiver's type (lower_pat_typed); emit BUILDS
-  // the remaining-fields record by copying each residual slot. An
-  // empty spec list = the receiver never resolved: emit's loud floor
-  // (resolved-or-loud, the field-offset class's own law).
-  | LPRecord([(String, Int, LowPat)], Option((String, [(String, Int)])))
+  // (scrutinee handle, receiver type, [(field_name, sub_pat)], rest binder).
+  // The receiver's type is the one this position matched, a generic body's
+  // own variables included, so the emit reads the WHOLE field set through
+  // it under whatever twin it emits (`record_full_fields`): each named
+  // field's offset and width, and the rest's residual record, which it
+  // builds by copying each remaining slot. A field set that never closes
+  // floors loudly, reported at the scrutinee.
+  | LPRecord(Int, Ty, [(String, LowPat)], Option(String))
   // name @ pat — binds the whole value at the pattern's own path,
   // then the inner pattern destructures the same slot
   | LPAs(String, LowPat)
@@ -3478,32 +3479,62 @@ fn open_record_full_fields(fields, v) = match record_row_full(fields, v) {
   },
 }
 
-fn resolve_field_offset(rec_handle, field_name) = match lookup_ty(rec_handle) {
-  TRecord(fields) => field_byte_offset(fields, field_name, 0, len(fields)),
-  TRecordOpen(fields, v) => match open_record_full_fields(fields, v) {
-    Some(full) => field_byte_offset(full, field_name, 0, len(full)),
-    None => -1,
+fn resolve_field_offset(rec_handle, field_name) =
+  record_field_offset(lookup_ty(rec_handle), field_name)
+
+// A named field's offset in a record receiver — -1 while the receiver's
+// field set is not whole. The field load and the record pattern both read
+// it, so a field sits where one fold says in both.
+fn record_field_offset(ty, field_name) = match record_full_fields(ty) {
+  Some(full) => field_byte_offset(full, field_name, 0, len(full)),
+  None => -1,
+}
+
+// A record receiver's WHOLE field set, sorted — Some once its row is closed,
+// by the program or by the active twin's instantiation, and None while it is
+// open. A variable and an open row's free end both read through lookup_ty,
+// which is bracket-aware, so a generic body's receiver answers with the
+// instantiation the twin is emitting (a row variable's pair is the whole
+// record the site proved). A nominal record answers with its declaration.
+// TVar(0) is the no-proof type, never chased.
+fn record_full_fields(ty) = match ty {
+  TVar(h) => if h == 0 {
+    None
+  } else {
+    match lookup_ty(h) {
+      TVar(h2) => if h2 == h { None } else { record_full_fields(TVar(h2)) },
+      t => record_full_fields(t),
+    }
   },
-  TName(name, _) => // H2.3: nominal records — chase TName through env to its
-  // RecordSchemeKind for the field schema. Same offset arithmetic
-  // (sorted-by-name, 4 bytes per i32-erased slot).
-  match env_lookup(name) {
-    Some(entry) => match entry {
-      (_, _, kind) => match kind {
-        RecordSchemeKind(fields) => field_byte_offset(fields, field_name, 0, len(fields)),
-        _ => -1,
+  TRecord(fields) => Some(fields),
+  TRecordOpen(fields, v) => match record_row_full(fields, v) {
+    (all, end) => match end {
+      RowEndClosed => Some(sort_record_type_fields(all)),
+      RowEndFree(t) => match lookup_ty(t) {
+        TRecord(full) => Some(full),
+        _ => None,
       },
     },
-    None => -1,
   },
-  _ => -1,
+  TName(name, _) => nominal_record_fields(name),
+  TAlias(_, inner) => record_full_fields(inner),
+  TRefined(base, _) => record_full_fields(base),
+  TInt => None,
+  TFloat => None,
+  TUnit => None,
+  TByte => None,
+  TList(_) => None,
+  TTuple(_) => None,
+  TFun(_, _, _) => None,
+  TCont(_, _, _, _) => None,
+  TReprPin(_, _) => None,
 }
 
 // A field's byte offset is the prefix-sum of repr_width over the canonically-
-// sorted fields preceding it — NOT 4*i. The width is the field's PROVEN repr
-// (repr_of of its Ty, read live): an i32/pointer field is 4, an f64/i64 field
-// is 8, a v128 lane field is 16. For an all-i32 record this is exactly 4*i
-// (Law 7 byte-identity); a float field genuinely occupies 8 inline bytes.
+// sorted fields preceding it — NOT 4*i. The width is the field's slot width
+// (`slot_repr`): an i32/pointer field is 4, an f64/i64 field is 8, a v128
+// lane field is 16. For an all-i32 record this is exactly 4*i (Law 7
+// byte-identity); a float field genuinely occupies 8 inline bytes.
 fn field_byte_offset(fields, target, i, n) = field_byte_offset_acc(fields, target, i, n, 0)
 
 // field absent — unprovable offset, NOT a silent 0
@@ -3511,13 +3542,42 @@ fn field_byte_offset_acc(fields, target, i, n, acc) = if i >= n {
   -1
 } else {
   match list_index(fields, i) {
-    (name, ty) => if field_name_eq(name, target) {
-      align_for(acc, repr_of(ty))
-    } else {
-      let here = align_for(acc, repr_of(ty))
-      field_byte_offset_acc(fields, target, i + 1, n, here + repr_width(repr_of(ty)))
+    (name, ty) => {
+      let r = slot_repr(ty)
+      let here = align_for(acc, r)
+      if field_name_eq(name, target) {
+        here
+      } else {
+        field_byte_offset_acc(fields, target, i + 1, n, here + repr_width(r))
+      }
     },
   }
+}
+
+// THE WIDTH OF A SLOT whose type is `ty`, read live. A variable answers
+// through lookup_ty, so under a twin's bracket it is the site's
+// instantiation and at the floor it is what the graph bound; a variable
+// lookup_ty returns unchanged is free, and a free slot is the word. TVar(0)
+// is lower's explicit no-proof floor (the null handle, never chased). Every
+// layout reader takes a slot's width here — construction, field load, tuple
+// index, the record and constructor patterns, the fold leaves — because a
+// layout computed two ways is two layouts. Measured 2026-09-28 before it was
+// one: `let r = {a: 1.5, b: 7}` then `r.b` answered 0, the load reading `a`
+// at its type variable's word default where the construction had stored it
+// f64-wide, and a generic constructor's payload under a Float twin read its
+// neighbour's slot.
+fn slot_repr(ty) = match ty {
+  TVar(h) => if h == 0 {
+    RI32
+  } else {
+    match lookup_ty(h) {
+      TVar(h2) => if h2 == h { RI32 } else { slot_repr(TVar(h2)) },
+      t => slot_repr(t),
+    }
+  },
+  TAlias(_, inner) => slot_repr(inner),
+  TRefined(base, _) => slot_repr(base),
+  _ => repr_of(ty),
 }
 
 // v128 lanes want 16-byte alignment for aligned loads/stores; every other
@@ -3534,9 +3594,9 @@ fn align_for(off, r) with Pure = match r {
 // tuple_elem_offset — a tuple IS a positional product (L1); element `i`'s byte
 // offset is the prefix-sum of repr_width over the elements 0..i, the IDENTICAL
 // width-summed fold field_byte_offset_acc runs for records. The elements are
-// the TTuple's positional Tys (each a resolved TVar — read live via
-// repr_of_resolved, the chase). For an all-i32 tuple this is exactly 4*i (Law 7);
-// an f64 element genuinely occupies 8 inline bytes. Carried-Truth: construction (emit_field_stores_acc
+// the TTuple's positional Tys, each read at its slot width (`slot_repr`).
+// For an all-i32 tuple this is exactly 4*i (Law 7); an f64 element genuinely
+// occupies 8 inline bytes. Carried-Truth: construction (emit_field_stores_acc
 // over the tuple elems) and the index/match-bind read the SAME offset fold —
 // they cannot disagree on where element i lives.
 //
@@ -3544,7 +3604,7 @@ fn align_for(off, r) with Pure = match r {
 fn tuple_elem_offset(elems, target, i, off) = if i >= len(elems) {
   -1
 } else {
-  let r = repr_of_resolved(list_index(elems, i))
+  let r = slot_repr(list_index(elems, i))
   let here = align_for(off, r)
   if i == target { here } else { tuple_elem_offset(elems, target, i + 1, here + repr_width(r)) }
 }
@@ -3755,11 +3815,10 @@ fn lower_match_arms(scrut_h, arms) = {
         bind_pat_locals(pat, lookup_ty(scrut_h))
         let lo_body = lower_expr(body)
         ls_pop_scope(cp)
-        // The pattern's value type is the scrutinee's, read live — a tuple pattern
-        // resolves its element offsets as the width-summed prefix-sum (the SAME fold
-        // tuple construction + index run), not a uniform 4*i. Carried-Truth: the
-        // bind/predicate offsets and the construction stores read ONE offset fold.
-        (lower_pat_typed(pat, lookup_ty(scrut_h), srep), lo_body)
+        // The pattern's value type is the scrutinee's, read live, and every
+        // sub-pattern keeps its own — so the emit places each slot by the
+        // SAME fold construction and access run, under any twin.
+        (lower_pat_at(pat, lookup_ty(scrut_h), srep, scrut_h), lo_body)
       },
     },
     arms
@@ -3821,7 +3880,7 @@ fn bind_pat_locals(pat, ty) = match pat {
     bind_pat_rest(rest)
   },
   PRecord(flds, rest) => {
-    bind_pat_locals_fields(flds)
+    each({ (n, sub) => bind_pat_locals(sub, record_field_ty(ty, n)) }, flds)
     bind_pat_rest(rest)
   },
   PAlt(branches) => // Alternation branches bind the same names (the alternation law);
@@ -3844,14 +3903,14 @@ fn bind_pat_locals_zip(subs, elems, i) = if i >= len(subs) {
   bind_pat_locals_zip(subs, elems, i + 1)
 }
 
-// The floor for the sub-patterns whose element types are still unread:
-// PList elements and PRecord fields, the remainder of the named peer
+// The floor for the sub-patterns whose element types are still unread: PList
+// elements, the remainder of the named peer
 // `Hβ.lower.bind-handle-typed-subpattern` (additive, same TVar->handle carry).
 // TVar(0) = i32.eq, byte-identical to the prior sentinel — never a silent
-// wrong type. The PCon half of that peer CLOSED 2026-09-18: its payloads read
-// the scrutinee's own instantiation, because flooring them was not
-// byte-identical at all once a payload was an f64 — the binder and the emit
-// named different locals and the module did not assemble.
+// wrong type. The PCon half of that peer CLOSED 2026-09-18 and the PRecord
+// half on 2026-09-28, each for the same reason: flooring was not
+// byte-identical once a slot was an f64 — the binder and the emit named
+// different locals and the module did not assemble.
 fn bind_pat_locals_floor(pats) = each((p) => bind_pat_locals(p, TVar(0)), pats)
 
 fn bind_pat_rest(rest) = match rest {
@@ -3863,8 +3922,6 @@ fn bind_pat_rest(rest) = match rest {
     ()
   },
 }
-
-fn bind_pat_locals_fields(flds) = each({ (_, sub_pat) => bind_pat_locals(sub_pat, TVar(0)) }, flds)
 
 // ─── the sequence-representation chase ──────────────────────────────
 //
@@ -3971,125 +4028,121 @@ fn seq_elem_stride_word(ty) = match fold_strip(ty) {
   _ => false,
 }
 
-// lower_pat_typed — pattern lowering carrying the value's PROVEN type, so a
-// tuple pattern resolves its element offsets as the width-summed prefix-sum
-// (a tuple IS a positional product). The type is read live (chased through
-// TVar/alias/refinement); only PTuple consumes it (its element offsets depend
-// on element widths). Every other pattern's offsets are type-independent in the
-// current substrate (PCon variant-payload + PList use their own const strides —
-// the variant-payload-f64 width rides item (b)'s eq/store/bind agreement, a
-// named peer at the emit layer; PRecord pre-resolves field offsets), so they
-// delegate to lower_pat unchanged (Law 7 byte-identity).
-fn lower_pat_typed(pat, ty, srep) = match pat {
-  PTuple(sub) => match tuple_pat_strip(ty) {
-    TTuple(elems) => LPTuple(lower_pat_tuple_elems(sub, elems, 0)),
-    _ => // Not a known tuple type (genuinely-unresolved scrutinee): the no-proof
-    // floor — productive-under-error, not a fabricated width.
-    LPTuple(lower_pat_tuple_uniform(sub, 0)),
-  },
+// Lowers `pat`, matched against a value of type `ty`, keeping that type on
+// every sub-pattern: a tuple's element, a constructor's payload at the
+// scrutinee's own instantiation, a record's field, a list's element. No
+// width and no offset is decided here; the emit reads each slot through the
+// kept type (`slot_repr`) under whatever twin it is emitting. `rh` is the
+// scrutinee's handle, where a record whose field set never closes is
+// reported. TVar(0) is the explicit no-proof type: a position no type
+// reached, read as the word.
+fn lower_pat_at(pat, ty, srep, rh) = match pat {
+  PVar(name) => LPVar(name),
+  PWild => LPWild,
+  PLit(v) => LPLit(lower_lit_value(v)),
+  PTuple(sub) => LPTuple(lower_pat_tuple_elems(sub, tuple_elem_tys(ty), 0, rh)),
   PList(sub, rest) => // The scrutinee's proven representation rides the TOP list pattern —
   // nested sequences are reached through elements (rep unknown) and stay
   // on the total reader.
-  LPList(lower_pats(sub), rest, srep),
-  PCon(name, sub) => // The receiver's type grounds the constructor's payloads, so a binder
-  // takes the width the graph PROVED rather than the one the declaration
-  // quantified. Without this arm `PCon` fell through to the untyped
-  // `lower_pat`, and `Some(1.5)`'s binder was declared a word and read as an
-  // f64 — a module that does not assemble. The tag resolution is the untyped
-  // arm's, unchanged; only the payload types are new.
+  LPList(map(lower_pat_at(??, list_elem_ty(ty), SRUnknown, rh), sub), rest, srep),
+  PCon(name, sub) => // Resolve the constructor's tag_id at lower time; emit dispatches on
+  // the int tag without re-walking the env. The receiver's type grounds the
+  // constructor's payloads, so a binder takes the width the graph PROVED
+  // rather than the one the declaration quantified.
   match env_kind_of(name) {
-    Some(ConstructorScheme(t, _)) => LPCon(name, t, lower_pat_con_elems(sub, con_payload_tys_at(name, ty), 0)),
-    _ => lower_pat(pat),
+    Some(ConstructorScheme(t, _)) => LPCon(name, t, lower_pat_con_elems(sub, pat_payload_tys(name, ty), 0, rh)),
+    Some(RecordSchemeKind(_)) => // Nominal-record pattern `Pri(pa)`: the runtime value IS the bare
+    // record (no tag word) — the ctor wrapper is the identity in
+    // pattern position exactly as in construction. The single
+    // sub-pattern matches the scrutinee itself, at the scrutinee's own
+    // type. The BARE spelling `Pri =>` binds nothing: LPWild.
+    if len(sub) == 0 { LPWild } else { lower_pat_at(list_index(sub, 0), ty, srep, rh) },
+    _ => // a name no declaration proves: infer already reported it, and the
+    // sub-binders still declare so the dead arm body assembles
+    LPUnresolvedCon(name, map(lower_pat_at(??, TVar(0), SRUnknown, rh), sub)),
   },
+  PRecord(flds, rest) => LPRecord(rh, ty, map(lower_pat_field(ty, rh, ??), flds), rest),
+  PAlt(branches) => // Alternation branches match the one scrutinee, at its type.
+  LPAlt(map(lower_pat_at(??, ty, srep, rh), branches)),
   PAs(name, inner) => // The binder rides the pattern's own path; the inner keeps the
   // scrutinee's type (the whole point — the name IS the value).
-  LPAs(name, lower_pat_typed(inner, ty, srep)),
-  PRecord(flds, rest) => // The typed receiver resolves the FULL sorted field set (structural
-  // or nominal), so the rest's residual specs — and each NAMED field's
-  // true full-set offset — read from the type, never from the pattern's
-  // own subset (the subset-index bake was the wrong-slot class at the
-  // pattern layer). An unresolved receiver falls to the bare form:
-  // pattern-index offsets, the rest carried with empty specs for
-  // emit's loud floor.
-  match record_pat_full_fields(ty) {
-    Some(full_names) => LPRecord(lower_pat_record_fields_full(flds, full_names), lower_rest_specs(rest, flds, full_names)),
-    None => LPRecord(lower_pat_record_fields(flds, 0), lower_rest_unresolved(rest)),
+  LPAs(name, lower_pat_at(inner, ty, srep, rh)),
+}
+
+// A record pattern's field, lowered at the field's type.
+fn lower_pat_field(ty, rh, fld) = match fld {
+  (name, sub) => (name, lower_pat_at(sub, record_field_ty(ty, name), SRUnknown, rh)),
+}
+
+// The type a record pattern's field has at the receiver: the fields the
+// receiver's row knows, closed or open, or a nominal record's declaration.
+// A field no type names takes the no-proof floor.
+fn record_field_ty(ty, name: String) = match find(field_named(name, ??), record_known_fields(ty)) {
+  Some(f) => match f {
+    (_, t) => t,
   },
-  _ => lower_pat(pat),
+  None => TVar(0),
 }
 
-// The receiver's full sorted field NAME list, when its type resolves to a
-// record — structural TRecord directly, or a nominal TName through the env's
-// RecordSchemeKind (nominal_record_fields — the one channel's fourth
-// reader). None = genuinely unresolved (the floor's honest input).
-fn record_pat_full_fields(ty) = match tuple_pat_strip(ty) {
-  TRecord(full) => Some(map({ (n, _) => n }, full)),
-  TName(nm, _) => match nominal_record_fields(nm) {
-    Some(declared) => Some(map({ (n, _) => n }, declared)),
-    None => None,
+// The three projections below read the positions a pattern names beneath
+// its scrutinee. Inference unified the scrutinee with the pattern's own
+// shape before lowering ran, so a type of any other shape here is the
+// no-proof type reaching the pattern from above or a mismatch the judgment
+// already reported; it proves no position. Each is enumerated, so a new
+// type shape is a decision rather than a silent no-proof.
+fn record_known_fields(ty) = match tuple_pat_strip(ty) {
+  TRecord(fs) => fs,
+  TRecordOpen(fs, v) => match record_row_full(fs, v) {
+    (all, _) => all,
   },
-  _ => None,
-}
-
-// Named fields at their TRUE full-set offsets (4 × the field's index in
-// the receiver's sorted set — the same layout construction wrote); a
-// name the receiver lacks keeps the pattern-index fallback (infer
-// already reported it).
-fn lower_pat_record_fields_full(flds, full_names) = map(
-  {
-    (i, fld) => match fld {
-      (name, sub_pat) => {
-        let fi = name_index_in(full_names, name, 0)
-        (name, if fi < 0 { i } else { fi } * 4, lower_pat(sub_pat))
-      },
-    },
+  TName(n, _) => match nominal_record_fields(n) {
+    Some(declared) => declared,
+    None => [],
   },
-  enumerate(flds)
-)
-
-fn name_index_in(ref names, target, i) = if i >= len(names) {
-  0 - 1
-} else {
-  if field_name_eq(list_index(names, i), target) { i } else { name_index_in(names, target, i + 1) }
+  TReprPin(_, inner) => record_known_fields(inner),
+  TAlias(_, inner) => record_known_fields(inner),
+  TRefined(inner, _) => record_known_fields(inner),
+  TVar(_) | TInt | TFloat | TUnit | TByte | TList(_) | TTuple(_) | TFun(_, _, _) | TCont(_, _, _, _) => [],
 }
 
-// The residual specs: every receiver field the pattern does not name,
-// carried as (field, src_index) — the copy plan for emit's build.
-fn lower_rest_specs(rest, flds, full_names) = match rest {
-  None => None,
-  Some(rn) => Some((rn, residual_specs(full_names, flds, 0))),
+fn field_named(name: String, f) = match f {
+  (n, _) => field_name_eq(n, name),
 }
 
-fn residual_specs(ref full_names, ref flds, i) = if i >= len(full_names) {
-  []
-} else {
-  let fname = list_index(full_names, i)
-  if pat_names_field(flds, fname, 0) {
-    residual_specs(full_names, flds, i + 1)
-  } else {
-    [(fname, i)] ++ residual_specs(full_names, flds, i + 1)
-  }
+fn tuple_elem_tys(ty) = match tuple_pat_strip(ty) {
+  TTuple(elems) => elems,
+  TReprPin(_, inner) => tuple_elem_tys(inner),
+  TAlias(_, inner) => tuple_elem_tys(inner),
+  TRefined(inner, _) => tuple_elem_tys(inner),
+  TVar(_) | TInt | TFloat | TUnit | TByte | TList(_) | TFun(_, _, _) | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) => [],
 }
 
-fn pat_names_field(ref flds, fname, i) = if i >= len(flds) {
-  false
-} else {
-  match list_index(flds, i) {
-    (n, _) => if field_name_eq(n, fname) { true } else { pat_names_field(flds, fname, i + 1) },
-  }
+fn list_elem_ty(ty) = match tuple_pat_strip(ty) {
+  TList(e) => e,
+  TReprPin(_, inner) => list_elem_ty(inner),
+  TAlias(_, inner) => list_elem_ty(inner),
+  TRefined(inner, _) => list_elem_ty(inner),
+  TVar(_) | TInt | TFloat | TUnit | TByte | TTuple(_) | TFun(_, _, _) | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) => TVar(0),
 }
 
-fn lower_rest_unresolved(rest) = match rest {
-  None => None,
-  Some(rn) => Some((rn, [])),
+// A constructor's payload types at the scrutinee — none where no type
+// reached it (the null handle is never chased).
+fn pat_payload_tys(name: String, ty) = match ty {
+  TVar(h) => if h == 0 { [] } else { con_payload_tys_at(name, ty) },
+  _ => con_payload_tys_at(name, ty),
 }
 
 // Strip alias/refinement and chase a top-level TVar to its bound type so a
 // tuple scrutinee typed as `TVar -> TTuple` resolves to its element list.
+// TVar(0), the no-proof type, is never chased.
 fn tuple_pat_strip(ty) = match ty {
-  TVar(h) => match graph_chase(h) {
-    GNode(NBound(inner), _) => tuple_pat_strip(inner),
-    _ => ty,
+  TVar(h) => if h == 0 {
+    ty
+  } else {
+    match graph_chase(h) {
+      GNode(NBound(inner), _) => tuple_pat_strip(inner),
+      _ => ty,
+    }
   },
   TAlias(_, inner) => tuple_pat_strip(inner),
   TRefined(base, _) => tuple_pat_strip(base),
@@ -4098,39 +4151,25 @@ fn tuple_pat_strip(ty) = match ty {
 
 // Each sub-pattern lands at its element's width-summed offset (the SAME
 // tuple_elem_offset fold construction + index run) and recurses with its
-// element TYPE — so a tuple-of-tuples resolves offsets at every depth.
-fn lower_pat_tuple_elems(subs, elems, i) = if i >= len(subs) {
+// element TYPE — so a tuple-of-tuples resolves offsets at every depth. An
+// element no type reached takes TVar(0), the explicit no-proof floor (the
+// null handle, never chased), which `slot_repr` reads as the word.
+fn lower_pat_tuple_elems(subs, elems, i, rh) = if i >= len(subs) {
   []
 } else {
   let elem_ty = if i < len(elems) { list_index(elems, i) } else { TVar(0) }
-  [(elem_ty, lower_pat_typed(list_index(subs, i), elem_ty, SRUnknown))] ++ lower_pat_tuple_elems(subs, elems, i + 1)
-}
-
-// No-proof fallback when the scrutinee's element types are unresolved at
-// lower: TVar(0) is the explicit no-proof floor (the null handle — never
-// chased), which emit's pat_elem_repr reads as the word. A genuinely-typed
-// scrutinee takes the elems path above and carries its LIVE element vars.
-fn lower_pat_tuple_uniform(subs, i) = if i >= len(subs) {
-  []
-} else {
-  [(TVar(0), lower_pat(list_index(subs, i)))] ++ lower_pat_tuple_uniform(subs, i + 1)
+  [(elem_ty, lower_pat_at(list_index(subs, i), elem_ty, SRUnknown, rh))] ++ lower_pat_tuple_elems(subs, elems, i + 1, rh)
 }
 
 // The constructor pattern's sub-patterns paired with their PROVEN payload
 // types, read at the scrutinee's own instantiation. A payload the specs do
 // not reach takes TVar(0) — the same explicit no-proof floor the tuple path
 // uses, never a fabricated width.
-fn lower_pat_con_elems(subs, ptys, i) = if i >= len(subs) {
+fn lower_pat_con_elems(subs, ptys, i, rh) = if i >= len(subs) {
   []
 } else {
   let pty = if i < len(ptys) { list_index(ptys, i) } else { TVar(0) }
-  [(pty, lower_pat_typed(list_index(subs, i), pty, SRUnknown))] ++ lower_pat_con_elems(subs, ptys, i + 1)
-}
-
-fn lower_pat_con_uniform(subs, i) = if i >= len(subs) {
-  []
-} else {
-  [(TVar(0), lower_pat(list_index(subs, i)))] ++ lower_pat_con_uniform(subs, i + 1)
+  [(pty, lower_pat_at(list_index(subs, i), pty, SRUnknown, rh))] ++ lower_pat_con_elems(subs, ptys, i + 1, rh)
 }
 
 // The two views of one paired list. The walkers that read a payload's OFFSET
@@ -4169,60 +4208,12 @@ fn spec_named(cname: String, spec) = match spec {
   (_, n, _) => n == cname,
 }
 
-fn lower_pat(pat) = match pat {
-  PVar(name) => LPVar(name),
-  PWild => LPWild,
-  PLit(v) => LPLit(lower_lit_value(v)),
-  PCon(name, sub) => // Resolve the constructor's tag_id at lower time. Emit dispatches
-  // on the int tag without re-walking the env. A name without an
-  // env entry (already a missing-var diagnostic from infer) gets
-  // tag = -1; emit treats that arm as never-match.
-  //
-  // This is the UNTYPED path — no scrutinee type in hand — so each payload
-  // takes TVar(0), the explicit no-proof floor lower_pat_tuple_uniform
-  // already uses, which emit reads as the word. A genuinely-typed scrutinee
-  // takes lower_pat_typed's arm and carries its PROVEN payload types.
-  match env_kind_of(name) {
-    Some(ConstructorScheme(t, _)) => LPCon(name, t, lower_pat_con_uniform(sub, 0)),
-    Some(RecordSchemeKind(_)) => // Nominal-record pattern `Pri(pa)`: the runtime value IS the bare
-    // record (no tag word) — the ctor wrapper is the identity in
-    // pattern position exactly as in construction (the call-form arm
-    // above). The single sub-pattern matches the scrutinee itself:
-    // always-match, no tag test, the record layout untouched. The
-    // BARE spelling `Pri =>` carries no sub-pattern — it matches any
-    // value of the type and binds nothing: LPWild (face 12 — the
-    // unguarded list_index read garbage and fed a non-LowPat to
-    // emit's walk_locals).
-    if len(sub) == 0 { LPWild } else { lower_pat(list_index(sub, 0)) },
-    _ => LPUnresolvedCon(name, lower_pats(sub)),
-  },
-  PTuple(sub) => LPTuple(lower_pat_tuple_uniform(sub, 0)),
-  PList(sub, rest) => LPList(lower_pats(sub), rest, SRUnknown),
-  PRecord(flds, rest) => LPRecord(lower_pat_record_fields(flds, 0), lower_rest_unresolved(rest)),
-  PAlt(branches) => LPAlt(lower_pats(branches)),
-  PAs(name, inner) => LPAs(name, lower_pat(inner)),
-}
-
-// Pattern fields are sorted-by-name (parser invariant); position
-// IS the byte offset (`4 * index`) per `LMakeRecord`'s untagged layout.
-// No tag prefix to skip — offset 0 is the first field.
-fn lower_pat_record_fields(flds, base) = map(
-  {
-    (i, fld) => match fld {
-      (name, sub_pat) => (name, (base + i) * 4, lower_pat(sub_pat)),
-    },
-  },
-  enumerate(flds)
-)
-
 fn lower_lit_value(v) = match v {
   LVInt(n) => LInt(n),
   LVFloat(f) => LFloat(f),
   LVString(s) => LString(s),
   LVBool(b) => LBool(b),
 }
-
-fn lower_pats(pats) = map(lower_pat, pats)
 
 // H1.4 — lower handler arms to `LDeclareFn` entries: pure module-level
 // fn declarations, no runtime allocation. Each arm body becomes a wasm
@@ -6146,11 +6137,8 @@ fn low_refs(acc, expr) = match expr {
 fn wide_seed(refs) = if any(ref_is_wide, refs) { spec_wide_family() } else { [] }
 
 fn ref_is_wide(r) = match r {
-  RefSite(h, n) => {
-    let pairs = spec_site_pairs(h, n)
-    if len(pairs) == 0 { false } else { !spec_enc_is_floor(spec_enc(pairs)) }
-  },
-  RefArm(ih, _) => byte_len(arm_enc(arm_site_pairs(ih))) > 0,
+  RefSite(h, n) => !spec_enc_is_floor(twin_site_key(h, n).enc),
+  RefArm(ih, _) => byte_len(arm_install_enc(ih)) > 0,
   RefName(_) => false,
 }
 
@@ -6614,10 +6602,11 @@ fn hash_agg_reach(ty) = {
 // their keys UNDER the substitution, keeping a web (sort → merge → merge)
 // in-key transitively with no recursion special-case.
 //
-// The key is the repr digit vector over the scheme's quantified vars, sorted
-// by root handle — tiny, and maximally shared: every word instantiation IS
-// the floor emission ([Int], String, records — byte-identical, Law 7); only
-// a genuinely wide var mints a twin ($min$sp2 = min with its one var at f64).
+// The key is `twin_key` over the scheme's quantified vars, sorted by root
+// handle: a variable the body reads the structure of keys by that structure,
+// and every other one by its repr digit, so a word instantiation nothing
+// reads the structure of IS the floor emission and a wide one mints a twin
+// ($min$sp2 = min with its one var at f64).
 // spec_pairs_find lives in graph.mn with its consumers (spec_pair_or_var /
 // spec_subst_pairs / lookup_ty_graph) — the specialization projection reads
 // the graph, and both this module and the bracket (infer.mn) reach it there.
@@ -6744,7 +6733,7 @@ fn spec_resolve_build(t) = match t {
 // A scheme-side var CHASES its binding before matching: a body-bound var
 // (constrain_scrutinee's elem ~ (u, v)) holds structure whose FIELD roots
 // are the quantified ones — pairing the outer var coarse ({e -> (F, I)})
-// leaves the twin's pattern reads keyless (pat_elem_repr found no pair for
+// leaves the twin's pattern reads keyless (the slot width found no pair for
 // u/v and floored the destructure to offset 4 inside a minted twin).
 fn spec_pairs_walk(st0, it0, acc) = {
   let st = fold_strip(st0)
@@ -6898,29 +6887,6 @@ fn spec_repr_digit(t) with Pure = match repr_of(t) {
   RV128 => "4",
 }
 
-// A pair's enc code: wide scalars keep their repr digits (existing twin
-// names stay stable — Law 7), and a STRUCTURED concrete — record, tuple,
-// string, list, named sum — encodes as its fold_sig, the deterministic
-// name-safe type signature. A repr digit cannot say WHICH record closed
-// the var, and the all-'0' floor test was silently ejecting every
-// structure-bound site from candidacy (the field-heal gate).
-fn spec_pair_code(t) = match fold_strip(t) {
-  TInt => spec_repr_digit(t),
-  TByte => spec_repr_digit(t),
-  TUnit => spec_repr_digit(t),
-  TFloat => spec_repr_digit(t),
-  TVar(_) => spec_repr_digit(t),
-  _ => fold_sig(t),
-}
-
-fn spec_enc(pairs) = fold(
-  "",
-  (acc, p) => match p {
-    (_, t) => acc ++ spec_pair_code(t),
-  },
-  pairs
-)
-
 fn spec_enc_is_floor(enc) = spec_enc_floor_loop(enc, 0, byte_len(enc))
 
 fn spec_enc_floor_loop(enc, i, n) = if i >= n {
@@ -6952,20 +6918,76 @@ fn init_fn_name(hname: String) with Pure = "{hname}$init"
 // The site's instantiation pairs — [] when the name is not generic: a value
 // let, a monomorphic fn, or an internal synthesized name. The scheme's
 // quantified vars are the roots; the site's chased type carries the bindings.
-fn spec_site_pairs_resolved(name: String, rt) = match env_lookup(name) {
+fn spec_site_pairs_resolved(name: String, rt) = match fn_judgment(name) {
   None => [],
+  Some(j) => match j {
+    (qs, sty) => if len(qs) == 0 { [] } else { spec_pairs_sort(spec_pairs_walk(sty, rt, [])) },
+  },
+}
+
+// A fn's settled judgment — None for a name that is not a fn: ctor, record,
+// effect-op and value schemes never specialize.
+fn fn_judgment(name: String) = match env_lookup(name) {
+  None => None,
   Some(entry) => match entry {
     (scheme, _r, kind) => match kind {
-      FnScheme => match judgment_pair(scheme) {
-        (qs, sty) => if len(qs) == 0 { [] } else { spec_pairs_sort(spec_pairs_walk(sty, rt, [])) },
-      },
-      _ => // ctor / record / effect-op / value schemes never specialize
-      [],
+      FnScheme => Some(judgment_pair(scheme)),
+      _ => None,
     },
   },
 }
 
 fn spec_site_pairs(h, name: String) = spec_site_pairs_resolved(name, spec_resolve(lookup_ty(h)))
+
+// A TWIN IS KEYED BY WHAT ITS BASE OBSERVES. A twin is its base's body
+// emitted under an instantiation, and two instantiations emit different bytes
+// only where the body reads a variable's STRUCTURE — a fold leaf over it, a
+// concat, a field load or a record pattern on it, or a callee that reads it.
+// The judgment enters each such read on the variable's cell as a shape
+// demand (`shape_demand`, infer.mn), and instantiation carries a callee's
+// reads into its callers, so the fact is on the cell by the time anything is
+// emitted (`var_structure_read`). Everywhere else a variable is read at its
+// width. So an observed variable keys by its structure (`observed_code`)
+// and every other one by its width's digit, and the substitution the twin is
+// emitted under is the same fact: an observed variable is bound to its type,
+// an unobserved wide one too (its width is read), and an unobserved word
+// stays FREE. A structural read the judgment missed then meets a free
+// variable and floors where the census sees it, rather than reading another
+// instantiation's layout. Keying every structured variable whole, which this
+// replaced, made 3,030 twins of the wheel's generics where the bodies are
+// 975 (measured 2026-09-28): `map` had 192 twins of two bodies.
+fn twin_key(pairs) = {enc: fold("", twin_enc_step, pairs), pairs: filter(twin_keeps, pairs)}
+
+fn twin_enc_step(acc: String, p) = acc ++ twin_pair_code(p)
+
+// An observed variable keys by its whole structure, a word scalar included:
+// an observed Int is a proven fact the body reads (its comparison, its show),
+// and keying it at the floor's own digit folded it back into the base, which
+// reads it free. A variable still free at the site proves nothing, and keys
+// at the floor.
+fn twin_pair_code(p) = match p {
+  (w, t) => if var_structure_read(w) { observed_code(t) } else { spec_repr_digit(t) },
+}
+
+fn observed_code(t) = match fold_strip(t) {
+  TVar(_) => spec_repr_digit(t),
+  _ => fold_sig(t),
+}
+
+fn twin_keeps(p) = match p {
+  (w, t) => var_structure_read(w) || repr_is_wide(repr_of(t)),
+}
+
+// Whether a body reads this variable's structure: a shape demand on its cell.
+fn var_structure_read(w) = any(is_shape_demand, graph_demands_of(w))
+
+fn is_shape_demand(d) = match d {
+  DemandShape(_) => true,
+  DemandNumber(_) => false,
+}
+
+// A reference site's key.
+fn twin_site_key(h, name: String) = twin_key(spec_site_pairs(h, name))
 
 // THE INSTALL KEYS ITS ARMS. An arm is lowered once, from the handler's
 // declaration, so every install ran one arm set that read its config and its
@@ -7060,11 +7082,15 @@ fn op_answers_its_driver(op: String) = match op_resume_discipline(op) {
   Abandon => true,
 }
 
-// The install's key as a twin suffix — "" when its arms run as declared.
-fn arm_enc(pairs) = if len(pairs) == 0 {
-  ""
-} else {
-  let e = spec_enc(pairs)
+// The key an install's arms run under. They share one: every arm and the
+// init are judged in the handler's own scope, so what any of them reads of
+// the handler's variables is on those variables' cells.
+fn arm_twin_key(ih) = twin_key(arm_site_pairs(ih))
+
+// The install's key as a twin suffix, "" at the floor — what the emit names
+// an install's arms and init by.
+fn arm_install_enc(ih) = {
+  let e = arm_twin_key(ih).enc
   if spec_enc_is_floor(e) { "" } else { e }
 }
 
@@ -7086,15 +7112,10 @@ fn handler_may_key(hname) = match env_lookup(hname) {
 }
 
 // The ONE naming projection every reference-emitting arm reads: the site's
-// key, mangled when any var lands wide, the plain name at the floor.
+// key, mangled when it names more than the floor, the plain name there.
 fn spec_global_name(h, name: String) = {
-  let pairs = spec_site_pairs(h, name)
-  if len(pairs) == 0 {
-    name
-  } else {
-    let enc = spec_enc(pairs)
-    if spec_enc_is_floor(enc) { name } else { spec_mangle(name, enc) }
-  }
+  let enc = twin_site_key(h, name).enc
+  if spec_enc_is_floor(enc) { name } else { spec_mangle(name, enc) }
 }
 
 // The wide runtime family a twin's emission can mint that its floor did not

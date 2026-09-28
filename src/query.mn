@@ -97,25 +97,16 @@ type CensusShape
   // narrates (T_RowInventory, T_OverDeclared). The board holds the wheel at
   // the measured count, and it only falls.
   | CsAuthoredPositiveRow
-  // The second declared-surface shape, and it counts EXPOSURE rather than
-  // style: a record pattern's field offsets are resolvable only when the
-  // receiver's full sorted field set is known, and a row-polymorphic
-  // receiver makes them unknowable at lowering
-  // (`Hβ.lower.record-pattern-param-receiver`). Counting the sites is how
-  // that fix gets priced, and the count belonged to the medium rather
-  // than to the grep that asked it first.
+  // The second declared-surface shape: every record pattern, each a
+  // structural read of its receiver's row, which is what keys the twin a
+  // row-polymorphic receiver's call sites specialize. The count belonged
+  // to the medium rather than to the grep that asked it first. Its judged
+  // half, the patterns over an open receiver, was a bound held at zero
+  // while those offsets came from the pattern's own field indices; it
+  // retired on 2026-09-28, when the emit began reading them from the
+  // receiver's whole field set under each twin
+  // (`Hβ.lower.record-pattern-param-receiver`, closed).
   | CsRecordPattern
-  // The JUDGED half of CsRecordPattern, and the one that carries a
-  // verdict rather than a count. A record pattern's field offsets
-  // resolve from the receiver's full sorted field set; a `TRecordOpen`
-  // receiver has no such set, so lowering falls back to the pattern's
-  // own index and the read is a guess. Crucially a COMPLETE pattern over
-  // an open row looks identical to a partial one — both leave
-  // known-fields = the pattern's fields plus an open tail — so no
-  // discipline at the site can distinguish safe from unsafe, and only
-  // this count can. Wheel-zero is the contract
-  // (`Hβ.lower.record-pattern-param-receiver`).
-  | CsRecordPatternOpen
 
 // Sum type covering every forensic question `mentl query` can pose.
 // Each variant corresponds to one `ask(Q)` arm in `query_default`.
@@ -970,7 +961,6 @@ fn census_label(shape) with Pure = match shape {
   CsDeclaredRowHof => "fn(s) with a declared row that call a parameter",
   CsAuthoredPositiveRow => "signature(s) authoring a positive row the judgment projects",
   CsRecordPattern => "record pattern(s)",
-  CsRecordPatternOpen => "record pattern(s) over an open-row receiver",
 }
 
 fn census_sites(shape) with !Mutate = match graph_snapshot() {
@@ -1227,54 +1217,16 @@ fn census_matches(shape: CensusShape, h, body: NodeBody) with !Mutate = match sh
     _ => false,
   },
   CsRecordPattern => // Both spellings of one shape, read where the pattern lives: a
-  // let-binding's own pattern and a match arm's. Lowering resolves a
-  // record pattern's field offsets from the RECEIVER's full sorted field
-  // set, so every site counted here is a site whose correctness depends
-  // on that set being known — which a row-polymorphic receiver makes
-  // impossible. Counting them is how the fix gets priced; classifying
-  // WHICH of them face an open row is the judged refinement
-  // (`Hβ.query.record-pattern-open-receiver`), a read this syntactic
-  // half does not make.
+  // let-binding's own pattern and a match arm's. The emit reads a record
+  // pattern's field offsets from the receiver's whole field set under the
+  // twin being emitted, so every site counted here is a structural read of
+  // its receiver's row.
   match body {
     NStmt(LetStmt(p, _, _)) => match p {
       PRecord(_, _) => true,
       _ => false,
     },
     NExpr(MatchExpr(_, arms)) => any_record_arm(arms, 0, len(arms)),
-    _ => false,
-  },
-  CsRecordPatternOpen => // The same sites, filtered by the receiver's JUDGED type. Two
-  // existing homes compose and nothing is re-derived: `graph_chase`
-  // resolves the receiver handle through the union-find (so a TVar needs
-  // no separate walk), and `fold_strip` — types.mn's own alias /
-  // refinement / repr-pin peel, the Carried-Truth home for "a property
-  // OF THE TYPE" — takes it to the bare constructor. `TRecordOpen` is
-  // its own constructor beside `TRecord`, so openness is a match, never
-  // a probe. BOTH spellings are filtered, and the match half is the one
-  // that matters: this arm's first draft covered only let bindings and
-  // answered 0 for a wheel whose two sites are both match arms, so its
-  // falsification — un-annotating a receiver and watching the count stay
-  // 0 — caught a shape blind to exactly what it was built to count. The
-  // scrutinee handle was never out of reach; `MatchExpr` carries it.
-  match body {
-    NStmt(LetStmt(p, rhs, _)) => match p {
-      PRecord(_, _) => receiver_row_open(rhs),
-      _ => false,
-    },
-    NExpr(MatchExpr(scrut, arms)) => any_record_arm(arms, 0, len(arms)) && receiver_row_open(scrut),
-    _ => false,
-  },
-}
-
-// The receiver's judged type at a record-pattern site: open when it
-// resolves to `TRecordOpen`, which is exactly when lowering has no full
-// sorted field set to take offsets from.
-fn receiver_row_open(rhs) = match rhs {
-  N(_, _, rh) => match graph_chase(rh) {
-    GNode(NBound(ty), _) => match fold_strip(ty) {
-      TRecordOpen(_, _) => true,
-      _ => false,
-    },
     _ => false,
   },
 }

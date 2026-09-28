@@ -1,0 +1,9 @@
+// expect: 4
+// A record pattern's rest is built from the receiver's remaining fields, at
+// each field's own width. It was built from a residual computed at lower
+// with every copy a word, so a Float field arrived as half a float and the
+// rest's own layout was the word layout. Measured on boot 0bc8383e: 1.
+fn main() = {
+  let {a, ...rest} = {a: 1, b: 2.5, c: 3}
+  if rest.b > 2.0 { rest.c + a } else { 0 }
+}

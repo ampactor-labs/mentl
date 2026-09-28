@@ -37,5 +37,5 @@ fn vt_site() = ({fn_go: (x) => x + 1, tag: 0}) // drift-audit: ignore — the ce
 fn pp_site(locals, locals_h) = locals + locals_h // drift-audit: ignore — the census gate's own deliberate specimen of the shape it counts
 fn push_frame(x) = x // drift-audit: ignore — the census gate's own deliberate specimen of the shape it counts (mode 2's env-frame family)
 fn dp_site(a, b = 1) = a + b // the first DECLARED-SURFACE shape: not a drift silhouette but a form SYNTAX declares, counted so the selector can ask which surfaces the wheel never writes
-fn rp_site(r) = { let {alpha} = r; alpha } // the second: a record pattern, whose field offsets are only resolvable when the receiver's full sorted field set is known
+fn rp_site(r) = { let {alpha} = r; alpha } // the second: a record pattern, a structural read of its receiver's row that keys the twins of every caller passing one
 fn drh_site(f) with Pure = f() // the third declared-surface shape: a declared row over a CALLED parameter, the site whose judgment changes when the declaration stops being vacuous against the param's free row var
