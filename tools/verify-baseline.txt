@@ -744,7 +744,15 @@ comment_refs_max: 0
 # `emitted_sig_of_entry`'s twin. What drives those four back down is not
 # emitting a base whose every reference resolved to a twin
 # (`Hβ.emit.dead-base-emitted-beside-its-twins`).
-field_offset_unprovable_max: 8
+# 2026-09-28 · 8 -> 0 · R0′, the emitted reach: a top-level decl no live
+# reference reaches is not emitted, so the four bases R0 exposed are gone —
+# and so are the four pre-R0 sites, whose value-passed callers key twins
+# once the row variable is real. The new compiler's own compile of the
+# wheel reads 0 (the m3 and m4 legs at pin b29e319b). The class does not
+# arm by renaming: it is decided during emission, after the gate reads
+# refusals (`Hβ.emit.emit-time-class-cannot-refuse`), so until that lands
+# this ceiling of zero is what holds it.
+field_offset_unprovable_max: 0
 
 # The effect seam: filesystem impl calls outside the handler that owns them.
 # MEASURED 24 before this landing and 13 after (both read from the artifact,
@@ -937,7 +945,10 @@ frontier_expected_red: eq-in-arm-pointer
 # as an address compare over the erased bucket tuple; pinning the key `Int`
 # at every wmap entry (the primitive's own law: the key IS a word) proved
 # both bucket compares at once, the scan's included.
-eq_type_unprovable_max: 57
+# 2026-09-28 · 57 -> 34 · R0′: the 23 were in base bodies no live reference
+# reaches, gone with them (the emitted reach). Read off the new compiler's
+# own compile of the wheel at pin b29e319b.
+eq_type_unprovable_max: 34
 
 # show_type_unprovable_max — show and interpolation splices whose operand type
 # is still a VARIABLE at emit, so the render prints the word as an integer:
@@ -952,7 +963,8 @@ eq_type_unprovable_max: 57
 # dead floor from a live one, which is why it is a countdown to arming rather
 # than a list of bugs. Counted from the pinned boot's own compile of the
 # wheel, so it reads 0 until the boot that carries the narration is pinned.
-show_type_unprovable_max: 22
+# 2026-09-28 · 22 -> 1 · R0′: 21 of the 22 sat in unemitted base bodies.
+show_type_unprovable_max: 1
 
 # record_pattern_open_max — record patterns whose RECEIVER row is open, so
 # their field offsets come from the pattern's own index rather than the
@@ -1045,7 +1057,9 @@ authored_own_max: 62
 # Verify's join decision) and the ratchet refused them at 731. Every one was
 # dropped and the grade reads each parameter without it; the head render's
 # lesser copy and the index-threaded param render left with two more.
-authored_ref_max: 719
+# 719 -> 717 (2026-09-28, R0′): `spec_rec_name_seen`'s two markers left with
+# it — the twin-record dedup is one pass over a name map now, not a scan.
+authored_ref_max: 717
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the

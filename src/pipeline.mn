@@ -458,9 +458,23 @@ fn report_holes(holes, i) = if i >= len(holes) {
 // The compile's projection half — everything after the analyzed graph.
 // ONE home: the cold path, the warm path, and the resume verb all run
 // exactly this remainder over their ast (the persisted image's typed
-// root included), so the three routes cannot drift.
-fn compile_remainder(ast) =
-  ast |> saturate_pass |> lower_program |> reachable_from_main |> executable_gate |> emit_module
+// root included), so the three routes cannot drift. Under the whole-link
+// scope it says where the heap stands when lowering ends and when the
+// module is written, beside the judgment's own line, so the compile's cost
+// reads as three phases rather than one peak — the emit's share was found
+// by exactly these marks (2026-09-28: two quadratic dedups, 120MB).
+fn compile_remainder(ast) = {
+  let lowered = ast |> saturate_pass |> lower_program |> reachable_from_main |> executable_gate
+  heap_line("when lowering ends")
+  emit_module(lowered)
+  heap_line("when the module is written")
+}
+
+fn heap_line(at: String) = match diag_scope_of() {
+  ScopeAll => eprint_string("heap: {int_to_str(heap_mark())} byte(s) {at}\n"),
+  ScopeNone => (),
+  ScopeModule(_) => (),
+}
 
 // `mentl resume <img>` — the image IS the process: swap it in and run
 // the compile remainder over the restored typed root, the source not

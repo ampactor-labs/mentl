@@ -35,6 +35,70 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-28 · pin b29e319b99990abf (TRANSITION m3 == m4) · THE MODULE IS WHAT LIVE CODE NAMES.
+  R0′. R0 exposed it: every row-polymorphic helper whose calls all keyed
+  twins now narrated its BASE body's floors — `fn pick(u) = u.x * 10 +
+  u.y` printed two location-less `T_FieldOffsetUnprovable` warnings about
+  a body the program never runs, and the wheel's field-offset census rose
+  4 → 8 from four such bases. Lower's reach constructs by NAME, and must (a
+  twin is a copy of its base's lowered body), so it keeps every base a
+  reference names; the keys that decide twin-or-base do not exist until
+  emit reads the instantiations. **The emitted reach** (`emit_reach`,
+  backends/wasm.mn) reads the same references at that altitude: from main,
+  the runtime contract, argv and the value lets, a base body's references
+  resolve unbracketed and a twin's under its own pairs, a floor site
+  demands the base and a keyed site the twin, arms are keyed by name through
+  their container, lambdas live with their decl, and a top-level decl no
+  live reference reaches is not emitted. A twin of an unemitted base still
+  takes the base body's strings, lines, host ops, yields and performs
+  (`names_not_emitted` absorbs only its names), and a twin's static lines
+  are read off its base's line homes (`LhStatic`) instead of re-deriving
+  top-levelness from the top-fn list. **One walker** (`low_refs`, lower.mn)
+  replaces two that carried the same edges — `reach_names_expr` for lower's
+  names and `spec_scan_expr` for emit's twin sites, the second still
+  collecting operand handles nothing had read since the worthiness gate was
+  deleted.
+  **Measured at the pin:** 449,015 → 408,868 WAT lines (−9%), field-offset
+  floors 8 → 0, and the m4 leg 13.22s · 810,108 KB → 9.67s · 734,380 KB.
+  The four floors the wheel carried BEFORE R0 went too — their
+  value-passed sites key twins once R0 made the row variable real — so the
+  peer's own prediction ("falls by exactly the dead bases' floors", four)
+  was wrong by four.
+  **The cost the first form paid:** it peaked at 858MB, 43MB over the
+  ceiling, with the judgment's heap line unchanged (315MB). Heap marks at
+  emit's phase boundaries named it: `dedup_fn_records` compared every
+  record with every earlier one and built a tuple per comparison — 60MB per
+  dedup — and the reach had added a second. Both dedups
+  (`dedup_fn_records`, `spec_recs_dedup`, whose keep-set grew by
+  `acc ++ [rp]`) are one pass over a name map now; the marks graduated into
+  two `heap:` lines beside the judgment's (lowering's end, the module's
+  end), so the compile's cost reads as three phases.
+  **Kills:** "the second record walk is the cost" — collecting records per
+  decl instead cost +70MB, because every scan of a concat tree materializes
+  it (`iterate`'s list_to_flat) and each twin demand scanned one; "arm the
+  class at zero by the verify recipe" — built, then reverted before a march
+  on reading the gate: the class is raised during emission, after the gate
+  reads refusals and after bytes stream, so a renamed class would refuse a
+  finished module (`Hβ.emit.emit-time-class-cannot-refuse`, with the
+  settle-point design; R0″).
+  **The first march REFUSED before the board**, and the ratchet was right:
+  the unprovable-comparison count rose 57 → 58 on the old boot's read of
+  the new source. The new comparison was the reach's own — `decls_where`
+  compared a liveness flag against a `want` parameter, a compare on a
+  quantified type the old emit could not read, and the flags were 0/1
+  ints (drift 8). Liveness is `DeclReach = Unreached | Reached` now, read by
+  `match`, and the unused `want` generality is gone.
+  **What else fell, measured on the new compiler's own compile of the
+  wheel (the m3 and m4 legs' stderr):** unprovable comparisons 57 → 34 and
+  unprovable shows 22 → 1 — the floors of those classes that sat in dead
+  bases, gone with them; the three ratchets follow the new boot's read
+  (0, 34, 1).
+  **Fixtures:** `tests/frontier/mn-dead-base-unnarrated.mn` (46, no floor
+  narrated; RED on boot c5439637 with two), `run_unnarrated` in the gate.
+  m3 leg 10.07s · 737MB; m4 leg 9.67s · 717MB peak (734380 KB); crown,
+  proof-exactness, effect-identity green; frontier 424 / 0 / 2; micros
+  165/165 through the pinned boot; census 0; the board whole.
+
 - 2026-09-28 · pin c5439637261f50ab (TRANSITION m3 == m4) · RECORD ROW VARIABLES ARE UNION-FIND CITIZENS.
   R0, preempting L4a by the soundness law: L4a's derivative walk was
   built whole, and its first m2 trapped in the compiler's own

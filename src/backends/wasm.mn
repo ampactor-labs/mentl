@@ -446,100 +446,227 @@ fn string_bucket_scan(ref bucket, s: String, i) = if i >= len(bucket) {
 // Reads through LookupTy; refinements transparent (erased at runtime).
 //
 //
-// ─── The specialization demand analysis (monomorphization, §5.U scalar half) ──
+// ─── THE EMITTED REACH — the module is what live code names ───────────
 //
-// Which named-generic twins exist. Three passes over projections the graph
-// already holds, no new state: (1) CANDIDATES — every reference site whose key
-// projects wide, closed transitively by walking each candidate's body UNDER
-// its substitution (sort's merge site projects merge's key only with sort's
-// pairs active); (2) WORTHINESS — a candidate's floor emission is WRONG only
-// when its own body performs arith/compare/eq on a pair var at a wide
-// instantiation (the address-comparison class), or an interior site redirects
-// to a worthy twin; plumbing shells (fold/map — wide values shuttled as word
-// references, never operated on) stay at the floor, which the word protocol
-// keeps correct; (3) the worthy candidates ARE the twin set, seeded into
-// spec_registry and emitted as the same records under the spec_pairs state.
+// Lower's reach constructs by NAME, and it must: a twin is a copy of its
+// base's lowered body, so a base is constructed whatever key its sites
+// project. What it cannot know is which bases anything CALLS, because the
+// keys do not exist until the instantiations are read. This reach reads
+// the same references (`low_refs`, the one walk both reaches share) at the
+// altitude where they do: from main and the roots lower seeds, a base
+// body's references resolve unbracketed and a twin's under its own pairs,
+// so a site whose key projects wide demands the twin and a floor site the
+// base. A top-level decl no live reference reaches is not emitted, and a
+// base whose every call was keyed to a twin carries no floor into the
+// module (`Hβ.emit.dead-base-emitted-beside-its-twins`). The twins are the
+// same fixpoint's other half — every candidate twins (5.1a's total
+// monomorphization; mixed instantiations such as a := Float, b := Int twin
+// through each var's own pair), and each demand is one body scanned once,
+// under its own instantiation.
+type Demand
+  // a symbol by its own name: a decl's base body, an arm, a runtime fn
+  = DemandBase(String)
+  // a twin: its mangled name, its base, the instantiation pairs and their
+  // encoding
+  | DemandTwin(String, String, [(Int, Ty)], String)
+
+// The reach's verdict on one top-level decl, by source index.
+type DeclReach = Unreached | Reached
+
 fn spec_find_rec(recs, target: String) = find({ (n, _p, _b, _f) => n == target }, recs)
 
-fn spec_demand_named(ds, m: String) = any({ (dm, _b, _p, _e) => dm == m }, ds)
+fn demand_base(n) = DemandBase(n)
 
-// A site becomes a candidate when ANY quantified var lands wide — the exact
-// root-keyed substitution answers each var through its own pair (word-bound
-// vars included), so mixed instantiations (a := Float, b := Int) twin
-// correctly. The former one-wide-type guard was the free-leaf rule's
-// requirement; the fracture fix retired both.
-fn spec_candidate_of_site(site, acc) = match site {
-  (h, n) => {
-    let rt = spec_resolve(lookup_ty(h))
-    let pairs = spec_site_pairs_resolved(n, rt)
+// One reference, read under the bracket in force: the key its site
+// projects decides twin or base, the same read `spec_target_name` makes
+// for the emitted call.
+fn ref_demand(r) = match r {
+  RefName(n) => DemandBase(n),
+  RefSite(h, n) => {
+    let pairs = spec_site_pairs(h, n)
     if len(pairs) == 0 {
-      acc
+      DemandBase(n)
     } else {
       let enc = spec_enc(pairs)
-      if spec_enc_is_floor(enc) {
-        acc
-      } else {
-        let m = spec_mangle(n, enc)
-        if spec_demand_named(acc, m) { acc } else { [(m, n, pairs, enc)] ++ acc }
-      }
+      if spec_enc_is_floor(enc) { DemandBase(n) } else { DemandTwin(spec_mangle(n, enc), n, pairs, enc) }
     }
   },
 }
 
-fn spec_candidates_from_sites(sites, acc) = fold(acc, (a, s) => spec_candidate_of_site(s, a), sites)
+// A capped twin's body, read at the floor: its interior sites mangle past
+// the cap, find no registered twin, and emit the base names.
+fn ref_floor_demand(r) = DemandBase(ref_name(r))
 
-// The accepted set is a FLAT BUFFER with its count, not a `[d] ++ done`
-// concat spine. Both reads the fix makes of it — membership by mangled
-// name, and the per-base count the cap meters — index it, and indexing a
-// concat spine is O(depth), so the two linear reads were quadratic in the
-// accepted count. The buffer-counter is this codebase's own answer to that
-// bug class (reach_grow's shape). Measured before: spec_base_count alone
-// was 7.95% of the entire self-compile.
-fn spec_candidates_fix(work, acc, recs) = if len(work) == 0 {
-  acc
+// A top-level decl's keys — its own name, or for a name-less container the
+// arm names it holds (`reach_collect`'s keep rule, read at the emit): a
+// container lives when any of them is demanded, and one with none lives
+// always.
+fn emit_keys(program, i, n, keys) = if i >= n {
+  keys
+} else {
+  let stmt = list_index(program, i)
+  let nm = reach_decl_name(stmt)
+  let names = if nm == "" { reach_nested_names(stmt, []) } else { [nm] }
+  emit_keys(program, i + 1, n, fold(keys, smap_add(??, ??, i), names))
+}
+
+// The roots: in a library every decl (it emits whole); in an executable
+// each module value let's init (it runs in __init_lets before main), with
+// main, the runtime contract and argv demanded by `emit_reach`. A decl
+// with no keys lives either way; a bare expression or a trivial decl roots
+// nothing, as in lower's phase A.
+fn emit_reach_roots(program, library, i, n, live, roots) = if i >= n {
+  (live, roots)
+} else {
+  let stmt = list_index(program, i)
+  let keyless = reach_decl_name(stmt) == "" && len(reach_nested_names(stmt, [])) == 0
+  if library {
+    emit_reach_roots(program, library, i + 1, n, list_set(live, i, Reached), low_refs(roots, stmt))
+  } else if keyless {
+    let roots2 = match stmt {
+      LLet(_, _, init) => low_refs(roots, init),
+      _ => roots,
+    }
+    emit_reach_roots(program, library, i + 1, n, list_set(live, i, Reached), roots2)
+  } else {
+    emit_reach_roots(program, library, i + 1, n, live, roots)
+  }
+}
+
+// The fixpoint. The accepted twin set is a FLAT BUFFER with its count, not
+// a `[d] ++ done` concat spine: both reads the fix makes of it (membership
+// by mangled name, the per-base count the cap meters) index it, and
+// indexing a concat spine is O(depth) — measured before the buffer:
+// spec_base_count alone was 7.95% of the entire self-compile. `live` flags
+// the decls emitted, by source index; `wide` records that the runtime
+// family a twin can mint is already demanded.
+fn emit_reach_fix(work, st, program, keys, recs) = if len(work) == 0 {
+  st
 } else {
   let d = work[0]
   let w2 = rest(work)
-  match acc {
-    (dbuf, dn) => match d {
-      (m, base, pairs, enc) => if spec_buf_demanded(dbuf, dn, m, 0) {
-        spec_candidates_fix(w2, acc, recs)
-      } else {
-        match spec_find_rec(recs, base) {
-          None => spec_candidates_fix(w2, spec_demand_accept(acc, d), recs),
-          Some(rec) => // THE POLYMORPHIC-RECURSION CAP (the 5.1c guard, resurrected the
-          // day sig'd poly recursion reached the emit): a self-instantiating
-          // demand chain mints a fresh mangle per nesting level
-          // (depth@[w], depth@[[w]], …), so one base's demand count is the
-          // divergence meter. At the cap the candidate registers
-          // unspecialized — its sites emit the uniform word-protocol floor,
-          // which is CORRECT for every vector (containers are words); the
-          // deep tail pays indirection, never divergence. The teaching
-          // narration for this floor rides the 5.3 proposed-signature step.
-          if spec_buf_base_count(dbuf, dn, base, 0, 0) >= 8 {
-            spec_candidates_fix(w2, spec_demand_accept(acc, d), recs)
-          } else {
-            match rec {
-              (_n, _ps, body, _f) => {
-                // ONE structural scan, taken UNDER the instantiation: the inner
-                // candidates a twin's body demands key against the specialized
-                // truth, so the ctx brackets the scan and its candidate read
-                // together.
-                spec_ctx_set(pairs, enc)
-                match spec_scan_list(body, ([], [])) {
-                  (sites, _ophs) => {
-                    let inner = spec_candidates_from_sites(sites, [])
-                    spec_ctx_clear()
-                    spec_candidates_fix(inner ++ w2, spec_demand_accept(acc, d), recs)
-                  },
-                }
-              },
-            }
+  match st {
+    (dbuf, dn, live, wide) => match d {
+      DemandBase(nm) => match smap_get(keys, nm) {
+        None => emit_reach_fix(w2, st, program, keys, recs),
+        Some(i) => match list_index(live, i) {
+          Reached => emit_reach_fix(w2, st, program, keys, recs),
+          Unreached => {
+            let ds = map(ref_demand, low_refs([], list_index(program, i)))
+            emit_reach_fix(ds ++ w2, (dbuf, dn, list_set(live, i, Reached), wide), program, keys, recs)
           },
+        },
+      },
+      DemandTwin(m, base, pairs, enc) => if spec_buf_demanded(dbuf, dn, m, 0) {
+        emit_reach_fix(w2, st, program, keys, recs)
+      } else {
+        // THE POLYMORPHIC-RECURSION CAP (the 5.1c guard): a
+        // self-instantiating chain mints a fresh mangle per nesting level
+        // (depth@[w], depth@[[w]], …), so one base's accepted count is the
+        // divergence meter. Past it the twin registers and its body's
+        // sites emit the base names — the uniform word-protocol floor,
+        // correct for every vector because containers are words; the deep
+        // tail pays indirection, never divergence.
+        let capped = spec_buf_base_count(dbuf, dn, base, 0, 0) >= 8
+        let ds = match spec_find_rec(recs, base) {
+          None => [DemandBase(base)],
+          Some(rec) => match rec {
+            (_n, _ps, body, _f) => if capped {
+              map(ref_floor_demand, low_refs_list([], body))
+            } else {
+              // ONE structural scan, taken UNDER the instantiation: the
+              // references a twin's body makes key against the specialized
+              // truth, so the ctx brackets the scan and its read together.
+              spec_ctx_set(pairs, enc)
+              let inner = map(ref_demand, low_refs_list([], body))
+              spec_ctx_clear()
+              inner
+            },
+          },
+        }
+        // the runtime family a twin's emission can mint that its floor did
+        // not (lower seeds the same names per entry, wide_seed)
+        let family = if wide { [] } else { map(demand_base, spec_wide_family()) }
+        match spec_demand_accept((dbuf, dn), (m, base, pairs, enc)) {
+          (dbuf2, dn2) => emit_reach_fix(ds ++ family ++ w2, (dbuf2, dn2, live, true), program, keys, recs),
         }
       },
     },
   }
+}
+
+// The reach whole: the accepted twin demands, and each decl's liveness by
+// source index (1 = emitted).
+fn emit_reach(program, recs) = {
+  let n = len(program)
+  let keys = emit_keys(program, 0, n, smap_new())
+  let library = match smap_get(keys, "main") {
+    Some(_) => false,
+    None => true,
+  }
+  match emit_reach_roots(program, library, 0, n, list_filled(n, Unreached), []) {
+    (live0, root_refs) => {
+      let argv = if main_param_count() > 0 { ["wasi_args"] } else { [] }
+      let entry = if library { [] } else { map(demand_base, ["main"] ++ emit_runtime_contract() ++ argv) }
+      match emit_reach_fix(
+        entry ++ map(ref_demand, root_refs),
+        (make_list(64), 0, live0, false),
+        program,
+        keys,
+        recs
+      ) {
+        (dbuf, dn, live, _wide) => (slice(dbuf, 0, dn), live),
+      }
+    },
+  }
+}
+
+// The entries of XS whose decl a live reference reaches, in source order —
+// XS is the program or anything indexed by it (each decl's records).
+fn decls_reached(xs, live, i, n, out, k) = if i >= n {
+  slice(out, 0, k)
+} else {
+  match list_index(live, i) {
+    Reached => decls_reached(xs, live, i + 1, n, list_set(list_extend_to(out, k + 1), k, list_index(xs, i)), k + 1),
+    Unreached => decls_reached(xs, live, i + 1, n, out, k),
+  }
+}
+
+// The unreached decls a live twin copies: a twin is emitted from its base's
+// body, so a base the module does not emit still owes its twins the facts
+// that body carries (`project_emit_state`).
+fn twin_bases_where(program, decl_records, live, bases, i, n, out, k) = if i >= n {
+  slice(out, 0, k)
+} else {
+  let copied = match list_index(live, i) {
+    Unreached => any(record_named_in(bases, ??), list_index(decl_records, i)),
+    Reached => false,
+  }
+  if copied {
+    twin_bases_where(
+      program,
+      decl_records,
+      live,
+      bases,
+      i + 1,
+      n,
+      list_set(list_extend_to(out, k + 1), k, list_index(program, i)),
+      k + 1
+    )
+  } else {
+    twin_bases_where(program, decl_records, live, bases, i + 1, n, out, k)
+  }
+}
+
+fn demand_base_note(acc, d) = match d {
+  (_m, base, _p, _e) => smap_add(acc, base, 1),
+}
+
+fn record_named_in(bases, rec) = match rec {
+  (n, _ps, _b, _f) => match smap_get(bases, n) {
+    Some(_) => true,
+    None => false,
+  },
 }
 
 // The accepted set's three operations, one home: append at the count, and
@@ -593,33 +720,6 @@ fn field_offset_unprovable_why(rec, sel) = match sel {
   FByIndex(i) => "element {int_to_str(i)} on {show_type(lookup_ty(lexpr_handle(rec)))}",
 }
 
-fn spec_demands_of(lowered, recs) = match spec_scan_list(lowered, ([], [])) {
-  (sites, _o) => {
-    let seed = spec_candidates_from_sites(sites, [])
-    // ONE body scan per candidate, total, and the accumulator enters with
-    // its own indexes: the fix reads membership and the per-base cap from
-    // them, never from the entry list, so the transitive closure costs one
-    // scan per accepted candidate and nothing per query. The old two-fn
-    // fixpoint re-scanned every candidate's body and re-minted every
-    // interior site's mangled name PER ROUND (measured 2026-07-25: +274MB
-    // of the self-compile image — the demand analysis' true monster).
-    // TOTAL BY CANDIDACY (5.1a lands): every candidate twins. The
-    // worthiness gate guarded two named classes and both are CLOSED —
-    // the ambient stack cliff died with zip_with's buffer-counter tail
-    // form (mn-zip-deep pins 200,000 elements), and the width blindness
-    // died at the twin edges (Hβ.emit.twin-state-width: args word-faced,
-    // results deref'd, inits boxed — the total-twin m3 assembles, the
-    // acceptance probe's own verdict). The uniform-representation seam
-    // the gate preserved is where every measured silent-wrong lived;
-    // deleting it is the erasure boundary telling the truth. Cost is
-    // the march's to arbitrate (the ratchets; the banked expectation:
-    // emit +17%, RSS inside the raised ceiling).
-    match spec_candidates_fix(seed, (make_list(64), 0), recs) {
-      (dbuf, dn) => slice(dbuf, 0, dn),
-    }
-  },
-}
-
 // The two name projections the driver concats into the module's name surfaces.
 // The declared [String] is the Intent Boundary the ++ sites read — without it
 // the filter-with-handler-block chain left the element open and the concat
@@ -629,17 +729,15 @@ fn spec_demands_of(lowered, recs) = match spec_scan_list(lowered, ([], [])) {
 // therefore where its signature edges live.
 //
 // IT SHOULD BE A RECORD — {base, enc, pairs, rec} — and it is a positional
-// quadruple instead, under protest and with the reason measured this turn.
-// Written as a record, these helpers read `rp.rec` through an UNANNOTATED
-// parameter, which is an interior open-row field access, and the wheel
-// compiles that to `(unreachable) ;; field offset unprovable` — three of
-// them, and the twin loop executes one, so the m3 leg traps. The defect is
-// `Hβ.infer.record-row-vars-are-not-unioned`, live and on the board: an open
-// row reached from inside another function demands no twin, so the callee
-// bakes an offset it cannot know. Four such floors already sit in the
-// shipping wheel on other fields (op_name / name / init / body), which is
-// what makes this the next thing to build rather than a curiosity. The
-// record form is the gate that fix has to pass, and it goes back in there.
+// quadruple instead. Written as a record, these helpers read `rp.rec`
+// through an UNANNOTATED parameter, an interior open-row field access, and
+// when this was written the wheel compiled that to a field-offset floor the
+// twin loop executed. The defect it cited
+// (`Hβ.infer.record-row-vars-are-not-unioned`) closed on 2026-09-28 and the
+// wheel's field-offset census reached zero the same day, so the record form
+// is the test that fix has to pass: it goes back in with the landing that
+// arms the class (`Hβ.emit.emit-time-class-cannot-refuse`), where any site
+// that still floors refuses the repin by name.
 fn spec_fold_collect(spec_recs, acc0) =
   fold(acc0, spec_bracketed(collect_fold_tys_list, ??, ??), spec_recs)
 
@@ -664,35 +762,32 @@ fn spec_bracketed(walk, acc, rp) = match rp {
 
 // Two demands can nest the SAME lambda under the SAME enc (two parents,
 // one inner record, one instantiation) — the twin emits once; keep-first
-// by mangled name, the emission seam's own dedup discipline.
-fn spec_recs_dedup(recs) = fold(
-  [],
-  (acc, rp) => match rp {
-    (rec2, _p, _e, _base) => match rec2 {
-      (m, _ps, _b, _f) => if spec_rec_name_seen(acc, m, 0) { acc } else { acc ++ [rp] },
-    },
-  },
-  recs
-)
+// by mangled name, the emission seam's own dedup discipline, in ONE pass
+// over a name map (the fn-record dedup's form; this one grew its keep-set
+// by `acc ++ [rp]` and re-scanned it per record).
+fn spec_recs_dedup(recs) = {
+  let n = len(recs)
+  spec_recs_dedup_flat(list_to_flat(recs), 0, n, make_list(n), 0, smap_new())
+}
 
-fn spec_rec_name_seen(ref recs, ref m: String, i) = if i >= len(recs) {
-  false
+fn spec_recs_dedup_flat(recs, i, n, out, count, seen) = if i >= n {
+  slice(out, 0, count)
 } else {
-  match list_index(recs, i) {
-    (rec2, _p, _e, _base) => match rec2 {
-      (n, _ps, _b, _f) => if n == m { true } else { spec_rec_name_seen(recs, m, i + 1) },
-    },
+  let rp = list_index(recs, i)
+  let m = spec_rec_name(rp)
+  match smap_get(seen, m) {
+    Some(_) => spec_recs_dedup_flat(recs, i + 1, n, out, count, seen),
+    None => spec_recs_dedup_flat(recs, i + 1, n, list_set(out, count, rp), count + 1, smap_add(seen, m, 1)),
   }
 }
 
-fn spec_rec_names(spec_recs) -> [String] = map(
-  {
-    (rec2, _p, _e, _base) => match rec2 {
-      (m, _ps, _b, _f) => m,
-    },
+fn spec_rec_name(rp) -> String = match rp {
+  (rec2, _p, _e, _base) => match rec2 {
+    (m, _ps, _b, _f) => m,
   },
-  spec_recs
-)
+}
+
+fn spec_rec_names(spec_recs) -> [String] = map(spec_rec_name, spec_recs)
 
 // ─── THE SIGNATURE COLUMN's one write (lowering-is-a-column (ii)) ─────
 //
@@ -821,27 +916,58 @@ fn symbol_is_wide(name: String) = match graph_sig_at(name) {
 
 fn sig_wide_names(names) = filter(symbol_is_wide, names)
 
-fn emit_module(lowered) = {
-  // The fn emit records, collected ONCE (emit_functions and the wrapper/table
-  // wideness read the same set — never two walks of one tree). A fn whose
-  // native signature carries a wide slot reaches the table through its $wf$
-  // word wrapper; the elem substitution below is that law's one write.
-  let fn_records = collect_fn_emit_records(lowered) |> dedup_fn_records
-  // Named-generic twins (the demand analysis above): each demand's record is
-  // the BASE record renamed — the same body, emitted under the spec_pairs state so
-  // every repr read resolves through the site's instantiation. Registered
-  // before any reference emits (spec_target_name reads the registry live);
-  // a program with no wide instantiation computes [] and every list below is
-  // untouched (Law 7 byte-identical).
-  let spec_demands = spec_demands_of(lowered, fn_records)
-  // Each worthy demand contributes its OWN record plus every record NESTED in
-  // its body (a lambda born inside a generic inherits the parent's vars, so
-  // it twins under the same instantiation — the closure-mint arm redirects to
-  // the nested twin via the active enc, no body rewriting). Names derive from
+fn emit_module(program) = {
+  // Every record lower constructed, per decl, collected ONCE: a twin is a
+  // copy of one of these, so a base the module does not emit is still where
+  // its twins' bodies live, and the records the module emits are the live
+  // decls' own (emit_functions and the wrapper/table wideness read that one
+  // set — never two walks of one tree). A fn whose native signature carries
+  // a wide slot reaches the table through its $wf$ word wrapper; the elem
+  // substitution below is that law's one write.
+  let decl_records = map(collect_fn_emit_records_expr, program)
+  // FLAT, because every twin demand scans it (`spec_find_rec`), and a scan
+  // materializes a concat tree into a fresh buffer each time (`iterate`'s
+  // list_to_flat) — measured 2026-09-28: a flatten-only form cost the m3
+  // leg +70MB.
+  let all_records = flatten(decl_records) |> dedup_fn_records
+  let n = len(program)
+  // The emitted reach (above): the twin demands, and which decls a live
+  // reference reaches — the only ones emitted below.
+  match emit_reach(program, all_records) {
+    (spec_demands, live) => emit_reached_module(
+      decls_reached(program, live, 0, n, make_list(n), 0),
+      decls_reached(decl_records, live, 0, n, make_list(n), 0) |> flatten |> dedup_fn_records,
+      twin_bases_where(
+        program,
+        decl_records,
+        live,
+        fold(smap_new(), demand_base_note, spec_demands),
+        0,
+        n,
+        make_list(8),
+        0
+      ),
+      all_records,
+      spec_demands
+    ),
+  }
+}
+
+fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demands) = {
+  // Named-generic twins (the emitted reach above): each demand's record is
+  // the BASE record renamed — the same body, emitted under the spec_pairs
+  // state so every repr read resolves through the site's instantiation.
+  // Registered before any reference emits (spec_target_name reads the
+  // registry live); a program with no wide instantiation computes [] and
+  // every list below is untouched (Law 7 byte-identical). Each demand
+  // contributes its OWN record plus every record NESTED in its body (a
+  // lambda born inside a generic inherits the parent's vars, so it twins
+  // under the same instantiation — the closure-mint arm redirects to the
+  // nested twin via the active enc, no body rewriting). Names derive from
   // the FULL rec set so nested twins ride the table/idx/closure surfaces.
   let spec_recs = flatten(map(
     {
-      (m, base, pairs, enc) => match spec_find_rec(fn_records, base) {
+      (m, base, pairs, enc) => match spec_find_rec(all_records, base) {
         Some(rec) => match rec {
           (_n, ps, body, f) => [((m, ps, body, f), pairs, enc, base)] ++ map(
             { (nn, nps, nbody, nf) => ((spec_mangle(nn, enc), nps, nbody, nf), pairs, enc, nn) },
@@ -897,7 +1023,7 @@ fn emit_module(lowered) = {
   // data section, the leaf emission below reads all four.
   // (fold collection moved below the spec demand analysis — a twin's body is
   // re-collected under its bracket so its substituted aggregate sigs exist)
-  match project_emit_state(lowered, fold_closures) {
+  match project_emit_state(lowered, twin_bases, fold_closures) {
     (all_fn_names, top_fn_names, string_entries, fn_lines, wasi_ops, yield_seen) => {
       // band B M1.2 (the k2/k3 bank, Ruling 1) — the composer is CALLED INDIRECT
       // (it is the fn_ptr@0 of every composed k record), so unlike every other
@@ -1258,8 +1384,13 @@ fn slot_already_recorded(entries, target: String, i, n) = if i >= n {
 // page (address 12 — below every region mark, never reset, holding a stale
 // pointer into the region; the cross-compile trap of 2026-07-22). The walk's
 // row names the ops; the bracket is the row's dynamic-extent obligation.
-fn project_emit_state(lowered, closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = {
+fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = {
   walk_lemit(lowered)
+  // A twin whose base the module does not emit is still that base's body,
+  // so the base owes it every fact the body carries — its strings, its
+  // `<~` lines, its host ops, its yields and its performs — while none of
+  // the base's own names is emitted.
+  walk_lemit(twin_bases) ~> names_not_emitted
   // The SHOW leaf's helpers ($show_<sig>) assemble String literals not present
   // in the user IR (delimiters "{" "}" "(" ")" "[" "]" ", ", each field name
   // "name: ", each ctor "Ctor("). Register them through the SAME visit_string
@@ -1276,6 +1407,13 @@ fn project_emit_state(lowered, closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show:
   let yseen = drain_yield_seen()
   (names, tops, strs, lines, wasi, yseen)
 } ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> fn_lines_collector ~> wasi_ops_collector ~> yield_seen_collector ~> effect_census_collector
+
+// The names of a decl the module does not emit, dropped where they are
+// visited; every other fact of its body flows on to the collectors outside.
+handler names_not_emitted {
+  visit_fn(_name) => resume(),
+  visit_top_fn(_name) => resume(),
+}
 
 // register_show_literals — fire visit_string for every String literal the
 // generated $show_<sig> helpers will emit. The literal set is a PROJECTION of
@@ -1610,28 +1748,33 @@ fn line_ring_bytes(h: Int, depth: Int) = 8 + depth * repr_width(repr_of(lookup_t
 // per-instance; the semantics the module-global line had).
 fn line_global_name(h: Int, site: String) = "__line_{int_to_str(h)}_{site}"
 
-// The static line owners — (symbol, lines, pairs, enc): every top-level fn
-// with lines at the floor bracket, then every twin whose base is one, the
-// twin under its own instantiation pairs (the bracket its ring bytes and
-// its body's slot width both read).
+// The static line owners — (symbol, lines, pairs, enc): every emitted
+// top-level fn with lines at the floor bracket, then every twin whose base's
+// lines are static, the twin under its own instantiation pairs (the bracket
+// its ring bytes and its body's slot width both read). A twin's static-ness
+// is read off its base's lines, where each site's home is recorded — so a
+// base the module does not emit still gives its twins their lines.
 fn static_line_owners(top_fn_names, fn_lines, spec_recs) = filter(
   { (name, _lines, _p, _e) => ls_find_str_local(top_fn_names, name, 0) >= 0 },
   map({ (name, lines) => (name, lines, [], "") }, fn_lines)
 ) ++ flat_map(
   {
     (rec2, pairs, enc, base) => match rec2 {
-      (m, _ps, _b, _f) => if ls_find_str_local(top_fn_names, base, 0) >= 0 {
-        match fn_lines_of(base) {
-          [] => [],
-          lines => [(m, lines, pairs, enc)],
-        }
-      } else {
-        []
+      (m, _ps, _b, _f) => match filter(line_is_static, fn_lines_of(base)) {
+        [] => [],
+        lines => [(m, lines, pairs, enc)],
       },
     },
   },
   spec_recs
 )
+
+fn line_is_static(line) = match line {
+  (_h, _d, home) => match home {
+    LhStatic => true,
+    LhSlot(_) => false,
+  },
+}
 
 // Every static line global, as (name, "i32") — the ONE projection the
 // declaration, the image census and the init read, so none can disagree
@@ -1962,15 +2105,18 @@ fn dedup_names_flat(names, i, n, out, count) = if i >= n {
   }
 }
 
-// What a record already in the keep-set says about the one being offered.
+// What the record kept under a name says about the one being offered.
 // Three outcomes, so an ADT: a Bool here would have to mean "seen" and leave
 // the two ways of being seen — the same function twice, and two functions
 // under one name — indistinguishable, which is exactly the distinction the
 // dedup exists to make and the one it was not making.
 type FnRecordVerdict = FrFresh | FrIdentical | FrCollision
 
-// Flat-buffer keep-first dedup of fn records — the sibling of
-// dedup_names, same O(U^3)->O(U^2) fix (Hβ.emit.flat-accumulator-dedup).
+// Keep-first dedup of fn records, ONE pass: each record's name is read in
+// the keep-set's name map, so a miss keeps it and a hit compares it with
+// the record kept. The form it replaces compared every record with every
+// one before it and built a tuple per comparison — 60MB per dedup on the
+// wheel (the emit's heap marks, 2026-09-28), for what a map answers in O(1).
 //
 // IT COMPARES THE RECORD, NOT THE NAME. Keep-first on a name alone is only
 // sound while no two DIFFERENT functions can share one, and that was true
@@ -1986,35 +2132,35 @@ type FnRecordVerdict = FrFresh | FrIdentical | FrCollision
 // instead of dropping a body while its callers keep pointing at another.
 fn dedup_fn_records(records) = {
   let n = len(records)
-  dedup_fn_records_flat(records, 0, n, make_list(n), 0)
+  dedup_fn_records_flat(list_to_flat(records), 0, n, make_list(n), 0, smap_new())
 }
 
-fn fn_record_verdict(records, r, i, n) = if i >= n {
-  FrFresh
-} else {
-  let existing = list_index(records, i)
-  match (existing, r) {
-    ((have, _, _, _), (want, _, _, _)) => if have == want {
-      // Names match, so the whole-record compare is the CONTENT compare —
-      // structural `==` to the bottom over the five node-kinds, which is the
-      // one equality the medium has (PLAN §5.U); no bespoke body walk.
-      if existing == r { FrIdentical } else { FrCollision }
-    } else {
-      fn_record_verdict(records, r, i + 1, n)
-    },
-  }
+fn fn_record_verdict(kept, r) = match kept {
+  None => FrFresh,
+  Some(existing) => // Names match, so the whole-record compare is the CONTENT compare —
+  // structural `==` to the bottom over the five node-kinds, which is the
+  // one equality the medium has (PLAN §5.U); no bespoke body walk.
+  if existing == r { FrIdentical } else { FrCollision },
 }
 
-fn dedup_fn_records_flat(records, i, n, out, count) = if i >= n {
+fn dedup_fn_records_flat(records, i, n, out, count, seen) = if i >= n {
   slice(out, 0, count)
 } else {
   let r = list_index(records, i)
-  match fn_record_verdict(out, r, 0, count) {
-    FrFresh => dedup_fn_records_flat(records, i + 1, n, list_set(out, count, r), count + 1),
-    FrIdentical => dedup_fn_records_flat(records, i + 1, n, out, count),
+  let name = fn_record_name(r)
+  match fn_record_verdict(smap_get(seen, name), r) {
+    FrFresh => dedup_fn_records_flat(
+      records,
+      i + 1,
+      n,
+      list_set(out, count, r),
+      count + 1,
+      smap_add(seen, name, r)
+    ),
+    FrIdentical => dedup_fn_records_flat(records, i + 1, n, out, count, seen),
     FrCollision => {
-      report(EEmittedNameCollision(fn_record_name(r), fn_record_span(r)))
-      dedup_fn_records_flat(records, i + 1, n, out, count)
+      report(EEmittedNameCollision(name, fn_record_span(r)))
+      dedup_fn_records_flat(records, i + 1, n, out, count, seen)
     },
   }
 }

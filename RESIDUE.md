@@ -3884,7 +3884,46 @@ reading needs it: `derive.mn`'s `deriving(prev, …)` reads its config's
 fields in five arms. Gates: the e2 fixture and a3 turn green, and two
 installs of one handler with two config shapes each read their own.
 
-`Hβ.emit.dead-base-emitted-beside-its-twins` — A BASE BODY WHOSE EVERY
+`Hβ.emit.dead-base-emitted-beside-its-twins` — **CLOSED 2026-09-28 (R0′),
+pin b29e319b99990abf.** The emitted reach (`emit_reach`, backends/wasm.mn) reads
+the references lower's reach reads — ONE walker now, `low_refs` (lower.mn),
+where two carried the same edges and the second also collected operand
+handles nothing had read since the worthiness gate died — at the altitude
+where the keys exist: from main, the runtime contract, argv and the value
+lets, a base body's references resolve unbracketed and a twin's under its
+own pairs, arms are keyed by name through their container, lambdas live
+with their decl, and a top-level decl no live reference reaches is not
+emitted. A twin of an unemitted base still takes its strings, lines, host
+ops, yields and performs from the base's body (`names_not_emitted` absorbs
+only the base's names), and a twin's static lines are read off its base's
+line homes (`LhStatic`) instead of re-deriving top-levelness.
+▶ MEASURED at the pin: the wheel emits 408,868 WAT lines where it
+emitted 449,015 (−9%), its field-offset floors fall 8 → 0, and the m4 leg
+runs 9.67s at 717MB peak where the prior pin's ran 13.22s at 791MB. The
+new compiler's own compile of the wheel also reads 34 unprovable
+comparisons where the prior read 57, and one unprovable show where it
+read 22: those floors sat in dead bases and went with them.
+▶ THE PREDICTION BELOW WAS WRONG, and the direction is the lesson: it said
+the census would fall "by exactly the dead bases' floors", four. It fell by
+all eight. The four floors the wheel carried before R0 were in dead bases
+too, once R0 made their row variable real: the value-passed sites
+`2026-09-16`'s retraction found selecting the bases now key twins.
+▶ THE COST THE FIRST FORM PAID, and how it was found: the first reach
+peaked at 858MB, 43MB OVER the ceiling. The judgment's heap line held
+(315MB), so the growth was after it, and marks at emit's phase boundaries
+named it — `dedup_fn_records` compared every record with every earlier one
+and built a tuple per comparison, 60MB per dedup, and the reach had made
+two of them. Both dedups are one pass over a name map now, and the marks
+graduated into two `heap:` lines beside the judgment's (lowering's end, the
+module's end). KILLED on the way: "the second record walk is the cost" —
+collecting records per decl instead cost +70MB, because every scan of a
+concat tree materializes it (`iterate`'s list_to_flat) and each twin demand
+scanned one.
+▶ WHAT IT EXPOSED: the field-offset class is at zero on the wheel and
+cannot arm by the verify recipe, because it is raised during emission,
+after the gate read the refusals and after bytes streamed
+(`Hβ.emit.emit-time-class-cannot-refuse`).
+THE ENTRY AS WRITTEN AT R0: A BASE BODY WHOSE EVERY
 REFERENCE RESOLVED TO A TWIN IS EMITTED ANYWAY. Total monomorphization
 twins every keyed call site, but reachability runs at lower, on plain
 names, before the keys exist — so the base (floor) body of a generic
@@ -3898,6 +3937,30 @@ over the EMITTED graph — each body's references resolved under its own
 bracket, from main and the init lets — so a base is emitted only when some
 reference names it; "nothing is derived that was not demanded" at the
 emit. The census falls by exactly the dead bases' floors.
+
+`Hβ.emit.emit-time-class-cannot-refuse` — THREE CLASSES ARE DECIDED WHERE
+NOTHING CAN REFUSE. `T_FieldOffsetUnprovable`, `T_EqTypeUnprovable` and
+`T_ShowTypeUnprovable` are raised inside per-fn emission, under the twin
+brackets — the only place their question (can this load's offset, this
+comparison's operand, this render's operand be read?) has an answer. But
+`executable_gate` reads `diag_refusals()` BEFORE emit begins, and emit
+streams WAT as it goes, so arming one by the verify recipe (rename to E_,
+SError, `diag_refuses`) would count a refusal after the executable exists:
+nonzero exit, a full module on stdout. The one armed emit-time class,
+`E_EmittedNameCollision`, refuses only because the dedup that raises it
+runs before the first byte. Measured 2026-09-28, the day the field-offset
+class reached zero on the wheel (R0′) and the recipe was built, then
+reverted before a march on reading the gate.
+▶ THE FORM: the settle point in `emit_reached_module` — after the twin set
+is known and before `emit_header` — already walks every emitted body under
+its own bracket, twice (the fold closures, the call vectors). The three
+questions join that walk as one bracketed collector reporting at the site,
+and the emit refuses (exit 1, zero bytes) when the settle raised an armed
+class. Then the field-offset class arms (wheel census 0): the five
+`mn-payload*` micros move from a banked 134 to a compile refusal, the
+frontier fixture moves to `run_refusal`, the ratchet key retires, and the
+board's `CsRecordPatternOpen` bound retires by its own written condition.
+The eq and show classes arm as their counts reach zero.
 
 `Hβ.emit.field-offset-floor-is-never-reported` — RESOLVED 2026-09-15. THE
 FLOOR WAS WRITTEN AND NEVER SAID. `emit_expr`'s `LFieldLoad` arm answered an
@@ -4026,7 +4089,11 @@ bare `unreachable`.
 `(sites, ophs)` and every caller destructures the second half to `_o`. The
 operand handles were the worthiness predicate's input; 5.1a deleted the
 predicate and left the collection. A collected-and-never-read accumulator half
-is the write-only-ledger shape at the emit layer.
+is the write-only-ledger shape at the emit layer. RESOLVED 2026-09-28 (R0′):
+the scan is deleted, and one walker (`low_refs`) carries the references both
+reaches read. The self-recursion gap above resolved the same way: a
+reachability from roots never demands a base that only its own tail call
+names.
 
 `Hβ.infer.record-row-vars-are-not-unioned` — **CLOSED 2026-09-28 (R0),
 pin c5439637261f50ab.** The unseen rest of a record is a ROW VARIABLE, and there is

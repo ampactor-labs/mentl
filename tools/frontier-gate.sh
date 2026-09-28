@@ -737,6 +737,22 @@ run_narration() {
   fi
 }
 
+# The silence contract — run_narration's dual: the program compiles, runs
+# to its answer, and one NAMED narration class never appears. A floor in a
+# body the program never runs is not a finding about the developer's
+# program, so it is not said at them.
+run_unnarrated() {
+  local compiler="$1" label="$2" source="$3" expected="$4" code="$5" dir="$6"
+  local n
+  run_program "$compiler" "$label" "$source" "$expected" "" "$dir"
+  n=$(grep -c "$code Warning:" "$dir/$label.compile.err" 2>/dev/null || true)
+  if [ "$n" -eq 0 ]; then
+    pass "$label unnarrated ($code=0)"
+  else
+    fail "$label unnarrated ($code=$n; see $dir/$label.compile.err)"
+  fi
+}
+
 # Same differential accounting for the persist lib set: pin boot's shadow,
 # per-compiler shadows may only shrink it.
 capture_persist_shadow() {
@@ -1631,13 +1647,19 @@ for i in "${!compilers[@]}"; do
   # pin the day it landed: the same three lines compiled through boot with
   # ZERO errors and 4500B of WAT carrying the floor inside them, so the
   # program trapped at an instruction no diagnostic had ever mentioned.
-  # Pre-arm, so run_narration, not run_refusal — the wheel's own census is
-  # four (emitfns_index_build, arms_include_op, record_field_handle,
-  # arm_body_handle) and diag_refuses' licence is a wheel census of zero.
-  # The ratchet in verify-baseline holds those four; when they fall this
-  # moves to run_refusal in the commit that arms the class.
+  # Pre-arm, so run_narration, not run_refusal. The wheel's own census of
+  # the class reached zero on 2026-09-28 (record rows as union-find
+  # citizens, then the emitted reach); it arms once a refusal raised during
+  # emission can precede the first byte
+  # (Hβ.emit.emit-time-class-cannot-refuse), and this moves to run_refusal
+  # in that commit.
   run_narration "$compiler" field-offset-unprovable \
     "$ROOT/tests/frontier/mn-field-offset-unprovable.mn" T_FieldOffsetUnprovable "$dir"
+  # A base whose every call is keyed to a twin is not emitted (the emitted
+  # reach, 2026-09-28), so its floors are not narrated: RED on boot
+  # c5439637, which answered 46 and warned twice about `pick`'s base.
+  run_unnarrated "$compiler" dead-base-unnarrated \
+    "$ROOT/tests/frontier/mn-dead-base-unnarrated.mn" 46 T_FieldOffsetUnprovable "$dir"
   # The root-row governance gate's three tiers, each pinned: an
   # EVIDENCE-floor demand refuses even with an install elsewhere (a
   # dead-chain perform walks garbage evidence, no belt — the one strict

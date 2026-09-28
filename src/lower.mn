@@ -5950,99 +5950,123 @@ fn ls_find_in_order_loop(lst, target: String, i, n) = if i >= n {
 
 // ─── Reachability — an executable's emission projects the MAIN-ROOTED
 // subgraph ─────────────────────────────────────────────────────────────
-// The graph never forgot the call edges; emission reads them. The seed
-// has projected exactly this since its first build (reachability-from-
-// main drops the unused); the wheel now reads the same edges, so a rung
-// carries only the code it reaches, an uncalled generic's unresolvable
-// fold leaf ($compare_nUNRESOLVED) is never minted, and both compilers
-// converge on the same emitted set (fixpoint parity, not divergence).
-// One pure acc-walk — no effects, so the evidence layer is untouched
-// (the ~>-visitor extension of walk_lemit is the deeper form, gated on
-// the ev-slot seam close). A module with no `main` is a LIBRARY and
-// emits whole (SYNTAX §Top-level program structure).
-fn reach_names_list(stmts, acc) = if len(stmts) == 0 {
-  acc
-} else {
-  reach_names_list(drop_last(stmts), reach_names_expr(last(stmts), acc))
+// The graph never forgot the call edges; emission reads them, so a rung
+// carries only the code it reaches and an uncalled generic's unresolvable
+// fold leaf ($compare_nUNRESOLVED) is never minted. A module with no
+// `main` is a LIBRARY and emits whole (SYNTAX §Top-level program
+// structure).
+//
+// The edges are read at TWO altitudes through ONE walk. Lower's reach
+// constructs by NAME, and it must: a twin is a copy of its base's lowered
+// body, so a base is constructed whatever key its sites project. The
+// emitted reach (`emit_reach`, backends/wasm.mn) reads the same references
+// once the keys exist, each under the bracket its body is emitted in, and
+// emits only what a live reference reaches. Two walkers carried these
+// edges until 2026-09-28 — one for the names, one for the twin sites — and
+// the second also collected operand handles nothing had read since the
+// worthiness gate was deleted.
+type LowRef
+  // a named reference and the handle its instantiation is read at: an
+  // LGlobal, or an LDirectCall's callee
+  = RefSite(Int, String)
+  // a name no instantiation keys: a perform's arm target, an install's arm
+  // groups, a runtime fn emit mints for a show, a hash or a wide comparison
+  | RefName(String)
+
+fn ref_name(r) = match r {
+  RefSite(_, n) => n,
+  RefName(n) => n,
 }
 
-fn reach_arm_group_names(groups, acc) = if len(groups) == 0 {
-  acc
-} else {
-  reach_arm_group_names(drop_last(groups), group_arms(last(groups)) ++ acc)
+fn low_refs_list(acc, exprs) = fold(acc, low_refs, exprs)
+
+fn name_ref(acc, n) = [RefName(n)] ++ acc
+
+fn arm_group_refs(acc, grp) = fold(acc, name_ref, group_arms(grp))
+
+fn arm_body_refs(acc, arm) = match arm {
+  (_, body) => low_refs(acc, body),
 }
 
-fn reach_match_arms(arms, acc) = if len(arms) == 0 {
-  acc
-} else {
-  match last(arms) {
-    (_, body) => reach_match_arms(drop_last(arms), reach_names_expr(body, acc)),
-  }
+// Emit calls op_<target> (the arm fn) for a frame-dispatched perform, so
+// the perform reaches that arm by its emitted name — the un-prefixed target
+// matched nothing (installed handlers survive via their reached container,
+// but a singleton dispatch to an UNINSTALLED handler is the arm fn's only
+// reference). A walked dispatch names nothing and reaches its arm through
+// the chain node's record.
+fn perform_target_refs(acc, disp) = match perform_target_symbol(disp) {
+  Some(sym) => name_ref(acc, "op_{sym}"),
+  None => acc,
 }
 
-fn reach_perform_target(disp) = match perform_target_symbol(disp) {
-  Some(sym) => ["op_{sym}"],
-  None => [],
-}
-
-fn reach_names_expr(expr, acc) = match expr {
-  LGlobal(_, n) => [n] ++ acc,
-  LDirectCall(_h, _fh, n, _t, args) => reach_names_list(args, [n] ++ acc),
-  LPerform(_h, disp, args) => // Emit calls op_<target> (the arm fn), so reach the arm fn by its emitted
-  // name — the un-prefixed target matched nothing (installed handlers survive
-  // via their reached decl-container, but a singleton dispatch to an
-  // UNINSTALLED handler is the arm fn's only reference). A walked dispatch
-  // names nothing and reaches its arm through the chain node's record.
-  reach_names_list(args, reach_perform_target(disp) ++ acc),
-  LHandleWith(_h, b, hn, _hname, inits, arm_names) => reach_names_list(
-    inits,
-    reach_names_expr(hn, reach_names_expr(b, reach_arm_group_names(arm_names, acc)))
-  ),
-  LLet(_h, _n, inner) => reach_names_expr(inner, acc),
-  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps) => reach_names_list(caps, reach_names_list(body, acc)),
-  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps, _, _) => reach_names_list(caps, reach_names_list(body, acc)),
+fn low_refs(acc, expr) = match expr {
+  LGlobal(h, n) => [RefSite(h, n)] ++ acc,
+  LDirectCall(_h, fh, n, _t, args) => low_refs_list([RefSite(fh, n)] ++ acc, args),
+  LPerform(_h, disp, args) => low_refs_list(perform_target_refs(acc, disp), args),
+  LHandleWith(_h, b, hn, _hname, inits, arm_names) => low_refs_list(low_refs(low_refs(fold(acc, arm_group_refs, arm_names), b), hn), inits),
+  LLet(_h, _n, inner) => low_refs(acc, inner),
+  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps) => low_refs_list(low_refs_list(acc, body), caps),
+  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps, _, _) => low_refs_list(low_refs_list(acc, body), caps),
   LResumeK(_h, k, v) => // The resume invocation reaches through its k expr and value; the __k
   // fn itself reaches via its LMakeContinuation record above.
-  reach_names_expr(v, reach_names_expr(k, acc)),
+  low_refs(low_refs(acc, k), v),
   LYield(_h, _op, args, k) => // A yield reaches through its k record (the __k fn's body + captures + ev);
   // the ARM reaches through the install's arm groups, the existing channel.
-  reach_names_expr(k, reach_names_list(args, acc)),
+  low_refs(low_refs_list(acc, args), k),
   LKExtend(_h, k) => // A k2 boundary reaches through its frame_k record the same way.
-  reach_names_expr(k, acc),
-  LDeclareFn(LFn(_n, _a, _p, body, _r, _f, _l)) => reach_names_list(body, acc),
-  LBlock(_h, stmts) => reach_names_list(stmts, acc),
-  LIf(_h, c, t, e) => reach_names_list(e, reach_names_list(t, reach_names_expr(c, acc))),
+  low_refs(acc, k),
+  LDeclareFn(LFn(_n, _a, _p, body, _r, _f, _l)) => low_refs_list(acc, body),
+  LBlock(_h, stmts) => low_refs_list(acc, stmts),
+  LIf(_h, c, t, e) => low_refs_list(low_refs_list(low_refs(acc, c), t), e),
   LBinOp(_h, op, l, r) => // ==/ordering on a wide-element sequence mints list_eq_f64/list_compare_f64
   // (emit_eq_for_ty / emit_cmp_for_ty); contribute it where emit reads it.
-  reach_names_expr(r, reach_names_expr(l, wide_binop_seed(op, l) ++ acc)),
-  LUnaryOp(_h, _op, x) => reach_names_expr(x, acc),
-  LCall(_h, f, args) => reach_names_list(args, reach_names_expr(f, acc)),
+  low_refs(low_refs(fold(acc, name_ref, wide_binop_seed(op, l)), l), r),
+  LUnaryOp(_h, _op, x) => low_refs(acc, x),
+  LCall(_h, f, args) => low_refs_list(low_refs(acc, f), args),
   LShow(_h, x) => // show/hash contribute the names emit will mint, projected from the SAME
-  // live type read the emit dispatch makes (the visitor-walk projection the
-  // runtime-contract comment names) — including the generated aggregate
-  // leaf's interior renderers, which reach previously never kept (the
-  // minimal-module undefined-$int_to_str break, gate mn-aggregate-show).
-  reach_names_expr(x, show_reach_names(x) ++ acc),
-  LHash(_h, x) => reach_names_expr(x, hash_reach_names(x) ++ acc),
-  LTailCall(_h, f, args) => reach_names_list(args, reach_names_expr(f, acc)),
-  LReturn(_h, x) => reach_names_expr(x, acc),
-  LMakeList(_h, elems) => reach_names_list(elems, acc),
-  LMakeTuple(_h, elems) => reach_names_list(elems, acc),
-  LSimdLanes(_h, lanes) => reach_names_list(lanes, acc),
-  LMakeRecord(_h, fs) => reach_names_list(fs, acc),
-  LMakeVariant(_h, _t, fs) => reach_names_list(fs, acc),
-  LMatch(_h, s, arms) => reach_match_arms(arms, reach_names_expr(s, acc)),
-  LFeedback(_h, _d, _home, b, s) => reach_names_expr(s, reach_names_expr(b, acc)),
-  LWasiCall(_h, _n, args) => reach_names_list(args, acc),
+  // live type read the emit dispatch makes — including the generated
+  // aggregate leaf's interior renderers (the minimal-module
+  // undefined-$int_to_str break, gate mn-aggregate-show).
+  low_refs(fold(acc, name_ref, show_reach_names(x)), x),
+  LHash(_h, x) => low_refs(fold(acc, name_ref, hash_reach_names(x)), x),
+  LTailCall(_h, f, args) => low_refs_list(low_refs(acc, f), args),
+  LReturn(_h, x) => low_refs(acc, x),
+  LMakeList(_h, elems) => low_refs_list(acc, elems),
+  LMakeTuple(_h, elems) => low_refs_list(acc, elems),
+  LSimdLanes(_h, lanes) => low_refs_list(acc, lanes),
+  LMakeRecord(_h, fs) => low_refs_list(acc, fs),
+  LMakeVariant(_h, _t, fs) => low_refs_list(acc, fs),
+  LMatch(_h, s, arms) => fold(low_refs(acc, s), arm_body_refs, arms),
+  LFeedback(_h, _d, _home, b, s) => low_refs(low_refs(acc, b), s),
+  LWasiCall(_h, _n, args) => low_refs_list(acc, args),
   LInvariantFailure(_, _) => acc,
-  LFieldLoad(_h, rec, _off) => reach_names_expr(rec, acc),
-  LConvert(_h, _, operand) => reach_names_expr(operand, acc),
-  LStateSlotStore(_h, _o, v, _) => reach_names_expr(v, acc),
+  LFieldLoad(_h, rec, _off) => low_refs(acc, rec),
+  LConvert(_h, _, operand) => low_refs(acc, operand),
+  LStateSlotStore(_h, _o, v, _) => low_refs(acc, v),
   LConst(_, _) => acc,
   LLocal(_, _) => acc,
   LFeedbackPrior(_) => acc,
   LUpval(_, _) => acc,
 }
+
+// The wide-twin seed, PER ENTRY: a constructed body any of whose sites
+// projects a wide key contributes the runtime family a twin's emission can
+// mint and its floor did not. A dead decl's wide sites seed nothing
+// (nothing will twin for them); reach_enqueue's set discipline absorbs the
+// family's re-arrivals.
+fn wide_seed(refs) = if any(ref_is_wide, refs) { spec_wide_family() } else { [] }
+
+fn ref_is_wide(r) = match r {
+  RefSite(h, n) => {
+    let pairs = spec_site_pairs(h, n)
+    if len(pairs) == 0 { false } else { !spec_enc_is_floor(spec_enc(pairs)) }
+  },
+  RefName(_) => false,
+}
+
+// What lower's reach enqueues for one constructed entry: every reference by
+// NAME, and the wide family when a site projects wide.
+fn reach_entry_names(refs) = map(ref_name, refs) ++ wide_seed(refs)
 
 // The decl's emitted name — "" for statements that are not named fns
 // (module value lets stay unconditionally; they run in __init_lets).
@@ -6146,15 +6170,6 @@ fn reach_name_map(stmts, i, n, map) = if i >= n {
   reach_name_map(stmts, i + 1, n, m2)
 }
 
-// The wide-twin seed, PER ENTRY (the banked accumulator form): each
-// constructed body scanned once at its own construction — the
-// whole-list pre-filter scan is deleted with it. A dead decl's wide
-// sites no longer seed (nothing will twin for them); reach_enqueue's
-// set discipline absorbs the family's re-arrivals.
-fn spec_entry_seed(d) = match spec_scan_expr(d, ([], [])) {
-  (sites, _ophs) => if any(spec_site_is_wide, sites) { spec_wide_family() } else { [] },
-}
-
 // Phase A — the always-live set constructs in source order. A module
 // value let ROOTS its init's references (it RUNS before main in
 // __init_lets, so its callees are live by construction); a
@@ -6175,10 +6190,10 @@ fn reach_seed_stmts(stmts, i, n, outs, enq, r0, fbuf, fc) = if i >= n {
   match lo {
     LLet(_, _, LMakeClosure(_, _, _)) => reach_seed_stmts(stmts, i + 1, n, outs2, enq, r0, fbuf, fc),
     LLet(_, _, LMakeContinuation(_, _, _, _, _)) => reach_seed_stmts(stmts, i + 1, n, outs2, enq, r0, fbuf, fc),
-    LLet(_, _, init) => match reach_enqueue(reach_names_expr(init, []) ++ spec_entry_seed(lo), r0, 0, fbuf, fc) {
+    LLet(_, _, init) => match reach_enqueue(reach_entry_names(low_refs([], init)), r0, 0, fbuf, fc) {
       (fbuf2, fc2) => reach_seed_stmts(stmts, i + 1, n, outs2, list_set(enq, i, 1), r0, fbuf2, fc2),
     },
-    _ => match reach_enqueue(spec_entry_seed(lo), r0, 0, fbuf, fc) {
+    _ => match reach_enqueue(wide_seed(low_refs([], lo)), r0, 0, fbuf, fc) {
       (fbuf2, fc2) => reach_seed_stmts(stmts, i + 1, n, outs2, list_set(enq, i, 1), r0, fbuf2, fc2),
     },
   }
@@ -6211,7 +6226,7 @@ fn reach_construct_loop(stmts, map, outs, enq, rbuf, rn, fbuf, fc) = if fc == 0 
       }
       if list_index(enq, i) == 0 {
         let d = list_index(outs2, i)
-        match reach_enqueue(reach_names_expr(d, []) ++ spec_entry_seed(d), rbuf2, rn + 1, fbuf, fc - 1) {
+        match reach_enqueue(reach_entry_names(low_refs([], d)), rbuf2, rn + 1, fbuf, fc - 1) {
           (fbuf2, fc2) => reach_construct_loop(stmts, map, outs2, list_set(enq, i, 1), rbuf2, rn + 1, fbuf2, fc2),
         }
       } else {
@@ -6867,128 +6882,12 @@ fn spec_global_name(h, name: String) = {
   }
 }
 
-// spec_pair_or_var / spec_subst_pairs live in graph.mn beside
-// spec_pairs_find and lookup_ty_graph (the one home of the
-// specialization projection).
-//
-// ONE scan, two projections: the named-reference sites (LGlobal /
-// LDirectCall, with their handles — the key-projection inputs) and the repr-sensitive
-// operand handles (arith / comparison / equality operands — the floor-is-
-// wrong witnesses the worthiness predicate reads). acc = (sites, ophs).
-fn spec_scan_expr(expr, acc) = match expr {
-  LGlobal(h, n) => match acc {
-    (s, o) => ([(h, n)] ++ s, o),
-  },
-  LDirectCall(_h, fh, n, _t, args) => match spec_scan_list(args, acc) {
-    (s, o) => ([(fh, n)] ++ s, o),
-  },
-  LPerform(_h, _d, args) => spec_scan_list(args, acc),
-  LHandleWith(_h, b, hn, _hname, inits, _arms) => spec_scan_list(inits, spec_scan_expr(hn, spec_scan_expr(b, acc))),
-  LLet(_h, _n, inner) => spec_scan_expr(inner, acc),
-  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps) => spec_scan_list(caps, spec_scan_list(body, acc)),
-  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps, _, _) => spec_scan_list(caps, spec_scan_list(body, acc)),
-  LResumeK(_h, k, v) => spec_scan_expr(v, spec_scan_expr(k, acc)),
-  LYield(_h, _op, args, k) => spec_scan_expr(k, spec_scan_list(args, acc)),
-  LKExtend(_h, k) => spec_scan_expr(k, acc),
-  LDeclareFn(LFn(_n, _a, _p, body, _r, _f, _l)) => spec_scan_list(body, acc),
-  LBlock(_h, stmts) => spec_scan_list(stmts, acc),
-  LIf(_h, c, t, e) => spec_scan_list(e, spec_scan_list(t, spec_scan_expr(c, acc))),
-  LShow(_h, x) => match spec_scan_expr(x, acc) {
-    (s, o) => (s, [lexpr_handle(x)] ++ o),
-  },
-  LHash(_h, x) => match spec_scan_expr(x, acc) {
-    (s, o) => (s, [lexpr_handle(x)] ++ o),
-  },
-  LBinOp(_h, op, l, r) => {
-    let acc2 = match op {
-      BAdd | BSub | BMul | BDiv | BMod | BEq | BNe | BLt | BGt | BLe | BGe => match acc {
-        (s, o) => (s, [lexpr_handle(l)] ++ ([lexpr_handle(r)] ++ o)),
-      },
-      _ => acc,
-    }
-    spec_scan_expr(r, spec_scan_expr(l, acc2))
-  },
-  LUnaryOp(_h, _op, x) => spec_scan_expr(x, acc),
-  LCall(_h, f, args) => spec_scan_list(args, spec_scan_expr(f, acc)),
-  LTailCall(_h, f, args) => spec_scan_list(args, spec_scan_expr(f, acc)),
-  LReturn(_h, x) => spec_scan_expr(x, acc),
-  LMakeList(_h, elems) => spec_scan_list(elems, acc),
-  LMakeTuple(_h, elems) => spec_scan_list(elems, acc),
-  LSimdLanes(_h, lanes) => spec_scan_list(lanes, acc),
-  LMakeRecord(_h, fs) => spec_scan_list(fs, acc),
-  LMakeVariant(_h, _t, fs) => spec_scan_list(fs, acc),
-  LMatch(_h, s, arms) => // A tuple-destructuring arm is a STRUCTURE witness on the scrutinee —
-  // the pattern's element offsets and widths follow the instantiation
-  // (a wide element occupies 8 inline bytes where the floor bakes the
-  // word layout: the non-worthy floor read an f64's high word as the
-  // tag, an invalid exit with zero diagnostics), so a var-rooted
-  // scrutinee bound wide at a site heals under that site's twin,
-  // exactly as a field-load receiver does.
-  {
-    let acc2 = spec_scan_arms(arms, spec_scan_expr(s, acc))
-    if any({ (p, _) => lowpat_has_tuple(p) }, arms) {
-      match acc2 {
-        (s2, o) => (s2, [lexpr_handle(s)] ++ o),
-      }
-    } else {
-      acc2
-    }
-  },
-  LFeedback(_h, _d, _home, b, s) => spec_scan_expr(s, spec_scan_expr(b, acc)),
-  LWasiCall(_h, _n, args) => spec_scan_list(args, acc),
-  LInvariantFailure(_, _) => acc,
-  LFieldLoad(_h, rec, _sel) => // A field-load receiver is a STRUCTURE witness: a var-rooted receiver
-  // bound at a site to a concrete record/tuple heals under that site's twin.
-  match spec_scan_expr(rec, acc) {
-    (s2, o) => (s2, [lexpr_handle(rec)] ++ o),
-  },
-  LConvert(_h, _, operand) => spec_scan_expr(operand, acc),
-  LStateSlotStore(_h, _o, v, _) => spec_scan_expr(v, acc),
-  LConst(_, _) => acc,
-  LLocal(_, _) => acc,
-  LFeedbackPrior(_) => acc,
-  LUpval(_, _) => acc,
-}
-
-fn spec_scan_list(exprs, acc) = fold(acc, (a, e) => spec_scan_expr(e, a), exprs)
-
-// A tuple destructure at ANY depth reads positional layout: a tuple nested
-// under a con payload / record field / list slot sits behind a word pointer,
-// and its OWN element offsets are the same instantiation-sensitive read.
-fn lowpat_has_tuple(pat) = match pat {
-  LPTuple(_) => true,
-  LPAs(_, inner) => lowpat_has_tuple(inner),
-  LPCon(_, _, pairs) => any(lowpat_has_tuple, pat_of_pairs(pairs)),
-  LPUnresolvedCon(_, subs) => any(lowpat_has_tuple, subs),
-  LPRecord(fbs, _) => any({ (_, _, sp) => lowpat_has_tuple(sp) }, fbs),
-  LPList(subs, _, _) => any(lowpat_has_tuple, subs),
-  LPAlt(branches) => any(lowpat_has_tuple, branches),
-  LPVar(_) => false,
-  LPWild => false,
-  LPLit(_) => false,
-}
-
-fn spec_scan_arms(arms, acc) = fold(
-  acc,
-  (a, arm) => match arm {
-    (_, b) => spec_scan_expr(b, a),
-  },
-  arms
-)
-
 // The wide runtime family a twin's emission can mint that its floor did not
 // (the same names wide_binop_seed / show_reach_names contribute at concrete
 // sites). Seeded whenever ANY site projects a wide key — a cheap, precise-
 // enough over-approximation in the emit_runtime_contract tradition; a
 // program with no wide instantiation adds nothing.
 fn spec_wide_family() = ["float_to_str", "list_compare_f64", "list_eq_f64", "list_hash_f64"]
-
-fn spec_site_is_wide(site) = match site {
-  (h, n) => {
-    let pairs = spec_site_pairs(h, n)
-    if len(pairs) == 0 { false } else { !spec_enc_is_floor(spec_enc(pairs)) }
-  },
-}
 
 // The demand worklist's driver — reachable_from_main takes the PROGRAM
 // (lower_program is its pre-passes) and constructs exactly what emission
@@ -7002,7 +6901,7 @@ fn spec_site_is_wide(site) = match site {
 // (the micros, which don't link io.mn) never pulls an undefined
 // $wasi_args. The runtime contract roots as before (emit mints those
 // calls after construction). The wide-twin family seeds per entry at
-// each construction (spec_entry_seed).
+// each construction (wide_seed).
 fn reachable_from_main(stmts) = {
   let has_main = any(stmt_is_main_fn, stmts)
   // THE LIBRARY PATH seeds ALL decls: every stmt constructs, source
@@ -7075,7 +6974,7 @@ fn emit_runtime_contract() =
 // always-available and tiny (each a one-line wrapper over alloc_list_sc); the
 // pairing keeps the wide literal's allocator reachable without a per-program
 // scan. The HEAVY wide family (the f64 structural leaves, which pull the
-// float renderer) is contributed CONDITIONALLY by reach_names_expr (lower.mn)
+// float renderer) is contributed CONDITIONALLY by low_refs (lower.mn)
 // AT its mint sites — the ==/ordering LBinOp (wide_binop_seed) and the
 // show/hash nodes (show_reach_names) — so a float-free module drags in nothing.
 // float_to_str is deliberately absent: to_string on a PROVEN float is

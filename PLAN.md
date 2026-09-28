@@ -1248,9 +1248,12 @@ and this is the STATE.
   (`Hβ.infer.record-row-vars-are-not-unioned`). What it exposed is named
   and next: a handler's arms read their config through the declaration's
   row, one arm set for every install
-  (`Hβ.emit.handler-arms-specialize-per-install`), and a base body whose
-  every reference resolves to a twin is emitted anyway, its floors
-  narrated at a developer who never calls it
+  (`Hβ.emit.handler-arms-specialize-per-install`). The other exposure, a
+  base body whose every reference resolved to a twin, emitted anyway with
+  its floors narrated at a developer who never calls it, CLOSED the same
+  day (R0′, pin b29e319b): emit runs a second reach over the references
+  under their brackets, a decl nothing live names is not emitted, and the
+  wheel's field-offset floors went 8 → 0
   (`Hβ.emit.dead-base-emitted-beside-its-twins`).
 
 Everything else requires the board that measured it. A skipped, stale, or
@@ -1868,14 +1871,14 @@ form the whole time. The arcs, in order:
   unreachable` with no diagnostic anywhere in the run — which is how a
   silent floor is always found, by a later generation stepping on it.
   `T_FieldOffsetUnprovable` now reports at the receiver's span carrying the
-  selector and the receiver's live type; the class is pre-arm under
-  `field_offset_unprovable_max: 4` (`diag_refuses`' licence is a wheel
-  census of zero) and `Hβ.emit.field-offset-floor-is-never-reported`
-  carries the record. The four sites are the peer's own: the constructor
-  `HandlerDeclStmt` (types.mn:1668) DECLARES `[{init: Node, name: String}]`
-  closed, the caller holds it, and the callee re-derives a free row at
-  epoch 3 — Carried-Truth at the element type, measured on the wheel rather
-  than on a repro. No client-facing page ships
+  selector and the receiver's live type, and `Hβ.emit.field-offset-floor-is-
+  never-reported` carries the record. The wheel's four sites are GONE
+  (2026-09-28): record rows became union-find citizens (R0) and the emit
+  stopped writing base bodies no live reference reaches (R0′), which took
+  the wheel's count to zero. The class is still pre-arm for a mechanical
+  reason the zero exposed — it is decided during emission, after the gate
+  that reads refusals (`Hβ.emit.emit-time-class-cannot-refuse`). No
+  client-facing page ships
   either shape; (v) env re-key onto the smap primitive — folds into (ii)'s
   env rework, one landing; (vi) pointees-are-words.
 - **Arc C · Image lifetime v1.** With pointees-as-words, 4.3's fork/reset

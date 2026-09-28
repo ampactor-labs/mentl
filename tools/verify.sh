@@ -504,26 +504,26 @@ if C=$(wt_m2_ensure); then
   # THE UNPROVABLE-FIELD-OFFSET RATCHET — same stderr, and it reads a class
   # that did not exist before 2026-09-15 because the floor was emitted
   # silently. Every count here is an `(unreachable)` the wheel ships inside
-  # itself; the class arms when this reaches 0 (diag_refuses' wheel-zero
-  # licence), so this is a countdown, not a tolerance. A RISE is a new
-  # landmine.
+  # itself, so this is a countdown, not a tolerance. A RISE is a new
+  # landmine. It reached 0 on 2026-09-28 (record rows as union-find citizens,
+  # then the emitted reach), and the class still cannot arm by renaming: it
+  # is decided during emission, after the gate that reads refusals
+  # (Hβ.emit.emit-time-class-cannot-refuse), and until that lands this
+  # ratchet is what holds the zero.
   #
-  # LIKE movers ABOVE, THIS IS THE PINNED BOOT'S SELF-REPORT, and on the
-  # landing that BIRTHS the class the pin predates it, so the read is 0 and
-  # the FELL notice below fires once against a compiler that could not have
-  # counted. The ceiling is 4 because 4 is what the NEW compiler measured
-  # running on the wheel (the m3 leg), not what the old one failed to say.
-  # After the repin the two agree and the notice is real.
+  # LIKE movers ABOVE, THIS IS THE PINNED BOOT'S SELF-REPORT: a landing that
+  # moves the count reads the OLD boot until it repins, so the ceiling during
+  # its march is what the old boot says, and after the repin the new boot's
+  # read is the one the ceiling follows.
   fou=$(grep -c 'T_FieldOffsetUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); fou=${fou:-0}
   fmax=$(grep -E '^field_offset_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· field-offset floors: $fou unprovable slot(s) the wheel ships as (unreachable) — 0 arms the class"
+  say "· field-offset floors: $fou unprovable slot(s) the wheel ships as (unreachable)"
   if [[ -n "$fmax" && "$fou" -gt "$fmax" ]]; then
     say "✗ field-offset RATCHET: rose $fmax -> $fou — a new silent trap entered the wheel."
     say "  Close the receiver's row at the reported span; the diagnostic names the field and the type."
     fail=1
   elif [[ -n "$fmax" && "$fou" -lt "$fmax" ]]; then
-    say "  ↓ field-offset floors FELL $fmax -> $fou — lower field_offset_unprovable_max in $BASELINE;"
-    say "    at 0, rename TFieldOffsetUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
+    say "  ↓ field-offset floors FELL $fmax -> $fou — lower field_offset_unprovable_max in $BASELINE to hold it."
   fi
   # THE UNPROVABLE-COMPARISON ratchet — the floor class one operator over
   # (2026-09-18): `==`/`!=`/`<`… on an operand whose type is still a
