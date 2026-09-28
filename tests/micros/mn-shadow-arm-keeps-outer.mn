@@ -1,0 +1,15 @@
+// expect: 106
+// A match arm that binds a parameter's name binds a register of its own:
+// after the match the parameter reads its own value. Measured 2026-09-28 on
+// boot 0976f1d7: the arm's `Some(x)` wrote the parameter's register and
+// `f(100)` answered 11 with zero diagnostics
+// (Hβ.lower.shadowing-binder-clobbers-its-register).
+fn f(x) = {
+  let y = match Some(5) {
+    Some(x) => x + 1,
+    None => 0,
+  }
+  x + y
+}
+
+fn main() = f(100)

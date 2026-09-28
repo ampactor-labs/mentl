@@ -1,0 +1,15 @@
+// expect: 106
+// A binder that shadows a parameter inside a nested block has a register of
+// its own, so the parameter reads its own value again once the block
+// closes. Measured 2026-09-28 on boot 0976f1d7: the block's `let x = 5`
+// wrote the parameter's register, and `f(100)` answered 11 with zero
+// diagnostics (Hβ.lower.shadowing-binder-clobbers-its-register).
+fn f(x) = {
+  let y = {
+    let x = 5
+    x + 1
+  }
+  x + y
+}
+
+fn main() = f(100)

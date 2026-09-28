@@ -1623,16 +1623,6 @@ fn flow_edges(node) = match node {
 // ontology (PLAN §4①, roadmap band D).
 fn names_concat(xs: [String], ys: [String]) -> [String] = xs ++ ys
 
-// LowerScope frame fields are projected out of an untyped record value at the
-// handler boundary. Pin the element proof before appending, so `++` emits the
-// list representation instead of the unresolved concat floor.
-//
-// drift-audit: ignore — real drift 11, pre-existing at the frame appends; buffer-counter needs the frame-record restructure (local_handles + local_order paired by slot), tracked for 11.C.2; this fn adds only the element proof
-fn handle_list_append(xs: [Int], x: Int) -> [Int] = xs ++ [x]
-
-// drift-audit: ignore — paired with handle_list_append; same 11.C.2 frame-record restructure
-fn name_list_append(xs: [String], x: String) -> [String] = xs ++ [x]
-
 fn flow_join(a, b) = match a {
   (ca, ha) => match b {
     (cb, hb) => (names_concat(ca, cb), names_concat(ha, hb)),
@@ -1961,9 +1951,9 @@ fn handler_declares_op(hname: String, ename: String, op_name: String) = {
 // legitimate external-transport boundary, "the handler IS the backend");
 // `Persist` checkpoints each branch thunk to disk for crash-survivable parallel
 // execution (parallelism = durability, §4④). All five read LIVE from the `~>`
-// chain — never baked into the verb.
-type Schedule = Seq | Threaded | Simd | Gpu | Persisted
-
+// chain — never baked into the verb. `Schedule` and the roster that classes
+// an install live in src/effects.mn, where the judgment reads them too.
+//
 // One projection of infer's ExecutableBoundary edge. Every field keeps its
 // graph identity through LowIR: the thunk closure, semantic result, boundary-
 // local carrier, and the two scheduler-specific transient tickets.
@@ -1995,16 +1985,6 @@ fn schedule_in_stack(stack) = if len(stack) == 0 {
   }
 }
 
-// WHAT AN INSTALL DOES TO ITS EXTENT — the one read of a handler's class,
-// from the effects its arms cover. Most handlers are DISPATCHED to: a
-// perform finds them and runs an arm. Two classes are PROJECTIONS instead,
-// readings the lowering applies to the extent itself: a schedule decides
-// how a `><` inside it runs, and the derivative reading decides what the
-// extent computes beside its value (`~> grad(w)`, lib/ml/grad.mn). The
-// class is recognized by the effect a handler answers, so a program that
-// declares its own Thread or Derivative effect gets the same reading.
-type Projection = PDispatch | PSchedule(Schedule) | PDerivative
-
 // The derivative reading's DEMAND, drawn where an LDerive is built: the emit
 // reads it before it looks for a reading, so a program that installs none
 // pays nothing for the reading's existence — not a scan, not a byte.
@@ -2013,6 +1993,7 @@ effect DerivativeDemand {
   derivative_demanded() -> Bool
 }
 
+// A handler's install class (src/effects.mn's roster) at the lowering.
 fn projection_of(hname: String) = projection_of_effects(handler_arm_enames(hname))
 
 // The effects a handler's arms answer, read off its declaration in one pass —
@@ -2021,20 +2002,6 @@ fn projection_of(hname: String) = projection_of_effects(handler_arm_enames(hname
 fn handler_arm_enames(hname: String) = match handler_decl_of(hname) {
   Some((_, _, arms)) => arms |> map({ arm => lower_effect_name_of_op(handler_arm_op_name(arm)) }),
   None => [],
-}
-
-fn projection_of_effects(enames) = if string_in_list(enames, "Thread") {
-  PSchedule(Threaded)
-} else if string_in_list(enames, "Simd") {
-  PSchedule(Simd)
-} else if string_in_list(enames, "Gpu") {
-  PSchedule(Gpu)
-} else if string_in_list(enames, "Persist") {
-  PSchedule(Persisted)
-} else if string_in_list(enames, "Derivative") {
-  PDerivative
-} else {
-  PDispatch
 }
 
 // Per-effect arm-fn-name groups [(ename, [arm_fn_name])], op-decl order
@@ -2406,14 +2373,14 @@ fn lower_resolved_ref(handle, name: String, res, local_h) = {
   graph_bind_note(
     handle,
     match res {
-      RLocal => BindLocal(local_h),
+      RLocal(_) => BindLocal(local_h),
       RUpval(slot) => BindUpval(local_h, slot),
       RFbPrior(fb_h) => BindPrior(fb_h),
       RGlobal => BindGlobal,
     }
   )
   match res {
-    RLocal => LLocal(local_ty_handle(local_h, handle), name),
+    RLocal(reg) => LLocal(local_ty_handle(local_h, handle), reg),
     RUpval(slot) => LUpval(local_ty_handle(local_h, handle), slot),
     RFbPrior(fb_h) => // (LF.B) a `<~` lambda param resolves to the feedback site's prior local,
     // read LIVE — the recurrence's y[n-1] term IS this node.
@@ -2720,7 +2687,29 @@ fn lower_expr_body(e, handle, span) = match e {
 // never a second arity table. Factored from PForward so the k remainder
 // builder can complete a stage with the RESUME HOLE as the piped value
 // (band B M1.3) — one completion, two callers.
-fn lower_pipe_complete(lo_l, right, handle) = match right {
+fn lower_pipe_complete(lo_l, right, handle) = match inlinable_lambda(right) {
+  Some((params, body)) => lower_applied_in_place(lo_l, params, body, right, handle),
+  None => lower_pipe_stage(lo_l, right, handle),
+}
+
+// A lambda standing as a pipe's stage IS the piped value bound to its
+// parameter: the parameter binds in the frame the pipe stands in and the body
+// lowers there, so no closure is minted — the judgment charges none, by the
+// same test (`inlinable_lambda`). The parameter's register is its own, so a
+// parameter spelled like a local of the frame never overwrites it.
+fn lower_applied_in_place(lo_l, params, body, lam, handle) = {
+  let cp = ls_push_scope()
+  let ph = last(param_handles_of(node_handle(lam), params))
+  let reg = ls_bind_local(param_name(last(params)), ph)
+  let lo_body = lower_expr(body)
+  ls_pop_scope(cp)
+  // The register's width reads the parameter's own type where it has a
+  // handle, and the piped value's where the type was ground (the same type:
+  // the pipe unified them).
+  LBlock(handle, [LLet(if ph == 0 { lexpr_handle(lo_l) } else { ph }, reg, lo_l), lo_body])
+}
+
+fn lower_pipe_stage(lo_l, right, handle) = match right {
   N(rbody, _, rfh) => {
     // A pipe-right CALL dispatches fork-free (lower_call_dispatch): the pipe
     // owns its hole and completes it below by inline splice, so a raw
@@ -2925,18 +2914,15 @@ fn splice_at(xs, i, v) = slice(xs, 0, i) ++ [v] ++ slice(xs, i + 1, len(xs))
 // binds prev to the feedback site's prior local and inlines the body —
 // the recurrence reads y[n-1] live. Any other LHS lowers as-is (a bare
 // expression computes on the current input only, the structural form).
-fn lower_feedback_body(left, fb_handle) = match left {
-  N(lbody, _, _) => match lbody {
-    NExpr(LambdaExpr(params, body)) => if len(params) == 1 {
-      ls_bind_fb_prior(feedback_param_name(last(params)), fb_handle)
-      let lo = lower_expr(body)
-      ls_unbind_fb_prior()
-      lo
-    } else {
-      lower_expr(left)
-    },
-    _ => lower_expr(left),
+fn lower_feedback_body(left, fb_handle) = match inlinable_lambda(left) {
+  Some((params, body)) => {
+    let cp = ls_push_scope()
+    ls_bind_fb_prior(feedback_param_name(last(params)), fb_handle)
+    let lo = lower_expr(body)
+    ls_pop_scope(cp)
+    lo
   },
+  None => lower_expr(left),
 }
 
 // The bound name of a `<~` lambda's single param (the prior-output binder).
@@ -3795,27 +3781,25 @@ fn lower_stmt_body(s, handle, span) = match s {
     let lo = if ls_frame_depth() == 0 { lower_module_init(pat, handle, expr) } else { lower_expr(expr) }
     match pat {
       PVar(name) => // Register the name in the current scope (a local for subsequent
-      // VarRef lookups; the bound expr's handle IS the local's type handle).
+      // VarRef lookups; the bound expr's handle IS the local's type handle),
+      // set at the register the binding took.
       match expr {
-        N(_, _, expr_h) => {
-          ls_bind_local(name, expr_h)
-          LLet(handle, name, lo)
-        },
+        N(_, _, expr_h) => LLet(handle, ls_bind_local(name, expr_h), lo),
       },
       _ => // PWild / PLit: evaluate for effect, no binding. DESTRUCTURE patterns
       // (PTuple/PCon/PList/PRecord) never reach here — the parser desugars
       // `let pat = v; rest` to `match v { pat => rest }` at the node's birth
       // (desugar_block), so LetStmt is PVar-only by construction. Binding +
       // field-load + nesting all come from the ONE match projection
-      // (lower_match_arms → bind_pat_locals), no parallel destructure
-      // re-derivation. (protocol_one_graph_two_operations.)
+      // (`lower_match_arms`, whose one pattern walk binds and lowers), no
+      // parallel destructure re-derivation.
       lo,
     }
   },
   FnStmt(name, params, _ret_ann, _effs, body_node) => {
     // Bind the fn's name in the enclosing frame; the fn's handle is
     // the type handle (TFun bound to handle by infer).
-    ls_bind_local(name, handle)
+    let reg = ls_bind_local(name, handle)
     // A resume-BOUND callee — reachable from a MultiShot arm, per the
     // resume_bindings closure at lower_program — takes the arm's continuation
     // as an implicit TRAILING "__k" param: the k is an ARGUMENT, threaded
@@ -3870,20 +3854,21 @@ fn lower_stmt_body(s, handle, span) = match s {
         // appended __k/__hrec params) lives in project_nested_fn; the
         // site keeps what feeds the columns.
         match project_nested_fn(handle, fn_name, bind_h, zip(captures_names, captures_handles)) {
-          Some(fn_ir) => // THE BINDING KEEPS THE SOURCE NAME, and that is not an accident to
-          // tidy away. Two namespaces meet here. The LOCAL one is what the
-          // body's own references speak in — source names, bound by
-          // `ls_bind_local` above and gathered by `collect_free_vars` — and
-          // the EMITTED symbol qualifies to outer_inner so nested fns get
-          // distinct wasm names. The LowFn carries only the second, so the
-          // wasm backend's closure emit spends it on the local binding too,
-          // and under qualification that binds the qualified local while the
-          // capture reads the source one. Binding this LLet to fn_name was
-          // tried at pin 3967d236b294 and REVERTED: it points the binding at
-          // the emitted namespace and leaves the source-named local unbound,
-          // the same use-before-def one layer over. The fix is the LowFn
-          // carrying BOTH facts; the peer entry in RESIDUE carries the arc.
-          LLet(handle, name, LMakeClosure(handle, fn_ir, captures_exprs)),
+          Some(fn_ir) => // THE BINDING KEEPS THE LOCAL NAMESPACE'S REGISTER, and that is not an
+          // accident to tidy away. Two namespaces meet here. The LOCAL one is
+          // what the body's own references speak in — the register
+          // `ls_bind_local` gave the name above (the source name unless it
+          // shadows), which a self-capture reads too — and the EMITTED
+          // symbol qualifies to outer_inner so nested fns get distinct wasm
+          // names. The LowFn carries only the second, so the wasm backend's
+          // closure emit spends it on the local binding too, and under
+          // qualification that binds the qualified local while the capture
+          // reads the local one. Binding this LLet to fn_name was tried at
+          // pin 3967d236b294 and REVERTED: it points the binding at the
+          // emitted namespace and leaves the local unbound, the same
+          // use-before-def one layer over. The fix is the LowFn carrying
+          // BOTH facts; the peer entry in RESIDUE carries the arc.
+          LLet(handle, reg, LMakeClosure(handle, fn_ir, captures_exprs)),
           None => LInvariantFailure(handle, ProjectionOriginShape(handle)),
         }
       },
@@ -3947,23 +3932,42 @@ fn lower_match_arms(scrut_h, arms) = {
     {
       (pat, body) => {
         let cp = ls_push_scope()
-        bind_pat_locals(pat, lookup_ty(scrut_h))
+        // ONE walk binds the arm's names and lowers its pattern, so a
+        // binder's register is decided at its binding and the pattern the
+        // emit writes carries it. The pattern's value type is the
+        // scrutinee's, read live, and every sub-pattern keeps its own — so
+        // the emit places each slot by the SAME fold construction and
+        // access run, under any twin.
+        let lp = lower_pat_at(bind_fresh, pat, lookup_ty(scrut_h), srep, scrut_h)
         let lo_body = lower_expr(body)
         ls_pop_scope(cp)
-        // The pattern's value type is the scrutinee's, read live, and every
-        // sub-pattern keeps its own — so the emit places each slot by the
-        // SAME fold construction and access run, under any twin.
-        (lower_pat_at(pat, lookup_ty(scrut_h), srep, scrut_h), lo_body)
+        (lp, lo_body)
       },
     },
     arms
   )
 }
 
-// Bind every `PVar` in the pattern as a local, carrying its element's TYPE
-// HANDLE read live from the scrutinee's type — so a String destructure local's
-// THE one "handle of a Ty (0 if ground)" projection — read by tparam_handle
-// and lower_param_handles (Carried-Truth: one home, N readers, never a
+// How a pattern walk binds a name. A binder takes its register where the
+// walk first meets it (`bind_fresh`, at the handle of the type its position
+// matched); an alternation's later branches write the registers the first
+// branch took (`bind_again`) — the alternation law has every branch bind
+// the same names, and the arm body reads one register per name.
+fn bind_fresh(name: String, ty) = ls_bind_local(name, ty_handle_of(ty))
+
+fn bind_again(name: String, _ty) = match ls_resolve(name) {
+  (RLocal(reg), _) => reg,
+  (RUpval(_), _) => // A later branch binding a name the first did not is refused at the
+  // judgment (E_PatternAlternationBindingMismatch); the source name keeps
+  // the refused arm assembling.
+  name,
+  (RFbPrior(_), _) => name,
+  (RGlobal, _) => name,
+}
+
+// THE one "handle of a Ty (0 if ground)" projection — read by tparam_handle,
+// lower_param_handles and a pattern binder's binding (Carried-Truth: one
+// home, N readers, never a
 // re-derived copy). A Ty is TVar(handle) only while un-ground; every ground
 // type carries no handle, so the 0 sentinel is EXPLICIT per variant, not a
 // wildcard that would silently absorb a future Ty. (The env_find self-host
@@ -3985,60 +3989,6 @@ fn ty_handle_of(ty) = match ty {
   TCont(_, _, _, _) => 0,
   TAlias(_, _) => 0,
   TReprPin(_, _) => 0,
-}
-
-fn bind_pat_locals(pat, ty) = match pat {
-  PVar(name) => {
-    ls_bind_local(name, ty_handle_of(ty))
-    ()
-  },
-  PAs(name, inner) => {
-    // The as-binder carries the WHOLE scrutinee's type; the inner
-    // pattern binds its own pieces against the same type.
-    ls_bind_local(name, ty_handle_of(ty))
-    bind_pat_locals(inner, ty)
-  },
-  PCon(name, sub_pats) => // A binder takes the type its position matched — a constructor's payload
-  // at the scrutinee's own instantiation, a tuple's element, a list's
-  // element, a record's field — so its local and the emit's read of it name
-  // one width. A position no type reached takes the no-proof type.
-  bind_pat_locals_zip(sub_pats, con_payload_tys_at(name, ty), 0),
-  PTuple(sub_pats) => bind_pat_locals_zip(sub_pats, tuple_elem_tys(ty), 0),
-  PList(sub_pats, rest) => {
-    each(bind_pat_locals(??, list_elem_ty(ty)), sub_pats)
-    bind_pat_rest(rest)
-  },
-  PRecord(flds, rest) => {
-    each({ (n, sub) => bind_pat_locals(sub, record_field_ty(ty, n)) }, flds)
-    bind_pat_rest(rest)
-  },
-  PAlt(branches) => // Alternation branches bind the same names (the alternation law);
-  // the first branch's binds are the arm's. Face 10 — the inner
-  // PTuple-match's wildcard fooled the flat census; this outer match
-  // had no PAlt arm.
-  bind_pat_locals(list_index(branches, 0), ty),
-  PWild => (),
-  PLit(_) => (),
-}
-
-// Each positional sub-pattern lands with its position's TYPE; positions
-// past the known list take TVar(0), the no-proof type.
-fn bind_pat_locals_zip(subs, elems, i) = if i >= len(subs) {
-  ()
-} else {
-  let elem_ty = if i < len(elems) { list_index(elems, i) } else { TVar(0) }
-  bind_pat_locals(list_index(subs, i), elem_ty)
-  bind_pat_locals_zip(subs, elems, i + 1)
-}
-
-fn bind_pat_rest(rest) = match rest {
-  None => (),
-  Some(name) => if field_name_eq(name, "_") {
-    ()
-  } else {
-    ls_bind_local(name, 0)
-    ()
-  },
 }
 
 // ─── the sequence-representation chase ──────────────────────────────
@@ -4088,7 +4038,7 @@ fn seq_rep_of_fuel(h, fuel) = if fuel <= 0 {
     },
     NExpr(VarRef(name)) => match ls_resolve(name) {
       (res, local_h) => match res {
-        RLocal => if local_h == 0 { SRUnknown } else { seq_rep_of_fuel(local_h, fuel - 1) },
+        RLocal(_) => if local_h == 0 { SRUnknown } else { seq_rep_of_fuel(local_h, fuel - 1) },
         _ => SRUnknown,
       },
     },
@@ -4131,54 +4081,79 @@ fn seq_rep_arms(ref arms, i, acc, first, fuel) = if i >= len(arms) {
 
 // Lowers `pat`, matched against a value of type `ty`, keeping that type on
 // every sub-pattern: a tuple's element, a constructor's payload at the
-// scrutinee's own instantiation, a record's field, a list's element. No
-// width and no offset is decided here; the emit reads each slot through the
-// kept type (`slot_repr`) under whatever twin it is emitting. `rh` is the
-// scrutinee's handle, where a record whose field set never closes is
-// reported. TVar(0) is the explicit no-proof type: a position no type
-// reached, read as the word.
-fn lower_pat_at(pat, ty, srep, rh) = match pat {
-  PVar(name) => LPVar(name),
+// scrutinee's own instantiation, a record's field, a list's element — and
+// binds each binder with `bind` as the walk meets it (left to right, an
+// as-binder before its inner pattern, a rest after the elements or fields it
+// follows), carrying the register that binding took. No width and no offset
+// is decided here; the emit reads each slot through the kept type
+// (`slot_repr`) under whatever twin it is emitting. `rh` is the scrutinee's
+// handle, where a record whose field set never closes is reported. TVar(0)
+// is the explicit no-proof type: a position no type reached, read as the
+// word.
+fn lower_pat_at(bind, pat, ty, srep, rh) = match pat {
+  PVar(name) => LPVar(bind(name, ty)),
   PWild => LPWild,
   PLit(v) => LPLit(lower_lit_value(v)),
-  PTuple(sub) => LPTuple(lower_pat_tuple_elems(sub, tuple_elem_tys(ty), 0, rh)),
+  PTuple(sub) => LPTuple(lower_pat_positions(bind, sub, tuple_elem_tys(ty), rh)),
   PList(sub, rest) => // The scrutinee's proven representation rides the TOP list pattern —
   // nested sequences are reached through elements (rep unknown) and stay
   // on the total reader.
-  lower_pat_list(list_elem_ty(ty), sub, rest, srep, rh),
+  lower_pat_list(bind, list_elem_ty(ty), sub, rest, srep, rh),
   PCon(name, sub) => // Resolve the constructor's tag_id at lower time; emit dispatches on
   // the int tag without re-walking the env. The receiver's type grounds the
   // constructor's payloads, so a binder takes the width the graph PROVED
   // rather than the one the declaration quantified.
   match env_kind_of(name) {
-    Some(ConstructorScheme(t, _)) => LPCon(name, t, lower_pat_con_elems(sub, pat_payload_tys(name, ty), 0, rh)),
+    Some(ConstructorScheme(t, _)) => LPCon(name, t, lower_pat_positions(bind, sub, pat_payload_tys(name, ty), rh)),
     Some(RecordSchemeKind(_)) => // Nominal-record pattern `Pri(pa)`: the runtime value IS the bare
     // record (no tag word) — the ctor wrapper is the identity in
     // pattern position exactly as in construction. The single
     // sub-pattern matches the scrutinee itself, at the scrutinee's own
     // type. The BARE spelling `Pri =>` binds nothing: LPWild.
-    if len(sub) == 0 { LPWild } else { lower_pat_at(list_index(sub, 0), ty, srep, rh) },
+    if len(sub) == 0 { LPWild } else { lower_pat_at(bind, list_index(sub, 0), ty, srep, rh) },
     _ => // a name no declaration proves: infer already reported it, and the
     // sub-binders still declare so the dead arm body assembles
-    LPUnresolvedCon(name, map(lower_pat_at(??, TVar(0), SRUnknown, rh), sub)),
+    LPUnresolvedCon(name, map(lower_pat_at(bind, ??, TVar(0), SRUnknown, rh), sub)),
   },
-  PRecord(flds, rest) => LPRecord(rh, ty, map(lower_pat_field(ty, rh, ??), flds), rest),
-  PAlt(branches) => // Alternation branches match the one scrutinee, at its type.
-  LPAlt(map(lower_pat_at(??, ty, srep, rh), branches)),
-  PAs(name, inner) => // The binder rides the pattern's own path; the inner keeps the
-  // scrutinee's type (the whole point — the name IS the value).
-  LPAs(name, lower_pat_at(inner, ty, srep, rh)),
+  PRecord(flds, rest) => {
+    let lflds = map(lower_pat_field(bind, ty, rh, ??), flds)
+    LPRecord(rh, ty, lflds, bind_rest(bind, rest))
+  },
+  PAlt(branches) => // Alternation branches match the one scrutinee, at its type; the first
+  // takes the registers and the rest write them.
+  match branches {
+    [first, ...others] => {
+      let lfirst = lower_pat_at(bind, first, ty, srep, rh)
+      LPAlt([lfirst] ++ map(lower_pat_at(bind_again, ??, ty, srep, rh), others))
+    },
+    [] => LPAlt([]),
+  },
+  PAs(name, inner) => {
+    // The binder rides the pattern's own path; the inner keeps the
+    // scrutinee's type (the whole point — the name IS the value).
+    let reg = bind(name, ty)
+    LPAs(reg, lower_pat_at(bind, inner, ty, srep, rh))
+  },
+}
+
+// A list or record pattern's rest: the fresh slice or record the emit builds
+// for it binds under the no-proof type, and `..._` binds nothing.
+fn bind_rest(bind, rest) = match rest {
+  None => None,
+  Some(name) => if field_name_eq(name, "_") { Some(name) } else { Some(bind(name, TVar(0))) },
 }
 
 // A record pattern's field, lowered at the field's type.
-fn lower_pat_field(ty, rh, fld) = match fld {
-  (name, sub) => (name, lower_pat_at(sub, record_field_ty(ty, name), SRUnknown, rh)),
+fn lower_pat_field(bind, ty, rh, fld) = match fld {
+  (name, sub) => (name, lower_pat_at(bind, sub, record_field_ty(ty, name), SRUnknown, rh)),
 }
 
 // A list pattern: every element sub-pattern matched against the list's one
 // element type `elem`, carried on the pattern for the emit to read.
-fn lower_pat_list(elem, sub, rest, srep, rh) =
-  LPList(elem, map(lower_pat_at(??, elem, SRUnknown, rh), sub), rest, srep)
+fn lower_pat_list(bind, elem, sub, rest, srep, rh) = {
+  let lsub = map(lower_pat_at(bind, ??, elem, SRUnknown, rh), sub)
+  LPList(elem, lsub, bind_rest(bind, rest), srep)
+}
 
 // The type a record pattern's field has at the receiver: the fields the
 // receiver's row knows, closed or open, or a nominal record's declaration.
@@ -4255,27 +4230,21 @@ fn tuple_pat_strip(ty) = match ty {
   _ => ty,
 }
 
-// Each sub-pattern lands at its element's width-summed offset (the SAME
-// tuple_elem_offset fold construction + index run) and recurses with its
-// element TYPE — so a tuple-of-tuples resolves offsets at every depth. An
-// element no type reached takes TVar(0), the explicit no-proof floor (the
-// null handle, never chased), which `slot_repr` reads as the word.
-fn lower_pat_tuple_elems(subs, elems, i, rh) = if i >= len(subs) {
-  []
-} else {
-  let elem_ty = if i < len(elems) { list_index(elems, i) } else { TVar(0) }
-  [(elem_ty, lower_pat_at(list_index(subs, i), elem_ty, SRUnknown, rh))] ++ lower_pat_tuple_elems(subs, elems, i + 1, rh)
-}
+// A tuple's elements or a constructor's payloads: each sub-pattern paired
+// with its position's PROVEN type — a tuple's element type, a payload read at
+// the scrutinee's own instantiation — and lowered at it, so it lands at its
+// width-summed offset (the SAME fold construction + index run) and a
+// tuple-of-tuples resolves offsets at every depth. A position no type reached
+// takes TVar(0), the explicit no-proof floor (the null handle, never chased),
+// which `slot_repr` reads as the word — never a fabricated width.
+fn lower_pat_positions(bind, subs, tys, rh) =
+  map(lower_pat_position(bind, tys, rh, ??), enumerate(subs))
 
-// The constructor pattern's sub-patterns paired with their PROVEN payload
-// types, read at the scrutinee's own instantiation. A payload the specs do
-// not reach takes TVar(0) — the same explicit no-proof floor the tuple path
-// uses, never a fabricated width.
-fn lower_pat_con_elems(subs, ptys, i, rh) = if i >= len(subs) {
-  []
-} else {
-  let pty = if i < len(ptys) { list_index(ptys, i) } else { TVar(0) }
-  [(pty, lower_pat_at(list_index(subs, i), pty, SRUnknown, rh))] ++ lower_pat_con_elems(subs, ptys, i + 1, rh)
+fn lower_pat_position(bind, tys, rh, slot) = match slot {
+  (i, sub) => {
+    let t = if i < len(tys) { list_index(tys, i) } else { TVar(0) }
+    (t, lower_pat_at(bind, sub, t, SRUnknown, rh))
+  },
 }
 
 // The two views of one paired list. The walkers that read a payload's OFFSET
@@ -4458,8 +4427,8 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   //
   // captures_names = config_names ++ state_field_names (sources
   // for closure-record slots at install time). args go as locals
-  // (arm fn params at WASM call-arity). zero handles per
-  // bind_names_as_locals convention.
+  // (arm fn params at WASM call-arity), with zero handles: the arm's
+  // params and captures read their types at their uses.
   let config_names = lower_param_names(config)
   let state_field_names = state_field_names_of(state)
   let captures_names = config_names ++ state_field_names
@@ -4528,13 +4497,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // seeded capture, in a bound callee the trailing param. The bind runs
   // BEFORE body lowering so nested mints resolve it; the LLet
   // materializes it below.
-  let stateful = len(captures_names) > 0
-  if stateful {
-    ls_bind_local("__hrec", 0)
-    ()
-  } else {
-    ()
-  }
+  let hrec = if len(captures_names) > 0 { Some(ls_bind_local("__hrec", 0)) } else { None }
   // Hβ.first-light.resume-with-state-mutation: install arm_state_ctx
   // around arm body lowering so lower_expr's ResumeExpr arm resolves
   // `with field = NEW` updates' slot offsets via current_state_fields()
@@ -4553,8 +4516,10 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   let lines = ls_exit_frame()
   // fence = nstate + total_arms; the arm's LEvPerform reads land on the
   // record's captured-ev region (past state AND arms).
-  let body_list =
-    if stateful { [LLet(0, "__hrec", LLocal(0, "__state")), lo_body] } else { [lo_body] }
+  let body_list = match hrec {
+    Some(reg) => [LLet(0, reg, LLocal(0, "__state")), lo_body],
+    None => [lo_body],
+  }
   let fn_ir = LFn(fn_name, len(arm_params), arm_params, body_list, mk_ef_pure(), fence, lines)
   LDeclareFn(fn_ir)
 }
@@ -4573,12 +4538,6 @@ fn state_field_names_of(state: [{init: Node, name: String}]) = map(state_field_n
 // Build a list of n zero handles. Used as the handle-list for arm
 // captures and locals where lower-time has no type-handle info.
 fn zeros_of_len(n) = map((_) => 0, range(0, n))
-
-// Handler-arm args don't carry separate type handles at lower
-// time; the op's signature gives them inferentially. 0 is the
-// sentinel — capture-handle correctness here is bounded by
-// future reach into op-arg type plumbing (Phase D evidence).
-fn bind_names_as_locals(names) = each((name) => ls_bind_local(name, 0), names)
 
 // OneShot resume — the zero-cost stack return, byte-identical to the
 // pre-producer floor. No state updates: the value flows straight to
@@ -4700,7 +4659,7 @@ fn lower_resume_callk(handle, val, state_updates) = {
 // fn_ptr load of address 0, never silently.
 fn resume_k_arg(handle) = match ls_resolve("__k") {
   (res, lh) => match res {
-    RLocal => LLocal(local_ty_handle(lh, handle), "__k"),
+    RLocal(reg) => LLocal(local_ty_handle(lh, handle), reg),
     RUpval(slot) => LUpval(local_ty_handle(lh, handle), slot),
     RFbPrior(_) => LConst(handle, LInt(0)),
     RGlobal => LConst(handle, LInt(0)),
@@ -4712,7 +4671,7 @@ fn resume_k_arg(handle) = match ls_resolve("__k") {
 // capture) — read through the SAME ls_resolve ladder the resumes use.
 fn lower_seed_k(free_uses) = match ls_resolve("__k") {
   (res, _lh) => match res {
-    RLocal => free_uses_merge([("__k", 0)], free_uses),
+    RLocal(_) => free_uses_merge([("__k", 0)], free_uses),
     RUpval(_) => free_uses_merge([("__k", 0)], free_uses),
     _ => free_uses,
   },
@@ -4723,7 +4682,7 @@ fn lower_seed_k(free_uses) = match ls_resolve("__k") {
 // holding. Where no stateful arm encloses the mint, the seed adds nothing.
 fn lower_seed_hrec(free_uses) = match ls_resolve("__hrec") {
   (res, _lh) => match res {
-    RLocal => free_uses_merge([("__hrec", 0)], free_uses),
+    RLocal(_) => free_uses_merge([("__hrec", 0)], free_uses),
     RUpval(_) => free_uses_merge([("__hrec", 0)], free_uses),
     _ => free_uses,
   },
@@ -4739,7 +4698,7 @@ fn lower_seed_hrec(free_uses) = match ls_resolve("__hrec") {
 // record's owner (the arm-level identity).
 fn resolve_hrec(handle) = match ls_resolve("__hrec") {
   (res, _lh) => match res {
-    RLocal => LLocal(0, "__hrec"),
+    RLocal(reg) => LLocal(0, reg),
     RUpval(slot) => LUpval(0, slot),
     RFbPrior(_) => LLocal(0, "__state"),
     RGlobal => LLocal(0, "__state"),
@@ -4755,7 +4714,7 @@ fn resolve_hrec(handle) = match ls_resolve("__hrec") {
 // loudly at the resume itself.
 fn resume_hrec_arg(handle) = match ls_resolve("__hrec") {
   (res, _lh) => match res {
-    RLocal => LLocal(0, "__hrec"),
+    RLocal(reg) => LLocal(0, reg),
     RUpval(slot) => LUpval(0, slot),
     RFbPrior(_) => LConst(handle, LInt(0)),
     RGlobal => LConst(handle, LInt(0)),
@@ -4764,7 +4723,7 @@ fn resume_hrec_arg(handle) = match ls_resolve("__hrec") {
 
 fn resolve_resume_k(handle) = match ls_resolve("__k") {
   (res, lh) => match res {
-    RLocal => LLocal(local_ty_handle(lh, handle), "__k"),
+    RLocal(reg) => LLocal(local_ty_handle(lh, handle), reg),
     RUpval(slot) => LUpval(local_ty_handle(lh, handle), slot),
     RFbPrior(_) => LInvariantFailure(handle, ResumeKOutsideLadder),
     RGlobal => LInvariantFailure(handle, ResumeKOutsideLadder),
@@ -5016,7 +4975,7 @@ fn k_remainder(node, subs) = match k_sub_for(subs, node) {
 // a walker-divergence bug — the loud floor, never a fabricated read.
 fn k_hole_read(ph, name) = match ls_resolve(name) {
   (res, lh) => match res {
-    RLocal => LLocal(local_ty_handle(lh, ph), name),
+    RLocal(reg) => LLocal(local_ty_handle(lh, ph), reg),
     RUpval(slot) => LUpval(local_ty_handle(lh, ph), slot),
     RFbPrior(_) => LYield(ph, "", [], LConst(ph, LInt(0))),
     RGlobal => LYield(ph, "", [], LConst(ph, LInt(0))),
@@ -5810,7 +5769,7 @@ fn resolve_captures_outer(uses, owner_h) = if len(uses) == 0 {
       (res, local_h) => match resolve_captures_outer(drop_last(uses), owner_h) {
         (rest_names, rest_exprs, rest_handles) => match res {
           RGlobal => (rest_names, rest_exprs, rest_handles),
-          RLocal => ([name] ++ rest_names, [LLocal(local_ty_handle(local_h, use_h), name)] ++ rest_exprs, [local_h] ++ rest_handles),
+          RLocal(reg) => ([name] ++ rest_names, [LLocal(local_ty_handle(local_h, use_h), reg)] ++ rest_exprs, [local_h] ++ rest_handles),
           RUpval(slot) => ([name] ++ rest_names, [LUpval(local_ty_handle(local_h, use_h), slot)] ++ rest_exprs, [local_h] ++ rest_handles),
           RFbPrior(fb_h) => ([name] ++ rest_names, [LFeedbackPrior(fb_h)] ++ rest_exprs, [local_h] ++ rest_handles),
         },
@@ -5895,26 +5854,28 @@ fn push_name(buf, count, name) = {
 //               lambda / fn body with locals + captures.
 //   `globals` — top-level name strings registered by `lower_program` at entry.
 //
-// `ls_resolve(name)`: search current frame's locals (innermost-first via
-// push/pop checkpoint truncation). If not found, current frame's captures.
-// Otherwise `RGlobal`. Frames below the head are NEVER searched — they
-// belong to the enclosing lambda, which is opaque at this lexical level.
-// Names referenced across frame boundaries MUST be captured.
-// Frame shape (Ω.5): one record per frame, eight fields. Sorted-set
-// for O(log N) membership; parallel insertion-ordered list for slot
-// positioning (LLocal / LUpval need positional indices). Same data
-// as the prior parallel-arrays form, structurally consolidated:
+// `ls_resolve(name)`: the current frame's INNERMOST binder of the name (the
+// last one bound — push/pop checkpoint truncation retires a closed scope's
+// binders), else the frame's captures, else `RGlobal`. Frames below the head
+// are NEVER searched — they belong to the enclosing lambda, which is opaque
+// at this lexical level. Names referenced across frame boundaries MUST be
+// captured.
 //
-//   locals       — sorted set of local names (membership)
-//   local_order  — insertion-ordered list (slot index = position)
-//   local_handles — parallel to local_order, type handles per slot
-//   captures, capture_order, capture_handles — same shape, capture side
+// Frame shape: one record per frame. The local side is ONE list of binders
+// in binding order (`LocalBind`: the source name, the handle its type is
+// read at, and the register it took) beside a sorted set of the names for
+// O(log N) membership; the capture side keeps its paired name and handle
+// lists (LUpval reads a capture by its position). Until 2026-09-28 the local
+// side was two parallel lists searched OLDEST-first, and a binder's register
+// was its spelling: a nested let or a match arm that bound a parameter's own
+// name overwrote the parameter, which read the arm's value once the arm
+// closed — silently — while a shadow at another width resolved to the older
+// binder's type and did not assemble
+// (`Hβ.lower.shadowing-binder-clobbers-its-register`).
 //
-// Field-sort discipline (parser + mk_record): records are stored
-// alphabetically, so the WAT layout is captures(0), capture_handles(4),
-// capture_order(8), locals(12), local_handles(16), local_order(20).
-// Mentl source reads via .field — physical layout irrelevant.
-handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = smap_new(), may_yield = false, resume_binds = [] {
+// Records are stored with their fields sorted by name; Mentl source reads
+// them by `.field`, so the physical layout is the emit's business.
+handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_yield = false, resume_binds = [] {
   ls_register_escaping(map) => // THE FLOW-CLOSURE map (name → escaping row), computed once at lower_program
   // and read live by THE SEAM. Some(row) for a top-level fn; None (→ the leaf)
   // for a nested fn / lambda / unknown name.
@@ -5934,23 +5895,20 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
   // handler whose MultiShot arm's call graph reaches it.
   resume() with resume_binds = bs,
   ls_resume_bind_of(name) => resume(resume_bind_assoc(resume_binds, name, 0)),
-  ls_enter_frame(fn_name, locals_in, locals_h, captures_in, captures_h, line_base) => // drift-audit: ignore — pre-existing frame-record paired-arrays (locals_h/captures_h); same restructure tracked for 11.C.2
+  ls_enter_frame(fn_name, locals_in, locals_h, captures_in, captures_h, line_base) => // drift-audit: ignore — the capture side's paired name and handle lists (LUpval reads a capture by position); the local side is one binder list
   // Per Hβ.first-light.nested-fn-name-discriminator (2026-05-06):
   // fn_name carries the named-fn discriminator for nested-fn naming
-  // (lambda + synthetic frames pass "").
-  // Field-sort discipline keeps the frame record alphabetical: capture_handles,
-  // capture_order, captures, fn_name, line_base, lines, local_handles,
-  // local_order, locals.
+  // (lambda + synthetic frames pass ""). A parameter's register is its
+  // name: the signature declares it.
   {
     let frame = {
+      binds: zip_with(param_bind, locals_in, locals_h),
       capture_handles: captures_h,
       capture_order: captures_in,
       captures: set_canonicalize(captures_in),
       fn_name: fn_name,
       line_base: line_base,
       lines: [],
-      local_handles: locals_h,
-      local_order: locals_in,
       locals: set_canonicalize(locals_in),
     }
     // drift-audit: ignore — O(1) push at the end last/drop_last read
@@ -5972,14 +5930,13 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
     let frame = last(frames)
     let home = if frame.line_base < 0 { LhStatic } else { LhSlot(frame.line_base + len(frame.lines)) }
     let updated = {
+      binds: frame.binds,
       capture_handles: frame.capture_handles,
       capture_order: frame.capture_order,
       captures: frame.captures,
       fn_name: frame.fn_name,
       line_base: frame.line_base,
       lines: frame.lines ++ [(h, depth, home)],
-      local_handles: frame.local_handles,
-      local_order: frame.local_order,
       locals: frame.locals,
     }
     // drift-audit: ignore — replace the END frame last() read
@@ -5990,77 +5947,64 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
     resume(0)
   } else {
     let frame = last(frames)
-    resume(len(frame.local_order))
+    resume(len(frame.binds))
   },
   ls_pop_scope(checkpoint) => if len(frames) == 0 {
     resume()
   } else {
     let frame = last(frames)
-    let truncated_order = take(checkpoint, frame.local_order)
-    let truncated_handles = take(checkpoint, frame.local_handles)
+    let kept = take(checkpoint, frame.binds)
     let updated = {
+      binds: kept,
       capture_handles: frame.capture_handles,
       capture_order: frame.capture_order,
       captures: frame.captures,
       fn_name: frame.fn_name,
       line_base: frame.line_base,
       lines: frame.lines,
-      local_handles: truncated_handles,
-      local_order: truncated_order,
-      locals: set_canonicalize(truncated_order),
+      locals: set_canonicalize(map(bind_name, kept)),
     }
     // drift-audit: ignore — replace the END frame last() read
     resume() with frames = drop_last(frames) ++ [updated]
   },
   ls_bind_local(name, h) => if len(frames) == 0 {
-    resume(0)
+    resume(name)
   } else {
     let frame = last(frames)
-    let slot = len(frame.local_order)
-    let updated = {
-      capture_handles: frame.capture_handles,
-      capture_order: frame.capture_order,
-      captures: frame.captures,
-      fn_name: frame.fn_name,
-      line_base: frame.line_base,
-      lines: frame.lines,
-      local_handles: handle_list_append(frame.local_handles, h),
-      local_order: name_list_append(frame.local_order, name),
-      locals: set_insert(frame.locals, name),
-    }
-    // drift-audit: ignore — replace the END frame last() read
-    resume(slot) with frames = drop_last(frames) ++ [updated]
+    // A binder whose name the frame already holds takes a register of its
+    // own: the binder it shadows may be read again once this one's scope
+    // closes (a nested block, a match arm), so the two can never share one.
+    // Its position is unique among the binders the frame holds at once, and
+    // `$` is no identifier character, so the name collides with nothing.
+    let reg = if set_contains(frame.locals, name) { "{name}${len(frame.binds)}" } else { name }
+    resume(reg) with frames = drop_last(frames) ++ [frame_binding(frame, BLocal(name, h, reg))]
   },
-  ls_bind_fb_prior(name, h) => // (LF.B) The `<~` lambda param shadows everything for the recurrence body:
-  // it names the prior-iteration output, a feedback NODE read live. Pushed
-  // innermost-first so a nested `<~` resolves to its own prior. The pair is
-  // (name, fb_handle); resolution returns RFbPrior(fb_handle).
-  //
-  // drift-audit: ignore — O(1) push at the end last/drop_last read
-  resume() with fb_priors = fb_priors ++ [(name, h)],
-  ls_unbind_fb_prior() => if len(fb_priors) == 0 { resume() } else { resume() with fb_priors = drop_last(fb_priors) },
-  ls_resolve(name) => {
-    // Feedback-prior bindings shadow frame locals (the recurrence body's
-    // prev IS the prior node — Carried-Truth, read live from $__fb_prev_<h>).
-    let prior_h = fb_prior_handle_of(fb_priors, name)
-    if prior_h >= 0 {
-      resume((RFbPrior(prior_h), 0))
-    } else if len(frames) == 0 {
-      resume((RGlobal, 0))
-    } else {
-      let frame = last(frames)
-      // O(log N) membership; slot lookup falls back to the order list
-      // only when the name is actually present (the common case for
-      // an enclosed reference is local-or-capture, not global).
-      if set_contains(frame.locals, name) {
-        let local_idx = ls_find_in_order(frame.local_order, name, 0)
-        resume((RLocal, list_index(frame.local_handles, local_idx)))
-      } else if set_contains(frame.captures, name) {
-        let cap_idx = ls_find_in_order(frame.capture_order, name, 0)
-        resume((RUpval(cap_idx), list_index(frame.capture_handles, cap_idx)))
-      } else {
-        resume((RGlobal, 0))
+  ls_bind_fb_prior(name, h) => // (LF.B) The `<~` lambda param names the prior-iteration output, a
+  // feedback NODE read live: a binder of the frame like any other, so a
+  // binder inside the recurrence body shadows it and a lambda there captures
+  // it (resolution in the lambda's own frame finds the capture, never the
+  // outer register).
+  if len(frames) == 0 {
+    resume()
+  } else {
+    resume() with frames = drop_last(frames) ++ [frame_binding(last(frames), BPrior(name, h))]
+  },
+  ls_resolve(name) => if len(frames) == 0 {
+    resume((RGlobal, 0))
+  } else {
+    let frame = last(frames)
+    // O(log N) membership first: most references name a top-level
+    // declaration, and those never walk the binders.
+    if set_contains(frame.locals, name) {
+      match list_index(frame.binds, innermost_index(frame.binds, name, len(frame.binds) - 1)) {
+        BLocal(_, h, reg) => resume((RLocal(reg), h)),
+        BPrior(_, fb_h) => resume((RFbPrior(fb_h), 0)),
       }
+    } else if set_contains(frame.captures, name) {
+      let cap_idx = ls_find_in_order(frame.capture_order, name, 0)
+      resume((RUpval(cap_idx), list_index(frame.capture_handles, cap_idx)))
+    } else {
+      resume((RGlobal, 0))
     }
   },
   ls_register_globals(names) => resume() with globals = names,
@@ -6092,32 +6036,56 @@ handler lower_scope with frames = [], globals = [], fb_priors = [], esc_rows = s
 // fns were never qualified, and the whole qualification path sat dormant.
 // Field types read from the ls_enter_frame op's own declared signature,
 // not inferred by eye.
-fn ls_outer_fn_name_loop(frames: [{capture_handles: [Int], capture_order: [String], captures: [String], fn_name: String, line_base: Int, lines: [(Int, Int, LineHome)], local_handles: [Int], local_order: [String], locals: [String]}]) = if len(frames) == 0 {
+fn ls_outer_fn_name_loop(frames: [{binds: [LocalBind], capture_handles: [Int], capture_order: [String], captures: [String], fn_name: String, line_base: Int, lines: [(Int, Int, LineHome)], locals: [String]}]) = if len(frames) == 0 {
   ""
 } else {
   let frame = last(frames)
   if frame.fn_name == "" { ls_outer_fn_name_loop(drop_last(frames)) } else { frame.fn_name }
 }
 
-// (LF.B) Resolve a name to its feedback-prior handle, innermost-first.
-// Each entry is `(name, fb_handle)` — the `<~` site whose prior local this
-// name binds. Returns the handle on match, -1 when the name is not a
-// `<~`-bound prior (so `ls_resolve` falls through to frame locals). Read
-// sequentially over one list (drift 7 refused); no parallel arrays.
-fn fb_prior_handle_of(priors, name: String) = if len(priors) == 0 {
-  -1
-} else {
-  match last(priors) {
-    (n, h) => if n == name { h } else { fb_prior_handle_of(drop_last(priors), name) },
-  }
+// A binder of a frame, in binding order. A local is read at its REGISTER —
+// its source name, or a name of its own where it shadows an earlier binder
+// of the frame — and its type at its handle; a `<~` recurrence's parameter
+// binds the prior of the feedback site it names.
+type LocalBind = BLocal(String, Int, String) | BPrior(String, Int)
+
+fn bind_name(b) = match b {
+  BLocal(n, _, _) => n,
+  BPrior(n, _) => n,
 }
 
-// Slot-index lookup once `set_contains` has confirmed membership.
-// The set vouches the name is present; this loop locates its insertion
-// position (slot index for `LLocal` / `LUpval`). Linear because order
-// is insertion-keyed, not sort-keyed; bounded by frame size in practice.
-// Only fires after a positive `set_contains`, so worst case is O(N)
-// but expected case hits early since recently-bound names dominate.
+// A parameter binds under its own name: the signature declares that register.
+fn param_bind(name: String, h) = BLocal(name, h, name)
+
+// The frame with one more binder, the only way a binder enters a frame.
+fn frame_binding(frame: {binds: [LocalBind], capture_handles: [Int], capture_order: [String], captures: [String], fn_name: String, line_base: Int, lines: [(Int, Int, LineHome)], locals: [String]}, b) = {
+  binds: frame.binds ++ [b],
+  capture_handles: frame.capture_handles,
+  capture_order: frame.capture_order,
+  captures: frame.captures,
+  fn_name: frame.fn_name,
+  line_base: frame.line_base,
+  lines: frame.lines,
+  locals: set_insert(frame.locals, bind_name(b)),
+}
+
+// The position of a name's INNERMOST binder — the last one bound — once the
+// frame's name set has vouched the name is there: a scan from the newest
+// binder down that allocates nothing, so a resolution costs what the
+// oldest-first lookup it replaced did (a fold here installed a handler per
+// resolution: 5.3 MB more by lowering's end on the wheel, measured against
+// this scan on one input, 2026-09-28). The read this becomes is the
+// name-as-handle index (§5.O layer 1).
+fn innermost_index(binds: [LocalBind], name: String, i) = if i < 0 {
+  -1
+} else if bind_name(list_index(binds, i)) == name {
+  i
+} else {
+  innermost_index(binds, name, i - 1)
+}
+
+// A capture's position in the frame's capture list (LUpval reads the
+// record at it), once `set_contains` has confirmed the name is there.
 fn ls_find_in_order(lst, target: String, i) = ls_find_in_order_loop(lst, target, i, len(lst))
 
 fn ls_find_in_order_loop(lst, target: String, i, n) = if i >= n {
@@ -7077,16 +7045,16 @@ else if byte_at(enc, i) != 48 {
 // generalize (their only use IS the splice) and the floor copy shows a
 // String operand through the word face — twin names minted as pointer
 // numerals, the m3 ≠ m4 the march caught.
-fn spec_mangle(name: String, enc: String) with Pure = "{name}$sp{enc}"
+fn spec_mangle(name: String, enc: String) = "{name}$sp{enc}"
 
 // The handler-arm fn name's ONE spelling (the arm decl, the ev-slot
 // placement, and the redrive liveness probe all read it here). The same
 // String pins as spec_mangle, for the same reason.
-fn arm_fn_name(hname: String, op: String) with Pure = "op_{hname}_{op}"
+fn arm_fn_name(hname: String, op: String) = "op_{hname}_{op}"
 
 // A handler's init fn (`lower_init_decl`). The `$` is no identifier's
 // character, so no declaration can share the name.
-fn init_fn_name(hname: String) with Pure = "{hname}$init"
+fn init_fn_name(hname: String) = "{hname}$init"
 
 // The site's instantiation pairs — [] when the name is not generic: a value
 // let, a monomorphic fn, or an internal synthesized name. The scheme's

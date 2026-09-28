@@ -1,0 +1,7 @@
+// expect: refuse E_EffectMismatch
+// A SPLICE SHOWS its value into a string it builds, even with no seam to
+// concatenate. Measured 2026-09-28 on boot 0976f1d7: `!Alloc` accepted
+// `"{x}"` with zero diagnostics (Hβ.effects.install-allocates-unrowed).
+fn label(x) with !Alloc = "{x}"
+
+fn main() = len(label(42))

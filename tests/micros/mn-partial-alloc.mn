@@ -1,0 +1,12 @@
+// expect: refuse E_EffectMismatch
+// A PARTIAL APPLICATION mints the closure holding its supplied fields,
+// wherever a pipe does not complete it in place. Measured 2026-09-28 on
+// boot 0976f1d7: `!Alloc` accepted it while the heap grew 16 bytes per call
+// (Hβ.effects.install-allocates-unrowed, the allocation census).
+fn add(a, b) = a + b
+
+fn apply(g, v) = g(v)
+
+fn shift(x) with !Alloc = apply(add(x, ??), 1)
+
+fn main() = shift(4)

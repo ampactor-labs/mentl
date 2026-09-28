@@ -370,21 +370,18 @@ fn max_by(f, xs) = reduce(xs, (a, b) => if f(a) >= f(b) { a } else { b })
 fn min_by(f, xs) = reduce(xs, (a, b) => if f(a) <= f(b) { a } else { b })
 
 // ─── Composition ────────────────────────────────────────────
-// compose IS <> for when you need a function instead of syntax.
-// id is the identity element: f <> id = f, id <> f = f.
-// build_pipeline folds a list of functions into one composed pipeline.
-//
-// compose matches <> — f first, then g.  Left to right.
-// x |> (f <> g) = x |> f |> g
+// compose is the pipe as a value: f first, then g, so
+// `x |> compose(f, g)` is `x |> f |> g`. id is its identity element:
+// compose(f, id) and compose(id, f) both behave as f.
 fn compose(f, g) = (x) => g(f(x))
 
 fn id(x) with Pure = x
 
 fn not(x) with Pure = if x { false } else { true }
 
-// Build a pipeline from a list of functions.  Fold with compose.
-// build_pipeline([f, g, h]) = f <> g <> h
-fn build_pipeline(steps) = fold(id, (acc, step) => (x) => step(acc(x)), steps)
+// A pipeline from a list of functions, composed left to right:
+// `x |> build_pipeline([f, g, h])` is `x |> f |> g |> h`.
+fn build_pipeline(steps) = fold(id, compose, steps)
 
 // ─── Safe access ────────────────────────────────────────────
 fn nth(xs, n, default) = if n >= 0 && n < len(xs) { xs[n] } else { default }

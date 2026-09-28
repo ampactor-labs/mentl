@@ -2,11 +2,13 @@
 // effects admits the callback (`with E + F`), and a cap met through a
 // `~>` mask admits what the mask absorbs (`Pg ∪ mask` on the push): the
 // inner `run2` caps at E but its callback's F is absorbed by `hf` inside
-// the body, so F never reaches the gate. Expect NO E_EffectMismatch.
+// the body, so F never reaches the gate. Since 2026-09-28 the install's
+// own record (`Memory + Alloc`) rides the row it stands in, so `run2`'s cap
+// names it too. Expect NO E_EffectMismatch.
 effect E { op_e() -> Int }
 effect F { op_f() -> Int }
 handler he { op_e() => resume(1) }
 handler hf { op_f() => resume(10) }
 fn run(f) with E + F = f() + op_e()
-fn run2(f) with E = ((f()) ~> hf) + op_e()
+fn run2(f) with E + Memory + Alloc = ((f()) ~> hf) + op_e()
 fn main() = (run(() => op_f()) + run2(() => op_f())) ~> he ~> hf

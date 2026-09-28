@@ -1495,6 +1495,37 @@ else if str_eq(list_index(lst, i), s) {
   string_in_list_loop(lst, s, i + 1, n)
 }
 
+// The execution strategy a fanout runs under, read by the lowering from the
+// install that governs it. An ADT of scheduler classes, never a
+// `mode==0/1/2` int (drift 8).
+type Schedule = Seq | Threaded | Simd | Gpu | Persisted
+
+// WHAT AN INSTALL DOES TO ITS EXTENT — the one read of a handler's class,
+// from the effects its arms answer. Most handlers are DISPATCHED to: a
+// perform finds them and runs an arm, and the install builds the record it
+// runs against. Two classes are PROJECTIONS instead, readings the lowering
+// applies to the extent itself: a schedule decides how a `><` inside it runs,
+// and the derivative reading decides what the extent computes beside its
+// value (`~> grad(w)`, lib/ml/grad.mn). The class is recognized by the effect
+// a handler answers, so a program that declares its own Thread or Derivative
+// effect gets the same reading. The judgment and the lowering read this one
+// roster: what an install costs and what it lowers to are one decision.
+type Projection = PDispatch | PSchedule(Schedule) | PDerivative
+
+fn projection_of_effects(enames) = if string_in_list(enames, "Thread") {
+  PSchedule(Threaded)
+} else if string_in_list(enames, "Simd") {
+  PSchedule(Simd)
+} else if string_in_list(enames, "Gpu") {
+  PSchedule(Gpu)
+} else if string_in_list(enames, "Persist") {
+  PSchedule(Persisted)
+} else if string_in_list(enames, "Derivative") {
+  PDerivative
+} else {
+  PDispatch
+}
+
 // EffName equality is the ONE structural `==` (the value-layer fold's sum-eq
 // leaf, §5.U) — type-dispatched at emit, total over the five node-kinds, so
 // `ENamed`'s string / `EParameterized`'s (name, args) / `EPure` all compare by

@@ -122,11 +122,12 @@ import cli
 // inside its own extent by construction). Intern is evidence-tier (two
 // handlers), so the executable gate's strict conjunct clears only
 // row-wise — this install IS the row cure and the live chain node the
-// stray performs dispatch through.
-fn main(argv) = match parse_cli_args(argv) {
+// stray performs dispatch through. Like every table, it is born holding
+// the medium's own vocabulary (`interned`).
+fn main(argv) = interned(() => match parse_cli_args(argv) {
   ParseError(msg) => print_error_and_help(msg),
   Invocation(verb) => dispatch_invocation(verb),
-} ~> diagnostics_handler ~> intern_table
+} ~> diagnostics_handler)
 
 // dispatch_invocation — the substrate handlers (env/graph/diagnostics)
 // install ONCE at this outermost dispatch boundary: the program boundary
@@ -992,7 +993,9 @@ handler process_host {
 }
 
 // argv on the wire: NUL after every word, the executor splits on it.
-fn argv_wire(words) = fold("", (acc, w) => "{acc}{w}\0", words)
+fn argv_wire(words) = words |> map(nul_terminated) |> str_concat_all
+
+fn nul_terminated(w: String) = "{w}\0"
 
 // run IS compile then process_exec ~> process_host — one handler swap
 // over the SAME compile graph: compile streams the module to the host,

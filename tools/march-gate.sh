@@ -69,6 +69,21 @@ if [ "$DO_BUILD" = 1 ]; then
   wt_m2_place "$C" "$OUT"; cp -f "$C/wheel.mn" "$OUT/wheel.mn"
   echo "m2: boot(wheel) via $C — $(wc -l < "$OUT/m2.wat") lines (key $(cut -c1-12 "$C/key"))"
   echo "✓ m2.wasm ($(stat -c%s "$OUT/m2.wasm") bytes)"
+elif [ -z "${GATE_WASM:-}" ]; then
+  # A --no-build run judges the probe copy, and that copy is only as fresh as
+  # the last build that placed it. Naming its sha (below) did not stop a stale
+  # verdict: on 2026-09-28 a battery reported 223/223 on the copy two edits
+  # behind the source while the cache held the current source's m2. So the run
+  # judges only the current source's m2 — placed from the cache when the cache
+  # holds it, refused when nothing current exists.
+  if [ "$(cat "$WT_M2CACHE/key" 2>/dev/null)" != "$(wt_m2_key)" ]; then
+    echo "✗ --no-build: no m2 of the current source exists (the cache is older than src/ + lib/) — run without --no-build"
+    exit 1
+  fi
+  if ! cmp -s "$WT_M2CACHE/m2.wasm" "$OUT/m2.wasm"; then
+    wt_m2_place "$WT_M2CACHE" "$OUT"; cp -f "$WT_M2CACHE/wheel.mn" "$OUT/wheel.mn"
+    echo "m2: the probe copy was older than the source — placed the cache's current m2"
+  fi
 fi
 [ -f "$OUT/m2.wasm" ] || { echo "✗ no m2.wasm — run without --no-build"; exit 1; }
 # GATE_WASM: the compiler-under-test. Default m2 (boot-sparked wheel); point it

@@ -3650,7 +3650,10 @@ fn free_vars_expr(e, h, bound) = match e {
   LitBool(_) => [],
   LitUnit => [],
   VarRef(name) => if free_vars_contains(bound, name) { [] } else { [(name, h)] },
-  BinOpExpr(_, l, r) => free_uses_merge(collect_free_uses(l, bound), collect_free_uses(r, bound)),
+  BinOpExpr(op, l, r) => free_uses_merge(
+    binop_callee_uses(op, h, bound),
+    free_uses_merge(collect_free_uses(l, bound), collect_free_uses(r, bound))
+  ),
   UnaryOpExpr(_, inner) => collect_free_uses(inner, bound),
   CallExpr(f, args) => free_uses_merge(collect_free_uses(f, bound), free_vars_list(args, bound)),
   IfExpr(c, t, e) => free_uses_merge(
@@ -3663,9 +3666,12 @@ fn free_vars_expr(e, h, bound) = match e {
   MatchExpr(scrut, arms) => free_uses_merge(collect_free_uses(scrut, bound), free_vars_match_arms(arms, bound)),
   MakeListExpr(elems) => free_vars_list(elems, bound),
   MakeTupleExpr(elems) => free_vars_list(elems, bound),
-  MakeStringExpr(fragments) => free_vars_list(fragments, bound),
+  MakeStringExpr(fragments) => free_uses_merge(callee_uses(concat_callees(), h, bound), free_vars_list(fragments, bound)),
   ShowExpr(inner) => collect_free_uses(inner, bound),
-  IndexExpr(receiver, index) => free_uses_merge(collect_free_uses(receiver, bound), collect_free_uses(index, bound)),
+  IndexExpr(receiver, index) => free_uses_merge(
+    callee_uses([subscript_callee()], h, bound),
+    free_uses_merge(collect_free_uses(receiver, bound), collect_free_uses(index, bound))
+  ),
   MakeRecordExpr(flds) => free_vars_record_fields(flds, bound),
   RecordUpdateExpr(base, flds) => free_uses_merge(collect_free_uses(base, bound), free_vars_record_fields(flds, bound)),
   NamedRecordExpr(_, flds) => free_vars_record_fields(flds, bound),
@@ -3771,6 +3777,20 @@ fn free_vars_handler_arms(arms, bound) = fold(
 
 fn free_vars_list(nodes, bound) =
   fold([], (acc, node) => free_uses_merge(acc, collect_free_uses(node, bound)), nodes)
+
+// The primitives a sugar node calls, as uses at the node — the same rule a
+// written reference obeys (a name the scope binds is not free), so the
+// judgment's order, reachability and capture all read one walk.
+fn callee_uses(names, h, bound) = flat_map(callee_use(h, bound, ??), names)
+
+fn callee_use(h, bound, n: String) = if free_vars_contains(bound, n) { [] } else { [(n, h)] }
+
+fn binop_callee_uses(op, h, bound) = match binop_kind(op) {
+  BKConcat => callee_uses(concat_callees(), h, bound),
+  BKArith => [],
+  BKCmp => [],
+  BKBool => [],
+}
 
 // Free uses in a record-literal expression: union of the uses in
 // each field's value. Field names are not value-position references

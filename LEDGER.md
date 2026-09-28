@@ -35,6 +35,139 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-28 · pin 5d267d2677c2f8f5 (TRANSITION m3 == m4) · WHAT A CONSTRUCT BUILDS IS IN THE ROW OF THE FRAME THAT BUILDS IT.
+  R0i, preempting the Pulse sprint (§0's property (2) was false at the most
+  common shapes a program writes). The first probe was the install L4a had
+  named — `fn step(w: Float) with !Alloc = (ask(w) + 1.0) ~> scaled(w)`
+  compiled clean and grew the heap 48 bytes per call — and the census that
+  followed probed every construct that builds a record: SIX allocated with
+  no row saying so on boot 0976f1d7 (an install, 40 bytes per call,
+  stateless or stateful; a lambda mint, 16 with one capture and 8 with
+  none; a partial application, 16; an interpolation, 48 for `"v{x}"`; a
+  splice show, 32 for `"{x}"`; both fanouts, 56 for `(x + 1) >< (x + 2)`
+  and 72 for the shared form). Each charges what it
+  builds in the frame that builds it: `construction_row()` for the mint, the
+  partial, the show and the fanouts; the concat callees' own rows at an
+  interpolation's seams; and for an install a cost read off the projection
+  roster (`install_cost` — the roster moved from src/lower.mn to
+  src/effects.mn so the judgment and the lowering read one decision; a
+  dispatched install and a schedule cost `Memory + Alloc`, a derivative
+  reading nothing). A literal a verb applies in place mints nothing and is
+  charged nothing, by one test at both readers (`inlinable_lambda`): the
+  `<~` recurrence as before, and the `|>` stage, now lowered in the pipe's
+  own frame (`lower_applied_in_place`); a call standing as a stage is
+  completed in place and charges no partial (`infer_call_node` returns the
+  form it built, `CallForm`).
+  The wheel carried thirteen false `with Pure` clauses over interpolation —
+  `spec_mangle`, `arm_fn_name`, `init_fn_name`, `show_field_name`,
+  `census_label`, `show_pipe_context`, `indent_annotation`, `spaces`,
+  `parenthesize`, `render_indent_for`, `render_import_row`,
+  `render_unref_row`, `str_join_indented` — deleted; lib/dsp's
+  `channel_strip` `!Alloc` held once its stage lambda inlined.
+  **Found on the way, closed in the landing.** (1) The inlining's premise
+  probe found a binder's register was its spelling and a frame's locals were
+  searched oldest-first: a nested block's `let x`, or an arm's `Some(x)`,
+  over a parameter `x` wrote the parameter's register (`f(100)` answered 11
+  for 106, zero diagnostics), and a shadow at another width did not
+  assemble after a clean check. The `<~` prior lived on a second stack
+  checked before every frame, so a `let prev` in the recurrence body was
+  invisible (3 for 7) and a lambda there read `$__fb_prev_<h>` in a function
+  that never declares it. A frame's locals are ONE list of binders
+  (`LocalBind`: a local with its register, or a prior), resolved
+  innermost-first; a binder whose name the frame holds takes `name$<pos>`;
+  `RLocal` carries the register. A match arm's pattern binds and lowers in
+  one walk — `bind_pat_locals` and its two helpers, the prior stack,
+  `ls_unbind_fb_prior`, the frame's parallel name and handle lists and their
+  typed append helpers are deleted, and the two positional pattern walkers
+  are one map (`Hβ.lower.shadowing-binder-clobbers-its-register`). (2) `++`,
+  interpolation and `xs[i]` call primitives the judgment reads live, but the
+  free-name walk drew no edge to them, so `fn label(x: String) with !Alloc =
+  x ++ "v"` was judged before `str_concat` and refused twice, at the
+  PRIMITIVES' declarations; the sugar's callees have one home
+  (`concat_callees`, `subscript_callee`, src/types.mn) that both the walk
+  and the judgment read, and the refusal lands once, at `label`
+  (`Hβ.infer.sugar-callee-judged-after-its-caller`). (3) The frontier's
+  stage-ring leg went red the moment a closure mint was charged: a
+  proposal's candidate is judged under a read-only intern view that traps
+  rather than mint (so identity never forks), and the judgment names
+  `Memory` and `Alloc` by literal — in a link of two files (the leg mounts
+  only the demo directory) nothing had interned them. Binary-patch probes
+  read the table at `intern_seed` and at the view's miss (the program's own
+  names were there; the miss was `Memory`), and writing the two words into
+  the entry made the proposal fill. Every table is born holding the medium's
+  vocabulary now, through its own op and one installer (`interned`,
+  src/intern.mn) that the process table and each judgment's table go
+  through (`Hβ.intern.medium-vocabulary-is-born-with-the-table`).
+  **The census saw what the charge made true.** The effectful-lambda
+  bound (231) measured 232 on the boot over the edited source and 234
+  through m2; the two only m2 saw were old lambdas that had always
+  allocated — `argv_wire`'s fold interpolated a new string per word and
+  `build_pipeline`'s inner lambda was `compose` written out. Four lambdas
+  became references (`union_named_row`, `callee_use`, `words |>
+  map(nul_terminated) |> str_concat_all`, `fold(id, compose, steps)`, the
+  prelude's stale `<>` prose trued with it), and the census is 231 again
+  with the ceiling unmoved. `tools/march-gate.sh --no-build` now refuses
+  when no m2 of the current source exists and places the cache's current m2
+  when the probe copy is older — naming the sha had not stopped a stale
+  223/223 (kill 5). The first march refused before the board: the
+  comment-ref ratchet read 0 → 2, both the example name this landing's own
+  scope comment had backticked as though it were a reference; it is prose
+  now. The second march refused on COST (804,104 KB against the 800,000 KB
+  ceiling, TRANSITION m3 == m4 already shown), and the fixed-input heap
+  marks split it: on the unchanged source the new compiler sat 4.9 MB above
+  the boot at the judgment's high-water and 12.6 MB above when lowering
+  ended, while on the boot the new source alone added 1.1 MB and 3.2 MB at
+  the same two marks. Lowering's own share was hypothesised to be the scope
+  table's resolution — a `fold`, which installs a handler per call, run on
+  every local reference — and measured: a scan from the newest binder that
+  allocates nothing took 5.3 MB off lowering's end on both sources (kill 6:
+  the fold was 5.3 of lowering's 7.7, not all of it), and the peak read
+  798,564 KB, under the ceiling it was about to raise.
+  **Claims that were true only while the costs were unrowed:** micros
+  mn-absorb-poly and mn-absorb-poly-fwd claimed `Pure` over a thunk mint
+  and an installing callee — their point is the absorption, `with !Ping`;
+  crown sound-arm-adds-row and sound-cap-admits are positive CAPS whose
+  bodies install, so the caps name `Memory + Alloc`.
+  **Kills.** (1) "The six sites are the census" — they are six a hand
+  probe found, so the gate that makes it mechanical is the next landing
+  (`Hβ.effects.allocation-audit-at-the-settle-point`). (2) "A static record
+  makes a stateless install free" — true of the representation, never of
+  the row: it stays the named peer (`Hβ.lower.install-record-in-the-frame`).
+  (3) "The empty `check` output means clean" — the first read of it ran
+  nothing (`timeout` cannot run a shell function); a one-line refusal probe
+  through the same runner is what showed the verb was judging. (4) On the
+  ring trap, three causes died to one measurement each: a warm image
+  restored without lexing (the address path takes no warm route, the demo
+  directory has no `.build`); the library arriving as a frozen slice with
+  its own table (the library is not in that link); two live tables forking
+  identity (one table, the program's own names). (5) "223/223" once judged
+  the wrong bytes: `march-gate --no-build` reuses the probe copy it made at
+  its last build, and it said so in its first line (`judging m2 sha
+  a0a784d4`) while the cache held `fc7b989a`; the battery was rerun on the
+  fresh copy. (6) above, in the cost.
+  **Fixtures, each RED on boot 0976f1d7 (re-read at the pin).** Refusals:
+  mn-install-alloc, mn-lambda-mint-alloc, mn-partial-alloc,
+  mn-interp-alloc, mn-show-alloc, mn-fanout-alloc, mn-share-alloc (each
+  compiled clean on the boot and ran); the control mn-pipe-stage-alloc-free
+  (41 on the boot, whose stage closures grew the heap under the same
+  `!Alloc`; 40 with zero growth over a thousand calls); scope:
+  mn-shadow-block-keeps-outer and mn-shadow-arm-keeps-outer (11 → 106),
+  mn-shadow-width and mn-shadow-arm-width (did not assemble → 7, 41),
+  mn-feedback-prior-shadowed (3 → 7), mn-feedback-prior-captured (did not
+  assemble → 3).
+  **Cost.** The ceiling stays 800,000 KB. On the source as landed, read in
+  heap marks (a peak RSS moves by a few MB between reads of one binary on
+  one input; the marks move by bytes), the pinned compiler allocates 4.9 MB
+  more than boot 0976f1d7 by the judgment's high-water, 7.3 MB more when
+  lowering ends and 6.0 MB more when the module is written. The judgment's
+  4.9 MB and lowering's remaining 2.4 MB are attributed to no construct by
+  any measurement this landing took.
+  **Measured at the pin:** m3 leg 9.67 s wall · 771 MB peak RSS (790,216
+  KB), m4 leg 9.68 s · 777 MB (796,084 KB) · 413,920 WAT lines, m3 == m4,
+  census 0 · micros 223/223 through m2 before the march · frontier 442 pass
+  / 0 red / 1 expected-red · crown 102/102, proof-exactness,
+  effect-identity green.
+
 - 2026-09-28 · pin 0976f1d7da263d74 (TRANSITION m3 == m4) · A CHAIN IS DIFFERENTIATED BY READING IT, AND THE READING CHANGES NOTHING IT READS.
   L4a of the Pulse sprint, `Hβ.lower.ad-is-a-demanded-projection` in
   forward mode. lib/ml/grad.mn declares the surface — `effect Derivative {

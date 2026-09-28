@@ -3267,35 +3267,15 @@ fn infer_expr(ref node) = match node {
         N(_, _, ih) => infer_unaryop(handle, op, ih, span),
       }
     },
-    NExpr(CallExpr(func, args)) => {
-      infer_expr(func)
-      // The arg list is the callee's positional product: resolve labeled args
-      // to positional order and fill absent fields with param defaults (the ONE
-      // read both infer + lower call — they see the identical order). The
-      // LabeledArg wrappers never reach infer_expr — resolution strips them.
-      let cname = callee_name(func)
-      let params = callee_params(cname)
-      let pos_args = resolve_call_args(cname, args)
-      // A named callee that MISSES env already reported (one miss, one
-      // diagnostic); its parameter product is unreadable, so the move-vs-
-      // borrow read has no ground. Compounding the miss with a move default
-      // was the ownership false-positive cascade (`len(buf)` unresolved
-      // consuming buf). Borrow the args under the miss; param-position and
-      // lambda callees keep normal inference (their schemes resolve).
-      if callee_missing_in_env(func, cname) {
-        borrow_enter()
-        infer_call_arg_list(pos_args, params, 0)
-        borrow_exit()
-      } else {
-        infer_call_arg_list(pos_args, params, 0)
-      }
-      infer_call(func, pos_args, handle, span)
-      // H4: constructor calls allocate a heap record. Tag the
-      // resulting handle so check_escape at fn return can verify
-      // the value doesn't outlive its region. H4.1: constructor
-      // ARGS ARE the fields — the resulting record's region pins
-      // to the deepest field region.
-      if call_is_alloc_returning(func) { tag_alloc_join(handle, collect_handles(pos_args)) }
+    NExpr(CallExpr(func, args)) => match infer_call_node(func, args, handle, span) {
+      CallPartial => // A partial application mints the closure that holds its supplied
+      // fields, in the frame that forms it (16 bytes over one literal, and
+      // `!Alloc` accepted it, measured 2026-09-28). A pipe's right-hand stage
+      // is completed in place and mints nothing, which is why the pipe judges
+      // its stage through `infer_call_node` alone.
+      inf_add_row(construction_row()),
+      CallSaturated => (),
+      CallSubstrateHoled => (),
     },
     NExpr(IfExpr(cond, then_e, else_e)) => {
       // The condition is READ to decide the branch — a read-SHAPE
@@ -3485,7 +3465,13 @@ fn infer_expr(ref node) = match node {
       // program-derived key collides with a call-keyed handle in its
       // own subtree, and a judge mint is trailed and reproducible.
       // The count mirrors lower's elision (empty literals drop).
-      graph_boundary_set(handle, InterpBoundary(interp_concat_cells(fragments, span)))
+      let cells = interp_concat_cells(fragments, span)
+      graph_boundary_set(handle, InterpBoundary(cells))
+      // Each interior concat IS a call to the concat primitive, so it carries
+      // that callee's row — the read `++` makes (`concat_callee_row`). This
+      // arm made none, and `!Alloc` accepted "a{x}" while it built 48 bytes
+      // per call (measured 2026-09-28).
+      if len(cells) > 0 { inf_add_row(concat_callee_row()) } else { () }
       graph_bind(handle, ty_string, Located(span, Inferred("string interpolation")))
     },
     NExpr(ShowExpr(inner)) => {
@@ -3499,6 +3485,10 @@ fn infer_expr(ref node) = match node {
       match inner {
         N(_, _, ih) => shape_demand(ih, WholeShape),
       }
+      // The show builds the string it answers. A String splice answers
+      // itself and builds nothing, so this charges one case the emit does
+      // not allocate for — sound, and the only over-charge in the rule.
+      inf_add_row(construction_row())
       graph_bind(handle, ty_string, Located(span, Inferred("splice show")))
     },
     NExpr(MakeRecordExpr(fields)) => {
@@ -3623,38 +3613,12 @@ fn infer_expr(ref node) = match node {
     // Hβ.driver.per-module-env-overlay).
     infer_field_access_record(rec, field, handle, span),
     NExpr(LambdaExpr(params, body_node)) => {
-      env_scope_enter()
-      let param_handles = mint_params(params, "lambda")
-      let row_handle = graph_fresh_row(Inferred("lambda effects"))
-      match body_node {
-        N(_, _, bh) => {
-          inf_enter_fn(row_handle, bh, span, [])
-          inf_frame_params(param_handles ++ [bh])
-          infer_expr(body_node)
-          exit_frame()
-          // ABSTRACTION IS PURE — creating a closure performs nothing. The
-          // lambda's row rides its TYPE (the TFun below); every APPLIER is
-          // charged by the call edge, an escaping closure included (its
-          // eventual call site reads the row off the closure's type), and
-          // the runtime evidence resolves through the live install chain at
-          // the perform site (world-as-value R2 — a thunk performs where
-          // CALLED). The former create-flows-row edge here charged the
-          // CREATOR with the closure's whole row — a mint-time-evidence
-          // relic that made every absorbed-thunk pattern leak: a thunk
-          // passed to an absorbing bracket polluted the creator's row with
-          // effects the bracket provably absorbs (measured: Ping through
-          // bracket(() => ping()), and infer_context's three wheel callers
-          // carrying the whole analysis core unsubtracted).
-          graph_bind(
-            handle,
-            TFun(build_param_types(params, param_handles), TVar(bh), mk_ef_open([], row_handle)),
-            Located(span, Inferred("lambda"))
-          )
-          // H4: every lambda allocates a closure record on the heap.
-          tag_alloc(handle)
-          env_scope_exit()
-        },
-      }
+      // Minting the closure allocates its record, in the frame that mints
+      // it — every lambda the lowering does not inline into a `<~` cycle.
+      // `!Alloc` accepted a lambda minted per call (16 bytes with one
+      // capture, 8 with none, measured 2026-09-28).
+      inf_add_row(construction_row())
+      infer_lambda(params, body_node, handle, span)
     },
     NExpr(PipeExpr(kind, left, right)) => // Branching verbs install affine-ledger snapshots around their
     // sub-infers so parallel branches cannot silently consume the
@@ -3664,12 +3628,35 @@ fn infer_expr(ref node) = match node {
       PFanout(fan_own) => infer_fanout(fan_own, left, right, handle, span),
       PForward => {
         infer_expr(left)
-        infer_expr(right)
+        // A call standing as the pipe's stage is completed in place — the
+        // piped value fills its hole — so it mints no partial; a lambda
+        // standing there is the piped value bound to its parameter, so it
+        // mints no closure.
+        match right {
+          N(NExpr(CallExpr(rf, rargs)), rspan, rh) => match infer_call_node(rf, rargs, rh, rspan) {
+            CallPartial => (),
+            CallSaturated => (),
+            CallSubstrateHoled => (),
+          },
+          _ => match inlinable_lambda(right) {
+            Some((params, body)) => match right {
+              N(_, rspan, rh) => infer_lambda(params, body, rh, rspan),
+            },
+            None => infer_expr(right),
+          },
+        }
         infer_pipe(kind, left, right, handle, span)
       },
       PTee => infer_pipe_tee(left, right, handle, span),
       PFeedback => {
-        infer_expr(left)
+        // A recurrence lambda is inlined into the cycle, so it is judged as a
+        // lambda and charged no mint; any other left side is an ordinary value.
+        match inlinable_lambda(left) {
+          Some((params, body)) => match left {
+            N(_, lspan, lh) => infer_lambda(params, body, lh, lspan),
+          },
+          None => infer_expr(left),
+        }
         // The spec stays a VALUE — `infer_pipe` checks it as a FeedbackSpec —
         // but its construction never executes: the depth is read at lower
         // (`feedback_line_depth`) and emit drops the lowered spec. So it is
@@ -4090,6 +4077,45 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
   stage_continuation_boundary(cname, handle)
 }
 
+// What a call's judgment built: the applied result, the product with holes —
+// the closure a partial application mints wherever it is not completed in
+// place — or a holed substrate call, which the lowering never mints (its pipe
+// completes it, and a hole left in value position is refused as a hole).
+type CallForm = CallSaturated | CallPartial | CallSubstrateHoled
+
+// A call node's judgment, returning which form it built.
+fn infer_call_node(func, args, handle, span: ValidSpan) = {
+  infer_expr(func)
+  // The arg list is the callee's positional product: resolve labeled args
+  // to positional order and fill absent fields with param defaults (the ONE
+  // read both infer + lower call — they see the identical order). The
+  // LabeledArg wrappers never reach infer_expr — resolution strips them.
+  let cname = callee_name(func)
+  let params = callee_params(cname)
+  let pos_args = resolve_call_args(cname, args)
+  // A named callee that MISSES env already reported (one miss, one
+  // diagnostic); its parameter product is unreadable, so the move-vs-
+  // borrow read has no ground. Compounding the miss with a move default
+  // was the ownership false-positive cascade (`len(buf)` unresolved
+  // consuming buf). Borrow the args under the miss; param-position and
+  // lambda callees keep normal inference (their schemes resolve).
+  if callee_missing_in_env(func, cname) {
+    borrow_enter()
+    infer_call_arg_list(pos_args, params, 0)
+    borrow_exit()
+  } else {
+    infer_call_arg_list(pos_args, params, 0)
+  }
+  let form = infer_call(func, pos_args, handle, span)
+  // H4: constructor calls allocate a heap record. Tag the
+  // resulting handle so check_escape at fn return can verify
+  // the value doesn't outlive its region. H4.1: constructor
+  // ARGS ARE the fields — the resulting record's region pins
+  // to the deepest field region.
+  if call_is_alloc_returning(func) { tag_alloc_join(handle, collect_handles(pos_args)) }
+  form
+}
+
 fn infer_call(func, args, handle, span: ValidSpan) = match func {
   N(_, _, fh) => {
     let cname = callee_name(func)
@@ -4102,6 +4128,7 @@ fn infer_call(func, args, handle, span: ValidSpan) = match func {
     // the product-with-holes like any other call.
     if is_seq_op(cname) && call_hole_index(args, 0) < 0 && len(args) == len(callee_params(cname)) {
       infer_seq_op(cname, fh, args, handle, span)
+      CallSaturated
     }
     // A HOLED/under-applied substrate call is the product-with-holes built
     // from the FACE (seq_op_sig — the same one home the saturated path
@@ -4113,20 +4140,26 @@ fn infer_call(func, args, handle, span: ValidSpan) = match func {
       let elem = TVar(mint(Inferred("sequence element")))
       match seq_op_sig(cname, elem) {
         Some(sig) => match sig {
-          (ptys, ret) => infer_call_partial(
-            args,
-            build_ctor_params(ptys, 0),
-            ret,
-            mk_ef_closed([ENamed(intern_str("Memory"))]),
-            handle,
-            span,
-            cname
-          ),
+          (ptys, ret) => {
+            infer_call_partial(
+              args,
+              build_ctor_params(ptys, 0),
+              ret,
+              mk_ef_closed([ENamed(intern_str("Memory"))]),
+              handle,
+              span,
+              cname
+            )
+            CallSubstrateHoled
+          },
         },
         None => // A table member with no face row is unreachable by construction
         // (the two enumerate the same names); the floor keeps
         // productive-under-error alive if they ever diverge.
-        graph_bind(handle, TList(elem), Located(span, Inferred("sequence"))),
+        {
+          graph_bind(handle, TList(elem), Located(span, Inferred("sequence")))
+          CallSaturated
+        },
       }
     } else {
       // The single-variant record ctor in the ONE application syntax —
@@ -4138,20 +4171,29 @@ fn infer_call(func, args, handle, span: ValidSpan) = match func {
       // RecordSchemeKind arm): one view, two readers; the ordinary saturated
       // machinery does the rest.
       match record_ctor_arrow_view(cname, span) {
-        Some(vh) => infer_call_saturated(args, vh, handle, span, cname),
+        Some(vh) => {
+          infer_call_saturated(args, vh, handle, span, cname)
+          CallSaturated
+        },
         None => // HOLE-COMPLETION (SYNTAX §«Partial application — the product with a
         // hole»): a call whose args leave declaration-order params unfilled — a
         // positional-prefix k<n, or an authored `??` slot — IS the product with
         // holes: its type is the fn of the UNFILLED params. The callee's TParam
         // nodes are reused whole (the param product's identity carries); the row
-        // rides the result fn — a partial performs nothing.
+        // rides the result fn — a partial performs nothing, and forming it
+        // mints the closure its caller is charged for.
         match graph_chase(fh) {
           GNode(NBound(TFun(ps, pret, prow)), _) => if len(args) < len(ps) || call_hole_index(args, 0) >= 0 {
             infer_call_partial(args, ps, pret, prow, handle, span, cname)
+            CallPartial
           } else {
             infer_call_saturated(args, fh, handle, span, cname)
+            CallSaturated
           },
-          _ => infer_call_saturated(args, fh, handle, span, cname),
+          _ => {
+            infer_call_saturated(args, fh, handle, span, cname)
+            CallSaturated
+          },
         },
       }
     }
@@ -4633,6 +4675,51 @@ fn continuation_discipline_at(site_h) = match graph_node_body(site_h) {
 // the actual arg's effect); then (body_row − E) ⊕ R joins the caller's row.
 // Reading the RHS handler's HandlerKind(E, R) is what completes the row algebra
 // — without it map/each lose every effect performed in their arms.
+// A lambda's judgment: its parameters in a scope of their own and its body
+// in a frame of its own. ABSTRACTION IS PURE in what it performs — the body's
+// row rides the lambda's TYPE, and every APPLIER is charged by the call edge,
+// an escaping closure included (its eventual call site reads the row off the
+// closure's type), while the runtime evidence resolves through the live
+// install chain at the perform site (world-as-value R2 — a thunk performs
+// where CALLED). The former create-flows-row edge charged the CREATOR with the
+// closure's whole row — a mint-time-evidence relic that made every
+// absorbed-thunk pattern leak: a thunk passed to an absorbing bracket polluted
+// the creator's row with effects the bracket provably absorbs. What minting
+// COSTS is the record, charged by the arm that mints; a recurrence lambda the
+// lowering inlines into its cycle is judged here and mints nothing.
+fn infer_lambda(params, body_node, handle, span: ValidSpan) = {
+  env_scope_enter()
+  let param_handles = mint_params(params, "lambda")
+  let row_handle = graph_fresh_row(Inferred("lambda effects"))
+  match body_node {
+    N(_, _, bh) => {
+      inf_enter_fn(row_handle, bh, span, [])
+      inf_frame_params(param_handles ++ [bh])
+      infer_expr(body_node)
+      exit_frame()
+      graph_bind(
+        handle,
+        TFun(build_param_types(params, param_handles), TVar(bh), mk_ef_open([], row_handle)),
+        Located(span, Inferred("lambda"))
+      )
+      // H4: every lambda allocates a closure record on the heap.
+      tag_alloc(handle)
+      env_scope_exit()
+    },
+  }
+}
+
+// A single-parameter lambda literal. Where a verb applies it in place — the
+// left of `<~`, whose parameter binds the prior, and the right of `|>`, whose
+// parameter binds the piped value — the lowering binds the parameter and
+// lowers the body in the frame it stands in (`lower_feedback_body`,
+// `lower_pipe_complete`), so no closure is minted and the judgment charges
+// none. One test, both readers.
+fn inlinable_lambda(node) = match node {
+  N(NExpr(LambdaExpr(params, body)), _, _) => if len(params) == 1 { Some((params, body)) } else { None },
+  _ => None,
+}
+
 fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
   let body_row_h = graph_fresh_row(Inferred("~> body row"))
   match left {
@@ -4655,6 +4742,12 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
       infer_expr(left)
       exit_frame()
       infer_expr(right)
+      // The install itself, in the frame it stands in: a dispatched install
+      // builds its record and pushes its world, so it allocates, and `!Alloc`
+      // accepted every one while the heap grew per call (40 bytes for a
+      // stateless handler, measured 2026-09-28). What it costs is read off
+      // the one roster that also decides what it lowers to.
+      inf_add_row(install_cost(arm_names))
       let body_row = read_bound_row(body_row_h)
       match handler_e_r(right) {
         Some(er) => match er {
@@ -4695,6 +4788,17 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
       }
     },
   }
+}
+
+// What an install costs the frame it stands in, by its class (the roster in
+// src/effects.mn): a dispatched install — a schedule's included — builds the
+// record its arms run against and pushes its world; a derivative reading
+// replaces the install with the extent's derivative program and builds
+// nothing. An install whose handler does not resolve is dispatched.
+fn install_cost(arm_names) = match projection_of_effects(map(eff_name_str, arm_names)) {
+  PDerivative => mk_ef_pure(),
+  PSchedule(_) => construction_row(),
+  PDispatch => construction_row(),
 }
 
 // The RHS handler's (handled_effect, residual_row) from its HandlerKind env
@@ -5274,6 +5378,11 @@ fn infer_fanout_nary(branches, handle, span: ValidSpan) = {
   branch_enter(BParallel)
   let edges = infer_fanout_nary_branches(branches, span, 0, len(branches))
   branch_exit(span)
+  // The fanout builds the tuple of its results and a thunk per branch, in the
+  // frame it stands in: pure topology in what it performs, never in what it
+  // costs (`!Alloc` accepted `(x + 1) >< (x + 2)` at 56 bytes per call,
+  // measured 2026-09-28).
+  inf_add_row(construction_row())
   graph_boundary_set(handle, FanoutBoundary(edges))
   graph_bind(
     handle,
@@ -5376,6 +5485,9 @@ fn infer_fanout_share(left, right, handle, span: ValidSpan) = {
           branch_exit(span)
           inferred_edges
         }
+        // The tuple of the branches' results, built in the frame the fanout
+        // stands in (the same cost `><` pays).
+        inf_add_row(construction_row())
         match right {
           N(_, _, rh) => {
             // Preserve the RHS as the tuple of STAGES it denotes. In the singleton
@@ -6258,7 +6370,7 @@ fn infer_index_force(rh, handle, span: ValidSpan) = {
   // teaching surface lying about a memory-touching fn (the four-face
   // probe, 2026-08-01). The tuple-const route stays chargeless: its
   // extraction is compile-time.
-  match env_lookup("list_index") {
+  match env_lookup(subscript_callee()) {
     Some((sch, _, _)) => match judgment_ty(sch) {
       TFun(_, _, lrow) => inf_add_row(lrow),
       _ => (),
@@ -6680,9 +6792,11 @@ fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
 
 // The concat primitive's row, read LIVE from its own scheme. Never a
 // fabricated `Memory + Alloc` here: the vocabulary declares that row at
-// str_concat (lib/strings.mn:183) and list_concat
-// (lib/lists.mn:234), and a second home for it in infer is the
-// re-derivation this fix exists to delete.
+// the primitives (`concat_callees` names them, lib/strings.mn and
+// lib/lists.mn declare them), and a second home for it in infer is the
+// re-derivation this fix exists to delete. The free-name walk draws the
+// same names as edges, so each primitive is judged before any fn whose
+// sugar calls it and this read meets a judged scheme.
 //
 // No element-type dispatch: the row is INVARIANT under the representation
 // emit chooses (both primitives carry the same row), which is why infer can
@@ -6690,7 +6804,9 @@ fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
 // one row today and stays sound if they ever diverge. When the seq_concat
 // unification lands (PLAN §4①, "the str_concat-vs-list_concat split does not
 // exist at the bottom") this reads ONE name and the union dissolves.
-fn concat_callee_row() = union_row(named_fn_row("str_concat"), named_fn_row("list_concat"))
+fn concat_callee_row() = fold(mk_ef_pure(), union_named_row, concat_callees())
+
+fn union_named_row(acc, name: String) = union_row(acc, named_fn_row(name))
 
 // A named fn's declared row, live from the env edge. A name that is absent
 // or not a function contributes the pure row — the union's identity — which is the

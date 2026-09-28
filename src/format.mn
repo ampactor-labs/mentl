@@ -356,10 +356,10 @@ fn render_feedback_chain(input, spec) = {
 // this loop only asserted. A verb whose output feeds its own reader carries
 // the loop internally; it does not need a `<~` wrapper nobody calls.
 //
-// ─── Helper functions — pure transforms over String ────────────────
-fn spaces(n) with Pure = if n == 0 { "" } else { " {spaces(n - 1)}" }
+// ─── Helper functions — transforms over String (each builds its answer) ──
+fn spaces(n) = if n == 0 { "" } else { " {spaces(n - 1)}" }
 
-fn parenthesize(s: String) with Pure = "({s})"
+fn parenthesize(s: String) = "({s})"
 
 // Head-first join: parser lists are source-ordered (built `[x] ++ rest`),
 // so iteration walks index 0 upward — the last/drop_last form rendered
@@ -1390,7 +1390,7 @@ fn render_retty(retty) with !Mutate = match retty {
 // Canonical indent depth per node kind. Match-arm bodies +2; let-
 // value at same indent as let; fn body +2 from fn signature; etc.
 // Each kind's indent is the PARENT's indent + verb-class offset.
-fn render_indent_for(kind, ctx) with Pure = spaces(canonical_indent_depth(kind, ctx))
+fn render_indent_for(kind, ctx) = spaces(canonical_indent_depth(kind, ctx))
 
 fn render_line_break_after(kind) with Pure = match kind {
   NStmt(_) => "\n",

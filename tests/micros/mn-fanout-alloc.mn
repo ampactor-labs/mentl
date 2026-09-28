@@ -1,0 +1,10 @@
+// expect: refuse E_EffectMismatch
+// A FANOUT BUILDS the tuple of its results and a thunk per branch — pure
+// topology in what it performs, never in what it costs. Measured 2026-09-28
+// on boot 0976f1d7: `!Alloc` accepted `(x + 1) >< (x + 2)` at 56 bytes per
+// call (Hβ.effects.install-allocates-unrowed).
+fn pair(x) with !Alloc = (x + 1) >< (x + 2)
+
+fn main() = match pair(3) {
+  (a, b) => a + b,
+}

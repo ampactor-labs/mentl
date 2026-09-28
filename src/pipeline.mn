@@ -126,7 +126,7 @@ import egraph
 // (§2 cached-cursor mode), and cross-run skip is the image-persist
 // peer (Hβ.persist.module-image-cache).
 fn infer_context(body) =
-  body() ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new(), 0) ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler ~> intern_table
+  interned(() => body() ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(make_list(0), 0, env_index_new(), 0) ~> graph_handler([], 0, []) ~> mutate_sink ~> diagnostics_handler)
 
 // The LOWERING/EMIT stack's one home — infer_context's peer on the far side
 // of the cursor. Every route that lowers installs exactly this: string_table
@@ -1269,7 +1269,7 @@ fn render_smt_line(ob) = match ob {
 // not guessed from text, which is the whole reason the facet exists: a grep
 // cannot tell a used name from one mentioned in a comment, and 52 of these
 // sat unseen behind exactly that.
-fn render_import_row(row) with Pure = match row {
+fn render_import_row(row) = match row {
   (m, imported, used) => {
     let mark = if used { "used" } else { "DEAD" }
     "  {mark}  {m} -> import {imported}"
@@ -1289,7 +1289,7 @@ fn render_import_rows(rows) =
 // unreachable — it is the direct reference, measured, and a name reached
 // through an edge the graph does not draw surfaces here as exactly that
 // finding, never as noise to tune away.
-fn render_unref_row(row) with Pure = match row {
+fn render_unref_row(row) = match row {
   (m, name, _) => "  UNREFERENCED  {m} -> {name}",
 }
 
@@ -1482,7 +1482,7 @@ fn render_query_result(result) = match result {
 // `drop_last` replaced them (SYNTAX §Vocabulary). The callers
 // that want the indent name it; a caller that wants whole lines concatenates
 // them itself.
-fn str_join_indented(lines) with Pure = match lines {
+fn str_join_indented(lines) = match lines {
   [] => "",
   [one] => one,
   [h, ...t] => "{h}\n  {str_join_indented(t)}",

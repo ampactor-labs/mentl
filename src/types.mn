@@ -1171,6 +1171,19 @@ type BinOpKind
   // ++
   | BKConcat
 
+// The primitives the sugar CALLS: `++` and every seam of an interpolation
+// call the sequence concat, and `xs[i]` calls `list_index`. They are the
+// operator's callees exactly as `f` is a call's — the judgment reads their
+// rows live (the concat and subscript charges), and the free-name walk draws
+// the edges its callee-first order needs, both from these two homes. Until
+// 2026-09-28 the walk drew none, so a fn whose only call was `++` could be
+// judged before the concat primitive: the judgment read a signature not yet
+// judged, and a refusal under `!Alloc` landed at the primitive's declaration,
+// twice, instead of at the developer's line.
+fn concat_callees() = ["str_concat", "list_concat"]
+
+fn subscript_callee() with Pure = "list_index"
+
 fn binop_kind(op) with Pure = match op {
   BAdd => BKArith,
   BSub => BKArith,
@@ -3521,8 +3534,10 @@ effect FreshHandle {
 // dispatches every VarRef through ls_resolve. Closure heap records
 // materialize from the captures_exprs list in LMakeClosure.
 type Resolution
-  // name is a local of the current frame — emit references $<name>
-  = RLocal
+  // name is a local of the current frame, read at the REGISTER its innermost
+  // binder took — the source name, or a name of its own where that binder
+  // shadows another local of the frame (ls_bind_local)
+  = RLocal(String)
   // name is captured at slot; emit offset-loads from __state
   | RUpval(Int)
   // top-level name — emit references $<name> as a global
@@ -3571,12 +3586,11 @@ effect LowerScope {
   ls_line_slot(Int, Int) -> LineHome
   // how many frames are open — 0 at a top-level declaration's own entry
   ls_frame_depth() -> Int
-  // append (name, handle); returns slot
-  ls_bind_local(String, Int) -> Int
-  // (LF.B) push a `<~` lambda param → feedback handle's prior local
+  // bind a local (name, type handle); returns the register the binder takes
+  ls_bind_local(String, Int) -> String
+  // (LF.B) bind a `<~` lambda param to its feedback site's prior — a binder
+  // of the current frame, retired with the scope around the recurrence body
   ls_bind_fb_prior(String, Int)
-  // (LF.B) pop the innermost `<~` prior binding after its body lowers
-  ls_unbind_fb_prior()
   ls_resolve(String) -> (Resolution, Int)
   ls_register_globals([String])
   // closest enclosing named-fn frame; "" for top-level

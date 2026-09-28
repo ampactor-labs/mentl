@@ -942,7 +942,7 @@ fn handle_in(acc, target, i) = if i >= len(acc) {
 // re-parsed judgment generations mint one source site many times), with
 // the membership read from the shape. A membership predicate's false arm
 // is the read's honest complement over NodeBody, not a fabricated value.
-fn census_label(shape) with Pure = match shape {
+fn census_label(shape) = match shape {
   CsAnonymous => "anonymous fn(s)",
   CsVerb(k) => "{show_pipe_kind(k)} site(s)",
   CsEta => "eta-wrapper(s)",

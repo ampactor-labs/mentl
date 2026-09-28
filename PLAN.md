@@ -1345,9 +1345,44 @@ and this is the STATE.
   the same name-keyed read still resolves a call's argument product and a
   partial's callee (`Hβ.lower.callee-resolved-by-name-in-the-module-env`).
   And one soundness hole, preempting the queue: an ordinary install
-  allocates and no row says so, so `!Alloc` accepts every `~>` it wraps
-  (`Hβ.effects.install-allocates-unrowed`). Open: closures and handler
-  arms under the reading (L4a′), reverse mode by cost (L4b).
+  allocates and no row said so, so `!Alloc` accepted every `~>` it wraps
+  (`Hβ.effects.install-allocates-unrowed`, CLOSED by R0i, the next
+  bullet). Open: closures and handler arms under the reading (L4a′),
+  reverse mode by cost (L4b).
+- **WHAT A CONSTRUCT BUILDS IS IN THE ROW OF THE FRAME THAT BUILDS IT —
+  CLOSED 2026-09-28 (R0i).** `!Alloc` was a false absence proof at the
+  most common shapes a program writes: probing every construct that builds
+  a record found SIX the row never charged — an install (40 bytes per call,
+  stateless or not), a lambda mint (16), a partial application (16), an
+  interpolation (48 for `"v{x}"`), a splice show, and both fanouts (56 for
+  `(x + 1) >< (x + 2)`) — each compiling clean under `!Alloc` on boot
+  0976f1d7 while the heap grew. Each is charged where it is built now, an
+  install by its class off the one projection roster (a derivative reading
+  builds nothing), and a literal a verb applies in place — the stage of a
+  `|>` as well as the recurrence of a `<~` — is lowered in the frame it
+  stands in and mints nothing, by the same test at both readers. The wheel
+  held thirteen false `with Pure` clauses over interpolation; they are gone.
+  Two defects surfaced on the way and closed in the landing: a binder that
+  shadowed a name in a nested block, a match arm or a recurrence body wrote
+  the shadowed binder's register, so `f(100)` answered 11 for 106 with no
+  diagnostic, and a shadow at another width did not assemble — a frame's
+  binders are one list resolved innermost-first now, each with a register
+  of its own (`Hβ.lower.shadowing-binder-clobbers-its-register`); and `++`,
+  interpolation and `xs[i]` call primitives the judgment's order never saw,
+  so a refusal under `!Alloc` landed at `str_concat`'s declaration instead
+  of the developer's line (`Hβ.infer.sugar-callee-judged-after-its-caller`).
+  A third came from the frontier the moment a mint was charged: a
+  proposal's candidate is judged under a read-only intern view that must
+  never mint, and the judgment names `Memory` and `Alloc` by literal, so a
+  program whose link never mentioned them trapped mid-proposal — every
+  intern table is born holding the medium's own vocabulary now
+  (`Hβ.intern.medium-vocabulary-is-born-with-the-table`).
+  What it names next: the census was done by hand, and the gate that makes
+  it mechanical — an emitted body that allocates under a row the judgment
+  proved `Alloc`-free is an internal contradiction — is the next landing
+  (`Hβ.effects.allocation-audit-at-the-settle-point`); an install whose
+  record never escapes could live in the frame and cost nothing
+  (`Hβ.lower.install-record-in-the-frame`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

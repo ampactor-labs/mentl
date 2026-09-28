@@ -2,10 +2,12 @@
 // dual — the arm's F is DECLARED by the installing fn (F + !E): the
 // masked E is absorbed at the install, the arm's F rides the composite
 // row honestly, and the license for F never collides with the negation
-// of E. Expect NO E_EffectMismatch.
+// of E. The positive half is a cap (A3-pos), and since 2026-09-28 the
+// install's own record (`Memory + Alloc`) rides the row it stands in, so
+// the cap names it. Expect NO E_EffectMismatch.
 effect E { op() -> Int }
 effect F { fop() -> Int }
 handler h { op() => resume(fop()) }
 fn work() = op()
-fn f() with F + !E = (work()) ~> h
+fn f() with F + Memory + Alloc + !E = (work()) ~> h
 fn main() = 0

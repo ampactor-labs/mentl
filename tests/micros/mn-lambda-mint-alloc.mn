@@ -1,0 +1,10 @@
+// expect: refuse E_EffectMismatch
+// MINTING A CLOSURE ALLOCATES its record in the frame that mints it — a
+// lambda passed as an argument is minted there. Measured 2026-09-28 on boot
+// 0976f1d7: `!Alloc` accepted it while the heap grew 16 bytes per call
+// (Hβ.effects.install-allocates-unrowed, the allocation census).
+fn apply(g, v) = g(v)
+
+fn shift(x) with !Alloc = apply((y) => y + x, 1)
+
+fn main() = shift(4)

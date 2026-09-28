@@ -7379,7 +7379,7 @@ fn emit_show_product_fields(fields, i, off, is_record) = if i >= len(fields) {
 
 fn show_field_sep(i) with Pure = if i == 0 { "" } else { ", " }
 
-fn show_field_name(fname: String, is_record) with Pure = if is_record { "{fname}: " } else { "" }
+fn show_field_name(fname: String, is_record) = if is_record { "{fname}: " } else { "" }
 
 // Render one field value at `off`/width `r`: load the field, wrap it in its
 // leaf renderer. Word fields → int_to_str / float_to_str; string field → as-is;

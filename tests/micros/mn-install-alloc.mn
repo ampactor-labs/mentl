@@ -1,0 +1,15 @@
+// expect: refuse E_EffectMismatch
+// AN INSTALL ALLOCATES in the frame it stands in: `~> pong` builds the
+// record its arms run against and pushes its world, so a fn declaring
+// `!Alloc` around an install is a false absence proof. Measured 2026-09-28
+// on boot 0976f1d7: compiled with zero diagnostics while the heap grew 40
+// bytes per call (Hβ.effects.install-allocates-unrowed).
+effect Ping { ping() -> Int }
+
+handler pong {
+  ping() => resume(7)
+}
+
+fn quiet() with !Alloc = (ping()) ~> pong
+
+fn main() = quiet()

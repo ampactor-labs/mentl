@@ -1,0 +1,13 @@
+// expect: 7
+// A name bound twice in one block is read at its INNERMOST binder, at that
+// binder's width: the second `x` is a Float, and the comparison reads it as
+// one. Measured 2026-09-28 on boot 0976f1d7: resolution found the OLDER
+// binder, the read typed as an Int register, and the module did not
+// assemble after a clean `mentl check` (Hβ.lower.shadowing-binder-clobbers-its-register).
+fn f(n) = {
+  let x = n
+  let x = float_of_int(x) * 2.5
+  if x > 10.0 { 7 } else { 3 }
+}
+
+fn main() = f(5)

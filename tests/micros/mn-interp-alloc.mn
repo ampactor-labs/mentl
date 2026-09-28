@@ -1,0 +1,9 @@
+// expect: refuse E_EffectMismatch
+// AN INTERPOLATION BUILDS THE STRING IT ANSWERS: each seam calls the
+// sequence concat, and the refusal names this declaration — the concat
+// primitives are judged first, so no report lands at their own. Measured
+// 2026-09-28 on boot 0976f1d7: `!Alloc` accepted `"v{x}"` while it built
+// 48 bytes per call (Hβ.effects.install-allocates-unrowed).
+fn label(x) with !Alloc = "v{x}"
+
+fn main() = len(label(4))

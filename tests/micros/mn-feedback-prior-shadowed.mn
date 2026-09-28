@@ -1,0 +1,14 @@
+// expect: 7
+// A `<~` prior is a binder of its frame like any other, so a binder inside
+// the recurrence body shadows it. The ticks: 0 → 1, 1 → 3, 3 → 7. Measured
+// 2026-09-28 on boot 0976f1d7: priors lived on a stack checked before every
+// frame, the inner `let prev` was invisible, and the run answered 3 with
+// zero diagnostics (Hβ.lower.shadowing-binder-clobbers-its-register).
+fn step(x) = ((prev) => {
+  let prev = prev * 2
+  prev + x
+}) <~ delay(1)
+
+fn run(n, acc) = if n == 0 { acc } else { run(n - 1, step(1)) }
+
+fn main() = run(3, 0)

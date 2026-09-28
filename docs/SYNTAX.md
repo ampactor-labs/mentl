@@ -369,6 +369,8 @@ fn check_exhaustive(patterns) = {
 
 A nested `fn name(params) = body` is a declaration scoped to its block: its name is in scope in its own body and in its sibling fns' (the compiler hoists them into a local letrec scope, so nested fns may reference each other), and it is generalized — one nested `fn ident(x) = x` serves an Int and a String. A block-scope `let name = (params) => body` is a closure VALUE, and the two differ in exactly that: the `let` binds after its value, so its name is not in scope in its own body, it is not generalized, and it may shadow — `let f = (x) => f(x) * 10` calls the `f` bound before it.
 
+**A binder shadows its name for its own scope and no further.** A `let` in a block, a pattern in a match arm, a pipe stage's parameter, a recurrence's prior and a binding inside the recurrence body each hide the same name while their scope is open, and the hidden binding is read again, unchanged, once it closes: `fn f(x) = { let y = { let x = 5; x + 1 }; x + y }` answers `f(100) = 106`. Two binders of one name are two values at their own widths, never one storage place (real, 2026-09-28: until then an arm's `Some(x)` or a block's `let x` wrote the parameter's register, and that program answered 11 with zero diagnostics — `Hβ.lower.shadowing-binder-clobbers-its-register`).
+
 **At module scope there is nothing to shadow, and a `let` bound to a function literal IS the declaration** (real, 2026-09-28): `let inc = (x) => x + 1` is born as `fn inc(x) = x + 1` at parse — recursive, generalized, emitted as the symbol its callers call directly — and `mentl fmt` writes it as `fn`. An arm-list literal bound at module scope, `let pick = { Some(v) => v, None => 0 }`, is a declaration too and keeps its spelling, because its one parameter is minted by the literal and never reaches the page. An annotated module let keeps its annotation's constraint and stays a value, and a module value holding a closure (`let add3 = make_adder(3)`) is called through that closure. Until this landed the let was judged a value and lowered as a lambda named for its handle while its callers called `$inc`, a symbol nothing emitted: `mentl check` was clean and the module did not assemble (`Hβ.lower.module-scope-has-no-frame`).
 
 ---
@@ -381,6 +383,8 @@ Surfaces primitives **#2** (pattern dispatch, the handler's own shape) and **#8*
 
 1. **REFERENCE** an existing function, with the fields it is not yet given left as holes — `f`, `f(cfg)`, `f(a, ??, c)` (§«Partial application — the product with a hole»). An edge to a node that exists.
 2. **MINT** a new one, with an **ARM LIST** — `{ pattern => body, … }`.
+
+**What each costs is in the row of the frame that forms it** (real, 2026-09-28). A bare reference to a top-level function reaches its static record and costs nothing. A reference with fields supplied (a partial) and a mint each build a closure record — its captures, its supplied fields — so each charges `Memory + Alloc` where it is formed, and `with !Alloc` refuses it. The exception is structural, not a discount: where a verb APPLIES the literal in place — the stage of a `|>`, the recurrence of a `<~` — nothing is minted, so nothing is charged (§«`|>` — converge»). Calling a closure charges the closure's own row, which rides its type, and never the cost of having made it.
 
 ### Canonical form
 
@@ -528,6 +532,8 @@ x |> double |> square
 
 **Type rule:** if `left: A` and `right: A -> B with E`, then `left |> right: B with E`. The chain's row unions all stage rows.
 
+**A stage is APPLIED, never minted.** A call standing as a stage is completed in place (its hole filled by the piped value), and a function literal standing as a stage — `x |> (v) => v * 2`, `x |> { 0 => 1, n => n - 1 }` — is the piped value bound to its parameter, its body lowered in the frame the pipe stands in. Neither builds a closure, so neither costs the frame anything, and a stage-shaped chain inside a `with !Alloc` function stays allocation-free (real, 2026-09-28; before, each literal stage minted a closure per call under the same `!Alloc`). The parameter is a binder of that frame like any other: it may share a name with a local there, and the local reads its own value again once the stage closes.
+
 ### `<|` — diverge (fanout)
 
 One input, multiple branches, output is a tuple of branch outputs. **Input is BORROWED into each branch** — a value cannot escape the branch tuple.
@@ -591,9 +597,14 @@ they mean; ownership keeps it honest.
 `><` declares the branches independent; whether they run sequential / threaded /
 SIMD-lane-packed / on a device is decided by a `Schedule` handler installed in the
 enclosing `~>` chain — `type Strategy = Seq | Thread | Simd | Gpu` (an ADT, never
-a `mode == 0/1/2` int). The verb stays PURE TOPOLOGY contributing zero effects; the
+a `mode == 0/1/2` int). The verb stays PURE TOPOLOGY in what it performs — it
+contributes no effect of its own to the row, and the schedule is not in it; the
 cursor reads the strategy from the live handler stack (the same `resolve_in_stack`
 every `perform` uses), exactly as persistence is a handler swap (`PLAN.md §4④`).
+What the verb COSTS is in the row: a fanout builds the tuple of its results (and
+`><` a thunk per branch), so both glyphs charge `Memory + Alloc` in the frame
+they stand in, and `with !Alloc` refuses `(x + 1) >< (x + 2)` (real, 2026-09-28;
+the row said nothing of it before, at 56 bytes per call).
 **No `Schedule` installed → `Seq`** — inline-eval in source order, deterministic
 and debuggable, the invisible default. `~> Thread` runs the branches on parallel
 threads; `~> Simd` cashes a `[f32; 4]` branch tuple to a v128 lane (the
@@ -719,9 +730,9 @@ from tree shape: a chain body earns the block layout (`~>` on its
 own line at left-edge indent); a single-stage body renders inline.
 Same node, same scope, either way.
 
-**Type rule:** `row(expr ~> h) = row(expr) - handled(h) + row(h)`. The handler subtracts what it absorbs; anything its arms perform is added.
+**Type rule:** `row(expr ~> h) = row(expr) - handled(h) + row(h) + cost(h)`. The handler subtracts what it absorbs; anything its arms perform is added; and the install's own cost, a fact of its class, is charged to the frame it stands in: a dispatched install (a schedule included) builds the record its arms run against and pushes its world, so it costs `Memory + Alloc`, and a derivative reading (`~> grad(w)`, which replaces the install with the extent's derivative program) costs nothing.
 
-*The rule is one term short, measured 2026-09-28: an ordinary install allocates its record, and nothing in the row says so, so `with !Alloc` accepts `(ask(w) + 1.0) ~> scaled(w)` while every call grows the heap. The missing term is the install's own cost, a fact of its class — a dispatched install allocates, a derivative reading does not (`Hβ.effects.install-allocates-unrowed`).*
+*The fourth term is real since 2026-09-28. Until then `with !Alloc` accepted `(ask(w) + 1.0) ~> scaled(w)` while every call grew the heap 48 bytes, and a stateless handler's install grew it 40 (`Hβ.effects.install-allocates-unrowed`). An install whose record never outlives its extent could live in the frame and cost nothing; that is a representation the lowering has not built, and the charge follows it when it does (`Hβ.lower.install-record-in-the-frame`).*
 
 **`~>` governs the topology to its left — including a `><` / `<|` fanout.** Because
 `~>` is the loosest operator, a `Schedule` handler at the foot of a chain governs

@@ -6079,8 +6079,9 @@ difference); dy3/da = 3 through one `<~ delay(1)` over three ticks, with the
 tick after the extent continuing the same line (mn-derive-feedback.mn, 30);
 a `!Alloc` training step whose derivative program leaves the heap line where
 it started across a thousand steps (mn-derive-train-alloc-free.mn, 40 — the
-heap measurement is the witness, since the row does not yet charge an
-ordinary install either, `Hβ.effects.install-allocates-unrowed`); the
+heap measurement is the witness, and since R0i the row charges an ordinary
+install too, so a dispatched install there would refuse,
+`Hβ.effects.install-allocates-unrowed`); the
 adaptive crucible's LMS rule re-derived as `d(e * e)` and judged by its own
 oracle facts (tests/frontier/derive-crucible/lms.mn, 42; 10 on the boot, and
 a divergence trap with the step's sign flipped); a tangent lost through a
@@ -6121,29 +6122,148 @@ the A5 arm-world rule at runtime and at the install; per-branch installs
 under `~> Thread`; the Schedule read as a lower-time lexical precedent;
 persist between steps (a mid-arm checkpoint is unresumable by the world
 law). This list also said `E_EffectMismatch` refuses `!Alloc` at the install
-site, and that is RETRACTED (2026-09-28): the row charges no install's own
-record, so `!Alloc` accepts every ordinary install
+site; that was RETRACTED on 2026-09-28, because the row charged no install's
+own record, and it is TRUE since R0i the same day, which charges it
 (`Hβ.effects.install-allocates-unrowed`).
 
-`Hβ.effects.install-allocates-unrowed` — OPEN, MEASURED 2026-09-28,
-PREEMPTS the queue (the soundness spine: §0's property (2) false at the
-most common shape a program writes). Installing a handler allocates — the
-install record, its world link — and no row says so, so `!Alloc` accepts
-every ordinary install: `fn step(w: Float) with !Alloc = (ask(w) + 1.0) ~>
-scaled(w)` checks clean and grows the heap 48 bytes per call; a stateless
-handler and a stateful one each grow it 40, with zero diagnostics (read on
-the L4a compiler; the configured install grows on boot 51f332d7 too). L0
-closed the same class one site
-over (a multi-shot perform allocates its remainder, and its op's row now
-carries `Memory + Alloc`). THE FORM: the tee's row charges the install's own
-cost — `row(e ~> h) = row(e) − handled(h) + row(h) + cost(h)`, where the cost
-is a fact of the install's class (the projection roster, read at the
-judgment): a dispatched install allocates its record and pushes its world, a
-derivative reading allocates nothing, and a schedule install is measured
-before it is charged. A static record for a handler with no config and no
-state is the representation that would make that install free instead, and
-it is chosen by measurement, never by the row. Fixture, RED on both
-compilers: the three installs above under `!Alloc` must refuse.
+`Hβ.effects.install-allocates-unrowed` — CLOSED 2026-09-28 (R0i), and the
+census it opened was wider than the install. Installing a handler allocates
+its record and pushes its world, and no row said so: `fn step(w: Float) with
+!Alloc = (ask(w) + 1.0) ~> scaled(w)` checked clean and grew the heap 48
+bytes per call. Probing every construct that could build a record found SIX
+that allocated unrowed, each measured on the heap line of boot 0976f1d7: an
+install (40 bytes, stateless or stateful), a lambda mint (16 bytes with one
+capture, 8 with none), a partial application (16), an interpolation (48 for
+`"v{x}"`), a splice show, and both fanouts (56 for `(x + 1) >< (x + 2)`,
+whose "zero effects" sentence in SYNTAX described what it performs and not
+what it costs). THE FORM, as built: each construct charges what it builds in
+the frame that builds it — the construction row for the mint, the partial,
+the show and the fanouts, the concat callees' own rows for an
+interpolation's seams, and for an install a cost read off the one
+projection roster (`install_cost`, src/infer.mn, over the roster that moved
+to src/effects.mn so the judgment and the lowering read one decision): a
+dispatched install and a schedule allocate, a derivative reading allocates
+nothing. A lambda the lowering applies in place mints nothing and is
+charged nothing, and the two readers share one test (`inlinable_lambda`):
+the left of `<~`, whose parameter binds the prior, and — new in this landing
+— the right of `|>`, whose parameter binds the piped value and whose body
+lowers in the pipe's own frame (`lower_applied_in_place`). A call standing
+as a pipe's stage is completed in place and charges no partial. The wheel
+held THIRTEEN false `with Pure` clauses over interpolation (spec_mangle,
+arm_fn_name, the formatter's `spaces`, …), deleted; `channel_strip`'s
+`!Alloc` in lib/dsp held only once its stage lambda inlined; two micros and
+two crown caps that installed or minted lost claims that had been true only
+while those costs were unrowed (`with Pure` → `with !Ping`, caps naming
+`Memory + Alloc`). Fixtures, each RED on boot 0976f1d7: seven refusals, one
+per construct (tests/micros/mn-{install,lambda-mint,partial,interp,show,
+fanout,share}-alloc.mn), and a control that proves the inlined stages and a
+top-level fn passed as a value `!Alloc` AND measures zero heap growth over a
+thousand calls (mn-pipe-stage-alloc-free.mn — 41 on the boot, whose closures
+grew the heap under the same `!Alloc`). THE KILLS: "a static record makes a
+stateless install free" — true of the representation, never of the row, so
+it stays the named peer below; "the census is the six sites" — it is six
+sites a hand census found, which is why the settle-point audit below is the
+next landing rather than a follow-up. Found on the way and closed in the
+same landing: the shadowing-register class, the sugar-callee order, and the
+intern vocabulary a proposal's view could not find — their own entries
+below.
+
+`Hβ.lower.shadowing-binder-clobbers-its-register` — CLOSED 2026-09-28
+(R0i), found by the pipe-stage inlining's premise probe. A binder's
+register was its spelling and a frame's locals were searched OLDEST-first,
+so four shapes went wrong with zero diagnostics, measured on boot 0976f1d7:
+a nested block's `let x` over a parameter `x` wrote the parameter's
+register, and the parameter read 5 after the block (`f(100)` answered 11
+for 106); a match arm's `Some(x)` did the same; a sequential shadow at
+another width (`let x = n; let x = float_of_int(x) * 2.5`) resolved its
+reads to the older binder's type and did not assemble after a clean
+`mentl check`; and a Float arm binder over an Int parameter likewise. The
+`<~` prior was the same class on a second stack checked before every frame:
+a `let prev` inside the recurrence body was invisible (the run answered 3
+for 7), and a lambda there read `$__fb_prev_<h>` from its own function,
+which never declares it, and did not assemble. THE FORM: a frame's local
+side is ONE list of binders in binding order (`LocalBind`, src/lower.mn:
+a local with its register, or a `<~` prior), resolved innermost-first; a
+binder whose name the frame already holds takes a register of its own
+(`name$<position>` — `$` is no identifier character); `RLocal` carries the
+register, so every read writes it. A match arm's pattern binds and lowers
+in ONE walk (`lower_pat_at(bind, …)`) — the second walk that bound it
+(`bind_pat_locals`, its zip and rest helpers) is deleted, as are the
+`<~` prior stack, `ls_unbind_fb_prior` and the frame's parallel name and
+handle lists; an alternation's later branches write the registers the
+first branch took. Fixtures, each RED on boot 0976f1d7:
+tests/micros/mn-shadow-{block-keeps-outer,arm-keeps-outer,width,arm-width}.mn
+and mn-feedback-prior-{shadowed,captured}.mn. A binder still has no node of
+its own (a ground binder's handle is 0 and its reads type at their uses);
+`Hβ.lower.binder-is-a-node` is that form and stays open.
+
+`Hβ.infer.sugar-callee-judged-after-its-caller` — CLOSED 2026-09-28 (R0i).
+`++`, an interpolation's seams and `xs[i]` CALL the concat primitives and
+`list_index`, and the judgment reads those callees' rows live — but the
+free-name walk that orders the judgment drew no edge to them, so a fn whose
+only call was `++` could be judged before `str_concat`, read a signature not
+yet judged, and refuse under `!Alloc` at the PRIMITIVES' declarations, twice
+(lists:461 and strings:161), never at the developer's line — measured with
+`fn label(x: String) with !Alloc = x ++ "v"` on boot 0976f1d7. The sugar's
+callees have one home beside the operators (`concat_callees`,
+`subscript_callee`, src/types.mn), the free-name walk draws them as uses at
+the sugar node, and the judgment reads the same names: one refusal, at the
+declaration that made the claim. The `unreachable` facet sees the primitives
+as reached by every `++`, which they are.
+
+`Hβ.intern.medium-vocabulary-is-born-with-the-table` — CLOSED 2026-09-28
+(R0i), found by the frontier's stage-ring leg the moment a closure mint was
+charged. A proposal's candidate is judged under a READ-ONLY intern view
+whose contract is that the walk is pre-warmed, so a miss traps rather than
+fork identity — and the judgment's own vocabulary broke it: a
+construction's row names `Memory` and `Alloc` by literal, and those names
+were interned by whoever asked first. The ring demo's link under the gate's
+mounts is two files (`stage`, `helper` — `mentl query stage.mn modules`
+answers three weave entries there), its table held exactly their seven
+identifiers (measured by a binary-patch probe at `intern_seed` and at the
+view's miss: 8, `Memory`), and the lambda skeleton a stage hole proposes
+asked for `Memory` from inside the view. Every table is BORN holding the
+medium's vocabulary now (`medium_vocabulary`, `interned`, src/intern.mn —
+the one installer the process table and each judgment's table go through),
+so those handles are the same in every table and the view always finds
+them. KILLS: "a warm image restored the judgment without lexing" (the
+address path never takes the warm route, and the demo directory has no
+`.build`); "the library arrives as a frozen image slice whose table is not
+the live one" (the library is not in this link at all); "two live tables
+fork effect identity on the address path" (one table, seven names — the
+program's own). One instrument stayed unexplained and is recorded as such:
+a print in the lexer's miss branch showed nothing although the seven names
+were minted — the decision rests on the seed count, the view's miss and the
+weave, never on that silence. What still holds the rule only in prose is
+the rule itself — "a literal intern names a vocabulary word" — and its gate
+is a census shape over `intern_str`'s literal arguments measured against the
+list (`Hβ.intern.literal-intern-outside-the-vocabulary`, OPEN): today a
+violation traps loudly, and only in a view.
+
+`Hβ.effects.allocation-audit-at-the-settle-point` — OPEN, the next landing
+(R0j), and it is the gate this landing's census needed. The six unrowed
+constructs above were found by probing; a seventh would be found the same
+way or not at all. THE DESIGN: the emit already knows every allocation it
+writes (each goes through the allocator call), and the judgment already
+knows every fn's row. At emit's settle point each emitted function — named,
+nested, lambda, arm, k — records whether its body allocates, and a body
+that allocates under a row the judgment proved `Alloc`-free is an internal
+contradiction reported as `E_InternalInvariant` naming the function and the
+construct, armed at birth. The census becomes a measurement the board holds
+at zero; its first run on the wheel is the first datum, and each hit is
+either a construct to charge or a representation that should not allocate
+(a boxed wide value crossing a boundary the row cannot see). Its RED-first
+fixture is one of this landing's refusals with its charge removed.
+
+`Hβ.lower.install-record-in-the-frame` — OPEN, the representation half of
+the install's cost. An install whose record provably never outlives its
+extent (no `k` captures it, no closure minted inside escapes with it) needs
+no heap record: it can live in the frame, LIFO with the extent, and cost
+nothing — so the install's cost becomes a fact of its escape as well as its
+class, read off the same graph the ownership grade reads. The row charge
+follows the representation, never the reverse: the cost moves to zero only
+where the lowering stops allocating, and the settle-point audit above holds
+the two together.
 
 `Hβ.lower.callee-resolved-by-name-in-the-module-env` — OPEN, ONE FACE CLOSED
 2026-09-28 (L4a). Lowering read a call's callee NAME against the module env
