@@ -6032,35 +6032,60 @@ position is a compile-time finding at the site (the `T_FieldOffsetUnprovable`
 precedent: a floor written and never said is the class), never a bare
 trap, and the finding is the first thing this peer lands.
 
-`Hβ.lower.ad-is-a-demanded-projection` — OPEN, DESIGNED 2026-09-27 (L4 of
-the Pulse sprint; supersedes and RETRACTS `Hβ.ml.autodiff-as-multishot`,
-which lived only in lib/ml/autodiff.mn's comment and PLAN §11 9.1, and which
-named the wrong axis — reverse-mode AD needs no multi-shot resumption, it
-needs a projection). THE CLAIM: Pulse's crown scene is ONE chain that is a
-real-time-safe effect under the substrate reading and a differentiable model
-under `~> grad(w)`, without being written twice. THE SURVIVING FORM, after
-one Fable refuter at max effort killed the first design: the install
-becomes the emit. `(loss(w, xs)) ~> grad(w)` returns `(value, dvalue/dw)`;
-lower reads the install lexically (the `schedule_in_stack` read's sibling —
-one roster of projection classes, an ADT, before a fifth `if` is added) and
-DERIVES the twin: LINEARIZE (each op's JVP rule — the handler's arms READ AS
-REWRITES through `rewrite_to`, never run as resumptions, so a user-declared
-handler over their own primitive IS a custom derivative) then TRANSPOSE the
-linear sub-graph (fan-out becomes accumulation into frame locals; a `<~`
-register transposes to a backward register — BPTT through IIR filters as a
-graph fact). The forward tree stays byte-identical; the twin is emitted as
-a DEMANDED symbol (an `EfkAdj` arm beside `EfkK`/`EfkLambda`, `lp_step$adj`)
-exactly as `__k_<ph>` fns and `$sp` twins are — the key is which projection
-was demanded, a lower-time fact, no install in the type. The twin is
-ordinary code with a ROW: a fixed chain's adjoint program is `!Alloc`, which
-is the unlock — learning inside the real-time callback, provably. Falsifiers
-on the board: forward bit-identity over a sweep; a 2-parameter waveshaper's
-gradient against a finite-difference oracle; BPTT through one `<~ delay(1)`
-over three steps against an unrolled oracle; `!Alloc` PROVEN on the twin of
-a fixed chain; `!Alloc` REFUSED where the twin allocates. Deletes
-lib/ml/autodiff.mn's tape. Inherits `Hβ.lower.schedule-specialized-callee`'s
-fence (a stage called from under the install is twinned only when demanded
-at the site).
+`Hβ.lower.ad-is-a-demanded-projection` — FORWARD MODE LANDED 2026-09-28
+(L4a of the Pulse sprint, pin 0976f1d7da263d74); the derivative across dynamic dispatch
+(L4a′, `Hβ.derive.closure-twins` / `Hβ.derive.arm-twins`) and reverse mode
+(L4b, `Hβ.derive.transpose`) OPEN. It supersedes and RETRACTS
+`Hβ.ml.autodiff-as-multishot`, which named the wrong axis: differentiation
+needs no multi-shot resumption, it needs a projection. THE CLAIM: one chain
+is a real-time-safe effect under its ordinary reading and a differentiable
+model under `~> grad(w)`, without being written twice.
+AS BUILT. The surface is the QUERY form (lib/ml/grad.mn): `effect Derivative
+{ d(v: Float) -> t }` and `handler grad(w)`; `(w - rate * d(loss(w, xs))) ~>
+grad(w)` is a training step, `d(v)` is ∂v/∂w with every other free variable
+of the extent held fixed, and the tee's value is its body's value — the pair
+form `(value, dvalue/dw)` was refused in design because a tuple allocates,
+which would make the `!Alloc` training step unwritable. Lower recognizes the
+install through ONE roster of projection classes (`type Projection =
+PDispatch | PSchedule(Schedule) | PDerivative`, read off the effects a
+handler's arms answer — `projection_of`, which the Schedule read now shares)
+and lowers it to `LDerive(h, seed, body)`: no record, no world push, and the
+projection's arms are never lowered. src/derive.mn runs at emit's settle
+point, after the spec demands and before the signatures publish, and expands
+each `LDerive` into the body's JVP: every primal node kept, in order, beside
+tangent arithmetic over closed vocabulary (lane add, sub, negate, scale by a
+residual, zero, local, a twin call's register, a line's tangent prior).
+Activity is a three-point lattice, `Act = AInactive | AActive | ALost(Int,
+LostWhy)`; a lost tangent refuses only where `d` consumes it
+(`E_DerivativeUnreachable`, armed at birth, naming the loss site), so
+`(y, d(y))` and aggregates in general are admissible. A known function the
+active computation calls directly gets a JVP twin keyed by its Float
+parameters' activity, returning its tangent through the per-instance f64
+register `$__dt`, demanded to a fixpoint. A `<~` line inside a twin ticks
+its base line (one filter, two readings, one state) and a tangent ring of
+the same geometry indexed by the primal head, zeroed at the reading's entry
+(`LhStaticJvp`); an extent whose reach holds a dynamic call or a
+line-reaching perform marks every line's tangent lost. The arm of `grad`
+states only the answer's type until the boot knows the primitive
+(`Hβ.derive.arm-states-its-meaning`); lib/ml/autodiff.mn's tape is deleted.
+THE FALSIFIERS, each seen RED on boot 51f332d7: forward identity over a
+97-point sweep crossing a branch, a division and a recursive series
+(tests/micros/mn-derive-forward-identity.mn, 42); the slope of scene 1's
+distortion (`adaptive_shape`) in the drive and in the flux, by two readings,
+against the central difference of the same function at 18 points over all
+three crossfade regimes (tests/frontier/derive-crucible/shape.mn, 42; 46 on
+the boot, and 28 when the drive slope is checked against the flux
+difference); dy3/da = 3 through one `<~ delay(1)` over three ticks, with the
+tick after the extent continuing the same line (mn-derive-feedback.mn, 30);
+a `!Alloc` training step whose derivative program leaves the heap line where
+it started across a thousand steps (mn-derive-train-alloc-free.mn, 40 — the
+heap measurement is the witness, since the row does not yet charge an
+ordinary install either, `Hβ.effects.install-allocates-unrowed`); the
+adaptive crucible's LMS rule re-derived as `d(e * e)` and judged by its own
+oracle facts (tests/frontier/derive-crucible/lms.mn, 42; 10 on the boot, and
+a divergence trap with the step's sign flipped); a tangent lost through a
+closure call refuses (mn-derive-lost-refuses.mn). Inherits
+`Hβ.lower.schedule-specialized-callee`'s fence.
 THE KILLS, banked because the refutation was the design's whole value: (1)
 "arithmetic is topology like `><`" — `><` is zero effects in the ROW yet
 lowers to `spawn`/`join` performs the row never sees; the precedent is a row
@@ -6093,9 +6118,116 @@ changes a `><` tuple's repr without changing its type" — `LSimdLanes` leaves
 a v128 under a `TTuple` node whose `repr_of` reads RI32; scaffold. (15)
 "autodiff-as-multishot names the deeper form" — the wrong axis. What HELD:
 the A5 arm-world rule at runtime and at the install; per-branch installs
-under `~> Thread`; `E_EffectMismatch` refusing `!Alloc` at the install
-site; the Schedule read as a lower-time lexical precedent; persist between
-steps (a mid-arm checkpoint is unresumable by the world law).
+under `~> Thread`; the Schedule read as a lower-time lexical precedent;
+persist between steps (a mid-arm checkpoint is unresumable by the world
+law). This list also said `E_EffectMismatch` refuses `!Alloc` at the install
+site, and that is RETRACTED (2026-09-28): the row charges no install's own
+record, so `!Alloc` accepts every ordinary install
+(`Hβ.effects.install-allocates-unrowed`).
+
+`Hβ.effects.install-allocates-unrowed` — OPEN, MEASURED 2026-09-28,
+PREEMPTS the queue (the soundness spine: §0's property (2) false at the
+most common shape a program writes). Installing a handler allocates — the
+install record, its world link — and no row says so, so `!Alloc` accepts
+every ordinary install: `fn step(w: Float) with !Alloc = (ask(w) + 1.0) ~>
+scaled(w)` checks clean and grows the heap 48 bytes per call; a stateless
+handler and a stateful one each grow it 40, with zero diagnostics (read on
+the L4a compiler; the configured install grows on boot 51f332d7 too). L0
+closed the same class one site
+over (a multi-shot perform allocates its remainder, and its op's row now
+carries `Memory + Alloc`). THE FORM: the tee's row charges the install's own
+cost — `row(e ~> h) = row(e) − handled(h) + row(h) + cost(h)`, where the cost
+is a fact of the install's class (the projection roster, read at the
+judgment): a dispatched install allocates its record and pushes its world, a
+derivative reading allocates nothing, and a schedule install is measured
+before it is charged. A static record for a handler with no config and no
+state is the representation that would make that install free instead, and
+it is chosen by measurement, never by the row. Fixture, RED on both
+compilers: the three installs above under `!Alloc` must refuse.
+
+`Hβ.lower.callee-resolved-by-name-in-the-module-env` — OPEN, ONE FACE CLOSED
+2026-09-28 (L4a). Lowering read a call's callee NAME against the module env
+at three sites, blind to its own scope, so a parameter, local or capture that
+shadows a module-level name was lowered as that name. THE DISPATCH FACE,
+CLOSED: `fn apply(result, x: Int) -> Int = result(x)` lowered `result(x)` as
+a perform of the prelude's `Iterate` op, and on boot 51f332d7 the module does
+not assemble (tests/micros/mn-param-shadows-op.mn, 7 now); found in the
+compiler's own src/derive.mn, whose parameter of that name aborted its first
+derivative through a twin. The callee is resolved once per call now and the
+resolution decides (`lower_call_dispatch` → `lower_global_call` or
+`lower_call_of`), which also removed a second resolution every call paid.
+THE ARGUMENT-PRODUCT FACE, OPEN: `resolve_call_args` reads the callee's
+declared parameters by name, so the prelude's `fold_handler` arm
+`f(acc, elem)` is resolved against a user's top-level `fn f(x: Int)` —
+`fn f(x: Int) -> Int = x * 100` beside `[1, 2, 3] |> fold(0, (acc, i) =>
+acc + i)` is refused with a false arity mismatch inside the library, at a
+span the program never wrote (RED on boot 51f332d7 and on L4a); a global of
+the same name with a defaulted parameter would splice its default into the
+config call silently. THE PARTIAL FACE, OPEN: `partial_callee_form` reads
+the same name's kind, so a partial over a local that shadows a module
+function builds a call to the module function. THE FORM for both: the
+judgment already resolves each call's product in the scope the call stands
+in (`pos_args` in infer's call arm) — record it on the call node, trailed so
+a rolled-back judgment leaves no stale entry at a reused handle, and let
+lowering read it; lowering's own name reads for a callee delete, and "the
+one read both infer and lower call" becomes true by construction rather
+than by claim. A partial over a local callee (a floor today) takes the
+callee value as its closure's last field.
+
+`Hβ.derive.closure-twins` — OPEN (L4a′). A lambda minted inside the reading's
+extent mints its JVP twin and a record carrying its captures' lanes, and
+every function-typed parameter of a twin is a JVP closure, so `fold(0.0, (a,
+x) => a + w * x, xs)` differentiates in `w`. Today a tangent reaching a call
+through a function value is lost there and a `d` of it refuses
+(mn-derive-lost-refuses.mn). A closure minted outside the extent and called
+with an active argument still refuses: its derivative program was never
+demanded.
+
+`Hβ.derive.arm-twins` — OPEN (L4a′). A perform whose argument is active runs
+its arm as forward code, so the tangent stops there, and an arm that may
+tick a line marks every shared line's tangent lost. The form: a handler
+whose arms an active perform reaches carries a JVP arm region after its
+arms, demanded statically for every handler declaring the op; the JVP
+perform walks to the same record and calls the JVP arm; an active state
+write refuses. This is what makes scene 1's distortion perform — not only
+its transfer function — differentiable.
+
+`Hβ.derive.transpose` — OPEN (L4b). Reverse mode from the closed tangent
+vocabulary: the answer in O(one pass) when the seed is large and the output
+a scalar, chosen by cost (forward and reverse mean the same thing, a
+form-space tie). The residuals of a fixed chain are frame locals, so `!Alloc`
+is proven on the adjoint; the residuals of a loop or recursion are priced by
+the row. BPTT through `<~` is the transpose of the tangent line.
+
+`Hβ.derive.gradient-of-a-product-seed` — OPEN. A record or tuple seed
+carries one lane per Float field through one pass, and a gradient record is
+never materialized where it is destructured. Today the seed must be a Float
+variable in scope, and any other seed refuses naming this peer.
+
+`Hβ.derive.global-seed` — OPEN. A top-level binding as the seed: a callee's
+read of the global during the extent is a read of the binder, which lexical
+seeding misses, so it refuses today rather than answer a partial slope.
+
+`Hβ.derive.second-order` — OPEN. A reading inside a reading: `d` of a `d`.
+The inner query's result is marked lost ("second order") so asking for its
+tangent refuses instead of answering zero; nesting the tangent spaces is
+the form.
+
+`Hβ.derive.arm-states-its-meaning` — OPEN, ONE LANDING. lib/ml/grad.mn's arm
+reads `d(v) => resume(w)`: the reading answers every op of `Derivative` by
+its argument's tangent and never reads the arm, so the body only fixes the
+answer's type, and the pinned boot that compiles the library as part of the
+wheel registers no `tangent_of`. The arm states the meaning, `resume(tangent_of(v,
+w))`, in the landing after the boot carries the primitive.
+
+`Hβ.own.redundant-marker-has-no-verb` — OPEN, MEASURED 2026-09-28. The quiet
+gate refused the L4a repin at 766 authored `ref` markers against 708: the
+new stage carried 58 on parameters the inference grades as borrows by
+itself — all 58 were deleted by hand and the wheel judged clean. The medium
+knows the inferred grade at each parameter, so it can say which authored
+marker states what inference already proves; the missing projection is a
+narration beside `T_RowInventory` and a `mentl tighten` arm that deletes the
+marker, the same shape the positive row's sweep took.
 
 `Hβ.lower.capture-of-a-ground-local-stores-at-the-floor` — CLOSED 2026-09-28
 (L3 of the Pulse sprint, the felt walk's first find). `fn make(fb: Float) =
@@ -6273,7 +6405,11 @@ the author's, and the lexeme is gone by the time the literal is a node. The
 wheel writes no such literal, so its fixpoint never saw this. THE FORM: a
 literal's authored spelling is surface content the way prose is — the lexer
 holds the lexeme, the weave carries it by span onto the literal's node, and the
-renderer writes it back when it re-lexes to the same value.
+renderer writes it back when it re-lexes to the same value. A float is worse
+than a lost spelling (measured 2026-09-28): `0.00001` renders as `1.0e-5`,
+which the lexer does not read, so the conservation gate refuses to write the
+file at all (tests/frontier/derive-crucible/shape.mn) — the render cannot
+round-trip its own output.
 
 `Hβ.lang.lambda-param-annotation` — OPEN (Pulse). `(freq: Float, vib) =>` is
 `P_ExpectedToken`: a lambda's parameter takes no annotation, so a refinement

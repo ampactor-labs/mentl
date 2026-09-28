@@ -21,6 +21,8 @@ import effects
 
 import lower
 
+import derive
+
 import strings
 
 // WasmOut effect — the output sink. Every character of emitted WAT goes
@@ -356,16 +358,13 @@ fn emit_hash(h, x) = {
   if agg { emit_agg_leaf_call("hash_", ty, x) } else { emit_expr(hash_node_of(h, x)) }
 }
 
-// The naming read every reference arm shares: project the site's key
-// (spec_global_name, lower.mn), then redirect ONLY when the demand analysis
-// minted that twin — a wide key with no twin stays at the floor, which the
-// word protocol keeps correct for plumbing. The exists fast-path keeps a
-// twin-free module (every all-word program, Law 7) at one op per reference.
-// The closure-mint face of the same redirect: inside a twin's emission the
-// bracket carries the active enc, and a nested record whose twin exists gets
-// its table index redirected — captures, self-binding, and local naming keep
-// the ORIGINAL name (the record local is the closure value; only the offset-0
-// index points at the twin body). Outside a bracket enc is "" — floor.
+// The closure-mint face of `spec_target_name`'s redirect (lower.mn, where
+// the reference face lives beside the key projection it reads): inside a
+// twin's emission the bracket carries the active enc, and a nested record
+// whose twin exists gets its table index redirected — captures,
+// self-binding, and local naming keep the ORIGINAL name (the record local is
+// the closure value; only the offset-0 index points at the twin body).
+// Outside a bracket enc is "" — floor.
 fn spec_closure_name(name: String) = if !spec_twins_exist() {
   name
 } else {
@@ -376,13 +375,6 @@ fn spec_closure_name(name: String) = if !spec_twins_exist() {
     let m = spec_mangle(name, e)
     if spec_twin_known(m) { m } else { name }
   }
-}
-
-fn spec_target_name(h, name: String) = if !spec_twins_exist() {
-  name
-} else {
-  let m = spec_global_name(h, name)
-  if m == name { name } else if spec_twin_known(m) { m } else { name }
 }
 
 // The str_hash bucket index — the shared name-is-handle waypoint shape
@@ -685,6 +677,9 @@ fn settle_node(site: String, expr) = match expr {
   LMakeVariant(_, _, _) => (),
   LResumeK(_, _, _) => (),
   LHandleWith(_, _, _, _, _, _) => (),
+  LDerive(_, _, _) => // The reading's forward body settles through the walk; the program derive
+  // adds beside it is f64 arithmetic over names its own reads bind.
+  (),
   LFeedback(_, _, _, _, _) => (),
   LFeedbackPrior(_) => (),
   LPerform(_, _, _) => (),
@@ -805,6 +800,13 @@ fn settle_minted_lines(site: String, lines) = each(
         )
       ),
       LhSlot(_) => (),
+      LhStaticJvp => report_at(
+        h,
+        EInternalInvariant(
+          "this `<~` has a static derivative home inside a record minted at run time, emitting {site}",
+          parse_span_of(h)
+        )
+      ),
     },
   },
   lines
@@ -1137,6 +1139,79 @@ fn emit_sig_pair_of_twin(tw) = match tw.rec {
   },
 }
 
+// A derivative twin's face: its body's face read under the body's bracket,
+// with a tangent slot — always f64 — after every parameter the key marks
+// active. The body's enumeration entry is keyed by its FACE symbol (the base
+// name for a monomorphic twin), which is why the record carries it.
+fn jvp_rec_name(jr) = match jr.rec {
+  (m, _ps, _b, _f) => m,
+}
+
+fn emit_sig_pair_of_jvp(jr) = match jr.rec {
+  (m, _ps, _b, _f) => {
+    spec_ctx_set(jr.pairs, jr.enc)
+    let s = emitted_sig_of_symbol(jr.face, byte_len(jr.key))
+    spec_ctx_clear()
+    (m, jvp_sig(s, jr.key))
+  },
+}
+
+fn jvp_sig(s, key: String) = match s {
+  ESig(ps, r) => ESig(enumerate(ps) |> flat_map(jvp_slot(key, ??)), r),
+}
+
+// A twin's parameter slot: an active parameter (an `a` in the key) carries its
+// tangent beside it, as an f64.
+fn jvp_slot(key: String, slot) = match slot {
+  (i, p) => if field_name_eq(str_slice(key, i, i + 1), "a") { [p, RF64] } else { [p] },
+}
+
+// A derivative twin emits as its body would, standing at the body's symbol:
+// its static `<~` lines are that symbol's lines, and the tangent rings
+// beside them are named by it too.
+fn emit_jvp_twin(jr) = {
+  spec_ctx_set(jr.pairs, jr.enc)
+  let m = heap_mark()
+  wat_emit(emit_twin_to_string(jr.rec, jr.sym))
+  wat_emit(if fn_record_is_wide(jr.rec) { emit_one_wrapper_to_string(jr.rec) } else { "" })
+  heap_reset(m)
+  spec_ctx_clear()
+}
+
+fn emit_twin_to_string(record, site: String) = match record {
+  (name, param_names, body, captures_count) => {
+    emit_fn_body(name, param_names, body, captures_count)
+    wat_collect()
+  } ~> emit_site_named(site) ~> emit_memory_bump ~> wat_to_string,
+}
+
+// A `<~` line's TANGENT ring under the derivative reading: the same geometry
+// as the line at f64 slots, indexed by the line's own head, one per (site,
+// owner) — allocated at instance start beside the line, zeroed where a
+// reading opens.
+fn tline_global_name(h: Int, owner: String) = "__tline_{int_to_str(h)}_{owner}"
+
+fn tangent_ring_slots(rings) = map(tangent_ring_slot, rings)
+
+fn tangent_ring_slot(ring) = match ring {
+  TangentRing(r) => (tline_global_name(r.site, r.owner), "i32"),
+}
+
+fn emit_tangent_ring_globals(rings) = each(
+  {
+    (name, rw) => {
+      wat_emit("  (global $")
+      wat_emit(name)
+      wat_emit(" (mut ")
+      wat_emit(rw)
+      wat_emit(") (")
+      wat_emit(rw)
+      wat_emit(".const 0))\n")
+    },
+  },
+  tangent_ring_slots(rings)
+)
+
 // The wideness predicate's ONE spelling — the column read, projected. An
 // unpublished or hand-written symbol is not wide: the word floor has no
 // wide slot to wrap.
@@ -1223,6 +1298,21 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
   )) |> spec_recs_dedup
   let spec_names = spec_rec_names(spec_recs)
   set_spec_twins(spec_names)
+  // THE DERIVATIVE READING settles here too (src/derive.mn): its programs
+  // read each body under the bracket the demand analysis just fixed, its
+  // twins' faces join the column below, and a derivative it cannot carry
+  // refuses before a byte of the module is written. A program with no
+  // reading derives nothing and every list below is untouched (Law 7) —
+  // and it never looks for one: lower recorded the demand where it built
+  // an LDerive, so the absence is read, not searched for.
+  let derived = if derivative_demanded() {
+    derive_program(fn_records, spec_recs, collect_top_value_lets(lowered))
+  } else {
+    derived_none()
+  }
+  set_derived(derived.expansions)
+  let jvp_recs = derived.twins
+  let jvp_names = map(jvp_rec_name, jvp_recs)
   // THE SETTLING POINT. Every symbol the module will emit is known here —
   // the base records and every twin with the bracket it emits under — and
   // inference is complete, so a width read now cannot move again. One
@@ -1242,9 +1332,10 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
   // that said otherwise is retracted. The contract decides: ONE rule, "read
   // the symbol's face", with no second rule about what absence means for
   // every reader to learn.
-  graph_sigs_publish(emit_sig_pairs_base(fn_records) ++ emit_sig_pairs_spec(spec_recs))
+  graph_sigs_publish(emit_sig_pairs_base(fn_records) ++ emit_sig_pairs_spec(spec_recs) ++ map(emit_sig_pair_of_jvp, jvp_recs))
   let wide_fn_names = sig_wide_names(map({ (nm, _, _, _) => nm }, fn_records))
   let spec_wide = sig_wide_names(spec_names)
+  let jvp_wide = sig_wide_names(jvp_names)
   // The fold-leaf collection — the base tree once, then each twin's body
   // under its own bracket, so a twin's show/hash on substituted types
   // collects the sigs its emission will name (the float-element leaf beside
@@ -1294,6 +1385,9 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       {
         fn_records: fn_records,
         fold_closures: fold_closures,
+        jvp_names: jvp_names,
+        jvp_recs: jvp_recs,
+        jvp_wide: jvp_wide,
         line_owners: static_line_owners(
           top_fn_names,
           fn_lines,
@@ -1307,6 +1401,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         spec_wide: spec_wide,
         string_entries: string_entries,
         table_fn_names: table_fn_names,
+        tangent_rings: derived.rings,
         top_fn_names: top_fn_names,
         vectors: vectors,
         wasi_ops: wasi_ops,
@@ -1321,7 +1416,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
 // reads was settled before the gate, and the registries the writes consult
 // (the twins, the string offsets, the per-fn lines) were seeded by the plan.
 fn emit_planned(plan) = match plan {
-  {fn_records, fold_closures, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_seen} => {
+  {fn_records, fold_closures, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_seen} => {
     let line_globals = line_global_slots(line_owners)
     emit_header()
     emit_type_section(vectors, yield_seen)
@@ -1346,6 +1441,11 @@ fn emit_planned(plan) = match plan {
       wat_emit("  (global $image_depth (mut i32) (i32.const 0))\n  (global $image_mark (mut i32) (i32.const 0))\n  (global $image_bytes (mut i32) (i32.const 0))\n")
     }
     emit_line_globals(line_owners)
+    emit_tangent_ring_globals(tangent_rings)
+    // The register a twin hands its result's tangent back through: one f64
+    // per instance, written by a twin's exit and read by its caller the
+    // instant the call returns.
+    if len(jvp_recs) > 0 { wat_emit("  (global $__dt (mut f64) (f64.const 0))\n") }
     // band B k1: the yield triple exists only in a module that yields —
     // $yield_flag (the out-of-band Koka-lineage yielding bit), $yield_op (the
     // interned op key the drivers compare), $yield_k (the reified k record).
@@ -1354,9 +1454,11 @@ fn emit_planned(plan) = match plan {
     // Twins ride every fn-name surface APPENDED (existing indices stable): the
     // table (a wide twin's slot holds its $wf$ word face), the per-name idx
     // globals, and the static closure records (global.get $<twin> at redirect
-    // sites reads a record whose offset-0 slot is the twin's table index).
-    let table_all = table_fn_names ++ spec_names
-    let wide_all = wide_fn_names ++ spec_wide
+    // sites reads a record whose offset-0 slot is the twin's table index). The
+    // derivative reading's twins append after the spec twins, so a module with
+    // no reading is byte-identical.
+    let table_all = table_fn_names ++ spec_names ++ jvp_names
+    let wide_all = wide_fn_names ++ spec_wide ++ jvp_wide
     emit_fn_table(
       table_all,
       wide_all,
@@ -1364,12 +1466,19 @@ fn emit_planned(plan) = match plan {
       adapted_names(fn_records, spec_recs)
     )
     emit_fn_index_globals(table_all, fn_table_base())
-    emit_static_top_closures(top_fn_names ++ spec_names, table_all, 0)
+    emit_static_top_closures(top_fn_names ++ spec_names ++ jvp_names, table_all, 0)
     // Module VALUE bindings: ONE projection feeds the declaration half and
     // the init half (never two walks of one tree).
     let value_lets = collect_top_value_lets(lowered)
     emit_top_let_globals(value_lets)
-    emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, table_all, string_entries)
+    emit_image_substrate(
+      wasi_ops,
+      line_globals ++ tangent_ring_slots(tangent_rings),
+      value_lets,
+      yield_seen,
+      table_all,
+      string_entries
+    )
     emit_functions(fn_records)
     emit_wide_wrappers(fn_records)
     each(emit_base_adapter, fn_records)
@@ -1395,6 +1504,10 @@ fn emit_planned(plan) = match plan {
       },
       spec_recs
     )
+    // The derivative reading's twins: each under the bracket of the body it
+    // reads, and standing at that body's symbol, whose `<~` lines are the
+    // lines it ticks.
+    each(emit_jvp_twin, jvp_recs)
     // The four fold leaves — eq / compare / hash / show — one recursive
     // $<leaf>_<sig> helper per distinct signature in each closure, all read
     // from the ONE collection walk above (the unified each). Plain top-level
@@ -1418,7 +1531,7 @@ fn emit_planned(plan) = match plan {
     // dispatch loop's one home (the install bracket and every resume
     // flag-arm call the same fn).
     each(emit_one_redrive, redrives)
-    emit_init_lines(line_owners)
+    emit_init_lines(line_owners, tangent_rings)
     emit_init_lets(value_lets)
     emit_start(top_fn_names, value_lets, len(line_owners) > 0, main_param_count(), yield_seen, spawns)
     emit_footer()
@@ -1925,6 +2038,13 @@ fn walk_lemit_expr(expr) = match expr {
       multishot_ops_of(hname)
     )
   },
+  LDerive(_h, seed, b) => // The derivative reading's forward body is what its expansion keeps, in
+  // order — every string, name, line and perform the projections collect
+  // is the body's own.
+  {
+    walk_lemit_expr(seed)
+    walk_lemit_expr(b)
+  },
   LFeedback(_h, _d, _home, b, s) => {
     walk_lemit_expr(b)
     walk_lemit_expr(s)
@@ -2081,6 +2201,7 @@ fn line_is_static(line) = match line {
   (_h, _d, home) => match home {
     LhStatic => true,
     LhSlot(_) => false,
+    LhStaticJvp => true,
   },
 }
 
@@ -2843,16 +2964,33 @@ fn emit_init_lets_loop(ref value_lets, i, n) = if i >= n {
 // sink). Each owner's rings are sized under the owner's own bracket — the
 // floor's pairs are empty, a twin's are its instantiation — the same read
 // the site's body emission makes of its slot width.
-fn emit_init_lines(owners) = if len(owners) > 0 {
+fn emit_init_lines(owners, rings) = if len(owners) > 0 {
   wat_emit("  (func $__init_lines (param $__state i32) (result i32) (local $state_tmp i32)\n")
-  wat_emit(emit_init_lines_body(owners))
+  wat_emit(emit_init_lines_body(owners, rings))
   wat_emit("    (i32.const 0)\n  )\n")
 }
 
-fn emit_init_lines_body(owners) = {
+// The lines, then the derivative reading's tangent rings beside them — a
+// ring always has its line's owner among the owners, so the one function
+// allocates both, once per instance.
+fn emit_init_lines_body(owners, rings) = {
   each(emit_owner_lines, owners)
+  each(emit_tangent_ring, rings)
   wat_collect()
 } ~> emit_memory_bump ~> wat_to_string
+
+fn emit_ring_zero(ring) = match ring {
+  TangentRing(r) => wat_emit("    (memory.fill (i32.add (global.get ${tline_global_name(r.site, r.owner)}) (i32.const 8)) (i32.const 0) (i32.const {int_to_str(r.depth * 8)}))\n"),
+}
+
+fn emit_tangent_ring(ring) = match ring {
+  TangentRing(r) => {
+    emit_alloc(8 + r.depth * 8, "state_tmp")
+    wat_emit("    (global.set $")
+    wat_emit(tline_global_name(r.site, r.owner))
+    wat_emit(" (local.get $state_tmp))\n")
+  },
+}
 
 fn emit_owner_lines(owner) = match owner {
   (sym, lines, pairs, enc) => {
@@ -3028,6 +3166,7 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LMakeVariant(_h, _t, fs) => collect_call_vectors_list(fs, acc),
   LMatch(_h, s, arms) => collect_call_vectors_arms(arms, collect_call_vectors_expr(s, acc)),
   LHandleWith(_h, b, hn, _hn2, inits, _arms) => collect_call_vectors_expr(b, collect_call_vectors_expr(hn, collect_call_vectors_list(inits, acc))),
+  LDerive(_h, seed, b) => collect_call_vectors_expr(b, collect_call_vectors_expr(seed, acc)),
   LFeedback(_h, _d, _home, b, s) => collect_call_vectors_expr(s, collect_call_vectors_expr(b, acc)),
   LWasiCall(_h, _n, args) => collect_call_vectors_list(args, acc),
   LFieldLoad(_h, rec, _o) => collect_call_vectors_expr(rec, acc),
@@ -3764,6 +3903,7 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LMatch(_h, s, arms) => collect_fn_emit_records_expr(s) ++ fn_emit_records_arms(arms, 0),
   LResumeK(_h, k, v) => collect_fn_emit_records_expr(k) ++ collect_fn_emit_records_expr(v),
   LHandleWith(_h, b, hn, _hname, inits, _arm_names) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(hn) ++ collect_fn_emit_records(inits),
+  LDerive(_h, seed, b) => collect_fn_emit_records_expr(seed) ++ collect_fn_emit_records_expr(b),
   LFeedback(_h, _d, _home, b, s) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(s),
   LPerform(_h, _d, args) => collect_fn_emit_records(args),
   LWasiCall(_h, _n, args) => collect_fn_emit_records(args),
@@ -4017,7 +4157,7 @@ fn walk_locals_expr(expr, acc) = match expr {
     }
     walk_locals_list(inits, walk_locals_expr(hn, walk_locals_expr(b, with_ms)))
   },
-  LFeedback(h, d, _home, b, s) => {
+  LFeedback(h, d, home, b, s) => {
     // The per-site locals of the ring tick, mirror-true to the LFeedback
     // emit arm: $__ring_<h> holds the ring's address for the tick,
     // $__fb_prev_<h> the prior the oldest slot yields, $__fb_<h> the
@@ -4031,13 +4171,29 @@ fn walk_locals_expr(expr, acc) = match expr {
     let fb_rw = repr_wat(repr_of(lookup_ty(h)))
     let hs = int_to_str(h)
     let head_locals = if d > 1 { ["__fbp_{hs} i32"] } else { [] }
+    // Under the derivative reading the tick also reads the prior's tangent
+    // off the tangent ring's slot at the same index (the output's tangent is
+    // a let of the body's own, declared by the body walk).
+    let tangent_locals = match home {
+      LhStaticJvp => ["__tslot_{hs} i32", "__fb_dprev_{hs}.f64 f64"],
+      LhStatic => [],
+      LhSlot(_) => [],
+    }
     walk_locals_expr(
       s,
       walk_locals_expr(
         b,
-        ["__ring_{hs} i32", "__fb_prev_{hs} {fb_rw}", "__fb_{hs} {fb_rw}"] ++ head_locals ++ acc
+        ["__ring_{hs} i32", "__fb_prev_{hs} {fb_rw}", "__fb_{hs} {fb_rw}"] ++ head_locals ++ tangent_locals ++ acc
       )
     )
+  },
+  LDerive(h, _seed, _body) => // The derivative reading emits its DERIVED program, so its locals are that
+  // program's — every tangent and every residual name derive introduced.
+  match derived_at(h, spec_enc_active()) {
+    Some(x) => match x {
+      Expansion(r) => walk_locals_expr(r.body, acc),
+    },
+    None => acc,
   },
   LWasiCall(_h, _n, args) => walk_locals_list(args, acc),
   LPerform(h, _d, a) => // The perform's per-site pair, mirror-true to the ONE emit arm: evw holds
@@ -5168,6 +5324,22 @@ fn emit_expr(expr) = match expr {
     wat_emit(local_name)
     wat_emit("_wprev)(global.set $world_g)\n")
   },
+  LDerive(h, _seed, _body) => // The derivative reading: the install builds no record and pushes no world
+  // — its DERIVED program stands where it stood. Opening the reading zeroes
+  // the tangent ring of every `<~` line its reach ticks, so each line's
+  // history before the extent is held fixed; then the program runs.
+  match derived_at(h, spec_enc_active()) {
+    Some(x) => match x {
+      Expansion(r) => {
+        each(emit_ring_zero, r.rings)
+        emit_expr(r.body)
+      },
+    },
+    None => // Unreachable by construction: `derive_program` reads the very record
+    // sets this module writes, under their brackets, and expands every
+    // install in them or refuses before the gate — emission says nothing.
+    wat_emit("    (unreachable)  ;; derivative reading with no derived program\n"),
+  },
   LFeedback(h, depth, home, body, _spec) => {
     // <~ feedback — the site's line is a ring owned by the record of the
     // function that contains the cycle (`LineHome`, types.mn). Its address
@@ -5196,6 +5368,11 @@ fn emit_expr(expr) = match expr {
         wat_emit(line_global_name(h, emit_site()))
         wat_emit(")\n")
       },
+      LhStaticJvp => {
+        wat_emit("    (global.get $")
+        wat_emit(line_global_name(h, emit_site()))
+        wat_emit(")\n")
+      },
       LhSlot(slot) => {
         wat_emit("    (i32.load offset=")
         wat_emit(int_to_str(8 + slot * 4))
@@ -5209,8 +5386,29 @@ fn emit_expr(expr) = match expr {
     } else {
       wat_emit("    (local.set $__fb_prev_{hs} ({rw}.load offset=8 (local.get $__ring_{hs})))\n")
     }
+    // The derivative reading's tick: the tangent ring's slot at the SAME
+    // index the line's head just chose (read before the head advances), the
+    // prior's tangent loaded from it before the body, the output's stored
+    // into it after — the recurrence's sensitivity ticking beside it.
+    let jvp_tick = match home {
+      LhStaticJvp => true,
+      LhStatic => false,
+      LhSlot(_) => false,
+    }
+    if jvp_tick {
+      wat_emit("    (local.set $__tslot_{hs} (i32.add (global.get ${tline_global_name(h, emit_site())}) ")
+      if depth > 1 {
+        wat_emit("(i32.sub (local.get $__fbp_{hs}) (local.get $__ring_{hs}))))\n")
+      } else {
+        wat_emit("(i32.const 8)))\n")
+      }
+      wat_emit("    (local.set $__fb_dprev_{hs}.f64 (f64.load (local.get $__tslot_{hs})))\n")
+    }
     emit_expr(body)
     wat_emit("    (local.tee $__fb_{hs})\n")
+    if jvp_tick {
+      wat_emit("    (f64.store (local.get $__tslot_{hs}) (local.get $__fb_dcur_{hs}.f64))\n")
+    }
     if depth > 1 {
       wat_emit("    ({rw}.store (local.get $__fbp_{hs}) (local.get $__fb_{hs}))\n")
       wat_emit("    (i32.store (local.get $__ring_{hs}) (i32.rem_u (i32.add (i32.load (local.get $__ring_{hs})) (i32.const 1)) (i32.const {int_to_str(depth)})))\n")
@@ -5228,7 +5426,14 @@ fn emit_expr(expr) = match expr {
   // FETCHED by the dispatch and the bracket is emitted once, outside the
   // branch, so no degree of boundness can mean something different from
   // another.
-  {
+  //
+  // A DERIVATIVE QUERY is not dispatched at all: under its reading derive
+  // replaced it with the value's tangent, and a copy outside every reading
+  // is unreachable by the row — its effect is unhandled anywhere else, and
+  // the reading refuses the closure calls that could carry it inside.
+  if perform_is_query(disp) {
+    wat_emit("    (unreachable)  ;; a derivative query outside its reading\n")
+  } else {
     let hs = int_to_str(h)
     // (0) the arm's __state and the world to run it under. A lexical answer
     // reads the install's own two locals; anything that walks resolves the
@@ -5388,6 +5593,13 @@ fn emit_expr(expr) = match expr {
       wat_emit("    (global.get $world_g)\n")
     } else if import_name == "world_restore" {
       wat_emit("    (global.set $world_g)(i32.const 0)\n")
+    } else if import_name == "tangent_in" {
+      // The derivative reading's return register (src/derive.mn): a twin's
+      // exit writes its result's tangent, the caller reads it the instant the
+      // call returns — the world register's shape, one f64 per instance.
+      wat_emit("    (global.get $__dt)\n")
+    } else if import_name == "tangent_out" {
+      wat_emit("    (global.set $__dt)(i32.const 0)\n")
     } else if import_name == "image_key" {
       // The build's identity word — an immutable global computed at emit
       // (emit_image_substrate); equal keys ⟺ a restored image's baked
@@ -5842,13 +6054,6 @@ fn emit_args_word(args) = each(
   args
 )
 
-// The op a dispatch performs — None for a driver, which is not an op.
-fn perform_op_name(disp) = match disp {
-  PdFrame(_, _, op_name) => Some(op_name),
-  PdWalk(_, _, op_name, _) => Some(op_name),
-  PdDriver(_) => None,
-}
-
 // An op's ABI: its declared parameter reprs and its declared result's, read
 // from the effect declaration — the binding every arm's header signs
 // (`op_param_tys` / `op_ret_ty`, lower's `lower_one_arm_decl`). An effect's
@@ -6211,6 +6416,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
   LMakeVariant(_h, _t, fs) => collect_fold_tys_list(fs, acc),
   LMatch(_h, s, arms) => collect_fold_tys_arms(arms, collect_fold_tys_expr(s, acc)),
   LHandleWith(_h, b, hn, _hn2, inits, _arms) => collect_fold_tys_expr(b, collect_fold_tys_expr(hn, collect_fold_tys_list(inits, acc))),
+  LDerive(_h, seed, b) => collect_fold_tys_expr(b, collect_fold_tys_expr(seed, acc)),
   LFeedback(_h, _d, _home, b, s) => collect_fold_tys_expr(s, collect_fold_tys_expr(b, acc)),
   LPerform(_h, _d, args) => collect_fold_tys_list(args, acc),
   LWasiCall(_h, _n, args) => collect_fold_tys_list(args, acc),
@@ -7828,6 +8034,8 @@ fn emit_line_mints(lines, rec_local: String) = each(
       },
       LhStatic => // A minted record has no static line: the settle point refused the
       // module that would carry one (`settle_minted_lines`).
+      (),
+      LhStaticJvp => // nor a static derivative line, refused by the same settle
       (),
     },
   },

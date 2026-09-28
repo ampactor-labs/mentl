@@ -1,0 +1,46 @@
+// expect: 42
+// The reading changes nothing it reads. Under `~> grad(x)` the body computes
+// the value it computes without the install — the derivative program keeps
+// every primal operation, in order, and adds tangent arithmetic beside it —
+// so the forward value is compared to the plain call at every point of a
+// sweep, and the count of disagreements must be zero.
+//
+// The function crosses a branch, a division, and a recursive series, and
+// the extent returns the value it computed together with the slope it asked
+// for: the pair is built after the question, from values the reading never
+// touched.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn series(r: Float, n: Int, term: Float, acc: Float) -> Float = if n > 12 {
+  acc
+} else {
+  let t = term * r / float_of_int(n)
+  series(r, n + 1, t, acc + t)
+}
+
+fn shape(x: Float) -> Float =
+  if x > 1.0 { series(x * 0.5, 1, 1.0, 1.0) / (x + 2.0) } else { x * x * x - 3.0 * x / (x * x + 1.0) }
+
+fn disagrees(i: Int) -> Int = {
+  let x = float_of_int(i) * 0.0625 - 3.0
+  match {
+    let y = shape(x)
+    (y, d(y))
+  } ~> grad(x) {
+    (y, s) => if y == shape(x) && s == s { 0 } else { 1 },
+  }
+}
+
+fn main() -> Int = {
+  let misses = range(0, 97) |> fold(0, (acc, i) => acc + disagrees(i))
+  if misses == 0 { 42 } else { 10 + misses }
+}

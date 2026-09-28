@@ -242,6 +242,9 @@ type BoundaryInvariant
   // every lambda, whole-wheel); the typed terminal keeps the refusal
   // loud if the invariant ever breaks.
   | ProjectionOriginShape(Int)
+  // `tangent_of` lowered outside a derivative reading — already refused
+  // at the call (E_DerivativeUnreachable); the terminal keeps the node total.
+  | TangentOutsideReading
 
 fn show_boundary_invariant(invariant) = match invariant {
   MissingFanoutBoundary => "missing fanout boundary",
@@ -257,6 +260,7 @@ fn show_boundary_invariant(invariant) = match invariant {
   MissingName(name) => "`{name}` has no binding the lowering can see, though the judgment resolved it — the lowering will not guess it into a global",
   SingletonUninstalled(hname) => "singleton op call with no live install: {hname} — the state global is 0 in this extent; install the handler (~> {hname}) around the calling walk",
   ProjectionOriginShape(h) => "column projection at {int_to_str(h)}: the program-column node is not the projector's shape",
+  TangentOutsideReading => "tangent_of outside a derivative reading — refused at the call",
 }
 
 // Every value-bearing variant carries a source TypeHandle (Int), never a cached Ty.
@@ -369,6 +373,13 @@ type LowExpr
   // Per PLAN §5.U.
   | LResumeK(Int, LowExpr, LowExpr)
   | LHandleWith(Int, LowExpr, LowExpr, String, [LowExpr], [{arms: [String], ename: String}])
+  // The DERIVATIVE READING's install, `(e) ~> grad(w)`: handle, the seed
+  // (the lowered w — a local or a capture), the body. It builds no record
+  // and pushes no world, because the projection replaces the install:
+  // derive (src/derive.mn) expands it at emit's settling point into the
+  // body's derivative program, the primal unchanged and a tangent beside
+  // every value the seed reaches.
+  | LDerive(Int, LowExpr, LowExpr)
   // <~ desugaring (iterative ctx required)
   // (LF.B) the prior-iteration output of feedback handle h, read LIVE from the
   // $__fb_prev_<h> local the LFeedback emit declares + loads. A `<~` lambda
@@ -509,6 +520,13 @@ type ArmTarget = ArmNamed(String) | ArmSlot
 
 type PerformDispatch = PdFrame(Int, String, String) | PdWalk(String, Int, String, ArmTarget) | PdDriver(String)
 
+// The op a dispatch performs — None for a driver, which is not an op.
+fn perform_op_name(disp) = match disp {
+  PdFrame(_, _, op_name) => Some(op_name),
+  PdWalk(_, _, op_name, _) => Some(op_name),
+  PdDriver(_) => None,
+}
+
 // LZero is the zero of the representation its handle reads at EMIT, under
 // the bracket in force — the value a width-agreeing placeholder needs, since
 // a twin's bracket decides that width and lowering runs before it exists.
@@ -609,6 +627,7 @@ fn lexpr_handle(e) with Pure = match e {
   LMakeVariant(h, _, _) => h,
   LMatch(h, _, _) => h,
   LHandleWith(h, _, _, _, _, _) => h,
+  LDerive(h, _, _) => h,
   LFeedback(h, _, _, _, _) => h,
   LFeedbackPrior(h) => h,
   LPerform(h, _, _) => h,
@@ -712,8 +731,11 @@ fn lower_callee_name(fbody) = match fbody {
 // takes the arm's k as a REAL trailing argument — the "argument, not
 // evidence" ruling executed: the callee's own resolve_resume_k finds its
 // __k as an ordinary param (RLocal), a lambda's as a capture (RUpval).
-fn lower_call_default(handle, f, fh, lo_args) = {
-  let lo_f = lower_expr(f)
+fn lower_call_default(handle, f, fh, lo_args) = lower_call_of(handle, fh, lower_expr(f), lo_args)
+
+// A call whose callee is already lowered: the dispatch that resolved the
+// callee's name hands its read over, so the name is resolved once per call.
+fn lower_call_of(handle, fh, lo_f, lo_args) = {
   // The append is unconditional on the CALLEE's boundness (never gated on
   // the caller's discipline): a bound fn's emitted arity always includes
   // __k, so every call must match it — resume_k_arg passes the live k
@@ -748,72 +770,95 @@ fn lower_call_default(handle, f, fh, lo_args) = {
 // inline splice, so a pipe-right hole-bearing call must never mint a partial
 // closure — the splice is the zero-record, evidence-correct projection of
 // the same hole-filling semantics).
+//
+// A named callee is resolved ONCE, here, and the resolution decides. A
+// binding the lowering's own scope holds — a parameter, a local, a capture —
+// is this call's callee whatever the global env says of the same name (an
+// op, a constructor, an intrinsic): a parameter named `result`, called, was
+// lowered as the `Iterate` op of that name and trapped at the root (measured
+// 2026-09-28 in derive.mn's `jvp_pair`).
 fn lower_call_dispatch(handle, f, fh, fbody, r_args) = {
   let lo_args = lower_expr_list(r_args)
   match fbody {
-    NExpr(VarRef(name)) => if name == "to_string" && len(r_args) == 1 {
-      LShow(handle, last(lo_args))
-    } else if name == "hash" && len(r_args) == 1 {
-      // hash(x) IS the HASH leaf of the structural fold — dispatched at
-      // EMIT from the node's live type (hash_node_of), never a name baked
-      // here, so a twin's bracket re-answers it (eq/hash agreement).
-      LHash(handle, last(lo_args))
-    } else if name == "float_of_int" && len(r_args) == 1 {
-      // W11: the gradient's coercion arm — a REAL i32->f64 widen
-      // (f64.convert_i32_s), never an identity stub reinterpreting bits.
-      LConvert(handle, IntToFloat, last(lo_args))
-    } else if name == "float_to_int" && len(r_args) == 1 {
-      // f64->i32 truncating toward zero (i32.trunc_f64_s) — the value-
-      // faithful inverse, replacing the bit-reinterpreting identity stub.
-      LConvert(handle, FloatToInt, last(lo_args))
-    } else if is_substrate_mem_op(name) {
-      // Memory / Alloc ops ARE the instruction set — "the WASM runtime
-      // IS the handler" (lib/memory.mn). They project to raw
-      // instructions, never through evidence: routing them Tier-2 made
-      // the evidence walk's own loads dispatch through the evidence
-      // walk (the scan recursing into itself — the handler rung's
-      // runtime stack overflow). LWasiCall is the direct-substrate
-      // node; emit dispatches the name to its instruction.
-      {
-        graph_dispatch_note(handle, DtWasi(name))
-        LWasiCall(handle, name, lo_args)
-      }
-    } else {
-      match env_kind_of(name) {
-        Some(ConstructorScheme(tag_id, _)) => LMakeVariant(handle, tag_id, lo_args),
-        Some(RecordSchemeKind(_)) => // Nominal-record CALL-form construction `Pri({...})`: the runtime
-        // representation IS the bare record (NamedRecordExpr's own arm
-        // lowers to LMakeRecord — type identity is type-system-only, no
-        // tag). The single argument already IS that record; the wrapper
-        // is the identity at this layer. Arity is the infer gate's
-        // business (the ctor-pattern arrow view unifies one param); a
-        // zero-arg call (already reported there) lowers to the empty
-        // record, never a garbage read past an empty args list.
-        if len(lo_args) == 0 { LMakeRecord(handle, []) } else { list_index(lo_args, 0) },
-        Some(EffectOpScheme(_, _, _, _)) => // ONE perform, whose DISPATCH says how much of the walk this
-        // site could finish now (PerformDispatch). PLAN §6's
-        // handler-elimination tiers are degrees of that boundness, not
-        // three operations: the meaning is always "walk innermost-out to
-        // the node that DECLARES this op, run its arm against its record,
-        // under its install world."
-        // A WASI import op bridges directly to the WASM-level import
-        // (no $op_<name> handler arm) — the import IS the bridge.
-        // addr (effect Cast) erases to its OPERAND: the word face IS
-        // the address, so the emission is identity and no demand ever
-        // reaches the executable gate — the row carries the whole
-        // meaning (with Cast admits; !Cast severs).
-        if is_cast_erased_op(name) {
-          list_index(lo_args, 0)
-        } else if is_wasi_import_op(name) {
-          graph_dispatch_note(handle, DtWasi(name))
-          LWasiCall(handle, name, lo_args)
-        } else {
-          lower_perform_dispatch(handle, name, lo_args)
-        },
-        _ => lower_call_default(handle, f, fh, lo_args),
-      }
+    NExpr(VarRef(name)) => match ls_resolve(name) {
+      (RGlobal, _) => lower_global_call(handle, fh, name, r_args, lo_args),
+      (res, local_h) => lower_call_of(handle, fh, lower_resolved_ref(fh, name, res, local_h), lo_args),
     },
     _ => lower_call_default(handle, f, fh, lo_args),
+  }
+}
+
+// A call whose callee resolved to module scope, where the env's kinds live:
+// an intrinsic, a substrate op, a constructor, an effect op, or a function.
+fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to_string" && len(r_args) == 1 {
+  LShow(handle, last(lo_args))
+} else if name == "hash" && len(r_args) == 1 {
+  // hash(x) IS the HASH leaf of the structural fold — dispatched at
+  // EMIT from the node's live type (hash_node_of), never a name baked
+  // here, so a twin's bracket re-answers it (eq/hash agreement).
+  LHash(handle, last(lo_args))
+} else if name == "float_of_int" && len(r_args) == 1 {
+  // W11: the gradient's coercion arm — a REAL i32->f64 widen
+  // (f64.convert_i32_s), never an identity stub reinterpreting bits.
+  LConvert(handle, IntToFloat, last(lo_args))
+} else if name == "float_to_int" && len(r_args) == 1 {
+  // f64->i32 truncating toward zero (i32.trunc_f64_s) — the value-
+  // faithful inverse, replacing the bit-reinterpreting identity stub.
+  LConvert(handle, FloatToInt, last(lo_args))
+} else if name == "tangent_of" {
+  // What `d(v)` MEANS under `~> grad(w)` — and only there. The one arm that
+  // writes it is a projection's, which is never lowered, so reaching
+  // this line means a program called it where no reading can answer.
+  report(EDerivativeUnreachable(
+    "`tangent_of` is what `d` means inside a derivative reading, and this call is outside every one; ask `d(v)` inside `(…) ~> grad(w)`",
+    parse_span_of(handle)
+  ))
+  LInvariantFailure(handle, TangentOutsideReading)
+} else if is_substrate_mem_op(name) {
+  // Memory / Alloc ops ARE the instruction set — "the WASM runtime
+  // IS the handler" (lib/memory.mn). They project to raw
+  // instructions, never through evidence: routing them Tier-2 made
+  // the evidence walk's own loads dispatch through the evidence
+  // walk (the scan recursing into itself — the handler rung's
+  // runtime stack overflow). LWasiCall is the direct-substrate
+  // node; emit dispatches the name to its instruction.
+  {
+    graph_dispatch_note(handle, DtWasi(name))
+    LWasiCall(handle, name, lo_args)
+  }
+} else {
+  match env_kind_of(name) {
+    Some(ConstructorScheme(tag_id, _)) => LMakeVariant(handle, tag_id, lo_args),
+    Some(RecordSchemeKind(_)) => // Nominal-record CALL-form construction `Pri({...})`: the runtime
+    // representation IS the bare record (NamedRecordExpr's own arm
+    // lowers to LMakeRecord — type identity is type-system-only, no
+    // tag). The single argument already IS that record; the wrapper
+    // is the identity at this layer. Arity is the infer gate's
+    // business (the ctor-pattern arrow view unifies one param); a
+    // zero-arg call (already reported there) lowers to the empty
+    // record, never a garbage read past an empty args list.
+    if len(lo_args) == 0 { LMakeRecord(handle, []) } else { list_index(lo_args, 0) },
+    Some(EffectOpScheme(_, _, _, _)) => // ONE perform, whose DISPATCH says how much of the walk this
+    // site could finish now (PerformDispatch). PLAN §6's
+    // handler-elimination tiers are degrees of that boundness, not
+    // three operations: the meaning is always "walk innermost-out to
+    // the node that DECLARES this op, run its arm against its record,
+    // under its install world."
+    // A WASI import op bridges directly to the WASM-level import
+    // (no $op_<name> handler arm) — the import IS the bridge.
+    // addr (effect Cast) erases to its OPERAND: the word face IS
+    // the address, so the emission is identity and no demand ever
+    // reaches the executable gate — the row carries the whole
+    // meaning (with Cast admits; !Cast severs).
+    if is_cast_erased_op(name) {
+      list_index(lo_args, 0)
+    } else if is_wasi_import_op(name) {
+      graph_dispatch_note(handle, DtWasi(name))
+      LWasiCall(handle, name, lo_args)
+    } else {
+      lower_perform_dispatch(handle, name, lo_args)
+    },
+    _ => lower_call_of(handle, fh, lower_resolved_ref(fh, name, RGlobal, 0), lo_args),
   }
 }
 
@@ -1866,8 +1911,8 @@ fn resolve_in_stack(op_name: String, ename, stack) = if ename == "" || len(stack
   }
 }
 
-// THE KEY IS THE OP, NOT THE EFFECT. This asked `handler_covers_effect` —
-// does one of this handler's arm groups key on that effect — until
+// THE KEY IS THE OP, NOT THE EFFECT. This asked whether a handler covers the
+// effect — does one of this handler's arm groups key on that effect — until
 // 2026-09-09, and a handler that implements ANY op of an effect answered
 // yes for EVERY op of it. So a split-effect pair, two handlers covering one
 // effect's disjoint op sets, resolved every op to whichever was innermost:
@@ -1894,13 +1939,6 @@ fn resolve_in_stack(op_name: String, ename, stack) = if ename == "" || len(stack
 fn handler_arms_for(hname: String, ename: String) = match split_group_by_ename(lookup_handler_arm_names_of(hname), ename) {
   (_, grp, _) => group_arms(grp),
 }
-
-// The SCHEDULE resolution keeps the EFFECT question, and that is not an
-// oversight: a fanout performs no named op, it asks which scheduler class is
-// installed, so a Thread install is answered at the effect altitude by
-// construction. Two different questions over one list, neither standing in
-// for the other.
-fn handler_covers_effect(hname: String, ename: String) = len(handler_arms_for(hname, ename)) > 0
 
 fn handler_declares_op(hname: String, ename: String, op_name: String) = {
   let arms = handler_arms_for(hname, ename)
@@ -1932,8 +1970,8 @@ type Schedule = Seq | Threaded | Simd | Gpu | Persisted
 type ScheduledBoundary = ScheduledBoundary(LowExpr, Int, Int, Int, Int) | InvalidScheduledBoundary(Int, BoundaryInvariant)
 
 // Read the fanout's execution strategy from the installed `~>` chain —
-// the SAME `lower_handler_stack_now()` + `handler_covers_effect`
-// machinery every `perform` resolves through (`resolve_in_stack`). The
+// the SAME `lower_handler_stack_now()` stack every perform resolves
+// through (`resolve_in_stack`), each entry classed by `projection_of`. The
 // innermost handler covering a scheduler-class effect (`Thread`/`Simd`/
 // `Gpu`) wins; with none installed the strategy is `Seq` — the net-new
 // default the old hardwired `Thread` inject made unsayable (a bare `><`
@@ -1949,17 +1987,54 @@ fn schedule_in_stack(stack) = if len(stack) == 0 {
   // the frame fence — "the schedule is read at the fanout's own install site, never across a call boundary" (SYNTAX §Vocabulary)
   if field_name_eq(stack_entry_name(e), "") {
     Seq
-  } else if handler_covers_effect(stack_entry_name(e), "Thread") {
-    Threaded
-  } else if handler_covers_effect(stack_entry_name(e), "Simd") {
-    Simd
-  } else if handler_covers_effect(stack_entry_name(e), "Gpu") {
-    Gpu
-  } else if handler_covers_effect(stack_entry_name(e), "Persist") {
-    Persisted
   } else {
-    schedule_in_stack(drop_last(stack))
+    match projection_of(stack_entry_name(e)) {
+      PSchedule(s) => s,
+      _ => schedule_in_stack(drop_last(stack)),
+    }
   }
+}
+
+// WHAT AN INSTALL DOES TO ITS EXTENT — the one read of a handler's class,
+// from the effects its arms cover. Most handlers are DISPATCHED to: a
+// perform finds them and runs an arm. Two classes are PROJECTIONS instead,
+// readings the lowering applies to the extent itself: a schedule decides
+// how a `><` inside it runs, and the derivative reading decides what the
+// extent computes beside its value (`~> grad(w)`, lib/ml/grad.mn). The
+// class is recognized by the effect a handler answers, so a program that
+// declares its own Thread or Derivative effect gets the same reading.
+type Projection = PDispatch | PSchedule(Schedule) | PDerivative
+
+// The derivative reading's DEMAND, drawn where an LDerive is built: the emit
+// reads it before it looks for a reading, so a program that installs none
+// pays nothing for the reading's existence — not a scan, not a byte.
+effect DerivativeDemand {
+  derivative_demand_note()
+  derivative_demanded() -> Bool
+}
+
+fn projection_of(hname: String) = projection_of_effects(handler_arm_enames(hname))
+
+// The effects a handler's arms answer, read off its declaration in one pass —
+// the class is a fact of the declaration, so an install reads it rather than
+// rebuilding the handler's arm groups once per class it asks about.
+fn handler_arm_enames(hname: String) = match handler_decl_of(hname) {
+  Some((_, _, arms)) => arms |> map({ arm => lower_effect_name_of_op(handler_arm_op_name(arm)) }),
+  None => [],
+}
+
+fn projection_of_effects(enames) = if string_in_list(enames, "Thread") {
+  PSchedule(Threaded)
+} else if string_in_list(enames, "Simd") {
+  PSchedule(Simd)
+} else if string_in_list(enames, "Gpu") {
+  PSchedule(Gpu)
+} else if string_in_list(enames, "Persist") {
+  PSchedule(Persisted)
+} else if string_in_list(enames, "Derivative") {
+  PDerivative
+} else {
+  PDispatch
 }
 
 // Per-effect arm-fn-name groups [(ename, [arm_fn_name])], op-decl order
@@ -2313,6 +2388,89 @@ fn lower_expr(node) = match node {
   },
 }
 
+// The read of a name the lowering's scope resolved — a value reference and a
+// call's callee take the same read, so the name is resolved once per site.
+// For LLocal/LUpval the LowExpr's handle is the one that types the read —
+// `local_ty_handle` decides it, for this site and every other read of a
+// resolved local. Fall back to VarRef's handle for RGlobal where there's no
+// separate local-binding handle.
+//
+// SchemeKind dispatch (H3): a VarRef whose env entry is a nullary
+// ConstructorScheme is a value-position constructor reference (`None`,
+// `True`, `False`). Lower it as LMakeVariant(handle, tag, []) — emit emits
+// the sentinel i32.const form for nullary tags.
+fn lower_resolved_ref(handle, name: String, res, local_h) = {
+  // The bind-home column's dual-write (lowering-is-a-column step i):
+  // the verdict noted at the USE handle — the identity the tree mint
+  // below discards in favor of the binding-time handle.
+  graph_bind_note(
+    handle,
+    match res {
+      RLocal => BindLocal(local_h),
+      RUpval(slot) => BindUpval(local_h, slot),
+      RFbPrior(fb_h) => BindPrior(fb_h),
+      RGlobal => BindGlobal,
+    }
+  )
+  match res {
+    RLocal => LLocal(local_ty_handle(local_h, handle), name),
+    RUpval(slot) => LUpval(local_ty_handle(local_h, handle), slot),
+    RFbPrior(fb_h) => // (LF.B) a `<~` lambda param resolves to the feedback site's prior local,
+    // read LIVE — the recurrence's y[n-1] term IS this node.
+    LFeedbackPrior(fb_h),
+    RGlobal => // A NON-FN BINDING IN VALUE POSITION IS A REIFICATION, and until
+    // 2026-09-09 it was two silent wrongs. A constructor lowered to
+    // LMakeVariant(handle, tag, []) whatever its arity, so mapping a
+    // one-field constructor over a list checked with zero diagnostics
+    // and built payload-less variants that trapped `unreachable` in the
+    // match reading them; an op fell to the catch-all's LGlobal and emitted
+    // `(global.get $note)` for a global that never exists, so the
+    // ASSEMBLER was the first thing in the chain to object, hundreds of
+    // thousands of WAT lines from the name the developer wrote.
+    //
+    // The env proves the answer AT the reference — ConstructorScheme and
+    // EffectOpScheme are distinct tags written at the declaration — and
+    // the reification the developer was writing by hand is the medium's
+    // own hole-product: a bare name IS the parameter product with every
+    // field unsupplied (SYNTAX §«Partial application»), so it lowers
+    // through the SAME partial mint an authored hole already used, with
+    // no supplied args and no new mechanism. The callee shape is read live from the
+    // node's own program cell, never rebuilt from the matched Expr.
+    match env_kind_of(name) {
+      Some(ConstructorScheme(tag_id, _)) => match scheme_ref_fun_arity(name) {
+        None => // Not a function type: the reference IS the value — a nullary
+        // variant, the sentinel form emit already knows.
+        LMakeVariant(handle, tag_id, []),
+        Some(arity) => lower_call_partial(handle, graph_node_body(handle), handle, [], arity),
+      },
+      Some(EffectOpScheme(_, _, _, _)) => match scheme_ref_fun_arity(name) {
+        None => // An op's declared scheme is always a signature, zero-arg
+        // included, so a miss here is an unresolved judgment and the
+        // typed floor is the honest answer — lower_call_partial's own
+        // None path, reached with the arity the graph actually proved.
+        LInvariantFailure(handle, PartialCalleeShape(handle)),
+        Some(arity) => lower_call_partial(handle, graph_node_body(handle), handle, [], arity),
+      },
+      Some(FnScheme) => // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
+      // the PTee guard). ALWAYS the bare LGlobal — emit resolves it to the
+      // fn's static closure record; the fn's performs dispatch through the
+      // live world chain when the consumer (`each(f, xs)`) calls it.
+      LGlobal(handle, name),
+      Some(_) => // Found, some other kind (a value binding, a record) — the global read
+      // is the right projection.
+      LGlobal(handle, name),
+      None => // NOT FOUND. `_ => LGlobal(handle, name)` stood here and conflated
+      // these two: it guessed an unbound name into `(global.get $name)`,
+      // fabricating the one fact infer had just proved false. The guess is
+      // never reachable code — it is WAT no assembler accepts — so it did
+      // not "keep going"; it moved the medium's own precise, spanned
+      // E_MissingVariable to a wat2wasm error hundreds of thousands of
+      // lines away, about a symbol the developer never wrote.
+      LInvariantFailure(handle, MissingName(name)),
+    },
+  }
+}
+
 fn lower_expr_body(e, handle, span) = match e {
   LitInt(v) => LConst(handle, LInt(v)),
   LitFloat(v) => LConst(handle, LFloat(v)),
@@ -2326,87 +2484,7 @@ fn lower_expr_body(e, handle, span) = match e {
   },
   LitUnit => LConst(handle, LInt(0)),
   VarRef(name) => match ls_resolve(name) {
-    (res, local_h) => // For LLocal/LUpval the LowExpr's handle is the one that types the
-    // read — `local_ty_handle` decides it, for this site and every other
-    // read of a resolved local. Fall back to VarRef's handle for RGlobal
-    // where there's no separate local-binding handle.
-    //
-    // SchemeKind dispatch (H3): a VarRef whose env entry is a
-    // nullary ConstructorScheme is a value-position constructor
-    // reference (`None`, `True`, `False`). Lower it as
-    // LMakeVariant(handle, tag, []) — emit emits the sentinel
-    // i32.const form for nullary tags.
-    {
-      // The bind-home column's dual-write (lowering-is-a-column step i):
-      // the verdict noted at the USE handle — the identity the tree mint
-      // below discards in favor of the binding-time handle.
-      graph_bind_note(
-        handle,
-        match res {
-          RLocal => BindLocal(local_h),
-          RUpval(slot) => BindUpval(local_h, slot),
-          RFbPrior(fb_h) => BindPrior(fb_h),
-          RGlobal => BindGlobal,
-        }
-      )
-      match res {
-        RLocal => LLocal(local_ty_handle(local_h, handle), name),
-        RUpval(slot) => LUpval(local_ty_handle(local_h, handle), slot),
-        RFbPrior(fb_h) => // (LF.B) a `<~` lambda param resolves to the feedback site's prior local,
-        // read LIVE — the recurrence's y[n-1] term IS this node.
-        LFeedbackPrior(fb_h),
-        RGlobal => // A NON-FN BINDING IN VALUE POSITION IS A REIFICATION, and until
-        // 2026-09-09 it was two silent wrongs. A constructor lowered to
-        // LMakeVariant(handle, tag, []) whatever its arity, so mapping a
-        // one-field constructor over a list checked with zero diagnostics
-        // and built payload-less variants that trapped `unreachable` in the
-        // match reading them; an op fell to the catch-all's LGlobal and emitted
-        // `(global.get $note)` for a global that never exists, so the
-        // ASSEMBLER was the first thing in the chain to object, hundreds of
-        // thousands of WAT lines from the name the developer wrote.
-        //
-        // The env proves the answer AT the reference — ConstructorScheme and
-        // EffectOpScheme are distinct tags written at the declaration — and
-        // the reification the developer was writing by hand is the medium's
-        // own hole-product: a bare name IS the parameter product with every
-        // field unsupplied (SYNTAX §«Partial application»), so it lowers
-        // through the SAME partial mint an authored hole already used, with
-        // no supplied args and no new mechanism. The callee shape is read live from the
-        // node's own program cell, never rebuilt from the matched Expr.
-        match env_kind_of(name) {
-          Some(ConstructorScheme(tag_id, _)) => match scheme_ref_fun_arity(name) {
-            None => // Not a function type: the reference IS the value — a nullary
-            // variant, the sentinel form emit already knows.
-            LMakeVariant(handle, tag_id, []),
-            Some(arity) => lower_call_partial(handle, graph_node_body(handle), handle, [], arity),
-          },
-          Some(EffectOpScheme(_, _, _, _)) => match scheme_ref_fun_arity(name) {
-            None => // An op's declared scheme is always a signature, zero-arg
-            // included, so a miss here is an unresolved judgment and the
-            // typed floor is the honest answer — lower_call_partial's own
-            // None path, reached with the arity the graph actually proved.
-            LInvariantFailure(handle, PartialCalleeShape(handle)),
-            Some(arity) => lower_call_partial(handle, graph_node_body(handle), handle, [], arity),
-          },
-          Some(FnScheme) => // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
-          // the PTee guard). ALWAYS the bare LGlobal — emit resolves it to the
-          // fn's static closure record; the fn's performs dispatch through the
-          // live world chain when the consumer (`each(f, xs)`) calls it.
-          LGlobal(handle, name),
-          Some(_) => // Found, some other kind (a value binding, a record) — the global read
-          // is the right projection.
-          LGlobal(handle, name),
-          None => // NOT FOUND. `_ => LGlobal(handle, name)` stood here and conflated
-          // these two: it guessed an unbound name into `(global.get $name)`,
-          // fabricating the one fact infer had just proved false. The guess is
-          // never reachable code — it is WAT no assembler accepts — so it did
-          // not "keep going"; it moved the medium's own precise, spanned
-          // E_MissingVariable to a wat2wasm error hundreds of thousands of
-          // lines away, about a symbol the developer never wrote.
-          LInvariantFailure(handle, MissingName(name)),
-        },
-      }
-    },
+    (res, local_h) => lower_resolved_ref(handle, name, res, local_h),
   },
   BinOpExpr(op, left, right) => // The boolean verbs are CONTROL, not arithmetic: `a && b` IS
   // `if a { b } else { false }`, `a || b` IS `if a { true } else { b }`.
@@ -2763,7 +2841,21 @@ fn lower_pipe(kind, left, right, handle) = match kind {
       handle,
       InstallOf(hname, node_handle(right), map(node_handle, config_args), arm_groups)
     )
-    LHandleWith(handle, lo_l, lo_r, hname, config_args |> map(lower_expr), arm_groups)
+    let config_inits = config_args |> map(lower_expr)
+    match projection_of(hname) {
+      PDerivative => // The reading replaces the install: no record, no world push. The
+      // seed is the reading's one config argument, and it keeps the lowered
+      // shape every read of it has (a local or a capture), which is how
+      // derive knows its uses.
+      {
+        derivative_demand_note()
+        match config_inits {
+          [seed, ..._] => LDerive(handle, seed, lo_l),
+          [] => LDerive(handle, LConst(handle, LFloat(0.0)), lo_l),
+        }
+      },
+      _ => LHandleWith(handle, lo_l, lo_r, hname, config_inits, arm_groups),
+    }
   },
   PFeedback => {
     // <~ feedback. The site's line is a ring owned by the record of the
@@ -3132,7 +3224,7 @@ fn threaded_handler_for(stack, ename: String) = if len(stack) == 0 {
   let below = drop_last(stack)
   if field_name_eq(stack_entry_name(e), "") {
     None
-  } else if handler_covers_effect(stack_entry_name(e), ename) {
+  } else if string_in_list(handler_arm_enames(stack_entry_name(e)), ename) {
     Some((stack_entry_name(e), below))
   } else {
     threaded_handler_for(below, ename)
@@ -3821,7 +3913,15 @@ fn lower_stmt_body(s, handle, span) = match s {
     // the arm-name groups for its fence live (handler_decl_of) — order-free
     // with no pre-register pass. Here we only lower the arms to their
     // `op_<handler>_<op>` fn declarations.
-    let arm_decls = lower_handler_arms_as_decls(arms, name, config, state)
+    //
+    // A PROJECTION's arms are not lowered: an install of it builds no
+    // record, so nothing could ever call them. The derivative reading's arm
+    // states what `d(v)` means and derive reads that meaning as a rewrite; its
+    // body names a primitive with no forward lowering on purpose.
+    let arm_decls = match projection_of(name) {
+      PDerivative => [],
+      _ => lower_handler_arms_as_decls(arms, name, config, state),
+    }
     LBlock(handle, list_concat(arm_decls, [LConst(handle, LInt(0))]))
   },
   ImportStmt(_module) => LConst(handle, LInt(0)),
@@ -5190,6 +5290,9 @@ fn k2_floor_guard(e, terminus) = match e {
     )
     if has_driver || terminus { rebuilt } else { k2_floor_wrap(h, rebuilt) }
   },
+  LDerive(h, seed, b) => // The derivative reading brackets nothing: its body's value lands where
+  // the reading's own does, so the terminus passes straight through.
+  LDerive(h, seed, k2_floor_guard(b, terminus)),
   LReturn(h, inner) => LReturn(h, k2_floor_guard(inner, true)),
   LCall(h, f, args) => // The k2 call-boundary rides EVERY can-yield non-tail call (the carrier
   // was LSuspend when evidence-threaded calls were a separate node; bare
@@ -6089,6 +6192,7 @@ fn low_refs(acc, expr) = match expr {
   LDirectCall(_h, fh, n, _t, args) => low_refs_list([RefSite(fh, n)] ++ acc, args),
   LPerform(_h, disp, args) => low_refs_list(perform_target_refs(acc, disp), args),
   LHandleWith(ih, b, hn, hname, inits, arm_names) => low_refs_list(low_refs(low_refs(init_refs(arm_refs(acc, ih, arm_names), ih, hname), b), hn), inits),
+  LDerive(_h, seed, b) => low_refs(low_refs(acc, b), seed),
   LLet(_h, _n, inner) => low_refs(acc, inner),
   LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps) => low_refs_list(low_refs_list(acc, body), caps),
   LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps, _, _) => low_refs_list(low_refs_list(acc, body), caps),
@@ -6136,11 +6240,23 @@ fn low_refs(acc, expr) = match expr {
 }
 
 // The lowered expressions a node holds, a nested fn's body included, so a
-// fold over them reaches every site the node's emission reaches. A match
-// gives its arms' bodies (a pattern is a `LowPat`, read by the walk that asks
-// about patterns); an install gives its body, its handler expression and its
-// state inits, its arms being records of their own.
+// fold over them reaches every site the node's emission reaches: a node that
+// mints a function adds that function's body — a record's own frame, which is
+// why `frame_children` stops at it — and every other node holds exactly its
+// frame's children.
 fn low_children(expr) = match expr {
+  LMakeClosure(_, LFn(_, _, _, body, _, _, _), caps) => caps ++ body,
+  LMakeContinuation(_, LFn(_, _, _, body, _, _, _), caps, _, _) => caps ++ body,
+  LDeclareFn(LFn(_, _, _, body, _, _, _)) => body,
+  other => frame_children(other),
+}
+
+// The expressions one node evaluates in its OWN frame — the one enumeration
+// of the constructors' children. A match gives its arms' bodies (a pattern is
+// a `LowPat`, read by the walk that asks about patterns); an install gives its
+// body, its handler expression and its state inits, its arms being records of
+// their own; a minted function's body belongs to its record.
+fn frame_children(expr) = match expr {
   LConst(_, _) => [],
   LLocal(_, _) => [],
   LGlobal(_, _) => [],
@@ -6152,11 +6268,11 @@ fn low_children(expr) = match expr {
   LTailCall(_, f, args) => [f] ++ args,
   LDirectCall(_, _, _, _, args) => args,
   LReturn(_, x) => [x],
-  LMakeClosure(_, LFn(_, _, _, body, _, _, _), caps) => caps ++ body,
+  LMakeClosure(_, _, caps) => caps,
   LYield(_, _, args, k) => args ++ [k],
   LKExtend(_, k) => [k],
-  LMakeContinuation(_, LFn(_, _, _, body, _, _, _), caps, _, _) => caps ++ body,
-  LDeclareFn(LFn(_, _, _, body, _, _, _)) => body,
+  LMakeContinuation(_, _, caps, _, _) => caps,
+  LDeclareFn(_) => [],
   LIf(_, c, t, e) => [c] ++ t ++ e,
   LBlock(_, stmts) => stmts,
   LMakeList(_, es) => es,
@@ -6167,6 +6283,7 @@ fn low_children(expr) = match expr {
   LMatch(_, s, arms) => [s] ++ map(match_arm_body, arms),
   LResumeK(_, k, v) => [k, v],
   LHandleWith(_, b, hn, _, inits, _) => [b, hn] ++ inits,
+  LDerive(_, seed, b) => [seed, b],
   LFeedback(_, _, _, b, s) => [b, s],
   LFeedbackPrior(_) => [],
   LPerform(_, _, args) => args,
@@ -6420,6 +6537,7 @@ fn reach_nested_names(d, acc) = match d {
   LLet(_h, _n, inner) => reach_nested_names(inner, acc),
   LIf(_h, _c, t, e) => reach_nested_names_list(e, reach_nested_names_list(t, acc)),
   LHandleWith(_h, b, _hn, _hname, _inits, _an) => reach_nested_names(b, acc),
+  LDerive(_h, _seed, b) => reach_nested_names(b, acc),
   _ => acc,
 }
 
@@ -7171,6 +7289,20 @@ fn handler_may_key(hname) = match env_lookup(hname) {
 fn spec_global_name(h, name: String) = {
   let enc = twin_site_key(h, name).enc
   if spec_enc_is_floor(enc) { name } else { spec_mangle(name, enc) }
+}
+
+// The symbol a reference names under the active bracket: the site's key
+// projected, redirected ONLY when the demand analysis minted that twin —
+// a wide key with no twin stays at the floor, which the word protocol
+// keeps correct for plumbing. The exists fast-path keeps a twin-free
+// module (every all-word program, Law 7) at one op per reference. Every
+// reference surface the emit writes and the derivative reading's own
+// callee resolution read this one projection.
+fn spec_target_name(h, name: String) = if !spec_twins_exist() {
+  name
+} else {
+  let m = spec_global_name(h, name)
+  if m == name { name } else if spec_twin_known(m) { m } else { name }
 }
 
 // The wide runtime family a twin's emission can mint that its floor did not

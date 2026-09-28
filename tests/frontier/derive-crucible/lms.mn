@@ -1,0 +1,77 @@
+// lms.mn — the adaptive crucible's filter, with the gradient asked for
+// instead of written.
+//
+// tests/frontier/adaptive-crucible/adaptive-demo.mn learns an unknown
+// channel [2, 1] with the LMS rule w += mu·e·x, which is a hand-derived
+// gradient step on the squared residual. Here the step is the calculus it
+// abbreviates: each tap moves against the slope of e² with respect to that
+// tap, asked of the SAME chain the filter runs,
+//
+//   w0 − (mu / 2) · d(e · e)   under   ~> grad(w0)
+//
+// and d(e·e)/dw0 = −2·e·x0, so the step is w0 + mu·e·x0 — the LMS rule,
+// derived rather than transcribed. The reading changes nothing the filter
+// computes, so the residual power is accumulated exactly as the crucible
+// accumulates it.
+//
+// The verdict is the crucible's own, cross-validated by
+// tests/frontier/adaptive-crucible/oracle.py: taps converge to (2, 1) and the
+// residual power drops by at least 1e6. The derived step rounds in a
+// different order from the hand-written one (fl(0.1)·(2·e·x0) against
+// (fl(0.2)·e)·x0), so the trajectories agree to rounding and the rounded
+// verdict facts agree exactly.
+//
+// EXIT 42 iff round(w0)==2 and round(w1)==1 and the power drops by 1e6;
+// otherwise 10 = tap0, 11 = tap1, 12 = power drop.
+fn lcg_next(s: Int) with Pure = (75 * s + 74) % 65537
+
+fn gen_ref(out, s: Int, i: Int, n: Int) = if i >= n {
+  out
+} else {
+  let s2 = lcg_next(s)
+  gen_ref(list_set(out, i, float_of_int(s2) / 32768.0 - 1.0), s2, i + 1, n)
+}
+
+fn ref_at(refs, i: Int) = if i < 0 { 0.0 } else { refs[i] }
+
+// The squared residual's slope with respect to one tap: the same estimate the
+// filter forms, asked of under the reading seeded at that tap.
+fn slope_w0(w0: Float, w1: Float, x0: Float, x1: Float, want: Float) -> Float = {
+  let e = want - (w0 * x0 + w1 * x1)
+  d(e * e)
+} ~> grad(w0)
+
+fn slope_w1(w0: Float, w1: Float, x0: Float, x1: Float, want: Float) -> Float = {
+  let e = want - (w0 * x0 + w1 * x1)
+  d(e * e)
+} ~> grad(w1)
+
+fn lms_loop(refs, w0: Float, w1: Float, i: Int, n: Int, k: Int, ip: Float, fp: Float, mu: Float) = if i >= n {
+  (w0, w1, ip, fp)
+} else {
+  let x0 = ref_at(refs, i)
+  let x1 = ref_at(refs, i - 1)
+  let want = 2.0 * x0 + 1.0 * x1
+  let e = want - (w0 * x0 + w1 * x1)
+  let ip2 = if i < k { ip + e * e } else { ip }
+  let fp2 = if i >= n - k { fp + e * e } else { fp }
+  let g0 = slope_w0(w0, w1, x0, x1, want)
+  let g1 = slope_w1(w0, w1, x0, x1, want)
+  lms_loop(refs, w0 - 0.5 * mu * g0, w1 - 0.5 * mu * g1, i + 1, n, k, ip2, fp2, mu)
+}
+
+fn round_pos(v: Float) with Pure = float_to_int(v + 0.5)
+
+fn main() = {
+  let n = 2000
+  let k = 100
+  let refs = gen_ref(make_list(n), 1, 0, n)
+  match lms_loop(refs, 0.0, 0.0, 0, n, k, 0.0, 0.0, 0.2) {
+    (w0, w1, ip, fp) => {
+      let rw0 = round_pos(w0)
+      let rw1 = round_pos(w1)
+      let drop = fp * 1000000.0 < ip
+      if rw0 != 2 { 10 } else if rw1 != 1 { 11 } else if drop { 42 } else { 12 }
+    },
+  }
+}

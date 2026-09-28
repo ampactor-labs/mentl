@@ -35,6 +35,84 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-28 · pin 0976f1d7da263d74 (TRANSITION m3 == m4) · A CHAIN IS DIFFERENTIATED BY READING IT, AND THE READING CHANGES NOTHING IT READS.
+  L4a of the Pulse sprint, `Hβ.lower.ad-is-a-demanded-projection` in
+  forward mode. lib/ml/grad.mn declares the surface — `effect Derivative {
+  d(v: Float) -> t }` and `handler grad(w)` — so `(w - rate * d(loss(w,
+  xs))) ~> grad(w)` is a training step: the body evaluates as it does
+  without the install, and `d(v)` asks ∂v/∂w. Lower classes every install
+  through ONE roster (`type Projection = PDispatch | PSchedule(Schedule) |
+  PDerivative`, `projection_of`, which the Schedule read now shares instead
+  of its own if-chain) and lowers a derivative install to `LDerive(h, seed,
+  body)`: no record, no world push, the projection's arms never lowered.
+  src/derive.mn runs inside `plan_reached`, after the spec twins and before
+  the signatures publish, and expands each `LDerive` into the body's JVP —
+  every primal node kept in order, tangents over a closed vocabulary,
+  activity a three-point lattice whose refusal fires where a lost tangent
+  is consumed. A function the active computation calls directly gets a JVP
+  twin keyed by its Float parameters' activity, returning its tangent
+  through the per-instance f64 register `$__dt`; a `<~` line inside a twin
+  ticks a tangent ring beside its base line (`LhStaticJvp`, zeroed at the
+  reading's entry). `tangent_of` is the primitive the arm names; a call the
+  lowering reaches refuses (`E_DerivativeUnreachable`, armed at birth, which
+  every lost-tangent query raises too). lib/ml/autodiff.mn's tape is
+  deleted.
+  On the way: a parameter named like an effect op was lowered as that op —
+  the compiler's own `jvp_pair`, whose parameter `result` shadows the
+  prelude's `Iterate` op, aborted its first derivative through a twin — so
+  a call's callee is resolved once and the resolution decides
+  (`lower_call_dispatch` → `lower_global_call` / `lower_call_of`, the VarRef
+  read factored into `lower_resolved_ref`), which also removed the second
+  resolution every call had paid; the parameter is renamed so the
+  boot-compiled m2 does not depend on its successor's fix. derive.mn's own
+  copy of the forty-constructor children list folded into lower.mn's
+  (`frame_children` is the one enumeration, `low_children` adds a minted
+  function's body). The quiet gate refused the first repin at 766 authored
+  `ref` markers against 708: the new stage carried 58 on parameters the
+  inference grades as borrows by itself, and all 58 were deleted with the
+  wheel judged clean (`Hβ.own.redundant-marker-has-no-verb` — a verb should
+  have done it); `jvp_slots`' `acc ++ [x]` index recursion became one
+  flat_map over the parameters.
+  **Kills.** (1) "The new dispatch check costs the 3.7 MB the new compiler
+  adds at lowering's end on the unchanged source" — the single-resolution
+  form measured 0.11 MB of it; the rest was the projection roster
+  rebuilding a handler's arm groups five times per install (3.48 MB, now
+  one pass over the arms, `handler_arm_enames`, which the thread race rule
+  reads too). (2) "The library can state the arm's meaning with
+  `tangent_of`" — the boot compiles the library as part of the wheel and
+  knows no such name, so m2 refused; the stage never reads the arm, so for
+  one landing the library states the answer's type
+  (`Hβ.derive.arm-states-its-meaning`). (3) "A user's top-level `fn f`
+  breaks the forward-identity fixture through the reading" — it breaks the
+  prelude's `fold` on the boot as well: lowering resolves a call's argument
+  product by the callee's name in the module env, so a handler's config `f`
+  meets the user's `fn f(x)` and a false arity refusal lands inside the
+  library (`Hβ.lower.callee-resolved-by-name-in-the-module-env`, its
+  argument and partial faces open; the fixture's function renamed).
+  **Found, preempting the queue:** every ordinary install allocates and no
+  row says so — `!Alloc` accepts `(ask(w) + 1.0) ~> scaled(w)` while the
+  heap grows 48 bytes per call, 40 for a stateless or a stateful handler
+  (`Hβ.effects.install-allocates-unrowed`, the next landing). The design
+  record's "`E_EffectMismatch` refuses `!Alloc` at the install site" is
+  retracted with it.
+  **Fixtures, each RED on boot 51f332d7.** mn-derive-forward-identity (42),
+  mn-derive-feedback (30), mn-derive-train-alloc-free (40),
+  mn-derive-lost-refuses (refuses E_DerivativeUnreachable; the boot refuses
+  with another class), mn-param-shadows-op (did not assemble → 7),
+  mn-autodiff (6); the frontier's derive-shape (46 on the boot → 42, and 28
+  when the drive slope is checked against the flux difference) and
+  derive-lms (10 on the boot → 42, and a divergence trap with the step's
+  sign flipped).
+  **Cost.** The peak ceiling rose 775,000 → 800,000 KB with the fixed-input
+  record in tools/verify-baseline.txt: on the unchanged source the new
+  compiler's heap sits within 0.22 MB of the boot's at every mark, and the
+  rise is the new source — 2,091 lines, +47.8 MB when the module is
+  written, about twice the wheel's mass per line.
+  **Measured at the pin:** m3 leg 9.19 s wall · 762 MB peak RSS (780,416
+  KB), m4 leg 9.01 s · 769 MB (787,500 KB) · 412,914 WAT lines, m3 == m4,
+  census 0 · micros 209/209 through m2 before the march · frontier 442 pass
+  / 0 red / 1 expected-red · crown, proof-exactness, effect-identity green.
+
 - 2026-09-28 · pin 51f332d71a7baae1 (CLEAN m2 == m3) · MODULE SCOPE IS A FRAME, AND A MODULE BINDING IS WHAT IT IS.
   R0f, `Hβ.lower.module-scope-has-no-frame`, which R0″'s settle audit
   found. A module value let's init was lowered with no frame, so every fact

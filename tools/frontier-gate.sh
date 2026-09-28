@@ -142,6 +142,16 @@ MATH_RTLIBS=(
   "$ROOT/lib/math.mn"
 )
 
+# The derivative-reading lib set (L4a, 2026-09-28): the signal set plus the
+# spectral distortion scene 1 renders and lib/ml/grad.mn's `Derivative` /
+# `grad`, so the crucibles differentiate the library's own stages rather than
+# copies of them.
+DERIVE_RTLIBS=(
+  "${SIGNAL_RTLIBS[@]}"
+  "$ROOT/lib/dsp/spectral.mn"
+  "$ROOT/lib/ml/grad.mn"
+)
+
 total_pass=0
 total_fail=0
 # Declared standing failures (frontier_expected_red) — not reds. See judge().
@@ -309,6 +319,8 @@ run_program() {
       run_flags=(--dir "$dir::/tmp") ;;
     math)
       cat "${MATH_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+    derive)
+      cat "${DERIVE_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
     *)
       wt_run "$compiler" < "$source" > "$wat" 2> "$cerr" ;;
   esac
@@ -335,6 +347,9 @@ run_program() {
   elif [ "$link_runtime" = math ]; then
     comm -23 "$normalized" "$MATH_SHADOW" > "$unexpected"
     shadow="; inherited-shadow=$(wc -l < "$MATH_SHADOW")"
+  elif [ "$link_runtime" = derive ]; then
+    comm -23 "$normalized" "$DERIVE_SHADOW" > "$unexpected"
+    shadow="; inherited-shadow=$(wc -l < "$DERIVE_SHADOW")"
   else
     cp "$normalized" "$unexpected"
   fi
@@ -919,6 +934,24 @@ capture_math_shadow() {
   pass "math shadow captured ($(wc -l < "$MATH_SHADOW") inherited errors)"
 }
 
+# The DERIVE shadow — the derivative crucibles' link set with an empty main,
+# so a crucible may only add refusals its libraries do not already carry.
+capture_derive_shadow() {
+  local compiler="$1" dir="$2"
+  local wat="$dir/derive-shadow.wat" err="$dir/derive-shadow.err"
+
+  { cat "${DERIVE_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
+    | wt_run "$compiler" > "$wat" 2> "$err"
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    fail "derive shadow compile (exit=$rc; see $err)"
+    return 1
+  fi
+  DERIVE_SHADOW="$dir/derive-shadow.normalized"
+  normalize_errors "$err" > "$DERIVE_SHADOW"
+  pass "derive shadow captured ($(wc -l < "$DERIVE_SHADOW") inherited errors)"
+}
+
 # A generic on-disk DATA VALIDATOR + a LIVE oracle cross-check. Mentl reads a
 # committed fixture (copied to /tmp), computes discrete facts over it, and
 # asserts exit 42; then the SAME on-disk bytes are run through a python oracle
@@ -1387,6 +1420,20 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/ml-crucible/ml-demo.mn" 42 math "$dir"
   run_program "$compiler" adaptive-crucible \
     "$ROOT/tests/frontier/adaptive-crucible/adaptive-demo.mn" 42 math "$dir"
+  # The derivative reading (L4a, 2026-09-28), against oracles it cannot share
+  # a mistake with. derive-shape: the slope of scene 1's distortion
+  # (spectral.mn's adaptive_shape) in the drive and in the flux, by two
+  # readings, against the central difference of the same function at 18
+  # points over all three crossfade regimes — 42 iff all 36 agree to 1e-6.
+  # derive-lms: the adaptive crucible's LMS filter with its hand-derived step
+  # replaced by `d(e * e)`, judged by the crucible's own oracle facts. Both
+  # RED on boot 51f332d7 (46 and 10: the install ran as an ordinary handler
+  # and `d` answered the seed).
+  capture_derive_shadow "$compiler" "$dir" || continue
+  run_program "$compiler" derive-shape \
+    "$ROOT/tests/frontier/derive-crucible/shape.mn" 42 derive "$dir"
+  run_program "$compiler" derive-lms \
+    "$ROOT/tests/frontier/derive-crucible/lms.mn" 42 derive "$dir"
   run_program "$compiler" scheduled-int \
     "$ROOT/tests/frontier/mn-scheduled-fanout-int.mn" 60 yes "$dir"
   run_program "$compiler" scheduled-float \

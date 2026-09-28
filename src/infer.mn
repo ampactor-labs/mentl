@@ -868,6 +868,12 @@ fn cl_op_names(ref ops, i, acc) = if i >= len(ops) {
 // var an untyped float_of_int leaves cannot force `float_of_int(n) * x` to
 // Float, so the product's other operand floors to i32. Registered before
 // pre_register so every module sees them; pure, monomorphic.
+//
+// `tangent_of(v, w)` is the tangent of v in the shape of the seed w — what
+// `d(v)` means under `~> grad(w)` (lib/ml/grad.mn). Its meaning exists
+// only inside the derivative reading, so it has a type and no forward
+// lowering: the one arm that writes it is read as a rewrite and never
+// lowered, and a call anywhere else refuses at lower.
 fn register_primitives() = {
   env_extend(
     "float_of_int",
@@ -879,6 +885,16 @@ fn register_primitives() = {
     "float_to_int",
     Frozen([], TFun([mk_param("_", TFloat)], TInt, mk_ef_pure())),
     Declared("float_to_int"),
+    FnScheme
+  )
+  let seed_shape = mint(Inferred("the seed's shape"))
+  env_extend(
+    "tangent_of",
+    Frozen(
+      [seed_shape],
+      TFun([mk_param("_", TFloat), mk_param("_", TVar(seed_shape))], TVar(seed_shape), mk_ef_pure())
+    ),
+    Declared("tangent_of"),
     FnScheme
   )
 }

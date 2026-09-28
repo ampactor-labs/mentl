@@ -1323,6 +1323,31 @@ and this is the STATE.
   function; value bindings carry `ValueScheme`. Each of the five shapes
   checked clean on boot 2d18aedd and either refused or did not assemble;
   each now runs to the value its source computes.
+- **A CHAIN IS DIFFERENTIATED BY READING IT — FORWARD MODE LANDED
+  2026-09-28 (L4a, pin 0976f1d7da263d74).** `(w - rate * d(loss(w, xs))) ~>
+  grad(w)` is a training step (lib/ml/grad.mn): the body evaluates as it
+  does without the install, and `d(v)` is ∂v/∂w. Every install is classed
+  by ONE roster, read off the effects its handler answers (`type Projection
+  = PDispatch | PSchedule(Schedule) | PDerivative`); a derivative install
+  builds no record and lowers to `LDerive`, which src/derive.mn expands at
+  emit's settle point into the body's JVP beside the forward program — no
+  tape, no second copy of the chain. Directly-called functions get JVP
+  twins, a `<~` line carries its tangent as a ring of its own, and a lost
+  tangent refuses where `d` consumes it (`E_DerivativeUnreachable`, armed),
+  never answering zero. The receipts are against oracles the reading
+  cannot share a mistake with: scene 1's distortion slope in the drive and
+  in the flux against the finite difference of the same function at 18
+  points, the adaptive crucible's LMS rule re-derived as `d(e * e)` and
+  judged by its own oracle, dy3/da through a `<~` line, forward identity
+  over a sweep, and a `!Alloc` training step whose heap does not move. What
+  it exposed: a parameter named like an effect op was lowered as that op
+  (the compiler's own `jvp_pair`; the callee is resolved once now), and
+  the same name-keyed read still resolves a call's argument product and a
+  partial's callee (`Hβ.lower.callee-resolved-by-name-in-the-module-env`).
+  And one soundness hole, preempting the queue: an ordinary install
+  allocates and no row says so, so `!Alloc` accepts every `~>` it wraps
+  (`Hβ.effects.install-allocates-unrowed`). Open: closures and handler
+  arms under the reading (L4a′), reverse mode by cost (L4b).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

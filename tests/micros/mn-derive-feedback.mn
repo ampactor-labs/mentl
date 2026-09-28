@@ -1,0 +1,36 @@
+// expect: 30
+// The derivative reading through a `<~` line: the tangent of a recurrence is
+// itself a recurrence, so a sensitivity to the seed that builds up over three
+// ticks reads out of the line's tangent ring, not out of a tape of the run.
+//
+// y[n] = a·y[n−1] + x[n] over x = 1, 2, 3 at a = 0.5, from a line at rest:
+//   y1 = 1        dy1/da = y0 + a·dy0 = 0
+//   y2 = 2.5      dy2/da = y1 + a·dy1 = 1
+//   y3 = 4.25     dy3/da = y2 + a·dy2 = 3
+// so the reading answers 3.0 and the program exits 30. The line is the
+// program's, not the reading's: the tick after the extent continues from
+// y3 (a·4.25 + 4 = 6.125), so the state the reading advanced is the one the
+// forward program reads next.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn step(x: Float, a: Float) -> Float = ((prev) => a * prev + x) <~ delay(1)
+
+fn main() -> Int = {
+  let a = 0.5
+  let slope = {
+    let y1 = step(1.0, a)
+    let y2 = step(2.0, a)
+    d(step(3.0, a))
+  } ~> grad(a)
+  let y4 = step(4.0, a)
+  if y4 == 6.125 { float_to_int(slope * 10.0) } else { 99 }
+}

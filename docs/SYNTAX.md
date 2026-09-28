@@ -721,6 +721,8 @@ Same node, same scope, either way.
 
 **Type rule:** `row(expr ~> h) = row(expr) - handled(h) + row(h)`. The handler subtracts what it absorbs; anything its arms perform is added.
 
+*The rule is one term short, measured 2026-09-28: an ordinary install allocates its record, and nothing in the row says so, so `with !Alloc` accepts `(ask(w) + 1.0) ~> scaled(w)` while every call grows the heap. The missing term is the install's own cost, a fact of its class — a dispatched install allocates, a derivative reading does not (`Hβ.effects.install-allocates-unrowed`).*
+
 **`~>` governs the topology to its left — including a `><` / `<|` fanout.** Because
 `~>` is the loosest operator, a `Schedule` handler at the foot of a chain governs
 every fanout in the body: `(a |> f) >< (b |> g) ~> Thread` runs both branches
@@ -730,6 +732,31 @@ strategy LIVE from this install edge (§`><`) — adding `~> Thread`, swapping i
 `~> Simd`, or installing `~> persist(...)` over a multi-shot branch is the entire
 diff between sequential, parallel, lane-packed, and crash-surviving. The schedule
 is a fact in the `~>` edge, never baked into the verb.
+
+**A derivative reading is the other projection an install can be** (real,
+2026-09-28, forward mode). `(body) ~> grad(w)` — lib/ml/grad.mn's `Derivative`
+effect and its `grad` handler — evaluates `body` exactly as it evaluates without
+the install, and lets it ask `d(v)`: the partial derivative of `v` with respect to
+the seed `w`, every other free variable of the extent held fixed.
+
+```
+fn train_step(w: Float, x: Float, want: Float) with !Alloc =
+  w - 0.05 * ({ let e = want - w * x; d(e * e) } ~> grad(w))
+```
+
+Like a schedule, the install is recognized by the effect its handler answers,
+and it builds no record, pushes no world and never calls its arm: the lowering
+derives the derivative program from the body's own graph and emits it beside the
+forward one, so there is no tape and no second copy of the chain to fall out of
+step, and the step above leaves the heap where it found it. The seed is a Float
+variable in scope. State that lives past the extent — a `<~` line, a handler's
+state — enters it held fixed, and a `<~` line inside the extent carries its
+tangent as a recurrence of its own. What the reading cannot carry, it refuses: `d`
+of a value whose tangent was lost — through a call to a function value, a
+perform, an aggregate, a line ticked by forward code, another `d` — is
+`E_DerivativeUnreachable` at the query, naming where it was lost, never a slope
+of zero. A `d` outside every reading leaves `Derivative` unhandled at the root.
+Reverse mode, chosen by cost, is `Hβ.derive.transpose`.
 
 ### `<~` — feedback (cycle closure)
 
@@ -2320,6 +2347,7 @@ token, so there is nothing to lift.*
 | `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident — the bump heap never frees — so it is a use-after-free the day §5.O layer 3's arena gives `Consume` a real reclaim | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
 | `E_HandlerUninstallable` | handler arms need effects context disallows | `MaybeIncorrect`   | widen ambient row or restructure handler       |
 | `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame writes its state (`resume … with`), lies beyond the frame fence, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
+| `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — through a call to a function value, a perform, an aggregate, a line ticked by forward code, or another `d` — or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED at birth: the alternative is a slope of zero the program never has | `Unspecified` | carry the value through direct calls to the functions that compute it, or seed the reading at a Float variable |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |
 | `E_ImportNameCollision` | two selective imports bind the same name    | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
 | `E_MissingImport`     | a name resolves only because the whole link carries it: declared at module level in a module the referencing module never imports, directly or transitively (the prelude's closure is ambient — the driver links it into every compile). ARMED at birth, 2026-09-27: the per-module solo sweep as one read of the one judgment, naming both modules at the reference | `MaybeIncorrect` | add `import <declaring module>` to the referencing module |

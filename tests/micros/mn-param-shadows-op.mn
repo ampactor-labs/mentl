@@ -1,0 +1,12 @@
+// expect: 7
+// A parameter named like an effect op is the parameter where it is called.
+// `result` below is `apply`'s own argument, and the judgment resolves the
+// call to it; the lowering resolved the name against the module env instead
+// and emitted a perform of the prelude's `Iterate` op `result`, which no
+// handler serves here, so the program checked clean and aborted at run
+// time. Found in the compiler's own source (src/derive.mn's `jvp_pair`,
+// whose parameter `result` shadows the same op) on 2026-09-28, measured on
+// boot 51f332d7.
+fn apply(result, x: Int) -> Int = result(x)
+
+fn main() -> Int = apply({ n => n + 2 }, 5)

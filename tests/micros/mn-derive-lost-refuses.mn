@@ -1,0 +1,25 @@
+// expect: refuse E_DerivativeUnreachable
+// A derivative the reading cannot carry refuses rather than answer zero.
+// `apply` calls its callback through a closure the reading did not mint, so
+// the active argument's tangent stops at that call (the callback's own
+// derivative program was never demanded), and `d` of the result asks for a
+// tangent that is gone. Answering 0 would be a slope the program never has;
+// the refusal names where the tangent was lost. The closure form is
+// Hβ.derive.closure-twins.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn apply(f, x) = f(x)
+
+fn main() -> Int = {
+  let x = 3.0
+  float_to_int(d(apply({ v => v * v }, x)) ~> grad(x))
+}

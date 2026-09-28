@@ -1,0 +1,36 @@
+// expect: 40
+// A training step that allocates nothing, proven by its row and measured on
+// its heap. `train_step` declares `!Alloc` and differentiates its own loss:
+// the reading builds no record and pushes no world, and the derivative
+// program it emits holds its tangents in locals, so a thousand steps leave
+// the heap line where it started.
+//
+// The loss is (6 − 2w)², its slope −4(6 − 2w), and the step w − 0.05·slope
+// is 0.6w + 1.2, whose fixed point is w = 3.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn train_step(w: Float, x: Float, want: Float) with !Alloc = {
+  let slope = {
+    let e = want - w * x
+    d(e * e)
+  } ~> grad(w)
+  w - 0.05 * slope
+}
+
+fn train(w: Float, i: Int) -> Float = if i == 0 { w } else { train(train_step(w, 2.0, 6.0), i - 1) }
+
+fn main() -> Int = {
+  let before = heap_mark()
+  let w = train(0.0, 1000)
+  let grown = heap_mark() - before
+  if grown == 0 && float_to_int(w + 0.5) == 3 { 40 } else { 41 }
+}

@@ -1,0 +1,34 @@
+// The derivative reading: `(e) ~> grad(w)` evaluates its body exactly as the
+// body evaluates on its own, and lets the extent ask how anything it computes
+// changes with the seed.
+//
+// `d(v)` is ∂v/∂w — the partial derivative, every other free variable of
+// the extent held fixed. A training step reads as the calculus it is:
+//
+//   (w - rate * d(loss(w, xs))) ~> grad(w)
+//
+// The medium derives the derivative program from the chain's own graph and
+// emits it beside the forward one: no tape records the run, no operator is
+// overloaded, and no second copy of the chain exists to fall out of step.
+// The extent is what is differentiated. State that lives past it — a `<~`
+// line, a handler's state — enters held fixed and is differentiated from
+// the moment the reading opens, so where the install stands in the source
+// is where the derivative starts.
+//
+// A `d` outside every reading leaves `Derivative` unhandled at the root, so
+// the effect row is the proof that every question has a reading.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+// The reading's install. Installing `grad` builds no record and pushes no
+// world: the projection replaces the install, so the arm is never called,
+// and the reading answers every op of `Derivative` with its argument's
+// tangent (the query rule in src/derive.mn) without reading the arm at all.
+// What the arm's body fixes is the answer's TYPE — shaped like the seed.
+// It says `resume(w)` rather than `resume(tangent_of(v, w))` because the
+// pinned boot that compiles this library as part of the wheel registers no
+// `tangent_of`; the arm states the meaning once the boot does.
+handler grad(w) {
+  d(v) => resume(w),
+}

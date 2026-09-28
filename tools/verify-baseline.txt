@@ -1094,4 +1094,23 @@ authored_ref_max: 708
 # 761,252–766,488 KB (m3 legs) and 723,768 KB (m4 leg, the binary that
 # becomes the boot: 2,168,067 bytes where the prior boot was 3,137,880).
 # Same rule: ~1% over the highest reading.
-selfcompile_peak_kb_max: 775000
+# RAISED 775,000 -> 800,000 at L4a (2026-09-28): the derivative reading
+# enters the wheel (src/derive.mn; the wheel's input grew 64,994 -> 67,085
+# lines). Fixed input first: the boot (51f332d7) compiled its own source at
+# 733,792–742,512 KB (four runs); the new compiler on that SAME source reads
+# 739,512–739,816 KB, and its heap sits within 0.22 MB of the boot's at every
+# mark (the judgment 341.18 MB both; lowering's end 548.46 against 548.25;
+# the module written 645.08 against 644.86), so the machinery is not the
+# cost. The boot on the NEW source reads 781,188–785,668 KB — the source is
+# the cost: the judgment's high-water +16.4 MB, lowering's end +34.5 MB, the
+# written module +47.8 MB for 2,091 lines, about twice the wheel's mass per
+# line (derive.mn is walkers over the forty LowExpr constructors, each an
+# explicit enumeration). The new compiler on the new source reads
+# 785,932–790,728 KB. Two measurements put this landing's machinery back in
+# the boot's band before the source was charged: the projection roster
+# rebuilt a handler's arm groups five times per install (+3.48 MB at
+# lowering's end on the unchanged source; now one pass over the arms), and
+# the call dispatch resolved each callee name twice (+0.11 MB; now once).
+# Same rule: ~1% over the highest reading (the first march's m3 leg,
+# 792,076 KB, before either fix).
+selfcompile_peak_kb_max: 800000

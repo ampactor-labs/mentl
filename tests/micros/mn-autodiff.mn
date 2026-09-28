@@ -1,45 +1,24 @@
 // expect: 6
-// mn-autodiff — W25 gate: AUTODIFF AS AN ALGEBRAIC EFFECT.
+// mn-autodiff — the derivative reading, the smallest witness.
 //
-// d/dx of x^2 at x=3 = 2·x = 6. The forward pass PERFORMS Compute (square
-// records x on the handler's tape and resumes x·x); the backward pass reads
-// the tape and returns the gradient 2·x·upstream. The differentiation is a
-// HANDLER over a Compute effect — the forward op computes AND records, the
-// reverse pass folds the tape. This is the autodiff topology of lib/ml/autodiff.mn
-// (the real lib uses [Float] tensors + a multi-op tape; this gate uses an Int
-// scalar so the SEED can run it — the float tensor gradient is STEP 1's
-// separate representation gap, not the autodiff substrate).
+// d(x·x)/dx at x = 3 is 2·x = 6. The body evaluates `x * x` once; `d` asks
+// how it changes with the seed, and the medium answers from the derivative
+// program it derived from this chain — there is no tape and no hand-written
+// backward pass. The declarations are lib/ml/grad.mn's, repeated here
+// because a micro links nothing: the reading is recognized by the effect it
+// answers (`Derivative`), the way a schedule is recognized by `Thread`.
 //
-// THE GENERATIVE FORM (peer Hβ.ml.autodiff-as-multishot): the tape is a
-// re-derivation of what multi-shot already captures — each forward op's
-// continuation IS the resumable backward point. The unsurpassable handler
-// captures the forward continuations (W07) and resumes them in reverse, no
-// explicit tape, persistable by memcpy (W08) — surpassing JAX/PyTorch's
-// host-language tape. This gate proves the RUNNABLE effect/handler topology
-// the multishot form deepens.
-//
-// Run: tools/run-micro.sh tests/micros/mn-autodiff.mn 6
-// Expected exit 6: square(3)=9 records x=3; backward 2·3·1 = 6.
-
-effect Compute {
-  square(x: Int) -> Int
-  get_tape() -> Int
+// RED on the prior boot: the primitive the arm names did not exist and the
+// install lowered as an ordinary handler.
+effect Derivative {
+  d(v: Float) -> t
 }
 
-// The forward handler: square computes x·x AND records x; get_tape reads it.
-handler compute_tape with recorded = 0 {
-  square(x) => resume(x * x) with recorded = x,
-  get_tape() => resume(recorded),
-}
-
-fn backward_square(x, upstream) = 2 * x * upstream
-
-fn forward() -> Int with Compute = {
-  let y = square(3)        // forward: 9, records x=3 on the tape
-  let x = get_tape()       // read the recorded input
-  backward_square(x, 1)    // backward: 2·3·1 = 6
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
 }
 
 fn main() -> Int = {
-  { forward() } ~> compute_tape
+  let x = 3.0
+  float_to_int(d(x * x) ~> grad(x))
 }
