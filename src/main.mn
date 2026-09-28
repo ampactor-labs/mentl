@@ -1820,8 +1820,9 @@ fn test_check_run(entry_module) =
 // runtime lib set in ONE process, write the WATs, print the manifest. The
 // refusal law holds batch-shaped: a micro whose ledger shows errors / holes /
 // armed refusals gets a FAILC line and NO WAT (the same
-// errors-holes-refusals read executable_gate makes; here the boundary is the
-// batch, so the verdict is a manifest line instead of proc_exit).
+// errors-holes-refusals read `gated_plan` makes for the CLI; here the
+// boundary is the batch, so the verdict is a manifest line instead of
+// proc_exit).
 fn battery_libs() -> String =
   fs_read_file_impl("lib/memory.mn") ++ fs_read_file_impl("lib/strings.mn") ++ fs_read_file_impl("lib/lists.mn") ++ fs_read_file_impl("lib/prelude.mn")
 
@@ -1885,35 +1886,33 @@ fn battery_expect_digits(src, i, acc) = if i >= byte_len(src) {
 fn battery_compile(src, stem) = compile_context(() => {
   let lowered =
     src |> infer_program_converged |> saturate_pass |> lower_program |> reachable_from_main
-  // THE SAME law executable_gate applies, batch-shaped: refusal = holes +
-  // ARMED classes only. Unarmed errors surface on stderr and the compile
-  // proceeds — the sound-incomplete contract; the battery must not be
-  // stricter than the medium (it FAILC'd ev2 for an unarmed row mismatch
-  // the check verb tolerates). gate_reads is the law's one home; this
-  // policy counts and continues where the CLI compile proc_exits.
-  // Returns (gate-failed, error-count, banked diagnostic lines) — the
-  // refuse contract judges the JUDGMENT through the collector's bank
-  // (mcp_diag_collector, the forwarder: every line still reaches stderr).
-  match gate_reads(lowered) {
-    (nholes, refused) => {
-      let exit = if nholes > 0 || refused > 0 {
-        -1
-      } else {
-        {
-          emit_module(lowered)
-        } ~> wat_to_host
-        process_exec(argv_wire([stem]))
-      }
-      // THE CLASSES, never the rendered lines. A line banked during emit
-      // points into the twin loop's region and is zeroed by its heap_reset
-      // before any reader gets there (GateLedger's own record); the class is
-      // a data-section literal. The refuse contract compares names now, so
-      // the substring scan over prose is gone with it.
-      let classes = gate_classes()
-      let nerr = diag_errors()
-      (if exit < 0 { 1 } else { 0 }, nerr, classes, exit)
+  // THE SAME law the CLI compile applies, batch-shaped: refusal = holes +
+  // ARMED classes only, the plan's settle point included. Unarmed errors
+  // surface on stderr and the compile proceeds — the sound-incomplete
+  // contract; the battery must not be stricter than the medium (it FAILC'd
+  // ev2 for an unarmed row mismatch the check verb tolerates). `gated_plan`
+  // is the law's one home; this policy counts and continues where the CLI
+  // compile proc_exits. Returns (gate-failed, error-count, banked diagnostic
+  // lines) — the refuse contract judges the JUDGMENT through the collector's
+  // bank (mcp_diag_collector, the forwarder: every line still reaches
+  // stderr).
+  let exit = match gated_plan(lowered) {
+    Withheld(_, _) => -1,
+    Planned(plan) => {
+      {
+        emit_planned(plan)
+      } ~> wat_to_host
+      process_exec(argv_wire([stem]))
     },
   }
+  // THE CLASSES, never the rendered lines. A line banked during emit points
+  // into the twin loop's region and is zeroed by its heap_reset before any
+  // reader gets there (GateLedger's own record); the class is a data-section
+  // literal. The refuse contract compares names now, so the substring scan
+  // over prose is gone with it.
+  let classes = gate_classes()
+  let nerr = diag_errors()
+  (if exit < 0 { 1 } else { 0 }, nerr, classes, exit)
 } ~> process_host ~> mcp_diag_collector ~> wasi_filesystem)
 
 fn battery_run(dir, names) = {

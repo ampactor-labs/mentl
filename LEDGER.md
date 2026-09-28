@@ -35,6 +35,98 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-28 · pin 2d18aeddf7fc9b46 (CLEAN m2 == m3) · EVERY FLOOR THE EMIT WRITES IS SAID BEFORE THE FIRST BYTE.
+  R0″, `Hβ.emit.emit-time-class-cannot-refuse`. Three classes — a field
+  offset the graph cannot prove, a comparison's or a show's operand still a
+  type variable, and (born here) a reference past the twin cap — were
+  decided inside per-fn emission, after the executable gate had read the
+  ledger, so arming any of them would have counted a refusal with the whole
+  module already on stdout. The module is now PLANNED whole and WRITTEN
+  after: `emit_plan` (the emitted reach, the twins and brackets, the settled
+  signatures, the fold closures, the emit-state projections, the line
+  owners, the drivers, the call vectors, one record) and `emit_planned`,
+  which only writes. One gate reads between them on every route
+  (`gated_plan`: the judgment's reads, the plan over a clean judgment, the
+  ledger again), so the CLI, the battery and the MCP judge refuse on one
+  law with zero bytes. The reach settles each body as it scans it — a base
+  unbracketed, a twin under its own pairs, a value let's init at module
+  scope — asking what emission used to decide mid-stream:
+  `E_FieldOffsetUnprovable` (field loads and record patterns) and
+  `E_ShapeUnprovable` (comparisons, shows, hashes, `++`) armed at
+  wheel-zero, `E_InstantiationDepth` born armed, and the compiler's own
+  invariants emission used to report after the first byte
+  (`LInvariantFailure`, which had written its trap WITHOUT a word;
+  arithmetic on an ungated variable; a static `<~` home in a minted record)
+  as `E_InternalInvariant`. Emission writes each floor silently; in an
+  executable the settle has refused it first, so a floor reaches bytes only
+  in a library's whole-emit, which no caller settles (the march's floor
+  census reads zero on the wheel's own module). The wheel's last two
+  unprovable comparisons (the eq ratchet stood at 2) were
+  `list_compare_loop` reading its elements through the typed `list_index`;
+  the emit calls it by name for word lists only, and it reads the
+  unchecked words `list_eq_loop` always read.
+  **Kills.** (1) "The eq and show narrations are the settle's census": they
+  carried two kinds of false alarm — a library's whole-emit, where every
+  generic floor is a root no caller settles, and the runtime's by-name
+  compare reading its elements through a typed face — while the lies that
+  mattered sat elsewhere, past the cap and in an inference gap (main's
+  parameter); settling only executables, and reading the runtime's words,
+  took the census to zero. (2) "The fold collection is the walk to extend":
+  it walks every body under its bracket but not the reach's liveness, and
+  emission-time reports were not its question; the reach is the walk that
+  holds both. (3) "Every non-floor key past the cap is a lie": a wide value
+  nothing reads crosses the word protocol boxed and back, soundly; the depth
+  refusal fires only where a kept variable carries a demand. (4) "Splitting
+  at the reached-module emitter is enough": the preinstall scope's
+  `E_InitPerformsOwnOp` and the dedup's name collisions are raised before
+  the header but after that cut, so the plan is everything before
+  `emit_header`. (5) "The fmt defect below was live six commits": every
+  boot sampled from the first that wrote a file (0c64c05f, 2026-07-26 —
+  8c625aa1 has no `fmt`, the 07-24/25 boots trap before writing) through
+  dbbfd107 drops the parens. The first answer's range was picked from the
+  recent boots and never measured against older ones; RESIDUE carried it
+  for an afternoon.
+  **Found on the way, measured.** The static-home belt in `emit_line_mints`
+  guarded a live hole: a module-scope value let's init is lowered with no
+  frame, so a block local resolves as a global (compiled clean, trapped
+  134), a nested `fn` takes a static `<~` home while its closure is minted
+  at run time (an internal invariant raised after the gate, then WAT that
+  does not assemble), a `<~` in the init reads `$__line_<h>_module scope`,
+  and `let inc = (x) => x + 1` is called as `call $inc` beside an emitted
+  `lambda_<h>` — the last two still fail at assembly, the first two refuse
+  now. `Hβ.lower.module-scope-has-no-frame` carries all four, the next
+  landing. And `mentl fmt`, run on the three payload micros this landing
+  moved, rewrote `(run() ~> hold).beta` as `run() ~> hold.beta` — an
+  install of `hold.beta` — while printing "prose and names conserved": the
+  postfix heads (callee, field receiver, index receiver) rendered with no
+  precedence inverse. `render_postfix_head` wraps any head that is not an
+  atom; the fmt behavioral fixture carries all three shapes, RED through the
+  pinned boot's fmt (five `E_TypeMismatch` on the render). History clears
+  what it can show: over the 654 commits since fmt first wrote a file, no
+  `.mn` line was rewritten into itself with a pair of parens dropped before
+  a postfix. A file the hook formatted at birth never put its authored text
+  in a commit, so the guard that makes the question unaskable — a render
+  whose re-parse is a different tree is not written — is
+  `Hβ.fmt.render-must-parse-to-the-same-tree`.
+  **Fixtures, each RED on boot dbbfd107 (re-read at the landing).**
+  mn-payload3/4/5 and floors/mn-unprovable-offset: compiled clean and
+  trapped (134) → a refusal with zero bytes. mn-instantiation-depth-eq
+  (answered 0 for two equal ten-deep lists), -show (rendered 9 bytes where
+  ten nested lists take 21), mn-shape-unprovable-main-param (rendered the
+  argument list as a 7-character number), mn-module-let-block-local
+  (trapped, 134). The frontier's field-offset leg moved to `run_refusal`;
+  verify's floor contract reads the refusal's text; the three ratchet keys
+  retired. `EInternalInvariant` labels itself "compiler" (it said "parser"
+  wherever it fired), and `MissingName`'s text stopped claiming infer
+  proved the name missing, the one case the gate now refuses first.
+  **Measured at the pin:** m3 leg 9.25 s wall · 714 MB peak RSS (731,832
+  KB) · 392,866 WAT lines, m2 == m3, census 0 · micros 195/195 · frontier
+  434 pass / 0 red / 1 expected-red · crown, proof-exactness,
+  effect-identity green. Named: `Hβ.emit.cap-tail-carries-its-structure`,
+  `Hβ.emit.check-sees-emit-classes`,
+  `Hβ.infer.main-param-is-the-argument-list`,
+  `Hβ.syntax.base-type-annotation-sweep`.
+
 - 2026-09-28 · pin dbbfd10784e308c3 (CLEAN m2 == m3) · A LIST PATTERN BINDS AND TESTS EACH ELEMENT AT ITS OWN WIDTH AND POSITION.
   R0e, the list half of `Hβ.lower.bind-handle-typed-subpattern` that R0d
   found and entered. A list pattern binding a Float element did not

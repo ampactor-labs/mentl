@@ -208,31 +208,32 @@ type BoundaryInvariant
   // typed loud floor for the impossible branch, never a fabricated k.
   | ResumeKOutsideLadder
   // callee handle — Hβ.lower.partial-local-callee
-  // A VarRef whose name is in NO env entry. infer already proved it missing
-  // (E_MissingVariable, MissingVar Reason); the lowering must not then GUESS
-  // it into `(global.get $name)` — the guess is a fabrication of the one fact
-  // the graph most clearly holds, and it emits WAT that no assembler accepts,
-  // so the medium's own precise diagnostic surfaces 350k lines later as a
-  // wat2wasm error about a symbol the developer never wrote. This is the
-  // VALUE-path twin of the typed-absence evidence floor: same class, one site
-  // it never reached.
   | PartialCalleeShape(Int)
-  // the unbound name
-  // A singleton-tier perform whose state global is still 0 at runtime — the
-  // handler was never installed in THIS dynamic extent. The singleton tier's
-  // evidence IS the global; a null global is a missing-evidence refusal, the
-  // direct-call twin of the typed-absence evidence floor. Without the guard the arm reads
-  // address 0+offset (the null page) as its state — below every region mark,
-  // never reset — and the corruption surfaces compiles later as a stale
-  // pointer walk (the address-12 census root, 2026-07-22). The compile-time
-  // gate (E_EffectUnhandled) refuses every name main's row carries with no
+  // the unbound name — a VarRef bound by nothing the lowering sees. The
+  // lowering must not GUESS it into `(global.get $name)`: the guess
+  // fabricates the one fact the graph most clearly holds and emits WAT no
+  // assembler accepts, so the precise diagnostic would surface 350k lines
+  // downstream, as a wat2wasm error about a symbol the developer never wrote. A
+  // name the judgment proved missing is refused before the plan
+  // (E_MissingVariable), so what reaches this is a binding the lowering
+  // lost — a block local inside a module-scope `let`, lowered with no frame
+  // (measured 2026-09-28) — and the settle point refuses it as the
+  // invariant it is.
+  | MissingName(String)
+  // the handler name — a singleton-tier perform whose state global is still
+  // 0 at runtime: the handler was never installed in THIS dynamic extent.
+  // The singleton tier's evidence IS the global; a null global is a
+  // missing-evidence refusal, the direct-call twin of the typed-absence
+  // evidence floor. Without the guard the arm reads address 0+offset (the
+  // null page) as its state — below every region mark, never reset — and
+  // the corruption surfaces compiles later as a stale pointer walk (the
+  // address-12 census root, 2026-07-22). The compile-time gate
+  // (E_EffectUnhandled) refuses every name main's row carries with no
   // enclosing install — it reads the row alone since 2026-09-27, so a
   // perform outside every install's extent refuses before a byte of WAT;
   // this guard is the runtime floor beneath it, reachable only where the
   // row is coarser than the world (an install's own arms shadowed by an
   // inner install of the same handler, A5's rule).
-  | MissingName(String)
-  // the handler name
   | SingletonUninstalled(String)
   // The column-projection invariant (the lowering-column arc): a
   // projector was asked to build a fn body from an origin whose
@@ -253,7 +254,7 @@ fn show_boundary_invariant(invariant) = match invariant {
   NonMultiShotContinuation(disc) => "non-multishot continuation: {show_discipline(disc)}",
   ResumeKOutsideLadder => "resume k outside the argument/capture ladder — impossible past E_ResumeOutsideArm",
   PartialCalleeShape(h) => "partial over non-global callee shape {int_to_str(h)}",
-  MissingName(name) => "unbound name {name} — infer proved it missing; the lowering will not guess it into a global",
+  MissingName(name) => "`{name}` has no binding the lowering can see, though the judgment resolved it — the lowering will not guess it into a global",
   SingletonUninstalled(hname) => "singleton op call with no live install: {hname} — the state global is 0 in this extent; install the handler (~> {hname}) around the calling walk",
   ProjectionOriginShape(h) => "column projection at {int_to_str(h)}: the program-column node is not the projector's shape",
 }
@@ -1473,7 +1474,7 @@ fn clamp_index(i) = if i < 0 { 0 } else { i }
 // escaping_row(name): the dispatched effects that ESCAPE fn `name` — the
 // ones a caller must thread evidence for. The forward-ref class (a mutually-
 // recursive callee bound AFTER `name` generalized, so its effect never
-// entered `name`'s row — `emit_module` losing `WasmOut` via `emit_header`)
+// entered `name`'s row — the module emitter losing `WasmOut` via `emit_header`)
 // is recovered by reading the effect off the CALL-EDGES live, not off the
 // frozen generalized scheme. can_yield (the multishot-absence gate) reads
 // THIS projection
@@ -6106,6 +6107,55 @@ fn low_refs(acc, expr) = match expr {
   LUpval(_, _) => acc,
 }
 
+// The lowered expressions a node holds, a nested fn's body included, so a
+// fold over them reaches every site the node's emission reaches. A match
+// gives its arms' bodies (a pattern is a `LowPat`, read by the walk that asks
+// about patterns); an install gives its body, its handler expression and its
+// state inits, its arms being records of their own.
+fn low_children(expr) = match expr {
+  LConst(_, _) => [],
+  LLocal(_, _) => [],
+  LGlobal(_, _) => [],
+  LLet(_, _, inner) => [inner],
+  LUpval(_, _) => [],
+  LBinOp(_, _, l, r) => [l, r],
+  LUnaryOp(_, _, x) => [x],
+  LCall(_, f, args) => [f] ++ args,
+  LTailCall(_, f, args) => [f] ++ args,
+  LDirectCall(_, _, _, _, args) => args,
+  LReturn(_, x) => [x],
+  LMakeClosure(_, LFn(_, _, _, body, _, _, _), caps) => caps ++ body,
+  LYield(_, _, args, k) => args ++ [k],
+  LKExtend(_, k) => [k],
+  LMakeContinuation(_, LFn(_, _, _, body, _, _, _), caps, _, _) => caps ++ body,
+  LDeclareFn(LFn(_, _, _, body, _, _, _)) => body,
+  LIf(_, c, t, e) => [c] ++ t ++ e,
+  LBlock(_, stmts) => stmts,
+  LMakeList(_, es) => es,
+  LMakeTuple(_, es) => es,
+  LSimdLanes(_, lanes) => lanes,
+  LMakeRecord(_, fs) => fs,
+  LMakeVariant(_, _, fs) => fs,
+  LMatch(_, s, arms) => [s] ++ map(match_arm_body, arms),
+  LResumeK(_, k, v) => [k, v],
+  LHandleWith(_, b, hn, _, inits, _) => [b, hn] ++ inits,
+  LFeedback(_, _, _, b, s) => [b, s],
+  LFeedbackPrior(_) => [],
+  LPerform(_, _, args) => args,
+  LFieldLoad(_, rec, _) => [rec],
+  LConvert(_, _, x) => [x],
+  LStateSlotStore(_, _, v, r) => [v, r],
+  LStateInit(_, _, _, v) => [v],
+  LShow(_, x) => [x],
+  LHash(_, x) => [x],
+  LInvariantFailure(_, _) => [],
+  LWasiCall(_, _, args) => args,
+}
+
+fn match_arm_body(arm) = match arm {
+  (_, body) => body,
+}
+
 // The wide-twin seed, PER ENTRY: a constructed body any of whose sites
 // projects a wide key contributes the runtime family a twin's emission can
 // mint and its floor did not. A dead decl's wide sites seed nothing
@@ -6378,7 +6428,7 @@ fn reach_enqueue(refs, rbuf, rn, fbuf, fcount) = if len(refs) == 0 {
 }
 
 // The surviving-hole census over the REACHABLE emitted tree — the executable
-// gate's one read (pipeline.mn executable_gate). Survival IS value-position
+// gate's hole read (pipeline.mn `gate_reads`). Survival IS value-position
 // by construction: a call-arg hole became a partial param (the fork), a
 // pipe-stage hole was spliced over (lower_pipe_complete), so an authored
 // NHole still riding an LConst in the tree is exactly the hole the

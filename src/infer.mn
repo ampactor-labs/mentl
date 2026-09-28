@@ -4740,7 +4740,7 @@ fn frame_edges(stack, i, top, acc) = if i > top {
 // A frame's row cell, read through the frame record's declared shape — the
 // Intent Boundary an INTERIOR field read needs: an element of the frame
 // stack arrives at emit with its row unresolved, and an unprovable offset
-// is a floor (T_FieldOffsetUnprovable), never a read.
+// is a refusal (E_FieldOffsetUnprovable), never a read.
 fn frame_row_handle(frame: {accumulated_row: EffRow, answer_handle: Int, declared: [(EffName, Bool, EConn)], fn_span: Span, params: [Int], row_handle: Int}) -> Int =
   frame.row_handle
 

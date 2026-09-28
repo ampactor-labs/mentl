@@ -738,14 +738,14 @@ run_narration() {
 }
 
 # The silence contract — run_narration's dual: the program compiles, runs
-# to its answer, and one NAMED narration class never appears. A floor in a
-# body the program never runs is not a finding about the developer's
-# program, so it is not said at them.
+# to its answer, and one NAMED class never appears, at either severity. A
+# floor in a body the program never runs is not a finding about the
+# developer's program, so it is not said at them.
 run_unnarrated() {
   local compiler="$1" label="$2" source="$3" expected="$4" code="$5" dir="$6"
   local n
   run_program "$compiler" "$label" "$source" "$expected" "" "$dir"
-  n=$(grep -c "$code Warning:" "$dir/$label.compile.err" 2>/dev/null || true)
+  n=$(grep -cE "$code (Warning|error):" "$dir/$label.compile.err" 2>/dev/null || true)
   if [ "$n" -eq 0 ]; then
     pass "$label unnarrated ($code=0)"
   else
@@ -1643,23 +1643,21 @@ for i in "${!compilers[@]}"; do
   # RED against the pre-arm pin (diagnostic on stderr, WAT still emitted).
   run_refusal "$compiler" row-contradiction \
     "$ROOT/tests/frontier/mn-row-contradiction.mn" E_DeclaredRowContradiction "$dir"
-  # An unprovable field offset REPORTS (2026-09-15). Born RED against the
-  # pin the day it landed: the same three lines compiled through boot with
-  # ZERO errors and 4500B of WAT carrying the floor inside them, so the
-  # program trapped at an instruction no diagnostic had ever mentioned.
-  # Pre-arm, so run_narration, not run_refusal. The wheel's own census of
-  # the class reached zero on 2026-09-28 (record rows as union-find
-  # citizens, then the emitted reach); it arms once a refusal raised during
-  # emission can precede the first byte
-  # (Hβ.emit.emit-time-class-cannot-refuse), and this moves to run_refusal
-  # in that commit.
-  run_narration "$compiler" field-offset-unprovable \
-    "$ROOT/tests/frontier/mn-field-offset-unprovable.mn" T_FieldOffsetUnprovable "$dir"
+  # An unprovable field offset REFUSES (ARMED 2026-09-28, R0″): the plan's
+  # settle point asks it under the bracket the body is emitted in, before the
+  # gate reads the ledger, so the compile exits 1 with zero WAT bytes. It
+  # REPORTED as narration from 2026-09-15, born RED against that pin: the same
+  # three lines had compiled with ZERO errors and 4500B of WAT carrying the
+  # floor, and the program trapped at an instruction no diagnostic mentioned.
+  # RED again on boot dbbfd107 as a refusal: a warning and a full module.
+  run_refusal "$compiler" field-offset-unprovable \
+    "$ROOT/tests/frontier/mn-field-offset-unprovable.mn" E_FieldOffsetUnprovable "$dir"
   # A base whose every call is keyed to a twin is not emitted (the emitted
-  # reach, 2026-09-28), so its floors are not narrated: RED on boot
-  # c5439637, which answered 46 and warned twice about `pick`'s base.
+  # reach, 2026-09-28), so its floors are never settled, let alone refused:
+  # RED on boot c5439637, which answered 46 and warned twice about `pick`'s
+  # base.
   run_unnarrated "$compiler" dead-base-unnarrated \
-    "$ROOT/tests/frontier/mn-dead-base-unnarrated.mn" 46 T_FieldOffsetUnprovable "$dir"
+    "$ROOT/tests/frontier/mn-dead-base-unnarrated.mn" 46 E_FieldOffsetUnprovable "$dir"
   # A handler's arms run under the key of the install that runs them (R0b,
   # 2026-09-28) — its config record's layout, its config value's width. RED
   # on boot b29e319b: the record read trapped (134) and the Float config

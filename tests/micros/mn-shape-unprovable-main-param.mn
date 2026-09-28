@@ -1,0 +1,9 @@
+// expect: refuse E_ShapeUnprovable
+// main's parameter is the host's argument list, but nothing in the judgment
+// says so: `q` stays a type variable, and a show of a variable renders the
+// word it is — the list's address printed as a number. Boot dbbfd107
+// narrated it (T_ShowTypeUnprovable) and ran; the settle point refuses it
+// before a byte (R0″, 2026-09-28). The executable boundary giving main's
+// parameter its type is `Hβ.infer.main-param-is-the-argument-list`, and
+// this contract flips to a run the day it lands.
+fn main(q) = byte_len("{q}")

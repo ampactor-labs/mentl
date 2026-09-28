@@ -431,16 +431,16 @@ fn render_expr_tokens(e) with !Mutate = match e {
   },
   UnaryOpExpr(op, x) => "{unary_op_glyph(op)}{render_operand(x, 90, true)}",
   CallExpr(callee, args) => {
-    let inline = "{render_tokens_for(callee)}({render_node_list(args, ", ")})"
+    let inline = "{render_postfix_head(callee)}({render_node_list(args, ", ")})"
     if (fits_inline(inline) || len(args) < 2) && !args_carry_prose(args, 0) {
       inline
     } else {
-      "{render_tokens_for(callee)}(\n{indent_block(render_arg_lines(args, 0))}\n)"
+      "{render_postfix_head(callee)}(\n{indent_block(render_arg_lines(args, 0))}\n)"
     }
   },
   LabeledArg(label, v) => "{label} = {render_tokens_for(v)}",
-  FieldExpr(recv, field) => "{render_tokens_for(recv)}.{field}",
-  IndexExpr(recv, idx) => "{render_tokens_for(recv)}[{render_tokens_for(idx)}]",
+  FieldExpr(recv, field) => "{render_postfix_head(recv)}.{field}",
+  IndexExpr(recv, idx) => "{render_postfix_head(recv)}[{render_tokens_for(idx)}]",
   PipeExpr(verb, l, r) => {
     let rc = graph_comment_at(node_handle(r))
     if rc == "" {
@@ -738,6 +738,14 @@ fn render_operand(child, parent_prec, is_right) with !Mutate = {
     render_tokens_for(child)
   }
 }
+
+// The head of a postfix form — a call's callee, a field read's receiver, an
+// index's receiver. Postfix binds tighter than every operator, so the head
+// re-wraps whenever it is anything but an atom. Rendered bare, the parse
+// took the postfix onto the head's last operand: `(run() ~> hold).beta`
+// came back as `run() ~> hold.beta`, an install of `hold.beta`, and fmt
+// wrote it into three micros as "names conserved" (measured 2026-09-28).
+fn render_postfix_head(head) with !Mutate = render_operand(head, 100, false)
 
 fn expr_prec_of(node) with Pure = match ast_kind_of(node) {
   NExpr(BinOpExpr(op, _, _)) => binop_prec(op),

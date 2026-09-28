@@ -107,10 +107,10 @@ handler console_bank with lines = [] {
 // so no separate absorb arm exists to fold them.
 //
 // THE BANK IS WRITTEN IN PLACE into storage allocated at install, below
-// every region an emit opens. A diagnostic raised during emit
-// (T_FieldOffsetUnprovable is one) is raised inside the twin loop's
-// region, so a bank that `push`es its class allocates the cell there —
-// zeroed at that region's reset, overwritten by whatever allocates next.
+// every region a compile opens. A diagnostic raised inside a region (the
+// twin loop's, when emission still reported; a battery micro's own mark)
+// has a bank that `push`es its class allocate the cell there — zeroed at
+// that region's reset, overwritten by whatever allocates next.
 // Measured 2026-09-18 on exactly that shape: the refuse contract read
 // 5,784 banked classes for a judgment that reported five, and whether
 // the wanted class was among them depended on which fixture ran before —
@@ -154,26 +154,25 @@ handler mcp_diag_collector with slots = make_list(diag_bank_slots), n = 0, text 
 fn mcp_judge(source, wat_path) = compile_context(() => {
   let lowered =
     source |> infer_program_converged |> saturate_pass |> lower_program |> reachable_from_main
-  match gate_reads(lowered) {
-    (nholes, refused) => {
-      let emitted = if nholes == 0 && refused == 0 {
-        let fd = fs_create(wat_path)
-        if fd == 0 {
-          0
-        } else {
-          {
-            emit_module(lowered)
-          } ~> wat_to_file(fd)
-          fs_close(fd)
-          1
-        }
+  let verdict = match gated_plan(lowered) {
+    Withheld(_, refused) => (refused, 0),
+    Planned(plan) => {
+      let fd = fs_create(wat_path)
+      if fd == 0 {
+        (0, 0)
       } else {
-        0
+        {
+          emit_planned(plan)
+        } ~> wat_to_file(fd)
+        fs_close(fd)
+        (0, 1)
       }
-      let text = gate_facts()
-      let nerr = diag_errors()
-      (text, nerr, refused, emitted)
     },
+  }
+  let text = gate_facts()
+  let nerr = diag_errors()
+  match verdict {
+    (refused, emitted) => (text, nerr, refused, emitted),
   }
 } ~> mcp_diag_collector ~> wasi_filesystem)
 

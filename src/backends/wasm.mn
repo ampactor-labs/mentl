@@ -214,7 +214,7 @@ handler emit_memory_arena {
 // strategy handler would re-derive what the program already proves — the
 // gradient cash-out reads the artifact, never an install ceremony.
 //
-// String-literal interning (W5). Populated once per emit_module by
+// String-literal interning (W5). Populated once per plan by
 // set_string_entries, then read via string_offset at every LString emit
 // site. The state is now a str_hash bucket INDEX (the 6th §5.O name-scanner
 // dissolved — string_offset_lookup was a linear str_eq scan over ~thousands
@@ -228,7 +228,7 @@ handler string_table with idx = string_index_new() {
 }
 
 // The specialization-twin registry (SpecTwins, types.mn) — seeded once by
-// emit_module, read by every reference-emitting arm (LGlobal / LDirectCall)
+// the plan, read by every reference-emitting arm (LGlobal / LDirectCall)
 // before it redirects a keyed site to a twin. Membership is a name map: the
 // scan that stood here, beside a comment calling the set tiny, ran at every
 // generic reference the module emits, over a set that reached three thousand
@@ -334,30 +334,10 @@ fn emit_agg_leaf_call(prefix, ty, x) = {
   wat_emit(")\n")
 }
 
+// A free operand renders as the word it is: the settle point refused every
+// executable site where it would be anything else (`settle_node`).
 fn emit_show(h, x) = {
   let ty = show_hash_ty(x)
-  // A FREE operand at the show floor is the word-face guess — int_to_str
-  // of whatever word arrives, wrong for a pointer. The marker makes the
-  // floor census-able in any emitted artifact (the comment-marked-floor
-  // convention: grep the marker, read the enclosing fn), and the
-  // narration makes it census-able in the compile's own voice: a firing
-  // site names a generic the twin machinery did not serve — HOF-passed
-  // lambdas keep the word protocol — or a call whose result the judgment
-  // never connected, so the source pins the fragment's type or the twin
-  // routes it (Hβ.emit.show-free-floor).
-  match ty {
-    TVar(_) => {
-      wat_emit("    ;; show on unresolved operand\n")
-      report_at(
-        lexpr_handle(x),
-        TShowTypeUnprovable(
-          "a show of {show_type(ty)}, emitting {emit_site()}",
-          parse_span_of(lexpr_handle(x))
-        )
-      )
-    },
-    _ => (),
-  }
   if spec_is_agg(ty) { emit_agg_leaf_call("show_", ty, x) } else { emit_expr(show_node_of(h, x)) }
 }
 
@@ -524,8 +504,13 @@ fn emit_reach_roots(program, library, i, n, live, roots) = if i >= n {
   if library {
     emit_reach_roots(program, library, i + 1, n, list_set(live, i, Reached), low_refs(roots, stmt))
   } else if keyless {
+    // An executable's value let runs in `$__init_lets` at module scope, so
+    // its init is settled there, unbracketed, under the let's own name.
     let roots2 = match stmt {
-      LLet(_, _, init) => low_refs(roots, init),
+      LLet(_, name, init) => {
+        settle_floors(name, init)
+        low_refs(roots, init)
+      },
       _ => roots,
     }
     emit_reach_roots(program, library, i + 1, n, list_set(live, i, Reached), roots2)
@@ -540,7 +525,7 @@ fn emit_reach_roots(program, library, i, n, live, roots) = if i >= n {
 // twin set is every instantiation a program makes. `live` flags the decls
 // emitted, by source index; `wide` records that the runtime family a twin
 // can mint is already demanded.
-fn emit_reach_fix(work, st, program, keys, recs) = if len(work) == 0 {
+fn emit_reach_fix(work, st, program, keys, recs, settles) = if len(work) == 0 {
   st
 } else {
   let d = work[0]
@@ -548,19 +533,29 @@ fn emit_reach_fix(work, st, program, keys, recs) = if len(work) == 0 {
   match st {
     (dbuf, dn, seen, live, wide) => match d {
       DemandBase(nm) => match smap_get(keys, nm) {
-        None => emit_reach_fix(w2, st, program, keys, recs),
+        None => emit_reach_fix(w2, st, program, keys, recs, settles),
         Some(i) => match list_index(live, i) {
-          Reached => emit_reach_fix(w2, st, program, keys, recs),
+          Reached => emit_reach_fix(w2, st, program, keys, recs, settles),
           Unreached => {
             // A base body's keys are fixed by its own source types, so the
-            // lineage starts again here.
-            let ds = map(ref_demand([], ??), low_refs([], list_index(program, i)))
-            emit_reach_fix(ds ++ w2, (dbuf, dn, seen, list_set(live, i, Reached), wide), program, keys, recs)
+            // lineage starts again here, and the body is settled at the
+            // floor it emits at.
+            let stmt = list_index(program, i)
+            if settles { settle_decl(nm, stmt) }
+            let ds = map(ref_demand([], ??), low_refs([], stmt))
+            emit_reach_fix(
+              ds ++ w2,
+              (dbuf, dn, seen, list_set(live, i, Reached), wide),
+              program,
+              keys,
+              recs,
+              settles
+            )
           },
         },
       },
       DemandTwin(m, base, pairs, enc, lineage) => match smap_get(seen, m) {
-        Some(_) => emit_reach_fix(w2, st, program, keys, recs),
+        Some(_) => emit_reach_fix(w2, st, program, keys, recs, settles),
         None => {
           // THE POLYMORPHIC-RECURSION CAP (the 5.1c guard) meters DEPTH along
           // the lineage, never breadth across the program. A base sits twice
@@ -577,14 +572,20 @@ fn emit_reach_fix(work, st, program, keys, recs) = if len(work) == 0 {
           let ds = match spec_find_rec(recs, base) {
             None => [DemandBase(base)],
             Some(rec) => match rec {
-              (_n, _ps, body, _f) => if capped {
-                map(ref_floor_demand, low_refs_list([], body))
-              } else {
-                // ONE structural scan, taken UNDER the instantiation: the
-                // references a twin's body makes key against the specialized
-                // truth, so the ctx brackets the scan and its read together.
+              (_n, _ps, body, _f) => {
+                // ONE bracket for the body's settle and its scan, taken UNDER
+                // the instantiation its emission reads it at: the references
+                // it makes key against the specialized truth, and a capped
+                // twin is emitted under its own pairs like any other.
                 spec_ctx_set(pairs, enc)
-                let inner = map(ref_demand([base] ++ lineage, ??), low_refs_list([], body))
+                if settles { each(settle_floors(m, ??), body) }
+                let refs = low_refs_list([], body)
+                let inner = if capped {
+                  if settles { each(settle_depth(m, base, ??), refs) }
+                  map(ref_floor_demand, refs)
+                } else {
+                  map(ref_demand([base] ++ lineage, ??), refs)
+                }
                 spec_ctx_clear()
                 inner
               },
@@ -599,7 +600,8 @@ fn emit_reach_fix(work, st, program, keys, recs) = if len(work) == 0 {
               (dbuf2, dn2, smap_add(seen, m, 1), live, true),
               program,
               keys,
-              recs
+              recs,
+              settles
             ),
           }
         },
@@ -612,6 +614,226 @@ fn emit_reach_fix(work, st, program, keys, recs) = if len(work) == 0 {
 // cap reads.
 fn lineage_depth(lineage, base: String) =
   fold(0, (n, b) => if b == base { n + 1 } else { n }, lineage)
+
+// ─── THE SETTLE POINT — every floor the module would carry, said first ───
+//
+// A floor is what the emit writes where it cannot prove the read a site
+// needs: an offset for a field load or a record pattern, a shape for a
+// comparison, a show, a hash or a `++`, a specialization past the twin cap,
+// or a boundary lowering could not build. Each is decided under the bracket
+// the body is emitted in, and the reach above is the walk that holds that
+// bracket for every emitted body — a base unbracketed, a twin under its own
+// pairs, a value let's init at module scope — so it asks, once per body,
+// before the gate reads the ledger and before a byte is written. Emission
+// writes the same floors without a word, and only where nothing runs them:
+// an executable's gate has refused every one it would reach, and a
+// library's whole-emit has no caller to settle for.
+//
+// A decl at the root of the program: a top-level fn is a closure whose record
+// is the module's static data (`extract_top_fn_name`), so its own lines are
+// static and only what it holds is settled as minted.
+fn settle_decl(site: String, stmt) = match stmt {
+  LLet(_, _, LMakeClosure(_, LFn(_, _, _, body, _, _, _), caps)) => each(settle_floors(site, ??), caps ++ body),
+  LLet(_, _, LMakeContinuation(_, LFn(_, _, _, body, _, _, _), caps, _, _)) => each(settle_floors(site, ??), caps ++ body),
+  _ => settle_floors(site, stmt),
+}
+
+fn settle_floors(site: String, expr) = {
+  settle_node(site, expr)
+  each(settle_floors(site, ??), low_children(expr))
+}
+
+// The questions one node asks. Each reads the fact its emission reads, under
+// the same bracket, so the settle and the floor cannot disagree.
+fn settle_node(site: String, expr) = match expr {
+  LBinOp(h, op, l, _) => settle_binop(site, h, op, l),
+  LFieldLoad(h, rec, sel) => // said at the access, which names the receiver and the selector together
+  // (a parameter receiver's own handle carries no span)
+  if field_sel_offset(rec, sel) < 0 {
+    report_at(h, EFieldOffsetUnprovable(field_offset_unprovable_why(rec, sel), parse_span_of(h)))
+  },
+  LShow(h, x) => settle_shape(site, h, "a show", x),
+  LHash(h, x) => settle_shape(site, h, "a hash", x),
+  LMatch(_, _, arms) => each({ (p, _) => settle_pattern(p) }, arms),
+  LMakeClosure(_, LFn(_, _, _, _, _, _, lines), _) => settle_minted_lines(site, lines),
+  LMakeContinuation(_, LFn(_, _, _, _, _, _, lines), _, _, _) => settle_minted_lines(site, lines),
+  LDeclareFn(LFn(name, _, _, _, _, _, lines)) => // below the root a declared fn is a handler's arm or init fn, whose lines
+  // live in the install's record (`lower_handler_arms_as_decls`)
+  settle_minted_lines(name, lines),
+  LInvariantFailure(h, inv) => report_at(
+    h,
+    EInternalInvariant("{show_boundary_invariant(inv)}, emitting {site}", parse_span_of(h))
+  ),
+  LConst(_, _) => (),
+  LLocal(_, _) => (),
+  LGlobal(_, _) => (),
+  LLet(_, _, _) => (),
+  LUpval(_, _) => (),
+  LUnaryOp(_, _, _) => (),
+  LCall(_, _, _) => (),
+  LTailCall(_, _, _) => (),
+  LDirectCall(_, _, _, _, _) => (),
+  LReturn(_, _) => (),
+  LYield(_, _, _, _) => (),
+  LKExtend(_, _) => (),
+  LIf(_, _, _, _) => (),
+  LBlock(_, _) => (),
+  LMakeList(_, _) => (),
+  LMakeTuple(_, _) => (),
+  LSimdLanes(_, _) => (),
+  LMakeRecord(_, _) => (),
+  LMakeVariant(_, _, _) => (),
+  LResumeK(_, _, _) => (),
+  LHandleWith(_, _, _, _, _, _) => (),
+  LFeedback(_, _, _, _, _) => (),
+  LFeedbackPrior(_) => (),
+  LPerform(_, _, _) => (),
+  LConvert(_, _, _) => (),
+  LStateSlotStore(_, _, _, _) => (),
+  LStateInit(_, _, _, _) => (),
+  LWasiCall(_, _, _) => (),
+}
+
+// A binary operator's operand, read where its emission reads it
+// (`emit_binop_for`): a `++` needs a sequence, a comparison a structure, and
+// arithmetic the number the judgment gated its operand to be. Each is said at
+// the operator's own node, whose span covers the operands (a parameter
+// operand's handle carries none).
+fn settle_binop(site: String, h, op, l) = {
+  let lh = lexpr_handle(l)
+  match op {
+    BConcat => match fold_strip(lookup_ty(lh)) {
+      TList(_) => (),
+      other => settle_unprovable(h, "`++` on {show_type(other)}, emitting {site}"),
+    },
+    BEq => settle_compare(site, h, op, lh),
+    BNe => settle_compare(site, h, op, lh),
+    BLt => settle_compare(site, h, op, lh),
+    BGt => settle_compare(site, h, op, lh),
+    BLe => settle_compare(site, h, op, lh),
+    BGe => settle_compare(site, h, op, lh),
+    BAdd => settle_arith(site, h, op, lh),
+    BSub => settle_arith(site, h, op, lh),
+    BMul => settle_arith(site, h, op, lh),
+    BDiv => settle_arith(site, h, op, lh),
+    BMod => settle_arith(site, h, op, lh),
+    BAnd => settle_arith(site, h, op, lh),
+    BOr => settle_arith(site, h, op, lh),
+  }
+}
+
+// A comparison whose operand is still a VARIABLE has no structure to read:
+// the word compare it would fall to answers an address for anything but a
+// word (measured 2026-09-18: a handler arm over quantified op parameters
+// answered "ab" != "ab").
+fn settle_compare(site: String, h, op, lh) = if lh != 0 {
+  match fold_strip(chase_deep(lookup_ty(lh))) {
+    TVar(_) => settle_unprovable(h, "`{binop_to_str(op)}` on {show_type(lookup_ty(lh))}, emitting {site}"),
+    _ => (),
+  }
+}
+
+// A show or a hash of a VARIABLE renders or mixes the word it is — a
+// pointer printed as a number for anything but an Int (measured 2026-09-28:
+// a handler head rendered its config list as `(66036)`). Said at the show.
+fn settle_shape(site: String, h, what: String, x) = match show_hash_ty(x) {
+  TVar(_) => settle_unprovable(h, "{what} of {show_type(show_hash_ty(x))}, emitting {site}"),
+  _ => (),
+}
+
+fn settle_unprovable(h, why: String) = report_at(h, EShapeUnprovable(why, parse_span_of(h)))
+
+// Arithmetic's operand is a word by the judgment's numeric gate, so what
+// the emit would meet otherwise is an invariant broken upstream: a variable
+// the gate never reached, or an aggregate past it.
+fn settle_arith(site: String, h, op, lh) = if lh != 0 {
+  match arith_operand_class(chase_deep(lookup_ty(lh))) {
+    AoWord => (),
+    AoUnproven(v) => if len(numeric_gates_of(graph_chase_handle(v))) == 0 {
+      report_at(
+        h,
+        EInternalInvariant(
+          "arithmetic `{binop_to_str(op)}` on an ungated variable ({show_type(lookup_ty(lh))}), emitting {site}",
+          parse_span_of(h)
+        )
+      )
+    },
+    AoAggregate => report_at(
+      h,
+      EInternalInvariant(
+        "arithmetic `{binop_to_str(op)}` on {show_type(lookup_ty(lh))} reached emit past the judgment's gate, emitting {site}",
+        parse_span_of(h)
+      )
+    ),
+  }
+}
+
+// A record pattern whose receiver's field set never closed has no slot for
+// what it tests or binds, said at the scrutinee (the two emission floors,
+// `emit_pat_predicate_at` and `emit_pat_binds_at`, read the same set). Its
+// sub-patterns ride inside it; every other pattern holds its sub-patterns.
+fn settle_pattern(pat) = match pat {
+  LPVar(_) => (),
+  LPWild => (),
+  LPCon(_, _, subs) => each({ (_, p) => settle_pattern(p) }, subs),
+  LPUnresolvedCon(_, subs) => each(settle_pattern, subs),
+  LPTuple(subs) => each({ (_, p) => settle_pattern(p) }, subs),
+  LPLit(_) => (),
+  LPList(_, subs, _, _) => each(settle_pattern, subs),
+  LPRecord(rh, rty, fbs, rest) => match record_full_fields(rty) {
+    Some(_) => each({ (_, p) => settle_pattern(p) }, fbs),
+    None => if !record_pats_always_match(fbs) || record_pat_has_binds(fbs, rest) {
+      report_at(rh, EFieldOffsetUnprovable(record_pattern_unprovable_why(rty), parse_span_of(rh)))
+    },
+  },
+  LPAs(_, p) => settle_pattern(p),
+  LPAlt(ps) => each(settle_pattern, ps),
+}
+
+// A record minted at run time holds its body's `<~` lines in slots; a
+// static home inside one is the lowering's line rule broken
+// (`ls_line_slot`), and the ring would have nowhere to live. Said at the
+// `<~` itself.
+fn settle_minted_lines(site: String, lines) = each(
+  {
+    (h, _depth, home) => match home {
+      LhStatic => report_at(
+        h,
+        EInternalInvariant(
+          "this `<~` has a static home inside a record minted at run time, emitting {site}",
+          parse_span_of(h)
+        )
+      ),
+      LhSlot(_) => (),
+    },
+  },
+  lines
+)
+
+// Past the twin cap a site reaches its callee's BASE, which reads every
+// variable free. A site whose key keeps a variable the callee reads — a
+// structure, or a number — would be read there as a word, which is exactly
+// what the twin existed to prevent. A wide value nothing reads crosses the
+// word protocol boxed and back, and is sound.
+fn settle_depth(site: String, base: String, r) = match r {
+  RefSite(h, n) => settle_depth_at(site, base, h, n, twin_site_key(h, n).pairs),
+  RefArm(ih, n) => settle_depth_at(site, base, ih, n, arm_twin_key(ih).pairs),
+  RefName(_) => (),
+}
+
+fn settle_depth_at(site: String, base: String, h, n: String, pairs) = if any(pair_read_past_floor, pairs) {
+  report_at(
+    h,
+    EInstantiationDepth(
+      "`{n}`, reached from `{site}` eight instantiations deep in `{base}`'s recursion",
+      parse_span_of(h)
+    )
+  )
+}
+
+fn pair_read_past_floor(p) = match p {
+  (w, _t) => len(graph_demands_of(w)) > 0 && !spec_enc_is_floor(twin_pair_code(p)),
+}
 
 // The reach whole: the accepted twin demands, and each decl's liveness by
 // source index (1 = emitted).
@@ -631,7 +853,8 @@ fn emit_reach(program, recs) = {
         (make_list(64), 0, smap_new(), live0, false),
         program,
         keys,
-        recs
+        recs,
+        !library
       ) {
         (dbuf, dn, _seen, live, _wide) => (slice(dbuf, 0, dn), live),
       }
@@ -752,20 +975,13 @@ fn field_offset_unprovable_why(rec, sel) = match sel {
 // The declared [String] is the Intent Boundary the ++ sites read — without it
 // the filter-with-handler-block chain left the element open and the concat
 // emitted its unresolved-element floor (the 00c0b6 trap that caught this).
-// A twin carries four facts, and the fourth is new: the BASE symbol it is a
-// copy of, which is the name lower's enumeration entry was written under and
-// therefore where its signature edges live.
-//
-// IT SHOULD BE A RECORD — {base, enc, pairs, rec} — and it is a positional
-// quadruple instead. Written as a record, these helpers read `rp.rec`
-// through an UNANNOTATED parameter, an interior open-row field access, and
-// when this was written the wheel compiled that to a field-offset floor the
-// twin loop executed. The defect it cited
-// (`Hβ.infer.record-row-vars-are-not-unioned`) closed on 2026-09-28 and the
-// wheel's field-offset census reached zero the same day, so the record form
-// is the test that fix has to pass: it goes back in with the landing that
-// arms the class (`Hβ.emit.emit-time-class-cannot-refuse`), where any site
-// that still floors refuses the repin by name.
+// A twin carries four facts — `{base, enc, pairs, rec}` — and the base is
+// the one easy to lose: the BASE symbol it is a copy of, which is the name
+// lower's enumeration entry was written under and therefore where its
+// signature edges live. It was a positional quadruple while a record read
+// through an unannotated parameter floored at the field offset; the record
+// came back with the landing that armed that class, whose settle point would
+// refuse the repin at any site that still floored.
 fn spec_fold_collect(spec_recs, acc0) =
   fold(acc0, spec_bracketed(collect_fold_tys_list, ??, ??), spec_recs)
 
@@ -777,14 +993,12 @@ fn spec_vector_collect(spec_recs, acc0) =
 
 // One twin's body walked under its own specialization bracket — the one
 // shape both collections above share.
-fn spec_bracketed(walk, acc, rp) = match rp {
-  (rec2, pairs, enc, _base) => match rec2 {
-    (_m, _ps, body, _f) => {
-      spec_ctx_set(pairs, enc)
-      let acc2 = walk(body, acc)
-      spec_ctx_clear()
-      acc2
-    },
+fn spec_bracketed(walk, acc, tw) = match tw.rec {
+  (_m, _ps, body, _f) => {
+    spec_ctx_set(tw.pairs, tw.enc)
+    let acc2 = walk(body, acc)
+    spec_ctx_clear()
+    acc2
   },
 }
 
@@ -809,10 +1023,8 @@ fn spec_recs_dedup_flat(recs, i, n, out, count, seen) = if i >= n {
   }
 }
 
-fn spec_rec_name(rp) -> String = match rp {
-  (rec2, _p, _e, _base) => match rec2 {
-    (m, _ps, _b, _f) => m,
-  },
+fn spec_rec_name(tw) -> String = match tw.rec {
+  (m, _ps, _b, _f) => m,
 }
 
 fn spec_rec_names(spec_recs) -> [String] = map(spec_rec_name, spec_recs)
@@ -916,14 +1128,12 @@ fn emit_sig_pairs_spec(spec_recs) = map(emit_sig_pair_of_twin, spec_recs)
 // `a := Float` a native f64 slot where the floor copy signs a word. Keyed
 // under the MANGLED name, because that is the symbol the header writes and
 // the call sites name.
-fn emit_sig_pair_of_twin(rp) = match rp {
-  (rec2, pairs, enc, base) => match rec2 {
-    (m, ps, _b, _f) => {
-      spec_ctx_set(pairs, enc)
-      let s = emitted_sig_of_symbol(base, len(ps))
-      spec_ctx_clear()
-      (m, s)
-    },
+fn emit_sig_pair_of_twin(tw) = match tw.rec {
+  (m, ps, _b, _f) => {
+    spec_ctx_set(tw.pairs, tw.enc)
+    let s = emitted_sig_of_symbol(tw.base, len(ps))
+    spec_ctx_clear()
+    (m, s)
   },
 }
 
@@ -937,7 +1147,18 @@ fn symbol_is_wide(name: String) = match graph_sig_at(name) {
 
 fn sig_wide_names(names) = filter(symbol_is_wide, names)
 
-fn emit_module(program) = {
+// ─── THE PLAN — every decision the module's bytes read, made before one ───
+//
+// The module is decided whole before a byte of it is written: the emitted
+// reach and the settle point it carries, the twins and their brackets, the
+// settled signatures, the fold closures, the emit-state projections, the
+// line owners, the drivers and the call vectors. So what the gate reads is
+// everything the emit could say, and a refusal leaves stdout empty (the
+// pipeline's gate, downstream of this file); `emit_planned` then only
+// writes. The name collisions the record dedup finds and the inits the
+// preinstall scope judges are said here too, where a refusal can still mean
+// zero bytes.
+fn emit_plan(program) = {
   // Every record lower constructed, per decl, collected ONCE: a twin is a
   // copy of one of these, so a base the module does not emit is still where
   // its twins' bodies live, and the records the module emits are the live
@@ -959,7 +1180,7 @@ fn emit_module(program) = {
       // Every name a twin was demanded of — the unreached decls whose bodies
       // still feed their twins, and the arms a keyed install runs twinned.
       let twin_base_set = fold(smap_new(), demand_base_note, spec_demands)
-      emit_reached_module(
+      plan_reached(
         decls_reached(program, live, 0, n, make_list(n), 0),
         decls_reached(decl_records, live, 0, n, make_list(n), 0) |> flatten |> dedup_fn_records,
         twin_bases_where(program, decl_records, live, twin_base_set, 0, n, make_list(8), 0),
@@ -971,7 +1192,7 @@ fn emit_module(program) = {
   }
 }
 
-fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demands, twin_base_set) = {
+fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin_base_set) = {
   // Named-generic twins (the emitted reach above): each demand's record is
   // the BASE record renamed — the same body, emitted under the spec_pairs
   // state so every repr read resolves through the site's instantiation.
@@ -987,8 +1208,10 @@ fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demand
     {
       (m, base, pairs, enc) => match spec_find_rec(all_records, base) {
         Some(rec) => match rec {
-          (_n, ps, body, f) => [((m, ps, body, f), pairs, enc, base)] ++ map(
-            { (nn, nps, nbody, nf) => ((spec_mangle(nn, enc), nps, nbody, nf), pairs, enc, nn) },
+          (_n, ps, body, f) => [{base: base, enc: enc, pairs: pairs, rec: (m, ps, body, f)}] ++ map(
+            {
+              (nn, nps, nbody, nf) => {base: nn, enc: enc, pairs: pairs, rec: (spec_mangle(nn, enc), nps, nbody, nf)},
+            },
             collect_fn_emit_records(body)
           ),
         },
@@ -1060,8 +1283,6 @@ fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demand
       // static owners: top-level fns and their twins, whose lines ride
       // instance globals rather than a record slot.
       set_fn_lines(fn_lines)
-      let line_owners = static_line_owners(top_fn_names, fn_lines, spec_recs)
-      let line_globals = line_global_slots(line_owners)
       // The MultiShot handlers the module runs, each with its one driver.
       let redrives = if yield_seen > 0 { redrive_handlers(table_fn_names, twin_base_set) } else { [] }
       // The call vectors, collected ONCE — the floor tree and every twin under
@@ -1070,107 +1291,133 @@ fn emit_reached_module(lowered, fn_records, twin_bases, all_records, spec_demand
       // A driver's arm call is a site too, at the word face.
       let vectors =
         spec_vector_collect(spec_recs, collect_call_vectors_list(lowered, [])) ++ redrive_vectors(redrives)
-      emit_header()
-      emit_type_section(vectors, yield_seen)
-      emit_runtime_imports(wasi_ops)
-      // The module's memory OWNERSHIP is read from its own proof (the fifth
-      // projection): a module that spawns IMPORTS the shared image (every
-      // instance reads one memory — the wasi-threads convention) and
-      // allocates through the shared cell; a thread-free module owns a
-      // self-contained defined memory, plain bump, no thread-spawn import.
-      // The `<|`/`><` ownership discrimination at the module-image altitude.
-      let spawns = ls_find_str_local(wasi_ops, "spawn_task", 0) >= 0
-      // The socket seam's own proof, read from the module's ops beside the
-      // spawn proof rather than inferred from it (see emit_memory_decl).
-      let socketed = ls_find_str_local(wasi_ops, "sock_accept", 0) >= 0
-      emit_memory_decl(spawns, spawns || socketed, ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0)
-      // The image bracket's globals (arena 2a) — demand-gated on the
-      // pair's own performs, the spawn-cell precedent: a module that
-      // never brackets carries none. Depth (nesting), mark (the
-      // outermost enter's bump watermark), bytes (the accumulated
-      // extent deltas — the census image_bytes reads).
-      if ls_find_str_local(wasi_ops, "image_enter", 0) >= 0 {
-        wat_emit("  (global $image_depth (mut i32) (i32.const 0))\n  (global $image_mark (mut i32) (i32.const 0))\n  (global $image_bytes (mut i32) (i32.const 0))\n")
+      {
+        fn_records: fn_records,
+        fold_closures: fold_closures,
+        line_owners: static_line_owners(top_fn_names, fn_lines, spec_recs),
+        lowered: lowered,
+        redrives: redrives,
+        spec_names: spec_names,
+        spec_recs: spec_recs,
+        spec_wide: spec_wide,
+        string_entries: string_entries,
+        table_fn_names: table_fn_names,
+        top_fn_names: top_fn_names,
+        vectors: vectors,
+        wasi_ops: wasi_ops,
+        wide_fn_names: wide_fn_names,
+        yield_seen: yield_seen,
       }
-      emit_line_globals(line_owners)
-      // band B k1: the yield triple exists only in a module that yields —
-      // $yield_flag (the out-of-band Koka-lineage yielding bit), $yield_op (the
-      // interned op key the drivers compare), $yield_k (the reified k record).
-      if yield_seen > 0 { emit_yield_globals() }
-      emit_string_data(string_entries)
-      // Twins ride every fn-name surface APPENDED (existing indices stable): the
-      // table (a wide twin's slot holds its $wf$ word face), the per-name idx
-      // globals, and the static closure records (global.get $<twin> at redirect
-      // sites reads a record whose offset-0 slot is the twin's table index).
-      let table_all = table_fn_names ++ spec_names
-      let wide_all = wide_fn_names ++ spec_wide
-      emit_fn_table(
-        table_all,
-        wide_all,
-        any(vector_is_wide, vectors),
-        adapted_names(fn_records, spec_recs)
-      )
-      emit_fn_index_globals(table_all, fn_table_base())
-      emit_static_top_closures(top_fn_names ++ spec_names, table_all, 0)
-      // Module VALUE bindings: ONE projection feeds the declaration half and
-      // the init half (never two walks of one tree).
-      let value_lets = collect_top_value_lets(lowered)
-      emit_top_let_globals(value_lets)
-      emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, table_all, string_entries)
-      emit_functions(fn_records)
-      emit_wide_wrappers(fn_records)
-      each(emit_base_adapter, fn_records)
-      // The twins: the SAME per-fn emission, each under its instantiation
-      // handler — monomorphization as a handler swap. A wide twin also gets its
-      // $wf$ word-face wrapper under the same install (its table slot speaks the
-      // word-arity face like every other wide fn), and an arm twin whose face
-      // its op does not declare gets its op-face adapter.
-      each(
-        {
-          (rec2, pairs, enc, base) => {
-            // The twin's emission is a region too: pairs/enc live OUTSIDE the
-            // mark (allocated with spec_recs above), the registry commit stores
-            // pre-mark pointers, and both strings stream before the reset.
-            spec_ctx_set(pairs, enc)
-            let m = heap_mark()
-            wat_emit(emit_one_fn_to_string(rec2))
-            wat_emit(if fn_record_is_wide(rec2) { emit_one_wrapper_to_string(rec2) } else { "" })
-            wat_emit(twin_adapter_text(rec2, base))
-            heap_reset(m)
-            spec_ctx_clear()
-          },
-        },
-        spec_recs
-      )
-      // The four fold leaves — eq / compare / hash / show — one recursive
-      // $<leaf>_<sig> helper per distinct signature in each closure, all read
-      // from the ONE collection walk above (the unified each). Plain top-level
-      // fns, called directly like $str_eq; a program with no aggregate sites
-      // collects none (byte-identical, Law 7). The leaves allocate (a show
-      // leaf's concat tree, an aggregate leaf's call record), so the
-      // allocation strategy installs HERE, inside the live sink: the
-      // strategy's arm performs `wat_emit`, an arm's performs resolve outer
-      // of its own install, and this is the one whole-compile emission with
-      // no per-fn bracket of its own (the init lets carry theirs). The
-      // whole-compile install that used to stand in emit_context wrote past
-      // every sink installed inside a compile — the row carried WasmOut to the
-      // executable root and the root gate refused the wheel (2026-09-27).
-      emit_fold_leaf_helpers(fold_closures) ~> emit_memory_bump
-      // band B M1.2 — the composer pair + world reader: $__k_compose (the
-      // self-re-composing junction k, table-resident above), $__k_extend (the one
-      // bubble op), $__k_world (the frozen-world read). Dormant until a k2
-      // boundary calls extend; emitted only when the module yields (Law 7).
-      if yield_seen > 0 { emit_k_compose_pair() }
-      // band B M2b — one redrive fn per LIVE MultiShot-armed handler: the
-      // dispatch loop's one home (the install bracket and every resume
-      // flag-arm call the same fn).
-      each(emit_one_redrive, redrives)
-      emit_init_lines(line_owners)
-      emit_init_lets(value_lets)
-      emit_start(top_fn_names, value_lets, len(line_owners) > 0, main_param_count(), yield_seen, spawns)
-      emit_footer()
     },
   }
+}
+
+// The module, written from its plan. Nothing here decides: every fact it
+// reads was settled before the gate, and the registries the writes consult
+// (the twins, the string offsets, the per-fn lines) were seeded by the plan.
+fn emit_planned(plan) = match plan {
+  {fn_records, fold_closures, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_seen} => {
+    let line_globals = line_global_slots(line_owners)
+    emit_header()
+    emit_type_section(vectors, yield_seen)
+    emit_runtime_imports(wasi_ops)
+    // The module's memory OWNERSHIP is read from its own proof (the fifth
+    // projection): a module that spawns IMPORTS the shared image (every
+    // instance reads one memory — the wasi-threads convention) and
+    // allocates through the shared cell; a thread-free module owns a
+    // self-contained defined memory, plain bump, no thread-spawn import.
+    // The `<|`/`><` ownership discrimination at the module-image altitude.
+    let spawns = ls_find_str_local(wasi_ops, "spawn_task", 0) >= 0
+    // The socket seam's own proof, read from the module's ops beside the
+    // spawn proof rather than inferred from it (see emit_memory_decl).
+    let socketed = ls_find_str_local(wasi_ops, "sock_accept", 0) >= 0
+    emit_memory_decl(spawns, spawns || socketed, ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0)
+    // The image bracket's globals (arena 2a) — demand-gated on the
+    // pair's own performs, the spawn-cell precedent: a module that
+    // never brackets carries none. Depth (nesting), mark (the
+    // outermost enter's bump watermark), bytes (the accumulated
+    // extent deltas — the census image_bytes reads).
+    if ls_find_str_local(wasi_ops, "image_enter", 0) >= 0 {
+      wat_emit("  (global $image_depth (mut i32) (i32.const 0))\n  (global $image_mark (mut i32) (i32.const 0))\n  (global $image_bytes (mut i32) (i32.const 0))\n")
+    }
+    emit_line_globals(line_owners)
+    // band B k1: the yield triple exists only in a module that yields —
+    // $yield_flag (the out-of-band Koka-lineage yielding bit), $yield_op (the
+    // interned op key the drivers compare), $yield_k (the reified k record).
+    if yield_seen > 0 { emit_yield_globals() }
+    emit_string_data(string_entries)
+    // Twins ride every fn-name surface APPENDED (existing indices stable): the
+    // table (a wide twin's slot holds its $wf$ word face), the per-name idx
+    // globals, and the static closure records (global.get $<twin> at redirect
+    // sites reads a record whose offset-0 slot is the twin's table index).
+    let table_all = table_fn_names ++ spec_names
+    let wide_all = wide_fn_names ++ spec_wide
+    emit_fn_table(
+      table_all,
+      wide_all,
+      any(vector_is_wide, vectors),
+      adapted_names(fn_records, spec_recs)
+    )
+    emit_fn_index_globals(table_all, fn_table_base())
+    emit_static_top_closures(top_fn_names ++ spec_names, table_all, 0)
+    // Module VALUE bindings: ONE projection feeds the declaration half and
+    // the init half (never two walks of one tree).
+    let value_lets = collect_top_value_lets(lowered)
+    emit_top_let_globals(value_lets)
+    emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, table_all, string_entries)
+    emit_functions(fn_records)
+    emit_wide_wrappers(fn_records)
+    each(emit_base_adapter, fn_records)
+    // The twins: the SAME per-fn emission, each under its instantiation
+    // handler — monomorphization as a handler swap. A wide twin also gets its
+    // $wf$ word-face wrapper under the same install (its table slot speaks the
+    // word-arity face like every other wide fn), and an arm twin whose face
+    // its op does not declare gets its op-face adapter.
+    each(
+      {
+        tw => {
+          // The twin's emission is a region too: pairs/enc live OUTSIDE the
+          // mark (allocated with spec_recs above), the registry commit stores
+          // pre-mark pointers, and both strings stream before the reset.
+          spec_ctx_set(tw.pairs, tw.enc)
+          let m = heap_mark()
+          wat_emit(emit_one_fn_to_string(tw.rec))
+          wat_emit(if fn_record_is_wide(tw.rec) { emit_one_wrapper_to_string(tw.rec) } else { "" })
+          wat_emit(twin_adapter_text(tw.rec, tw.base))
+          heap_reset(m)
+          spec_ctx_clear()
+        },
+      },
+      spec_recs
+    )
+    // The four fold leaves — eq / compare / hash / show — one recursive
+    // $<leaf>_<sig> helper per distinct signature in each closure, all read
+    // from the ONE collection walk above (the unified each). Plain top-level
+    // fns, called directly like $str_eq; a program with no aggregate sites
+    // collects none (byte-identical, Law 7). The leaves allocate (a show
+    // leaf's concat tree, an aggregate leaf's call record), so the
+    // allocation strategy installs HERE, inside the live sink: the
+    // strategy's arm performs `wat_emit`, an arm's performs resolve outer
+    // of its own install, and this is the one whole-compile emission with
+    // no per-fn bracket of its own (the init lets carry theirs). The
+    // whole-compile install that used to stand in emit_context wrote past
+    // every sink installed inside a compile — the row carried WasmOut to the
+    // executable root and the root gate refused the wheel (2026-09-27).
+    emit_fold_leaf_helpers(fold_closures) ~> emit_memory_bump
+    // band B M1.2 — the composer pair + world reader: $__k_compose (the
+    // self-re-composing junction k, table-resident above), $__k_extend (the one
+    // bubble op), $__k_world (the frozen-world read). Dormant until a k2
+    // boundary calls extend; emitted only when the module yields (Law 7).
+    if yield_seen > 0 { emit_k_compose_pair() }
+    // band B M2b — one redrive fn per LIVE MultiShot-armed handler: the
+    // dispatch loop's one home (the install bracket and every resume
+    // flag-arm call the same fn).
+    each(emit_one_redrive, redrives)
+    emit_init_lines(line_owners)
+    emit_init_lets(value_lets)
+    emit_start(top_fn_names, value_lets, len(line_owners) > 0, main_param_count(), yield_seen, spawns)
+    emit_footer()
+  },
 }
 
 // ─── Single-walk multi-projection emit pre-pass ─────────────────────
@@ -1797,10 +2044,10 @@ fn static_line_owners(top_fn_names, fn_lines, spec_recs) = filter(
   map({ (name, lines) => (name, lines, [], "") }, fn_lines)
 ) ++ flat_map(
   {
-    (rec2, pairs, enc, base) => match rec2 {
-      (m, _ps, _b, _f) => match filter(line_is_static, fn_lines_of(base)) {
+    tw => match tw.rec {
+      (m, _ps, _b, _f) => match filter(line_is_static, fn_lines_of(tw.base)) {
         [] => [],
-        lines => [(m, lines, pairs, enc)],
+        lines => [(m, lines, tw.pairs, tw.enc)],
       },
     },
   },
@@ -2643,7 +2890,7 @@ fn emit_byte_escape(b) = {
 fn hex_digit(d) = str_slice(hex_glyphs(), d, d + 1)
 
 // The function types every call_indirect names, projected from the module's
-// call vectors (collected once in emit_module): the arity family $ftN the
+// call vectors (collected once in the plan): the arity family $ftN the
 // word face speaks, then one typed face per distinct wide vector.
 fn emit_type_section(vectors, yield_seen) = {
   // The arity-keyed all-i32 $ftN types ARE the all-RI32 instances of the
@@ -3364,12 +3611,10 @@ fn adapted_base_name(r) = match r {
   },
 }
 
-fn adapted_twin_name(sr) = match sr {
-  (rec2, _pairs, _enc, base) => match rec2 {
-    (m, _ps, _b, _f) => match adapter_op(m, base) {
-      Some(_) => [m],
-      None => [],
-    },
+fn adapted_twin_name(tw) = match tw.rec {
+  (m, _ps, _b, _f) => match adapter_op(m, tw.base) {
+    Some(_) => [m],
+    None => [],
   },
 }
 
@@ -5211,48 +5456,11 @@ fn emit_expr(expr) = match expr {
   {
     let offset = field_sel_offset(rec, sel)
     if offset < 0 {
-      // NO SILENT FALLBACK (resolve_field_offset returned -1): the field's
-      // offset was not provable from the graph. Emit (unreachable) — the
-      // named wrong — not a fabricated offset-0 load that reads a foreign
-      // field. And it SAYS WHICH: the selector and the receiver's live type
-      // ride the marker, so the census reads an inventory instead of a count.
-      //
-      // AND IT REPORTS, which it never did before. This comment used
-      // to end "the medium makes the wrong move unsayable (PLAN §0)" and the
-      // artifact delivered the inverse: the floor was WRITTEN into the module
-      // and never SAID to anyone, so a program carrying one passed `mentl
-      // check` with zero diagnostics and trapped at the instruction that
-      // admits it. Nothing executes unproven is the one promise this site is
-      // the boundary for. Measured 2026-09-15: the shipping wheel carries four
-      // of these (`op_name`, `name`, `init`, `body`), one of them the
-      // unconditional else-branch of emitfns_index_build, and the march found
-      // it the only way a silent floor is ever found — a later generation
-      // stepped on it and the m4 leg died at `wasm trap: unreachable` with no
-      // diagnostic anywhere in the run.
-      //
-      // The report rides the RECEIVER's span: the selector has no node of its
-      // own, and the receiver is the value whose row failed to close, which is
-      // what the reader has to go fix.
-      //
-      // AND IT RIDES THE RECEIVER'S MODULE, read from the column that holds
-      // it. `report` derives the module from graph_module_current() — the
-      // module in force at the CURSOR — which is right while judgment walks a
-      // file and wrong here: emit walks the whole program, so the module in
-      // force is wherever the walk happens to be, never where this receiver
-      // lives. Under the driver's ScopeModule register the line then filters
-      // as out-of-scope and the class says nothing — measured on the DRIVER
-      // path, `mentl compile <file>`, where the fixture compiled to an empty
-      // stderr. The BLOB path (stdin: the self-compile, the march, every
-      // gate) never sets a scope, so there the class always spoke and the
-      // ratchet always read 4. A gate green on a chain the developer never
-      // runs: that divergence is the finding, and this arm is one symptom of
-      // it. The module is not ambient — graph_module_of is the handle's own
-      // column read, total by construction, and the handle is already in
-      // hand for the span.
-      report_at(
-        lexpr_handle(rec),
-        TFieldOffsetUnprovable(field_offset_unprovable_why(rec, sel), parse_span_of(lexpr_handle(rec)))
-      )
+      // An offset the graph cannot prove writes the named trap, never an
+      // offset-0 load of a foreign field, and the marker names the selector
+      // and the receiver's row. The settle point said it before this byte
+      // (`settle_node`), and an executable's gate refused there, so this
+      // floor is emitted only where nothing runs it (a library's whole-emit).
       wat_emit("    (unreachable)  ;; field offset unprovable: ")
       wat_emit(field_offset_unprovable_why(rec, sel))
       wat_emit("\n")
@@ -5356,7 +5564,7 @@ fn emit_const(v, h) = match v {
   LBool(b) => if b { wat_emit("    (i32.const 1)\n") } else { wat_emit("    (i32.const 0)\n") },
   LString(s) => {
     // W5: string literals live in statically-emitted (data ...)
-    // segments. LString's offset was assigned at emit_module's
+    // segments. LString's offset was assigned at the plan's
     // collect pass; string_offset looks it up through the
     // string_table handler. No runtime construction.
     let offset = string_offset(s)
@@ -5502,36 +5710,17 @@ fn emit_arith_for(op, left_h, l, r) = if left_h == 0 {
     // (repr_of's TReprPin arm), the gradient's default otherwise — the same
     // fact the join of the emitted widths reads, at its one home.
     emit_binop_repr(op, slot_repr(lookup_ty(left_h))),
-    AoUnproven(v) => {
-      // A variable at emit is a FLOOR twin's quantified var: every wide
-      // instantiation minted its own twin and bound the var under its
-      // bracket, so this operand is a word at the floor width. The judgment
-      // gated the cell numeric at the operator; a var it did not gate is an
-      // invariant broken upstream, said loudly rather than emitted quietly.
-      if len(numeric_gates_of(graph_chase_handle(v))) == 0 {
-        report_at(
-          left_h,
-          EInternalInvariant(
-            "arithmetic `{binop_to_str(op)}` on an ungated variable at emit ({show_type(lookup_ty(left_h))}, emitting {emit_site()})",
-            parse_span_of(left_h)
-          )
-        )
-      }
-      emit_binop_repr(op, RI32)
-    },
-    AoAggregate => {
-      // Unreachable by construction — the judgment refused the bind that
-      // would put an aggregate here — so reaching it is the invariant
-      // broken; the floor keeps the module honest if anything runs it.
-      report_at(
-        left_h,
-        EInternalInvariant(
-          "arithmetic `{binop_to_str(op)}` on {show_type(lookup_ty(left_h))} reached emit past the judgment's gate, emitting {emit_site()}",
-          parse_span_of(left_h)
-        )
-      )
-      wat_emit("    (unreachable)  ;; arithmetic on an aggregate past the gate\n")
-    },
+    AoUnproven(_) => // A variable at emit is a FLOOR twin's quantified var: every wide
+    // instantiation minted its own twin and bound the var under its
+    // bracket, so this operand is a word at the floor width. A var the
+    // judgment never gated numeric is an invariant broken upstream, which
+    // the settle point said before this byte (`settle_arith`).
+    emit_binop_repr(op, RI32),
+    AoAggregate => // Unreachable by construction — the judgment refused the bind that would
+    // put an aggregate here, and the settle point refused the module that
+    // reached it anyway (`settle_arith`) — so this floor is written only
+    // where nothing runs it.
+    wat_emit("    (unreachable)  ;; arithmetic on an aggregate past the gate\n"),
   }
 }
 
@@ -5789,39 +5978,8 @@ fn emit_struct_eq(left_h, neg) = if left_h == 0 {
   // one "li" walker and the second site's elements walked the wrong
   // protocol (measured: the paired tuple/nested-list program trapped in
   // list_eq_loop). One resolve, one truth.
-  match fold_strip(chase_deep(lookup_ty(left_h))) {
-    TVar(_) => {
-      report_cmp_unprovable(left_h, if neg { "!=" } else { "==" })
-      if neg { wat_emit("    (i32.ne)\n") } else { wat_emit("    (i32.eq)\n") }
-    },
-    ty => emit_eq_for_ty(ty, neg),
-  }
+  emit_eq_for_ty(fold_strip(chase_deep(lookup_ty(left_h))), neg)
 }
-
-// A comparison whose operand type is still a VARIABLE at emit has no
-// structure to read: the word compare it falls to is value-equality only
-// when the value IS one word, and an ADDRESS compare on anything else
-// answers a lie (measured 2026-09-18 — a handler arm over quantified op
-// parameters answered "ab" != "ab", tests/frontier/mn-eq-in-arm-pointer.mn).
-// The emit REPORTS at the operand's span, carrying the operator and the
-// operand's live type — T_FieldOffsetUnprovable's sibling on the same
-// ladder: narrate → ratchet → arm. NARRATION ONLY here, by measurement: the
-// first form wrote `(unreachable)` and the wheel compiled by it died
-// compiling the wheel (m4 exit 134): the wheel carries such sites itself,
-// shipping today as word compares the battery has not caught — some over
-// words, some over interned names whose addresses coincide by the intern
-// contract (the verify leg counts them; the baseline key is the one home
-// of the number). So the floor stays, the census counts them down (twins
-// reaching the site, or a type named at an Intent Boundary where the
-// polymorphism is over words), and the arming commit turns the narration
-// into the refusal.
-fn report_cmp_unprovable(left_h, opname) = report_at(
-  left_h,
-  TEqTypeUnprovable(
-    "`{opname}` on {show_type(lookup_ty(left_h))}, emitting {emit_site()}",
-    parse_span_of(left_h)
-  )
-)
 
 // fold_strip / fold_sig — the structural fold's shared skeleton — now live at
 // their Carried-Truth home in types.mn (a type's fold-signature is a property
@@ -5877,9 +6035,9 @@ fn emit_eq_for_ty(ty, neg) = match ty {
   if neg { wat_emit("    (f64.ne)\n") } else { wat_emit("    (f64.eq)\n") },
   _ => // Scalar word: Int / Unit / fn-table index / continuation pointer —
   // resolved types whose value IS one word, so i32.eq IS structural;
-  // `==` leaves a Bool regardless of operand width. An unresolved TVar
-  // never reaches this arm: the entry reports it (report_cmp_unprovable)
-  // and writes the same word compare, counted.
+  // `==` leaves a Bool regardless of operand width. A VARIABLE reaches this
+  // arm only where the settle point proved nothing runs it as anything but a
+  // word (`settle_node` refused every executable site where it would be).
   if neg { wat_emit("    (i32.ne)\n") } else { wat_emit("    (i32.eq)\n") },
 }
 
@@ -5948,7 +6106,7 @@ fn emit_eq_sum_call(sig, neg) = {
 // per-projection accumulators. Here: ONE walk carries the four closures as
 // one record; a TRIGGER arm contributes to its slot (an eq/ne site, an
 // ordering site, a $show_ call, a $hash_ call); recursion is uniform over
-// EVERY child, so no subtree is dropped. emit_module computes the record
+// EVERY child, so no subtree is dropped. The plan computes the record
 // ONCE and both readers (the literal registration, the leaf emission) read
 // it. One dedup walk emits each distinct signature's helper once, the leaf
 // selected by the FoldOp ADT — four fn names were four spellings of one
@@ -6493,15 +6651,9 @@ fn emit_struct_cmp(op, left_h) = if left_h == 0 {
   emit_binop_repr(op, RI32)
 } else {
   // the fold boundary (the eq entry's law): resolve once, the family
-  // reads var-free — and an operand still a VARIABLE here is refused the
-  // same way `==` refuses it: an address ordering is the same lie.
-  match fold_strip(chase_deep(lookup_ty(left_h))) {
-    TVar(_) => {
-      report_cmp_unprovable(left_h, binop_to_str(op))
-      emit_binop_repr(op, RI32)
-    },
-    ty => emit_cmp_for_ty(op, ty),
-  }
+  // reads var-free. A VARIABLE here is a word by the settle point's
+  // refusal (`settle_node`), so the word compare below is its reading.
+  emit_cmp_for_ty(op, fold_strip(chase_deep(lookup_ty(left_h))))
 }
 
 // The compare leaf over an already-stripped operand type. Aggregates (product/
@@ -7649,10 +7801,9 @@ fn emit_line_mints(lines, rec_local: String) = each(
         wat_emit(int_to_str(8 + slot * 4))
         wat_emit(")\n")
       },
-      LhStatic => report(EInternalInvariant(
-        "a static `<~` line at {int_to_str(h)} inside a minted record ({emit_site()})",
-        span_zero()
-      )),
+      LhStatic => // A minted record has no static line: the settle point refused the
+      // module that would carry one (`settle_minted_lines`).
+      (),
     },
   },
   lines
@@ -8046,9 +8197,7 @@ fn emit_pat_predicate_at(pat, path, path_len) = match pat {
     None => if record_pats_always_match(fbs) {
       wat_emit("    (i32.const 1)\n")
     } else {
-      // The binds report a pattern they have work for; one they do not
-      // reach is said here, so every floored pattern is said once.
-      emit_record_pattern_floor(rh, rty, !record_pat_has_binds(fbs, rest))
+      emit_record_pattern_floor(rty)
     },
   },
   LPList(elem, sub_pats, rest, srep) => {
@@ -8093,17 +8242,16 @@ fn emit_pat_record_subs_predicate(full, fbs, path, path_len) = if len(fbs) == 0 
   }
 }
 
-// A record pattern whose receiver's field set never closed — the loud floor,
-// said at the scrutinee, the value whose row the reader has to go close. The
-// pattern once took its own field indices as offsets here instead, which is
-// the wrong-slot class with no diagnostic at all.
-fn emit_record_pattern_floor(rh, rty, say) = {
-  let why = "record pattern on {show_type(rty)}"
-  if say { report_at(rh, TFieldOffsetUnprovable(why, parse_span_of(rh))) } else { () }
+// A record pattern whose receiver's field set never closed — the named trap,
+// never its own field indices taken as offsets. The settle point said it at
+// the scrutinee (`settle_pattern`).
+fn emit_record_pattern_floor(rty) = {
   wat_emit("    (unreachable)  ;; field offset unprovable: ")
-  wat_emit(why)
+  wat_emit(record_pattern_unprovable_why(rty))
   wat_emit("\n")
 }
+
+fn record_pattern_unprovable_why(rty) = "record pattern on {show_type(rty)}"
 
 // Whether a record pattern has work in the binds phase: a field that binds,
 // or a rest that is named.
@@ -8181,12 +8329,12 @@ fn emit_pat_binds_at(pat, path, path_len, val_repr) = match pat {
   // floor: never executes, always assembles.
   each((p) => emit_pat_binds_at(p, path, path_len, RI32), sub_pats),
   LPTuple(ebs) => emit_pat_tuple_binds(ebs, path, path_len),
-  LPRecord(rh, rty, fbs, rest) => match record_full_fields(rty) {
+  LPRecord(_rh, rty, fbs, rest) => match record_full_fields(rty) {
     Some(full) => {
       emit_pat_record_binds(full, fbs, path, path_len)
       emit_pat_record_rest_bind(full, fbs, rest, path, path_len)
     },
-    None => if record_pat_has_binds(fbs, rest) { emit_record_pattern_floor(rh, rty, true) } else { () },
+    None => if record_pat_has_binds(fbs, rest) { emit_record_pattern_floor(rty) } else { () },
   },
   LPList(elem, sub_pats, rest, srep) => {
     emit_pat_subs_binds(sub_pats, list_elem_read(srep, elem), path, path_len, slot_repr(elem))

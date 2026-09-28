@@ -1714,8 +1714,9 @@ fn module_path_of_handle(mh) with !Mutate = fold("", module_path_pick(mh), modul
 
 // `mh: Int` is the Intent Boundary carrying the eq PROOF, not decoration:
 // the fold's accumulator leaves `mh` a bare variable at emit, so `h == mh`
-// falls to a one-word compare and `T_EqTypeUnprovable` says so — right for
-// a handle by luck, an address lie by construction. The sibling
+// would fall to a one-word compare, and the settle point refuses that as
+// E_ShapeUnprovable — right for a handle by luck, an address lie by
+// construction. The sibling
 // `module_handle_pick` annotates `path: String` for the same reason.
 fn module_path_pick(mh: Int, acc, c) = match c {
   (h, p, _s, _d) => if h == mh { p } else { acc },

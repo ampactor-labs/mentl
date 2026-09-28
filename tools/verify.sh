@@ -310,27 +310,31 @@ if C=$(wt_m2_ensure); then
 
   # 2c. THE FLOOR CONTRACT — an unprovable field offset REFUSES, and says
   #     which. Two halves, because either alone is a gate that cannot fail:
-  #     the trap (never a guessed offset 0 reading a foreign field) and the
-  #     marker's TEXT (the selector and the receiver's live row). The text
-  #     half is what turns a floor census from a count into an inventory,
-  #     and this arc re-derived the blocking row by hand four times before
-  #     the emit was asked to speak it.
+  #     the refusal (never a guessed offset 0 reading a foreign field, and
+  #     since the settle point armed the class on 2026-09-28, never a trap
+  #     either: zero bytes, exit 1) and the refusal's TEXT (the selector and
+  #     the receiver's live row). The text half is what turns a floor census
+  #     from a count into an inventory, and this arc re-derived the blocking
+  #     row by hand four times before the emit was asked to speak it.
   flr_n=0; flr_bad=0
   for ff in tests/floors/*.mn; do
     [[ -e "$ff" ]] || continue
     flr_n=$((flr_n+1))
     f=$(basename "$ff" .mn)
-    fwant=$(sed -n '1s|^// expect: \([0-9]\+\)$|\1|p' "$ff")
+    fwant=$(sed -n '1s|^// expect: refuse \(E_[A-Za-z]\+\)$|refuse:\1|p' "$ff")
     fout=$(tools/run-micro.sh "$ff" "$fwant" "${RTLIBS[@]}" 2>/dev/null | grep -E '^(PASS|FAIL)' | tail -1)
     if [[ "$fout" != PASS* ]]; then
       say "✗ floor $f: ${fout:-no output}"; flr_bad=$((flr_bad+1)); continue
     fi
-    fwat="${TMPDIR:-/tmp}/$f.wat"
-    if ! grep -q "field offset unprovable: field '" "$fwat"; then
-      say "✗ floor $f: the marker does not name its selector"; flr_bad=$((flr_bad+1)); continue
+    ferr="${TMPDIR:-/tmp}/$f.err"
+    if [[ -s "${TMPDIR:-/tmp}/$f.wat" ]]; then
+      say "✗ floor $f: refused, but WAT reached stdout"; flr_bad=$((flr_bad+1)); continue
     fi
-    grep -q "field offset unprovable: field '[^']*' on " "$fwat" \
-      || { say "✗ floor $f: the marker does not name the receiver's row"; flr_bad=$((flr_bad+1)); }
+    if ! grep -q "E_FieldOffsetUnprovable error: field '" "$ferr"; then
+      say "✗ floor $f: the refusal does not name its selector"; flr_bad=$((flr_bad+1)); continue
+    fi
+    grep -q "E_FieldOffsetUnprovable error: field '[^']*' on " "$ferr" \
+      || { say "✗ floor $f: the refusal does not name the receiver's row"; flr_bad=$((flr_bad+1)); }
   done
   if [[ "$flr_n" -eq 0 ]]; then
     say "✗ floor contract: no fixtures — an emit floor with no gate is a marker nobody reads"
@@ -501,65 +505,16 @@ if C=$(wt_m2_ensure); then
   # 2026-09-17 with the pass it gauged: one judgment has no trial→final
   # override to count, and a ratchet whose instrument is gone reads a phantom
   # zero forever — the mute-gate class, never green.
-  # THE UNPROVABLE-FIELD-OFFSET RATCHET — same stderr, and it reads a class
-  # that did not exist before 2026-09-15 because the floor was emitted
-  # silently. Every count here is an `(unreachable)` the wheel ships inside
-  # itself, so this is a countdown, not a tolerance. A RISE is a new
-  # landmine. It reached 0 on 2026-09-28 (record rows as union-find citizens,
-  # then the emitted reach), and the class still cannot arm by renaming: it
-  # is decided during emission, after the gate that reads refusals
-  # (Hβ.emit.emit-time-class-cannot-refuse), and until that lands this
-  # ratchet is what holds the zero.
-  #
-  # LIKE movers ABOVE, THIS IS THE PINNED BOOT'S SELF-REPORT: a landing that
-  # moves the count reads the OLD boot until it repins, so the ceiling during
-  # its march is what the old boot says, and after the repin the new boot's
-  # read is the one the ceiling follows.
-  fou=$(grep -c 'T_FieldOffsetUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); fou=${fou:-0}
-  fmax=$(grep -E '^field_offset_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· field-offset floors: $fou unprovable slot(s) the wheel ships as (unreachable)"
-  if [[ -n "$fmax" && "$fou" -gt "$fmax" ]]; then
-    say "✗ field-offset RATCHET: rose $fmax -> $fou — a new silent trap entered the wheel."
-    say "  Close the receiver's row at the reported span; the diagnostic names the field and the type."
-    fail=1
-  elif [[ -n "$fmax" && "$fou" -lt "$fmax" ]]; then
-    say "  ↓ field-offset floors FELL $fmax -> $fou — lower field_offset_unprovable_max in $BASELINE to hold it."
-  fi
-  # THE UNPROVABLE-COMPARISON ratchet — the floor class one operator over
-  # (2026-09-18): `==`/`!=`/`<`… on an operand whose type is still a
-  # variable at emit REPORTS T_EqTypeUnprovable and writes the trap instead
-  # of i32.eq on two addresses. Same ladder as the field-offset floor above:
-  # the pinned boot's self-report on the wheel, a countdown to 0, at which
-  # the class arms (E_, SError, diag_refuses) and the eq-in-arm-pointer leg
-  # turns green by PROVING its arm — never by the annotation the fixture
-  # deliberately omits.
-  equ=$(grep -c 'T_EqTypeUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); equ=${equ:-0}
-  eqmax=$(grep -E '^eq_type_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· unprovable comparisons: $equ operand(s) still a variable at emit — 0 arms the class"
-  if [[ -n "$eqmax" && "$equ" -gt "$eqmax" ]]; then
-    say "✗ unprovable-comparison RATCHET: rose $eqmax -> $equ — a new address compare entered the wheel."
-    say "  Prove the operand at the reported span; the diagnostic names the operator and the type."
-    fail=1
-  elif [[ -n "$eqmax" && "$equ" -lt "$eqmax" ]]; then
-    say "  ↓ unprovable comparisons FELL $eqmax -> $equ — lower eq_type_unprovable_max in $BASELINE;"
-    say "    at 0, rename TEqTypeUnprovable to E_, flip it to SError, add it to diag_refuses, and move the fixture to run_refusal."
-  fi
-  # THE UNPROVABLE-SHOW ratchet — the same floor one leaf over (2026-09-28):
-  # a show or interpolation splice whose operand type is still a variable at
-  # emit falls to the word's integer. It had a WAT marker and no voice until
-  # a handler head rendered its config list as `(66036)`; it narrates
-  # T_ShowTypeUnprovable now, and the count is held so it can only fall.
-  shu=$(grep -c 'T_ShowTypeUnprovable Warning:' "$C/m2.err" 2>/dev/null || true); shu=${shu:-0}
-  shmax=$(grep -E '^show_type_unprovable_max:' "$BASELINE" | head -1 | cut -d: -f2 | tr -d ' ')
-  say "· unprovable shows: $shu operand(s) still a variable at emit — 0 arms the class"
-  if [[ -n "$shmax" && "$shu" -gt "$shmax" ]]; then
-    say "✗ unprovable-show RATCHET: rose $shmax -> $shu — a new word-as-integer render entered the wheel."
-    say "  Prove the operand at the reported span; the diagnostic names the type and the emitting fn."
-    fail=1
-  elif [[ -n "$shmax" && "$shu" -lt "$shmax" ]]; then
-    say "  ↓ unprovable shows FELL $shmax -> $shu — lower show_type_unprovable_max in $BASELINE;"
-    say "    at 0, rename TShowTypeUnprovable to E_, flip it to SError and add it to diag_refuses."
-  fi
+  # THE THREE UNPROVABLE-FLOOR RATCHETS ARE RETIRED (2026-09-28, R0″) — the
+  # classes are ARMED. They counted T_FieldOffsetUnprovable,
+  # T_EqTypeUnprovable and T_ShowTypeUnprovable on the wheel's own compile
+  # and held the counts so they could only fall, because the classes were
+  # decided during emission, after the gate had read the ledger, and could
+  # not refuse. The plan's settle point asks all three before the first
+  # byte, so each is an armed refusal now (E_FieldOffsetUnprovable,
+  # E_ShapeUnprovable) and a wheel carrying one cannot compile at all. A
+  # ratchet beside an armed class is a weaker second copy of the refusal
+  # (the use-after-move precedent below).
   # THE USE-AFTER-MOVE RATCHET IS RETIRED (2026-09-15) — the class is ARMED.
   # It counted T_UseAfterMove narrations on the wheel's own compile and held
   # them at ZERO so that diag_refuses' wheel-zero arming licence stayed

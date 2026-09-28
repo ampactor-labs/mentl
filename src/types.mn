@@ -1772,20 +1772,20 @@ effect RegionTrack {
 }
 
 // StringTable (spec W5) — compile-time interned string literals.
-// emit_module collects every LString in the lowered program, assigns
+// `emit_plan` collects every LString in the lowered program, assigns
 // each unique literal a 4-byte-aligned offset in the string-data
-// region (0x10000..0x100000), and emits `(data ...)` segments. At
-// LString emit time, `string_offset(s)` returns the interned offset;
-// the generated WAT is `(i32.const <offset>)` with zero runtime
-// construction. `set_string_entries` is called once by emit_module
-// after collection to populate the handler's state.
+// region (0x10000..0x100000), and `emit_planned` writes the `(data ...)`
+// segments. At LString emit time, `string_offset(s)` returns the interned
+// offset; the generated WAT is `(i32.const <offset>)` with zero runtime
+// construction. `set_string_entries` is called once by the plan after
+// collection to populate the handler's state.
 effect StringTable {
   string_offset(String) -> Int
   set_string_entries([(String, Int)])
 }
 
 // SpecTwins — the specialization registry (the StringTable pattern one shelf
-// over): emit_module's emitted reach decides ONCE which twins exist, seeds the
+// over): the plan's emitted reach decides ONCE which twins exist, seeds the
 // registry, and every reference-emitting arm then asks spec_twin_known before
 // redirecting a site's mangled key to a twin — a site whose key names no twin
 // stays at the word-protocol floor.
@@ -1797,8 +1797,8 @@ effect SpecTwins {
 
 // EmitSite — WHERE an emit-time diagnostic is standing. A node minted after
 // parse carries no span (`parse_span_of` answers zero on it), so a report at
-// one is prose nobody can locate: T_EqTypeUnprovable's first census read 41 of
-// its 56 sites at 0:0 with nothing to name them, which is a count standing in
+// one is prose nobody can locate: the unprovable-comparison class's first
+// census read 41 of its 56 sites at 0:0 with nothing to name them, which is a count standing in
 // for a finding. The emission in flight IS the nearest true coordinate, and it
 // is ambient by nature — installed once per fn record where the name is
 // already in hand, read by whichever diagnostic needs to say where it stands,
@@ -2640,29 +2640,20 @@ type DiagKind
   // §«Partial application» — productive,
   // never executable)
   | EUnresolvedHole(Int, Span)
-  // a reachable field access whose offset the
-  // graph could not prove — the receiver's row
-  // never closed, so emit has no slot to load
-  // and writes `(unreachable)` instead. The
-  // floor was WRITTEN and never SAID: a program
-  // carrying one compiles clean and traps at the
-  // instruction that admits it, which is §0's
-  // "nothing executes unproven" inverted at the
-  // one boundary that claimed it
-  | TFieldOffsetUnprovable(String, Span)
-  // a comparison (`==`, `!=`, `<`, …) whose operand type is still a VARIABLE
-  // at emit: no structure to compare, so an address compare would answer a
-  // lie — the emit reports at the operand's span and writes the trap instead
-  // (measured 2026-09-18: a handler arm over quantified op parameters
-  // answered "ab" != "ab"). T_FieldOffsetUnprovable's sibling, same ladder.
-  | TEqTypeUnprovable(String, Span)
-  // a show or interpolation splice whose operand type is still a VARIABLE at
-  // emit: the render falls to int_to_str of the word, right for an Int and a
-  // pointer printed as a number for anything else. The eq sibling one leaf
-  // over, and it had no voice: measured 2026-09-28, when a handler head
-  // rendered its config list as `(66036)` and 22 such floors in the wheel's
-  // own emit carried a WAT comment and no diagnostic.
-  | TShowTypeUnprovable(String, Span)
+  // a field load or a record pattern whose receiver's row never closed
+  // where it is emitted: no field set, so no slot to read. Said at the
+  // settle point (`emit_plan`), where the gate still reads it; the emit's
+  // own `(unreachable)` beside the site is never reached
+  | EFieldOffsetUnprovable(String, Span)
+  // a comparison, a show, a hash or a `++` whose operand is still a type
+  // VARIABLE where it is emitted: nothing proves the shape the read needs,
+  // and the word reading the emit would fall to is a lie for anything but a
+  // word. Said at the settle point beside its row sibling
+  | EShapeUnprovable(String, Span)
+  // a reference past the twin cap: a recursion instantiates a generic at a
+  // type that grows with every call and a body on the chain reads that
+  // structure, so past eight levels no specialization is left to read it
+  | EInstantiationDepth(String, Span)
   // arithmetic on a product, sum, sequence, function, continuation or unit —
   // no meaning the value ontology gives it. Judged at the operator when the
   // operand is bound and at the one writer when a gated cell is bound later
@@ -2845,9 +2836,9 @@ fn diag_span(d) with Pure = match d {
   EEffectUnhandled(_, _, s) => s,
   EThreadedBranchEffect(_, _, s) => s,
   EUnresolvedHole(_, s) => s,
-  TFieldOffsetUnprovable(_, s) => s,
-  TEqTypeUnprovable(_, s) => s,
-  TShowTypeUnprovable(_, s) => s,
+  EFieldOffsetUnprovable(_, s) => s,
+  EShapeUnprovable(_, s) => s,
+  EInstantiationDepth(_, s) => s,
   EArithOnAggregate(_, s) => s,
   EReplayExhausted(s) => s,
 }
@@ -2866,7 +2857,8 @@ fn diag_source(d) with Pure = match d {
   EOrphanHandlerAttach(_) => "parser",
   ENotAKeyword(_, _) => "parser",
   EEffArgNotLiteral(_) => "parser",
-  EInternalInvariant(_, _) => "parser",
+  EInternalInvariant(_, _) => // the compiler's own invariant, broken in whichever pass found it
+  "compiler",
   WRedundantWhere(_) => "parser",
   WCommentRefUnresolved(_, _, _) => "infer",
   ETypeMismatch(_, _, _) => "infer",
@@ -2920,9 +2912,9 @@ fn diag_source(d) with Pure = match d {
   EEffectUnhandled(_, _, _) => "effects",
   EThreadedBranchEffect(_, _, _) => "lower",
   EUnresolvedHole(_, _) => "verify",
-  TFieldOffsetUnprovable(_, _) => "lower",
-  TEqTypeUnprovable(_, _) => "lower",
-  TShowTypeUnprovable(_, _) => "lower",
+  EFieldOffsetUnprovable(_, _) => "lower",
+  EShapeUnprovable(_, _) => "lower",
+  EInstantiationDepth(_, _) => "lower",
   EArithOnAggregate(_, _) => "infer",
   EReplayExhausted(_) => "clock",
 }
@@ -2995,9 +2987,9 @@ fn diag_code(d) with Pure = match d {
   EEffectUnhandled(_, _, _) => "E_EffectUnhandled",
   EThreadedBranchEffect(_, _, _) => "E_ThreadedBranchEffect",
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
-  TFieldOffsetUnprovable(_, _) => "T_FieldOffsetUnprovable",
-  TEqTypeUnprovable(_, _) => "T_EqTypeUnprovable",
-  TShowTypeUnprovable(_, _) => "T_ShowTypeUnprovable",
+  EFieldOffsetUnprovable(_, _) => "E_FieldOffsetUnprovable",
+  EShapeUnprovable(_, _) => "E_ShapeUnprovable",
+  EInstantiationDepth(_, _) => "E_InstantiationDepth",
   EArithOnAggregate(_, _) => "E_ArithOnAggregate",
   EReplayExhausted(_) => "E_ReplayExhausted",
 }
@@ -3020,28 +3012,9 @@ fn diag_severity(d) with Pure = match d {
   TPolyRecursionSignature(_, _) => SWarning,
   TOwnUnconsumed(_, _) => SWarning,
   TOwnAcrossReplay(_, _) => SWarning,
-  TEqTypeUnprovable(_, _) => // PRE-ARM beside its sibling below, on the same ladder: the wheel's own
-  // census of the class is what the arming commit counts down to zero.
-  SWarning,
-  TShowTypeUnprovable(_, _) => // PRE-ARM, the eq sibling's ladder one leaf over: counted down on the
-  // wheel's own compile, armed at zero.
-  SWarning,
   EArithOnAggregate(_, _) => // ARMED at birth: arithmetic on an aggregate has no meaning, and the
   // wheel's census of it is zero (measured at the arming commit).
   SError,
-  TFieldOffsetUnprovable(_, _) => // PRE-ARM, on the exact ladder T_UseAfterMove walked: narrate → ratchet →
-  // arm, and the arming commit renames it E_ and moves it to SError beside
-  // its siblings. The severity tracks the ENFORCEMENT posture, never how bad
-  // the code is — an unprovable offset is an `(unreachable)` the emit ships,
-  // so it is an error in every sense except the one this projection names.
-  // It cannot be SError today for a mechanical reason, and the mechanism is
-  // the point: the census is a zero-tolerance ratchet on the wheel's own
-  // errors about its own source, and the wheel has FOUR of these. Reporting
-  // them as errors refuses the repin — which is the census working, not a
-  // problem to route around. The four are `Hβ.infer.record-row-vars-are-not-
-  // unioned`'s to close; the field_offset_unprovable_max ratchet in
-  // tools/verify-baseline.txt counts them down.
-  SWarning,
   EUseAfterMove(_, _) => SError,
   VPending(_, _) => SVerificationPending,
   EVerifyUnencodable(_) => SVerificationPending,
@@ -3315,6 +3288,22 @@ fn diag_refuses(d) with Pure = match d {
   // applies to the compiler's own claims first. Zero on the wheel (the
   // trial pass that muted thirteen of these is gone, 2026-09-17).
   True,
+  EFieldOffsetUnprovable(_, _) => // ARMED 2026-09-28 (R0″) at wheel-zero, the settle point being what made
+  // arming possible: the class was decided inside per-fn emission, after the
+  // gate and after bytes, so an armed report would have refused a module
+  // already on stdout. It is asked of every body the emitted reach walks,
+  // under that body's bracket, before the gate reads.
+  True,
+  EShapeUnprovable(_, _) => // ARMED 2026-09-28 (R0″) with its row sibling. The eq and show narrations
+  // it replaces counted two sites on the wheel, both `list_compare_loop`'s
+  // element compares; the loop reads its elements as the words the emit's
+  // by-name dispatch guarantees, and the count is zero.
+  True,
+  EInstantiationDepth(_, _) => // ARMED at birth (2026-09-28, R0″): a twin chain reaches its cap only when
+  // a structurally-read type grows with every call, so the floor it falls to
+  // would read that structure as a word. Measured the day it was born: two
+  // ten-deep lists compared unequal and a nested show printed an address.
+  True,
   _ => False,
 }
 
@@ -3346,9 +3335,9 @@ fn diag_applicability(d) with Pure = match d {
   EEffectUnhandled(_, _, _) => MaybeIncorrect,
   EThreadedBranchEffect(_, _, _) => MaybeIncorrect,
   EUnresolvedHole(_, _) => HasPlaceholders,
-  TFieldOffsetUnprovable(_, _) => MaybeIncorrect,
-  TEqTypeUnprovable(_, _) => MaybeIncorrect,
-  TShowTypeUnprovable(_, _) => MaybeIncorrect,
+  EFieldOffsetUnprovable(_, _) => MaybeIncorrect,
+  EShapeUnprovable(_, _) => MaybeIncorrect,
+  EInstantiationDepth(_, _) => Unspecified,
   EArithOnAggregate(_, _) => Unspecified,
   ERefinementRejected(_, _) => Unspecified,
   EVerifyUnencodable(_) => Unspecified,
@@ -3444,9 +3433,9 @@ fn diag_message(d) with !Mutate = match d {
   EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",
   EThreadedBranchEffect(ename, why, _) => "effect {ename} is performed inside a threaded branch and {why} — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for {ename} at the fanout's own frame, or install the handler inside the branch",
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
-  TFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed, so this load has no provable slot and the emit writes a trap here; close the row (annotate the receiver at its Intent Boundary, or give the call site a shape the twin can key on)",
-  TEqTypeUnprovable(why, _) => "{why} — the operand's type is still a variable at emit, so the comparison has no structure to read and falls to a one-word compare (right for a word, an address lie for anything else); prove the operand: give the call site a shape the twin can key on, or name the type at its Intent Boundary",
-  TShowTypeUnprovable(why, _) => "{why} — the operand's type is still a variable at emit, so the render has no structure to read and falls to the word's integer (right for an Int, an address printed as a number for anything else); prove the operand: give the call site a shape the twin can key on, or name the type at its Intent Boundary",
+  EFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed where this is emitted, so there is no slot to read; close the row: annotate the receiver at its Intent Boundary, or give the call site a shape its specialization can key on",
+  EShapeUnprovable(why, _) => "{why} — the operand's type is still a variable where this is emitted, so nothing proves the shape the read needs, and reading it as a word is a lie for anything but a word; prove the operand: give the call site a shape its specialization can key on, or name the type at its Intent Boundary",
+  EInstantiationDepth(why, _) => "{why} — the recursion instantiates it at a type that grows with every call and a body on the chain reads that structure, so the medium specializes eight levels deep and refuses the ninth rather than read it as a word; keep the type the recursion reads from growing",
   EArithOnAggregate(why, _) => "{why} — arithmetic on a product, sum, sequence, function, continuation or unit has no meaning: the operands are addresses, and the result would be arithmetic on where the values live, never on the values. A number is a word (Int, Float, Byte); give this operand one, or read the field you meant",
   EReplayExhausted(_) => "clock replay trace exhausted",
 }

@@ -314,17 +314,17 @@ fn list_compare_loop(a, b, la, lb, i) -> Int = if i >= la && i >= lb {
 } else if i >= lb {
   1
 } else {
-  let ea = list_index(a, i)
-  let eb = list_index(b, i)
+  let ea = list_index_unchecked(a, i)
+  let eb = list_index_unchecked(b, i)
   if ea < eb { 0 - 1 } else if ea > eb { 1 } else { list_compare_loop(a, b, la, lb, i + 1) }
 }
 
-// The length reads route through the structural `len` (a seq-op, typed
-// [x] -> Int), not raw load_i32: `a`/`b` are also list_index'd in the loop,
-// so a raw load_i32 would pun one value as both Int and [x] in one body.
+// The raw altitude end to end, as `list_eq` reads it: the emit calls this
+// for WORD lists only, so the lengths are header words and each element the
+// word the unchecked read yields, bounded by the loop's own guards.
 fn list_compare(a, b) -> Int = {
-  let la = len(a)
-  let lb = len(b)
+  let la = load_i32(a)
+  let lb = load_i32(b)
   list_compare_loop(a, b, la, lb, 0)
 }
 

@@ -144,7 +144,7 @@ fn infer_context(body) =
 // wheel (2026-09-27). The strategy installs where the emitter ALLOCATES,
 // inside whatever sink is live there: each per-fn bracket beside its own
 // `wat_to_string` (backends/wasm.mn), the init lets' bracket, and the fold
-// leaves' emission in emit_module. One home per fact — the emitter owns how
+// leaves' emission in `emit_planned`. One home per fact — the emitter owns how
 // it allocates — and the sink is the caller's alone.
 //
 // It exists because its absence was already paid for: seven routes
@@ -187,7 +187,7 @@ wasi_filesystem)
 // reads source from stdin. Skips driver_check + fs_read_file (no
 // module-graph; no path); reads the entire stdin via read_stdin
 // (lib/io.mn:83 — fd_read loop with grow-on-headroom buffer);
-// pipes through frontend → lower_program → emit_module. Same handler
+// pipes through frontend → lower_program → the plan and its write. Same handler
 // chain as compile() — emission to stdout via wat_stdout, all the
 // substrate handlers attached.
 //
@@ -197,9 +197,9 @@ wasi_filesystem)
 // deterministic AND substrate-aligned across seed + wheel.
 // THE EXECUTABLE GATE (SYNTAX §«Partial application» — a hole is productive,
 // never executable; §0's "nothing executes unproven" at its honest scope).
-// Runs BETWEEN reachability and emit — wat_stdout streams every emit
-// immediately, so the refusal must precede the first one; refusing here
-// leaves stdout with ZERO WAT bytes. Two reads, one law each:
+// Runs BETWEEN reachability and the first byte — wat_stdout streams every
+// emit immediately, so the refusal must precede the first one; refusing here
+// leaves stdout with ZERO WAT bytes. Three reads, one law each:
 //   HOLES REFUSE. An authored value-position hole surviving in the
 //   reachable set (the value-holes COLUMN read — call-arg holes became
 //   partial params, pipe holes were spliced/unnoted, so survival IS
@@ -214,14 +214,18 @@ wasi_filesystem)
 //   refuse the medium itself (the fleet's measured refutation of the
 //   blanket form). The ledger projects one summary diagnostic; the
 //   per-entry projections stay query/edit surfaces.
+//   THE PLAN SETTLES. A clean judgment is planned (`emit_plan`), and the
+//   plan's settle point says every floor the module would carry — an offset,
+//   a shape or a specialization it cannot prove where the body is emitted,
+//   a boundary lowering could not build — so an armed one refuses here too,
+//   before the byte that would have carried it.
 // `check` never routes here — the productive surfaces admit holes; only an
 // EXECUTABLE refuses to exist around one.
 // gate_reads — the gate LAW's judge half, one home for its three policies:
-// executable_gate (refuse + proc_exit — the CLI compile, one process one
-// verdict), battery_compile (batch: count and continue), and the mcp
-// judge (serve: verdict as data, the server outlives every refusal). The
-// reports land before the diag_refusals read — the teaching precedes the
-// tally it feeds.
+// the CLI compile (refuse + proc_exit, one process one verdict),
+// battery_compile (batch: count and continue), and the mcp judge (serve:
+// verdict as data, the server outlives every refusal). The reports land
+// before the diag_refusals read — the teaching precedes the tally it feeds.
 fn gate_reads(lowered) = {
   report_verify_debt(verify_debt())
   report_unhandled_effects(lowered)
@@ -242,18 +246,32 @@ fn gate_reads(lowered) = {
   verdict
 }
 
-fn executable_gate(lowered) = match gate_reads(lowered) {
-  (nholes, refused) => if nholes == 0 && refused == 0 {
-    lowered
+// The gate's verdict: the plan a module is written from, or the module
+// withheld with the holes and the claims that stopped it — the holes apart,
+// since each is its own report and the tally never counts one twice.
+type Emission = Planned(p) | Withheld(Int, Int)
+
+// The gate whole, for every route: the judgment's reads first, and the plan
+// only over a judgment they left clean, since planning a refused program
+// would narrate floors the refusal already explains. The plan's own reports
+// are then the only refusals the ledger can have gained.
+fn gated_plan(lowered) = match gate_reads(lowered) {
+  (nholes, refused) => if nholes > 0 || refused > 0 {
+    Withheld(nholes, refused)
   } else {
-    if refused > 0 {
-      eprint_string("mentl: refusing to emit — {int_to_str(refused)} claim(s) the medium could not discharge\n")
-    }
-    proc_exit(1)
-    // proc_exit never returns (the emit appends unreachable after it);
-    // the tail value only closes the type of the branch.
-    lowered
+    let plan = emit_plan(lowered)
+    let settled = diag_refusals()
+    if settled > 0 { Withheld(0, settled) } else { Planned(plan) }
   },
+}
+
+// The CLI's refusal: say the count when there are claims, and exit 1 with
+// nothing on stdout.
+fn refuse_to_emit(refused) = {
+  if refused > 0 {
+    eprint_string("mentl: refusing to emit — {int_to_str(refused)} claim(s) the medium could not discharge\n")
+  }
+  proc_exit(1)
 }
 
 // ─── The evidence hole — the gate's third read ──────────────────────
@@ -464,10 +482,15 @@ fn report_holes(holes, i) = if i >= len(holes) {
 // reads as three phases rather than one peak — the emit's share was found
 // by exactly these marks (2026-09-28: two quadratic dedups, 120MB).
 fn compile_remainder(ast) = {
-  let lowered = ast |> saturate_pass |> lower_program |> reachable_from_main |> executable_gate
+  let lowered = ast |> saturate_pass |> lower_program |> reachable_from_main
   heap_line("when lowering ends")
-  emit_module(lowered)
-  heap_line("when the module is written")
+  match gated_plan(lowered) {
+    Planned(plan) => {
+      emit_planned(plan)
+      heap_line("when the module is written")
+    },
+    Withheld(_, refused) => refuse_to_emit(refused),
+  }
 }
 
 fn heap_line(at: String) = match diag_scope_of() {

@@ -1,0 +1,13 @@
+// expect: refuse E_InstantiationDepth
+// A recursion that instantiates itself at a type growing with every call —
+// [Int], [[Int]], … — while its body compares that structure. Every level
+// twins at its own instantiation until the cap, eight deep; past it the
+// next call reaches the base, which reads the growing structure as a word.
+// Boot dbbfd107 compiled this clean and answered 0 for two equal ten-deep
+// lists, the compare taken on their addresses. The settle point refuses at
+// the ninth level's call (R0″, 2026-09-28): monomorphization cannot
+// specialize without bound, so a program whose type the recursion grows and
+// reads has no emission the medium can prove.
+fn deep(x, y, n) = if n == 0 { x == y } else { deep([x], [y], n - 1) }
+
+fn main() = if deep(7, 7, 10) { 1 } else { 0 }

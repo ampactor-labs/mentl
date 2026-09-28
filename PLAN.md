@@ -1289,6 +1289,25 @@ and this is the STATE.
   (`Hβ.continuations.redrive-reads-the-answer-as-a-word`); and a record
   update over a generic base closes its result to the base's known fields
   (`Hβ.infer.record-update-closes-an-open-base`).
+- **EVERY FLOOR THE EMIT WRITES IS SAID BEFORE THE FIRST BYTE — CLOSED
+  2026-09-28 (R0″, pin 2d18aeddf7fc9b46).** Three classes — an unprovable field offset,
+  a compared or shown operand whose shape is still a variable, a reference
+  past the twin cap — were decided inside per-fn emission, after the gate
+  had read the ledger, so none could refuse: armed, each would have counted
+  a refusal with the module already on stdout. The module is planned whole
+  and written after (`emit_plan`, `emit_planned`), one gate reads between
+  them on every route (`gated_plan`), and the emitted reach settles each
+  body under the bracket it is emitted in: `E_FieldOffsetUnprovable` and
+  `E_ShapeUnprovable` armed at wheel-zero, `E_InstantiationDepth` born
+  armed. Auditing every emission-time report found more than the three:
+  `LInvariantFailure` wrote its trap with no word at all (a block local in a
+  module-scope `let` compiled clean and trapped), and a static-home belt was
+  guarding a live hole — module scope is lowered with no frame, four shapes
+  (`Hβ.lower.module-scope-has-no-frame`, the next landing). And `mentl fmt`
+  had been rewriting `(run() ~> h).beta` as `run() ~> h.beta` under "names
+  conserved": the postfix heads lacked the precedence inverse (fixed), and
+  a render that parses to a different tree is still refused by nothing
+  (`Hβ.fmt.render-must-parse-to-the-same-tree`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -1904,15 +1923,14 @@ form the whole time. The arcs, in order:
   ENTIRE else-branch is the `name` floor, at a bare `wasm trap:
   unreachable` with no diagnostic anywhere in the run — which is how a
   silent floor is always found, by a later generation stepping on it.
-  `T_FieldOffsetUnprovable` now reports at the receiver's span carrying the
-  selector and the receiver's live type, and `Hβ.emit.field-offset-floor-is-
-  never-reported` carries the record. The wheel's four sites are GONE
-  (2026-09-28): record rows became union-find citizens (R0) and the emit
-  stopped writing base bodies no live reference reaches (R0′), which took
-  the wheel's count to zero. The class is still pre-arm for a mechanical
-  reason the zero exposed — it is decided during emission, after the gate
-  that reads refusals (`Hβ.emit.emit-time-class-cannot-refuse`). No
-  client-facing page ships
+  The class reported from 2026-09-15 at the receiver carrying the selector
+  and the receiver's live type (`Hβ.emit.field-offset-floor-is-never-
+  reported`). The wheel's four sites went on 2026-09-28 — record rows became
+  union-find citizens (R0) and the emit stopped writing base bodies no live
+  reference reaches (R0′) — and the class ARMED the same day as
+  `E_FieldOffsetUnprovable`, once the plan settled every emitted body before
+  the gate read the ledger (`Hβ.emit.emit-time-class-cannot-refuse`, R0″).
+  No client-facing page ships
   either shape; (v) env re-key onto the smap primitive — folds into (ii)'s
   env rework, one landing; (vi) pointees-are-words.
 - **Arc C · Image lifetime v1.** With pointees-as-words, 4.3's fork/reset

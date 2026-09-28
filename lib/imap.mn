@@ -43,8 +43,8 @@ fn wmap_new(n) = list_filled(n, [])
 // The key is pinned `Int` at every entry: the primitive's own law is that
 // the key IS a word, and the pin is what makes the bucket's key compare a
 // proven word compare rather than an address compare over the erased
-// tuple (T_EqTypeUnprovable's class — the collect walk entered the wheel's
-// count the day it gained a caller).
+// tuple (the unprovable-comparison class, refused now as E_ShapeUnprovable
+// — the collect walk entered the wheel's count the day it gained a caller).
 fn wmap_bucket(ref idx, k: Int) = i32_and(k, len(idx) - 1)
 
 fn wmap_add(idx, k: Int, val) = {

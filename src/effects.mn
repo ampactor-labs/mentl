@@ -84,8 +84,8 @@ fn tail_canonical(tail) = match tail {
 // Boundaries.
 // The receiver is pinned to `RowEdge` at the boundary: a bare field read
 // generalizes over every record that carries the field, and the
-// instantiations the row walks reach never closed that row (two
-// T_FieldOffsetUnprovable floors, measured).
+// instantiations the row walks reach never closed that row (two field-offset
+// floors, measured — a class that refuses now, E_FieldOffsetUnprovable).
 fn edge_cell(e: RowEdge) = e.cell
 
 fn edge_mask(e: RowEdge) = e.mask

@@ -409,9 +409,9 @@ fn lookup_tag(ref idx, handle) = wmap_get(idx, handle)
 // config param "trapped m3 at exit 134 with zero bytes … unexplained".
 //
 // That exit-134-with-no-diagnostic is the silent-floor signature, and it is
-// now cheap to test rather than guess: T_FieldOffsetUnprovable reports as of
-// this landing, so parameterising the handler and reading the diagnostic
-// says whether the open-row field-offset class is what refused it. Until
+// now cheap to test rather than guess: the open-row field-offset class
+// refuses with its reason (E_FieldOffsetUnprovable), so parameterising the
+// handler and reading the diagnostic says whether it is what refused it. Until
 // that probe runs, the cause is unmeasured and these constants stay what
 // they are — named residue, not a fix.
 //

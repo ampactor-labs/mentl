@@ -2599,8 +2599,24 @@ is the silent-fallback class in a stub's costume; the op, the `TreeEntry`
 type and the stub are deleted, and the directory-listing gap stays a named
 peer rather than an arm.
 
-`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq` — OPEN, measured 2026-09-18,
-RED contract banked the same day. ▶ THE ARM CASE CLOSED 2026-09-28 (R0c),
+`Hβ.emit.eq-on-unresolved-operand-is-pointer-eq` — ✅ CLOSED 2026-09-28 (R0″,
+pin in LEDGER). An operand still a variable where the comparison is emitted
+REFUSES: `E_ShapeUnprovable`, armed, asked by the plan's settle point under
+the bracket the body is emitted in, before the gate reads the ledger and
+before a byte (`Hβ.emit.emit-time-class-cannot-refuse`, closed the same
+landing). The census reached zero first: its last two were
+`list_compare_loop`'s `<` and `>`, which read their elements through the
+typed `list_index` in a body the emit only ever calls by name for WORD lists;
+the loop reads `list_index_unchecked` now, as `list_eq_loop` always did. What
+the entry predicted and the count confirmed: in an executable a base body with
+a compared variable is reached only by name (the runtime contract) or through
+the twin cap, since R0d keys every compared variable by its structure — the
+cap is its own class now (`E_InstantiationDepth`). THE REMAINDER is step (3)
+and (4) below, EXECUTABLE for the first time because the refusal is live:
+delete the `: String` annotations and let each refusal name a site the twin
+does not reach, then bound what survives as `CsBaseTypeAnnotation`
+(`Hβ.syntax.base-type-annotation-sweep`). The record as it stood: OPEN,
+measured 2026-09-18, RED contract banked the same day. ▶ THE ARM CASE CLOSED 2026-09-28 (R0c),
 step (2) below as written: the handler's arms twin at the install's
 instance, so `eq-in-arm-pointer` runs green with the fixture unannotated and
 left the declared-red list. The bulk the entry renamed below (comparisons
@@ -4232,29 +4248,110 @@ bracket, from main and the init lets — so a base is emitted only when some
 reference names it; "nothing is derived that was not demanded" at the
 emit. The census falls by exactly the dead bases' floors.
 
-`Hβ.emit.emit-time-class-cannot-refuse` — THREE CLASSES ARE DECIDED WHERE
-NOTHING CAN REFUSE. `T_FieldOffsetUnprovable`, `T_EqTypeUnprovable` and
-`T_ShowTypeUnprovable` are raised inside per-fn emission, under the twin
-brackets — the only place their question (can this load's offset, this
-comparison's operand, this render's operand be read?) has an answer. But
-`executable_gate` reads `diag_refusals()` BEFORE emit begins, and emit
-streams WAT as it goes, so arming one by the verify recipe (rename to E_,
-SError, `diag_refuses`) would count a refusal after the executable exists:
-nonzero exit, a full module on stdout. The one armed emit-time class,
-`E_EmittedNameCollision`, refuses only because the dedup that raises it
-runs before the first byte. Measured 2026-09-28, the day the field-offset
-class reached zero on the wheel (R0′) and the recipe was built, then
-reverted before a march on reading the gate.
-▶ THE FORM: the settle point in `emit_reached_module` — after the twin set
-is known and before `emit_header` — already walks every emitted body under
-its own bracket, twice (the fold closures, the call vectors). The three
-questions join that walk as one bracketed collector reporting at the site,
-and the emit refuses (exit 1, zero bytes) when the settle raised an armed
-class. Then the field-offset class arms (wheel census 0): the three
-`mn-payload*` micros still banked at 134 (3, 4, 5 — a generic op's payload
-nothing closes) move to a compile refusal, the frontier fixture moves to
-`run_refusal`, and the ratchet key retires. The eq and show classes arm as
-their counts reach zero; show is at zero since R0d, eq at two.
+`Hβ.emit.emit-time-class-cannot-refuse` — ✅ CLOSED 2026-09-28 (R0″, pin in
+LEDGER). THE PLAN SETTLES BEFORE THE GATE READS. The module is decided whole
+before a byte of it is written — `emit_plan` (backends/wasm.mn) is the emitted
+reach, the twins and their brackets, the settled signatures, the fold
+closures, the emit-state projections, the line owners, the drivers and the
+call vectors, returned as one record — and `emit_planned` only writes it.
+Every route runs one gate between them (`gated_plan`, pipeline.mn: the
+judgment's reads, then the plan over a clean judgment, then the ledger again),
+so the CLI, the battery and the MCP judge refuse with zero bytes on the same
+law. The reach is the walk that already holds each emitted body's bracket, so
+it SETTLES each body as it scans it — a base unbracketed, a twin under its
+own pairs, a value let's init at module scope — asking what emission would
+otherwise decide mid-stream: a field offset or a record pattern's field set
+(`E_FieldOffsetUnprovable`), a comparison's, a show's, a hash's or a `++`'s
+operand shape (`E_ShapeUnprovable`), a reference past the twin cap whose key
+keeps a variable the callee reads (`E_InstantiationDepth`, born here), and the
+compiler's own invariants that emission used to report after the first byte —
+a boundary lowering could not build (`LInvariantFailure`, which had written
+its trap WITHOUT a word), arithmetic on an ungated variable, a static `<~`
+home in a minted record. All armed at wheel-zero; emission writes each floor
+silently, and only where nothing runs it (a library's whole-emit, which no
+caller settles). WHAT THE AUDIT OF EMISSION-TIME REPORTS FOUND, beside the
+three classes it set out to arm: the static-home belt was guarding a live
+hole — a `fn` nested in a module-scope `let` block is lowered with no frame,
+so it took a static home while its closure is minted at run time, and the
+module did not assemble (`Hβ.lower.module-scope-has-no-frame`, three more
+shapes, R0f). The payload micros moved from a banked trap (134) to a compile
+refusal; the frontier's field-offset leg to `run_refusal`; the three ratchet
+keys retired. The design as banked, for the record: the three questions join
+the walk that already walks every emitted body under its own bracket, and the
+emit refuses when the settle raised an armed class. What the build changed:
+the walk is the REACH rather than the fold collection (the reach is where a
+body's bracket and its liveness are both known; the settle walks each emitted
+body once, beside the reach's own reference scan of it, through the generic
+child projection `low_children`, whose per-node lists measured +16 MB at the
+self-compile's peak), and refusing needed the plan split from the write,
+because an armed report raised after the gate is counted by nothing.
+
+`Hβ.lower.module-scope-has-no-frame` — OPEN, measured 2026-09-28 (R0″),
+the next landing (R0f). A module-scope value let's init is lowered with NO
+frame, and every fact a frame carries is wrong inside it. Four shapes, each
+checking clean and each broken on boot dbbfd107: (1) a block local —
+`let total = { let a = 3; let f = (x) => x + a; f(4) + a }` — resolves as a
+global, so the lowering writes its missing-name floor and the program trapped
+(134); R0″'s settle refuses it now as the invariant it is
+(tests/micros/mn-module-let-block-local.mn). (2) A `fn` nested in such a
+block takes a STATIC `<~` home, because `project_nested_fn` reads "frame depth
+0" as "top-level decl", while its closure is minted at run time — refused now
+as the same invariant. (3) A `<~` directly in a let init reads the global
+`$__line_<h>_module scope`, which has a space in its name and is declared by
+nothing (assembly failure, unrefused). (4) `let inc = (x) => x + 1` at module
+scope is called as `call $inc`, but the function emitted is `lambda_<h>`
+(assembly failure, unrefused — the plainest of the four). THE FORM: module
+scope is a frame — the frame of `$__init_lets`, the function the value lets
+run in, whose lines are static and owned by that name (`static_line_owners`
+gains it, and the init lets emit under that site); a nested fn inside it is
+then at depth one and minted with slot lines; and a module-scope
+`let name = (params) => body` IS `fn name(params) = body` (SYNTAX's own
+sugar rule, read at the top level), projected by the same path and named
+for its binding, its lines static. CLOSE: the four shapes run to the values
+their sources compute, the two refusal contracts flip to runs, m3 == m4.
+
+`Hβ.emit.cap-tail-carries-its-structure` — OPEN, named 2026-09-28 (R0″).
+Past the twin cap the settle point refuses a reference whose callee reads a
+structure the recursion grows (`E_InstantiationDepth`), because the base it
+would reach reads that structure as a word. Monomorphization cannot
+specialize without bound, and Rust refuses the same programs at its
+instantiation limit; the medium can do better. The tail past the cap can
+carry its structure at run time — a descriptor per growing variable, built
+at the capped call from the twin's own proven type and read by a base
+compiled against descriptors rather than words (the show, compare, hash and
+field leaves dispatching on it) — so a deep-enough recursion pays a
+descriptor read where it now refuses. Until then the refusal is the honest
+floor: `deep(7, 7, 7)` refuses though its run would stay under the cap,
+because nothing proves the depth the program will reach.
+
+`Hβ.emit.check-sees-emit-classes` — OPEN, named 2026-09-28 (R0″). The
+settle point's classes (`E_FieldOffsetUnprovable`, `E_ShapeUnprovable`,
+`E_InstantiationDepth`) are decided by the plan, which `mentl check` never
+runs — check judges and does not lower — so a program check calls clean can
+still be refused by compile. The plan is a read over the lowered program with
+no sink, so check can run it (lower, reach, settle) and say the same refusals
+without writing a byte. CLOSE: `mentl check` on the payload micros names
+`E_FieldOffsetUnprovable`.
+
+`Hβ.infer.main-param-is-the-argument-list` — OPEN, named 2026-09-28 (R0″).
+`main`'s parameter is the host's argument list (the runtime passes
+`wasi_args`), but the judgment never says so: an unannotated `q` stays a
+type variable, and a read of its structure at `main` refuses at the settle
+point (`E_ShapeUnprovable` on `byte_len("{q}")`,
+tests/micros/mn-shape-unprovable-main-param.mn), where boot dbbfd107 printed
+the list's address. The executable boundary is a judgment fact: main's
+parameter unifies with `[String]` where main is judged, and the fixture flips
+to a run.
+
+`Hβ.syntax.base-type-annotation-sweep` — OPEN, executable from 2026-09-28
+(R0″), named from `Hβ.emit.eq-on-unresolved-operand-is-pointer-eq`'s steps
+(3) and (4). With a comparison on an unproven operand REFUSED rather than
+compared by address, the `: String` parameter annotations the wheel carries
+to route `==` to `str_eq` can be deleted and the compile left to name each
+site the twin does not reach; what survives is a real Intent Boundary, and
+`CsBaseTypeAnnotation` (a parameter whose authored annotation is a base type,
+neither refinement nor ownership nor a repr pin) bounds it on the board,
+ratcheted down.
 
 `Hβ.emit.field-offset-floor-is-never-reported` — RESOLVED 2026-09-15. THE
 FLOOR WAS WRITTEN AND NEVER SAID. `emit_expr`'s `LFieldLoad` arm answered an
@@ -6260,7 +6357,41 @@ variable at a new call site inside the formatter's cycle, spliced as an
 integer (`handler find_handler(66036)`); written as `join` over `map` its
 result is the library's and the site resolved — the show floor below.
 
-`Hβ.emit.show-free-floor` — OPEN, homed 2026-09-28 (it was cited in
+`Hβ.fmt.render-must-parse-to-the-same-tree` — OPEN, measured 2026-09-28
+(R0″) as the conservation gate's blind side. `mentl fmt` rewrote
+`fn main(q) = (run() ~> hold).beta` as `run() ~> hold.beta` in three micros
+and printed "prose and names conserved" — every name and literal survived,
+and the program became an install of `hold.beta`. The postfix forms rendered
+their heads (a call's callee, a field read's receiver, an index's receiver)
+with no precedence inverse, so any head that was an operator expression lost
+its parens; `render_postfix_head` (format.mn) wraps every head that is not an
+atom, the fmt behavioral fixture (tests/frontier/fmt-demo/rich.mn) carries
+all three shapes and was seen RED through the pinned boot's fmt (the render
+no longer typechecked — five `E_TypeMismatch`). The defect is a BIRTH
+defect, not a regression: every boot sampled from the first that wrote a
+file (0c64c05f, 2026-07-26 — 8c625aa1 has no `fmt` verb, the 07-24/25 boots
+trap before writing) through dbbfd107 drops the parens. History cannot
+convict a file the hook formatted at birth, since the authored text never
+reached a commit; what it can show, it clears: over the 654 commits since,
+no `.mn` line was rewritten into the same text with a pair of parens
+dropped before a postfix (a hunk-level search, seen to find the payload
+micros' rewrite in a scratch repository first). The first answer written here — "live six commits,
+searched" — was a range picked from the recent boots and never measured
+against the older ones. THE GENERAL GUARD, which the atom
+census cannot be: a render whose re-parse is a different TREE is not
+written. fmt already re-parses its first render (the fixpoint), so the
+missing read is a structural fingerprint compared across the two parses —
+each node's constructor and its non-child payload (operator, name, literal,
+field) folded over `expr_child_handles` and its statement and pattern
+siblings, spans and handles excluded. CLOSE: the fingerprint compare refuses
+a render that moved an operand, with a fixture that hands fmt a shape the
+render gets wrong on purpose.
+
+`Hβ.emit.show-free-floor` — ✅ CLOSED 2026-09-28 (R0″): a show or a hash of
+an operand still a variable where it is emitted refuses as
+`E_ShapeUnprovable` at the settle point, beside the comparison it shares the
+class with, and the count it had was zero from R0d on. The record as it
+stood: OPEN, homed 2026-09-28 (it was cited in
 wasm.mn, LEDGER and PROVENANCE and held nowhere here). A show or
 interpolation splice whose operand type is still a variable at emit falls to
 `int_to_str` of the word: right for an Int, an address printed as a number

@@ -708,51 +708,18 @@ comment_refs_max: 0
 # is a mute gate. The regrowth alarm is structural — a second pass would
 # have to be written back into infer.mn.
 
-# THE UNPROVABLE-FIELD-OFFSET CENSUS — the wheel's own count of reachable
-# field accesses whose slot the graph could not prove. Each one is an
-# `(unreachable)` the emit writes into the shipping module, and until
-# 2026-09-15 each one was written and never SAID: `mentl check` passed, the
-# compile exited 0, and the program trapped at the instruction that admits
-# it. Four of them rode the wheel. One was the unconditional else-branch of
-# emitfns_index_build, and the march found it the only way a silent floor is
-# ever found — the m4 leg died at a bare `wasm trap: unreachable` with no
-# diagnostic anywhere in the run.
-#
-# This is a ratchet toward an ARMING, not a standing tolerance. E_FieldOffset
-# Unprovable is declared and reported but NOT in diag_refuses, because that
-# licence is a wheel census of ZERO (types.mn states it: "the medium never
-# violates it on ITSELF, so enforcing it on everyone cannot refuse the
-# medium"). Each of the four is a receiver whose row never closed —
-# emitfns_index_build's `col` reads List({ name: String | r }) in the full
-# wheel though the op that fills it declares EmitFnEntry, which is the
-# Carried-Truth Law at the element type. Drive them to zero, then arm, then
-# this line and the pre-arm fixture both retire.
-#
-# 2026-09-28 · 4 -> 8 · R0, the record row made a union-find citizen, and the
-# four are not new floors: they are four GUESSES the census could not see.
-# `ring_of_name` (rings.home / rings.imported) and `emitted_sig_of_entry`
-# (params / ret) each read two fields of an unannotated record, so their base
-# bodies' rows were the union of those two fields with nothing standing for
-# the rest — the assumed residual — and the emit baked offsets from it, right
-# only because the one record either sees happens to hold exactly those
-# fields. The rest is a variable now, so a base nothing closes floors, and
-# says so. Measured on the m3 leg (the R0 wheel compiling itself): 8 floors,
-# the four pre-existing sites unchanged, and the four new ones all in base
-# bodies nothing calls — m3.wat calls only `ring_of_name`'s twin
-# `$spr_homellb_importedllb_` (its base is called only from a base lambda of
-# `enumerate_vocabulary_calls`, whose own base is never called) and only
-# `emitted_sig_of_entry`'s twin. What drives those four back down is not
-# emitting a base whose every reference resolved to a twin
-# (`Hβ.emit.dead-base-emitted-beside-its-twins`).
-# 2026-09-28 · 8 -> 0 · R0′, the emitted reach: a top-level decl no live
-# reference reaches is not emitted, so the four bases R0 exposed are gone —
-# and so are the four pre-R0 sites, whose value-passed callers key twins
-# once the row variable is real. The new compiler's own compile of the
-# wheel reads 0 (the m3 and m4 legs at pin b29e319b). The class does not
-# arm by renaming: it is decided during emission, after the gate reads
-# refusals (`Hβ.emit.emit-time-class-cannot-refuse`), so until that lands
-# this ceiling of zero is what holds it.
-field_offset_unprovable_max: 0
+# field_offset_unprovable_max, eq_type_unprovable_max and
+# show_type_unprovable_max — RETIRED 2026-09-28 (R0″), by their own words.
+# Each was a countdown to an ARMING, held because its class was decided
+# during emission, after the gate that reads refusals, so no count could
+# ever refuse. The plan's settle point asks all three under each body's own
+# bracket before the first byte, so they refuse now (E_FieldOffsetUnprovable
+# and E_ShapeUnprovable, armed at wheel-zero: the comparison count's last
+# two were `list_compare_loop` reading its elements through the typed
+# `list_index`, and it reads the words the emit's by-name call guarantees).
+# A ratchet beside an armed class is a weaker second copy of the refusal.
+# LEDGER carries each count's descent (4 → 8 → 0; 56 → 60 → 58 → 57 → 34 →
+# 2 → 0; 22 → 1 → 0).
 
 # The effect seam: filesystem impl calls outside the handler that owns them.
 # MEASURED 24 before this landing and 13 after (both read from the artifact,
@@ -912,68 +879,6 @@ frontier_expected_red: why-coordinates
 # now and the specs ground them, so the leaf calls its argument's own helper;
 # the gate's other direction refused the stale declaration the moment it
 # passed, which is what that contract is for.
-
-# 2026-09-18: THE UNPROVABLE-COMPARISON census (T_EqTypeUnprovable, the
-# field-offset floor's sibling): a `==`/`!=`/`<`… whose operand type is still a
-# variable at emit falls to a one-word compare, right for a word and an address
-# lie for anything else. The first form wrote a trap and the wheel compiled by
-# it died compiling the wheel (m4 exit 134): the wheel carries 56 of these,
-# measured on the m3 leg the day the class was born — 15 at authored spans
-# (word and handle membership, two `<` on Option payloads, and Strings compared
-# by interned address, e.g. in_owner_names) and 41 on synthesized nodes at span
-# 0, unattributed until the report carries the nearest authored span.
-# Countdown to 0 (twins reaching the site; an Intent Boundary naming the type
-# where the polymorphism is over words); at 0 the class arms and the
-# eq-in-arm-pointer leg turns green by proving its arm. A RISE is a new
-# address compare entering the wheel.
-# 56 -> 60 at pin 8798566e: the Domain walk (verify.mn) is new generic
-# code, and EVERY generic comparison in this wheel lands in this class, because
-# a word-repr instantiation mints no twin (spec_enc_is_floor skips an all-word
-# key) so the floor body compares two type vars. Measured by diffing the site
-# names: `bound_admits_lo`, `bound_admits_hi`, `int_same`, `int_max`, `int_min`
-# entered; `lo_best`, `hi_best`, `lo_hull`, `hi_hull` left, because four
-# near-identical bound-combiners collapsed into one meet and one join
-# parameterized by the comparator. The rise is +4 rather than +6 for that
-# reason, and it is a rise the countdown cannot avoid by writing less code —
-# only by the twin reaching word-typed instantiations, which is step (2) of
-# Hβ.emit.eq-on-unresolved-operand-is-pointer-eq.
-# 2026-09-21: 60 -> 58. Two left with src/oracle.mn — a whole module deleted
-# takes its unprovable compares with it, which is the cheapest way this
-# counter ever falls and the least instructive: the class is unchanged.
-# 2026-09-27: 58 -> 57 (via 59). The gate landing gave lib/imap.mn's wmap
-# multi-map read its first caller, and its key compare entered the count
-# as an address compare over the erased bucket tuple; pinning the key `Int`
-# at every wmap entry (the primitive's own law: the key IS a word) proved
-# both bucket compares at once, the scan's included.
-# 2026-09-28 · 57 -> 34 · R0′: the 23 were in base bodies no live reference
-# reaches, gone with them (the emitted reach). Read off the new compiler's
-# own compile of the wheel at pin b29e319b.
-# 2026-09-28 · 34 -> 2 · R0d: a variable a body compares keys its twin by
-# the structure it is instantiated at, word types included, so every
-# instantiation compares the type it proved and the base body nothing
-# reaches is not emitted. The two left are `list_compare_loop`'s `<` and `>`:
-# the word-list compare leaf the emit's own dispatch calls by name, a base
-# body by construction whose element is a word at every call it receives.
-# Read off the new boot's own compile of the wheel at pin 2d784560.
-eq_type_unprovable_max: 2
-
-# show_type_unprovable_max — show and interpolation splices whose operand type
-# is still a VARIABLE at emit, so the render prints the word as an integer:
-# right for an Int, an address printed as a number for anything else. The
-# eq class's sibling one leaf over, and it had no voice: 22 sites carried a
-# `;; show on unresolved operand` WAT comment at pin 43aeb30f and nothing
-# counted them, so a 23rd entered with this landing unseen (a handler head
-# rendered its config list as `(66036)`; `render_param_list`'s result was a
-# free variable at the call, fixed by writing it as `join` over `map`).
-# Most of the 22 are floor twins of generics never executed at a non-word
-# type — `argv_wire`'s String twin is correct — and the census cannot tell a
-# dead floor from a live one, which is why it is a countdown to arming rather
-# than a list of bugs. Counted from the pinned boot's own compile of the
-# wheel, so it reads 0 until the boot that carries the narration is pinned.
-# 2026-09-28 · 22 -> 1 · R0′: 21 of the 22 sat in unemitted base bodies.
-# 2026-09-28 · 1 -> 0 · R0d: a variable a body shows keys its twin by the
-# structure it is instantiated at, so the last render reads its proven type.
-show_type_unprovable_max: 0
 
 # loop_scaffold_refs_max — the distinct tools/*.sh scripts tools/loop-prompt.md
 # still names to run one iteration; monotone DOWN, falling only when a verb

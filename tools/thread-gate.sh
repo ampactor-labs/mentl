@@ -24,7 +24,7 @@
 # clone the delta saw was the host's. The number stood in for two facts the
 # medium already states exactly:
 #   · the ARTIFACT — a module imports `wasi.thread-spawn` exactly when its
-#     reached tree performs `spawn_task` (emit_module, src/backends/wasm.mn),
+#     reached tree performs `spawn_task` (emit_planned, src/backends/wasm.mn),
 #     and the runner creates a guest thread only through that import;
 #   · the CLAIM — `main`'s inferred row carries `WasiThreads` exactly when
 #     the program performs a spawn, read by the medium's own `query` verb.
