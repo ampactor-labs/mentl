@@ -73,6 +73,8 @@ import io
 
 import egraph
 
+import format
+
 // ─── The Surface effect ─────────────────────────────────────────────
 //
 // One effect; four canonical handlers. Each handler renders the
@@ -367,31 +369,15 @@ fn apply_teach_suggestion(teach) = match teach {
   },
 }
 
-// A proven literal survivor renders as its source text. A non-constant
-// survivor renders as the hole marker itself — replacing `??` with `??`
-// is the honest no-op, never a spliced fabrication; the general candidate
-// renderer is the formatter projection (Hβ.felt.candidate-render-is-format),
-// unreached while the enumerators seed literals.
+// A survivor renders as its SOURCE — the formatter's own token projection
+// of the candidate node, which is what the accept splices and what the
+// developer reads: a literal, a bare name, `f()`, `Some(??)` with the
+// value the next fill supplies, `[]`, `(??, ??)`, `{x: ??, y: ??}`, a lambda
+// skeleton. Until C7 this was a literal renderer with a hole-marker floor,
+// so every structured candidate showed as `??` — the medium showing a
+// proposal it could not name (`Hβ.felt.candidate-render-is-format`, closed).
 fn render_candidate_source(node) with !Mutate = match node {
-  N(body, _, h) => match callee_name_of(node) {
-    Some(name) => "{name}()",
-    None => // A BARE NAME renders as itself. A nullary constructor is a value, not
-    // a call (SYNTAX: `let nothing = None`), so the candidate node is a
-    // VarRef — and without this arm it fell to the literal renderer and
-    // printed `??`, which is the medium showing a proposal it cannot name.
-    match body {
-      NExpr(VarRef(name)) => name,
-      _ => render_literal_source(h),
-    },
-  },
-}
-
-fn render_literal_source(h) with !Mutate = match node_const(h) {
-  Some(LVInt(n)) => int_to_str(n),
-  Some(LVFloat(f)) => float_to_str(f),
-  Some(LVString(lit)) => "\"{lit}\"",
-  Some(LVBool(b)) => if b { "true" } else { "false" },
-  None => "??",
+  N(body, _, _) => render_body_tokens(body),
 }
 
 // ─── Format / parse helpers per transport ──────────────────────────

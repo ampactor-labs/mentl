@@ -1,0 +1,5 @@
+// propose 3:18: ask value
+// True against False: the derived Bool's two values.
+fn f() -> Bool = ??
+
+fn main() = 0

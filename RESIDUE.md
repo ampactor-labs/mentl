@@ -2297,6 +2297,62 @@ rule attributed to it must be read out of the paper first.
 
 ### Named-residue index (entry-born peers not yet in a §5.R band — one home each)
 
+`Hβ.felt.candidate-render-is-format` — CLOSED 2026-09-30 (C7; LEDGER carries
+the pin). Named in cursor_transport.mn's own comment since C4 and never
+entered here — a hidden gap, entered at its closure. A survivor rendered
+through a literal renderer with a hole-marker floor, so every structured
+candidate — the unit value, a record or tuple construction, a list, a
+lambda skeleton, a fielded constructor — showed as `??`: the medium showing
+a proposal it could not name, and the accept splicing `??` over `??`.
+`render_candidate_source` is the formatter's own token projection of the
+candidate node now (`render_body_tokens`): `()`, `{x: ??, y: ??}`,
+`(??, ??)`, `[]` and `[??]`, `(_, _) => ??`, `Box(??)`, `Some(??)` — each
+the source the accept splices and the developer reads. The lambda
+skeleton's parameters carry fresh cells rather than the target's ground
+types, because a lambda parameter takes no annotation on the page and the
+skeleton had rendered `(_: String, _: Bool) => ??`, which no parse reads.
+
+`Hβ.synth.vocabulary-arg-holes` — the CONSTRUCTOR half CLOSED 2026-09-30
+(C7); the call half OPEN. A fielded constructor was enumerated as
+`Box(??)` and REFUSED against the `Box` hole it was built for — "Box vs
+(_0: Int) -> Box" — because a `??` in argument position is the partial
+application's field marker by the language's own rule, so the candidate
+judged as `Box` awaiting its field. A hole the proposer MINTS (id 0) is a
+VALUE the next fill supplies, never the marker; the judgment's two
+partial-application reads (`call_hole_index`, `hole_params`) say so, and
+`Option(Int)` asks `None` against `Some(??)` where it filled `None` alone —
+a guess wearing a unique survivor's clothes (`tests/proposals/
+option-shape-tie.mn`, `pair-shape-tie.mn`, `box-fill.mn`). A vocabulary
+CALL with arguments is still not enumerated: `f(??, ??)` for an in-scope
+`fn f(a, b)` whose result fits the hole is the general recursive form, and
+this entry keeps it.
+
+`Hβ.synth.linked-ring-offers-substrate-internals` — OPEN, BORN 2026-09-30
+(C7, measured on boot 2fcad4e9). The Linked ring offers the substrate's
+own helpers as vocabulary: at a `String` hole `hex_glyphs()` (lib/strings'
+hex-glyph table) ties with `""`; at a `[Int]` hole it stands beside `[]`
+and `[??]`; at an `(Int) -> Int` hole `seq_stride`, `seq_tag` and `seq_sc`
+are refused by name, and six survivors that are the prelude's own
+Int-to-Int helpers tie. A ring that reaches the link reaches every
+top-level name the link carries, and the substrate's implementation
+vocabulary is not a developer's. The form: a module's exported SURFACE —
+what an `import` brings into scope is what the ring may offer — read off
+the import edges the manifest judgment already draws (`E_MissingImport`,
+F0b), so the Linked ring offers what a `lib` module exports and never what
+it keeps. `tests/proposals/string-value-tie.mn` carries the survivor as a
+value tie; its contract moves to a fill when this lands.
+
+`Hβ.infer.arm-body-cell-is-free-at-propose` — OPEN, BORN 2026-09-30 (C7,
+measured on boot 2fcad4e9). At `handler h { ask() => ?? }` over `effect
+Ask { ask() -> Int }` the hole's cell is FREE ("still free: annotate…"),
+so the vocabulary fills it with `hex_glyphs()` — a String for an Int op.
+An arm's value is the install's answer (the `S` of the op's `TCont`), and
+the judgment does not connect the arm body's cell to it at registration,
+so nothing narrows the hole; the same read renders the position's source
+as `??,` (the arm's span swallows the trailing comma). Two findings, one
+site; the fixture stays in the scratchpad until the arm's cell is the
+answer's, since the battery holds no declared reds.
+
 `Hβ.egraph.per-expr-effect-row` — CLOSED 2026-09-30 (C5; LEDGER carries
 the pin). It was named in egraph.mn's own comment and cited by PLAN §11 5.5
 since 2026-08-08 and had no entry here — a hidden gap, entered at its

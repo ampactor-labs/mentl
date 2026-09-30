@@ -1,0 +1,5 @@
+// propose 3:30: fill {x: ??, y: ??}
+// A record hole fills with the construction, each field the next hole.
+fn f() -> {x: Int, y: Int} = ??
+
+fn main() = 0

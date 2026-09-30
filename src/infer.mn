@@ -4377,12 +4377,18 @@ fn infer_call_arg(arg, param) = match arg {
 }
 
 // The `??` hole's declaration-order index among a call's raw args (-1: none).
+// An AUTHORED hole (a caret id) in argument position is the partial's field
+// marker; a hole the proposer MINTED (id 0) is a value the next fill
+// supplies — `Some(??)` offered at an `Option(Int)` hole is `Some` of a value
+// to be proposed next, never `Some` awaiting its field (C7: until then the
+// enumerator's fielded constructors judged as partials and were refused
+// against the hole they were built for).
 fn call_hole_index(args, i) = if i >= len(args) {
   -1
 } else {
   match list_index(args, i) {
     N(b, _, _) => match b {
-      NHole(_) => i,
+      NHole(id) => if id == 0 { call_hole_index(args, i + 1) } else { i },
       _ => call_hole_index(args, i + 1),
     },
   }
@@ -4457,7 +4463,11 @@ fn hole_params(args, params, i) = if i >= len(args) {
 } else {
   match list_index(args, i) {
     N(b, _, _) => match b {
-      NHole(_) => [list_index(params, i)] ++ hole_params(args, params, i + 1),
+      NHole(id) => if id == 0 {
+        hole_params(args, params, i + 1)
+      } else {
+        [list_index(params, i)] ++ hole_params(args, params, i + 1)
+      },
       _ => hole_params(args, params, i + 1),
     },
   }

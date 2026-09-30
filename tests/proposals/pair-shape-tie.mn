@@ -1,0 +1,7 @@
+// propose 5:18: ask shape
+// Zero against Pair(??, ??).
+type Pair = Pair(Int, Int) | Zero
+
+fn f() -> Pair = ??
+
+fn main() = 0

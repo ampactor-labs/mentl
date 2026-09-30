@@ -1,0 +1,8 @@
+// propose 6:19: ask value
+// Two nullary constructors are the type's own VALUES — a value question,
+// never a shape one.
+type Shape = Circle | Square
+
+fn f() -> Shape = ??
+
+fn main() = 0

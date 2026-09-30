@@ -1,0 +1,5 @@
+// propose 3:19: ask value
+// Two float seeds, one value question.
+fn f() -> Float = ??
+
+fn main() = 0

@@ -1,0 +1,10 @@
+// propose 8:11: ask type
+// The free cell the segments bound is the first divergence (C6).
+fn one() = 1
+
+fn word() = "a"
+
+fn main() = {
+  let x = ??
+  0
+}

@@ -1530,7 +1530,10 @@ fn render_at(view, h, pspan, target: String) = match view {
     // tie-break law at this surface too).
     match propose {
       Proposal(pr) => match pr.verdict {
-        VNone => (),
+        VNone => // An authored hole nothing proved is SAID, never left blank: the
+        // refusals below it are the reasons, and the verdict is the line
+        // they explain (C7). A filled position has no proposal to report.
+        if authored_hole(h) { print("Propose: no candidate proved at this hole\n") } else { () },
         VFill(survivor, reason) => print("Propose: {render_candidate_source(survivor)}  — {show_reason(reason)}\n"),
         VAsk(divergence, survivors) => {
           // A tie is a QUESTION, never a list (§11.1): the members render
@@ -1877,14 +1880,24 @@ fn battery_libs() -> String =
 // judges the JUDGMENT, never stricter than the medium). This contract
 // is the frontier bash's dissolution channel: a refusal leg becomes a
 // fixture the medium reads itself.
-type Expect = ExpectRun(Int) | ExpectRefuse(String)
+type Expect = ExpectRun(Int) | ExpectRefuse(String) | ExpectPropose(Int, Int, ProposeWant)
 
-// The micro's own expectation: first line `// expect: N` or
-// `// expect: refuse E_Class`. None = not a battery member (skipped
-// loudly by the manifest consumer).
+// A proposal fixture's contract (C7): what the medium must answer at the
+// hole — one proven survivor whose source is the text, a tie whose
+// divergence is the named ARM (row · type · name · value · shape ·
+// behavior), or no candidate at all. The arm binds the classification,
+// never the sentence, so the voice may change without a fixture moving.
+type ProposeWant = WantFill(String) | WantAsk(String) | WantNone
+
+// The micro's own expectation: first line `// expect: N`,
+// `// expect: refuse E_Class`, or `// propose L:C: fill <text>` |
+// `// propose L:C: ask <arm>` | `// propose L:C: none`. None = not a
+// battery member (skipped loudly by the manifest consumer).
 fn battery_expect(src) = {
   let prefix = "// expect: "
-  if byte_len(src) < 12 {
+  if byte_len(src) >= 11 && str_eq(str_slice(src, 0, 11), "// propose ") {
+    battery_propose_expect(src)
+  } else if byte_len(src) < 12 {
     None
   } else if !str_eq(str_slice(src, 0, 11), prefix) {
     None
@@ -1914,6 +1927,103 @@ fn battery_expect_digits(src, i, acc) = if i >= byte_len(src) {
 } else {
   let b = byte_at(src, i)
   if b >= 48 && b <= 57 { battery_expect_digits(src, i + 1, acc * 10 + (b - 48)) } else { acc }
+}
+
+// `// propose L:C: <want>` — the address, then the want: `fill` takes the
+// rest of the line (a candidate's source may carry spaces), `ask` one word
+// (the arm), `none` nothing.
+fn battery_propose_expect(src) = {
+  let line = battery_expect_digits(src, 11, 0)
+  let col_start = battery_skip_digits(src, 11) + 1
+  let col = battery_expect_digits(src, col_start, 0)
+  let word_start = battery_skip_digits(src, col_start) + 2
+  let word = battery_expect_word(src, word_start, word_start)
+  let rest_start = word_start + byte_len(word) + 1
+  if str_eq(word, "fill") {
+    Some(ExpectPropose(line, col, WantFill(battery_line_rest(src, rest_start, rest_start))))
+  } else if str_eq(word, "ask") {
+    Some(ExpectPropose(line, col, WantAsk(battery_expect_word(src, rest_start, rest_start))))
+  } else if str_eq(word, "none") {
+    Some(ExpectPropose(line, col, WantNone))
+  } else {
+    None
+  }
+}
+
+fn battery_skip_digits(src, i) = if i >= byte_len(src) {
+  i
+} else {
+  let b = byte_at(src, i)
+  if b >= 48 && b <= 57 { battery_skip_digits(src, i + 1) } else { i }
+}
+
+// The bytes from `start` to the end of the line.
+fn battery_line_rest(src, start, i) = if i >= byte_len(src) {
+  str_slice(src, start, i)
+} else {
+  let b = byte_at(src, i)
+  if b == 10 || b == 13 { str_slice(src, start, i) } else { battery_line_rest(src, start, i + 1) }
+}
+
+// THE PROPOSAL BATTERY (C7): the fixture is judged at its hole through the
+// same address resolution and the same eight-aspect view the CLI's
+// `mentl <file>:<line>:<col>` builds, and the contract is compared to the
+// Verdict itself — structurally, never through the rendered line.
+fn battery_propose_step(stem, path: String, line, col, want) = match battery_verdict(path, line, col) {
+  None => {
+    print_string("FAIL(propose) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
+    1
+  },
+  Some(verdict) => if verdict_meets(want, verdict) {
+    print_string("PASS {stem}: propose {show_want(want)}\n")
+    0
+  } else {
+    print_string("FAIL(propose) {stem}: wanted {show_want(want)}, got {verdict_word(verdict)}\n")
+    1
+  },
+}
+
+fn battery_verdict(path: String, line, col) = infer_context(() => match driver_entry_with_ranges(path) {
+  (_ast, _ranges) => match address_pick(path, line, col) {
+    None => None,
+    Some(pick) => match pick {
+      (_pspan, ph) => match cursor_at_handle(ph) {
+        CursorView(_, propose, _, _, _, _, _, _) => match propose {
+          Proposal(p) => Some(p.verdict),
+        },
+      },
+    },
+  },
+} ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> tighten_collector)
+
+fn verdict_meets(want, verdict) = match want {
+  WantNone => match verdict {
+    VNone => true,
+    VFill(_, _) => false,
+    VAsk(_, _) => false,
+  },
+  WantFill(text) => match verdict {
+    VFill(node, _) => str_eq(render_candidate_source(node), text),
+    VNone => false,
+    VAsk(_, _) => false,
+  },
+  WantAsk(arm) => match verdict {
+    VAsk(d, _) => str_eq(divergence_arm(d), arm),
+    VNone => false,
+    VFill(_, _) => false,
+  },
+}
+
+fn verdict_word(verdict) = match verdict {
+  VNone => "none",
+  VFill(node, _) => "fill {render_candidate_source(node)}",
+  VAsk(d, survivors) => "ask {divergence_arm(d)} ({int_to_str(len(survivors))} survivors)",
+}
+
+fn show_want(want) = match want {
+  WantNone => "none",
+  WantFill(text) => "fill {text}",
+  WantAsk(arm) => "ask {arm}",
 }
 
 // One micro, one fresh chain — the same chain compile_stdin drives, with
@@ -2004,9 +2114,12 @@ fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(mic
       print_string("NOEXPECT {stem}\n")
       1
     },
-    Some(contract) => match battery_compile(libs ++ src, stem) {
-      (failed, nerr, classes, exit) => match contract {
-        ExpectRun(want) => if failed > 0 {
+    Some(contract) => match contract {
+      ExpectPropose(line, col, want) => // The driver takes the MODULE path — the file without its `.mn`, exactly
+      // as the CLI's address form hands it over (path_to_module, cli.mn).
+      battery_propose_step(stem, path_to_module("{dir}/{name}"), line, col, want),
+      ExpectRun(want) => match battery_compile(libs ++ src, stem) {
+        (failed, nerr, _, exit) => if failed > 0 {
           print_string("FAILC {stem}\n")
           1
         } else if exit == want {
@@ -2019,7 +2132,9 @@ fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(mic
           print_string("FAIL(run) {stem}: exit={int_to_str(exit)} expected={int_to_str(want)} diags={int_to_str(nerr)}\n")
           1
         },
-        ExpectRefuse(cls) => // The contract judges the JUDGMENT: the named class reported as an
+      },
+      ExpectRefuse(cls) => match battery_compile(libs ++ src, stem) {
+        (_, nerr, classes, _) => // The contract judges the JUDGMENT: the named class reported as an
         // error. Armed classes also withhold the artifact; unarmed ones
         // surface-and-emit — both are the medium's own law, and the
         // battery asserts exactly what the medium asserts.

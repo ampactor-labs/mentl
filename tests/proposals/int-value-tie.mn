@@ -1,0 +1,5 @@
+// propose 3:17: ask value
+// Four integer seeds fit an unbounded Int, and nothing distinguishes them but their value.
+fn f() -> Int = ??
+
+fn main() = 0

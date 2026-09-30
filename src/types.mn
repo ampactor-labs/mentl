@@ -2049,6 +2049,9 @@ type Divergence
   | DivName
   // what the target type admits — the same read that seeded the candidates
   | DivValue(Domain)
+  // the survivors are a sum's own nullary constructors — its values, named
+  // (C7: Circle against Square is a VALUE question, asked as shape before)
+  | DivVariants([String])
   | DivShape
   // survivors at a FUNCTION-typed hole: different computations of one type
   | DivBehavior
@@ -4253,6 +4256,19 @@ fn show_domain(d) = match d {
   DUndecided => "the predicate is past the decidable fragment, so the type's bound is unread",
 }
 
+// The arm's NAME — what a proposal fixture's `// propose` contract names
+// (`mentl test` over tests/proposals), so a contract binds the
+// classification and never the sentence.
+fn divergence_arm(d) with Pure = match d {
+  DivRow(_, _) => "row",
+  DivType(_, _, _) => "type",
+  DivName => "name",
+  DivValue(_) => "value",
+  DivVariants(_) => "value",
+  DivShape => "shape",
+  DivBehavior => "behavior",
+}
+
 // The tie's one line: the proposition the developer never stated, spoken in
 // the vocabulary of whatever separates the survivors. Never "one more
 // constraint collapses it" — that sentence was the same words at every tie,
@@ -4262,6 +4278,7 @@ fn show_divergence(d) with !Mutate = match d {
   DivType(a, b, r) => "these differ in TYPE — {show_type(a)} against {show_type(b)}: which type does this position hold? (the cell that moves: {show_reason(r)})",
   DivName => "every survivor denotes the same value — the question is which name carries the intent",
   DivValue(dom) => "the survivors differ in VALUE and {show_domain(dom)}: which one does this position mean?",
+  DivVariants(names) => "the survivors are the type's own values — {join(" or ", names)}: which one does this position mean?",
   DivShape => "the survivors differ in SHAPE — what structure does this position hold?",
   DivBehavior => "these are different computations of the same type — an example of the result, or a refinement on it, decides which one this position means",
 }

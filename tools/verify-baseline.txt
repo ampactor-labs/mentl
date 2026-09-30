@@ -1185,4 +1185,17 @@ authored_ref_max: 708
 # net wheel lines at ~33 KB per line, +33,868 KB over the L4a′ wheel through
 # the same compiler. Same rule: ~1% over the highest reading of the landed
 # form, the m3 leg's 850,488 KB at pin 16286d94.
-selfcompile_peak_kb_max: 859000
+# RAISED 859,000 -> 873,000 at C6 + C7 (2026-09-30): the segment's context
+# write set read off the trail (src/graph.mn, src/synth_proposer.mn — +174
+# net wheel lines at C6) and the proposal battery facet with the formatter's
+# candidate render and the variant question (src/main.mn, src/synth_proposer.mn,
+# src/types.mn, src/infer.mn — +167 net at C7). Fixed input: the previous boot
+# (2fcad4e9) compiling the landed source reads 853,304 / 857,508 KB over two
+# runs; the new boot (6f2ce437) on the SAME source 856,452 / 864,576 — a
+# min-of-two gap of 3.1 MB inside the ±4 MB run-to-run band either compiler
+# shows on its own, so nothing the compiler does on its own input grew. The
+# rise is the source: +338 net wheel lines since the C5 pin's 853,024 KB at
+# ~33 KB per line; the board's min-of-three read 862,004 KB and the march's
+# m3 leg 857,168 KB. Same rule: ~1% over the highest reading of the landed
+# form, 864,576 KB.
+selfcompile_peak_kb_max: 873000

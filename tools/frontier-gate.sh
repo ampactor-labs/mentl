@@ -2568,6 +2568,18 @@ for i in "${!compilers[@]}"; do
   else
     fail "computed question: type at a context cell (got: $(printf '%s' "$qc" | tail -2))"
   fi
+  # THE PROPOSAL BATTERY (C7): every fixture in tests/proposals carries its
+  # own `// propose L:C: <want>` contract — one proven survivor whose source
+  # is the text, a tie whose divergence is the named ARM, or no candidate —
+  # and the medium's own `test` verb judges it against the Verdict itself,
+  # structurally, never through the rendered line. Born with twenty-four
+  # fixtures: one per enumerator, one per divergence arm, one per proposal
+  # landing. RED on boot 2fcad4e9 as a whole: the facet did not exist.
+  if wt_battery "$compiler" tests/proposals "proposals-through-m2"; then
+    pass "proposal battery: every fixture's contract holds (the test verb's propose facet)"
+  else
+    fail "proposal battery (see the battery lines above)"
+  fi
   # ── the render register (DiagScope) ────────────────────────────────
   # A user-target projection over the FULL weave (repo root mounted, so
   # lib+src weave in) scopes narration to the user's file: the substrate's

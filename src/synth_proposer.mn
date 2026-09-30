@@ -1270,14 +1270,11 @@ fn verify_each_enriched(candidates, hole_h, cand_start) with !Mutate = {
 // fires only on a REAL disagreement of meaning. Keyed on the extracted
 // handle — the e-class root the canon weave already carries, never a
 // re-derived structural compare.
-fn collapse_equivalent(cands) = cands |> fold(
-  [],
-  (acc, c) => if acc |> any((k) => node_handle(candidate_node(k)) == node_handle(candidate_node(c))) {
-    acc
-  } else {
-    acc ++ [c]
-  }
-)
+fn collapse_equivalent(cands) = fold([], collapse_step, cands)
+
+fn collapse_step(acc, c) = if any(same_node_as(c), acc) { acc } else { acc ++ [c] }
+
+fn same_node_as(c, k) with Pure = node_handle(candidate_node(k)) == node_handle(candidate_node(c))
 
 fn candidate_node(candidate) with Pure = match candidate {
   EnrichedCandidate(c) => c.node,
@@ -1507,13 +1504,46 @@ fn divergence_by_denotation(nodes, target_ty) = {
   let denotations = map(candidate_denotation([]), nodes)
   if any(denotation_unread, denotations) {
     // A survivor that is not a constant at all makes this a choice
-    // between structures, and the domain has nothing to say about it.
-    DivShape
+    // between structures, and the domain has nothing to say about it —
+    // unless every survivor is a nullary constructor of the target: those
+    // ARE the type's values, and the question is which one (C7: Circle
+    // against Square, True against False, asked as shape before).
+    match nullary_ctor_names(nodes) {
+      Some(names) => DivVariants(names),
+      None => DivShape,
+    }
   } else if denotations_alike(denotations) {
     DivName
   } else {
     DivValue(ty_domain(target_ty))
   }
+}
+
+// Every survivor's constructor name when each is a bare nullary constructor
+// reference — read from the env entry the reference resolves to — else None.
+fn nullary_ctor_names(nodes) = fold(Some([]), nullary_ctor_step, nodes)
+
+fn nullary_ctor_step(acc, node) = match acc {
+  None => None,
+  Some(names) => match nullary_ctor_name(node) {
+    Some(name) => Some(push(names, name)),
+    None => None,
+  },
+}
+
+fn nullary_ctor_name(node) = match node {
+  N(body, _, _) => match body {
+    NExpr(VarRef(name)) => match env_lookup(name) {
+      Some(entry) => match entry {
+        (_, _, kind) => match kind {
+          ConstructorScheme(_, _) => Some(name),
+          _ => None,
+        },
+      },
+      None => None,
+    },
+    _ => None,
+  },
 }
 
 // Rows compare by MUTUAL subsumption — the crown's own algebra, never a
@@ -1670,7 +1700,16 @@ fn synthesize_ctor_call_node(name, scheme) with !Mutate = match judgment_ty(sche
 // carrier; rebuilding name lists from them was the mismatch the
 // converged judge caught (the param-product law reaching synth).
 fn synthesize_lambda_node(params, ret) with !Mutate =
-  synth_node(LambdaExpr(params, synth_hole_node()))
+  synth_node(LambdaExpr(map(proposed_param, params), synth_hole_node()))
+
+// A proposed lambda's parameter carries the NAME the hole's type gives it
+// and a fresh cell for its type: the judgment binds the cell when the
+// skeleton meets the hole, and the render stays bare — a lambda parameter
+// takes no annotation on the page, so a skeleton carrying the target's
+// ground types rendered `(_: String, _: Bool) => ??`, which no parse reads
+// (measured at the proposal battery's birth, C7).
+fn proposed_param(p) =
+  mk_param(param_name(p), TVar(graph_fresh_ty(Inferred("a proposed lambda's parameter"))))
 
 // ─── Synthesis primitives — structured Node construction ───────────
 //

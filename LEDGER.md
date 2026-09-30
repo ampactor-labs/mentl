@@ -35,6 +35,71 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-30 · pin 6f2ce4378786e53f (CLEAN m2 == m3) · THE PROPOSAL BATTERY — TWENTY-FOUR
+  FIXTURES JUDGE THE VERDICT ITSELF, AND WRITING THEM FOUND FOUR DEFECTS.
+  C7. Zero proposal fixtures existed as a battery; six hand-written
+  frontier legs grepped the tie's SENTENCE. The `test` verb reads a second
+  contract now — a fixture's first line `// propose L:C: fill <text>` |
+  `ask <arm>` | `none` beside `// expect:` (`Expect` gains
+  `ExpectPropose(Int, Int, ProposeWant)`) — and judges it against the
+  Verdict at that hole: `battery_verdict` runs the address route's own
+  resolution (`driver_entry_with_ranges`, `address_pick`) and view
+  (`cursor_at_handle`) under the CLI's chain, `verdict_meets` compares
+  structurally (a fill's text is the survivor's rendered source; `ask`
+  names the ARM through `divergence_arm` — row · type · name · value ·
+  shape · behavior — so the voice may move and no fixture does; `none`
+  is `VNone`), and the FAIL line names what the medium answered instead.
+  `tests/proposals` holds twenty-four: one per enumerator (int, float,
+  string, unit, record, list, tuple, constructor, Bool, Option, a fielded
+  constructor, a two-variant sum, a function type with and without in-scope
+  fits, a one-inhabitant refinement, an uninhabited one), one per
+  divergence arm, one per proposal landing (C1's absorbed row, C3's stage
+  by reference and its behavior tie, C6's two type ties); the frontier runs
+  it through `wt_battery` beside the micro battery. THE WALK THAT WROTE THEM
+  found what the tie legs could not, each measured on boot 2fcad4e9: (1) a
+  FIELDED CONSTRUCTOR WAS REFUSED AGAINST THE HOLE IT WAS BUILT FOR —
+  `type Box = Box(Int)` at a `Box` hole answered "refused Box — Box vs
+  (_0: Int) -> Box", and `Pair(Int, Int) | Zero` FILLED `Zero` as the unique
+  survivor, `Option(Int)` filled `None`: the enumerator built `Box(??)`, and
+  a `??` in argument position is the partial application's field marker by
+  the language's own rule, so the candidate judged as `Box` awaiting its
+  field. A hole the proposer MINTS (id 0) is a value the next fill supplies,
+  never the marker (`call_hole_index`, `hole_params`); `Box(??)` fills and
+  the sums ask `None` against `Some(??)` — the constructor half of
+  `Hβ.synth.vocabulary-arg-holes`, the call half still open. (2) EVERY
+  STRUCTURED CANDIDATE RENDERED AS `??` — unit, record, tuple, list, the
+  lambda skeleton — a literal renderer with a hole-marker floor;
+  `render_candidate_source` is the formatter's token projection of the node
+  now (`render_body_tokens`: `()`, `{x: ??, y: ??}`, `(??, ??)`, `[]` and
+  `[??]`, `(_, _) => ??`, `Box(??)`), `render_literal_source` deleted, and
+  `Hβ.felt.candidate-render-is-format` — cited in a comment since C4, never
+  entered — closed at its entry. The skeleton's parameters carry fresh
+  cells, not the target's ground types: `(_: String, _: Bool) => ??` was the
+  first render, which no parse reads. (3) TWO NULLARY CONSTRUCTORS ASKED A
+  SHAPE QUESTION — `Circle` against `Square`, `True` against `False` —
+  where they are the type's own values: `DivVariants([String])`, "the
+  survivors are the type's own values — Circle or Square", its arm `value`.
+  (4) AN AUTHORED HOLE NOTHING PROVED PRINTED NOTHING — the refusals listed
+  with no verdict above them; it says "Propose: no candidate proved at this
+  hole" now, and only at an authored hole. NAMED: the Linked ring offers the
+  substrate's own helpers as vocabulary (`hex_glyphs()` ties with `""` at a
+  String hole; `seq_stride`/`seq_tag`/`seq_sc` refused at an Int-to-Int
+  hole — `Hβ.synth.linked-ring-offers-substrate-internals`), and a handler
+  arm's hole is FREE at propose time, so `handler h { ask() => ?? }` over
+  `ask() -> Int` is filled with a String-returning call
+  (`Hβ.infer.arm-body-cell-is-free-at-propose`; its fixture stays in the
+  scratchpad, the battery holding no declared reds). KILLS: the first
+  variant question rode `Domain` (`DVariants` beside `DRange`/`DFinite`) and
+  the wheel refused it — eight `E_PatternInexhaustive` in the refinement
+  fragment's combinators, whose meet and join have nothing to say about a
+  sum — so it is a `Divergence` constructor, where it belongs; the battery's
+  first run resolved every fixture as a MODULE path the driver could not
+  find ("expected at lib/tests/proposals/x.mn.mn") — the step hands the
+  driver `path_to_module`, exactly as the CLI's address form does; and the
+  effectful-lambda ratchet paid for the new `infer_context` thunk with
+  `collapse_equivalent`'s fold lambda, now a reference. Micros 260/260,
+  proposals 24/24, crown 102/102, frontier 457 pass / 0 red / 2
+  expected-red; m3 leg 13.96s wall · 837MB peak RSS (857168 KB).
 - 2026-09-30 · pin 2fcad4e9e7f987f5 (CLEAN m2 == m3) · THE QUESTION IS READ OFF THE TRAIL —
   THE FIRST CONTEXT CELL TWO SURVIVORS BOUND DIFFERENTLY IS THE DIVERGENCE.
   C6. The computed question's SOURCE was each survivor's own reads — a

@@ -1,0 +1,7 @@
+// propose 7:25: ask behavior
+// Two stages of one type ask the behavior question (C3).
+fn double(x) = x * 2
+
+fn inc(x) = x + 1
+
+fn main() -> Int = 5 |> ??

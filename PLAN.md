@@ -1684,6 +1684,32 @@ and this is the STATE.
   (`Hβ.synth.divergence-from-the-trail`): a declaration's row is a scheme
   VALUE after finalize, so no candidate's charge moves it (rung 3), and a
   segment's own mints collide numerically after rollback ((arena, offset)).
+- **THE PROPOSAL BATTERY, AND WHAT ITS FIRST TWENTY-FOUR FIXTURES FOUND —
+  2026-09-30 (C7).** Zero proposal fixtures existed as a battery; the
+  `test` verb reads a second contract now — `// propose L:C: fill <text>`
+  | `ask <arm>` | `none` — and judges it against the Verdict at that hole
+  through the address route's own resolution and view, structurally, so a
+  contract binds the classification and the voice may move
+  (`tests/proposals`, twenty-four fixtures: one per enumerator, one per
+  divergence arm, one per proposal landing; the frontier runs the
+  battery). Writing them was a felt walk over every enumerator, and the
+  walk found four things the six hand-written tie legs could not: a
+  fielded constructor was refused against the hole it was built for
+  (`Box(??)` judged as `Box` awaiting its field, since a `??` in argument
+  position is the partial's marker — a hole the proposer mints is a value
+  the next fill supplies now, and `Option(Int)` asks `None` against
+  `Some(??)` where it filled `None` alone); every structured candidate
+  rendered as `??` (the renderer is the formatter's token projection now:
+  `()`, `{x: ??, y: ??}`, `(??, ??)`, `[]`, `(_, _) => ??`,
+  `Hβ.felt.candidate-render-is-format` closed); two nullary constructors
+  asked a SHAPE question where they are the type's own values
+  (`DivVariants`: "True or False", "Circle or Square"); and an authored
+  hole nothing proved printed nothing at all (it says so now, with the
+  refusals as its reasons). Named: the Linked ring offers the substrate's
+  own helpers (`hex_glyphs()` at a String hole —
+  `Hβ.synth.linked-ring-offers-substrate-internals`) and a handler arm's
+  hole is free at propose time
+  (`Hβ.infer.arm-body-cell-is-free-at-propose`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -1708,6 +1734,7 @@ bash tools/verify.sh           # the floor the verb has not absorbed: micros thr
 bash tools/march-gate.sh --micros   # rungs + battery through boot's wheel-emitted m2 (reads the shared .build/m2cache)
 bash tools/march.sh            # THE RATCHET: boot→m2→m3, ASSERTS m2 == m3; on m2 ≠ m3 runs m4 ITSELF and rules TRANSITION (re-pin from m3) vs BROKEN
 bash tools/frontier-gate.sh    # scheduled matrix + ?? authoring workflows (--compiler fresh for the current wheel)
+mentl test tests/proposals     # THE PROPOSAL BATTERY (C7): each fixture's first line is its contract — `// propose L:C: fill <text>` | `ask <arm>` | `none` — judged against the Verdict at that hole, never the rendered line (the frontier runs it)
 bash tools/proof-exactness-gate.sh  # hole refuses · debt surfaces · suspension runs
 bash tools/ide-gate.sh         # the resident session: the node twin over ide/wheel-worker.js, then headless Chrome over `mentl space` (leg 2 skips loudly without chrome)
 bash tools/doc-truth.sh        # the docs' checkable claims vs the artifact: PROVENANCE sha == boot sha, ledger head pin, named commands exist (runs inside verify — prose gets a mechanical floor)
