@@ -764,9 +764,9 @@ and it builds no record, pushes no world and never calls its arm: the lowering
 derives the derivative program from the body's own graph and emits it beside the
 forward one, so there is no tape and no second copy of the chain to fall out of
 step, and the step above leaves the heap where it found it. The seed is a Float
-variable in scope. State that lives past the extent — a `<~` line, a handler's
-state — enters it held fixed, and a `<~` line inside the extent carries its
-tangent as a recurrence of its own.
+variable in scope, or a record or tuple of Floats (below). State that lives past
+the extent — a `<~` line, a handler's state — enters it held fixed, and a `<~`
+line inside the extent carries its tangent as a recurrence of its own.
 
 **The reading crosses a function value and a handler's arms through the record
 that holds them** (real, 2026-09-30). Handler = state = closure, read once more:
@@ -783,14 +783,37 @@ free variable of the extent and is held fixed: its captures and its state carry
 no tangent where the reading opens, and are differentiated from the first write
 inside it, so `d(g(3.0))` for the same `g` minted before the install is 0.
 
+**A product seed is answered in one reverse sweep** (real, 2026-09-30). The
+seed may be a record or tuple of Floats — `~> grad(ws)` with `ws = {a: 2.0, b:
+1.0}` — and `d(v)` is then the gradient of `v` in every Float field, READ BY
+DESTRUCTURING where it is asked: `let {a: ga, b: gb} = d(v)` binds each field to
+the adjoint of its seed and builds no record, so a `!Alloc` extent stays honest.
+The rules of the reading are written once, as a linear program over the
+primal's residuals, and the two modes are its two projections, chosen by cost
+and never authored, since forward and reverse mean the same thing: a scalar seed
+is answered forward (one pass answers every query), a product seed in reverse —
+the primal runs first with each test and scrutinee kept as a residual, then
+each query transposes the statements before it back to the seeds, one adjoint
+per tangent, and a call into a known function runs that function's ADJOINT
+TWIN, which recomputes the callee in its own frame and hands its parameters'
+adjoints back through registers. What the reverse projection does not carry —
+a call through a function value, a perform reaching an arm, a `<~` line or a
+record carrying a tangent, an install, an early return, a query inside a callee,
+a recursion anywhere in the extent's reach — a product seed reaching it REFUSES
+naming the vector-forward reading (`Hβ.derive.vector-forward`), never a slope
+of zero; and holding a gradient as a value (`let g = d(v)`) refuses too
+(`Hβ.derive.gradient-as-a-value`), since the record it would build is an
+allocation the row never saw. Reverse through iteration, through the record and
+through a `<~` line's history are `Hβ.derive.transpose-through-iteration`,
+`Hβ.derive.transpose-through-the-record` and `Hβ.derive.bptt-priced-by-the-row`.
+
 What the reading cannot carry, it refuses: `d` of a value whose tangent was lost
 — into an aggregate, across a multi-shot perform, off a line ticked by forward
 code, through another `d` — is `E_DerivativeUnreachable` at the query, naming
 where it was lost, never a slope of zero; and a mint, an install or a state
 write that would store a lost tangent into a record refuses where it stands,
 since the record's later readers could not know. A `d` outside every reading
-leaves `Derivative` unhandled at the root. Reverse mode, chosen by cost, is
-`Hβ.derive.transpose`; a `<~` line a closure record owns is
+leaves `Derivative` unhandled at the root. A `<~` line a closure record owns is
 `Hβ.derive.closure-line-tangent`.
 
 ### `<~` — feedback (cycle closure)

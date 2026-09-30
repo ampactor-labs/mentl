@@ -35,6 +35,127 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-30 · pin 16286d94fe225527 (CLEAN m2 == m3) · THE GRADIENT OF A PRODUCT SEED IS ONE
+  REVERSE SWEEP — TWO MODES, TWO PROJECTIONS OF ONE LINEAR PROGRAM.
+  L4b. src/derive.mn's header had promised "the rules are each construct's
+  partials, written once — read forward here, read backward by the
+  transpose", and the artifact did not do that: `jvp_arith` baked the
+  partials into forward tangent LowIR and `Tan = TZero | TVal(LowExpr)` was
+  already lowered, so nothing could read them backward, and a record or
+  tuple seed refused at the install ("the seed of a derivative reading must
+  be a Float variable in scope", boot 8ee3d09a on every one of the seven new
+  fixtures).
+  **The form.** The walk over a body (`jvp`) writes a LINEAR PROGRAM once:
+  `Lin` is one value's tangent over the primal's residuals (zero, one, a
+  tangent name, add, sub, negate, scale by a residual, quotient by a
+  residual, a record's lane, the register) and `Beside` the statements
+  beside the primal's (a primal statement kept in order, a tangent bound, a
+  choice whose branches hold both kinds, a query, a twin's exit, a call
+  into a known function's twin, a tail exit through one). The FORWARD
+  projection (`lower_forward`) lowers it to the tangent program the reading
+  emitted before; the REVERSE projection (`rv_stmts`, `rv_backward`) runs
+  the primal statements first, each test and scrutinee named as a residual
+  and each call into a known function as the primal call, then answers
+  every query by a backward sweep over the statements before it — the
+  adjoints zeroed, the queried tangent's adjoint one, each linear statement
+  transposed against the adjoint its name holds (`rv_transpose`) and
+  cleared as the sweep consumes its definition, and a call into a known
+  function answered by its ADJOINT TWIN (`sym$vjp<key>`: the callee's
+  parameters and `__g`, the callee recomputed to its exit in its own frame,
+  every active Float parameter's adjoint handed back through a register of
+  its own, `$__da{j}`, `adjoint_out`/`adjoint_in` in src/backends/wasm.mn).
+  A record or tuple of Floats seeds the reading (`seed_lanes`, one lane per
+  Float field, `__seed{h}_{i}$d`); a field read of the seed and a pattern
+  over the seed bind to the field's lane; `d(v)` is the gradient READ BY
+  DESTRUCTURING where it is asked (`grad_destructure`: one arm, a record or
+  tuple pattern naming the seed's Float fields, each binder the adjoint
+  local of its field, no record built). The mode is chosen by cost, never
+  authored: a scalar seed forward (one pass answers every query), a product
+  seed in reverse where the reverse projection carries the extent's whole
+  reach — the marks the walk leaves where a construct cannot be transposed
+  (`dv_forward_only`: a call through a function value, a perform entering
+  an arm, a `<~` line carrying a tangent, a record carrying tangents, an
+  install, an early return, a query inside a twin) and a recursion anywhere
+  in the reach (`reverse_blocker`); a product seed reaching one refuses
+  naming `Hβ.derive.vector-forward`, and a gradient held as a value refuses
+  naming `Hβ.derive.gradient-as-a-value`. The LDerive emit writes the mode
+  as a WAT comment at the install.
+  **Measured.** The byte oracle first: the eleven L4a/L4a′ micros and the
+  three derive crucibles compiled through the boot and through the new m2
+  differ by the mode comment and one local per query (5–10 lines each) and
+  by nothing else, every value unchanged (243 → the same 243 verdicts).
+  Seven micros RED-first on boot 8ee3d09a: mn-derive-grad-record (28,
+  ∂(a·x + b)² in both fields), -tuple (32: the seed destructured at the
+  extent, two queries each its own sweep), -branch (48: through an `if` and
+  a `match`, both arms across two calls), -call (28: the adjoint twin of
+  `loss` calling the adjoint twin of `sq`, whose body chooses),
+  -alloc-free (40: a `!Alloc` gradient norm, a thousand sweeps at zero heap
+  growth), -vector-refuses and -value-refuses (the two named refusals — on
+  the boot they refused for the seed, not the peer). The frontier's
+  `derive-grad`: 36 of 36 partials of a rational waveshaper `u / (1 + u²)`,
+  u = drive·x + bias, in one reverse sweep per point against the central
+  differences of the same function to 1e-6; and `derive-grad-series`: the
+  same product seed over scene 1's `adaptive_shape` REFUSES, naming the
+  recursion (`sin_series`, `exp_series` — every series in lib/math.mn is a
+  recursion) and the vector-forward reading. Battery 250/250 (243 + 7),
+  crown 102/102, frontier 449 pass / 0 red / 2 expected-red (445 + the four
+  new lines).
+  **Kills.** (1) The statement type was named `Stmt`; the wheel refused the
+  second `type Stmt` (types.mn's AST statement, `E_DuplicateTypeName`) — it
+  is `Beside`. (2) A choice at a twin's exit bound to a local: a body ending
+  in a let returns nothing (`lexpr_leaves_value`), so the twin would not
+  validate — a choice at a body's exit stands in place, its local the empty
+  name. (3) The seed destructured at the extent (`let (a, b) = ws`) read the
+  seed whole — lost, as a seed handed to a callee is — and both queries of
+  mn-derive-grad-tuple refused on the first m2 ("its tangent was lost where
+  it was stored into a value built at …"); a pattern over the seed itself
+  binds each field to its lane (`scrutinee_carried`). (4) The tangent twins
+  a reverse extent demanded while it was read (the walk demands `sym$jvp`
+  before the mode is chosen) were EMITTED uncalled; the kept set is the
+  calls fixpoint from the programs with the faces' twins as roots
+  (`twins_called`). (5) The planned frontier leg — the two-seed reading of
+  scene 1's distortion in the drive and the flux — cannot be reverse today,
+  since `adaptive_shape` reaches tanh, exp and sin, each a series written
+  as a recursion; the leg is the REFUSAL contract and a fixed-chain
+  waveshaper carries the value contract. (6) A carried form for a record's
+  lane (`CExpr`) survived the rewrite with no constructor site — deleted.
+  (7) THE COST RATCHET REFUSED THE FIRST REPIN at 980,228 KB (min of
+  three) — +148 MB over the L4a′ pin for a thousand net lines, five times
+  the measured ~33 KB per line — and the census it forced found the
+  compiler, not the landing. The fixed-input probe ruled the compiler's
+  behavior out (the boot and the new m2 on identical input: +48 bytes at
+  every mark), so the rise was the source's SHAPE; phase marks between the
+  judgment and the module (saturation, the lowering's pre-passes, lowering,
+  plan, write — two new, kept in `compile_remainder`) put +3 MB on the
+  declarations' own lowering, +68 MB on the reachability walk around them
+  and +66 MB on the plan; and a per-declaration census of that walk put
+  12.9 MB on `jvp_tail` and 5.5 MB each on `jvp`, `jvp_arith`, `jvp_query`,
+  `grad_destructure`, `seq_values_from`, in quanta of 1.84 MB — one per
+  `++`. `wide_binop_seed` asked `ty_has_wide_seq` at EVERY binary operator
+  (six read the answer), and the walk was path-local: a nominal type
+  reached through many paths was walked once per path, allocating its
+  variant specs each time, and a list of the reading's statements reaches
+  LowExpr, LowPat, Lin and Ty through dozens. The fact is one per nominal
+  type now, settled once in the lowering state and read thereafter, the
+  cycle cut by the names the walk stands inside (exact for the name being
+  walked), and only the six minting operators ask
+  (`Hβ.lower.wide-seq-walk-was-path-local`, CLOSED). Through the fixed
+  compiler on the same source: the L4a′ wheel 713,798,672 bytes written at
+  812,600 KB (the boot: 729,203,240 / 831,632 KB), its emit byte-identical
+  to the boot's; the landed wheel 744,479,808 at 846,468 KB (the boot:
+  886,213,368 / 980,228 KB) — what remains is +1,029 lines at ~33 KB, and
+  the ceiling is 859,000 (~1% over the m3 leg's 850,488 KB) with the record
+  in tools/verify-baseline.txt. The census itself is deleted and named
+  (`Hβ.lower.per-decl-cost-census`); the escaping-row pre-pass's own +12 MB
+  for +1.8% declarations gives `Hβ.lower.esc-row-on-node` its RESIDUE home.
+  (8) The second march refused at the comment-ref ratchet, 0 → 1: the
+  comment above the rewritten walk still cited its deleted `seen`
+  parameter, and the medium's own warning named the line.
+  Named: `Hβ.derive.vector-forward`, `.transpose-through-iteration`,
+  `.transpose-through-the-record`, `.bptt-priced-by-the-row`,
+  `.gradient-as-a-value`; `Hβ.derive.transpose` and
+  `.gradient-of-a-product-seed` CLOSED. Cost at the pin: m3 leg 13.74s wall
+  · 830MB peak RSS (850488 KB).
 - 2026-09-30 · pin 8ee3d09a071eb5b5 (CLEAN m2 == m3) · THE DERIVATIVE CROSSES A FUNCTION VALUE AND A HANDLER'S ARMS THROUGH THE RECORD.
   L4a′. The forward reading (L4a) treated every call through a function
   value and every perform as forward code: a tangent reaching one was lost

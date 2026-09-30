@@ -1,0 +1,24 @@
+// expect: refuse E_DerivativeUnreachable
+// A gradient is read by destructuring where it is asked, never held as a
+// value: binding `d(v)` of a product seed to a name would have to build the
+// seed's record — an allocation the extent's row never saw — so the
+// reading refuses it, naming `Hβ.derive.gradient-as-a-value`.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn main() -> Int = {
+  let ws = {a: 2.0, b: 1.0}
+  let r = {
+    let g = d(ws.a * ws.b)
+    g.a + g.b
+  } ~> grad(ws)
+  float_to_int(r)
+}

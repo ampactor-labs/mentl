@@ -1,0 +1,26 @@
+// expect: refuse E_DerivativeUnreachable
+// A product seed reaching what the reverse projection does not carry
+// REFUSES, naming the construct and the vector-forward reading
+// (`Hβ.derive.vector-forward`) — never a slope of zero. Here the extent
+// calls through a function value with an active argument: forward, the call
+// takes the derivative face; in reverse, the adjoint would have to cross a
+// record the reading cannot see past, and the reading says so.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn main() -> Int = {
+  let ws = {a: 2.0, b: 1.0}
+  let triple = { v => v * 3.0 }
+  let r = match d(triple(ws.a) + ws.b) {
+    {a: ga, b: gb} => ga + gb,
+  } ~> grad(ws)
+  float_to_int(r)
+}

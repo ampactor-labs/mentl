@@ -1,0 +1,31 @@
+// expect: 28
+// The reverse sweep through a call into a known function: the forward sweep
+// calls the callee as the program does, and the backward sweep calls its
+// ADJOINT TWIN, which recomputes the callee — its residuals are its own
+// frame locals — and hands the adjoints of its active Float parameters back
+// through the registers. `loss` calls `sq`, whose own body chooses, so the
+// adjoint twin of `loss` calls the adjoint twin of `sq`. Same chain as
+// mn-derive-grad-record: y = 7, ∂/∂a = 42, ∂/∂b = 14, answer 28.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn sq(v: Float) -> Float = if v < 0.0 { 0.0 - v * v } else { v * v }
+
+fn loss(a: Float, b: Float, x: Float) -> Float = sq(a * x + b)
+
+fn main() -> Int = {
+  let ws = {a: 2.0, b: 1.0}
+  let x = 3.0
+  let r = match d(loss(ws.a, ws.b, x)) {
+    {a: ga, b: gb} => ga - gb,
+  } ~> grad(ws)
+  float_to_int(r)
+}

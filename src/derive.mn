@@ -3,12 +3,26 @@
 // `(e) ~> grad(w)` (lib/ml/grad.mn) lets the extent ask how any value it
 // computes changes with the seed. Lower keeps the install as an LDerive — no
 // record, no world — and this module turns each one into the program that
-// computes `e` exactly as before and, beside every value the seed reaches,
-// its TANGENT: the rate at which that value moves with the seed. Every
-// function the tangent crosses by a direct call is demanded as a twin whose
-// Float parameters carry a tangent beside the value and whose Float result
-// hands its tangent back through a per-instance register the caller reads the
-// instant the call returns.
+// computes `e` exactly as before and answers each query.
+//
+// ONE LINEAR PROGRAM, TWO PROJECTIONS (2026-09-30). The walk over the body
+// writes each construct's partial derivatives ONCE, as a linear program over
+// the primal's residuals: `Lin` is the tangent of one value, `Beside` the
+// statements beside the primal ones. The FORWARD projection lowers that
+// program to the tangent program — every value's tangent computed beside it,
+// the seed's tangent one — and answers a query with the tangent it asks for.
+// The REVERSE projection runs the primal statements first, then transposes
+// the linear statements back from the query: one adjoint per tangent,
+// accumulated from the query to the seeds, so one sweep answers the whole
+// gradient of one value. The two mean the same thing; the reading picks by
+// cost: a scalar seed is answered forward (one pass answers every query), a
+// product seed — a record or tuple of Floats — is answered in reverse where
+// the program is a fixed chain, since one sweep answers every field. A
+// product seed reaching what the reverse projection cannot carry (a call
+// through a function value, a perform reaching an arm, a `<~` line carrying
+// a tangent, a record carrying tangents, an early return or recursion in a
+// called function) refuses naming the vector-forward reading
+// (`Hβ.derive.vector-forward`), never a slope of zero.
 //
 // THE TANGENT CROSSES DYNAMIC DISPATCH THROUGH THE RECORD (2026-09-30). A
 // function value — a closure, an install's arms — is reached through a record
@@ -43,10 +57,6 @@
 // record, because the record's later readers could not know. Nothing else
 // refuses. A derivative answered as zero where the program asked for one is
 // the one output this reading may not produce.
-//
-// THE RULES are each construct's partial derivatives over its residuals,
-// written once — read forward here, and read backward by the transpose that
-// follows it (`Hβ.derive.transpose`).
 import types
 
 import graph
@@ -68,10 +78,14 @@ effect DerivedPrograms {
 }
 
 // One install's program under one bracket: the install's handle, the bracket
-// it expands under, the program, and the tangent rings its reach ticks —
-// zeroed where the reading opens, so each line's history before it is held
-// fixed.
-type Expansion = Expansion({body: LowExpr, enc: String, install: Int, pairs: [(Int, Ty)], rings: [TangentRing]})
+// it expands under, the projection it took, the program, and the tangent
+// rings its reach ticks — zeroed where the reading opens, so each line's
+// history before it is held fixed.
+type Expansion
+  = Expansion({body: LowExpr, enc: String, install: Int, mode: Mode, pairs: [(Int, Ty)], rings: [TangentRing]})
+
+// The projection an extent took: the tangent program, or the transposed one.
+type Mode = MForward | MReverse
 
 // A `<~` line's tangent ring: the line's site, its depth, and the symbol
 // whose static line it is — one ring per (site, owner), the line's own
@@ -98,7 +112,8 @@ type TwinSource
 // the seed, and the construct at the handle could not carry the tangent here.
 type Act = AInactive | AActive | ALost(Int, LostWhy)
 
-// The construct a tangent was lost at.
+// The construct a tangent was lost at — and, for the reverse projection, the
+// construct that keeps an extent from being transposed.
 type LostWhy
   = LwAggregate
   | LwClosureCall
@@ -110,10 +125,54 @@ type LostWhy
   | LwMemory
   | LwCaller
   | LwUnentered
+  | LwGradientValue
+  | LwRecord
+  | LwLine
+  | LwInstall
+  | LwReturn
+  | LwRecursion
+  | LwQueryInTwin
 
-// A value's tangent: exactly zero, or an expression over the residuals that
-// is valid once the value's own prelude has run.
-type Tan = TZero | TVal(LowExpr)
+// ─── The linear program ────────────────────────────────────────────────
+//
+// A value's tangent, as an expression over tangent names and the primal's
+// residuals: written once by the rules, lowered forward as it stands, or
+// transposed backward from a query. Every node carries the handle its
+// arithmetic is minted at, so the forward projection writes the operations
+// the rule would have written.
+type Lin
+  = LinZero
+  | LinUnit
+  | LinName(Int, String)
+  | LinAdd(Int, Lin, Lin)
+  | LinSub(Int, Lin, Lin)
+  | LinNeg(Int, Lin)
+  | LinScale(Int, LowExpr, Lin)
+  | LinQuot(Int, Lin, LowExpr)
+  | LinLane(Int, LowExpr, Int)
+  | LinIn(Int)
+
+// A statement of the derivative program beside the primal's: a primal
+// statement kept in order; a tangent local bound to a linear expression; a
+// choice whose branches hold both kinds and end in their value; a query
+// answered into a local; a twin's exit handing its tangent back; a call
+// into a known function's twin, with the tangent beside each active Float
+// argument and the result's tangent name where the result moves; and a
+// twin's exit through another twin's call.
+type Beside
+  = SPrim(LowExpr)
+  | STan(Int, String, Lin)
+  | SIf(Int, String, LowExpr, [Beside], [Beside])
+  | SMatch(Int, String, LowExpr, [(LowPat, Int, [Beside])])
+  | SQuery(Int, Int, String, Lin)
+  | SOut(Int, Lin)
+  | STwinCall(Int, String, Int, String, String, String, [LowExpr], [Option(Lin)], Option(String))
+  | STail(Int, Int, String, String, String, [LowExpr], [Option(Lin)])
+
+// What a value answers when it is a query of a product seed: the gradient,
+// read by destructuring where it is asked — the query's Float handle, the
+// queried tangent and the seed's fields.
+type Ans = ANone | AGrad(Int, Lin, [(String, Int, String)])
 
 // What a body is read inside: the owner symbol whose static `<~` lines it
 // ticks, and where its value leaves.
@@ -168,68 +227,185 @@ fn lost_story(a) = match a {
       LwMemory => "it was read back from memory an active value was written to (at {at})",
       LwCaller => "the caller passed a value whose tangent was already lost",
       LwUnentered => "its tangent was lost at a construct the reading does not enter (at {at})",
+      LwGradientValue => "it is a gradient held as a value (the query at {at}); a gradient is read by destructuring where it is asked",
+      LwRecord => "it passes through a record carrying tangents (at {at})",
+      LwLine => "it passes through a `<~` line carrying a tangent (at {at})",
+      LwInstall => "it passes through an install carrying tangents (at {at})",
+      LwReturn => "it leaves a called function through an early return (at {at})",
+      LwRecursion => "it passes through a recursive call (at {at})",
+      LwQueryInTwin => "a derivative is asked inside a called function (at {at})",
     }
   },
   AActive => "its tangent is carried",
   AInactive => "it does not depend on the seed",
 }
 
+// Why an extent cannot be transposed: the construct in its reach the reverse
+// projection does not carry.
+fn only_story(why, h) = {
+  let at = span_words(h)
+  match why {
+    LwClosureCall => "a call through a function value at {at}",
+    LwPerform => "a perform reaching a handler's arm at {at}",
+    LwLine => "a `<~` line carrying a tangent at {at}",
+    LwRecord => "a function value or a state field carrying tangents at {at}",
+    LwInstall => "an install carrying tangents at {at}",
+    LwReturn => "an early return in a called function at {at}",
+    LwRecursion => "a recursive call at {at}",
+    LwQueryInTwin => "a derivative asked inside a called function at {at}",
+    LwUnentered => "a construct the reading does not enter at {at}",
+    LwAggregate => "a value built at {at}",
+    LwSecondOrder => "a derivative of a derivative at {at}",
+    LwStaleLine => "a line ticked outside the reading at {at}",
+    LwClosureLine => "a closure-owned line at {at}",
+    LwValueLine => "a value-owned line at {at}",
+    LwMemory => "a memory read at {at}",
+    LwCaller => "a lost argument at {at}",
+    LwGradientValue => "a gradient held as a value at {at}",
+  }
+}
+
 fn span_words(h) = match parse_span_of(h) {
   Span(sl, sc, _, _) => "{int_to_str(sl)}:{int_to_str(sc)}",
 }
 
-// ─── The tangent vocabulary — closed, so the transpose reads a known set ──
+// ─── The linear vocabulary — closed, so the transpose reads a known set ──
 //
-// The float handle a zero tangent is minted at: the value's own, whose type
-// is the value's Float — the constant's width reads it.
-fn tan_at(h, t) = match t {
-  TZero => LConst(h, LFloat(0.0)),
-  TVal(x) => x,
+// The constructors keep an exact zero out of every expression, so the
+// forward program never adds or scales a zero it can see.
+fn lin_is_zero(l) = match l {
+  LinZero => true,
+  LinUnit => false,
+  LinName(_, _) => false,
+  LinAdd(_, _, _) => false,
+  LinSub(_, _, _) => false,
+  LinNeg(_, _) => false,
+  LinScale(_, _, _) => false,
+  LinQuot(_, _, _) => false,
+  LinLane(_, _, _) => false,
+  LinIn(_) => false,
 }
 
-fn tan_add(h, a, b) = match a {
-  TZero => b,
-  TVal(x) => match b {
-    TZero => a,
-    TVal(y) => TVal(LBinOp(h, BAdd, x, y)),
-  },
-}
+fn lin_add(h, a, b) = if lin_is_zero(a) { b } else if lin_is_zero(b) { a } else { LinAdd(h, a, b) }
 
-fn tan_sub(h, a, b) = match b {
-  TZero => a,
-  TVal(y) => match a {
-    TZero => TVal(LUnaryOp(h, UNeg, y)),
-    TVal(x) => TVal(LBinOp(h, BSub, x, y)),
-  },
-}
+fn lin_sub(h, a, b) =
+  if lin_is_zero(b) { a } else if lin_is_zero(a) { LinNeg(h, b) } else { LinSub(h, a, b) }
 
-fn tan_neg(h, a) = match a {
-  TZero => a,
-  TVal(x) => TVal(LUnaryOp(h, UNeg, x)),
-}
+fn lin_neg(h, a) = if lin_is_zero(a) { a } else { LinNeg(h, a) }
 
 // c · a, the residual first — the operand the arithmetic dispatch reads.
-fn tan_scale(h, c, a) = match a {
-  TZero => a,
-  TVal(x) => TVal(LBinOp(h, BMul, c, x)),
+fn lin_scale(h, c, a) = if lin_is_zero(a) { a } else { LinScale(h, c, a) }
+
+fn lin_quot(h, a, b) = if lin_is_zero(a) { a } else { LinQuot(h, a, b) }
+
+// ─── The forward projection ────────────────────────────────────────────
+//
+// A tangent as the program computes it. A zero is minted at the handle of
+// the value it stands for, whose type is the value's Float — the constant's
+// width reads it.
+fn lin_expr(h, l) = match l {
+  LinZero => LConst(h, LFloat(0.0)),
+  LinUnit => LConst(h, LFloat(1.0)),
+  LinName(nh, n) => LLocal(nh, n),
+  LinAdd(ah, a, b) => LBinOp(ah, BAdd, lin_expr(ah, a), lin_expr(ah, b)),
+  LinSub(ah, a, b) => LBinOp(ah, BSub, lin_expr(ah, a), lin_expr(ah, b)),
+  LinNeg(ah, a) => LUnaryOp(ah, UNeg, lin_expr(ah, a)),
+  LinScale(ah, c, a) => LBinOp(ah, BMul, c, lin_expr(ah, a)),
+  LinQuot(ah, a, c) => LBinOp(ah, BDiv, lin_expr(ah, a), c),
+  LinLane(lh, rec, i) => LWasiCall(lh, "lane_read", [rec, LConst(0, LInt(i))]),
+  LinIn(ih) => LWasiCall(ih, "tangent_in", []),
 }
 
-fn tan_quot(h, a, b) = match a {
-  TZero => a,
-  TVal(x) => TVal(LBinOp(h, BDiv, x, b)),
+// The tangent program: every statement as it stands, a tangent bound beside
+// each value that moves.
+fn lower_forward(stmts) = flat_map(stmt_forward, stmts)
+
+fn stmt_forward(s) = match s {
+  SPrim(e) => [e],
+  STan(h, n, l) => [LLet(h, n, lin_expr(h, l))],
+  SIf(h, v, c, t, e) => bound_choice(h, v, LIf(h, c, lower_forward(t), lower_forward(e))),
+  SMatch(h, v, sc, arms) => bound_choice(h, v, LMatch(h, sc, map(arm_forward, arms))),
+  SQuery(h, _qh, v, l) => [LLet(h, v, lin_expr(h, l))],
+  SOut(h, l) => [LWasiCall(h, "tangent_out", [lin_expr(h, l)])],
+  STwinCall(h, v, fh, _name, sym, key, vals, lins, rt) => {
+    let call =
+      LLet(h, v, LDirectCall(h, fh, twin_name(sym, key, false), false, twin_args_of(vals, lins, 0, [])))
+    match rt {
+      Some(t) => [call, LLet(h, t, LWasiCall(h, "tangent_in", []))],
+      None => [call],
+    }
+  },
+  STail(h, fh, _name, sym, key, vals, lins) => [LDirectCall(h, fh, twin_name(sym, key, false), true, twin_args_of(vals, lins, 0, []))],
+}
+
+fn arm_forward(arm) = match arm {
+  (pat, bh, stmts) => (pat, LBlock(bh, lower_forward(stmts))),
+}
+
+// A choice bound to the local its value flows through, or standing in place
+// where it is a body's own exit (an empty name) — the tail a twin returns.
+fn bound_choice(h, v: String, choice) =
+  if field_name_eq(v, "") { [choice] } else { [LLet(h, v, choice)] }
+
+// The twin's arguments: every value, and beside each active Float its tangent.
+fn twin_args_of(vals, lins, i, acc) = if i >= len(vals) {
+  acc
+} else {
+  let v = list_index(vals, i)
+  match list_index(lins, i) {
+    Some(l) => twin_args_of(vals, lins, i + 1, acc ++ [v, lin_expr(lexpr_handle(v), l)]),
+    None => twin_args_of(vals, lins, i + 1, acc ++ [v]),
+  }
+}
+
+// Whether a program binds a tangent anywhere — the test a form that must
+// lower forward in place (a line's tick, an install's body) reads.
+fn stmts_have_tan(stmts) = any(stmt_has_tan, stmts)
+
+fn stmt_has_tan(s) = match s {
+  SPrim(_) => false,
+  STan(_, _, _) => true,
+  SIf(_, _, _, t, e) => stmts_have_tan(t) || stmts_have_tan(e),
+  SMatch(_, _, _, arms) => any(arm_has_tan, arms),
+  SQuery(_, _, _, _) => true,
+  SOut(_, _) => true,
+  STwinCall(_, _, _, _, _, _, _, _, _) => true,
+  STail(_, _, _, _, _, _, _) => true,
+}
+
+fn arm_has_tan(arm) = match arm {
+  (_, _, stmts) => stmts_have_tan(stmts),
+}
+
+fn count_queries(stmts) = fold(0, stmt_queries, stmts)
+
+fn stmt_queries(n, s) = match s {
+  SPrim(_) => n,
+  STan(_, _, _) => n,
+  SIf(_, _, _, t, e) => n + count_queries(t) + count_queries(e),
+  SMatch(_, _, _, arms) => fold(n, arm_queries, arms),
+  SQuery(_, _, _, _) => n + 1,
+  SOut(_, _) => n,
+  STwinCall(_, _, _, _, _, _, _, _, _) => n,
+  STail(_, _, _, _, _, _, _) => n,
+}
+
+fn arm_queries(n, arm) = match arm {
+  (_, _, stmts) => n + count_queries(stmts),
 }
 
 // ─── One value under the reading ──────────────────────────────────────
 //
 // The statements that must run first, in the primal's own order; the primal
-// value; its tangent, valid once the statements have run; and what the
-// reading knows about it.
-type Jvp = Jvp({act: Act, pre: [LowExpr], tan: Tan, val: LowExpr})
+// value; its tangent, valid once the statements have run; what the reading
+// knows about it; and, for a query of a product seed, the gradient it
+// answers.
+type Jvp = Jvp({act: Act, ans: Ans, pre: [Beside], tan: Lin, val: LowExpr})
 
 // A tangent rides beside an f64, and a function value carries its captures'
 // tangents in its own record; a value of any other kind that the seed reaches
 // is lost where it stands, never carried at the wrong width.
-fn jv(pre, val, tan, act) = Jvp({act: at_width(val, act), pre: pre, tan: tan, val: val})
+fn jv(pre, val, tan, act) = Jvp({act: at_width(val, act), ans: ANone, pre: pre, tan: tan, val: val})
 
 fn at_width(val, act) = {
   let h = lexpr_handle(val)
@@ -252,7 +428,21 @@ fn jv_act(j) = match j {
   Jvp(r) => r.act,
 }
 
-fn jv_plain(e) = jv([], e, TZero, AInactive)
+fn jv_ans(j) = match j {
+  Jvp(r) => r.ans,
+}
+
+fn jv_plain(e) = jv([], e, LinZero, AInactive)
+
+// A gradient answered where it is asked: read by destructuring, refused as
+// a value.
+fn grad_consumed(h, j) = match jv_ans(j) {
+  AGrad(_, _, _) => dv_refuse(
+    "a gradient is read by destructuring where it is asked (`let \{a, b\} = d(v)`); holding it as a value is `Hβ.derive.gradient-as-a-value`",
+    h
+  ),
+  ANone => (),
+}
 
 fn is_float_at(h) = if h == 0 { false } else { repr_is_f64(repr_of(lookup_ty(h))) }
 
@@ -291,6 +481,8 @@ fn temp(h, k) = "__jv{int_to_str(h)}_{int_to_str(k)}"
 
 fn tangent_local(name: String) = "{name}$d"
 
+fn adj_name(name: String) = "{name}$a"
+
 fn upval_key(i) = "^{int_to_str(i)}"
 
 fn prior_key(h) = "@{int_to_str(h)}"
@@ -298,8 +490,9 @@ fn prior_key(h) = "@{int_to_str(h)}"
 fn site_key(h, owner: String) = "{int_to_str(h)}@{owner}"
 
 // What a name in scope carries beside its value: nothing, a tangent local
-// read at the use's own width, or a tangent expression — a record's lane.
-type Carried = CNone | CLocal(String) | CExpr(LowExpr)
+// read at the use's own width, or a product seed's fields, each with the
+// tangent name its lane answers to.
+type Carried = CNone | CLocal(String) | CSeed([(String, Int, String)])
 
 // The environment of one body: what each name in scope carries, most recent
 // binding first, so a rebinding shadows exactly as the lowered locals do.
@@ -314,9 +507,9 @@ fn env_scan(env, key: String, i) = if i >= len(env) {
 }
 
 fn carried_tan(e, c) = match c {
-  CNone => TZero,
-  CLocal(t) => TVal(LLocal(lexpr_handle(e), t)),
-  CExpr(x) => TVal(x),
+  CNone => LinZero,
+  CLocal(t) => LinName(lexpr_handle(e), t),
+  CSeed(_) => LinZero,
 }
 
 // The tangent a binding carries for its later reads: a local beside a Float
@@ -325,12 +518,21 @@ fn carried_tan(e, c) = match c {
 fn carried_local(vh, name: String, act) =
   if act_active(act) && is_float_at(vh) { CLocal(tangent_local(name)) } else { CNone }
 
+// A read of a name: a product seed read whole is the record itself, whose
+// fields' tangents cannot ride it — lost there, so a callee handed the seed
+// cannot answer a slope the reading never carried to it.
 fn jv_read(e, found) = match found {
-  (a, c) => match a {
-    AActive => jv([], e, carried_tan(e, c), a),
-    AInactive => jv([], e, TZero, a),
-    ALost(_, _) => jv([], e, TZero, a),
+  (a, c) => match c {
+    CSeed(_) => jv([], e, LinZero, ALost(lexpr_handle(e), LwAggregate)),
+    CNone => jv_read_act(e, a, c),
+    CLocal(_) => jv_read_act(e, a, c),
   },
+}
+
+fn jv_read_act(e, a, c) = match a {
+  AActive => jv([], e, carried_tan(e, c), a),
+  AInactive => jv([], e, LinZero, a),
+  ALost(_, _) => jv([], e, LinZero, a),
 }
 
 // ─── The lanes — a record's tangents, read and written by the reading ────
@@ -341,8 +543,6 @@ fn jv_read(e, found) = match found {
 // own captures through is its `__state`.
 fn state_ref() = LLocal(0, "__state")
 
-fn lane_read(h, rec, i) = LWasiCall(h, "lane_read", [rec, LConst(0, LInt(i))])
-
 fn lane_write(rec, i, t) = LWasiCall(0, "lane_write", [rec, LConst(0, LInt(i)), t])
 
 // A twin reads its captures — a closure's, or an install record's config and
@@ -352,9 +552,9 @@ fn lane_write(rec, i, t) = LWasiCall(0, "lane_write", [rec, LConst(0, LInt(i)), 
 // install under the reading refuses to store a lost tangent (`jvp_mint`,
 // `jvp_install`), and forward code stores nothing the reading knows.
 fn jvp_upval(e, h, i) = if is_float_at(h) {
-  jv([], e, TVal(lane_read(h, state_ref(), i)), AActive)
+  jv([], e, LinLane(h, state_ref(), i), AActive)
 } else if is_fun_at(h) {
-  jv([], e, TZero, AActive)
+  jv([], e, LinZero, AActive)
 } else {
   jv_plain(e)
 }
@@ -378,6 +578,7 @@ fn seq_values_from(h, js, i, pre, vals, act) = if i >= len(js) {
   (pre, vals, act)
 } else {
   let j = list_index(js, i)
+  grad_consumed(h, j)
   if later_has_pre(js, i + 1) {
     let vh = lexpr_handle(jv_val(j))
     let nm = temp(h, i)
@@ -385,7 +586,7 @@ fn seq_values_from(h, js, i, pre, vals, act) = if i >= len(js) {
       h,
       js,
       i + 1,
-      pre ++ jv_pre(j) ++ [LLet(vh, nm, jv_val(j))],
+      pre ++ jv_pre(j) ++ [SPrim(LLet(vh, nm, jv_val(j)))],
       push(vals, LLocal(vh, nm)),
       act_join(act, jv_act(j))
     )
@@ -395,11 +596,12 @@ fn seq_values_from(h, js, i, pre, vals, act) = if i >= len(js) {
 }
 
 // Name a value as a residual: evaluated once, where it stood, and readable
-// by the tangent after.
+// by the tangent after — and by the transpose, which reads it again.
 fn named(h, k, j) = {
+  grad_consumed(h, j)
   let vh = lexpr_handle(jv_val(j))
   let nm = temp(h, k)
-  (jv_pre(j) ++ [LLet(vh, nm, jv_val(j))], LLocal(vh, nm))
+  (jv_pre(j) ++ [SPrim(LLet(vh, nm, jv_val(j)))], LLocal(vh, nm))
 }
 
 // ─── The rules ─────────────────────────────────────────────────────────
@@ -420,7 +622,8 @@ fn jvp(e, env, cx) = match e {
     // A let where a value stands is the lowered program's own shape; the
     // binding happens and the value is the statement itself, as before.
     let ji = jvp(inner, env, cx)
-    jv(jv_pre(ji), LLet(h, name, jv_val(ji)), TZero, AInactive)
+    grad_consumed(h, ji)
+    jv(jv_pre(ji), LLet(h, name, jv_val(ji)), LinZero, AInactive)
   },
   LBinOp(h, op, l, r) => jvp_binop(h, op, jvp(l, env, cx), jvp(r, env, cx)),
   LUnaryOp(h, op, x) => jvp_unary(h, op, jvp(x, env, cx)),
@@ -428,12 +631,13 @@ fn jvp(e, env, cx) = match e {
     // IntToFloat widens an Int, and an Int does not move with the seed;
     // FloatToInt truncates, whose derivative is zero wherever it exists.
     let jx = jvp(x, env, cx)
-    jv(jv_pre(jx), LConvert(h, k, jv_val(jx)), TZero, AInactive)
+    grad_consumed(h, jx)
+    jv(jv_pre(jx), LConvert(h, k, jv_val(jx)), LinZero, AInactive)
   },
   LDirectCall(h, fh, name, _, args) => // A call where a VALUE stands is an ordinary call, whatever lower marked
   // it: only a twin's own exits keep the tail form, and they are read by
   // the exit rules below, never here.
-  jvp_direct(h, fh, name, false, jvp_list(args, env, cx)),
+  jvp_direct(h, fh, name, jvp_list(args, env, cx)),
   LCall(h, f, args) => jvp_dynamic(h, jvp(f, env, cx), jvp_list(args, env, cx), false),
   LTailCall(h, f, args) => jvp_dynamic(h, jvp(f, env, cx), jvp_list(args, env, cx), false),
   LReturn(h, inner) => jvp_return(h, jvp(inner, env, cx), cx),
@@ -441,51 +645,52 @@ fn jvp(e, env, cx) = match e {
   LBlock(_, stmts) => jvp_block(stmts, env, cx),
   LMatch(h, s, arms) => jvp_match(h, s, arms, env, cx),
   LMakeTuple(h, xs) => match seq_values(h, jvp_list(xs, env, cx)) {
-    (pre, vals, a) => jv(pre, LMakeTuple(h, vals), TZero, stored_in(h, a)),
+    (pre, vals, a) => jv(pre, LMakeTuple(h, vals), LinZero, stored_in(h, a)),
   },
   LMakeList(h, xs) => match seq_values(h, jvp_list(xs, env, cx)) {
-    (pre, vals, a) => jv(pre, LMakeList(h, vals), TZero, stored_in(h, a)),
+    (pre, vals, a) => jv(pre, LMakeList(h, vals), LinZero, stored_in(h, a)),
   },
   LMakeRecord(h, xs) => match seq_values(h, jvp_list(xs, env, cx)) {
-    (pre, vals, a) => jv(pre, LMakeRecord(h, vals), TZero, stored_in(h, a)),
+    (pre, vals, a) => jv(pre, LMakeRecord(h, vals), LinZero, stored_in(h, a)),
   },
   LMakeVariant(h, tag, xs) => match seq_values(h, jvp_list(xs, env, cx)) {
-    (pre, vals, a) => jv(pre, LMakeVariant(h, tag, vals), TZero, stored_in(h, a)),
+    (pre, vals, a) => jv(pre, LMakeVariant(h, tag, vals), LinZero, stored_in(h, a)),
   },
   LSimdLanes(h, xs) => match seq_values(h, jvp_list(xs, env, cx)) {
-    (pre, vals, a) => jv(pre, LSimdLanes(h, vals), TZero, stored_in(h, a)),
+    (pre, vals, a) => jv(pre, LSimdLanes(h, vals), LinZero, stored_in(h, a)),
   },
   LMakeClosure(h, lfn, caps) => jvp_mint(h, lfn, jvp_list(caps, env, cx)),
-  LFieldLoad(h, rec, sel) => {
-    let jr = jvp(rec, env, cx)
-    jv(jv_pre(jr), LFieldLoad(h, jv_val(jr), sel), TZero, stored_in(h, jv_act(jr)))
-  },
+  LFieldLoad(h, rec, sel) => jvp_field(h, rec, sel, env, cx),
   LShow(h, x) => {
     let jx = jvp(x, env, cx)
-    jv(jv_pre(jx), LShow(h, jv_val(jx)), TZero, stored_in(h, jv_act(jx)))
+    grad_consumed(h, jx)
+    jv(jv_pre(jx), LShow(h, jv_val(jx)), LinZero, stored_in(h, jv_act(jx)))
   },
   LHash(h, x) => {
     let jx = jvp(x, env, cx)
-    jv(jv_pre(jx), LHash(h, jv_val(jx)), TZero, stored_in(h, jv_act(jx)))
+    grad_consumed(h, jx)
+    jv(jv_pre(jx), LHash(h, jv_val(jx)), LinZero, stored_in(h, jv_act(jx)))
   },
-  LPerform(h, disp, args) => jvp_perform(h, disp, jvp_list(args, env, cx)),
+  LPerform(h, disp, args) => jvp_perform(h, disp, jvp_list(args, env, cx), cx),
   LWasiCall(h, name, args) => jvp_wasi(h, name, jvp_list(args, env, cx)),
   LStateSlotStore(h, off, v, rec) => {
     let jval = jvp(v, env, cx)
     let jrec = jvp(rec, env, cx)
+    grad_consumed(h, jval)
     jv(
       jv_pre(jval) ++ jv_pre(jrec) ++ state_lane(h, off, jval, jv_val(jrec)),
       LStateSlotStore(h, off, jv_val(jval), jv_val(jrec)),
-      TZero,
+      LinZero,
       AInactive
     )
   },
   LStateInit(h, hn, slot, v) => {
     let jval = jvp(v, env, cx)
+    grad_consumed(h, jval)
     jv(
       jv_pre(jval) ++ state_lane(h, 8 + slot * 4, jval, state_ref()),
       LStateInit(h, hn, slot, jv_val(jval)),
-      TZero,
+      LinZero,
       AInactive
     )
   },
@@ -496,7 +701,8 @@ fn jvp(e, env, cx) = match e {
       "a derivative reading inside a derivative reading is the second-order reading, which is not built yet (`Hβ.derive.second-order`)",
       h
     )
-    jv([], e, TZero, ALost(h, LwUnentered))
+    dv_forward_only(h, LwSecondOrder)
+    jv([], e, LinZero, ALost(h, LwUnentered))
   },
   LMakeContinuation(h, _, _, _, _) => jvp_unentered(h, e),
   LResumeK(h, _, _) => jvp_unentered(h, e),
@@ -514,21 +720,64 @@ fn jvp_unentered(h, e) = {
     "a continuation stands inside the derivative reading; the reading cannot carry a tangent across a remainder that resumes later",
     h
   )
-  jv([], e, TZero, ALost(h, LwUnentered))
+  dv_forward_only(h, LwUnentered)
+  jv([], e, LinZero, ALost(h, LwUnentered))
 }
 
-fn jvp_unary(h, op, jx) = match op {
-  UNeg => jv(jv_pre(jx), LUnaryOp(h, op, jv_val(jx)), tan_neg(h, jv_tan(jx)), jv_act(jx)),
-  UNot => jv(jv_pre(jx), LUnaryOp(h, op, jv_val(jx)), TZero, AInactive),
+fn jvp_unary(h, op, jx) = {
+  grad_consumed(h, jx)
+  match op {
+    UNeg => jv(jv_pre(jx), LUnaryOp(h, op, jv_val(jx)), lin_neg(h, jv_tan(jx)), jv_act(jx)),
+    UNot => jv(jv_pre(jx), LUnaryOp(h, op, jv_val(jx)), LinZero, AInactive),
+  }
 }
 
 // Two operands, in order, with no partials of their own: the primal
 // operation over them, and what the reading knows about its result.
 fn jvp_pair(h, op, jl, jr, act_of) = match seq_values(h, [jl, jr]) {
-  (pre, vals, a) => jv(pre, LBinOp(h, op, list_index(vals, 0), list_index(vals, 1)), TZero, act_of(a)),
+  (pre, vals, a) => jv(pre, LBinOp(h, op, list_index(vals, 0), list_index(vals, 1)), LinZero, act_of(a)),
 }
 
 fn inactive_of(a) = AInactive
+
+// A field read: through a product seed it is the field's own lane, a Float
+// field's tangent name and an active value; through any other record it is
+// what the record kept — nothing, or the loss.
+fn jvp_field(h, rec, sel, env, cx) = match rec {
+  LLocal(_, name) => match env_find(env, name) {
+    (_, c) => match c {
+      CSeed(fields) => match seed_field_tan(fields, sel) {
+        Some(tn) => jv([], LFieldLoad(h, rec, sel), LinName(h, tn), AActive),
+        None => jv([], LFieldLoad(h, rec, sel), LinZero, AInactive),
+      },
+      CNone => jvp_field_plain(h, rec, sel, env, cx),
+      CLocal(_) => jvp_field_plain(h, rec, sel, env, cx),
+    },
+  },
+  other => jvp_field_plain(h, other, sel, env, cx),
+}
+
+fn jvp_field_plain(h, rec, sel, env, cx) = {
+  let jr = jvp(rec, env, cx)
+  jv(jv_pre(jr), LFieldLoad(h, jv_val(jr), sel), LinZero, stored_in(h, jv_act(jr)))
+}
+
+fn seed_field_tan(fields, sel) = match sel {
+  FByName(n) => seed_field_scan(fields, n, -1, 0),
+  FByIndex(i) => seed_field_scan(fields, "", i, 0),
+}
+
+fn seed_field_scan(fields, n: String, i, k) = if k >= len(fields) {
+  None
+} else {
+  match list_index(fields, k) {
+    (fname, findex, tn) => if i >= 0 && findex == i || i < 0 && field_name_eq(fname, n) {
+      Some(tn)
+    } else {
+      seed_field_scan(fields, n, i, k + 1)
+    },
+  }
+}
 
 // ─── Records under the reading — mints and state ──────────────────────
 //
@@ -538,6 +787,7 @@ fn inactive_of(a) = AInactive
 // forward code the reading never enters — reads the tangents it was minted
 // with. A capture whose tangent was lost has no lane to ride, and the mint
 // refuses rather than let a later call answer a slope the program never has.
+// A record carrying tangents is the forward projection's alone.
 fn jvp_mint(h, lfn, jcaps) = match seq_values(h, jcaps) {
   (pre, vals, a) => match a {
     ALost(_, _) => {
@@ -545,15 +795,18 @@ fn jvp_mint(h, lfn, jcaps) = match seq_values(h, jcaps) {
         "a function value minted here captures a value whose tangent was lost: {lost_story(a)}; the reading cannot carry a lost tangent into a function value",
         h
       )
-      jv(pre, LMakeClosure(h, lfn, vals), TZero, a)
+      jv(pre, LMakeClosure(h, lfn, vals), LinZero, a)
     },
-    AInactive => jv(pre, LMakeClosure(h, lfn, vals), TZero, AInactive),
-    AActive => jv(
-      pre,
-      LWasiCall(h, "mint_lanes", [LMakeClosure(h, lfn, vals)] ++ lane_pairs(jcaps, vals, 0, [])),
-      TZero,
-      AActive
-    ),
+    AInactive => jv(pre, LMakeClosure(h, lfn, vals), LinZero, AInactive),
+    AActive => {
+      dv_forward_only(h, LwRecord)
+      jv(
+        pre,
+        LWasiCall(h, "mint_lanes", [LMakeClosure(h, lfn, vals)] ++ lane_pairs(jcaps, vals, 0, [])),
+        LinZero,
+        AActive
+      )
+    },
   },
 }
 
@@ -564,8 +817,9 @@ fn lane_pairs(js, vals, i, acc) = if i >= len(js) {
 } else {
   let j = list_index(js, i)
   let v = list_index(vals, i)
-  if act_active(jv_act(j)) && is_float_at(lexpr_handle(v)) {
-    lane_pairs(js, vals, i + 1, acc ++ [LConst(0, LInt(i)), tan_at(lexpr_handle(v), jv_tan(j))])
+  let vh = lexpr_handle(v)
+  if act_active(jv_act(j)) && is_float_at(vh) {
+    lane_pairs(js, vals, i + 1, acc ++ [LConst(0, LInt(i)), lin_expr(vh, jv_tan(j))])
   } else {
     lane_pairs(js, vals, i + 1, acc)
   }
@@ -590,8 +844,11 @@ fn state_lane(h, off, jval, rec) = {
         )
         []
       },
-      AActive => [lane_write(rec, (off - 8) / 4, tan_at(vh, jv_tan(jval)))],
-      AInactive => [lane_write(rec, (off - 8) / 4, LConst(vh, LFloat(0.0)))],
+      AActive => {
+        dv_forward_only(h, LwRecord)
+        [SPrim(lane_write(rec, (off - 8) / 4, lin_expr(vh, jv_tan(jval))))]
+      },
+      AInactive => [SPrim(lane_write(rec, (off - 8) / 4, LConst(vh, LFloat(0.0))))],
     }
   }
 }
@@ -617,28 +874,30 @@ fn jvp_short_circuit(h, op, jl, jr) = if len(jv_pre(jr)) == 0 {
   match op {
     BAnd => jv(
       jv_pre(jl),
-      LIf(h, jv_val(jl), jv_pre(jr) ++ [jv_val(jr)], [LConst(h, LBool(false))]),
-      TZero,
+      LIf(h, jv_val(jl), lower_forward(jv_pre(jr)) ++ [jv_val(jr)], [LConst(h, LBool(false))]),
+      LinZero,
       AInactive
     ),
     BOr => jv(
       jv_pre(jl),
-      LIf(h, jv_val(jl), [LConst(h, LBool(true))], jv_pre(jr) ++ [jv_val(jr)]),
-      TZero,
+      LIf(h, jv_val(jl), [LConst(h, LBool(true))], lower_forward(jv_pre(jr)) ++ [jv_val(jr)]),
+      LinZero,
       AInactive
     ),
     other => jvp_pair(h, other, jl, jr, inactive_of),
   }
 }
 
-// The arithmetic partials over their residuals. The primal result is the
-// same f64 operation on the same two values; only names were added.
+// The arithmetic partials over their residuals, written once as the linear
+// program the forward projection lowers and the transpose reads backward.
+// The primal result is the same f64 operation on the same two values; only
+// names were added.
 fn jvp_arith(h, op, jl, jr) = match op {
   BAdd => match seq_values(h, [jl, jr]) {
     (pre, vals, a) => jv(
       pre,
       LBinOp(h, op, list_index(vals, 0), list_index(vals, 1)),
-      tan_add(h, jv_tan(jl), jv_tan(jr)),
+      lin_add(h, jv_tan(jl), jv_tan(jr)),
       a
     ),
   },
@@ -646,7 +905,7 @@ fn jvp_arith(h, op, jl, jr) = match op {
     (pre, vals, a) => jv(
       pre,
       LBinOp(h, op, list_index(vals, 0), list_index(vals, 1)),
-      tan_sub(h, jv_tan(jl), jv_tan(jr)),
+      lin_sub(h, jv_tan(jl), jv_tan(jr)),
       a
     ),
   },
@@ -656,7 +915,7 @@ fn jvp_arith(h, op, jl, jr) = match op {
       jv(
         pre_l ++ pre_r,
         LBinOp(h, op, a, b),
-        tan_add(h, tan_scale(h, a, jv_tan(jr)), tan_scale(h, b, jv_tan(jl))),
+        lin_add(h, lin_scale(h, a, jv_tan(jr)), lin_scale(h, b, jv_tan(jl))),
         act_join(jv_act(jl), jv_act(jr))
       ),
     },
@@ -667,9 +926,9 @@ fn jvp_arith(h, op, jl, jr) = match op {
       {
         let q = temp(h, 2)
         jv(
-          pre_l ++ pre_r ++ [LLet(h, q, LBinOp(h, op, a, b))],
+          pre_l ++ pre_r ++ [SPrim(LLet(h, q, LBinOp(h, op, a, b)))],
           LLocal(h, q),
-          tan_quot(h, tan_sub(h, jv_tan(jl), tan_scale(h, LLocal(h, q), jv_tan(jr))), b),
+          lin_quot(h, lin_sub(h, jv_tan(jl), lin_scale(h, LLocal(h, q), jv_tan(jr))), b),
           act_join(jv_act(jl), jv_act(jr))
         )
       },
@@ -682,41 +941,61 @@ fn jvp_arith(h, op, jl, jr) = match op {
 
 // ─── Calls ────────────────────────────────────────────────────────────
 //
-// A direct call to a known function. It crosses into the callee's twin when
-// the tangent has somewhere to go — an argument carries or lost one — or the
+// A direct call to a known function crosses into the callee's twin when the
+// tangent has somewhere to go — an argument carries or lost one — or the
 // callee reaches a line, a query or a reading of its own; otherwise the
-// forward callee runs, and its result does not move with the seed.
-fn jvp_direct(h, fh, name: String, tail, jargs) = {
+// forward callee runs, and its result does not move with the seed. The
+// twin demanded here is the forward one, whose result's activity the walk
+// reads; the transpose demands the callee's adjoint twin where it lowers.
+fn twin_for(fh, name: String, jargs) = {
   let sym = spec_target_name(fh, name)
   let key = key_of(jargs)
   if dv_has_record(sym) && (key_carries(key) || dv_touches(sym)) {
     let twin = dv_twin(sym, key)
-    let result = dv_result(twin)
-    match seq_values(h, jargs) {
-      (pre, vals, _) => {
-        let targs = twin_args(jargs, vals, 0, [])
-        let v = temp(h, 3)
-        if tail {
-          jv(pre, LDirectCall(h, fh, twin, true, targs), TZero, result)
-        } else if act_active(result) && is_float_at(h) {
-          // The register is read the instant the twin returns: nothing may
-          // run between the callee's write and this read.
-          jv(
-            pre ++ [LLet(h, v, LDirectCall(h, fh, twin, false, targs)), LLet(h, tangent_local(v), LWasiCall(h, "tangent_in", []))],
-            LLocal(h, v),
-            TVal(LLocal(h, tangent_local(v))),
-            result
-          )
-        } else {
-          // A function value's tangents are its record's; a word's is zero.
-          jv(pre ++ [LLet(h, v, LDirectCall(h, fh, twin, false, targs))], LLocal(h, v), TZero, result)
-        }
-      },
-    }
+    Some((sym, key, dv_result(twin)))
   } else {
-    match seq_values(h, jargs) {
-      (pre, vals, a) => jv(pre, LDirectCall(h, fh, name, tail, vals), TZero, unentered_from(h, a, LwUnentered)),
-    }
+    None
+  }
+}
+
+fn jvp_direct(h, fh, name: String, jargs) = match twin_for(fh, name, jargs) {
+  Some((sym, key, result)) => match seq_values(h, jargs) {
+    (pre, vals, _) => {
+      let v = temp(h, 3)
+      let lins = twin_lins(jargs, vals, 0, [])
+      if act_active(result) && is_float_at(h) {
+        // The register is read the instant the twin returns: nothing may
+        // run between the callee's write and this read.
+        let t = tangent_local(v)
+        jv(
+          pre ++ [STwinCall(h, v, fh, name, sym, key, vals, lins, Some(t))],
+          LLocal(h, v),
+          LinName(h, t),
+          result
+        )
+      } else {
+        // A function value's tangents are its record's; a word's is zero.
+        jv(pre ++ [STwinCall(h, v, fh, name, sym, key, vals, lins, None)], LLocal(h, v), LinZero, result)
+      }
+    },
+  },
+  None => jvp_direct_plain(h, fh, name, false, jargs),
+}
+
+fn jvp_direct_plain(h, fh, name: String, tail, jargs) = match seq_values(h, jargs) {
+  (pre, vals, a) => jv(pre, LDirectCall(h, fh, name, tail, vals), LinZero, unentered_from(h, a, LwUnentered)),
+}
+
+// Beside each argument, its tangent where the value is an active Float.
+fn twin_lins(js, vals, i, acc) = if i >= len(js) {
+  acc
+} else {
+  let j = list_index(js, i)
+  let v = list_index(vals, i)
+  if act_active(jv_act(j)) && is_float_at(lexpr_handle(v)) {
+    twin_lins(js, vals, i + 1, push(acc, Some(jv_tan(j))))
+  } else {
+    twin_lins(js, vals, i + 1, push(acc, None))
   }
 }
 
@@ -735,17 +1014,16 @@ fn jv_letter(j) = match jv_act(j) {
 fn key_carries(key: String) =
   str_contains(key, "a") || str_contains(key, "l") || str_contains(key, "f")
 
-// The twin's arguments: every value, and beside each active Float its tangent.
-fn twin_args(js, vals, i, acc) = if i >= len(js) {
-  acc
+// The number of active Float parameters a key spells — the adjoint twin's
+// registers.
+fn key_actives(key: String) = key_actives_from(key, 0, 0)
+
+fn key_actives_from(key: String, i, n) = if i >= byte_len(key) {
+  n
+} else if field_name_eq(str_slice(key, i, i + 1), "a") {
+  key_actives_from(key, i + 1, n + 1)
 } else {
-  let j = list_index(js, i)
-  let v = list_index(vals, i)
-  if act_active(jv_act(j)) && is_float_at(lexpr_handle(v)) {
-    twin_args(js, vals, i + 1, acc ++ [v, tan_at(lexpr_handle(v), jv_tan(j))])
-  } else {
-    twin_args(js, vals, i + 1, acc ++ [v])
-  }
+  key_actives_from(key, i + 1, n)
 }
 
 // A derivative face's arguments: every value, and beside EVERY Float its
@@ -756,8 +1034,9 @@ fn face_args(js, vals, i, acc) = if i >= len(js) {
 } else {
   let j = list_index(js, i)
   let v = list_index(vals, i)
-  if is_float_at(lexpr_handle(v)) {
-    face_args(js, vals, i + 1, acc ++ [v, tan_at(lexpr_handle(v), jv_tan(j))])
+  let vh = lexpr_handle(v)
+  if is_float_at(vh) {
+    face_args(js, vals, i + 1, acc ++ [v, lin_expr(vh, jv_tan(j))])
   } else {
     face_args(js, vals, i + 1, acc ++ [v])
   }
@@ -776,7 +1055,8 @@ fn jv_lost(j) = act_rank(jv_act(j)) == 2
 // its captures' tangents, the site passes every Float's tangent beside it,
 // and a Float result hands its tangent back through the register. An
 // argument whose tangent was already lost has nothing to pass: the call
-// runs forward, and what it returns is lost at the call.
+// runs forward, and what it returns is lost at the call. The face is the
+// forward projection's alone.
 fn jvp_dynamic(h, jf, jargs, tail) = match seq_values(h, [jf] ++ jargs) {
   (pre, vals, a) => {
     let f = list_index(vals, 0)
@@ -785,9 +1065,10 @@ fn jvp_dynamic(h, jf, jargs, tail) = match seq_values(h, [jf] ++ jargs) {
       ALost(_, _) => {
         dv_forward(h)
         let call = if tail { LTailCall(h, f, rest_vals) } else { LCall(h, f, rest_vals) }
-        jv(pre, call, TZero, ALost(h, LwClosureCall))
+        jv(pre, call, LinZero, ALost(h, LwClosureCall))
       },
       _ => {
+        dv_forward_only(h, LwClosureCall)
         dv_face(site_code(rest_vals, callee_result_repr(f, h)))
         let targs = face_args(jargs, rest_vals, 0, [])
         let call = if tail { LTailCall(h, f, targs) } else { LCall(h, f, targs) }
@@ -804,18 +1085,14 @@ fn jvp_dynamic(h, jf, jargs, tail) = match seq_values(h, [jf] ++ jargs) {
 // aggregate may hold a component the callee stored active, which the caller
 // cannot see — lost.
 fn jvp_face_result(h, pre, call, tail) = if tail {
-  jv(pre, call, TZero, face_result_act(h))
+  jv(pre, call, LinZero, face_result_act(h))
 } else if is_float_at(h) {
   let v = temp(h, 3)
-  jv(
-    pre ++ [LLet(h, v, call), LLet(h, tangent_local(v), LWasiCall(h, "tangent_in", []))],
-    LLocal(h, v),
-    TVal(LLocal(h, tangent_local(v))),
-    AActive
-  )
+  let t = tangent_local(v)
+  jv(pre ++ [SPrim(LLet(h, v, call)), STan(h, t, LinIn(h))], LLocal(h, v), LinName(h, t), AActive)
 } else {
   let v = temp(h, 3)
-  jv(pre ++ [LLet(h, v, call)], LLocal(h, v), TZero, face_result_act(h))
+  jv(pre ++ [SPrim(LLet(h, v, call))], LLocal(h, v), LinZero, face_result_act(h))
 }
 
 fn face_result_act(h) = if is_float_at(h) || is_fun_at(h) {
@@ -827,8 +1104,8 @@ fn face_result_act(h) = if is_float_at(h) || is_fun_at(h) {
 }
 
 // A site's signature, spelled as the face table matches it: each argument's
-// width as the value is emitted, then the result's. The same derivation the
-// emit's vector takes (`site_vector`), read off the values' own handles.
+// width as the value is emitted, then the result's — the derivation the
+// emit's own vector takes, read off the values' own handles.
 fn site_code(vals, result) = sig_code(map(val_repr, vals), result)
 
 fn val_repr(v) = match lexpr_handle(v) {
@@ -837,7 +1114,7 @@ fn val_repr(v) = match lexpr_handle(v) {
 }
 
 // A closure call's result: the callee's own arrow where the value has one,
-// the site's proof otherwise (`call_result_repr`).
+// the site's proof otherwise.
 fn callee_result_repr(f, h) = match lexpr_handle(f) {
   0 => val_repr(LLocal(h, "")),
   fh => match fold_strip(slot_ty(lookup_ty(fh))) {
@@ -857,17 +1134,23 @@ fn repr_code(r) = match r {
 }
 
 // An early return leaves the body: in a twin it is one of the twin's exits,
-// so its tangent is handed back and its activity joins the twin's result.
-// Where it stands, control does not continue, so it adds nothing to the
-// value of the construct around it.
+// so its tangent is handed back and its activity joins the twin's result —
+// and the adjoint twin, which must run to its end, cannot take it. Where it
+// stands, control does not continue, so it adds nothing to the value of the
+// construct around it.
 fn jvp_return(h, ji, cx) = match cx {
   DeriveCx(_, ExitsToCaller(twin)) => {
+    grad_consumed(h, ji)
     dv_twin_done(twin, jv_act(ji))
+    dv_forward_only(h, LwReturn)
     match exit_through_register(h, ji) {
-      (stmts, v) => jv(stmts, LReturn(h, v), TZero, AInactive),
+      (stmts, v) => jv(stmts, LReturn(h, v), LinZero, AInactive),
     }
   },
-  DeriveCx(_, ExitsInPlace) => jv(jv_pre(ji), LReturn(h, jv_val(ji)), TZero, AInactive),
+  DeriveCx(_, ExitsInPlace) => {
+    grad_consumed(h, ji)
+    jv(jv_pre(ji), LReturn(h, jv_val(ji)), LinZero, AInactive)
+  },
 }
 
 // A twin's exit hands the result's tangent back: the value is computed first
@@ -880,7 +1163,7 @@ fn exit_through_register(h, j) = {
   let hv = lexpr_handle(v)
   if is_float_at(hv) && leaves_value(v) {
     let r = temp(h, 10)
-    (jv_pre(j) ++ [LLet(hv, r, v), LWasiCall(hv, "tangent_out", [tan_at(hv, jv_tan(j))])], LLocal(hv, r))
+    (jv_pre(j) ++ [SPrim(LLet(hv, r, v)), SOut(hv, jv_tan(j))], LLocal(hv, r))
   } else {
     (jv_pre(j), v)
   }
@@ -930,8 +1213,8 @@ fn leaves_value(e) = match e {
 }
 
 // ─── Performs ─────────────────────────────────────────────────────────
-fn jvp_perform(h, disp, jargs) =
-  if perform_is_query(disp) { jvp_query(h, jargs) } else { jvp_op(h, disp, jargs) }
+fn jvp_perform(h, disp, jargs, cx) =
+  if perform_is_query(disp) { jvp_query(h, jargs, cx) } else { jvp_op(h, disp, jargs) }
 
 fn op_is_query(op: String) = field_name_eq(lower_effect_name_of_op(op), "Derivative")
 
@@ -941,22 +1224,48 @@ fn perform_is_query(disp) = match perform_op_name(disp) {
 }
 
 // The query: its argument is evaluated exactly as the forward program
-// evaluates it, and its answer is the argument's tangent. Asked of a value
-// whose tangent was lost, it refuses rather than answer zero.
-fn jvp_query(h, jargs) = match jargs {
+// evaluates it, and its answer is the argument's tangent — a Float for a
+// scalar seed, answered into a local; the gradient for a product seed, read
+// by destructuring where it is asked. Asked of a value whose tangent was
+// lost, it refuses rather than answer zero. Inside a called function the
+// reading answers it forward and the extent cannot transpose.
+fn jvp_query(h, jargs, cx) = match jargs {
   [ja] => {
-    let answer = match jv_act(ja) {
+    grad_consumed(h, ja)
+    match cx {
+      DeriveCx(_, ExitsToCaller(_)) => dv_forward_only(h, LwQueryInTwin),
+      DeriveCx(_, ExitsInPlace) => (),
+    }
+    let qh = lexpr_handle(jv_val(ja))
+    let lin = match jv_act(ja) {
       ALost(_, _) => {
         dv_refuse("the derivative asked for here is not carried: {lost_story(jv_act(ja))}", h)
-        LConst(h, LFloat(0.0))
+        LinZero
       },
-      AActive => tan_at(h, jv_tan(ja)),
-      AInactive => LConst(h, LFloat(0.0)),
+      AActive => jv_tan(ja),
+      AInactive => LinZero,
     }
-    jv(jv_pre(ja) ++ [jv_val(ja)], answer, TZero, ALost(h, LwSecondOrder))
+    match dv_seed_fields() {
+      [] => {
+        let v = temp(h, 11)
+        jv(
+          jv_pre(ja) ++ [SPrim(jv_val(ja)), SQuery(h, qh, v, lin)],
+          LLocal(h, v),
+          LinZero,
+          ALost(h, LwSecondOrder)
+        )
+      },
+      fields => Jvp({
+        act: ALost(h, LwGradientValue),
+        ans: AGrad(qh, lin, fields),
+        pre: jv_pre(ja) ++ [SPrim(jv_val(ja))],
+        tan: LinZero,
+        val: LConst(h, LInt(0)),
+      }),
+    }
   },
   other => match seq_values(h, other) {
-    (pre, vals, _) => jv(pre ++ vals, LConst(h, LFloat(0.0)), TZero, ALost(h, LwSecondOrder)),
+    (pre, vals, _) => jv(pre ++ map(SPrim, vals), LConst(h, LFloat(0.0)), LinZero, ALost(h, LwSecondOrder)),
   },
 }
 
@@ -976,6 +1285,7 @@ fn jvp_op(h, disp, jargs) = match disp {
   } else {
     let sym = arm_symbol(arm_fn_name(hname, op), arm_install_enc(ih))
     if dv_has_record(sym) {
+      dv_forward_only(h, LwPerform)
       dv_arm_face(ih, op, sym)
       jvp_op_face(h, disp, jargs)
     } else {
@@ -985,6 +1295,7 @@ fn jvp_op(h, disp, jargs) = match disp {
   PdWalk(_, _, _, _) => if any_lost(jargs) {
     jvp_op_forward(h, disp, jargs)
   } else {
+    dv_forward_only(h, LwPerform)
     match seq_values(h, jargs) {
       (_, vals, _) => dv_face(site_code(vals, val_repr(LLocal(h, "")))),
     }
@@ -995,7 +1306,7 @@ fn jvp_op(h, disp, jargs) = match disp {
 fn jvp_op_forward(h, disp, jargs) = {
   dv_forward(h)
   match seq_values(h, jargs) {
-    (pre, vals, a) => jv(pre, LPerform(h, disp, vals), TZero, unentered_from(h, a, LwPerform)),
+    (pre, vals, a) => jv(pre, LPerform(h, disp, vals), LinZero, unentered_from(h, a, LwPerform)),
   }
 }
 
@@ -1018,7 +1329,7 @@ fn jvp_wasi(h, name: String, jargs) = match seq_values(h, jargs) {
   (pre, vals, a) => {
     if act_rank(a) > 0 && is_store_op(name) { dv_store(h) }
     let result = if is_load_op(name) { dv_memory() } else { unentered_from(h, a, LwUnentered) }
-    jv(pre, LWasiCall(h, name, vals), TZero, result)
+    jv(pre, LWasiCall(h, name, vals), LinZero, result)
   },
 }
 
@@ -1042,11 +1353,12 @@ fn jvp_stmts_from(stmts, i, env, cx, out) = if i >= len(stmts) {
     // last statement, and nothing after it reads the name.
     {
       let ji = jvp(inner, env, cx)
-      (out ++ jv_pre(ji), jv([], LLet(h, name, jv_val(ji)), TZero, AInactive))
+      grad_consumed(h, ji)
+      (out ++ jv_pre(ji), jv([], LLet(h, name, jv_val(ji)), LinZero, AInactive))
     },
     last_stmt => {
       let jl = jvp(last_stmt, env, cx)
-      (out ++ jv_pre(jl), jv([], jv_val(jl), jv_tan(jl), jv_act(jl)))
+      (out ++ jv_pre(jl), Jvp({act: jv_act(jl), ans: jv_ans(jl), pre: [], tan: jv_tan(jl), val: jv_val(jl)}))
     },
   }
 } else {
@@ -1062,23 +1374,26 @@ fn jvp_stmts_from(stmts, i, env, cx, out) = if i >= len(stmts) {
 }
 
 // A statement's value, kept where the primal kept it — unless the rewrite
-// turned it into a read of the local it was bound to, which does nothing.
+// turned it into a read of the local it was bound to, which does nothing,
+// or a gradient nobody read.
 fn kept_statement(v) = match v {
   LLocal(_, _) => [],
-  other => [other],
+  LConst(_, _) => [],
+  other => [SPrim(other)],
 }
 
 // `let name = inner`: the binding as it was, and beside an active Float its
 // tangent, under the name every later read of it will ask for.
 fn jvp_let(h, name: String, inner, env, cx) = {
   let ji = jvp(inner, env, cx)
+  grad_consumed(h, ji)
   let vh = lexpr_handle(jv_val(ji))
-  let bind = jv_pre(ji) ++ [LLet(h, name, jv_val(ji))]
+  let bind = jv_pre(ji) ++ [SPrim(LLet(h, name, jv_val(ji)))]
   let carried = carried_local(vh, name, jv_act(ji))
   let lets = match carried {
-    CLocal(t) => bind ++ [LLet(vh, t, tan_at(vh, jv_tan(ji)))],
+    CLocal(t) => bind ++ [STan(vh, t, jv_tan(ji))],
     CNone => bind,
-    CExpr(_) => bind,
+    CSeed(_) => bind,
   }
   (lets, [(name, jv_act(ji), carried)] ++ env)
 }
@@ -1087,18 +1402,24 @@ fn jvp_let(h, name: String, inner, env, cx) = {
 // program's function locals already, so they rise into the enclosing
 // statements unchanged — the environment they extended ends with the block.
 fn jvp_block(stmts, env, cx) = match jvp_stmts(stmts, env, cx) {
-  (out, last_value) => jv(out, jv_val(last_value), jv_tan(last_value), jv_act(last_value)),
+  (out, last_value) => Jvp({
+    act: jv_act(last_value),
+    ans: jv_ans(last_value),
+    pre: out,
+    tan: jv_tan(last_value),
+    val: jv_val(last_value),
+  }),
 }
 
 // A branch's statements with its value last, and — when the whole choice
-// carries a tangent — the tangent written to the choice's own local before
+// carries a tangent — the tangent bound to the choice's own local before
 // it. Each branch is read ONCE: the carry decision needs every branch's
 // answer, and closing a branch needs only its own.
 fn branch_close(branch, tname, carry, hv) = match branch {
   (out, jl) => if carry {
-    out ++ [LLet(hv, tname, tan_at(hv, jv_tan(jl))), jv_val(jl)]
+    out ++ [STan(hv, tname, jv_tan(jl)), SPrim(jv_val(jl))]
   } else {
-    out ++ [jv_val(jl)]
+    out ++ [SPrim(jv_val(jl))]
   },
 }
 
@@ -1108,56 +1429,179 @@ fn branch_act(branch) = match branch {
 
 fn jvp_if(h, c, t, el, env, cx) = {
   let jc = jvp(c, env, cx)
+  grad_consumed(h, jc)
   let bt = jvp_stmts(t, env, cx)
   let be = jvp_stmts(el, env, cx)
   let act = act_join(branch_act(bt), branch_act(be))
   let carry = act_active(act) && is_float_at(h)
   let tname = temp(h, 4)
   let v = temp(h, 5)
-  let chosen =
-    LIf(h, jv_val(jc), branch_close(bt, tname, carry, h), branch_close(be, tname, carry, h))
   jv(
-    jv_pre(jc) ++ [LLet(h, v, chosen)],
+    jv_pre(jc) ++ [SIf(h, v, jv_val(jc), branch_close(bt, tname, carry, h), branch_close(be, tname, carry, h))],
     LLocal(h, v),
-    if carry { TVal(LLocal(h, tname)) } else { TZero },
+    if carry { LinName(h, tname) } else { LinZero },
     act
   )
 }
 
+// A match: the scrutinee's tangent is named before it so a root binder
+// reads it. A match on a product seed's gradient is the destructuring the
+// gradient is read by: the query's sweep, then each field bound to its
+// seed's adjoint, then the arm's body — no record is built.
 fn jvp_match(h, s, arms, env, cx) = {
   let js = jvp(s, env, cx)
-  let hs = lexpr_handle(jv_val(js))
-  let sname = temp(h, 6)
-  // The scrutinee's tangent, named before the match so a root binder reads it.
-  let carried = carried_local(hs, sname, jv_act(js))
-  let spre = scrutinee_pre(hs, carried, js)
-  let arm_envs = map(arm_env(??, h, jv_act(js), carried, env), arms)
-  let branches = arm_branches(arms, arm_envs, cx, 0, [])
-  let act = fold(AInactive, arm_act_join, branches)
-  let carry = act_active(act) && is_float_at(h)
-  let tname = temp(h, 4)
-  let v = temp(h, 5)
-  let arms2 = arms_close(arms, branches, tname, carry, h, 0, [])
-  jv(
-    jv_pre(js) ++ spre ++ [LLet(h, v, LMatch(h, jv_val(js), arms2))],
-    LLocal(h, v),
-    if carry { TVal(LLocal(h, tname)) } else { TZero },
-    act
-  )
+  match jv_ans(js) {
+    AGrad(qh, lin, fields) => grad_destructure(h, qh, lin, fields, js, arms, env, cx),
+    ANone => {
+      let hs = lexpr_handle(jv_val(js))
+      let sname = temp(h, 6)
+      let carried = scrutinee_carried(s, hs, sname, js, env)
+      let spre = scrutinee_pre(hs, carried, js)
+      let arm_envs = map(arm_env(??, h, jv_act(js), carried, env), arms)
+      let branches = arm_branches(arms, arm_envs, cx, 0, [])
+      let act = fold(AInactive, arm_act_join, branches)
+      let carry = act_active(act) && is_float_at(h)
+      let tname = temp(h, 4)
+      let v = temp(h, 5)
+      let arms2 = arms_close(arms, branches, tname, carry, h, 0, [])
+      jv(
+        jv_pre(js) ++ spre ++ [SMatch(h, v, jv_val(js), arms2)],
+        LLocal(h, v),
+        if carry { LinName(h, tname) } else { LinZero },
+        act
+      )
+    },
+  }
+}
+
+fn grad_destructure(h, qh, lin, fields, js, arms, env, cx) = match arms {
+  [(pat, body)] => match grad_binders(pat, fields, []) {
+    Some(bs) => {
+      let lets = map(grad_field_let(qh, ??), bs)
+      let env2 = fold(env, grad_field_env(h, ??, ??), bs)
+      match jvp_stmts([body], env2, cx) {
+        (out, jl) => Jvp({
+          act: jv_act(jl),
+          ans: jv_ans(jl),
+          pre: jv_pre(js) ++ [SQuery(h, qh, "", lin)] ++ lets ++ out,
+          tan: jv_tan(jl),
+          val: jv_val(jl),
+        }),
+      }
+    },
+    None => {
+      dv_refuse(
+        "a gradient is read by a record or tuple pattern naming the seed's Float fields, where it is asked; this pattern does not (`Hβ.derive.gradient-as-a-value`)",
+        h
+      )
+      jv(jv_pre(js), LConst(h, LInt(0)), LinZero, ALost(h, LwGradientValue))
+    },
+  },
+  other => {
+    dv_refuse(
+      "a gradient is read by one destructuring arm where it is asked; a match with several arms over it is `Hβ.derive.gradient-as-a-value`",
+      h
+    )
+    jv(jv_pre(js), LConst(h, LInt(0)), LinZero, ALost(h, LwGradientValue))
+  },
+}
+
+fn grad_field_let(qh, b) = match b {
+  (name, tn) => SPrim(LLet(qh, name, LLocal(qh, adj_name(tn)))),
+}
+
+fn grad_field_env(h, env, b) = match b {
+  (name, _) => [(name, ALost(h, LwSecondOrder), CNone)] ++ env,
+}
+
+// The binders a destructuring pattern gives the seed's Float fields: by name
+// for a record pattern, by position for a tuple pattern; a wildcard or a
+// rest names nothing; any other shape is not a destructuring.
+fn grad_binders(pat, fields, acc) = match pat {
+  LPRecord(_, _, fps, _) => grad_record_binders(fps, fields, 0, acc),
+  LPTuple(elems) => grad_tuple_binders(elems, fields, 0, acc),
+  LPVar(_) => None,
+  LPWild => None,
+  LPCon(_, _, _) => None,
+  LPUnresolvedCon(_, _) => None,
+  LPLit(_) => None,
+  LPAlt(_) => None,
+  LPAs(_, _) => None,
+  LPList(_, _, _, _) => None,
+}
+
+fn grad_record_binders(fps, fields, i, acc) = if i >= len(fps) {
+  Some(acc)
+} else {
+  match list_index(fps, i) {
+    (fname, sub) => match sub {
+      LPVar(b) => match seed_field_tan(fields, FByName(fname)) {
+        Some(tn) => grad_record_binders(fps, fields, i + 1, push(acc, (b, tn))),
+        None => None,
+      },
+      LPWild => grad_record_binders(fps, fields, i + 1, acc),
+      LPRecord(_, _, _, _) => None,
+      LPTuple(_) => None,
+      LPCon(_, _, _) => None,
+      LPUnresolvedCon(_, _) => None,
+      LPLit(_) => None,
+      LPAlt(_) => None,
+      LPAs(_, _) => None,
+      LPList(_, _, _, _) => None,
+    },
+  }
+}
+
+fn grad_tuple_binders(elems, fields, i, acc) = if i >= len(elems) {
+  Some(acc)
+} else {
+  match list_index(elems, i) {
+    (_, sub) => match sub {
+      LPVar(b) => match seed_field_tan(fields, FByIndex(i)) {
+        Some(tn) => grad_tuple_binders(elems, fields, i + 1, push(acc, (b, tn))),
+        None => None,
+      },
+      LPWild => grad_tuple_binders(elems, fields, i + 1, acc),
+      LPRecord(_, _, _, _) => None,
+      LPTuple(_) => None,
+      LPCon(_, _, _) => None,
+      LPUnresolvedCon(_, _) => None,
+      LPLit(_) => None,
+      LPAlt(_) => None,
+      LPAs(_, _) => None,
+      LPList(_, _, _, _) => None,
+    },
+  }
 }
 
 fn arm_act_join(acc, branch) = act_join(acc, branch_act(branch))
 
+// What a match's scrutinee carries into its arms: a product seed read whole
+// carries its fields, so a pattern over it binds each Float field to its
+// lane (`let (a, b) = ws`); anything else carries its tangent local beside
+// a Float that moves, or nothing.
+fn scrutinee_carried(s, hs, sname: String, js, env) = match s {
+  LLocal(_, name) => match env_find(env, name) {
+    (_, c) => match c {
+      CSeed(fields) => CSeed(fields),
+      CNone => carried_local(hs, sname, jv_act(js)),
+      CLocal(_) => carried_local(hs, sname, jv_act(js)),
+    },
+  },
+  other => carried_local(hs, sname, jv_act(js)),
+}
+
 // The scrutinee's tangent, named once where the match stands.
 fn scrutinee_pre(hs, carried, js) = match carried {
-  CLocal(t) => [LLet(hs, t, tan_at(hs, jv_tan(js)))],
+  CLocal(t) => [STan(hs, t, jv_tan(js))],
   CNone => [],
-  CExpr(_) => [],
+  CSeed(_) => [],
 }
 
 // What an arm's binders carry: a binder of the whole scrutinee reads its
 // tangent; a binder of a piece of an aggregate reads what the aggregate
-// kept — nothing, or the loss.
+// kept — nothing, or the loss; a piece of a product seed reads its field's
+// lane.
 fn arm_env(arm, h, sact, sc, env) = match arm {
   (pat, _) => pat_env(pat, true, h, sact, sc, env),
 }
@@ -1180,9 +1624,64 @@ fn pat_env(pat, root, h, sact, sc, env) = match pat {
   },
   LPCon(_, _, pairs) => fold(env, piece_env(??, h, sact, sc, ??), pairs),
   LPUnresolvedCon(_, subs) => fold(env, sub_env(??, h, sact, sc, ??), subs),
-  LPTuple(elems) => fold(env, piece_env(??, h, sact, sc, ??), elems),
+  LPTuple(elems) => match sc {
+    CSeed(fields) => seed_tuple_env(elems, fields, 0, env),
+    CNone => fold(env, piece_env(??, h, sact, sc, ??), elems),
+    CLocal(_) => fold(env, piece_env(??, h, sact, sc, ??), elems),
+  },
   LPList(_, subs, rest, _) => rest_env(rest, h, sact, fold(env, sub_env(??, h, sact, sc, ??), subs)),
-  LPRecord(_, _, fields, rest) => rest_env(rest, h, sact, fold(env, field_env(??, h, sact, sc, ??), fields)),
+  LPRecord(_, _, fields, rest) => match sc {
+    CSeed(sfields) => seed_record_env(fields, sfields, 0, env),
+    CNone => rest_env(rest, h, sact, fold(env, field_env(??, h, sact, sc, ??), fields)),
+    CLocal(_) => rest_env(rest, h, sact, fold(env, field_env(??, h, sact, sc, ??), fields)),
+  },
+}
+
+// A seed's field bound by a pattern carries the field's lane; a piece the
+// seed does not carry (a non-Float field, a nested shape) moves with nothing.
+fn seed_record_env(fps, sfields, i, env) = if i >= len(fps) {
+  env
+} else {
+  match list_index(fps, i) {
+    (fname, sub) => seed_record_env(
+      fps,
+      sfields,
+      i + 1,
+      seed_piece_env(sub, seed_field_tan(sfields, FByName(fname)), env)
+    ),
+  }
+}
+
+fn seed_tuple_env(elems, sfields, i, env) = if i >= len(elems) {
+  env
+} else {
+  match list_index(elems, i) {
+    (_, sub) => seed_tuple_env(
+      elems,
+      sfields,
+      i + 1,
+      seed_piece_env(sub, seed_field_tan(sfields, FByIndex(i)), env)
+    ),
+  }
+}
+
+fn seed_piece_env(sub, tn, env) = match sub {
+  LPVar(b) => match tn {
+    Some(t) => [(b, AActive, CLocal(t))] ++ env,
+    None => env,
+  },
+  LPAs(b, inner) => match tn {
+    Some(t) => seed_piece_env(inner, None, [(b, AActive, CLocal(t))] ++ env),
+    None => env,
+  },
+  LPWild => env,
+  LPLit(_) => env,
+  LPAlt(_) => env,
+  LPCon(_, _, _) => env,
+  LPUnresolvedCon(_, _) => env,
+  LPTuple(_) => env,
+  LPList(_, _, _, _) => env,
+  LPRecord(_, _, _, _) => env,
 }
 
 fn binder_act(root, h, sact) = if root { sact } else { stored_in(h, sact) }
@@ -1225,7 +1724,7 @@ fn arms_close(arms, branches, tname, carry, h, i, acc) = if i >= len(arms) {
       carry,
       h,
       i + 1,
-      push(acc, (pat, LBlock(lexpr_handle(body), branch_close(list_index(branches, i), tname, carry, h))))
+      push(acc, (pat, lexpr_handle(body), branch_close(list_index(branches, i), tname, carry, h)))
     ),
   }
 }
@@ -1237,7 +1736,8 @@ fn arms_close(arms, branches, tname, carry, h, i, acc) = if i >= len(arms) {
 // sensitivity of the line to the seed accumulates exactly as the line does.
 // The primal tick is the line's own — one filter under two readings keeps
 // one state. The ring's tangent is zeroed at the reading's entry, so the
-// line's history before the extent is held fixed.
+// line's history before the extent is held fixed. A line carrying a tangent
+// is the forward projection's alone: its tick is lowered forward in place.
 fn jvp_feedback(h, depth, home, body, spec, env, cx) = match cx {
   DeriveCx(owner, _) => {
     let key = site_key(h, owner)
@@ -1251,6 +1751,7 @@ fn jvp_feedback(h, depth, home, body, spec, env, cx) = match cx {
     }
     let hs = int_to_str(h)
     let jb = jvp(body, [(prior_key(h), prior, CLocal("__fb_dprev_{hs}"))] ++ env, cx)
+    grad_consumed(h, jb)
     dv_site_join(key, jv_act(jb))
     // The output's tangent is the body's, named inside the tick; the ring
     // keeps it for the tick that reads it back as a prior. A body that never
@@ -1258,18 +1759,19 @@ fn jvp_feedback(h, depth, home, body, spec, env, cx) = match cx {
     let ring = act_active(prior) && is_static(home)
     let carry = act_active(jv_act(jb)) && is_float_at(h)
     if ring { dv_ring(h, depth, owner) }
+    if ring || carry || stmts_have_tan(jv_pre(jb)) { dv_forward_only(h, LwLine) }
     let dcur = "__fb_dcur_{hs}"
     let body2 = if ring || carry {
-      LBlock(h, jv_pre(jb) ++ [LLet(h, dcur, tan_at(h, jv_tan(jb))), jv_val(jb)])
+      LBlock(h, lower_forward(jv_pre(jb)) ++ [LLet(h, dcur, lin_expr(h, jv_tan(jb))), jv_val(jb)])
     } else {
       body_of(h, jb)
     }
     let tick = LFeedback(h, depth, if ring { LhStaticJvp } else { home }, body2, spec)
     if carry {
       let v = temp(h, 7)
-      jv([LLet(h, v, tick)], LLocal(h, v), TVal(LLocal(h, dcur)), jv_act(jb))
+      jv([SPrim(LLet(h, v, tick))], LLocal(h, v), LinName(h, dcur), jv_act(jb))
     } else {
-      jv([], tick, TZero, jv_act(jb))
+      jv([], tick, LinZero, jv_act(jb))
     }
   },
 }
@@ -1293,7 +1795,7 @@ fn is_static(home) = match home {
 }
 
 fn body_of(h, jb) =
-  if len(jv_pre(jb)) == 0 { jv_val(jb) } else { LBlock(h, jv_pre(jb) ++ [jv_val(jb)]) }
+  if len(jv_pre(jb)) == 0 { jv_val(jb) } else { LBlock(h, lower_forward(jv_pre(jb)) ++ [jv_val(jb)]) }
 
 // ─── An install inside the reading ────────────────────────────────────
 //
@@ -1306,7 +1808,7 @@ fn body_of(h, jb) =
 // inside, at their derivative twins (`jvp_op`). A config whose tangent was
 // lost has no lane to ride, and the install refuses rather than let an arm
 // read it as fixed. A multi-shot install reifies remainders the reading does
-// not enter.
+// not enter. An install carrying tangents is the forward projection's alone.
 fn jvp_install(h, b, hn, hname: String, inits, arms, env, cx) = if len(multishot_ops_of(hname)) > 0 {
   jvp_unentered(h, LHandleWith(h, b, hn, hname, inits, arms))
 } else {
@@ -1323,20 +1825,22 @@ fn jvp_install(h, b, hn, hname: String, inits, arms, env, cx) = if len(multishot
       }
       install_init_face(h, hname)
       let jb = jvp(b, env, cx)
+      grad_consumed(h, jb)
       let hb = lexpr_handle(jv_val(jb))
       let carry = act_active(jv_act(jb)) && is_float_at(hb)
+      if act_active(a) || carry || stmts_have_tan(jv_pre(jb)) { dv_forward_only(h, LwInstall) }
       let tname = temp(h, 8)
       let body = if carry {
-        LBlock(hb, jv_pre(jb) ++ [LLet(hb, tname, tan_at(hb, jv_tan(jb))), jv_val(jb)])
+        LBlock(hb, lower_forward(jv_pre(jb)) ++ [LLet(hb, tname, lin_expr(hb, jv_tan(jb))), jv_val(jb)])
       } else {
         body_of(hb, jb)
       }
       let v = temp(h, 9)
       let install = LHandleWith(h, body, hn, hname, vals, arms)
       jv(
-        pre ++ [LLet(h, v, LWasiCall(h, "jvp_install", [install] ++ lane_pairs(jinits, vals, 0, [])))],
+        pre ++ [SPrim(LLet(h, v, LWasiCall(h, "jvp_install", [install] ++ lane_pairs(jinits, vals, 0, []))))],
         LLocal(h, v),
-        if carry { TVal(LLocal(hb, tname)) } else { TZero },
+        if carry { LinName(hb, tname) } else { LinZero },
         jv_act(jb)
       )
     },
@@ -1384,24 +1888,30 @@ fn jvp_tail_from(stmts, i, env, cx, out, act) = if i >= len(stmts) {
 }
 
 // A value at a twin's exit, handed back through the register.
-fn exit_value(h, j) = match exit_through_register(h, j) {
-  (stmts, v) => (stmts ++ [v], jv_act(j)),
+fn exit_value(h, j) = {
+  grad_consumed(h, j)
+  match exit_through_register(h, j) {
+    (stmts, v) => (stmts ++ [SPrim(v)], jv_act(j)),
+  }
 }
 
 fn jvp_tail(e, env, cx) = match e {
   LDirectCall(h, fh, name, true, args) => {
     let jargs = jvp_list(args, env, cx)
-    let j = jvp_direct(h, fh, name, true, jargs)
-    match jv_val(j) {
-      LDirectCall(_, _, callee, _, _) => // A tail call to a twin stays one: the callee twin writes the
-      // register. Forward code at a Float exit becomes an ordinary call so
-      // the exit can say zero after it; any other exit keeps its tail call.
-      if field_name_eq(callee, name) && is_float_at(h) {
-        exit_value(h, jvp_direct(h, fh, name, false, jargs))
-      } else {
-        (jv_pre(j) ++ [jv_val(j)], jv_act(j))
+    match twin_for(fh, name, jargs) {
+      Some((sym, key, result)) => // A tail call to a twin stays one: the callee twin writes the
+      // register.
+      match seq_values(h, jargs) {
+        (pre, vals, _) => (pre ++ [STail(h, fh, name, sym, key, vals, twin_lins(jargs, vals, 0, []))], result),
       },
-      other => (jv_pre(j) ++ [other], jv_act(j)),
+      None => if is_float_at(h) {
+        // Forward code at a Float exit becomes an ordinary call so the exit
+        // can say zero after it.
+        exit_value(h, jvp_direct_plain(h, fh, name, false, jargs))
+      } else {
+        let j = jvp_direct_plain(h, fh, name, true, jargs)
+        (jv_pre(j) ++ [SPrim(jv_val(j))], jv_act(j))
+      },
     }
   },
   LTailCall(h, f, args) => {
@@ -1415,35 +1925,39 @@ fn jvp_tail(e, env, cx) = match e {
       // A call through the face keeps its tail form: the callee writes the
       // register.
       let j = jvp_dynamic(h, jf, jargs, true)
-      (jv_pre(j) ++ [jv_val(j)], jv_act(j))
+      (jv_pre(j) ++ [SPrim(jv_val(j))], jv_act(j))
     }
   },
   LIf(h, c, t, el) => {
     let jc = jvp(c, env, cx)
+    grad_consumed(h, jc)
     match jvp_tail_stmts(t, env, cx) {
       (t2, ta) => match jvp_tail_stmts(el, env, cx) {
-        (e2, ea) => (jv_pre(jc) ++ [LIf(h, jv_val(jc), t2, e2)], act_join(ta, ea)),
+        (e2, ea) => (jv_pre(jc) ++ [SIf(h, "", jv_val(jc), t2, e2)], act_join(ta, ea)),
       },
     }
   },
   LBlock(h, stmts) => match jvp_tail_stmts(stmts, env, cx) {
-    (out, a) => ([LBlock(h, out)], a),
+    (out, a) => (out, a),
   },
   LMatch(h, s, arms) => {
     let js = jvp(s, env, cx)
+    grad_consumed(h, js)
     let hs = lexpr_handle(jv_val(js))
     let sname = temp(h, 6)
-    let carried = carried_local(hs, sname, jv_act(js))
+    let carried = scrutinee_carried(s, hs, sname, js, env)
     let spre = scrutinee_pre(hs, carried, js)
     let arm_envs = map(arm_env(??, h, jv_act(js), carried, env), arms)
     match tail_arms(arms, arm_envs, cx, 0, [], AInactive) {
-      (arms2, a) => (jv_pre(js) ++ spre ++ [LMatch(h, jv_val(js), arms2)], a),
+      (arms2, a) => (jv_pre(js) ++ spre ++ [SMatch(h, "", jv_val(js), arms2)], a),
     }
   },
   LReturn(h, inner) => {
     let ji = jvp(inner, env, cx)
+    grad_consumed(h, ji)
+    dv_forward_only(h, LwReturn)
     match exit_through_register(h, ji) {
-      (stmts, v) => (stmts ++ [LReturn(h, v)], jv_act(ji)),
+      (stmts, v) => (stmts ++ [SPrim(LReturn(h, v))], jv_act(ji)),
     }
   },
   other => exit_value(lexpr_handle(other), jvp(other, env, cx)),
@@ -1454,16 +1968,245 @@ fn tail_arms(arms, envs, cx, i, acc, act) = if i >= len(arms) {
 } else {
   match list_index(arms, i) {
     (pat, body) => match jvp_tail_stmts([body], list_index(envs, i), cx) {
-      (out, a) => tail_arms(
-        arms,
-        envs,
-        cx,
-        i + 1,
-        push(acc, (pat, LBlock(lexpr_handle(body), out))),
-        act_join(act, a)
-      ),
+      (out, a) => tail_arms(arms, envs, cx, i + 1, push(acc, (pat, lexpr_handle(body), out)), act_join(act, a)),
     },
   }
+}
+
+// ─── The reverse projection ────────────────────────────────────────────
+//
+// The primal statements first, in their order, with every choice's test and
+// scrutinee named as a residual; then, at each query, the linear statements
+// transposed backward from the queried tangent to the seeds — one adjoint
+// local per tangent name, zeroed before the sweep, accumulated as the sweep
+// passes each definition and cleared as it consumes it, so a name bound
+// twice keeps its two definitions apart. A call into a known function runs
+// its primal in the forward sweep and its ADJOINT TWIN in the backward one:
+// the twin recomputes the callee, whose residuals are its own frame locals,
+// and hands the adjoints of its active Float parameters back through the
+// registers ($__da0, $__da1, …), which the caller reads the instant the twin
+// returns. `outer` is every statement executed before the list being lowered,
+// in order, so a query inside a branch transposes the whole prefix that
+// reached it.
+fn rv_stmts(stmts, outer, roots) = rv_from(stmts, 0, outer, roots, [])
+
+fn rv_from(stmts, i, outer, roots, out) = if i >= len(stmts) {
+  out
+} else {
+  let before = outer ++ slice(stmts, 0, i)
+  rv_from(stmts, i + 1, outer, roots, out ++ rv_stmt(list_index(stmts, i), before, roots))
+}
+
+fn rv_stmt(s, before, roots) = match s {
+  SPrim(e) => [e],
+  STan(_, _, _) => [],
+  SIf(h, v, c, t, e) => {
+    let ch = lexpr_handle(c)
+    let pc = rv_pred(h)
+    [LLet(ch, pc, c)] ++ bound_choice(h, v, LIf(h, LLocal(ch, pc), rv_stmts(t, before, roots), rv_stmts(e, before, roots)))
+  },
+  SMatch(h, v, sc, arms) => {
+    let sh = lexpr_handle(sc)
+    let sn = rv_scrut(h)
+    [LLet(sh, sn, sc)] ++ bound_choice(h, v, LMatch(h, LLocal(sh, sn), map(rv_arm(before, roots, ??), arms)))
+  },
+  SQuery(h, qh, v, l) => rv_query(h, qh, v, l, before, roots),
+  SOut(_, _) => [],
+  STwinCall(h, v, fh, name, _sym, _key, vals, _lins, _rt) => [LLet(h, v, LDirectCall(h, fh, name, false, vals))],
+  STail(h, fh, name, _sym, _key, vals, _lins) => [LLet(h, temp(h, 12), LDirectCall(h, fh, name, false, vals))],
+}
+
+fn rv_arm(before, roots, arm) = match arm {
+  (pat, bh, stmts) => (pat, LBlock(bh, rv_stmts(stmts, before, roots))),
+}
+
+fn rv_pred(h) = "__rv{int_to_str(h)}_p"
+
+fn rv_scrut(h) = "__rv{int_to_str(h)}_s"
+
+// A query's answer: every adjoint the prefix defines zeroed, the queried
+// tangent's adjoint one, the prefix transposed backward, then the answer —
+// a scalar seed's adjoint into the query's local, a product seed's read by
+// the destructuring that follows.
+fn rv_query(h, qh, v, l, before, roots) = {
+  let zeros = map(rv_zero, rv_adjoint_names(before, roots, qh))
+  let sweep = rv_transpose(l, LConst(qh, LFloat(1.0))) ++ rv_backward(before, qh)
+  let answer = if field_name_eq(v, "") {
+    []
+  } else {
+    match roots {
+      [(_, tn), ..._] => [LLet(h, v, LLocal(qh, adj_name(tn)))],
+      [] => [LLet(h, v, LConst(h, LFloat(0.0)))],
+    }
+  }
+  zeros ++ sweep ++ answer
+}
+
+fn rv_zero(pair) = match pair {
+  (nh, n) => LLet(nh, adj_name(n), LConst(nh, LFloat(0.0))),
+}
+
+// Every tangent name the prefix defines, with the Float handle its adjoint is
+// declared at, each once — and the seeds.
+fn rv_adjoint_names(before, roots, qh) =
+  rv_dedup(fold([], rv_names_of, before) ++ map(rv_root_pair(qh, ??), roots), [])
+
+fn rv_root_pair(qh, r) = match r {
+  (_, tn) => (qh, tn),
+}
+
+fn rv_names_of(acc, s) = match s {
+  SPrim(_) => acc,
+  STan(h, n, _) => push(acc, (h, n)),
+  SIf(_, _, _, t, e) => fold(fold(acc, rv_names_of, t), rv_names_of, e),
+  SMatch(_, _, _, arms) => fold(acc, rv_arm_names, arms),
+  SQuery(_, _, _, _) => acc,
+  SOut(_, _) => acc,
+  STwinCall(h, _, _, _, _, _, _, _, rt) => match rt {
+    Some(t) => push(acc, (h, t)),
+    None => acc,
+  },
+  STail(_, _, _, _, _, _, _) => acc,
+}
+
+fn rv_arm_names(acc, arm) = match arm {
+  (_, _, stmts) => fold(acc, rv_names_of, stmts),
+}
+
+fn rv_dedup(pairs, acc) = fold(acc, rv_keep, pairs)
+
+fn rv_keep(acc, p) = if any(rv_same(p, ??), acc) { acc } else { push(acc, p) }
+
+fn rv_same(a, b) = match a {
+  (_, n) => match b {
+    (_, m) => field_name_eq(n, m),
+  },
+}
+
+// The backward sweep over a prefix: the statements in reverse, each linear
+// one transposed with the adjoint its name holds.
+fn rv_backward(stmts, qh) = rv_back_from(stmts, len(stmts) - 1, qh, [])
+
+fn rv_back_from(stmts, i, qh, out) = if i < 0 {
+  out
+} else {
+  rv_back_from(stmts, i - 1, qh, out ++ rv_back_stmt(list_index(stmts, i), qh))
+}
+
+fn rv_back_stmt(s, qh) = match s {
+  SPrim(_) => [],
+  STan(h, n, l) => rv_transpose(l, LLocal(h, adj_name(n))) ++ [LLet(h, adj_name(n), LConst(h, LFloat(0.0)))],
+  SIf(h, _, c, t, e) => {
+    let ch = lexpr_handle(c)
+    [LIf(
+      h,
+      LLocal(ch, rv_pred(h)),
+      rv_backward(t, qh) ++ [rv_zero_of(h)],
+      rv_backward(e, qh) ++ [rv_zero_of(h)]
+    )]
+  },
+  SMatch(h, _, sc, arms) => {
+    let sh = lexpr_handle(sc)
+    [LMatch(h, LLocal(sh, rv_scrut(h)), map(rv_back_arm(h, qh, ??), arms))]
+  },
+  SQuery(_, _, _, _) => [],
+  SOut(h, l) => rv_transpose(l, LLocal(h, "__g")),
+  STwinCall(h, _, fh, _name, sym, key, vals, lins, rt) => match rt {
+    Some(t) => rv_adjoint_call(h, fh, sym, key, vals, lins, LLocal(h, adj_name(t))) ++ [LLet(h, adj_name(t), LConst(h, LFloat(0.0)))],
+    None => [],
+  },
+  STail(h, fh, _name, sym, key, vals, lins) => rv_adjoint_call(h, fh, sym, key, vals, lins, LLocal(h, "__g")),
+}
+
+fn rv_back_arm(h, qh, arm) = match arm {
+  (pat, bh, stmts) => (pat, LBlock(bh, rv_backward(stmts, qh) ++ [rv_zero_of(h)])),
+}
+
+// A value of the width the choice's own local has, so the backward choice
+// types as the forward one did and its result is dropped.
+fn rv_zero_of(h) = if is_float_at(h) { LConst(h, LFloat(0.0)) } else { LConst(h, LInt(0)) }
+
+// The adjoint twin's call: the callee's arguments as the forward sweep named
+// them and the adjoint of its result; then each active Float argument's
+// tangent receives the register the twin wrote for it.
+fn rv_adjoint_call(h, fh, sym: String, key: String, vals, lins, g) = {
+  dv_vjp(sym, key)
+  [LDirectCall(h, fh, twin_name(sym, key, true), false, vals ++ [g])] ++ rv_arg_adjoints(h, lins, 0, 0, [])
+}
+
+fn rv_arg_adjoints(h, lins, i, j, out) = if i >= len(lins) {
+  out
+} else {
+  match list_index(lins, i) {
+    Some(l) => rv_arg_adjoints(
+      h,
+      lins,
+      i + 1,
+      j + 1,
+      out ++ rv_transpose(l, LWasiCall(h, "adjoint_in", [LConst(0, LInt(j))]))
+    ),
+    None => rv_arg_adjoints(h, lins, i + 1, j, out),
+  }
+}
+
+// The transpose of a linear expression against the adjoint of its value:
+// each name it reads accumulates the adjoint through the partial the
+// expression scaled it by.
+fn rv_transpose(l, g) = match l {
+  LinZero => [],
+  LinUnit => [],
+  LinName(nh, n) => [LLet(nh, adj_name(n), LBinOp(nh, BAdd, LLocal(nh, adj_name(n)), g))],
+  LinAdd(_, a, b) => rv_transpose(a, g) ++ rv_transpose(b, g),
+  LinSub(h, a, b) => rv_transpose(a, g) ++ rv_transpose(b, LUnaryOp(h, UNeg, g)),
+  LinNeg(h, a) => rv_transpose(a, LUnaryOp(h, UNeg, g)),
+  LinScale(h, c, a) => rv_transpose(a, LBinOp(h, BMul, c, g)),
+  LinQuot(h, a, c) => rv_transpose(a, LBinOp(h, BDiv, g, c)),
+  LinLane(_, _, _) => [],
+  LinIn(_) => [],
+}
+
+// The adjoint twin: the callee recomputed to its end, every adjoint zeroed,
+// the exit's tangent transposed backward from the adjoint the caller passed
+// (`__g`), and each active Float parameter's adjoint handed back through its
+// register.
+fn reverse_twin(stmts, roots, gh) = {
+  let forward = rv_stmts(stmts, [], roots)
+  let zeros = map(rv_zero, rv_adjoint_names(stmts, roots, gh))
+  let sweep = rv_backward(stmts, gh)
+  let outs = rv_register_outs(roots, gh, 0, [])
+  forward ++ zeros ++ sweep ++ outs ++ [LConst(0, LInt(0))]
+}
+
+fn rv_register_outs(roots, gh, j, out) = match roots {
+  [] => out,
+  [(_, tn), ...rest] => rv_register_outs(
+    rest,
+    gh,
+    j + 1,
+    out ++ [LWasiCall(0, "adjoint_out", [LConst(0, LInt(j)), LLocal(gh, adj_name(tn))])]
+  ),
+}
+
+// The Float handle an adjoint twin's `__g` reads at: the first exit's.
+fn exit_handle(stmts) = fold(0, exit_handle_of, stmts)
+
+fn exit_handle_of(acc, s) = if acc != 0 {
+  acc
+} else {
+  match s {
+    SPrim(_) => acc,
+    STan(_, _, _) => acc,
+    SIf(_, _, _, t, e) => exit_handle(t ++ e),
+    SMatch(_, _, _, arms) => fold(acc, exit_arm_handle, arms),
+    SQuery(_, _, _, _) => acc,
+    SOut(h, _) => h,
+    STwinCall(_, _, _, _, _, _, _, _, _) => acc,
+    STail(h, _, _, _, _, _, _) => h,
+  }
+}
+
+fn exit_arm_handle(acc, arm) = match arm {
+  (_, _, stmts) => if acc != 0 { acc } else { exit_handle(stmts) },
 }
 
 // ─── The reading's standing facts ──────────────────────────────────────
@@ -1476,11 +2219,12 @@ fn tail_arms(arms, envs, cx, i, acc, act) = if i >= len(arms) {
 effect Deriving {
   dv_enter(String)
   dv_twin(String, String) -> String
+  dv_vjp(String, String)
   dv_face(String)
   dv_arm_face(Int, String, String)
   dv_result(String) -> Act
   dv_twin_done(String, Act)
-  dv_twin_at(Int) -> Option((String, String, String))
+  dv_twin_at(Int) -> Option((String, String, String, Bool))
   dv_site(String) -> Act
   dv_site_join(String, Act)
   dv_ring(Int, Int, String)
@@ -1489,9 +2233,13 @@ effect Deriving {
   dv_store(Int)
   dv_memory() -> Act
   dv_refuse(String, Int)
+  dv_forward_only(Int, LostWhy)
+  dv_reverse_legal() -> Option((Int, LostWhy))
+  dv_seed_fields() -> [(String, Int, String)]
+  dv_seed_set([(String, Int, String)])
   dv_has_record(String) -> Bool
   dv_touches(String) -> Bool
-  dv_pass_facts() -> {arm_faces: [(Int, String, String, String)], calls: [(String, String)], faces: [(String, String)], memory: Act, refusals: [(String, Int)], results: [(String, Act)], rings: [(String, TangentRing)], sites: [(String, Act)], stale: Act, twins: [(String, String, String)]}
+  dv_pass_facts() -> {arm_faces: [(Int, String, String, String)], calls: [(String, String)], faces: [(String, String)], memory: Act, only: [(String, Int, LostWhy)], refusals: [(String, Int)], results: [(String, Act)], rings: [(String, TangentRing)], sites: [(String, Act)], stale: Act, twins: [(String, String, String, Bool)]}
 }
 
 // `prev` is the settled facts of the pass before; `table` answers which
@@ -1499,14 +2247,21 @@ effect Deriving {
 // query, a function value or an arm, and `faces_of` each symbol's signature
 // and face key. A face demanded by a site's signature is demanded of every
 // symbol carrying it — the same over-approximation the indirect call itself
-// makes, and `call_indirect`'s structural match refuses loudly where a face
-// is reached that was never minted (`$__jvp_absent`).
-handler deriving(prev, table, touching, faces_of) with twins = [], results = [], sites = [], stale = AInactive, memory = AInactive, refusals = [], rings = [], calls = [], faces = [], arm_faces = [], current = "" {
+// makes, and the table's structural match refuses loudly where a face is
+// reached that was never minted. `only` records, per unit, the first
+// construct the reverse projection cannot carry; an extent is transposed
+// only when no unit its calls reach carries one and none recurs.
+handler deriving(prev, table, touching, faces_of) with twins = [], results = [], sites = [], stale = AInactive, memory = AInactive, refusals = [], rings = [], calls = [], faces = [], arm_faces = [], only = [], seed = [], current = "" {
   dv_enter(unit) => resume() with current = unit,
   dv_twin(sym, key) => {
-    let name = twin_name(sym, key)
+    let name = twin_name(sym, key, false)
     let known = twin_listed(prev.twins, name) || twin_listed(twins, name)
-    resume(name) with twins = if known { twins } else { push(twins, (name, sym, key)) }, calls = push(calls, (current, name))
+    resume(name) with twins = if known { twins } else { push(twins, (name, sym, key, false)) }, calls = push(calls, (current, name))
+  },
+  dv_vjp(sym, key) => {
+    let name = twin_name(sym, key, true)
+    let known = twin_listed(prev.twins, name) || twin_listed(twins, name)
+    resume() with twins = if known { twins } else { push(twins, (name, sym, key, true)) }, calls = push(calls, (current, name))
   },
   dv_face(code) => {
     let hits = filter(face_matches(code, ??), faces_of)
@@ -1516,9 +2271,9 @@ handler deriving(prev, table, touching, faces_of) with twins = [], results = [],
   },
   dv_arm_face(ih, op, sym) => {
     let key = face_key_of(faces_of, sym)
-    let name = twin_name(sym, key)
+    let name = twin_name(sym, key, false)
     let known = twin_listed(prev.twins, name) || twin_listed(twins, name)
-    resume() with twins = if known { twins } else { push(twins, (name, sym, key)) }, arm_faces = push(arm_faces, (ih, op, spec_enc_active(), name)), calls = push(calls, (current, name))
+    resume() with twins = if known { twins } else { push(twins, (name, sym, key, false)) }, arm_faces = push(arm_faces, (ih, op, spec_enc_active(), name)), calls = push(calls, (current, name))
   },
   dv_result(name) => resume(assoc_act(prev.results, name)),
   dv_twin_done(name, a) => resume() with results = push(results, (name, a)),
@@ -1531,6 +2286,10 @@ handler deriving(prev, table, touching, faces_of) with twins = [], results = [],
   dv_store(h) => resume() with memory = act_join(memory, ALost(h, LwMemory)),
   dv_memory() => resume(prev.memory),
   dv_refuse(msg, h) => resume() with refusals = push(refusals, (msg, h)),
+  dv_forward_only(h, why) => resume() with only = if only_listed(only, current) { only } else { push(only, (current, h, why)) },
+  dv_reverse_legal() => resume(reverse_blocker(current, prev.calls ++ calls, prev.only ++ only)),
+  dv_seed_fields() => resume(seed),
+  dv_seed_set(fields) => resume() with seed = fields,
   dv_has_record(sym) => resume(len(smap_get_all(table, sym)) > 0),
   dv_touches(sym) => resume(len(smap_get_all(touching, sym)) > 0),
   dv_pass_facts() => resume({
@@ -1538,6 +2297,7 @@ handler deriving(prev, table, touching, faces_of) with twins = [], results = [],
     calls: calls,
     faces: prev.faces ++ faces,
     memory: memory,
+    only: prev.only ++ only,
     refusals: refusals,
     results: results,
     rings: rings,
@@ -1547,7 +2307,37 @@ handler deriving(prev, table, touching, faces_of) with twins = [], results = [],
   }),
 }
 
-fn twin_name(sym: String, key: String) = "{sym}$jvp{key}"
+fn twin_name(sym: String, key: String, vjp) = if vjp { "{sym}$vjp{key}" } else { "{sym}$jvp{key}" }
+
+fn only_listed(only, unit: String) = any(only_names(unit, ??), only)
+
+fn only_names(unit: String, o) = match o {
+  (u, _, _) => field_name_eq(u, unit),
+}
+
+// What keeps a unit from being transposed: a construct the reverse
+// projection does not carry in the unit or in any unit its calls reach, or
+// a call that recurs.
+fn reverse_blocker(unit: String, calls, only) = {
+  let reached = reach_units([unit], calls, [unit], 0)
+  match filter(only_in(reached, ??), only) {
+    [(_, h, why), ..._] => Some((h, why)),
+    [] => match filter(unit_cyclic(calls, ??), reached) {
+      [] => None,
+      [u, ..._] => Some((0, LwRecursion)),
+    },
+  }
+}
+
+fn only_in(units, o) = match o {
+  (u, _, _) => any(field_name_eq(u, ??), units),
+}
+
+fn unit_cyclic(calls, u: String) = any(call_closes(calls, u, ??), calls)
+
+fn call_closes(calls, u: String, c) = match c {
+  (f, t) => field_name_eq(t, u) && (field_name_eq(f, u) || any(field_name_eq(f, ??), reach_units([u], calls, [u], 0))),
+}
 
 // ─── The faces — one twin per symbol, keyed at every Float parameter ─────
 //
@@ -1606,7 +2396,7 @@ fn face_matches(code: String, fact) = match fact {
 
 fn face_twin_unlisted(old, fresh, fact) = match fact {
   (sym, _, key) => {
-    let name = twin_name(sym, key)
+    let name = twin_name(sym, key, false)
     !(twin_listed(old, name) || twin_listed(fresh, name))
   },
 }
@@ -1622,15 +2412,15 @@ fn face_names(sym: String, f) = match f {
 }
 
 fn face_twin_entry(fact) = match fact {
-  (sym, _, key) => (twin_name(sym, key), sym, key),
+  (sym, _, key) => (twin_name(sym, key, false), sym, key, false),
 }
 
 fn face_pair(fact) = match fact {
-  (sym, _, key) => (sym, twin_name(sym, key)),
+  (sym, _, key) => (sym, twin_name(sym, key, false)),
 }
 
 fn face_call(from: String, fact) = match fact {
-  (sym, _, key) => (from, twin_name(sym, key)),
+  (sym, _, key) => (from, twin_name(sym, key, false)),
 }
 
 fn face_key_of(faces_of, sym: String) = face_key_scan(faces_of, sym, 0)
@@ -1649,7 +2439,7 @@ fn any_twin_named(ts, name: String, i) = if i >= len(ts) {
   false
 } else {
   match list_index(ts, i) {
-    (n, _, _) => if field_name_eq(n, name) { true } else { any_twin_named(ts, name, i + 1) },
+    (n, _, _, _) => if field_name_eq(n, name) { true } else { any_twin_named(ts, name, i + 1) },
   }
 }
 
@@ -1859,41 +2649,81 @@ fn extent_name(x) = match x {
   Extent(r) => "{int_to_str(lexpr_handle(r.install))}@{r.enc}@{r.owner}",
 }
 
-// One extent's program, with the name its reach is recorded under.
+// One extent's program, with the name its reach is recorded under and the
+// projection it took.
 fn expand_extent(x) = match x {
   Extent(r) => {
     spec_ctx_set(r.pairs, r.enc)
     dv_enter(extent_name(x))
-    let body = expand_install(r.install, r.owner)
-    spec_ctx_clear()
-    (extent_name(x), lexpr_handle(r.install), r.enc, r.pairs, body)
+    match expand_install(r.install, r.owner) {
+      (mode, body) => {
+        spec_ctx_clear()
+        (extent_name(x), lexpr_handle(r.install), r.enc, r.pairs, mode, body)
+      },
+    }
   },
 }
 
-// The reading's own program for one install: the seed's tangent is one, and
-// the body is read beside it.
+// The reading's own program for one install. A scalar seed is answered
+// forward: its tangent is one, and the body is read beside it. A product
+// seed is answered in reverse — one sweep per query answers every field —
+// where the program is a fixed chain, and refuses otherwise naming the
+// construct in its reach that the reverse projection does not carry.
 fn expand_install(ld, owner: String) = match ld {
-  LDerive(h, seed, body) => match seed_key(seed) {
-    Some(key) => {
-      let hs = lexpr_handle(seed)
-      let tname = "__seed{int_to_str(h)}$d"
-      let jb = jvp(body, [(key, AActive, CLocal(tname))], DeriveCx(owner, ExitsInPlace))
-      LBlock(h, [LLet(hs, tname, LConst(hs, LFloat(1.0)))] ++ jv_pre(jb) ++ [jv_val(jb)])
+  LDerive(h, seed, body) => match seed_lanes(h, seed) {
+    Some((entries, roots, fields)) => {
+      dv_seed_set(fields)
+      let jb = jvp(body, entries, DeriveCx(owner, ExitsInPlace))
+      grad_consumed(h, jb)
+      dv_seed_set([])
+      if len(fields) == 0 {
+        match roots {
+          [(hs, tname), ..._] => (MForward, LBlock(h, [LLet(hs, tname, LConst(hs, LFloat(1.0)))] ++ lower_forward(jv_pre(jb)) ++ [jv_val(jb)])),
+          [] => (MForward, body),
+        }
+      } else {
+        match dv_reverse_legal() {
+          None => (MReverse, LBlock(h, rv_stmts(jv_pre(jb), [], roots) ++ [jv_val(jb)])),
+          Some((bh, why)) => {
+            dv_refuse(
+              "a product seed reaches {only_story(why, if bh == 0 { h } else { bh })}, which the reverse reading cannot carry; the vector-forward reading is `Hβ.derive.vector-forward`",
+              h
+            )
+            (MForward, body)
+          },
+        }
+      }
     },
     None => {
       dv_refuse(
-        "the seed of a derivative reading must be a Float variable in scope — a local or a capture; a product seed is `Hβ.derive.gradient-of-a-product-seed`, and a top-level binding is `Hβ.derive.global-seed`",
+        "the seed of a derivative reading must be a Float variable in scope, or a record or tuple of Floats — a local or a capture; a top-level binding is `Hβ.derive.global-seed`",
         h
       )
-      body
+      (MForward, body)
     },
   },
-  other => other,
+  other => (MForward, other),
 }
 
-fn seed_key(seed) = match seed {
-  LLocal(h, name) => if is_float_at(h) { Some(name) } else { None },
-  LUpval(h, i) => if is_float_at(h) { Some(upval_key(i)) } else { None },
+// The seed's lanes: for a Float, one tangent name under the seed's own key;
+// for a record or tuple, one per Float field, the seed's name carrying its
+// fields so a field read or a destructuring reaches the field's lane. The
+// entries are what the body's environment starts with, the roots each
+// lane's handle and tangent name, and the fields the product seed's, empty
+// for a scalar.
+fn seed_lanes(h, seed) = match seed {
+  LLocal(sh, name) => if is_float_at(sh) {
+    let tname = "__seed{int_to_str(h)}$d"
+    Some(([(name, AActive, CLocal(tname))], [(sh, tname)], []))
+  } else {
+    seed_product(h, sh, name)
+  },
+  LUpval(sh, i) => if is_float_at(sh) {
+    let tname = "__seed{int_to_str(h)}$d"
+    Some(([(upval_key(i), AActive, CLocal(tname))], [(sh, tname)], []))
+  } else {
+    seed_product(h, sh, upval_key(i))
+  },
   LConst(_, _) => None,
   LGlobal(_, _) => None,
   LFeedbackPrior(_) => None,
@@ -1932,6 +2762,47 @@ fn seed_key(seed) = match seed {
   LWasiCall(_, _, _) => None,
 }
 
+// A product seed's Float fields, each a lane: by name for a record, by
+// position for a tuple; a seed with no Float field is no seed.
+fn seed_product(h, sh, key: String) = if sh == 0 {
+  None
+} else {
+  let fields = match fold_strip(slot_ty(lookup_ty(sh))) {
+    TRecord(fs) => seed_record_fields(h, fs, 0, []),
+    TRecordOpen(fs, _) => seed_record_fields(h, fs, 0, []),
+    TTuple(ts) => seed_tuple_fields(h, ts, 0, []),
+    _ => [],
+  }
+  match fields {
+    [] => None,
+    fs => Some(([(key, AActive, CSeed(fs))], map(seed_root(sh, ??), fs), fs)),
+  }
+}
+
+fn seed_root(sh, f) = match f {
+  (_, _, tn) => (sh, tn),
+}
+
+fn seed_record_fields(h, fs, i, acc) = if i >= len(fs) {
+  acc
+} else {
+  match list_index(fs, i) {
+    (name, ty) => if repr_is_f64(slot_repr(ty)) {
+      seed_record_fields(h, fs, i + 1, push(acc, (name, i, "__seed{int_to_str(h)}_{int_to_str(i)}$d")))
+    } else {
+      seed_record_fields(h, fs, i + 1, acc)
+    },
+  }
+}
+
+fn seed_tuple_fields(h, ts, i, acc) = if i >= len(ts) {
+  acc
+} else if repr_is_f64(slot_repr(list_index(ts, i))) {
+  seed_tuple_fields(h, ts, i + 1, push(acc, ("", i, "__seed{int_to_str(h)}_{int_to_str(i)}$d")))
+} else {
+  seed_tuple_fields(h, ts, i + 1, acc)
+}
+
 // The twins, demanded while they are generated: the list grows under the
 // walk, and the walk reads it by position until it stops growing.
 fn twins_from(table, i, acc) = match dv_twin_at(i) {
@@ -1940,15 +2811,17 @@ fn twins_from(table, i, acc) = match dv_twin_at(i) {
 }
 
 fn twin_record(table, t) = match t {
-  (name, sym, key) => match smap_get_all(table, sym) {
+  (name, sym, key, vjp) => match smap_get_all(table, sym) {
     [] => [],
-    [src, ..._] => [twin_of(src, name, key)],
+    [src, ..._] => [twin_of(src, name, key, vjp)],
   },
 }
 
 // One twin under its source's bracket: the body read with each active
-// parameter's tangent beside it, every exit handing its tangent back.
-fn twin_of(src, name: String, key: String) = match src {
+// parameter's tangent beside it, every exit handing its tangent back — the
+// tangent program for the forward twin, the adjoint program for the reverse
+// one, whose parameters are the callee's and the adjoint of its result.
+fn twin_of(src, name: String, key: String, vjp) = match src {
   TwinSource(r) => {
     spec_ctx_set(r.pairs, r.enc)
     dv_enter(name)
@@ -1956,14 +2829,21 @@ fn twin_of(src, name: String, key: String) = match src {
     match jvp_tail_stmts(r.body, env, DeriveCx(r.sym, ExitsToCaller(name))) {
       (stmts, a) => {
         dv_twin_done(name, a)
+        let body = if vjp {
+          reverse_twin(stmts, twin_roots(r.params, key, 0, []), exit_handle(stmts))
+        } else {
+          lower_forward(stmts)
+        }
+        let params = if vjp { r.params ++ ["__g"] } else { twin_params(r.params, key, 0, []) }
         spec_ctx_clear()
         {
           enc: r.enc,
           face: r.face,
           key: key,
           pairs: r.pairs,
-          rec: (name, twin_params(r.params, key, 0, []), stmts, r.fence),
+          rec: (name, params, body, r.fence),
           sym: r.sym,
+          vjp: vjp,
         }
       },
     }
@@ -1979,6 +2859,19 @@ fn twin_params(params, key: String, i, acc) = if i >= len(params) {
     twin_params(params, key, i + 1, acc ++ [p, tangent_param(p, i)])
   } else {
     twin_params(params, key, i + 1, acc ++ [p])
+  }
+}
+
+// The adjoint twin's roots: each active parameter's tangent name, in the
+// order its register is written.
+fn twin_roots(params, key: String, i, acc) = if i >= len(params) {
+  acc
+} else {
+  let p = list_index(params, i)
+  if field_name_eq(str_slice(key, i, i + 1), "a") {
+    twin_roots(params, key, i + 1, push(acc, (0, tangent_param(p, i))))
+  } else {
+    twin_roots(params, key, i + 1, acc)
   }
 }
 
@@ -2008,12 +2901,12 @@ fn twin_env(params, key: String, i, env) = if i >= len(params) {
 //
 // Whether a pass moved any fact the next pass would read.
 fn facts_moved(prev, next) =
-  len(next.twins) != len(prev.twins) || !same_ranks(prev.results, next.results, next.twins) || !same_site_ranks(prev.sites, next.sites) || act_rank(prev.stale) != act_rank(next.stale) || act_rank(prev.memory) != act_rank(next.memory)
+  len(next.twins) != len(prev.twins) || len(next.only) != len(prev.only) || !same_ranks(prev.results, next.results, next.twins) || !same_site_ranks(prev.sites, next.sites) || act_rank(prev.stale) != act_rank(next.stale) || act_rank(prev.memory) != act_rank(next.memory)
 
 fn same_ranks(old, fresh, twins) = all(same_rank_at(old, fresh, ??), map(twin_name_of, twins))
 
 fn twin_name_of(t) = match t {
-  (n, _, _) => n,
+  (n, _, _, _) => n,
 }
 
 fn same_rank_at(old, fresh, key: String) =
@@ -2030,6 +2923,7 @@ fn facts_none() = {
   calls: [],
   faces: [],
   memory: AInactive,
+  only: [],
   refusals: [],
   results: [],
   rings: [],
@@ -2040,8 +2934,9 @@ fn facts_none() = {
 
 // The reading, whole: the extents and twins of the final pass, every ring
 // the module allocates, the faces the table carries, the arm twins each
-// naming perform calls, and the refusals reported. Asked only when lower
-// built a reading; the scan for extents then finds each one where it stands.
+// naming perform calls, the adjoint registers the module declares, and the
+// refusals reported. Asked only when lower built a reading; the scan for
+// extents then finds each one where it stands.
 fn derive_program(fn_records, spec_recs, value_lets) = {
   let extents = derive_units(fn_records, spec_recs, value_lets)
   if len(extents) == 0 {
@@ -2055,7 +2950,8 @@ fn derive_program(fn_records, spec_recs, value_lets) = {
   }
 }
 
-fn derived_none() = {arm_faces: [], expansions: [], faces: [], rings: [], twins: []}
+fn derived_none() =
+  {adjoint_registers: 0, arm_faces: [], expansions: [], faces: [], rings: [], twins: []}
 
 fn base_source(r) = match r {
   (name, params, body, fence) => TwinSource({body: body, enc: "", face: name, fence: fence, pairs: [], params: params, sym: name}),
@@ -2074,18 +2970,87 @@ fn derive_fix(extents, table, touching, faces_of, prev, round) = match derive_pa
     derive_fix(extents, table, touching, faces_of, settle(next), round + 1)
   } else {
     // Each refusal is a report the plan's one gate reads before a byte of
-    // the module is written, on every route that compiles (pipeline.mn
-    // `gated_plan`): the derivative program is only known once the module's
-    // twins are, which is inside the plan.
+    // the module is written, on every route that compiles: the derivative
+    // program is only known once the module's twins are, which is inside
+    // the plan. The twins kept are the ones the final programs call — a
+    // twin an earlier pass demanded for a projection the extent did not
+    // take is dropped.
     each(report_refusal, next.refusals)
+    let kept = twins_called(
+      map(expansion_body, expansions),
+      twin_recs,
+      map(face_twin_name, next.faces) ++ map(arm_face_twin_name, next.arm_faces)
+    )
     {
+      adjoint_registers: fold(0, adjoint_count, kept),
       arm_faces: next.arm_faces,
       expansions: map(expansion_with_rings(??, next), expansions),
       faces: next.faces,
       rings: all_rings(next.rings),
-      twins: twin_recs,
+      twins: kept,
     }
   },
+}
+
+fn expansion_body(x) = match x {
+  (_, _, _, _, _, body) => body,
+}
+
+fn adjoint_count(n, tw) = if tw.vjp {
+  let k = key_actives(tw.key)
+  if k > n { k } else { n }
+} else {
+  n
+}
+
+// The twins the emitted programs reach: the faces' twins, reached through
+// the table, and every twin named by a direct call in an expansion or in a
+// kept twin's body, to a fixpoint. A twin demanded while a program was read
+// and never called by the projection the program took — the tangent twin of
+// a callee an extent transposed — is generated for its facts and not
+// emitted.
+fn twins_called(bodies, twin_recs, roots) =
+  twins_called_fix(twin_recs, fold(roots, twin_refs_in, bodies), 0)
+
+fn twins_called_fix(twin_recs, names, round) = {
+  let kept = filter(twin_kept(names, ??), twin_recs)
+  let grown = fold(names, twin_rec_refs, kept)
+  if len(grown) == len(names) || round > len(twin_recs) {
+    kept
+  } else {
+    twins_called_fix(twin_recs, grown, round + 1)
+  }
+}
+
+fn twin_kept(names, tw) = any(field_name_eq(twin_rec_name(tw), ??), names)
+
+fn face_twin_name(f) = match f {
+  (_, name) => name,
+}
+
+fn arm_face_twin_name(f) = match f {
+  (_, _, _, name) => name,
+}
+
+fn twin_rec_name(tw) = match tw.rec {
+  (name, _, _, _) => name,
+}
+
+fn twin_rec_refs(names, tw) = match tw.rec {
+  (_, _, body, _) => fold(names, twin_refs_in_stmt, body),
+}
+
+fn twin_refs_in(names, body) = twin_refs_in_stmt(names, body)
+
+fn twin_refs_in_stmt(names, e) = fold(names, twin_ref_add, flat_map(subtree, [e]))
+
+fn twin_ref_add(names, e) = match e {
+  LDirectCall(_, _, name, _, _) => if (str_contains(name, "$vjp") || str_contains(name, "$jvp")) && !any(field_name_eq(name, ??), names) {
+    push(names, name)
+  } else {
+    names
+  },
+  other => names,
 }
 
 // The facts the next pass reads.
@@ -2094,6 +3059,7 @@ fn settle(next) = {
   calls: next.calls,
   faces: next.faces,
   memory: next.memory,
+  only: next.only,
   refusals: [],
   results: next.results,
   rings: next.rings,
@@ -2145,7 +3111,14 @@ fn derived_find(xs, h: Int, enc: String, i) = if i >= len(xs) {
 // An extent's expansion, with the tangent rings its reach ticks: its own and
 // every twin's it reaches through the call edges.
 fn expansion_with_rings(x, facts) = match x {
-  (name, h, enc, pairs, body) => Expansion({body: body, enc: enc, install: h, pairs: pairs, rings: reach_rings(name, facts.calls, facts.rings)}),
+  (name, h, enc, pairs, mode, body) => Expansion({
+    body: body,
+    enc: enc,
+    install: h,
+    mode: mode,
+    pairs: pairs,
+    rings: reach_rings(name, facts.calls, facts.rings),
+  }),
 }
 
 fn reach_rings(unit: String, calls, rings) = {

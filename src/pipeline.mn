@@ -479,13 +479,21 @@ fn report_holes(holes, i) = if i >= len(holes) {
 // ONE home: the cold path, the warm path, and the resume verb all run
 // exactly this remainder over their ast (the persisted image's typed
 // root included), so the three routes cannot drift. Under the whole-link
-// scope it says where the heap stands when lowering ends, when the module
-// is planned and when it is written, beside the judgment's own line, so the
-// compile's cost reads as four phases rather than one peak — the emit's
-// share was found by exactly these marks (2026-09-28: two quadratic dedups,
-// 120MB), and the plan's by the one added when the allocation audit joined it.
+// scope it says where the heap stands when saturation ends, when the
+// lowering's pre-passes end, when lowering ends, when the module is planned
+// and when it is written, beside the judgment's own line, so the compile's
+// cost reads as six phases rather than one peak — the emit's share was
+// found by exactly these marks (2026-09-28: two quadratic dedups, 120MB),
+// the plan's by the one added when the allocation audit joined it, and the
+// reach walk's by the two added when the cost ratchet refused a landing
+// whose declarations had grown 3 MB and whose lowering had grown 90
+// (2026-09-30: the path-local wide-sequence type walk).
 fn compile_remainder(ast) = {
-  let lowered = ast |> saturate_pass |> lower_program |> reachable_from_main
+  let sat = saturate_pass(ast)
+  heap_line("when saturation ends")
+  let pre = lower_program(sat)
+  heap_line("when the lowering pre-passes end")
+  let lowered = reachable_from_main(pre)
   heap_line("when lowering ends")
   match gated_plan(lowered) {
     Planned(plan) => {

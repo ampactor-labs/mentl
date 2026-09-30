@@ -702,10 +702,18 @@ run_refusal() {
 # class named at least once.
 run_refusal_linked() {
   local compiler="$1" label="$2" source="$3" expected_code="$4" dir="$5"
+  local link_runtime="${6:-yes}"
   local wat="$dir/$label.wat" err="$dir/$label.compile.err"
   local rc count size
 
-  cat "${RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err"
+  # The lib set is the program's, as run_program reads it: the runtime floor
+  # by default, the derivative-reading set for a refusal the reading makes.
+  case "$link_runtime" in
+    derive)
+      cat "${DERIVE_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err" ;;
+    *)
+      cat "${RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err" ;;
+  esac
   rc=$?
   count=$(grep -c "$expected_code error:" "$err" 2>/dev/null || true)
   size=$(wc -c < "$wat" 2>/dev/null || echo 0)
@@ -1447,6 +1455,20 @@ for i in "${!compilers[@]}"; do
   # (refused: the tangent stopped at the perform).
   run_program "$compiler" derive-distort \
     "$ROOT/tests/frontier/derive-crucible/distort.mn" 42 derive "$dir"
+  # derive-grad (L4b, 2026-09-30): a product seed answered in ONE reverse
+  # sweep — {bias, drive} over a rational waveshaper, a fixed chain, the
+  # gradient read by destructuring where it is asked — against the central
+  # differences of the same function at 18 points; 42 iff all 36 partials
+  # agree to 1e-6. RED on boot 8ee3d09a (refused: a seed had to be a Float
+  # variable). derive-grad-series: the same product seed over scene 1's
+  # distortion, whose reach recurs through lib/math.mn's series — the
+  # reverse projection does not carry a recursion, so the reading REFUSES
+  # naming the vector-forward reading (`Hβ.derive.vector-forward`), never a
+  # slope of zero.
+  run_program "$compiler" derive-grad \
+    "$ROOT/tests/frontier/derive-crucible/grad.mn" 42 derive "$dir"
+  run_refusal_linked "$compiler" derive-grad-series \
+    "$ROOT/tests/frontier/derive-crucible/grad-series.mn" E_DerivativeUnreachable "$dir" derive
   run_program "$compiler" scheduled-int \
     "$ROOT/tests/frontier/mn-scheduled-fanout-int.mn" 60 yes "$dir"
   run_program "$compiler" scheduled-float \

@@ -1164,4 +1164,25 @@ authored_ref_max: 708
 # 798,792 KB, ~33 KB per line through a compiler that reclaims nothing.
 # Same rule: ~1% over the highest reading of the landed form, the m3 leg's
 # 823,860 KB.
-selfcompile_peak_kb_max: 832000
+# RAISED 832,000 -> 855,000 at L4b (2026-09-30): the linear program, its
+# transpose and the product seed (src/derive.mn +973 net lines, the adjoint
+# registers in src/backends/wasm.mn). The ratchet REFUSED the first march at
+# 980,228 KB (min of three) — +148 MB for a thousand lines, five times the
+# measured rate — and the phase marks located it: the declarations' own
+# lowering had grown 3 MB, the reachability walk around them 68 MB and the
+# plan 66 MB. The per-declaration census named the walk: the wide-sequence
+# type walk (`ty_has_wide_seq`, src/lower.mn) was path-local — a nominal
+# type reached through many paths was walked once per path, its variant
+# specs allocated each time — and every binary operator asked it, so each
+# `++` on a list of the reading's statements cost 1.8 MB, at some forty
+# sites. The fact is one per nominal type now, settled once in the lowering
+# state, and only the six operators that mint ask it. Fixed input, the fixed
+# compiler on the SAME source: the L4a′ wheel compiles to 713,798,672 bytes
+# written at 812,600 KB peak where the boot read 729,203,240 / 831,632 KB,
+# and its emit is byte-identical to the boot's; the landed source compiles
+# to 744,479,808 bytes written at 846,468 KB where the boot read
+# 886,213,368 / 980,228 KB. What remains of the rise is the source: +1,029
+# net wheel lines at ~33 KB per line, +33,868 KB over the L4a′ wheel through
+# the same compiler. Same rule: ~1% over the highest reading of the landed
+# form, the m3 leg's 850,488 KB at pin 16286d94.
+selfcompile_peak_kb_max: 859000

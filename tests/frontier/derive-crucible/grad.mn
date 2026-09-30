@@ -1,0 +1,52 @@
+// grad.mn — the gradient of a two-parameter waveshaper in ONE reverse sweep,
+// against the central differences of the same function.
+//
+// `rational_shape(x, drive, bias)` is u / (1 + u²) with u = drive·x + bias: a
+// fixed chain — no series, no loop — so the product seed {bias, drive} is
+// answered in reverse, one sweep per query answering both fields, and the
+// gradient is read by destructuring where it is asked. The oracle is the
+// central difference of the SAME function in the same program, h = 1e-5,
+// which differentiates exactly what the derivative program differentiates,
+// so a disagreement is the reverse sweep being wrong. The grid visits both
+// signs of the sample, two drives and three biases, so u crosses zero and
+// the shaper's slope changes sign.
+//
+// EXIT 42 iff every one of the 36 partials (18 points × two fields) agrees
+// with its difference to 1e-6 relative; otherwise 10 plus the number that
+// missed.
+
+fn close(a: Float, b: Float) -> Bool = abs(a - b) <= 0.000001 * (1.0 + abs(b))
+
+fn rational_shape(x: Float, drive: Float, bias: Float) -> Float = {
+  let u = drive * x + bias
+  u / (1.0 + u * u)
+}
+
+fn diff_drive(x: Float, drive: Float, bias: Float) -> Float =
+  (rational_shape(x, drive + 0.00001, bias) - rational_shape(x, drive - 0.00001, bias)) / 0.00002
+
+fn diff_bias(x: Float, drive: Float, bias: Float) -> Float =
+  (rational_shape(x, drive, bias + 0.00001) - rational_shape(x, drive, bias - 0.00001)) / 0.00002
+
+fn misses_at(x: Float, drive: Float, bias: Float) -> Int = {
+  let ws = {bias: bias, drive: drive}
+  let dd = diff_drive(x, drive, bias)
+  let db = diff_bias(x, drive, bias)
+  {
+    let {bias: gb, drive: gd} = d(rational_shape(x, ws.drive, ws.bias))
+    (if close(gd, dd) { 0 } else { 1 }) + (if close(gb, db) { 0 } else { 1 })
+  } ~> grad(ws)
+}
+
+// The grid: three samples of each sign's shape, two drives, three biases.
+fn misses_over(i: Int) -> Int = {
+  let x = if i % 3 == 0 { 0.0 - 0.6 } else if i % 3 == 1 { 0.25 } else { 0.8 }
+  let drive = if (i / 3) % 2 == 0 { 0.7 } else { 2.3 }
+  let bias = if i / 6 == 0 { 0.0 - 0.4 } else if i / 6 == 1 { 0.1 } else { 0.9 }
+  misses_at(x, drive, bias)
+}
+
+fn main() -> Int = {
+  let missed = range(0, 18) |> fold(0, (acc, i) => acc + misses_over(i))
+  if missed == 0 { 42 } else { 10 + missed }
+}

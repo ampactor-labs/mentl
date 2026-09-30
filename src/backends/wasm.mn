@@ -1820,12 +1820,19 @@ fn emit_sig_pair_of_jvp(jr) = match jr.rec {
     spec_ctx_set(jr.pairs, jr.enc)
     let s = emitted_sig_of_symbol(jr.face, byte_len(jr.key))
     spec_ctx_clear()
-    (m, jvp_sig(s, jr.key))
+    (m, if jr.vjp { vjp_sig(s) } else { jvp_sig(s, jr.key) })
   },
 }
 
 fn jvp_sig(s, key: String) = match s {
   ESig(ps, r) => ESig(enumerate(ps) |> flat_map(jvp_slot(key, ??)), r),
+}
+
+// An adjoint twin's face: the callee's parameters and the adjoint of its
+// result, an f64; its own result is a word, since the adjoints it answers
+// leave through the registers.
+fn vjp_sig(s) = match s {
+  ESig(ps, _r) => ESig(ps ++ [RF64], RI32),
 }
 
 // A twin's parameter slot: an active parameter (an `a` in the key) carries its
@@ -2059,6 +2066,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         spec_vector_collect(spec_recs, collect_call_vectors_list(lowered, []))
       ) ++ redrive_vectors(redrives)
       {
+        adjoint_registers: derived.adjoint_registers,
         alloc_units: alloc_units,
         fn_records: fn_records,
         fold_closures: fold_closures,
@@ -2094,7 +2102,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
 // reads was settled before the gate, and the registries the writes consult
 // (the twins, the string offsets, the per-fn lines) were seeded by the plan.
 fn emit_planned(plan) = match plan {
-  {alloc_units, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_seen} => {
+  {adjoint_registers, alloc_units, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_seen} => {
     let line_globals = line_global_slots(line_owners)
     emit_header()
     emit_type_section(vectors, yield_seen)
@@ -2126,6 +2134,7 @@ fn emit_planned(plan) = match plan {
     // against, advanced where each reading opens.
     if lanes_on() {
       wat_emit("  (global $__dt (mut f64) (f64.const 0))\n  (global $__dt_epoch (mut i32) (i32.const 0))\n")
+      emit_adjoint_registers(adjoint_registers)
     }
     // band B k1: the yield triple exists only in a module that yields —
     // $yield_flag (the out-of-band Koka-lineage yielding bit), $yield_op (the
@@ -4794,6 +4803,8 @@ fn walk_locals_expr(expr, acc) = match expr {
     Some(DoJvpCall) => walk_locals_list(args, acc),
     Some(DoJvpPerform) => walk_locals_list(args, acc),
     Some(DoJvpInstall) => walk_locals_list(args, acc),
+    Some(DoAdjIn) => acc,
+    Some(DoAdjOut) => walk_locals_list(args, acc),
     None => walk_locals_list(args, acc),
   },
   LPerform(h, _d, a) => // The perform's per-site pair, mirror-true to the ONE emit arm: evw holds
@@ -5056,6 +5067,8 @@ fn tail_expr_repr(expr) = match expr {
     Some(DoJvpCall) => wrapped_repr(args),
     Some(DoJvpPerform) => wrapped_repr(args),
     Some(DoJvpInstall) => wrapped_repr(args),
+    Some(DoAdjIn) => RF64,
+    Some(DoAdjOut) => RI32,
     None => if h == 0 { RI32 } else { repr_of(lookup_ty(h)) },
   },
   other => {
@@ -5364,10 +5377,21 @@ fn ref_symbol(r) = match r {
 //
 // The reading names these through the substrate channel, as it names the
 // register (`tangent_in`): one op per lane read and write, one for a mint
-// that writes its captures' tangents, and three that mark a call, a perform
+// that writes its captures' tangents, three that mark a call, a perform
 // and an install as running under the reading — the same nodes, emitted at
-// the derivative face.
-type DeriveOp = DoLaneRead | DoLaneWrite | DoMintLanes | DoJvpCall | DoJvpPerform | DoJvpInstall
+// the derivative face — and the two the reverse projection speaks: an
+// adjoint twin hands each active Float parameter's adjoint back through a
+// register of its own (`adjoint_out`), which the caller reads the instant
+// the twin returns (`adjoint_in`).
+type DeriveOp
+  = DoLaneRead
+  | DoLaneWrite
+  | DoMintLanes
+  | DoJvpCall
+  | DoJvpPerform
+  | DoJvpInstall
+  | DoAdjIn
+  | DoAdjOut
 
 fn derive_op_of(name: String) = if name == "lane_read" {
   Some(DoLaneRead)
@@ -5381,8 +5405,25 @@ fn derive_op_of(name: String) = if name == "lane_read" {
   Some(DoJvpPerform)
 } else if name == "jvp_install" {
   Some(DoJvpInstall)
+} else if name == "adjoint_in" {
+  Some(DoAdjIn)
+} else if name == "adjoint_out" {
+  Some(DoAdjOut)
 } else {
   None
+}
+
+// The adjoint register for one active parameter position.
+fn adjoint_register(j) = "__da{int_to_str(j)}"
+
+// The registers an adjoint twin writes: as many as the widest adjoint twin
+// in the module has active Float parameters, one f64 each per instance —
+// the return register's shape, one per position rather than one.
+fn emit_adjoint_registers(n) = if n <= 0 {
+  ()
+} else {
+  wat_emit("  (global ${adjoint_register(n - 1)} (mut f64) (f64.const 0))\n")
+  emit_adjoint_registers(n - 1)
 }
 
 fn lanes_on() = derivative_demanded()
@@ -5503,6 +5544,17 @@ fn emit_derive_op(h, op, args) = match op {
       _ => wat_emit("    (unreachable)  ;; jvp_install: not an install\n"),
     },
     _ => wat_emit("    (unreachable)  ;; jvp_install: no install\n"),
+  },
+  DoAdjIn => match args {
+    [LConst(_, LInt(j))] => wat_emit("    (global.get ${adjoint_register(j)})\n"),
+    _ => wat_emit("    (unreachable)  ;; adjoint_in: not a register index\n"),
+  },
+  DoAdjOut => match args {
+    [LConst(_, LInt(j)), v] => {
+      emit_expr(v)
+      wat_emit("    (global.set ${adjoint_register(j)})(i32.const 0)\n")
+    },
+    _ => wat_emit("    (unreachable)  ;; adjoint_out: not (register index, adjoint)\n"),
   },
 }
 
@@ -6239,6 +6291,10 @@ fn emit_expr(expr) = match expr {
   match derived_at(h, spec_enc_active()) {
     Some(x) => match x {
       Expansion(r) => {
+        wat_emit(match r.mode {
+          MForward => "    ;; derivative reading: forward\n",
+          MReverse => "    ;; derivative reading: reverse\n",
+        })
         wat_emit("    (global.set $__dt_epoch (i32.add (global.get $__dt_epoch) (i32.const 1)))\n")
         each(emit_ring_zero, r.rings)
         emit_expr(r.body)

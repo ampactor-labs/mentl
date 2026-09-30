@@ -3646,6 +3646,15 @@ effect LowerScope {
   ls_register_resume_binds([(String, String)])
   // the fn's bound handler name; "" = unbound (no wrap, no evidence threading)
   ls_resume_bind_of(String) -> String
+  // whether a nominal type holds a wide-element sequence anywhere in its structure — settled once per name (the reach walk's read at an ==/ordering site), None while unsettled
+  ls_wide_memo(String) -> Option(Bool)
+  // settle a nominal type's wide-sequence fact
+  ls_wide_note(String, Bool)
+  // whether the walk is inside this nominal type's own structure (the cycle cut)
+  ls_wide_walking(String) -> Bool
+  // enter a nominal type's structure; leave it
+  ls_wide_enter(String)
+  ls_wide_leave()
 }
 
 // Every refinement unification performs verify(span, pred, reason).

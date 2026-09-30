@@ -1,0 +1,34 @@
+// expect: 48
+// The reverse sweep through a choice: the forward sweep records each test
+// and each scrutinee as a residual, and the backward sweep takes the branch
+// the forward one took. With a = 3, b = 2: y = if a > b { a² } else { b² }
+// = 9, and z = match k { 0 => y·a, 1 => y·b, _ => 0 }. At k = 1, z = a²·b:
+// ∂/∂a = 2·a·b = 12, ∂/∂b = a² = 9, sum 21. At k = 0, z = a³: ∂/∂a = 3·a² =
+// 27, ∂/∂b = 0, sum 27. The program answers 21 + 27 = 48.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn grad_sum(k: Int) -> Float = {
+  let ws = {a: 3.0, b: 2.0}
+  {
+    let y = if ws.a > ws.b { ws.a * ws.a } else { ws.b * ws.b }
+    let z = match k {
+      0 => y * ws.a,
+      1 => y * ws.b,
+      _ => 0.0,
+    }
+    match d(z) {
+      {a: ga, b: gb} => ga + gb,
+    }
+  } ~> grad(ws)
+}
+
+fn main() -> Int = float_to_int(grad_sum(1) + grad_sum(0))

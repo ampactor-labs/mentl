@@ -1485,6 +1485,48 @@ and this is the STATE.
   cost: every callee that performs or calls through a value is twinned
   wherever an extent calls it, since any record it reaches may hold an
   active tangent.
+- **THE GRADIENT OF A PRODUCT SEED IS ONE REVERSE SWEEP, AND THE TWO MODES
+  ARE TWO PROJECTIONS OF ONE LINEAR PROGRAM — LANDED 2026-09-30 (L4b).**
+  derive.mn's header had promised "the rules are each construct's partials,
+  written once — read forward here, read backward by the transpose", and
+  the artifact baked the partials into forward tangent code, so nothing
+  could read them backward and a product seed refused. The walk writes a
+  LINEAR PROGRAM once now — `Lin` the tangent of one value over the primal's
+  residuals, `Beside` the statements beside the primal's — and forward
+  lowering and the transpose are its two projections: the eleven L4a/L4a′
+  micros and the three crucibles emit through the new compiler exactly as
+  through the boot but for the mode comment at each install and one local
+  per query, every value unchanged. A record or tuple of Floats seeds the
+  reading (`~> grad(ws)`), one lane per Float field, the gradient READ BY
+  DESTRUCTURING where it is asked and never built; a scalar seed is answered
+  forward, a product seed in reverse where its reach is a fixed chain — the
+  primal first with each test and scrutinee as a residual, then each query
+  transposed back to the seeds, a call into a known function answered by
+  its ADJOINT TWIN (`sym$vjp<key>`: the callee recomputed in its own frame,
+  adjoints handed back through the `$__da{j}` registers) — and refuses
+  naming `Hβ.derive.vector-forward` otherwise. Seven micros RED-first on
+  boot 8ee3d09a (28, 32, 48, 28, a `!Alloc` gradient norm at zero heap
+  growth over a thousand sweeps, and two refusals) and the frontier's
+  `derive-grad` (36 of 36 partials of a rational waveshaper against central
+  differences) beside `derive-grad-series` (the same seed over scene 1's
+  distortion REFUSES: its series recurse). Found on the way: a choice at a
+  twin's exit bound to a local left the twin with no result (a choice at a
+  body's exit stands in place); a seed destructured at the extent was read
+  whole and lost (a pattern over the seed binds its fields to their lanes);
+  the tangent twins a reverse extent demanded while it was read were
+  emitted uncalled (the calls fixpoint keeps the faces' twins and what the
+  programs name). And the cost ratchet REFUSED the first repin at 980 MB —
+  +148 MB for a thousand lines — and the census it forced found the
+  compiler, not the landing: the wide-sequence type walk was path-local
+  and asked at every binary operator, so each `++` on a list of the
+  reading's statements re-walked the LowExpr universe at 1.8 MB; the fact
+  is one per nominal type now, the emit byte-identical, the self-compile
+  134 MB lighter on the same source (`Hβ.lower.wide-seq-walk-was-path-
+  local`; the per-declaration census that found it is the named facet
+  `Hβ.lower.per-decl-cost-census`). Named:
+  `Hβ.derive.transpose-through-iteration`,
+  `Hβ.derive.transpose-through-the-record`, `Hβ.derive.bptt-priced-by-the-row`,
+  `Hβ.derive.gradient-as-a-value`.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

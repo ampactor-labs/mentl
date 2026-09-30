@@ -5892,12 +5892,20 @@ fn push_name(buf, count, name) = {
 //
 // Records are stored with their fields sorted by name; Mentl source reads
 // them by `.field`, so the physical layout is the emit's business.
-handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_yield = false, resume_binds = [] {
+handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_yield = false, resume_binds = [], wide = smap_new(), walking = [] {
   ls_register_escaping(map) => // THE FLOW-CLOSURE map (name → escaping row), computed once at lower_program
   // and read live by THE SEAM. Some(row) for a top-level fn; None (→ the leaf)
   // for a nested fn / lambda / unknown name.
   resume() with esc_rows = smap_build(map),
   ls_escaping_of(name) => resume(smap_get(esc_rows, name)),
+  ls_wide_memo(name) => // A nominal type's wide-sequence fact, settled once per name by
+  // `wide_reach_name` and read at every later site; the names whose
+  // structure the walk stands inside cut their own cycles.
+  resume(smap_get(wide, name)),
+  ls_wide_note(name, b) => resume() with wide = smap_add(wide, name, b),
+  ls_wide_walking(name) => resume(ls_find_str_local(walking, name, 0) >= 0),
+  ls_wide_enter(name) => resume() with walking = [name] ++ walking,
+  ls_wide_leave() => resume() with walking = rest(walking),
   ls_register_may_yield(b) => // band B M1.3 — the A1 gate's global short-circuit, computed once at
   // lower_program from the declared effects × their ops' inferred disciplines.
   resume() with may_yield = b,
@@ -6627,21 +6635,77 @@ fn holes_filter(pairs, uni, acc, i) = if i >= len(pairs) {
 // generic layer by reference). The recursion mirrors eq_subtys' aggregate
 // descent, so a {xs: [Float]} record or an ADT with a [Float] payload counts:
 // emit's generated eq/show/hash leaf recurses to that field and mints the same
-// f64 runtime call the flat case does. `seen` guards recursive ADTs.
-fn ty_has_wide_seq(t, seen) = match fold_strip(t) {
-  TList(e) => stride_of(seq_elem_face(e)) >= 8 || ty_has_wide_seq(e, seen),
-  TRecord(fields) => any({ (_n, fty) => ty_has_wide_seq(fty, seen) }, fields),
-  TRecordOpen(fields, _) => any({ (_n, fty) => ty_has_wide_seq(fty, seen) }, fields),
-  TTuple(elems) => any((x) => ty_has_wide_seq(x, seen), elems),
-  TName(name, _) => if ls_find_str_local(seen, name, 0) >= 0 {
-    false
-  } else {
-    any(
-      { (_tag, payloads) => any((p) => ty_has_wide_seq(p, [name] ++ seen), payloads) },
-      variant_specs_of(name)
-    )
+// f64 runtime call the flat case does.
+//
+// Whether a value of the type holds, anywhere in its structure, a sequence
+// of wide elements — the fact an ==/ordering site's reach reads to seed the
+// runtime family emit will mint there. It is a fact of the TYPE, so a
+// nominal type's answer is settled once and read at every later site
+// (`ls_wide_memo`): the walk is over the type graph, not over paths through
+// it. A name whose structure the walk already stands inside cuts the cycle,
+// and a cut is exact for the name being walked — everything beneath the cut
+// is reached from that name another way — so a walk cut only by its own name
+// settles it, while a walk cut by an ANCESTOR's name settles nothing and
+// answers for this site alone; the ancestor settles when its own walk ends.
+// Until 2026-09-30 the walk was path-local: a nominal type reached through
+// many paths was walked once per path, allocating its variant specs each
+// time, and every binary operator asked it — 1.8 MB at each `++` on a list
+// of the derivative reading's statements, at some forty sites, which is how
+// the cost ratchet found it (the self-compile's peak rose 148 MB for a
+// thousand lines).
+fn ty_has_wide_seq(t) = match wide_reach(t) {
+  (found, _cuts) => found,
+}
+
+// The walk: whether a wide sequence was found, and the in-progress names
+// cut beneath.
+fn wide_reach(t) = match fold_strip(t) {
+  TList(e) => if stride_of(seq_elem_face(e)) >= 8 { (true, []) } else { wide_reach(e) },
+  TRecord(fields) => wide_reach_list(map(field_ty_of, fields)),
+  TRecordOpen(fields, _) => wide_reach_list(map(field_ty_of, fields)),
+  TTuple(elems) => wide_reach_list(elems),
+  TName(name, _) => wide_reach_name(name),
+  _ => (false, []),
+}
+
+fn field_ty_of(field) = match field {
+  (_n, fty) => fty,
+}
+
+fn wide_reach_list(ts) = fold((false, []), wide_reach_step, ts)
+
+fn wide_reach_step(acc, t) = match acc {
+  (true, _) => acc,
+  (false, cuts) => match wide_reach(t) {
+    (true, _) => (true, []),
+    (false, more) => (false, cuts ++ more),
   },
-  _ => false,
+}
+
+fn wide_reach_name(name: String) = match ls_wide_memo(name) {
+  Some(b) => (b, []),
+  None => if ls_wide_walking(name) {
+    (false, [name])
+  } else {
+    ls_wide_enter(name)
+    let r = wide_reach_list(flat_map(spec_payloads, variant_specs_of(name)))
+    ls_wide_leave()
+    match r {
+      (true, _) => {
+        ls_wide_note(name, true)
+        (true, [])
+      },
+      (false, cuts) => {
+        let outer = filter((c) => !field_name_eq(c, name), cuts)
+        if len(outer) == 0 { ls_wide_note(name, false) } else { () }
+        (false, outer)
+      },
+    }
+  },
+}
+
+fn spec_payloads(spec) = match spec {
+  (_tag, payloads) => payloads,
 }
 
 // The wide runtime family is emit-minted BY NAME at the SAME sites emit reads a
@@ -6650,19 +6714,21 @@ fn ty_has_wide_seq(t, seen) = match fold_strip(t) {
 // list_hash_f64. Seeding the reach frontier from the operand's live type at
 // those nodes is the visitor-walk projection the runtime-contract comment names
 // (backends/wasm.mn) — the reach walk reads what emit will mint, never a hand-
-// copied guess, and a float-free program contributes nothing.
-fn wide_binop_seed(op, l) = if ty_has_wide_seq(lookup_ty(lexpr_handle(l)), []) {
-  match op {
-    BEq => ["list_eq_f64"],
-    BNe => ["list_eq_f64"],
-    BLt => ["list_compare_f64"],
-    BGt => ["list_compare_f64"],
-    BLe => ["list_compare_f64"],
-    BGe => ["list_compare_f64"],
-    _ => [],
-  }
-} else {
-  []
+// copied guess, and a float-free program contributes nothing. Only the six
+// operators that mint ask the type; every other operator seeds nothing.
+fn wide_binop_seed(op, l) = match wide_binop_name(op) {
+  Some(n) => if ty_has_wide_seq(lookup_ty(lexpr_handle(l))) { [n] } else { [] },
+  None => [],
+}
+
+fn wide_binop_name(op) = match op {
+  BEq => Some("list_eq_f64"),
+  BNe => Some("list_eq_f64"),
+  BLt => Some("list_compare_f64"),
+  BGt => Some("list_compare_f64"),
+  BLe => Some("list_compare_f64"),
+  BGe => Some("list_compare_f64"),
+  _ => None,
 }
 
 // The show/hash reach projections — the exact names emit's show_node_of /
