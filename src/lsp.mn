@@ -486,7 +486,7 @@ fn handle_did_close(_params) with Pure = ()
 // The lsp_adapter caches uri ↔ FileHandle mappings so didOpen + subsequent
 // hover/completion/etc. share the same handle. ensure_doc_open looks
 // up or opens. The cache lives in lsp_adapter handler state; access
-// here is via Interact.open_file which mentl_voice_filesystem handles.
+// here is via Workspace.open_file which mentl_voice_filesystem handles.
 //
 // v1 simplification: every ensure_doc_open performs open_file
 // unconditionally; mentl_voice_filesystem's handles_table grows

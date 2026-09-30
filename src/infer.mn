@@ -9262,6 +9262,53 @@ fn derive_handler_enames(arms, i, own acc) = if i >= len(arms) {
   derive_handler_enames(arms, i + 1, acc2)
 }
 
+// THE HANDLER IS EXHAUSTIVE OVER EVERY EFFECT ITS ARMS ANSWER — the
+// match-exhaustiveness law at a handler (SYNTAX §Handler declarations). An
+// install subtracts from its body's row the effects its arms answer, by
+// name, so the subtraction is exact only when every op of each such effect
+// has an arm: a perform of an op with no arm walks past the install at
+// runtime and reaches whatever is outside it, which the row never saw.
+// Measured 2026-09-30 (tests/micros/mn-handler-partial-refuses.mn): a
+// handler answering one op of a two-op effect, installed under a declared
+// negation of that effect, compiled clean and trapped reading the evidence
+// at the root. A handler that means to answer
+// some ops of an effect forwards the rest — an arm performing its own op
+// resolves to the enclosing handler, and the row carries it — or declares
+// the ops it answers as their own effect. Judged at the walk's registration,
+// where every effect's op list is in the env whatever the source order.
+fn handler_exhaustive_check(hname: String, arms, span: ValidSpan) = each(
+  {
+    en => match handler_missing_ops(en, arms) {
+      [] => (),
+      missing => report(EHandlerInexhaustive(hname, en, missing, span)),
+    },
+  },
+  handler_effect_names(arms)
+)
+
+// The distinct effects a handler's arms answer, in arm order.
+fn handler_effect_names(arms) = fold([], handler_effect_names_step, arms)
+
+fn handler_effect_names_step(acc, arm) = match op_effect_of(handler_arm_op_name(arm)) {
+  Some(en) => if string_in_list(acc, en) { acc } else { push(acc, en) },
+  None => acc,
+}
+
+// The effect's declared ops no arm answers.
+fn handler_missing_ops(en: String, arms) = filter(
+  { op => !any({ arm => field_name_eq(handler_arm_op_name(arm), op) }, arms) },
+  effect_op_names(en)
+)
+
+// An effect declaration's ops, read off its env entry.
+fn effect_op_names(en: String) = match env_lookup(en) {
+  Some(entry) => match entry {
+    (_, _, EffectDeclKind(ops)) => ops,
+    _ => [],
+  },
+  None => [],
+}
+
 fn derive_handler_ename(arms, fallback: String) = if len(arms) == 0 {
   fallback
 } else {
@@ -9285,6 +9332,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   // arm inference; the pre-registered scheme is overwritten by env_extend below
   // and again at re-generalization after the arms.
   let ename = derive_handler_ename(arms, hname)
+  handler_exhaustive_check(hname, arms, span)
   let inst_vars = mint_instance_vars(ename, effect_instance_arity(ename), 0)
   let inst_ty = TName(ename, map(TVar, inst_vars))
   let inst_h = mint(Inferred("effect '{ename}' instance"))
@@ -9611,6 +9659,19 @@ fn bind_handler_state_names(state_binds, hname, span: ValidSpan) = each(
 effect ResumeSummaries {
   summary_of(String) -> ResumeUse
   tail_params_of(String) -> [Int]
+}
+
+// The write is its own effect because its two handlers hold different
+// capabilities: the standing ctx answers reads AND the one write the root
+// performs; a frozen round answers reads alone. One effect for both made the
+// frozen round a PARTIAL handler — an install subtracting `ResumeSummaries`
+// whole while a write would have walked past it — and the exhaustive-handler
+// rule refused it (`E_HandlerInexhaustive`, 2026-09-30). A forwarding arm was
+// the first fix and the row killed it: the frozen round is installed where no
+// ctx encloses it, so the forwarded write reached the executable root and the
+// boot refused the wheel (`E_EffectUnhandled`). A read capability and a write
+// capability are two effects; each handler answers what it holds, whole.
+effect ResumeSummariesWrite {
   set_summaries([(String, ResumeUse)], [(String, [Int])])
 }
 

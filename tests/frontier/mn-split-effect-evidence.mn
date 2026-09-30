@@ -1,19 +1,17 @@
-// THE SAME KEY ERROR AT THE RUNTIME WALK. The compile-time walk stopped
-// asking "does this handler cover the effect" at pin 5c39a1a7; the runtime
-// one still does — `ev_perform_node` keys on `key@0`, the interned EFFECT,
-// and the chain carries one node per effect GROUP.
+// THE RUNTIME WALK'S EMPTY ARM SLOT IS UNCONSTRUCTIBLE (L5, 2026-09-30).
+// This shape reached the evidence walk with a handler whose arm region had
+// a gap: `call_b` put the perform behind a frame fence, a second declarer
+// of `b` made the op ambiguous for the singleton tier, and the installed
+// pair covered one effect's disjoint op sets with the non-declaring handler
+// innermost — so `ev_perform_node` had to skip a node whose slot for `b`
+// was empty (it once dispatched on whatever was there, exit 15 for 33). A
+// handler is exhaustive over every effect its arms answer now: no arm
+// region has a gap, and the declaration refuses before any walk exists.
+// The runtime skip stays in the emitted walk as the invariant's twin,
+// unreachable by construction.
 //
-// This shape reaches it. `call_b` puts the perform behind a frame fence, so
-// the lexical walk cannot answer; a second declarer of `b` makes the op
-// ambiguous, so there is no unique handler name for the singleton walk
-// either; and the installed pair covers ONE effect's DISJOINT op sets with
-// the non-declaring handler innermost. The effect-keyed walk therefore stops
-// at `ha`, whose group for `Two` holds one arm — and `b`'s slot is 1, past
-// the end of it.
-//
-// Where the compile-time version of this emitted a call to a named arm that
-// does not exist and was caught by the assembler, this one indexes past a
-// live arm region and dispatches on whatever is there. Expected: 11 + 22 = 33.
+// The frontier expects E_HandlerInexhaustive, exit nonzero, zero WAT bytes.
+// Before this landing the leg ran it to 33.
 effect Two {
   a(n: Int) -> Int
   b(n: Int) -> Int
@@ -27,8 +25,8 @@ handler hb {
   b(n) => resume(n + 2),
 }
 
-// A second declarer of `b`, never installed — its only job is to make the op
-// ambiguous so the singleton tier declines and the evidence tier answers.
+// A second declarer of `b`, never installed — its only job was to make the
+// op ambiguous so the singleton tier declined and the evidence tier answered.
 handler hb_alt {
   b(n) => resume(n + 3),
 }

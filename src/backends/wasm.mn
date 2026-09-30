@@ -2357,6 +2357,15 @@ handler preinstall_init_scope(own_handler, init_span) {
     if hn == own_handler { report(EInitPerformsOwnOp(hn, op, init_span)) } else { () }
     resume()
   },
+  visit_effect_demand(n) => // The inits' demands are the module's demands: both flow on to the
+  // collector outside (an arm's own perform resolves OUTER of its install).
+  // The scope is exhaustive over `EmitEffectCensus` by these two arms
+  // (`E_HandlerInexhaustive`, 2026-09-30).
+  {
+    visit_effect_demand(n)
+    resume()
+  },
+  drain_effect_census() => resume(drain_effect_census()),
 }
 
 handler fn_names_collector with buf = make_list(64), count = 0 {
@@ -2491,10 +2500,15 @@ fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], hash:
 } ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> fn_lines_collector ~> wasi_ops_collector ~> yield_seen_collector ~> effect_census_collector
 
 // The names of a decl the module does not emit, dropped where they are
-// visited; every other fact of its body flows on to the collectors outside.
+// visited; every other fact of its body flows on to the collectors outside —
+// the drains included, forwarded to the collectors that hold the names
+// (exhaustive over both effects it answers: `E_HandlerInexhaustive`,
+// 2026-09-30).
 handler names_not_emitted {
   visit_fn(_name) => resume(),
   visit_top_fn(_name) => resume(),
+  drain_fn_names() => resume(drain_fn_names()),
+  drain_top_fn_names() => resume(drain_top_fn_names()),
 }
 
 // register_show_literals — fire visit_string for every String literal the

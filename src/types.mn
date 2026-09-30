@@ -2572,6 +2572,12 @@ type DiagKind
   // difference between a program that traps and one that never ships
   // (handler name, op name).
   | EInitPerformsOwnOp(String, String, Span)
+  // handler, effect, the ops of that effect no arm answers — the
+  // match-exhaustiveness law at a handler: an install absorbs every op of
+  // the effects its arms answer, so an op with no arm would escape the row
+  // (measured 2026-09-30: `fn f() with !State = (get() + inc()) ~> only_inc`
+  // compiled clean and trapped)
+  | EHandlerInexhaustive(String, String, [String], Span)
   // `<~ delay(n)` where n is a runtime value. The line is a ring whose
   // depth the emit sizes from the literal, allocated where its owner is
   // built, so a depth the medium cannot read is a depth it cannot hold —
@@ -2859,6 +2865,7 @@ fn diag_span(d) with Pure = match d {
   EFeedbackNoContext(s) => s,
   EZeroDelayFeedback(s) => s,
   EInitPerformsOwnOp(_, _, s) => s,
+  EHandlerInexhaustive(_, _, _, s) => s,
   EComputedDelayDepth(s) => s,
   ERestOutsideDestructure(s) => s,
   ERowAliasCycle(_, s) => s,
@@ -2937,6 +2944,7 @@ fn diag_source(d) with Pure = match d {
   EFeedbackNoContext(_) => "infer",
   EZeroDelayFeedback(_) => "infer",
   EInitPerformsOwnOp(_, _, _) => "effects",
+  EHandlerInexhaustive(_, _, _, _) => "effects",
   EComputedDelayDepth(_) => "infer",
   ERestOutsideDestructure(_) => "infer",
   ERowAliasCycle(_, _) => "effects",
@@ -3014,6 +3022,7 @@ fn diag_code(d) with Pure = match d {
   EFeedbackNoContext(_) => "E_FeedbackNoContext",
   EZeroDelayFeedback(_) => "E_ZeroDelayFeedback",
   EInitPerformsOwnOp(_, _, _) => "E_InitPerformsOwnOp",
+  EHandlerInexhaustive(_, _, _, _) => "E_HandlerInexhaustive",
   EComputedDelayDepth(_) => "E_ComputedDelayDepth",
   ERestOutsideDestructure(_) => "E_RestOutsideDestructure",
   ERowAliasCycle(_, _) => "E_RowAliasCycle",
@@ -3299,6 +3308,11 @@ fn diag_refuses(d) with Pure = match d {
   // never read the depth at all, measured by probe (delay(0), delay(1)
   // and delay(3) each returned 30).
   True,
+  EHandlerInexhaustive(_, _, _, _) => // ARMED at birth (2026-09-30): the judgment is the declaration's own
+  // arms against the effect's declared ops, both parse facts; the wheel
+  // and the runtime floor carry zero partial handlers, and the one shape
+  // that admitted one was a false absence proof that trapped.
+  true,
   EInitPerformsOwnOp(_, _, _) => // ARMED at birth (2026-08-18): the judgment is STRUCTURAL, read from
   // the lowered install itself — a direct-perform inside `LHandleWith`'s
   // own inits list, naming that same install's handler. No resolution
@@ -3406,6 +3420,7 @@ fn diag_applicability(d) with Pure = match d {
   // move happens after it — never a patch.
   Unspecified,
   EPatternInexhaustive(_, _, _) => HasPlaceholders,
+  EHandlerInexhaustive(_, _, _, _) => HasPlaceholders,
   EEffectUnhandled(_, _, _) => MaybeIncorrect,
   EThreadedBranchEffect(_, _, _) => MaybeIncorrect,
   EDerivativeUnreachable(_, _) => Unspecified,
@@ -3470,6 +3485,7 @@ fn diag_message(d) with !Mutate = match d {
   EFeedbackNoContext(_) => "`<~` used outside an iterative context",
   EZeroDelayFeedback(_) => "`<~ delay(0)` closes a cycle with no delay — the prior would be the value being computed. Raise the delay to at least 1",
   EInitPerformsOwnOp(hname, op, _) => "handler {hname} performs {op} while building itself — in a state init or a config default, both of which run before the install exists — and {hname} is what answers {op}, so nothing can absorb it. Move the perform into an arm, or compute the value from a handler installed around this one",
+  EHandlerInexhaustive(hname, en, missing, _) => "handler {hname} answers no {join(", ", missing)} of {en} — an install absorbs every op of the effects its arms answer, so a perform of the missing op would reach nothing and read garbage evidence. Add the arm; an arm that performs its own op forwards it to the enclosing handler (`op(…) => resume(op(…))`), and the ops this handler answers can be declared as their own effect",
   EComputedDelayDepth(_) => "the delay depth must be a literal — a feedback line is a fixed set of slots, and a depth read at runtime would silently get one. Write the depth, or hold the history yourself",
   ERestOutsideDestructure(_) => "`...` rest element outside a destructuring parameter — rest lives in patterns (`([h, ...t]) =>`, `let [h, ...t] =`), and `++` joins lists in expressions",
   ERowAliasCycle(nm, _) => "row alias `{nm}` expands through itself — a row is a finite signed set; name the effects directly",

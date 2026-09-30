@@ -1446,7 +1446,7 @@ handler name(cfg_p1: T1, cfg_p2: T2) with state_a = init_a, state_b = init_b {
 Three parts:
 1. **Config parameters** in `(...)` — closure-captured at install site.
 2. **State** after `with` — internal state evolving across arms. The same slot, read by position, may instead carry the handler's own effect row (`handler h with !F { … }` — §«Negation guards on handlers»): a `!`, or a name not followed by `=`, opens a row; a name followed by `=` opens the state inits.
-3. **Op arms** in `{...}` — one arm per effect operation handled.
+3. **Op arms** in `{...}` — one arm per effect operation, EVERY operation of every effect the arms answer (§«A handler is exhaustive» below).
 
 ### Examples
 
@@ -1486,6 +1486,42 @@ handler bounded_log(prefix: String) with count = 0, max = 100 {
 ```
 
 A state init may read the handler's config — `handler window(size) with buf = make_list(size)`, `with n = cfg.x` — because each install builds its state from the config it was given, as a function of its own record, before the handler is installed: an init performs in the installer's world, and one that performs its own handler's ops is `E_InitPerformsOwnOp`. *(Real 2026-09-28, R0c: until then the install lowered the declaration's inits in its own scope, where the config does not exist, so only a bare `with n = cfg` worked and anything more reached a floor and trapped.)*
+
+### A handler is exhaustive
+
+An effect declaration is a sum of requests and a handler is the arm list over
+it, so the match law (§«Exhaustiveness») binds a handler as it binds a
+`match`: **the arms answer EVERY op of every effect they answer.** A handler
+with an arm for `inc` and none for `get` is `E_HandlerInexhaustive` at the
+`handler` keyword, naming the ops no arm answers — ARMED, never a narration.
+
+The law is what makes the install's row exact. `expr ~> h` subtracts from
+`expr`'s row the effects `h`'s arms answer, by name; a perform of an op with
+no arm would walk past the install at runtime and reach whatever is outside
+it, which the row never saw. Measured 2026-09-30, and the last known hole
+under `!E`: `fn f() with !State = (get() + inc()) ~> only_inc`, `only_inc`
+answering `inc` alone, compiled clean under the negation and trapped reading
+the evidence at the root (`tests/micros/mn-handler-partial-refuses.mn`).
+
+A handler that means to answer some ops of an effect FORWARDS the rest — an
+arm that performs its own op resolves to the enclosing handler (deep-handler
+semantics), and the row carries what it forwards:
+
+```
+handler only_inc {
+  inc() => resume(1),
+  get() => resume(get()),      // forwarded to the handler around this one
+}
+
+fn f() = (get() + inc()) ~> only_inc      // row: State — `get` escapes f
+fn main() = (f()) ~> both                 // 20 + 1
+```
+
+`fn f() with !State` over that body refuses (`E_EffectMismatch`: the
+forwarded `get` escapes), which is exactly what the partial handler hid. The
+other honest form declares the ops the handler answers as their own effect.
+Koka and Effekt require the same; the split-effect pair — two handlers
+covering one effect's disjoint op sets — is written as two effects.
 
 ### State updates via `with` on resume
 
@@ -2433,6 +2469,7 @@ token, so there is nothing to lift.*
 | `E_OwnershipViolation`| `own` consumed twice / escapes ref scope      | `Unspecified`        | restructure to single-consume or use `ref`     |
 | `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident — the bump heap never frees — so it is a use-after-free the day §5.O layer 3's arena gives `Consume` a real reclaim | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
 | `E_HandlerUninstallable` | handler arms need effects context disallows | `MaybeIncorrect`   | widen ambient row or restructure handler       |
+| `E_HandlerInexhaustive` | a handler's arms answer some ops of an effect and not others (§«A handler is exhaustive») — an install absorbs every op of the effects its arms answer, so the missing op would escape the row and reach nothing at runtime. ARMED at birth, 2026-09-30, born at wheel-zero; the shape it refuses was a false absence proof that trapped | `HasPlaceholders` | add the arm; forward the op outward (`op(…) => resume(op(…))`); or declare the ops this handler answers as their own effect |
 | `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame writes its state (`resume … with`), lies beyond the frame fence, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
 | `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — into an aggregate, across a multi-shot perform, off a line ticked by forward code or a line a closure record owns, or through another `d` — a mint, an install or a state write under the reading that would store a lost tangent into a record, or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED at birth: the alternative is a slope of zero the program never has | `Unspecified` | keep the value out of the aggregate until it is asked for, or seed the reading at a Float variable |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |

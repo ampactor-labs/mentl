@@ -35,6 +35,71 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-30 · pin c3ca5eeb1a62abca (CLEAN m2 == m3) · A HANDLER IS EXHAUSTIVE — THE LAST KNOWN
+  HOLE UNDER `!E` WAS THE PARTIAL HANDLER, NOT INSTALL IDENTITY.
+  L5 (A6 as measured). The sprint's design for A6 was install identity: a
+  row carrying `E(install)`, install-precise masks, evidence naming the
+  install. The felt walk ran first, four probes on boot 16286d94, and
+  refuted the premise. `((twice()) ~> h) ~> h` refuses at the root, and the
+  refusal is the row being EXACT — the inner install absorbs `E` for the
+  whole extent and its arm's own perform resolves outer, so the outer arms
+  are unreachable and E reaches the root; Koka refuses the same program
+  (`Hβ.effects.op-granular-arm-reach` names the finer verdict, precision
+  never soundness). A recursive fn installing the same handler per level
+  runs (exit 2); a closure escaping into a second install of the same
+  handler runs (exit 7) — dynamic innermost dispatch, as SYNTAX documents.
+  The hole was one probe over: `fn f() with !State = (get() + inc()) ~>
+  only_inc`, `only_inc` answering `inc` alone, compiled CLEAN under the
+  negation and trapped at the root (exit 134) — the install subtracted the
+  whole of `State` by name while `get` walked past it at runtime. §0's
+  property (2) false at a shape any program writes.
+  THE LAW: a handler is exhaustive over every effect its arms answer — the
+  match-exhaustiveness law at a handler, Koka/Effekt parity.
+  `E_HandlerInexhaustive(handler, effect, missing, span)` at registration,
+  ARMED at birth, `HasPlaceholders`; the honest partial forms are a
+  forwarding arm (`get() => resume(get())` — the row carries the forwarding,
+  so `!State` over that body refuses as it should) or the ops as their own
+  effect. Fixtures RED-first on 16286d94: `mn-handler-partial-refuses`
+  (compiled clean, exit 134), `mn-handler-forwarding-arm` (21 under an
+  enclosing `both`), `mn-handler-forwarding-arm-refuses`; the frontier's
+  two split-effect legs — exactly the refused shape — are refusal contracts.
+  THE FIRST CENSUS found FIVE partial handlers in the wheel and its runtime,
+  every one a place `!E` was false: lib/prelude's `each_handler` (no
+  `result` arm — the floor every micro links, so the first battery through
+  the new m2 refused 225 of 253 fixtures at the prelude; it answers unit
+  now); src/infer's `summaries_frozen`, read-only over a read/write effect;
+  src/backends/wasm's `preinstall_init_scope` (two census ops) and
+  `names_not_emitted` (two drains), both forwarding now; and src/voice's
+  `Interact`, ONE effect whose two handlers answered disjoint halves and
+  were installed nested — split into `Workspace` (files, edit, runs) and
+  `Interact` (attention, voice, session).
+  KILLS. (1) `summaries_frozen`'s first fix was a forwarding arm, and the
+  ROW killed it before any gate ran: the frozen round is installed where no
+  standing ctx encloses it, so the forwarded write reached the executable
+  root and the boot refused the wheel (`E_EffectUnhandled`). A forwarding
+  arm CLAIMS an enclosing handler; where none exists the honest form is the
+  split, and `ResumeSummariesWrite` is the write capability on its own.
+  (2) "the wheel is at zero" was measured through the BOOT, which does not
+  carry the rule; the m2 census is the measurement, and it was five.
+  (3) The nested shape as a false refusal — the premise of the identity
+  design — died at probe 1. (4) The pre-fix python census over the tree
+  reported 64 partials and 59 were cross-fixture name collisions (`E`,
+  `Tick`, `Choice` declared per fixture); the compiler's own census through
+  m2 is the arbiter, and the hand census was the drift the verb map names.
+  (5) The first repin was REFUSED at the comment-ref ratchet (0 → 2): the
+  new check's comment quoted the fixture's program with its handler and op
+  names backticked, and a backticked name is a reference the wheel must
+  resolve — prose about a fixture names the fixture. (6) The frontier's
+  prelude-floor ceiling refused the exhaustive `each_handler` at 2796
+  against 2794; the arm is the floor's own growth and the ceiling carries
+  it.
+  THE BOARD: micros 253/253 through the new m2, crown 102/102, frontier 448
+  pass / 1 red (the prelude-floor ceiling at 2796 against 2794 — raised with
+  the arm's record) / 2 expected-red through the fresh m2 and 449 / 0 / 2 at
+  the pin's board with the ceiling carried; the wheel's own census through
+  m2 is zero; the m3 leg 14.93s wall · 848,160 KB peak RSS against the 859,000
+  ceiling (850,488 at the prior pin). CLEAN m2 == m3, census 0, repinned
+  boot ← m2.
 - 2026-09-30 · pin 16286d94fe225527 (CLEAN m2 == m3) · THE GRADIENT OF A PRODUCT SEED IS ONE
   REVERSE SWEEP — TWO MODES, TWO PROJECTIONS OF ONE LINEAR PROGRAM.
   L4b. src/derive.mn's header had promised "the rules are each construct's

@@ -245,11 +245,16 @@ handler fold_handler(f, init) with acc = init {
   result() => resume(acc),
 }
 
+// Exhaustive over `Iterate` like its siblings: `each` collects nothing, so
+// its `result` is unit. The arm answered `yield` alone until 2026-09-30,
+// when the exhaustive-handler rule refused it (`E_HandlerInexhaustive`) —
+// an install of a half-handler subtracts the WHOLE effect from the row.
 handler each_handler(f) {
   yield(elem) => {
     f(elem)
     resume()
   },
+  result() => resume(),
 }
 
 handler any_handler(pred) with found = false {

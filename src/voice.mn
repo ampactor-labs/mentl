@@ -312,24 +312,16 @@ type Intent
 // effects the user confirms are OK
 type IntentId = IntentId(Int)
 
-// Every surface that Mentl speaks through — LSP adapter, batch CLI,
-// terminal IDE, web playground, desktop client — is a peer handler
-// on Interact. The Interact effect is what the surfaces speak; the
-// surfaces decide transport. LSP is ONE transport, not the paradigm.
-//
-// Handlers on Interact compose the Situation from graph reads,
-// apply silence_predicate, render VoiceLine per §2.7.3's
-// Tentacle→FormKind mapping. mentl_voice_default is the canonical
-// implementation (MV.2.e peer sub-handle).
-//
-// All ops are OneShot: each Interact op is one human gesture → one
-// handler response. Multi-shot lives deeper, inside Synth and the
-// speculative oracle, not at this surface.
-//
-// Primitives: #2 (this effect), #1 (ops read the graph),
-// #4 (handler rows compose with Interact via `~>`),
-// #7 (gradient surfaces through propose + speak).
-effect Interact {
+// The project on disk and the runs over its files — the half of a surface's
+// vocabulary that lives beside the handles table, answered whole by
+// `mentl_voice_filesystem`. These ops were the first half of `Interact`
+// through 2026-09-29; on 2026-09-30 the exhaustive-handler rule
+// (`E_HandlerInexhaustive`) refused both voice handlers: each answered
+// half of one effect, so an install of either subtracted the WHOLE of
+// Interact from the body's row while the other half walked past it at
+// runtime — a `!Interact` between the two installs would have been a
+// false absence proof. Two implementers of disjoint halves are two effects.
+effect Workspace {
   // ─── Project / file ops ─────────────────────────────────────────
   // Text-files-first is a hard constraint. These ops are first-class.
   project_root() -> Path
@@ -345,6 +337,35 @@ effect Interact {
   // Graph is live; the edit either succeeds (graph updates) or is
   // rejected with a diagnostic.
   edit(FileHandle, Patch) -> EditOutcome
+  // ─── Run ops (3) ────────────────────────────────────────────────
+  // Batch-shape operations. Terminal IDE exposes as commands; CLI
+  // invokes directly. `run_audit` projects docs/ / PLAN / drift into
+  // one report — F.1/F.2/F.3 substrate dissolution lives here.
+  run_compile(FileHandle) -> CompileOutcome
+  run_check(FileHandle) -> CheckOutcome
+  run_audit(FileHandle) -> AuditReport
+}
+
+// Every surface that Mentl speaks through — LSP adapter, batch CLI,
+// terminal IDE, web playground, desktop client — is a peer handler
+// on Interact. The Interact effect is what the surfaces speak; the
+// surfaces decide transport. LSP is ONE transport, not the paradigm.
+// The project on disk is `Workspace`, a second effect answered by a
+// second handler; a surface installs both.
+//
+// Handlers on Interact compose the Situation from graph reads,
+// apply silence_predicate, render VoiceLine per §2.7.3's
+// Tentacle→FormKind mapping. mentl_voice_default is the canonical
+// implementation (MV.2.e peer sub-handle).
+//
+// All ops are OneShot: each Interact op is one human gesture → one
+// handler response. Multi-shot lives deeper, inside Synth and the
+// speculative oracle, not at this surface.
+//
+// Primitives: #2 (this effect), #1 (ops read the graph),
+// #4 (handler rows compose with Interact via `~>`),
+// #7 (gradient surfaces through propose + speak).
+effect Interact {
   // ─── Attention ops (2) ──────────────────────────────────────────
   // Caret-of-attention is (Handle, Reason). focus sets it; cursor
   // reads it.
@@ -357,13 +378,9 @@ effect Interact {
   consult(Question) -> Answer
   propose(CaretTarget) -> VoiceLine
   speak(VoiceLine)
-  // ─── Run ops (4) ────────────────────────────────────────────────
-  // Batch-shape operations. Terminal IDE exposes as commands; CLI
-  // invokes directly. `run_audit` projects docs/ / PLAN / drift into
-  // one report — F.1/F.2/F.3 substrate dissolution lives here.
-  run_compile(FileHandle) -> CompileOutcome
-  run_check(FileHandle) -> CheckOutcome
-  run_audit(FileHandle) -> AuditReport
+  // ─── Query op (1) ───────────────────────────────────────────────
+  // A question over the graph, answered by the voice; the batch runs
+  // over a file are `Workspace`'s.
   run_query(Question) -> Answer
   // ─── Session ops (4) ────────────────────────────────────────────
   // Intent shapes the silence predicate and Trace tentacle's weights.
@@ -1036,6 +1053,8 @@ fn intents_without(intents, id) = filter({ (head_id, _) => !intent_id_eq(head_id
 //   MV.2.e.Filesystem — the file ops (project_root through file_text)
 //   MV.2.e.Session  — declare_intent / retract_intent / history
 //   MV.2.e.lsp_adapter — separate handler; the LSP transport surface
+// The file, edit and run ops are `Workspace`'s since 2026-09-30, answered
+// whole by mentl_voice_filesystem; this handler answers `Interact` whole.
 //
 // Primitives audited: #1 (Graph — cursor handle indexes graph),
 // #2 (this handler IS primitive #2 incarnate), #4 (handler row composes
@@ -1201,14 +1220,16 @@ handler mentl_voice_default with caret_now = Caret(0, Inferred("session start"))
 // ─── MV.2.e.Filesystem — mentl_voice_filesystem handler (FX.B) ────────
 //
 // Peer handler to mentl_voice_default. Holds the FileHandle table as
-// state and projects 7 of 8 Interact file ops through the extended
+// state and answers `Workspace` whole through the extended
 // Filesystem effect (FX.A.basics + future FX.A.dirent for tree_list).
 // Composition via ~> chain at the LSP adapter layer per FX walkthrough
 // §3.4 + Insight #1 (handler chain IS capability stack):
 //   surface ~> mentl_voice_filesystem ~> mentl_voice_default ~> wasi_filesystem
 //
-// The two Mentl handlers handle disjoint Interact op subsets; row
-// subsumption proves disjointness at install time.
+// Each of the two handlers answers one effect whole — `Workspace` here,
+// `Interact` in the voice. They were two halves of one `Interact` until
+// 2026-09-30, "disjoint op subsets" that no row could tell apart: the
+// exhaustive-handler rule refused both, and the split is the honest form.
 //
 // State (per FX walkthrough §3.1 + Insight #9 records-as-handler-state):
 //   handles_table     — List<(FileHandle, Path, String)> mapping each

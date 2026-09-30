@@ -818,7 +818,9 @@ and this is the STATE.
   the world at reify, persist/fork it as an image record, refuse a mismatched
   resume through the row check every `~>` edge already uses — and the
   identity half (an outer install shadowed by an inner one of the same
-  handler, `Hβ.effects.arm-world-static-rule`) is A6's.
+  handler, `Hβ.effects.arm-world-static-rule`) was measured 2026-09-30 as
+  the row being exact, not blind — L5's bullet below carries the hole that
+  measurement found instead, the partial handler.
 - **O(1) complexity** is the DIRECTION, not built. Honest contract: O(1) chase,
   O(changed cone) incremental, O(reachable) image, O(1) reclaim-after-proof.
 - **Executable refusal** is PARTIAL — read `diag_refuses` for the live list and
@@ -1017,8 +1019,9 @@ and this is the STATE.
   the frontier's escaped-install leg a compile-time refusal where it pinned
   a runtime 134. What the row still cannot see: an outer install whose arms
   are shadowed by an inner install of the same handler (`((twice()) ~> h)
-  ~> h` runs to 20 and refuses) — install identity, A5/A6
-  (`Hβ.effects.arm-world-static-rule`).
+  ~> h` runs to 20 and refuses) — measured 2026-09-30 as effect-granular
+  PRECISION, not a hole (`Hβ.effects.op-granular-arm-reach`); the hole
+  that walk found was the partial handler, closed the same day (L5, below).
   (`Hβ.effects.root-gate-credits-an-install-that-had-not-opened`,
   `Hβ.effects.reachable-perform-with-no-install-compiles`,
   `Hβ.effects.an-arm-may-not-perform-its-own-handlers-ops` — all CLOSED.)
@@ -1527,6 +1530,41 @@ and this is the STATE.
   `Hβ.derive.transpose-through-iteration`,
   `Hβ.derive.transpose-through-the-record`, `Hβ.derive.bptt-priced-by-the-row`,
   `Hβ.derive.gradient-as-a-value`.
+- **A HANDLER IS EXHAUSTIVE OVER EVERY EFFECT ITS ARMS ANSWER — CLOSED
+  2026-09-30 (L5, A6 as measured).** A6 was designed as install identity,
+  and four probes on boot 16286d94 refuted the premise before a line was
+  written: `((twice()) ~> h) ~> h` refuses at the root because the row is
+  EXACT — the inner install absorbs `E` for the whole extent and its arm's
+  own perform resolves outer, so the outer arms are unreachable; Koka
+  refuses the same program (`Hβ.effects.op-granular-arm-reach` names the
+  finer verdict, precision never soundness) — and a recursive same-handler
+  install (exit 2) and a closure escaping into a second install of the
+  same handler (exit 7) run under dynamic innermost dispatch as SYNTAX
+  documents. The hole was one probe over: a PARTIAL handler. `fn f() with
+  !State = (get() + inc()) ~> only_inc`, `only_inc` answering `inc` alone,
+  compiled CLEAN under the negation and trapped at the root (exit 134) —
+  the install subtracted the whole of `State` by name while `get` walked
+  past it at runtime, §0's property (2) false at a shape any program
+  writes. A handler is exhaustive now — the match-exhaustiveness law at a
+  handler, Koka/Effekt parity — `E_HandlerInexhaustive` at registration,
+  armed at birth, naming the ops no arm answers; the honest partial forms
+  are a forwarding arm (the row carries the forwarding, so `!State` over
+  that body refuses as it should) or the ops as their own effect. The
+  first census found FIVE partial handlers in the wheel and its runtime,
+  each a place `!E` was false: the prelude's `each_handler` (no `result`
+  arm — the floor every micro links), infer's read-only `summaries_frozen`
+  over a read/write effect, emit's `preinstall_init_scope` and
+  `names_not_emitted`, and voice's `Interact`, one effect whose two
+  handlers answered disjoint halves, split into `Workspace` and
+  `Interact`. What it exposed: the first fix of `summaries_frozen` was a
+  forwarding arm and the ROW killed it — the frozen round is installed
+  where no ctx encloses it, so the forwarded write reached the root and
+  the boot refused the wheel; a forwarding arm claims an enclosing handler,
+  and where none exists the split is the form (`ResumeSummariesWrite`).
+  Install identity as a mechanism is owed by no measurement; its felt face
+  is `Hβ.effects.served-by-projection`, its TIME face band B's.
+  (`Hβ.effects.handler-must-be-exhaustive` CLOSED; the identity half of
+  `Hβ.effects.arm-world-static-rule` resolved.)
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

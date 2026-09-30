@@ -1,0 +1,22 @@
+// expect: refuse E_HandlerInexhaustive
+// A handler is exhaustive over every effect its arms answer — the
+// match-exhaustiveness law at a handler. `only_inc` answers `inc` alone, and
+// its install subtracts the whole of `State` from the body's row by name, so
+// `f`'s declared `!State` was a FALSE ABSENCE PROOF: on boot 16286d94 this
+// program compiled clean and `get()`, walking past the install at runtime,
+// read garbage evidence at the root (exit 134). The declaration refuses now,
+// naming the op no arm answers; forwarding it (`get() => resume(get())`)
+// or declaring `inc` as its own effect is the honest form
+// (tests/micros/mn-handler-forwarding-arm.mn).
+effect State {
+  inc() -> Int
+  get() -> Int
+}
+
+handler only_inc {
+  inc() => resume(1),
+}
+
+fn f() with !State = get() + inc() ~> only_inc
+
+fn main() -> Int = f()

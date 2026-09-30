@@ -1,0 +1,23 @@
+// expect: refuse E_EffectMismatch
+// The forwarding arm keeps the row honest: `only_inc` forwards `get`
+// outward, so its install re-adds `State` to `f`'s body row and the
+// declared `!State` refuses — `get` does escape `f`. The partial handler
+// of tests/micros/mn-handler-partial-refuses.mn hid exactly this escape.
+effect State {
+  inc() -> Int
+  get() -> Int
+}
+
+handler both {
+  inc() => resume(10),
+  get() => resume(20),
+}
+
+handler only_inc {
+  inc() => resume(1),
+  get() => resume(get()),
+}
+
+fn f() with !State = get() + inc() ~> only_inc
+
+fn main() -> Int = f() ~> both

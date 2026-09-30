@@ -3139,19 +3139,26 @@ for i in "${!compilers[@]}"; do
     fi
   done
 
-  # ─── THE DISPATCH KEY IS THE OP (Hβ.effects.one-walk-three-
-  # implementations) ─────────────────────────────────────────────────
-  # Two fixtures on one law. The split-effect pair was RED: covering an
-  # effect is not answering an op, and keying the walk on the effect
-  # resolved `b` to the handler that only implements `a` — zero
-  # diagnostics, then `(call $op_ha_b)` at the assembler. The
-  # deep-handler arm was already GREEN and stays as a pin: an arm that
-  # performs the op it handles must resolve OUTWARD, and re-keying the
-  # walk must not disturb that. ASSEMBLE is in the leg for the same
-  # reason as the reification pair — check alone called the RED one green.
-  for ok in "split-effect-op-key:mn-split-effect-op-key:33:the op key walks past a handler that only covers the effect" \
-            "split-effect-evidence:mn-split-effect-evidence:33:the RUNTIME walk skips a node whose arm slot for this op is empty" \
-            "deep-handler-arm:mn-deep-handler-arm:51:an arm's own perform resolves outward, not into its own install"; do
+  # ─── A HANDLER IS EXHAUSTIVE (L5, 2026-09-30) ───────────────────────
+  # The split-effect pair — two handlers covering one effect's DISJOINT op
+  # sets, both installed — was the shape the op-keyed dispatch walk of
+  # 2026-09-09 (Hβ.effects.one-walk-three-implementations) served at
+  # runtime and the ROW could never see: `ha` answers `a` alone, its
+  # install subtracted the whole of `Two` by name, and a declared `!Two`
+  # over it was a false absence proof — compiled clean, trapped reading
+  # the evidence at the root. A handler is exhaustive over every effect
+  # its arms answer now (the match-exhaustiveness law at a handler), so
+  # both fixtures REFUSE at the declaration; the honest split is an arm
+  # that forwards its op outward (tests/micros/mn-handler-forwarding-arm.mn)
+  # or two effects. The deep-handler arm stays as a pin: an arm that
+  # performs the op it handles must resolve OUTWARD. ASSEMBLE is in the
+  # leg for the same reason as the reification pair — check alone called
+  # the RED one green.
+  run_refusal "$compiler" split-effect-op-key \
+    "$ROOT/tests/frontier/mn-split-effect-op-key.mn" E_HandlerInexhaustive "$dir"
+  run_refusal "$compiler" split-effect-evidence \
+    "$ROOT/tests/frontier/mn-split-effect-evidence.mn" E_HandlerInexhaustive "$dir"
+  for ok in "deep-handler-arm:mn-deep-handler-arm:51:an arm's own perform resolves outward, not into its own install"; do
     ok_tag=${ok%%:*}; ok_r=${ok#*:}; ok_fix=${ok_r%%:*}; ok_r=${ok_r#*:}
     ok_want=${ok_r%%:*}; ok_what=${ok_r#*:}
     ok_err="$dir/$ok_tag.err"
@@ -3641,7 +3648,14 @@ for i in "${!compilers[@]}"; do
   # the one dispatch reads — and it is deleted; `world_key`, which files a
   # warm image under the handler world that wrote it, took eight of those
   # lines back.
-  cost_ceiling=2794
+  # 2796 (2026-09-30): ROSE 2794 → 2796, one arm and its prose — lib/prelude's
+  # `each_handler` answers `result` now (`result() => resume(())`), because a
+  # handler is exhaustive over every effect its arms answer
+  # (`E_HandlerInexhaustive`, L5): the half-handler subtracted the WHOLE of
+  # `Iterate` from every `each` install's row while `result` walked past it.
+  # A bare program links the prelude, so it links the arm; the same peer as
+  # every line above takes it back.
+  cost_ceiling=2796
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

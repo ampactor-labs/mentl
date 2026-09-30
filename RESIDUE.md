@@ -1162,9 +1162,12 @@ restructured as the deletion below prescribes: `interrogate_all` mapping the
 re-installing (`~> self`) a legitimate second form — is answered for the row
 and open for the world: `((twice()) ~> h) ~> h` runs to 20 (the inner arm's
 ask reaches the outer install) and REFUSES, because the row cannot see that
-the outer install's own arms are shadowed for its whole extent. That is
-install identity, `Hβ.effects.arm-world-static-rule` (A5/A6); the wheel
-needs no such nesting. NAMED 2026-09-10, MEASURED. The uniform world bracket
+the outer install's own arms are shadowed for its whole extent. That was
+called install identity (`Hβ.effects.arm-world-static-rule`, A5/A6) and
+measured 2026-09-30 as effect-granular PRECISION — the inner install
+absorbs `E` for the whole extent and Koka refuses the same program
+(`Hβ.effects.op-granular-arm-reach`); the wheel needs no such nesting.
+NAMED 2026-09-10, MEASURED. The uniform world bracket
 made the deep-handler law true everywhere, and the wheel did not obey it.
 
 THE MEASUREMENT, from the frontier against pin f862677e (368 pass / 10 red;
@@ -5774,10 +5777,86 @@ judged at registration exactly as a fn's clause is. Crucibles:
 `tests/crown/leak-arm-resume-remainder` (seen RED), `sound-arm-resume-
 remainder`, `sound-arm-resume-remainder-masked`, `sound-arm-negates-own-op`;
 the wheel authors no handler clause, so the census is zero at birth.
+THE IDENTITY HALF, MEASURED 2026-09-30 (L5) — NOT A HOLE. Four probes on
+boot 16286d94 before a line of A6 was written: (1) `((twice()) ~> h) ~> h`
+refuses at the root, and that is the row being EXACT, not blind — the inner
+install absorbs `E` for the whole extent, its arm's own `E` perform resolves
+outer, so the outer install's arms are unreachable and E reaches the root;
+Koka refuses the same program. What a finer verdict would need is op-granular
+arm reach, named below, never identity. (2) A recursive fn installing the
+same handler per level runs (exit 2) under dynamic innermost dispatch, as
+SYNTAX documents. (3) A closure escaping from one install of `h` into a
+second install of the same `h` runs (exit 7) the same way. No capture, no
+silent wrong. (4) THE HOLE THE WALK FOUND was the PARTIAL HANDLER — closed
+the same day as `Hβ.effects.handler-must-be-exhaustive`. Install identity as
+a mechanism (a row carrying `E(install)`, install-precise masks, evidence
+naming the install) is therefore not owed by any measurement; its felt face
+is `Hβ.effects.served-by-projection`, and its TIME face stays band B's
+(`Hβ.continuations.world-widening-resume`). `sound-root-nested` stays out
+of the crown: it is a correct refusal.
 
-`Hβ.voice.run-ops-have-no-performer` — OPEN, BORN 2026-09-27. Interact's
-`run_compile`, `run_check`, `run_audit` are performed by nobody (`mentl query
-src/main.mn performs`: Interact 8/21 ops performed), and `run_audit` hands
+`Hβ.effects.handler-must-be-exhaustive` — CLOSED 2026-09-30 (L5; LEDGER
+carries the pin). THE SHAPE: `effect State { inc() -> Int; get() -> Int }`,
+`handler only_inc { inc() => resume(1) }`, `fn f() with !State = (get() +
+inc()) ~> only_inc`. On boot 16286d94 the program compiled CLEAN under the
+negation and trapped at the root (exit 134): the install subtracted the whole
+of `State` from the body's row by name, while `get`, answered by no arm,
+walked past the install at runtime to the end of the chain. §0's property (2)
+false at a shape any program writes, and the last known hole under `!E`.
+THE LAW: a handler is exhaustive over every effect its arms answer — the
+match-exhaustiveness law at a handler (an effect is a sum of requests, a
+handler its arm list), Koka/Effekt parity. `E_HandlerInexhaustive(handler,
+effect, missing ops, span)` at registration, category effects, ARMED at
+birth, `HasPlaceholders`; the lowering's op-keyed dispatch walk (2026-09-09)
+stays and its empty-arm-slot skip is unconstructible. The two honest partial
+forms: a FORWARDING arm (`get() => resume(get())` — an arm's own perform
+resolves outer, the row carries the forwarding, so `!State` over that body
+refuses as it should: `tests/micros/mn-handler-forwarding-arm.mn` answers 21
+under an enclosing `both`, `-refuses.mn` refuses), or the ops the handler
+answers declared as their own effect. THE FIRST CENSUS, five partial handlers
+in the wheel and its runtime, every one a place `!E` was false: lib/prelude's
+`each_handler` (no `result` arm — the floor every micro links; it answers
+unit now), src/infer's `summaries_frozen` (read-only over a read/write
+effect), src/backends/wasm's `preinstall_init_scope` (two census ops) and
+`names_not_emitted` (two drains) — both forward now — and src/voice's
+`Interact`, ONE effect whose two implementers answered disjoint halves, split
+into `Workspace` (files, edit, runs) and `Interact` (attention, voice,
+session). THE KILL worth the record: `summaries_frozen`'s first fix was a
+forwarding arm, and the ROW killed it before any gate ran — the frozen round
+is installed where no standing ctx encloses it, so the forwarded write
+reached the executable root and the boot refused the wheel
+(`E_EffectUnhandled`). A forwarding arm CLAIMS an enclosing handler; where
+none exists the honest form is the split, and `ResumeSummariesWrite` is the
+write capability on its own. The two frontier split-effect fixtures
+(`mn-split-effect-op-key`, `mn-split-effect-evidence`) were exactly the
+refused shape and are refusal contracts now; `mn-handler-partial-refuses`
+holds the first shape.
+
+`Hβ.effects.op-granular-arm-reach` — NAMED 2026-09-30 (L5). The row is
+effect-granular: a tee subtracts an effect by NAME, so `((twice()) ~> h) ~>
+h` (h answering `twice` by performing `op()`, both ops of E) refuses at the
+root although it runs to 20 — the inner install absorbs E whole, the arm's
+`op()` resolves to the outer install, and the row re-adds `row(h)` there. A
+finer row would carry which OPS of an effect an extent still performs, so an
+arm's forwarding of one op is subtracted by the outer install's arm for
+exactly that op. It is precision, not soundness (the coarse verdict refuses,
+never admits), and it is the Links-style op-granular row one altitude below
+the effect-granular one §4③ chose; it lands only if a real program needs the
+nested shape — the wheel does not, and the exhaustive-handler rule makes the
+shape's usual motive (a partial inner handler) unwritable.
+
+`Hβ.effects.served-by-projection` — NAMED 2026-09-30 (L5). The felt face of
+"which install serves this perform": `mentl why <file:line>` at a perform
+site names the install that answers it under the static-singleton tier, or
+says the answer is dynamic (the innermost install at runtime) and lists the
+candidates the row admits. Rides `Hβ.query.why-of-a-root-row-name`'s walk;
+the per-install cost charge of `Hβ.effects.multishot-perform-allocates-
+unrowed`'s precise form reads the same fact.
+
+`Hβ.voice.run-ops-have-no-performer` — OPEN, BORN 2026-09-27. `Workspace`'s
+`run_compile`, `run_check`, `run_audit` (Interact's until the 2026-09-30
+split) are performed by nobody (`mentl query src/main.mn performs`, measured
+before the split: Interact 8/21 ops performed), and `run_audit` hands
 the file's TEXT to `audit(entry_module)`, which wants a module path — a wrong
 call that no execution has ever reached. The arms were moved beside the
 handles table so they no longer ask their own effect; the surface they were
@@ -5852,8 +5931,9 @@ one two-resume handler and one tail-resumptive handler carries `Alloc` at
 every perform, including the ones the tail handler serves for free. The
 cost of a perform is a fact of the INSTALL that serves it — under the
 static-singleton tier the tee knows which handler that is — so the precise
-form charges at the `~>` edge, per install, which is install identity's
-territory (`Hβ.effects.arm-world-static-rule`, A6). The op-level join is
+form charges at the `~>` edge, per install, which needs the install a
+perform is served by as a static fact (`Hβ.effects.served-by-projection`;
+the static-singleton tier already knows it at the tee). The op-level join is
 sound (it over-approximates) and is the waypoint; the per-install charge
 is the form.
 
@@ -6914,8 +6994,9 @@ negation stands above it, and Pulse writes its rate rule as `!Sample(44100)`
 on the per-sample path. The form: a handler's config parameter named in the
 instance position (`handler sample_at(rate)` serves `Sample(rate)`), the tee
 subtracting that instance alone — a perform of another rate beneath it is
-unhandled at the root. It is install identity's instance face
-(`Hβ.effects.arm-world-static-rule`, A6).
+unhandled at the root. It is the instance face of what install identity
+was taken to be before the 2026-09-30 measurement resolved that half
+(`Hβ.effects.arm-world-static-rule`); this peer stands on its own.
 
 `Hβ.parser.body-brace-has-its-own-discrimination` — CLOSED 2026-09-28 (L3).
 `fn rig() = { lead: saw() }` parsed as a BLOCK and refused its field names as
