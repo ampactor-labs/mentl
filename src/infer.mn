@@ -296,19 +296,16 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
 // Returns the frame's authored declaration for the enforcement site.
 fn exit_frame() = match inf_exit_fn() {
   (declared, h, row, sp) => {
-    if h < 0 { () } else { finalize_row_checked(h, row, Located(sp, Inferred("fn effect row")), sp) }
+    // The decl-exit REPLACE is judged by `row_gate`, the install every
+    // judgment runs under: a cell a caller's gate reached before this
+    // declaration finalized (the co-member `run(a)` shape — `a`'s
+    // pre-registered cell gated by `run`'s exit, then bound to `a`'s
+    // judgment cell, which now finalizes) is checked against every gate it
+    // carries there, and the gates ride the finalized value's free
+    // terminals.
+    if h < 0 { () } else { graph_finalize_row(h, row, Located(sp, Inferred("fn effect row"))) }
     declared
   },
-}
-
-// The decl-exit REPLACE, judged: a cell a caller's gate reached before
-// this declaration finalized (the co-member `run(a)` shape — `a`'s
-// pre-registered cell gated by `run`'s exit, then bound to `a`'s judgment
-// cell, which now finalizes) is checked against every gate it carries,
-// and the gates ride the finalized value's free terminals.
-fn finalize_row_checked(h, row, reason, span: ValidSpan) = {
-  gate_check_push(h, row, span)
-  graph_finalize_row(h, row, reason)
 }
 
 // fresh_for_inference — the FreshHandle install inference runs under:
@@ -1252,7 +1249,7 @@ fn infer_program_once(stmts, parse_end) = {
   // The prose gate judges here, on the one generation of comment cells the
   // parse minted — [0, parse_end) is exactly that generation.
   comment_refs_check(stmts, 0, parse_end)
-} ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
+} ~> row_gate ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
 
 // No private ledgers. The trial installed its own affine_ledger /
 // region_tracker / verify_ledger so its undischarged debt would die with
@@ -1759,7 +1756,7 @@ fn fold_member_cells(ref vs: [RowEdge], ref span) = match vs {
           },
           r => r,
         }
-        finalize_row_checked(v, folded, Located(span, Inferred("group completion fold")), span)
+        graph_finalize_row(v, folded, Located(span, Inferred("group completion fold")))
       },
       _ => (),
     }
@@ -1933,7 +1930,7 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 // read them.
 fn segment_bracket(body, base, iseed) = match base {
   (bb, bc, bi, bg) => match iseed {
-    (ib, ie, ic) => body() ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi, bg) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
+    (ib, ie, ic) => body() ~> row_gate ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi, bg) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
   },
 }
 
@@ -3040,7 +3037,7 @@ fn enforce_row_gate(name: String, declared_row, has_pure, row_handle, span: Vali
   match graph_chase(row_handle) {
     GNode(NRowBound(raw_row), _) => {
       let pinned = pin_declared_instances(raw_row, declared_row)
-      if pinned == raw_row { () } else { finalize_row_checked(row_handle, pinned, why, span) }
+      if pinned == raw_row { () } else { graph_finalize_row(row_handle, pinned, why) }
     },
     _ => (),
   }

@@ -1140,7 +1140,7 @@ fn indexed_value(indexed) = match indexed {
 fn candidate_proven(node, hole_h, reason) = {
   {
     infer_expr(node)
-  } ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
+  } ~> row_gate ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
   match node {
     N(_, span, h) => {
       unify(hole_h, h, span, reason)

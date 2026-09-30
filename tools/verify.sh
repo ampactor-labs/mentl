@@ -216,10 +216,13 @@ if C=$(wt_m2_ensure); then
   # it was handed.
   if ! wt_battery "$C/m2.wasm" tests/micros "contract battery (this tree's wheel)"; then fail=1; fi
   # 2b. THE NEGATION PROBES (LENS §2.6 / §7.1, tests/lens/negation): the
-  #     thirty-six programs the crown's declared-negation design was refuted
+  #     thirty-seven programs the crown's declared-negation design was refuted
   #     and rebuilt against — the vacuous gate, the two-parameter body, the
   #     masked tee, the sig'd and cycle-member self-references, the stored
-  #     callback, the prune shapes. Each carries its own `// expect:` contract
+  #     callback, the prune shapes, and (A7, 2026-09-30) the three-walks
+  #     witness: two callers of one masked HOF, the quantifier reaching the
+  #     callback's cell behind the mask as the flatten does. Each carries its
+  #     own `// expect:` contract
   #     (a refusal class or a run value) since the gate landing turned every
   #     leak into a refusal; before that they were a bash table in EXPECT.md
   #     (`Hβ.test.lens-probes-are-a-bash-loop`). The medium judges them like

@@ -17,6 +17,9 @@ refuse at the root, the sounds run. The two fanout probes (`adv-fan-prune`,
 `adv-share-prune`) had banked "56", which the battery's in-process exec seam
 answered as 1048632 — a TUPLE'S HEAP ADDRESS, not a value; they return
 `a + b` (8) now, and the last column reads the corrected fixture.
+`adv-mask-two-callers` was born 2026-09-30 (A7) as LENS §2.3 (b)'s witness —
+the three walks agreeing through a mask — so its earlier columns are empty
+by birth; measured on boot c3ca5eeb: check 0, run 10.
 
 | fixture | before: check | class | run | after prune: check | class | run | after gate: check | class | run |
 |---|---|---|---|---|---|---|---|---|---|
@@ -33,6 +36,7 @@ answered as 1048632 — a TUPLE'S HEAP ADDRESS, not a value; they return
 | adv-mask-partial-nohandler | 0 | T_OverDeclared | 134 | 0 | T_OverDeclared | 1 | 1 | E_EffectMismatch | 1 |
 | adv-mask-partial | 0 | T_OverDeclared | 134 | 1 | E_EffectMismatch | 1 | 1 | E_EffectMismatch | 1 |
 | adv-mask-prune-off | 0 | T_OverDeclared | 6 | 0 | T_OverDeclared | 6 | 1 | E_EffectMismatch | 1 |
+| adv-mask-two-callers | — | — | — | — | — | — | 0 | — | 10 |
 | adv-mutual | 1 | E_EffectMismatch | 7 | 1 | E_EffectMismatch | 1 | 1 | E_EffectMismatch | 1 |
 | adv-nested-hof-leak | 0 | — | 14 | 0 | — | 14 | 1 | E_EffectMismatch | 1 |
 | adv-nested-hof | 0 | — | 6 | 0 | — | 6 | 0 | — | 6 |

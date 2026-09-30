@@ -2326,6 +2326,26 @@ effect GraphRead {
   graph_demands_of(Int) -> [TypeDemand]
 }
 
+// THE ROW WRITES ARE THEIR OWN EFFECT because they have two handlers with
+// two jobs: `graph_handler` answers them RAW, and `row_gate` (effects.mn),
+// installed innermost at every judgment chain, answers them JUDGED — a bind
+// or a finalize is checked against every gate its target cell carries and
+// the gates ride the value's free terminals before the raw write is
+// forwarded outward. That is LENS §2.3 lemma (i)'s premise ("every writer
+// refuses a violating write and pushes as stated") as a fact of an
+// install's extent rather than of a wrapper each writer remembers to call:
+// inside a judgment a raw row write is unsayable, since the perform reaches
+// the judged handler first. One effect for both jobs would make either
+// handler partial (`E_HandlerInexhaustive`); a capability of its own is the
+// form (2026-09-30, A7).
+effect RowWrite {
+  graph_bind_row(Int, EffRow, Reason)
+  // the decl-exit REPLACE — inf_exit_fn publishing the frame's accumulated row as the fn's verdict. Distinct from graph_bind_row BY OP because the two writes have different algebra: a teaching bind on an already-bound row cell JOINS (the row is a join-semilattice; joins commute, so N caller branches teaching one cell converge to the same value in any order — LVars' law), while the finalization REPLACES (the frame's accumulation is the decl's own total, already containing everything taught)
+  graph_finalize_row(Int, EffRow, Reason)
+  // union-find path compression at the row sort — an OPTIMIZATION write, distinct from the judgment bind: it stores the cell's own resolved content, so no gate can be violated by it and the judged handler forwards it unjudged; the root's arm rebinds the chain link to its resolved terminal
+  graph_compress_row(Int, EffRow)
+}
+
 effect GraphWrite {
   graph_fresh_ty(Reason) -> Handle
   graph_fresh_row(Reason) -> Handle
@@ -2351,11 +2371,6 @@ effect GraphWrite {
   graph_bind(Int, Ty, Reason)
   // mark a node an OBSERVED FAILURE (NErrorHole) — the productive-under-error poison. An env miss binds this, never TVar(self): the self-var tripped graph_bind's own occurs check (a spurious 0:0 E_OccursCheck per missing name) and read downstream as a normal free var (the ownership move-default cascade). A hole is the fact itself: unify no-ops on it, generalize preserves the handle, consumers stay silent.
   graph_bind_hole(Int, Reason)
-  graph_bind_row(Int, EffRow, Reason)
-  // the decl-exit REPLACE — inf_exit_fn publishing the frame's accumulated row as the fn's verdict. Distinct from graph_bind_row BY OP because the two writes have different algebra: a teaching bind on an already-bound row cell JOINS (the row is a join-semilattice; joins commute, so N caller branches teaching one cell converge to the same value in any order — LVars' law), while the finalization REPLACES (the frame's accumulation is the decl's own total, already containing everything taught)
-  graph_finalize_row(Int, EffRow, Reason)
-  // union-find path compression at the row sort — an OPTIMIZATION write, distinct from the judgment bind: a BRANCH cursor's arm skips it (a branch writing shared chain cells makes sibling chases schedule-dependent — the measured k2 yield-floor flips; the root's sequential walks re-compress), the root's arm rebinds the chain link to its resolved terminal
-  graph_compress_row(Int, EffRow)
   // enter a gate on a cell — trailed (MSetGate), so a speculative
   // judgment's gates roll back with its bindings; the checking writer
   // (effects.mn gate_install) is the one caller, and it judges the

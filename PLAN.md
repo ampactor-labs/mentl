@@ -1565,6 +1565,27 @@ and this is the STATE.
   is `Hβ.effects.served-by-projection`, its TIME face band B's.
   (`Hβ.effects.handler-must-be-exhaustive` CLOSED; the identity half of
   `Hβ.effects.arm-world-static-rule` resolved.)
+- **THE JUDGED ROW WRITER IS AN INSTALL — CLOSED 2026-09-30 (A7).** LENS
+  §2.3 lemma (i)'s premise (every row writer refuses a violating write and
+  pushes the gate as stated) was kept by two wrappers a writer had to
+  remember to call, and the plan's form for its mechanical half was a board
+  bound counting the raw ops' references — a proxy for a proof. The row
+  writes are their own effect (`RowWrite`, the three ops out of
+  `GraphWrite`), answered raw by `graph_handler` at the root and JUDGED by
+  `row_gate` installed innermost at every judgment chain: the check every
+  gate demands, then the raw write forwarded outward. Inside a judgment a
+  raw row write is unsayable — the perform reaches the judged handler first
+  — and the wrappers are deleted. Seen RED: declared and not installed, the
+  crown accepted twelve gate leaks (90/102); installed, 102/102. The
+  three-walks witness (`adv-mask-two-callers`, two callers of one masked
+  HOF, the first negating what the second performs) runs to 10 exactly when
+  the quantifier reaches the cell behind the mask as the flatten does.
+  What it exposed: the runtime floor's prose is judged in every program's
+  link, so a backticked name there must resolve in the floor alone — two
+  references (one from L5) narrated on every compile and are prose now.
+  Named: `Hβ.effects.row-write-outside-the-judgment` (a perform outside
+  every judgment chain would be served raw; none exists, and the medium has
+  no module-private declaration to refuse one).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

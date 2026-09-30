@@ -246,9 +246,9 @@ handler fold_handler(f, init) with acc = init {
 }
 
 // Exhaustive over `Iterate` like its siblings: `each` collects nothing, so
-// its `result` is unit. The arm answered `yield` alone until 2026-09-30,
-// when the exhaustive-handler rule refused it (`E_HandlerInexhaustive`) —
-// an install of a half-handler subtracts the WHOLE effect from the row.
+// its `result` is unit. The arm answered `yield` alone before 2026-09-30,
+// when the exhaustive-handler rule (E_HandlerInexhaustive) refused it — an
+// install of a half-handler subtracts the WHOLE effect from the row.
 handler each_handler(f) {
   yield(elem) => {
     f(elem)
@@ -430,7 +430,7 @@ fn sort(xs) = if len(xs) <= 1 {
 // the plainest line a beginner writes: unannotated params leave the
 // element type free, so `acc ++ sep ++ xs[i]` reaches `++`'s no-guess
 // floor — the refusal is RIGHT (a representation cannot be guessed) and
-// its FORM was an `unreachable` in shipped library code.  `join(["ab",
+// its FORM was a wasm unreachable in shipped library code.  `join(["ab",
 // "cd"], "-")` exited 134 with zero diagnostics until 2026-07-31.  The
 // comment that stood here claimed "explicit str_concat threads the String
 // type directly through the loop" — a repair that was never in the body;

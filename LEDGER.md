@@ -35,6 +35,56 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-30 · pin 4bc108088fa73607 (CLEAN m2 == m3) · THE JUDGED ROW WRITER IS AN INSTALL — A RAW
+  ROW WRITE INSIDE A JUDGMENT IS UNSAYABLE.
+  A7. The plan's form was a census: the writer-set completeness table of
+  LENS §2.3 lemma (i) as a board bound over the wheel's references to the
+  raw row ops. The medium already answered the question (`refs of
+  graph_bind_row` → 1, `graph_finalize_row` → 1, `graph_compress_row` → 1,
+  each inside its checking wrapper), and a count is a proxy for a proof
+  (PLAN §7's own words): what the ultimate medium does is make the unjudged
+  write UNSAYABLE. So the row writes are their own effect — `RowWrite`,
+  the three ops moved out of `GraphWrite` (one effect for both jobs would
+  make either handler partial under L5's rule) — with two handlers:
+  `graph_handler` answers them raw at the root, and `row_gate`
+  (effects.mn), installed innermost at every judgment chain
+  (`infer_context`, `segment_bracket`, the fan's segment), answers them
+  judged — `gate_check_push` against every gate the target cell carries,
+  the gates riding the value's free terminals, then the raw write
+  forwarded outward (an arm's own perform resolves outer, the L5
+  forwarding form). The per-writer wrapper `finalize_row_checked` and the
+  check inside `bind_edges_to` are deleted: the writers perform the op and
+  the install judges it, so lemma (i)'s premise — every writer refuses a
+  violating write and pushes as stated — is a fact of an extent rather than
+  of a convention. SEEN RED: the wheel built with `row_gate` declared and
+  not installed judged the crown at 90/102 — twelve crucibles accepted,
+  every one a gate on a free cell (`leak-gate-*`, `leak-cap-callback`);
+  installed, 102/102. The three-walks witness (LENS §2.3 (b)) is
+  `tests/lens/negation/adv-mask-two-callers.mn` — two callers of one
+  masked HOF, the first declaring `!F`, the second performing F — which
+  runs to 10 exactly when the quantifier reaches the callback's cell behind
+  the mask as the flatten does; born green on boot c3ca5eeb (a contract,
+  not a RED-first gate: the walk it pins is the one built at A3, and no
+  mutation of the compiler was run to see it red). Lemma (i) with the
+  twelve hand searches is in LENS already; the PROGRAM entry reads it.
+  KILLS. (1) The census form: a bound that counts references keeps the
+  wrong move sayable and merely visible; the install form is §0's "the
+  wrong move unsayable", and it is the same shape as L4a's projection roster
+  and R0j's audit — the rule lives where its scope is. (2) THE FLOOR'S
+  PROSE IS JUDGED IN EVERY LINK: lib/prelude's new `each_handler` comment
+  cited `E_HandlerInexhaustive` in backticks, which resolves on the wheel
+  link (types.mn's literal) and nowhere in a user program's, so every
+  compile of every program narrated a `W_CommentRefUnresolved` for the
+  runtime floor — and `join_loop`'s comment had done the same with
+  `unreachable` since the `unreachable` facet landed. A backticked name in
+  the floor must resolve in the floor alone; both are prose now. THE COST: the m3 leg 13.43s wall · 823MB peak RSS (842900 KB) against 848,160 KB and 14.93s at the
+  prior pin — the install is cheaper than the wrappers it replaces, and the
+  self-compile emits 188 more WAT lines (436,974) for the handler and its
+  three installs.
+  THE BOARD: crown 102/102 (90/102 with the handler uninstalled), micros
+  253/253, frontier 449 pass / 0 red / 2 expected-red at the pin's board (the run before the
+  prelude comment was cut back to four lines read 448/1/2 on the floor
+  ceiling alone); wheel census zero; CLEAN m2 == m3, repinned boot ← m2.
 - 2026-09-30 · pin c3ca5eeb1a62abca (CLEAN m2 == m3) · A HANDLER IS EXHAUSTIVE — THE LAST KNOWN
   HOLE UNDER `!E` WAS THE PARTIAL HANDLER, NOT INSTALL IDENTITY.
   L5 (A6 as measured). The sprint's design for A6 was install identity: a

@@ -1,0 +1,15 @@
+// expect: 10
+// The three walks agree through a mask (LENS §2.3 (b)): `run`'s callback
+// cell sits behind h's mask, and the quantifier reaches it exactly as the
+// flatten does, so each caller instantiates its own copy — `a`'s `!F` never
+// meets `b`'s F. A walk that stopped at the mask would leave one scratch
+// cell shared by both callers, neither dropped nor quantified, and refuse
+// `a` for an effect it never performs.
+effect E { op() -> Int }
+effect F { fop() -> Int }
+handler h { op() => resume(7) }
+handler hf { fop() => resume(3) }
+fn run(f) = (f()) ~> h
+fn a() with !F = run(() => op())
+fn b() = (run(() => fop())) ~> hf
+fn main() = a() + b()

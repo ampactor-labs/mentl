@@ -5832,6 +5832,21 @@ write capability on its own. The two frontier split-effect fixtures
 refused shape and are refusal contracts now; `mn-handler-partial-refuses`
 holds the first shape.
 
+`Hβ.effects.row-write-outside-the-judgment` — NAMED 2026-09-30 (A7), the
+residue of the judged writer becoming an install. The row writes are their
+own effect (`RowWrite`), answered judged by `row_gate` innermost at every
+judgment chain and raw by `graph_handler` at the root, so inside a judgment
+a raw write is unsayable: the perform reaches the judged handler first. A
+`RowWrite` perform OUTSIDE every judgment chain — none exists (`mentl query
+src/main.mn "refs of graph_bind_row"` names the writers, all inside the
+judgment) — would be served raw by `graph_handler`, and the medium cannot
+refuse it, because the raw capability must be nameable by the handler that
+holds the spine and Mentl has no module-private declaration to hide it
+behind. The form that closes it is a capability nameable only by its
+holder; until then the projection above is the standing census, and the
+kernel law that only inference writes (PLAN §2) is what such a perform would
+violate.
+
 `Hβ.effects.op-granular-arm-reach` — NAMED 2026-09-30 (L5). The row is
 effect-granular: a tee subtracts an effect by NAME, so `((twice()) ~> h) ~>
 h` (h answering `twice` by performing `op()`, both ops of E) refuses at the

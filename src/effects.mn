@@ -1183,14 +1183,45 @@ fn notes_enter(root, notes) = match notes {
   },
 }
 
+// THE JUDGED WRITER IS AN INSTALL. Every row write the judgment performs
+// reaches this handler before the graph: a bind or a finalize is judged
+// against every gate its target cell carries and the gates ride the value's
+// free terminals (`gate_check_push`), then the raw write is forwarded
+// outward to `graph_handler` (an arm's own perform resolves outer). So
+// LENS §2.3 lemma (i)'s premise — every writer refuses a violating write and
+// pushes as stated — is a fact of this install's extent, not of a wrapper a
+// writer remembers to call: inside a judgment a raw `graph_bind_row` is
+// unsayable, because the perform resolves here first. Installed innermost
+// at every judgment chain (`infer_context`, `segment_bracket`, the fan's
+// segment). A compression stores the cell's own resolved content and is
+// forwarded unjudged. Exhaustive over `RowWrite` by its three arms. The
+// check reads the write's own reason for its coordinates: every writer
+// locates its reason, and an unlocated one reports at the zero span, which
+// is what `reason_span_or_zero` says.
+handler row_gate {
+  graph_bind_row(cell, row, reason) => {
+    gate_check_push(cell, row, reason_span_or_zero(reason))
+    graph_bind_row(cell, row, reason)
+    resume()
+  },
+  graph_finalize_row(cell, row, reason) => {
+    gate_check_push(cell, row, reason_span_or_zero(reason))
+    graph_finalize_row(cell, row, reason)
+    resume()
+  },
+  graph_compress_row(cell, row) => {
+    graph_compress_row(cell, row)
+    resume()
+  },
+}
+
 // Bind one row into EVERY edge of a set — the multi-edge bind the five
-// unify arms share, and the one judged writer the gate reads at: the
-// check and the push run before the raw op. Structural walk (mechanism
-// layer, the resolver's own discipline).
+// unify arms share. The write is judged by `row_gate`, the install every
+// judgment runs under, never here. Structural walk (mechanism layer, the
+// resolver's own discipline).
 fn bind_edges_to(ref ws: [RowEdge], row, ref span, ref reason) = match ws {
   [] => (),
   [w, ...rest] => {
-    gate_check_push(edge_cell(w), row, span)
     graph_bind_row(edge_cell(w), row, Located(span, reason))
     bind_edges_to(rest, row, span, reason)
   },
