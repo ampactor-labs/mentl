@@ -1,0 +1,21 @@
+// The cell that moves is the CONTEXT's, not the hole's (C6). `y + x` made
+// the hole's cell, the binder `y` and the parameter `x` one class at
+// inference, and pick's return is that class too — so a survivor's segment
+// binds pick's own return cell: `one()` to Int, `half()` to Float. The
+// question names that cell through its Reason, in the developer's own
+// vocabulary, where the survivors' reads answered a value question on boot
+// b1637650. `main` calls `pick`, so its free-name closure reaches the
+// hole's declaration and the vocabulary excludes it.
+//
+// A PROJECTION fixture (it carries an authored hole, so it is never an
+// executable); the gate reads its Propose facet.
+fn one() = 1
+
+fn half() = 0.5
+
+fn pick(x) = {
+  let y = ??
+  y + x
+}
+
+fn main() = pick(1)

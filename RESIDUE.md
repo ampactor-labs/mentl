@@ -2924,8 +2924,8 @@ own direction — the row grounds through the same positions the types do, and
 the walk's two pass-through arms become substitutions. Named at the code so
 the omission is a decision rather than an oversight.
 
-`Hβ.synth.divergence-from-the-trail` — OPEN, named 2026-09-18 at the landing
-that made the question computable. `Divergence` (types.mn) classifies WHAT
+`Hβ.synth.divergence-from-the-trail` — CLOSED 2026-09-30 (C6; LEDGER carries
+the pin), named 2026-09-18 at the landing that made the question computable. `Divergence` (types.mn) classifies WHAT
 separates two proven survivors — row, denotation, value, shape — and renders
 the proposition the developer never stated. Its SOURCE today is each
 survivor's own live reads: the callee's declared row from the env entry the
@@ -2956,6 +2956,31 @@ WHAT DOES NOT CHANGE when it lands: the four arms, their precedence, and their
 voice. Only which cell the classifier is handed. CLOSE: the fan runs as trail
 segments, the row and value arms read the diverging CELL's own Reason rather
 than the survivors' shapes, and the four fixtures hold their lines unchanged.
+THE CLOSURE (2026-09-30). The fixture this entry owed exists and was RED
+first: `tests/frontier/mn-type-tie.mn` — `let x = ??` beside `one()` and
+`word()`, the hole's cell genuinely free — answered "differ in VALUE and
+nothing here bounds the value" on boot b1637650, and `mn-cell-tie.mn`, where
+`y + x` puts the hole, the binder, the parameter and the return in one class,
+answered the same. The mechanism: `graph_written_since(cp, below)` (GraphRead)
+folds the trail's MSetNode / MSetRow entries since the checkpoint for the
+cells below the enumeration's frontier, a slice view over the live tail;
+`context_writes` reads each such cell's meaning INSIDE the segment (a type
+chased deep, a row resolved — the rollback that follows is why the segment
+carries them out as facts); `keep_survivors` seals the proven candidate with
+them; and `divergence_of` reads the first cell the top survivor bound that
+another survivor bound differently, in the top survivor's write order,
+classifying it by the cell — `DivType(a, b, graph_reason_at(h))`, so the
+position's own cell renders "placeholder at 16:11-16:13" and a shared class
+renders "return of pick → inferred from return of 'pick'" — before any term
+read. Path-compression writes need no filter: a fact is the chased meaning,
+which compression does not change. Two things the trail cannot carry, stated
+rather than hidden: a declaration's row is a scheme VALUE once finalized, so a
+candidate's charge lands in the segment's own frame and never moves the
+declaration's cell — the term-level row split stays the survivors' read (the
+env's scheme, which since A4 IS the judged row) until
+`Hβ.infer.schemes-are-edges`; and a segment's own mints collide numerically
+after rollback, so the diff reads context cells alone until
+`Hβ.native.deterministic-handle-partition`.
 
 `Hβ.effects.install-chain-as-value` — OPEN, named 2026-09-18 from the audit
 of rung B's own lambdas. `compile_context(body) = infer_context(() =>

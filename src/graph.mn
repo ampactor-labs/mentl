@@ -866,6 +866,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
   },
   graph_rows_at(h) => resume(wmap_get_all(rows, h)),
+  graph_written_since(cp, below) => // The segment's write set, read off the trail's live tail — a slice
+  // view (no copy) from the checkpoint to the logical length, folded for
+  // the cells a bind moved. Entries above trail_len are stale by the
+  // logical-length discipline and never enter the slice.
+  resume(written_since(slice(trail, cp, trail_len), below)),
   graph_accept_note(path, span, text, proof) => // THE ACCEPT EDGE's write (C4): an outermost-boundary fact. A human
   // accepted a proposal; nothing speculative writes here, and a rollback
   // must never lose it — so a non-empty checkpoint stack is a defect in
@@ -1605,6 +1610,22 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, 
 // relevant tier's first sweep).
 fn trail_append(trail, trail_len, own mutation) =
   list_set(list_extend_to(trail, trail_len + 1), trail_len, mutation)
+
+// The cells a run of trail entries BOUND, below a handle frontier, each
+// once in first-write order: the type and row overwrites are the writes
+// that change what a cell means; a fresh mint, a gate, a note, a demand, an
+// instance note, a boundary and a call product leave the cell's meaning
+// where it was, so they are not divergences between two segments.
+fn written_since(entries, below) = fold([], written_step(below), entries)
+
+fn written_step(below, acc, m) = match m {
+  MSetNode(h, _) => note_written(acc, h, below),
+  MSetRow(h, _) => note_written(acc, h, below),
+  MSetBoundary(_, _) | MFreshNode(_) | MSetGate(_) | MInstanceNote(_) | MSetDemand(_) | MSetProduct(_, _) | MRowNote(_) => acc,
+}
+
+fn note_written(acc, h, below) =
+  if h < below && !any({ x => x == h }, acc) { push(acc, h) } else { acc }
 
 // Effect-name set ops (H3.1)
 // merge_row routes through `name_set_union` from effects.mn — the

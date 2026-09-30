@@ -112,7 +112,20 @@ type VocabRing = OwnModule | AuthoredImport | Linked
 // to a literal's made-up 0.3) and rode stale when extraction swapped
 // the node — `rank_of` now reads the LIVE node at sort time, once per
 // candidate, through the same env/refs reads the gradient owns.
-type EnrichedCandidate = EnrichedCandidate({node: Node, origin: ProposerKind, reason: Reason})
+type EnrichedCandidate
+  = EnrichedCandidate({node: Node, origin: ProposerKind, reason: Reason, writes: [(Int, ContextFact)]})
+
+// WHAT A CANDIDATE TAUGHT THE CONTEXT (C6): the context cells its segment
+// bound, each with the meaning the cell held before the rollback undid it —
+// a type chased deep, a row resolved. Empty until the candidate is judged;
+// a proven survivor is sealed with its segment's writes, and the divergence
+// between two survivors is read here first.
+type ContextFact = FactTy(Ty) | FactRow(EffRow)
+
+// One candidate's verdict from its segment: proven or not, the Reason the
+// verdict carries (the candidate's own when proven, the medium's refusal
+// otherwise), and the context writes the segment carried out.
+type SegmentVerdict = SegmentVerdict({proven: Bool, reason: Reason, writes: [(Int, ContextFact)]})
 
 // AST fragment
 //
@@ -173,7 +186,7 @@ handler synth_default {
             ) {
               (shaped, shape_refused) => {
                 let survivors =
-                  concat_candidates(found, shaped) |> collapse_equivalent |> rank_sort(context_hole_span(context)) |> reference_before_mint |> map_to_proposals
+                  concat_candidates(found, shaped) |> collapse_equivalent |> rank_sort(context_hole_span(context)) |> reference_before_mint
                 // Both refusal channels, one list: the ROW pruned a candidate
                 // before it was ever judged, the CELL refused one that was.
                 // A developer auditing the proposal sees every name the medium
@@ -507,12 +520,14 @@ fn vocabulary_call_candidate(name, row, allowed_row, ring) with !Mutate = Enrich
   node: synth_node(CallExpr(synth_node(VarRef(name)), [])),
   origin: ProposerVocabulary(ring),
   reason: Inferred("an in-scope call {name}() — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}"),
+  writes: [],
 })
 
 fn vocabulary_ref_candidate(name, row, allowed_row, ring) with !Mutate = EnrichedCandidate({
   node: synth_node(VarRef(name)),
   origin: ProposerVocabulary(ring),
   reason: Inferred("the in-scope function {name} — row {show_effrow(row)} admitted by {show_effrow(allowed_row)}"),
+  writes: [],
 })
 
 // Could a function of this arity, parameters and return fill a
@@ -728,6 +743,7 @@ fn ctor_to_enriched_candidate(name, scheme, reason) with !Mutate = EnrichedCandi
   node: synthesize_ctor_call_node(name, scheme),
   origin: ProposerEnumerative,
   reason: VarLookup(name, reason),
+  writes: [],
 })
 
 fn enumerate_lambdas(params, ret, row, context) = {
@@ -739,6 +755,7 @@ fn enumerate_lambdas(params, ret, row, context) = {
     node: synthesize_lambda_node(params, ret),
     origin: ProposerEnumerative,
     reason: Inferred("an anonymous fn matching the hole's shape; its body is the next hole"),
+    writes: [],
   })
   list_set(buf, 0, candidate)
   buf
@@ -805,11 +822,13 @@ fn lit_candidate(v) with !Mutate = match v {
     node: synthesize_string_literal_node(s),
     origin: ProposerEnumerative,
     reason: Inferred("the type's string inhabitants"),
+    writes: [],
   }),
   LVBool(b) => EnrichedCandidate({
     node: synth_node(LitBool(b)),
     origin: ProposerEnumerative,
     reason: Inferred("the type's boolean inhabitants"),
+    writes: [],
   }),
 }
 
@@ -827,6 +846,7 @@ fn int_literal_candidate(n) with !Mutate = EnrichedCandidate({
   node: synthesize_int_literal_node(n),
   origin: ProposerEnumerative,
   reason: Inferred("the type's integer inhabitants"),
+  writes: [],
 })
 
 fn enumerate_float_literals(context) = {
@@ -840,6 +860,7 @@ fn float_literal_candidate(f) with !Mutate = EnrichedCandidate({
   node: synthesize_float_literal_node(f),
   origin: ProposerEnumerative,
   reason: Inferred("the type's float inhabitants"),
+  writes: [],
 })
 
 fn enumerate_string_literals(context) = {
@@ -851,6 +872,7 @@ fn enumerate_string_literals(context) = {
       node: synthesize_string_literal_node(""),
       origin: ProposerEnumerative,
       reason: Inferred("the type's string inhabitants"),
+      writes: [],
     })
   )
   buf
@@ -865,6 +887,7 @@ fn one_unit_candidate(context) = {
       node: synthesize_unit_literal_node(),
       origin: ProposerEnumerative,
       reason: Inferred("the unit type's one inhabitant"),
+      writes: [],
     })
   )
   buf
@@ -881,6 +904,7 @@ fn one_hole_candidate(context) = {
       node: synthesize_hole_node(),
       origin: ProposerEnumerative,
       reason: Inferred("a nested ?? — the shape narrows, the fill recurses"),
+      writes: [],
     })
   )
   buf
@@ -895,6 +919,7 @@ fn one_continuation_candidate(context) = {
       node: synthesize_resume_node(),
       origin: ProposerEnumerative,
       reason: Inferred("the continuation's own resume(...)"),
+      writes: [],
     })
   )
   buf
@@ -909,6 +934,7 @@ fn enumerate_records(fields, context) = {
       node: synthesize_record_node(fields),
       origin: ProposerEnumerative,
       reason: Inferred("the type's record construction"),
+      writes: [],
     })
   )
   buf
@@ -924,6 +950,7 @@ fn enumerate_list_candidates(elem, context) = {
       node: synthesize_empty_list_node(),
       origin: ProposerEnumerative,
       reason: Inferred("the type's list inhabitants — the empty list"),
+      writes: [],
     })
   )
   list_set(
@@ -933,6 +960,7 @@ fn enumerate_list_candidates(elem, context) = {
       node: synthesize_singleton_list_node(elem),
       origin: ProposerEnumerative,
       reason: Inferred("the type's list inhabitants — one element, itself a hole"),
+      writes: [],
     })
   )
   buf
@@ -947,6 +975,7 @@ fn enumerate_tuple_candidates(elems, context) = {
       node: synthesize_tuple_node(elems),
       origin: ProposerEnumerative,
       reason: Inferred("the type's tuple construction — each element a hole"),
+      writes: [],
     })
   )
   buf
@@ -988,13 +1017,13 @@ fn enumerate_tuple_candidates(elems, context) = {
 // frontier at
 // the arm's head, ahead of enumeration), so `graph_rollback`'s MFreshNode
 // shrink never un-allocates the node being judged.
-fn segment_verify(candidates, hole_h) = if len(candidates) == 0 {
+fn segment_verify(candidates, hole_h, below) = if len(candidates) == 0 {
   []
 } else {
   let base = env_base_view()
   let seed = consume_base()
   let iseed = intern_seed()
-  candidates |> map(judge_in_segment(hole_h, base, seed, iseed))
+  candidates |> map(judge_in_segment(hole_h, base, seed, iseed, below))
 }
 
 // Judges one candidate inside its own trail segment and joins its facts to the
@@ -1008,19 +1037,27 @@ fn segment_verify(candidates, hole_h) = if len(candidates) == 0 {
 // branch, never the developer's program being wrong. Replaying it would
 // make the proposer print errors about code nobody wrote. So the join is
 // the proven branch's alone; the refutation survives as the verdict.
-fn judge_in_segment(hole_h, base, seed, iseed, candidate) = {
+fn judge_in_segment(hole_h, base, seed, iseed, below, candidate) = {
   let cp = graph_push_checkpoint()
   let w = world_top()
-  let outcome =
-    segment_judge(candidate_node(candidate), hole_h, candidate_reason(candidate), base, seed, iseed)
+  let outcome = segment_judge(
+    candidate_node(candidate),
+    hole_h,
+    candidate_reason(candidate),
+    base,
+    seed,
+    iseed,
+    cp,
+    below
+  )
   graph_rollback(cp)
   world_restore(w)
   match outcome {
-    (proven, inner) => if proven {
+    (proven, inner, writes) => if proven {
       branch_join(inner)
-      (true, candidate_reason(candidate))
+      SegmentVerdict({proven: true, reason: candidate_reason(candidate), writes: writes})
     } else {
-      (false, refusal_reason(inner))
+      SegmentVerdict({proven: false, reason: refusal_reason(inner), writes: []})
     },
   }
 }
@@ -1060,7 +1097,7 @@ fn refusal_reason(inner) with !Mutate = match inner {
 // through the same report path every other expression uses, so an empty
 // list IS "this candidate unified". Reading the medium's own voice beats
 // any comparison standing beside it.
-fn segment_judge(node, hole_h, reason, base, seed, iseed) = {
+fn segment_judge(node, hole_h, reason, base, seed, iseed, cp, below) = {
   let body = () => {
     consume_seed(seed)
     let admitted = candidate_proven(node, hole_h, reason)
@@ -1068,18 +1105,56 @@ fn segment_judge(node, hole_h, reason, base, seed, iseed) = {
     let clog = consume_log()
     let pubs = env_publishes()
     let dfacts = diag_lines_taken()
-    (admitted && len(dfacts) == 0, (pubs, dfacts, vdebt, clog))
+    // The context cells this candidate bound, read while the binds are
+    // still live — the rollback that follows is exactly why the segment
+    // carries them out as facts (C6).
+    let writes = context_writes(cp, below)
+    (admitted && len(dfacts) == 0, (pubs, dfacts, vdebt, clog), writes)
   }
   segment_bracket(body, base, iseed)
 }
 
+// Each moved context cell with what it now means: a type chased deep (an
+// in-segment variable left inside it is a fresh cell of this segment,
+// which the comparison reads up to renaming), a row resolved. A cell the
+// bind left FREE, or a record-row residual, carries no fact to compare.
+fn context_writes(cp, below) = graph_written_since(cp, below) |> fold([], context_write_step)
+
+fn context_write_step(acc, h) = match context_fact(h) {
+  Some(f) => push(acc, (h, f)),
+  None => acc,
+}
+
+fn context_fact(h) = match graph_chase(h) {
+  GNode(kind, _) => match kind {
+    NBound(ty) => Some(FactTy(chase_deep(ty))),
+    NRowBound(row) => Some(FactRow(resolve_row(row))),
+    NFree(_) => None,
+    NRowFree(_) => None,
+    NRecordRowBound(_, _) => None,
+    NErrorHole(_) => None,
+  },
+}
+
+// The proven candidates, each SEALED with its segment's context writes —
+// the one place a candidate's record learns what its judgment taught.
 fn keep_survivors(candidates, verdicts) =
-  candidates |> enumerate |> filter(verdict_at(verdicts)) |> map(indexed_value)
+  candidates |> enumerate |> filter(verdict_at(verdicts)) |> map(sealed_value(verdicts))
 
 fn verdict_at(verdicts, indexed) = match indexed {
   (i, _) => match verdicts[i] {
-    (ok, _) => ok,
+    SegmentVerdict(v) => v.proven,
   },
+}
+
+fn sealed_value(verdicts, indexed) = match indexed {
+  (i, cand) => match verdicts[i] {
+    SegmentVerdict(v) => with_writes(cand, v.writes),
+  },
+}
+
+fn with_writes(candidate, writes) = match candidate {
+  EnrichedCandidate(c) => EnrichedCandidate({node: c.node, origin: c.origin, reason: c.reason, writes: writes}),
 }
 
 // The NAMED candidates a segment refused, each with the medium's own words
@@ -1092,20 +1167,16 @@ fn named_refusals(candidates, verdicts) =
 
 fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
   (i, cand) => match verdicts[i] {
-    (ok, reason) => if ok {
+    SegmentVerdict(v) => if v.proven {
       acc
     } else {
       match candidate_head_name(candidate_node(cand)) {
         Some(name) => // drift-audit: ignore — bounded by the candidate set, not a loop accumulator
-        acc ++ [(name, reason)],
+        acc ++ [(name, v.reason)],
         None => acc,
       }
     },
   },
-}
-
-fn indexed_value(indexed) = match indexed {
-  (_, v) => v,
 }
 
 // Decides whether a candidate inhabits the hole: infer the candidate, `unify`
@@ -1180,7 +1251,7 @@ fn hole_ty_live(hole_h) = match graph_chase(hole_h) {
 // judgment no longer reaches the threading vocabulary at all. The medium
 // named it (`T_OverDeclared`) the moment the spawn left.
 fn verify_each_enriched(candidates, hole_h, cand_start) with !Mutate = {
-  let verdicts = segment_verify(candidates, hole_h)
+  let verdicts = segment_verify(candidates, hole_h, cand_start)
   let refusals = named_refusals(candidates, verdicts)
   let survivors = keep_survivors(candidates, verdicts)
   // The form half — only over the range this propose minted (it keeps a
@@ -1261,6 +1332,7 @@ fn extract_optimal(candidate) = match candidate {
         node: N(graph_node_body(cheapest), node_span(c.node), cheapest),
         origin: c.origin,
         reason: c.reason,
+        writes: c.writes,
       })
     }
   },
@@ -1316,10 +1388,8 @@ fn map_to_proposals(enriched) = map({ EnrichedCandidate(c) => (c.node, c.reason)
 // admits no other shape.
 fn verdict_of(survivors, target_ty, context) = match distinct_by_canon(survivors, []) {
   [] => VNone,
-  [only] => match only {
-    (node, reason) => VFill(node, reason),
-  },
-  distinct => VAsk(divergence_of(distinct, target_ty, context), distinct),
+  [only] => VFill(candidate_node(only), candidate_reason(only)),
+  distinct => VAsk(divergence_of(distinct, target_ty, context), map_to_proposals(distinct)),
 }
 
 // SAME DENOTATION BY CANONICAL ROOT (C5): two survivors the e-graph has
@@ -1331,43 +1401,106 @@ fn verdict_of(survivors, target_ty, context) = match distinct_by_canon(survivors
 // matches a binary shape, so a survivor's root is itself
 // (`Hβ.synth.fan-extraction-needs-a-feeder`) — and it is the read the
 // first fusing rule will fall through.
-fn distinct_by_canon(pairs, acc) = if len(pairs) == 0 {
+fn distinct_by_canon(cands, acc) = if len(cands) == 0 {
   acc
 } else {
-  match pairs[0] {
-    (node, _) => {
-      let root = egraph_extract(node_handle(node))
-      if any({ (n, _) => egraph_extract(node_handle(n)) == root }, acc) {
-        distinct_by_canon(rest(pairs), acc)
-      } else {
-        distinct_by_canon(rest(pairs), push(acc, pairs[0]))
-      }
-    },
+  let root = egraph_extract(node_handle(candidate_node(cands[0])))
+  if any({ c => egraph_extract(node_handle(candidate_node(c))) == root }, acc) {
+    distinct_by_canon(rest(cands), acc)
+  } else {
+    distinct_by_canon(rest(cands), push(acc, cands[0]))
   }
 }
 
-// WHERE the survivors diverge, in the precedence types.mn's `Divergence`
-// states. Every read is LIVE at question time — a callee's row from the very
-// env entry the vocabulary enumerator admitted it through, a denotation from
-// the callee's own body — so nothing rides on the candidate record and
-// nothing can go stale between the enumeration and the question.
+// WHERE the survivors diverge — the trail first, then the term (C6).
+fn divergence_of(survivors, target_ty, context) = match first_context_split(survivors) {
+  Some(d) => d,
+  None => divergence_of_terms(map(candidate_node, survivors), target_ty, context),
+}
+
+// THE TRAIL FIRST: the earliest context cell the top survivor's segment
+// bound that another survivor's segment bound to something else — in the
+// top survivor's own write order, which is the order its judgment reached
+// the context. A survivor that never wrote the cell is read at the cell's
+// live value now (the pre-segment meaning every rollback restored); a cell
+// one of them left free is no divergence, since a candidate that constrains
+// the position less asks nothing of the developer.
+fn first_context_split(survivors) = match survivors {
+  [] => None,
+  [top, ...others] => first_split_over(candidate_writes(top), others),
+}
+
+fn first_split_over(writes, others) = match writes {
+  [] => None,
+  [(h, fact), ...more] => match fold(None, first_some(split_against(h, fact)), others) {
+    Some(d) => Some(d),
+    None => first_split_over(more, others),
+  },
+}
+
+fn first_some(f, acc, x) = match acc {
+  Some(d) => Some(d),
+  None => f(x),
+}
+
+// The divergence at cell `h` between the fact one survivor wrote and what
+// another survivor's segment left there — None when they agree, when the
+// other left the cell free, or when the two facts are of different sorts
+// (a cell has one sort; a sort clash is no question for the developer).
+fn split_against(h, fact, other) = match fact_at(other, h) {
+  None => None,
+  Some(theirs) => fact_split(h, fact, theirs),
+}
+
+fn fact_at(candidate, h) = match find({ (k, _) => k == h }, candidate_writes(candidate)) {
+  Some(entry) => match entry {
+    (_, f) => Some(f),
+  },
+  None => context_fact(h),
+}
+
+fn fact_split(h, mine, theirs) = match mine {
+  FactTy(a) => match theirs {
+    FactTy(b) => if ty_agree(a, b) { None } else { Some(DivType(a, b, graph_reason_at(h))) },
+    FactRow(_) => None,
+  },
+  FactRow(a) => match theirs {
+    FactRow(b) => if row_differs(a, b) { Some(DivRow(a, b)) } else { None },
+    FactTy(_) => None,
+  },
+}
+
+// Alpha-equivalence over the chased types: the variables a segment left
+// inside a fact are its own fresh cells, comparable only up to renaming.
+fn ty_agree(a, b) = match ty_alpha_eq(a, b, []) {
+  (ok, _) => ok,
+}
+
+fn candidate_writes(candidate) with Pure = match candidate {
+  EnrichedCandidate(c) => c.writes,
+}
+
+// THE TERM: no context cell separates the survivors, so the question is
+// about what stands at the position, in the precedence types.mn's
+// `Divergence` states — row, then denotation, then value, then shape.
+// Every read is LIVE at question time — a callee's row from the very env
+// entry the vocabulary enumerator admitted it through, a denotation from the
+// callee's own body — so nothing rides on the candidate record and nothing
+// can go stale between the enumeration and the question.
 //
 // The nodes arrive RANK-SORTED, so a row split is reported as the top
 // survivor against the first one that may do something it may not.
-fn divergence_of(survivors, target_ty, context) = {
-  let nodes = map(proposal_node, survivors)
-  match first_row_split(context, nodes) {
-    Some(split) => match split {
-      (a, b) => DivRow(a, b),
-    },
-    None => match target_ty {
-      TFun(_, _, _) => // At a function-typed hole the survivors are different COMPUTATIONS of
-      // one type: no denotation read separates them, and "shape" was the
-      // wrong word for two functions with the same shape.
-      DivBehavior,
-      _ => divergence_by_denotation(nodes, target_ty),
-    },
-  }
+fn divergence_of_terms(nodes, target_ty, context) = match first_row_split(context, nodes) {
+  Some(split) => match split {
+    (a, b) => DivRow(a, b),
+  },
+  None => match target_ty {
+    TFun(_, _, _) => // At a function-typed hole the survivors are different COMPUTATIONS of
+    // one type: no denotation read separates them, and "shape" was the
+    // wrong word for two functions with the same shape.
+    DivBehavior,
+    _ => divergence_by_denotation(nodes, target_ty),
+  },
 }
 
 fn divergence_by_denotation(nodes, target_ty) = {
@@ -1381,10 +1514,6 @@ fn divergence_by_denotation(nodes, target_ty) = {
   } else {
     DivValue(ty_domain(target_ty))
   }
-}
-
-fn proposal_node(pair) with Pure = match pair {
-  (node, _) => node,
 }
 
 // Rows compare by MUTUAL subsumption — the crown's own algebra, never a

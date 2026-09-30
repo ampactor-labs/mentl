@@ -2029,13 +2029,23 @@ type Verdict = VFill(Node, Reason) | VAsk(Divergence, [(Node, Reason)]) | VNone
 // interchangeable the way two extraction-equal forms are. Rank orders how a
 // tie renders; the divergence is what decides it.
 //
-// The SOURCE of "which cell" is the survivors' own live reads today and the
-// trail segment's first differing bind once branches share one graph
-// (`Hβ.synth.divergence-from-the-trail`); the classification and its voice
-// stand either way.
+// The SOURCE of "which cell" is the trail first (C6): every candidate is
+// judged as a segment over the one live graph, the segment carries out the
+// context cells its binds moved (`graph_written_since`, read before the
+// rollback), and the first of those cells that two survivors bound
+// differently IS the divergence — a type cell renders as `DivType` with the
+// cell's own Reason, a row cell as `DivRow`. Only when no context cell moves
+// — the position was narrowed enough that every survivor fits without
+// teaching the context anything — is the question about the TERM itself,
+// read off the survivors as before: row, then denotation, then value, then
+// shape. The classification and its voice stand either way.
 type Divergence
   // the first two survivors whose rows differ, in rank order
   = DivRow(EffRow, EffRow)
+  // a context cell two survivors bound to different types, with the cell's
+  // own Reason — the proposition the developer never stated, in their
+  // vocabulary (the type of a parameter, a return, the position itself)
+  | DivType(Ty, Ty, Reason)
   | DivName
   // what the target type admits — the same read that seeded the candidates
   | DivValue(Domain)
@@ -2347,6 +2357,14 @@ effect GraphRead {
   // node, newest first (a node that charged nothing answers the empty
   // list). row_of_subtree folds it over a subtree.
   graph_rows_at(Int) -> [EffRow]
+  // THE SEGMENT'S WRITE SET (C6): the cells below a handle frontier that a
+  // bind since a checkpoint moved — a type or row cell overwritten in the
+  // trail's MSetNode / MSetRow entries — each once, in first-write order.
+  // A speculative segment reads it BEFORE its rollback, so what a candidate
+  // taught the context survives the undo as facts about those cells; the
+  // handles above the frontier are the segment's own mints and mean nothing
+  // across segments (they collide numerically after rollback).
+  graph_written_since(Int, Int) -> [Int]
 }
 
 // THE ROW WRITES ARE THEIR OWN EFFECT because they have two handlers with
@@ -4241,6 +4259,7 @@ fn show_domain(d) = match d {
 // which is a placeholder wearing a teaching voice.
 fn show_divergence(d) with !Mutate = match d {
   DivRow(a, b) => "these differ in what they may DO — {show_effrow(a)} against {show_effrow(b)}: which capability does this position carry?",
+  DivType(a, b, r) => "these differ in TYPE — {show_type(a)} against {show_type(b)}: which type does this position hold? (the cell that moves: {show_reason(r)})",
   DivName => "every survivor denotes the same value — the question is which name carries the intent",
   DivValue(dom) => "the survivors differ in VALUE and {show_domain(dom)}: which one does this position mean?",
   DivShape => "the survivors differ in SHAPE — what structure does this position hold?",

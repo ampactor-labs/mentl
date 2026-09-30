@@ -1663,6 +1663,27 @@ and this is the STATE.
   where it silently answered. Found on the way: `mentl fmt` wrote a
   keyword binder as a wildcard under "names conserved"
   (`Hβ.fmt.keyword-binder-renders-as-wildcard`).
+- **THE QUESTION IS READ OFF THE TRAIL — CLOSED 2026-09-30 (C6).** The
+  computed question's source was each survivor's own reads — a callee's
+  declared row by name, a literal's denotation — and on a hole whose cell
+  was FREE it asked the wrong question: `let x = ??` beside `one()` and
+  `word()` answered "differ in VALUE and nothing here bounds the value"
+  (boot b1637650) where the two segments had disagreed on the position's
+  TYPE first. A candidate's segment carries out the context cells its
+  binds moved (`graph_written_since`: the trail's MSetNode / MSetRow
+  entries since the checkpoint, below the enumeration's handle frontier,
+  read BEFORE the rollback undoes them — each as the meaning the cell then
+  held), the proven survivor is sealed with them, and the divergence is the
+  first such cell two survivors bound differently, classified by the cell:
+  `DivType(a, b, reason)` names it through its own Reason ("the cell that
+  moves: return of pick" when the hole shares a class with a parameter and
+  the declaration's return), `DivRow` at a row cell; only when no context
+  cell moves does the question fall to the term, read as before. Two
+  fixtures RED-first (`mn-type-tie`, `mn-cell-tie`), the four standing
+  ties unchanged. What the trail cannot carry, named with the closure
+  (`Hβ.synth.divergence-from-the-trail`): a declaration's row is a scheme
+  VALUE after finalize, so no candidate's charge moves it (rung 3), and a
+  segment's own mints collide numerically after rollback ((arena, offset)).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -3200,16 +3221,26 @@ landed in 5–10; this phase is the finish that makes it FELT.
   it asks about what the developer was just writing, where max-gain asks
   about whatever behavioural consequence happens to split the space — and
   that is a design decision, recorded as one, falsifiable by a felt walk.
-  **THE CLASSIFICATION LANDED BEFORE THE TRAIL DID, and the split is stated
-  so neither half is mistaken for the other (2026-09-18).** `Divergence`
-  names WHAT separates the survivors and speaks it in that arm's own
-  vocabulary; its SOURCE today is each survivor's live reads, because every
-  candidate is judged in a COPIED instance binding its own fresh handle, so a
-  trail diff over the demo fixtures measures EMPTY and in-segment handles
-  collide after rollback. The sequential trail segment over ONE graph is what
-  makes the first-divergence cell readable, and when it lands only the source
-  changes — the four arms, their precedence and their voice stand
-  (`Hβ.synth.divergence-from-the-trail`). The precedence itself is a judgment
+  **THE CLASSIFICATION LANDED BEFORE THE TRAIL DID (2026-09-18), AND THE
+  TRAIL IS ITS SOURCE NOW (C6, 2026-09-30).** `Divergence` names WHAT
+  separates the survivors and speaks it in that arm's own vocabulary. Its
+  source was each survivor's live reads while candidates were judged in
+  COPIED instances; every candidate is a segment over the ONE graph since
+  pin 7c9dc538, and the segment now carries out the context cells its binds
+  moved (`graph_written_since`, read before the rollback undoes them), so
+  the first such cell two survivors bound differently IS the question — a
+  type cell with its own Reason (`DivType`: a free hole asks "which type
+  does this position hold?" where the survivors' reads had asked a value
+  question about `1` and "a"; a hole in a parameter's class names the
+  declaration's return as the cell that moves), a row cell as `DivRow`.
+  Only when no context cell moves is the question about the TERM, read as
+  before — row, denotation, value, shape. What the trail cannot yet carry
+  is stated with it: a declaration's row is a scheme VALUE after finalize,
+  so a candidate's charge cannot move it and the row arm at the term level
+  stays the survivors' own read (rung 3, `Hβ.infer.schemes-are-edges`), and
+  a segment's own mints collide numerically after rollback, so the diff
+  reads context cells alone until `(arena, offset)`
+  (`Hβ.synth.divergence-from-the-trail`, CLOSED). The precedence itself is a judgment
   and is recorded as one: a same-denotation tie is a MEANING tie at the
   INTENT altitude, not §5's free form-space tie, because the duality calls a
   tie free when a COST function totally orders it and cost is blind to what a

@@ -35,6 +35,62 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-30 · pin 2fcad4e9e7f987f5 (CLEAN m2 == m3) · THE QUESTION IS READ OFF THE TRAIL —
+  THE FIRST CONTEXT CELL TWO SURVIVORS BOUND DIFFERENTLY IS THE DIVERGENCE.
+  C6. The computed question's SOURCE was each survivor's own reads — a
+  callee's declared row scanned by name in the context, a literal's
+  denotation walked from its body — which is right when the position was
+  narrowed enough that every survivor fits without teaching the context
+  anything, and wrong the moment a survivor's judgment MOVES a cell the
+  developer can see: `let x = ??` beside `one()` and `word()` (the hole's
+  cell genuinely free) answered "differ in VALUE and nothing here bounds
+  the value" on boot b1637650, where the two segments had disagreed on the
+  position's TYPE before any value was in question; `fn pick(x) = { let y
+  = ??; y + x }` beside `one()` and `half()` answered the same, with the
+  hole, the binder, the parameter and pick's return one class. PLAN §11.1
+  had said where the answer lives since 2026-09-14 — the earliest cell where
+  two trails bound differently — and pin 7c9dc538 made it readable by
+  judging every candidate as a segment over the ONE live graph; the fixture
+  the RESIDUE entry still owed was the free hole. THE MECHANISM:
+  `graph_written_since(cp, below)` (GraphRead) folds the trail's MSetNode /
+  MSetRow entries since a checkpoint for the cells below a handle frontier
+  — a slice view over the trail's live tail, no copy; the segment reads
+  each such cell's meaning INSIDE its bracket, before the rollback that
+  undoes it (`context_writes`: a type chased deep, a row resolved; a cell
+  the bind left free carries no fact), and `judge_in_segment` carries them
+  out as the `SegmentVerdict`; `keep_survivors` seals the proven candidate
+  with them (`EnrichedCandidate.writes`, empty until judged); and
+  `divergence_of` reads the first cell the top survivor bound that another
+  survivor bound to something else — in the top survivor's own write order,
+  a survivor that never wrote the cell read at the cell's live pre-segment
+  value — classifying it by the cell: `DivType(a, b, graph_reason_at(h))`
+  ("these differ in TYPE — Int against String: which type does this
+  position hold? (the cell that moves: placeholder at 16:11-16:13)" at the
+  free hole; "… Int against Float … (the cell that moves: return of pick →
+  inferred from return of 'pick')" at the shared class), `DivRow` at a row
+  cell, and the term arms as before only when no context cell moves. Facts
+  compare by ALPHA-EQUIVALENCE (`ty_alpha_eq`): a segment's own fresh
+  variables are comparable only up to renaming, and a path-compression write
+  needs no filter because a fact is the chased meaning, which compression
+  does not change. The enumeration's handle frontier (`cand_start`, the
+  same bound the form half saturates) is the line between the context and
+  the segment's own mints, which collide numerically after rollback.
+  FIXTURES: `tests/frontier/mn-type-tie.mn` and `mn-cell-tie.mn`, both
+  RED-first on b1637650 as the value question, two frontier legs; the four
+  standing ties (row, name, shape, absorbed-row) hold their lines through
+  the fresh m2 — the classification and its voice are unchanged, only the
+  source. DELETED: `proposal_node`, `indexed_value` (the verdict is a
+  record, `SegmentVerdict`, where a (Bool, Reason) pair had been read by
+  position at three sites). THE BOUNDARY, stated with the closure of
+  `Hβ.synth.divergence-from-the-trail`: a declaration's row is a scheme
+  VALUE once finalized, so a candidate's charge lands in the segment's own
+  frame and never moves the declaration's cell — the term-level row split
+  stays the survivors' read (the env's scheme, which since A4 IS the judged
+  row) until rung 3 (`Hβ.infer.schemes-are-edges`); and a hole under
+  `fn choose() -> Seven = ??` with no declared row still refuses a `Log`
+  performer "by the target row Pure" (C1's own remainder, measured again).
+  Micros 260/260, crown 102/102, frontier 456 pass / 0 red / 2
+  expected-red; m3 leg 14.07s wall · 835MB peak RSS (855128 KB).
 - 2026-09-30 · pin b1637650e3cd3157 (CLEAN m2 == m3) · PARTIALITY IS A ROW FACT — A
   PRIMITIVE'S PRECONDITION IS A CLAIM, AND AN OPEN CLAIM CHARGES `Trap`.
   C5. Integer `/` and `%` trap on a zero divisor and `/` on INT_MIN / -1,

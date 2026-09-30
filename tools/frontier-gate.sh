@@ -2547,6 +2547,27 @@ for i in "${!compilers[@]}"; do
   else
     fail "computed question: shape (members=$qs_members; got: $(printf '%s' "$qs" | tail -2))"
   fi
+  # TYPE (C6): the hole's own cell is FREE, so each survivor's segment binds
+  # it — `one()` to Int, `word()` to String — and that cell is the first
+  # thing the two segments disagree on; the question is the position's type,
+  # read off the segment's writes, never a value question about `1` and "a".
+  # RED on boot b1637650: "differ in VALUE and nothing here bounds the value".
+  qt=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-type-tie.mn:16:11 2>/dev/null)
+  if printf '%s' "$qt" | grep -q 'differ in TYPE — Int against String'; then
+    pass "computed question: type (the free cell the segments bound is the first divergence)"
+  else
+    fail "computed question: type (got: $(printf '%s' "$qt" | tail -2))"
+  fi
+  # THE CELL THAT MOVES IS THE CONTEXT'S, NOT THE HOLE'S (C6): `y + x` made
+  # the hole's cell, the binder `y` and the parameter `x` one class, so a
+  # survivor binds pick's own return; the question names that cell through
+  # its Reason. RED on boot b1637650: a value question.
+  qc=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." --dir /tmp "$compiler" tests/frontier/mn-cell-tie.mn:17:11 2>/dev/null)
+  if printf '%s' "$qc" | grep -q 'differ in TYPE — Int against Float' && printf '%s' "$qc" | grep -q 'the cell that moves: .*pick'; then
+    pass "computed question: type at a context cell (a parameter's class, named by its Reason)"
+  else
+    fail "computed question: type at a context cell (got: $(printf '%s' "$qc" | tail -2))"
+  fi
   # ── the render register (DiagScope) ────────────────────────────────
   # A user-target projection over the FULL weave (repo root mounted, so
   # lib+src weave in) scopes narration to the user's file: the substrate's
