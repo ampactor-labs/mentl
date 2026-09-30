@@ -712,8 +712,11 @@ fn env_kind_of(name) = match env_lookup(name) {
 // or mixed, with absent fields drawing their param default — one machinery.
 //
 // The callee's name for resolve_call_args — a VarRef / field / nested config
-// CallExpr names a declared fn with params; any other callee expr has no
-// declared params (resolution is positional passthrough), so "" suffices.
+// The NAME a callee expression carries — read by the flow-closure engine's
+// call edge, the resume-bind read and the install's handler-identity read;
+// "" for an anonymous callee. A call's argument product and a partial's
+// callee are never resolved through it: those are the call node's own facts
+// (`call_product_at`, `partial_callee_form`).
 fn lower_callee_name(fbody) = match fbody {
   NExpr(VarRef(name)) => name,
   NExpr(FieldExpr(_, field)) => field,
@@ -722,6 +725,31 @@ fn lower_callee_name(fbody) = match fbody {
   },
   _ => // drift-audit: ignore — "" = callee has no declared name (positional passthrough)
   "",
+}
+
+// A call's positional product, read where the judgment wrote it (the
+// call-product column): the argument nodes in declaration order — labels
+// resolved, absent fields filled by their defaults, an authored `??` in
+// place — and the cells typing the slots a partial leaves open past them.
+// The lowering resolves no callee by name: the product is the call node's
+// own fact, whatever the module env says of the name — a parameter, a
+// local or a field callee is the callee the call resolves to
+// (Hβ.lower.callee-resolved-by-name-in-the-module-env). A call the judgment
+// never reached has no product; that is the compiler's own invariant
+// broken, reported, with the raw arguments the productive-under-error order.
+fn call_product_at(handle, args) = match graph_product_at(handle) {
+  ProductOf(nodes, open) => (nodes, open),
+  NoProduct => {
+    report(EInternalInvariant(
+      "a call's argument product was never judged: the lowering reached a call the judgment did not",
+      parse_span_of(handle)
+    ))
+    (map(unwrap_labeled_arg, args), [])
+  },
+}
+
+fn call_product_nodes(handle, args) = match call_product_at(handle, args) {
+  (nodes, _) => nodes,
 }
 
 // The `CallExpr` dispatch falls back to this when the callee isn't a
@@ -919,15 +947,21 @@ fn partial_unfilled(cname, fh, r_args) = if is_seq_op(cname) {
 // RESUMES and never re-evaluates), rides the closure record, and is read
 // back by its capture ordinal (LUpval). An unfilled slot (authored `??`,
 // or a hole-adjacent short tail) becomes a param of the synthesized fn
-// (LLocal), typed by the hole's own handle (infer bound each hole to its
-// declaration-order param type; a tail slot carries the partial node's
-// handle — its width residue joins the callsite-result-width family).
-fn partial_split(r_args, n_args, n_ps, handle, i, ci) = if i >= n_ps {
-  ([], [], [])
+// (LLocal), typed by its own cell — the hole node's handle for an authored
+// `??`, and for a tail slot the cell the judgment bound beside the product
+// (`open_slot_cells`, infer.mn) — so each open slot reads at its own width.
+// The descent's fourth projection is that cell per open slot, in order: the
+// synthesized fn's signature. A tail slot used to carry the partial node's
+// handle, the arrow's word, so a wide tail parameter's local was declared
+// at the word and never defined (`fadd(1.5)` over a Float pair did not
+// assemble, measured 2026-09-30).
+fn partial_split(r_args, open, n_args, n_ps, handle, i, ci) = if i >= n_ps {
+  ([], [], [], [])
 } else if i >= n_args {
   let pn = "__part_{int_to_str(i)}"
-  match partial_split(r_args, n_args, n_ps, handle, i + 1, ci) {
-    (caps, names, bargs) => (caps, [pn] ++ names, [LLocal(handle, pn)] ++ bargs),
+  let cell = open_slot_handle(open, i - n_args, handle)
+  match partial_split(r_args, open, n_args, n_ps, handle, i + 1, ci) {
+    (caps, names, bargs, cells) => (caps, [pn] ++ names, [LLocal(cell, pn)] ++ bargs, [cell] ++ cells),
   }
 } else {
   let arg = list_index(r_args, i)
@@ -935,67 +969,86 @@ fn partial_split(r_args, n_args, n_ps, handle, i, ci) = if i >= n_ps {
     N(b, _, ah) => match b {
       NHole(_) => {
         let pn = "__part_{int_to_str(i)}"
-        match partial_split(r_args, n_args, n_ps, handle, i + 1, ci) {
-          (caps, names, bargs) => (caps, [pn] ++ names, [LLocal(ah, pn)] ++ bargs),
+        match partial_split(r_args, open, n_args, n_ps, handle, i + 1, ci) {
+          (caps, names, bargs, cells) => (caps, [pn] ++ names, [LLocal(ah, pn)] ++ bargs, [ah] ++ cells),
         }
       },
       _ => {
         let e = lower_expr(arg)
-        match partial_split(r_args, n_args, n_ps, handle, i + 1, ci + 1) {
-          (caps, names, bargs) => ([e] ++ caps, names, [LUpval(lexpr_handle(e), ci)] ++ bargs),
+        match partial_split(r_args, open, n_args, n_ps, handle, i + 1, ci + 1) {
+          (caps, names, bargs, cells) => ([e] ++ caps, names, [LUpval(lexpr_handle(e), ci)] ++ bargs, cells),
         }
       },
     },
   }
 }
 
+// The cell typing the k-th open tail slot, written by the judgment beside
+// the product. A slot past the cells is the invariant broken — reported,
+// the partial node's own handle the productive stand-in.
+fn open_slot_handle(open, k, handle) = if k < len(open) {
+  list_index(open, k)
+} else {
+  report(EInternalInvariant("a partial's open slot has no cell typing it", parse_span_of(handle)))
+  handle
+}
+
 // The callee shapes a partial can synthesize a body for, as a VALUE rather
 // than as a returned closure: fn name · variant tag · the singleton-tier
-// perform's (handler, op, stateful) triple. Each carries exactly what
-// apply_callee_form needs and nothing the site could re-derive.
-type PartialCalleeForm = PcfCall(String) | PcfVariant(TagId) | PcfPerform(PerformDispatch)
+// perform's (handler, op, stateful) triple · a local callee's value. Each
+// carries exactly what apply_callee_form needs and nothing the site could
+// re-derive.
+type PartialCalleeForm = PcfCall(String) | PcfVariant(TagId) | PcfPerform(PerformDispatch) | PcfLocal(LowExpr)
 
-// The callee shapes a partial can synthesize a body for: a top-level fn or
-// module value (LCall through its global) and ADT construction
-// (LMakeVariant) — for both, infer's
-// dispatch provably took the partial fork too (their schemes pre-register
-// as fn types), so type and lowering agree by construction. A local /
-// closure callee (its value captured at slot 0 + the W7 call), the
-// intrinsic projections (to_string / hash / float_of_int / substrate ops),
-// and effect ops are the named remainder — Hβ.lower.partial-local-callee —
-// floored typed, never called wrong.
+// The callee is resolved ONCE, by scope, exactly as the saturated call's
+// dispatch resolves it (`lower_call_dispatch`): a binding the lowering's
+// own scope holds — a parameter, a local, a capture — is the callee
+// whatever the module env says of the same name, and its value rides the
+// partial's record as the last capture, called by the synthesized body. A
+// let-bound `add` that shadowed a top-level `add` used to be looked up by
+// name in the module env, so the partial called the top-level one (6 for
+// 5, zero diagnostics, boot 523f1732), and a local with no module entry
+// was a floor (Hβ.lower.callee-resolved-by-name-in-the-module-env). Module
+// scope keeps its kinds: a top-level fn or module value (LCall through its
+// global), ADT construction (LMakeVariant), an op reified as a value.
 fn partial_callee_form(handle, fbody, fh) = match fbody {
-  NExpr(VarRef(name)) => // The name-keyed intrinsic projections (the show/hash fold leaves, the
-  // gradient's converts) and the substrate/wasi instruction ops have no
-  // global fn to LCall — a partial over one floors typed with the rest of
-  // the unbuilt shapes, never a call past the projection.
-  if is_substrate_mem_op(name) || is_wasi_import_op(name) || name == "to_string" || name == "hash" || name == "float_of_int" || name == "float_to_int" {
-    None
-  } else {
-    match env_kind_of(name) {
-      Some(FnScheme) | Some(ValueScheme) => // A module value holding a closure is called through its global
-      // exactly as a declared fn's static closure is. Only module-scope
-      // entries answer here: a local's binding left the env with its scope.
-      Some(PcfCall(name)),
-      Some(ConstructorScheme(tag_id, _)) => Some(PcfVariant(tag_id)),
-      Some(EffectOpScheme(_, _, _, _)) => // An OP reified as a value, and it passes None for the lexical
-      // answer — not to disable a tier, but because it HAS no lexical
-      // answer: this body becomes a lifted fn, so a frame local resolved
-      // here would name a frame that is gone by the time it runs. The walk
-      // therefore finishes at call time, which is where an escaped
-      // closure's handler actually is (the same read-the-schedule-live law
-      // `><` obeys).
-      //
-      // This arm used to REFUSE whenever the op was ambiguous, because the
-      // only runtime walk it could reach keyed on the handler NAME and an
-      // ambiguous op has no single one. That refusal was the whole of the
-      // eta-wrapper ceiling. The op-keyed walk has no such gap, so there is
-      // nothing left to decline.
-      Some(PcfPerform(perform_dispatch_of(handle, name, None))),
-      _ => None,
-    }
+  NExpr(VarRef(name)) => match ls_resolve(name) {
+    (RGlobal, _) => partial_global_callee_form(handle, name),
+    (res, local_h) => Some(PcfLocal(lower_resolved_ref(fh, name, res, local_h))),
   },
   _ => None,
+}
+
+// A module-scope callee's form, by its env kind. The name-keyed intrinsic
+// projections (the show/hash fold leaves, the gradient's converts) and the
+// substrate/wasi instruction ops have no global fn to LCall — a partial
+// over one floors typed with the rest of the unbuilt shapes, never a call
+// past the projection.
+fn partial_global_callee_form(handle, name) = if is_substrate_mem_op(name) || is_wasi_import_op(name) || name == "to_string" || name == "hash" || name == "float_of_int" || name == "float_to_int" {
+  None
+} else {
+  match env_kind_of(name) {
+    Some(FnScheme) | Some(ValueScheme) => // A module value holding a closure is called through its global
+    // exactly as a declared fn's static closure is. Only module-scope
+    // entries answer here: a local's binding left the env with its scope.
+    Some(PcfCall(name)),
+    Some(ConstructorScheme(tag_id, _)) => Some(PcfVariant(tag_id)),
+    Some(EffectOpScheme(_, _, _, _)) => // An OP reified as a value, and it passes None for the lexical
+    // answer — not to disable a tier, but because it HAS no lexical
+    // answer: this body becomes a lifted fn, so a frame local resolved
+    // here would name a frame that is gone by the time it runs. The walk
+    // therefore finishes at call time, which is where an escaped
+    // closure's handler actually is (the same read-the-schedule-live law
+    // `><` obeys).
+    //
+    // This arm used to REFUSE whenever the op was ambiguous, because the
+    // only runtime walk it could reach keyed on the handler NAME and an
+    // ambiguous op has no single one. That refusal was the whole of the
+    // eta-wrapper ceiling. The op-keyed walk has no such gap, so there is
+    // nothing left to decline.
+    Some(PcfPerform(perform_dispatch_of(handle, name, None))),
+    _ => None,
+  }
 }
 
 // The callee form APPLIED — the one place a settled form meets its args.
@@ -1005,36 +1058,23 @@ fn partial_callee_form(handle, fbody, fh) = match fbody {
 // counted all three as effectful lambdas. The form is an ADT and the
 // dispatch is a match, so the decision is a VALUE the caller can read,
 // name and test — and the three lambdas are gone rather than relocated.
-fn apply_callee_form(form, handle, fh, bargs) = match form {
+fn apply_callee_form(form, handle, fh, bargs, n_caps) = match form {
   PcfCall(name) => LCall(handle, LGlobal(fh, name), bargs),
   PcfVariant(tag_id) => LMakeVariant(handle, tag_id, bargs),
   PcfPerform(disp) => LPerform(handle, disp, bargs),
+  PcfLocal(v) => // The callee value rides the record past the supplied fields, at the
+  // capture ordinal the supplied slots leave free; the body calls it.
+  LCall(handle, LUpval(lexpr_handle(v), n_caps), bargs),
 }
 
-// A bare CONSTRUCTOR or OP name in value position is the parameter product
-// with EVERY field a hole (SYNTAX §«Partial application» — the bare name IS
-// the name applied to nothing), so its arity is the declaration's own param
-// count, read from the env scheme rather than from the use site: a nullary
-// reference types as the ADT itself, not as a TFun, so the use site cannot
-// tell "no parameters" from "type not yet resolved" and only the
-// declaration can.
-//
-// NONE, NEVER ZERO. The first form answered `_ => 0` and the census
-// convicted it as a wildcard-zero — correctly, because zero is a real
-// arity and the arm was not measuring one: it was saying "this name is not
-// a function", which is what None says and what the caller actually
-// branches on. The two readings differ at exactly the case that matters,
-// a non-nullary constructor whose type has not resolved, where a
-// fabricated 0 would have rebuilt the payload-less-variant bug this whole
-// landing exists to delete.
-fn scheme_ref_fun_arity(name) = match env_lookup(name) {
-  Some(entry) => match entry {
-    (scheme, _, _) => match judgment_ty(scheme) {
-      TFun(ps, _, _) => Some(len(ps)),
-      _ => None,
-    },
-  },
-  None => None,
+// What the callee form adds to the partial's record: a local callee's
+// value, captured beside the supplied fields; the module-scope forms name
+// their callee statically and capture nothing.
+fn partial_callee_capture(form) = match form {
+  PcfLocal(v) => [v],
+  PcfCall(_) => [],
+  PcfVariant(_) => [],
+  PcfPerform(_) => [],
 }
 
 // PARTIAL APPLICATION AS A VALUE — the mint. The record is LambdaExpr's
@@ -1145,49 +1185,49 @@ fn project_thunk_fn(thunk_name, cap_pairs, branch_node, result_h, carrier_h, sha
   LFn(thunk_name, 0, [], [lo_body], len(cap_pairs), lines)
 }
 
-fn lower_call_partial(handle, fbody, fh, r_args, n_ps) = match partial_callee_form(handle, fbody, fh) {
+fn lower_call_partial(handle, fbody, fh, r_args, open, n_ps) = match partial_callee_form(handle, fbody, fh) {
   None => LInvariantFailure(handle, PartialCalleeShape(fh)),
   Some(form) => {
     let flat_args = list_to_flat(r_args)
-    match partial_split(flat_args, len(flat_args), n_ps, handle, 0, 0) {
-      (captures, param_names, body_args) => {
-        // The hole-product's remaining fields: their types are the CALLEE's
-        // trailing params, and the partial's own handle types the applied
-        // result. The callee's TFun is read at fh — the callee-ref handle
-        // the redirect already routes through — and the split's own count
-        // says which tail of it survives as parameters.
-        //
-        // The synthesized fn returns the CALLEE's return, so read it where
-        // the params are already read — the callee's own TFun at fh — not
-        // off the partial node. The two agreed while every partial was a
-        // CallExpr (the call node's type IS the applied result), and they
-        // part the moment a BARE name reifies: there the node's own type is
-        // the function type, and `Some(lookup_ty(handle))` would have
+    match partial_split(flat_args, open, len(flat_args), n_ps, handle, 0, 0) {
+      (captures, param_names, body_args, slot_cells) => {
+        // The record: the supplied fields in slot order, then a local
+        // callee's value (`partial_callee_capture`), so the body reaches
+        // its callee at the supplied count's ordinal.
+        let all_caps = captures ++ partial_callee_capture(form)
+        // The hole-product's remaining fields are typed by their own cells
+        // (the split's fourth projection), and the synthesized fn returns
+        // the CALLEE's return, read where the callee's arrow is — at fh —
+        // never off the partial node, whose own type is the arrow (a bare
+        // name reifies to it, and `Some(lookup_ty(handle))` would have
         // published the whole arrow as the ABI's return where the arrow's
-        // RESULT is meant.
-        // One home for the fact, both shapes correct.
+        // RESULT is meant).
         graph_emitfn_note(EmitFnEntry{
           caps: [],
-          fence: len(captures),
+          fence: len(all_caps),
           kind: EfkPartial,
           name: "partial_{int_to_str(handle)}",
           origin: handle,
-          params: zip(param_names, partial_param_tys(fh, len(param_names))),
+          params: zip(param_names, map(some_slot_ty, slot_cells)),
           ret: ret_ty_of(fh),
         })
         let fn_ir = LFn(
           "partial_{int_to_str(handle)}",
           len(param_names),
           param_names,
-          [apply_callee_form(form, handle, fh, body_args)],
-          len(captures),
+          [apply_callee_form(form, handle, fh, body_args, len(captures))],
+          len(all_caps),
           []
         )
-        LMakeClosure(handle, fn_ir, captures)
+        LMakeClosure(handle, fn_ir, all_caps)
       },
     }
   },
 }
+
+// An open slot's type is its cell, read through the twin bracket the entry
+// is emitted under (`slot_ty`).
+fn some_slot_ty(cell) = Some(TVar(cell))
 
 // THE DISPATCHED-ROW PROJECTION (master plan §6 1★). The single read of a fn's
 // dispatched effect-row names — canonical order, builtins filtered. The
@@ -2388,21 +2428,26 @@ fn lower_resolved_ref(handle, name: String, res, local_h) = {
     // field unsupplied (SYNTAX §«Partial application»), so it lowers
     // through the SAME partial mint an authored hole already used, with
     // no supplied args and no new mechanism. The callee shape is read live from the
-    // node's own program cell, never rebuilt from the matched Expr.
+    // node's own program cell, never rebuilt from the matched Expr, and
+    // the product — no arguments, a cell per slot — is the judgment's own,
+    // written at the reference (`bare_reference_product`, infer.mn): the
+    // judgment knows whether the reference is an arrow, so the use site
+    // no longer asks the env scheme by name for an arity it could not
+    // tell from an unresolved type.
     match env_kind_of(name) {
-      Some(ConstructorScheme(tag_id, _)) => match scheme_ref_fun_arity(name) {
-        None => // Not a function type: the reference IS the value — a nullary
+      Some(ConstructorScheme(tag_id, _)) => match graph_product_at(handle) {
+        NoProduct => // Not a function type: the reference IS the value — a nullary
         // variant, the sentinel form emit already knows.
         LMakeVariant(handle, tag_id, []),
-        Some(arity) => lower_call_partial(handle, graph_node_body(handle), handle, [], arity),
+        ProductOf(_, open) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
       },
-      Some(EffectOpScheme(_, _, _, _)) => match scheme_ref_fun_arity(name) {
-        None => // An op's declared scheme is always a signature, zero-arg
-        // included, so a miss here is an unresolved judgment and the
+      Some(EffectOpScheme(_, _, _, _)) => match graph_product_at(handle) {
+        NoProduct => // An op's declared scheme is always a signature, zero-arg
+        // included, so a missing product is an unresolved judgment and the
         // typed floor is the honest answer — lower_call_partial's own
         // None path, reached with the arity the graph actually proved.
         LInvariantFailure(handle, PartialCalleeShape(handle)),
-        Some(arity) => lower_call_partial(handle, graph_node_body(handle), handle, [], arity),
+        ProductOf(_, open) => lower_call_partial(handle, graph_node_body(handle), handle, [], open, len(open)),
       },
       Some(FnScheme) => // A named-fn VALUE reference (FnScheme tag-0 — excludes HandlerKind,
       // the PTee guard). ALWAYS the bare LGlobal — emit resolves it to the
@@ -2469,15 +2514,11 @@ fn lower_expr_body(e, handle, span) = match e {
   // only form, dispatched here by the env's EffectOpScheme. Plain
   // function calls fall through.
   match f {
-    N(fbody, _, fh) => {
-      // Resolve the arg PRODUCT to the callee's positional param order — labeled
-      // args reordered by field name, absent fields filled by their param
-      // defaults — the ONE read both infer + lower call (identical order by
-      // construction). For an intrinsic / constructor / fn-param callee with no
-      // declared params, resolution is positional passthrough (LabeledArg
-      // wrappers stripped). This subsumes the old trailing-only default fill.
-      let r_args = resolve_call_args(lower_callee_name(fbody), args)
-      // PARTIAL APPLICATION AS A VALUE (SYNTAX §«Partial application — the
+    N(fbody, _, fh) => // The arg PRODUCT is the judgment's — labeled args in declaration
+    // order, absent fields filled by their defaults — read off the call
+    // node (the call-product column), never resolved again by name.
+    match call_product_at(handle, args) {
+      (r_args, open) => // PARTIAL APPLICATION AS A VALUE (SYNTAX §«Partial application — the
       // product with a hole»): resolved args leaving declaration-order params
       // unfilled — an authored `??` slot — IS the lambda the surface law names
       // (`add3(10, ??, 30)` ≡ `(x) => add3(10, x, 30)`), supplied fields
@@ -2488,9 +2529,9 @@ fn lower_expr_body(e, handle, span) = match e {
       // pipe owns its hole; the inline splice is the zero-record projection
       // of the same hole-filling).
       match partial_unfilled(lower_callee_name(fbody), fh, r_args) {
-        Some(n_ps) => lower_call_partial(handle, fbody, fh, r_args, n_ps),
+        Some(n_ps) => lower_call_partial(handle, fbody, fh, r_args, open, n_ps),
         None => lower_call_dispatch(handle, f, fh, fbody, r_args),
-      }
+      },
     },
   },
   IfExpr(cond, then_e, else_e) => LIf(handle, lower_expr(cond), [lower_expr(then_e)], [lower_expr(else_e)]),
@@ -2702,7 +2743,7 @@ fn lower_pipe_stage(lo_l, right, handle) = match right {
     // hole-bearing call in stage position never mints a partial closure.
     let lo_r = match rbody {
       NExpr(CallExpr(f2, args2)) => match f2 {
-        N(fbody2, _, fh2) => lower_call_dispatch(rfh, f2, fh2, fbody2, resolve_call_args(lower_callee_name(fbody2), args2)),
+        N(fbody2, _, fh2) => lower_call_dispatch(rfh, f2, fh2, fbody2, call_product_nodes(rfh, args2)),
       },
       _ => lower_expr(right),
     }
@@ -2956,20 +2997,20 @@ fn extract_handler_name(node) = match node {
 
 // Config args from `~> handler(arg1, arg2)` — the parameterized-handler
 // factory's arguments, lowered and written FIRST into the install record
-// (before state inits). The install constructs the config PRODUCT, so the
-// args resolve through the ONE product read (resolve_call_args — labels to
-// positional order, absent fields drawn from the param defaults) exactly as
-// infer's CallExpr path resolved them: the two phases see the identical
-// order by construction (the seam pattern). A bare `~> handler` (VarRef) of
-// a config'd handler is the zero-arg product — every field fills from its
-// decl default (SYNTAX §«Default parameter values»); the HandlerKind guard
-// keeps a tee over a plain fn value at its positional passthrough.
+// (before state inits). The install constructs the config PRODUCT, and the
+// product is the judgment's, read off the install's own node (the
+// call-product column): a `~> handler(args)` install is a call and carries
+// it at the call node; a bare `~> handler` of a config'd handler is the
+// zero-arg product — every field filled from its decl default (SYNTAX
+// §«Default parameter values») — written at the reference node
+// (`note_bare_handler_product`, infer.mn); a handler without config, or a
+// tee over a plain fn value, has none.
 fn extract_handler_config_args(node) = match node {
-  N(body, _, _) => match body {
-    NExpr(CallExpr(_callee, args)) => resolve_call_args(lower_callee_name(body), args),
-    NExpr(VarRef(name)) => match handler_decl_of(name) {
-      Some((config, _, _)) => if len(config) == 0 { [] } else { resolve_call_args(name, []) },
-      None => [],
+  N(body, _, nh) => match body {
+    NExpr(CallExpr(_callee, args)) => call_product_nodes(nh, args),
+    NExpr(VarRef(_)) => match graph_product_at(nh) {
+      ProductOf(nodes, _) => nodes,
+      NoProduct => [],
     },
     _ => [],
   },
@@ -5457,16 +5498,6 @@ fn ret_ty_of(fn_handle) = match lookup_ty(fn_handle) {
 fn floor_tys(n) = map(none_of, range(0, n))
 
 fn none_of(_i) = None
-
-// A partial's surviving fields are the LAST n of the callee's params — the
-// hole-product's unfilled tail (SYNTAX §«Partial application»: the hole is
-// keyed by identity and the positional form fills in declaration order, so
-// the tail is exactly what remains). A callee whose type is not a readable
-// TFun floors: no judged params, no fabricated widths.
-fn partial_param_tys(callee_h, n) = match lookup_ty(callee_h) {
-  TFun(tparams, _, _) => if len(tparams) >= n { map(some_param_ty, drop(len(tparams) - n, tparams)) } else { floor_tys(n) },
-  _ => floor_tys(n),
-}
 
 // Fallback when the fn's type isn't a resolved TFun: reads each param's parsed
 // type through the one ty_handle_of projection (TVar → handle; ground → 0).

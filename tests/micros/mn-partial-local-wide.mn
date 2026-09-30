@@ -1,0 +1,14 @@
+// expect: 42
+// A PARTIAL OVER A LOCAL CALLEE AT A WIDE WIDTH. `mul` is a let-bound
+// closure over Floats; `mul(2.0)` captures the supplied field and the callee
+// value in one record, and the synthesized body calls the callee at the
+// site's vector — a Float argument, a Float result — through the callee's
+// native face. On boot 523f1732 the partial's callee was looked up by name
+// in the module env, found nothing, and floored.
+fn run() -> Int = {
+  let mul = (a, b) => a * b
+  let twice = mul(2.0)
+  if twice(3.25) == 6.5 { 42 } else { 0 }
+}
+
+fn main() -> Int = run()

@@ -1426,6 +1426,30 @@ and this is the STATE.
   its ultimate form, the emission's own allocation counted per unit before
   the gate so the walk deletes, are one named peer
   (`Hβ.emit.allocation-census-is-the-emission-itself`).
+- **A CALL'S PRODUCT IS THE JUDGMENT'S, WRITTEN ONCE AT THE CALL — CLOSED
+  2026-09-30 (R0g).** The lowering resolved every call a second time, by
+  NAME against the module env: the argument product (labels, defaults) and
+  a partial's callee were both read off whatever module declaration shared
+  the callee's name, blind to the scope the call stands in. Four silent
+  shapes on boot 523f1732: the prelude's `fold_handler` arm `f(acc, elem)`
+  refused with an arity mismatch inside the library when a program
+  declared `fn f(x: Int)`; `fn run(f) = f(7)` beside a top-level `f(a, b =
+  100)` spliced the module's default into the callback's call and trapped;
+  `g(b = 1, a = 5)` on a let-bound `g` ran as `g(1, 5)` with zero
+  diagnostics; `let inc = add(1)` over a let-bound `add` called the
+  top-level `add`, or floored where there was none. The judgment writes
+  each call's positional product — and a cell per slot a partial leaves
+  open — at the call node (`CallProduct`, the spine's `products` column,
+  trailed), against the parameters the CALLEE NODE carries, and the
+  lowering reads it; a partial over a local carries the callee's value in
+  its record; the use site's own name read for a bare constructor or op's
+  arity is deleted, the judgment writing that product at the reference.
+  What the build exposed: a partial's open tail slot was typed by the
+  partial node's arrow, so a wide slot never assembled, and a closure
+  call's result face was read off the call node where a partial's body
+  needs the callee's return — both closed with it
+  (`Hβ.lower.callee-resolved-by-name-in-the-module-env` CLOSED, nine
+  fixtures RED-first).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

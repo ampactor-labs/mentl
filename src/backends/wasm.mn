@@ -3782,8 +3782,8 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LShow(h, x) => collect_call_vectors_expr(show_node_of(h, x), acc),
   LHash(h, x) => collect_call_vectors_expr(hash_node_of(h, x), acc),
   LDirectCall(_h, _fh, _n, _t, args) => collect_call_vectors_list(args, acc),
-  LCall(h, f, args) => collect_call_vectors_expr(f, collect_call_vectors_list(args, [call_site_vector(args, h)] ++ acc)),
-  LTailCall(h, f, args) => collect_call_vectors_expr(f, collect_call_vectors_list(args, [call_site_vector(args, h)] ++ acc)),
+  LCall(h, f, args) => collect_call_vectors_expr(f, collect_call_vectors_list(args, [call_site_vector(f, args, h)] ++ acc)),
+  LTailCall(h, f, args) => collect_call_vectors_expr(f, collect_call_vectors_list(args, [call_site_vector(f, args, h)] ++ acc)),
   LResumeK(_h, k, v) => // The resume speaks the word face (`emit_word_face_call`) — its arity's
   // all-word vector, exactly what the emit names.
   collect_call_vectors_expr(k, collect_call_vectors_expr(v, [word_vector(1)] ++ acc)),
@@ -3835,7 +3835,7 @@ fn word_vector(n_args) = (map((_) => RI32, range(0, n_args + 1)), RI32)
 // word face.
 fn perform_site_vector(h, d, args) = match d {
   PdDriver(_) => word_vector(len(args)),
-  _ => call_site_vector(args, h),
+  _ => perform_vector_at(h, args),
 }
 
 // Emit each DISTINCT non-i32 repr-vector once. The seen list carries the ft_names
@@ -4962,10 +4962,10 @@ fn tail_expr_repr(expr) = match expr {
     BKArith => repr_join(tail_expr_repr(l), tail_expr_repr(r)),
     _ => RI32,
   },
-  LCall(ch, _callee, _) => repr_of(lookup_ty(ch)),
+  LCall(ch, callee, _) => call_result_repr(callee, ch),
   LShow(_h, _x) => RI32,
   LHash(_h, _x) => RI32,
-  LTailCall(ch, _callee, _) => repr_of(lookup_ty(ch)),
+  LTailCall(ch, callee, _) => call_result_repr(callee, ch),
   LFieldLoad(h, rec, sel) => // what the load emits, read from the receiver's layout
   field_load_repr(h, rec, sel),
   other => {
@@ -5993,7 +5993,7 @@ fn emit_expr(expr) = match expr {
         match disp {
           PdWalk(_, slot, _, ArmSlot) => {
             emit_arm_index(hs, slot)
-            if vector_is_wide(call_site_vector(args, h)) {
+            if vector_is_wide(perform_vector_at(h, args)) {
               wat_emit("    (global.get $native_face) (i32.add)\n")
             } else {
               ()
@@ -6578,12 +6578,33 @@ fn emit_args_word(args) = each(
 // word face it was written in.
 fn perform_ft(h, disp, args) = match disp {
   PdDriver(_) => call_ft_name(args),
-  _ => vector_ft_name(call_site_vector(args, h)),
+  _ => vector_ft_name(perform_vector_at(h, args)),
 }
 
-// A closure call site's vector: the record word, each argument at the width
-// it is emitted at, and the result the call node proves.
-fn call_site_vector(args, h) = ([RI32] ++ map(tail_expr_repr, args), repr_of(lookup_ty(h)))
+// An indirect site's vector: the record word, each argument at the width it
+// is emitted at, and the result face the site proves.
+fn site_vector(args, result) = ([RI32] ++ map(tail_expr_repr, args), result)
+
+// A closure call's vector — its result the CALLEE's return, read off the
+// callee expression's own type. The call node's type is that return at every
+// call the source writes, but the synthesized body of a partial calls
+// through the partial node itself, whose type is the product's arrow, so a
+// wide result there read as a word (`fadd(1.5)` over a Float pair did not
+// assemble, 2026-09-30). The callee's arrow is the one home both agree on; a
+// callee that is not an arrow (a continuation, a synthesized leaf's own
+// node) keeps the site's proof.
+fn call_site_vector(f, args, h) = site_vector(args, call_result_repr(f, h))
+
+fn call_result_repr(f, h) = match lexpr_handle(f) {
+  0 => repr_of(lookup_ty(h)),
+  fh => match lookup_ty(fh) {
+    TFun(_, ret, _) => slot_repr(ret),
+    _ => repr_of(lookup_ty(h)),
+  },
+}
+
+// A perform site's vector: its result the op's answer the site proves.
+fn perform_vector_at(h, args) = site_vector(args, repr_of(lookup_ty(h)))
 
 // A closure call (W7): the record parks in $call_<h> — per handle, so a call
 // nested in an argument cannot clobber it — and rides as the callee's
@@ -6603,7 +6624,7 @@ fn call_site_vector(args, h) = ([RI32] ++ map(tail_expr_repr, args), repr_of(loo
 // the site's own.
 fn emit_closure_call(h, func, args, tail) = {
   let hs = int_to_str(h)
-  let v = call_site_vector(args, h)
+  let v = call_site_vector(func, args, h)
   let op = if tail { "return_call_indirect" } else { "call_indirect" }
   emit_expr(func)
   wat_emit("    (local.set $call_{hs})\n    (local.get $call_{hs})\n")

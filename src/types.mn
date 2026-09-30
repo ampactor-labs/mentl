@@ -1038,6 +1038,16 @@ type StateSlotHome = SlotPairs([(String, Int)])
 // reads as it, the `BindUnwritten` precedent.
 type InstallShape = NoInstall | InstallOf(String, Int, [Int], [{arms: [String], ename: String}])
 
+// A call's positional product, the judgment's own (`infer_call_node`): the
+// declared slots in order as the nodes that fill them — an argument, the
+// default that fills an absent field, an authored `??` — and past them the
+// cells typing the slots a partial leaves open (one per slot, bound to the
+// slot's parameter type at the judgment, `open_slot_cells`). Written once
+// at the call node, trailed as `MSetProduct`; the lowering reads it and
+// resolves no callee by name. `NoProduct` comes first so a virgin cell
+// reads as it, the `NoInstall` precedent.
+type CallProduct = NoProduct | ProductOf([Node], [Int])
+
 // The emittable-fn enumeration's entry kind (lowering-is-a-column, the
 // no-mint resolution): each synthesized fn shape is a PROJECTION of
 // structure the graph holds at its origin handle — the lambda its own
@@ -1118,6 +1128,8 @@ type Mutation
   | MInstanceNote(Int)
   // a demand entered on a type cell (undo = pop the newest)
   | MSetDemand(Int)
+  // a call's product written at its node (undo = restore the old value)
+  | MSetProduct(Int, CallProduct)
 
 // 14 variants, one per operator form in SYNTAX.md's operator
 // precedence table. Exhaustive set; add a variant here AND update
@@ -1383,7 +1395,7 @@ type CursorView
 // copies of one type is the Carried-Truth Law at the declaration layer; the
 // name is its one home, and the next column is one line.
 type SpinePage
-  = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
+  = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], products: [CallProduct], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) = count_lines_from(s, byte_len(s), 0, 0)
@@ -2430,6 +2442,13 @@ effect GraphWrite {
   // install answers in its own frame, and the emitted reach all key the
   // install's arms from one home.
   graph_install_at(Int) -> InstallShape
+  // The call-product column's write: the judgment notes each call's
+  // positional product at the call node — the ONE reader of a callee's
+  // parameters — trailed as MSetProduct so a rolled-back judgment leaves no
+  // product at a reused handle. Its read is the lowering's, which resolves
+  // no callee by name (Hβ.lower.callee-resolved-by-name-in-the-module-env).
+  graph_product_note(Int, [Node], [Int])
+  graph_product_at(Int) -> CallProduct
   // The emittable-fn enumeration's write (the no-mint resolution):
   // each of lower's seven LFn construction sites notes (kind, origin
   // handle, deterministic name, fence, captures) at the moment those
@@ -3899,51 +3918,27 @@ fn show_handle(h) with !Mutate = {
 //
 // A call constructs its arg PRODUCT — positionally, by field (label), mixed,
 // or with defaults filling absent fields — ONE machinery, the same as a record
-// literal. resolve_call_args is the single read both infer AND lower call, so
-// they see the IDENTICAL positional order by construction (the seam pattern —
-// one truth, two consumers, no re-derivation). The LabeledArg wrappers and the
-// reorder are resolved away here; downstream sees only positional value nodes.
+// literal. resolve_call_args is the JUDGMENT's one read; its answer is written
+// at the call node (the call-product column, `graph_product_note`) and the
+// lowering reads that, so the two see one product by construction — one
+// truth, one writer, one reader, no re-derivation. The LabeledArg wrappers
+// and the reorder are resolved away here; downstream sees only positional
+// value nodes.
 //
-// The callee's declared param TParams, read LIVE off its TFun (the one home —
-// no copy, no cache). [] when the callee's scheme isn't a ground function
-// (an unbound forward ref, a param-position fn) — then there are no labels to
-// resolve and the args pass through positionally.
-fn callee_params(name) = match env_lookup(name) {
-  Some(entry) => match entry {
-    (scheme, _, _) => match scheme {
-      Live(h) => // A live cell and a frozen TVar are the same read one hop apart: chase
-      // to the bound node and take the arrow. judgment_ty is the infer-layer
-      // form of this and would also run the quantifier split, which a label
-      // resolver has no use for — and types.mn sits below infer, so the
-      // chase IS the layer's live read.
-      match graph_chase(h) {
-        GNode(NBound(TFun(params, _, _)), _) => params,
-        _ => [],
-      },
-      Frozen(_, TVar(h)) => match graph_chase(h) {
-        GNode(NBound(TFun(params, _, _)), _) => params,
-        _ => [],
-      },
-      Frozen(_, TFun(params, _, _)) => params,
-      _ => [],
-    },
-  },
-  None => [],
-}
-
 // Resolve a call's arg list (carrying optional LabeledArg wrappers) to the
-// callee's positional param order. Positional args fill the next un-claimed
-// slot left-to-right; a labeled arg claims its named slot (skip-over); a slot
-// no arg reaches is filled by the param's default node (the absent product
+// callee's positional param order — PARAMS the callee's declared TParams,
+// read by the judgment off the callee NODE's own type (`callee_params_at`,
+// infer.mn), never by name. Positional args fill the next un-claimed slot
+// left-to-right; a labeled arg claims its named slot (skip-over); a slot no
+// arg reaches is filled by the param's default node (the absent product
 // field's fallback construction). An unknown label is E_UnknownArgLabel —
 // Located, productive-under-error (the arg is dropped, parsing continues).
-fn resolve_call_args(cname, args) = {
-  let params = callee_params(cname)
-  // No declared params (forward ref / fn-param callee / constructor): no labels
-  // to resolve against. Strip any stray LabeledArg wrappers to their value so
-  // downstream never meets the wrapper, and keep positional order.
+//
+// No declared params (forward ref / fn-param callee / constructor): no labels
+// to resolve against. Strip any stray LabeledArg wrappers to their value so
+// downstream never meets the wrapper, and keep positional order.
+fn resolve_call_args(params, args, cname: String) =
   if len(params) == 0 { map(unwrap_labeled_arg, args) } else { fill_arg_slots(params, args, cname) }
-}
 
 // Unwrap a LabeledArg to its value node; a positional arg passes through.
 fn unwrap_labeled_arg(arg) with Pure = match arg {

@@ -3268,7 +3268,7 @@ fn infer_expr(ref node) = match node {
     NExpr(LitString(_)) => graph_bind(handle, ty_string, Located(span, Inferred("string literal"))),
     NExpr(LitBool(_)) => graph_bind(handle, TName("Bool", []), Located(span, Inferred("bool literal"))),
     NExpr(LitUnit) => graph_bind(handle, TUnit, Located(span, Inferred("unit"))),
-    NExpr(VarRef(name)) => infer_var_ref(name, handle, span),
+    NExpr(VarRef(name)) => infer_var_ref(name, handle, span, RefValued),
     NExpr(BinOpExpr(op, left, right)) => {
       infer_expr(left)
       infer_expr(right)
@@ -3285,14 +3285,14 @@ fn infer_expr(ref node) = match node {
       }
     },
     NExpr(CallExpr(func, args)) => match infer_call_node(func, args, handle, span) {
-      CallPartial => // A partial application mints the closure that holds its supplied
+      CallPartial(_) => // A partial application mints the closure that holds its supplied
       // fields, in the frame that forms it (16 bytes over one literal, and
       // `!Alloc` accepted it, measured 2026-09-28). A pipe's right-hand stage
       // is completed in place and mints nothing, which is why the pipe judges
       // its stage through `infer_call_node` alone.
       inf_add_row(construction_row()),
       CallSaturated => (),
-      CallSubstrateHoled => (),
+      CallSubstrateHoled(_) => (),
     },
     NExpr(IfExpr(cond, then_e, else_e)) => {
       // The condition is READ to decide the branch — a read-SHAPE
@@ -3652,9 +3652,9 @@ fn infer_expr(ref node) = match node {
         // mints no closure.
         match right {
           N(NExpr(CallExpr(rf, rargs)), rspan, rh) => match infer_call_node(rf, rargs, rh, rspan) {
-            CallPartial => (),
+            CallPartial(_) => (),
             CallSaturated => (),
-            CallSubstrateHoled => (),
+            CallSubstrateHoled(_) => (),
           },
           _ => match inlinable_lambda(right) {
             Some((params, body)) => match right {
@@ -3804,7 +3804,30 @@ fn infer_field_access_record(rec, field, handle, span: ValidSpan) = match rec {
 // if the binding is an `own` parameter. The affine-ledger handler
 // in `own.mn` decides which names are own-marked; `check_consume_at_use`
 // performs unconditionally and lets the handler decide.
-fn infer_var_ref(name, handle, span: ValidSpan) = {
+// How a reference is used: as a call's callee, or as a value. A
+// constructor or op name in VALUE position is the parameter product with
+// every field unsupplied (SYNTAX §«Partial application» — a bare name IS the
+// name applied to nothing), so its judgment writes that product; a callee
+// reference writes nothing, the call's product being the call node's.
+type RefUse = RefCalled | RefValued
+
+// A call's callee, judged as the reference it is (`RefCalled`); every other
+// callee expression is judged as the value it is.
+fn infer_callee(func) = match func {
+  N(NExpr(VarRef(name)), span, fh) => infer_var_ref(name, fh, span, RefCalled),
+  _ => infer_expr(func),
+}
+
+// A bare constructor or op reference's product: no arguments, one cell per
+// slot, so the partial the lowering mints for it reads each open slot at its
+// own width. A nullary constructor's reference is the value itself, not an
+// arrow, and writes none.
+fn bare_reference_product(handle, ty, span: ValidSpan) = match ty {
+  TFun(ps, _, _) => graph_product_note(handle, [], open_slot_cells(ps, 0, span)),
+  _ => (),
+}
+
+fn infer_var_ref(name, handle, span: ValidSpan, use) = {
   // The note fires ABOVE the env match: a missing name is still a
   // reference (the whole-weave scan counted it; the column must too).
   graph_ref_note(name, handle)
@@ -3848,6 +3871,14 @@ fn infer_var_ref(name, handle, span: ValidSpan) = {
         // Carry parameter ownership from the env edge into Consume. No recovery
         // lookup: SchemeKind names the binding's construction origin.
         check_consume_at_use(name, kind, span)
+        match use {
+          RefCalled => (),
+          RefValued => match kind {
+            ConstructorScheme(_, _) => bare_reference_product(handle, ty, span),
+            EffectOpScheme(_, _, _, _) => bare_reference_product(handle, ty, span),
+            _ => (),
+          },
+        }
       },
     },
   }
@@ -3907,6 +3938,21 @@ fn callee_name(func_node) with Pure = match func_node {
     callee_name(callee),
     _ => "<expr>",
   },
+}
+
+// A callee's declared parameters, read off the callee NODE's own type — the
+// product a call resolves its labels and defaults against. Whatever the
+// callee expression is (a name, a field, a call's result), the judgment
+// bound its node before the arguments are read, and that binding is the one
+// home: a parameter or a field callee carries ITS type, never a module
+// function's that shares the name (`fn run(f) = f(7)` beside a two-parameter
+// top-level `f` with a default spliced that default into the callback's
+// call, measured 2026-09-30 on boot 523f1732). [] when the node is not a
+// function type: no labels to resolve, the arguments pass through
+// positionally.
+fn callee_params_at(fh) = match lookup_ty(fh) {
+  TFun(params, _, _) => params,
+  _ => [],
 }
 
 // is_seq_op — the names of the sequence node-kind's projections. A sequence is
@@ -4098,19 +4144,29 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
 // What a call's judgment built: the applied result, the product with holes —
 // the closure a partial application mints wherever it is not completed in
 // place — or a holed substrate call, which the lowering never mints (its pipe
-// completes it, and a hole left in value position is refused as a hole).
-type CallForm = CallSaturated | CallPartial | CallSubstrateHoled
+// completes it, and a hole left in value position is refused as a hole). A
+// holed form carries the cells typing the slots left open past the
+// arguments (`open_slot_cells`), which ride the call node's product.
+type CallForm = CallSaturated | CallPartial([Int]) | CallSubstrateHoled([Int])
+
+fn form_holes(form) = match form {
+  CallSaturated => [],
+  CallPartial(cells) => cells,
+  CallSubstrateHoled(cells) => cells,
+}
 
 // A call node's judgment, returning which form it built.
 fn infer_call_node(func, args, handle, span: ValidSpan) = {
-  infer_expr(func)
+  infer_callee(func)
   // The arg list is the callee's positional product: resolve labeled args
-  // to positional order and fill absent fields with param defaults (the ONE
-  // read both infer + lower call — they see the identical order). The
-  // LabeledArg wrappers never reach infer_expr — resolution strips them.
+  // to positional order and fill absent fields with param defaults, against
+  // the parameters the callee NODE carries. The LabeledArg wrappers never
+  // reach infer_expr — resolution strips them.
   let cname = callee_name(func)
-  let params = callee_params(cname)
-  let pos_args = resolve_call_args(cname, args)
+  let params = match func {
+    N(_, _, fh) => callee_params_at(fh),
+  }
+  let pos_args = resolve_call_args(params, args, cname)
   // A named callee that MISSES env already reported (one miss, one
   // diagnostic); its parameter product is unreadable, so the move-vs-
   // borrow read has no ground. Compounding the miss with a move default
@@ -4125,6 +4181,10 @@ fn infer_call_node(func, args, handle, span: ValidSpan) = {
     infer_call_arg_list(pos_args, params, 0)
   }
   let form = infer_call(func, pos_args, handle, span)
+  // The product is a fact of the call node: written once, here, and read
+  // by the lowering (the call-product column) — the nodes in declaration
+  // order, and the cells typing the slots a partial leaves open past them.
+  graph_product_note(handle, pos_args, form_holes(form))
   // H4: constructor calls allocate a heap record. Tag the
   // resulting handle so check_escape at fn return can verify
   // the value doesn't outlive its region. H4.1: constructor
@@ -4144,7 +4204,7 @@ fn infer_call(func, args, handle, span: ValidSpan) = match func {
     // became the partial the pipe completes, and every seq-op pipe stage
     // mismatched (14 census sites). An under-applied or holed seq-op call is
     // the product-with-holes like any other call.
-    if is_seq_op(cname) && call_hole_index(args, 0) < 0 && len(args) == len(callee_params(cname)) {
+    if is_seq_op(cname) && call_hole_index(args, 0) < 0 && len(args) == len(callee_params_at(fh)) {
       infer_seq_op(cname, fh, args, handle, span)
       CallSaturated
     }
@@ -4158,18 +4218,15 @@ fn infer_call(func, args, handle, span: ValidSpan) = match func {
       let elem = TVar(mint(Inferred("sequence element")))
       match seq_op_sig(cname, elem) {
         Some(sig) => match sig {
-          (ptys, ret) => {
-            infer_call_partial(
-              args,
-              build_ctor_params(ptys, 0),
-              ret,
-              mk_ef_closed([ENamed(intern_str("Memory"))]),
-              handle,
-              span,
-              cname
-            )
-            CallSubstrateHoled
-          },
+          (ptys, ret) => CallSubstrateHoled(infer_call_partial(
+            args,
+            build_ctor_params(ptys, 0),
+            ret,
+            mk_ef_closed([ENamed(intern_str("Memory"))]),
+            handle,
+            span,
+            cname
+          )),
         },
         None => // A table member with no face row is unreachable by construction
         // (the two enumerate the same names); the floor keeps
@@ -4202,8 +4259,7 @@ fn infer_call(func, args, handle, span: ValidSpan) = match func {
         // mints the closure its caller is charged for.
         match graph_chase(fh) {
           GNode(NBound(TFun(ps, pret, prow)), _) => if len(args) < len(ps) || call_hole_index(args, 0) >= 0 {
-            infer_call_partial(args, ps, pret, prow, handle, span, cname)
-            CallPartial
+            CallPartial(infer_call_partial(args, ps, pret, prow, handle, span, cname))
           } else {
             infer_call_saturated(args, fh, handle, span, cname)
             CallSaturated
@@ -4290,6 +4346,27 @@ fn infer_call_partial(args, params, pret, prow, handle, span: ValidSpan, cname) 
       InferredCallReturn(cname, Inferred("partial application — the product with a hole"))
     )
   )
+  open_slot_cells(params, len(args), span)
+}
+
+// The cells typing the slots a partial leaves open PAST its arguments — one
+// per tail parameter, bound to that parameter's type here, so the lowering
+// reads each open slot at its own width (a slot an authored `??` holds is
+// typed by the hole node itself). A tail slot used to be typed by the
+// partial node, whose type is the product's own arrow, so a wide tail
+// parameter's local was declared at the arrow's word and never defined:
+// `fadd(1.5)` over a Float pair checked clean and did not assemble
+// (measured 2026-09-30 on boot 523f1732).
+fn open_slot_cells(params, from, span: ValidSpan) = if from >= len(params) {
+  []
+} else {
+  map(open_slot_cell(span, ??), slice(params, from, len(params)))
+}
+
+fn open_slot_cell(span: ValidSpan, p) = {
+  let c = mint(Inferred("a slot the call leaves open"))
+  graph_bind(c, param_ty(p), Located(span, Inferred("declaration-order param")))
+  c
 }
 
 fn unify_args_positionally(args, params, i, span: ValidSpan) = if i < len(args) && i < len(params) {
@@ -4770,6 +4847,7 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
       match handler_e_r(right) {
         Some(er) => match er {
           (handled, resid_h, hconfig) => {
+            note_bare_handler_product(right)
             // THE INSTALL CONNECTION: flow the op payload performer→handler.
             // The body performs E(a); the handler is Handler(E(P)); unify a = P,
             // so the handler's arm param (elem : P) becomes the performed value
@@ -4961,6 +5039,22 @@ fn handler_e_r(right) = match callee_name(right) {
       },
     },
     None => None,
+  },
+}
+
+// A bare `~> h` of a handler with config is the zero-argument product:
+// every field fills from its declaration default, and that product is
+// written at the reference node, where the lowering reads an install's
+// config arguments (`extract_handler_config_args`) — a `~> h(args)`
+// install is a call and writes its product at the call node. A handler
+// without config writes none.
+fn note_bare_handler_product(right) = match right {
+  N(rbody, _, rh) => match rbody {
+    NExpr(VarRef(name)) => {
+      let params = callee_params_at(rh)
+      if len(params) == 0 { () } else { graph_product_note(rh, resolve_call_args(params, [], name), []) }
+    },
+    _ => (),
   },
 }
 

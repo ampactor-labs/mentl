@@ -1,0 +1,15 @@
+// expect: 8
+// A FIELD CALLEE'S PRODUCT IS ITS FIELD'S TYPE, NEVER A MODULE FUNCTION
+// THAT SHARES THE FIELD'S NAME. `r.f(7)` calls the closure stored in the
+// field `f`, a one-parameter function; the top-level `f` carries a default
+// for a second parameter. The judgment used to name the callee by the FIELD
+// and read the module `f`'s parameters, splicing its default into a call
+// of a one-parameter closure — refused as an arity mismatch on boot
+// 523f1732. A call's parameters are read off the callee node's own type,
+// whatever expression the callee is.
+fn f(a: Int, b: Int = 100) -> Int = a + b
+
+fn main() -> Int = {
+  let r = {f: { n => n + 1 }}
+  r.f(7)
+}

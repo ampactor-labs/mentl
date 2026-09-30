@@ -35,6 +35,93 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-30 · pin 0bc95063dbe7c4a2 (TRANSITION m3 == m4) · A CALL'S PRODUCT IS THE JUDGMENT'S, WRITTEN ONCE AT THE CALL.
+  R0g. The lowering resolved every call a SECOND time, by name against the
+  module env, blind to the scope the call stands in: `resolve_call_args`
+  read the callee's declared parameters through `callee_params(name)` — an
+  `env_lookup` — to reorder labels and fill defaults, and
+  `partial_callee_form` read the same name's env kind to pick a partial's
+  callee. Both were "the ONE read both infer and lower call", and both
+  were true only where the name meant the same thing in the module env and
+  at the call. Four silent shapes measured on boot 523f1732, each a fixture
+  RED there and green through m2: the prelude's `fold_handler` arm
+  `f(acc, elem)` resolved against a program's top-level `fn f(x: Int)` and
+  refused a false arity mismatch at a span inside the library
+  (mn-shadow-callee-product, 6); `fn run(f) = f(7)` beside a top-level
+  `f(a, b = 100)` spliced the module's default into the callback's call and
+  trapped at the indirect call after a clean check
+  (mn-shadow-callee-default, 8); `g(b = 1, a = 5)` on a let-bound `g` ran
+  as `g(1, 5)` — exit 252 for 4, zero diagnostics
+  (mn-labeled-args-local-lambda); a partial over a let-bound `add` called
+  the top-level `add` (mn-partial-local-shadows-fn, 6 for 5) and floored
+  `partial over non-global callee shape` where no top-level shared the name
+  (mn-partial-local-callee, 5).
+  **The form.** The judgment writes each call's positional product at the
+  call node — the nodes in declaration order, labels resolved, defaults
+  filled, an authored `??` in place, and past them one cell per slot a
+  partial leaves open, bound to the slot's parameter type
+  (`open_slot_cells`) — as the spine's `products` column (`CallProduct =
+  NoProduct | ProductOf([Node], [Int])`, `graph_product_note`, trailed as
+  `MSetProduct` and reverted with the rest, so a rolled-back candidate
+  leaves nothing at a reused handle), against the parameters the CALLEE
+  NODE carries: `callee_params_at(fh)` reads the arrow at `lookup_ty(fh)`,
+  whatever the callee expression is, so a parameter's own arity, a
+  let-bound closure's own parameter names and a field's own type decide —
+  which is how the field named itself: `r.f(7)` on a record field had been
+  read as the module `f`'s parameters by the JUDGMENT's own
+  `callee_params(callee_name(func))` (mn-field-callee-product, 8), a fifth
+  shape the peer's three lowering sites did not count. The lowering reads
+  the product (`call_product_at`, `call_product_nodes`) at the CallExpr
+  arm, the pipe stage and the install's config, and resolves no callee by
+  name; `callee_params` and `scheme_ref_fun_arity` are deleted. A bare
+  `~> h` of a config'd handler writes its default-filled product at the
+  reference (`note_bare_handler_product`); a bare constructor or op name in
+  value position writes the all-holes product there
+  (`bare_reference_product`), the judgment telling a callee reference from
+  a value one by `RefUse` (`infer_callee` judges a call's callee as
+  `RefCalled`), so the lowering's use site stopped asking the env scheme by
+  name for an arity. A partial's callee resolves by SCOPE first, as the
+  saturated dispatch does: a local's value is `PcfLocal`, the last capture
+  of the partial's record, and the synthesized body calls it through
+  `LUpval` at the supplied count's ordinal.
+  **Two width faces found in the build.** A partial's open TAIL slot was
+  typed by the partial node — the arrow's word — so `fadd(1.5)` over a
+  Float pair declared its parameter f64 (`partial_param_tys`, the callee's
+  last n params) and read it as a word: `undefined local variable
+  "$__part_1"` on the boot (mn-partial-wide-result, 42 now); the split's
+  fourth projection is the cell per open slot, and `partial_param_tys` is
+  deleted. And a closure call's result face was read off the CALL NODE
+  (`call_site_vector(args, h)`), which for a partial's synthesized body is
+  the partial node — the arrow — so the body's `LCall` answered a word
+  where the callee returns a Float; `call_result_repr(f, h)` reads the
+  callee expression's arrow (`slot_repr(ret)`), one home for
+  `tail_expr_repr`, the vector collector and `emit_closure_call`, and a
+  perform keeps the site's proof (`perform_vector_at`);
+  mn-partial-local-wide (a partial over a Float lambda, 42) pins both faces
+  together. The m2/m3 transition, 13,286 lines, is handle numbering alone:
+  emit-diff finds 0 named wheel fns and 0 lambda bodies differing once
+  provenance is normalized, and the raw diff is `$call_<h>` and `$__kf_<h>`
+  locals shifted by the cells the judgment mints (five at
+  `serialize_string`'s first closure call).
+  **Kills.** (1) "`callee_params_at` breaks the handler install — a
+  handler's scheme is not an arrow" — a config'd handler's scheme IS
+  `TFun(config_tparams, Handler(inst), Pure)` (`register_handler`,
+  infer.mn), and `subst_ty` keeps each TParam's default through
+  instantiation, so `~> h(args)` and `~> h` read the same product a call
+  does; a config-less handler's reference has no arrow and writes none,
+  which the lowering reads as `[]`. (2) "A bare ctor/op reference's product
+  can be written by the VarRef arm whatever its position" — it can, at the
+  cost of one cell per parameter at every constructor CALL in the wheel,
+  derived and never demanded; `RefUse` costs nothing. (3) "The lowering can
+  derive a bare name's open cells from the arrow's params itself" — the
+  params are types, not handles, and a ground parameter (`BInt(Int)`) has
+  none: only the judgment can mint the cell, so it writes it. (4)
+  "`some_param_ty` is dead with `partial_param_tys`" — env.mn and the
+  signature's param lift still read it; it stays. (5)
+  "mn-shadow-callee-product refuses through m2 too" — it refused for want
+  of `fold`: the fixture links the runtime libs, as the battery does, and
+  passes. Battery 236/236, crown 102/102, frontier 442/0/2. Cost at the
+  pin: m4 leg 12.23s wall · 780MB peak RSS (798792 KB).
 - 2026-09-30 · pin 523f17329ae8d915 (TRANSITION m3 == m4) · THE ALLOCATION AUDIT AT THE SETTLE POINT — WHAT A UNIT'S CODE BUILDS, READ AGAINST THE ROW THE JUDGMENT GAVE IT.
   R0j. R0i's census of unrowed constructs was six found by hand; this is
   the gate that makes it mechanical. At emit's settle point — the ABI

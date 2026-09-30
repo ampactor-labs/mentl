@@ -6393,34 +6393,55 @@ follows the representation, never the reverse: the cost moves to zero only
 where the lowering stops allocating, and the settle-point audit above holds
 the two together.
 
-`Hβ.lower.callee-resolved-by-name-in-the-module-env` — OPEN, ONE FACE CLOSED
-2026-09-28 (L4a). Lowering read a call's callee NAME against the module env
-at three sites, blind to its own scope, so a parameter, local or capture that
-shadows a module-level name was lowered as that name. THE DISPATCH FACE,
-CLOSED: `fn apply(result, x: Int) -> Int = result(x)` lowered `result(x)` as
-a perform of the prelude's `Iterate` op, and on boot 51f332d7 the module does
-not assemble (tests/micros/mn-param-shadows-op.mn, 7 now); found in the
-compiler's own src/derive.mn, whose parameter of that name aborted its first
-derivative through a twin. The callee is resolved once per call now and the
-resolution decides (`lower_call_dispatch` → `lower_global_call` or
-`lower_call_of`), which also removed a second resolution every call paid.
-THE ARGUMENT-PRODUCT FACE, OPEN: `resolve_call_args` reads the callee's
-declared parameters by name, so the prelude's `fold_handler` arm
-`f(acc, elem)` is resolved against a user's top-level `fn f(x: Int)` —
-`fn f(x: Int) -> Int = x * 100` beside `[1, 2, 3] |> fold(0, (acc, i) =>
-acc + i)` is refused with a false arity mismatch inside the library, at a
-span the program never wrote (RED on boot 51f332d7 and on L4a); a global of
-the same name with a defaulted parameter would splice its default into the
-config call silently. THE PARTIAL FACE, OPEN: `partial_callee_form` reads
-the same name's kind, so a partial over a local that shadows a module
-function builds a call to the module function. THE FORM for both: the
-judgment already resolves each call's product in the scope the call stands
-in (`pos_args` in infer's call arm) — record it on the call node, trailed so
-a rolled-back judgment leaves no stale entry at a reused handle, and let
-lowering read it; lowering's own name reads for a callee delete, and "the
-one read both infer and lower call" becomes true by construction rather
-than by claim. A partial over a local callee (a floor today) takes the
-callee value as its closure's last field.
+`Hβ.lower.callee-resolved-by-name-in-the-module-env` — ✅ CLOSED 2026-09-30
+(R0g); the dispatch face closed 2026-09-28 (L4a). Lowering read a call's
+callee NAME against the module env at three sites, blind to its own scope,
+so a parameter, local or capture that shadows a module-level name was
+lowered as that name. THE DISPATCH FACE (L4a): `fn apply(result, x: Int) ->
+Int = result(x)` lowered `result(x)` as a perform of the prelude's `Iterate`
+op, and on boot 51f332d7 the module did not assemble
+(tests/micros/mn-param-shadows-op.mn, 7); found in the compiler's own
+src/derive.mn, whose parameter of that name aborted its first derivative
+through a twin. The callee is resolved once per call and the resolution
+decides (`lower_call_dispatch`). THE ARGUMENT-PRODUCT FACE (R0g): the
+judgment writes each call's positional product — labels resolved, defaults
+filled, an authored `??` in place, and past them a cell per slot a partial
+leaves open (`open_slot_cells`) — at the call node (`CallProduct`, the
+spine's `products` column; `graph_product_note`, trailed as `MSetProduct`
+so a rolled-back judgment leaves nothing at a reused handle), against the
+parameters the CALLEE NODE carries (`callee_params_at`: the arrow at
+`lookup_ty(fh)`, never the env by name), and the lowering reads it
+(`call_product_at`). A bare `~> h` of a config'd handler writes its
+default-filled product at the reference (`note_bare_handler_product`); a
+bare constructor or op name in value position writes the all-holes product
+there (`bare_reference_product`, `RefUse` telling a callee reference from a
+value one), so `scheme_ref_fun_arity` — the use site asking the env scheme
+by name for an arity — is deleted with `callee_params`. Measured on boot
+523f1732, each RED then green through m2: the prelude's `fold_handler` arm
+`f(acc, elem)` resolved against a user's `fn f(x: Int)` refused a false
+arity mismatch inside the library (mn-shadow-callee-product, 6); `fn run(f)
+= f(7)` beside a top-level `f(a, b = 100)` spliced the module's default
+into the callback's call and trapped at the indirect call
+(mn-shadow-callee-default, 8); `g(b = 1, a = 5)` on a let-bound `g` ran as
+`g(1, 5)` — exit 252 for 4, zero diagnostics (mn-labeled-args-local-lambda);
+and `r.f(7)` on a record field read the module `f`'s parameters, the
+JUDGMENT's own name read (`callee_params(callee_name(func))`), which is how
+the field named itself (mn-field-callee-product, 8). THE PARTIAL FACE
+(R0g): `partial_callee_form` resolves by SCOPE first, as the saturated
+dispatch does — a local callee's value rides the partial's record as its
+last capture (`PcfLocal`) and the synthesized body calls it — so `let inc =
+add(1)` over a let-bound `add` calls the local (mn-partial-local-callee, 5,
+a floor before; mn-partial-local-shadows-fn, 5, where the top-level `add`
+answered 6). Two more faces found in the build, both width: a partial's
+open TAIL slot was typed by the partial node — the arrow's word — so
+`fadd(1.5)` over a Float pair declared its parameter f64, read it as a word
+and did not assemble (mn-partial-wide-result, 42; typed by its own cell
+now); and a closure call's result face was read off the call node, which
+for a partial's synthesized body is the arrow — it is the CALLEE's return
+(`call_result_repr`, one home for `tail_expr_repr`, the vector collector
+and the call's emit), so a partial over a Float lambda answers a Float
+(mn-partial-local-wide, 42). `Hβ.lower.partial-local-callee` closes with
+it.
 
 `Hβ.derive.closure-twins` — OPEN (L4a′). A lambda minted inside the reading's
 extent mints its JVP twin and a record carrying its captures' lanes, and
@@ -8255,13 +8276,13 @@ controls held: `add(??, 41)(1)` → 42 and `5 |> add(37)` → 42. CLEAN,
 m2 == m3, census 0. Gate: tests/syntax/partial-prefix-application.mn,
 seen RED as `type mismatch in call, expected [i32, i32, i32] but got
 [i32, i32]`.
-THE ONE OPEN FACE is the LOCAL callee — `let g = (a, b) => a + b; g(1)`
-still exits 134, which is `partial_callee_form` returning None and the
-typed floor firing, loudly and by contract. That is
-`Hβ.lower.partial-local-callee`, unchanged by this landing except that
-it is now the only unlit face of the family. Its honest gap is that a
-floor is a bare trap where a diagnostic belongs: the medium knows the
-callee is a local closure and can say so.
+THE ONE OPEN FACE was the LOCAL callee — `let g = (a, b) => a + b; g(1)`
+exited 134, which was `partial_callee_form` returning None and the typed
+floor firing, loudly and by contract (`Hβ.lower.partial-local-callee`,
+the last unlit face of the family). It is lit since 2026-09-30 (R0g): the
+callee is resolved by scope, and a local's value rides the partial's
+record as its last capture
+(`Hβ.lower.callee-resolved-by-name-in-the-module-env`).
 
 `Hβ.infer.mixed-positional-labeled-call` — **RETRACTED 2026-08-18, the
 day after it was named.** Six shapes measured clean the next iteration:

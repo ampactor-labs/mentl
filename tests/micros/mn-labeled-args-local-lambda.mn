@@ -1,0 +1,12 @@
+// expect: 4
+// LABELS RESOLVE AGAINST THE CALLEE THE CALL RESOLVES TO — a let-bound
+// closure's own parameter names. The judgment reorders `g(b = 1, a = 5)`
+// to `g(5, 1)` against the lambda's parameters; the lowering used to
+// resolve the product again by name against the module env, found no `g`
+// there, stripped the labels and passed the arguments in SOURCE order:
+// `g(1, 5)` = -4, exit 252, zero diagnostics (boot 523f1732). The product
+// is written once, by the judgment, on the call node.
+fn main() -> Int = {
+  let g = (a, b) => a - b
+  g(b = 1, a = 5)
+}
