@@ -2571,15 +2571,61 @@ fires at any TFun-typed node including call sites. The voice's
 `gradient_next` is always `None` (`voice.mn:825`). Track D of
 docs/PROGRAM-2026-09-25.md carries the landings.
 
-`Hβ.synth.acceptance-is-a-text-patch` — OPEN, read 2026-09-25. Accepting a
-proposal is `apply_suggestion` → `replace_span` → `fs_write_file` →
-`driver_check` (src/cursor_transport.mn:266-285); no `GraphWrite` is
-performed, so nothing in the graph records that a proposal was accepted and
-the "constraints compound" claim is a design, not a mechanism.
-`render_candidate_source` renders lambdas, lists and records as `??`, so
-accepting those is a no-op. The one site holding the hole handle and the
-survivor handle (`:275-276`) is where the `Proposal` edge is drawn; it must
-survive the re-derivation through the persisted image.
+`Hβ.synth.acceptance-is-a-text-patch` — CLOSED 2026-09-30 (C4; LEDGER
+carries the pin). The accept is a `GraphWrite` first: `accept_fill`
+(src/cursor_transport.mn) performs `graph_accept_note(module path, the
+extent the rendered text will occupy, the text, the survivor's Reason)`
+before `replace_span`, the column lives in `graph_handler`'s state, and
+`graph_bind` reads it at the one writer — a node minted at that extent is
+bound with `Accepted(text, proof, inner)` wrapped under its `Located`, so
+`mentl why` and the address surface walk from the value to the proposal
+(`Why: accepted \`1\` — proposed: inferred from the type's integer
+inhabitants`). The entry's own sentence — "it must survive the
+re-derivation through the persisted image" — measured in two halves: the
+column survives the IN-PROCESS re-derivation by being handler state
+rather than a node (the edit session and `mentl accept` both project it
+after the splice), and the image would carry it by memcpy (handler state
+is in the heap) — but no address-route verb restores an image, which is
+`Hβ.felt.accept-outlives-the-process` below. `render_candidate_source`
+still renders lambdas, lists and records as `??` (the candidate-render
+peer); the verb refuses those as "no proposal" rather than splicing a
+hole over a hole.
+
+`Hβ.synth.accepted-edge-keyed-by-position` — OPEN, BORN 2026-09-30 with
+C4. The accepted column is keyed by (module path, extent) because the
+transport RE-PARSES the module after the splice and the accepted value's
+node is minted anew: a handle would name the dead generation's hole. The
+key rots exactly where a position does — an edit ABOVE the accepted line
+moves every extent below it, and the edge then names nothing while the
+value keeps an authored-looking reason. It dies with E2's resident graph,
+where an edit is a delta on the live node and the edge rides the node —
+the same law `Hβ.cursor.session-weave-epoch-scope` named for the session's
+hole generations. Until then the honest reading: an acceptance is
+provenance for the SESSION that made it, and the board holds exactly that
+(the twin's leg 6, the frontier's accept leg).
+
+`Hβ.felt.accept-outlives-the-process` — OPEN, BORN 2026-09-30, measured
+at C4's first probe. `mentl accept hole.mn:9:37` writes the edge, splices
+the file and projects `Why: accepted \`1\` …`; a SECOND process — `mentl
+hole.mn:9:37` — parses cold and answers `Why: int literal, at hole:9`.
+The provenance is in the image's handler state and would restore by
+memcpy, but the address route (`at_run`, `accept_run`, the edit session)
+never restores an image: only the compile route has a warm start, keyed
+by entry and world. E2's on-disk face is every verb restoring the entry's
+image and re-deriving the changed cone; the accept's durability is then
+`persist = memcpy`'s, by construction, with nothing to add here. The
+page's form of the same gap is `Hβ.ide.session-call-reinstantiates-per-
+call` (each call a fresh `_start` over a zero-filled memory).
+
+`Hβ.felt.edit-session-reads-one-action` — OPEN, BORN 2026-09-30 from
+C4's felt walk on boot 4bc10808. `printf 'n\ny\n' | mentl edit two.mn`
+rendered ONE cycle and read ONE action: the `<~ accumulate` loop
+(`cursor_session`, src/cursor_transport.mn) advances the state once per
+invocation, so a session is one cycle long and the second action is never
+read. The argmax also opened on `pick`'s tie rather than the caret's
+line-1 position (the caret biases, the gradient decides — PROGRAM D3–D5's
+score). E2's session is where the loop becomes a loop; the CLI's one-cycle
+form is what `mentl accept <address>` exists beside.
 
 `Hβ.synth.trail-segment-discarded-at-rollback` — OPEN, read 2026-09-25. The
 trail records handle + prior value per write (`Mutation`, src/types.mn), so

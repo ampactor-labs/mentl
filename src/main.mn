@@ -167,6 +167,7 @@ fn dispatch_invocation(verb) = match verb {
   VRun(target, args) => run_run(target, args),
   VCheck(target) => check_run(target),
   VAt(target, line, col) => at_run(target, line, col),
+  VAccept(target, line, col) => accept_run(target, line, col),
   VTest(target) => test_run(target),
   VAudit(target) => audit_run(target),
   VQuery(target, q) => query_run(target, q),
@@ -1217,6 +1218,35 @@ fn at_run(target, line, col) = infer_context(() => match driver_entry_with_range
   (_ast, ranges) => address_project(ranges, target, line, col),
 } ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> tighten_collector)
 
+// accept_run — the second graph operation at the address surface (C4).
+// `mentl <address>` PROJECTS the position; `mentl accept <address>` DRAWS
+// the accept edge there: the same resolution the address form runs, the
+// same eight-aspect view, and then the one proven survivor is accepted
+// through the transport's own accept path (accept_at — the edge first,
+// the splice as its projection, the module re-derived under the same
+// graph). The projection that follows is the address form's, over the
+// re-derived graph, so what the verb prints is the position's new truth
+// with the Why walking to the proposal it came from. A tie or a filled
+// position draws nothing, says why on stderr, and exits 1.
+fn accept_run(target, line, col) = infer_context(() => match driver_entry_with_ranges(target) {
+  (_ast, ranges) => accept_project(ranges, target, line, col),
+} ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> tighten_collector)
+
+fn accept_project(ranges, target: String, line, col) = if line <= 0 {
+  eprint_string("mentl accept: an accept names one position — {target}:<line>:<col>\n")
+  1
+} else {
+  match address_pick(target, line, col) {
+    None => 1,
+    Some(pick) => match pick {
+      (_pspan, ph) => {
+        patch_set_target(target)
+        if accept_at(ph, cursor_at_handle(ph)) { address_project(ranges, target, line, col) } else { 1 }
+      },
+    },
+  }
+}
+
 // session_at_read — the resident session's at transport, built HERE
 // where the address renders live (imports flow main → mcp, never back)
 // and passed INTO mcp_run as a value (a stored fn carrying its row —
@@ -1258,47 +1288,52 @@ fn address_project(ranges, target: String, line, col) = match range_of_module(ra
         eprint_string("mentl: {target} has {int_to_str(nlines)} lines; {int_to_str(line)} is past the end\n")
         1
       } else {
-        let gline = start + line - 1
-        // Flattened ONCE before the walk (the iterate-flattens-once law,
-        // fourth sighting): the log is push-built, so a raw list_index
-        // walk pays O(depth) per probe — tolerable for the cold verb's
-        // single generation, a measured 131s PER CALL on the resident
-        // session whose log carries every converged generation's parses.
-        //
-        // NARROWED TO THE ADDRESSED MODULE FIRST, and that is what makes the
-        // three-case line rule below an ADDRESS rather than a line-number
-        // lottery. A module's spans are its OWN coordinates — every file
-        // starts at line 1, stated four lines up — so the weave-wide index
-        // holds one entry per module per line number and the rule's
-        // widest-node pick was answering whichever module's node happened to
-        // be widest. Measured: `mentl src/synth_proposer.mn:733` rendered
-        // `scan_number`'s type, effects, ownership and Lede from
-        // `src/lexer.mn`, and its Why line said `at synth_proposer:733` —
-        // a confident foreign answer at the one surface `PLAN §0` exists to
-        // make impossible. Filtering HERE, once, rather than threading a
-        // module into `address_case_a`/`find_tightest`/`address_case_c`,
-        // is what makes the wrong answer unsayable in all three cases
-        // instead of refused in each.
-        match module_handle_of_path(target) {
-          None => {
-            eprint_string("mentl: {target} is in the weave but minted no module node — nothing to address\n")
-            1
-          },
-          Some(mh) => match address_resolve(spans_of_module(span_index_of_snapshot(), mh), gline, col) {
-            None => {
-              eprint_string("mentl: no node at {target}:{int_to_str(line)} (a blank or comment-only line)\n")
-              1
-            },
-            Some(pick) => match pick {
-              (pspan, ph) => {
-                render_at(cursor_at_handle(ph), ph, pspan, target)
-                0
-              },
+        match address_pick(target, start + line - 1, col) {
+          None => 1,
+          Some(pick) => match pick {
+            (pspan, ph) => {
+              render_at(cursor_at_handle(ph), ph, pspan, target)
+              0
             },
           },
         }
       }
     },
+  },
+}
+
+// The ONE address resolution — the position's node, for the projection
+// (address_project) and for the accept (accept_project) alike, so an
+// accept lands exactly where the same address projects. Flattened ONCE
+// before the walk (the iterate-flattens-once law, fourth sighting): the log
+// is push-built, so a raw list_index walk pays O(depth) per probe —
+// tolerable for the cold verb's single generation, a measured 131s PER
+// CALL on the resident session whose log carries every converged
+// generation's parses.
+//
+// NARROWED TO THE ADDRESSED MODULE FIRST, and that is what makes the
+// three-case line rule an ADDRESS rather than a line-number lottery. A
+// module's spans are its OWN coordinates — every file starts at line 1 —
+// so the weave-wide index holds one entry per module per line number and
+// the rule's widest-node pick was answering whichever module's node
+// happened to be widest. Measured: `mentl src/synth_proposer.mn:733`
+// rendered `scan_number`'s type, effects, ownership and Lede from
+// `src/lexer.mn`, and its Why line said `at synth_proposer:733` — a
+// confident foreign answer at the one surface `PLAN §0` exists to make
+// impossible. Filtering HERE, once, rather than threading a module into
+// `address_case_a`/`find_tightest`/`address_case_c`, is what makes the
+// wrong answer unsayable in all three cases instead of refused in each.
+fn address_pick(target: String, gline, col) = match module_handle_of_path(target) {
+  None => {
+    eprint_string("mentl: {target} is in the weave but minted no module node — nothing to address\n")
+    None
+  },
+  Some(mh) => match address_resolve(spans_of_module(span_index_of_snapshot(), mh), gline, col) {
+    None => {
+      eprint_string("mentl: no node at {target}:{int_to_str(gline)} (a blank or comment-only line)\n")
+      None
+    },
+    Some(pick) => Some(pick),
   },
 }
 
@@ -1688,6 +1723,9 @@ fn render_why_hops(reason, target: String, depth) = if depth > 7 {
 }
 
 fn render_why_deeper(inner, target: String, depth) = match inner {
+  Accepted(_, _, br) => // The accept edge: its phrase names the proposal and its proof; the
+  // hop beneath is the binding's own reason, which the acceptance wraps.
+  render_why_hops(br, target, depth + 1),
   VarLookup(_, br) => render_why_hops(br, target, depth + 1),
   LetBinding(_, br) => render_why_hops(br, target, depth + 1),
   FnReturn(_, br) => render_why_hops(br, target, depth + 1),
@@ -1719,6 +1757,7 @@ fn reason_phrase(inner) = match inner {
   InferredPipeResult(v, _) => "through {v}",
   MissingVar(name) => "{name} is unresolved",
   Placeholder(_) => "authored here",
+  Accepted(text, proof, _) => "accepted `{text}` — proposed: {show_reason(proof)}",
   _ => show_reason(inner),
 }
 

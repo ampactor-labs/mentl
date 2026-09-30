@@ -35,6 +35,71 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-30 · pin 21f8e691f6e04426 (CLEAN m2 == m3) · THE ACCEPT IS A GRAPH WRITE, AND THE
+  TEXT IS ITS PROJECTION.
+  C4. Accepting a proposal was `replace_span` → `fs_write_file` →
+  `driver_check` and nothing else: the medium proposed a value with a
+  proof, the developer accepted, and the graph forgot both — the
+  re-derived node read as an authored literal and `Why` at the position
+  said "int literal", the one hop that was false. The edge is drawn
+  FIRST now. `Reason` gains `Accepted(String, Reason, Reason)` — the text
+  the proposal became, the proof it was offered with (carried verbatim,
+  never re-chased), and the binding's own reason. `GraphWrite` gains
+  `graph_accept_note(path, span, text, proof)`: a column in
+  `graph_handler`'s state (module path, the extent the rendered text will
+  occupy, the text, the proof), an outermost-boundary write that traps on
+  a non-empty checkpoint stack rather than store a fact a rollback would
+  lose. `graph_bind` reads the column at the one writer through a
+  mechanism-layer helper (`accepted_reason`): a node whose birth module
+  and mint span match an entry is bound with its reason wrapped —
+  `Located` kept outermost, so no span reader unlocates the node, and the
+  wrap idempotent. The wheel's compile pays one length read per bind (the
+  column is empty on every route but an accept). One home for both routes
+  (`accept_fill`): the edit session's `y`, and the new verb `mentl accept
+  <path>:<line>:<col>` — `accept_run` resolves the position through the
+  address form's own resolver (`address_pick`, factored out of
+  `address_project` so the two cannot pick different nodes), accepts
+  through `accept_at` (a single proven survivor at an authored hole draws
+  the edge; a tie refuses with the computed question; a filled position
+  refuses; the exit code is the verdict), and re-projects the position
+  over the re-derived graph. The Why engine walks the hop everywhere it
+  walks (`why_expand`, `render_why_hops`/`reason_phrase`, `show_reason`,
+  the emitter's one-line summary — the judgment's exhaustiveness found
+  that arm). THE PAGE: Tab at a hole calls the verb through the resident
+  worker; `ide/wheel-worker.js`'s virtual filesystem took a write path
+  (`path_open` honours CREAT/TRUNC, a file fd's `fd_write` lands in the
+  vfs, both replies carry `written`), and the page replaces its source
+  with the projection and reads the accepting call's own facets.
+  MEASURED, on the fresh m2 against `tests/frontier/propose-demo/hole.mn`:
+  `mentl accept hole.mn:9:37` → `Query: 1 : Int` / `Why: accepted \`1\` —
+  proposed: inferred from the type's integer inhabitants, at hole:9` /
+  `inferred from int literal`, exit 0, line 9 `with Pure = 1`;
+  `accept bit.mn:8:30` (two survivors) → exit 1, "a tie is a question,
+  never a guess", the hole kept; a second accept at the filled position →
+  exit 1, "no proposal at this position". The IDE gate's node twin gained
+  leg 6 (accept at the hole leg 5 projects: 96 bytes written, the Why
+  names the acceptance) — RED on boot 4bc10808 (exit 2, nothing written).
+  The frontier gained the accept leg and the tie leg on scratch copies.
+  ONE KILL, from the first probe: the first form re-projected its own
+  position and found the OLD hole — `Query: 1 : Positive`, `Propose: 1`,
+  `Why: declared choose` — with the file already carrying the value. The
+  patch handler's `driver_check` re-derived through the per-module check
+  walk, whose parses live in their own span space under whatever module
+  was last in force, so the generation it minted was not addressable by
+  the module the address narrows to; a patch re-derives through
+  `driver_entry_with_ranges`, the ONE weave read the session and the
+  address share (`mentl_edit_session`'s own comment had rejected the
+  per-module walk for exactly this). The second probe answered as
+  designed. MEASURED AND NAMED, not fixed: a fresh process after the
+  accept answers `Why: int literal` — the column is handler state and
+  would restore by memcpy, but no address-route verb restores an image
+  (`Hβ.felt.accept-outlives-the-process`, E2's on-disk face); the column
+  is keyed by position because the transport re-parses
+  (`Hβ.synth.accepted-edge-keyed-by-position`, dies with E2's resident
+  graph); the edit session reads one action per invocation
+  (`Hβ.felt.edit-session-reads-one-action`).
+  `Hβ.synth.acceptance-is-a-text-patch` CLOSED. Board at the pin: micros
+  253/253, crown 102/102, frontier 451 pass / 0 red / 2 expected-red; the m3 leg 15.02s wall · 829MB peak RSS (849,340 KB).
 - 2026-09-30 · pin 4bc108088fa73607 (CLEAN m2 == m3) · THE JUDGED ROW WRITER IS AN INSTALL — A RAW
   ROW WRITE INSIDE A JUDGMENT IS UNSAYABLE.
   A7. The plan's form was a census: the writer-set completeness table of

@@ -2373,6 +2373,31 @@ for i in "${!compilers[@]}"; do
   else
     fail "cursor-address propose (got: $pout; see $dir/propose-at.err)"
   fi
+  # ── THE ACCEPT IS A GRAPH WRITE, THE TEXT ITS PROJECTION (C4) ──────
+  # `mentl accept hole.mn:9:37` on a scratch copy: the accept edge is drawn
+  # with the survivor's proof, the module re-derives, the file carries the
+  # projection (`= 1`, no `??`), and the projection the verb prints — the
+  # address form over the re-derived graph — walks its Why to the accepted
+  # proposal. RED on boot 4bc10808: no accept verb (exit 2, file untouched).
+  adir="$dir/accept"
+  mkdir -p "$adir" && cp "$pdemo/hole.mn" "$adir/hole.mn"
+  aout=$(cd "$adir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$adir" --dir /tmp "$compiler" accept hole.mn:9:37 2>"$dir/accept.err")
+  if [ $? -eq 0 ] && grep -q 'with Pure = 1$' "$adir/hole.mn" && ! grep -q '??' "$adir/hole.mn" \
+     && printf '%s' "$aout" | grep -q '^Query: 1 : Int' \
+     && printf '%s' "$aout" | grep -q '^Why: accepted `1` — proposed: .*integer inhabitants'; then
+    pass "cursor-address accept (the edge drawn with its proof; the file its projection; the Why walks to the proposal)"
+  else
+    fail "cursor-address accept (got: $(printf '%s' "$aout" | head -3); file: $(grep -c '??' "$adir/hole.mn") hole(s); see $dir/accept.err)"
+  fi
+  # A TIE DRAWS NOTHING: bit.mn's two survivors are the question, never a
+  # guess — the verb refuses, exits 1, and the file keeps its hole.
+  cp "$fdemo/bit.mn" "$adir/bit.mn"
+  tout=$(cd "$adir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$adir" --dir /tmp "$compiler" accept bit.mn:8:30 2>"$dir/accept-tie.err")
+  if [ $? -ne 0 ] && grep -q 'proven survivors — a tie is a question' "$dir/accept-tie.err" && grep -q '= ??' "$adir/bit.mn"; then
+    pass "cursor-address accept refuses a tie (the question stands; the hole stays)"
+  else
+    fail "cursor-address accept tie (rc=$?; see $dir/accept-tie.err; got: $tout)"
+  fi
   # ── THE HOLE IS A TERM CELL ────────────────────────────────────────
   # `none_of() -> Option(a)` at an `Option(Int)` hole: one type under
   # unification, two shapes under a structural comparison. RED against the

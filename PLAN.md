@@ -1586,6 +1586,44 @@ and this is the STATE.
   Named: `Hβ.effects.row-write-outside-the-judgment` (a perform outside
   every judgment chain would be served raw; none exists, and the medium has
   no module-private declaration to refuse one).
+- **THE ACCEPT IS A GRAPH WRITE, AND THE TEXT IS ITS PROJECTION — CLOSED
+  2026-09-30 (C4).** Accepting a proposal was `replace_span` alone: the
+  medium proposed a value with a proof, the developer accepted, and the
+  graph forgot both — the re-derived node read as an authored literal and
+  `Why` at the position said "int literal", the one hop that was false
+  (§0 property 3, intent lossless, false at the exact gesture that
+  creates intent the source cannot hold). The edge is drawn first now:
+  `graph_accept_note` enters the accept into a column of the graph
+  handler's state — the module path, the extent the rendered text will
+  occupy, the text, the proof the proposal carried — and the splice that
+  re-derives the module is what makes it readable, because graph_bind
+  reads the column at the one writer and binds the node minted at that
+  extent with its reason wrapped in `Accepted(text, proof, inner)`
+  (`Located` kept outermost, so no span reader unlocates the node). The
+  Why engine then walks it as any hop: `Why: accepted \`1\` — proposed:
+  inferred from the type's integer inhabitants, at hole:9` over
+  `inferred from int literal`. Two routes, one home (`accept_fill`): the
+  edit session's `y`, and `mentl accept <path>:<line>:<col>` — the second
+  graph operation surfaced beside the first, since `mentl <address>`
+  projects a position and `mentl accept <address>` draws an edge there; a
+  tie refuses with the computed question (never a guess), a filled
+  position refuses, and the exit code is the verdict. The page's Tab
+  routes through the same verb: the worker's virtual filesystem took a
+  write path (the wheel projects the module back to its file, the reply
+  carries what it wrote), and the IDE gate's node twin accepts at the
+  hole its socket leg projects — RED on boot 4bc10808 (no verb, exit 2,
+  nothing written). What the first probe found: the patch handler
+  re-derived through the per-module check walk, whose generation was not
+  addressable (the verb re-projected its own position and found the OLD
+  hole, typed and proposing, while the file already carried the value) —
+  a patch re-derives through the one weave read the session and the
+  address share now. Named, not fixed: the column is keyed by position
+  because the transport re-parses (`Hβ.synth.accepted-edge-keyed-by-
+  position`, dies with E2's resident graph); the edge lives as long as
+  the graph — a fresh process derives cold and answers `int literal`
+  (`Hβ.felt.accept-outlives-the-process`, E2's on-disk face); the edit
+  session reads one action per invocation
+  (`Hβ.felt.edit-session-reads-one-action`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

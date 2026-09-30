@@ -1310,6 +1310,14 @@ type Reason
   // counterexample/model, surpassing Dafny/F*'s
   // separate dump: the witness IS a Reason edge).
   | VerifyWitness(String)
+  // THE ACCEPT EDGE (C4, 2026-09-30): the text the medium proposed at a
+  // hole, rendered as the source it became; the proof it was offered
+  // with, carried verbatim as the medium said it at proposal time; and
+  // the binding's own reason, which the acceptance wraps. A developer
+  // did not author the value under this hop — the medium proposed it
+  // and they accepted — and that is intent the graph carries losslessly
+  // (PLAN §0 property 3), never a fact the source text could hold.
+  | Accepted(String, Reason, Reason)
 
 // Caret — the user's text-attention position. ONE input among many to
 // Cursor's argmax computation. Updated by the editor's transport
@@ -2415,6 +2423,19 @@ effect GraphWrite {
   // contract.
   graph_hole_note(Int)
   graph_hole_drain(String)
+  // THE ACCEPT EDGE's write (C4): a proposal accepted at a hole is a
+  // fact of the GRAPH first and of the text second. The column holds
+  // (module path, the extent the accepted text occupies in that module's
+  // own coordinates, the rendered text, the proof it was proposed with),
+  // and graph_bind reads it at the one writer: a node minted at that
+  // extent is bound with its reason wrapped in `Accepted`, so the Why
+  // engine walks from the value to the proposal that proved it. Keyed by
+  // POSITION rather than handle because the transport re-parses the
+  // module after the splice and the accepted value's node is minted
+  // anew (Hβ.synth.accepted-edge-keyed-by-position). An outermost-
+  // boundary write, never speculative: the arm traps on a non-empty
+  // checkpoint stack rather than store a fact a rollback would lose.
+  graph_accept_note(String, Span, String, Reason)
   // THE WRITE GUARD'S REFUSALS, STORED BY THE ARM AND REPORTED BY THE BODY.
   // graph_bind's occurs belt cannot report where it stands: a diagnostic
   // performed from inside an arm resolves OUTER of its own install, so it
@@ -4327,6 +4348,7 @@ fn show_reason(ref reason) with !Mutate = match reason {
   FreshInContext(id, ctx) => "fresh {show_handle(id)} in '{ctx}'",
   DefaultReason(pname, span) => "{pname} defaulted at {show_span(span)}",
   VerifyWitness(model) => "proved by SMT witness: {model}",
+  Accepted(text, proof, inner) => "accepted `{text}` — {show_reason(proof)} → {show_reason(inner)}",
 }
 
 fn show_span(ref span) = match span {

@@ -22,6 +22,8 @@
    host and cannot drift. Two roles:
 
      {role:"run", module, memPages?, argv, stdin?, vfs?, stubSpawn?}
+       (a reply carries `written`: the vfs files the wheel wrote — the
+        accept's projection of the module back to its text)
         -> creates the shared memory, instantiates, runs _start, drains the
            task fan, posts {k:"result", exit, out, err, trapped, tasks}
      {role:"task", module, memory, tids, tid, arg, seq, vfs?}
@@ -84,6 +86,7 @@ const cat = (cs) => { const n = cs.reduce((a, c) => a + c.length, 0); const b = 
 function makeShim({ memory, argv, stdin, vfs, spawnFn }) {
   const dv = () => new DataView(memory.buffer), u8 = () => new Uint8Array(memory.buffer);
   const out = [], err = [];
+  const written = new Set();   // vfs files this instance wrote (the accept's projection)
   let srcPos = 0;
   const fds = new Map(); let nextFd = 8;
   const args = (argv || []).map((s) => te.encode(s + "\0"));
@@ -96,7 +99,19 @@ function makeShim({ memory, argv, stdin, vfs, spawnFn }) {
     proc_exit(code) { const e = new Error("exit"); e.exitCode = code; throw e; },
     args_sizes_get(a, b) { dv().setUint32(a, args.length, true); dv().setUint32(b, argTotal, true); return 0; },
     args_get(ap, bp) { let p = bp; args.forEach((a, i) => { dv().setUint32(ap + 4 * i, p, true); u8().set(a, p); p += a.length; }); return 0; },
-    fd_write(fd, io, n, o) { const v = dv(); let t = 0; for (let i = 0; i < n; i++) { const p = v.getUint32(io + 8 * i, true), l = v.getUint32(io + 8 * i + 4, true); (fd === 2 ? err : out).push(u8().slice(p, p + l)); t += l; } v.setUint32(o, t, true); return 0; },
+    fd_write(fd, io, n, o) { const v = dv(); let t = 0;
+      const h = fds.get(fd);
+      for (let i = 0; i < n; i++) { const p = v.getUint32(io + 8 * i, true), l = v.getUint32(io + 8 * i + 4, true), b = u8().slice(p, p + l);
+        if (h && !h.dir) {
+          // a FILE the wheel writes — `fs_write_file` after `mentl accept`
+          // projects the accepted graph back to the module's text. The vfs
+          // entry IS the file: splice the bytes in at the fd's position and
+          // remember the name, so the reply can hand the page what changed.
+          const d = vfs[h.name], nd = new Uint8Array(Math.max(d.length, h.pos + b.length));
+          nd.set(d); nd.set(b, h.pos); vfs[h.name] = nd; h.pos += b.length; written.add(h.name);
+        } else { (fd === 2 ? err : out).push(b); }
+        t += l; }
+      v.setUint32(o, t, true); return 0; },
     fd_read(fd, io, n, o) { const v = dv();
       if (fd === 0) {
         if (!stdin) { v.setUint32(o, 0, true); return 0; }
@@ -117,7 +132,11 @@ function makeShim({ memory, argv, stdin, vfs, spawnFn }) {
     fd_prestat_dir_name(fd, p) { if (vfs && fd === 3) { u8()[p] = 46; return 0; } return 8; },   // "."
     path_open(b, df, pp, pl, of, rb, ri, ff, o) { if (!vfs) return 44; const nm = norm(readStr(pp, pl));
       if (nm === "" || nm === ".") { const fd = nextFd++; fds.set(fd, { name: ".", pos: 0, dir: 1 }); dv().setUint32(o, fd, true); return 0; }
-      if (!(nm in vfs)) return 44; const fd = nextFd++; fds.set(fd, { name: nm, pos: 0 }); dv().setUint32(o, fd, true); return 0; },
+      // WASI oflags: CREAT = 1, TRUNC = 8 — the wheel's fs_write_file opens
+      // with both (0x9). A create births the entry; a truncate empties it.
+      if (!(nm in vfs)) { if (!(of & 1)) return 44; vfs[nm] = new Uint8Array(0); }
+      if (of & 8) vfs[nm] = new Uint8Array(0);
+      const fd = nextFd++; fds.set(fd, { name: nm, pos: 0 }); dv().setUint32(o, fd, true); return 0; },
     path_filestat_get(fd, fl, pp, pl, s) { if (!vfs) return 44; const nm = norm(readStr(pp, pl)); if (!(nm in vfs)) return 44; stat(s, 4, vfs[nm].length); return 0; },
     fd_filestat_get(fd, s) { const h = fds.get(fd); if (!h) return 8; stat(s, h.dir ? 3 : 4, h.dir ? 0 : vfs[h.name].length); return 0; },
     fd_fdstat_get(fd, p) { if (vfs && fd === 3) { dv().setUint8(p, 3); return 0; } const h = fds.get(fd); if (h) { dv().setUint8(p, h.dir ? 3 : 4); return 0; } return 8; },
@@ -139,7 +158,8 @@ function makeShim({ memory, argv, stdin, vfs, spawnFn }) {
   // assembler); until it lands this is the honest socket, and it is loud.
   const seam = (name) => () => { throw new Error(`mentl_host.${name}: the exec seam has no in-page assembler (Hβ.felt.ide-run-in-page)`); };
   const mentl_host = { wat_write: seam("wat_write"), exec: seam("exec") };
-  return { imports: { env: { memory }, wasi_snapshot_preview1: proxy, wasi: { "thread-spawn": spawnFn }, mentl_host }, out, err };
+  const writtenFiles = () => Object.fromEntries([...written].map((n) => [n, vfs[n]]));
+  return { imports: { env: { memory }, wasi_snapshot_preview1: proxy, wasi: { "thread-spawn": spawnFn }, mentl_host }, out, err, writtenFiles };
 }
 
 /* ── the pre-armed task pool over a shared-memory queue ────────────────────
@@ -303,7 +323,7 @@ HOST.listen(async (msg) => {
     }
     const out = td.decode(cat(shim.out));
     const err = td.decode(cat(shim.err));
-    HOST.post({ k: "session-reply", id, exit, out, err, trapped, tasks: 0 });
+    HOST.post({ k: "session-reply", id, exit, out, err, trapped, tasks: 0, written: shim.writtenFiles() });
   } else if (msg.role === "session-close") {
     if (residentSession && residentSession.pool) {
       residentSession.pool.killAll();
@@ -353,7 +373,7 @@ HOST.listen(async (msg) => {
     }
     const out = shim ? td.decode(cat(shim.out)) : "";
     const err = (shim ? td.decode(cat(shim.err)) : "") + extraErr;
-    HOST.post({ k: "result", exit, out, err, trapped, tasks });
+    HOST.post({ k: "result", exit, out, err, trapped, tasks, written: shim ? shim.writtenFiles() : {} });
   } else if (msg.role === "arm") {
     // a pool worker: hold the run's module/memory/queue, consume tasks
     // until the run's drain kills the pool. Each task gets a FRESH

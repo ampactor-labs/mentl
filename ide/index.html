@@ -1023,14 +1023,47 @@ function renderProposal(){
 
 function acceptProposal(){
   const p = PROPOSAL; if (!p) return false;
-  const ta = $("src");
   if (p.kind === "fix"){ applyFix(p.code, p.line); }
-  else {
-    ta.setRangeText(p.now, p.at, p.at + 2, "end");
-    ta.dispatchEvent(new Event("input")); compile();
-  }
+  else acceptHole(p);
   PROPOSAL = null; renderProposal();
   return true;
+}
+
+/* THE ACCEPT IS A GRAPH WRITE, AND THE TEXT IS ITS PROJECTION (C4). The
+   hole's Tab used to be a client-side splice — `setRangeText` — so the
+   compiler never learned that the value was proposed and accepted, and the
+   Why at that position read "int literal" as if the developer had typed
+   it. The gesture routes through the wheel now: `mentl accept main.mn:L:C`
+   draws the accept edge (the survivor's proof rides it), re-derives the
+   module, and projects the graph back to the file — the reply's `written`
+   channel carries the new text, and its stdout is the address projection
+   at the accepted position, whose Why walks to the proposal. */
+async function acceptHole(p){
+  const ta = $("src");
+  const { line, col } = lineColAt(p.at);
+  const vfsDelta = { "main.mn": te.encode(ta.value) };
+  $("dot").className = "busy";
+  const r = await callResidentSession(["mentl", "accept", `main.mn:${line}:${col}`], null, vfsDelta);
+  const wrote = r.written && r.written["main.mn"];
+  if (r.exit !== 0 || r.trapped || !wrote){
+    // nothing was drawn: the medium said why on stderr (a tie, a filled
+    // position); the page shows it and keeps the source as it was.
+    $("dot").className = "bad";
+    RESULT = Object.assign({}, RESULT || {}, { accept: (r.err || r.trapped || "").trim() });
+    renderProposal();
+    return;
+  }
+  ta.value = new TextDecoder().decode(wrote);
+  ta.setSelectionRange(p.at, p.at);
+  $("hl").innerHTML = highlight(ta.value);
+  renderTopology();
+  // the accepting process already projected the position over the
+  // re-derived graph — its Why names the accepted proposal
+  REAL = parseFacets(r.out); REAL_AT = p.at;
+  $("dot").className = "ok";
+  if (Object.keys(REAL).length) octopus("proven");
+  projectCursor();
+  compile();
 }
 
 /* the Ledger — the effect rows + the proof surface (negative space) */

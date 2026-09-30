@@ -289,13 +289,72 @@ fn apply_suggestion(cursor, view) with !Mutate = match cursor {
     // and non-hole positions accept the teach annotation as before.
     match propose {
       Proposal(p) => match p.verdict {
-        VFill(survivor, _reason) => if authored_hole(handle) {
-          replace_span(parse_span_of(handle), render_candidate_source(survivor))
+        VFill(survivor, reason) => if authored_hole(handle) {
+          accept_fill(handle, survivor, reason)
         } else {
           apply_teach_suggestion(teach)
         },
         VAsk(_, _) => apply_teach_suggestion(teach),
         VNone => apply_teach_suggestion(teach),
+      },
+    },
+  },
+}
+
+// THE ACCEPT IS A GRAPH WRITE, AND THE TEXT IS ITS PROJECTION (C4,
+// 2026-09-30). Until this landing an accept was `replace_span` alone: the
+// medium proposed a value with a proof, the developer accepted, and the
+// graph forgot both — the re-derived node read as an authored literal and
+// `Why` at the position said "int literal", the one hop that was false.
+// The edge is drawn FIRST — the module path and the extent the rendered
+// text will occupy, the text, and the proof the proposal carried — and the
+// splice that re-derives the module is what makes the edge readable: the
+// node minted at that extent is bound with its reason wrapped in
+// `Accepted`, so the Why walks from the value to the proposal that proved
+// it. One home for both routes: the edit session's `y` and the address
+// form's `mentl accept` call this.
+fn accept_fill(handle, survivor, proof) with !Mutate = {
+  let span = parse_span_of(handle)
+  let text = render_candidate_source(survivor)
+  graph_accept_note(
+    module_path_of_handle(graph_module_of(handle)),
+    accepted_extent(span, text),
+    text,
+    proof
+  )
+  replace_span(span, text)
+}
+
+// The extent the accepted text occupies after the splice: the hole's own
+// start, and the text's width past it. Every candidate renders on one line
+// (a literal, a bare name, a zero-argument call), so the end line is the
+// start line.
+fn accepted_extent(span, text: String) = match span {
+  Span(sl, sc, _, _) => Span(sl, sc, sl, sc + byte_len(text)),
+}
+
+// The address form's accept: the position's Propose verdict decides, and
+// only a single proven survivor at an authored hole draws the edge. A tie
+// is the question the medium asks, never a guess between proven survivors;
+// a filled position has nothing to accept. Answers whether an edge was
+// drawn, so the verb's exit code is the verdict.
+fn accept_at(handle, view) with !Mutate = match view {
+  CursorView(_, propose, _, _, _, _, _, _) => match propose {
+    Proposal(p) => match p.verdict {
+      VFill(survivor, reason) => if authored_hole(handle) {
+        accept_fill(handle, survivor, reason)
+        true
+      } else {
+        eprint_string("mentl accept: the position is filled — a proposal is accepted at a hole\n")
+        false
+      },
+      VAsk(divergence, survivors) => {
+        eprint_string("mentl accept: {int_to_str(len(survivors))} proven survivors — a tie is a question, never a guess: {show_divergence(divergence)}\n")
+        false
+      },
+      VNone => {
+        eprint_string("mentl accept: no proposal at this position\n")
+        false
       },
     },
   },
@@ -420,6 +479,14 @@ effect PatchWrite {
   replace_span(Span, String)
 }
 
+// A patch RE-DERIVES the module through the ONE weave read the session and
+// the address form project (driver_entry_with_ranges), never the per-module
+// check walk. The walk parsed each module in its own span space under
+// whatever module was last in force, so the generation it minted was not
+// addressable: `mentl accept` re-projected its position and found the OLD
+// hole, typed and proposing, while the file already carried the accepted
+// value (measured 2026-09-30, the first probe of C4). One read, one span
+// space, and the accepted node is the one the address reaches.
 handler patch_to_file with target_module = "" {
   patch_set_target(name) => resume() with target_module = name,
   apply_patch_at_cursor(span, text) => {
@@ -429,7 +496,7 @@ handler patch_to_file with target_module = "" {
       Span(line, _, _, _) => {
         let edited = splice_before_line(source, line, indent_annotation(text))
         fs_write_file(path, edited)
-        driver_check(target_module)
+        driver_entry_with_ranges(target_module)
         resume()
       },
     }
@@ -439,7 +506,7 @@ handler patch_to_file with target_module = "" {
     let source = fs_read_file(path)
     let edited = splice_span(source, span, text)
     fs_write_file(path, edited)
-    driver_check(target_module)
+    driver_entry_with_ranges(target_module)
     resume()
   },
 }

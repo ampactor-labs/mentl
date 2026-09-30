@@ -4648,6 +4648,7 @@ fn emit_render_reason_oneline(reason) = match reason {
   MissingVar(n) => "missing {n}",
   DefaultReason(n, _) => "defaulted {n}",
   VerifyWitness(_) => "verify witness",
+  Accepted(text, _, _) => "accepted {text}",
 }
 
 // Walk the function body once, projecting its locals row. ONE local

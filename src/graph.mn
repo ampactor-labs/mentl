@@ -187,6 +187,64 @@ fn spine_module_name(ref spine, spine_open, m) = match spine_body_at(spine, spin
   },
 }
 
+// The module a node was born in — ONE cell read, the mechanism-layer form
+// the graph_module_of arm and the accept read share. TOTAL: every node is
+// born inside some module, including stdin's, so there is no absent case
+// to encode. A virgin cell here means a node was minted with no module in
+// force, which is a defect in the caller, and it traps loudly rather than
+// answering a fabricated 0 that every reader downstream would have to
+// re-check (the surrender-fallback this column exists to end).
+fn spine_module_at(spine, spine_open, handle) = {
+  if spine_band(handle) >= spine_open { load_i32(0 - 1) } else { 0 }
+  // The cell holds the module handle BIASED BY ONE — the Option-niche word
+  // this file already uses for mint_high's "0 = unlimited". It is not
+  // decoration: a fresh graph's FIRST mint is handle 0, so the first module
+  // node IS handle 0, and an unbiased column could not tell "born in module
+  // 0" from "never stamped" — measured, the day this column landed, as a
+  // trap on handle 1 whose module really was 0.
+  let cell = list_index(spine_page(spine, handle).module, spine_slot(handle))
+  if cell == 0 { load_i32(0 - 1) } else { 0 }
+  cell - 1
+}
+
+// THE ACCEPT EDGE, read at the one writer (C4). A node bound at an extent
+// the accepted column holds — same module, same span — takes its reason
+// wrapped in `Accepted`, so every projection of the reason cell (the Why
+// facet, the chain render, the address surface) walks from the value to
+// the proposal that proved it without a second read. The column is empty
+// on every compile that is not an edit session, so the bind pays one
+// length read; a non-empty column costs one span compare per entry, at
+// felt cadence. `Located` stays OUTERMOST because every span reader
+// (span_of_reason, the caret's authored-hole test) reads the reason's
+// head, and an acceptance must not unlocate the node it names. A cell
+// already carrying the edge keeps it — the wrap is idempotent.
+fn accepted_reason(accepted, spine, spine_open, handle, reason) = if len(accepted) == 0 {
+  reason
+} else {
+  let sp = spine_span_at(spine, spine_open, handle)
+  let path = spine_module_name(spine, spine_open, spine_module_at(spine, spine_open, handle))
+  match find({ (p, asp, _t, _r) => accepted_here(p, path, asp, sp) }, accepted) {
+    Some(entry) => match entry {
+      (_p, _asp, text, proof) => accept_wrap(reason, text, proof),
+    },
+    None => reason,
+  }
+}
+
+// `p: String` pins the compare: two module paths minted by different
+// parses are byte-equal and pointer-distinct, the class a bare `==` on
+// names falls to (PLAN §9's pointer-eq lesson).
+fn accepted_here(p: String, path: String, asp, sp) = p == path && span_eq(asp, sp)
+
+fn accept_wrap(reason, text, proof) = match reason {
+  Located(sp, inner) => match inner {
+    Accepted(_, _, _) => reason,
+    _ => Located(sp, Accepted(text, proof, inner)),
+  },
+  Accepted(_, _, _) => reason,
+  _ => Accepted(text, proof, reason),
+}
+
 fn spine_put_canon(ref spine, h, to) = {
   let _ = list_set(spine_page(spine, h).canon, spine_slot(h), to)
   ()
@@ -323,7 +381,7 @@ fn poly_teach_line(owner: String, reason) =
 // costs one 4KB word-list per process — and a table minted lazily inside a
 // speculation region would outlive the region's heap_reset as a dangling
 // state pointer.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024) {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [] {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -349,24 +407,9 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   graph_span_of(handle) => resume(spine_span_at(spine, spine_open, handle)),
   graph_module_of(handle) => // The module a node was born in — ONE cell read, never the containment
   // scan that module_path_of_span ran over every node (whose own comment
-  // named its "O(1) destiny"; this is that destiny). TOTAL: every node is
-  // born inside some module, including stdin's, so there is no absent case
-  // to encode. A virgin cell here means a node was minted with no module in
-  // force, which is a defect in the caller, and it traps loudly rather than
-  // answering a fabricated 0 that every reader downstream would have to
-  // re-check (the surrender-fallback this column exists to end).
-  {
-    if spine_band(handle) >= spine_open { load_i32(0 - 1) } else { 0 }
-    // The cell holds the module handle BIASED BY ONE — the Option-niche word
-    // this file already uses for mint_high's "0 = unlimited". It is not
-    // decoration: a fresh graph's FIRST mint is handle 0, so the first module
-    // node IS handle 0, and an unbiased column could not tell "born in module
-    // 0" from "never stamped" — measured, the day this column landed, as a
-    // trap on handle 1 whose module really was 0.
-    let cell = list_index(spine_page(spine, handle).module, spine_slot(handle))
-    if cell == 0 { load_i32(0 - 1) } else { 0 }
-    resume(cell - 1)
-  },
+  // named its "O(1) destiny"; this is that destiny). The read is
+  // spine_module_at's, shared with the accept read at graph_bind.
+  resume(spine_module_at(spine, spine_open, handle)),
   graph_module_current() => // Enter a module: every subsequent mint is attributed to it. The module
   // node attributes ITSELF, which is what makes the column total without a
   // sentinel — the first stamp has no earlier module to inherit, so it is
@@ -587,7 +630,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     resume() with guard_diags = g2
   } else {
     let old_node = graph_node_at(spine, next, handle)
-    spine_put_node(spine, handle, GNode(NBound(ty), reason))
+    spine_put_node(
+      spine,
+      handle,
+      GNode(NBound(ty), accepted_reason(accepted, spine, spine_open, handle, reason))
+    )
     let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
     let new_epoch = epoch + 1
     if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) }
@@ -806,6 +853,15 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   if len(guard_diags) == 0 { resume([]) } else { resume(guard_diags) with guard_diags = [] },
   graph_hole_unnote(h) => resume() with holes_pend = holes_pend_without(holes_pend, h),
   graph_holes_at() => resume(holes_col),
+  graph_accept_note(path, span, text, proof) => // THE ACCEPT EDGE's write (C4): an outermost-boundary fact. A human
+  // accepted a proposal; nothing speculative writes here, and a rollback
+  // must never lose it — so a non-empty checkpoint stack is a defect in
+  // the caller and traps rather than storing a fact the trail cannot
+  // carry. Not trailed for the same reason. The read is graph_bind's.
+  {
+    if len(checkpoint_stack) > 0 { load_i32(0 - 1) } else { 0 }
+    resume() with accepted = push(accepted, (path, span, text, proof))
+  },
   graph_bind_note(use_handle, bh) => // The bind-home column (lowering-is-a-column
   // step i): an in-place spine cell store at the USE node's handle — no
   // state rebind, non-trailed (lowering runs post-judgment; a re-lower

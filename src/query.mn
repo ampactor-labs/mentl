@@ -2087,6 +2087,11 @@ fn why_expand(reason, depth) = if depth > 20 {
     IfBranch(inner) => IfBranch(why_expand(inner, depth + 1)),
     LetBinding(name, inner) => LetBinding(name, why_expand(inner, depth + 1)),
     Instantiation(name, inner) => Instantiation(name, why_expand(inner, depth + 1)),
+    Accepted(text, proof, inner) => // The accept edge expands its BINDING side only: the proof is the
+    // medium's own sentence at proposal time, carried as it was said —
+    // a fact of the generation that proposed, never re-chased in the
+    // one that accepted.
+    Accepted(text, proof, why_expand(inner, depth + 1)),
     Fresh(id) => match graph_chase(id) {
       GNode(_, resolved) => match resolved {
         Fresh(_) => reason,

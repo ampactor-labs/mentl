@@ -35,6 +35,10 @@ type EntryVerb
   | VCheck(String)
   // the cursor-address form — `mentl lib/tutorial/09-all.mn:40:20`: target, line, col (0 = whole-line). Drift-38's endpoint: the address IS the surface; verbs are transports
   | VAt(String, Int, Int)
+  // the accept form — `mentl accept <path>:<line>:<col>`: the second graph
+  // operation surfaced beside the first. `mentl <address>` PROJECTS the
+  // position; `mentl accept <address>` DRAWS the accept edge there (C4)
+  | VAccept(String, Int, Int)
   | VTest(Option(String))
   | VAudit(String)
   // target, question — both required
@@ -104,6 +108,20 @@ fn why_verb_args(a) = if len(a) >= 4 {
   ParseError("why needs a target and a name: mentl why <path> <name>")
 }
 
+// The accept verb's subject is an ADDRESS, parsed by the same shape read the
+// bare address form uses; a bare path with no line names no position to
+// accept at, and says so.
+fn accept_verb_args(a) = if len(a) >= 3 {
+  match parse_address(a[2]) {
+    Some(addr) => match addr {
+      (target, line, col) => Invocation(VAccept(path_to_module(target), line, col)),
+    },
+    None => ParseError("accept needs an address: mentl accept <path>:<line>:<col>"),
+  }
+} else {
+  ParseError("accept needs an address: mentl accept <path>:<line>:<col>")
+}
+
 fn verb_specs() = [VerbSpec(
   "run",
   "<path> [args…]",
@@ -133,6 +151,11 @@ fn verb_specs() = [VerbSpec(
   "[path]",
   (a) => Invocation(VEdit(optional_target(a, 2))),
   "the cursor session (eight aspects + proven proposals)"
+), VerbSpec(
+  "accept",
+  "<path>:<line>:<col>",
+  accept_verb_args,
+  "accept the one proven proposal at the address — a graph edge first, the text its projection"
 ), VerbSpec(
   "audit",
   "<path>",

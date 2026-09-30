@@ -19,6 +19,9 @@
 //   cursor-address transport (`mentl main.mn:L:C` -> src/main.mn at_run ->
 //   cursor_at_handle) projects the eight-aspect CursorView the ring reads.
 // Leg 3 — THE SOCKET: a ?? hole projects its proven survivor (Propose).
+// Leg 6 — THE ACCEPT: `mentl accept` at that hole draws the accept edge,
+//   the module re-derives, the reply's `written` channel carries the
+//   projected file and the Why at the position walks to the proposal (C4).
 import { readFile } from 'node:fs/promises';
 import { Worker } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
@@ -166,6 +169,21 @@ class ResidentWorkerSession {
   console.log(`[5] resident session delta + propose: exit ${r3.exit} -> ${ok3 ? 'PASS' : 'FAIL'}`);
   console.log('    ' + r3.out.trim().split('\n').join('\n    '));
   if (!ok3) { bad++; console.log('    err: ' + r3.err.trim()); }
+
+  // ── Leg 6: the accept is a graph write, the text its projection (C4) ──
+  // `mentl accept main.mn:3:37` draws the accept edge at the hole leg 5
+  // projected, re-derives the module and projects the graph back to the
+  // file: the reply's `written` channel carries main.mn with the survivor
+  // in the hole's place, and its stdout is the address projection at that
+  // position whose Why walks to the accepted proposal. RED on boot
+  // 4bc10808: no accept verb (a ParseError, exit 1, nothing written).
+  const r4 = await sess.call(['mentl', 'accept', 'main.mn:3:37']);
+  const wrote = r4.written && r4.written['main.mn'] ? new TextDecoder().decode(r4.written['main.mn']) : '';
+  const ok4 = r4.exit === 0 && !r4.trapped && /with Pure = 1\n/.test(wrote) && !wrote.includes('??')
+    && /^Why: accepted `1`/m.test(r4.out);
+  console.log(`[6] resident session accept (the edge, then the projection): exit ${r4.exit} · wrote ${wrote ? wrote.length + ' bytes' : 'nothing'} -> ${ok4 ? 'PASS' : 'FAIL'}`);
+  console.log('    ' + r4.out.trim().split('\n').join('\n    '));
+  if (!ok4) { bad++; console.log('    err: ' + r4.err.trim()); }
 
   sess.close();
 }
