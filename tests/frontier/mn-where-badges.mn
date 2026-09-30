@@ -15,6 +15,12 @@ fn fanned(a, b) = ((a) >< (b)) ~> parallel_compose
 
 fn bare(a, b) = (a) >< (b)
 
+// B4: a callee's fanout runs under the schedule its callers install —
+// `twice` demands `shared` threaded; the badge names the demand.
+fn shared(a, b) = (a) >< (b)
+
+fn twice() = (shared(1, 2)) ~> parallel_compose
+
 effect Tick {
   tick() -> Int
 }

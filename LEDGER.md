@@ -35,6 +35,127 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-30 · pin 477bb667dfab178d (TRANSITION m3 == m4) · THE SCHEDULE REACHES A CALLEE'S FANOUT BY
+  DEMAND, AND THE FAN IS A SEQUENCE FANOUT. B4 + C9. A `><` inside a reusable
+  fn was permanently `Seq` — the lexical schedule read stopped at the frame
+  fence — so no helper could fan out under its caller's `~> parallel_compose`
+  and the ??-fan had no fanout to stand in (`judge_window`, a constant for a
+  width the language could not say). THE FORM: a direct call standing under a
+  spawning install — its own frame's, which the lowering NOTES at the one
+  global-call arm (`site_schedule_seed` / `site_schedule`, an `Option(Schedule)`
+  in the emit's registry, the innermost schedule-class install before the
+  fence: an installed `sequential_compose` governs, none inherits), or the one
+  inherited from the twin it is emitted in — demands the callee as a SCHEDULE
+  TWIN: the site's instantiation key with the schedule as a trailing letter of
+  the enc (`T` Threaded / `P` Persisted; `sched_suffix`, `enc_sched`,
+  `enc_type_part`), keyed by `twin_call_key` and emitted by the plan beside the
+  instantiation twins. `fanout_reach_names` (graph.mn) is the ONE reach rule —
+  a top-level fn owns a fanout or reaches one through direct calls; a fn
+  declared `!Thread` neither takes a demand nor hands one on, the negation
+  read off its FnStmt (`declares_absent`) because a ground body's declared
+  negation leaves nothing in the published row — asked of ONE NAME by the
+  emit (`fanout_reach_of`: the walk from that name outward and no further,
+  its answers settled across asks, a cycle's member settling only where the
+  walk began or where a fanout was found) and read whole by `mentl where`
+  (`>< [Seq; Thread demanded via twice]`). A fanout site (`LFanout(h, Option(Schedule),
+  FanBranches, [(Schedule, LowExpr)])`) carries what its own frame installs and
+  one lowered FORM per schedule it can run under — its own, or the sequential
+  form plus each spawning schedule whose vocabulary is linked; `fanout_form`
+  selects at the site's schedule or the bracket's, every walker descends into
+  the selected form and no other, and construction enqueues every form's
+  callee the lowering noted (`fanout_form_note` / `fanout_form_drain`) so a
+  form the lowering introduced can name a declaration no source name
+  reaches. Nested records keep the letter where
+  they cannot outlive the install (thunks, arms, inits) and keep the
+  instantiation alone otherwise (`nested_twin`: lambdas, partials, nested fns,
+  remainders — at the floor the base record, emitted once under the floor
+  bracket and dropped when the base is live; the plan, the allocation audit
+  and the closure mint read the one spelling, the audit walking a nested unit
+  under ITS bracket with the parent's restored, `spec_pairs_active`). THE RACE
+  RULE THROUGH A CALLEE (`race_check_demands`, at the settle point beside the
+  allocation audit): from each direct call under a spawning schedule in a base
+  unit, walk into the callee with the site's install path and ROW PAIRS
+  (`row_pairs_at`: each free row cell of the callee's scheme at a
+  function-typed position bound to the site's resolved row), recursing into
+  fanning callees; each inheriting fanout checks its branches' rows through
+  the pairs (`threaded_effect_check`); base-unit fanouts stay checked at lower
+  (B1). THE SEQUENCE FANOUT: `fanout(f, xs)` is declared in lib/prelude.mn as
+  `map(f, xs)` — the sequential reading, its type inferred — and a call with
+  both fields supplied is the fanout node at the lowering (`lower_global_call`,
+  `completed_call` where a pipe supplies the second field; `lower_fanout_seq`,
+  `FanSeq`): `map` under `Seq`, `fanout_threaded` (lib/threading: spawn each
+  element's branch, join in order) and `fanout_persisted` (lib/persist) under
+  the spawning schedules, `SequenceFanoutUnlinked` where the vocabulary is not
+  linked. C9: `segment_verify` is `candidates |> fanout(judge_in_segment(...))`
+  — width a handler decision at the propose site, sequential by property, a
+  `~> parallel_compose` over it REFUSED by the race rule through the callee
+  (`graph_handler` is stateful): 9.2's DEP as a gate. FOUND ON THE WAY AND
+  CLOSED: a Thread op inside a spawned branch trapped on every boot since B1 —
+  `$spawn_task_impl` stored `$world_g`, which inside the `spawn` ARM is the
+  arm's world, stripped of the schedule itself by the deep-handler law
+  (persist.mn's lesson one effect over), so `current_id()` in a branch faulted
+  at the chain's end (exit 134, at the installing frame, measured on 6f2ce437);
+  every dispatch saves the performer's world beside its own swap
+  (`$perform_world_g`, restored after the arm) and the record stores that
+  (`Hβ.threads.task-record-carries-the-arm-world`). RED FIRST on boot
+  6f2ce437: reaches-callee 1 (both ids 0), the race refusal RAN to 11, the
+  readonly twin 10, `fanout` unknown then — once the prelude declared it —
+  values 12 (the control) and threaded 0, the thread-op branch 134; through the
+  new compiler 14 / refuse / 10 / 12 / 3 / 14, the `!Thread` control 1, the
+  caller refusal kept; the where badge `>< [Seq; Thread demanded via twice]`.
+  Seven frontier legs. KILLS, inline: (1) a dynamic Schedule effect read at
+  runtime — dies at the race rule, the schedule must be static per site; (2)
+  `map` as the sequence fanout — dies at granularity (a spawn per element in
+  every map of the extent); (3) bracketing into lambda bodies or value
+  references — dies at the escape (`Hβ.lower.schedule-through-a-value`); (4) a
+  settle-point rewrite of the callee — dies at the missing forty-arm rebuild
+  walker and emit-time perform construction; (5) a new bracket state — unneeded,
+  the enc already flows to every walker; (6) `fanout` as a PRIMITIVE with a
+  hand-written `Frozen` scheme — died at the boot, which cannot compile a
+  wheel naming a primitive it lacks (E_MissingVariable at `segment_verify`),
+  and the scheme was a copy of `map`'s; (7) the demand was never SEEDED — the
+  first m2 propagated the letter twin to twin and no install minted the first
+  (reaches-callee stayed 1 through a working race refusal), until the site
+  note; (8) a site under an installed `sequential_compose` inside a threaded
+  twin inherited the letter — the site fact became `Option(Schedule)`; (9) a
+  lambda nested in a monomorphic fn's schedule twin was named `$sp0` under an
+  enc the allocation audit never walked (`E_InternalInvariant`, `nested_twin`);
+  (10) a form's callee had no declaration to reach — the construction walk
+  followed only the selected form, so the twin called a symbol the module did
+  not hold (`fanout_threaded` undefined at the assembler; the key probe showed
+  `enc=[000] floor` at both sites and "no key" at the twin's). THE COST
+  RATCHET SHAPED THE REST: the march REFUSED the candidate twice — the sugar
+  vocabulary (41 → 45: the fanout call's own lowered forms, `desugar_vocabulary`
+  moved with its justification) and then the peak, 924 MB against the
+  873 MB ceiling — and the fixed-input probe (boot and candidate over the
+  IDENTICAL wheel source) put the boot at 874–877 MB and the candidate at
+  924–932, so ~50 MB was the compiler's own. Cut in order: the race walk gated
+  on a noted threaded site (`threaded_site_noted`; 3.8 MB), the form callees
+  noted at construction rather than walked, the stack entries classed once at
+  push with an index walk, and the reach computed at first ask rather than at
+  `emit_plan` (908 → 891–898). The per-step marks over the plan — a probed
+  copy of the HEAD compiler beside the candidate on one input — put the whole
+  remaining 22 MB inside `emit_reach` with every other step within noise, and
+  the subtraction probe over `twin_call_key` blamed the `site_schedule`
+  perform: (11) KILLED by the artifact — the emitted WAT allocates nothing on
+  a miss, and the per-ask heap delta read 0 bytes across 32,576 asks (8 hits,
+  8 bytes each). The truth was one probe over: lib/persist's four Persist-class
+  sites ask the reach, so the whole-program walk (`fanout_reach_names`, a
+  child list per node of every body) ran on every wheel compile. The emit asks
+  the rule of one name now (`fanout_reach_of`, graph.mn) — (12) its first form
+  memoized nothing a cycle had touched and re-walked the runtime's mutual
+  recursion per path, 4.3 GB and no plan; a name is entered once per ask, a
+  found chain settles true, a root that finds none settles all it entered —
+  and the reach's mark stands as its own `heap:` line (`reach_heap_line`). On
+  the wheel the asks are the driver's `mentl resume` block under
+  `persist_to_disk`, whose callees are the compiler, so one walk settles the
+  compile's reach false. Ceiling 873,000 → 890,000 KB (the boot itself
+  measures 873,720–877,620 on the new source; the candidate's heap high-water
+  +8.8 MB over HEAD's on one input). Cost: m3 leg 11.11s wall · 862MB peak RSS (882876 KB), m4 leg 11.44s · 888060 KB, 460124 lines, census 0.
+  Named: `Hβ.lower.schedule-through-a-value`,
+  `Hβ.lower.race-rule-obligation-flows-to-callers`,
+  `Hβ.persist.sequence-fanout-replay-barrier`;
+  `Hβ.lower.schedule-specialized-callee` CLOSED.
 - 2026-09-30 · pin 6f2ce4378786e53f (CLEAN m2 == m3) · THE PROPOSAL BATTERY — TWENTY-FOUR
   FIXTURES JUDGE THE VERDICT ITSELF, AND WRITING THEM FOUND FOUR DEFECTS.
   C7. Zero proposal fixtures existed as a battery; six hand-written

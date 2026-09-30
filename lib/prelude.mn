@@ -227,6 +227,18 @@ fn map(f, xs) = {
   result()
 } ~> map_collector(f)
 
+// The SEQUENCE FANOUT — `><` over a runtime sequence: `f` applied to each
+// element as an INDEPENDENT branch, the results collected in order. With no
+// schedule governing the site it is `map`, which is this body; where a
+// schedule does (an install of parallel_compose or persist_to_disk over the
+// call, in this frame or reaching it through a direct call) the lowering
+// selects the form that owns it — fanout_threaded in lib/threading,
+// fanout_persisted in lib/persist — so every element's branch runs on its
+// own instance. One declaration, one inferred row, the schedule a
+// projection at each site; `map` itself stays a sequential loop, since only
+// a fanout declares its applications independent.
+fn fanout(f, xs) = map(f, xs)
+
 fn filter(p, xs) = {
   iterate(xs)
   result()

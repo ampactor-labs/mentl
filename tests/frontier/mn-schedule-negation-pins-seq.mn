@@ -1,0 +1,12 @@
+// B4 (2026-09-30), the control: a callee declared `!Thread` keeps its own
+// frame's schedule. `both` proves it performs no `Thread`, so a caller's
+// `parallel_compose` never reaches its fanout — the branches run in the
+// root instance (`thread_id()` is the substrate's own op, 0 there) and the
+// negation holds where the demand would have spawned. The same on the
+// prior boot, where nothing crossed a call at all: this leg pins the
+// negation as the demand's gate, not the mechanism.
+// Expected exit: 1.
+fn both() with !Thread = (thread_id()) >< (thread_id())
+fn main() = match (both()) ~> parallel_compose {
+  (a, b) => if a > 0 && b > 0 { 14 } else { 1 },
+}

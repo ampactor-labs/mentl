@@ -1796,31 +1796,146 @@ fn find_fn_fanouts(name: String, i, n) with !Mutate = if i >= n {
   []
 } else {
   match graph_node_body(i) {
-    NStmt(FnStmt(fname, _, _, _, body)) => if fname == name { fanout_sites(node_handle(body), []) } else { find_fn_fanouts(name, i + 1, n) },
+    NStmt(FnStmt(fname, _, _, _, body)) => if fname == name {
+      fanout_sites(node_handle(body), [], demanded_note(name))
+    } else {
+      find_fn_fanouts(name, i + 1, n)
+    },
     _ => find_fn_fanouts(name, i + 1, n),
   }
 }
 
-fn fanout_sites(h, tees) with !Mutate = {
+// A site's word is its own frame's schedule; a site whose frame installs
+// none also names the spawning schedules its CALLERS demand of it through
+// direct calls (B4) — the note computed once per fn, appended where the
+// frame's own word is Seq (an install in the frame wins).
+fn fanout_sites(h, tees, note: String) with !Mutate = {
   let body = graph_node_body(h)
   match body {
-    NExpr(PipeExpr(PTee, l, r)) => fanout_sites(node_handle(l), [tee_handler_name(r)] ++ tees),
-    NExpr(FanoutExpr(branches)) => [(schedule_word(tees), span_of_node_raw(h))] ++ fanout_sites_list(branches, tees),
-    NExpr(LambdaExpr(_, lb)) => // the frame fence, statically mirrored
-    fanout_sites(node_handle(lb), []),
-    NStmt(FnStmt(_, _, _, _, fb)) => fanout_sites(node_handle(fb), []),
-    _ => fanout_sites_children(body_child_handles(body), tees),
+    NExpr(PipeExpr(PTee, l, r)) => fanout_sites(node_handle(l), [tee_handler_name(r)] ++ tees, note),
+    NExpr(FanoutExpr(branches)) => [(site_word(tees, note), span_of_node_raw(h))] ++ fanout_sites_list(branches, tees, note),
+    NExpr(PipeExpr(PFanout(_), l, r)) => // `<|` and the binary `><` pipe are fanout sites too
+    [(site_word(tees, note), span_of_node_raw(h))] ++ fanout_sites(node_handle(l), tees, note) ++ fanout_sites(node_handle(r), tees, note),
+    NExpr(CallExpr(f, args)) => if callee_is_fanout(f) {
+      [(site_word(tees, note), span_of_node_raw(h))] ++ fanout_sites_list(args, tees, note)
+    } else {
+      fanout_sites_children(body_child_handles(body), tees, note)
+    },
+    NExpr(LambdaExpr(_, lb)) => // the frame fence, statically mirrored — and no demand
+    // crosses into a function value
+    fanout_sites(node_handle(lb), [], ""),
+    NStmt(FnStmt(_, _, _, _, fb)) => fanout_sites(node_handle(fb), [], ""),
+    _ => fanout_sites_children(body_child_handles(body), tees, note),
   }
 }
 
-fn fanout_sites_list(nodes, tees) with !Mutate = match nodes {
-  [] => [],
-  [nh, ...rest] => fanout_sites(node_handle(nh), tees) ++ fanout_sites_list(rest, tees),
+fn site_word(tees, note: String) = {
+  let word = schedule_word(tees)
+  if str_eq(word, "Seq") { word ++ note } else { word }
 }
 
-fn fanout_sites_children(hs, tees) with !Mutate = match hs {
+fn fanout_sites_list(nodes, tees, note: String) with !Mutate = match nodes {
   [] => [],
-  [ch, ...rest] => fanout_sites(ch, tees) ++ fanout_sites_children(rest, tees),
+  [nh, ...rest] => fanout_sites(node_handle(nh), tees, note) ++ fanout_sites_list(rest, tees, note),
+}
+
+fn fanout_sites_children(hs, tees, note: String) with !Mutate = match hs {
+  [] => [],
+  [ch, ...rest] => fanout_sites(ch, tees, note) ++ fanout_sites_children(rest, tees, note),
+}
+
+// THE DEMANDED SCHEDULES of a fn: every spawning schedule a caller's `~>`
+// install reaches this fn under, through direct calls — the same fanout
+// reach the emit demands twins by (`fanout_reach_names`, graph.mn), read at
+// the weave: a call standing inside a Thread-class extent demands its
+// callee; a demanded fn that reaches a fanout demands ITS direct callees in
+// turn; a callee whose row forbids `Thread` takes no demand. Rendered as
+// "; Thread demanded via <fn>" after the frame's own word.
+fn demanded_note(name: String) with !Mutate = {
+  let reach = fanout_reach_names()
+  match graph_snapshot() {
+    Graph(next, _) => match demand_seeds(0, next, []) {
+      seeds => match demand_close(seeds, reach, name, [], 0) {
+        [] => "",
+        vias => "; Thread demanded via {fold("", vias_text, vias)}",
+      },
+    },
+  }
+}
+
+// Every (callee, via) a Thread-class install demands directly: the calls
+// standing in the extent of such an install, in the frame of the fn `via`.
+fn demand_seeds(i, n, acc) with !Mutate = if i >= n {
+  acc
+} else {
+  match graph_node_body(i) {
+    NStmt(FnStmt(fname, _, _, _, body)) => demand_seeds(i + 1, n, extent_calls(node_handle(body), [], fname, acc)),
+    _ => demand_seeds(i + 1, n, acc),
+  }
+}
+
+fn extent_calls(h, tees, via: String, acc) with !Mutate = {
+  let body = graph_node_body(h)
+  match body {
+    NExpr(PipeExpr(PTee, l, r)) => extent_calls(node_handle(l), [tee_handler_name(r)] ++ tees, via, acc),
+    NExpr(CallExpr(f, args)) => {
+      let acc2 = if str_eq(schedule_word(tees), "Thread") {
+        match f {
+          N(NExpr(VarRef(callee)), _, _) => push(acc, (callee, via)),
+          _ => acc,
+        }
+      } else {
+        acc
+      }
+      fold(acc2, extent_calls_step(tees, via), map(node_handle, args))
+    },
+    NExpr(LambdaExpr(_, _)) => acc,
+    NStmt(FnStmt(_, _, _, _, _)) => acc,
+    _ => fold(acc, extent_calls_step(tees, via), body_child_handles(body)),
+  }
+}
+
+fn extent_calls_step(tees, via: String, acc, h) with !Mutate = extent_calls(h, tees, via, acc)
+
+// Close the seeds over the fanout reach: a demanded fn that reaches a
+// fanout hands the demand to its direct callees. Bounded by the fn count.
+fn demand_close(seeds, reach, name: String, vias, round) with !Mutate = {
+  let hit = seeds |> filter({ (callee, _) => str_eq(callee, name) }) |> map({ (_, via) => via })
+  let vias2 = fold(vias, note_via, hit)
+  if round >= len(reach) {
+    vias2
+  } else {
+    let next =
+      seeds |> filter({ (callee, _) => string_in_list(reach, callee) }) |> flat_map(callee_demands)
+    if len(next) == 0 { vias2 } else { demand_close(next, reach, name, vias2, round + 1) }
+  }
+}
+
+fn note_via(vias, via: String) = if string_in_list(vias, via) { vias } else { push(vias, via) }
+
+fn vias_text(acc: String, via: String) = if byte_len(acc) == 0 { via } else { "{acc}, {via}" }
+
+// The direct callees of a demanded fn, each demanded under the same via.
+fn callee_demands(seed) with !Mutate = match seed {
+  (callee, via) => match graph_snapshot() {
+    Graph(next, _) => fn_body_handle(callee, 0, next) |> match_body_calls(via),
+  },
+}
+
+fn match_body_calls(via: String, bh) with !Mutate = match bh {
+  None => [],
+  Some(h) => match fanout_fact((false, []), h) {
+    (_, callees) => map({ c => (c, via) }, callees),
+  },
+}
+
+fn fn_body_handle(name: String, i, n) with !Mutate = if i >= n {
+  None
+} else {
+  match graph_node_body(i) {
+    NStmt(FnStmt(fname, _, _, _, body)) => if str_eq(fname, name) { Some(node_handle(body)) } else { fn_body_handle(name, i + 1, n) },
+    _ => fn_body_handle(name, i + 1, n),
+  }
 }
 
 // The capability-at-tee projection (§11 6.3's felt face): every `~>`

@@ -150,14 +150,18 @@ fn lookup_handler_arm_names_of(hname) = match handler_decl_of(hname) {
 // frame-fence sites), so the stack is empty at every decl boundary and
 // the widened extent is behaviour-identical.
 effect LowerHandlerStack {
-  lower_handler_push(String, Int) -> Int
+  // An entry carries its handler's install CLASS (`projection_of`), read
+  // once where the install is pushed: every global call inside the extent
+  // asks the stack which schedule governs it, and classifying the handler
+  // per ask re-read its declaration's arms each time.
+  lower_handler_push(String, Int, Projection) -> Int
   lower_handler_pop() -> Int
-  lower_handler_stack_now() -> [{handle: Int, name: String}]
+  lower_handler_stack_now() -> [{handle: Int, name: String, proj: Projection}]
 }
 
 handler lower_handler_stack_ctx with stack = [] {
-  lower_handler_push(name, install_handle) => // drift-audit: ignore — O(1) push at the end last/drop_last read (the one stack law)
-  resume(0) with stack = stack ++ [{handle: install_handle, name: name}],
+  lower_handler_push(name, install_handle, proj) => // drift-audit: ignore — O(1) push at the end last/drop_last read (the one stack law)
+  resume(0) with stack = stack ++ [{handle: install_handle, name: name, proj: proj}],
   lower_handler_pop() => if len(stack) == 0 { resume(0) } else { resume(0) with stack = drop_last(stack) },
   lower_handler_stack_now() => // Head-first = innermost-first; resolution walks it as a plain fn.
   resume(stack),
@@ -176,7 +180,7 @@ handler lower_handler_stack_ctx with stack = [] {
 // per-install state global); the each-with-effects lambda gap is the
 // same hole. The fence entry is name "" — no handler is nameless, so it
 // can never shadow a real install.
-fn lower_frame_fence_push() = lower_handler_push("", 0)
+fn lower_frame_fence_push() = lower_handler_push("", 0, PDispatch)
 
 fn lower_frame_fence_pop() = lower_handler_pop()
 
@@ -245,6 +249,11 @@ type BoundaryInvariant
   // `tangent_of` lowered outside a derivative reading — already refused
   // at the call (E_DerivativeUnreachable); the terminal keeps the node total.
   | TangentOutsideReading
+  // A sequence fanout (`fanout(f, xs)`) at a site whose frame installs a
+  // spawning schedule whose library implementation the program never links
+  // — a Thread-class handler declared beside no `fanout_threaded`. The
+  // name is the implementation the schedule's vocabulary owes.
+  | SequenceFanoutUnlinked(String)
 
 fn show_boundary_invariant(invariant) = match invariant {
   MissingFanoutBoundary => "missing fanout boundary",
@@ -261,6 +270,7 @@ fn show_boundary_invariant(invariant) = match invariant {
   SingletonUninstalled(hname) => "singleton op call with no live install: {hname} — the state global is 0 in this extent; install the handler (~> {hname}) around the calling walk",
   ProjectionOriginShape(h) => "column projection at {int_to_str(h)}: the program-column node is not the projector's shape",
   TangentOutsideReading => "tangent_of outside a derivative reading — refused at the call",
+  SequenceFanoutUnlinked(impl) => "the sequence fanout runs under a schedule whose implementation `{impl}` is not linked — import the library that declares this schedule's vocabulary",
 }
 
 // Every value-bearing variant carries a source TypeHandle (Int), never a cached Ty.
@@ -347,6 +357,15 @@ type LowExpr
   //
   // handle, [lane_value] (≤4 f32 branch results → v128)
   | LSimdLanes(Int, [LowExpr])
+  // A fanout site: its handle, the schedule its OWN frame installs (none
+  // when it inherits), what it fans (the branches, or the sequence and the
+  // function it applies) and one lowered FORM per schedule the site can run
+  // under — its own frame's, or with none installed the sequential form and
+  // each spawning schedule a caller's install may demand of it through a
+  // direct call (`fanout_form`). One node, read at the site's schedule or at
+  // the bracket's; every walker descends into the selected form and no
+  // other.
+  | LFanout(Int, Option(Schedule), FanBranches, [(Schedule, LowExpr)])
   // handle, [field_value] sorted by field name
   | LMakeRecord(Int, [LowExpr])
   // handle, tag_id, field exprs
@@ -626,6 +645,7 @@ fn lexpr_handle(e) with Pure = match e {
   LMakeList(h, _) => h,
   LMakeTuple(h, _) => h,
   LSimdLanes(h, _) => h,
+  LFanout(h, _, _, _) => h,
   LMakeRecord(h, _) => h,
   LMakeVariant(h, _, _) => h,
   LMatch(h, _, _) => h,
@@ -662,10 +682,17 @@ fn lexpr_handle(e) with Pure = match e {
 fn mark_tail(e) = match e {
   LCall(h, fn_, args) => LTailCall(h, fn_, args),
   LDirectCall(h, fh, n, _, args) => LDirectCall(h, fh, n, true, args),
+  LFanout(h, lex, br, forms) => LFanout(h, lex, br, map(mark_tail_form, forms)),
   LIf(h, cond, then_b, else_b) => LIf(h, cond, mark_tail_last_in(then_b), mark_tail_last_in(else_b)),
   LBlock(h, stmts) => LBlock(h, mark_tail_last_in(stmts)),
   LMatch(h, scrut, arms) => LMatch(h, scrut, mark_tail_arms(arms)),
   _ => e,
+}
+
+// A fanout's forms each stand in the fanout's own position: a sequence
+// fanout's form is a call, and a tail site's call is a tail call.
+fn mark_tail_form(sf) = match sf {
+  (s, e) => (s, mark_tail(e)),
 }
 
 // Return a fresh flat list with the last element replaced by mark_tail(last).
@@ -812,11 +839,24 @@ fn lower_call_dispatch(handle, f, fh, fbody, r_args) = {
   let lo_args = lower_expr_list(r_args)
   match fbody {
     NExpr(VarRef(name)) => match ls_resolve(name) {
-      (RGlobal, _) => lower_global_call(handle, fh, name, r_args, lo_args),
+      (RGlobal, _) => {
+        site_schedule_seed(fh)
+        lower_global_call(handle, fh, name, r_args, lo_args)
+      },
       (res, local_h) => lower_call_of(handle, fh, lower_resolved_ref(fh, name, res, local_h), lo_args),
     },
     _ => lower_call_default(handle, f, fh, lo_args),
   }
+}
+
+// A global call site notes the schedule its own frame installs, keyed by the
+// callee reference the emitted call carries, so the emit's demand reads the
+// site's own install before the bracket (`twin_call_key`); a site under no
+// install notes nothing and inherits. Only a global call can name a fn the
+// schedule reaches, which is why the seed stands at this one arm.
+fn site_schedule_seed(fh) = match lower_site_schedule() {
+  Some(s) => site_schedule_note(fh, s),
+  None => (),
 }
 
 // A call whose callee resolved to module scope, where the env's kinds live:
@@ -845,6 +885,21 @@ fn lower_global_call(handle, fh, name: String, r_args, lo_args) = if name == "to
     parse_span_of(handle)
   ))
   LInvariantFailure(handle, TangentOutsideReading)
+} else if name == "fanout" && len(r_args) == 2 {
+  // THE SEQUENCE FANOUT — `><` over a runtime sequence: `fanout(f, xs)`
+  // applies `f` to each element as an INDEPENDENT branch and collects the
+  // results in order, under whatever schedule governs the site (its own
+  // frame's install, or a caller's reaching it through a direct call). The
+  // prelude declares it as the sequential reading (`map`, which is what a
+  // compiler without this arm runs); here it is a fanout node like the
+  // syntactic ones, its branches the function argument's applications,
+  // each form a call into the library that owns the schedule's vocabulary
+  // — `map` sequentially, `fanout_threaded` under Thread,
+  // `fanout_persisted` under Persist. `map` itself stays a sequential loop
+  // by construction (SYNTAX §Vocabulary): only a fanout declares its
+  // applications independent. A pipe reaches the same node with the datum
+  // as its second field (`completed_call`).
+  lower_fanout_seq(handle, fh, node_handle(list_index(r_args, 0)), lo_args)
 } else if is_substrate_mem_op(name) {
   // Memory / Alloc ops ARE the instruction set — "the WASM runtime
   // IS the handler" (lib/memory.mn). They project to raw
@@ -1905,9 +1960,11 @@ fn lower_resolve_handler_for_op(op_name) = {
 // Typed projections for the install-stack entry ({handle, name}, pushed
 // at the ~> install ledger) and the resolve result ({handle, target},
 // minted below) — the boundary pins that keep every generic read proven.
-fn stack_entry_name(e: {handle: Int, name: String}) -> String = e.name
+fn stack_entry_name(e: {handle: Int, name: String, proj: Projection}) -> String = e.name
 
-fn stack_entry_handle(e: {handle: Int, name: String}) -> Int = e.handle
+fn stack_entry_handle(e: {handle: Int, name: String, proj: Projection}) -> Int = e.handle
+
+fn stack_entry_proj(e: {handle: Int, name: String, proj: Projection}) -> Projection = e.proj
 
 fn resolve_target(r: {handle: Int, target: String}) -> String = r.target
 
@@ -1983,7 +2040,147 @@ fn handler_declares_op(hname: String, ename: String, op_name: String) = {
 // One projection of infer's ExecutableBoundary edge. Every field keeps its
 // graph identity through LowIR: the thunk closure, semantic result, boundary-
 // local carrier, and the two scheduler-specific transient tickets.
-type ScheduledBoundary = ScheduledBoundary(LowExpr, Int, Int, Int, Int) | InvalidScheduledBoundary(Int, BoundaryInvariant)
+// thunk, result, carrier, Thread ticket, Persist ticket, the branch node
+// (the source the race rule reports at — a thunk is a synthesized node
+// with no span of its own)
+type ScheduledBoundary
+  = ScheduledBoundary(LowExpr, Int, Int, Int, Int, Int)
+  | InvalidScheduledBoundary(Int, BoundaryInvariant)
+
+// What a fanout site fans: the branches of `><` / `<|`, each its own
+// executable boundary, or — the sequence fanout `fanout(f, xs)` — the
+// function it applies, by the handle its row is read at.
+type FanBranches = FanBranches([ScheduledBoundary]) | FanSeq(Int)
+
+// THE FORM A FANOUT RUNS UNDER, read at the site. Its own frame's install
+// wins; a site whose frame installs none runs the form the active bracket
+// demands — a caller's spawning schedule reaching it through a direct call
+// (`spec_call_name`) — and its own frame's form otherwise. A schedule the
+// site carries no form for (the vocabulary is not linked, or the bracket
+// names Simd/Gpu, which never cross a call) reads as the site's own.
+fn fanout_form(lexical, forms) = match lexical {
+  Some(s) => fanout_form_named(forms, s),
+  None => fanout_form_under(fanout_form_named(forms, Seq), forms, enc_sched(spec_enc_active())),
+}
+
+fn fanout_form_under(site_form, forms, demanded) = match demanded {
+  Seq => site_form,
+  _ => match forms_lookup(forms, demanded) {
+    Some(f) => f,
+    None => site_form,
+  },
+}
+
+// A site's form for its own schedule — always present by construction.
+fn fanout_form_named(forms, s) = match forms_lookup(forms, s) {
+  Some(f) => f,
+  None => match forms {
+    [(_, f), ..._] => f,
+    [] => LInvariantFailure(0, MissingFanoutBoundary),
+  },
+}
+
+fn forms_lookup(forms, s) = match forms {
+  [] => None,
+  [(fs, f), ...rest] => if schedule_eq(fs, s) { Some(f) } else { forms_lookup(rest, s) },
+}
+
+fn schedule_eq(a: Schedule, b: Schedule) = match a {
+  Seq => match b {
+    Seq => true,
+    _ => false,
+  },
+  Threaded => match b {
+    Threaded => true,
+    _ => false,
+  },
+  Simd => match b {
+    Simd => true,
+    _ => false,
+  },
+  Gpu => match b {
+    Gpu => true,
+    _ => false,
+  },
+  Persisted => match b {
+    Persisted => true,
+    _ => false,
+  },
+}
+
+// THE SCHEDULE RIDES THE BRACKET'S ENC. A twin's encoding is its
+// instantiation's repr digits; a schedule twin's ends in the letter of the
+// spawning schedule its caller's install demands — `T` for Thread, `P` for
+// Persist — so the one bracket every twin emits under carries the schedule
+// too, and every reader that keys on the enc (nested records, extents,
+// faces) keys the schedule twin apart from its type twin. A floor enc is
+// all digits; a letter makes it a twin.
+fn sched_suffix(s: Schedule) = match s {
+  Threaded => "T",
+  Persisted => "P",
+  Seq => "",
+  Simd => "",
+  Gpu => "",
+}
+
+fn enc_sched(enc: String) = {
+  let n = byte_len(enc)
+  if n == 0 {
+    Seq
+  } else {
+    let b = byte_at(enc, n - 1)
+    // 'T'
+    if b == 84 {
+      Threaded
+    }
+    // 'P'
+    else if b == 80 {
+      Persisted
+    } else {
+      Seq
+    }
+  }
+}
+
+// The enc without its schedule letter — the instantiation alone.
+fn enc_type_part(enc: String) = match enc_sched(enc) {
+  Seq => enc,
+  _ => str_slice(enc, 0, byte_len(enc) - 1),
+}
+
+// THE ENC A NESTED RECORD TAKES under a schedule twin. A branch thunk, an
+// install's arm and a state init run inside the extent and never leave it,
+// so they keep the schedule: a `><` inside a spawned branch runs threaded
+// too. A lambda, a partial, a nested fn and a reified remainder are VALUES
+// that can outlive the install — called outside it, a spawn they carried
+// would find no handler on the chain, a trap the row never promised — so
+// they keep the instantiation alone and run their fanouts at their own
+// frame's schedule (`Hβ.lower.schedule-through-a-value`).
+fn nested_enc(name: String, enc: String) = match graph_emitfn_at(name) {
+  [] => enc_type_part(enc),
+  entries => match last(entries) {
+    EmitFnEntry(e) => match e.kind {
+      EfkThunk => enc,
+      EfkArm(_, _) => enc,
+      EfkInit(_) => enc,
+      EfkLambda => enc_type_part(enc),
+      EfkPartial => enc_type_part(enc),
+      EfkNested => enc_type_part(enc),
+      EfkK => enc_type_part(enc),
+    },
+  },
+}
+
+// THE SYMBOL A NESTED RECORD TAKES under a twin, with the enc it is emitted
+// under: its own enc (`nested_enc`), mangled where that names an
+// instantiation, and the bare name at the floor — a lambda under the schedule
+// twin of a monomorphic fn is the base lambda, emitted once and walked under
+// the floor bracket. The plan, the allocation audit and the closure mint all
+// read this one spelling.
+fn nested_twin(name: String, enc: String) = {
+  let ne = nested_enc(name, enc)
+  if spec_enc_is_floor(ne) { {enc: "", sym: name} } else { {enc: ne, sym: spec_mangle(name, ne)} }
+}
 
 // Read the fanout's execution strategy from the installed `~>` chain —
 // the SAME `lower_handler_stack_now()` stack every perform resolves
@@ -1996,17 +2193,35 @@ type ScheduledBoundary = ScheduledBoundary(LowExpr, Int, Int, Int, Int) | Invali
 // its row provably runs `Seq` (a real-time-DSP guarantee).
 fn lower_fanout_schedule() = schedule_in_stack(lower_handler_stack_now())
 
-fn schedule_in_stack(stack) = if len(stack) == 0 {
-  Seq
+// What the site's own frame INSTALLS: the innermost schedule-class install
+// before the frame fence, or none — two answers a site's form and a call's
+// demand read differently, since an installed `Seq` governs the site while
+// no install at all inherits the demand the bracket carries.
+fn lower_site_schedule() = schedule_installed(lower_handler_stack_now())
+
+fn schedule_in_stack(stack) = match schedule_installed(stack) {
+  Some(s) => s,
+  None => Seq,
+}
+
+fn schedule_installed(stack) = schedule_installed_at(stack, len(stack) - 1)
+
+// Innermost first, by index: this is asked at every global call inside an
+// install's extent, so it allocates nothing and reads each entry's class
+// where the push classified it once.
+fn schedule_installed_at(stack, i) = if i < 0 {
+  None
 } else {
-  let e = last(stack)
-  // the frame fence — "the schedule is read at the fanout's own install site, never across a call boundary" (SYNTAX §Vocabulary)
+  let e = list_index(stack, i)
+  // the frame fence — the LEXICAL read stops at the frame; a caller's
+  // schedule reaches a fanout in another frame by DEMAND, through a direct
+  // call (`spec_call_name`, `fanout_form`), never through this stack
   if field_name_eq(stack_entry_name(e), "") {
-    Seq
+    None
   } else {
-    match projection_of(stack_entry_name(e)) {
-      PSchedule(s) => s,
-      _ => schedule_in_stack(drop_last(stack)),
+    match stack_entry_proj(e) {
+      PSchedule(s) => Some(s),
+      _ => schedule_installed_at(stack, i - 1),
     }
   }
 }
@@ -2770,11 +2985,11 @@ fn lower_pipe_stage(lo_l, right, handle) = match right {
     }
     match lo_r {
       LDirectCall(dh, dfh, dn, dt, dargs) => if hole_at >= 0 {
-        LDirectCall(dh, dfh, dn, dt, splice_at(dargs, hole_at, lo_l))
+        completed_call(dh, dfh, dn, dt, splice_at(dargs, hole_at, lo_l))
       }
       // drift-audit: ignore — one completion per pipe node, not a loop accumulator
       else if is_partial {
-        LDirectCall(dh, dfh, dn, dt, dargs ++ [lo_l])
+        completed_call(dh, dfh, dn, dt, dargs ++ [lo_l])
       } else {
         LCall(handle, lo_r, [lo_l])
       },
@@ -2840,7 +3055,7 @@ fn lower_pipe(kind, left, right, handle) = match kind {
     // install threads no captured-evidence region.
     let lo_r = lower_expr(right)
     let hname = extract_handler_name(right)
-    lower_handler_push(hname, handle)
+    lower_handler_push(hname, handle, projection_of(hname))
     // The install body takes the k1 split too — upstream of tier selection,
     // so an inline `{ pick() } ~> twice` spelling yields instead of baking a
     // lexical-tier arm call the driver could never intercept.
@@ -2937,6 +3152,17 @@ fn callee_arity_of(f) = match f {
 //
 // drift-audit: ignore — one three-way splice per completed hole, not a loop accumulator
 fn splice_at(xs, i, v) = slice(xs, 0, i) ++ [v] ++ slice(xs, i + 1, len(xs))
+
+// A stage call the pipe has completed. A call of the prelude's `fanout`
+// with both fields supplied is the sequence fanout's node — the pipe's
+// twin of the arm `lower_global_call` holds for a direct call, since the
+// stage was dispatched with its hole open and only the completion sees
+// both fields; every other completed call is the call itself.
+fn completed_call(dh, dfh, dn: String, dt, args) = if str_eq(dn, "fanout") && len(args) == 2 {
+  lower_fanout_seq(dh, dfh, lexpr_handle(list_index(args, 0)), args)
+} else {
+  LDirectCall(dh, dfh, dn, dt, args)
+}
 
 // binds prev to the feedback site's prior local and inlines the body —
 // the recurrence reads y[n-1] live. Any other LHS lowers as-is (a bare
@@ -3297,7 +3523,7 @@ fn subtree_writes_state_children(hs) = match hs {
 // carrier back to the semantic result representation. The scheduler only ever
 // transports the carrier pointer; f64/f32/v128 remain unboxed in field 0.
 fn invoke_scheduled_boundary(branch) = match branch {
-  ScheduledBoundary(thunk, result_h, carrier_h, _, _) => LFieldLoad(result_h, LCall(carrier_h, thunk, []), FByIndex(0)),
+  ScheduledBoundary(thunk, result_h, carrier_h, _, _, _) => LFieldLoad(result_h, LCall(carrier_h, thunk, []), FByIndex(0)),
   InvalidScheduledBoundary(handle, invariant) => LInvariantFailure(handle, invariant),
 }
 
@@ -3314,46 +3540,50 @@ fn invoke_scheduled_boundary(branch) = match branch {
 // to a device-kernel host import (external-transport boundary); `~> Persist`
 // checkpoints each branch thunk to disk (persist_branch/join_persist). All
 // read the SAME strategy-neutral thunks — only the collector differs.
-fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
+fn run_fanout_thunks(handle, branches) = {
+  let lexical = lower_site_schedule()
+  LFanout(handle, lexical, FanBranches(branches), fanout_forms(handle, lexical, branches))
+}
+
+// THE FORMS A SITE CAN RUN UNDER, built where perform dispatch belongs. The
+// site's own frame's schedule names the form it runs at its own frame; a
+// site whose frame installs none is the one a CALLER's install can reach
+// through a direct call (`spec_call_name`), so it carries a form for each
+// spawning schedule the program's vocabulary can answer — Thread when its
+// `spawn` op is linked, Persist when `persist_branch` is. A form's performs
+// resolve at their own site: at a frame with no install they are walks of
+// the world chain, which is where a caller's install lives. A schedule the
+// vocabulary does not carry gets no form, so no perform of nothing is ever
+// built; and a site whose frame installs a schedule is never overridden —
+// the innermost install wins, as it does for every effect.
+fn fanout_forms(handle, lexical, branches) = match lexical {
+  Some(s) => [(s, fanout_form_of(handle, s, branches))],
+  None => [(Seq, fanout_form_of(handle, Seq, branches))] ++ spawning_forms(handle, branches),
+}
+
+fn spawning_forms(handle, branches) = {
+  let threaded = if field_name_eq(lower_effect_name_of_op("spawn"), "Thread") {
+    [(Threaded, fanout_form_of(handle, Threaded, branches))]
+  } else {
+    []
+  }
+  let persisted = if field_name_eq(lower_effect_name_of_op("persist_branch"), "Persist") {
+    [(Persisted, fanout_form_of(handle, Persisted, branches))]
+  } else {
+    []
+  }
+  threaded ++ persisted
+}
+
+fn fanout_form_of(handle, schedule, branches) = match schedule {
   Seq => LMakeTuple(handle, map(invoke_scheduled_boundary, branches)),
   Threaded => {
     // Spawn ALL branches, THEN join ALL — true parallelism with
     // source-order collection (the spawn-join-each interleave
     // serialized). The spawn handles bind as let-locals so the joins
     // read them after every spawn has launched.
-    let spawn_lets = map(
-      {
-        (i, branch) => match branch {
-          ScheduledBoundary(thunk, _, _, thread_ticket_h, _) => LLet(
-            thread_ticket_h,
-            "__fanout_spawn_{int_to_str(i)}_{int_to_str(handle)}",
-            lower_perform_dispatch(thread_ticket_h, "spawn", [thunk])
-          ),
-          InvalidScheduledBoundary(boundary_h, invariant) => LLet(
-            boundary_h,
-            "__fanout_spawn_invalid_{int_to_str(i)}_{int_to_str(handle)}",
-            LInvariantFailure(boundary_h, invariant)
-          ),
-        },
-      },
-      enumerate(branches)
-    )
-    let joins = map(
-      {
-        (i, branch) => match branch {
-          ScheduledBoundary(_, result_h, carrier_h, thread_ticket_h, _) => {
-            let joined = lower_perform_dispatch(
-              carrier_h,
-              "thread_join",
-              [LLocal(thread_ticket_h, "__fanout_spawn_{int_to_str(i)}_{int_to_str(handle)}")]
-            )
-            LFieldLoad(result_h, joined, FByIndex(0))
-          },
-          InvalidScheduledBoundary(boundary_h, invariant) => LInvariantFailure(boundary_h, invariant),
-        },
-      },
-      enumerate(branches)
-    )
+    let spawn_lets = map(spawn_let_at(handle), enumerate(branches))
+    let joins = map(spawn_join_at(handle), enumerate(branches))
     LBlock(handle, list_concat(spawn_lets, [LMakeTuple(handle, joins)]))
   },
   Simd => // `~> Simd` — the SPACE-axis cash-out at the value layer's RV128 altitude:
@@ -3386,41 +3616,116 @@ fn run_fanout_thunks(handle, branches) = match lower_fanout_schedule() {
   // (a persisting handler vs a thread pool vs inline), the §4④ unification made
   // real at the fanout layer.
   {
-    let spawn_lets = map(
-      {
-        (i, branch) => match branch {
-          ScheduledBoundary(thunk, _, _, _, persist_ticket_h) => LLet(
-            persist_ticket_h,
-            "__fanout_persist_{int_to_str(i)}_{int_to_str(handle)}",
-            lower_perform_dispatch(persist_ticket_h, "persist_branch", [thunk])
-          ),
-          InvalidScheduledBoundary(boundary_h, invariant) => LLet(
-            boundary_h,
-            "__fanout_persist_invalid_{int_to_str(i)}_{int_to_str(handle)}",
-            LInvariantFailure(boundary_h, invariant)
-          ),
-        },
-      },
-      enumerate(branches)
-    )
-    let joins = map(
-      {
-        (i, branch) => match branch {
-          ScheduledBoundary(_, result_h, carrier_h, _, persist_ticket_h) => {
-            let joined = lower_perform_dispatch(
-              carrier_h,
-              "join_persist",
-              [LLocal(persist_ticket_h, "__fanout_persist_{int_to_str(i)}_{int_to_str(handle)}")]
-            )
-            LFieldLoad(result_h, joined, FByIndex(0))
-          },
-          InvalidScheduledBoundary(boundary_h, invariant) => LInvariantFailure(boundary_h, invariant),
-        },
-      },
-      enumerate(branches)
-    )
+    let spawn_lets = map(persist_let_at(handle), enumerate(branches))
+    let joins = map(persist_join_at(handle), enumerate(branches))
     LBlock(handle, list_concat(spawn_lets, [LMakeTuple(handle, joins)]))
   },
+}
+
+// One branch's spawn, bound to its ticket handle as a let-local the join
+// below reads after every spawn has launched.
+fn spawn_let_at(handle, indexed) = match indexed {
+  (i, branch) => match branch {
+    ScheduledBoundary(thunk, _, _, thread_ticket_h, _, _) => LLet(
+      thread_ticket_h,
+      "__fanout_spawn_{int_to_str(i)}_{int_to_str(handle)}",
+      lower_perform_dispatch(thread_ticket_h, "spawn", [thunk])
+    ),
+    InvalidScheduledBoundary(boundary_h, invariant) => LLet(
+      boundary_h,
+      "__fanout_spawn_invalid_{int_to_str(i)}_{int_to_str(handle)}",
+      LInvariantFailure(boundary_h, invariant)
+    ),
+  },
+}
+
+fn spawn_join_at(handle, indexed) = match indexed {
+  (i, branch) => match branch {
+    ScheduledBoundary(_, result_h, carrier_h, thread_ticket_h, _, _) => {
+      let joined = lower_perform_dispatch(
+        carrier_h,
+        "thread_join",
+        [LLocal(thread_ticket_h, "__fanout_spawn_{int_to_str(i)}_{int_to_str(handle)}")]
+      )
+      LFieldLoad(result_h, joined, FByIndex(0))
+    },
+    InvalidScheduledBoundary(boundary_h, invariant) => LInvariantFailure(boundary_h, invariant),
+  },
+}
+
+fn persist_let_at(handle, indexed) = match indexed {
+  (i, branch) => match branch {
+    ScheduledBoundary(thunk, _, _, _, persist_ticket_h, _) => LLet(
+      persist_ticket_h,
+      "__fanout_persist_{int_to_str(i)}_{int_to_str(handle)}",
+      lower_perform_dispatch(persist_ticket_h, "persist_branch", [thunk])
+    ),
+    InvalidScheduledBoundary(boundary_h, invariant) => LLet(
+      boundary_h,
+      "__fanout_persist_invalid_{int_to_str(i)}_{int_to_str(handle)}",
+      LInvariantFailure(boundary_h, invariant)
+    ),
+  },
+}
+
+fn persist_join_at(handle, indexed) = match indexed {
+  (i, branch) => match branch {
+    ScheduledBoundary(_, result_h, carrier_h, _, persist_ticket_h, _) => {
+      let joined = lower_perform_dispatch(
+        carrier_h,
+        "join_persist",
+        [LLocal(persist_ticket_h, "__fanout_persist_{int_to_str(i)}_{int_to_str(handle)}")]
+      )
+      LFieldLoad(result_h, joined, FByIndex(0))
+    },
+    InvalidScheduledBoundary(boundary_h, invariant) => LInvariantFailure(boundary_h, invariant),
+  },
+}
+
+// The sequence fanout's node: the same site/bracket reading as the
+// syntactic forms (`fanout_forms`), each form a direct call into the
+// library fn that owns the schedule. The callee-reference handle is the
+// site's own, so the call's twin key is read off `fanout`'s instantiation
+// there — the same shape `map` and its threaded twin declare.
+fn lower_fanout_seq(handle, fh, f_h, lo_args) = {
+  let lexical = lower_site_schedule()
+  let forms = match lexical {
+    Some(s) => [(s, fanout_seq_form(handle, fh, s, lo_args))],
+    None => [(Seq, fanout_seq_form(handle, fh, Seq, lo_args))] ++ fanout_seq_linked(handle, fh, lo_args, Threaded, "fanout_threaded") ++ fanout_seq_linked(handle, fh, lo_args, Persisted, "fanout_persisted"),
+  }
+  // The forms' callees are names the lowering introduced — no source name
+  // reaches their declarations — so construction is told them here, where
+  // they are chosen, and enqueues them beside the constructed decl's own
+  // references (`reach_construct_loop`); the emit reach walks the selected
+  // form alone and decides what is emitted.
+  fanout_form_note(fold([], fanout_form_callee, forms))
+  LFanout(handle, lexical, FanSeq(f_h), forms)
+}
+
+fn fanout_form_callee(acc, sf) = match sf {
+  (_, LDirectCall(_, _, n, _, _)) => push(acc, n),
+  (_, _) => acc,
+}
+
+// A spawning schedule's form, when its implementation is linked.
+fn fanout_seq_linked(handle, fh, lo_args, s, impl: String) = match env_kind_of(impl) {
+  Some(FnScheme) => [(s, LDirectCall(handle, fh, impl, false, lo_args))],
+  _ => [],
+}
+
+fn fanout_seq_form(handle, fh, schedule, lo_args) = match schedule {
+  Seq => LDirectCall(handle, fh, "map", false, lo_args),
+  Threaded => fanout_seq_impl(handle, fh, lo_args, "fanout_threaded"),
+  Persisted => fanout_seq_impl(handle, fh, lo_args, "fanout_persisted"),
+  Simd => // Simd and Gpu pack a FIXED lane count; a runtime sequence runs
+  // sequentially under them, as the syntactic Gpu arm does today.
+  LDirectCall(handle, fh, "map", false, lo_args),
+  Gpu => LDirectCall(handle, fh, "map", false, lo_args),
+}
+
+fn fanout_seq_impl(handle, fh, lo_args, impl: String) = match env_kind_of(impl) {
+  Some(FnScheme) => LDirectCall(handle, fh, impl, false, lo_args),
+  _ => LInvariantFailure(handle, SequenceFanoutUnlinked(impl)),
 }
 
 // Walk branch_nodes producing one LMakeClosure per branch. Each thunk body is
@@ -3488,7 +3793,8 @@ fn synthesize_diverge_thunks(parent_handle, input_h, input_local_name, branch_no
                       result_h,
                       carrier_h,
                       thread_ticket_h,
-                      persist_ticket_h
+                      persist_ticket_h,
+                      branch_h
                     )
                   },
                   Err(invariant) => InvalidScheduledBoundary(thunk_h, invariant),
@@ -3551,7 +3857,8 @@ fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, bound
                 result_h,
                 carrier_h,
                 thread_ticket_h,
-                persist_ticket_h
+                persist_ticket_h,
+                branch_h
               )
             },
             Err(invariant) => InvalidScheduledBoundary(thunk_h, invariant),
@@ -5309,6 +5616,9 @@ fn k2_floor_guard(e, terminus) = match e {
   LMakeList(h, es) => LMakeList(h, k2_floor_list(es)),
   LMakeTuple(h, es) => LMakeTuple(h, k2_floor_list(es)),
   LSimdLanes(h, ls) => LSimdLanes(h, k2_floor_list(ls)),
+  LFanout(h, lex, br, forms) => // Every form is a value in the fanout's own position, so each
+  // takes the walk the site takes.
+  LFanout(h, lex, br, map(k2_floor_form(terminus), forms)),
   LMakeRecord(h, fs) => LMakeRecord(h, k2_floor_list(fs)),
   LMakeVariant(h, t, fs) => LMakeVariant(h, t, k2_floor_list(fs)),
   LFeedback(h, d, home, b, s) => LFeedback(h, d, home, k2_floor_guard(b, false), k2_floor_guard(s, false)),
@@ -5332,6 +5642,10 @@ fn k2_floor_guard(e, terminus) = match e {
 fn k2_is_park(name: String) = len(name) >= 5 && str_slice(name, 0, 5) == "__kr_"
 
 fn k2_floor_list(es) = map((x) => k2_floor_guard(x, false), es)
+
+fn k2_floor_form(terminus, sf) = match sf {
+  (s, e) => (s, k2_floor_guard(e, terminus)),
+}
 
 // Block statements: only the LAST carries the terminus flag through.
 fn k2_floor_last(stmts, terminus) = {
@@ -6139,9 +6453,16 @@ fn ls_find_in_order_loop(lst, target: String, i, n) = if i >= n {
 // the second also collected operand handles nothing had read since the
 // worthiness gate was deleted.
 type LowRef
-  // a named reference and the handle its instantiation is read at: an
-  // LGlobal, or an LDirectCall's callee
+  // a named reference as a VALUE and the handle its instantiation is read
+  // at: an LGlobal
   = RefSite(Int, String)
+  // a direct call's callee and the handle its instantiation is read at.
+  // Distinct from a value reference because only a CALL carries a schedule
+  // into its callee (`spec_call_name`): a function value minted under a
+  // spawning schedule and called outside the install would perform `spawn`
+  // with no handler on the chain, so a value keeps its callee's own frame's
+  // schedule (`Hβ.lower.schedule-through-a-value`).
+  | RefCall(Int, String)
   // an install's arm: the install's handle is where the key it runs the
   // arm under is read (`arm_site_pairs`)
   | RefArm(Int, String)
@@ -6151,6 +6472,7 @@ type LowRef
 
 fn ref_name(r) = match r {
   RefSite(_, n) => n,
+  RefCall(_, n) => n,
   RefArm(_, n) => n,
   RefName(n) => n,
 }
@@ -6182,7 +6504,8 @@ fn perform_target_refs(acc, disp) = match perform_target(disp) {
 
 fn low_refs(acc, expr) = match expr {
   LGlobal(h, n) => [RefSite(h, n)] ++ acc,
-  LDirectCall(_h, fh, n, _t, args) => low_refs_list([RefSite(fh, n)] ++ acc, args),
+  LDirectCall(_h, fh, n, _t, args) => low_refs_list([RefCall(fh, n)] ++ acc, args),
+  LFanout(_h, lex, _br, forms) => low_refs(acc, fanout_form(lex, forms)),
   LPerform(_h, disp, args) => low_refs_list(perform_target_refs(acc, disp), args),
   LHandleWith(ih, b, hn, hname, inits, arm_names) => low_refs_list(low_refs(low_refs(init_refs(arm_refs(acc, ih, arm_names), ih, hname), b), hn), inits),
   LDerive(_h, seed, b) => low_refs(low_refs(acc, b), seed),
@@ -6271,6 +6594,7 @@ fn frame_children(expr) = match expr {
   LMakeList(_, es) => es,
   LMakeTuple(_, es) => es,
   LSimdLanes(_, lanes) => lanes,
+  LFanout(_, lex, _, forms) => [fanout_form(lex, forms)],
   LMakeRecord(_, fs) => fs,
   LMakeVariant(_, _, fs) => fs,
   LMatch(_, s, arms) => [s] ++ map(match_arm_body, arms),
@@ -6303,6 +6627,7 @@ fn wide_seed(refs) = if any(ref_is_wide, refs) { spec_wide_family() } else { [] 
 
 fn ref_is_wide(r) = match r {
   RefSite(h, n) => !spec_enc_is_floor(twin_site_key(h, n).enc),
+  RefCall(h, n) => !spec_enc_is_floor(twin_site_key(h, n).enc),
   RefArm(ih, _) => byte_len(arm_install_enc(ih)) > 0,
   RefName(_) => false,
 }
@@ -6436,10 +6761,10 @@ fn reach_seed_stmts(stmts, i, n, outs, enq, r0, fbuf, fc) = if i >= n {
   match lo {
     LLet(_, _, LMakeClosure(_, _, _)) => reach_seed_stmts(stmts, i + 1, n, outs2, enq, r0, fbuf, fc),
     LLet(_, _, LMakeContinuation(_, _, _, _, _)) => reach_seed_stmts(stmts, i + 1, n, outs2, enq, r0, fbuf, fc),
-    LLet(_, _, init) => match reach_enqueue(reach_entry_names(low_refs([], init)), r0, 0, fbuf, fc) {
+    LLet(_, _, init) => match reach_enqueue(fanout_form_drain() ++ reach_entry_names(low_refs([], init)), r0, 0, fbuf, fc) {
       (fbuf2, fc2) => reach_seed_stmts(stmts, i + 1, n, outs2, list_set(enq, i, 1), r0, fbuf2, fc2),
     },
-    _ => match reach_enqueue(wide_seed(low_refs([], lo)), r0, 0, fbuf, fc) {
+    _ => match reach_enqueue(fanout_form_drain() ++ wide_seed(low_refs([], lo)), r0, 0, fbuf, fc) {
       (fbuf2, fc2) => reach_seed_stmts(stmts, i + 1, n, outs2, list_set(enq, i, 1), r0, fbuf2, fc2),
     },
   }
@@ -6472,7 +6797,13 @@ fn reach_construct_loop(stmts, map, outs, enq, rbuf, rn, fbuf, fc) = if fc == 0 
       }
       if list_index(enq, i) == 0 {
         let d = list_index(outs2, i)
-        match reach_enqueue(reach_entry_names(low_refs([], d)), rbuf2, rn + 1, fbuf, fc - 1) {
+        match reach_enqueue(
+          fanout_form_drain() ++ reach_entry_names(low_refs([], d)),
+          rbuf2,
+          rn + 1,
+          fbuf,
+          fc - 1
+        ) {
           (fbuf2, fc2) => reach_construct_loop(stmts, map, outs2, list_set(enq, i, 1), rbuf2, rn + 1, fbuf2, fc2),
         }
       } else {
@@ -7366,6 +7697,43 @@ fn spec_global_name(h, name: String) = {
   let enc = twin_site_key(h, name).enc
   if spec_enc_is_floor(enc) { name } else { spec_mangle(name, enc) }
 }
+
+// A DIRECT CALL's naming projection: the site's key, and — inside a bracket
+// whose enc names a spawning schedule — that schedule's letter, when the
+// callee reaches a fanout through direct calls (`fanout_reach_known`, the
+// one rule graph.mn states) and its row does not forbid `Thread`. So a
+// `~> parallel_compose` install reaches every `><` and `fanout` in its
+// extent's direct-call reach, one twin per (instantiation, schedule), and
+// a callee declared `!Thread` keeps its own frame's schedule: the negation
+// is what the demand reads (`Hβ.lower.schedule-specialized-callee`). Only a
+// call carries the schedule; a value reference (`spec_global_name`) never
+// does, since the value may outlive the install.
+fn spec_call_name(h, name: String) = {
+  let enc = twin_call_key(h, name).enc
+  if spec_enc_is_floor(enc) { name } else { spec_mangle(name, enc) }
+}
+
+// A direct call's key: the site's instantiation key, its enc carrying the
+// demanded schedule's letter when the callee takes it.
+fn twin_call_key(h, name: String) = {
+  let key = twin_site_key(h, name)
+  // the site's own install governs; a site that installs none inherits the
+  // bracket's demand (`site_schedule`, noted at the lowering)
+  let demanded = match site_schedule(h) {
+    Some(s) => s,
+    None => enc_sched(spec_enc_active()),
+  }
+  match demanded {
+    Seq => key,
+    _ => if fanout_reach_known(name) {
+      {enc: key.enc ++ sched_suffix(demanded), pairs: key.pairs}
+    } else {
+      key
+    },
+  }
+}
+
+fn eff_name_is(ename: String, n) = str_eq(eff_name_str(n), ename)
 
 // The symbol a reference names under the active bracket: the site's key
 // projected, redirected ONLY when the demand analysis minted that twin —

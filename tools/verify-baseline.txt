@@ -940,7 +940,19 @@ loop_scaffold_refs_max: 3
 # the intersection, so removing them moves nothing. The number falls to zero
 # when Hβ.driver.link-is-reachability lands and an emit-minted name demands
 # its defining module the way an import does.
-desugar_vocabulary: 41
+# 2026-09-30 · 41 -> 45 · RE-DERIVED, and the seed does NOT follow, because
+# the four names are minted at the LOWERING, not blind at the emit. The
+# sequence fanout's site (B4 + C9) carries one lowered FORM per schedule it
+# can run under, each a direct call the lowering names — `map` for the
+# sequential reading, `fanout_threaded` (lib/threading) and
+# `fanout_persisted` (lib/persist) for the spawning schedules — and `fanout`
+# itself is the prelude declaration the site recognizes. Every one is a
+# LowExpr node the construction walk (`construct_refs`, every form) and the
+# emit reach (`low_refs`, the selected form) both see, so reachability
+# finds them from the site; `emit_runtime_contract` seeds only what the
+# emit mints with no node to walk, and it is unchanged. The set diffed
+# against pin 6f2ce437 is exactly those four in, none out.
+desugar_vocabulary: 45
 
 # 2026-09-11 · 812 -> 811 · the gate's own DOWN arm, held. Bisected with the
 # gate's regex to pin 0bd0525e, and the retired marker is `ref strict` in
@@ -1198,4 +1210,17 @@ authored_ref_max: 708
 # ~33 KB per line; the board's min-of-three read 862,004 KB and the march's
 # m3 leg 857,168 KB. Same rule: ~1% over the highest reading of the landed
 # form, 864,576 KB.
-selfcompile_peak_kb_max: 873000
+# 2026-09-30 (B4 + C9): 873000 -> 890000. Fixed-input measurement — the
+# BOOT compiling the candidate's own source measures 873,720–877,620 KB, so
+# ~4 MB of the rise is source growth (the sequence fanout, the schedule twins,
+# the race rule through a callee, the perform-world global); the candidate on
+# the identical input measures 873,028–888,140 KB across runs (run variance
+# ~15 MB on one binary), its deterministic heap high-water 780.3 MB against
+# HEAD's 771.5 MB at the module's end — +8.8 MB, of which +6 MB is the reach
+# rule asked of one name (`fanout_reach_of`: the driver's `mentl resume`
+# block stands under `persist_to_disk`, so its four callees are asked and the
+# compile's reach is walked once, settled false) and the rest the allocation
+# audit's nested brackets and the schedule forms. The whole-program walk it
+# replaced cost 22 MB on every wheel compile; the O(1) form is the reach as a
+# column the judgment writes (`Hβ.lower.reach-edge-on-node`).
+selfcompile_peak_kb_max: 890000

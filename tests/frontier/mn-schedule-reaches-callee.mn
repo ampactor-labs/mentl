@@ -1,0 +1,12 @@
+// B4 (2026-09-30): THE SCHEDULE REACHES A CALLEE'S FANOUT. `both` fans out
+// with no install of its own; `main` installs `parallel_compose` over the
+// CALL, so the demand reaches `both` through the direct call and its two
+// branches run on spawned instances — `current_id()` answers each host
+// thread's id, nonzero off the root instance. On boot 6f2ce437 the frame
+// fence made a callee's fanout sequential whatever the caller installed:
+// both ids were 0 and the program exited 1.
+// Expected exit: 14.
+fn both() = (current_id()) >< (current_id())
+fn main() = match (both()) ~> parallel_compose {
+  (a, b) => if a > 0 && b > 0 { 14 } else { 1 },
+}

@@ -1711,6 +1711,49 @@ and this is the STATE.
   hole is free at propose time
   (`Hβ.infer.arm-body-cell-is-free-at-propose`).
 
+- **THE SCHEDULE REACHES A CALLEE'S FANOUT BY DEMAND — CLOSED 2026-09-30
+  (B4 + C9).** A `><` inside a reusable fn was permanently `Seq`: the lexical
+  read stopped at the frame fence, so no helper could fan out under its
+  caller's `~> parallel_compose`, and the ??-fan had no fanout to stand in at
+  all (`judge_window` was a constant standing in for a width the language
+  could not say). A call standing under a spawning install — its own frame's,
+  noted by the lowering, or the one inherited from the twin it is emitted in —
+  demands the callee as a SCHEDULE TWIN, keyed by the site's instantiation
+  with the schedule as a trailing letter, emitted beside the instantiation
+  twins by the same plan; a fn declared `!Thread` takes no demand, the
+  negation read where it is AUTHORED (a ground body's declared negation
+  leaves nothing in the published row, which the first `!Thread` control
+  measured by running threaded); a site carries what its own frame installs
+  and inherits otherwise; a value that can outlive the install keeps its
+  instantiation alone (`Hβ.lower.schedule-through-a-value`); and the race
+  rule walks from a spawning caller into its callees with the site's row
+  pairs, so `tally(() => bump())` under a stateful counter refuses through
+  the polymorphic HOF where boot 6f2ce437 ran it to 11. `fanout(f, xs)` is
+  the SEQUENCE fanout — the prelude's `map(f, xs)` by declaration, a fanout
+  node at the lowering, `fanout_threaded` / `fanout_persisted` under the
+  spawning schedules — and `segment_verify` is written `candidates |>
+  fanout(...)`: width a handler decision at the propose site, a
+  `~> parallel_compose` over it refused by the race rule (`graph_handler` is
+  stateful), 9.2's DEP as a gate. FOUND ON THE WAY: a Thread op inside a
+  spawned branch trapped on every boot since B1 — the task record carried
+  the spawn ARM's world, which the deep-handler law strips of the schedule
+  itself (persist.mn's lesson one effect over); it carries the world of the
+  PERFORM now (`Hβ.threads.task-record-carries-the-arm-world`). The
+  bootstrap seam killed `fanout` as a primitive: the boot cannot compile a
+  wheel that names a primitive it lacks, and the hand-written scheme was a
+  copy of `map`'s. And the cost ratchet refused the candidate at 924 MB
+  against 873 and shaped the emit: the fixed-input probe (boot and candidate
+  over one wheel source) priced the compiler's own growth at ~50 MB, the
+  per-step marks over the plan put the last 22 MB in the emitted reach, a
+  subtraction probe blamed the site's schedule perform and the WAT killed
+  it (0 bytes per ask), and the truth was one probe over — lib/persist's
+  four Persist-class sites asked the reach rule, which walked every body of
+  the wheel to answer; the emit asks it of one name now (`fanout_reach_of`),
+  the reach's mark stands as its own `heap:` line, and the race walk is
+  gated on a noted threaded site. Named:
+  `Hβ.lower.race-rule-obligation-flows-to-callers`,
+  `Hβ.persist.sequence-fanout-replay-barrier`.
+
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
 
@@ -3072,7 +3115,8 @@ first-class — DONE statement (2) whole.
   `.fanout-gpu-backend-handler` named-or-built per hardware,
   `Hβ.cursor.work-stealing-via-gradient` (idle cores ask the cursor; the
   argmax IS the queue), `.speculative-compile`,
-  `Hβ.lower.schedule-specialized-callee` (skeptically scoped as banked),
+  the schedule twin (`Hβ.lower.schedule-specialized-callee`, CLOSED
+  2026-09-30 — the demand through direct calls),
   `Hβ.f1.handler-substrates`. Safety verdicts ride Phase 6
   (`Hβ.native.effect-state-parallel-safety`'s row face).
 - **9.3 · §5.O layers 1–2 finish.** Name-is-handle at LEX (the intern
@@ -3292,9 +3336,9 @@ landed in 5–10; this phase is the finish that makes it FELT.
   memcpy-serializable image, and `persist = memcpy` is BUILT (§7), so an
   exploration suspends and resumes across runs and machines while every peer
   synthesizer is a within-process search. The fan is written
-  `(c) >< (c) ~> Schedule` so width is a handler decision — `judge_window`
-  has dissolved, and the sequence-fanout form the fan needs is
-  `Hβ.lower.schedule-specialized-callee`; and the answer is never a LIST — unique survivor fills, and
+  `candidates |> fanout(...)` — the sequence fanout under whatever schedule
+  the propose site installs (B4 + C9, 2026-09-30) — so width is a handler
+  decision and `judge_window` has dissolved; and the answer is never a LIST — unique survivor fills, and
   multiple meanings ask the one question, because a list is the medium
   admitting it does not know.
 

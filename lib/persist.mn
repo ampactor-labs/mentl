@@ -235,3 +235,13 @@ handler persist_to_disk with branch_results = [] {
     PersistHandle(idx) => resume(list_index(branch_results, idx)),
   },
 }
+
+// THE SEQUENCE FANOUT UNDER A PERSIST-CLASS SCHEDULE — `fanout(f, xs)`
+// reached by a `~> persist_to_disk` install: each element's branch
+// checkpointed and run through `persist_branch`, every handle joined in
+// order (the `><` Persist arm over a runtime sequence, selected by the
+// lowering as that arm is). The loops are `map`'s, sequential by
+// construction.
+fn fanout_persisted(f, xs) = xs |> map(persist_branch_of(f)) |> map(join_persist)
+
+fn persist_branch_of(f, x) = persist_branch(() => f(x))

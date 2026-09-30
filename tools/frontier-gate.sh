@@ -1546,6 +1546,31 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-spine-callee-alloc.mn" E_EffectMismatch "$dir"
   run_program "$compiler" threaded-branch-readonly-state \
     "$ROOT/tests/frontier/mn-threaded-branch-readonly-state.mn" 10 yes "$dir"
+  # ── B4: the schedule reaches a callee's fanout (2026-09-30) ──
+  # A `~> parallel_compose` install reaches every `><` and `fanout` in its
+  # extent's direct-call reach: the callee is emitted as a schedule twin
+  # (`spec_call_name`), its fanout's spawning form selected by the bracket,
+  # and the race rule reads each branch's row at the INSTANTIATING site (a
+  # callback parameter's row is the argument's). A callee declared `!Thread`
+  # keeps its own frame's schedule. RED on boot 6f2ce437: the frame fence made
+  # every callee's fanout sequential (reaches-callee exited 1, the race
+  # refusal ran to 11), and `fanout` did not exist.
+  run_program "$compiler" schedule-reaches-callee \
+    "$ROOT/tests/frontier/mn-schedule-reaches-callee.mn" 14 yes "$dir"
+  # the schedule's own ops answer inside a spawned branch: the task record
+  # carries the world of the perform, not the spawn arm's (134 on 6f2ce437)
+  run_program "$compiler" threaded-branch-thread-op \
+    "$ROOT/tests/frontier/mn-threaded-branch-thread-op.mn" 14 yes "$dir"
+  run_program "$compiler" fanout-seq-values \
+    "$ROOT/tests/frontier/mn-fanout-seq-values.mn" 12 yes "$dir"
+  run_program "$compiler" fanout-seq-threaded \
+    "$ROOT/tests/frontier/mn-fanout-seq-threaded.mn" 3 yes "$dir"
+  run_program "$compiler" schedule-negation-pins-seq \
+    "$ROOT/tests/frontier/mn-schedule-negation-pins-seq.mn" 1 yes "$dir"
+  run_refusal_linked "$compiler" schedule-race-through-callee \
+    "$ROOT/tests/frontier/mn-schedule-race-through-callee.mn" E_ThreadedBranchEffect "$dir"
+  run_program "$compiler" schedule-race-callee-readonly \
+    "$ROOT/tests/frontier/mn-schedule-race-callee-readonly.mn" 10 yes "$dir"
   run_program "$compiler" scheduled-persist-float \
     "$ROOT/tests/frontier/mn-scheduled-fanout-persist-float.mn" 60 persist "$dir"
   # The rooted-image persist (B-i landing 1): ONE build, TWO processes. Leg A
@@ -3349,6 +3374,13 @@ for i in "${!compilers[@]}"; do
   printf '%s' "$w_sched" | grep -q '>< \[Thread\] at' || { w_ok=0; fail "where schedule badge (got: $w_sched)"; }
   w_seq=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" bare 2>/dev/null)
   printf '%s' "$w_seq" | grep -q '>< \[Seq\] at' || { w_ok=0; fail "where seq-default badge (got: $w_seq)"; }
+  # B4 (2026-09-30): a fanout site reports the schedules its CALLERS demand
+  # of it through direct calls — `shared`'s own frame installs none (Seq),
+  # and `twice` calls it under `parallel_compose`, so its site runs threaded
+  # there; the badge says both, read off the one fanout-reach rule the emit
+  # demands twins by. RED on boot 6f2ce437 (the badge knew only the frame).
+  w_dem=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" shared 2>/dev/null)
+  printf '%s' "$w_dem" | grep -q '>< \[Seq; Thread demanded via twice\] at' || { w_ok=0; fail "where demanded-schedule badge (got: $w_dem)"; }
   # The bare why verb (SYNTAX's lag list, first name retired): the
   # Reason-chain walk as its own verb. Born RED 2026-08-08 (the prior
   # boot answered unknown-verb).
@@ -3764,7 +3796,14 @@ for i in "${!compilers[@]}"; do
   # a name every program must be born knowing, and `!Trap` is a claim any
   # signature may make. A bare program links the prelude, so it links the
   # effect; the same peer takes it back.
-  cost_ceiling=2805
+  # 2833 (2026-09-30): ROSE 2805 → 2833, the sequence fanout's vocabulary
+  # (B4 + C9): lib/prelude's `fanout(f, xs)` — `map` by declaration, the
+  # fanout node at the lowering, twelve lines with its lede — and
+  # lib/threading's `fanout_threaded` with its `spawn_branch` helper, the
+  # form a Thread-class schedule selects for it, sixteen lines with the
+  # header's demand sentence. A bare program fans nothing out, so it links
+  # both for no reason at all; the same peer takes them back.
+  cost_ceiling=2833
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

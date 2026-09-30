@@ -280,13 +280,30 @@ handler string_table with idx = string_index_new() {
 // scan that stood here, beside a comment calling the set tiny, ran at every
 // generic reference the module emits, over a set that reached three thousand
 // twins on the wheel before twins were keyed by what their bodies read.
-handler spec_registry with twins = smap_new(), count = 0 {
+handler spec_registry with twins = smap_new(), count = 0, reach = smap_new(), decls = smap_new(), decls_read = false, sites = wmap_new(1024), threaded = false, forms = [] {
   spec_twins_exist() => resume(count > 0),
   spec_twin_known(n) => resume(match smap_get(twins, n) {
     Some(_) => true,
     None => false,
   }),
   set_spec_twins(ns) => resume() with twins = fold(smap_new(), smap_add(??, ??, 1), ns), count = len(ns),
+  fanout_reach_known(n) => // Asked only by a call under a spawning demand, and answered by walking
+  // that name's own reach and no further (`fanout_reach_of`, graph.mn —
+  // the rule's one home, which `mentl where` reads whole), the answers
+  // settled across asks in `reach`; a schedule-free module never asks and
+  // pays nothing for the rule's existence. The decl index is read off the
+  // decls column at the first ask.
+  {
+    let idx = if decls_read { decls } else { fanout_decls_index() }
+    match fanout_reach_of({entered: [], memo: reach, seen: smap_new()}, idx, n) {
+      (found, st) => resume(found) with reach = if found { st.memo } else { fold(st.memo, fanout_reach_settle, st.entered) }, decls = idx, decls_read = true,
+    }
+  },
+  site_schedule_note(h, s) => resume() with sites = wmap_add(sites, h, s), threaded = threaded || schedule_eq(s, Threaded),
+  site_schedule(h) => resume(wmap_get(sites, h)),
+  threaded_site_noted() => resume(threaded),
+  fanout_form_note(ns) => resume() with forms = forms ++ ns,
+  fanout_form_drain() => resume(forms) with forms = [],
 }
 
 // The emission in flight, for the diagnostics that stand at a spanless node
@@ -414,13 +431,11 @@ fn hash_is_agg(ty) = match ty {
 fn spec_closure_name(name: String) = if !spec_twins_exist() {
   name
 } else {
-  let e = spec_enc_active()
-  if byte_len(e) == 0 {
-    name
-  } else {
-    let m = spec_mangle(name, e)
-    if spec_twin_known(m) { m } else { name }
-  }
+  // The symbol the nested record was registered under — a schedule twin's
+  // lambda keeps the instantiation alone, the base name at the floor
+  // (`nested_twin`).
+  let t = nested_twin(name, spec_enc_active())
+  if byte_len(t.enc) == 0 { name } else if spec_twin_known(t.sym) { t.sym } else { name }
 }
 
 // The str_hash bucket index — the shared name-is-handle waypoint shape
@@ -501,6 +516,9 @@ fn demand_base(n) = DemandBase(n)
 fn ref_demand(lineage, r) = match r {
   RefName(n) => DemandBase(n),
   RefSite(h, n) => key_demand(n, twin_site_key(h, n), lineage),
+  RefCall(h, n) => // A direct call's key carries the bracket's schedule into a callee that
+  // reaches a fanout (`twin_call_key`): the demand is the schedule twin.
+  key_demand(n, twin_call_key(h, n), lineage),
   RefArm(ih, n) => key_demand(n, arm_twin_key(ih), lineage),
 }
 
@@ -719,6 +737,7 @@ fn settle_node(site: String, expr) = match expr {
   LMakeList(_, _) => (),
   LMakeTuple(_, _) => (),
   LSimdLanes(_, _) => (),
+  LFanout(_, _, _, _) => (),
   LMakeRecord(_, _) => (),
   LMakeVariant(_, _, _) => (),
   LResumeK(_, _, _) => (),
@@ -865,6 +884,7 @@ fn settle_minted_lines(site: String, lines) = each(
 // word protocol boxed and back, and is sound.
 fn settle_depth(site: String, base: String, r) = match r {
   RefSite(h, n) => settle_depth_at(site, base, h, n, twin_site_key(h, n).pairs),
+  RefCall(h, n) => settle_depth_at(site, base, h, n, twin_site_key(h, n).pairs),
   RefArm(ih, n) => settle_depth_at(site, base, ih, n, arm_twin_key(ih).pairs),
   RefName(_) => (),
 }
@@ -1032,15 +1052,32 @@ fn alloc_audit_twin(bodies, d) = match d {
   },
 }
 
-// A nested unit's symbol: its own name, mangled under a twin's encoding
-// exactly as the twin's nested records are named (`plan_reached`).
+// A nested unit's symbol and enc: the one spelling the twin's nested records
+// are named by (`nested_twin`, read by `plan_reached` too).
 fn alloc_nested(unit, name: String) = match unit {
-  AllocUnit(u) => alloc_unit_named(
-    name,
-    if byte_len(u.enc) == 0 { name } else { spec_mangle(name, u.enc) },
-    u.enc,
-    unit
-  ),
+  AllocUnit(u) => {
+    let t = nested_twin(name, u.enc)
+    alloc_unit_named(name, t.sym, t.enc, unit)
+  },
+}
+
+// A nested unit walks under ITS bracket: the parent's where it keeps the
+// parent's enc, and its own where a schedule twin's lambda drops the letter
+// (the floor, or the instantiation alone) — the parent's bracket restored
+// after, since the walk continues in the parent.
+fn alloc_walk_nested(unit, name: String, body) = match unit {
+  AllocUnit(u) => {
+    let t = nested_twin(name, u.enc)
+    if str_eq(t.enc, u.enc) {
+      alloc_walk_unit(alloc_nested(unit, name), body)
+    } else {
+      let pairs = spec_pairs_active()
+      spec_ctx_set(if byte_len(t.enc) == 0 { [] } else { pairs }, t.enc)
+      let r = alloc_walk_unit(alloc_nested(unit, name), body)
+      spec_ctx_set(pairs, u.enc)
+      r
+    }
+  },
 }
 
 // A unit, read off its own fn's enumeration entry: the row it answers to is
@@ -1233,18 +1270,18 @@ fn alloc_walk(unit, e) = match e {
   LMakeClosure(h, LFn(name, _, _, body, _, _), caps) => {
     let built = alloc_at(unit, h, AsClosure)
     let below = alloc_walk_list(unit, caps, 0)
-    alloc_walk_unit(alloc_nested(unit, name), body)
+    alloc_walk_nested(unit, name, body)
     built || below
   },
   LMakeContinuation(_, LFn(name, _, _, body, _, _), caps, _, _) => {
     // the remainder record: the op's cost, recorded and never refused here
     let built = true
     let below = alloc_walk_list(unit, caps, 0)
-    alloc_walk_unit(alloc_nested(unit, name), body)
+    alloc_walk_nested(unit, name, body)
     built || below
   },
   LDeclareFn(LFn(name, _, _, body, _, _)) => {
-    alloc_walk_unit(alloc_nested(unit, name), body)
+    alloc_walk_nested(unit, name, body)
     false
   },
   LShow(h, x) => // an aggregate's show is the generated leaf, which builds its string
@@ -1387,6 +1424,7 @@ fn alloc_walk(unit, e) = match e {
   },
   LBlock(_, stmts) => alloc_walk_list(unit, stmts, 0),
   LSimdLanes(_, lanes) => alloc_walk_list(unit, lanes, 0),
+  LFanout(_, lex, _, forms) => alloc_walk(unit, fanout_form(lex, forms)),
   LFieldLoad(_, rec, _) => alloc_walk(unit, rec),
   LConvert(_, _, operand) => alloc_walk(unit, operand),
   LStateSlotStore(_, _, v, record) => {
@@ -1471,7 +1509,7 @@ fn alloc_args_may_spill(args, i) =
 
 // Whether a direct call spills: the face the emission reads for it
 // (`direct_callee_widths`, at the twin the site names).
-fn alloc_direct_spills(fh, cname: String, args) = match direct_callee_widths(spec_target_name(fh, cname), len(args)) {
+fn alloc_direct_spills(fh, cname: String, args) = match direct_callee_widths(spec_call_name(fh, cname), len(args)) {
   (declared, _) => args_spill_at(declared, args, 0),
 }
 
@@ -1699,6 +1737,18 @@ fn spec_rec_name(tw) -> String = match tw.rec {
 
 fn spec_rec_names(spec_recs) -> [String] = map(spec_rec_name, spec_recs)
 
+// A twin's nested record that landed on the floor is the base record; when
+// the base is among the live records the module emits it already, so the
+// entry drops rather than emitting the symbol twice.
+fn spec_rec_wanted(fn_records, r) = if byte_len(r.enc) > 0 {
+  true
+} else {
+  match spec_find_rec(fn_records, r.base) {
+    None => true,
+    Some(_) => false,
+  }
+}
+
 // ─── THE SIGNATURE COLUMN's one write (lowering-is-a-column (ii)) ─────
 //
 // THE ONE DERIVATION of an emitted symbol's ABI. Every width in the module
@@ -1908,6 +1958,227 @@ fn sig_wide_names(names) = filter(symbol_is_wide, names)
 // writes. The name collisions the record dedup finds and the inits the
 // preinstall scope judges are said here too, where a refusal can still mean
 // zero bytes.
+// ─── THE RACE RULE THROUGH A CALLEE (B4, 2026-09-30) ─────────────────
+//
+// B1's rule reads a fanout at ITS OWN frame (`threaded_branch_check`,
+// lower.mn): every effect a branch's row carries must reach, before the
+// frame fence, a handler that writes no state. A schedule that reaches a
+// callee's fanout by DEMAND (`spec_call_name`) crosses that fence through a
+// direct call, so the rule is read the same way along the demand: from
+// each direct call standing under a spawning install in a base unit, into
+// the callee, through its own frame's installs, into every fanning callee
+// it calls directly — each fanout's branch rows checked against the
+// installs between it and the demanding site, innermost last. A branch
+// whose row is a PARAMETER's is read at the instantiating site: the site's
+// argument rows pair the callee's row cells (`row_pairs_at`), composed
+// along the chain, so `fn tally(f) = (f()) >< (f())` called with a callback
+// that bumps a stateful counter refuses where the lexical rule read a free
+// row. Reported at the settle point, before the gate reads the ledger; a
+// fanout whose own frame installs its schedule was judged at lower and is
+// not read again here. A demanded twin's body is scanned ONCE per mangled
+// name by the reach, which is why this walk runs from the demanding SITE
+// and carries the site's own installs: two sites demanding one twin under
+// different installs are two verdicts.
+//
+// A demand chain starts at a site the lowering noted under a spawning
+// schedule; a module with none has no chain to walk and pays nothing for
+// the rule's existence — the absence is read, never searched for.
+fn race_check_demands(fn_records, all_records) =
+  if threaded_site_noted() { each(race_check_record(all_records), fn_records) } else { () }
+
+fn race_check_record(recs, rec) = match rec {
+  (_name, _params, body, _f) => race_scan_list(body, [], recs),
+}
+
+// A base unit's body, with the installs enclosing each node (the stack's
+// own order, innermost last). A closure's body is another frame; its
+// captures are this one's.
+fn race_scan_list(stmts, path, recs) = each(race_scan(path, recs), stmts)
+
+fn race_scan(path, recs, e) = match e {
+  LHandleWith(ih, b, hn, hname, inits, _arms) => {
+    race_scan(path, recs, hn)
+    race_scan_list(inits, path, recs)
+    race_scan(path ++ [{handle: ih, name: hname, proj: projection_of(hname)}], recs, b)
+  },
+  LDirectCall(_h, fh, n, _t, args) => {
+    if schedule_demands(path) && fanout_reach_known(n) {
+      race_check_reach(n, path, row_pairs_at(fh, n), [n], recs)
+    } else {
+      ()
+    }
+    race_scan_list(args, path, recs)
+  },
+  LDeclareFn(_) => (),
+  other => race_scan_list(frame_children(other), path, recs),
+}
+
+// A path demands a callee's schedule twin when its innermost schedule
+// spawns: a Thread-class install whose arms perform the substrate's spawn.
+// The persisting schedule runs its branches inline and races nothing.
+fn schedule_demands(path) = match schedule_in_stack(path) {
+  Threaded => schedule_spawns(path),
+  _ => false,
+}
+
+// The demand walk into one callee under the demanding site's path.
+fn race_check_reach(name: String, ctx, rowpairs, visited, recs) = match spec_find_rec(recs, name) {
+  None => (),
+  Some(rec) => match rec {
+    (_n, _ps, body, _f) => race_body_list(body, [], ctx, rowpairs, visited, recs),
+  },
+}
+
+fn race_body_list(stmts, local, ctx, rowpairs, visited, recs) =
+  each(race_body(local, ctx, rowpairs, visited, recs), stmts)
+
+fn race_body(local, ctx, rowpairs, visited, recs, e) = match e {
+  LHandleWith(ih, b, hn, hname, inits, _arms) => {
+    race_body(local, ctx, rowpairs, visited, recs, hn)
+    race_body_list(inits, local, ctx, rowpairs, visited, recs)
+    race_body(
+      local ++ [{handle: ih, name: hname, proj: projection_of(hname)}],
+      ctx,
+      rowpairs,
+      visited,
+      recs,
+      b
+    )
+  },
+  LFanout(h, lex, br, _forms) => match lex {
+    None => // the demanded form runs here: the site's own frame installs nothing,
+    // and the chain a spawned branch walks is the callee's local installs
+    // (innermost) on top of the demanding site's
+    race_fanout(h, br, ctx ++ local, rowpairs),
+    Some(_) => (),
+  },
+  LDirectCall(_h, fh, n, _t, args) => {
+    if fanout_reach_known(n) && !string_in_list(visited, n) {
+      race_check_reach(n, ctx ++ local, row_pairs_at(fh, n) ++ rowpairs, visited ++ [n], recs)
+    } else {
+      ()
+    }
+    race_body_list(args, local, ctx, rowpairs, visited, recs)
+  },
+  LDeclareFn(_) => (),
+  other => race_body_list(frame_children(other), local, ctx, rowpairs, visited, recs),
+}
+
+// One demanded fanout's branches against the chain: each branch's row,
+// read under the site's row pairs, one effect at a time through the same
+// walk the lexical rule takes.
+fn race_fanout(h, br, stack, rowpairs) = match br {
+  FanBranches(bs) => each(race_branch(stack, rowpairs), bs),
+  FanSeq(f_h) => match lookup_ty(f_h) {
+    TFun(_, _, row) => each(threaded_effect_check(h, stack, ""), row_effects_under(row, rowpairs)),
+    _ => (),
+  },
+}
+
+fn race_branch(stack, rowpairs, b) = match b {
+  ScheduledBoundary(thunk, _, _, _, _, branch_h) => match executable_boundary_row(lexpr_handle(thunk)) {
+    Ok(row) => each(threaded_effect_check(branch_h, stack, ""), row_effects_under(row, rowpairs)),
+    Err(_) => (),
+  },
+  InvalidScheduledBoundary(_, _) => (),
+}
+
+// THE ROW PAIRS OF A SITE: each row cell the callee's scheme quantifies at
+// a function-typed position, paired with the row the site instantiated it
+// at — the argument's own row, resolved. The scheme's row cells are the
+// callee's parameters' cells, which is what a branch's row inside the
+// callee chases to.
+fn row_pairs_at(fh, name: String) = match fn_judgment(name) {
+  None => [],
+  Some(j) => match j {
+    (_qs, sty) => row_pairs_walk(sty, spec_resolve(lookup_ty(fh)), []),
+  },
+}
+
+fn row_pairs_walk(st0, it0, acc) = match fold_strip(st0) {
+  TVar(v) => match graph_chase(v) {
+    GNode(NBound(inner), _) => row_pairs_walk(inner, it0, acc),
+    _ => acc,
+  },
+  TFun(ps, r, srow) => match fold_strip(it0) {
+    TFun(ips, ir, irow) => row_pairs_params(ps, ips, row_pairs_walk(r, ir, row_pair_add(acc, srow, irow))),
+    _ => acc,
+  },
+  TList(e) => match fold_strip(it0) {
+    TList(ie) => row_pairs_walk(e, ie, acc),
+    _ => acc,
+  },
+  TTuple(es) => match fold_strip(it0) {
+    TTuple(ies) => row_pairs_list(es, ies, acc),
+    _ => acc,
+  },
+  TName(_, args) => match fold_strip(it0) {
+    TName(_, iargs) => row_pairs_list(args, iargs, acc),
+    _ => acc,
+  },
+  _ => acc,
+}
+
+fn row_pairs_list(xs, ys, acc) = match xs {
+  [] => acc,
+  [x, ...rest] => match ys {
+    [] => acc,
+    [y, ...yrest] => row_pairs_list(rest, yrest, row_pairs_walk(x, y, acc)),
+  },
+}
+
+fn row_pairs_params(ps, ips, acc) = match ps {
+  [] => acc,
+  [p, ...rest] => match ips {
+    [] => acc,
+    [ip, ...irest] => row_pairs_params(rest, irest, row_pairs_walk(param_ty(p), param_ty(ip), acc)),
+  },
+}
+
+// Each free cell of the scheme's row pairs with the whole site row.
+fn row_pair_add(acc, srow, irow) = match resolve_row(srow) {
+  EfRow(_, _, EtOpen(edges)) => fold(acc, row_pair_edge(resolve_row(irow)), edges),
+  _ => acc,
+}
+
+fn row_pair_edge(site_row, acc, e) = push(acc, (graph_chase_handle(edge_cell(e)), site_row))
+
+// The effects a row carries, its free cells read through the pairs: the
+// row's own names, then for each unbound edge the paired row's names
+// (themselves read through the pairs, an outer site's for an inner cell)
+// minus the edge's mask.
+fn row_effects_under(row, rowpairs) = match resolve_row(row) {
+  EfRow(_, _, t) => match t {
+    EtOpen(edges) => fold(effects_of_row(row), row_edge_under(rowpairs), edges),
+    _ => effects_of_row(row),
+  },
+}
+
+fn row_edge_under(rowpairs, acc, e) = match row_pair_find(rowpairs, graph_chase_handle(edge_cell(e))) {
+  None => acc,
+  Some(paired) => fold(acc, names_add, name_strs_minus(row_effects_under(paired, rowpairs), edge_mask(e))),
+}
+
+fn row_pair_find(rowpairs, cell) = match rowpairs {
+  [] => None,
+  [(c, r), ...rest] => if c == cell { Some(r) } else { row_pair_find(rest, cell) },
+}
+
+fn names_add(acc, n: String) = if string_in_list(acc, n) { acc } else { push(acc, n) }
+
+fn name_strs_minus(names, mask) = filter({ n => !any(eff_name_is(n), mask) }, names)
+
+// The plan's own mark beside the compile's phase lines (`heap_line`,
+// pipeline.mn): the emitted reach is the plan's largest step — 73 of its
+// 111 MB on the wheel, 2026-09-30 — and the step whose growth a per-step
+// walk of the plan found when the cost ratchet refused a landing 22 MB
+// heavier at every other step's size, so it stands as a line of its own.
+fn reach_heap_line() = match diag_scope_of() {
+  ScopeAll => eprint_string("heap: {int_to_str(heap_mark())} byte(s) when the emitted reach settles\n"),
+  ScopeNone => (),
+  ScopeModule(_) => (),
+}
+
 fn emit_plan(program) = {
   // Every record lower constructed, per decl, collected ONCE: a twin is a
   // copy of one of these, so a base the module does not emit is still where
@@ -1927,6 +2198,7 @@ fn emit_plan(program) = {
   // reference reaches — the only ones emitted below.
   match emit_reach(program, all_records) {
     (spec_demands, live, settles) => {
+      reach_heap_line()
       // Every name a twin was demanded of — the unreached decls whose bodies
       // still feed their twins, and the arms a keyed install runs twinned.
       let twin_base_set = fold(smap_new(), demand_base_note, spec_demands)
@@ -1961,7 +2233,19 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         Some(rec) => match rec {
           (_n, ps, body, f) => [{base: base, enc: enc, pairs: pairs, rec: (m, ps, body, f)}] ++ map(
             {
-              (nn, nps, nbody, nf) => {base: nn, enc: enc, pairs: pairs, rec: (spec_mangle(nn, enc), nps, nbody, nf)},
+              (nn, nps, nbody, nf) => // A nested record takes the schedule only where it cannot
+              // outlive the install (`nested_twin`): a branch thunk does, a
+              // lambda keeps the instantiation alone — and at the floor it
+              // is the base lambda itself, under the floor bracket.
+              {
+                let t = nested_twin(nn, enc)
+                {
+                  base: nn,
+                  enc: t.enc,
+                  pairs: if byte_len(t.enc) == 0 { [] } else { pairs },
+                  rec: (t.sym, nps, nbody, nf),
+                }
+              },
             },
             collect_fn_emit_records(body)
           ),
@@ -1971,7 +2255,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       },
     },
     spec_demands
-  )) |> spec_recs_dedup
+  )) |> spec_recs_dedup |> filter(spec_rec_wanted(fn_records, ??))
   let spec_names = spec_rec_names(spec_recs)
   set_spec_twins(spec_names)
   // THE DERIVATIVE READING settles here too (src/derive.mn): its programs
@@ -2013,6 +2297,10 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
   // THE ALLOCATION AUDIT reads here, where a spill is a fact (`alloc_audit`):
   // what every emitted unit's code builds, against the row its code answers
   // to, said before the gate reads the ledger.
+  // THE RACE RULE THROUGH A CALLEE reads here too (`race_check_demands`):
+  // every direct call a spawning install reaches, walked into its callee's
+  // fanouts with the site's installs and row pairs, said before the gate.
+  if settles { race_check_demands(fn_records, all_records) } else { () }
   let alloc_units = if settles { Some(alloc_audit(lowered, spec_demands, all_records)) } else { None }
   let wide_fn_names = sig_wide_names(map({ (nm, _, _, _) => nm }, fn_records))
   let spec_wide = sig_wide_names(spec_names)
@@ -2706,6 +2994,7 @@ fn walk_lemit_expr(expr) = match expr {
   LMakeList(_, elems) => walk_lemit_list(elems),
   LMakeTuple(_, elems) => walk_lemit_list(elems),
   LSimdLanes(_, lanes) => walk_lemit_list(lanes),
+  LFanout(_, lex, _, forms) => walk_lemit_expr(fanout_form(lex, forms)),
   LMakeRecord(_, fs) => walk_lemit_list(fs),
   LMakeVariant(_, _, fs) => walk_lemit_list(fs),
   LMatch(_, s, arms) => {
@@ -3897,6 +4186,7 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LMakeList(_h, es) => collect_call_vectors_list(es, acc),
   LMakeTuple(_h, es) => collect_call_vectors_list(es, acc),
   LSimdLanes(_h, lanes) => collect_call_vectors_list(lanes, acc),
+  LFanout(_h, lex, _, forms) => collect_call_vectors_expr(fanout_form(lex, forms), acc),
   LMakeRecord(_h, fs) => collect_call_vectors_list(fs, acc),
   LMakeVariant(_h, _t, fs) => collect_call_vectors_list(fs, acc),
   LMatch(_h, s, arms) => collect_call_vectors_arms(arms, collect_call_vectors_expr(s, acc)),
@@ -4196,6 +4486,18 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw) = {
   // the LHandleWith emit. 0 = the empty world. R1 is chain-only (writers
   // balanced, no reader); the perform swap reads it next rung.
   wat_emit("  (global $world_g (mut i32) (i32.const 0))\n")
+  // THE WORLD OF THE PERFORM AN ARM IS ANSWERING. A dispatch sets $world_g to
+  // the arm's world (the chain outside its own install — the deep-handler
+  // law) and restores the performer's after, so nothing an arm calls can see
+  // the world the perform stood in. A spawn needs exactly that world for the
+  // branch it starts: the spawned instance must answer the schedule's own ops
+  // (`current_id`, a nested `spawn`) and every install inside the schedule's
+  // extent, and the arm's world holds none of them — measured 2026-09-30, a
+  // branch asking its thread id faulted at the chain's end on every boot
+  // since B1. Every dispatch saves the performer's world here beside its
+  // own swap, per instance, and restores the enclosing value after the arm
+  // returns; $spawn_task_impl stores it in the task record.
+  wat_emit("  (global $perform_world_g (mut i32) (i32.const 0))\n")
   // The ONE allocator, emitted once — every construction, closure record, and
   // handler-state alloc is a `(call $alloc SIZE)` against this fn. Both bodies:
   // return the current pointer, advance it by (size+7)&-8 so every record
@@ -4302,7 +4604,7 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw) = {
   // spawning module (Law 7 — thread-free modules are byte-identical).
   //
   if spawns {
-    wat_emit("  (func $spawn_task_impl (param $clo i32) (result i32)(local $t i32)(local.set $t (call $alloc (i32.const 16)))(i32.store offset=0 (local.get $t)(local.get $clo))(i32.store offset=4 (local.get $t)(i32.const 0))(i32.store offset=12 (local.get $t)(global.get $world_g))(if (i32.lt_s (call $wasi_thread_spawn (local.get $t))(i32.const 0))(then (unreachable)))(local.get $t))\n")
+    wat_emit("  (func $spawn_task_impl (param $clo i32) (result i32)(local $t i32)(local.set $t (call $alloc (i32.const 16)))(i32.store offset=0 (local.get $t)(local.get $clo))(i32.store offset=4 (local.get $t)(i32.const 0))(i32.store offset=12 (local.get $t)(global.get $perform_world_g))(if (i32.lt_s (call $wasi_thread_spawn (local.get $t))(i32.const 0))(then (unreachable)))(local.get $t))\n")
     wat_emit("  (func $join_task_impl (param $t i32) (result i32)(block $done (loop $wait (br_if $done (i32.eq (i32.atomic.load (i32.add (local.get $t)(i32.const 4)))(i32.const 1)))(drop (memory.atomic.wait32 (i32.add (local.get $t)(i32.const 4))(i32.const 0)(i64.const -1)))(br $wait)))(i32.load offset=8 (local.get $t)))\n")
   }
   // The single-operand read-modify-write dispatch: a nullary RmwOp ctor
@@ -4510,6 +4812,7 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LMakeList(_h, elems) => collect_fn_emit_records(elems),
   LMakeTuple(_h, elems) => collect_fn_emit_records(elems),
   LSimdLanes(_h, lanes) => collect_fn_emit_records(lanes),
+  LFanout(_h, lex, _, forms) => collect_fn_emit_records_expr(fanout_form(lex, forms)),
   LMakeRecord(_h, fs) => collect_fn_emit_records(fs),
   LMakeVariant(_h, _t, fs) => collect_fn_emit_records(fs),
   LMatch(_h, s, arms) => collect_fn_emit_records_expr(s) ++ fn_emit_records_arms(arms, 0),
@@ -4733,6 +5036,7 @@ fn walk_locals_expr(expr, acc) = match expr {
   LReturn(_h, inner) => walk_locals_expr(inner, acc),
   LMakeList(_h, elems) => walk_locals_list(elems, acc),
   LMakeTuple(h, elems) => walk_locals_list(elems, if len(elems) > 0 { ["tuple_{int_to_str(h)} i32"] ++ acc } else { acc }),
+  LFanout(_h, lex, _, forms) => walk_locals_expr(fanout_form(lex, forms), acc),
   LSimdLanes(h, lanes) => // SIMD lanes need a v128 accumulator local — replace_lane reads-modifies the
   // running vector. No heap local (the value is pure stack v128, not a pointer).
   walk_locals_list(lanes, if len(lanes) > 0 { ["simd_{int_to_str(h)} v128"] ++ acc } else { acc }),
@@ -4828,7 +5132,10 @@ fn walk_locals_expr(expr, acc) = match expr {
   // node and only the walking forms fill it. Declaring both for all is the
   // honest read of "one arm, one shape" — a local nobody sets costs a word of
   // frame and cannot be the thing that makes two forms differ.
-  walk_locals_list(a, ["evn_{int_to_str(h)} i32", "evw_{int_to_str(h)} i32"] ++ acc),
+  walk_locals_list(
+    a,
+    ["evn_{int_to_str(h)} i32", "evw_{int_to_str(h)} i32", "evpw_{int_to_str(h)} i32"] ++ acc
+  ),
   LInvariantFailure(_, _) => acc,
   LFieldLoad(_h, rec, _off) => walk_locals_expr(rec, acc),
   LConvert(_h, _, operand) => walk_locals_expr(operand, acc),
@@ -5374,6 +5681,7 @@ fn emit_arm_writes(state_local, nstate, base, arms, enc) = each(
 fn ref_symbol(r) = match r {
   RefArm(ih, n) => arm_symbol(n, arm_install_enc(ih)),
   RefSite(h, n) => spec_target_name(h, n),
+  RefCall(h, n) => spec_call_name(h, n),
   RefName(n) => n,
 }
 
@@ -5793,6 +6101,13 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
       wat_emit("    (global.get $world_g)(local.set $evw_")
       wat_emit(hs)
       wat_emit(")\n")
+      // the performer's world, exposed to the arm for the extent of its call
+      // ($perform_world_g); the enclosing perform's value saved beside it
+      wat_emit("    (global.get $perform_world_g)(local.set $evpw_")
+      wat_emit(hs)
+      wat_emit(")\n    (global.set $perform_world_g (local.get $evw_")
+      wat_emit(hs)
+      wat_emit("))\n")
       emit_install_world(disp, hs)
       match perform_callee(disp, jvp) {
         Some(name) => // A direct call names the arm at its own face, the one the site's
@@ -5805,6 +6120,8 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
         },
       }
       wat_emit("    (global.set $world_g (local.get $evw_")
+      wat_emit(hs)
+      wat_emit("))\n    (global.set $perform_world_g (local.get $evpw_")
       wat_emit(hs)
       wat_emit("))\n")
     },
@@ -5908,7 +6225,7 @@ fn emit_expr(expr) = match expr {
     // The twin redirect reads the SAME projection every reference surface
     // routes through (the callee-ref handle carries the site's
     // instantiated TFun, so a wide-keyed generic call lands on its twin).
-    let cname2 = spec_target_name(fh, cname)
+    let cname2 = spec_call_name(fh, cname)
     // The callee's EMITTED widths, read from the column at the symbol this
     // call names. The site follows them arg by arg: native where the slot is
     // wide, the word spill (address of a fresh cell) where the slot is a
@@ -6197,6 +6514,7 @@ fn emit_expr(expr) = match expr {
   LMakeList(h, elems) => emit_list_literal(h, elems),
   LMakeTuple(h, elems) => emit_tuple_literal(h, elems),
   LSimdLanes(h, lanes) => emit_simd_lanes(h, lanes),
+  LFanout(_h, lex, _, forms) => emit_expr(fanout_form(lex, forms)),
   LMakeRecord(_h, fields) => {
     // Untagged heap layout: fields at the width-summed offset in declaration
     // sort order (the prefix-sum of repr_width — an f64 field is 8 inline
@@ -7301,6 +7619,7 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
   LMakeList(_h, es) => collect_fold_tys_list(es, acc),
   LMakeTuple(_h, es) => collect_fold_tys_list(es, acc),
   LSimdLanes(_h, lanes) => collect_fold_tys_list(lanes, acc),
+  LFanout(_h, lex, _, forms) => collect_fold_tys_expr(fanout_form(lex, forms), acc),
   LMakeRecord(_h, fs) => collect_fold_tys_list(fs, acc),
   LMakeVariant(_h, _t, fs) => collect_fold_tys_list(fs, acc),
   LMatch(_h, s, arms) => collect_fold_tys_arms(arms, collect_fold_tys_expr(s, acc)),

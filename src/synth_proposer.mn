@@ -1023,7 +1023,15 @@ fn segment_verify(candidates, hole_h, below) = if len(candidates) == 0 {
   let base = env_base_view()
   let seed = consume_base()
   let iseed = intern_seed()
-  candidates |> map(judge_in_segment(hole_h, base, seed, iseed, below))
+  // THE FAN IS A FANOUT (C9, PLAN §11.1): the candidates fan through their
+  // judgment as independent branches, and the width is whatever schedule
+  // governs the propose — none installed, so the walk is sequential by
+  // PROPERTY, never by a constant. A `~> parallel_compose` over a propose
+  // is refused where it stands: each branch writes the one graph through
+  // `graph_handler`, a stateful handler beyond this frame, which is the
+  // race rule's own verdict and 9.2's deterministic partition stated as a
+  // gate (`Hβ.lower.schedule-specialized-callee`).
+  candidates |> fanout(judge_in_segment(hole_h, base, seed, iseed, below))
 }
 
 // Judges one candidate inside its own trail segment and joins its facts to the

@@ -1835,6 +1835,11 @@ effect StringTable {
   set_string_entries([(String, Int)])
 }
 
+// The execution strategy a fanout runs under, read by the lowering from the
+// install that governs it. An ADT of scheduler classes, never a
+// `mode==0/1/2` int (drift 8).
+type Schedule = Seq | Threaded | Simd | Gpu | Persisted
+
 // SpecTwins — the specialization registry (the StringTable pattern one shelf
 // over): the plan's emitted reach decides ONCE which twins exist, seeds the
 // registry, and every reference-emitting arm then asks spec_twin_known before
@@ -1844,6 +1849,28 @@ effect SpecTwins {
   spec_twins_exist() -> Bool
   spec_twin_known(String) -> Bool
   set_spec_twins([String])
+  // The fanout reach (graph.mn's one rule): whether a top-level fn reaches
+  // a fanout through direct calls — the fact a direct call under a spawning
+  // demand reads before it demands the callee's schedule twin. Computed on
+  // the first ask and held; a module nothing demands never computes it.
+  fanout_reach_known(String) -> Bool
+  // A global call site's INSTALLED schedule — the innermost schedule-class
+  // install of the site's own frame — noted by the lowering, which holds
+  // the frame's chain, and read by the emit before it reads the bracket: a
+  // site that installs one is governed by it (a `sequential_compose` inside
+  // a threaded twin pins its calls sequential), and a site that installs
+  // none inherits the demand the bracket carries.
+  site_schedule_note(Int, Schedule)
+  site_schedule(Int) -> Option(Schedule)
+  // Whether any site was noted under a spawning schedule — the fact the
+  // settle point's race walk reads before it walks: a module with none has
+  // no demand chain to check and pays nothing for the rule's existence.
+  threaded_site_noted() -> Bool
+  // The callees of the sequence-fanout forms the lowering built since the
+  // last drain — names the lowering introduced, which construction enqueues
+  // beside the constructed decl's own references.
+  fanout_form_note([String])
+  fanout_form_drain() -> [String]
 }
 
 // EmitSite — WHERE an emit-time diagnostic is standing. A node minted after

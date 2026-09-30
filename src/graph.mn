@@ -1769,6 +1769,184 @@ fn body_child_handles(body) = match body {
   NTypeAnn(_) => [],
 }
 
+// ── THE FANOUT REACH — one rule, two readers ─────────────────────────
+//
+// Which top-level functions reach a fanout through DIRECT calls: a fn whose
+// own body holds a `><`, a `<|` or a `fanout(f, xs)` call, or one that
+// directly calls a fn that does. A schedule an install demands crosses a
+// call exactly this far (lower's `spec_call_name`), so the emit reads this
+// set before it demands a callee's schedule twin, and `mentl where` reads
+// it to say which of a caller's installs reach a fanout site. A lambda's or
+// a nested fn's body is its own frame and never the enclosing fn's own
+// fanout (`Hβ.lower.schedule-through-a-value`); a call inside one is not a
+// direct call of the enclosing fn. The fixpoint closes over the whole
+// program's top-level declarations, read off the graph — the felt read; the
+// emit asks the same rule of ONE name (`fanout_reach_of`).
+fn fanout_reach_names() = match graph_snapshot() {
+  Graph(next, _) => {
+    let facts = fanout_facts(0, next, [])
+    fanout_reach_fix(facts, fold((smap_new(), []), fanout_seed_step, facts))
+  },
+}
+
+fn fanout_facts(i, n, acc) = if i >= n {
+  acc
+} else {
+  match graph_node_body(i) {
+    NStmt(FnStmt(fname, _, _, clause, body)) => // A fn declared `!Thread` keeps its own frame's schedule: it takes no
+    // demand and hands none on, so it is no fact of the reach — the
+    // negation read where it is authored, since a ground body's declared
+    // negation leaves nothing in the published row.
+    if declares_absent(clause, "Thread") {
+      fanout_facts(i + 1, n, acc)
+    } else {
+      match fanout_fact((false, []), node_handle(body)) {
+        (has_own, callees) => fanout_facts(i + 1, n, push(acc, (fname, has_own, callees))),
+      }
+    },
+    _ => fanout_facts(i + 1, n, acc),
+  }
+}
+
+// Whether a declaration's clause negates the named effect (`!Thread`) —
+// the authored negation, read off the FnStmt it stands on.
+fn declares_absent(clause, ename: String) =
+  any({ (en, negated, _) => negated && str_eq(eff_name_str(en), ename) }, clause)
+
+// The reached set is a name map for membership beside the list of its
+// names in the order they joined.
+fn fanout_seed_step(acc, fact) = match acc {
+  (reached, names) => match fact {
+    (name, has_own, _) => if has_own { (smap_add(reached, name, 1), push(names, name)) } else { acc },
+  },
+}
+
+// Close over callers: a fn joins the set when any callee is in it, until a
+// round adds nothing.
+fn fanout_reach_fix(facts, reached) = match fold((reached, false), fanout_reach_step, facts) {
+  (reached2, grew) => if grew {
+    fanout_reach_fix(facts, reached2)
+  } else {
+    match reached2 {
+      (_, names) => names,
+    }
+  },
+}
+
+fn fanout_reach_step(acc, fact) = match acc {
+  ((reached, names), grew) => match fact {
+    (name, _, callees) => match smap_get(reached, name) {
+      Some(_) => acc,
+      None => if any(smap_has(reached), callees) {
+        ((smap_add(reached, name, 1), push(names, name)), true)
+      } else {
+        acc
+      },
+    },
+  },
+}
+
+// THE SAME RULE ASKED OF ONE NAME: whether this declaration's direct-call
+// reach holds a fanout — its own body, or a callee's, through direct calls
+// and never through a fn declared `!Thread` — walked outward from the name
+// and no further. The emit asks it of the few callees a spawning site
+// demands, and the whole-program closure above answered each by walking
+// every body: 22 MB on the wheel, for lib/persist's four Persist-class
+// sites (2026-09-30). The memo carries the answers settled across asks; a
+// name is entered ONCE per ask (the seen set, with the entered list its
+// order), and a second meeting — a cycle, or a callee two paths share — answers false
+// without walking again, since the ask's root settles it: a chain that
+// found a fanout settles true as it returns, and a root that found none
+// settles every name it entered false (`fanout_reach_settle`), the root's
+// reach being whole. The first form memoized nothing a cycle had touched
+// and re-walked the runtime's mutual recursion once per path,
+// exponentially: the wheel's compile reached 4.3 GB and never planned.
+fn fanout_reach_of(st, decls, name: String) = match smap_get(st.memo, name) {
+  Some(v) => (v == 1, st),
+  None => if smap_has(st.seen, name) {
+    (false, st)
+  } else {
+    match smap_get(decls, name) {
+      None => // a primitive, an op, a constructor or a local: no body to reach
+      // through
+      (false, st),
+      Some(h) => match graph_node_body(h) {
+        NStmt(FnStmt(_, _, _, clause, body)) => if declares_absent(clause, "Thread") {
+          (false, {entered: st.entered, memo: smap_add(st.memo, name, 0), seen: st.seen})
+        } else {
+          match fanout_fact((false, []), node_handle(body)) {
+            (has_own, callees) => if has_own {
+              (true, {entered: st.entered, memo: smap_add(st.memo, name, 1), seen: st.seen})
+            } else {
+              match fold(
+                (false, {entered: push(st.entered, name), memo: st.memo, seen: smap_add(st.seen, name, 1)}),
+                fanout_reach_callee(decls, ??, ??),
+                callees
+              ) {
+                (found, inner) => (found, {
+                  entered: inner.entered,
+                  memo: if found { smap_add(inner.memo, name, 1) } else { inner.memo },
+                  seen: inner.seen,
+                }),
+              }
+            },
+          }
+        },
+        _ => (false, st),
+      },
+    }
+  },
+}
+
+fn fanout_reach_callee(decls, acc, callee) = match acc {
+  (true, _) => acc,
+  (false, st) => fanout_reach_of(st, decls, callee),
+}
+
+// An ask that found no fanout from its root settles every name it entered.
+fn fanout_reach_settle(memo, name: String) = smap_add(memo, name, 0)
+
+// The fn declarations by name, read once off the decls column, so the
+// reach can find a callee's clause and body by the name a call carries.
+fn fanout_decls_index() = fold(smap_new(), fanout_decls_step, graph_decls_at())
+
+fn fanout_decls_step(acc, h) = match graph_node_body(h) {
+  NStmt(FnStmt(name, _, _, _, _)) => smap_add(acc, name, h),
+  _ => acc,
+}
+
+// ONE pass over a body: whether it holds a fanout of its own and the names
+// it calls directly, both at its own frame — a lambda or a nested fn starts
+// another. A fold stage over `(own, callees)`, the accumulator first.
+fn fanout_fact(acc, h) = {
+  let body = graph_node_body(h)
+  match body {
+    NExpr(FanoutExpr(_)) => fold(fact_own(acc), fanout_fact, body_child_handles(body)),
+    NExpr(PipeExpr(PFanout(_), _, _)) => fold(fact_own(acc), fanout_fact, body_child_handles(body)),
+    NExpr(CallExpr(f, _)) => fold(fact_call(acc, f), fanout_fact, body_child_handles(body)),
+    NExpr(LambdaExpr(_, _)) => acc,
+    NStmt(FnStmt(_, _, _, _, _)) => acc,
+    other => fold(acc, fanout_fact, body_child_handles(other)),
+  }
+}
+
+fn fact_own(acc) = match acc {
+  (_, callees) => (true, callees),
+}
+
+// A call of the prelude's `fanout` is a fanout of the body's own.
+fn fact_call(acc, f) = match f {
+  N(NExpr(VarRef(name)), _, _) => match acc {
+    (has_own, callees) => (has_own || callee_is_fanout(f), push(callees, name)),
+  },
+  _ => acc,
+}
+
+fn callee_is_fanout(f) = match f {
+  N(NExpr(VarRef(name)), _, _) => str_eq(name, "fanout"),
+  _ => false,
+}
+
 // The MINT span of a handle — the reverse read of the span_index weave
 // (fresh_handle writes (span, handle) at every mint). A node's REASON span
 // can be overwritten by a later bind (a hole's reason becomes its binder's
@@ -2093,6 +2271,7 @@ effect LookupTy {
   spec_ctx_set([(Int, Ty)], String)
   spec_ctx_clear()
   spec_enc_active() -> String
+  spec_pairs_active() -> [(Int, Ty)]
 }
 
 // ─── the specialization projection — lookup_ty under a twin's pairs ──
@@ -2223,6 +2402,7 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
   spec_ctx_set(prs, e) => resume() with spec_pairs = prs, spec_enc = e,
   spec_ctx_clear() => resume() with spec_pairs = [], spec_enc = "",
   spec_enc_active() => resume(spec_enc),
+  spec_pairs_active() => resume(spec_pairs),
   lookup_ty(h) => match graph_chase(h) {
     GNode(kind, reason) => if len(spec_pairs) > 0 {
       match kind {

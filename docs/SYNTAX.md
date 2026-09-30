@@ -338,12 +338,13 @@ projection; see §«What a comment TRENDS TO»). Three rulings:
   it was that a standalone helper can never reach `Thread` scheduling at all:
   the schedule is read LIVE at the fanout's own install site (§`><` — the
   same `resolve_in_stack` every op uses), never across a call boundary, so a
-  `><` inside a reusable fn is permanently `Seq` while its name promises
-  parallelism. `map` is sequential by construction (one tail loop); genuine
-  multi-core map is written `(map(f, a)) >< (map(f, b)) ~> Thread` at the
-  site where the schedule installs. Caller-selectable fanout inside a
-  reusable helper is the open peer `Hβ.lower.schedule-specialized-callee`
-  (PLAN §5.R band E).
+  `><` inside a reusable fn read `Seq` whatever its caller installed. The
+  schedule reaches it now — by DEMAND, through a direct call (real,
+  2026-09-30, §`><`): a `~> parallel_compose` over `render(voices)` runs
+  every `><` and `fanout` in `render`'s direct-call reach threaded, while
+  `map` stays sequential by construction (one loop) and `fanout(f, xs)` is
+  the sequence fanout that declares its applications independent. The
+  parallel map is spelled `fanout(f, xs) ~> parallel_compose`.
 - **A name must not lie about the representation.** `list_head`/`list_tail`
   read and remove the LAST element (the snoc end — O(1) by construction);
   the borrowed cons-vocabulary asserts the opposite and has already billed
@@ -619,14 +620,18 @@ that no spawn occurs (provable like `!Alloc` — Rayon/Faust cannot state this).
 `mentl where` badges the chosen strategy: `>< [Thread ×4]`, output not input.
 
 **The race-freedom claim has its gate (real, 2026-09-27).** A spawned branch
-runs in the world it was spawned in — the task record carries the spawning
-frame's install chain and the fresh instance installs it before the branch
-runs — so an effect a branch performs reaches the handler installed at the
-fanout's frame, from a second instance. `E_ThreadedBranchEffect` (armed)
+runs in the world it was spawned in — the task record carries the install
+chain of the PERFORM that spawned it and the fresh instance installs it before
+the branch runs — so an effect a branch performs reaches the handler installed
+at the fanout's frame, from a second instance, and the schedule's own ops
+answer there too: `current_id()` inside a branch reaches the
+`parallel_compose` that started it (real 2026-09-30; until then the record
+carried the spawn arm's world, which by the deep-handler law excluded the
+schedule itself, and the branch faulted at the chain's end). `E_ThreadedBranchEffect` (armed)
 refuses at lowering any effect in a branch's row whose covering handler at
 that frame is STATEFUL (two instances resuming `with n = n + 1` on one state
-record), lies beyond the frame fence (a caller's install — the site cannot
-prove which handler is reached, or that it is stateless), or is stateless but
+record), lies beyond the frame fence with no caller's schedule demanding the
+fanout (a caller's install is provable only along a demand, below), or is stateless but
 performs, from an arm, into a stateful one further out (an arm runs in the
 spawned instance and its performs resolve outer, so the walk follows each
 handler's own residual row down the stack). The fix is stated in the refusal:
@@ -635,6 +640,47 @@ inside the branch, where each instance gets its own state record. The rule
 reads WRITES, not declarations: a handler is stateful when an arm carries a
 `resume … with` update (the one writer this document gives state), so a
 state that is only read is shared read-only across instances and runs.
+
+**The schedule reaches a callee's fanout by DEMAND (real, 2026-09-30).** A
+fanout's own frame's install wins; a fanout whose frame installs no schedule
+runs under the schedule a CALLER installs over a direct call to it, and so
+does every fanout in that callee's direct-call reach: `fn both() = (a()) ><
+(b())` under `(both()) ~> parallel_compose` spawns both branches, and the
+callee is emitted as a schedule TWIN keyed by the install's schedule beside
+its instantiation — the proof becomes the dispatch, as a twin is keyed by
+what its body reads. Two things bound the reach, each a decision the row
+reads. A callee declared `!Thread` keeps its own frame's schedule: the
+negation is what the demand reads, so a real-time region's fanouts stay
+sequential under any caller. And the demand crosses DIRECT calls only: a
+function value minted under the schedule — a lambda, a partial, a nested fn —
+keeps its own frame's schedule, because a value can outlive the install and a
+spawn it carried out would find no handler on the chain
+(`Hβ.lower.schedule-through-a-value`); a branch thunk, an install's arm and
+a state init never leave the extent and take the schedule. The race rule is
+read along the same demand: each demanded fanout's branch rows are checked
+against the installs between it and the demanding site, and a branch whose
+row is a callback PARAMETER's is read at the instantiating site — `fn
+tally(f) = (f()) >< (f())` called with a callback that bumps a stateful
+counter refuses, where the lexical rule saw a free row. Until this landed the
+frame fence made a callee's fanout `Seq` whatever its caller installed, and
+no reusable helper could fan out.
+
+**`fanout(f, xs)` is the SEQUENCE fanout** — `><` over a runtime sequence: `f`
+applied to each element as an independent branch, the results collected in
+order, under whatever schedule governs the site. It is typed exactly as `map`
+is and, with no schedule installed, IS `map`; under a Thread-class install
+every element's branch is spawned and joined in source order
+(`fanout_threaded`, lib/threading), under a Persist-class install
+checkpointed and joined (`fanout_persisted`, lib/persist). `map` itself stays
+a sequential loop by construction (§Vocabulary): only a fanout declares its
+applications independent, which is the whole difference between them.
+Simd and Gpu pack a fixed lane count and run a sequence fanout sequentially.
+The ??-fan is written this way (`segment_verify`, src/synth_proposer.mn):
+the candidates fan through their judgment under the schedule of the propose
+site — none installed, sequential by property — and a `~> parallel_compose`
+over it is refused by the race rule, each branch writing the one graph
+through a stateful handler, which is 9.2's deterministic partition stated as
+a gate.
 
 **`><` is a structural N-ary construct the formatter renders in one of two layouts** (a presentation choice, never a parse distinction — there are no semantic "forms," only render shapes):
 
@@ -2522,7 +2568,7 @@ token, so there is nothing to lift.*
 | `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident — the bump heap never frees — so it is a use-after-free the day §5.O layer 3's arena gives `Consume` a real reclaim | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
 | `E_HandlerUninstallable` | handler arms need effects context disallows | `MaybeIncorrect`   | widen ambient row or restructure handler       |
 | `E_HandlerInexhaustive` | a handler's arms answer some ops of an effect and not others (§«A handler is exhaustive») — an install absorbs every op of the effects its arms answer, so the missing op would escape the row and reach nothing at runtime. ARMED at birth, 2026-09-30, born at wheel-zero; the shape it refuses was a false absence proof that trapped | `HasPlaceholders` | add the arm; forward the op outward (`op(…) => resume(op(…))`); or declare the ops this handler answers as their own effect |
-| `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame writes its state (`resume … with`), lies beyond the frame fence, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
+| `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame — or, for a fanout a caller's schedule demands, along the demand's chain of installs, the callback parameter's row read at the instantiating site — writes its state (`resume … with`), lies beyond the frame fence with no demand reaching it, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
 | `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — into an aggregate, across a multi-shot perform, off a line ticked by forward code or a line a closure record owns, or through another `d` — a mint, an install or a state write under the reading that would store a lost tangent into a record, or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED at birth: the alternative is a slope of zero the program never has | `Unspecified` | keep the value out of the aggregate until it is asked for, or seed the reading at a Float variable |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |
 | `E_ImportNameCollision` | two selective imports bind the same name    | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |

@@ -1,0 +1,13 @@
+// B4 (2026-09-30): A THREAD OP INSIDE A SPAWNED BRANCH. `current_id()` is an
+// op of the schedule's own effect, answered by the `parallel_compose`
+// installed at the fanout's frame — so a branch asking which instance it
+// runs on reaches the handler that spawned it. Boot 6f2ce437 faulted at the
+// chain's end (exit 134, `ev_declaring_node` at 0xffffffff): the task
+// record carried the spawn ARM's world, which by the deep-handler law
+// excludes the schedule handler itself, so the branch could answer every
+// handler outside the schedule and none of the schedule's own ops. The
+// record carries the world of the PERFORM now.
+// Expected exit: 14.
+fn main() = match ((current_id()) >< (current_id())) ~> parallel_compose {
+  (a, b) => if a > 0 && b > 0 { 14 } else { 1 },
+}
