@@ -27,6 +27,13 @@ import math
 
 import io
 
+// Positive — a strictly positive count: a hop in samples, a grid width.
+// The refinement PROVES the divisions below total (`k / num_high` and
+// `(len(xs) - win) / hop` exclude 0 and -1), so no site here performs
+// `Trap`; a caller pays the claim once, at the argument, where a literal
+// folds and a computed value is honest debt.
+type Positive = Int where 0 < self
+
 // ─── Hann window — the taper that tames spectral leakage ────────────
 //
 // 0.5·(1 − cos(2πi/(n−1))): zero at the ends, unity at the centre, so a
@@ -171,7 +178,7 @@ fn fill_matrix(low_cols, high_cols, num_low: Int, num_high: Int, out, li: Int) =
   fill_matrix(low_cols, high_cols, num_low, num_high, out2, li + 1)
 }
 
-fn comodulogram(xs, sr: Int, low_freqs, high_freqs, win: Int, hop: Int) = {
+fn comodulogram(xs, sr: Int, low_freqs, high_freqs, win: Int, hop: Positive) = {
   let num_frames = (len(xs) - win) / hop + 1
   let low_cols = columns(xs, sr, low_freqs, win, hop, num_frames, true)
   let high_cols = columns(xs, sr, high_freqs, win, hop, num_frames, false)
@@ -184,7 +191,7 @@ fn matrix_get(matrix, li: Int, hi: Int) = list_index(list_index(matrix, li), hi)
 // The argmax cell as a FLAT index (li·num_high + hi). The demo maps it
 // back to a (low, high) pair. Track the running best cell and its value;
 // a flat scan over num_low × num_high, no allocation.
-fn argmax_scan(matrix, num_low: Int, num_high: Int, k: Int, total: Int, best_k: Int, best_v: Float) = if k >= total {
+fn argmax_scan(matrix, num_low: Int, num_high: Positive, k: Int, total: Int, best_k: Int, best_v: Float) = if k >= total {
   best_k
 } else {
   let li = k / num_high
@@ -197,12 +204,12 @@ fn argmax_scan(matrix, num_low: Int, num_high: Int, k: Int, total: Int, best_k: 
   }
 }
 
-fn comodulogram_argmax(matrix, num_low: Int, num_high: Int) =
+fn comodulogram_argmax(matrix, num_low: Int, num_high: Positive) =
   argmax_scan(matrix, num_low, num_high, 0, num_low * num_high, 0, 0.0 - 1.0)
 
 // Sum of all cells (scaled Int) — for the mean, a peak/mean separation
 // witness the demo reports.
-fn matrix_sum(matrix, num_low: Int, num_high: Int, k: Int, total: Int, acc: Float) = if k >= total {
+fn matrix_sum(matrix, num_low: Int, num_high: Positive, k: Int, total: Int, acc: Float) = if k >= total {
   acc
 } else {
   let li = k / num_high
@@ -210,7 +217,7 @@ fn matrix_sum(matrix, num_low: Int, num_high: Int, k: Int, total: Int, acc: Floa
   matrix_sum(matrix, num_low, num_high, k + 1, total, acc + matrix_get(matrix, li, hi))
 }
 
-fn matrix_max(matrix, num_low: Int, num_high: Int) = {
+fn matrix_max(matrix, num_low: Int, num_high: Positive) = {
   let flat = comodulogram_argmax(matrix, num_low, num_high)
   let li = flat / num_high
   let hi = flat - li * num_high

@@ -1130,6 +1130,8 @@ type Mutation
   | MSetDemand(Int)
   // a call's product written at its node (undo = restore the old value)
   | MSetProduct(Int, CallProduct)
+  // a row note entered on a node (undo = pop the newest note)
+  | MRowNote(Int)
 
 // 14 variants, one per operator form in SYNTAX.md's operator
 // precedence table. Exhaustive set; add a variant here AND update
@@ -2068,6 +2070,15 @@ type Predicate
   // predicate_decide_at into every node_const_at instead.
   // Appended LAST so existing variant tags are unshifted.
   | PWithSelf(Int, Predicate)
+  // A PARTIAL PRIMITIVE's precondition, as the claim it is (C5,
+  // 2026-09-30): the operator, the dividend node and the divisor node of
+  // an integer `/` or `%`. Integer division traps on a zero divisor, and
+  // `/` also on INT_MIN / -1; the claim decides from the operands'
+  // constants and from what their refined types exclude, refuses at a
+  // constant zero, and where it stays open the site charges `Trap` into
+  // the row — partiality as a row fact, so `!Trap` proves its absence
+  // and the e-graph never drops an operand that could trap.
+  | PTotalDiv(BinOp, Int, Int)
 
 // PExpr is DELETED: its leaves (PSelf/PInt/PEVar/PApp) were a lossy COPY of the
 // expression the AST node already holds (the deleted node_to_pexpr re-derived it with a
@@ -2332,6 +2343,10 @@ effect GraphRead {
   // and by the twin key, which keys a variable by its structure exactly when
   // a shape demand reached it.
   graph_demands_of(Int) -> [TypeDemand]
+  // The ROW NOTE column's read: every row the judgment charged at this
+  // node, newest first (a node that charged nothing answers the empty
+  // list). row_of_subtree folds it over a subtree.
+  graph_rows_at(Int) -> [EffRow]
 }
 
 // THE ROW WRITES ARE THEIR OWN EFFECT because they have two handlers with
@@ -2455,6 +2470,14 @@ effect GraphWrite {
   // value — consumed, not surviving. The unnote removes it from the
   // PENDING half only; a drained pair is a survival by construction.
   graph_hole_unnote(Int)
+  // THE ROW NOTE (C5): what a construct charges, noted on the node that
+  // charges it — the frame join's per-node twin, written by the same
+  // writer (inf_add_row_at) in the same move, trailed as MRowNote so a
+  // speculative judgment's notes roll back with its bindings. A subtree's
+  // row is then a READ over structure (row_of_subtree, graph.mn), which is
+  // what the e-graph's purity gate needs and what the frame-keyed row
+  // could never give a sub-expression.
+  graph_row_note(Int, EffRow)
   // The bind-home column's write (Hβ.lower.lowering-is-a-column step i):
   // lower's VarRef resolution arm — the ONE decision site — notes its
   // ls_resolve verdict at the use node's handle, an in-place spine cell
@@ -3717,7 +3740,12 @@ effect Verify {
   // is graph-free (its row rides every install), so it cannot read the module
   // itself, and a local span alone cannot name a file — two modules both have
   // a line 8. Captured where it is live, carried, never re-derived.
-  verify(Int, Span, Predicate, Reason)
+  // THE LEDGER ANSWERS ITS VERDICT (C5): Some(true) proven, Some(false)
+  // refused (reported at the site), None accrued as pending debt. A
+  // judgment that needs the outcome — the division site charging `Trap`
+  // only when its precondition stays open — reads it here, off the one
+  // decide, never a second decide beside the ledger's.
+  verify(Int, Span, Predicate, Reason) -> Option(Bool)
   verify_debt() -> [(Int, Span, Predicate, Reason)]
   // The generation boundary's clear: the living session re-derives on a
   // moved tree and stale generations' obligations must not shadow the
@@ -4276,12 +4304,19 @@ fn show_predicate(ref pred) = match pred {
   // substituted value.
   "{show_flow_label(src)} ⊑ {show_flow_label(dst)}",
   PWithSelf(_, inner) => show_predicate(inner),
+  PTotalDiv(op, a, b) => match op {
+    BMod => "{show_pred_operand(b)} != 0 (the divisor of {show_pred_operand(a)} % {show_pred_operand(b)})",
+    _ => "{show_pred_operand(b)} != 0 && {show_pred_operand(a)} / {show_pred_operand(b)} fits (never INT_MIN / -1)",
+  },
 }
 
 fn show_cmp_op(ref op) with Pure = match op {
   BEq => "==",
+  BNe => "!=",
   BLt => "<",
   BLe => "<=",
+  BGt => ">",
+  BGe => ">=",
   _ => "?",
 }
 
@@ -4483,6 +4518,8 @@ fn predicate_flow_label(ref pred) = match pred {
   POr(a, b) => flow_label_join(predicate_flow_label(a), predicate_flow_label(b)),
   PWithSelf(_, inner) => // the `self` binder is transparent to flow
   predicate_flow_label(inner),
+  PTotalDiv(_, _, _) => // a primitive's precondition: not a secrecy annotation
+  Public,
   PBoolNode(h) => // Follow the handle into the graph — read the actual call node's callee name.
   // The callee name IS the authored intent; reading it is reading the graph.
   match graph_node_body(h) {

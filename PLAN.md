@@ -1624,6 +1624,45 @@ and this is the STATE.
   (`Hβ.felt.accept-outlives-the-process`, E2's on-disk face); the edit
   session reads one action per invocation
   (`Hβ.felt.edit-session-reads-one-action`).
+- **PARTIALITY IS A ROW FACT — CLOSED 2026-09-30 (C5).** Integer `/` and
+  `%` trap on a zero divisor, and `/` on INT_MIN / -1, and nothing said so:
+  a `Pure` row was a false totality proof at every division by a variable,
+  and the e-graph's absorb rewrite read its operand's SHAPE, so `(1 / n) *
+  0` answered 0 at n = 0 where the program traps (measured on boot
+  21f8e691, the C4 pin). A partial primitive's precondition is a CLAIM now
+  (`PTotalDiv`), raised at the site and decided by Verify's fragment — a
+  constant, a module value bound to one (read at the let's own node), or
+  the operand's refined type asked whether it EXCLUDES the fatal point by
+  deciding its predicate with `self` bound there (`Positive` excludes 0 and
+  -1, `NonZero` 0) — with three outcomes: proven charges nothing, a
+  refutation refuses at the site (`1 / 0` is `E_RefinementRejected`), and
+  an open claim charges `Trap`, a substrate effect with no operations
+  (`effect Trap {}`, the prelude), inferred and projected like `Alloc` and
+  provably absent: `fn ratio(t, n) with !Trap = t / n` refuses, `n:
+  Positive` accepts. The ledger answers its verdict (`verify` returns the
+  decision — one decide, no second beside it). The e-graph reads the same
+  fact: every charge is noted on the node that makes it in the move that
+  joins the frame (`inf_add_row_at`, `graph_row_note`, trailed), a subtree's
+  row is a fold over structure (`row_of_subtree`), and `is_pure` reads it —
+  the shape guess and the type-row read are deleted, which closes
+  `Hβ.egraph.per-expr-effect-row` as a read rather than a column. Verify's
+  `self_h == 0` sentinel is the `SelfBind` ADT. Seven micros RED-first, the
+  frontier's `absorb-keeps-trap` a runtime-trap contract; lib/dsp's six
+  divisions by a hop or a grid width are PROVEN by one refinement on the
+  parameter (`Positive`, cfc.mn — the crucibles' authored caps on `main`
+  met `Trap` first, the row telling the truth about a library that had
+  never stated its preconditions), and the wheel judged clean with five
+  open partiality claims (`mentl query src/main.mn smt` renders each),
+  every one guarded on a PATH the narrowing walk computes and never
+  writes — the named next face
+  (`Hβ.verify.partiality-reads-the-path-narrowing`), beside the index's
+  precondition (`Hβ.effects.index-partiality-is-a-row-fact`) and
+  non-termination (`Hβ.effects.divergence-is-a-row-fact`). Survivors
+  dedupe by canonical root before the question is computed (dormant by
+  construction, the feeder peer stands), and `extract_chase`'s cap traps
+  where it silently answered. Found on the way: `mentl fmt` wrote a
+  keyword binder as a wildcard under "names conserved"
+  (`Hβ.fmt.keyword-binder-renders-as-wildcard`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -2651,9 +2690,11 @@ calculus). Full mechanics: `LEDGER.md`.
   IS its correct form, and the durable half it produces, the resolved
   ownership grade, already lands on the fn's TFun at 4.2's one writer).
   Band G rides along — SEQUENCED WITH THIS ARC BY MEASUREMENT
-  (2026-08-08): `Hβ.egraph.per-expr-effect-row` is DEP-gated by its own
-  site comment (is_pure reduces to effs_at only when infer grows a
-  per-expr row binding — a spine column, this arc's own move), and
+  (2026-08-08): `Hβ.egraph.per-expr-effect-row` CLOSED 2026-09-30 (C5) —
+  not as the spine column this sentence named but as a READ: the
+  judgment notes each charge on the node that makes it and a subtree's
+  row is a fold over structure (`row_of_subtree`), which is what
+  `is_pure` reads now — and
   `.typed-rulecyclic`'s RED case is unreachable-by-construction until
   the rule set grows (graph_canon_set's strictly-cheaper invariant
   makes the chain monotone; the typed refusal lands WITH the first

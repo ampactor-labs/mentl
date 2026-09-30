@@ -342,6 +342,65 @@ handler fresh_for_inference {
 // census). The name-set keeping one entry per name across genuinely
 // distinct instances is the standing representation tension
 // (parameterized-negation-instance).
+// THE ONE WRITER, TWICE OVER (C5): a construct's charge joins the frame's row
+// cell AND is noted on the node that makes it, in one move — the frame
+// keeps the declaration's total, the note keeps the sub-expression's share,
+// and a subtree's row is then a read over structure (row_of_subtree,
+// graph.mn) instead of the shape guess the e-graph's purity gate used to
+// make. Every site that charges a node-owned cost calls this; the frame-
+// only form below stays for the few charges no single node owns.
+fn inf_add_row_at(h, row) = {
+  graph_row_note(h, row)
+  inf_add_row(row)
+}
+
+// PARTIALITY IS A ROW FACT (C5). Integer `/` and `%` trap on a zero
+// divisor, and `/` on INT_MIN / -1; the site raises the precondition as the
+// claim it is (PTotalDiv, decided by Verify's fragment from the operands'
+// constants and from what their refined types exclude — `Positive` proves
+// both faces, a NonZero refinement the zero face, a constant either), and
+// reads the ledger's verdict: proven charges nothing, a refutation is
+// reported there (`1 / 0` refuses at the site), and a claim left OPEN
+// charges `Trap` into the frame's row and onto the node, so `!Trap` proves
+// its absence transitively and the e-graph never drops an operand that
+// could trap. A Float division is total in the substrate (IEEE answers inf
+// and NaN) and raises no claim; an operand whose type is still a variable
+// is judged as an integer, since it may be instantiated at one.
+fn partiality_gate(handle, op, lh, rh, span: ValidSpan) = match op {
+  BDiv => partiality_claim(handle, op, lh, rh, span),
+  BMod => partiality_claim(handle, op, lh, rh, span),
+  _ => (),
+}
+
+fn partiality_claim(handle, op, lh, rh, span: ValidSpan) = if ty_is_float(chase_deep(TVar(lh))) {
+  ()
+} else {
+  match verify_claim(
+    graph_module_current(),
+    span,
+    PTotalDiv(op, lh, rh),
+    Located(span, Inferred("integer division is partial"))
+  ) {
+    Some(_) => (),
+    None => inf_add_row_at(handle, trap_row()),
+  }
+}
+
+fn trap_row() = mk_ef_closed([ENamed(intern_str("Trap"))])
+
+fn ty_is_float(ty) = match ty {
+  TFloat => true,
+  TAlias(_, inner) => ty_is_float(inner),
+  TRefined(base, _) => ty_is_float(base),
+  TReprPin(_, base) => ty_is_float(base),
+  _ => false,
+}
+
+fn inf_add_row_unified_at(h, row) = {
+  graph_row_note(h, row)
+  inf_add_row_unified(row)
+}
+
 fn inf_add_row_unified(row) = {
   if inf_frame_is_install() {
     match row {
@@ -1986,7 +2045,7 @@ fn branch_replay_verify(ref vdebt, i) = if i < 0 {
 } else {
   match vdebt[i] {
     (modh, span, pred, reason) => {
-      verify(modh, span, pred, reason)
+      verify_claim(modh, span, pred, reason)
       branch_replay_verify(vdebt, i - 1)
     },
   }
@@ -2081,7 +2140,7 @@ fn infer_stmt_list(stmts) = each(infer_stmt, stmts)
 fn nested_fns_charge(stmts) = each(nested_fn_charge, stmts)
 
 fn nested_fn_charge(node) = match node {
-  N(NStmt(FnStmt(_, _, _, _, _)), _, _) => inf_add_row(construction_row()),
+  N(NStmt(FnStmt(_, _, _, _, _)), _, h) => inf_add_row_at(h, construction_row()),
   _ => (),
 }
 
@@ -3287,7 +3346,7 @@ fn infer_expr(ref node) = match node {
       // `!Alloc` accepted it, measured 2026-09-28). A pipe's right-hand stage
       // is completed in place and mints nothing, which is why the pipe judges
       // its stage through `infer_call_node` alone.
-      inf_add_row(construction_row()),
+      inf_add_row_at(handle, construction_row()),
       CallSaturated => (),
       CallSubstrateHoled(_) => (),
     },
@@ -3377,7 +3436,7 @@ fn infer_expr(ref node) = match node {
       infer_expr_list(elems)
       // The literal allocates its header even empty — the charge covers
       // both branches (construction_row's law).
-      inf_add_row(construction_row())
+      inf_add_row_at(handle, construction_row())
       if len(elems) == 0 {
         let elem_h = mint(Inferred("empty list element"))
         graph_bind(handle, TList(TVar(elem_h)), Located(span, Inferred("empty list")))
@@ -3395,7 +3454,7 @@ fn infer_expr(ref node) = match node {
     },
     NExpr(MakeTupleExpr(elems)) => {
       infer_expr_list(elems)
-      inf_add_row(construction_row())
+      inf_add_row_at(handle, construction_row())
       graph_bind(handle, TTuple(collect_tvar_types(elems)), Located(span, Inferred("tuple literal")))
       tag_alloc_join(handle, collect_handles(elems))
     },
@@ -3486,7 +3545,7 @@ fn infer_expr(ref node) = match node {
       // that callee's row — the read `++` makes (`concat_callee_row`). This
       // arm made none, and `!Alloc` accepted "a{x}" while it built 48 bytes
       // per call (measured 2026-09-28).
-      if len(cells) > 0 { inf_add_row(concat_callee_row()) } else { () }
+      if len(cells) > 0 { inf_add_row_at(handle, concat_callee_row()) } else { () }
       graph_bind(handle, ty_string, Located(span, Inferred("string interpolation")))
     },
     NExpr(ShowExpr(inner)) => {
@@ -3503,7 +3562,7 @@ fn infer_expr(ref node) = match node {
       // The show builds the string it answers. A String splice answers
       // itself and builds nothing, so this charges one case the emit does
       // not allocate for — sound, and the only over-charge in the rule.
-      inf_add_row(construction_row())
+      inf_add_row_at(handle, construction_row())
       graph_bind(handle, ty_string, Located(span, Inferred("splice show")))
     },
     NExpr(MakeRecordExpr(fields)) => {
@@ -3511,7 +3570,7 @@ fn infer_expr(ref node) = match node {
       // TRecord((field_name, TVar(value_handle))) sorted by name.
       // Parser already sorted; lower / emit honor the same order.
       infer_record_field_values(fields)
-      inf_add_row(construction_row())
+      inf_add_row_at(handle, construction_row())
       let field_types = build_record_field_types(fields)
       graph_bind(handle, TRecord(field_types), Located(span, Inferred("record literal")))
       // H4.1: record fields may carry inner-region pointers; join.
@@ -3537,7 +3596,7 @@ fn infer_expr(ref node) = match node {
           // The copy reads each field of the base by name.
           shape_demand(bh, OuterShape)
           infer_record_field_values(overrides)
-          inf_add_row(construction_row())
+          inf_add_row_at(handle, construction_row())
           let base_fields = record_fields_of_node(base)
           let override_types = build_record_field_types(overrides)
           let merged = merge_override_fields(base_fields, override_types)
@@ -3552,7 +3611,7 @@ fn infer_expr(ref node) = match node {
       // value against the declared field type. Bind the handle to
       // TName(type_name, []).
       infer_record_field_values(fields)
-      inf_add_row(construction_row())
+      inf_add_row_at(handle, construction_row())
       match env_lookup(type_name) {
         None => report(EMissingVariable("record type: {type_name}", span)),
         Some(entry) => match entry {
@@ -3632,7 +3691,7 @@ fn infer_expr(ref node) = match node {
       // it — every lambda the lowering does not inline into a `<~` cycle.
       // `!Alloc` accepted a lambda minted per call (16 bytes with one
       // capture, 8 with none, measured 2026-09-28).
-      inf_add_row(construction_row())
+      inf_add_row_at(handle, construction_row())
       infer_lambda(params, body_node, handle, span)
     },
     NExpr(PipeExpr(kind, left, right)) => // Branching verbs install affine-ledger snapshots around their
@@ -4126,8 +4185,8 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
   // survives only for an unresolved callee (productive-under-error, the
   // seq_op_sig None floor's twin).
   match graph_chase(fh) {
-    GNode(NBound(TFun(_, _, crow)), _) => inf_add_row(crow),
-    _ => inf_add_row(mk_ef_closed([ENamed(intern_str("Memory"))])),
+    GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_at(handle, crow),
+    _ => inf_add_row_at(handle, mk_ef_closed([ENamed(intern_str("Memory"))])),
   }
   // EVERY application result is a possible suspension boundary
   // (stage_continuation_boundary's own law) — the fast path is still an
@@ -4661,7 +4720,7 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   // a second callee's edge survive the frame's accumulation. The
   // unify-failure path charges nothing (the mismatch already reported).
   match graph_chase(fh) {
-    GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified(crow),
+    GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(handle, crow),
     _ => (),
   }
   // The call boundary is a refinement CONSTRUCTION site: each declared
@@ -4839,7 +4898,7 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
       // accepted every one while the heap grew per call (40 bytes for a
       // stateless handler, measured 2026-09-28). What it costs is read off
       // the one roster that also decides what it lowers to.
-      inf_add_row(install_cost(arm_names))
+      inf_add_row_at(handle, install_cost(arm_names))
       let body_row = read_bound_row(body_row_h)
       match handler_e_r(right) {
         Some(er) => match er {
@@ -4860,17 +4919,20 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
             // a join across installs into the handler's one row, which would
             // charge every install with every other install's remainder.
             remainder_gates_check(resid_h, body_row, handled_names, span)
-            inf_add_row(absorb_row(
-              body_row,
-              mk_ef_closed(handled_names),
-              residual_with_config_args(resid_h, hconfig, right)
-            ))
+            inf_add_row_at(
+              handle,
+              absorb_row(
+                body_row,
+                mk_ef_closed(handled_names),
+                residual_with_config_args(resid_h, hconfig, right)
+              )
+            )
           },
         },
         None => // Handler value not resolvable to a HandlerKind decl (e.g. a let-bound
         // handler) — productive-under-error: pass the body's row through. The
         // graph proves the handler identity at a decl; a value forwards.
-        inf_add_row(body_row),
+        inf_add_row_at(handle, body_row),
       }
       match left {
         N(_, _, lh) => graph_bind(
@@ -5295,7 +5357,7 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match left {
         // bare-VarRef stage's completion call by THIS pipe node's handle).
         stage_continuation_boundary("|>", handle)
         match graph_chase(rh) {
-          GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified(crow),
+          GNode(NBound(TFun(_, _, crow)), _) => inf_add_row_unified_at(handle, crow),
           _ => (),
         }
       },
@@ -5350,7 +5412,7 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match left {
           // substitute (Hβ.effects.feedback-row-substitutes; repros at
           // tests/frontier/mn-feedback-negation.mn and -transport.mn).
           {
-            inf_add_row(lam_row)
+            inf_add_row_at(handle, lam_row)
             if len(params) == 1 {
               unify_types(
                 param_ty(list_index(params, 0)),
@@ -5491,7 +5553,7 @@ fn infer_fanout_nary(branches, handle, span: ValidSpan) = {
   // frame it stands in: pure topology in what it performs, never in what it
   // costs (`!Alloc` accepted `(x + 1) >< (x + 2)` at 56 bytes per call,
   // measured 2026-09-28).
-  inf_add_row(construction_row())
+  inf_add_row_at(handle, construction_row())
   graph_boundary_set(handle, FanoutBoundary(edges))
   graph_bind(
     handle,
@@ -5559,7 +5621,7 @@ fn infer_fanout_value_boundary(branch, span: ValidSpan, label: String) = match b
       TName("PersistHandle", []),
       Located(span, InferredPipeResult("><", Inferred("{label} persist schedule ticket")))
     )
-    inf_add_row(thunk_row)
+    inf_add_row_at(branch_h, thunk_row)
     BoundaryEdge(result_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h)
   },
 }
@@ -5596,7 +5658,7 @@ fn infer_fanout_share(left, right, handle, span: ValidSpan) = {
         }
         // The tuple of the branches' results, built in the frame the fanout
         // stands in (the same cost `><` pays).
-        inf_add_row(construction_row())
+        inf_add_row_at(handle, construction_row())
         match right {
           N(_, _, rh) => {
             // Preserve the RHS as the tuple of STAGES it denotes. In the singleton
@@ -5665,10 +5727,10 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = match branch {
     // The branch call's row flows into the boundary frame — the same
     // read-the-callee's-own-row discipline infer_call_saturated uses.
     match graph_chase(bh) {
-      GNode(NBound(TFun(_, _, brow)), _) => inf_add_row_unified(brow),
+      GNode(NBound(TFun(_, _, brow)), _) => inf_add_row_unified_at(bh, brow),
       _ => match graph_chase(call_row_h) {
-        GNode(NRowBound(row), _) => inf_add_row_unified(row),
-        GNode(NRowFree(_), _) => inf_add_row(mk_ef_open([], call_row_h)),
+        GNode(NRowBound(row), _) => inf_add_row_unified_at(bh, row),
+        GNode(NRowFree(_), _) => inf_add_row_at(bh, mk_ef_open([], call_row_h)),
         _ => (),
       },
     }
@@ -5696,7 +5758,7 @@ fn infer_fanout_apply_one(branch, input_h, span: ValidSpan) = match branch {
       TName("PersistHandle", []),
       Located(span, InferredPipeResult("<|", Inferred("persist schedule ticket")))
     )
-    inf_add_row(thunk_row)
+    inf_add_row_at(bh, thunk_row)
     BoundaryEdge(ret_h, thunk_h, carrier_h, thread_ticket_h, persist_ticket_h)
   },
 }
@@ -6481,7 +6543,7 @@ fn infer_index_force(rh, handle, span: ValidSpan) = {
   // extraction is compile-time.
   match env_lookup(subscript_callee()) {
     Some((sch, _, _)) => match judgment_ty(sch) {
-      TFun(_, _, lrow) => inf_add_row(lrow),
+      TFun(_, _, lrow) => inf_add_row_at(handle, lrow),
       _ => (),
     },
     None => (),
@@ -6839,6 +6901,7 @@ fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
     BKArith => {
       unify(lh, rh, span, OpConstraint(lbl, Inferred("left"), Inferred("right")))
       numeric_demand(lh, op, span)
+      partiality_gate(handle, op, lh, rh, span)
       graph_bind(
         handle,
         TVar(lh),
@@ -6894,7 +6957,7 @@ fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
       //   fn f(ref n) with !Alloc = str_concat("a", n)   -> E_EffectMismatch
       // Byte-identical work, opposite verdicts, because one path read the
       // row the graph proved and the other re-derived it as nothing.
-      inf_add_row(concat_callee_row())
+      inf_add_row_at(handle, concat_callee_row())
     },
   }
 }
@@ -7071,7 +7134,7 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
           ValueScheme
         )
         // the remaining fields are copied into a record built here
-        inf_add_row(construction_row())
+        inf_add_row_at(handle, construction_row())
       },
       None => (),
     }
@@ -7228,7 +7291,7 @@ fn infer_pat_list(pats, rest, parent_handle, span: ValidSpan) = {
         ValueScheme
       )
       // the rest is cut as a slice at run time, and costs what its callee does
-      inf_add_row(named_fn_row(list_rest_callee()))
+      inf_add_row_at(parent_handle, named_fn_row(list_rest_callee()))
     },
   }
 }
@@ -8613,7 +8676,10 @@ fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
   } else {
     apply_refinement_constraint(inner, value_handle, span)
   },
-  TRefined(_, pred) => verify(graph_module_current(), span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
+  TRefined(_, pred) => {
+    verify_claim(graph_module_current(), span, subst_self(pred, value_handle), Refinement(pred, PTrue))
+    ()
+  },
   TFun(eps, eret, _) => fun_refinement_crossing(eps, eret, value_handle, span),
   TVar(h) => match graph_chase(h) {
     GNode(NBound(TFun(eps, eret, _)), _) => fun_refinement_crossing(eps, eret, value_handle, span),
@@ -8646,7 +8712,8 @@ fn fun_refinement_crossing(eps, eret, value_handle, span: ValidSpan) = match cha
           Some((aname, pred)) => if refined_as(chase_deep(param_ty(ep)), aname) {
             ()
           } else {
-            verify(graph_module_current(), span, pred, Refinement(pred, PTrue))
+            verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
+            ()
           },
           None => (),
         },
@@ -8660,7 +8727,10 @@ fn fun_refinement_crossing(eps, eret, value_handle, span: ValidSpan) = match cha
       } else {
         match graph_node_body(value_handle) {
           NExpr(LambdaExpr(_, N(_, bspan, bh))) => apply_refinement_constraint(want, bh, bspan),
-          _ => verify(graph_module_current(), span, pred, Refinement(pred, PTrue)),
+          _ => {
+            verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
+            ()
+          },
         }
       },
       None => (),
@@ -10531,12 +10601,13 @@ fn check_splice_flow_labels(fragments, span: ValidSpan) = each(
 fn splice_flow_check(h, fspan: ValidSpan) = match graph_chase(h) {
   GNode(NBound(ty), _) => {
     let label = query_flow_label(ty)
-    verify(
+    verify_claim(
       graph_module_current(),
       fspan,
       PFlowLe(label, Public),
       Located(fspan, Inferred("ifc: string splice flow label"))
     )
+    ()
   },
   _ => // unresolved: open-world default = Public, no check needed
   (),

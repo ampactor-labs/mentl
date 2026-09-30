@@ -2105,6 +2105,58 @@ chain differentiable.
 
 ---
 
+### Partiality — a primitive's precondition is a claim, and an open claim is a row fact
+
+Integer `/` and `%` are PARTIAL: the substrate traps on a zero divisor, and
+`/` also on `INT_MIN / -1`, the one quotient a signed word cannot hold (`%`
+answers 0 there). The medium never totalizes them — a fabricated 0 for a
+division by zero is the surrender fallback `CLAUDE.md` forbids — and it never
+lets a trap hide either. Each site raises its precondition as the claim it
+is, decided by `Verify`'s fragment from what the graph holds about the two
+operands, with three outcomes (real, 2026-09-30):
+
+| The claim at `a / b` | Outcome |
+|---|---|
+| a constant divisor that is not 0 (and, for `/`, not -1 — or a constant dividend that is not INT_MIN) | PROVEN — the site charges nothing |
+| a constant zero divisor (`1 / 0`), or `INT_MIN / -1` by constants | REFUSED — `E_RefinementRejected` at the site: the program's meaning is a trap |
+| a divisor whose refined type EXCLUDES the fatal point — `Positive` (`0 < self`) excludes 0 and -1; `NonZero` (`self != 0`) excludes 0, so it proves `%` outright and `/` only beside a dividend that cannot be INT_MIN | PROVEN |
+| a module value bound to a constant (`let lanes = 4`) | PROVEN — the fragment reads the let's own node |
+| anything else — a parameter nothing bounds, a local, a call | OPEN — the site charges **`Trap`** into the row |
+
+`Trap` is the effect the substrate performs when a partial primitive's
+precondition fails (`effect Trap {}`, the prelude — no operations, nothing
+handles it, and its absence is the whole point of naming it). It is a row
+fact like `Alloc`: inferred and projected (`fn ratio(t, n) = t / n` renders
+`-> Int with Trap` at the address surface), transitive through calls, and
+provable absent — `fn ratio(t, n) with !Trap = t / n` refuses
+`E_EffectMismatch`, `fn ratio(t, n: Positive) with !Trap = t / n` accepts.
+The gradient teaches the annotation: the refinement on the divisor is the
+input that unlocks the proof — lib/dsp's six divisions by a hop or a grid
+width are proven by one refinement on the parameter (`hop: Positive`,
+`num_high: Positive`), and each caller pays the claim once, at the
+argument, where a literal folds and a computed value is honest debt. Whether the type excludes a point is asked of
+the refinement itself — its predicate decided with `self` bound to that
+point — so any refinement the fragment can decide at a constant serves,
+never a name-allowlist of "nonzero-ish" types.
+
+The e-graph reads the same fact: `x * 0 ≡ 0` drops its operand only when the
+operand's subtree row is pure, and a division whose claim stays open is not,
+so `(1 / n) * 0` traps at `n = 0` as written. Until this landed the purity
+gate read the operand's SHAPE — arithmetic over a literal and a variable —
+and that program answered 0 (measured on boot 21f8e691).
+
+What the fragment cannot yet read, named: a guard on the PATH (`if b == 0 {
+None } else { a / b }` — the narrowing the walk computes and never writes,
+`Hβ.verify.partiality-reads-the-path-narrowing`; the wheel's five open
+claims, in `fold_int`, `litval_arith` and `pick_from_pool`, are all of this
+shape), and the other partial
+primitives — an index out of range (`xs[i]`, whose precondition needs the
+same path read), a slice past its sequence — which are the same law one
+primitive over (`Hβ.effects.index-partiality-is-a-row-fact`). Non-termination
+is not a trap and not in the row (`Hβ.effects.divergence-is-a-row-fact`).
+
+---
+
 ## Canonical layout (formatter canon)
 
 Layout is never semantics. The precedence table alone draws the
@@ -2460,7 +2512,7 @@ token, so there is nothing to lift.*
 | Code                  | Trigger                                       | Applicability        | Quick Fix                                      |
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
 | `E_PatternInexhaustive` | match missing variants, no wildcard         | `HasPlaceholders`    | insert stubs for missing variants              |
-| `E_RefinementRejected`| value violates refinement predicate           | `Unspecified`        | adjust value or widen refinement               |
+| `E_RefinementRejected`| value violates refinement predicate — or a partial primitive's precondition refuted by constants (`1 / 0`, `INT_MIN / -1`; §«Partiality») | `Unspecified`        | adjust value or widen refinement               |
 | `E_EffectMismatch`    | declared row doesn't subsume body row         | `MaybeIncorrect`     | widen declaration OR install absorbing handler |
 | `E_PurityViolated`    | `with Pure` body performs non-empty effects   | `MaybeIncorrect`     | remove `with Pure` or absorb the effect        |
 | `E_FeedbackNoContext` | `<~` used without iterative context — DECLARED, zero construction sites by design: the ambient-context requirement is a Faust inheritance the substrate never adopted (a `<~` prior is a per-site register advanced by the enclosing fn's next call), so firing it would refuse correct code. It becomes real when the clock is INFERRED (`Hβ.dataflow.clock-calculus-sample-rate`) | `MaybeIncorrect` | install an `Iterate`-class handler (`Sample`/`Tick`/`Clock`)        |

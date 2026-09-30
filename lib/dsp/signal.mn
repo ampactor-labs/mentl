@@ -109,7 +109,7 @@ fn stft_avg_loop(xs, freq: Int, sr: Int, win: Int, hop: Int, num_frames: Int, f:
   }
 }
 
-fn stft_avg_mag(xs, freq: Int, sr: Int, win: Int, hop: Int) = {
+fn stft_avg_mag(xs, freq: Int, sr: Int, win: Int, hop: Positive) = {
   let num_frames = (len(xs) - win) / hop + 1
   stft_avg_loop(xs, freq, sr, win, hop, num_frames, 0, 0.0)
 }
@@ -119,7 +119,7 @@ fn stft_avg_mag(xs, freq: Int, sr: Int, win: Int, hop: Int) = {
 // signal this names the carrier — the STFT's own verdict, independent of the
 // coupling grid. `best_v` threads the running peak as an annotated float
 // accumulator (the CFC representation discipline, below).
-fn stft_dominant_loop(xs, probes, sr: Int, win: Int, hop: Int, k: Int, np: Int, best_k: Int, best_v: Float) = if k >= np {
+fn stft_dominant_loop(xs, probes, sr: Int, win: Int, hop: Positive, k: Int, np: Int, best_k: Int, best_v: Float) = if k >= np {
   best_k
 } else {
   let v = stft_avg_mag(xs, list_index(probes, k), sr, win, hop)
@@ -130,7 +130,7 @@ fn stft_dominant_loop(xs, probes, sr: Int, win: Int, hop: Int, k: Int, np: Int, 
   }
 }
 
-fn stft_dominant(xs, probes, sr: Int, win: Int, hop: Int) = stft_dominant_loop(
+fn stft_dominant(xs, probes, sr: Int, win: Int, hop: Positive) = stft_dominant_loop(
   xs,
   probes,
   sr,
@@ -212,7 +212,7 @@ fn band_energy(xs, freq: Int, sr: Int) = band_energy_loop(xs, freq, sr, 0, len(x
 // resonators + per-band quadrature) that would let `<~` drive the whole
 // comodulogram — and sharpen the LOW-frequency resolution the windowed-DFT floor
 // limits — is the named peer Hβ.dsp.resonator-filter-bank.
-fn pac_comodulogram(xs, sr: Int, low_freqs, high_freqs, win: Int, hop: Int, band_lo: Float, band_hi: Float) =
+fn pac_comodulogram(xs, sr: Int, low_freqs, high_freqs, win: Int, hop: Positive, band_lo: Float, band_hi: Float) =
   comodulogram(bandpass(xs, band_lo, band_hi, sr), sr, low_freqs, high_freqs, win, hop)
 
 // Peak-vs-median separation without a sort: floor(peak/median) >= k is
@@ -220,7 +220,7 @@ fn pac_comodulogram(xs, sr: Int, low_freqs, high_freqs, win: Int, hop: Int, band
 // 9 cells (the count that puts the 9th-smallest at or below the threshold) sit
 // at or below peak/k. `cells_below` is that count — the coupling stands above
 // the noise floor when the bulk of the grid sits far below the peak.
-fn cells_below_loop(matrix, num_high: Int, thresh: Float, k: Int, total: Int, acc: Int) = if k >= total {
+fn cells_below_loop(matrix, num_high: Positive, thresh: Float, k: Int, total: Int, acc: Int) = if k >= total {
   acc
 } else {
   let li = k / num_high
@@ -229,5 +229,5 @@ fn cells_below_loop(matrix, num_high: Int, thresh: Float, k: Int, total: Int, ac
   cells_below_loop(matrix, num_high, thresh, k + 1, total, acc + inc)
 }
 
-fn cells_below(matrix, num_low: Int, num_high: Int, thresh: Float) =
+fn cells_below(matrix, num_low: Int, num_high: Positive, thresh: Float) =
   cells_below_loop(matrix, num_high, thresh, 0, num_low * num_high, 0)

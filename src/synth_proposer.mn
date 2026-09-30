@@ -1314,12 +1314,36 @@ fn map_to_proposals(enriched) = map({ EnrichedCandidate(c) => (c.node, c.reason)
 // was unsure and withheld it exactly when the developer was most likely to
 // take the fill on faith. `VFill` holds the Reason because the constructor
 // admits no other shape.
-fn verdict_of(survivors, target_ty, context) = match survivors {
+fn verdict_of(survivors, target_ty, context) = match distinct_by_canon(survivors, []) {
   [] => VNone,
   [only] => match only {
     (node, reason) => VFill(node, reason),
   },
-  _ => VAsk(divergence_of(survivors, target_ty, context), survivors),
+  distinct => VAsk(divergence_of(distinct, target_ty, context), distinct),
+}
+
+// SAME DENOTATION BY CANONICAL ROOT (C5): two survivors the e-graph has
+// joined are one meaning in two forms, and a form tie is free (PLAN §5's
+// duality) — the first spelling stands and the question is never asked
+// about it. This is the e-graph's one role in the proposal: to DECIDE
+// same-denotation cheaply, by the canon column the medium already keeps.
+// It moves nothing today — every enumerator mints an atom and every rule
+// matches a binary shape, so a survivor's root is itself
+// (`Hβ.synth.fan-extraction-needs-a-feeder`) — and it is the read the
+// first fusing rule will fall through.
+fn distinct_by_canon(pairs, acc) = if len(pairs) == 0 {
+  acc
+} else {
+  match pairs[0] {
+    (node, _) => {
+      let root = egraph_extract(node_handle(node))
+      if any({ (n, _) => egraph_extract(node_handle(n)) == root }, acc) {
+        distinct_by_canon(rest(pairs), acc)
+      } else {
+        distinct_by_canon(rest(pairs), push(acc, pairs[0]))
+      }
+    },
+  }
 }
 
 // WHERE the survivors diverge, in the precedence types.mn's `Divergence`

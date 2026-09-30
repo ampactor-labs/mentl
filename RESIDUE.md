@@ -2297,6 +2297,72 @@ rule attributed to it must be read out of the paper first.
 
 ### Named-residue index (entry-born peers not yet in a §5.R band — one home each)
 
+`Hβ.egraph.per-expr-effect-row` — CLOSED 2026-09-30 (C5; LEDGER carries
+the pin). It was named in egraph.mn's own comment and cited by PLAN §11 5.5
+since 2026-08-08 and had no entry here — a hidden gap, entered at its
+closure. Not as the spine column its entry named, and the reason is the
+transferable half: a dense per-node row column would have paid a slot per
+node for a fact fewer than a fifth of nodes carry, while the frame join
+already had every charge in hand. The judgment's one writer notes each
+charge on the node that makes it in the same move it joins the frame
+(`inf_add_row_at`, `graph_row_note` — a LIFO multi-map under the handle,
+trailed as `MRowNote`), and a subtree's row is a READ over structure
+(`row_of_subtree`, graph.mn: own notes joined over children's, with a
+lambda, a nested fn, a handler declaration and a `~>` tee answering their
+own notes alone, and a hole answering nothing). egraph's `is_pure` reads it;
+`body_is_pure` and `effs_at` — the shape guess and the type-row read that
+stood in for it — are deleted.
+
+`Hβ.verify.partiality-reads-the-path-narrowing` — OPEN, BORN 2026-09-30
+with C5. The partiality claim decides from constants, module constants
+and the operand's refined type; it does not read the PATH. `fn fold_int(op,
+a, b) = … if b == 0 { None } else { Some(a / b) }` (src/egraph.mn) and
+`litval_arith`'s twin (src/verify.mn) guard the divisor and still carry an
+open claim, as does `pick_from_pool`'s `hash % n` under `if n == 0`
+(src/voice.mn) — the wheel's five open partiality obligations, every one
+of this shape (`mentl query src/main.mn smt` renders each as a `distinct`
+assertion; lib/dsp's six divisions by a hop or a grid width discharge
+through `Positive` on the parameter, cfc.mn). The narrowing walk (`walk_refinement`, infer.mn) COMPUTES the
+path predicate at every node and writes it nowhere: its one write was
+found dead on 2026-07-18 (`narrowing_pred_handle` descended to the seed;
+the column reads 0 everywhere; lower's `list_index_proven` elision has
+never fired). The form: the narrowing written at every node under a
+non-trivial path — a node's proven path predicate beside its type — and
+`node_excludes` asking it as it asks the refinement (decide the path
+predicate with `self` bound to the fatal point). The same read is what an
+index's precondition needs.
+
+`Hβ.effects.index-partiality-is-a-row-fact` — OPEN, BORN 2026-09-30. `xs[i]`
+traps out of range (`list_index` refuses a bad index loudly, lib/lists.mn),
+and a slice past its sequence likewise; neither charges `Trap`. The same
+law as the division's, one primitive over: the precondition `0 <= i && i <
+len(xs)` raised as a claim, discharged by a refinement the fragment can
+decide (`ValidIndex(xs)`, SYNTAX's dependent form, which the parser does
+not carry yet) or by the path narrowing above, and open otherwise. Until it
+lands, `!Trap` is a proof about division alone and says so here.
+
+`Hβ.effects.divergence-is-a-row-fact` — OPEN, BORN 2026-09-30. A function
+that does not terminate (`fn loop() = loop()`) is Pure and total in the
+row, and the absorb rewrite may drop a call to it — which changes a program
+that hangs into one that answers. Koka's `div` effect is the field's name
+for it. The honest form is an effect charged by any recursion the judgment
+cannot prove structural (a fold over a shape terminates; an index-threaded
+self-call is the iteration-shape tier's own conviction), provable absent as
+`!Diverge`; named here so the e-graph's gate is read with its one remaining
+blind spot known.
+
+`Hβ.fmt.keyword-binder-renders-as-wildcard` — OPEN, BORN 2026-09-30,
+measured on boot 21f8e691 while building C5. A binder spelled with a
+KEYWORD — `let own = …`, written by mistake — parses under recovery as a
+wildcard binder, and `mentl fmt` WROTE the recovered tree: `let _ = …`,
+under "prose and names conserved", because the conservation gate spends
+identifiers and a keyword is not one. The reads of `own` below it then
+refused `E_MissingVariable`, which is how it was found. A render that
+parses to a different tree than its source is the class
+`Hβ.fmt.render-must-parse-to-the-same-tree` already names; this is its
+keyword face, and the fix is the same: refuse the write when the reparse
+differs, never count names alone.
+
 `Hβ.diag.type-mismatch-is-unarmed` — CLOSED 2026-09-25 at pin 3cc9fdec (armed; the battery and the frontier refused nothing). Measured 2026-09-25. The first
 build of the nested-frame fix left two frame-record literals without the
 new `params` field; the compile reported `E_TypeMismatch` twice (`{…,

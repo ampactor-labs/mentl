@@ -780,6 +780,43 @@ run_unnarrated() {
   fi
 }
 
+# The open-claim contract — run_program's third face: the program's whole
+# point is an obligation the judgment cannot decide, so the compile must
+# SURFACE it (V_Pending, zero errors) rather than pass clean, the module
+# assembles, and the run answers the expected exit — for a claim that
+# stays open, the trap the row promised.
+run_open_claim() {
+  local compiler="$1" label="$2" source="$3" expected="$4" dir="$5"
+  local wat="$dir/$label.wat" wasm="$dir/$label.wasm"
+  local cerr="$dir/$label.compile.err" aerr="$dir/$label.assemble.err"
+  local rout="$dir/$label.run.out" rerr="$dir/$label.run.err"
+  local rc pending errors
+
+  wt_run "$compiler" < "$source" > "$wat" 2> "$cerr"
+  rc=$?
+  pending=$(grep -c 'V_Pending' "$cerr" 2>/dev/null || true)
+  errors=$(grep -cE 'E_[A-Za-z0-9_]+ error:' "$cerr" 2>/dev/null || true)
+  if [ "$rc" -eq 0 ] && [ "$pending" -gt 0 ] && [ "$errors" -eq 0 ]; then
+    pass "$label compile (open claim surfaced: V_Pending=$pending errors=0)"
+  else
+    fail "$label compile (exit=$rc V_Pending=$pending errors=$errors; see $cerr)"
+    return
+  fi
+  if wt_asm "$wat" "$wasm" 2> "$aerr"; then
+    pass "$label assemble"
+  else
+    fail "$label assemble ($(head -1 "$aerr"))"
+    return
+  fi
+  wt_run "$wasm" > "$rout" 2> "$rerr"
+  rc=$?
+  if [ "$rc" -eq "$expected" ]; then
+    judge "$label" 1 "$label run (exit=$rc)"
+  else
+    judge "$label" 0 "$label run (exit=$rc expected=$expected; see $rerr)"
+  fi
+}
+
 # Same differential accounting for the persist lib set: pin boot's shadow,
 # per-compiler shadows may only shrink it.
 capture_persist_shadow() {
@@ -1619,6 +1656,15 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-generic-nested-lambda.mn" 42 yes "$dir"
   run_program "$compiler" generic-multitype \
     "$ROOT/tests/frontier/mn-generic-multitype.mn" 42 yes "$dir"
+  # C5 — partiality is a row fact: the absorb rewrite x * 0 ≡ 0 keeps a
+  # division whose precondition stays open (it carries `Trap`), so
+  # `(1 / n) * 0` TRAPS at n = 0 as written (exit 134 through the runner).
+  # The claim is OPEN by design — `n` is unbounded — so the compile
+  # surfaces it as V_Pending, which the leg ASSERTS: an open claim is the
+  # whole reason the operand survives. RED on boot 21f8e691: the shape-read
+  # gate dropped the operand and the program answered 0.
+  run_open_claim "$compiler" absorb-keeps-trap \
+    "$ROOT/tests/frontier/mn-absorb-keeps-trap.mn" 134 "$dir"
   # A tuple destructure in a generic body: offsets/widths project at emit
   # through the spec bracket (pat_elem_repr / pat_tuple_off), and the
   # destructure is itself a worthiness witness. RED on the pre-fix boot
@@ -3680,7 +3726,12 @@ for i in "${!compilers[@]}"; do
   # `Iterate` from every `each` install's row while `result` walked past it.
   # A bare program links the prelude, so it links the arm; the same peer as
   # every line above takes it back.
-  cost_ceiling=2796
+  # 2805 (2026-09-30): ROSE 2796 → 2805, one effect and its lede — lib/prelude's
+  # `effect Trap {}` (C5): partiality is a row fact, so a bare `t / n` performs
+  # a name every program must be born knowing, and `!Trap` is a claim any
+  # signature may make. A bare program links the prelude, so it links the
+  # effect; the same peer takes it back.
+  cost_ceiling=2805
   ct_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-bare-floor.mn" "cost" 2>/dev/null)
   ct_lines=$(printf '%s' "$ct_out" | grep -o '[0-9]* source line' | grep -o '[0-9]*' | head -1)
   if [ -n "$ct_lines" ] && [ "$ct_lines" -le "$cost_ceiling" ]; then

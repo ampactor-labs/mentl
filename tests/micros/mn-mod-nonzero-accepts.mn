@@ -1,0 +1,8 @@
+// expect: 3
+// `%` traps only on a zero divisor (INT_MIN % -1 is 0 in the substrate), so
+// `NonZero` alone makes it total.
+type NonZero = Int where !(self == 0)
+
+fn wrap(i, n: NonZero) with !Trap = i % n
+
+fn main() = wrap(23, 5)

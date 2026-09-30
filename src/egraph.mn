@@ -20,10 +20,12 @@
 //
 // THE ULTIMATE-MEDIUM EDGE — rewrites are EFFECT-GATED. egg and every other
 // e-graph rewrite syntactically; Mentl reads each operand's effect ROW from the
-// resolved program (is_pure reads effs_at LIVE) and fires a DROPPING rewrite
-// (x * 0 ≡ 0) only when the dropped operand is provably Pure — preserving what
-// RUNS, not only what the value equals. Proof, not heuristic: only a row that
-// subsumes the pure row is droppable.
+// resolved program (is_pure reads the subtree's row LIVE, row_of_subtree) and
+// fires a DROPPING rewrite (x * 0 ≡ 0) only when the dropped operand is
+// provably Pure — preserving what RUNS, not only what the value equals. Proof,
+// not heuristic: only a row that subsumes the pure row is droppable — and
+// since C5 a division whose precondition the judgment could not prove
+// carries `Trap`, so `(1 / n) * 0` keeps its trap where it used to answer 0.
 //
 // This is the generative-audit payoff (PLAN §2): the AST-in-graph move made the
 // program a graph the optimizer reads at a handle — optimization IS a cursor
@@ -38,14 +40,16 @@ import io
 
 // Follow the equivalence edge to the canonical (cheapest) node — the union-find
 // `find`, now a single live graph read. Depth-bounded so a malformed rule set
-// that draws a cycle stays total; the cap is the fixpoint guard (a cycle is a
-// rule-set bug, surfaced by hitting it), never a silent truncation. Because
-// graph_canon_set always points `from` at a strictly-cheaper `to`, a chain is
-// monotone and terminates well under the cap.
+// that draws a cycle is CAUGHT: because graph_canon_set always points `from`
+// at a strictly-cheaper `to`, a chain is monotone and terminates well under
+// the cap, so reaching it is a rule-set bug and the chase traps there rather
+// than answering the handle it happened to be on — the comment above this
+// cap called it "never a silent truncation" while the body returned
+// `handle` silently (C5 made the words true).
 fn egraph_extract(handle) = extract_chase(handle, 0)
 
 fn extract_chase(handle, depth) = if depth > 1000 {
-  handle
+  load_i32(0 - 1)
 } else {
   let to = graph_canon_at(handle)
   if to == handle { handle } else { extract_chase(to, depth + 1) }
@@ -53,49 +57,22 @@ fn extract_chase(handle, depth) = if depth > 1000 {
 
 // ─── Effect gating ────────────────────────────────────────────────────
 //
-// A node is droppable iff evaluating it performs no effects. The ULTIMATE read
-// is the node's inferred effect ROW (effs_at), not its AST shape: a `Pure`-typed
-// call IS droppable, a syntactically-pure form that performs through a captured
-// evidence is NOT. effs_at projects the row the inference already proved at this
-// handle; row_subsumes(row, mk_ef_pure()) is true exactly when the row is
-// empty (the Boolean-algebra identity: the pure row is the bottom, subsumed
-// only by itself).
-// Soundness over completeness: a missed optimization is free; a dropped effect is
-// a miscompile. Droppable = (a) the node's BODY is a value-producing form whose
-// EVALUATION performs nothing (a literal, a var, or arithmetic over droppable
-// operands — a call/perform/hole is NOT, its effects are not on its result type),
-// AND (b) the node's TYPE carries no effect row (effs_at — a functional value
-// closing over an effectful evidence is caught here even when its body looks
-// value-shaped). The conjunction is the honest live read: the substrate binds
-// effect rows PER-FRAME (graph_bind_row on the frame's row_handle), not per-expr,
-// so a call operand's effects are not readable on its own node — the body form is
-// the only sound per-node signal, and the type row catches the closure case the
-// body form would miss. (When infer grows a per-expr row binding, is_pure reduces
-// to effs_at alone — peer Hβ.egraph.per-expr-effect-row.)
-fn is_pure(handle) = body_is_pure(handle) && row_subsumes(effs_at(handle), mk_ef_pure())
-
-// The structural purity of a node's EVALUATION — read live from its body. A
-// literal/var performs nothing; arithmetic over pure operands is pure; ANY other
-// form (a call, a perform, a hole) may run effects, so it is NOT provably pure.
-// This is the per-node signal the frame-keyed effect row cannot give.
-fn body_is_pure(handle) = match graph_node_body(handle) {
-  NExpr(LitInt(_)) => true,
-  NExpr(LitFloat(_)) => true,
-  NExpr(LitString(_)) => true,
-  NExpr(LitBool(_)) => true,
-  NExpr(VarRef(_)) => true,
-  NExpr(BinOpExpr(_, l, r)) => is_pure(node_handle(l)) && is_pure(node_handle(r)),
-  _ => false,
-}
-
-// The effect row inference proved at this handle's TYPE, read LIVE (lookup_ty —
-// the same live read lower's derive_ev_slots uses). A functional node carries its
-// row in TFun's third field — a closure over effectful evidence is caught here; a
-// value node carries NONE, which IS the pure row (a value performs nothing to BE a
-// value). No fabrication, no AST re-derivation: the row is read where infer wrote it.
-fn effs_at(handle) = match lookup_ty(handle) {
-  TFun(_, _, row) => row,
-  _ => mk_ef_pure(),
+// A node is droppable iff evaluating it performs no effects. The read is the
+// SUBTREE's inferred row (row_of_subtree, graph.mn): the judgment notes every
+// charge on the node that makes it — a call's callee row, a mint's
+// allocation, a perform's op row, a division's `Trap` — and the fold over the
+// operand's structure is its row; row_subsumes(row, mk_ef_pure()) is true
+// exactly when that row is empty (the Boolean-algebra identity: the pure row
+// is the bottom, subsumed only by itself). A hole answers no row at all and
+// is never dropped. Soundness over completeness: a missed optimization is
+// free; a dropped effect is a miscompile. Until C5 this was a SHAPE read — a
+// literal, a variable or arithmetic over the two — beside the node's TYPE
+// row, and `1 / n` has the shape of pure arithmetic: `(1 / n) * 0` answered
+// 0 at n = 0 where the program traps (Hβ.egraph.per-expr-effect-row, closed
+// by the notes).
+fn is_pure(handle) = match row_of_subtree(handle) {
+  Some(row) => row_subsumes(row, mk_ef_pure()),
+  None => false,
 }
 
 // ─── Rewrite rules ────────────────────────────────────────────────────

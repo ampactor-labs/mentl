@@ -1126,6 +1126,7 @@ fn render_predicate_tokens(pred) with !Mutate = match pred {
   show_predicate(PPatternMatch(p, n)),
   PFlowLe(src, dst) => show_predicate(PFlowLe(src, dst)),
   PWithSelf(_, inner) => render_predicate_tokens(inner),
+  PTotalDiv(op, a, b) => show_predicate(PTotalDiv(op, a, b)),
 }
 
 // Precedence-inverse at the predicate altitude — render_operand's rule

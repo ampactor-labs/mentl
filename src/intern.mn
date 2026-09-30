@@ -77,7 +77,7 @@ handler intern_table with buckets = list_filled(4096, []), entries = make_list(1
 // library (the frontier's stage-ring demo, whose link is two files) asked for
 // `Memory` from inside a proposal once a closure mint was charged, and the
 // view trapped. A literal intern anywhere in the wheel names one of these.
-fn medium_vocabulary() = ["Memory", "Alloc", "IO", "Network"]
+fn medium_vocabulary() = ["Memory", "Alloc", "IO", "Network", "Trap"]
 
 fn intern_word(w: String) = intern_str(w)
 

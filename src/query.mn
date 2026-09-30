@@ -739,6 +739,7 @@ fn predicate_names(pred) = match pred {
   PPatternMatch(_, h) => handle_var_names(h),
   PFlowLe(_, _) => [],
   PWithSelf(_, inner) => predicate_names(inner),
+  PTotalDiv(_, a, b) => handle_var_names(a) ++ handle_var_names(b),
 }
 
 fn handle_var_names(h) = {

@@ -1,0 +1,7 @@
+// (1 / n) * 0 — the absorb rewrite x * 0 ≡ 0 may drop its operand only when
+// the operand is provably pure, and a division by an unbounded divisor is
+// not: it carries `Trap`. So this program TRAPS at n = 0 as written (exit
+// 134 through the runner), where the shape-read gate let it answer 0.
+fn scaled(n) = 1 / n * 0
+
+fn main() = scaled(0)

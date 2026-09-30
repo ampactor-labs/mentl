@@ -35,12 +35,9 @@ import io
 // load-bearing across the swap.
 handler verify_ledger with debt = [] {
   verify(modh, span, predicate, reason) => match predicate_decide(predicate) {
-    Some(true) => resume(),
-    Some(false) => {
-      report_refinement_rejected(predicate, span, reason)
-      resume()
-    },
-    None => resume() with debt = [(modh, span, predicate, reason)] ++ debt,
+    Some(true) => resume(Some(true)),
+    Some(false) => resume(Some(false)),
+    None => resume(None) with debt = [(modh, span, predicate, reason)] ++ debt,
   },
   verify_debt() => resume(debt),
   verify_reset() => resume() with debt = [],
@@ -57,16 +54,23 @@ handler verify_ledger with debt = [] {
 // (node_const_at). litval_compare folds the comparison; cross-kind equality is
 // Some(false), cross-kind ordering is None. PAnd/POr/PNot recurse with
 // three-valued short-circuit; PWithSelf rebinds `self` over its inner predicate.
-fn predicate_decide(ref pred) = predicate_decide_at(pred, 0)
+fn predicate_decide(ref pred) = predicate_decide_at(pred, NoSelf)
 
-// self_h is the value-node handle `self` resolves to (0 = no `self` in scope,
-// so `self` is undecidable). PWithSelf(sh, inner) rebinds it over inner.
-fn predicate_decide_at(ref pred, self_h) = match pred {
+// What `self` resolves to while a predicate is decided: nothing (a bare
+// claim — `self` is undecidable), the VALUE NODE a claim was raised over
+// (PWithSelf's binder, read live through its joins), or a GROUND CONSTANT
+// — the implication read, which asks a refinement whether it admits one
+// point (`type_excludes`). It was a handle with 0 for "none", the
+// flag-as-int the drift catalog names; the three readings are three
+// constructors now.
+type SelfBind = NoSelf | SelfNode(Int) | SelfVal(LitValue)
+
+fn predicate_decide_at(ref pred, bind) = match pred {
   PTrue => Some(true),
-  PCompare(op, l, r) => compare_decide_at(op, l, r, self_h),
-  PAnd(a, b) => and_decide(predicate_decide_at(a, self_h), predicate_decide_at(b, self_h)),
-  POr(a, b) => or_decide(predicate_decide_at(a, self_h), predicate_decide_at(b, self_h)),
-  PNot(inner) => not_decide(predicate_decide_at(inner, self_h)),
+  PCompare(op, l, r) => compare_decide_at(op, l, r, bind),
+  PAnd(a, b) => and_decide(predicate_decide_at(a, bind), predicate_decide_at(b, bind)),
+  POr(a, b) => or_decide(predicate_decide_at(a, bind), predicate_decide_at(b, bind)),
+  PNot(inner) => not_decide(predicate_decide_at(inner, bind)),
   PBoolNode(_) => // a bool expr node — the SMT tier resolves it live
   None,
   PPatternMatch(_, _) => // match-narrowing — the SMT tier evaluates
@@ -74,8 +78,71 @@ fn predicate_decide_at(ref pred, self_h) = match pred {
   PFlowLe(a, b) => // IFC: finite lattice, always decidable
   Some(flow_le(a, b)),
   PWithSelf(sh, inner) => // bind `self` = sh over inner, through its tails when sh is a join
-  decide_with_self(inner, sh),
+  decide_with_self(inner, SelfNode(sh)),
+  PTotalDiv(op, a, b) => total_div_decide(op, a, b, bind),
 }
+
+// ─── Partiality — a primitive's precondition decided as a claim (C5) ──
+//
+// Integer `/` and `%` trap on a zero divisor, and `/` on INT_MIN / -1 (the
+// one quotient a signed word cannot hold). The claim decides from what the
+// graph holds about the two operands: a constant decides a face outright,
+// and a face a constant refutes REFUSES (`1 / 0` is never the program's
+// meaning); a non-constant operand asks its refined type whether it EXCLUDES
+// the fatal point — `Positive` excludes 0 and -1, a NonZero refinement
+// excludes 0 alone, a NonNegative one on the dividend excludes INT_MIN —
+// and an operand nothing bounds leaves the face open, which is the row
+// fact `Trap` at the site.
+fn total_div_decide(op, a, b, bind) = match op {
+  BMod => node_excludes(b, 0, bind),
+  BDiv => and_decide(
+    node_excludes(b, 0, bind),
+    or_decide(node_excludes(b, 0 - 1, bind), node_excludes(a, i32_min(), bind))
+  ),
+  _ => Some(true),
+}
+
+// Is the value at `h` provably not `k`? A constant answers outright (equal
+// is Some(false) — the refutation); otherwise the type's refinement, asked
+// at the point itself; otherwise open.
+fn node_excludes(h, k, bind) = match node_const_at(h, bind) {
+  Some(v) => not_decide(litval_eq(v, LVInt(k))),
+  None => if type_excludes(h, k) { Some(true) } else { None },
+}
+
+// THE IMPLICATION READ: a refinement excludes a point exactly when its
+// predicate decides FALSE with `self` bound to that point — `0 < self` at 0
+// is false, so `Positive` excludes 0; `self % 2 == 0` at 0 is true, so an
+// Even refinement admits it. No implication engine: the fragment that
+// decides claims decides this one, over the ground constant the SelfVal
+// binding carries.
+fn type_excludes(h, k) = match refinement_pred_of(h) {
+  Some(pred) => match predicate_decide_at(pred, SelfVal(LVInt(k))) {
+    Some(false) => true,
+    _ => false,
+  },
+  None => false,
+}
+
+// The refinement a node's chased type carries, through aliases and pins —
+// the same walk `ty_lo` makes, answering the predicate itself.
+fn refinement_pred_of(h) = match graph_chase(h) {
+  GNode(kind, _) => match kind {
+    NBound(ty) => ty_refinement(ty),
+    _ => None,
+  },
+}
+
+fn ty_refinement(ty) = match ty {
+  TAlias(_, inner) => ty_refinement(inner),
+  TRefined(_, pred) => Some(pred),
+  TReprPin(_, base) => ty_refinement(base),
+  TVar(h) => refinement_pred_of(h),
+  _ => None,
+}
+
+// The least signed word: the one dividend whose quotient by -1 does not fit.
+fn i32_min() with Pure = 0 - 2147483647 - 1
 
 // A claim about a JOIN's value is a claim about every value the join can
 // take, and an `if`, a `match` or a block takes exactly its tails' values —
@@ -88,28 +155,30 @@ fn predicate_decide_at(ref pred, self_h) = match pred {
 // signature claims every tail. Until 2026-09-27 a claim over a join was
 // never decided, so `fn note_hz(k) -> Hz = match k { 0 => 220.0, … }` left a
 // pending obligation behind every literal-armed match.
-fn decide_with_self(inner, sh) = if sh == 0 {
-  predicate_decide_at(inner, 0)
-} else {
-  match graph_node_body(sh) {
-    NExpr(IfExpr(_, t, e)) => and_decide(decide_with_self(inner, node_handle(t)), decide_with_self(inner, node_handle(e))),
+fn decide_with_self(inner, bind) = match bind {
+  SelfNode(sh) => match graph_node_body(sh) {
+    NExpr(IfExpr(_, t, e)) => and_decide(
+      decide_with_self(inner, SelfNode(node_handle(t))),
+      decide_with_self(inner, SelfNode(node_handle(e)))
+    ),
     NExpr(MatchExpr(_, arms)) => fold(Some(true), decide_arm(inner, ??, ??), arms),
-    NExpr(BlockExpr(_, final_expr)) => decide_with_self(inner, node_handle(final_expr)),
-    _ => predicate_decide_at(inner, sh),
-  }
+    NExpr(BlockExpr(_, final_expr)) => decide_with_self(inner, SelfNode(node_handle(final_expr))),
+    _ => predicate_decide_at(inner, bind),
+  },
+  _ => predicate_decide_at(inner, bind),
 }
 
 fn decide_arm(inner, acc, arm) = match arm {
-  (_, body) => and_decide(acc, decide_with_self(inner, node_handle(body))),
+  (_, body) => and_decide(acc, decide_with_self(inner, SelfNode(node_handle(body)))),
 }
 
 // A comparison decides iff BOTH operands reduce to ground constants under the
 // current `self` binding — or, with a ground LEFT and a structural right, the
 // interval fragment proves `n <= X` from X's lower bound; otherwise None.
-fn compare_decide_at(op, lh, rh, self_h) = match node_const_at(lh, self_h) {
-  Some(lv) => match node_const_at(rh, self_h) {
+fn compare_decide_at(op, lh, rh, bind) = match node_const_at(lh, bind) {
+  Some(lv) => match node_const_at(rh, bind) {
     Some(rv) => litval_compare(op, lv, rv),
-    None => interval_ge_decide(op, lv, rh, self_h),
+    None => interval_ge_decide(op, lv, rh, bind),
   },
   None => None,
 }
@@ -117,8 +186,8 @@ fn compare_decide_at(op, lh, rh, self_h) = match node_const_at(lh, self_h) {
 // `n <= X` / `n < X` with ground left: proves when X's structural LOWER BOUND
 // reaches n. PROVES only, never refutes — a bound that fails to reach n says
 // nothing about X's values (None keeps the obligation live and honest).
-fn interval_ge_decide(ref op, ref lv, rh, self_h) = match lv {
-  LVInt(n) => match node_lo_tr(rh, self_h) {
+fn interval_ge_decide(ref op, ref lv, rh, bind) = match lv {
+  LVInt(n) => match node_lo_tr(rh, bind) {
     Some(lo) => match op {
       BLe => if n <= lo { Some(true) } else { None },
       BLt => if n < lo { Some(true) } else { None },
@@ -136,30 +205,61 @@ fn interval_ge_decide(ref op, ref lv, rh, self_h) = match lv {
 // negates its ground operand. NO node is minted — every leaf is read live and
 // folded in place (the e-graph const-fold mints nodes and runs AFTER Verify;
 // this is a pure read-and-fold at the proof gate). Carry the handle, read live.
-fn node_const(handle) = node_const_at(handle, 0)
+fn node_const(handle) = node_const_at(handle, NoSelf)
 
-fn node_const_at(handle, self_h) = match graph_node_body(handle) {
+fn node_const_at(handle, bind) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => Some(LVInt(n)),
   NExpr(LitFloat(f)) => Some(LVFloat(f)),
   NExpr(LitString(s)) => Some(LVString(s)),
   NExpr(LitBool(b)) => Some(LVBool(b)),
-  NExpr(VarRef(name)) => resolve_self_operand(name, self_h),
+  NExpr(VarRef(name)) => resolve_self_operand(name, bind),
   NExpr(BinOpExpr(op, l, r)) => match l {
     N(_, _, lh) => match r {
-      N(_, _, rh) => litval_arith_opt(op, node_const_at(lh, self_h), node_const_at(rh, self_h)),
+      N(_, _, rh) => litval_arith_opt(op, node_const_at(lh, bind), node_const_at(rh, bind)),
     },
   },
   NExpr(UnaryOpExpr(op, x)) => match x {
-    N(_, _, xh) => litval_unary_opt(op, node_const_at(xh, self_h)),
+    N(_, _, xh) => litval_unary_opt(op, node_const_at(xh, bind)),
   },
   _ => None,
 }
 
-// `self` resolves to the bound value node (read as a ground constant); any other
-// free variable is genuinely non-constant. self_h == 0 means no `self` is in
-// scope — undecidable, never a chase of handle 0.
-fn resolve_self_operand(name: String, self_h) =
-  if name == "self" { if self_h == 0 { None } else { node_const_at(self_h, 0) } } else { None }
+// `self` resolves through its binding — the value node, read as a ground
+// constant, or the constant itself; a bare claim has no `self`. Any OTHER
+// name is a constant exactly when it is a MODULE VALUE bound to one
+// (`module_let_const`): `let spine_slots = 16384` is a fact the graph holds
+// at the let's own node, and a division by it is total for that reason.
+fn resolve_self_operand(name: String, bind) = if name == "self" {
+  match bind {
+    NoSelf => None,
+    SelfNode(h) => node_const_at(h, NoSelf),
+    SelfVal(v) => Some(v),
+  }
+} else {
+  module_let_const(name)
+}
+
+// A module-level `let` bound to a constant — the innermost binding of the
+// name must be the module's (a local of the same name shadows it, and the
+// env answers which is in force), and the let's own node is in the decls
+// column, judged before any reader of the name by the callee-first order.
+// The newest note for the name is the judged generation's. A local let is
+// path-sensitive and stays honest debt.
+fn module_let_const(name: String) =
+  if env_lookup_is_global(name) { module_let_scan(name, graph_decls_at()) } else { None }
+
+fn module_let_scan(name: String, decls) = if len(decls) == 0 {
+  None
+} else {
+  match graph_node_body(last(decls)) {
+    NStmt(LetStmt(PVar(n), value, _)) => if n == name {
+      node_const_at(node_handle(value), NoSelf)
+    } else {
+      module_let_scan(name, drop_last(decls))
+    },
+    _ => module_let_scan(name, drop_last(decls)),
+  }
+}
 
 // ─── The interval fragment — a lower-bound read over node structure ──
 //
@@ -185,14 +285,25 @@ fn resolve_self_operand(name: String, self_h) =
 // target's), and a call's bound is read off the CALLEE's own published
 // TFun return (the assume-the-signature induction — the callee's fact,
 // not the site's class).
-fn node_lo_tr(handle, self_h) = match graph_node_body(handle) {
+fn node_lo_tr(handle, bind) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => Some(n),
-  NExpr(VarRef(name)) => if name == "self" { if self_h == 0 { None } else { node_lo_tr(self_h, 0) } } else { None },
-  NExpr(IfExpr(_, t, e)) => lo_join(node_lo_tr(node_handle(t), self_h), node_lo_tr(node_handle(e), self_h)),
-  NExpr(MatchExpr(_, arms)) => arms_lo(arms, self_h, 0, None),
-  NExpr(BlockExpr(_, final_expr)) => node_lo_tr(node_handle(final_expr), self_h),
+  NExpr(VarRef(name)) => if name == "self" {
+    match bind {
+      SelfNode(sh) => node_lo_tr(sh, NoSelf),
+      SelfVal(v) => match v {
+        LVInt(n) => Some(n),
+        _ => None,
+      },
+      NoSelf => None,
+    }
+  } else {
+    None
+  },
+  NExpr(IfExpr(_, t, e)) => lo_join(node_lo_tr(node_handle(t), bind), node_lo_tr(node_handle(e), bind)),
+  NExpr(MatchExpr(_, arms)) => arms_lo(arms, bind, 0, None),
+  NExpr(BlockExpr(_, final_expr)) => node_lo_tr(node_handle(final_expr), bind),
   NExpr(BinOpExpr(op, l, r)) => match op {
-    BAdd => lo_add(node_lo_op(node_handle(l), self_h), node_lo_op(node_handle(r), self_h)),
+    BAdd => lo_add(node_lo_op(node_handle(l), bind), node_lo_op(node_handle(r), bind)),
     _ => None,
   },
   NExpr(CallExpr(callee, _)) => call_lo(callee),
@@ -201,10 +312,10 @@ fn node_lo_tr(handle, self_h) = match graph_node_body(handle) {
 
 // The opaque face — the node's cell is outside the target's class, so
 // its chased type is its OWN producer's fact and reads soundly.
-fn node_lo_op(handle, self_h) = match graph_node_body(handle) {
+fn node_lo_op(handle, bind) = match graph_node_body(handle) {
   NExpr(LitInt(n)) => Some(n),
   NExpr(BinOpExpr(op, l, r)) => match op {
-    BAdd => lo_add(node_lo_op(node_handle(l), self_h), node_lo_op(node_handle(r), self_h)),
+    BAdd => lo_add(node_lo_op(node_handle(l), bind), node_lo_op(node_handle(r), bind)),
     _ => ty_lo_at(handle),
   },
   NExpr(CallExpr(callee, _)) => call_lo(callee),
@@ -246,14 +357,14 @@ fn lo_add(ea, eb) = match ea {
 
 // Min over every match arm's bound; None until the first arm answers,
 // None the moment any arm cannot.
-fn arms_lo(ref arms, self_h, i, acc) = if i >= len(arms) {
+fn arms_lo(ref arms, bind, i, acc) = if i >= len(arms) {
   acc
 } else {
   match arms[i] {
-    (_, body) => match node_lo_tr(node_handle(body), self_h) {
+    (_, body) => match node_lo_tr(node_handle(body), bind) {
       Some(lo) => arms_lo(
         arms,
-        self_h,
+        bind,
         i + 1,
         match acc {
           Some(best) => if best < lo { Some(best) } else { Some(lo) },
@@ -340,6 +451,8 @@ fn pred_domain(pred) = match pred {
   // may be — the domain is untouched, which is a reading, not a gap.
   dom_top(),
   PWithSelf(_, inner) => pred_domain(inner),
+  PTotalDiv(_, _, _) => // a precondition on two operands states nothing about `self`
+  dom_top(),
 }
 
 fn dom_top() = DRange(None, None)
@@ -593,10 +706,16 @@ fn inferred_alias_name(value_handle) = match graph_chase(value_handle) {
 }
 
 // Fold a comparison over two constant operand values.
+// Total over the comparison operators: the three the grammar spells the
+// other way round are the same three questions with the operands swapped
+// or the answer negated, and `self != 0` is what a NonZero refinement says.
 fn litval_compare(ref op, ref a, ref b) = match op {
   BEq => litval_eq(a, b),
+  BNe => not_decide(litval_eq(a, b)),
   BLt => litval_lt(a, b),
   BLe => litval_le(a, b),
+  BGt => litval_lt(b, a),
+  BGe => litval_le(b, a),
   _ => None,
 }
 
@@ -772,6 +891,24 @@ fn not_decide(ref e) = match e {
   None => None,
 }
 
+// THE LEDGER DECIDES, THE SITE NARRATES (C5). A claim's one perform: the
+// installed ledger answers its verdict (proven, refused, open) and the
+// SITE reports a refusal — from the body, inside every capture bracket
+// the judgment installed. The arms used to report it themselves, and an
+// arm's performs resolve OUTER of its own install, so the refusal sailed
+// past the battery's class capture: `mn-div-const-zero-refuses` counted
+// one error and banked no class, the exact shape
+// `Hβ.diag.an-arms-report-escapes-an-inner-capture` names at the occurs
+// belt. An arm may note; only the body may narrate.
+fn verify_claim(modh, span, pred, reason) = {
+  let verdict = verify(modh, span, pred, reason)
+  match verdict {
+    Some(false) => report_refinement_rejected(pred, span, reason),
+    _ => (),
+  }
+  verdict
+}
+
 // Compile-time refusal at the construction site. The verifier proved
 // the predicate false from constant inputs alone — the construction
 // is invariant-violating by literal evidence. Span is the call site;
@@ -836,6 +973,7 @@ fn classify_predicate(pred) with Pure = match pred {
   "ifc-flow",
   PWithSelf(_, inner) => // the binder classifies as its body
   classify_predicate(inner),
+  PTotalDiv(_, _, _) => "partiality",
 }
 
 type SmtResult = SmtSat(String) | SmtUnsat | SmtUnknown
@@ -846,11 +984,8 @@ effect SmtSolver {
 
 handler verify_smt with witnesses = [], debt = [] {
   verify(modh, span, predicate, reason) => match predicate_decide(predicate) {
-    Some(true) => resume(),
-    Some(false) => {
-      report_refinement_rejected(predicate, span, reason)
-      resume()
-    },
+    Some(true) => resume(Some(true)),
+    Some(false) => resume(Some(false)),
     None => // Only OPEN predicates reach the solver (predicate_decide short-circuits
     // ground ones above), so validity is the question — and validity is the
     // NEGATION's unsatisfiability. Solving the predicate itself and reading
@@ -859,17 +994,14 @@ handler verify_smt with witnesses = [], debt = [] {
     // SAT(¬P) hands back the violating assignment — a COUNTEREXAMPLE the
     // cursor surfaces at the rejection, not proof-evidence.
     match smt_solve(predicate_to_smt_lib(PNot(predicate))) {
-      SmtUnsat => resume(),
-      SmtSat(counterexample) => {
-        report_refinement_rejected(predicate, span, reason)
-        resume() with witnesses = [(modh, span, predicate, counterexample)] ++ witnesses
-      },
+      SmtUnsat => resume(Some(true)),
+      SmtSat(counterexample) => resume(Some(false)) with witnesses = [(modh, span, predicate, counterexample)] ++ witnesses,
       SmtUnknown => // SmtUnknown is a GENUINELY undischarged obligation — accrue it as
       // pending debt (never silently resume, which would discharge an
       // obligation the solver could not prove; the no-silent-fallback law
       // at the proof gate). It lives in the SAME debt ledger verify_ledger
       // keeps, so verify_debt projects it live.
-      resume() with debt = [(modh, span, predicate, reason)] ++ debt,
+      resume(None) with debt = [(modh, span, predicate, reason)] ++ debt,
     },
   },
   verify_debt() => // verify_debt projects the SMT handler's residual LIVE (Carried-Truth — the
@@ -910,12 +1042,19 @@ fn predicate_to_smt(ref pred) = match pred {
   // (the solver's declared variable), exactly the diagnostic's reading.
   if flow_le(a, b) { "true" } else { "false" },
   PWithSelf(_, inner) => predicate_to_smt(inner),
+  PTotalDiv(op, a, b) => match op {
+    BMod => "(distinct {handle_to_smt(b)} 0)",
+    _ => "(and (distinct {handle_to_smt(b)} 0) (or (distinct {handle_to_smt(b)} (- 1)) (distinct {handle_to_smt(a)} (- 2147483648))))",
+  },
 }
 
 fn smt_cmp_op(ref op) with Pure = match op {
   BEq => "=",
+  BNe => "distinct",
   BLt => "<",
   BLe => "<=",
+  BGt => ">",
+  BGe => ">=",
   _ => "=",
 }
 

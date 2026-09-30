@@ -1,0 +1,6 @@
+// expect: refuse E_EffectMismatch
+// Integer division is PARTIAL: a divisor nothing bounds may be zero, so the
+// site charges `Trap` into the row and a declared `!Trap` refuses it.
+fn ratio(total, n) with !Trap = total / n
+
+fn main() = ratio(100, 4)

@@ -35,6 +35,80 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-30 · pin b1637650e3cd3157 (CLEAN m2 == m3) · PARTIALITY IS A ROW FACT — A
+  PRIMITIVE'S PRECONDITION IS A CLAIM, AND AN OPEN CLAIM CHARGES `Trap`.
+  C5. Integer `/` and `%` trap on a zero divisor and `/` on INT_MIN / -1,
+  and no row said so: every division by a variable carried a `Pure` row —
+  a false totality proof at the most ordinary shape a program writes — and
+  the e-graph's absorb rewrite (`x * 0 ≡ 0`) read its dropped operand's
+  SHAPE, so `(1 / n) * 0` answered 0 at n = 0 where the program traps
+  (measured on boot 21f8e691: exit 0; the fixed m2 exits 134). THE CLAIM:
+  the judgment raises `PTotalDiv(op, lh, rh)` at every Int division site
+  (`partiality_gate` in `infer_binop`'s arithmetic arm, after the numeric
+  demand; a Float division is total in the substrate and raises none) and
+  Verify's fragment decides it from what the graph holds about the two
+  operands — a constant (`total_div_decide`: the divisor excludes 0, and
+  for `/` the divisor excludes -1 OR the dividend excludes INT_MIN), a
+  module value bound to a constant (`module_let_const` reads the let's
+  own node), or the operand's REFINED TYPE asked whether it excludes the
+  fatal point by deciding its predicate with `self` bound there
+  (`type_excludes`: `Positive` excludes 0 and -1, `NonZero` excludes 0 —
+  any refinement the fragment decides at a constant serves, never a
+  name-allowlist). THE VERDICT IS THE LEDGER'S ANSWER: `verify` returns
+  `Option(Bool)` (the arms of `verify_ledger` and `verify_smt` resume the
+  decision), so the site reads proven / refused / open with one decide and
+  no second beside it; proven charges nothing, a refutation refuses at the
+  site (`1 / 0` is `E_RefinementRejected`), and an open claim charges
+  `Trap` — `effect Trap {}` in the prelude, no operations, born into every
+  intern table's vocabulary — into the frame's row AND onto the node
+  (`inf_add_row_at`: `graph_row_note` under the handle, LIFO, trailed as
+  `MRowNote`), so `fn ratio(t, n) = t / n` projects `with Trap`, `with
+  !Trap` refuses it, and `n: Positive` accepts. THE E-GRAPH READS THE SAME
+  FACT: a subtree's row is a fold over structure (`row_of_subtree`,
+  graph.mn — own notes joined over children's; a lambda, a nested fn, a
+  handler declaration and a tee answer their own notes alone; a hole
+  answers nothing), `is_pure` reads it, and `body_is_pure` / `effs_at` —
+  the shape guess and the type-row read — are deleted, closing
+  `Hβ.egraph.per-expr-effect-row` as a read rather than the column it
+  named. Beside it: Verify's `self_h == 0` sentinel is the `SelfBind` ADT
+  (`NoSelf | SelfNode(h) | SelfVal(lit)`) across the fragment's eleven
+  deciders, `litval_compare` and `smt_cmp_op` are total, survivors dedupe
+  by canonical root before the question is computed (`distinct_by_canon`,
+  dormant by construction), and `extract_chase`'s cap traps where it
+  silently answered the handle it was on. FIXTURES, seven micros RED-first
+  on boot 21f8e691 (`mn-div-trap-refuses`, `-positive-accepts`,
+  `-mod-nonzero-accepts`, `-nonzero-overflow-refuses`,
+  `-nonzero-const-dividend`, `-const-zero-refuses`, `-module-const`) and
+  the frontier's `absorb-keeps-trap`, whose compile ASSERTS the open claim
+  (`run_open_claim`: V_Pending surfaced, zero errors, then the trap). THE
+  LIBRARY: the crucibles' authored `with Memory + Alloc + WASI` caps on
+  `main` met `Trap` on the first m2 — six divisions by a hop or a grid
+  width in lib/dsp had never stated their precondition — and one
+  refinement on the parameter (`Positive`, cfc.mn; `hop: Positive`,
+  `num_high: Positive` along the pass-down chain) proves all six, each
+  caller paying the claim once at its literal; the wheel judges clean
+  with FIVE open partiality claims, every one guarded on a PATH
+  (`fold_int`, `litval_arith`, `pick_from_pool` — `if n == 0` around the
+  division) that the narrowing walk computes and never writes
+  (`Hβ.verify.partiality-reads-the-path-narrowing`, the next face; the
+  walk's one write was found dead 2026-07-18). KILLS: (1) the ledger's
+  arms reported the refusal themselves, and an arm's performs resolve
+  OUTER of its own install, so `mn-div-const-zero-refuses` counted one
+  error and banked no class — the class the occurs belt named
+  (`Hβ.diag.an-arms-report-escapes-an-inner-capture`); the ledger DECIDES
+  and the SITE narrates (`verify_claim`, the raw op's one caller), and the
+  battery banks `E_RefinementRejected`; (2) `let own = …`, a keyword
+  binder written by mistake, parsed under recovery as a wildcard and
+  `mentl fmt` WROTE `let _ = …` under "names conserved"
+  (`Hβ.fmt.keyword-binder-renders-as-wildcard`, named); (3) the absorb
+  leg's compile counted the fixture's own V_Pending as new debt — an open
+  claim is the leg's whole point, so it asserts it; (4) the prelude floor
+  rose 2796 → 2805 for the effect and its lede, recorded at the ceiling.
+  Named: `Hβ.effects.index-partiality-is-a-row-fact` (`xs[i]` and a
+  slice, the same law one primitive over),
+  `Hβ.effects.divergence-is-a-row-fact` (non-termination is not a trap
+  and not in the row; the absorb rewrite's one remaining blind spot).
+  Micros 260/260, crown 102/102, frontier 454 pass / 0 red / 2 expected-red; m3 leg 15.02s wall · 833MB peak RSS (853024 KB).
 - 2026-09-30 · pin 21f8e691f6e04426 (CLEAN m2 == m3) · THE ACCEPT IS A GRAPH WRITE, AND THE
   TEXT IS ITS PROJECTION.
   C4. Accepting a proposal was `replace_span` → `fs_write_file` →

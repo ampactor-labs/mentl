@@ -1,0 +1,8 @@
+// expect: 25
+// A refined divisor discharges the precondition: `Positive` excludes 0 and
+// -1, so `total / n` is total and `!Trap` holds.
+type Positive = Int where 0 < self
+
+fn ratio(total, n: Positive) with !Trap = total / n
+
+fn main() = ratio(100, 4)
