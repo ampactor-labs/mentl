@@ -1,0 +1,64 @@
+// distort.mn — the derivative of scene 1's distortion PERFORM, through the
+// stateful handler that runs it, against the finite difference of the same
+// chain.
+//
+// shape.mn differentiates `adaptive_shape`, the transfer function. Pulse
+// never calls it directly: each sample performs `distort(x, drive)` under
+// `~> spectral_flux_distort`, whose arm tracks two envelopes of the signal in
+// its state and shapes the sample by their ratio. So the chain a sample
+// actually runs crosses a perform into an arm, reads state the earlier
+// samples wrote, and writes it back — and the reading follows all of it: the
+// arm's derivative twin takes the argument's tangent, the install record's
+// lanes carry the envelopes' tangents from sample to sample, and the sum of
+// the shaped samples differentiates in the drive AND in the first sample,
+// whose influence on every later sample runs only through the state.
+//
+// The oracle is the central difference of the SAME chain in the same program
+// — (S(p + h) − S(p − h)) / 2h with h = 1e-5, each run under a fresh install
+// so the envelopes start at rest — which differentiates the series and the
+// envelope recurrences exactly as the derivative program does. No point sits
+// on a clamp's kink, a range reduction's step or the flux's threshold.
+//
+// EXIT 42 iff every one of the 12 slopes (6 chains × two seeds) agrees with
+// its difference to 1e-5 relative; otherwise 10 plus the number that missed.
+
+fn close(a: Float, b: Float) -> Bool = abs(a - b) <= 0.00001 * (1.0 + abs(b))
+
+// The chain: the first sample, then the tail, each performing the distortion
+// and summing the shaped output.
+fn run_tail(xs, drive: Float, i: Int, n: Int, acc: Float) -> Float =
+  if i >= n { acc } else { run_tail(xs, drive, i + 1, n, acc + distort(xs[i], drive)) }
+
+fn chain(x0: Float, xs, drive: Float) -> Float = run_tail(xs, drive, 0, len(xs), distort(x0, drive))
+
+fn slope_drive(x0: Float, xs, drive: Float) -> Float = d(chain(x0, xs, drive)) ~> spectral_flux_distort ~> grad(drive)
+
+fn slope_x0(x0: Float, xs, drive: Float) -> Float = d(chain(x0, xs, drive)) ~> spectral_flux_distort ~> grad(x0)
+
+fn sum_at(x0: Float, xs, drive: Float) -> Float = chain(x0, xs, drive) ~> spectral_flux_distort
+
+fn diff_drive(x0: Float, xs, drive: Float) -> Float =
+  (sum_at(x0, xs, drive + 0.00001) - sum_at(x0, xs, drive - 0.00001)) / 0.00002
+
+fn diff_x0(x0: Float, xs, drive: Float) -> Float =
+  (sum_at(x0 + 0.00001, xs, drive) - sum_at(x0 - 0.00001, xs, drive)) / 0.00002
+
+fn misses_at(x0: Float, xs, drive: Float) -> Int = {
+  let a = if close(slope_drive(x0, xs, drive), diff_drive(x0, xs, drive)) { 0 } else { 1 }
+  let b = if close(slope_x0(x0, xs, drive), diff_x0(x0, xs, drive)) { 0 } else { 1 }
+  a + b
+}
+
+// Six chains: three first samples of either sign at two drives, over a tail
+// whose magnitudes keep the envelopes moving and the flux inside its clamps.
+fn misses_over(i: Int) -> Int = {
+  let x0 = if i % 3 == 0 { 0.0 - 0.6 } else if i % 3 == 1 { 0.25 } else { 0.8 }
+  let drive = if i / 3 == 0 { 0.7 } else { 2.3 }
+  let xs = [0.35, 0.0 - 0.7, 0.55, 0.0 - 0.2, 0.65]
+  misses_at(x0, xs, drive)
+}
+
+fn main() -> Int = {
+  let missed = range(0, 6) |> fold(0, (acc, i) => acc + misses_over(i))
+  if missed == 0 { 42 } else { 10 + missed }
+}

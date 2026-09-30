@@ -1,0 +1,35 @@
+// expect: 70
+// A handler installed inside the reading. Its state is written by arms the
+// reading enters, and every write carries the value's tangent into the
+// record's lane beside the value, so a total accumulated from the seed
+// differentiates: s = 3w + w², and ds/dw = 3 + 2w = 7 at w = 2.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+effect Acc {
+  put(v: Float)
+  total() -> Float
+}
+
+handler acc with s = 0.0 {
+  put(v) => resume() with s = s + v,
+  total() => resume(s),
+}
+
+fn main() -> Int = {
+  let w = 2.0
+  let slope = {
+    put(w * 3.0)
+    put(w * w)
+    d(total())
+  } ~> acc ~> grad(w)
+  float_to_int(slope * 10.0)
+}

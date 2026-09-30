@@ -1438,6 +1438,15 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/derive-crucible/shape.mn" 42 derive "$dir"
   run_program "$compiler" derive-lms \
     "$ROOT/tests/frontier/derive-crucible/lms.mn" 42 derive "$dir"
+  # derive-distort (L4a′, 2026-09-30): the distortion PERFORM under its
+  # stateful handler — the arm's derivative twin, the install record's lanes
+  # carrying the envelopes' tangents from sample to sample — in the drive
+  # and in the first sample (whose influence on every later one runs only
+  # through the state), against the central difference of the same chain
+  # under fresh installs; 42 iff all 12 agree to 1e-5. RED on boot 0bc95063
+  # (refused: the tangent stopped at the perform).
+  run_program "$compiler" derive-distort \
+    "$ROOT/tests/frontier/derive-crucible/distort.mn" 42 derive "$dir"
   run_program "$compiler" scheduled-int \
     "$ROOT/tests/frontier/mn-scheduled-fanout-int.mn" 60 yes "$dir"
   run_program "$compiler" scheduled-float \

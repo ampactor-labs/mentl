@@ -1,0 +1,28 @@
+// expect: 30
+// A function value minted inside the reading carries its captures' tangents
+// in its own record — one lane per capture, beside the value — so a closure
+// over the seed differentiates through a call made anywhere the value
+// reaches: d(f(3.0)) for f = { v => w * v } minted under the reading is 3.
+// A closure minted OUTSIDE the reading captured a copy of the seed before
+// the reading opened, and every free variable of the extent is held fixed,
+// so d(g(3.0)) is 0 for the same body minted before the install. 30 + 0.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn main() -> Int = {
+  let w = 2.0
+  let g = { v => w * v }
+  let slope = {
+    let f = { v => w * v }
+    d(f(3.0)) * 10.0 + d(g(3.0))
+  } ~> grad(w)
+  float_to_int(slope)
+}

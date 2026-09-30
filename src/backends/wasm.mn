@@ -1641,6 +1641,26 @@ fn spec_fold_collect(spec_recs, acc0) =
 fn spec_vector_collect(spec_recs, acc0) =
   fold(acc0, spec_bracketed(collect_call_vectors_list, ??, ??), spec_recs)
 
+// The derivative reading's programs walked for their call vectors — each
+// extent's expansion and each twin under the bracket it emits under. A call
+// through a function value under the reading names the derivative face's
+// vector, a tangent slot after every Float, which the primal tree never
+// wrote; the type section declares what these walks find.
+fn derived_vector_collect(derived, acc0) = fold(
+  fold(acc0, expansion_vectors, derived.expansions),
+  spec_bracketed(collect_call_vectors_list, ??, ??),
+  derived.twins
+)
+
+fn expansion_vectors(acc, x) = match x {
+  Expansion(r) => {
+    spec_ctx_set(r.pairs, r.enc)
+    let acc2 = collect_call_vectors_expr(r.body, acc)
+    spec_ctx_clear()
+    acc2
+  },
+}
+
 // One twin's body walked under its own specialization bracket — the one
 // shape both collections above share.
 fn spec_bracketed(walk, acc, tw) = match tw.rec {
@@ -1960,6 +1980,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
     derived_none()
   }
   set_derived(derived.expansions)
+  set_arm_faces(derived.arm_faces)
   let jvp_recs = derived.twins
   let jvp_names = map(jvp_rec_name, jvp_recs)
   // THE SETTLING POINT. Every symbol the module will emit is known here —
@@ -2033,12 +2054,15 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       // its own bracket — and read twice: the type section declares the face
       // each site names, the table grows its native half iff a site reaches it.
       // A driver's arm call is a site too, at the word face.
-      let vectors =
-        spec_vector_collect(spec_recs, collect_call_vectors_list(lowered, [])) ++ redrive_vectors(redrives)
+      let vectors = derived_vector_collect(
+        derived,
+        spec_vector_collect(spec_recs, collect_call_vectors_list(lowered, []))
+      ) ++ redrive_vectors(redrives)
       {
         alloc_units: alloc_units,
         fn_records: fn_records,
         fold_closures: fold_closures,
+        jvp_faces: jvp_face_map(derived.faces),
         jvp_names: jvp_names,
         jvp_recs: jvp_recs,
         jvp_wide: jvp_wide,
@@ -2070,7 +2094,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
 // reads was settled before the gate, and the registries the writes consult
 // (the twins, the string offsets, the per-fn lines) were seeded by the plan.
 fn emit_planned(plan) = match plan {
-  {alloc_units, fn_records, fold_closures, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_seen} => {
+  {alloc_units, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_seen} => {
     let line_globals = line_global_slots(line_owners)
     emit_header()
     emit_type_section(vectors, yield_seen)
@@ -2098,8 +2122,11 @@ fn emit_planned(plan) = match plan {
     emit_tangent_ring_globals(tangent_rings)
     // The register a twin hands its result's tangent back through: one f64
     // per instance, written by a twin's exit and read by its caller the
-    // instant the call returns.
-    if len(jvp_recs) > 0 { wat_emit("  (global $__dt (mut f64) (f64.const 0))\n") }
+    // instant the call returns; and the epoch every record's lanes are read
+    // against, advanced where each reading opens.
+    if lanes_on() {
+      wat_emit("  (global $__dt (mut f64) (f64.const 0))\n  (global $__dt_epoch (mut i32) (i32.const 0))\n")
+    }
     // band B k1: the yield triple exists only in a module that yields —
     // $yield_flag (the out-of-band Koka-lineage yielding bit), $yield_op (the
     // interned op key the drivers compare), $yield_k (the reified k record).
@@ -2113,7 +2140,12 @@ fn emit_planned(plan) = match plan {
     // no reading is byte-identical.
     let table_all = table_fn_names ++ spec_names ++ jvp_names
     let wide_all = wide_fn_names ++ spec_wide ++ jvp_wide
-    emit_fn_table(table_all, wide_all, any(vector_is_wide, vectors))
+    emit_fn_table(
+      table_all,
+      wide_all,
+      any(vector_is_wide, vectors),
+      if lanes_on() { Some(jvp_face_names(jvp_faces, table_all)) } else { None }
+    )
     emit_fn_index_globals(table_all, fn_table_base())
     emit_static_top_closures(top_fn_names ++ spec_names ++ jvp_names, table_all, 0)
     // Module VALUE bindings: ONE projection feeds the declaration half and
@@ -3298,12 +3330,23 @@ fn fn_record_span(r) with !Mutate = match r {
 // (`$native_face` past the word face) and passes its values as themselves: no
 // cell, no wrapper, nothing allocated. The native half exists only in a module
 // with such a site, so a word-only module's table is unchanged.
-fn emit_fn_table(fn_names, wide_names, native_half) = {
+// THE DERIVATIVE FACE is a third half (`jvp_faces`, one symbol per index —
+// the twin the reading demanded at every Float parameter, or
+// `$__jvp_absent` where none was): a call through a function value under
+// the reading, and a walking perform under it, reach `fn_ptr + $jvp_face`
+// and run the derivative program of whatever record they found. The absent
+// entry's empty signature matches no site's, so `call_indirect` refuses at
+// its type check where a face was reached the reading never demanded.
+fn emit_fn_table(fn_names, wide_names, native_half, jvp_faces) = {
   let n = len(fn_names)
   if n == 0 {
     ()
   } else {
-    let faces = if native_half { 2 } else { 1 }
+    let word_faces = if native_half { 2 } else { 1 }
+    let faces = match jvp_faces {
+      Some(_) => word_faces + 1,
+      None => word_faces,
+    }
     wat_emit("  (table $fns ")
     wat_emit(int_to_str(fn_table_base() + faces * n))
     wat_emit(" funcref)\n")
@@ -3320,7 +3363,32 @@ fn emit_fn_table(fn_names, wide_names, native_half) = {
     } else {
       ()
     }
+    match jvp_faces {
+      Some(fs) => {
+        wat_emit("  (global $jvp_face i32 (i32.const {int_to_str(word_faces * n)}))\n")
+        wat_emit("  (elem $fns_jvp (i32.const {int_to_str(fn_table_base() + word_faces * n)})")
+        emit_native_refs(fs)
+        wat_emit(")\n")
+        wat_emit("  (func $__jvp_absent (unreachable))\n")
+      },
+      None => (),
+    }
   }
+}
+
+// Each table symbol's derivative face, by name: the twin the reading
+// demanded, or the absent stub.
+fn jvp_face_names(faces, names) = map(jvp_face_of(faces, ??), names)
+
+fn jvp_face_of(faces, name: String) = match smap_get(faces, name) {
+  Some(twin) => twin,
+  None => "__jvp_absent",
+}
+
+fn jvp_face_map(pairs) = fold(smap_new(), jvp_face_add, pairs)
+
+fn jvp_face_add(m, p) = match p {
+  (sym, twin) => smap_add(m, sym, twin),
 }
 
 // The native half: each symbol at its own face — the half a site that proves
@@ -4716,7 +4784,18 @@ fn walk_locals_expr(expr, acc) = match expr {
     },
     None => acc,
   },
-  LWasiCall(_h, _n, args) => walk_locals_list(args, acc),
+  LWasiCall(h, n, args) => // The reading's lane ops park a record's address in a per-site local
+  // (`lane_local`), mirror-true to their emission; the calls, performs and
+  // installs the reading marks declare their own inside.
+  match derive_op_of(n) {
+    Some(DoLaneRead) => walk_locals_list(args, ["{lane_local(h)} i32"] ++ acc),
+    Some(DoLaneWrite) => walk_locals_list(args, ["{lane_local(h)} i32"] ++ acc),
+    Some(DoMintLanes) => walk_locals_list(args, ["{lane_local(h)} i32"] ++ acc),
+    Some(DoJvpCall) => walk_locals_list(args, acc),
+    Some(DoJvpPerform) => walk_locals_list(args, acc),
+    Some(DoJvpInstall) => walk_locals_list(args, acc),
+    None => walk_locals_list(args, acc),
+  },
   LPerform(h, _d, a) => // The perform's per-site pair, mirror-true to the ONE emit arm: evw holds
   // the world saved around the arm call and EVERY dispatch needs it, because
   // the bracket is not a property of any one of them; evn holds the resolved
@@ -4968,10 +5047,26 @@ fn tail_expr_repr(expr) = match expr {
   LTailCall(ch, callee, _) => call_result_repr(callee, ch),
   LFieldLoad(h, rec, sel) => // what the load emits, read from the receiver's layout
   field_load_repr(h, rec, sel),
+  LWasiCall(h, n, args) => // The reading's ops: a lane read is an f64, a lane write and a lanes mint
+  // leave a word, and a marked call, perform or install is what it wraps.
+  match derive_op_of(n) {
+    Some(DoLaneRead) => RF64,
+    Some(DoLaneWrite) => RI32,
+    Some(DoMintLanes) => RI32,
+    Some(DoJvpCall) => wrapped_repr(args),
+    Some(DoJvpPerform) => wrapped_repr(args),
+    Some(DoJvpInstall) => wrapped_repr(args),
+    None => if h == 0 { RI32 } else { repr_of(lookup_ty(h)) },
+  },
   other => {
     let h = lexpr_handle(other)
     if h == 0 { RI32 } else { repr_of(lookup_ty(h)) }
   },
+}
+
+fn wrapped_repr(args) = match args {
+  [] => RI32,
+  [inner, ..._] => tail_expr_repr(inner),
 }
 
 // The param slots RENDERED from the settled repr-vector. This fn used to
@@ -5254,14 +5349,424 @@ fn ref_symbol(r) = match r {
   RefName(n) => n,
 }
 
-// The arm fn an install runs: the twin its key names, else the arm as
-// declared — a floor key, or a twin past the polymorphic-recursion cap,
-// whose sites read the base as every capped body's do.
-fn arm_symbol(arm: String, enc: String) = if byte_len(enc) == 0 {
-  arm
+// ─── The derivative reading at the record (src/derive.mn) ─────────────
+//
+// Under a reading every record with captures — a closure's, an install's —
+// carries one LANE per capture BEFORE its header: sixteen bytes, an epoch
+// word and an f64, at rec − 16·(n − i) for capture i of the n the record
+// already counts at offset 4. A lane read compares its epoch with the
+// reading's ($__dt_epoch, advanced where each reading opens) and answers
+// zero for a lane no reading wrote, or an earlier one did — state and
+// captures that live past the extent enter it held fixed; a lane write
+// stamps the epoch beside the value. Nothing after the header moves: every
+// capture, line and k-tail offset the emit ever wrote stands, and a module
+// with no reading allocates no lane (Law 7).
+//
+// The reading names these through the substrate channel, as it names the
+// register (`tangent_in`): one op per lane read and write, one for a mint
+// that writes its captures' tangents, and three that mark a call, a perform
+// and an install as running under the reading — the same nodes, emitted at
+// the derivative face.
+type DeriveOp = DoLaneRead | DoLaneWrite | DoMintLanes | DoJvpCall | DoJvpPerform | DoJvpInstall
+
+fn derive_op_of(name: String) = if name == "lane_read" {
+  Some(DoLaneRead)
+} else if name == "lane_write" {
+  Some(DoLaneWrite)
+} else if name == "mint_lanes" {
+  Some(DoMintLanes)
+} else if name == "jvp_call" {
+  Some(DoJvpCall)
+} else if name == "jvp_perform" {
+  Some(DoJvpPerform)
+} else if name == "jvp_install" {
+  Some(DoJvpInstall)
 } else {
-  let m = spec_mangle(arm, enc)
-  if spec_twin_known(m) { m } else { arm }
+  None
+}
+
+fn lanes_on() = derivative_demanded()
+
+fn lane_prefix(n) = if lanes_on() && n > 0 { 16 * n } else { 0 }
+
+// A record's mint: the allocation grows by its lanes and the pointer steps
+// past them, so the record's own address is where every reader expects it.
+fn emit_record_alloc(size, n, local_name: String) = {
+  let prefix = lane_prefix(n)
+  emit_alloc(size + prefix, local_name)
+  if prefix > 0 {
+    wat_emit("    (local.set ${local_name} (i32.add (local.get ${local_name}) (i32.const {int_to_str(prefix)})))\n")
+  } else {
+    ()
+  }
+}
+
+fn lane_local(h) = "__lane_{int_to_str(h)}"
+
+// The lane's address off the count the record carries: rec − 16·count + 16·i,
+// left in the same local the record arrived in.
+fn emit_lane_addr(lane: String, i) =
+  wat_emit("    (local.set ${lane} (i32.add (i32.sub (local.get ${lane}) (i32.shl (i32.load offset=4 (local.get ${lane})) (i32.const 4))) (i32.const {int_to_str(16 * i)})))\n")
+
+// A lane's value under the reading that is open: zero unless the lane's
+// epoch is the reading's.
+fn emit_lane_load(lane: String) =
+  wat_emit("    (select (f64.load offset=8 (local.get ${lane})) (f64.const 0) (i32.eq (i32.load (local.get ${lane})) (global.get $__dt_epoch)))\n")
+
+// A lane write at the address already in `lane`: the value, then the epoch.
+fn emit_lane_store(lane: String, value) = {
+  wat_emit("    (local.get ${lane})\n")
+  emit_expr(value)
+  wat_emit("    (f64.store offset=8)\n")
+  wat_emit("    (local.get ${lane}) (global.get $__dt_epoch) (i32.store)\n")
+}
+
+// The (index, tangent) pairs a mint or an install writes into a record whose
+// count is known where it is built: lane i of n sits 16·(n − i) bytes before
+// the record.
+fn emit_lane_pairs(rec_local: String, n, pairs) = match pairs {
+  [] => (),
+  [ic, t, ...rest] => {
+    match ic {
+      LConst(_, LInt(i)) => {
+        wat_emit("    (i32.sub (local.get ${rec_local}) (i32.const {int_to_str(16 * (n - i))}))\n")
+        emit_expr(t)
+        wat_emit("    (f64.store offset=8)\n")
+        wat_emit("    (i32.sub (local.get ${rec_local}) (i32.const {int_to_str(16 * (n - i))})) (global.get $__dt_epoch) (i32.store)\n")
+      },
+      _ => wat_emit("    (unreachable)  ;; a lane index that is not a literal\n"),
+    }
+    emit_lane_pairs(rec_local, n, rest)
+  },
+  _ => wat_emit("    (unreachable)  ;; a lane pair with no tangent\n"),
+}
+
+fn emit_derive_op(h, op, args) = match op {
+  DoLaneRead => match args {
+    [rec, ic] => match ic {
+      LConst(_, LInt(i)) => {
+        let lane = lane_local(h)
+        emit_expr(rec)
+        wat_emit("    (local.set ${lane})\n")
+        emit_lane_addr(lane, i)
+        emit_lane_load(lane)
+      },
+      _ => wat_emit("    (unreachable)  ;; lane_read: an index that is not a literal\n"),
+    },
+    _ => wat_emit("    (unreachable)  ;; lane_read: not (record, index)\n"),
+  },
+  DoLaneWrite => match args {
+    [rec, ic, v] => match ic {
+      LConst(_, LInt(i)) => {
+        let lane = lane_local(h)
+        emit_expr(rec)
+        wat_emit("    (local.set ${lane})\n")
+        emit_lane_addr(lane, i)
+        emit_lane_store(lane, v)
+        wat_emit("    (i32.const 0)\n")
+      },
+      _ => wat_emit("    (unreachable)  ;; lane_write: an index that is not a literal\n"),
+    },
+    _ => wat_emit("    (unreachable)  ;; lane_write: not (record, index, tangent)\n"),
+  },
+  DoMintLanes => match args {
+    [mint, ...pairs] => match mint {
+      LMakeClosure(_, _, caps) => {
+        let lane = lane_local(h)
+        emit_expr(mint)
+        wat_emit("    (local.set ${lane})\n")
+        emit_lane_pairs(lane, len(caps), pairs)
+        wat_emit("    (local.get ${lane})\n")
+      },
+      _ => wat_emit("    (unreachable)  ;; mint_lanes: not a mint\n"),
+    },
+    _ => wat_emit("    (unreachable)  ;; mint_lanes: no mint\n"),
+  },
+  DoJvpCall => match args {
+    [call] => match call {
+      LCall(ch, f, cargs) => emit_closure_call_at(ch, f, cargs, false, true),
+      LTailCall(ch, f, cargs) => emit_closure_call_at(ch, f, cargs, true, true),
+      _ => wat_emit("    (unreachable)  ;; jvp_call: not a call through a value\n"),
+    },
+    _ => wat_emit("    (unreachable)  ;; jvp_call: not one call\n"),
+  },
+  DoJvpPerform => match args {
+    [perform] => match perform {
+      LPerform(ph, disp, pargs) => emit_perform(ph, disp, pargs, true),
+      _ => wat_emit("    (unreachable)  ;; jvp_perform: not a perform\n"),
+    },
+    _ => wat_emit("    (unreachable)  ;; jvp_perform: not one perform\n"),
+  },
+  DoJvpInstall => match args {
+    [install, ...pairs] => match install {
+      LHandleWith(ih, body, _handler, hname, inits, arm_names) => emit_install(ih, body, hname, inits, arm_names, Some(pairs)),
+      _ => wat_emit("    (unreachable)  ;; jvp_install: not an install\n"),
+    },
+    _ => wat_emit("    (unreachable)  ;; jvp_install: no install\n"),
+  },
+}
+
+// ~> install — build the ONE handler record (handler IS state IS closure;
+// protocol_handler_is_state_is_closure_is_evidence):
+//   [_@0][nstate FENCE@4][state@8..][arms per-effect-contiguous]
+// The record is built regardless of hname; commits reach it through the
+// resolved record read on LStateSlotStore (the __hrec ladder), so anonymous
+// and named installs are ONE shape — no global binds. Under the derivative
+// reading (`lanes`: the config tangents the reading passes) the record's
+// lanes take each active config's tangent after the config is written, and
+// the declaration's init runs as its derivative twin, so a state field born
+// from a config carries the config's tangent from its first read.
+fn emit_install(h, body, hname, inits, arm_names, lanes) = {
+  let local_name = "__hstate_{int_to_str(h)}"
+  // INITS are the install's config arguments; the declaration's state
+  // follows them, written by its init fn.
+  let nfields = handler_state_count(hname)
+  let nstate = len(inits) + nfields
+  let total_arms = sum_arm_name_lens(arm_names)
+  // The arms' `<~` lines follow the arms in this record — one ring per
+  // site per INSTALL, so two installs of one handler are two filters.
+  // Read off the same registered arm names the fence is summed from, and
+  // the init fn's after them; each line carries the slot lower assigned it
+  // past the fence.
+  let arm_lines =
+    handler_arm_lines(arm_names) ++ if nfields > 0 { fn_lines_of(init_fn_name(hname)) } else { [] }
+  let size = 8 + 4 * (nstate + total_arms + len(arm_lines))
+  emit_record_alloc(size, nstate, local_name)
+  // FENCE @ offset 4 = nstate — dispatch locates arms fence-relative.
+  wat_emit("(local.get $")
+  wat_emit(local_name)
+  wat_emit(")(i32.const ")
+  wat_emit(int_to_str(nstate))
+  wat_emit(")(i32.store offset=4)\n")
+  // The install's key (`arm_twin_key`), read under the bracket this
+  // install stands in: the arms it runs and the init fn it calls.
+  let enc = arm_install_enc(h)
+  // the config arguments at 8+i*4, first
+  emit_config_writes(local_name, inits)
+  // under the reading, the config tangents beside them
+  match lanes {
+    Some(pairs) => emit_lane_pairs(local_name, nstate, pairs),
+    None => (),
+  }
+  // each effect-group's arms contiguous + its [record, base] entry
+  emit_handler_effect_entries(local_name, nstate, arm_names, enc)
+  // the arms' `<~` rings, past the arms
+  emit_line_mints(arm_lines, local_name)
+  // The state, written by the declaration's init fn with this record as its
+  // $__state — before the world push below, so an init performs in the
+  // installer's world. Under the reading, the init's derivative twin.
+  if nfields > 0 {
+    let init_sym = match lanes {
+      Some(_) => match arm_face_at(h, "$init", spec_enc_active()) {
+        Some(twin) => twin,
+        None => arm_symbol(init_fn_name(hname), enc),
+      },
+      None => arm_symbol(init_fn_name(hname), enc),
+    }
+    wat_emit("(local.get ${local_name})(call ${init_sym})(drop)\n")
+  } else {
+    ()
+  }
+  // The WORLD bracket — every install draws its runtime edge: save the
+  // live chain, cons one [key][entry][parent][install_world] node per
+  // absorbed effect group (entry = the group's [record][base] view built
+  // above; install_world = the saved chain, what the arm dispatch sets
+  // around the arm call), restore after the extent (the same
+  // save/restore shape as the scoped-singleton global below, world
+  // outermost). ONE key: the interned effect name at key@0, walked by
+  // $ev_declaring_node, which reads the arm slot through the entry to
+  // pick the node that DECLARES the op. The second key — the interned
+  // handler name at hkey@16, five bytes on every node of every install —
+  // existed only so a second walk could find a handler BY NAME, and that
+  // walk is gone: naming the handler was never the question, declaring
+  // the op was.
+  wat_emit("(global.get $world_g)(local.set $")
+  wat_emit(local_name)
+  wat_emit("_wprev)\n")
+  each(
+    (g) => {
+      wat_emit("(i32.const ")
+      wat_emit(int_to_str(string_offset(group_ename(g))))
+      wat_emit(")(local.get $")
+      wat_emit(local_name)
+      wat_emit("_")
+      wat_emit(group_ename(g))
+      wat_emit(")(local.get $")
+      wat_emit(local_name)
+      wat_emit("_wprev)(call $world_push)\n")
+    },
+    arm_names
+  )
+  emit_expr(body)
+  // band B k1 — the yield DRIVER. Takes this install's record as its own
+  // __state (the arm call carries it — no global re-read) and is a LOOP
+  // (a re-yield of an owned op re-enters the SAME driver with the new
+  // k). A remainder's performs resolve through the LIVE world chain the
+  // k record froze — the deep-handler law by REPRESENTATION, which the
+  // old "the state_g bracket covers every k(v) re-entry" claim was not:
+  // a k crossing an EXITED inner install found that install's global
+  // restored to 0 while the frozen chain still carried its record (the
+  // mn-world-resume-frozen fixture's silent 30). Body returned normally
+  // → the flag is clear → the loop exits on its first check with the
+  // body's parked value: semantically the ungated leg. A yield of a
+  // FOREIGN op exits with the flag INTACT — it bubbles through this
+  // install to the enclosing driver (or the _start backstop).
+  // Gated on the ONE multishot_ops_of decider (walk_locals reads it
+  // identically); an all-OneShot install emits the pre-k1 bytes exactly.
+  let ms_ops = multishot_ops_of(hname)
+  if len(ms_ops) > 0 {
+    // band B M2b — the driver IS one redrive call: park the body result,
+    // hand (record, parked) to $op___redrive_<hname> (the dispatch loop's
+    // ONE home, shared with every resume flag-arm). A flag still raised
+    // on return is a FOREIGN op — the value falls out of the bracket
+    // with the flag intact and the enclosing boundary sees it (the
+    // bubble, k1's law, unchanged).
+    let hs = int_to_str(h)
+    wat_emit("    (local.set $__hres_{hs})\n")
+    wat_emit("    (local.get $")
+    wat_emit(local_name)
+    wat_emit(")(local.get $__hres_{hs})(call $op___redrive_")
+    wat_emit(hname)
+    wat_emit(")(local.set $__hres_{hs})\n")
+    wat_emit("    (local.get $__hres_{hs})\n")
+  }
+  // world restore — unconditional, mirroring the unconditional save
+  // (world outermost of the two brackets).
+  wat_emit("(local.get $")
+  wat_emit(local_name)
+  wat_emit("_wprev)(global.set $world_g)\n")
+}
+
+// THE ONE PERFORM'S EMIT. Three shapes used to live here and in two other
+// arms, and they disagreed about the WORLD BRACKET: the evidence arm saved
+// the world, set it to the node's install world around the arm call and
+// restored, while the two direct arms called bare. That difference was
+// observable — an arm's own perform self-dispatched once before escaping,
+// 52 where the deep-handler law says 51 — and it was possible only because
+// the bracket was written per-arm. Here the record and the world are
+// FETCHED by the dispatch and the bracket is emitted once, outside the
+// branch, so no degree of boundness can mean something different from
+// another.
+//
+// A DERIVATIVE QUERY is not dispatched at all: under its reading derive
+// replaced it with the value's tangent, and a copy outside every reading
+// is unreachable by the row — its effect is unhandled anywhere else, and
+// the reading refuses the closure calls that could carry it inside.
+//
+// UNDER THE READING (`jvp`) the perform reaches the arm's derivative twin:
+// a dispatch that names its install calls the twin the reading demanded
+// there (`arm_face_at`), and one that walks reaches whatever record the
+// walk finds and calls its arm at the derivative face — the slot's index
+// one table half past the word face — whatever the target lower named.
+fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
+  wat_emit("    (unreachable)  ;; a derivative query outside its reading\n")
+} else {
+  let hs = int_to_str(h)
+  // (0) the arm's __state and the world to run it under. A lexical answer
+  // reads the install's own two locals; anything that walks resolves the
+  // node once into evn_<h> and reads both out of it.
+  match disp {
+    PdFrame(ih, _, _) => wat_emit("    (local.get $__hstate_{int_to_str(ih)})\n"),
+    PdWalk(ekey, slot, _, _) => emit_declaring_node(hs, ekey, slot),
+    PdDriver(_) => wat_emit("    (local.get $__state)\n"),
+  }
+  // A PERFORM SPEAKS ITS SITE'S FACE, as a closure call does
+  // (`emit_closure_call`): each argument at the width it is emitted at, the
+  // result at the width the perform node proves. The arm it reaches is
+  // twinned at the install's instance, and the site's types are that
+  // instance's — the tee unifies every perform with the handler's — so the
+  // two faces agree by construction, and `call_indirect`'s structural
+  // match traps LOUDLY where they ever do not. Nothing is boxed: a Float op
+  // costs a Float call. The declared face that stood here (the op's
+  // parameter types, an effect variable signing the word floor) boxed every
+  // wide value crossing a variable's slot — 8 bytes per perform under a
+  // row that said nothing of it, every `fold` over Floats paying it per
+  // element — and reached every arm wider than its declaration through an
+  // adapter (Hβ.emit.generic-op-box-is-unrowed). A driver is not an op and
+  // keeps the word protocol it was written in.
+  match disp {
+    PdDriver(_) => emit_args_word(args),
+    _ => emit_expr_list(args),
+  }
+  // (2) the arm's identity, where the target does not already name it: the
+  // slot form pushes the fn index out of the record's own arm region.
+  // (3) THE WORLD BRACKET, once, for every dispatch — the deep-handler law
+  // by construction. PdDriver is the one shape that must NOT bracket, and
+  // it is not a dispatch: it is a direct call to a synthesized driver
+  // against the caller's own state.
+  match disp {
+    PdDriver(name) => {
+      wat_emit("    (call $op_")
+      wat_emit(name)
+      wat_emit(")\n")
+    },
+    _ => {
+      // The record holds the arm's WORD face, as every fn_ptr does; a site
+      // whose own vector is wide dispatches at the native face, and one
+      // under the reading at the derivative face.
+      match disp {
+        PdWalk(_, slot, _, target) => if jvp {
+          emit_arm_index(hs, slot)
+          wat_emit("    (global.get $jvp_face) (i32.add)\n")
+        } else {
+          match target {
+            ArmSlot => {
+              emit_arm_index(hs, slot)
+              if vector_is_wide(perform_vector_at(h, args)) {
+                wat_emit("    (global.get $native_face) (i32.add)\n")
+              } else {
+                ()
+              }
+            },
+            ArmNamed(_) => (),
+          }
+        },
+        _ => (),
+      }
+      wat_emit("    (global.get $world_g)(local.set $evw_")
+      wat_emit(hs)
+      wat_emit(")\n")
+      emit_install_world(disp, hs)
+      match perform_callee(disp, jvp) {
+        Some(name) => // A direct call names the arm at its own face, the one the site's
+        // arguments were emitted at.
+        wat_emit("    (call ${name})\n"),
+        None => {
+          wat_emit("    (call_indirect (type ")
+          wat_emit(perform_ft(h, disp, args))
+          wat_emit("))\n")
+        },
+      }
+      wat_emit("    (global.set $world_g (local.get $evw_")
+      wat_emit(hs)
+      wat_emit("))\n")
+    },
+  }
+  // An op's arm answers at the site's own face; a driver's word result
+  // stands for the wide one the site proves.
+  match disp {
+    PdDriver(_) => emit_wide_deref(repr_of(lookup_ty(h))),
+    _ => (),
+  }
+}
+
+// The symbol a perform calls directly, or None for the slot's indirect call.
+// Under the reading a dispatch naming its install calls the arm twin the
+// reading demanded there, and a walking dispatch always takes the slot.
+fn perform_callee(disp, jvp) = if jvp {
+  match disp {
+    PdFrame(ih, _, op) => match arm_face_at(ih, op, spec_enc_active()) {
+      Some(twin) => Some(twin),
+      None => Some("__jvp_absent"),
+    },
+    PdWalk(_, _, _, _) => None,
+    PdDriver(name) => Some("op_{name}"),
+  }
+} else {
+  match perform_target(disp) {
+    Some(target) => Some(ref_symbol(target)),
+    None => None,
+  }
 }
 
 // Exhaustive match on every LowExpr variant; no _ fallback.
@@ -5437,7 +5942,7 @@ fn emit_expr(expr) = match expr {
     // the mint is the same class, and a second site of one shape is the
     // census law's stop.
     let rec_local = mkclo_local(h)
-    emit_alloc(size, rec_local)
+    emit_record_alloc(size, nc, rec_local)
     // Store the table index at offset 0 (the nested twin's index when the
     // active bracket names one — spec_closure_name).
     wat_emit("    (local.get ${rec_local})\n")
@@ -5724,127 +6229,17 @@ fn emit_expr(expr) = match expr {
     wat_emit("    (global.set $world_g (local.get $__rk_wprev_{int_to_str(h)}))\n")
     wat_emit("    (local.get $__rk_val_{int_to_str(h)})\n")
   },
-  LHandleWith(h, body, _handler, hname, inits, arm_names) => {
-    // ~> install — build the ONE handler record (handler IS state IS
-    // closure; protocol_handler_is_state_is_closure_is_evidence):
-    //   [_@0][nstate FENCE@4][state@8..][arms per-effect-contiguous]
-    // The record is built regardless of hname; commits reach it through
-    // the resolved record read on LStateSlotStore (the __hrec ladder),
-    // so anonymous and named installs are ONE shape — no global binds.
-    let local_name = "__hstate_{int_to_str(h)}"
-    // INITS are the install's config arguments; the declaration's state
-    // follows them, written by its init fn.
-    let nfields = handler_state_count(hname)
-    let nstate = len(inits) + nfields
-    let total_arms = sum_arm_name_lens(arm_names)
-    // The arms' `<~` lines follow the arms in this record — one ring per
-    // site per INSTALL, so two installs of one handler are two filters.
-    // Read off the same registered arm names the fence is summed from, and
-    // the init fn's after them; each line carries the slot lower assigned it
-    // past the fence.
-    let arm_lines =
-      handler_arm_lines(arm_names) ++ if nfields > 0 { fn_lines_of(init_fn_name(hname)) } else { [] }
-    let size = 8 + 4 * (nstate + total_arms + len(arm_lines))
-    emit_alloc(size, local_name)
-    // FENCE @ offset 4 = nstate — dispatch locates arms fence-relative.
-    wat_emit("(local.get $")
-    wat_emit(local_name)
-    wat_emit(")(i32.const ")
-    wat_emit(int_to_str(nstate))
-    wat_emit(")(i32.store offset=4)\n")
-    // The install's key (`arm_twin_key`), read under the bracket this
-    // install stands in: the arms it runs and the init fn it calls.
-    let enc = arm_install_enc(h)
-    // the config arguments at 8+i*4, first
-    emit_config_writes(local_name, inits)
-    // each effect-group's arms contiguous + its [record, base] entry
-    emit_handler_effect_entries(local_name, nstate, arm_names, enc)
-    // the arms' `<~` rings, past the arms
-    emit_line_mints(arm_lines, local_name)
-    // The state, written by the declaration's init fn with this record as its
-    // $__state — before the world push below, so an init performs in the
-    // installer's world.
-    if nfields > 0 {
-      wat_emit("(local.get ${local_name})(call ${arm_symbol(init_fn_name(hname), enc)})(drop)\n")
-    } else {
-      ()
-    }
-    // The WORLD bracket — every install draws its runtime edge: save the
-    // live chain, cons one [key][entry][parent][install_world] node per
-    // absorbed effect group (entry = the group's [record][base] view built
-    // above; install_world = the saved chain, what the arm dispatch sets
-    // around the arm call), restore after the extent (the same
-    // save/restore shape as the scoped-singleton global below, world
-    // outermost). ONE key: the interned effect name at key@0, walked by
-    // $ev_declaring_node, which reads the arm slot through the entry to
-    // pick the node that DECLARES the op. The second key — the interned
-    // handler name at hkey@16, five bytes on every node of every install —
-    // existed only so a second walk could find a handler BY NAME, and that
-    // walk is gone: naming the handler was never the question, declaring
-    // the op was.
-    wat_emit("(global.get $world_g)(local.set $")
-    wat_emit(local_name)
-    wat_emit("_wprev)\n")
-    each(
-      (g) => {
-        wat_emit("(i32.const ")
-        wat_emit(int_to_str(string_offset(group_ename(g))))
-        wat_emit(")(local.get $")
-        wat_emit(local_name)
-        wat_emit("_")
-        wat_emit(group_ename(g))
-        wat_emit(")(local.get $")
-        wat_emit(local_name)
-        wat_emit("_wprev)(call $world_push)\n")
-      },
-      arm_names
-    )
-    emit_expr(body)
-    // band B k1 — the yield DRIVER. Takes this install's record as its own
-    // __state (the arm call carries it — no global re-read) and is a LOOP
-    // (a re-yield of an owned op re-enters the SAME driver with the new
-    // k). A remainder's performs resolve through the LIVE world chain the
-    // k record froze — the deep-handler law by REPRESENTATION, which the
-    // old "the state_g bracket covers every k(v) re-entry" claim was not:
-    // a k crossing an EXITED inner install found that install's global
-    // restored to 0 while the frozen chain still carried its record (the
-    // mn-world-resume-frozen fixture's silent 30). Body returned normally
-    // → the flag is clear → the loop exits on its first check with the
-    // body's parked value: semantically the ungated leg. A yield of a
-    // FOREIGN op exits with the flag INTACT — it bubbles through this
-    // install to the enclosing driver (or the _start backstop).
-    // Gated on the ONE multishot_ops_of decider (walk_locals reads it
-    // identically); an all-OneShot install emits the pre-k1 bytes exactly.
-    let ms_ops = multishot_ops_of(hname)
-    if len(ms_ops) > 0 {
-      // band B M2b — the driver IS one redrive call: park the body result,
-      // hand (record, parked) to $op___redrive_<hname> (the dispatch loop's
-      // ONE home, shared with every resume flag-arm). A flag still raised
-      // on return is a FOREIGN op — the value falls out of the bracket
-      // with the flag intact and the enclosing boundary sees it (the
-      // bubble, k1's law, unchanged).
-      let hs = int_to_str(h)
-      wat_emit("    (local.set $__hres_{hs})\n")
-      wat_emit("    (local.get $")
-      wat_emit(local_name)
-      wat_emit(")(local.get $__hres_{hs})(call $op___redrive_")
-      wat_emit(hname)
-      wat_emit(")(local.set $__hres_{hs})\n")
-      wat_emit("    (local.get $__hres_{hs})\n")
-    }
-    // world restore — unconditional, mirroring the unconditional save
-    // (world outermost of the two brackets).
-    wat_emit("(local.get $")
-    wat_emit(local_name)
-    wat_emit("_wprev)(global.set $world_g)\n")
-  },
+  LHandleWith(h, body, _handler, hname, inits, arm_names) => emit_install(h, body, hname, inits, arm_names, None),
   LDerive(h, _seed, _body) => // The derivative reading: the install builds no record and pushes no world
-  // — its DERIVED program stands where it stood. Opening the reading zeroes
-  // the tangent ring of every `<~` line its reach ticks, so each line's
-  // history before the extent is held fixed; then the program runs.
+  // — its DERIVED program stands where it stood. Opening the reading
+  // advances the epoch every lane is read against, so state and captures
+  // that live past the extent enter it held fixed, and zeroes the tangent
+  // ring of every `<~` line its reach ticks, so each line's history before
+  // the extent is held fixed; then the program runs.
   match derived_at(h, spec_enc_active()) {
     Some(x) => match x {
       Expansion(r) => {
+        wat_emit("    (global.set $__dt_epoch (i32.add (global.get $__dt_epoch) (i32.const 1)))\n")
         each(emit_ring_zero, r.rings)
         emit_expr(r.body)
       },
@@ -5930,259 +6325,166 @@ fn emit_expr(expr) = match expr {
       wat_emit("    ({rw}.store offset=8 (local.get $__ring_{hs}) (local.get $__fb_{hs}))\n")
     }
   },
-  LPerform(h, disp, args) => // THE ONE PERFORM'S EMIT. Three shapes used to live here and in two other
-  // arms, and they disagreed about the WORLD BRACKET: the evidence arm saved
-  // the world, set it to the node's install world around the arm call and
-  // restored, while the two direct arms called bare. That difference was
-  // observable — an arm's own perform self-dispatched once before escaping,
-  // 52 where the deep-handler law says 51 — and it was possible only because
-  // the bracket was written per-arm. Here the record and the world are
-  // FETCHED by the dispatch and the bracket is emitted once, outside the
-  // branch, so no degree of boundness can mean something different from
-  // another.
-  //
-  // A DERIVATIVE QUERY is not dispatched at all: under its reading derive
-  // replaced it with the value's tangent, and a copy outside every reading
-  // is unreachable by the row — its effect is unhandled anywhere else, and
-  // the reading refuses the closure calls that could carry it inside.
-  if perform_is_query(disp) {
-    wat_emit("    (unreachable)  ;; a derivative query outside its reading\n")
-  } else {
-    let hs = int_to_str(h)
-    // (0) the arm's __state and the world to run it under. A lexical answer
-    // reads the install's own two locals; anything that walks resolves the
-    // node once into evn_<h> and reads both out of it.
-    match disp {
-      PdFrame(ih, _, _) => wat_emit("    (local.get $__hstate_{int_to_str(ih)})\n"),
-      PdWalk(ekey, slot, _, _) => emit_declaring_node(hs, ekey, slot),
-      PdDriver(_) => wat_emit("    (local.get $__state)\n"),
-    }
-    // A PERFORM SPEAKS ITS SITE'S FACE, as a closure call does
-    // (`emit_closure_call`): each argument at the width it is emitted at, the
-    // result at the width the perform node proves. The arm it reaches is
-    // twinned at the install's instance, and the site's types are that
-    // instance's — the tee unifies every perform with the handler's — so the
-    // two faces agree by construction, and `call_indirect`'s structural
-    // match traps LOUDLY where they ever do not. Nothing is boxed: a Float op
-    // costs a Float call. The declared face that stood here (the op's
-    // parameter types, an effect variable signing the word floor) boxed every
-    // wide value crossing a variable's slot — 8 bytes per perform under a
-    // row that said nothing of it, every `fold` over Floats paying it per
-    // element — and reached every arm wider than its declaration through an
-    // adapter (Hβ.emit.generic-op-box-is-unrowed). A driver is not an op and
-    // keeps the word protocol it was written in.
-    match disp {
-      PdDriver(_) => emit_args_word(args),
-      _ => emit_expr_list(args),
-    }
-    // (2) the arm's identity, where the target does not already name it: the
-    // slot form pushes the fn index out of the record's own arm region.
-    // (3) THE WORLD BRACKET, once, for every dispatch — the deep-handler law
-    // by construction. PdDriver is the one shape that must NOT bracket, and
-    // it is not a dispatch: it is a direct call to a synthesized driver
-    // against the caller's own state.
-    match disp {
-      PdDriver(name) => {
-        wat_emit("    (call $op_")
-        wat_emit(name)
-        wat_emit(")\n")
-      },
-      _ => {
-        // The record holds the arm's WORD face, as every fn_ptr does; a site
-        // whose own vector is wide dispatches at the native face.
-        match disp {
-          PdWalk(_, slot, _, ArmSlot) => {
-            emit_arm_index(hs, slot)
-            if vector_is_wide(perform_vector_at(h, args)) {
-              wat_emit("    (global.get $native_face) (i32.add)\n")
-            } else {
-              ()
-            }
-          },
-          _ => (),
-        }
-        wat_emit("    (global.get $world_g)(local.set $evw_")
-        wat_emit(hs)
-        wat_emit(")\n")
-        emit_install_world(disp, hs)
-        match perform_target(disp) {
-          Some(target) => // A direct call names the arm at its own face, the one the site's
-          // arguments were emitted at.
-          wat_emit("    (call ${ref_symbol(target)})\n"),
-          None => {
-            wat_emit("    (call_indirect (type ")
-            wat_emit(perform_ft(h, disp, args))
-            wat_emit("))\n")
-          },
-        }
-        wat_emit("    (global.set $world_g (local.get $evw_")
-        wat_emit(hs)
-        wat_emit("))\n")
-      },
-    }
-    // An op's arm answers at the site's own face; a driver's word result
-    // stands for the wide one the site proves.
-    match disp {
-      PdDriver(_) => emit_wide_deref(repr_of(lookup_ty(h))),
-      _ => (),
-    }
-  },
-  LWasiCall(_h, import_name, args) => {
-    // Stage 4a: direct substrate dispatch. Memory/Alloc ops project to
-    // their instructions (the name IS the op identity, declared in
-    // memory.mn — never an evidence round-trip); a unit-returning
-    // store/copy pushes the kernel-uniform zero word so the statement
-    // law holds. Everything else is a WASM-level import call: NO
-    // __state push (imports don't take a closure record), NO $op_
-    // prefix (the import IS the bridge). Per
-    // PLAN §5.R band E.
-    // A preview1 import's args emit at their DECLARED ABI widths — the
-    // same wasi_import_reprs home the import decl projects from, so a
-    // word arg filling an i64 param (path_open's rights, fd_readdir's
-    // cookie) extends at the boundary instead of type-mismatching.
-    match host_import(import_name) {
-      Some((_, _, preprs, _)) => emit_wasi_args_at_widths(args, preprs, 0),
-      None => emit_expr_list(args),
-    }
-    if import_name == "store_i32" {
-      wat_emit("    (i32.store)(i32.const 0)\n")
-    } else if import_name == "load_i32" {
-      wat_emit("    (i32.load)\n")
-    } else if import_name == "store_i8" {
-      wat_emit("    (i32.store8)(i32.const 0)\n")
-    } else if import_name == "load_i8" {
-      wat_emit("    (i32.load8_u)\n")
-    } else if import_name == "store_f64" {
-      wat_emit("    (f64.store)(i32.const 0)\n")
-    } else if import_name == "load_f64" {
-      wat_emit("    (f64.load)\n")
-    } else if import_name == "mem_copy" {
-      wat_emit("    (memory.copy)(i32.const 0)\n")
-    } else if import_name == "i32_xor" {
-      wat_emit("    (i32.xor)\n")
-    } else if import_name == "i32_or" {
-      wat_emit("    (i32.or)\n")
-    } else if import_name == "i32_and" {
-      wat_emit("    (i32.and)\n")
-    } else if import_name == "i32_shl" {
-      wat_emit("    (i32.shl)\n")
-    } else if import_name == "alloc" {
-      emit_alloc_top()
-    } else if import_name == "ialloc" {
-      // The IMAGE allocator (arena step 1-2 form, memory.mn's own note):
-      // rides the one bump — with no per-decl reset live the spaces are
-      // indistinguishable, so the classification lands at the ROW while
-      // the emission stays $alloc. Step 2b forks this to $ialloc over its
-      // own pointer when the image-map fold draws the boundary, in the
-      // same TRANSITION that lands the reset bracket.
-      emit_alloc_top()
-    } else if import_name == "image_enter" {
-      // The bracket pair (arena 2a — memory.mn's decl carries the
-      // design): the census rides the EXTENT DELTA, never the
-      // allocator's hot path — the outermost enter saves the bump mark,
-      // the matching exit accumulates (bump - mark) into $image_bytes.
-      // The trailing const closes the unit result slot (the heap_reset
-      // idiom). The three globals emit demand-gated beside the memory
-      // decl. The heap line reads through $heap_mark_impl — the call site
-      // is STRATEGY-INVARIANT: the first census print measured 0 on the
-      // wheel because these arms hardcoded $heap_ptr, a global the
-      // threaded module never moves (the live line is the shared cell at
-      // 64), so every delta read heap_ptr − heap_ptr. The neighbor op
-      // (heap_mark) had the right shape the whole time.
-      wat_emit("    (if (i32.eqz (global.get $image_depth))(then (global.set $image_mark (call $heap_mark_impl))))(global.get $image_depth)(i32.const 1)(i32.add)(global.set $image_depth)(i32.const 0)\n")
-    } else if import_name == "image_exit" {
-      wat_emit("    (global.get $image_depth)(i32.const 1)(i32.sub)(global.set $image_depth)(if (i32.eqz (global.get $image_depth))(then (global.set $image_bytes (i32.add (global.get $image_bytes)(i32.sub (call $heap_mark_impl)(global.get $image_mark))))))(i32.const 0)\n")
-    } else if import_name == "image_bytes" {
-      wat_emit("    (global.get $image_bytes)\n")
-    } else if import_name == "heap_mark" {
-      // The heap line's HOME is the strategy's (per-instance global vs the
-      // shared cell) — the impl fn beside $alloc owns it; the call site is
-      // strategy-invariant.
-      wat_emit("    (call $heap_mark_impl)\n")
-    } else if import_name == "world_top" {
-      wat_emit("    (global.get $world_g)\n")
-    } else if import_name == "world_restore" {
-      wat_emit("    (global.set $world_g)(i32.const 0)\n")
-    } else if import_name == "tangent_in" {
-      // The derivative reading's return register (src/derive.mn): a twin's
-      // exit writes its result's tangent, the caller reads it the instant the
-      // call returns — the world register's shape, one f64 per instance.
-      wat_emit("    (global.get $__dt)\n")
-    } else if import_name == "tangent_out" {
-      wat_emit("    (global.set $__dt)(i32.const 0)\n")
-    } else if import_name == "image_key" {
-      // The build's identity word — an immutable global computed at emit
-      // (emit_image_substrate); equal keys ⟺ a restored image's baked
-      // words (table indices, interned offsets) resolve identically.
-      wat_emit("    (global.get $build_key)\n")
-    } else if import_name == "globals_area" {
-      wat_emit("    (call $globals_area_impl)\n")
-    } else if import_name == "globals_save" {
-      wat_emit("    (call $globals_save)(i32.const 0)\n")
-    } else if import_name == "image_restore" {
-      wat_emit("    (call $image_restore)\n")
-    } else if import_name == "heap_reset" {
-      // unit-typed: the call consumes the arg; the (i32.const 0) closes the
-      // result slot — the atomic_store precedent. The impl zeroes the
-      // region before rewinding (virginity restored — see its emission).
-      wat_emit("    (call $heap_reset_impl)(i32.const 0)\n")
-    } else if import_name == "spawn_task" {
-      // The task-record substrate (threading.mn's WasiThreads ops): the
-      // impl fns live beside $alloc in the preamble, emitted only for a
-      // spawning module. The closure argument is already its word face on
-      // the stack — the record IS the crossing unit.
-      wat_emit("    (call $spawn_task_impl)\n")
-    } else if import_name == "join_task" {
-      wat_emit("    (call $join_task_impl)\n")
-    } else if import_name == "thread_id" {
-      // Per-instance identity: 0 on the root instance, the host thread id
-      // on a spawned one (the thread entry stamps it).
-      wat_emit("    (global.get $tid_g)\n")
-    } else if import_name == "atomic_load_i32" {
-      // The atomics have NO handler arm — they ARE the wasm atomic
-      // instruction set on shared memory, the threading peer of the
-      // Memory/Alloc projections above. The name IS the op identity.
-      wat_emit("    (i32.atomic.load)\n")
-    } else if import_name == "atomic_store_i32" {
-      wat_emit("    (i32.atomic.store)(i32.const 0)\n")
-    } else if import_name == "atomic_rmw" {
-      // Dispatch on the RmwOp tag (nullary ctor = its tag word) — the
-      // br_table in the preamble impl, decl order = table order.
-      wat_emit("    (call $atomic_rmw_impl)\n")
-    } else if import_name == "atomic_cmpxchg" {
-      // Two-operand compare-exchange — its own op (the one-operand rmw
-      // shape cannot carry expected+replacement); args stack in the
-      // instruction's own order: addr, expected, replacement.
-      wat_emit("    (i32.atomic.rmw.cmpxchg)\n")
-    } else if import_name == "wait_i32" {
-      // memory.atomic.wait32 takes an i64 timeout; the op declares it i32
-      // (timeout_ns: Int), so extend the top-of-stack timeout in place.
-      wat_emit("    (i64.extend_i32_u)(memory.atomic.wait32)\n")
-    } else if import_name == "notify" {
-      wat_emit("    (memory.atomic.notify)\n")
-    } else if import_name == "fence" {
-      wat_emit("    (atomic.fence)(i32.const 0)\n")
-    } else if import_name == "proc_exit" {
-      // proc_exit is NORETURN — it terminates the process, so the code
-      // after it is unreachable. Emit (unreachable) so the enclosing fn's
-      // result type is satisfied (op_fail_exit_fail is `(result i32)` but
-      // its body ends here). Matches the seed's `(call $proc_exit)(unreachable)`.
-      wat_emit("    (call $proc_exit)(unreachable)\n")
-    } else {
-      wat_emit("    (call $")
-      wat_emit(import_name)
-      wat_emit(")")
-      // A unit-returning import leaves nothing on the stack; the statement
-      // law expects the kernel-uniform zero word (the store/copy/fence
-      // precedent above, read here from the table's result column instead
-      // of a per-op arm — measured 2026-09-17 as wat2wasm's "type mismatch
-      // in drop" on the first unit-returning host op, host_wat_write).
+  LPerform(h, disp, args) => emit_perform(h, disp, args, false),
+  LWasiCall(h, import_name, args) => match derive_op_of(import_name) {
+    Some(op) => emit_derive_op(h, op, args),
+    None => {
+      // Stage 4a: direct substrate dispatch. Memory/Alloc ops project to
+      // their instructions (the name IS the op identity, declared in
+      // memory.mn — never an evidence round-trip); a unit-returning
+      // store/copy pushes the kernel-uniform zero word so the statement
+      // law holds. Everything else is a WASM-level import call: NO
+      // __state push (imports don't take a closure record), NO $op_
+      // prefix (the import IS the bridge). Per
+      // PLAN §5.R band E.
+      // A preview1 import's args emit at their DECLARED ABI widths — the
+      // same wasi_import_reprs home the import decl projects from, so a
+      // word arg filling an i64 param (path_open's rights, fd_readdir's
+      // cookie) extends at the boundary instead of type-mismatching.
       match host_import(import_name) {
-        Some((_, _, _, None)) => wat_emit("(i32.const 0)\n"),
-        Some((_, _, _, Some(_))) => wat_emit("\n"),
-        None => wat_emit("\n"),
+        Some((_, _, preprs, _)) => emit_wasi_args_at_widths(args, preprs, 0),
+        None => emit_expr_list(args),
       }
-    }
+      if import_name == "store_i32" {
+        wat_emit("    (i32.store)(i32.const 0)\n")
+      } else if import_name == "load_i32" {
+        wat_emit("    (i32.load)\n")
+      } else if import_name == "store_i8" {
+        wat_emit("    (i32.store8)(i32.const 0)\n")
+      } else if import_name == "load_i8" {
+        wat_emit("    (i32.load8_u)\n")
+      } else if import_name == "store_f64" {
+        wat_emit("    (f64.store)(i32.const 0)\n")
+      } else if import_name == "load_f64" {
+        wat_emit("    (f64.load)\n")
+      } else if import_name == "mem_copy" {
+        wat_emit("    (memory.copy)(i32.const 0)\n")
+      } else if import_name == "i32_xor" {
+        wat_emit("    (i32.xor)\n")
+      } else if import_name == "i32_or" {
+        wat_emit("    (i32.or)\n")
+      } else if import_name == "i32_and" {
+        wat_emit("    (i32.and)\n")
+      } else if import_name == "i32_shl" {
+        wat_emit("    (i32.shl)\n")
+      } else if import_name == "alloc" {
+        emit_alloc_top()
+      } else if import_name == "ialloc" {
+        // The IMAGE allocator (arena step 1-2 form, memory.mn's own note):
+        // rides the one bump — with no per-decl reset live the spaces are
+        // indistinguishable, so the classification lands at the ROW while
+        // the emission stays $alloc. Step 2b forks this to $ialloc over its
+        // own pointer when the image-map fold draws the boundary, in the
+        // same TRANSITION that lands the reset bracket.
+        emit_alloc_top()
+      } else if import_name == "image_enter" {
+        // The bracket pair (arena 2a — memory.mn's decl carries the
+        // design): the census rides the EXTENT DELTA, never the
+        // allocator's hot path — the outermost enter saves the bump mark,
+        // the matching exit accumulates (bump - mark) into $image_bytes.
+        // The trailing const closes the unit result slot (the heap_reset
+        // idiom). The three globals emit demand-gated beside the memory
+        // decl. The heap line reads through $heap_mark_impl — the call site
+        // is STRATEGY-INVARIANT: the first census print measured 0 on the
+        // wheel because these arms hardcoded $heap_ptr, a global the
+        // threaded module never moves (the live line is the shared cell at
+        // 64), so every delta read heap_ptr − heap_ptr. The neighbor op
+        // (heap_mark) had the right shape the whole time.
+        wat_emit("    (if (i32.eqz (global.get $image_depth))(then (global.set $image_mark (call $heap_mark_impl))))(global.get $image_depth)(i32.const 1)(i32.add)(global.set $image_depth)(i32.const 0)\n")
+      } else if import_name == "image_exit" {
+        wat_emit("    (global.get $image_depth)(i32.const 1)(i32.sub)(global.set $image_depth)(if (i32.eqz (global.get $image_depth))(then (global.set $image_bytes (i32.add (global.get $image_bytes)(i32.sub (call $heap_mark_impl)(global.get $image_mark))))))(i32.const 0)\n")
+      } else if import_name == "image_bytes" {
+        wat_emit("    (global.get $image_bytes)\n")
+      } else if import_name == "heap_mark" {
+        // The heap line's HOME is the strategy's (per-instance global vs the
+        // shared cell) — the impl fn beside $alloc owns it; the call site is
+        // strategy-invariant.
+        wat_emit("    (call $heap_mark_impl)\n")
+      } else if import_name == "world_top" {
+        wat_emit("    (global.get $world_g)\n")
+      } else if import_name == "world_restore" {
+        wat_emit("    (global.set $world_g)(i32.const 0)\n")
+      } else if import_name == "tangent_in" {
+        // The derivative reading's return register (src/derive.mn): a twin's
+        // exit writes its result's tangent, the caller reads it the instant the
+        // call returns — the world register's shape, one f64 per instance.
+        wat_emit("    (global.get $__dt)\n")
+      } else if import_name == "tangent_out" {
+        wat_emit("    (global.set $__dt)(i32.const 0)\n")
+      } else if import_name == "image_key" {
+        // The build's identity word — an immutable global computed at emit
+        // (emit_image_substrate); equal keys ⟺ a restored image's baked
+        // words (table indices, interned offsets) resolve identically.
+        wat_emit("    (global.get $build_key)\n")
+      } else if import_name == "globals_area" {
+        wat_emit("    (call $globals_area_impl)\n")
+      } else if import_name == "globals_save" {
+        wat_emit("    (call $globals_save)(i32.const 0)\n")
+      } else if import_name == "image_restore" {
+        wat_emit("    (call $image_restore)\n")
+      } else if import_name == "heap_reset" {
+        // unit-typed: the call consumes the arg; the (i32.const 0) closes the
+        // result slot — the atomic_store precedent. The impl zeroes the
+        // region before rewinding (virginity restored — see its emission).
+        wat_emit("    (call $heap_reset_impl)(i32.const 0)\n")
+      } else if import_name == "spawn_task" {
+        // The task-record substrate (threading.mn's WasiThreads ops): the
+        // impl fns live beside $alloc in the preamble, emitted only for a
+        // spawning module. The closure argument is already its word face on
+        // the stack — the record IS the crossing unit.
+        wat_emit("    (call $spawn_task_impl)\n")
+      } else if import_name == "join_task" {
+        wat_emit("    (call $join_task_impl)\n")
+      } else if import_name == "thread_id" {
+        // Per-instance identity: 0 on the root instance, the host thread id
+        // on a spawned one (the thread entry stamps it).
+        wat_emit("    (global.get $tid_g)\n")
+      } else if import_name == "atomic_load_i32" {
+        // The atomics have NO handler arm — they ARE the wasm atomic
+        // instruction set on shared memory, the threading peer of the
+        // Memory/Alloc projections above. The name IS the op identity.
+        wat_emit("    (i32.atomic.load)\n")
+      } else if import_name == "atomic_store_i32" {
+        wat_emit("    (i32.atomic.store)(i32.const 0)\n")
+      } else if import_name == "atomic_rmw" {
+        // Dispatch on the RmwOp tag (nullary ctor = its tag word) — the
+        // br_table in the preamble impl, decl order = table order.
+        wat_emit("    (call $atomic_rmw_impl)\n")
+      } else if import_name == "atomic_cmpxchg" {
+        // Two-operand compare-exchange — its own op (the one-operand rmw
+        // shape cannot carry expected+replacement); args stack in the
+        // instruction's own order: addr, expected, replacement.
+        wat_emit("    (i32.atomic.rmw.cmpxchg)\n")
+      } else if import_name == "wait_i32" {
+        // memory.atomic.wait32 takes an i64 timeout; the op declares it i32
+        // (timeout_ns: Int), so extend the top-of-stack timeout in place.
+        wat_emit("    (i64.extend_i32_u)(memory.atomic.wait32)\n")
+      } else if import_name == "notify" {
+        wat_emit("    (memory.atomic.notify)\n")
+      } else if import_name == "fence" {
+        wat_emit("    (atomic.fence)(i32.const 0)\n")
+      } else if import_name == "proc_exit" {
+        // proc_exit is NORETURN — it terminates the process, so the code
+        // after it is unreachable. Emit (unreachable) so the enclosing fn's
+        // result type is satisfied (op_fail_exit_fail is `(result i32)` but
+        // its body ends here). Matches the seed's `(call $proc_exit)(unreachable)`.
+        wat_emit("    (call $proc_exit)(unreachable)\n")
+      } else {
+        wat_emit("    (call $")
+        wat_emit(import_name)
+        wat_emit(")")
+        // A unit-returning import leaves nothing on the stack; the statement
+        // law expects the kernel-uniform zero word (the store/copy/fence
+        // precedent above, read here from the table's result column instead
+        // of a per-op arm — measured 2026-09-17 as wat2wasm's "type mismatch
+        // in drop" on the first unit-returning host op, host_wat_write).
+        match host_import(import_name) {
+          Some((_, _, _, None)) => wat_emit("(i32.const 0)\n"),
+          Some((_, _, _, Some(_))) => wat_emit("\n"),
+          None => wat_emit("\n"),
+        }
+      }
+    },
   },
   LInvariantFailure(_h, invariant) => // Compiler-created executable boundaries have no productive-under-error
   // value. Preserve the typed invariant in the WAT diagnostic and terminate;
@@ -6622,7 +6924,14 @@ fn perform_vector_at(h, args) = site_vector(args, repr_of(lookup_ty(h)))
 // disagreement is a LOUD type trap, never a silent value. A tail call keeps
 // its true `return_call` at any width, because the native face's result is
 // the site's own.
-fn emit_closure_call(h, func, args, tail) = {
+fn emit_closure_call(h, func, args, tail) = emit_closure_call_at(h, func, args, tail, false)
+
+// The call at its face: the derivative face under the reading (`jvp`), one
+// table half past the word face, where the callee's derivative twin stands
+// with a tangent slot after every Float parameter — the record's own lanes
+// carrying its captures' tangents; the native face where the site's vector
+// is wide; the word face otherwise.
+fn emit_closure_call_at(h, func, args, tail, jvp) = {
   let hs = int_to_str(h)
   let v = call_site_vector(func, args, h)
   let op = if tail { "return_call_indirect" } else { "call_indirect" }
@@ -6630,7 +6939,13 @@ fn emit_closure_call(h, func, args, tail) = {
   wat_emit("    (local.set $call_{hs})\n    (local.get $call_{hs})\n")
   emit_expr_list(args)
   wat_emit("    (local.get $call_{hs}) (i32.load offset=0)\n")
-  if vector_is_wide(v) { wat_emit("    (global.get $native_face) (i32.add)\n") } else { () }
+  if jvp {
+    wat_emit("    (global.get $jvp_face) (i32.add)\n")
+  } else if vector_is_wide(v) {
+    wat_emit("    (global.get $native_face) (i32.add)\n")
+  } else {
+    ()
+  }
   wat_emit("    ({op} (type {vector_ft_name(v)}))\n")
 }
 

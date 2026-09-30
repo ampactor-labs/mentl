@@ -6038,9 +6038,10 @@ precedent: a floor written and never said is the class), never a bare
 trap, and the finding is the first thing this peer lands.
 
 `Hβ.lower.ad-is-a-demanded-projection` — FORWARD MODE LANDED 2026-09-28
-(L4a of the Pulse sprint, pin 0976f1d7da263d74); the derivative across dynamic dispatch
-(L4a′, `Hβ.derive.closure-twins` / `Hβ.derive.arm-twins`) and reverse mode
-(L4b, `Hβ.derive.transpose`) OPEN. It supersedes and RETRACTS
+(L4a of the Pulse sprint, pin 0976f1d7da263d74); the derivative across dynamic
+dispatch LANDED 2026-09-30 (L4a′, `Hβ.derive.closure-twins` /
+`Hβ.derive.arm-twins`, both CLOSED); reverse mode (L4b,
+`Hβ.derive.transpose`) OPEN. It supersedes and RETRACTS
 `Hβ.ml.autodiff-as-multishot`, which named the wrong axis: differentiation
 needs no multi-shot resumption, it needs a projection. THE CLAIM: one chain
 is a real-time-safe effect under its ordinary reading and a differentiable
@@ -6443,23 +6444,99 @@ and the call's emit), so a partial over a Float lambda answers a Float
 (mn-partial-local-wide, 42). `Hβ.lower.partial-local-callee` closes with
 it.
 
-`Hβ.derive.closure-twins` — OPEN (L4a′). A lambda minted inside the reading's
-extent mints its JVP twin and a record carrying its captures' lanes, and
-every function-typed parameter of a twin is a JVP closure, so `fold(0.0, (a,
-x) => a + w * x, xs)` differentiates in `w`. Today a tangent reaching a call
-through a function value is lost there and a `d` of it refuses
-(mn-derive-lost-refuses.mn). A closure minted outside the extent and called
-with an active argument still refuses: its derivative program was never
-demanded.
+`Hβ.derive.closure-twins` — ✅ CLOSED 2026-09-30 (L4a′). A function value
+is reached through a record the reading cannot see past statically, so the
+record carries what the reading knows: under a reading every record with
+captures — a closure's, an install's — holds one LANE per capture, an epoch
+word and an f64, sixteen bytes per capture BEFORE the header at
+`rec − 16·(n − i)` for capture i of the n the record already counts at
+offset 4 (so no capture, line or k-tail offset the emit ever wrote moves,
+and a module with no reading allocates none — Law 7). A mint under the
+reading writes each active Float capture's tangent into its lane
+(`mint_lanes`, src/derive.mn) and a twin reads its captures' lanes
+(`lane_read`) where a top-level twin reads its parameters' tangents; a
+lane's epoch is compared with the reading's (`$__dt_epoch`, advanced where
+each `LDerive` opens), so a lane no reading wrote, or an earlier one did,
+reads as zero — captures and state that live past the extent enter it held
+fixed, which is the declared semantics measured (mn-derive-closure-captures:
+a mint under the reading answers 3, the same body minted before it 0).
+Every symbol a call through a value can reach carries a DERIVATIVE FACE:
+the twin keyed at every Float parameter (`face_facts`), a third table half
+past the word and native faces (`$jvp_face`, `emit_fn_table`), demanded for
+every symbol whose signature is a site's (`dv_face`, matched by the
+signature's repr code — the same over-approximation `call_indirect` makes,
+and its structural match refuses loudly where a face is reached that was
+never demanded: `$__jvp_absent`). A call through a value under the reading
+(`jvp_call`) reaches `fn_ptr + $jvp_face`, passes every Float's tangent
+beside it (zero where the value does not move) and reads a Float result's
+tangent from the register, at any depth of dynamic dispatch; a tail call
+keeps its tail form, the callee writing the register. A function value's
+activity is its own kind now (`f` in a twin's key: it carries its tangents
+in its record, no slot beside it), where `at_width` had made every active
+non-Float value lost. Measured: mn-derive-closure-call (6, the program that
+was mn-derive-lost-refuses), mn-derive-closure-captures (30),
+mn-derive-fold (60 — the closure through the prelude's fold, its record
+stored in the handler's config and called from the arm), and the
+scheme's one refusal, kept static: a mint under the reading whose capture's
+tangent was lost refuses at the mint, whether or not a `d` ever asks
+(mn-derive-lost-capture-refuses), because the record's later readers could
+not know. A `<~` line a closure record owns has no tangent ring the reading
+reaches (`Hβ.derive.closure-line-tangent`); the face demand by type is the
+named over-approximation (`Hβ.derive.face-demand-is-by-type`).
 
-`Hβ.derive.arm-twins` — OPEN (L4a′). A perform whose argument is active runs
-its arm as forward code, so the tangent stops there, and an arm that may
-tick a line marks every shared line's tangent lost. The form: a handler
-whose arms an active perform reaches carries a JVP arm region after its
-arms, demanded statically for every handler declaring the op; the JVP
-perform walks to the same record and calls the JVP arm; an active state
-write refuses. This is what makes scene 1's distortion perform — not only
-its transfer function — differentiable.
+`Hβ.derive.arm-twins` — ✅ CLOSED 2026-09-30 (L4a′). A perform enters its
+arm under the reading. A dispatch that names the install it answers from
+(`PdFrame`) calls the arm's derivative twin directly — demanded at the
+perform (`dv_arm_face`), keyed by the install, the op and the bracket, read
+by the emit through `arm_face_at` — and a walking dispatch (`PdWalk`,
+either target) reaches whatever record the world chain finds and calls its
+arm at the derivative face, `arm_idx + $jvp_face`, so an arm twinned per
+install (R0b) is reached at its own instance. The install record's lanes
+carry the config and state tangents: an install under the reading writes
+each active Float config's tangent beside the config (`jvp_install`) and
+runs the declaration's init as its derivative twin, so a state field born
+from a config carries the config's tangent from its first read
+(mn-derive-fold's `acc = init`); a `resume … with` write carries the value's
+tangent into the field's lane — zero when the value does not move, so an
+earlier write's tangent is never read again as the new value's — and a
+`resume(v)` hands the tangent back through the register. State the reading
+did not write reads as zero (the epoch), which is how an install outside the
+reading enters held fixed and is differentiated from the first write inside
+(mn-derive-state-outside, 40, against 50 for a reading that credited the
+earlier write; mn-derive-state-inside, 70). A multi-shot install, and a
+driver's perform, stay forward code the reading does not enter (the
+remainder is a continuation), and a perform with a lost argument runs its
+arm forward, its result lost. Measured beside the micros
+(mn-derive-perform-args, 90: the direct form from the installing frame and
+the walking form from a callee): tests/frontier/derive-crucible/distort.mn,
+scene 1's distortion PERFORM under `spectral_flux_distort`, in the drive and
+in the first sample — whose influence on every later sample runs only
+through the envelopes the arm keeps in its state — against the central
+difference of the same chain under fresh installs, 12 of 12 to 1e-5 (the
+boot refused it: the tangent stopped at the perform). What it cost: the
+`touching` set counts every perform and every call through a value, so a
+callee that performs is twinned wherever the extent calls it — necessary,
+since any arm may hold active state.
+
+`Hβ.derive.closure-line-tangent` — NAMED 2026-09-30 (L4a′). A `<~` line a
+closure record owns (`LhSlot`) has its ring in the record past the captures
+(L2); its tangent ring would sit beside it, allocated with the record and
+zeroed where a reading opens, exactly as a static line's rides an instance
+global (`LhStaticJvp`). Until it does, a value passing through such a line
+under the reading is lost there (`LwClosureLine`) and a `d` of it refuses.
+Scene 1's filter makers return closures with `<~` lines, so a reading over
+a filtered chain meets this first.
+
+`Hβ.derive.face-demand-is-by-type` — NAMED 2026-09-30 (L4a′). A site's
+derivative face is demanded of every symbol whose signature matches the
+site's — the same over-approximation `call_indirect` itself makes, so a
+face twin is generated for a function the site could never reach, and a
+refusal inside such a twin (a continuation standing in it, a lost capture
+at a mint in it) refuses a program that never runs it. The ultimate form
+reads which mints reach which sites off the graph — the closure-flow edge
+the judgment could draw (`Hβ.derive.derivative-is-source`'s territory) —
+and demands exactly those; until it does, a refusal inside a face twin
+names the twin and the site's signature.
 
 `Hβ.derive.transpose` — OPEN (L4b). Reverse mode from the closed tangent
 vocabulary: the answer in O(one pass) when the seed is large and the output

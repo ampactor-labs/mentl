@@ -1147,4 +1147,21 @@ authored_ref_max: 708
 # m3 leg) and 796,472 KB (the m4 leg that became boot 523f1732), so the
 # ceiling is 805,000: ~1% over the highest reading of the landed form. A
 # raise bought by a cost the same landing then deleted is not kept.
-selfcompile_peak_kb_max: 805000
+# RAISED 805,000 -> 832,000 at L4a′ (2026-09-30): the derivative crosses a
+# function value and a handler's arms through the record (tangent lanes
+# before a record's header, a third fn-table face, src/derive.mn's face and
+# touching walks — every one behind `derivative_demanded()`, so a module with
+# no reading runs none of it). Fixed input first: the boot (0bc95063)
+# compiled the landed source at 374,525,640 / 618,737,888 / 729,186,584
+# bytes at the judgment's high-water, lowering's end and the module written,
+# peak 822,908–823,844 KB — the boot itself over the old ceiling on this
+# source; the new compiler on that SAME source reads 374,525,712 /
+# 618,737,960 / 729,203,272 — +72 bytes at the first two marks and +16.7 KB
+# at the last, the empty derivative registry every plan carries — at
+# 821,316–823,860 KB (the march's m3 leg and its two re-reads). The rise is
+# the source: +759 net wheel lines (src/derive.mn +432,
+# src/backends/wasm.mn +315, src/lower.mn +12), +25,068 KB over the pin's
+# 798,792 KB, ~33 KB per line through a compiler that reclaims nothing.
+# Same rule: ~1% over the highest reading of the landed form, the m3 leg's
+# 823,860 KB.
+selfcompile_peak_kb_max: 832000

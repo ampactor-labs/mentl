@@ -1,0 +1,31 @@
+// expect: refuse E_DerivativeUnreachable
+// A function value minted inside the reading may not capture a value whose
+// tangent was lost. The closure's record carries a lane per capture, and a
+// lost tangent has no lane to ride, so a call made later through the value —
+// from forward code the reading cannot see into — would answer with a slope
+// the program never has. The reading refuses at the mint, naming where the
+// tangent was lost, whether or not a `d` ever asks.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn main() -> Int = {
+  let w = 2.0
+  let slope = {
+    let p = (w, 1.0)
+    let f = {
+      v => match p {
+        (a, _) => a * v,
+      },
+    }
+    d(f(3.0))
+  } ~> grad(w)
+  float_to_int(slope)
+}

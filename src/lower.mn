@@ -7265,6 +7265,18 @@ fn arm_install_enc(ih) = {
   if spec_enc_is_floor(e) { "" } else { e }
 }
 
+// The arm fn an install runs: the twin its key names, else the arm as
+// declared — a floor key, or a twin past the polymorphic-recursion cap,
+// whose sites read the base as every capped body's do. The emit names an
+// install's arms and init by it, and the derivative reading demands the
+// same symbol's twin at a perform the install answers.
+fn arm_symbol(arm: String, enc: String) = if byte_len(enc) == 0 {
+  arm
+} else {
+  let m = spec_mangle(arm, enc)
+  if spec_twin_known(m) { m } else { arm }
+}
+
 // Whether any install of this handler can run twinned arms: a quantified
 // variable in its scheme, in its config or its effect's instance. A perform
 // no install of it answers in its own frame then reaches the arm through the

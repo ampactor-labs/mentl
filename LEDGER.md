@@ -35,6 +35,113 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-30 · pin 8ee3d09a071eb5b5 (CLEAN m2 == m3) · THE DERIVATIVE CROSSES A FUNCTION VALUE AND A HANDLER'S ARMS THROUGH THE RECORD.
+  L4a′. The forward reading (L4a) treated every call through a function
+  value and every perform as forward code: a tangent reaching one was lost
+  there and a `d` of it refused (`jvp_dynamic`'s `LwClosureCall`, `jvp_op`'s
+  `LwPerform`), and a handler's state was invisible to it — an install's
+  config was a store into memory (`dv_store`), an arm's `resume … with` the
+  same. So `d(fold(0.0, (a, x) => a + w * x, xs))` answered ZERO with no
+  diagnostic on boot 0bc95063 (the `result()` arm read the accumulator as
+  forward code and its result was "inactive"), as did a total accumulated by
+  a stateful handler inside or outside the reading (mn-derive-fold,
+  mn-derive-state-inside, mn-derive-state-outside: exit 0 for 60, 70, 40) —
+  the one output the reading may never produce — while a closure over the
+  seed and a perform with an active argument refused (mn-derive-closure-call,
+  mn-derive-closure-captures, mn-derive-perform-args) and the frontier's
+  distortion chain refused at its perform.
+  **The form.** Handler = state = closure, read once more: a function value
+  and an install are reached through a RECORD the reading cannot see past
+  statically, so the record carries what the reading knows. Under a reading
+  every record with captures — a closure's, an install's — holds one LANE
+  per capture, an epoch word and an f64, sixteen bytes per capture BEFORE its
+  header at `rec − 16·(n − i)` for capture i of the n the record already
+  counts at offset 4 (`emit_record_alloc`, src/backends/wasm.mn): no capture,
+  line or k-tail offset the emit ever wrote moves, and a module with no
+  reading allocates none (Law 7). A mint under the reading writes each
+  active Float capture's tangent into its lane (`mint_lanes`), an install
+  writes each active Float config's beside the config and runs the
+  declaration's init as its derivative twin (`jvp_install`), an arm's
+  `resume … with` writes the value's tangent beside the field — zero when
+  the value does not move, so an earlier write's tangent is never read as
+  the new value's (`state_lane`) — and a twin reads its captures' lanes
+  (`jvp_upval`, `lane_read`) where a top-level twin reads its parameters'
+  tangents. A lane's epoch is compared with the reading's (`$__dt_epoch`,
+  advanced where each `LDerive` opens): a lane no reading wrote, or an
+  earlier one did, reads as zero, which is how captures and state that live
+  past the extent enter it held fixed — the declared semantics, measured
+  (a mint before the install answers 0, the same body minted under it 3).
+  Every symbol a call through a value or a walking perform can reach
+  carries a DERIVATIVE FACE: the twin keyed at every Float parameter
+  (`face_facts`, src/derive.mn), a third table half past the word and native
+  faces (`$jvp_face`, `emit_fn_table`; `$__jvp_absent` where none was
+  demanded, a stub no site's signature matches, so `call_indirect` refuses
+  loudly), demanded for every symbol whose signature is a site's
+  (`dv_face`). A call through a value under the reading (`jvp_call`)
+  reaches `fn_ptr + $jvp_face`, passes every Float's tangent beside it and
+  reads a Float result's tangent from the register; a dispatch naming its
+  install (`PdFrame`) calls the arm twin the reading demanded there
+  (`dv_arm_face`, read by the emit through `arm_face_at` by install, op and
+  bracket); a walking dispatch reaches whatever record the chain finds and
+  calls its arm at the face. A function value's activity is its own kind
+  (`f` in a twin's key: it carries its tangents in its record), where
+  `at_width` had made every active non-Float value lost; the `touching` set
+  counts every perform and every call through a value, since any record
+  they reach may hold an active tangent. The scheme's one refusal is kept
+  STATIC: a mint, an install or a state write under the reading that would
+  store a LOST tangent into a record refuses where it stands
+  (mn-derive-lost-capture-refuses), since the record's later readers could
+  not know; `d` of a lost value refuses as before (mn-derive-lost-refuses,
+  re-homed on an aggregate).
+  **Measured.** Eight micros RED-first on boot 0bc95063 and green through
+  m2 — mn-derive-closure-call (6), -closure-captures (30), -fold (60,
+  through the prelude's fold: the closure stored in the handler's config and
+  called from the arm, the accumulator's state, the perform from three calls
+  down), -state-inside (70), -state-outside (40, against 50 for a reading
+  that credited the write before it), -perform-args (90: the direct form
+  from the installing frame and the walking form from a callee), and the
+  two refusals — the four L4a micros unchanged, and the frontier's new
+  `derive-distort`: scene 1's distortion PERFORM under
+  `spectral_flux_distort`, in the drive and in the first sample, whose
+  influence on every later sample runs only through the envelopes the arm
+  keeps in its state, 12 of 12 against the central difference of the same
+  chain under fresh installs to 1e-5 (tests/frontier/derive-crucible/
+  distort.mn; the boot refused it at the perform).
+  **Kills.** (1) "The lanes go after the record's lines" — a lane's offset
+  would then need the line count, which no record carries and which the
+  arm's twin, emitting under the install's layout, cannot read; before the
+  header the offset reads off the count at offset 4 and nothing static is
+  needed anywhere. (2) "One epoch per record, zeroed at the first write of
+  a new reading" — the first write would stamp the record current while its
+  other lanes still held the earlier reading's values; one epoch PER LANE
+  needs no fill and no lane count. (3) "A lost capture at a mint is a
+  runtime mark the face traps on" — a trap for a class the reading can see
+  statically is the L0-era compiled-and-trapped shape; the mint refuses.
+  (4) "A dynamic call with inactive arguments can stay forward" — the
+  callee's record may carry active captures the site cannot see (a closure
+  over the seed passed through inactive code), and a stateless arm may read
+  active state; every call through a value and every OneShot perform takes
+  the face. (5) "The type section has every vector" — it walked the primal
+  tree, and the reading's calls through the face name a vector no primal
+  site wrote (`$ft_idd_d`, undefined at assembly on the first m2); the
+  expansions and the twins are walked under their brackets now
+  (`derived_vector_collect`). (6) The first march REFUSED the repin at the
+  cost ratchet — 821,316 KB, the min of three, over the 805,000 ceiling —
+  and the fixed-input probe ruled it source, not behavior: the boot
+  (0bc95063) compiling the landed source reads 374,525,640 / 618,737,888 /
+  729,186,584 bytes at the judgment's high-water, lowering's end and the
+  module written, peak 822,908–823,844 KB (the boot itself over the old
+  ceiling on this source), and the new compiler on that SAME source reads
+  374,525,712 / 618,737,960 / 729,203,272 — +72 bytes at the first two
+  marks, +16.7 KB at the last, the empty derivative registry every plan
+  carries, every derive walk being behind `derivative_demanded()`. The
+  rise is +759 net wheel lines at ~33 KB per line through a compiler that
+  reclaims nothing; the ceiling is 832,000 with that record in
+  tools/verify-baseline.txt. Battery 243/243 (236/236 through the march's
+  own m2 leg), crown 102/102, frontier 445 pass / 0 red / 2 expected-red
+  (the three new lines are `derive-distort`'s compile, assemble and run).
+  Cost at the pin: m3 leg 11.87 s wall · 802 MB peak RSS (821,892 KB),
+  CLEAN m2 == m3, 425,252 WAT lines, census 0.
 - 2026-09-30 · pin 0bc95063dbe7c4a2 (TRANSITION m3 == m4) · A CALL'S PRODUCT IS THE JUDGMENT'S, WRITTEN ONCE AT THE CALL.
   R0g. The lowering resolved every call a SECOND time, by name against the
   module env, blind to the scope the call stands in: `resolve_call_args`

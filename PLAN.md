@@ -1450,6 +1450,41 @@ and this is the STATE.
   needs the callee's return — both closed with it
   (`Hβ.lower.callee-resolved-by-name-in-the-module-env` CLOSED, nine
   fixtures RED-first).
+- **THE DERIVATIVE CROSSES A FUNCTION VALUE AND A HANDLER'S ARMS THROUGH
+  THE RECORD — LANDED 2026-09-30 (L4a′).** The forward reading (L4a) stopped
+  at every call through a value and every perform: the tangent was lost
+  there and a `d` of it refused, and a handler's state was invisible to it —
+  `d(fold(0.0, (a, x) => a + w * x, xs))` and a total accumulated by a
+  stateful handler answered ZERO with no diagnostic on boot 0bc95063
+  (mn-derive-fold, mn-derive-state-inside/-outside), the one output the
+  reading may never produce. Handler = state = closure, read once more:
+  under a reading every record with captures carries a LANE per capture —
+  an epoch and an f64, sixteen bytes per capture before its header, so no
+  offset the emit ever wrote moves and a module with no reading allocates
+  none — a mint under the reading writes its active captures' tangents
+  there, an arm writes each state field's beside the field, and a twin
+  reads its captures' lanes; a lane's epoch is compared with the reading's,
+  so what lived before the extent enters it held fixed (a mint before the
+  install answers 0, the same body minted under it 3 —
+  mn-derive-closure-captures). Every symbol a call through a value or a
+  walking perform can reach carries a DERIVATIVE FACE, the twin keyed at
+  every Float parameter, a third table half past the word and native faces,
+  demanded for every symbol whose signature is a site's — the
+  `call_indirect` over-approximation, named (`Hβ.derive.face-demand-is-by-
+  type`) — and a dispatch naming its install calls the arm twin the reading
+  demanded there. Measured: eight micros RED-first (6, 30, 60, 70, 40, 90
+  and two refusals) and the frontier's `derive-distort` — scene 1's
+  distortion PERFORM under its stateful handler, in the drive and in the
+  first sample, whose influence on every later one runs only through the
+  envelopes the arm keeps, 12 of 12 against the central difference of the
+  same chain. The one refusal the scheme keeps static: a mint, an install
+  or a state write under the reading that would store a LOST tangent into a
+  record refuses where it stands, since the record's later readers could
+  not know (`Hβ.derive.closure-twins`, `Hβ.derive.arm-twins` CLOSED; a `<~`
+  line a closure record owns is `Hβ.derive.closure-line-tangent`). What it
+  cost: every callee that performs or calls through a value is twinned
+  wherever an extent calls it, since any record it reaches may hold an
+  active tangent.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

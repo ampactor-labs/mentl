@@ -766,12 +766,32 @@ forward one, so there is no tape and no second copy of the chain to fall out of
 step, and the step above leaves the heap where it found it. The seed is a Float
 variable in scope. State that lives past the extent — a `<~` line, a handler's
 state — enters it held fixed, and a `<~` line inside the extent carries its
-tangent as a recurrence of its own. What the reading cannot carry, it refuses: `d`
-of a value whose tangent was lost — through a call to a function value, a
-perform, an aggregate, a line ticked by forward code, another `d` — is
-`E_DerivativeUnreachable` at the query, naming where it was lost, never a slope
-of zero. A `d` outside every reading leaves `Derivative` unhandled at the root.
-Reverse mode, chosen by cost, is `Hβ.derive.transpose`.
+tangent as a recurrence of its own.
+
+**The reading crosses a function value and a handler's arms through the record
+that holds them** (real, 2026-09-30). Handler = state = closure, read once more:
+a closure minted under the reading carries its captures' tangents in its own
+record, beside the captures, so `d(f(3.0))` for `f = { v => w * v }` minted
+under `~> grad(w)` is 3 wherever `f` is called — through `apply(f, x)`, through
+a handler's config, through the prelude's `fold`. A perform enters its arm's
+derivative program, and a state field written by `resume … with` carries its
+tangent beside the field, so `fold(0.0, (a, x) => a + w * x, xs)` differentiates
+in `w` through the closure, the accumulator's state and the perform that feeds
+it, and scene 1's distortion differentiates through the envelopes its handler
+keeps. A function value or an install minted BEFORE the reading opened is a
+free variable of the extent and is held fixed: its captures and its state carry
+no tangent where the reading opens, and are differentiated from the first write
+inside it, so `d(g(3.0))` for the same `g` minted before the install is 0.
+
+What the reading cannot carry, it refuses: `d` of a value whose tangent was lost
+— into an aggregate, across a multi-shot perform, off a line ticked by forward
+code, through another `d` — is `E_DerivativeUnreachable` at the query, naming
+where it was lost, never a slope of zero; and a mint, an install or a state
+write that would store a lost tangent into a record refuses where it stands,
+since the record's later readers could not know. A `d` outside every reading
+leaves `Derivative` unhandled at the root. Reverse mode, chosen by cost, is
+`Hβ.derive.transpose`; a `<~` line a closure record owns is
+`Hβ.derive.closure-line-tangent`.
 
 ### `<~` — feedback (cycle closure)
 
@@ -2391,7 +2411,7 @@ token, so there is nothing to lift.*
 | `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident — the bump heap never frees — so it is a use-after-free the day §5.O layer 3's arena gives `Consume` a real reclaim | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
 | `E_HandlerUninstallable` | handler arms need effects context disallows | `MaybeIncorrect`   | widen ambient row or restructure handler       |
 | `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame writes its state (`resume … with`), lies beyond the frame fence, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |
-| `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — through a call to a function value, a perform, an aggregate, a line ticked by forward code, or another `d` — or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED at birth: the alternative is a slope of zero the program never has | `Unspecified` | carry the value through direct calls to the functions that compute it, or seed the reading at a Float variable |
+| `E_DerivativeUnreachable` | a `d(v)` under a derivative reading whose argument's tangent was lost — into an aggregate, across a multi-shot perform, off a line ticked by forward code or a line a closure record owns, or through another `d` — a mint, an install or a state write under the reading that would store a lost tangent into a record, or a reading whose seed is not a Float variable in scope (§`~>`). The message names the loss site. ARMED at birth: the alternative is a slope of zero the program never has | `Unspecified` | keep the value out of the aggregate until it is asked for, or seed the reading at a Float variable |
 | `E_MissingVariable`   | name not in scope                             | `MaybeIncorrect`     | check spelling; check imports                  |
 | `E_ImportNameCollision` | two selective imports bind the same name    | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
 | `E_MissingImport`     | a name resolves only because the whole link carries it: declared at module level in a module the referencing module never imports, directly or transitively (the prelude's closure is ambient — the driver links it into every compile). ARMED at birth, 2026-09-27: the per-module solo sweep as one read of the one judgment, naming both modules at the reference | `MaybeIncorrect` | add `import <declaring module>` to the referencing module |

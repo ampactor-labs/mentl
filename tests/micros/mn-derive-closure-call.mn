@@ -1,0 +1,25 @@
+// expect: 6
+// The derivative crosses a call through a function value. `apply` calls its
+// callback through a closure it was handed, and the reading calls the
+// closure's own derivative twin — the derivative face every function value
+// carries beside its word face — so the active argument's tangent rides into
+// the callback beside the value and comes back through the register.
+// d(v · v) at v = 3 is 6. Until 2026-09-30 the tangent stopped at the call
+// and the query refused; this program was mn-derive-lost-refuses.
+//
+// The declarations are lib/ml/grad.mn's, repeated because a micro links only
+// the runtime floor.
+effect Derivative {
+  d(v: Float) -> t
+}
+
+handler grad(w) {
+  d(v) => resume(tangent_of(v, w)),
+}
+
+fn apply(f, x) = f(x)
+
+fn main() -> Int = {
+  let x = 3.0
+  float_to_int(d(apply({ v => v * v }, x)) ~> grad(x))
+}
