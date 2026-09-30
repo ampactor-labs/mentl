@@ -532,10 +532,13 @@ fn perform_op_name(disp) = match disp {
 // a twin's bracket decides that width and lowering runs before it exists.
 type LowValue = LInt(Int) | LFloat(Float) | LString(String) | LBool(Bool) | LZero
 
-type LowFn = LFn(String, Int, [String], [LowExpr], EffRow, Int, [(Int, Int, LineHome)])
+type LowFn = LFn(String, Int, [String], [LowExpr], Int, [(Int, Int, LineHome)])
 
-// name, arity, param names, body stmts, effect row, fence, lines — the
-// fn's `<~` sites as (site handle, depth, home), so the record's minter (a
+// name, arity, param names, body stmts, fence, lines. It carries no effect
+// row: the row a fn's code answers to is the judgment's, read live where it
+// is asked (`alloc_unit_named`, wasm.mn), and the copy that stood here was
+// read by nothing while five of its seven writers filled it with `Pure`.
+// lines = the fn's `<~` sites as (site handle, depth, home), so the record's minter (a
 // closure mint, an install, a k reification, the static line init) sizes
 // the record by their count and fills each line's own slot with its ring.
 // fence = where this fn's __state evidence region starts,
@@ -1070,15 +1073,7 @@ fn project_lambda_fn(origin, cap_pairs) = match graph_node_body(origin) {
     let lo_body = k2_guard(mark_tail(lower_body_reified(body_node)))
     lower_frame_fence_pop()
     let lines = ls_exit_frame()
-    Some(LFn(
-      "lambda_{int_to_str(origin)}",
-      len(params),
-      param_names_list,
-      [lo_body],
-      mk_ef_pure(),
-      len(cap_pairs),
-      lines
-    ))
+    Some(LFn("lambda_{int_to_str(origin)}", len(params), param_names_list, [lo_body], len(cap_pairs), lines))
   },
   _ => None,
 }
@@ -1122,15 +1117,7 @@ fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body
     } ~> arm_state_ctx(bind_fields, bind_disc, bind_h)))
     lower_frame_fence_pop()
     let lines = ls_exit_frame()
-    Some(LFn(
-      fn_name,
-      len(param_names_list),
-      param_names_list,
-      [lo_body],
-      mk_ef_pure(),
-      len(cap_pairs),
-      lines
-    ))
+    Some(LFn(fn_name, len(param_names_list), param_names_list, [lo_body], len(cap_pairs), lines))
   },
   _ => None,
 }
@@ -1143,7 +1130,7 @@ fn project_nested_fn(origin, fn_name, bind_h, cap_pairs) = match graph_node_body
 // evaluated as its own value). The per-site family collapses; the
 // sites keep the boundary destructure and the capture machinery that
 // feed the columns.
-fn project_thunk_fn(thunk_name, thunk_row, cap_pairs, branch_node, result_h, carrier_h, shared_input) = {
+fn project_thunk_fn(thunk_name, cap_pairs, branch_node, result_h, carrier_h, shared_input) = {
   let cap_names = map({ (n, _) => n }, cap_pairs)
   let cap_handles = map({ (_, h) => h }, cap_pairs)
   ls_enter_frame("", [], [], cap_names, cap_handles, len(cap_pairs))
@@ -1155,7 +1142,7 @@ fn project_thunk_fn(thunk_name, thunk_row, cap_pairs, branch_node, result_h, car
   let lo_body = k2_guard(LMakeTuple(carrier_h, [inner]))
   lower_frame_fence_pop()
   let lines = ls_exit_frame()
-  LFn(thunk_name, 0, [], [lo_body], thunk_row, len(cap_pairs), lines)
+  LFn(thunk_name, 0, [], [lo_body], len(cap_pairs), lines)
 }
 
 fn lower_call_partial(handle, fbody, fh, r_args, n_ps) = match partial_callee_form(handle, fbody, fh) {
@@ -1193,7 +1180,6 @@ fn lower_call_partial(handle, fbody, fh, r_args, n_ps) = match partial_callee_fo
           len(param_names),
           param_names,
           [apply_callee_form(form, handle, fh, body_args)],
-          mk_ef_pure(),
           len(captures),
           []
         )
@@ -3450,7 +3436,6 @@ fn synthesize_diverge_thunks(parent_handle, input_h, input_local_name, branch_no
                     // real lambda does — no thunk-local evidence.
                     let fn_ir = project_thunk_fn(
                       thunk_name,
-                      thunk_row,
                       zip(captures_names, captures_handles),
                       branch_node,
                       result_h,
@@ -3514,7 +3499,6 @@ fn synthesize_branch_thunk(parent_handle, side_label: String, branch_node, bound
               // named-fn/block path).
               let fn_ir = project_thunk_fn(
                 thunk_name,
-                thunk_row,
                 zip(captures_names, captures_handles),
                 branch_node,
                 result_h,
@@ -3580,9 +3564,11 @@ fn record_field_offset(ty, field_name) = match record_full_fields(ty) {
 // by the program or by the active twin's instantiation, and None while it is
 // open. A variable and an open row's free end both read through lookup_ty,
 // which is bracket-aware, so a generic body's receiver answers with the
-// instantiation the twin is emitting (a row variable's pair is the whole
-// record the site proved). A nominal record answers with its declaration.
-// TVar(0) is the no-proof type, never chased.
+// instantiation the twin is emitting (a row variable's pair is the residual
+// the site proved past it, spelled after the fields the chain learned — so a
+// pattern's rest binder, whose chain starts past the receiver's named
+// fields, answers with the residual's own layout). A nominal record answers
+// with its declaration. TVar(0) is the no-proof type, never chased.
 fn record_full_fields(ty) = match ty {
   TVar(h) => if h == 0 {
     None
@@ -3597,7 +3583,7 @@ fn record_full_fields(ty) = match ty {
     (all, end) => match end {
       RowEndClosed => Some(sort_record_type_fields(all)),
       RowEndFree(t) => match lookup_ty(t) {
-        TRecord(full) => Some(full),
+        TRecord(residual) => Some(sort_record_type_fields(all ++ residual)),
         _ => None,
       },
     },
@@ -4312,7 +4298,7 @@ fn lower_handler_arms_as_decls(arms, discriminator, config, state) = {
     ([], fence),
     (acc, arm) => match acc {
       (decls, line_base) => match lower_one_arm_decl(arm, discriminator, config, state, fence, line_base) {
-        LDeclareFn(LFn(n, a, p, b, r, f, lines)) => (decls ++ [LDeclareFn(LFn(n, a, p, b, r, f, lines))], line_base + len(lines)),
+        LDeclareFn(LFn(n, a, p, b, f, lines)) => (decls ++ [LDeclareFn(LFn(n, a, p, b, f, lines))], line_base + len(lines)),
         other => (decls ++ [other], line_base),
       },
     },
@@ -4345,7 +4331,7 @@ fn lower_init_decl(discriminator, config, state: [{init: Node, name: String}], f
   graph_emitfn_note(EmitFnEntry{
     caps: [],
     fence: fence,
-    kind: EfkInit,
+    kind: EfkInit(discriminator),
     name: fn_name,
     origin: node_handle(list_index(state, 0).init),
     params: [],
@@ -4362,7 +4348,7 @@ fn lower_init_decl(discriminator, config, state: [{init: Node, name: String}], f
   graph_hole_drain(fn_name)
   lower_frame_fence_pop()
   let lines = ls_exit_frame()
-  LDeclareFn(LFn(fn_name, 0, [], stores ++ [LConst(0, LInt(0))], mk_ef_pure(), fence, lines))
+  LDeclareFn(LFn(fn_name, 0, [], stores ++ [LConst(0, LInt(0))], fence, lines))
 }
 
 // An op's declared types met at a handler's instance. Inference draws this
@@ -4481,7 +4467,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   graph_emitfn_note(EmitFnEntry{
     caps: [],
     fence: fence,
-    kind: EfkArm(arm.op_name),
+    kind: EfkArm(arm.op_name, discriminator),
     name: fn_name,
     origin: node_handle(arm.body),
     params: zip(arm_params, arm_param_tys),
@@ -4520,7 +4506,7 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
     Some(reg) => [LLet(0, reg, LLocal(0, "__state")), lo_body],
     None => [lo_body],
   }
-  let fn_ir = LFn(fn_name, len(arm_params), arm_params, body_list, mk_ef_pure(), fence, lines)
+  let fn_ir = LFn(fn_name, len(arm_params), arm_params, body_list, fence, lines)
   LDeclareFn(fn_ir)
 }
 
@@ -5008,7 +4994,7 @@ fn reify_frame_k(body_node, ph, outer_holes) = match continuation_boundary_at(ph
 }
 
 fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
-  ContinuationEdge(resume_input_h, answer_h, continuation_h, disc, world) => {
+  ContinuationEdge(resume_input_h, answer_h, continuation_h, disc, _) => {
     let hole = k_hole_name(ph)
     // An enclosing level's hole is read at its own perform site, the handle
     // `k_hole_read` types it by.
@@ -5070,7 +5056,7 @@ fn reify_frame_k_at(body_node, ph, outer_holes, edge) = match edge {
         let k_body = k2_floor_guard(mark_tail(k_remainder(body_node, subs2)), false)
         lower_frame_fence_pop()
         let lines = ls_exit_frame()
-        let k_fn = LFn("__k_{int_to_str(ph)}", 1, [hole], [k_body], world, len(captures_exprs), lines)
+        let k_fn = LFn("__k_{int_to_str(ph)}", 1, [hole], [k_body], len(captures_exprs), lines)
         if disc == MultiShot {
           LMakeContinuation(continuation_h, k_fn, captures_exprs, ph, resume_input_h)
         } else {
@@ -6162,8 +6148,8 @@ fn low_refs(acc, expr) = match expr {
   LHandleWith(ih, b, hn, hname, inits, arm_names) => low_refs_list(low_refs(low_refs(init_refs(arm_refs(acc, ih, arm_names), ih, hname), b), hn), inits),
   LDerive(_h, seed, b) => low_refs(low_refs(acc, b), seed),
   LLet(_h, _n, inner) => low_refs(acc, inner),
-  LMakeClosure(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps) => low_refs_list(low_refs_list(acc, body), caps),
-  LMakeContinuation(_h, LFn(_n, _a, _p, body, _r, _f, _l), caps, _, _) => low_refs_list(low_refs_list(acc, body), caps),
+  LMakeClosure(_h, LFn(_n, _a, _p, body, _f, _l), caps) => low_refs_list(low_refs_list(acc, body), caps),
+  LMakeContinuation(_h, LFn(_n, _a, _p, body, _f, _l), caps, _, _) => low_refs_list(low_refs_list(acc, body), caps),
   LResumeK(_h, k, v) => // The resume invocation reaches through its k expr and value; the __k
   // fn itself reaches via its LMakeContinuation record above.
   low_refs(low_refs(acc, k), v),
@@ -6172,7 +6158,7 @@ fn low_refs(acc, expr) = match expr {
   low_refs(low_refs_list(acc, args), k),
   LKExtend(_h, k) => // A k2 boundary reaches through its frame_k record the same way.
   low_refs(acc, k),
-  LDeclareFn(LFn(_n, _a, _p, body, _r, _f, _l)) => low_refs_list(acc, body),
+  LDeclareFn(LFn(_n, _a, _p, body, _f, _l)) => low_refs_list(acc, body),
   LBlock(_h, stmts) => low_refs_list(acc, stmts),
   LIf(_h, c, t, e) => low_refs_list(low_refs_list(low_refs(acc, c), t), e),
   LBinOp(_h, op, l, r) => // ==/ordering on a wide-element sequence mints list_eq_f64/list_compare_f64
@@ -6213,9 +6199,9 @@ fn low_refs(acc, expr) = match expr {
 // why `frame_children` stops at it — and every other node holds exactly its
 // frame's children.
 fn low_children(expr) = match expr {
-  LMakeClosure(_, LFn(_, _, _, body, _, _, _), caps) => caps ++ body,
-  LMakeContinuation(_, LFn(_, _, _, body, _, _, _), caps, _, _) => caps ++ body,
-  LDeclareFn(LFn(_, _, _, body, _, _, _)) => body,
+  LMakeClosure(_, LFn(_, _, _, body, _, _), caps) => caps ++ body,
+  LMakeContinuation(_, LFn(_, _, _, body, _, _), caps, _, _) => caps ++ body,
+  LDeclareFn(LFn(_, _, _, body, _, _)) => body,
   other => frame_children(other),
 }
 
@@ -6289,7 +6275,7 @@ fn reach_entry_names(refs) = map(ref_name, refs) ++ wide_seed(refs)
 // The decl's emitted name — "" for statements that are not named fns
 // (module value lets stay unconditionally; they run in __init_lets).
 fn reach_decl_name(stmt) = match stmt {
-  LDeclareFn(LFn(n, _, _, _, _, _, _)) => n,
+  LDeclareFn(LFn(n, _, _, _, _, _)) => n,
   LLet(_, n, LMakeClosure(_, _, _)) => n,
   LLet(_, n, LMakeContinuation(_, _, _, _, _)) => n,
   _ => // drift-audit: ignore — "" = stmt is not a named fn (module value lets run in __init_lets)
@@ -6500,7 +6486,7 @@ fn reach_collect(outs, rbuf, rn, i, n, buf, count) = if i >= n {
 // any of them was reached (installing a handler makes every arm
 // dispatchable, so arms keep whole-container).
 fn reach_nested_names(d, acc) = match d {
-  LDeclareFn(LFn(n, _, _, body, _, _, _)) => reach_nested_names_list(body, [n] ++ acc),
+  LDeclareFn(LFn(n, _, _, body, _, _)) => reach_nested_names_list(body, [n] ++ acc),
   LBlock(_h, stmts) => reach_nested_names_list(stmts, acc),
   LLet(_h, _n, inner) => reach_nested_names(inner, acc),
   LIf(_h, _c, t, e) => reach_nested_names_list(e, reach_nested_names_list(t, acc)),
@@ -6849,16 +6835,19 @@ fn spec_resolve_build(t) = match t {
   TName(n, args) => TName(n, map(spec_resolve, args)),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_resolve(ft)) }, fs)),
   TRecordOpen(fs, v) => // The row read to its end, its rest through the same live channel as every
-  // other var: when the site closed it, that record IS the resolved receiver
-  // and the open form is gone. Anything else keeps the open form, every
-  // learned field resolved.
+  // other var: when the site closed it, the learned fields and the residual
+  // the site proved past them ARE the resolved receiver and the open form is
+  // gone. Anything else keeps the open form, every learned field resolved.
   match record_row_full(fs, v) {
-    (all, end) => match end {
-      RowEndClosed => TRecord(field_canonicalize(map({ (n, ft) => (n, spec_resolve(ft)) }, all))),
-      RowEndFree(t) => match lookup_ty(t) {
-        TRecord(full) => TRecord(full),
-        _ => mk_record_open(map({ (n, ft) => (n, spec_resolve(ft)) }, all), t),
-      },
+    (all, end) => {
+      let learned = map({ (n, ft) => (n, spec_resolve(ft)) }, all)
+      match end {
+        RowEndClosed => TRecord(field_canonicalize(learned)),
+        RowEndFree(t) => match lookup_ty(t) {
+          TRecord(residual) => TRecord(field_canonicalize(learned ++ residual)),
+          _ => mk_record_open(learned, t),
+        },
+      }
     },
   },
   TRefined(b, p) => TRefined(spec_resolve(b), p),
@@ -6914,10 +6903,19 @@ fn spec_pairs_walk(st0, it0, acc) = {
     // chain's terminal, never a link, and the site's record is whatever its
     // chain spells — and the rest pairs only against a site whose row is
     // closed, because only there is the remainder proven; an open site has
-    // nothing to key on and keeps the floor.
+    // nothing to key on and keeps the floor. What the terminal is paired
+    // WITH is the residual past the fields the chain learned before it —
+    // what unify writes at the instance's own terminal — never the site's
+    // whole record: a second type that shares the terminal starts its chain
+    // past a different set (a pattern's rest binder, `{| ρ}`, past the
+    // receiver's named fields) and spells `learned ++ residual` from its
+    // own start. Paired with the whole, `rest.b` read `b` at the RECEIVER's
+    // slot — 3 for 2 over `{a: 1, b: 2, c: 3}`, a virgin 0 for `rest.c` —
+    // while the rest record was built at the residual's layout (measured
+    // 2026-09-30, tests/micros/mn-record-rest-through-param.mn).
     match record_row_full(fs, v) {
       (sall, send) => match site_record_full(it0) {
-        Some(full) => spec_pairs_key_rest(send, full, spec_pairs_walk_fields(sall, full, acc)),
+        Some(full) => spec_pairs_key_rest(send, record_fields_diff(full, sall), spec_pairs_walk_fields(sall, full, acc)),
         None => spec_pairs_walk_fields(sall, site_record_known(it0), acc),
       },
     },
@@ -6970,10 +6968,10 @@ fn site_record_known(it0) = match fold_strip(it0) {
   TAlias(_, _) => [],
 }
 
-// A scheme row's free rest keys the proven record; a closed scheme row is a
-// monomorphic record with nothing to key.
-fn spec_pairs_key_rest(send, full, acc) = match send {
-  RowEndFree(t) => spec_pairs_add(acc, t, TRecord(full)),
+// A scheme row's free rest keys the residual the site proved past it; a
+// closed scheme row is a monomorphic record with nothing to key.
+fn spec_pairs_key_rest(send, residual, acc) = match send {
+  RowEndFree(t) => spec_pairs_add(acc, t, TRecord(residual)),
   RowEndClosed => acc,
 }
 
@@ -7142,14 +7140,15 @@ fn twin_site_key(h, name: String) = twin_key(spec_site_pairs(h, name))
 // runs are twinned under exactly those pairs, and the install stores the twins
 // in its record.
 //
-// An arm is reached at its op's FACE. Its header reads the op's types at the
-// handler's instance, which a twin keyed here substitutes, so an arm signs the
-// widths its body reads; the performer and every slot dispatch call at the
-// op's declared face instead. Where the two differ the arm, twin or not, is
-// reached through its op-face adapter (`adapter_op`, wasm.mn). One variable no
-// adapter carries: the answer a multi-shot or abandon arm hands its driver,
-// which the redrive reads as a word. An install whose key binds that answer to
-// a wide scalar keeps the base arms (`Hβ.emit.arm-twin-converts-at-its-face`).
+// An arm is reached at the face its INSTANCE gives it. Its header reads the
+// op's types at the handler's instance, which a twin keyed here substitutes,
+// so an arm signs the widths its body reads; and a performer emits its
+// arguments at its own site's widths, which are the same instance's — the tee
+// unifies every perform with the handler's — so the two faces agree
+// (`call_site_vector`, wasm.mn). One variable no face carries: the answer a
+// multi-shot or abandon arm hands its driver, which the redrive reads as a
+// word. An install whose key binds that answer to a wide scalar keeps the base
+// arms (`Hβ.emit.arm-twin-converts-at-its-face`).
 fn arm_site_pairs(install_h) = match graph_install_at(install_h) {
   NoInstall => [],
   InstallOf(hname, hexpr_h, cfg_hs, _) => match env_lookup(hname) {
@@ -7201,8 +7200,8 @@ fn arm_pair_step(acc, pc) = match pc {
   (p, h) => spec_pairs_walk(param_ty(p), spec_resolve(lookup_ty(h)), acc),
 }
 
-// The variables no face conversion carries: the answer a multi-shot or abandon
-// arm hands its driver.
+// The variables no face carries: the answer a multi-shot or abandon arm hands
+// its driver, which reads it as a word.
 fn arm_face_roots(arms) = match arms {
   [] => [],
   [a, ..._] => if any(arm_answers_its_driver, arms) {

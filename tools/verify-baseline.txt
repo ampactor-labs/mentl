@@ -863,6 +863,21 @@ fs_impl_bypass_max: 7
 # count MEANS at zero is that no named fn in the wheel hides behind a lambda
 # that only forwards to it.
 frontier_expected_red: why-coordinates
+# 2026-09-30 (R0j): `spine-callee-alloc` is declared RED. A held resume
+# passing through a callee declared `!Alloc` captures that callee's own
+# remainder into the continuation record, inside its frame, and the
+# callback that resumes performs no op, so the negation gate on the callback
+# sees Pure and admits it: `fn plus_one(f) with !Alloc = f() + 1` under
+# `bump() => plus_one(() => resume(s))` compiles, runs to 21, and its absence
+# proof is false. The op's cost is priced at the perform
+# (scheme_with_disc_cost) and the allocation audit RECORDS the continuation
+# machinery in whichever frame the spine extends rather than refusing it
+# against that frame's row, because the frame is not where the cost belongs.
+# The leg expects E_EffectMismatch and turns green the day the continuation's
+# cost reaches every frame the spine extends
+# (Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume); this
+# entry is then retired, never kept as a second home.
+frontier_expected_red: spine-callee-alloc
 # 2026-09-18 → 2026-09-28: `eq-in-arm-pointer` was declared RED here — `==`
 # in a handler arm over its op's quantified parameters compared two
 # byte-equal Strings by ADDRESS, because no twin reached the arm. RETIRED by
@@ -1113,4 +1128,23 @@ authored_ref_max: 708
 # the call dispatch resolved each callee name twice (+0.11 MB; now once).
 # Same rule: ~1% over the highest reading (the first march's m3 leg,
 # 792,076 KB, before either fix).
-selfcompile_peak_kb_max: 800000
+# RAISED 800,000 -> 810,000 at R0j (2026-09-30): the allocation audit walks
+# every emitted unit at the settle point (`alloc_audit`, src/backends/wasm.mn)
+# and holds its reading against the row the judgment gave the unit. Fixed
+# input first: the boot (5d267d26) compiled the landed source at 367.75 /
+# 596.59 / 702.21 MB at the judgment's high-water, lowering's end and the
+# module written; the new compiler on that SAME source reads 367.87 / 596.83
+# / 705.58 MB — within 0.23 MB at the first two marks, and the +3.37 MB at
+# the last is the audit: heap marks around the walk, removed before the pin,
+# read 3,130,752 bytes (2,435,736 the base tree, 645,392 the 132 twins). The
+# first cut carried an +8 MB judgment growth that was NOT the audit — `any`
+# and `flat_map` allocating on every match inside the parser's free-use walk
+# — and it was deleted, not paid for. The new compiler on the new source
+# read 802,020 KB (m3 leg, /usr/bin/time) against the pin's 796,084 KB m4
+# leg at the third cut, which is what asked for 810,000; the FOURTH cut —
+# a perform speaking its site's face, the op-face adapters and the walk's
+# declared-face model deleted with them — landed at 797,276 KB (the march's
+# m3 leg) and 796,472 KB (the m4 leg that became boot 523f1732), so the
+# ceiling is 805,000: ~1% over the highest reading of the landed form. A
+# raise bought by a cost the same landing then deleted is not kept.
+selfcompile_peak_kb_max: 805000

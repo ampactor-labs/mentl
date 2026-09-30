@@ -132,6 +132,20 @@ fn smap_bucket_scan(ref bucket, name: String, i) = if i >= len(bucket) {
   }
 }
 
+// Membership alone — the read a set wants, answered without building the
+// Option `smap_get` hands back, so a hot membership test allocates nothing.
+fn smap_has(ref idx, name: String) = {
+  let b = i32_and(str_hash(name), 4095)
+  smap_bucket_has(list_index(idx, b), name, 0)
+}
+
+fn smap_bucket_has(ref bucket, name: String, i) =
+  i < len(bucket) && (smap_pair_named(list_index(bucket, i), name) || smap_bucket_has(bucket, name, i + 1))
+
+fn smap_pair_named(pair, name: String) = match pair {
+  (bn, _) => bn == name,
+}
+
 // The MULTI-map read — every value entered under NAME, newest first
 // (add prepends). The reverse-edge column's read face: N smap_add calls
 // per name are N bucket entries, and this collects them all in one

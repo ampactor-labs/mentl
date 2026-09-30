@@ -691,9 +691,9 @@ run_refusal() {
   count=$(grep -c "$expected_code error:" "$err" 2>/dev/null || true)
   size=$(wc -c < "$wat" 2>/dev/null || echo 0)
   if [ "$rc" -ne 0 ] && [ "$count" -gt 0 ] && [ "$size" -eq 0 ]; then
-    pass "$label refusal ($expected_code=$count exit=$rc wat=0B)"
+    judge "$label" 1 "$label refusal ($expected_code=$count exit=$rc wat=0B)"
   else
-    fail "$label refusal (exit=$rc $expected_code=$count wat=${size}B; see $err)"
+    judge "$label" 0 "$label refusal (exit=$rc $expected_code=$count wat=${size}B; see $err)"
   fi
 }
 
@@ -709,10 +709,14 @@ run_refusal_linked() {
   rc=$?
   count=$(grep -c "$expected_code error:" "$err" 2>/dev/null || true)
   size=$(wc -c < "$wat" 2>/dev/null || echo 0)
+  # A refusal leg's verdict goes through judge too: a program the medium
+  # SHOULD refuse and still compiles is a standing failure a name can declare
+  # (spine-callee-alloc, 2026-09-30), and it retires loudly the day the
+  # refusal fires.
   if [ "$rc" -ne 0 ] && [ "$count" -gt 0 ] && [ "$size" -eq 0 ]; then
-    pass "$label refusal ($expected_code=$count exit=$rc wat=0B)"
+    judge "$label" 1 "$label refusal ($expected_code=$count exit=$rc wat=0B)"
   else
-    fail "$label refusal (exit=$rc $expected_code=$count wat=${size}B; see $err)"
+    judge "$label" 0 "$label refusal (exit=$rc $expected_code=$count wat=${size}B; see $err)"
   fi
 }
 
@@ -1464,6 +1468,14 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-threaded-branch-caller.mn" E_ThreadedBranchEffect "$dir"
   run_refusal_linked "$compiler" threaded-branch-transitive \
     "$ROOT/tests/frontier/mn-threaded-branch-transitive.mn" E_ThreadedBranchEffect "$dir"
+  # A held resume through a `!Alloc` callee: the callee's remainder is captured
+  # into the continuation record inside its own frame, and no row carries the
+  # op's cost there — the program compiles and runs to 21 under a false absence
+  # proof. DECLARED RED by name in frontier_expected_red until the cost reaches
+  # every frame the spine extends
+  # (Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume).
+  run_refusal_linked "$compiler" spine-callee-alloc \
+    "$ROOT/tests/frontier/mn-spine-callee-alloc.mn" E_EffectMismatch "$dir"
   run_program "$compiler" threaded-branch-readonly-state \
     "$ROOT/tests/frontier/mn-threaded-branch-readonly-state.mn" 10 yes "$dir"
   run_program "$compiler" scheduled-persist-float \

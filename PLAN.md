@@ -1195,7 +1195,9 @@ and this is the STATE.
   `!Alloc`, and a handler over a Float op did not assemble (the function
   table carries two faces now: the word face every `fn_ptr` names, for
   callers blind to the type, and the native face half a table later, for
-  sites that prove a wide vector — an op's declared signature is its ABI);
+  sites that prove a wide vector; a perform speaks its site's face too,
+  since R0j — the declared-signature ABI this sentence first named boxed
+  every generic op's wide argument);
   and two instances of one effect collapsed to the first, so a 44.1 kHz
   reader after a 48 kHz one escaped `!Sample(44100)` while the other order
   refused (collision is the complement of provable distinctness). Two were
@@ -1377,12 +1379,53 @@ and this is the STATE.
   program whose link never mentioned them trapped mid-proposal — every
   intern table is born holding the medium's own vocabulary now
   (`Hβ.intern.medium-vocabulary-is-born-with-the-table`).
-  What it names next: the census was done by hand, and the gate that makes
+  What it named next: the census was done by hand, and the gate that makes
   it mechanical — an emitted body that allocates under a row the judgment
-  proved `Alloc`-free is an internal contradiction — is the next landing
-  (`Hβ.effects.allocation-audit-at-the-settle-point`); an install whose
-  record never escapes could live in the frame and cost nothing
-  (`Hβ.lower.install-record-in-the-frame`).
+  proved `Alloc`-free is an internal contradiction — is R0j, the bullet
+  after this one; an install whose record never escapes could live in the
+  frame and cost nothing (`Hβ.lower.install-record-in-the-frame`).
+- **THE ALLOCATION AUDIT AT THE SETTLE POINT — CLOSED 2026-09-30 (R0j).**
+  At emit's settle point every unit the module will emit is walked under
+  the bracket it is emitted in, and a construct whose emission builds a
+  record in a unit whose row does not say `Alloc` is `E_InternalInvariant`
+  at the construct, refused before a byte (`alloc_audit`,
+  src/backends/wasm.mn); the emission holds the other direction, every
+  allocation a unit's code makes passing through `EmitMemory`
+  (`emit_memory_audited`). RED on the wheel at birth — SIXTEEN list-pattern
+  rests cut a slice with no row saying so — and zero since the rest charges
+  its callee's row and a record's rest `construction_row()`; two false
+  `with Pure` clauses fell to the charge. The record-rest fixture then found
+  a pre-existing silent wrong: a rest through an unannotated parameter read
+  its field at the RECEIVER's slot (3 for 2 over `{a: 1, b: 2, c: 3}`, a
+  virgin 0 for 3), because a twin's pair for a row variable was the site's
+  whole record where the rest binder's chain starts past the receiver's
+  named fields; the pair is the residual past the learned fields now and
+  each reader spells `learned ++ residual` from its own start
+  (`Hβ.lower.row-terminal-pair-is-the-whole-record`, CLOSED). Then the
+  FRONTIER, where the wheel's shape stops being the language's (§11
+  tripwire 3): seven micros and seventeen legs refused through the first
+  m2, four classes behind them, none the audit wrong about an allocation.
+  A generic op's perform boxed its wide argument at the op's word face — a
+  perform speaks its SITE'S face now, as a closure call does, the arm
+  twinned at the install's instance being that face by construction, and
+  the op-face adapters are deleted whole
+  (`Hβ.emit.generic-op-box-is-unrowed`, CLOSED). A nested `fn` was minted
+  with no row saying so, every lib/dsp maker among them — the block charges
+  the mint. `ialloc` was asked for `Alloc` where it is rowed under
+  `ImageAlloc` — a unit's row is asked for the site's own effect. And the
+  continuation machinery landing in a spine callee's k twin is the OP's
+  remainder cost, recorded there and never refused against the callee's
+  row — which names the open half: a held resume through a `!Alloc`
+  callee captures that callee's remainder inside its own frame and
+  nothing charges it, a false absence proof on the board as a declared red
+  (`Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume`). A
+  wide value boxed into a list primitive's word slot is narrated
+  (`T_WordSlotBox`), the slot being the representation's. What the audit
+  does not see — the JVP twins, a library's whole-emit, the generated
+  leaves and the runtime family, and `mentl check`, which never plans — and
+  its ultimate form, the emission's own allocation counted per unit before
+  the gate so the walk deletes, are one named peer
+  (`Hβ.emit.allocation-census-is-the-emission-itself`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

@@ -35,6 +35,178 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-09-30 · pin 523f17329ae8d915 (TRANSITION m3 == m4) · THE ALLOCATION AUDIT AT THE SETTLE POINT — WHAT A UNIT'S CODE BUILDS, READ AGAINST THE ROW THE JUDGMENT GAVE IT.
+  R0j. R0i's census of unrowed constructs was six found by hand; this is
+  the gate that makes it mechanical. At emit's settle point — the ABI
+  published, the gate not yet read — every unit the module will emit is
+  walked under the bracket it is emitted in (`alloc_audit`,
+  src/backends/wasm.mn: the reached tree at the floor, then each twin under
+  its own pairs), and each construct whose emission builds a record asks
+  the unit's row for `Alloc`: a closure or continuation record, a show of an
+  aggregate, a `++`, a wide argument spilled into a cell where the callee's
+  settled slot is a word, a call to a callee whose own row says `Alloc`, a
+  multi-shot perform's argument record, a list, tuple, record or payloaded
+  variant, a list pattern's rest, a record pattern's rest, an install's
+  record, a state cell, an allocation intrinsic, a spawn. What a unit
+  answers to is read once where the walk enters it, off its enumeration
+  entry: a fn's, lambda's or partial's own row at its origin node; a
+  handler's row for its arms; the install for a state init (the cells are
+  the install record's, built at its cost); module scope for the init
+  lets; a thunk or a remainder answers for the unit it was cut from. A
+  construct that builds in a unit whose row is silent is
+  `E_InternalInvariant` at the construct's span, naming the unit and its
+  row — a claim the medium made and its own code breaks — refused with
+  zero bytes written. The other direction is held where the emission
+  allocates: every allocation a unit's code makes goes through
+  `EmitMemory` (`emit_alloc`, `emit_alloc_top`; the runtime family — the
+  world push, the continuation composer, the task spawner, the word-face
+  wrappers, `_start` — still writes `$alloc` as text, and no unit's row
+  answers for it), and `emit_memory_audited` reports a unit the walk read
+  as building nothing that allocates anyway.
+  **The gate seen RED on real code.** Its first run on the wheel found
+  SIXTEEN list-pattern rests allocating with no row saying so: binding
+  `[h, ...rest]` cuts a slice (`$slice`), and the judgment had never
+  charged it. The rest is charged as its callee's row (`list_rest_callee`,
+  one home in src/types.mn beside the concat and subscript callees; the
+  free-use walk draws the edge, so the judgment orders `slice` first), a
+  record pattern's rest — a record built of the fields left — charges
+  `construction_row()`, and charging them exposed two false `with Pure`
+  clauses in the wheel: `tail_set_has` (the row algebra's own membership
+  test, a slice per recursion step) is an index walk claiming
+  `!Alloc + !Mutate`, and `list_contains_str` was a second copy of
+  `string_in_list` and is deleted. tests/micros/mn-list-rest-alloc.mn and
+  mn-record-rest-alloc.mn each compiled clean on boot 5d267d26 and refuse
+  `E_EffectMismatch` through m2.
+  **Found on the way, closed in the landing: a record pattern's rest
+  through a parameter read the receiver's layout.** The record-rest
+  fixture's first draft ran to 1 on the boot where `rest.b + a` is 3, and
+  the bisect put it in the READ: `fn f(u) = { let {a, ...rest} = u;
+  rest.b }` over `{a: 1, b: 2, c: 3}` answered 3 — the receiver's `c` slot
+  — and `rest.c` a virgin 0, while the residual record itself was built
+  right (returned whole, `.b` read 2 at main) and an annotated closed row
+  read right. A twin's pair for a row variable was the site's WHOLE record
+  (`spec_pairs_key_rest`), and both readers returned it as the whole set:
+  right for the receiver, whose chain starts at its own fields, wrong for
+  the rest binder `{| ρ}`, whose chain starts past them and shares the
+  terminal. The pair is the RESIDUAL past the fields the chain learned —
+  what unify already writes at the instance's own terminal — and each
+  reader spells `learned ++ residual` from its own start
+  (`spec_subst_pairs`, `record_full_fields`, `spec_resolve`; the
+  substituted field list built once per read). A twin's name encodes the
+  residual now, which is most of the m2/m3 divergence: 18 twins renamed
+  and their nine callers, beside the perform faces below (emit-diff: ten
+  named fns, `fold$sp20` the one whose perform moved, and the wheel's one
+  `$of$` adapter gone). tests/micros/mn-record-rest-through-param.mn: 3 on
+  boot 5d267d26, 62 through m2
+  (`Hβ.lower.row-terminal-pair-is-the-whole-record`).
+  **THE CENSUS THROUGH THE FRONTIER, and the four classes it named.** The
+  audit at zero on the wheel is the wheel's shape, not the language's
+  (§11 tripwire 3): the first m2 refused seven micros and seventeen
+  frontier legs, and the refusals sorted into four classes, in none of
+  which the audit was wrong about an allocation. (1) SIX performs boxed a
+  Float at a generic op's word face (`iterate_from`, `feed`): the op's
+  declared signature was the ABI, an effect's type variable signed the
+  word floor, and the performer boxed every wide value crossing it — 8
+  bytes per perform, no row saying so, every `fold` over Floats paying it
+  per element (`Hβ.emit.generic-op-box-is-unrowed`, CLOSED). A perform
+  speaks its SITE'S face now, as a closure call does (`call_site_vector`):
+  the arm it reaches is twinned at the install's instance, the site's
+  types are that instance's — the tee unifies every perform with the
+  handler's — so the two agree by construction and nothing is built. The
+  op-face adapters (`$of$<arm>`, the native half's indirection through
+  them, the declared-face helpers) are deleted whole; the wheel carried
+  exactly one, `op_fold_handler_result$sp02`, and its perform in
+  `fold$sp20` is the one wheel body whose bytes moved.
+  tests/micros/mn-wide-op-perform-alloc-free.mn: 42 on boot 5d267d26,
+  boxing silently; refused by the audit through the first m2; 42 and
+  silent through the second. (2) TWELVE nested fns minted with no row
+  saying so — `parse_int`'s `digit` and `go` in lib/prelude.mn, and every
+  lib/dsp maker returning its `fn stage`: a `fn` declared in a block is a
+  closure record built where it is declared, and the judgment never
+  charged it. It charges `construction_row()` once per nested `FnStmt`
+  at the block (`nested_fns_charge`, src/infer.mn);
+  tests/micros/mn-nested-fn-mint-alloc.mn compiled clean on the boot and
+  refuses `E_EffectMismatch`. (3) `ialloc` under `ImageAlloc + Memory`
+  (mn-image-alloc, mn-image-region): the walk asked every allocation for
+  `Alloc`, and the substrate's own op is rowed under `ImageAlloc`; the
+  audit asks the row for the site's OWN effect (`alloc_asks`), the unit's
+  row read once and resolved with its `Alloc` answer beside it
+  (`RowRead`). (4) The continuation machinery in a spine callee —
+  `plus_one`'s k twin in mn-held-resume-in-thunk: a remainder record, its
+  extension, a multi-shot perform's argument record, a resumed value's
+  cell, a driver's word-faced argument — is the OP's remainder cost,
+  priced in the op's own row at the perform (L0), and lands in whichever
+  frame the spine extends; the walk records it as built and never refuses
+  it against that frame's row. What that leaves open is real and is on
+  the board as a declared red: `fn plus_one(f) with !Alloc = f() + 1`
+  under `bump() => plus_one(() => resume(s))` compiles and runs to 21
+  with its own remainder captured inside its frame, because the callback
+  performs no op and the gate on `f` sees Pure —
+  tests/frontier/mn-spine-callee-alloc.mn, `frontier_expected_red:
+  spine-callee-alloc`
+  (`Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume`). And
+  FIFTEEN direct calls boxed a Float into a list primitive's word slot
+  (`list_copy_into`, `fill_row`, `gen_x`, `gen_y`, `filter_loop`, …): the
+  slot is the representation's, sized for a word until the stride carrier
+  lands (`Hβ.value.seq-element-stride-carrier`), so the box is narrated,
+  never refused — `T_WordSlotBox`, naming the callee and the unit — and
+  recorded as built. Battery 228/228 through the second m2.
+  **Cost, fixed input first.** Heap marks around the walk, removed before
+  the pin, read 3,130,752 bytes on the wheel (2,435,736 the base tree,
+  645,392 the 132 twins). The boot on the landed source: 367.75 / 596.59 /
+  702.21 MB at the judgment's high-water, lowering's end and the module
+  written; the new compiler on the same source 367.88 / 596.83 / 705.95 MB
+  — within 0.24 MB at the first two marks, the audit at the last. The
+  first cut carried +8 MB at the judgment that was NOT the audit — `any`
+  and `flat_map` allocating on every match inside the parser's free-use
+  walk, the list-rest edge's first form — and it is deleted, not paid for:
+  the walk reads by position and builds nothing. m3 legs read 802,020 →
+  800,656 → 798,212 KB across the three cuts (/usr/bin/time; the pin's m4
+  leg was 796,084), and the FOURTH cut — the adapters gone, the walk's
+  per-site model with them — 794,884 by hand and 797,276 at the march's
+  own m3 leg (m4 796,472), so `selfcompile_peak_kb_max` lands at 805,000,
+  ~1% over the highest reading of the landed form: the 810,000 the third
+  cut asked for was bought by a cost the fourth deleted. `LFn` lost its
+  row field — read by nothing, filled with
+  `Pure` by five of its seven writers; the row is the judgment's, read
+  live where the audit asks (`alloc_unit_named`). `smap_has` is one
+  allocation-free membership read in lib/imap.mn (derive.mn's allocating
+  copy deleted); `EfkArm` and `EfkInit` carry their handler's name; the
+  plan prints its own heap mark ("when the module is planned"); the
+  effectful-lambda ceiling 231 → 230 at the count.
+  **Kills.** (1) "The audit's cost is the +8 MB" — the heap marks split
+  it: 3.1 MB at the plan, and the judgment's growth was the parser's. (2)
+  "The two false `Pure` claims need `Pure` dropped" — `tail_set_has` is a
+  walk that allocates nothing, so its claim is `!Alloc + !Mutate` (the old
+  `Pure` held only because pattern reads are not charged `Memory`). (3)
+  "The record fixture's 1 is the charge misfiring" — the charge was right;
+  the value was a pre-existing read of the wrong layout, found because the
+  fixture ran. (4) "The rest's copy is wrong" — the copy is built at the
+  residual's layout and returns right; the READ used the pair. (5) "The
+  audit is one reading" — it is a model of the emit, a third reading beside
+  the judgment's charge and the emission's own allocation, and its ultimate
+  form deletes it (`Hβ.emit.allocation-census-is-the-emission-itself`);
+  what it does not see is named there — the JVP twins, a library's
+  whole-emit, the generated leaves and the runtime family, and `mentl
+  check`, which never plans. (6) "The performer must convert to the op's
+  declared face" — the only shape where a site's face and its arm's
+  differ is an install keeping its base arms for a wide driver answer,
+  which does not assemble today
+  (`Hβ.continuations.redrive-reads-the-answer-as-a-word`), and a perform
+  there meets `call_indirect`'s type trap, never a silent value. (7) "A
+  nested fn capturing nothing is the module's static record and costs
+  nothing" — lowering mints a record for every nested fn
+  (`LMakeClosure` at the declaration), so the charge is what the emit
+  does; the static form is the named representation follow-up
+  (`Hβ.lower.captureless-nested-fn-is-static`). (8) "The k machinery in
+  `plus_one`'s twin is the audit misreading its unit" — the audit read it
+  right; the ROW is blind there, and a refusal would have been against
+  the wrong frame. (9) "The refusal legs honour a declared red" — they
+  did not: `run_refusal` and its linked sibling judged through `pass` and
+  `fail` alone, so the spine-callee contract came up RED beside its own
+  baseline entry until both went through `judge`, the same two-direction
+  contract a program leg has. Cost at the pin: m4 leg 11.75s wall · 777MB
+  peak RSS (796472 KB).
 - 2026-09-28 · pin 5d267d2677c2f8f5 (TRANSITION m3 == m4) · WHAT A CONSTRUCT BUILDS IS IN THE ROW OF THE FRAME THAT BUILDS IT.
   R0i, preempting the Pulse sprint (§0's property (2) was false at the most
   common shapes a program writes). The first probe was the install L4a had

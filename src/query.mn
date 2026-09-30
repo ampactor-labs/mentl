@@ -1611,16 +1611,11 @@ fn arg_is_increment(arg, pnames) = match graph_node_body(node_handle(arg)) {
 }
 
 fn param_plus_one(a, b, pnames) = match graph_node_body(node_handle(a)) {
-  NExpr(VarRef(n)) => list_contains_str(pnames, n) && match graph_node_body(node_handle(b)) {
+  NExpr(VarRef(n)) => string_in_list(pnames, n) && match graph_node_body(node_handle(b)) {
     NExpr(LitInt(1)) => true,
     _ => false,
   },
   _ => false,
-}
-
-fn list_contains_str(xs, target: String) with Pure = match xs {
-  [] => false,
-  [h, ...t] => if h == target { true } else { list_contains_str(t, target) },
 }
 
 // THE ANONYMITY CENSUS COUNTS A REFERENCE WRITTEN AS A MINT, and this
@@ -1648,7 +1643,7 @@ fn lambda_is_eta(params, lbody) = match graph_node_body(node_handle(lbody)) {
   NExpr(CallExpr(callee, args)) => match graph_node_body(node_handle(callee)) {
     NExpr(VarRef(g)) => {
       let pnames = params |> map(param_name)
-      !list_contains_str(pnames, g) && args_mirror_params(args, pnames)
+      !string_in_list(pnames, g) && args_mirror_params(args, pnames)
     },
     _ => false,
   },

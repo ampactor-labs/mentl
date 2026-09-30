@@ -1987,19 +1987,30 @@ fn spec_subst_pairs(t, pairs) = match t {
   ),
   TName(n, args) => TName(n, map((x) => spec_subst_pairs(x, pairs), args)),
   TRecord(fs) => TRecord(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, fs)),
-  TRecordOpen(fs, v) => // A row var is a var, and the site that closed it proved the WHOLE field
-  // set. The row is read to its END first: a key sits on the chain's free
+  TRecordOpen(fs, v) => // A row var is a var, and its pair is the RESIDUAL the site proved past
+  // it. The row is read to its END first: a key sits on the chain's free
   // terminal, never on a link, so a receiver whose row learned fields
-  // across several unifies answers as the one record every link spells.
-  // Paired, the rest resolves to the closed record the site proved;
-  // unpaired, the row stays open at its terminal; closed, it is the record.
+  // across several unifies answers as the one record every link spells —
+  // the fields its chain learned, then the residual the site proved past
+  // the terminal (`spec_pairs_key_rest`). Two types sharing one terminal
+  // start their chains at different points (a receiver at its named
+  // fields, its pattern's rest binder past them), and each spells its own
+  // record from its own start. Unpaired, the row stays open at its
+  // terminal; closed, it is the record.
   match record_row_full(fs, v) {
-    (all, end) => match end {
-      RowEndFree(t) => match spec_pairs_find(pairs, t) {
-        Some(closed) => closed,
-        None => mk_record_open(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, all), t),
-      },
-      RowEndClosed => TRecord(field_canonicalize(map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, all))),
+    (all, end) => {
+      let learned = map({ (n, ft) => (n, spec_subst_pairs(ft, pairs)) }, all)
+      match end {
+        RowEndFree(t) => match spec_pairs_find(pairs, t) {
+          Some(residual) => match residual {
+            TRecord(rfs) => TRecord(field_canonicalize(learned ++ rfs)),
+            other => // only `spec_pairs_key_rest` pairs a row terminal, always as a closed record
+            other,
+          },
+          None => mk_record_open(learned, t),
+        },
+        RowEndClosed => TRecord(field_canonicalize(learned)),
+      }
     },
   },
   TRefined(b, p) => TRefined(spec_subst_pairs(b, pairs), p),
@@ -2034,11 +2045,12 @@ handler lookup_ty_graph with spec_pairs = [], spec_enc = "" {
         NErrorHole(_) => resume(spec_pair_or_var(h, spec_pairs)),
         NRowBound(_) => resume(TUnit),
         NRecordRowBound(_, _) => resume(TUnit),
-        NRowFree(_) => // A free RECORD row the site paired answers with the whole record the
-        // site proved, as a type variable does; an effect row is never in the
-        // pair space and keeps the unit it always read. Answering unit for the
-        // paired row too left every open record a twin had closed still open
-        // to `spec_resolve`, which reads a row's end through this op.
+        NRowFree(_) => // A free RECORD row the site paired answers with the residual the site
+        // proved past it, as a type variable answers its pair — its reader
+        // spells the chain's learned fields before it; an effect row is never
+        // in the pair space and keeps the unit it always read. Answering unit
+        // for the paired row too left every open record a twin had closed
+        // still open to `spec_resolve`, which reads a row's end through this op.
         resume(match spec_pairs_find(spec_pairs, graph_chase_handle(h)) {
           Some(c) => c,
           None => TUnit,

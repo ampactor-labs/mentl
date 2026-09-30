@@ -3663,7 +3663,14 @@ fn free_vars_expr(e, h, bound) = match e {
   BlockExpr(stmts, final_e) => match free_vars_stmts(stmts, bound, []) {
     (frees, bound_after) => free_uses_merge(frees, collect_free_uses(final_e, bound_after)),
   },
-  MatchExpr(scrut, arms) => free_uses_merge(collect_free_uses(scrut, bound), free_vars_match_arms(arms, bound)),
+  MatchExpr(scrut, arms) => {
+    let uses = free_uses_merge(collect_free_uses(scrut, bound), free_vars_match_arms(arms, bound))
+    if arms_cut_list_rest(arms, 0) {
+      free_uses_merge(callee_use(h, bound, list_rest_callee()), uses)
+    } else {
+      uses
+    }
+  },
   MakeListExpr(elems) => free_vars_list(elems, bound),
   MakeTupleExpr(elems) => free_vars_list(elems, bound),
   MakeStringExpr(fragments) => free_uses_merge(callee_uses(concat_callees(), h, bound), free_vars_list(fragments, bound)),
@@ -3790,6 +3797,44 @@ fn binop_callee_uses(op, h, bound) = match binop_kind(op) {
   BKArith => [],
   BKCmp => [],
   BKBool => [],
+}
+
+// Whether any arm of a match binds a list's rest in its pattern — the rest
+// is cut by `list_rest_callee`, a callee of the match. Every walk of the
+// match asks this, so it reads by position and builds nothing
+// (`Hβ.lower.install-record-in-the-frame` prices a derived fold's install).
+fn arms_cut_list_rest(arms, i) =
+  i < len(arms) && (arm_cuts_list_rest(list_index(arms, i)) || arms_cut_list_rest(arms, i + 1))
+
+fn arm_cuts_list_rest(arm) = match arm {
+  (pat, _) => pat_cuts_list_rest(pat),
+}
+
+fn pat_cuts_list_rest(pat) = match pat {
+  PList(subs, rest) => rest_names_a_binder(rest) || pats_cut_list_rest(subs, 0),
+  PCon(_, subs) => pats_cut_list_rest(subs, 0),
+  PTuple(subs) => pats_cut_list_rest(subs, 0),
+  PRecord(flds, _) => fields_cut_list_rest(flds, 0),
+  PAs(_, inner) => pat_cuts_list_rest(inner),
+  PAlt(branches) => pats_cut_list_rest(branches, 0),
+  PVar(_) => false,
+  PWild => false,
+  PLit(_) => false,
+}
+
+fn pats_cut_list_rest(pats, i) =
+  i < len(pats) && (pat_cuts_list_rest(list_index(pats, i)) || pats_cut_list_rest(pats, i + 1))
+
+fn fields_cut_list_rest(flds, i) =
+  i < len(flds) && (field_cuts_list_rest(list_index(flds, i)) || fields_cut_list_rest(flds, i + 1))
+
+fn field_cuts_list_rest(fld) = match fld {
+  (_, sub) => pat_cuts_list_rest(sub),
+}
+
+fn rest_names_a_binder(rest) = match rest {
+  Some(name) => !field_name_eq(name, "_"),
+  None => false,
 }
 
 // Free uses in a record-literal expression: union of the uses in

@@ -369,6 +369,8 @@ fn check_exhaustive(patterns) = {
 
 A nested `fn name(params) = body` is a declaration scoped to its block: its name is in scope in its own body and in its sibling fns' (the compiler hoists them into a local letrec scope, so nested fns may reference each other), and it is generalized — one nested `fn ident(x) = x` serves an Int and a String. A block-scope `let name = (params) => body` is a closure VALUE, and the two differ in exactly that: the `let` binds after its value, so its name is not in scope in its own body, it is not generalized, and it may shadow — `let f = (x) => f(x) * 10` calls the `f` bound before it.
 
+**A nested fn is MINTED where it is declared** (real, 2026-09-30). Its closure record — its captures, or an empty record with none — is built when the block reaches the declaration, so the declaring frame pays `Memory + Alloc` once per nested fn, exactly as it pays for a lambda it mints (§«Function literals»): `fn adder(k) with !Alloc = { fn add(x) = x + k; add }` refuses. Until this landed the judgment never charged it, and every maker in lib/dsp returning its nested stage carried a row of `Pure`. A nested fn that captures nothing could be the module's static record and cost nothing; the charge follows that representation the day the lowering builds it (`Hβ.lower.captureless-nested-fn-is-static`).
+
 **A binder shadows its name for its own scope and no further.** A `let` in a block, a pattern in a match arm, a pipe stage's parameter, a recurrence's prior and a binding inside the recurrence body each hide the same name while their scope is open, and the hidden binding is read again, unchanged, once it closes: `fn f(x) = { let y = { let x = 5; x + 1 }; x + y }` answers `f(100) = 106`. Two binders of one name are two values at their own widths, never one storage place (real, 2026-09-28: until then an arm's `Some(x)` or a block's `let x` wrote the parameter's register, and that program answered 11 with zero diagnostics — `Hβ.lower.shadowing-binder-clobbers-its-register`).
 
 **At module scope there is nothing to shadow, and a `let` bound to a function literal IS the declaration** (real, 2026-09-28): `let inc = (x) => x + 1` is born as `fn inc(x) = x + 1` at parse — recursive, generalized, emitted as the symbol its callers call directly — and `mentl fmt` writes it as `fn`. An arm-list literal bound at module scope, `let pick = { Some(v) => v, None => 0 }`, is a declaration too and keeps its spelling, because its one parameter is minted by the literal and never reaches the page. An annotated module let keeps its annotation's constraint and stays a value, and a module value holding a closure (`let add3 = make_adder(3)`) is called through that closure. Until this landed the let was judged a value and lowered as a lambda named for its handle while its callers called `$inc`, a symbol nothing emitted: `mentl check` was clean and the module did not assemble (`Hβ.lower.module-scope-has-no-frame`).
@@ -960,7 +962,10 @@ let {name: n, age: a} = morgan // bind to renamed locals
 The record-pattern REST is real (2026-07-30): `{name, ...rest}` binds `rest`
 to a fresh record of the remaining fields, each copied at its own width, and
 `rest`'s own field accesses read the residual's layout. `..._` keeps the
-open-acceptance without a bind, exactly as in list patterns.
+open-acceptance without a bind, exactly as in list patterns. Binding a rest
+BUILDS that record, so it charges `Memory + Alloc` in the frame the pattern
+stands in, and `with !Alloc` refuses it (real, 2026-09-30 — it was unrowed
+before; `tests/micros/mn-record-rest-alloc.mn`).
 
 **A record pattern reads its fields BY NAME** through its receiver's whole
 field set, which the twin of each caller proves: a parameter's record may
@@ -968,7 +973,13 @@ carry fields the pattern never names, sorted before or after the ones it
 does, and `fn pick(u) = { let {zeta} = u; zeta }` answers `9` over `{alpha:
 7, zeta: 9}` (real, 2026-09-28). Until then a pattern through a parameter
 read the slot of its own field index and answered `7`, silently, and its
-rest trapped (`tests/syntax/record-pattern-param`, `-param-rest`).
+rest trapped (`tests/syntax/record-pattern-param`, `-param-rest`). And the
+rest's OWN reads spell the residual's layout (real, 2026-09-30): `fn f(u) =
+{ let {a, ...rest} = u; rest.b }` over `{a: 1, b: 2, c: 3}` answers `2`. It
+answered `3` — the receiver's `c` slot — and `rest.c` a virgin `0`, because
+the twin's pair for the row variable was the whole record the call proved
+while the rest's chain starts past the named fields; the pair is the
+residual past them now (`tests/micros/mn-record-rest-through-param.mn`).
 
 ### Field access
 
@@ -1258,6 +1269,21 @@ bare call in context. No bespoke recognizer, no format-lift class —
 `resume` keeps its keyword: it is context-bound to handler arms, typed
 by the typed-resume law (`resume : R -> S`), and names the
 continuation — a value the call site cannot otherwise reach.
+
+**A perform costs what a call costs** (real, 2026-09-30). An op's
+arguments cross at the widths the site proves and its result comes back at
+the width the site proves, exactly as a closure call's do — a Float op costs
+a Float call — and the arm that answers is the one twinned at the install's
+instance, which is the site's own instance, so no cell is built at an
+effect's type variable: `fn walk(xs: [Float]) with !Alloc = { put(xs[0]);
+put(xs[1]) }` under `handler total with s = 0.0 { put(v) => resume() with s
+= s + v }` runs and allocates nothing. Until this landed the op's DECLARED
+signature was the call's face, so a value at a variable's position was boxed
+into a fresh cell on every perform, 8 bytes under a row that said nothing of
+it, and a `fold` over Floats paid it per element. A perform under `!Alloc`
+is therefore admitted exactly when the op's own row is — and a held or
+multi-shot op's row says `Memory + Alloc`, because reifying the remainder is
+what such a perform builds (§«Resume discipline»).
 
 ### Unit return omission
 
@@ -1663,7 +1689,12 @@ let [first, second, ...rest] = items
 List rest uses the same `...rest` surface as record rest. `rest` is
 optional in the AST; no rest means exact-length match, while `..._`
 accepts any remaining tail without binding it. `|` remains pattern
-alternation / type-variant separation and is never list-cons syntax.
+alternation / type-variant separation and is never list-cons syntax. A
+bound list rest is CUT — the elements past the prefix, as a slice — so it
+costs what `slice` costs, `Memory + Alloc`, in the frame the match stands
+in, and `with !Alloc` refuses it (real, 2026-09-30: sixteen of the wheel's
+own rests were unrowed until the allocation audit's first run;
+`tests/micros/mn-list-rest-alloc.mn`). `..._` cuts nothing.
 
 ### Exhaustiveness
 
@@ -2386,6 +2417,7 @@ token, so there is nothing to lift.*
 |-----------------------|-----------------------------------------------|----------------------|-------------------------------------------------|
 | `T_OverDeclared`      | a declared bare positive name beyond the proven row (the positive half only — a negation is a proof claim, never over-declared) | `MachineApplicable`  | `mentl tighten` writes the clause's residue |
 | `T_RowInventory`      | a declared clause whose bare positive names are exactly what the body proves, or a positive cap over an OPEN body row (which installs no gate and so constrains nothing) — the projected row written by hand (§«A signature is not an inventory») | `MachineApplicable` | `mentl tighten` writes the residue — negations, instance pins, or no clause |
+| `T_WordSlotBox`       | a wide value (a Float) boxed into a fresh cell to cross a callee's slot sized for a word — a list primitive's element (`list_set`) — inside a unit whose row does not say `Alloc`: the representation's cost, not the program's, until the slot takes the value's own width (`Hβ.value.seq-element-stride-carrier`). Said at the settle point by the allocation audit, which refuses every allocation that IS the program's | `MaybeIncorrect` | keep the value at a word's width where the slot is one, or wait for the carrier |
 | `T_Gradient`          | an annotation INPUT would narrow the cursor's projection | `MachineApplicable` | accept the suggestion to narrow             |
 | `W_Suggestion`        | probable Quick Fix available                  | `MaybeIncorrect`     | (Mentl-proposed)                                |
 | `W_RedundantWhere`    | `type X = Y where true` — vacuous predicate   | `MachineApplicable`  | drop the `where true`; alias is transparent     |

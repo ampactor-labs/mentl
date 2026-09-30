@@ -1434,8 +1434,6 @@ fn touching_grow(set, fact) = match fact {
   },
 }
 
-fn smap_has(set, name: String) = len(smap_get_all(set, name)) > 0
-
 fn smap_size(set) = fold(0, bucket_count, set)
 
 fn bucket_count(n, bucket) = n + len(bucket)

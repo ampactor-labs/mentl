@@ -3969,7 +3969,12 @@ installs of one handler with two config shapes each read their own.
 
 `Hβ.emit.arm-twin-converts-at-its-face` — **THE INSTANCE HALF CLOSED
 2026-09-28 (R0c), pin 0bc8383e8b6ced84; the answer half is
-`Hβ.continuations.redrive-reads-the-answer-as-a-word`.** An install keys its
+`Hβ.continuations.redrive-reads-the-answer-as-a-word`.** *(The adapter this
+entry describes is DELETED 2026-09-30, R0j: a perform speaks its SITE'S
+face, as a closure call does, and the arm twinned at the install's instance
+is that face by construction — `Hβ.emit.generic-op-box-is-unrowed` carries
+the record. The instance keying below stands; the "called at the op's
+declared face" rule does not.)* An install keys its
 arms at its effect's instance: its handler expression is typed
 `Handler(inst)` and `InstallOf` carries that expression's handle, so a
 handler with no config keys too. An arm's header reads the op's types at
@@ -6240,20 +6245,143 @@ is a census shape over `intern_str`'s literal arguments measured against the
 list (`Hβ.intern.literal-intern-outside-the-vocabulary`, OPEN): today a
 violation traps loudly, and only in a view.
 
-`Hβ.effects.allocation-audit-at-the-settle-point` — OPEN, the next landing
-(R0j), and it is the gate this landing's census needed. The six unrowed
-constructs above were found by probing; a seventh would be found the same
-way or not at all. THE DESIGN: the emit already knows every allocation it
-writes (each goes through the allocator call), and the judgment already
-knows every fn's row. At emit's settle point each emitted function — named,
-nested, lambda, arm, k — records whether its body allocates, and a body
-that allocates under a row the judgment proved `Alloc`-free is an internal
-contradiction reported as `E_InternalInvariant` naming the function and the
-construct, armed at birth. The census becomes a measurement the board holds
-at zero; its first run on the wheel is the first datum, and each hit is
-either a construct to charge or a representation that should not allocate
-(a boxed wide value crossing a boundary the row cannot see). Its RED-first
-fixture is one of this landing's refusals with its charge removed.
+`Hβ.effects.allocation-audit-at-the-settle-point` — ✅ CLOSED 2026-09-30 (R0j,
+the pin in LEDGER). The gate R0i's hand census needed. At emit's settle point
+every unit the module will emit is walked under the bracket it is emitted in
+(`alloc_audit`, src/backends/wasm.mn — the reached tree at the floor, each
+twin under its own pairs), and each construct whose emission builds a record
+asks the unit's row for `Alloc`, the row read once off the unit's enumeration
+entry (a fn's own at its origin, a handler's for its arms, the install's for
+a state init, module scope for the init lets, the parent's for a thunk or a
+remainder); a silent row is `E_InternalInvariant` at the construct's span,
+before a byte is written. The emission holds the other direction: every
+allocation a unit's code makes goes through `EmitMemory`, and
+`emit_memory_audited` reports a unit the walk read as building nothing that
+allocates anyway. RED on the wheel at birth: SIXTEEN list-pattern rests cut
+a slice with no row saying so (the rest charges `slice`'s row now,
+`list_rest_callee`, and a record's rest `construction_row()`), and two false
+`with Pure` clauses fell to the charge (`tail_set_has`, `list_contains_str`).
+Zero on the wheel since; tests/micros/mn-list-rest-alloc.mn and
+mn-record-rest-alloc.mn hold the refusals. THEN THE FRONTIER, where the
+wheel's shape stops being the language's (§11 tripwire 3): the first m2
+refused seven micros and seventeen legs, and the four classes behind them
+each resolved in the landing — a generic op's perform boxed its wide
+argument at the word face (`Hβ.emit.generic-op-box-is-unrowed`, CLOSED: the
+perform speaks its site's face); a nested `fn` was minted with no row saying
+so (charged at the block, `nested_fns_charge`, src/infer.mn —
+tests/micros/mn-nested-fn-mint-alloc.mn); `ialloc` was asked for `Alloc`
+where it is rowed under `ImageAlloc` (a unit's row is read once, resolved,
+and asked for the site's OWN effect — `RowRead`, `alloc_asks`); and the
+continuation machinery in a spine callee's k twin was refused against a row
+that is not where the cost belongs (recorded as built, never refused — the
+open half is `Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume`).
+A wide argument boxed into a list primitive's word slot is narrated
+(`T_WordSlotBox`), never refused: the slot is the representation's
+(`Hβ.value.seq-element-stride-carrier`). What it does NOT see, named: the
+JVP twins (`emit_jvp_twin` renders outside the audited bracket), a library's
+whole-emit (nothing settles it, so nothing is walked), the generated leaves
+and the runtime family (no unit's row answers for them), and `mentl check`
+— the audit lives in the plan, so a program it would refuse checks clean and
+refuses only at the executable, the check-vs-executable class again. Its
+structural remainder is the peer below.
+
+`Hβ.emit.allocation-census-is-the-emission-itself` — OPEN, the audit's
+ultimate form. The walk is a MODEL of the emit: a per-`LowExpr` prediction
+of what the emission builds, some four hundred lines re-deriving
+`direct_callee_widths`, `op_abi`, `wide_ref_allocates` and the list
+literal's callee — a THIRD reading beside the judgment's charge and the
+emission's own `emit_alloc`, and the cross-check that keeps the model honest
+reports AFTER the unit's bytes (`emit_memory_audited`), a compiler-bug
+tripwire rather than a refusal. One reading: render each unit to its string
+under a handler that records whether `emit_alloc` fired, BEFORE the gate
+reads the ledger, hold that flag against the row, and the walk deletes — the
+refusal becomes the emission's own word, and the emission's site handles
+carry the construct the report names. What it costs is holding every
+rendered unit past its region: the per-fn `heap_mark`/`heap_reset` exists so
+emission scratch never accumulates, and a text kept past the reset lives in
+the scratch it was rendered from — the image/scratch split
+(`Hβ.perf.per-decl-arena`, Arc C). Until then the walk stands, and the wheel
+at zero under both readings is the measurement that the model is faithful
+today.
+
+`Hβ.lower.row-terminal-pair-is-the-whole-record` — ✅ CLOSED 2026-09-30 (R0j).
+A twin's pair for a record row variable was the site's WHOLE record
+(`spec_pairs_key_rest` paired the chain's free terminal with `TRecord(full)`),
+and both readers of a paired terminal — `spec_subst_pairs`' `TRecordOpen`
+arm and `record_full_fields`' free-end arm — returned the pair as the whole
+field set. Right for a receiver, whose chain starts at its own named fields;
+wrong for any type whose chain starts past some and shares the terminal —
+a record pattern's rest binder, `{| ρ}`. So a rest through an unannotated
+parameter read its field at the RECEIVER's slot: `fn f(u) = { let {a,
+...rest} = u; rest.b }` over `{a: 1, b: 2, c: 3}` answered 3 and `rest.c` a
+virgin 0, silently, on every boot since the rest was built at the residual's
+layout — found by R0j's record-rest fixture running to 1 for 3, and blind
+to tests/syntax/record-pattern-param-rest, which never reads a rest field.
+The pair is the RESIDUAL past the fields the chain learned before the
+terminal (`record_fields_diff(full, sall)` at the mint — what unify writes at
+the instance's own terminal), and each reader spells `learned ++ residual`
+from its own start (`spec_subst_pairs`, `record_full_fields`,
+`spec_resolve`, the substituted field list built once). A twin's name
+encodes the residual, so the wheel's 18 row-keyed twins renamed
+(TRANSITION). tests/micros/mn-record-rest-through-param.mn: 3 on boot
+5d267d26, 62 after.
+
+`Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume` — OPEN,
+NAMED 2026-09-30 (R0j), a false absence proof on the board as a declared
+red. A held resume that passes through a callee on its way to the remainder
+captures that callee's OWN remainder into the continuation record — inside
+the callee's frame, when the resume runs — and no row carries the cost
+there: the op's row is priced (`bump` is held, so `Memory + Alloc` rides its
+perform, L0), but the callback that resumes performs no op, so a declared
+`!Alloc` on the callee gates a Pure row and admits it. `fn plus_one(f) with
+!Alloc = f() + 1` under `bump() => plus_one(() => resume(s))` checks clean,
+compiles, and runs to 21 (tests/frontier/mn-spine-callee-alloc.mn,
+`frontier_expected_red: spine-callee-alloc` — the leg expects
+`E_EffectMismatch` and turns green the day the entry retires). The
+allocation audit sees the machinery (a remainder record, its extension, a
+resumed value's cell in `plus_one`'s k twin) and RECORDS it as built without
+refusing, because the frame it lands in is the spine's, not the cost's
+owner: refusing there would be a refusal against the wrong row. The form:
+the remainder's cost reaches every frame the spine extends — a callee whose
+parameter is resumed through is a callee whose remainder is captured, a fact
+the tail-transparency proof (`tail_transparent_params`) already computes for
+the OPPOSITE conclusion (a callee proven tail-transparent keeps the stack
+path and captures nothing), so the row charge is that proof's negation
+carried onto the callee's row at the parameter, and `!Alloc` on `plus_one`
+refuses the resume-through at the argument edge, naming the declaration.
+
+`Hβ.lower.captureless-nested-fn-is-static` — OPEN, NAMED 2026-09-30 (R0j),
+a representation follow-up. A `fn` declared in a block is minted as a
+closure record where it is declared (`LMakeClosure` at the declaration,
+src/lower.mn), captures or none, and the judgment charges the mint at the
+block (`nested_fns_charge`, src/infer.mn) — so `fn adder(k) with !Alloc = {
+fn add(x) = x + k; add }` refuses, which is what its emit does. A nested fn
+that captures NOTHING is a module-level fn in a narrower scope, and the
+module's own form for that is the static closure record baked into the data
+segment, costing nothing at the site. Lowering it as one (the enumeration
+entry knows its capture count) lets the charge follow the representation to
+zero for that shape, by the same law that keeps the two together everywhere
+else: the row charge follows what the emit builds, never the reverse.
+
+`Hβ.value.seq-element-stride-carrier` — OPEN; named in PLAN §11 5.4 as the
+value ontology's true keystone and cited by two entries here, it had no home
+of its own until 2026-09-30 (R0j) — the 2026-09-17 class again, a peer PLAN
+cites and RESIDUE never held. The record: a sequence's element slot is a
+WORD wherever a generic body reads it — the list primitives' settled faces
+declare a word at the element position (`direct_callee_widths` answers RI32
+for `list_set`'s value, `list_copy_into`'s, `store_strided`'s), so a Float
+element crosses into them boxed (`emit_wide_ref`), one fresh cell per store,
+under a row that never said so. R0j's allocation audit found fifteen such
+sites across the frontier's Float fixtures (`fill_row`, `gen_x`, `gen_y`,
+`filter_loop`, `fill_signal`, `build_signal`, …) and NARRATES them,
+`T_WordSlotBox` naming the callee and the unit, because the cost is the
+slot's, not the program's: a refusal would refuse every Float list a
+program builds. The form is the one PLAN names: the sequence carries its
+element stride — a fat header read at access, so a body compiled once over
+a TVar element reads and writes at the element's own width — or the
+primitive is twinned at the element's width as user fns already are, and
+the narration retires with the last word slot. `Hβ.value.seq-addr-downcast`
+and `Hβ.infer.seq-op-signature-driven` ride the same landing (PLAN §11 5.4).
 
 `Hβ.lower.install-record-in-the-frame` — OPEN, the representation half of
 the install's cost. An install whose record provably never outlives its
@@ -6415,16 +6543,36 @@ site by its vector and broke eleven frontier Float runs with `indirect call
 type mismatch` — floor callers and `list_index` by value had been reaching
 wide callees through the word face all along, and the fix was a second face,
 not a second protocol. `tests/micros/mn-wide-closure-call-alloc-free.mn`,
-`mn-wide-op-state-alloc-free.mn`. The remainder: `Hβ.emit.generic-op-box-is-unrowed`.
+`mn-wide-op-state-alloc-free.mn`. The remainder: `Hβ.emit.generic-op-box-is-unrowed`
+— CLOSED 2026-09-30 (R0j), and closing it corrected the sentence above: the
+declared signature is NOT the ABI. An arm's face is its instance's, a
+perform speaks its site's, and the effect-variable position boxes nothing.
 
-`Hβ.emit.generic-op-box-is-unrowed` — OPEN, NAMED 2026-09-28. An op whose
-declared parameter is an effect TYPE VARIABLE is signed at the word floor, so a
-performer handing it a Float boxes the value into a fresh cell
-(`emit_args_at_abi`) — an allocation at a perform that no row charges. The
-honest form charges `Memory + Alloc` on the op's published row exactly when a
-wide instantiation reaches a variable position (the L0 discipline-cost
-precedent, `scheme_with_disc_cost`); the ultimate one monomorphizes the arm
-per instantiation, as total monomorphization already does for functions.
+`Hβ.emit.generic-op-box-is-unrowed` — ✅ CLOSED 2026-09-30 (R0j, the pin in
+LEDGER), in its ultimate form. NAMED 2026-09-28: an op whose declared
+parameter is an effect TYPE VARIABLE was signed at the word floor, so a
+performer handing it a Float boxed the value into a fresh cell — 8 bytes per
+perform, no row charging it, every `fold` over Floats paying it per element —
+and an arm whose instance was wider than the op's declaration was reached
+through an op-face adapter. The allocation audit found it on its first
+frontier run (six performs, `iterate_from` and `feed`). A perform speaks its
+SITE'S face now, exactly as a closure call does (`call_site_vector`,
+src/backends/wasm.mn): its arguments at the widths the site proves, its
+result at the width the perform node proves, the native table half where
+the vector is wide. The arm it reaches is twinned at the install's instance
+(R0b), and the site's types are that instance's — the tee unifies every
+perform with the handler's — so the two faces agree by construction, and
+`call_indirect`'s structural match traps loudly where they ever do not. The
+adapters (`$of$<arm>`, `adapter_op`, the declared-face helpers `op_abi` /
+`emit_args_at_abi` / `emit_result_from_abi`) are deleted whole; a driver is
+not an op and keeps the word protocol it was written in.
+tests/micros/mn-wide-op-perform-alloc-free.mn: 42 on boot 5d267d26 boxing
+silently, refused by the audit through the first m2, 42 and silent through
+the second. The one shape where a site's face and its arm's still differ is
+an install that keeps its base arms for a wide driver answer
+(`Hβ.continuations.redrive-reads-the-answer-as-a-word`) — such a program
+does not assemble today, and a perform there meets the type trap, never a
+silent value.
 
 `Hβ.driver.warm-image-restores-a-foreign-world` — CLOSED 2026-09-28 (L3).
 `mentl run x.mn` then `mentl compile x.mn` printed zero lines of WAT, and the

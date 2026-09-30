@@ -129,10 +129,10 @@ fn tail_set_union(ref vs: [RowEdge], ref ws: [RowEdge]) = match ws {
   [h, ...rest] => tail_set_union(tail_set_insert(vs, h), rest),
 }
 
-fn tail_set_has(ref vs: [RowEdge], v: Int) with Pure = match vs {
-  [] => false,
-  [h, ...rest] => if edge_cell(h) == v { true } else { tail_set_has(rest, v) },
-}
+fn tail_set_has(ref vs: [RowEdge], v: Int) with !Alloc + !Mutate = tail_set_has_from(vs, v, 0)
+
+fn tail_set_has_from(vs, v, i) =
+  i < len(vs) && (edge_cell(list_index(vs, i)) == v || tail_set_has_from(vs, v, i + 1))
 
 fn tail_set_diff(ref vs: [RowEdge], ref ws: [RowEdge]) = match vs {
   [] => [],

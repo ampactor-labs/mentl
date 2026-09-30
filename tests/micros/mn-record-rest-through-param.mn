@@ -1,0 +1,19 @@
+// expect: 62
+// A RECORD PATTERN'S REST THROUGH A PARAMETER READS ITS OWN LAYOUT. The rest
+// binder's type shares the receiver's row variable, and the twin's pair for
+// that variable is the RESIDUAL the site proved past the fields the chain
+// learned — so the receiver spells `[a, b] ++ [c]` and the rest `[b] ++ [c]`,
+// each from its own start. The pair used to be the site's WHOLE record, so
+// `rest.b` read the receiver's slot of b: 3 for 2 over `{a: 1, b: 2, c: 3}`,
+// and `rest.c` a virgin 0 for 3, while the rest record itself was built at the
+// residual's layout. Two shapes through one callee, each reading its own.
+fn after_a(u) = match u {
+  {a, ...rest} => rest.b,
+}
+
+fn last_of(u) = match u {
+  {a, ...rest} => rest.c,
+}
+
+fn main() =
+  after_a({a: 1, b: 2, c: 3}) + last_of({a: 1, b: 2, c: 3}) * 10 + after_a({a: 5, b: 6}) * 5

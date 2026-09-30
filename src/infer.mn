@@ -2071,6 +2071,23 @@ fn branch_replay_one(name, scheme, reason, kind) = match scheme {
 
 fn infer_stmt_list(stmts) = each(infer_stmt, stmts)
 
+// A `fn` declared in a block is MINTED where it is declared: lowering builds
+// its closure record there — its captures, or an empty record with none — so
+// the declaring frame pays `Memory + Alloc` once per nested fn, as it pays
+// for a lambda it mints (real 2026-09-30: `fn adder(k) with !Alloc = { fn
+// add(x) = x + k; add }` checked clean and allocated, and every maker in
+// lib/dsp returning its nested stage carried a row of `Pure`, found by the
+// allocation audit's first frontier run). A nested fn capturing nothing could
+// be the module's static record and cost nothing; that is a representation
+// the lowering has not built, and the charge follows it when it does
+// (Hβ.lower.captureless-nested-fn-is-static).
+fn nested_fns_charge(stmts) = each(nested_fn_charge, stmts)
+
+fn nested_fn_charge(node) = match node {
+  N(NStmt(FnStmt(_, _, _, _, _)), _, _) => inf_add_row(construction_row()),
+  _ => (),
+}
+
 // Statement inference
 fn infer_stmt(ref node) = match node {
   N(body, span, handle) => match body {
@@ -3339,6 +3356,7 @@ fn infer_expr(ref node) = match node {
     NExpr(BlockExpr(stmts, final_expr)) => {
       env_scope_enter()
       infer_stmt_list(stmts)
+      nested_fns_charge(stmts)
       infer_expr(final_expr)
       match final_expr {
         N(_, _, fh) => {
@@ -6961,6 +6979,8 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
           Located(span, LetBinding(rn, Inferred("record pattern rest"))),
           ValueScheme
         )
+        // the remaining fields are copied into a record built here
+        inf_add_row(construction_row())
       },
       None => (),
     }
@@ -7116,6 +7136,8 @@ fn infer_pat_list(pats, rest, parent_handle, span: ValidSpan) = {
         Located(span, LetBinding(name, Inferred("list rest pattern"))),
         ValueScheme
       )
+      // the rest is cut as a slice at run time, and costs what its callee does
+      inf_add_row(named_fn_row(list_rest_callee()))
     },
   }
 }

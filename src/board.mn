@@ -100,7 +100,12 @@ fn board_bounds() = [
   // 234 -> 231 (2026-09-28, R0d): the count read 232 at pin 0bc8383e, two
   // under the ceiling the landing before left, and one more left with the
   // untyped pattern lowering R0d deleted.
-  Bound({ceiling: 231, shape: CsEffectfulLambda}),
+  //
+  // 231 -> 230 (2026-09-30, R0j): the per-fn emission's bracket became a
+  // reference (`emit_function_bracketed` as a one-hole partial), and the
+  // allocation audit's walkers were written as references and index walks
+  // from the start.
+  Bound({ceiling: 230, shape: CsEffectfulLambda}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which

@@ -1,0 +1,27 @@
+// A HELD RESUME THROUGH A `!Alloc` CALLEE — the spine callee's row is blind.
+// `plus_one` declares `!Alloc` and calls its callback; the callback resumes a
+// held continuation, so `plus_one`'s own remainder (`+ 1`) is captured into
+// the continuation record when the resume runs — inside `plus_one`'s frame,
+// under its own `!Alloc`. The op's row is priced (`bump` is held, so it
+// carries `Memory + Alloc` at its perform), but nothing carries that cost
+// into the declaration whose remainder is what gets captured: the callback
+// performs no op, so the gate on `f` sees a Pure row and admits it. The
+// program compiles, runs to 21, and `plus_one`'s absence proof is false.
+// DECLARED RED (frontier_expected_red) until the continuation's cost reaches
+// every frame the spine extends
+// (Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume).
+effect Cell {
+  bump() -> Int
+}
+
+fn plus_one(f) with !Alloc = f() + 1
+
+handler cell with s = 10 {
+  bump() => plus_one(() => resume(s)),
+}
+
+fn body() = bump() * 2
+
+fn main() = {
+  body()
+} ~> cell

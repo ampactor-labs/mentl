@@ -1048,10 +1048,13 @@ type InstallShape = NoInstall | InstallOf(String, Int, [Int], [{arms: [String], 
 // seven LFn writers know at construction and k2_floor never rewrites
 // (the pass carries LowFn interiors through untouched — each body is
 // floored at its own construction). An arm carries the op it answers,
-// because it is CALLED at that op's declared face whatever its own
-// signature says (`adapter_op`, wasm.mn); a handler's state init is a fn
-// of its own that the install calls directly.
-type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm(String) | EfkInit | EfkK
+// because its callers name it by that op — a direct perform's target
+// (`perform_target`, lower.mn) and the allocation audit's unit name alike;
+// a handler's state init is a fn of its own that the install calls
+// directly. Both carry their handler's
+// name, because the row their code answers to is the handler's own
+// (`alloc_unit_named`, wasm.mn), and neither origin handle reaches it.
+type EmitFnKind = EfkPartial | EfkLambda | EfkThunk | EfkNested | EfkArm(String, String) | EfkInit(String) | EfkK
 
 // THE ENUMERATION'S ENTRY — one record per emittable symbol, written by
 // lower's seven LFn writers at construction. A record, not a widening
@@ -1172,17 +1175,20 @@ type BinOpKind
   | BKConcat
 
 // The primitives the sugar CALLS: `++` and every seam of an interpolation
-// call the sequence concat, and `xs[i]` calls `list_index`. They are the
-// operator's callees exactly as `f` is a call's — the judgment reads their
-// rows live (the concat and subscript charges), and the free-name walk draws
-// the edges its callee-first order needs, both from these two homes. Until
-// 2026-09-28 the walk drew none, so a fn whose only call was `++` could be
-// judged before the concat primitive: the judgment read a signature not yet
-// judged, and a refusal under `!Alloc` landed at the primitive's declaration,
-// twice, instead of at the developer's line.
+// call the sequence concat, `xs[i]` calls `list_index`, and a list pattern
+// that binds its rest (`[head, ...rest]`) cuts the rest as a slice. They are
+// the construct's callees exactly as `f` is a call's — the judgment reads
+// their rows live (the concat, subscript and rest charges), and the
+// free-name walk draws the edges its callee-first order needs, both from
+// these homes. Until 2026-09-28 the walk drew none, so a fn whose only call
+// was `++` could be judged before the concat primitive: the judgment read a
+// signature not yet judged, and a refusal under `!Alloc` landed at the
+// primitive's declaration, twice, instead of at the developer's line.
 fn concat_callees() = ["str_concat", "list_concat"]
 
 fn subscript_callee() with Pure = "list_index"
+
+fn list_rest_callee() with Pure = "slice"
 
 fn binop_kind(op) with Pure = match op {
   BAdd => BKArith,
@@ -2583,6 +2589,10 @@ type DiagKind
   // `mentl tighten` authors the residue (negations, instance pins), or
   // deletes the clause.
   | TRowInventory(EffRow, EffRow, String, Span)
+  // a wide value boxed to cross a slot sized for a word, in a unit whose row
+  // does not say Alloc — the representation's cost, not the program's
+  // (what crossed, the unit)
+  | TWordSlotBox(String, String, Span)
   // The poly-recursion teach (§11 5.3): rides the occurs REFUSAL when
   // the infinite type runs through a named fn's own param/return mint —
   // the question beats the guess; the concrete signature derivation
@@ -2843,6 +2853,7 @@ fn diag_span(d) with Pure = match d {
   EIfMissingElse(s) => s,
   TOverDeclared(_, _, _, s) => s,
   TRowInventory(_, _, _, s) => s,
+  TWordSlotBox(_, _, s) => s,
   TPolyRecursionSignature(_, s) => s,
   TOwnUnconsumed(_, s) => s,
   TOwnAcrossReplay(_, s) => s,
@@ -2920,6 +2931,7 @@ fn diag_source(d) with Pure = match d {
   EIfMissingElse(_) => "infer",
   TOverDeclared(_, _, _, _) => "infer",
   TRowInventory(_, _, _, _) => "infer",
+  TWordSlotBox(_, _, _) => "emit",
   TPolyRecursionSignature(_, _) => "infer",
   TOwnUnconsumed(_, _) => "ownership",
   TOwnAcrossReplay(_, _) => "ownership",
@@ -2996,6 +3008,7 @@ fn diag_code(d) with Pure = match d {
   EIfMissingElse(_) => "E_IfMissingElse",
   TOverDeclared(_, _, _, _) => "T_OverDeclared",
   TRowInventory(_, _, _, _) => "T_RowInventory",
+  TWordSlotBox(_, _, _) => "T_WordSlotBox",
   TPolyRecursionSignature(_, _) => "T_PolyRecursionSignature",
   TOwnUnconsumed(_, _) => "T_OwnUnconsumed",
   TOwnAcrossReplay(_, _) => "T_OwnAcrossReplay",
@@ -3041,6 +3054,7 @@ fn diag_severity(d) with Pure = match d {
   PUnexpectedToken(_, _) => SWarning,
   TOverDeclared(_, _, _, _) => SWarning,
   TRowInventory(_, _, _, _) => SWarning,
+  TWordSlotBox(_, _, _) => SWarning,
   TPolyRecursionSignature(_, _) => SWarning,
   TOwnUnconsumed(_, _) => SWarning,
   TOwnAcrossReplay(_, _) => SWarning,
@@ -3363,6 +3377,7 @@ fn diag_applicability(d) with Pure = match d {
   WCommentRefUnresolved(_, _, _) => MaybeIncorrect,
   TOverDeclared(_, _, _, _) => MachineApplicable,
   TRowInventory(_, _, _, _) => MachineApplicable,
+  TWordSlotBox(_, _, _) => MaybeIncorrect,
   TPolyRecursionSignature(_, _) => HasPlaceholders,
   TOwnUnconsumed(_, _) => // Not mechanically applicable: the fix is a consume the developer
   // must place (or an honest widening to `ref`), never a patch.
@@ -3451,6 +3466,7 @@ fn diag_message(d) with !Mutate = match d {
   EIfMissingElse(_) => "`if` without `else` requires a unit body",
   TOverDeclared(declared, used, name, _) => "function '{name}' declares {show_effrow(declared)} but body only uses {show_effrow(used)} — tighten the signature to unlock capabilities",
   TRowInventory(declared, used, name, _) => "function '{name}' declares {show_effrow(declared)}, which is exactly what the body proves ({show_effrow(used)}) — an inventory: the positive row is projected at the address surface, so author only what inference cannot say (a negation, an instance pin, Pure, or a cap on a callback's row); `mentl tighten` writes the residue",
+  TWordSlotBox(what, unit, _) => "{what} is boxed into a fresh cell in `{unit}`, whose row does not say `Alloc` — a wide value crossing a slot sized for a word: the representation's cost, not the program's, until the slot takes the value's own width (Hβ.value.seq-element-stride-carrier)",
   TPolyRecursionSignature(name, _) => "the infinite type runs through '{name}''s own parameter or return — if '{name}' calls itself at a different type (polymorphic recursion), a FULL signature on '{name}' (every parameter and the return annotated) buys the poly self-call",
   TOwnUnconsumed(msg, _) => msg,
   TOwnAcrossReplay(msg, _) => msg,
