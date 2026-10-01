@@ -93,7 +93,7 @@ handler arm_state_ctx(fields, disc, hname) {
 fn handler_decl_of(hname) = match env_lookup(hname) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      HandlerKind(_, config, state, arms) => Some((config, state, arms)),
+      HandlerKind(_, _, config, state, arms) => Some((config, state, arms)),
       _ => None,
     },
   },
@@ -520,12 +520,17 @@ type ConvertKind
 // PdWalk(effect key, op slot, op, target) — the walk yields record and world;
 //   the target names the handler when one declares the op, else ArmSlot and
 //   the arm comes out of the record.
-// PdDriver(fn) — NOT a dispatch. A direct call to a synthesized fn (the k
-//   drivers) against the CALLER's own __state, which used to hide behind
-//   LPerform's `""` state-local sentinel. It stays in this type because it
-//   stands in the dispatch position, and it is the one shape that must not
-//   bracket — naming it is what lets every other shape bracket
-//   unconditionally.
+// PdDriver(fn, record) — NOT a dispatch. A direct call to a synthesized fn
+//   (the k drivers) against the INSTALL record it drives, read through the
+//   record ladder (`resolve_hrec`): the arm's own `$__state` at arm level, a
+//   lambda's captured record, a bound callee's trailing param. It used to be
+//   the CALLER's own `$__state`, which is the install record only in the
+//   arm's own frame; a resume inside a lambda re-drove through the closure
+//   record and the install answered an address (measured 2026-10-01,
+//   tests/micros/mn-held-resume-lambda-reyield.mn). It stays in this type
+//   because it stands in the dispatch position, and it is the one shape
+//   that must not bracket — naming it is what lets every other shape
+//   bracket unconditionally.
 //
 // The HANDLER and the OP stay separate, never the `<h>_<op>` symbol they
 // spell. Emit wants the symbol; the emit-walk's preinstall-init check wants
@@ -537,13 +542,13 @@ type ConvertKind
 // answer (`arm_site_pairs`) — and nothing stores it.
 type ArmTarget = ArmNamed(String) | ArmSlot
 
-type PerformDispatch = PdFrame(Int, String, String) | PdWalk(String, Int, String, ArmTarget) | PdDriver(String)
+type PerformDispatch = PdFrame(Int, String, String) | PdWalk(String, Int, String, ArmTarget) | PdDriver(String, LowExpr)
 
 // The op a dispatch performs — None for a driver, which is not an op.
 fn perform_op_name(disp) = match disp {
   PdFrame(_, _, op_name) => Some(op_name),
   PdWalk(_, _, op_name, _) => Some(op_name),
-  PdDriver(_) => None,
+  PdDriver(_, _) => None,
 }
 
 // LZero is the zero of the representation its handle reads at EMIT, under
@@ -1820,7 +1825,7 @@ fn installed_handled_ename(handler_body) = {
     match env_lookup(hname) {
       Some(entry) => match entry {
         (_, _, kind) => match kind {
-          HandlerKind(_, _, _, arms) => // The absorbed effect is a live projection of the arms (§2), not a field.
+          HandlerKind(_, _, _, _, arms) => // The absorbed effect is a live projection of the arms (§2), not a field.
           derive_handler_ename(arms, hname),
           _ => // drift-audit: ignore — "" = RHS is not a named handler decl (nothing absorbed)
           "",
@@ -2506,7 +2511,7 @@ fn perform_target(disp) = match disp {
   PdFrame(ih, hname, op_name) => Some(RefArm(ih, arm_fn_name(hname, op_name))),
   PdWalk(_, _, op_name, ArmNamed(hname)) => Some(RefName(arm_fn_name(hname, op_name))),
   PdWalk(_, _, _, ArmSlot) => None,
-  PdDriver(name) => Some(RefName("op_{name}")),
+  PdDriver(name, _) => Some(RefName("op_{name}")),
 }
 
 // The op's UNIQUE default handler, read from the EffectOpScheme edge drawn at
@@ -3476,7 +3481,7 @@ fn threaded_handler_for(stack, ename: String) = if len(stack) == 0 {
 fn handler_arm_effects(hname: String) = match env_lookup(hname) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      HandlerKind(r, _, _, _) => effects_of_row(mk_ef_open([], r)),
+      HandlerKind(r, _, _, _, _) => effects_of_row(mk_ef_open([], r)),
       _ => [],
     },
   },
@@ -4732,7 +4737,7 @@ fn op_scheme_instance(op: String) = match env_lookup(op) {
 fn handler_decl_instance(hname: String) = match env_lookup(hname) {
   Some(entry) => match entry {
     (scheme, _, kind) => match kind {
-      HandlerKind(_, _, _, _) => match judgment_pair(scheme) {
+      HandlerKind(_, _, _, _, _) => match judgment_pair(scheme) {
         (_, sty) => match handler_result_ty(sty) {
           TName(_, [inst]) => Some(inst),
           _ => None,
@@ -4825,13 +4830,19 @@ fn lower_one_arm_decl(arm: {args: [String], body: Node, op_name: String}, discri
   // the lines of the arms lowered before it (line_base).
   ls_enter_frame(fn_name, arm_params, locals_handles, captures_names, captures_handles, line_base)
   lower_frame_fence_push()
-  // A STATEFUL arm binds `__hrec` to its own $__state — the install
-  // record the driver passed — so commits at every depth reach it
-  // through the ONE ladder: at arm level the LLet local, in a lambda the
-  // seeded capture, in a bound callee the trailing param. The bind runs
-  // BEFORE body lowering so nested mints resolve it; the LLet
+  // An arm that COMMITS state or may RE-DRIVE binds `__hrec` to its own
+  // $__state — the install record the driver passed — so every depth
+  // reaches it through the ONE ladder: at arm level the LLet local, in a
+  // lambda the seeded capture, in a bound callee the trailing param. A
+  // held resume re-drives this handler when its remainder performs again
+  // (`lower_resume_callk`), and the driver dispatches through the install
+  // record, so a re-driving arm needs the ladder whether or not it has
+  // state: a stateless handler's lambda had nothing to capture and its
+  // redrive trapped (tests/micros/mn-held-resume-stateless-reyield.mn). The
+  // bind runs BEFORE body lowering so nested mints resolve it; the LLet
   // materializes it below.
-  let hrec = if len(captures_names) > 0 { Some(ls_bind_local("__hrec", 0)) } else { None }
+  let hrec =
+    if len(captures_names) > 0 || disc_redrives(disc) { Some(ls_bind_local("__hrec", 0)) } else { None }
   // Hβ.first-light.resume-with-state-mutation: install arm_state_ctx
   // around arm body lowering so lower_expr's ResumeExpr arm resolves
   // `with field = NEW` updates' slot offsets via current_state_fields()
@@ -4872,6 +4883,17 @@ fn state_field_names_of(state: [{init: Node, name: String}]) = map(state_field_n
 // Build a list of n zero handles. Used as the handle-list for arm
 // captures and locals where lower-time has no type-handle info.
 fn zeros_of_len(n) = map((_) => 0, range(0, n))
+
+// Whether an arm of this discipline may re-drive its handler: a held resume
+// (`lower_resume_callk`) calls the k record and, when the remainder performs
+// one of this handler's ops again, dispatches it through the install record.
+// The same two disciplines give the arm its leading k parameter.
+fn disc_redrives(disc) = match disc {
+  MultiShot => true,
+  Abandon => true,
+  OneShot => false,
+  Either => false,
+}
 
 // OneShot resume — the zero-cost stack return, byte-identical to the
 // pre-producer floor. No state updates: the value flows straight to
@@ -4949,7 +4971,7 @@ fn lower_resume_callk(handle, val, state_updates) = {
                 LLet(
                   handle,
                   "__rd_{int_to_str(handle)}",
-                  LPerform(handle, PdDriver("__redrive_{hname}"), [LLocal(handle, kr)])
+                  LPerform(handle, PdDriver("__redrive_{hname}", resolve_hrec(handle)), [LLocal(handle, kr)])
                 ),
                 // The redrive LOOPS this handler's OWN ops (dispatch-until-clear),
                 // so a flag STILL raised after it is a FOREIGN op — M4 made abort
@@ -7583,7 +7605,7 @@ fn arm_site_pairs(install_h) = match graph_install_at(install_h) {
     None => [],
     Some(entry) => match entry {
       (scheme, _r, kind) => match kind {
-        HandlerKind(_, _, _, arms) => arm_pairs_of(judgment_pair(scheme), hexpr_h, cfg_hs, arms),
+        HandlerKind(_, _, _, _, arms) => arm_pairs_of(judgment_pair(scheme), hexpr_h, cfg_hs, arms),
         _ => // a name that is not a handler has no arms to key
         [],
       },
@@ -7683,7 +7705,7 @@ fn handler_may_key(hname) = match env_lookup(hname) {
   None => false,
   Some(entry) => match entry {
     (scheme, _r, kind) => match kind {
-      HandlerKind(_, _, _, _) => match judgment_pair(scheme) {
+      HandlerKind(_, _, _, _, _) => match judgment_pair(scheme) {
         (qs, _) => len(qs) > 0,
       },
       _ => false,

@@ -1,0 +1,20 @@
+// expect: 22
+// A STATELESS handler with a held resume inside a lambda. Its arm bound no
+// install-record local at all (the record ladder was bound for stateful arms
+// only), so the lambda had nothing to capture and the redrive had no record
+// but the closure's own. Every arm that may re-drive binds the record now.
+effect Cell {
+  bump() -> Int
+}
+
+fn plus_one(f) = f() + 1
+
+handler cell {
+  bump() => plus_one(() => resume(10)),
+}
+
+fn body() = bump() + bump()
+
+fn main() = {
+  body()
+} ~> cell

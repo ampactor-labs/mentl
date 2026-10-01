@@ -1418,10 +1418,11 @@ and this is the STATE.
   `ImageAlloc` — a unit's row is asked for the site's own effect. And the
   continuation machinery landing in a spine callee's k twin is the OP's
   remainder cost, recorded there and never refused against the callee's
-  row — which names the open half: a held resume through a `!Alloc`
-  callee captures that callee's remainder inside its own frame and
-  nothing charges it, a false absence proof on the board as a declared red
-  (`Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume`). A
+  row — which named the open half: a held resume through a `!Alloc`
+  callee ran its remainder inside that callee's frame and nothing charged
+  it, a false absence proof on the board as a declared red
+  (`Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume`, CLOSED
+  2026-10-01 — the resume performs its continuation's world, S2 below). A
   wide value boxed into a list primitive's word slot is narrated
   (`T_WordSlotBox`), the slot being the representation's. What the audit
   does not see — the JVP twins, a library's whole-emit, the generated
@@ -1753,6 +1754,35 @@ and this is the STATE.
   gated on a noted threaded site. Named:
   `Hβ.lower.race-rule-obligation-flows-to-callers`,
   `Hβ.persist.sequence-fanout-replay-barrier`.
+
+- **A HELD RESUME RUNS ITS REMAINDER WHERE IT IS CALLED — CLOSED 2026-10-01
+  (S2).** Two defects at one seam, found by measuring the declared-red
+  `spine-callee-alloc` rather than trusting its entry. THE RUNTIME: a held
+  resume whose remainder performs one of its handler's ops again re-drives the
+  handler from the resume's own frame, and the driver dispatched through that
+  frame's `$__state` — the install record in the arm, the closure record in a
+  lambda — so a resume handed to `plus_one` over `bump() + bump()` answered an
+  address where deep semantics give 22, and a stateless handler and a called
+  fn trapped (five shapes, boot 477bb667). The driver carries the record it
+  drives, read through the install-record ladder every re-driving arm binds
+  (`Hβ.lower.redrive-drives-the-frame-record`). THE ROW: a resume charged
+  nothing, so a callback that resumes was Pure and its callee's gate judged
+  nothing — `fn apply(f) with !Log = f() + 0` accepted `apply(() =>
+  resume(1))` while the remainder performed Log inside apply. An arm's
+  continuation world is the handler's remainder-world cell now, a held
+  resume performs it, a callee gates it through the callback's row, and every
+  install judges those gates against its own remainder by A5's check; the
+  handler's residual cuts the cell before it publishes. Crown 104/104
+  (`leak-resume-remainder` red on the boot), five micros red-first,
+  `spine-callee-alloc` out of frontier_expected_red. Named: a resume in a
+  called fn charges no world
+  (`Hβ.infer.resume-in-a-called-fn-has-no-arm-types`), the remainder judged
+  is the whole body (`Hβ.effects.remainder-row-is-flow-insensitive`), and an
+  escaping resume carries the cell free
+  (`Hβ.continuations.escaped-resume-carries-its-world-free`). The instance pin
+  that was queued beside it as a soundness hole is not one — the bridge serves
+  what the row says and nothing escapes the negation above it — and its
+  design question is banked (`Hβ.effects.handler-pins-its-instance`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

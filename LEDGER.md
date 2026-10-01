@@ -35,6 +35,64 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-01 · pin 9387fea1990ef23f (TRANSITION m3 == m4) · A HELD RESUME RUNS ITS REMAINDER WHERE IT
+  IS CALLED, AT RUNTIME AND IN THE ROW. Two defects at one seam, both found by
+  measuring the declared-red `spine-callee-alloc` instead of trusting its
+  entry. THE RUNTIME: a held resume whose remainder performs one of its
+  handler's ops again RE-DRIVES the handler from the resume's own frame (the
+  deep-handler equation, `lower_resume_callk`), and the driver dispatched
+  through that frame's `$__state` — the install record in the arm, the CLOSURE
+  record in a lambda, the static record in a called fn. Five shapes over a
+  re-yielding body, measured on boot 477bb667: a resume in a let-bound lambda,
+  through a non-transparent callee, through a tail-transparent callee — 1049025,
+  1049033, 1049025 printed for 22, exit 5; a stateless handler — trap 134; a
+  called top-level fn — trap 134 for 200. The driver carries the record it
+  drives (`PdDriver(name, record)`, read through the install-record ladder
+  `resolve_hrec`), and every arm that may re-drive binds the ladder, stateful
+  or not (`disc_redrives`): 22, 22, 22, 22, 200. THE ROW: a resume charged
+  nothing, so a callback that resumes was Pure and its callee's gate judged
+  nothing — `fn apply(f) with !Log = f() + 0` accepted `apply(() =>
+  resume(1))` while the remainder `□ + note(2)` performed Log inside apply's
+  extent, and ran to 3. An arm's continuation world is now the handler's
+  REMAINDER-WORLD cell (`HandlerKind`'s second field, minted at
+  pre-registration below the mint ceiling, part of the handler frame's
+  signature), its discipline the op's joined one (`op_resume_discipline` —
+  the representation the lowering calls), and a held resume PERFORMS its
+  world (`continuation_held`); a callee's gate reaches the cell through the
+  callback's row by A3's push, and every install judges the cell's gates
+  against its own remainder, body minus handled — A5's `remainder_gates_check`
+  read a second time. The handler's own residual CUTS the cell before it
+  publishes (`inf_cut_edge`), so it never reaches an installer and never
+  carries the handler's clause onto the body. Crown 104/104 with
+  `leak-resume-remainder` RED-first (103/1 on the boot) and
+  `sound-resume-remainder`; `spine-callee-alloc` refuses naming plus_one and
+  leaves frontier_expected_red. KILLS: (1) the instance pin I put ahead of
+  this as a soundness hole — retracted on reading: the bridge serves what
+  the row says it serves and nothing escapes the negation above it; the
+  missing thing is a capability, and its design question is banked
+  (`Hβ.effects.handler-pins-its-instance`); (2) the entry's claim that the
+  fixture's plus_one allocates when run — after the redrive fix its
+  single-perform remainder allocates nothing there, and the refusal now
+  rests on the flow-insensitive remainder (named); (3) an `!IO` probe that
+  "confirmed" the row hole — IO names no effect in the link (println
+  performs Console), so the negation constrained nothing; re-measured with
+  a self-contained Log; (4) the entry's banked form, a charge at
+  non-transparent argument positions only — it misses let-bound and stored
+  callbacks and the tail-transparent callee whose extent still runs the
+  remainder, and the cost is the remainder's whole row, not its allocation;
+  (5) charging by the arm's own grade — an arm resuming at its tail still
+  calls a record when another handler holds the op; (6) the first march
+  refused at the comment-ref ratchet: the new `disc_redrives` comment
+  backticked a local.
+  Named: `Hβ.effects.remainder-row-is-flow-insensitive`,
+  `Hβ.continuations.escaped-resume-carries-its-world-free`,
+  `Hβ.lower.twin-key-is-a-product`. Closed:
+  `Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume`,
+  `Hβ.lower.redrive-drives-the-frame-record`. The wheel's emit moved only in
+  handle numbers — the digit-normalized m2/m3 diff is empty, and every number
+  from handle 176,790 up shifted by 111. Board: micros 265/265, crown
+  104/104, frontier 477/0/1. Cost: m3 leg 10.03s wall · 861MB peak RSS
+  (882316 KB), m4 leg 9.23s · 886940 KB, 460595 lines, census 0.
 - 2026-09-30 · pin 477bb667dfab178d (TRANSITION m3 == m4) · THE SCHEDULE REACHES A CALLEE'S FANOUT BY
   DEMAND, AND THE FAN IS A SEQUENCE FANOUT. B4 + C9. A `><` inside a reusable
   fn was permanently `Seq` — the lexical schedule read stopped at the frame

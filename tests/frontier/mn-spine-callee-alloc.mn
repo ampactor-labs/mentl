@@ -1,15 +1,13 @@
-// A HELD RESUME THROUGH A `!Alloc` CALLEE — the spine callee's row is blind.
+// A HELD RESUME THROUGH A `!Alloc` CALLEE — the remainder runs in its extent.
 // `plus_one` declares `!Alloc` and calls its callback; the callback resumes a
-// held continuation, so `plus_one`'s own remainder (`+ 1`) is captured into
-// the continuation record when the resume runs — inside `plus_one`'s frame,
-// under its own `!Alloc`. The op's row is priced (`bump` is held, so it
-// carries `Memory + Alloc` at its perform), but nothing carries that cost
-// into the declaration whose remainder is what gets captured: the callback
-// performs no op, so the gate on `f` sees a Pure row and admits it. The
-// program compiles, runs to 21, and `plus_one`'s absence proof is false.
-// DECLARED RED (frontier_expected_red) until the continuation's cost reaches
-// every frame the spine extends
-// (Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume).
+// held continuation (plus_one computes after it returns, so the op is
+// multi-shot and `resume` calls the record), so the remainder runs inside
+// plus_one's extent, and its row carries the op's own cost. The resume
+// performs its continuation's world — the handler's remainder cell — so the
+// callback's row carries it into plus_one's gate, and the install judges the
+// gate against its own remainder: E_EffectMismatch naming plus_one. Every
+// boot through 477bb667 compiled it and ran it to 21, the gate seeing a Pure
+// callback (Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume).
 effect Cell {
   bump() -> Int
 }

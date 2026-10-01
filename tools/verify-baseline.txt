@@ -863,21 +863,6 @@ fs_impl_bypass_max: 7
 # count MEANS at zero is that no named fn in the wheel hides behind a lambda
 # that only forwards to it.
 frontier_expected_red: why-coordinates
-# 2026-09-30 (R0j): `spine-callee-alloc` is declared RED. A held resume
-# passing through a callee declared `!Alloc` captures that callee's own
-# remainder into the continuation record, inside its frame, and the
-# callback that resumes performs no op, so the negation gate on the callback
-# sees Pure and admits it: `fn plus_one(f) with !Alloc = f() + 1` under
-# `bump() => plus_one(() => resume(s))` compiles, runs to 21, and its absence
-# proof is false. The op's cost is priced at the perform
-# (scheme_with_disc_cost) and the allocation audit RECORDS the continuation
-# machinery in whichever frame the spine extends rather than refusing it
-# against that frame's row, because the frame is not where the cost belongs.
-# The leg expects E_EffectMismatch and turns green the day the continuation's
-# cost reaches every frame the spine extends
-# (Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume); this
-# entry is then retired, never kept as a second home.
-frontier_expected_red: spine-callee-alloc
 # 2026-09-18 → 2026-09-28: `eq-in-arm-pointer` was declared RED here — `==`
 # in a handler arm over its op's quantified parameters compared two
 # byte-equal Strings by ADDRESS, because no twin reached the arm. RETIRED by

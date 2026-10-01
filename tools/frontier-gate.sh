@@ -719,8 +719,8 @@ run_refusal_linked() {
   size=$(wc -c < "$wat" 2>/dev/null || echo 0)
   # A refusal leg's verdict goes through judge too: a program the medium
   # SHOULD refuse and still compiles is a standing failure a name can declare
-  # (spine-callee-alloc, 2026-09-30), and it retires loudly the day the
-  # refusal fires.
+  # (spine-callee-alloc was one from 2026-09-30 until its refusal fired on
+  # 2026-10-01), and it retires loudly the day the refusal fires.
   if [ "$rc" -ne 0 ] && [ "$count" -gt 0 ] && [ "$size" -eq 0 ]; then
     judge "$label" 1 "$label refusal ($expected_code=$count exit=$rc wat=0B)"
   else
@@ -1536,12 +1536,13 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-threaded-branch-caller.mn" E_ThreadedBranchEffect "$dir"
   run_refusal_linked "$compiler" threaded-branch-transitive \
     "$ROOT/tests/frontier/mn-threaded-branch-transitive.mn" E_ThreadedBranchEffect "$dir"
-  # A held resume through a `!Alloc` callee: the callee's remainder is captured
-  # into the continuation record inside its own frame, and no row carries the
-  # op's cost there — the program compiles and runs to 21 under a false absence
-  # proof. DECLARED RED by name in frontier_expected_red until the cost reaches
-  # every frame the spine extends
-  # (Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume).
+  # A held resume through a `!Alloc` callee runs the remainder inside the
+  # callee's extent, and the remainder carries the op's own multi-shot cost.
+  # The resume performs its continuation's world (the handler's remainder
+  # cell, gated by the callee through the callback's row), and the install
+  # judges that gate against its own remainder: refused, naming `plus_one`.
+  # It compiled and ran to 21 on every boot through 477bb667, declared red
+  # (Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume, CLOSED).
   run_refusal_linked "$compiler" spine-callee-alloc \
     "$ROOT/tests/frontier/mn-spine-callee-alloc.mn" E_EffectMismatch "$dir"
   run_program "$compiler" threaded-branch-readonly-state \

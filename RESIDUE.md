@@ -1090,6 +1090,19 @@ carries captures, priced by the same race rule — a representation the lowering
 has not built. RETIREMENT: a closure record carries its minting frame's
 schedule and its fanouts read it.
 
+`Hβ.lower.twin-key-is-a-product` — NAMED 2026-10-01 (from B4's review). A
+schedule twin's key is its instantiation's enc STRING with the schedule as a
+trailing LETTER (`sched_suffix`), and the schedule is read back by looking at
+the string's last byte (`enc_sched`: 84 is Threaded, 80 Persisted) and cut
+off again for the type part (`enc_type_part`). That is position-as-identity
+at the representation layer, the shape §11 corrected in the packed handle:
+two facts — which instantiation, which schedule — live in one string, and a
+reader that forgets the letter keys a schedule twin as its type twin. THE
+FORM: the twin key is a product, `{pairs, schedule}`, and the mangled symbol
+is its render, spelled once where the emit names a symbol; every reader of
+the key reads the field it asks about. RETIREMENT: `enc_sched` and
+`enc_type_part` delete, and no reader of a twin key inspects bytes.
+
 `Hβ.lower.race-rule-obligation-flows-to-callers` — NAMED 2026-09-30 (B4). A
 base unit whose own frame installs a threaded schedule over a fanout whose
 branch effects only a CALLER handles refuses at the callee (B1's fence: "an
@@ -4042,6 +4055,11 @@ types, so the resume in a called fn types against the R and S its caller
 proves. That is continuation-polymorphism at the fn boundary, not a patch
 to the check. Until then the class stays behind the wildcard and the
 fixture keeps carrying two honest false reports.
+The same judgment standalone means a resume in a called fn charges no WORLD
+(2026-10-01): its remainder reaches no gate of a callee it is handed to, so a
+`!E` callee of such a resume is judged against nothing. Its runtime re-drive
+holds since that landing (tests/micros/mn-held-resume-called-fn-reyield.mn,
+200), through the record the arm passes as the bound fn's trailing param.
 
 `Hβ.cursor.cached-argmax-keyed-by-epoch-and-caret` — THE CACHED CURSOR IS
 UNBUILT, and the sketch that stood in for it was inert. Opened
@@ -6759,29 +6777,76 @@ encodes the residual, so the wheel's 18 row-keyed twins renamed
 (TRANSITION). tests/micros/mn-record-rest-through-param.mn: 3 on boot
 5d267d26, 62 after.
 
-`Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume` — OPEN,
-NAMED 2026-09-30 (R0j), a false absence proof on the board as a declared
-red. A held resume that passes through a callee on its way to the remainder
-captures that callee's OWN remainder into the continuation record — inside
-the callee's frame, when the resume runs — and no row carries the cost
-there: the op's row is priced (`bump` is held, so `Memory + Alloc` rides its
-perform, L0), but the callback that resumes performs no op, so a declared
-`!Alloc` on the callee gates a Pure row and admits it. `fn plus_one(f) with
-!Alloc = f() + 1` under `bump() => plus_one(() => resume(s))` checks clean,
-compiles, and runs to 21 (tests/frontier/mn-spine-callee-alloc.mn,
-`frontier_expected_red: spine-callee-alloc` — the leg expects
-`E_EffectMismatch` and turns green the day the entry retires). The
-allocation audit sees the machinery (a remainder record, its extension, a
-resumed value's cell in `plus_one`'s k twin) and RECORDS it as built without
-refusing, because the frame it lands in is the spine's, not the cost's
-owner: refusing there would be a refusal against the wrong row. The form:
-the remainder's cost reaches every frame the spine extends — a callee whose
-parameter is resumed through is a callee whose remainder is captured, a fact
-the tail-transparency proof (`tail_transparent_params`) already computes for
-the OPPOSITE conclusion (a callee proven tail-transparent keeps the stack
-path and captures nothing), so the row charge is that proof's negation
-carried onto the callee's row at the parameter, and `!Alloc` on `plus_one`
-refuses the resume-through at the argument edge, naming the declaration.
+`Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume` — CLOSED
+2026-10-01 (S2), and the entry's own claim and its banked form both died on
+the way. The claim: `plus_one`'s frame allocates when the fixture runs. After
+the redrive fix below, the fixture's single-perform remainder (`□ * 2`)
+allocates nothing inside plus_one; the static extension path fires only when a
+yield crosses the frame. The banked form: charge the callee's row at an
+argument position its tail-transparency proof does not cover. Measuring the
+general shape refuted it twice: a let-bound or stored resuming callback never
+stands at the call, a TAIL-TRANSPARENT callee's extent still runs a held
+remainder (the arm called the record, and the remainder runs before the
+callee returns), and what the remainder brings is its whole row, not its
+allocation — `fn apply(f) with !Log = f() + 0` accepted `apply(() =>
+resume(1))` while `□ + note(2)` performed Log inside apply, ran to 3 on boot
+477bb667 (tests/crown/leak-resume-remainder.mn). THE FORM: a held
+continuation is a record the resume CALLS, so the resume performs the
+continuation's WORLD in the frame that holds it. An arm's world is its
+handler's remainder-world cell — `HandlerKind`'s second field, minted at
+pre-registration below the mint ceiling and named in the handler frame's
+signature so no completion prune drops it, never bound — and its discipline
+the op's joined one, the representation the lowering calls
+(`continuation_held`). A callee's gate reaches the cell by A3's push through
+the callback's row; every install judges the cell's gates against its own
+remainder, body minus handled, by A5's `remainder_gates_check`; and the
+handler's exit cuts the cell out of its own residual (`inf_cut_edge`), so it
+reaches no installer and never carries the handler's clause onto the body.
+MEASURED: the fixture refuses naming plus_one and left
+frontier_expected_red; crown 104/104, the leak crucible RED on the boot
+(103/1); the sound twin (`□ + 2` under the same `!Log`) accepts. What it does
+not reach is named: a resume in a called top-level fn charges no world
+(`Hβ.infer.resume-in-a-called-fn-has-no-arm-types`), the remainder judged is
+the whole body (`Hβ.effects.remainder-row-is-flow-insensitive`), and a
+closure carrying a resume out of its arm carries the cell free
+(`Hβ.continuations.escaped-resume-carries-its-world-free`).
+
+`Hβ.lower.redrive-drives-the-frame-record` — CLOSED 2026-10-01 (S2), a
+silent wrong found while measuring the entry above. A held resume whose
+remainder performs one of its handler's ops again re-drives the handler from
+the resume's own frame (`lower_resume_callk`'s flag check), and the driver's
+record was that frame's own `$__state` — the install record only when the
+resume stands directly in the arm. In a lambda it is the closure record, in
+a called fn the static record. Over `bump() + bump()`, measured on boot
+477bb667: a resume in a let-bound lambda, through a non-transparent callee
+and through a tail-transparent one printed 1049025, 1049033 and 1049025 for
+22 (exit 5); a stateless handler and a called top-level fn trapped (134 for 22
+and for 200). The redrive's own comment claimed both callers passed the
+install record. The driver now carries the record it drives
+(`PdDriver(name, record)`, read through `resolve_hrec`), and every arm that may
+re-drive binds the record ladder whether or not it has state
+(`disc_redrives`): tests/micros/mn-held-resume-*-reyield.mn, five, RED-first.
+
+`Hβ.effects.remainder-row-is-flow-insensitive` — NAMED 2026-10-01 (S2). An
+install judges the gates a held resume carries against its whole body minus
+what it absorbs, so everything the body performs BEFORE the perform counts as
+remainder — including the perform's own multi-shot cost. A `!Alloc` callee a
+resume runs through therefore refuses even when the remainder allocates
+nothing (`spine-callee-alloc` is that case: its remainder is `□ * 2`). This is
+the flow-insensitivity every row in the medium has, read at one more place;
+the precise remainder is the row after the perform site, which a row does
+not carry. RETIREMENT: the perform site's continuation boundary carries the
+row of what runs after it, and the install judges each resume's gates against
+the remainders of the performs its handler answers.
+
+`Hβ.continuations.escaped-resume-carries-its-world-free` — NAMED 2026-10-01
+(S2). A closure that holds a held resume and escapes its arm — returned as the
+install's answer, written into handler state — carries the handler's
+remainder-world cell in its row as a free edge, and a frame that calls it
+outside the install gates a cell no install will judge for that call. The
+remainder world is a per-handler cell judged per install, not instantiated per
+install. RETIREMENT: the cell is quantified in the handler's scheme and each
+install instantiates it, or an escaping resume is refused at the escape.
 
 `Hβ.lower.captureless-nested-fn-is-static` — OPEN, NAMED 2026-09-30 (R0j),
 a representation follow-up. A `fn` declared in a block is minted as a
@@ -7348,6 +7413,25 @@ subtracting that instance alone — a perform of another rate beneath it is
 unhandled at the root. It is the instance face of what install identity
 was taken to be before the 2026-09-30 measurement resolved that half
 (`Hβ.effects.arm-world-static-rule`); this peer stands on its own.
+MEASURED 2026-10-01, and it is a CAPABILITY, not a soundness hole — put
+ahead of the queue as one and retracted on reading: under today's rule an
+install serves every instance of its effect and the runtime agrees (the walk
+dispatches innermost by key), so `fn path() with !Sample(44100) = (read44())
+~> sample_at(48000)` is TRUE — nothing escapes path — while the 44.1 kHz
+reader is handed 48,000. What is missing is the sentence "this install serves
+Sample(48000)". THE DESIGN QUESTION the measurement found: a row is a set of
+POSSIBLE members, and two colliding instances keep the one that says less
+(`collision_upgrades`), so `read44() + current_sample()` carries
+`Sample(placeholder)` alone and the 44,100 claim is gone — a pin check that
+reads the row cannot see the claim it exists to refuse. The candidate form
+keeps dispatch as it is (innermost by key) and makes the pin a static
+compatibility check at the install — refuse a provably distinct claim, serve
+an unclaimed instance — which needs claims kept where they enter (or rows
+that keep a ground claim beside the unknown it collided with), and a gate arm
+that pushes the pin through a HOF body's free terminals the way A3 pushes a
+negation. A surface for it: `handler sample_at(rate) with Sample(rate), count
+= 0` — the handler clause and its state in one `with`, which the parser does
+not take today (a handler carries a row clause or state, never both).
 
 `Hβ.parser.body-brace-has-its-own-discrimination` — CLOSED 2026-09-28 (L3).
 `fn rig() = { lead: saw() }` parsed as a BLOCK and refused its field names as
@@ -7555,6 +7639,11 @@ subtracted at the capturing install when every resume site absorbs them.
 Until then a multi-shot program whose remainder performs an effect only the
 arm's bracket serves declares a root handler, and the medium's refusal names
 the effect (`E_EffectUnhandled`) rather than trapping.
+The arm side's half landed 2026-10-01: an arm's continuation world IS the
+remainder now (the handler's remainder-world cell, judged per install), and a
+held resume performs it where it stands
+(`Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume`, CLOSED). The
+perform-site charge this entry names is untouched by it.
 
 The record as it was: AN OP
 BEFORE THE EXTENT OPENS IS THE MIRROR OF THE ONE AFTER IT CLOSES, and only

@@ -1983,7 +1983,7 @@ fn tee_lines_children(hs) with !Mutate = match hs {
 // EffectOpScheme's ename; distinct names join with " + ".
 fn handler_absorbs_str(hname: String) = match env_lookup(hname) {
   Some(entry) => match entry {
-    (_, _, HandlerKind(_, _, _, arms)) => absorbs_join(arms, 0, len(arms), []),
+    (_, _, HandlerKind(_, _, _, _, arms)) => absorbs_join(arms, 0, len(arms), []),
     _ => "?",
   },
   None => "?",
@@ -2056,7 +2056,7 @@ fn schedule_word(tees) = match tees {
 // trap (the parse_query_string lesson, §7 face 13).
 fn handler_covers(hname: String, ename: String) = match env_lookup(hname) {
   Some(entry) => match entry {
-    (_, _, HandlerKind(_, _, _, arms)) => match env_lookup(ename) {
+    (_, _, HandlerKind(_, _, _, _, arms)) => match env_lookup(ename) {
       Some(eentry) => match eentry {
         (_, _, EffectDeclKind(ops)) => arms_cover_ops(arms, ops, 0, len(arms)),
         _ => false,

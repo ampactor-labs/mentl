@@ -1,0 +1,21 @@
+// expect: 22
+// The lambda handed to a TAIL-TRANSPARENT callee, the arm computing after
+// it: `apply` returns the thunk's value unchanged, and `+ 1` holds the
+// resume. The re-yield is caught at the resume inside the lambda, whatever
+// sits between it and the arm. Measured 2026-10-01 on boot 477bb667: 1049025
+// printed, exit 5.
+effect Cell {
+  bump() -> Int
+}
+
+fn apply(f) = f()
+
+handler cell with s = 10 {
+  bump() => apply(() => resume(s)) + 1,
+}
+
+fn body() = bump() + bump()
+
+fn main() = {
+  body()
+} ~> cell

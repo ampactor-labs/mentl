@@ -948,11 +948,13 @@ type AllocUnit = AllocUnit({enc: String, names: String, row: RowRead, sym: Strin
 // perform's argument record, a resumed value's cell, a driver's word-faced
 // argument — has no site here: it is the op's remainder cost, priced in the
 // op's own row at the perform (`scheme_with_disc_cost`), and the unit it
-// lands in is whichever frame the spine extends, so the walk records it as
-// built and never refuses it against that frame's row
-// (Hβ.continuations.spine-callee-row-is-blind-to-the-held-resume). A wide
-// argument boxed into a callee's word slot has no site either: it is
-// narrated, never refused (`alloc_boxed`).
+// lands in is whichever frame the spine extends. That frame's row is where
+// the judgment priced it: a yield crosses a frame only when what the frame
+// called performs a multi-shot op (the op's row says so) or runs a held
+// remainder (the resume performs its world, judged at each install), so the
+// walk records it as built and never refuses it against the frame's row a
+// second time. A wide argument boxed into a callee's word slot has no site
+// either: it is narrated, never refused (`alloc_boxed`).
 type AllocSite
   = AsClosure
   | AsShow
@@ -1117,7 +1119,7 @@ fn alloc_owner_row(owner) = match owner {
 fn alloc_handler_row(hname: String) = match env_lookup(hname) {
   Some(entry) => match entry {
     (_, _, kind) => match kind {
-      HandlerKind(r, _, _, _) => alloc_row_read(read_bound_row(r)),
+      HandlerKind(r, _, _, _, _) => alloc_row_read(read_bound_row(r)),
       _ => RowAbsent("`{hname}` is not a handler"),
     },
   },
@@ -1381,7 +1383,7 @@ fn alloc_walk(unit, e) = match e {
     // an op's perform speaks its site's face and builds nothing; a driver
     // word-faces its arguments — the op's remainder cost, recorded
     let built = match disp {
-      PdDriver(_) => alloc_args_may_spill(args, 0),
+      PdDriver(_, _) => alloc_args_may_spill(args, 0),
       PdFrame(_, _, _) => false,
       PdWalk(_, _, _, _) => false,
     }
@@ -3057,7 +3059,7 @@ fn walk_lemit_expr(expr) = match expr {
           ArmSlot => (),
         }
       },
-      PdDriver(_) => (),
+      PdDriver(_, _) => (),
     }
     walk_lemit_list(args)
   },
@@ -3333,7 +3335,7 @@ fn ms_handler_names_at(entries, i, acc) = if i == 0 {
   match list_index(entries, i - 1) {
     (name, _scheme, _reason, kind) => {
       let acc2 = match kind {
-        HandlerKind(_row, _config, _state, _arms) => if len(multishot_ops_of(name)) > 0 && ls_find_str_local(acc, name, 0) < 0 {
+        HandlerKind(_row, _world, _config, _state, _arms) => if len(multishot_ops_of(name)) > 0 && ls_find_str_local(acc, name, 0) < 0 {
           [name] ++ acc
         } else {
           acc
@@ -3360,9 +3362,10 @@ fn emit_one_redrive(hname) = {
         wat_emit("      (if (then\n")
         wat_emit("        (i32.const 0)(global.set $yield_flag)\n")
         wat_emit("        (global.get $yield_k)(local.set $k)\n")
-        // The arm's record is the driver's OWN $__state — both callers already
-        // pass it (the install boundary passes its bracket's record; an arm's
-        // flag-check passes its own __state). The old global re-read was the
+        // The arm's record is the driver's OWN $__state — both callers pass the
+        // install record (the install boundary its bracket's record; a held
+        // resume's flag-check the record its frame reads through the record
+        // ladder, `PdDriver`'s second field). The old global re-read was the
         // Carried-Truth re-derivation of a value in hand.
         wat_emit("        (local.get $__state)(local.get $k)\n")
         emit_driver_arg_loads(arity, 0)
@@ -4215,7 +4218,7 @@ fn word_vector(n_args) = (map((_) => RI32, range(0, n_args + 1)), RI32)
 // A perform's vector — the site's own (`call_site_vector`), or a driver's
 // word face.
 fn perform_site_vector(h, d, args) = match d {
-  PdDriver(_) => word_vector(len(args)),
+  PdDriver(_, _) => word_vector(len(args)),
   _ => perform_vector_at(h, args),
 }
 
@@ -6039,11 +6042,12 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
   let hs = int_to_str(h)
   // (0) the arm's __state and the world to run it under. A lexical answer
   // reads the install's own two locals; anything that walks resolves the
-  // node once into evn_<h> and reads both out of it.
+  // node once into evn_<h> and reads both out of it; a driver drives the
+  // install record the lowering read through the record ladder.
   match disp {
     PdFrame(ih, _, _) => wat_emit("    (local.get $__hstate_{int_to_str(ih)})\n"),
     PdWalk(ekey, slot, _, _) => emit_declaring_node(hs, ekey, slot),
-    PdDriver(_) => wat_emit("    (local.get $__state)\n"),
+    PdDriver(_, record) => emit_expr(record),
   }
   // A PERFORM SPEAKS ITS SITE'S FACE, as a closure call does
   // (`emit_closure_call`): each argument at the width it is emitted at, the
@@ -6060,7 +6064,7 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
   // adapter (Hβ.emit.generic-op-box-is-unrowed). A driver is not an op and
   // keeps the word protocol it was written in.
   match disp {
-    PdDriver(_) => emit_args_word(args),
+    PdDriver(_, _) => emit_args_word(args),
     _ => emit_expr_list(args),
   }
   // (2) the arm's identity, where the target does not already name it: the
@@ -6068,9 +6072,9 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
   // (3) THE WORLD BRACKET, once, for every dispatch — the deep-handler law
   // by construction. PdDriver is the one shape that must NOT bracket, and
   // it is not a dispatch: it is a direct call to a synthesized driver
-  // against the caller's own state.
+  // against the install record it drives.
   match disp {
-    PdDriver(name) => {
+    PdDriver(name, _) => {
       wat_emit("    (call $op_")
       wat_emit(name)
       wat_emit(")\n")
@@ -6129,7 +6133,7 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
   // An op's arm answers at the site's own face; a driver's word result
   // stands for the wide one the site proves.
   match disp {
-    PdDriver(_) => emit_wide_deref(repr_of(lookup_ty(h))),
+    PdDriver(_, _) => emit_wide_deref(repr_of(lookup_ty(h))),
     _ => (),
   }
 }
@@ -6144,7 +6148,7 @@ fn perform_callee(disp, jvp) = if jvp {
       None => Some("__jvp_absent"),
     },
     PdWalk(_, _, _, _) => None,
-    PdDriver(name) => Some("op_{name}"),
+    PdDriver(name, _) => Some("op_{name}"),
   }
 } else {
   match perform_target(disp) {
@@ -7268,7 +7272,7 @@ fn emit_args_word(args) = each(
 // The indirect arm call's type — the site's own vector; a driver speaks the
 // word face it was written in.
 fn perform_ft(h, disp, args) = match disp {
-  PdDriver(_) => call_ft_name(args),
+  PdDriver(_, _) => call_ft_name(args),
   _ => vector_ft_name(perform_vector_at(h, args)),
 }
 

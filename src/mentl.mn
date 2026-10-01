@@ -473,7 +473,7 @@ fn catalog_handled_effects(handler_name) with !Mutate = match env_lookup(handler
   None => [],
   Some(entry) => match entry {
     (_scheme, _reason, kind) => match kind {
-      HandlerKind(_, _, _, arms) => // The handled effect is a live projection of the arms (§2), not a field.
+      HandlerKind(_, _, _, _, arms) => // The handled effect is a live projection of the arms (§2), not a field.
       [ENamed(intern_str(derive_handler_ename(arms, handler_name)))],
       _ => [],
     },

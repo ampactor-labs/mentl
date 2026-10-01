@@ -67,6 +67,10 @@ effect InferCtx {
   inf_frame_params([Int])
   inf_add_effect(EffName)
   inf_add_row(EffRow)
+  // Strip every edge reaching the cell from the open frame's accumulated row
+  // — a handler's exit cutting its remainder world out of the residual
+  // before it is published (register_handler).
+  inf_cut_edge(Int)
   inf_current_row() -> EffRow
   inf_current_world() -> EffRow
   // A5 (LENS §2.4): the world a perform site's REMAINDER requires — the
@@ -266,6 +270,15 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     }
     // drift-audit: ignore — top-frame REPLACE on a bounded-depth stack (§9 push-at-END), not a loop accumulator
     resume() with stack = drop_last(stack) ++ [updated]
+  },
+  inf_cut_edge(cell) => if len(stack) == 0 {
+    resume()
+  } else {
+    // The same cut the exit applies to the frame's own cell
+    // (row_without_self), aimed at another: the row is folded, every edge
+    // chasing to the cell drops, the rest stay open.
+    let frame = last(stack)
+    resume() with stack = push(drop_last(stack), {...frame, accumulated_row: row_without_self(frame.accumulated_row, cell)})
   },
   inf_current_row() => if len(stack) == 0 {
     resume(mk_ef_pure())
@@ -1138,6 +1151,11 @@ fn pre_register_handler_sig(hname, config, state, arms) = {
   let scheme_body_h = mint(Inferred("handler scheme of '{hname}'"))
   graph_bind(scheme_body_h, scheme_body, Inferred("handler scheme of '{hname}'"))
   let r_handle = graph_fresh_row(Inferred("residual of handler '{hname}'"))
+  // The remainder world is minted HERE, below the pass's mint ceiling, so
+  // the completion prune keeps it as a live link at every nested exit: a
+  // lambda in an arm that resumes carries it in its row to whatever callee
+  // it reaches.
+  let w_handle = graph_fresh_row(Inferred("the remainder a resume of '{hname}' runs"))
   // The KIND carries the MINTED tparams, never the parse placeholders:
   // the residual's install read (residual_with_config_args) chases these
   // cells to the config fns' row roots, and a placeholder chases nowhere.
@@ -1145,7 +1163,7 @@ fn pre_register_handler_sig(hname, config, state, arms) = {
     hname,
     Frozen(inst_vars, scheme_body),
     Declared(hname),
-    HandlerKind(r_handle, config_tparams, state, arms)
+    HandlerKind(r_handle, w_handle, config_tparams, state, arms)
   )
   // The op→handler edges — each arm's discipline JOINED onto its op's
   // scheme, and the MultiShot cost onto the op's row — are drawn HERE,
@@ -3637,11 +3655,22 @@ fn infer_expr(ref node) = match node {
         N(_, _, vh) => {
           match inf_arm_tys() {
             Some(continuation_h) => match graph_chase(continuation_h) {
-              GNode(NBound(TCont(resume_input, answer, _, _)), _) => {
+              GNode(NBound(TCont(resume_input, answer, disc, world)), _) => {
                 let r_h = mint(Inferred("op result at resume"))
                 graph_bind(r_h, resume_input, Located(span, Inferred("resume carries the continuation input")))
                 unify(vh, r_h, span, Inferred("resume carries the continuation input"))
                 graph_bind(handle, answer, Located(span, Inferred("resume yields the continuation answer")))
+                // A HELD continuation is a record this resume CALLS, so its
+                // remainder runs here, inside whatever frame holds the resume —
+                // the arm, or a lambda the arm hands to a callee, whose extent
+                // then contains everything the remainder performs. The resume
+                // performs its world. `fn apply(f) with !IO = f() + 0` accepted
+                // `apply(() => resume(1))` while the remainder printed inside
+                // apply (measured 2026-10-01, boot 477bb667): a resume charged
+                // nothing, so the callback's row was Pure and apply's gate had
+                // nothing to judge. A stack return runs the remainder after the
+                // arm returns, outside every frame here, and charges nothing.
+                if continuation_held(disc) { inf_add_row_at(handle, world) } else { () }
               },
               _ => report(EUnresolvedType(continuation_h, graph_epoch(), span)),
             },
@@ -4911,33 +4940,36 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
       inf_add_row_at(handle, install_cost(arm_names))
       let body_row = read_bound_row(body_row_h)
       match handler_e_r(right) {
-        Some(er) => match er {
-          (handled, resid_h, hconfig) => {
-            note_bare_handler_product(right)
-            // THE INSTALL CONNECTION: flow the op payload performer→handler.
-            // The body performs E(a); the handler is Handler(E(P)); unify a = P,
-            // so the handler's arm param (elem : P) becomes the performed value
-            // type. This is what makes `field` in `map((field)=>field.name, xs)`
-            // resolve to xs's element. The dispatch gradient applied to data.
-            unify_install_payload(body_row, handled, right, span)
-            let handled_names = if len(arm_names) == 0 { [ENamed(intern_str(handled))] } else { arm_names }
-            // A5 — the arm-world rule at the install (LENS §2.4): resuming
-            // inside an arm of h continues the REMAINDER under h, so h's own
-            // declared negation binds the remainder's requirement with h's
-            // absorption removed. The remainder is this install's body, so
-            // the check is here, per install, where the body is known — never
-            // a join across installs into the handler's one row, which would
-            // charge every install with every other install's remainder.
-            remainder_gates_check(resid_h, body_row, handled_names, span)
-            inf_add_row_at(
-              handle,
-              absorb_row(
-                body_row,
-                mk_ef_closed(handled_names),
-                residual_with_config_args(resid_h, hconfig, right)
-              )
+        Some(er) => {
+          note_bare_handler_product(right)
+          // THE INSTALL CONNECTION: flow the op payload performer→handler.
+          // The body performs E(a); the handler is Handler(E(P)); unify a = P,
+          // so the handler's arm param (elem : P) becomes the performed value
+          // type. This is what makes `field` in `map((field)=>field.name, xs)`
+          // resolve to xs's element. The dispatch gradient applied to data.
+          unify_install_payload(body_row, er.ename, right, span)
+          let handled_names = if len(arm_names) == 0 { [ENamed(intern_str(er.ename))] } else { arm_names }
+          // A5 — the arm-world rule at the install (LENS §2.4): resuming
+          // inside an arm of h continues the REMAINDER under h, so h's own
+          // declared negation binds the remainder's requirement with h's
+          // absorption removed. The remainder is this install's body, so
+          // the check is here, per install, where the body is known — never
+          // a join across installs into the handler's one row, which would
+          // charge every install with every other install's remainder.
+          remainder_gates_check(er.residual, body_row, handled_names, span)
+          // The same judgment for every callee a held resume of h runs its
+          // remainder through: their gates rode the resume's world into the
+          // handler's remainder-world cell when the arms were judged, and
+          // this install's remainder is what that cell stands for here.
+          remainder_gates_check(er.world, body_row, handled_names, span)
+          inf_add_row_at(
+            handle,
+            absorb_row(
+              body_row,
+              mk_ef_closed(handled_names),
+              residual_with_config_args(er.residual, er.config, right)
             )
-          },
+          )
         },
         None => // Handler value not resolvable to a HandlerKind decl (e.g. a let-bound
         // handler) — productive-under-error: pass the body's row through. The
@@ -4975,7 +5007,7 @@ fn handler_arms_of(right) = match callee_name(right) {
   name => match env_lookup(name) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
-        HandlerKind(_, _, _, arms) => Some(arms),
+        HandlerKind(_, _, _, _, arms) => Some(arms),
         _ => None,
       },
     },
@@ -5042,7 +5074,7 @@ fn op_effect_of(cname: String) = match env_lookup(cname) {
       ConstructorScheme(_, _) => None,
       RecordSchemeKind(_) => None,
       EffectDeclKind(_) => None,
-      HandlerKind(_, _, _, _) => None,
+      HandlerKind(_, _, _, _, _) => None,
       ParamScheme(_) => None,
       RowAliasKind(_) => None,
       TypeVariants(_) => None,
@@ -5100,10 +5132,11 @@ fn handler_e_r(right) = match callee_name(right) {
   name => match env_lookup(name) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
-        HandlerKind(r, config, _, arms) => // The handled effect is a live projection of the arms (§2 follow-the-
+        HandlerKind(r, w, config, _, arms) => // The handled effect is a live projection of the arms (§2 follow-the-
         // edge), never a stored field — arms→op→EffectOpScheme carries it.
-        // The config TParams ride along for the residual's install read.
-        Some((derive_handler_ename(arms, name), r, config)),
+        // The config TParams ride along for the residual's install read, and
+        // the remainder world for the install's judgment of its gates.
+        Some({config: config, ename: derive_handler_ename(arms, name), residual: r, world: w}),
         _ => None,
       },
     },
@@ -7447,7 +7480,7 @@ fn pat_has_wildcard(pat) = match pat {
 // value IS the handle result, whether it resumes or aborts.
 //
 // drift-audit: ignore — result_h (arm result) and inst_h (effect instance) are distinct handles
-fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, result_h, inst_h) = {
+fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, result_h, inst_h, world_h) = {
   let arm_span = span_of_node(arm.body)
   let op_ret_ty = match env_lookup(arm.op_name) {
     Some(entry) => match entry {
@@ -7470,10 +7503,20 @@ fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, res
     },
   }
   let continuation_h = mint(Inferred("handler arm continuation"))
-  let continuation_disc = arm_disc_of(resume_grade(arm.body), op_ret_ty)
+  // The continuation's DISCIPLINE is the representation the resume is lowered
+  // at, which is the OP's — every handler's arm grades joined
+  // (`op_resume_discipline`, drawn at pre-registration) — never this arm's
+  // grade alone: an arm that resumes at its tail still calls a record when
+  // another handler holds the same op. Its WORLD is the remainder the
+  // continuation runs: the handler's remainder-world cell, which no write
+  // binds and every install judges (`remainder_gates_check`). It was the
+  // arm frame's own row cell, which is what the arms PERFORM, not what a
+  // resume RUNS.
+  let continuation_disc =
+    disc_join(arm_disc_of(resume_grade(arm.body), op_ret_ty), op_resume_discipline(arm.op_name))
   graph_bind(
     continuation_h,
-    TCont(op_ret_ty, TVar(result_h), continuation_disc, inf_current_world()),
+    TCont(op_ret_ty, TVar(result_h), continuation_disc, mk_ef_open([], world_h)),
     Located(arm_span, Inferred("handler arm continuation R -> S"))
   )
   inf_enter_arm(continuation_h)
@@ -9277,7 +9320,7 @@ fn register_one_op(effect_name, eff_name, op) = match op {
               N(_, op_span, _) => report(EOpShadowsOp(op_name, prior_effect, effect_name, op_span)),
             }
           },
-          HandlerKind(_, _, _, _) => // A handler NAME beside an op name is measured harmless: they
+          HandlerKind(_, _, _, _, _) => // A handler NAME beside an op name is measured harmless: they
           // resolve in disjoint positions (`~> h` installs, `h()` performs),
           // so both entries are reachable and neither shadows the other.
           (),
@@ -9435,17 +9478,28 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   let r_handle = match env_lookup(hname) {
     Some(entry) => match entry {
       (_, _, kind) => match kind {
-        HandlerKind(r, _, _, _) => r,
+        HandlerKind(r, _, _, _, _) => r,
         _ => graph_fresh_row(Inferred("residual of handler '{hname}'")),
       },
     },
     None => graph_fresh_row(Inferred("residual of handler '{hname}'")),
   }
+  // The remainder world, read the same way: a handler declared inside a body
+  // was never pre-registered, so it mints its own here.
+  let w_handle = match env_lookup(hname) {
+    Some(entry) => match entry {
+      (_, _, kind) => match kind {
+        HandlerKind(_, w, _, _, _) => w,
+        _ => graph_fresh_row(Inferred("the remainder a resume of '{hname}' runs")),
+      },
+    },
+    None => graph_fresh_row(Inferred("the remainder a resume of '{hname}' runs")),
+  }
   env_extend(
     hname,
     Frozen(inst_vars, scheme_body),
     Declared(hname),
-    HandlerKind(r_handle, config_tparams, state, arms)
+    HandlerKind(r_handle, w_handle, config_tparams, state, arms)
   )
   // Resume cardinality IS written here, on the op's EffectOpScheme (draw_op_edges
   // below joins each arm's resume_grade). The body IS the contract, so the
@@ -9482,7 +9536,10 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   // inf_add_row. On
   // exit, r_handle binds to R — the row `~> h` adds to the caller.
   inf_enter_fn(r_handle, s_h, span, effs)
-  inf_frame_params(tparam_cells(config_tparams) ++ [s_h])
+  // The remainder world is part of the handler's signature: a lambda in an
+  // arm carries it out of its own frame, and the completion prune keeps what
+  // the signature names.
+  inf_frame_params(tparam_cells(config_tparams) ++ [s_h, w_handle])
   // EVERYTHING THE INSTALL EVALUATES BELONGS INSIDE THIS SCOPE — the config
   // DEFAULTS and the state INITS both, because both run where the arms' own
   // effects run: at the install, in the installer's world. Judged outside it
@@ -9520,7 +9577,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
     (arm) => {
       env_scope_enter()
       // drift-audit: ignore — s_h (arm result) and inst_h (effect instance) are distinct, not parallel arrays
-      infer_one_handler_arm(arm, s_h, inst_h)
+      infer_one_handler_arm(arm, s_h, inst_h, w_handle)
       env_scope_exit()
     },
     arms
@@ -9532,6 +9589,16 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   // here exactly as at a named decl's exit — with an empty keep the
   // residual dropped the config-fn edge and folded nothing (measured:
   // zero residual edges on the leak-handler-residual crucible).
+  //
+  // The REMAINDER WORLD leaves the residual before it is published. A held
+  // resume charges it into the frame it stands in, so the arms' row reaches
+  // it whenever a resume runs in an arm or in a callee the arm hands one
+  // to; but the remainder is the installed body's own, counted at each
+  // install as the body minus what this handler absorbs, and left in the
+  // residual it would reach every installer as a free edge and carry the
+  // handler's own clause onto the remainder (A5 already judges that clause
+  // against each remainder, and a cap on the arms is not a cap on the body).
+  inf_cut_edge(w_handle)
   let declared_effs = exit_frame()
   env_scope_exit()
   // The handler's own `with` row, judged exactly as a fn's at its exit (one
@@ -9552,7 +9619,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
     hname,
     generalize(scheme_body_h),
     Declared(hname),
-    HandlerKind(r_handle, config_tparams, state, arms)
+    HandlerKind(r_handle, w_handle, config_tparams, state, arms)
   )
   // Draw the op→handler edge onto each op's EffectOpScheme HERE — in the body,
   // OUTSIDE the arm `each` and inf_enter_fn's InferCtx install. An env_extend
@@ -10093,6 +10160,17 @@ fn disc_join(a, b) = match a {
   },
   OneShot => b,
   Either => b,
+}
+
+// Whether a resume of this discipline CALLS its continuation, so the
+// remainder runs inside the resume's own frame: the record path the lowering
+// takes for both (`lower_resume_callk`). A one-shot resume is the stack
+// return, and the remainder runs after the arm has returned.
+fn continuation_held(disc) = match disc {
+  MultiShot => true,
+  Abandon => true,
+  OneShot => false,
+  Either => false,
 }
 
 // The grade is a `ResumeUse` (types.mn): the multiplicity of the arm's

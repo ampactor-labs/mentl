@@ -420,7 +420,7 @@ fn absorb_scan(ref bindings, i, n, ename: String, own acc) = if i >= n {
   match list_index(bindings, i) {
     (hname, _, _, kind) => {
       let hit = match kind {
-        HandlerKind(_, _, _, arms) => handler_arms_touch(arms, 0, len(arms), ename),
+        HandlerKind(_, _, _, _, arms) => handler_arms_touch(arms, 0, len(arms), ename),
         _ => false,
       }
       // The flat env carries a handler at several layers (pre_register + the

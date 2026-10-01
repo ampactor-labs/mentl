@@ -1283,7 +1283,7 @@ fn jvp_query(h, jargs, cx) = match jargs {
 // already lost has nothing to pass: both run the perform as forward code,
 // which may tick a line, and what comes back is lost at the perform.
 fn jvp_op(h, disp, jargs) = match disp {
-  PdDriver(_) => jvp_op_forward(h, disp, jargs),
+  PdDriver(_, _) => jvp_op_forward(h, disp, jargs),
   PdFrame(ih, hname, op) => if any_lost(jargs) {
     jvp_op_forward(h, disp, jargs)
   } else {
@@ -2574,7 +2574,7 @@ fn callee_of(e) = match e {
       ArmNamed(hname) => [arm_fn_name(hname, op)],
       ArmSlot => [],
     },
-    PdDriver(_) => [],
+    PdDriver(_, _) => [],
   },
   LConst(_, _) => [],
   LLocal(_, _) => [],

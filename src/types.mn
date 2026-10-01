@@ -661,8 +661,8 @@ type SchemeKind
   | RecordSchemeKind([(String, Ty)])
   // tag 5 — [op_name: String]  (cache byte 5; byte 4 retired with the dissolved capability)
   | EffectDeclKind([String])
-  // tag 6 — (residual_row_handle, config params [the fn-param carrier: name + default ride the TParam, names project via lower_param_names], state fields, arms). Typed payloads: a bare List here erased the element types the consumers prove (the 581a92f class), and the pattern-constraint unification surfaces the conflict as E_TypeMismatch at every destructure.
-  | HandlerKind(Int, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}])
+  // tag 6 — (residual_row_handle, remainder_world_handle, config params [the fn-param carrier: name + default ride the TParam, names project via lower_param_names], state fields, arms). The remainder world is the row a held resume of this handler RUNS — the cell its arms' continuations carry as their world, never bound: callees reached through a resume gate it, and every install judges those gates against its own remainder (`remainder_gates_check`). Typed payloads: a bare List here erased the element types the consumers prove (the 581a92f class), and the pattern-constraint unification surfaces the conflict as E_TypeMismatch at every destructure.
+  | HandlerKind(Int, Int, [TParam], [{init: Node, name: String}], [{args: [String], body: Node, op_name: String}])
   // tag 7 — parameter binding carries authored ownership at the env edge
   | ParamScheme(Ownership)
   // tag 8 — a named effect row (`type X = A + B`, SYNTAX §«Named effect
