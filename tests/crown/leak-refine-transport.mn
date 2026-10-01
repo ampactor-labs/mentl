@@ -1,0 +1,14 @@
+// CROWN refinement (P0, 2026-10-01): the guard TRAVELS. `caller` passes its
+// own parameter to `inv`, so `inv`'s precondition is discharged by
+// `caller`'s, and `caller`'s parameter now guards the trap `inv`'s guards.
+// `outer` calls `caller` with a value nothing proves Positive; that open
+// claim must charge the transported guard. Expect E_EffectMismatch at outer.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn caller(m: Positive) = inv(m)
+
+fn outer(k) with !Trap = caller(k + 1)
+
+fn main() = outer(0 - 1)

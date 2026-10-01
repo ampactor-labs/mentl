@@ -394,10 +394,22 @@ fn partiality_claim(handle, op, lh, rh, span: ValidSpan) = if ty_is_float(chase_
     PTotalDiv(op, lh, rh),
     Located(span, Inferred("integer division is partial"))
   ) {
-    Some(_) => (),
+    Some(held) => if held {
+      // A precondition proved it total: the trap is what that parameter
+      // now GUARDS, paid by any caller whose argument does not prove it.
+      lean_guards(rh, trap_row())
+      lean_guards(lh, trap_row())
+    } else {
+      ()
+    },
     None => inf_add_row_at(handle, trap_row()),
   }
 }
+
+// The parameters whose preconditions a held row fact leaned on take the row
+// into their guards (verify.mn's leaves: a parameter's precondition is the
+// one assumption a row fact may stand on, and its callers discharge it).
+fn lean_guards(h, row) = leaves_params(value_leaves(h, NoSelf)) |> each(carry_guard(row, ??))
 
 fn trap_row() = mk_ef_closed([ENamed(intern_str("Trap"))])
 
@@ -1195,13 +1207,12 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
   let ret_handle = mint(FnReturn(name, Inferred("return of '{name}'")))
   match ret_ann {
     N(ret_ann_body, _, _) => {
-      // An AUTHORED return rides the TFun as the resolved Ty VALUE, not the
-      // cell: a value inside the record cannot be class-contaminated, so the
-      // interval fragment's callee read (callee_ret_lo) sees the authored
-      // refinement verbatim at every call — the assume-the-signature
-      // induction with nothing to launder (a chased ret VAR reaches the
-      // obligation's own class through tail-call merging; the value never
-      // does). The cell still binds (forward-ref grounding + quantification).
+      // An AUTHORED return rides the TFun as the resolved Ty VALUE — the
+      // declaration's postcondition, a contract — so the value walk's call
+      // leaf (verify.mn `post_leaves`) reads it verbatim at every call: the
+      // assume-the-signature induction a claim may stand on. The cell binds
+      // the shape (forward-ref grounding + quantification); a cell never
+      // holds a refinement (types.mn `shape_of`).
       let ret_component = match ret_ann_body {
         NTypeAnn(ann_ty) => // Resolve through the alias edge FIRST (quantify_ctor_ty — the same
         // resolution build_param_types and apply_let_annotation use): binding
@@ -1234,8 +1245,11 @@ fn pre_register_fn_sig(name, params, ret_ann, handle, span: ValidSpan) = {
       // keeps prereg cells as the cycle channel, and the callee's own
       // judgment fills it with PROVEN content the caller reads live. The
       // declaration lives in the GATE alone (ruling (1)).
-      let fn_ty =
-        TFun(build_param_types(params, param_handles), ret_component, mk_ef_open([], row_handle))
+      let fn_ty = TFun(
+        with_guards(build_param_types(params, param_handles), guard_cells(params, name)),
+        ret_component,
+        mk_ef_open([], row_handle)
+      )
       graph_bind(handle, fn_ty, Located(span, Declared(name)))
       // Quantify the fresh param/return/row vars so a FORWARD reference — a fn used
       // before its own body is inferred (e.g. src/ inferred before lib/prelude, so
@@ -1724,6 +1738,7 @@ fn trial_judge_group(ref stmts, members) = {
   // the live edges and the re-published schemes carry the cycle's whole
   // truth instead of each decl-exit snapshot.
   if len(members) > 1 {
+    settle_unit_guards(stmts, members)
     group_completion_fold(stmts, members, 0)
     group_final_publish(stmts, members, 0)
   } else {
@@ -2746,7 +2761,16 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   let row_handle = graph_fresh_row(Inferred("effects of '{name}'"))
   // Resolve params to shared identities ONCE (binds the handles); reused below
   // for the ownership pass — never re-derived per consumer (Carried-Truth).
-  let resolved_params = build_param_types(params, param_handles)
+  // Each is then DECLARED: its precondition noted where the value walk
+  // reads it, and its guard cell the pre-registration's own, so a call
+  // judged against the registered signature charges the cell this judgment
+  // fills.
+  let resolved_params = declare_params(
+    params,
+    build_param_types(params, param_handles),
+    param_handles,
+    judged_guards(handle, params, name)
+  )
   // THE ASSUMED SIGNATURE RIDES THE SLOT AS A VALUE — prereg's own law
   // (pre_register_fn_sig: "a value inside the record cannot be
   // class-contaminated ... a chased ret VAR reaches the obligation's own
@@ -2839,6 +2863,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // the honest fact here is what the developer wrote.
   declare_authored_owns(params, span)
   infer_expr(body_node)
+  settle_own_guards(param_handles, row_handle)
   consume_exit_fn()
   let declared_effs = exit_frame()
   // Unify body's type with the declared return.
@@ -2861,7 +2886,10 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
           match ret_body {
             NTypeAnn(ann_ty) => match quantify_ctor_ty(ann_ty, [], Located(span, Declared(name))) {
               (resolved_ann, _q) => match body_node {
-                N(_, _, body_h) => apply_refinement_constraint(resolved_ann, body_h, ret_span),
+                N(_, _, body_h) => {
+                  claim_refinement(resolved_ann, body_h, ret_span)
+                  ()
+                },
               },
             },
             _ => (),
@@ -2892,10 +2920,14 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
           graph_bind(
             handle,
             // The ret slot carries the SAME pinned value the pre-body signature
-            // rides — rewriting it as the bare var here would re-open the
-            // class-contamination channel the pin closed (this rewrite is the
-            // record's last writer; the slot's law is prereg's).
-            TFun(inferred_params, pinned_ret, mk_ef_open([], row_handle)),
+            // rides: a declared return is the fn's postcondition, a contract,
+            // and a function type's interior is where contracts live. The
+            // params publish what the body learned of them (published_params).
+            TFun(
+              published_params(inferred_params, param_handles, name, span),
+              published_ret(pinned_ret, body_handle, ret_handle),
+              mk_ef_open([], row_handle)
+            ),
             Located(span, Inferred("ownership-resolved params of '{name}'"))
           )
           // ─── Refinement narrowing (§4⑥, arm 6) — the verified cursor ────
@@ -3721,7 +3753,7 @@ fn infer_expr(ref node) = match node {
       // `!Alloc` accepted a lambda minted per call (16 bytes with one
       // capture, 8 with none, measured 2026-09-28).
       inf_add_row_at(handle, construction_row())
-      infer_lambda(params, body_node, handle, span)
+      infer_lambda(params, body_node, handle, span, BoundByCallers)
     },
     NExpr(PipeExpr(kind, left, right)) => // Branching verbs install affine-ledger snapshots around their
     // sub-infers so parallel branches cannot silently consume the
@@ -3743,7 +3775,7 @@ fn infer_expr(ref node) = match node {
           },
           _ => match inlinable_lambda(right) {
             Some((params, body)) => match right {
-              N(_, rspan, rh) => infer_lambda(params, body, rh, rspan),
+              N(_, rspan, rh) => infer_lambda(params, body, rh, rspan, BoundByCallers),
             },
             None => infer_expr(right),
           },
@@ -3756,7 +3788,7 @@ fn infer_expr(ref node) = match node {
         // lambda and charged no mint; any other left side is an ordinary value.
         match inlinable_lambda(left) {
           Some((params, body)) => match left {
-            N(_, lspan, lh) => infer_lambda(params, body, lh, lspan),
+            N(_, lspan, lh) => infer_lambda(params, body, lh, lspan, BoundByTheCycle),
           },
           None => infer_expr(left),
         }
@@ -4427,7 +4459,7 @@ fn call_hole_index(args, i) = if i >= len(args) {
 // (the gradient's food at the absence) — unifies with its declaration-
 // position param; the call's type is the fn of the params left unfilled.
 fn infer_call_partial(args, params, pret, prow, handle, span: ValidSpan, cname) = {
-  unify_args_positionally(args, params, 0, span)
+  unify_args_positionally(args, params, 0, span, handle)
   let remaining = unfilled_params(args, params)
   graph_bind(
     handle,
@@ -4460,7 +4492,7 @@ fn open_slot_cell(span: ValidSpan, p) = {
   c
 }
 
-fn unify_args_positionally(args, params, i, span: ValidSpan) = if i < len(args) && i < len(params) {
+fn unify_args_positionally(args, params, i, span: ValidSpan, call_h) = if i < len(args) && i < len(params) {
   match list_index(args, i) {
     N(b, _, ah) => {
       let pty_h = mint(Inferred("declared param at partial call"))
@@ -4475,9 +4507,9 @@ fn unify_args_positionally(args, params, i, span: ValidSpan) = if i < len(args) 
       // yet — its obligation lands when the suspension is filled.
       match b {
         NHole(_) => (),
-        _ => apply_refinement_constraint(param_ty(list_index(params, i)), ah, span),
+        _ => discharge_arg(list_index(params, i), ah, span, call_h),
       }
-      unify_args_positionally(args, params, i + 1, span)
+      unify_args_positionally(args, params, i + 1, span, call_h)
     },
   }
 }
@@ -4770,19 +4802,21 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   // nothing (its old raw-pred verify pended one forever-undecidable entry
   // per refined-param unification — noise the debt surfacing exposed).
   // The partial path's supplied-arg discharge is the same law at
-  // unify_args_positionally.
+  // unify_args_positionally. A callee that is a function-typed parameter
+  // learns what this call hands it first (`learn_provision`).
+  learn_provision(fh, arg_handles)
   match graph_chase(fh) {
-    GNode(NBound(TFun(dps, _, _)), _) => discharge_arg_refinements(dps, arg_handles, 0, span),
+    GNode(NBound(TFun(dps, _, _)), _) => discharge_arg_refinements(dps, arg_handles, 0, span, handle),
     _ => (),
   }
   stage_continuation_boundary(cname, handle)
 }
 
-fn discharge_arg_refinements(dps, arg_handles, i, span: ValidSpan) = if i >= len(dps) || i >= len(arg_handles) {
+fn discharge_arg_refinements(dps, arg_handles, i, span: ValidSpan, call_h) = if i >= len(dps) || i >= len(arg_handles) {
   ()
 } else {
-  apply_refinement_constraint(param_ty(list_index(dps, i)), list_index(arg_handles, i), span)
-  discharge_arg_refinements(dps, arg_handles, i + 1, span)
+  discharge_arg(list_index(dps, i), list_index(arg_handles, i), span, call_h)
+  discharge_arg_refinements(dps, arg_handles, i + 1, span, call_h)
 }
 
 // EVERY application result is a possible suspension boundary — not only an
@@ -4877,19 +4911,38 @@ fn continuation_discipline_at(site_h) = match graph_node_body(site_h) {
 // the creator's row with effects the bracket provably absorbs. What minting
 // COSTS is the record, charged by the arm that mints; a recurrence lambda the
 // lowering inlines into its cycle is judged here and mints nothing.
-fn infer_lambda(params, body_node, handle, span: ValidSpan) = {
+//
+// A parameter its CALLERS bind is declared as a function's is: it learns
+// the precondition its body hands it to and guards what that precondition
+// proves, and the lambda's type publishes both — every application reads
+// them there (a call through the value, a function crossing, a pipe
+// stage). A `<~` cycle's prior binds its parameter with no application to
+// raise a claim, so that parameter learns nothing and a demand inside the
+// body stays the body's own.
+type ParamBinder = BoundByCallers | BoundByTheCycle
+
+fn infer_lambda(params, body_node, handle, span: ValidSpan, binder) = {
   env_scope_enter()
   let param_handles = mint_params(params, "lambda")
   let row_handle = graph_fresh_row(Inferred("lambda effects"))
+  let typed = build_param_types(params, param_handles)
+  let declared = match binder {
+    BoundByCallers => declare_params(params, typed, param_handles, guard_cells(params, "lambda")),
+    BoundByTheCycle => typed,
+  }
   match body_node {
     N(_, _, bh) => {
       inf_enter_fn(row_handle, bh, span, [])
       inf_frame_params(param_handles ++ [bh])
       infer_expr(body_node)
       exit_frame()
+      let published = match binder {
+        BoundByCallers => published_params(declared, param_handles, "lambda", span),
+        BoundByTheCycle => declared,
+      }
       graph_bind(
         handle,
-        TFun(build_param_types(params, param_handles), TVar(bh), mk_ef_open([], row_handle)),
+        TFun(published, TVar(bh), mk_ef_open([], row_handle)),
         Located(span, Inferred("lambda"))
       )
       // H4: every lambda allocates a closure record on the heap.
@@ -5395,6 +5448,18 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match left {
         graph_bind(expected_h, expected, Located(span, InferredPipeResult("|>", Inferred("expected"))))
         unify(rh, expected_h, span, InferredPipeResult("|>", Inferred("target")))
         graph_bind(handle, TVar(ret_h), Located(span, InferredPipeResult("|>", Inferred("result"))))
+        // A stage is APPLIED to the piped value, so the pipe is a refinement
+        // construction site as a call's argument is: the stage's parameter
+        // claims of the value what its contract demands, pays the row the
+        // precondition guards where the claim is open, and a parameter stage
+        // learns what it is handed. The pipe raised nothing until P0·H:
+        // `0 |> inv` under `!Trap` checked clean and divided by zero (boot
+        // 13e8484a and the P0 tree alike).
+        learn_provision(rh, [lh])
+        match graph_chase(rh) {
+          GNode(NBound(TFun(dps, _, _)), _) => if len(dps) == 1 { discharge_arg(list_index(dps, 0), lh, span, handle) } else { () },
+          _ => (),
+        }
         // A pipe stage is an application; its result node is a suspension
         // boundary exactly as a CallExpr's is (lower's k2 spine keys the
         // bare-VarRef stage's completion call by THIS pipe node's handle).
@@ -7136,7 +7201,7 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
           match ty {
             TFun(params, ret_ty, _row) => {
               constrain_scrutinee(handle, ret_ty, span, VarLookup(name, reason))
-              bind_pcon_subpats(params, sub_pats, span, reason, name)
+              bind_pcon_subpats(params, sub_pats, handle, span, reason, name)
             },
             _ => constrain_scrutinee(handle, ty, span, VarLookup(name, reason)),
           }
@@ -7158,7 +7223,7 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
     constrain_scrutinee(handle, pat_ty, span, Inferred("record pattern"))
     // The pattern places each field by the receiver's whole field set.
     shape_demand(handle, OuterShape)
-    infer_pat_record_subs(flds, field_specs, span)
+    infer_pat_record_subs(flds, field_specs, handle, span)
     match rest {
       Some(rn) => if rn == "_" {
         ()
@@ -7170,6 +7235,7 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
         // record (SYNTAX §"Pattern syntax for records").
         let rest_h = mint(Located(span, LetBinding(rn, Inferred("record pattern rest"))))
         graph_bind(rest_h, mk_record_open([], row_h), Located(span, Inferred("record pattern rest")))
+        note_part(rest_h, handle, PartRest)
         env_extend(
           rn,
           Frozen([], TVar(rest_h)),
@@ -7200,6 +7266,7 @@ fn infer_pat(ref pat, handle, span: ValidSpan) = match pat {
     // same handle.
     let as_h = mint(Located(span, LetBinding(name, Inferred("as-pattern binds the whole value"))))
     graph_bind(as_h, TVar(handle), Located(span, LetBinding(name, Inferred("as-pattern"))))
+    note_part(as_h, handle, PartWhole)
     env_extend(
       name,
       Frozen([], TVar(as_h)),
@@ -7292,10 +7359,13 @@ fn build_pat_record_field_specs(flds, span: ValidSpan) = map(
   flds
 )
 
-fn infer_pat_record_subs(flds, specs, span: ValidSpan) = each(
+fn infer_pat_record_subs(flds, specs, whole, span: ValidSpan) = each(
   {
-    ((_, sub_pat), (_, ty)) => match ty {
-      TVar(h) => infer_pat(sub_pat, h, span),
+    ((fname, sub_pat), (_, ty)) => match ty {
+      TVar(h) => {
+        note_part(h, whole, PartField(fname))
+        infer_pat(sub_pat, h, span)
+      },
       _ => (),
     },
   },
@@ -7304,12 +7374,15 @@ fn infer_pat_record_subs(flds, specs, span: ValidSpan) = each(
 
 fn infer_pat_tuple(pats, parent_handle, span: ValidSpan) = {
   let elem_tys = map(
-    (p) => {
-      let sub_h = mint(Inferred("tuple pattern element"))
-      infer_pat(p, sub_h, span)
-      TVar(sub_h)
+    {
+      (i, p) => {
+        let sub_h = mint(Inferred("tuple pattern element"))
+        note_part(sub_h, parent_handle, PartIndex(i))
+        infer_pat(p, sub_h, span)
+        TVar(sub_h)
+      },
     },
-    pats
+    enumerate(pats)
   )
   // The scrutinee's proven element types flow into the bound vars, and
   // an arity mismatch is a unification failure at this edge — the exact
@@ -7319,6 +7392,7 @@ fn infer_pat_tuple(pats, parent_handle, span: ValidSpan) = {
 
 fn infer_pat_list(pats, rest, parent_handle, span: ValidSpan) = {
   let elem_h = mint(Inferred("list pattern element"))
+  note_part(elem_h, parent_handle, PartElem)
   each((p) => infer_pat(p, elem_h, span), pats)
   let list_ty = TList(TVar(elem_h))
   constrain_scrutinee(parent_handle, list_ty, span, Inferred("list pattern"))
@@ -7327,9 +7401,14 @@ fn infer_pat_list(pats, rest, parent_handle, span: ValidSpan) = {
     Some(name) => if field_name_eq(name, "_") {
       ()
     } else {
+      // The rest is a binder of its own, the edge to the list it was cut
+      // from beside it — the record rest's form.
+      let rest_h = mint(Located(span, LetBinding(name, Inferred("list rest pattern"))))
+      graph_bind(rest_h, list_ty, Located(span, Inferred("list rest pattern")))
+      note_part(rest_h, parent_handle, PartRest)
       env_extend(
         name,
-        Frozen([], list_ty),
+        Frozen([], TVar(rest_h)),
         Located(span, LetBinding(name, Inferred("list rest pattern"))),
         ValueScheme
       )
@@ -7343,21 +7422,35 @@ fn infer_pat_list(pats, rest, parent_handle, span: ValidSpan) = {
 // type. Mints a fresh handle per sub-pat so PVar bindings carry a
 // distinct entry into env. An arity mismatch reports EConstructorArity
 // FIRST; the aligned prefix still binds (productive-under-error).
-fn bind_pcon_subpats(params, sub_pats, span: ValidSpan, reason, ctor_name) = {
+fn bind_pcon_subpats(params, sub_pats, whole, span: ValidSpan, reason, ctor_name) = {
   if len(params) != len(sub_pats) {
     report(EConstructorArity(ctor_name, len(params), len(sub_pats), span))
   }
   each(
     {
-      (param, sub_pat) => {
+      (i, (param, sub_pat)) => {
         let sub_h = mint(VarLookup(ctor_name, reason))
         graph_bind(sub_h, param_ty(param), Located(span, VarLookup(ctor_name, reason)))
+        // The cell holds the field's shape. The binder's fact is the edge
+        // to the value it was destructured from, with the field's declared
+        // refinement — owed by every construction where it was built.
+        graph_binder_note(
+          sub_h,
+          PartFact({declared: refined_or_none(param_ty(param)), step: PartCtor(ctor_name, i), whole: whole})
+        )
         infer_pat(sub_pat, sub_h, span)
       },
     },
-    zip(params, sub_pats)
+    enumerate(zip(params, sub_pats))
   )
 }
+
+fn refined_or_none(ty) = if ty_carries_refinement(ty) { Some(ty) } else { None }
+
+// A destructured part's binder: the edge from the part to the whole it
+// was destructured from, where nothing declares the part's contract.
+fn note_part(sub_h, whole, step) =
+  graph_binder_note(sub_h, PartFact({declared: None, step: step, whole: whole}))
 
 fn infer_match_arms(arms, scrut, result_h, span: ValidSpan) = {
   // Match arms are ALTERNATIVE — exactly one runs — so an `own` value
@@ -8656,7 +8749,7 @@ fn build_param_types_loop(params, handles, qmap, i) = if i >= len(params) {
   ([], qmap)
 } else {
   match list_index(params, i) {
-    TParam(name, declared, auth, res, default) => {
+    TParam(name, declared, auth, res, default, prow) => {
       let h = list_index(handles, i)
       match match declared {
         TVar(_) => (TVar(h), qmap),
@@ -8668,11 +8761,463 @@ fn build_param_types_loop(params, handles, qmap, i) = if i >= len(params) {
         },
       } {
         (chosen, qmap1) => match build_param_types_loop(params, handles, qmap1, i + 1) {
-          (rest, qmap2) => ([TParam(name, chosen, auth, res, default)] ++ rest, qmap2),
+          (rest, qmap2) => ([TParam(name, chosen, auth, res, default, prow)] ++ rest, qmap2),
         },
       }
     },
   }
+}
+
+// ─── A declared parameter's precondition and what it guards (P0) ────────
+//
+// Every parameter of a DECLARED function carries a row cell — what its
+// precondition guards, paid by a call whose argument's claim is not proven
+// there — born open where the signature is first registered and written
+// once, at the judgment's exit, with what the judgment charged to the
+// parameter's fact: `Trap` for a division the precondition proved total,
+// a callee's own guard for a precondition carried into that callee's, and
+// nothing at all when nothing was charged. A caller judged first holds the
+// open cell by its edge and reads the exit's write; a cell that grew while
+// callers read it would have handed each a stale copy.
+fn guard_cells(params, owner: String) = {
+  let why = Inferred("what a precondition of '{owner}' guards")
+  params |> map({ _ => graph_fresh_row(why) })
+}
+
+fn with_guards(tparams, guards) =
+  tparams |> enumerate |> map({ (i, p) => param_with_row(p, mk_ef_open([], list_index(guards, i))) })
+
+// The judgment's guard cells are the registration's — read off the
+// signature the declaration's handle already carries, so a forward or
+// recursive call judged against it charged the very cells filled below. A
+// declaration nobody registered (a nested fn) mints its own.
+fn judged_guards(handle, params, owner: String) = match graph_chase(handle) {
+  GNode(NBound(TFun(pps, _, _)), _) => if len(pps) == len(params) {
+    pps |> map(guard_cell_of(owner, ??))
+  } else {
+    guard_cells(params, owner)
+  },
+  _ => guard_cells(params, owner),
+}
+
+fn guard_cell_of(owner: String, p) = match param_row(p) {
+  EfRow([], [], EtOpen([e])) => edge_cell(e),
+  _ => graph_fresh_row(Inferred("what a precondition of '{owner}' guards")),
+}
+
+// Each parameter DECLARED: its precondition noted under its handle, where
+// the value walk (verify.mn) reads it through a reference's link — the
+// cell itself holds the shape alone — and its row the guard cell's.
+fn declare_params(params, resolved, handles, guards) = resolved |> enumerate |> map({
+  (i, p) => {
+    let g = list_index(guards, i)
+    graph_binder_note(
+      list_index(handles, i),
+      ParamFact({guard: g, owes: guards_nothing(), pre: stated_pre(param_ty(list_index(params, i)), param_ty(p))})
+    )
+    param_with_row(p, mk_ef_open([], g))
+  },
+})
+
+// What the developer wrote: a refinement is a stated precondition, a plain
+// type states none (and learns none), and no annotation leaves the
+// parameter to learn one from the edges it is handed through.
+fn stated_pre(authored, resolved) = match authored {
+  TVar(_) => Unstated,
+  _ => if ty_carries_refinement(resolved) { Stated(resolved) } else { Unrefined },
+}
+
+// At the exit a parameter publishes what it learned — its callers owe the
+// precondition from here on — and its guard cell is written with what the
+// judgment charged, through the judged finalize: a gate a caller pushed onto
+// the open cell is checked here, where the charge it forbids arrives.
+fn published_params(params, handles, owner: String, span: ValidSpan) = {
+  let why = Located(span, Inferred("what a precondition of '{owner}' guards"))
+  params |> enumerate |> map({
+    (i, p) => match graph_binder_of(list_index(handles, i)) {
+      Some(fact) => match fact {
+        ParamFact(f) => {
+          graph_finalize_row(f.guard, f.owes, why)
+          match f.pre {
+            Learned(c) => param_with_ty(p, c),
+            Stated(_) => p,
+            Unstated => p,
+            Unrefined => p,
+          }
+        },
+        PartFact(_) => p,
+      },
+      None => p,
+    },
+  })
+}
+
+// The return the exit publishes: an authored `->` stands as written; with
+// none, the contract the body proves of every tail (verify.mn
+// `proven_return`), or the return cell itself when it proves none.
+fn published_ret(pinned_ret, body_h, ret_h) = match pinned_ret {
+  TVar(_) => match proven_return(body_h, ret_h) {
+    Some(c) => c,
+    None => pinned_ret,
+  },
+  _ => pinned_ret,
+}
+
+// A call through this declaration's own guard while its body was judged —
+// self-recursion, or a lambda of the body calling back — owes what the
+// body charged that guard, which is known now, before the frame's row is
+// written: the frame's own payment joins its accumulation, a nested
+// frame's (already written) takes a join, and a guard of a cycle member
+// still open beneath it passes the payer on to that guard.
+fn settle_own_guards(handles, row_handle) = handles |> each({
+  h => match graph_binder_of(h) {
+    Some(fact) => match fact {
+      ParamFact(f) => late_charge(f.owes, graph_late_payers(f.guard), Some(row_handle)),
+      PartFact(_) => (),
+    },
+    None => (),
+  },
+})
+
+// `judging` is the frame still being judged, whose row is not yet written:
+// its payment joins the accumulation; every other payer's cell is written.
+fn late_charge(owes, payers, judging) = if len(payers) == 0 {
+  ()
+} else {
+  match resolve_row(owes) {
+    EfRow(p, _, t) => payers |> each({
+      payer => {
+        if len(p) == 0 {
+          ()
+        } else if judging == Some(payer) {
+          inf_add_row(mk_ef_closed(p))
+        } else {
+          graph_bind_row(
+            payer,
+            mk_ef_closed(p),
+            Inferred("a call through a guard its declaration had not written")
+          )
+        }
+        match t {
+          EtOpen(vs) => vs |> each({ e => graph_owe_late(edge_cell(e), payer) }),
+          _ => (),
+        }
+      },
+    }),
+  }
+}
+
+// A cycle's members are judged one at a time, so a member may call one
+// judged after it through a guard that member's exit had not written. Every
+// such guard is written now: what it owes reaches its payers and — since
+// every member of a cycle reaches every other — every member's row, each
+// checked again against its own declaration.
+fn settle_unit_guards(stmts, members) = {
+  let owed = members |> map(member_owed_late(stmts, ??)) |> fold(guards_nothing(), row_join)
+  match owed {
+    EfRow(p, _, _) => if len(p) == 0 { () } else { members |> each(member_takes_late(stmts, mk_ef_closed(p), ??)) },
+  }
+}
+
+// What a member's guards owe the callers that reached them open, charged
+// to those callers on the way.
+fn member_owed_late(stmts, j) = match stmts[j] {
+  N(_, _, handle) => match graph_chase(handle) {
+    GNode(NBound(TFun(pps, _, _)), _) => pps |> map(param_owed_late) |> fold(guards_nothing(), row_join),
+    _ => guards_nothing(),
+  },
+}
+
+// What one parameter's guard owes, charged on the way to the callers that
+// reached it open.
+fn param_owed_late(p) = match param_row(p) {
+  EfRow([], [], EtOpen([e])) => {
+    let payers = graph_late_payers(edge_cell(e))
+    if len(payers) == 0 {
+      guards_nothing()
+    } else {
+      let owes = resolve_row(mk_ef_open([], edge_cell(e)))
+      late_charge(owes, payers, None)
+      owes
+    }
+  },
+  _ => guards_nothing(),
+}
+
+fn member_takes_late(stmts, owed, j) = match stmts[j] {
+  N(sbody, span, handle) => match sbody {
+    NStmt(FnStmt(name, _, _, effs, _)) => match graph_chase(handle) {
+      GNode(NBound(TFun(_, _, frow)), _) => match frow {
+        EfRow(_, _, EtOpen([e])) => {
+          graph_bind_row(edge_cell(e), owed, Located(span, Inferred("a cycle's late precondition guard")))
+          declared_holds(name, effs, edge_cell(e), span)
+        },
+        _ => (),
+      },
+      _ => (),
+    },
+    _ => (),
+  },
+}
+
+// A member's declaration judged again after its row grew past its exit.
+fn declared_holds(name: String, effs, row_handle, span: ValidSpan) = if len(effs) == 0 {
+  ()
+} else {
+  let declared_row = build_declared_row(resolve_declared_instances(effs))
+  let body_row = resolve_row(mk_ef_open([], row_handle))
+  if row_subsumes(body_row, declared_row) {
+    ()
+  } else if has_pure_declared(effs) {
+    report(EPurityViolated(body_row, span))
+  } else {
+    report(EEffectMismatch(declared_row, body_row, Located(span, Declared(name)), span))
+  }
+}
+
+fn guards_nothing_row(row) = match row {
+  EfRow([], [], EtClosed) => true,
+  _ => false,
+}
+
+// A guarded precondition's claim at a call: inferred onto a parameter
+// handed straight through, raised and decided, and the row it guards paid
+// at the call unless the claim held STRICTLY — on constants, lengths and
+// preconditions, which the guard then travels to (`carry_guard`).
+fn discharge_arg(p, ah, span: ValidSpan, call_h) = {
+  let contract = param_ty(p)
+  learn_precondition(ah, contract)
+  let verdict = claim_refinement(contract, ah, span)
+  pay_guard(param_row(p), contract, verdict, ah, call_h)
+}
+
+fn pay_guard(row, contract, verdict, ah, call_h) = if guard_owes_nothing(row) {
+  ()
+} else if claim_held(verdict) && ty_carries_refinement(contract) {
+  let leaves = value_leaves(ah, NoSelf)
+  if leaves_unproven(leaves) {
+    pay_row(row, call_h)
+  } else {
+    leaves_params(leaves) |> each(carry_guard(row, ??))
+  }
+} else {
+  pay_row(row, call_h)
+}
+
+// A guard's row as a call pays it: what its cell already holds is charged
+// at the call as closed names, and every cell still open — a declaration
+// of this judgment unit that has not exited: the caller itself, or a later
+// member of its cycle — takes the caller's row cell as a late payer
+// (`settle_own_guards`, `settle_unit_guards`). A frame row never holds a
+// guard cell: a free cell in an effect row is a row variable, the
+// unifier and the quantifier read it as one, and a guard bound by a
+// unification would hand its payers somebody else's effects.
+fn pay_row(row, at) = match resolve_row(row) {
+  EfRow(p, _, t) => {
+    if len(p) > 0 { inf_add_row_at(at, mk_ef_closed(p)) } else { () }
+    match t {
+      EtOpen(vs) => match inf_current_world() {
+        EfRow(_, _, EtOpen([w])) => vs |> each({ e => graph_owe_late(edge_cell(e), edge_cell(w)) }),
+        _ => (),
+      },
+      _ => (),
+    }
+  },
+}
+
+// A guard that owes nothing: a lambda's (born guarding nothing) or a
+// declared parameter's whose judgment exited having charged nothing — the
+// common case, since a callee is judged before its callers. An open cell
+// (a forward or recursive callee still being judged) owes what its exit
+// will write, so the call charges its edge and reads the write. Paying a
+// closed empty guard at every argument of every call cost the wheel's
+// judgment 128 MB of row joins and notes (measured 2026-10-01).
+fn guard_owes_nothing(row) = match row {
+  EfRow([], [], EtOpen([e])) => match graph_chase(edge_cell(e)) {
+    GNode(NRowBound(r), _) => guards_nothing_row(r),
+    _ => false,
+  },
+  _ => guards_nothing_row(row),
+}
+
+fn claim_held(verdict) = match verdict {
+  Some(held) => held,
+  None => false,
+}
+
+// A row charged to a parameter's precondition — `Trap` for a division it
+// proved total, a callee's guard for a claim it discharged — joins what the
+// parameter's fact owes; the exit writes the sum into the guard cell.
+fn carry_guard(row, param_h) = match graph_binder_of(param_h) {
+  Some(fact) => match fact {
+    ParamFact(f) => graph_binder_note(param_h, ParamFact({guard: f.guard, owes: row_join(f.owes, row), pre: f.pre})),
+    PartFact(_) => (),
+  },
+  None => (),
+}
+
+// An UNANNOTATED parameter handed straight to a refined one LEARNS that
+// precondition: its own callers owe it from then on, and the claim here is
+// discharged by it. Only a pure flow learns — the parameter itself, or a
+// let of it — since a join or a computation is not the parameter's value.
+fn learn_precondition(ah, contract) = if ty_carries_refinement(contract) {
+  match flow_param(ah) {
+    Some(b) => match graph_binder_of(b) {
+      Some(fact) => match fact {
+        ParamFact(f) => match f.pre {
+          Unstated => graph_binder_note(b, ParamFact({guard: f.guard, owes: f.owes, pre: Learned(contract)})),
+          Stated(_) => (),
+          Learned(_) => (),
+          Unrefined => (),
+        },
+        PartFact(_) => (),
+      },
+      None => (),
+    },
+    None => learn_result_demand(ah, contract),
+  }
+} else {
+  ()
+}
+
+// A FUNCTION-typed parameter learns its contract from how the body applies
+// it, as a value parameter learns its precondition from where the body
+// hands it: what every application provides at each position, and what a
+// refined position demands of its result. It publishes with the parameter
+// (`published_params`), and a caller's function crossing judges the
+// function it hands in against both (`fun_refinement_crossing`) — `fn
+// drive(f, c: Hz) = f(c)` publishes `f: (Hz) -> r`, and `fn run(f) =
+// alpha(f())` publishes `f: () -> Hz`. Both had ridden the unification
+// class, and three proof-exactness fixtures went red the day P0 stripped
+// refinements from cells.
+//
+// The contract learned so far: a stated function type keeps what was
+// written, so only an unstated parameter learns — from its class's shape
+// at the first application, then from what it has learned.
+fn learnable_fn(pre, b) = match pre {
+  Unstated => match graph_chase(b) {
+    GNode(NBound(TFun(ps, ret, row)), _) => Some((ps, ret, row)),
+    _ => None,
+  },
+  Learned(c) => match c {
+    TFun(ps, ret, row) => Some((ps, ret, row)),
+    _ => None,
+  },
+  Stated(_) => None,
+  Unrefined => None,
+}
+
+// What one application hands each position: the contract every value
+// passed there carries, met with what earlier applications handed it — a
+// position one application leaves unproven stays unproven, since the
+// function receives that value too.
+fn learn_provision(callee_h, arg_handles) = match flow_param(callee_h) {
+  Some(b) => match graph_binder_of(b) {
+    Some(fact) => match fact {
+      ParamFact(f) => match learnable_fn(f.pre, b) {
+        Some((ps, ret, row)) => if len(ps) == len(arg_handles) {
+          let provided = zip(ps, arg_handles) |> map(provided_at(f.pre, ??))
+          graph_binder_note(
+            b,
+            ParamFact({guard: f.guard, owes: f.owes, pre: Learned(TFun(provided, ret, row))})
+          )
+        } else {
+          ()
+        },
+        None => (),
+      },
+      PartFact(_) => (),
+    },
+    None => (),
+  },
+  None => (),
+}
+
+fn provided_at(pre, pair) = match pair {
+  (p, ah) => match leaves_contract(value_leaves(ah, NoSelf)) {
+    Some(c) => if still_provided(pre, param_ty(p), c) {
+      param_with_ty(p, c)
+    } else {
+      param_with_ty(p, shape_of(param_ty(p)))
+    },
+    None => param_with_ty(p, shape_of(param_ty(p))),
+  },
+}
+
+// The first application provides what it hands; a later one keeps a
+// position's contract only where it hands the same.
+fn still_provided(pre, prior, c) = match pre {
+  Unstated => true,
+  Learned(_) => same_contract(prior, c),
+  Stated(_) => false,
+  Unrefined => false,
+}
+
+// Two contracts the same refinement: named by one alias.
+fn same_contract(a, b) = match contract_alias(a) {
+  Some(n) => match contract_alias(b) {
+    Some(m) => n == m,
+    None => false,
+  },
+  None => false,
+}
+
+// A refined position demands of the result of applying a function-typed
+// parameter: the parameter learns the demand as its return contract, and
+// the claim here stands on it (verify.mn `call_leaves`). A second, other
+// demand on the same result is not met into the first — it stays the
+// body's own claim, open over the first.
+fn learn_result_demand(ah, contract) = match applied_param(ah) {
+  Some(b) => match graph_binder_of(b) {
+    Some(fact) => match fact {
+      ParamFact(f) => match learnable_fn(f.pre, b) {
+        Some((ps, ret, row)) => if ty_carries_refinement(ret) {
+          ()
+        } else {
+          graph_binder_note(
+            b,
+            ParamFact({guard: f.guard, owes: f.owes, pre: Learned(TFun(ps, contract, row))})
+          )
+        },
+        None => (),
+      },
+      PartFact(_) => (),
+    },
+    None => (),
+  },
+  None => (),
+}
+
+// The parameter a value is the result of APPLYING — a call or a pipe stage
+// whose callee is a parameter, through references and lets.
+fn applied_param(h) = match graph_node_body(h) {
+  NExpr(CallExpr(callee, _)) => flow_param(node_handle(callee)),
+  NExpr(PipeExpr(PForward, _, stage)) => flow_param(node_handle(stage)),
+  NExpr(BlockExpr(_, f)) => applied_param(node_handle(f)),
+  _ => None,
+}
+
+// The declared parameter a value IS, through references and lets.
+fn flow_param(h) = match graph_node_body(h) {
+  NExpr(VarRef(name)) => if name == "self" {
+    None
+  } else {
+    match graph_link_of(h) {
+      Some(b) => match graph_binder_of(b) {
+        Some(fact) => match fact {
+          ParamFact(_) => Some(b),
+          PartFact(_) => None,
+        },
+        None => match graph_node_body(b) {
+          NExpr(_) => flow_param(b),
+          _ => None,
+        },
+      },
+      None => None,
+    }
+  },
+  NExpr(BlockExpr(_, f)) => flow_param(node_handle(f)),
+  _ => None,
 }
 
 // Apply a let-binding's `: T` annotation as a refinement constraint on the
@@ -8685,26 +9230,17 @@ fn build_param_types_loop(params, handles, qmap, i) = if i >= len(params) {
 // uses), then discharge the refinement.
 fn apply_let_annotation(ann_ty, value_handle, span: ValidSpan) = match quantify_ctor_ty(ann_ty, [], Located(span, Inferred("let annotation"))) {
   (resolved, _q) => {
-    // Constraint FIRST — the refinement reads the value's class before the
-    // adopting unify below enters the annotation into it (the flow licence's
-    // uncontaminated-read order, the return site's landed twin).
-    apply_refinement_constraint(resolved, value_handle, span)
-    // THEN the base unify: the annotation is a real CONSTRAINT, not
-    // decoration — `let x: Int = "hi"` refused here (measured passing clean
-    // before this edge existed).
+    // The refinement is a CLAIM about the value, decided where the value
+    // is made; a reader of the binder reads the value itself (the value
+    // walk follows the reference's link to it), so an open claim stays
+    // debt and never becomes a fact. It used to be rebound onto the value's
+    // class whatever its verdict — `let k: Positive = e - 1` read Positive
+    // at `100 / k` while the ledger still owed `0 < e - 1` (P0).
+    claim_refinement(resolved, value_handle, span)
+    // The base unify: the annotation is a real CONSTRAINT, not decoration —
+    // `let x: Int = "hi"` refused here (measured passing clean before this
+    // edge existed).
     unify_types(TVar(value_handle), resolved, span, Inferred("let annotation pins the value"))
-    // THE CLASS EXPOSES ITS MOST-REFINED MEMBER (the decl pin's rebind, at
-    // the let): a CONCRETE-bound value cell cannot adopt through the unify
-    // (concrete-meets-refined checks the base and binds nothing), so an
-    // annotated alias never reached any consumer edge — the lexer's
-    // ValidOffset arg starved on exactly this absence. Rebind the refined
-    // form as the representative; plain annotations skip (nothing refined
-    // to expose).
-    match resolved {
-      TAlias(_, _) => graph_bind(value_handle, resolved, Located(span, Inferred("let annotation pins the value"))),
-      TRefined(_, _) => graph_bind(value_handle, resolved, Located(span, Inferred("let annotation pins the value"))),
-      _ => (),
-    }
   },
 }
 
@@ -8714,31 +9250,59 @@ fn apply_let_annotation(ann_ty, value_handle, span: ValidSpan) = match quantify_
 // obligation here (base-type unification lives at the CALLERS — the let's
 // adopting unify in apply_let_annotation, the return's ann pin — so this
 // projection stays purely the refinement's discharge).
+// The verdict comes back: Some(true) when the claim held (or there was none
+// to raise), Some(false) refuted, None open — a guarded precondition's call
+// site reads it to decide who pays the row the precondition guards.
+//
+// Every claim site — a return, an argument, a let annotation, a lambda's
+// result — raises through `claim_refinement`, which decides the claim and
+// notes the contract on the value's node and on every tail the node joins:
+// a claim about a join is a claim about each value it takes. A later reader
+// stands on the claim where it was made: a hole's proposals must satisfy
+// it, a reader of a let's binder may lean on its annotation.
+fn claim_refinement(ty, value_handle, span: ValidSpan) = {
+  let verdict = apply_refinement_constraint(ty, value_handle, span)
+  if ty_carries_refinement(ty) { note_claim(ty, value_handle) } else { () }
+  verdict
+}
+
+fn note_claim(ty, h) = {
+  graph_claim_note(h, ty)
+  match join_tails(h) {
+    Some(tails) => tails |> each(note_claim(ty, ??)),
+    None => (),
+  }
+}
+
 fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
   TAlias(aname, inner) => // TYPED IDENTITY (refinement_admits' layering, at the accrual): a value
-  // whose inferred type IS the same refined alias carries that alias's
-  // obligation at its OWN first-claim site (the let / ret / arg that
-  // minted it) — discharged, pending, or refuted THERE. Accruing again
-  // per consumer echoes one claim N times up the chain (a fixture with
-  // one honest claim surfaced five pendings); the ledger owns each proof
-  // question at one home, so the echo accrues nothing. The licence is
-  // value_flows_class: a COMPUTATION node's class membership is a
-  // theorem, never a flow — it raises (the laundered `v - 1` runtime -1).
-  if value_flows_class(value_handle) && inferred_alias_name(value_handle) == aname {
-    ()
+  // whose every leaf already NAMES the alias — a parameter's precondition,
+  // a callee's declared return — carries that alias's obligation at its
+  // OWN first-claim site (the caller that owes the precondition, the
+  // declaration that owes the return) — discharged, pending, or refuted
+  // THERE. Accruing again per consumer echoes one claim N times up the
+  // chain (a fixture with one honest claim surfaced five pendings); the
+  // ledger owns each proof question at one home, so the echo accrues
+  // nothing. A computation has no such leaf and raises, decided where it
+  // stands.
+  if value_carries_alias(value_handle, aname) {
+    Some(true)
   } else {
     apply_refinement_constraint(inner, value_handle, span)
   },
-  TRefined(_, pred) => {
-    verify_claim(graph_module_current(), span, subst_self(pred, value_handle), Refinement(pred, PTrue))
-    ()
+  TRefined(_, pred) => verify_claim(graph_module_current(), span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
+  TFun(eps, eret, _) => {
+    fun_refinement_crossing(eps, eret, value_handle, span)
+    Some(true)
   },
-  TFun(eps, eret, _) => fun_refinement_crossing(eps, eret, value_handle, span),
   TVar(h) => match graph_chase(h) {
-    GNode(NBound(TFun(eps, eret, _)), _) => fun_refinement_crossing(eps, eret, value_handle, span),
-    _ => (),
+    GNode(NBound(TFun(eps, eret, _)), _) => {
+      fun_refinement_crossing(eps, eret, value_handle, span)
+      Some(true)
+    },
+    _ => Some(true),
   },
-  _ => (),
+  _ => Some(true),
 }
 
 // A FUNCTION crossing a construction site carries its refinements across in
@@ -8761,14 +9325,17 @@ fn fun_refinement_crossing(eps, eret, value_handle, span: ValidSpan) = match cha
   TFun(aps, aret, _) => {
     each(
       {
-        (ap, ep) => match surface_refinement(chase_deep(param_ty(ap))) {
-          Some((aname, pred)) => if refined_as(chase_deep(param_ty(ep)), aname) {
-            ()
-          } else {
-            verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
-            ()
-          },
-          None => (),
+        (ap, ep) => {
+          match surface_refinement(chase_deep(param_ty(ap))) {
+            Some((aname, pred)) => if refined_as(chase_deep(param_ty(ep)), aname) {
+              ()
+            } else {
+              verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
+              ()
+            },
+            None => (),
+          }
+          pay_crossing(param_row(ap), value_handle)
         },
       },
       zip(aps, eps)
@@ -8779,7 +9346,10 @@ fn fun_refinement_crossing(eps, eret, value_handle, span: ValidSpan) = match cha
         ()
       } else {
         match graph_node_body(value_handle) {
-          NExpr(LambdaExpr(_, N(_, bspan, bh))) => apply_refinement_constraint(want, bh, bspan),
+          NExpr(LambdaExpr(_, N(_, bspan, bh))) => {
+            claim_refinement(want, bh, bspan)
+            ()
+          },
           _ => {
             verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
             ()
@@ -8791,6 +9361,12 @@ fn fun_refinement_crossing(eps, eret, value_handle, span: ValidSpan) = match cha
   },
   _ => (),
 }
+
+// A function crossing an argument edge goes where its callers' values are
+// made beyond this edge, so nothing here proves its preconditions: the
+// row each one guards is paid where the function crosses.
+fn pay_crossing(row, value_handle) =
+  if guard_owes_nothing(row) { () } else { pay_row(row, value_handle) }
 
 // The refinement a type carries at its surface — the predicate under its
 // alias chain, with the alias it hangs from ("" for an unnamed refinement).
@@ -9024,8 +9600,8 @@ fn quantify_tparam_list(params, qmap, owner) = if len(params) == 0 {
     (pty2, q1) => match quantify_tparam_list(slice(params, 1, len(params)), q1, owner) {
       (rest2, q2) => // default→None is a DELIBERATE quantification reset (NOT a Carried-Truth
       // drop): a generalized ctor scheme carries no call-site default. The other
-      // three aspects are projected live; only the default slot is cleared.
-      ([TParam(param_name(p0), pty2, param_authored(p0), param_resolved(p0), None)] ++ rest2, q2),
+      // four aspects are projected live; only the default slot is cleared.
+      ([TParam(param_name(p0), pty2, param_authored(p0), param_resolved(p0), None, param_row(p0))] ++ rest2, q2),
     },
   }
 }
@@ -10632,8 +11208,8 @@ fn unify_list_elems(elems, target_h, span: ValidSpan) =
 // post-Show-typeclass (peer Hβ.infer.show-typeclass), non-String
 // splices register a Show obligation that verify_ledger discharges.
 // IFC enforcement at string interpolation sites (§4⑥).
-// For each splice (non-literal fragment), read the inferred Ty from the graph,
-// classify its FlowLabel via query_flow_label, then emit verify(PFlowLe(label, Public)).
+// For each splice (non-literal fragment), read its value's flow label along
+// the value's leaves (value_flow_label), then emit verify(PFlowLe(label, Public)).
 // predicate_decide(PFlowLe(label, Public)) = Some(flow_le(label, Public)) — the
 // finite lattice makes this ALWAYS compile-time decidable. A Secret or Tainted
 // splice surfaces as ERefinementRejected("Secret ⊑ Public") at compile time.
@@ -10686,19 +11262,17 @@ fn check_splice_flow_labels(fragments, span: ValidSpan) = each(
   fragments
 )
 
-fn splice_flow_check(h, fspan: ValidSpan) = match graph_chase(h) {
-  GNode(NBound(ty), _) => {
-    let label = query_flow_label(ty)
-    verify_claim(
-      graph_module_current(),
-      fspan,
-      PFlowLe(label, Public),
-      Located(fspan, Inferred("ifc: string splice flow label"))
-    )
-    ()
-  },
-  _ => // unresolved: open-world default = Public, no check needed
-  (),
+// The splice's label is its VALUE's, read along the edges the value flowed
+// (value_flow_label); the class holds a shape, which says nothing of where
+// the value came from.
+fn splice_flow_check(h, fspan: ValidSpan) = {
+  verify_claim(
+    graph_module_current(),
+    fspan,
+    PFlowLe(value_flow_label(h), Public),
+    Located(fspan, Inferred("ifc: string splice flow label"))
+  )
+  ()
 }
 
 // Effect-name projection of a row — the handled-name set read live from

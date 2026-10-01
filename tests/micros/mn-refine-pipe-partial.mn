@@ -1,0 +1,10 @@
+// expect: refuse E_RefinementRejected
+// A partial standing as a pipe stage carries its callee's own parameter at
+// the slot it leaves open, contract included, so the piped value fills a
+// position that says `Hz` and owes it there. 30000.0 does not. On boot
+// 13e8484a the pipe raised no claim and this compiled clean.
+type Hz = Float where 0.0 < self && self < 22050.0
+
+fn scale(k: Float, c: Hz) -> Float = k * c
+
+fn main() = if (30000.0 |> scale(2.0)) > 0.0 { 0 } else { 1 }

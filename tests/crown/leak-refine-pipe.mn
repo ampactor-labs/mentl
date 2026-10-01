@@ -1,0 +1,14 @@
+// CROWN refinement (P0·H, 2026-10-01): a pipe stage is an APPLICATION, so
+// the stage's precondition claims of the piped value exactly as a call's
+// does. `ratio` pipes `k + 1` — nothing proves it Positive — into `inv`,
+// whose `n: Positive` guards the Trap of `100 / n`; the open claim pays that
+// guard, so `ratio`'s `!Trap` refuses. On boot 13e8484a the pipe raised no
+// claim at all: this checked clean and divided by zero. Expect
+// E_EffectMismatch at ratio.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn ratio(k) with !Trap = k + 1 |> inv
+
+fn main() = ratio(0 - 1)

@@ -9,7 +9,6 @@
 // The row filter is what this fixture proves, and it proves it unchanged: one
 // of four candidates survives !Network, and the three refusals keep their
 // Reasons. A name and a magic number are a real choice, so the medium asks.
-
 type Seven = Int where self == 7
 
 effect Network {
@@ -18,11 +17,10 @@ effect Network {
 
 // The const body keeps the WHOLE claim chain decidable (0 < the ledger):
 // `7` discharges the ret refinement by decision, and every caller's ret
-// admits by typed identity through the call's alias. A let-indirected body
-// (`let exact: Seven = 7; exact`) erases the alias at the unify's
-// wrapper-peel, leaving one honest-but-noisy pend at the ret edge —
-// alias-preserving unification is the named peer
-// (Hβ.infer.alias-preserving-unify).
+// admits by typed identity through the call's declared return. A
+// let-indirected body (`let exact: Seven = 7; exact`) discharges the same
+// way: the return's claim stands on the let's annotation, which the let
+// decided on the literal.
 fn pure_seven() -> Seven with Pure = 7
 
 fn direct_network() -> Seven with Network = {
@@ -34,11 +32,10 @@ fn transitive_network() -> Seven with Network = direct_network()
 
 fn call_zero(f) = f()
 
-fn higher_order_network() -> Seven with Network =
-  call_zero(() => {
-    ping()
-    pure_seven()
-  })
+fn higher_order_network() -> Seven with Network = call_zero(() => {
+  ping()
+  pure_seven()
+})
 
 fn choose() -> Seven with !Network = ??
 

@@ -1804,6 +1804,71 @@ and this is the STATE.
   gradient (`Hβ.cursor.proximity-reads-the-call-graph`), and the CLI session's
   caret never moves (`Hβ.felt.session-caret-never-moves`).
 
+- **A REFINEMENT IS A FACT A VALUE CARRIES — CLOSED 2026-10-01 (P0).**
+  Found on D4's felt walk before D4 began: refinements rode the
+  unification class, so every join and every operator that met a refined
+  value laundered its refinement onto the result. Six `with !Trap`
+  programs checked clean on boot 13e8484a and trapped at run — `x - 1`
+  over `x: Positive` typed Positive, `if c { n } else { 0 }` typed
+  Positive, open let, argument and postcondition claims read as facts —
+  and the same merging refused a correct one: `n: Positive` on one operand
+  of `t / n` demanded Positive of `t` (`mn-refine-sibling-operand`). A cell holds
+  a SHAPE now; a refinement is read by one walk along the value's edges
+  (constants, binders, join tails, a callee's declared return, lengths,
+  sums), each reader asking its own question — a row fact stands on
+  constants, lengths and preconditions, a claim on owed postconditions too.
+  A parameter's refinement is a precondition whose GUARD holds the row it
+  protects (`Trap` of `100 / n` under `n: Positive`): a caller whose claim
+  is open pays it, a caller whose claim held on its own parameters carries
+  it to them, an unannotated parameter handed to a refined one learns the
+  precondition, and a self-recursive or cyclic caller pays at its exit or
+  the cycle's. A `let` annotation is a claim its value owes; every claim is
+  noted on its value's node, so a hole's proposals and its `?? : Positive`
+  read what was claimed of it. Destructuring is a value-flow edge (a part
+  reads its whole's construction at its position, or its whole's contract
+  projected), and the `!Flow` seed's label moved off the class with the
+  rest: a value is as classified as everything it was built from — on the
+  tree before that read five derived leaks of a classified value checked
+  clean, which the boot had refused by the very merging P0 removes. Crown
+  green at the pin over 116 crucibles (eleven `leak-refine-*` red on the
+  boot, the pipe's among them — the next bullet), `mn-refine-join-launder`
+  registered after two months banked red, the wheel's own debt up from 25
+  to 34 open obligations, every one a fact the class had hidden. Named: the
+  Add fold assumes unbounded Int
+  (`Hβ.verify.interval-fragment-assumes-unbounded-int`), a row fact never
+  stands on a postcondition even a proven one
+  (`Hβ.verify.row-facts-trust-proven-postconditions`), a product return and
+  a cycle's returns prove no contract
+  (`Hβ.verify.proven-return-over-products-and-cycles`), a generic call drops
+  the contract its parametricity preserves
+  (`Hβ.verify.contracts-through-parametric-calls`), and a row write that
+  reaches its own cell is skipped whole, names and all
+  (`Hβ.effects.row-self-bind-skip-drops-names`). What it did not close,
+  measured on both trees: a function value merged at a join keeps the
+  contract of whichever branch unified first, so `if c { inv2 } else { inv
+  }` called at 0 under `!Trap` checks clean and traps (exit 134) — the
+  higher-order peer's fourth face (`Hβ.verify.higher-order-refinement`),
+  the next soundness item.
+- **A FUNCTION'S CONTRACT TRAVELS WITH THE FUNCTION, AND A PIPE STAGE IS AN
+  APPLICATION — CLOSED 2026-10-01 (P0·H, the same pin).** P0's first march
+  refused at proof-exactness, 21 pass / 5 red: `run(() => 30000.0)` into
+  `fn run(f) = alpha(f())` checked clean with debt where the boot refused
+  it, and a lambda handed an `Hz` its callee provides read as debt — both
+  directions of a callback's contract had ridden the unification class
+  into the function type. They are read along edges now. A lambda's
+  parameter learns its precondition as a declared one does and the
+  lambda's type publishes it; a function-typed parameter learns from how
+  its body applies it — what every application hands each position (a meet
+  over the applications) and what a refined position demands of its result
+  — and publishes both, so a caller's crossing judges the function it hands
+  in. Measuring that found a hole on both trees: a `|>` stage raised no
+  claim at all, so `0 |> inv` under `!Trap` checked clean and divided by
+  zero and `30000.0 |> alpha` reached an `Hz` parameter — at the form this
+  project calls never optional. The pipe is an application now, claiming of
+  the piped value what the stage's parameter demands
+  (`Hβ.verify.pipe-stage-raises-no-claim`). A `<~` cycle's lambda learns
+  nothing, since no application raises a claim for its prior.
+
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
 

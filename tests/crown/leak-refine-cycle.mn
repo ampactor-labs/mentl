@@ -1,0 +1,13 @@
+// A cycle member pays a guard of a member judged after it. `ping` and
+// `pong` call each other; ping is judged first and calls pong's `m`, whose
+// precondition pong has not learned yet — pong learns `Positive` by handing
+// `m` to ping's `n`, and that guard holds the Trap of `100 / n`. So ping's
+// call owes a guard that is written only when pong exits. ping(5, 3)
+// reaches ping(0, 0) and divides by zero.
+type Positive = Int where 0 < self
+
+fn ping(n: Positive, k) = if k <= 0 { 100 / n } else { pong(k - 1, k - 1) }
+
+fn pong(m, k) = ping(m, k)
+
+fn main() with !Trap = ping(5, 3)

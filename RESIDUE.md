@@ -2332,6 +2332,25 @@ invisible while the construction check stands (the splice already
 refuses), and retiring the construction check without a sink edge lets
 every classified splice through — a regression the leak fixture would
 catch. Coupled means coupled; neither half is a landing on its own.
+THE PROPAGATION HALF IS A READ NOW, NOT A TYPE (P0, 2026-10-01), and (b)
+above is history. The SOURCE read was the type's: a classified value's
+label lived in its refinement, so it spread by class merging to every
+value unified with it — the boot refused all five derived splices of
+tests/frontier/mn-ifc-splice-derived.mn that way — and once P0 stripped
+refinements from cells it reached none of them (zero of five on the P0
+tree before the read). The label is an influence read along value-flow
+edges (`value_flow_label`, verify.mn): a constant is Public; a reference
+reads its binder — a parameter's declared contract, a let's value and the
+claims noted on it, a destructured part at its position in its whole's
+construction; a join reads every tail; a call joins its declared return
+with its arguments; anything else joins its children. So a derived string
+IS classified downstream with no `TRefined` binding, and the public half
+of a mixed tuple stays Public (mn-ifc-splice-part-public, the precision
+control). The query projection reads the same edges (`name_flow_label`,
+query.mn). What stays open is exactly the sink half: `splice_flow_check`
+still refuses every classified splice at construction, and the row
+charge at observation edges with the sink-edge move is this entry's
+build — the coupling above now has its propagation side in hand.
 
 `Hβ.ifc.dcc-noninterference-gate` — FIRST FACE LANDED 2026-08-08 (pin
 a025c3523a84; the C chain's head, banked here at its stamp). TRACED: the
@@ -2361,7 +2380,16 @@ predicate-NAME heuristic until that same landing. (3) PC-labels
 integrity dual, robust declassification, and the TCont flow-world
 follow in the banked band-C order. PRICED: the first face was one
 infer read-through + two fixtures + one leg; each following chain step
-is its own stamped landing.
+is its own stamped landing. TWO MORE FACES (P0, 2026-10-01), each a
+frontier leg seen RED on the P0 tree before the influence read: a value
+a `let` annotated classified refuses at its splice (the claim noted on
+the let, read through the binder — mn-ifc-splice-let-annotation, 0
+refusals before, 1 after), and a value BUILT from a classified one — an
+operator's result, a record's field, a computation over a classified
+parameter, a constructor's or a tuple's part — refuses at its splice
+(mn-ifc-splice-derived, 0 of 5 before, 5 of 5 after), beside the
+precision control that a mixed tuple's public half stays public. The
+check's site is unchanged: still construction, still sink-blind.
 
 `Hβ.syntax.effarg-node-in-with-clause` — RESOLVED 2026-08-08 by
 measurement (the peer was PLAN-named at 6.2 but never banked here; this
@@ -2602,6 +2630,119 @@ cannot prove structural (a fold over a shape terminates; an index-threaded
 self-call is the iteration-shape tier's own conviction), provable absent as
 `!Diverge`; named here so the e-graph's gate is read with its one remaining
 blind spot known.
+
+`Hβ.verify.refinement-rides-the-class` — CLOSED 2026-10-01 (P0; LEDGER
+carries the mechanism and the kills). Refinements rode the unification
+class, so a join or an operator that met a refined value laundered its
+refinement onto the result — six `with !Trap` programs checked clean and
+trapped on boot 13e8484a, and the same merging refused a correct program
+(`mn-refine-sibling-operand`). A cell holds a shape (`shape_of` at
+`graph_bind`); a refinement is read by one walk along the value's edges
+(verify.mn `value_leaves`), a parameter's refinement is a precondition whose
+guard row is paid by an open caller, a claim is noted on its value's node
+(`graph_claims_of`), and destructuring is an edge (`PartFact`). What the
+walk does not read yet is named in the entries below; a merged function
+value is the higher-order peer's fourth face.
+
+`Hβ.verify.pipe-stage-raises-no-claim` — CLOSED 2026-10-01 (P0·H), found
+the day it closed. A `|>` stage is an application, and the pipe's judgment
+unified the stage with `(value) -> r` and raised nothing: `fn main() with
+!Trap = 0 |> inv` checked clean and divided by zero (exit 134), and `30000.0
+|> alpha` handed a value past `Hz`'s ceiling to a parameter that said `Hz` —
+measured alike on boot 13e8484a and the P0 tree, at the form CLAUDE.md calls
+never optional. The pipe now claims of the piped value what the stage's
+parameter demands (`discharge_arg`, as a call's argument), pays the guard
+where the claim is open, and a parameter stage learns what it is handed
+(`learn_provision`); the value walk reads a pipe's result as its stage's, the
+same application. A partial standing as a stage carried its callee's own
+parameter at the open slot all along, so `x |> clamp(0, ??, 255)` owes the
+slot's contract with no change of its own. Crown `leak-refine-pipe`, micros
+`mn-refine-pipe-stage` and `mn-refine-pipe-partial` (each RED on 13e8484a),
+`mn-refine-pipe-proven` the control.
+
+`Hβ.verify.interval-fragment-assumes-unbounded-int` — OPEN, BORN 2026-10-01
+with P0. The Add fold (`lo_add`, verify.mn) proves `0 <= v + 1` over `v:
+Nat`, while the i32 floor wraps `2147483647 + 1` to the least word. A claim
+may stand on the fold (the `LSum` leaf), so a refined return over `v + 1`
+discharges a claim false at the boundary — `mn-verify-interval`'s `bump`
+canonizes it; a row fact never does (`leaf_excludes` refuses `LSum`), so no
+`Trap` is mis-charged. THE FORM: the fold reads both ends — the Domain read
+already carries the upper bound — and a sum is bounded below only where the
+operands' upper bounds prove it cannot wrap; or Int becomes the
+mathematical integer with overflow a row fact (`Trap` on overflow, the
+partiality law one primitive over), which is the decision the
+representation gradient owes.
+
+`Hβ.verify.row-facts-trust-proven-postconditions` — OPEN, BORN 2026-10-01
+with P0. A row fact stands on constants, lengths and preconditions, never on
+a postcondition (`LPost`), even one its callee PROVED strictly at its exit:
+`fn mk() -> Positive = 5` with `fn f() with !Trap = 100 / mk()` refuses
+(measured on the P0 tree), since the reader cannot tell a proven return from
+an owed one. The class model accepted it — and accepted the owed case too,
+which was a leak. THE FORM: the callee's exit records whether its return
+claim held strictly — on constants, lengths and its own preconditions, never
+on another postcondition or the Add fold — beside the return it publishes,
+and a call reads it: a strictly proven return is a row fact at the call, its
+preconditions' guards travelling to the call's arguments by the carry rule
+the argument claims already use (`carry_guard`).
+
+`Hβ.verify.proven-return-over-products-and-cycles` — OPEN, BORN 2026-10-01
+with P0. A declaration with no authored return publishes the contract every
+return tail carries (`proven_return`) — only an ALIAS contract every tail
+shares, and only a SELF-call read co-inductively. Two shapes prove nothing:
+a PRODUCT return, whose positions each carry a contract (the lexer's
+scanners return `(pos, line, col, buf, count)` with a `ValidOffset` at
+`pos` on every tail), and a CYCLE, where a member's return is still a free
+cell while another member's body is judged. The wheel's eleven
+`lex_from`/`scan_string`/`scan_triple_chunk`/`num_lit_end` pendings at pin
+e23392f6 (two at the one call that passes `new_pos` twice) are both at
+once: `new_pos` destructured from a mutually recursive scanner's tuple.
+THE FORM: the proven return computed per position for a product (each
+position's contract every tail carries there, read through `part_nodes` on
+each tail's construction), and per cycle unit at its completion — beside
+`settle_unit_guards` — each member's free return read co-inductively across
+the unit.
+
+`Hβ.verify.contracts-through-parametric-calls` — OPEN, BORN 2026-10-01 with
+P0. A cell holds a shape, so a generic callee's instantiated result carries
+no refinement: `list_index(ranked, i)` over a `ranked: [(Float, Handle)]`
+(the declared return of `rank_positions`) reads nothing at `.1`, and
+`cursor_at_handle(ph)` pends at four sites in main.mn — the class used to
+carry the element's refinement through the instantiation. Parametricity
+makes carrying it SOUND: a function of type `([a], Int) -> a` returns one of
+the list's elements, so its result at `a`'s positions is drawn from its
+arguments at `a`'s positions. THE FORM: `call_leaves` for a callee whose
+SCHEME returns a quantified variable reads the arguments' leaves at that
+variable's positions — an argument typed `[a]` projected to its element
+(`PartElem`), one typed `a` read whole — instead of the instantiation's
+shape.
+
+`Hβ.verify.provenance-through-destructure` — MOSTLY CLOSED 2026-10-01 (P0).
+Every pattern binder for a part carries its whole and its position
+(`PartFact`, infer.mn `note_part`), and a field read names its receiver: a
+part is the construction's argument at that position where the whole was
+built in sight — a tuple, a constructor call, a record, a list literal,
+through lets and every join tail, a part of a part composed — and the
+whole's contract projected to the position where it was not (a tuple's, a
+record's or a list's declared contract, `contract_part`). The `!Flow` seed
+reads the same edge, so the public half of a mixed tuple is public
+(`mn-ifc-splice-part-public`). OPEN: a constructor's contract is not
+projected (`Option(Positive)` at `Some`'s field needs the constructor's
+scheme instantiated at the contract's arguments); an index read (`xs[i]`, a
+tuple's constant index) reads no part; a join whose tail is not a
+construction falls to the whole's contract for every tail.
+
+`Hβ.effects.row-self-bind-skip-drops-names` — OPEN, BORN 2026-10-01 from
+P0's dig, NOT YET WITNESSED. `graph_bind_row` skips a write whole when the
+incoming row reaches the cell (`occurs_in_row` → `resume()`), on the
+argument that `v = names ∪ v` never grows. That holds for a FREE cell (a
+free row variable has no lower bound to store, and the skip leaves it
+open); on a cell already BOUND it drops the `names` the incoming row adds
+beside the self edge. P0's write-time fold already drops a self-reaching
+edge (`flatten_row_stored(…, written)`), so for a bound cell the skip can
+become the join it skipped. The next output is a witness program — a
+recursive declaration whose frame row is bound before its self-call adds an
+effect — not an edit.
 
 `Hβ.fmt.keyword-binder-renders-as-wildcard` — OPEN, BORN 2026-09-30,
 measured on boot 21f8e691 while building C5. A binder spelled with a
@@ -7424,16 +7565,42 @@ calls of `f` inside the body generate `value ⊨ κ` at each value's own site,
 and a call of the HOF with a function demanding `P` solves `κ ⇒ P` — so the
 debt the crossing writes today becomes value-bearing obligations decided
 where each value is made (Liquid Types' κ, carried as a gate on the cell: the
-A3 mechanism's third arm, beside the row gate and `NumericGate`). THREE
-MEASURED FACES it owns: (1) the parameter-side debt above; (2) ARITHMETIC
-SPREADS A REFINEMENT TO ITS OPERANDS — `+` unifies its operands, a refined
-alias rides the unification, and `fn f(fb: Gain, x) = x + fb * 2.0` refuses
-`f(0.5, -3.0)` though nothing in `f` needs `x ≥ 0` (sound, over-demanding;
-measured on boot and m2), and Pulse's echo demanded a `Decay` of its input
-until its stage declared `x: Float`; (3) a RECORD OF FUNCTIONS — a rig field's
-function type crosses the argument edge as a record, which the crossing does
-not yet read, so a refinement riding a field is dropped as the direct
-argument's was.
+A3 mechanism's third arm, beside the row gate and `NumericGate`). THE
+MEASURED FACES it owns: (1) the parameter-side debt above; (2) CLOSED
+2026-10-01 by P0 — ARITHMETIC SPREAD A REFINEMENT TO ITS OPERANDS: `+`
+unified its operands and a refined alias rode the class, so `fn f(fb: Gain,
+x) = x + fb * 2.0` refused `f(0.5, -3.0)` and `ratio(t, n: Positive)` typed
+`t` Positive; a cell holds a shape now (`mn-refine-sibling-operand`, red on
+boot 13e8484a); (3) a RECORD OF FUNCTIONS — a rig field's function type
+crosses the argument edge as a record, which the crossing does not yet read,
+so a refinement riding a field is dropped as the direct argument's was; (4)
+MERGED FUNCTION VALUES (P0's felt walk) — the precondition a merge of two
+functions owes is whichever branch's type the class keeps: with `inv(n:
+Positive)` and an unrefined `inv2`, `fn pick(c) = if c { inv2 } else { inv
+}` under `fn main() with !Trap = pick(false)(0)` checks clean and divides by
+zero, while the same two in the other order refuse (measured alike on boot
+13e8484a and the P0 tree). A join of two function values owes the MEET of
+their preconditions — the refinement variable's meet, κ₁ ∧ κ₂ at the merged
+parameter. (5) A FUNCTION TYPE'S INTERIOR CONFLATES WHAT IS PROVIDED WITH
+WHAT IS DEMANDED (measured 2026-10-01, alike on boot 13e8484a and pin
+e23392f6): `drive`'s published `f: (Hz) -> r` says what `drive` hands its
+callback, and unified into `outer`'s `g` by `fn outer(g) = drive(g, 440.0) +
+g(30000.0)` it makes the direct call `g(30000.0)` owe `Hz` — refused,
+though the lambda `outer` is handed demands nothing. Sound, over-demanding.
+FACE (1) MOVED THE SAME DAY (P0·H), in a learned form rather than as κ: a
+function-typed parameter learns what its body hands each position (the meet
+over its applications) and what a refined position demands of its result,
+and a lambda's parameter learns its precondition, so `drive((c) =>
+alpha(c), 440.0)` discharges where `drive` provides `Hz` and `run(() =>
+30000.0)` refuses where `run` demands it. What the learned form leaves: a
+constant argument provides nothing, though it may satisfy a contract
+(`fn feed(f) = f(440.0)` hands a lambda demanding `Hz` honest debt at the
+crossing, measured); a second, different demand on one result stays the
+body's own claim rather than meeting into the first; and a crossing pays a
+function parameter's guard whatever the passed function proves of its
+result. κ — a demand variable per position, solved by the functions callers
+hand in and checked against what the body provides — is the one form that
+answers faces (1), (4) and (5) together.
 
 `Hβ.effects.distinct-instances-collapse-in-the-row` — CLOSED 2026-09-28 (L3).
 The row's name-set dedup keyed on the effect NAME and kept the first of two
@@ -9394,7 +9561,19 @@ banked from kill 5: `Hβ.verify.warm-image-pending-suppression` —
 the warm path restores the analyzed image but re-derivation does
 not re-surface unchanged-decl obligations, so the daily loop's
 pending projection under-reports (cold = truth; the march is cold).
-TagId's 0..255 and the float intervals stay the SMT tier's.
+TagId's 0..255 and the float intervals stay the SMT tier's. THE CLASS READS
+ARE GONE (P0, 2026-10-01): the two-face read, the flow licence and the
+self-call IH's slot read were compensations for a refinement riding the
+unification class, and `node_lo_tr`, `node_lo_op`, `ty_lo`, `ty_lo_at`,
+`type_excludes`, `refinement_pred_of`, `ty_refinement`, `value_flows_class`
+and `inferred_alias_name` were deleted with it. A claim's lower bound is
+read off the value's leaves (`leaves_lo`, verify.mn), and the IH is a leaf:
+the recursive call reads the declaration's authored return off its TFun as
+a contract (`seek` discharges, `wild` pends — the frontier leg still wants
+exactly one). The OTHER HALF above is overtaken: `scan_for_span` no longer
+exists, and the `render_at` flow pends at pin e23392f6 as
+`cursor_at_handle(ph)`, one of the four sites
+`Hβ.verify.contracts-through-parametric-calls` carries.
 
 `Hβ.lower.lowering-is-a-column` — STEP (ii) OPENED 2026-09-07: THE
 ENUMERATION GOT ITS FIRST READER, and a walker family left with it. The
@@ -10467,8 +10646,11 @@ one home; full reports + the cross-fleet synthesis in
 .build/research/audit-*-2026-07-31.md and fleet-synthesis-2026-07-31.md,
 each finding artifact-grounded with its own calibration section):
 
-`Hβ.verify.echo-stop-reads-per-leaf` — THE FLOW-FACE LAUNDER, probed
-live: a refined return over a JOIN self-discharges through the class
+`Hβ.verify.echo-stop-reads-per-leaf` — CLOSED 2026-10-01 by P0: the echo
+reads the value's leaves and the class holds a shape, so the literal branch
+decides `0 <= -5` FALSE and refuses at the branch, exactly as the fix below
+asked; `mn-refine-join-launder` is a registered refusal leg. The record as
+banked: THE FLOW-FACE LAUNDER, probed live: a refined return over a JOIN self-discharges through the class
 alias, so `fn bad(v: Nat, c) -> Nat = if c { v } else { 0 - 5 }`
 compiles with ZERO verify lines and returns -5 through `0 <= self`.
 `value_flows_class` tests only the TOP node's shape while

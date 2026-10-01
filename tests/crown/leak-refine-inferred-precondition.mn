@@ -1,0 +1,14 @@
+// CROWN refinement (P0, 2026-10-01): an UNANNOTATED parameter handed
+// straight to a refined one acquires that precondition (the inference the
+// wheel leans on), and with it the guard. `caller`'s `m` is inferred
+// Positive; `outer`'s argument claim against it is open, so the trap
+// `inv`'s division guards is outer's to pay. Expect E_EffectMismatch at outer.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn caller(m) = inv(m)
+
+fn outer(k) with !Trap = caller(k + 1)
+
+fn main() = outer(0 - 1)

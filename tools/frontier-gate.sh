@@ -1923,6 +1923,12 @@ for i in "${!compilers[@]}"; do
   fi
   run_refusal "$compiler" refuse-refinement \
     "$ROOT/tests/frontier/mn-refuse-refinement.mn" E_RefinementRejected "$dir"
+  # P0 · a refined return over a join is decided at each tail, never echoed
+  # off the class — the literal branch refuses. Banked RED since 2026-07-31
+  # (the class alias proved the annotation of itself: exit 0, zero verify
+  # lines on boot 13e8484a).
+  run_refusal "$compiler" refine-join-launder \
+    "$ROOT/tests/frontier/mn-refine-join-launder.mn" E_RefinementRejected "$dir"
   # R3 · the decidable arithmetic Verify fragment. The true cases DISCHARGE at
   # compile time (zero V_Pending, run to 42); the false case is PROVEN false
   # and refuses under the armed class. Pre-R3, none of the three folded — the
@@ -3149,13 +3155,12 @@ for i in "${!compilers[@]}"; do
   # ─── The interval fragment's proof-and-honesty face ────────────────
   # mn-verify-interval runs to 28 through the contract battery; HERE the
   # stderr ledger is the assertion: exactly ONE pending comparison —
-  # wild (honest Sub debt, the never-launders control). seek DISCHARGES
-  # since 2026-08-12: the authored `-> Nat` rides the decl's TFun slot
-  # as a value bound before the body (the assumed-signature IH), and
-  # ty_lo chases a var slot to its cell, so the rec-call's callee read
-  # proves the join. Zero = the licence laundered a computation again
-  # (the runtime -1 class); more = an interval leg (if-join / len /
-  # Add / opaque type read / the IH slot) stopped discharging.
+  # wild (honest Sub debt, the never-launders control). seek DISCHARGES:
+  # the recursive call's leaf is the declaration's own authored `-> Nat`,
+  # read off the decl's TFun as a contract (P0's value walk). Zero = a
+  # computation laundered again (the runtime -1 class); more = a leaf of
+  # the walk (if-join tails / len / Add / a precondition / a callee's
+  # declared return) stopped discharging.
   iv_err=$("$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" compile "$ROOT/tests/frontier/mn-verify-interval.mn" 2>&1 >/dev/null | grep -c 'pending comparison')
   if [ "$iv_err" = "1" ]; then
     pass "interval fragment: the rec-call IH discharges and the licence never launders (1 honest pending)"
@@ -3625,6 +3630,27 @@ for i in "${!compilers[@]}"; do
     pass "dcc gate: classified splice refuses ($ifc_leak), public splice accepts"
   else
     fail "dcc gate (leak rejections: $ifc_leak, want >=1; sound rejections: $ifc_sound, want 0)"
+  fi
+  # The let face (P0): a value a `let` annotated classified carries the label
+  # through its binder — the claim the let made, read where it was noted.
+  # Seen RED on the P0 tree before the claims column (0 rejections).
+  ifc_let=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-splice-let-annotation.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
+  if [ "$ifc_let" -ge 1 ]; then
+    pass "dcc gate: a let-annotated classified splice refuses ($ifc_let)"
+  else
+    fail "dcc gate let face (rejections: $ifc_let, want >=1)"
+  fi
+  # The derived face (P0): a value BUILT from a classified one — an
+  # operator's result, a record's field, a computation over a classified
+  # parameter, a constructor's or a tuple's part — refuses at its splice,
+  # five of five; and the public half of a mixed tuple is public, read at
+  # its position. Seen RED on the P0 tree before the influence read: 0 of 5.
+  ifc_derived=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-splice-derived.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
+  ifc_public=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-splice-part-public.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
+  if [ "$ifc_derived" -eq 5 ] && [ "$ifc_public" -eq 0 ]; then
+    pass "dcc gate: derived values carry their sources' labels (5/5), a public part stays public"
+  else
+    fail "dcc gate derived face (rejections: $ifc_derived, want 5; public-part rejections: $ifc_public, want 0)"
   fi
 
   # ─── The unused-wide-param gate (Hβ.emit.unused-wide-param-floor): an

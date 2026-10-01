@@ -1,0 +1,13 @@
+// CROWN refinement (P0, 2026-10-01): a join takes EVERY tail's value. The
+// if's cell was unified with its first tail, a parameter refined Positive,
+// so `d` was typed Positive though its else tail is 0, and `100 / d` was
+// proven by a refinement no value in the join earned. Boot 13e8484a: zero
+// pending obligations, `!Trap` accepted, trap at run. Expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn f(c, n: Positive) with !Trap = {
+  let d = if c { n } else { 0 }
+  100 / d
+}
+
+fn main() = f(false, 1)

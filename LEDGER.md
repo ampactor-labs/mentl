@@ -35,6 +35,123 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-01 · pin e23392f6b1232f84 (TRANSITION m3 == m4) · A REFINEMENT IS A
+  FACT A VALUE CARRIES, READ ALONG THE EDGES IT FLOWED — NEVER A PROPERTY OF
+  ITS TYPE'S CLASS; A FUNCTION'S CONTRACT TRAVELS WITH THE FUNCTION, AND A PIPE
+  STAGE IS AN APPLICATION. P0, found on D4's felt walk before a line of D4 was
+  written: the gradient proposing `n: Positive` to discharge an open claim
+  would have laundered `Trap` into debt nobody saw. Measured on boot 13e8484a,
+  six `with !Trap` programs checked clean and trapped at run time: an
+  arithmetic result inherited its operand's refinement (`dec(x: Positive) =
+  x - 1` typed `-> Positive`, zero debt); a join did (`let d = if c { n }
+  else { 0 }` typed Positive); and an open `let` claim, an open postcondition
+  a caller relied on and an open argument claim at a guarded parameter were
+  each read as facts. The same merging refused a correct program: `n:
+  Positive` on one operand of `t / n` demanded Positive of `t`, so
+  `ratio(0, 5)` was E_RefinementRejected. ONE ROOT: refinements rode the
+  union-find class, so every merge (a join) and every mint (an operator)
+  laundered them onto whatever it touched, and four compensations said so in
+  their own comments (a "flows-class licence", a two-face "contamination
+  law", a "constraint first" order, and a let rebind exposing an annotation
+  on its value's class). THE FORM: a cell holds a SHAPE (`shape_of` at the
+  one writer; a function type's interior is a contract and stays whole); a
+  refinement is read by ONE walk along the value's edges (verify.mn
+  `value_leaves`: a constant is its point, a reference its binder, a join
+  every tail, a call — or a pipe stage — its callee's declared return, `len`
+  a length, Add the sum of bounds), and each reader asks its own question: a
+  ROW fact (partiality's `Trap`) stands on constants, lengths and
+  preconditions, a CLAIM also on owed postconditions and the overflow-blind
+  Add fold. A declared parameter's refinement is a PRECONDITION with a GUARD:
+  a row cell minted at pre-registration holding what the precondition
+  protects (`100 / n` under `n: Positive` charges `Trap` into n's guard, not
+  the row), paid by a caller whose argument claim is open and carried to the
+  caller's own parameters when the claim held strictly on them (`pay_guard`,
+  `carry_guard`); an unannotated parameter handed straight into a refined one
+  LEARNS the precondition; a guard still open when a caller reads it
+  (self-recursion, a cycle) records the caller as a late payer, settled at
+  the payer's exit or the cycle unit's completion; a declaration with no
+  authored return publishes the contract every return tail proves
+  (`proven_return`, a self-call read co-inductively). A `let` annotation is a
+  CLAIM its value owes, never a rebind. Every claim site — return, argument,
+  let, a lambda's result — notes the contract on the value's node and on
+  every join tail (`claim_refinement`, the `claims` column, `MClaimNote`): a
+  hole's proposals must satisfy the claims over it (the proposer's target and
+  gate, and `?? : Positive` at the address surface, read them, the cell
+  holding `Int`), and a reader of a let's binder may stand on its annotation
+  for a claim, never for a row fact (`LClaimed`). DESTRUCTURING IS A
+  VALUE-FLOW EDGE: every pattern binder for a part notes its whole and its
+  position (`PartFact`, replacing the field-only fact), and a part — or a
+  field read — is the construction's argument at that position where the
+  whole was built in sight, through lets and every join tail, and the
+  whole's contract projected to the position where it was not. THE FLOW
+  LABEL (§4⑥'s seed) moved off the class too: a value is as classified as
+  everything it was built from — operators, aggregates, a call's arguments
+  and declared return, a part at its position — and on the P0 tree before
+  that read, `pw ++ "x"`, a record's classified field, `p ++ "!"`, a part of
+  `Some(pw)` and a tuple's classified half each read Public at a splice (0
+  of 5 refusals; the boot refused all five, by the same class merging). P0·H,
+  forced by the first march: a lambda's parameter learns its precondition as
+  a declared one does and the lambda's type publishes it; a function-typed
+  parameter learns from how its body applies it — what every application
+  hands each position (a meet over the applications, `learn_provision`) and
+  what a refined position demands of its result (`learn_result_demand`) —
+  and a call through it reads that return contract (`param_result`); a `<~`
+  cycle's lambda learns nothing, no application raising a claim for the
+  prior. And a `|>` stage is an application: the pipe claims of the piped
+  value what the stage's parameter demands (`discharge_arg` at the pipe),
+  which it had never done. NOT CLOSED, measured alike on both trees: a
+  function value merged at a join keeps the contract of whichever branch
+  unified first, so `if c { inv2 } else { inv }` called at 0 under `!Trap`
+  checks clean and traps (exit 134) while the other order refuses — the
+  higher-order peer's fourth face, next. KILLS, and what each named: (1) the
+  m3 leg TRAPPED — a stored row reached its own cell (`D := D ∪ [G]` with
+  `G → D → T` kept G's edge and the next fold walked G → D → G until the
+  stack ran out); the occurs check compared an edge's first cell and its
+  root and never the cells between, so the write-time fold now excludes the
+  written cell (`flatten_row_stored(…, written)`, `chain_passes`); (2) the
+  first m3 leg peaked at 1,042,552 KB — guards written into frame rows were
+  row VARIABLES to the unifier and the quantifier; a frame row never holds a
+  guard cell now, charges accumulate on the fact and the cell is finalized
+  once at exit; (3) the wheel's pendings went 25 → 116 on the first build
+  and are 34 at the pin — every one debt the class had hidden (destructured
+  tuples in the lexer's scanners, a generic call's element in the cursor,
+  a span's return, honest debts in voice and dsp); (4) 17 frontier legs went
+  RED with the class read gone — the proposer at refined holes, the flow
+  facet, the DCC gate — and the claims column and the influence read closed
+  them, the public half of a mixed tuple staying public because a part is
+  read at its position (`mn-ifc-splice-part-public`, the precision control);
+  (5) the quiet-gate ratchet refused the build's count (704 → 710: seven
+  `ref` markers it had authored, which the grade infers) — deleted, 703; (6)
+  the effectful-lambda ratchet refused 231 — the cycle guards' settlement
+  folded with two accumulator lambdas — and both became references (ceiling
+  230 → 229); (7) THE FIRST REPIN WAS REFUSED at proof-exactness, 21 pass / 5
+  red: `run(() => 30000.0)` into `fn run(f) = alpha(f())` checked clean with
+  debt, and a lambda handed an `Hz` its callee provides read as debt — both
+  directions of a callback's contract had ridden the class into the function
+  type. Restoring them along edges is P0·H, and measuring it found the pipe:
+  `fn main() with !Trap = 0 |> inv` checked clean and divided by zero on boot
+  13e8484a and the P0 tree alike, and `30000.0 |> alpha` reached an `Hz`
+  parameter. The refused pin was restored, not blessed, and this one is both.
+  Crucibles RED on 13e8484a: `leak-refine-{arith-result, callback, cycle,
+  inferred-precondition, join, let-debt, open-arg, pipe, postcondition,
+  self-recursion, transport}`, with `sound-refine-proven-arg` the control;
+  micros `mn-refine-sibling-operand` (higher-order face (2) closed),
+  `mn-refine-pipe-stage`, `mn-refine-pipe-partial`, with
+  `mn-refine-pipe-proven` the control; frontier `mn-refine-join-launder`
+  registered (banked RED since 2026-07-31), `mn-ifc-splice-let-annotation`
+  and `mn-ifc-splice-derived` RED on the pre-claims P0 tree. Named:
+  `Hβ.verify.interval-fragment-assumes-unbounded-int`,
+  `Hβ.verify.row-facts-trust-proven-postconditions`,
+  `Hβ.verify.proven-return-over-products-and-cycles`,
+  `Hβ.verify.contracts-through-parametric-calls`,
+  `Hβ.effects.row-self-bind-skip-drops-names`, and the higher-order peer's
+  fourth face. Closed: `Hβ.verify.refinement-rides-the-class`,
+  `Hβ.verify.echo-stop-reads-per-leaf`,
+  `Hβ.verify.pipe-stage-raises-no-claim`; mostly closed:
+  `Hβ.verify.provenance-through-destructure`. Board: crown green (116
+  crucibles), proof-exactness green, effect identity green, frontier 482
+  pass / 0 red / 1 expected-red. Cost: m3 leg 11.98s wall · 913MB peak RSS
+  (934912 KB), 471763 lines, census 0; m4 leg 12.37s · 909MB (930872 KB).
 - 2026-10-01 · pin 13e8484aeed28cff (CLEAN m2 == m3) · THE GRADIENT READS ADDRESSES: THE
   FIELD IS ONE MODULE'S, THE ARGMAX IS ITS HEAD, AND AN ACCEPTED CLAUSE IS
   WRITTEN BY THE FORMATTER INTO ITS DECLARATION. D3, opened by its felt walk on

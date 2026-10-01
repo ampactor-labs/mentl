@@ -105,7 +105,13 @@ fn board_bounds() = [
   // reference (`emit_function_bracketed` as a one-hole partial), and the
   // allocation audit's walkers were written as references and index walks
   // from the start.
-  Bound({ceiling: 230, shape: CsEffectfulLambda}),
+  //
+  // 230 -> 229 (2026-10-01, P0): the landing minted two — the cycle guards'
+  // settlement folded with two accumulator lambdas — and the board refused
+  // 231; both became references (`member_owed_late` as a one-hole partial,
+  // `param_owed_late` mapped and joined by `row_join`), and the count fell
+  // one below the ceiling it entered under.
+  Bound({ceiling: 229, shape: CsEffectfulLambda}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which

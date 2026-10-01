@@ -8085,7 +8085,7 @@ fn ground_field(params, args, field) = match field {
 }
 
 fn ground_param(params, args, p) = match p {
-  TParam(n, pty, authored, resolved, dflt) => TParam(n, ground_ty(params, args, pty), authored, resolved, dflt),
+  TParam(n, pty, authored, resolved, dflt, g) => TParam(n, ground_ty(params, args, pty), authored, resolved, dflt, g),
 }
 
 // The argument standing in this var's position. Keyed by the union-find ROOT

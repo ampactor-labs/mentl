@@ -341,17 +341,12 @@ handler query_default {
     // "requires active inference context" surrender. None when no handler
     // provides the op.
     resume(QRHandlerProvider(handler_providing_op(op_name))),
-    QFlowOf(name) => // The IFC tentacle: read the FlowLabel the type system already proves
-    // for NAME, without any new graph state. The classification comes from:
-    //   - TRefined: a refinement predicate whose name contains secret / classified
-    //   - TName: a nominal type whose name signals sensitivity (SecretKey, Token, etc.)
-    //   - the absent set in the fn's row: `with !IO + !Network` proves the fn cannot
-    //     route its output to public-observable sinks — that IS the Secret label.
-    // This is a pure read over the existing graph. The graph IS the IFC mechanism.
+    QFlowOf(name) => // The IFC tentacle: the FlowLabel NAME carries, read over the graph
+    // with no state of its own (`name_flow_label`).
     match env_lookup(name) {
       None => resume(QRError("not found: {name}")),
       Some(entry) => match entry {
-        (scheme, reason, _kind) => resume(QRFlowLabel(scheme |> judgment_ty |> chase_type_deep |> query_flow_label, reason)),
+        (scheme, reason, _kind) => resume(QRFlowLabel(name_flow_label(scheme), reason)),
       },
     },
     QCensus(shape) => resume(QRCensus(census_label(shape), census_sites(shape))),
@@ -366,6 +361,21 @@ handler query_default {
     QCost => resume(QRCost(len(module_cells()), weave_line_extent(), graph_next())),
     QUnknown(q) => resume(QRError("unknown query: {q}")),
   },
+}
+
+// The label a name carries: what its type names — a declaration's
+// return, a nominal type's predicate, a row's confinement — joined, for a
+// value binding, with its VALUE's label read along the edges the value
+// flowed (a parameter's precondition, a let's annotation, a callee's
+// declared return). The type alone read every refined value Public once
+// the class held a shape (P0).
+fn name_flow_label(scheme) = {
+  let ty = judgment_ty(scheme)
+  let by_type = ty |> chase_type_deep |> query_flow_label
+  match ty {
+    TVar(b) => flow_label_join(by_type, binder_flow_label(b)),
+    _ => by_type,
+  }
 }
 
 fn chase_type_deep(ref ty) = match ty {

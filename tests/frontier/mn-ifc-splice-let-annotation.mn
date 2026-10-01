@@ -1,0 +1,16 @@
+// The DCC gate's LET face: a value a `let` annotated classified, spliced
+// into a string, refuses. The annotation is a claim the let makes of its
+// value, and the splice reads its label along the value's edges — through
+// the binder to the let, where the claim was noted. Once the class held a
+// shape (P0) and before the let's claim was readable, this splice read
+// Public and checked clean. Expect E_RefinementRejected at the splice.
+type Vault = String where classified(self)
+
+fn classified(s) = true
+
+fn leak() = {
+  let pw: Vault = "hunter2"
+  "msg: {pw}"
+}
+
+fn main() = 0

@@ -652,8 +652,20 @@ fn context_hole_handle(context) with Pure = match context {
 // graph had proved `Int -> Int`, so every one-parameter fn in the link
 // passed the index and ~70 were judged or listed as refused at one hole
 // (measured 2026-09-25) — the index answering from less than the graph knew.
-fn context_target_ty(context) = match context_hole_handle(context) {
-  hole_h => match graph_chase(hole_h) {
+//
+// The cell holds a SHAPE (P0): a refinement is a fact a value carries, and
+// a hole carries none, so what the hole DEMANDS is the contract a claim
+// raised over it — a return, an argument, a let annotation (graph_claims_of,
+// noted where the claim was raised). That contract is the target the
+// enumerators read, refinement and all; a hole nothing claimed answers its
+// shape.
+fn context_target_ty(context) = hole_demand(context_hole_handle(context))
+
+// What a hole demands, the one read the proposer's target and the address
+// surface's Query line share: the contract claimed of it, else its cell.
+fn hole_demand(hole_h) = match graph_claims_of(hole_h) {
+  [claimed, ..._] => chase_deep(claimed),
+  [] => match graph_chase(hole_h) {
     GNode(kind, _) => chase_deep(ty_of_kind(hole_h, kind)),
   },
 }
@@ -1215,8 +1227,10 @@ fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
 }
 
 // Decides whether a candidate inhabits the hole: infer the candidate, `unify`
-// its cell with the hole's own, then discharge the hole's refinement against
-// what the cell now says.
+// its cell with the hole's own, then discharge every contract claimed of the
+// hole against the candidate. The cell holds the shape and the claims hold
+// the refinements (P0) — the cell used to be read for both, and once it held
+// a shape every integer seed survived a `0 < self` return.
 //
 // THE PROOF GATE, one home, and the hole is a TERM CELL in it.
 //
@@ -1250,16 +1264,9 @@ fn candidate_proven(node, hole_h, reason) = {
   match node {
     N(_, span, h) => {
       unify(hole_h, h, span, reason)
-      verify_after_apply(h) && refinement_admits(hole_ty_live(hole_h), h)
+      verify_after_apply(h) && all(refinement_admits(??, h), graph_claims_of(hole_h))
     },
   }
-}
-
-// The hole's type AFTER the unify — read live, because the unify may have
-// bound it and the refinement must be discharged against what the cell now
-// says, never against what it said before the candidate arrived.
-fn hole_ty_live(hole_h) = match graph_chase(hole_h) {
-  GNode(kind, _) => ty_of_kind(hole_h, kind),
 }
 
 // ─── Verification — every candidate through the one gate ────────────

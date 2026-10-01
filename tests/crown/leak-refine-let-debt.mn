@@ -1,0 +1,14 @@
+// CROWN refinement (P0, 2026-10-01): a let annotation is a CLAIM about its
+// value, and an open claim is debt, not a fact. The annotation was rebound
+// onto the value's class whatever the claim's verdict, so the division read
+// `k` as Positive while the ledger still owed `0 < e - 1`. Boot 13e8484a:
+// one pending obligation, `!Trap` accepted, trap at run (f(1) divides by 0).
+// Expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn f(e) with !Trap = {
+  let k: Positive = e - 1
+  100 / k
+}
+
+fn main() = f(1)

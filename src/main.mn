@@ -1035,7 +1035,11 @@ fn render_field(target: String) = match module_handle_of_path(target) {
     // proven row, the MachineApplicable patch `mentl tighten` applies)
     // join the holes and the gradient tier. The error list IS the work
     // queue.
-    let pending = filter({ (modh, _, _, _) => modh == mh }, verify_debt())
+    // A claim pending over a hole is the hole's demand, carried by the
+    // hole's own position — filling it discharges the claim — so it is
+    // not a second position beside it.
+    let pending =
+      filter({ (modh, _, pred, _) => modh == mh && !claim_is_a_holes_demand(pred) }, verify_debt())
     let tights = filter({ (_, _, _, _, dmod) => dmod == target }, tightenables())
     let grads = enumerate_gradient_positions(mh)
     print("Field: {int_to_str(len(holes))} hole(s), {int_to_str(len(pending))} pending proof(s), {int_to_str(len(tights))} tightening(s), {int_to_str(len(grads))} gradient position(s) in {target}\n")
@@ -1528,9 +1532,10 @@ fn node_query_line(h, kind) = match graph_node_body(h) {
   NHole(_) => // An UNDETERMINED hole never leaks the raw var — substrate
   // vocabulary at the exact moment the medium should ASK (§1's law: the
   // question beats the guess; the fan cannot enumerate an open type, so
-  // the missing constraint IS the answer). A typed hole renders its
-  // type exactly as before.
-  match ty_of_kind(h, kind) {
+  // the missing constraint IS the answer). A typed hole renders what it
+  // DEMANDS — the contract a claim raised over it, refinement and all, or
+  // its cell's type where nothing claimed it (the cell holds a shape).
+  match hole_demand(h) {
     TVar(_) => "_ — still free: annotate the enclosing function's param or result and the fan arrives with the type",
     ty => show_type(ty),
   },

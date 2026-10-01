@@ -381,7 +381,7 @@ fn poly_teach_line(owner: String, reason) =
 // costs one 4KB word-list per process — and a table minted lazily inside a
 // speculation region would outlive the region's heap_reset as a dangling
 // state pointer.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024) {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024) {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -630,10 +630,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     resume() with guard_diags = g2
   } else {
     let old_node = graph_node_at(spine, next, handle)
+    // The cell takes the SHAPE: a refinement is a fact about a value, read
+    // along its flow edges, and a cell is the class union-find merges
+    // values into (types.mn shape_of).
     spine_put_node(
       spine,
       handle,
-      GNode(NBound(ty), accepted_reason(accepted, spine, spine_open, handle, reason))
+      GNode(NBound(shape_of(ty)), accepted_reason(accepted, spine, spine_open, handle, reason))
     )
     let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
     let new_epoch = epoch + 1
@@ -699,7 +702,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     // THE FLAT-CELL LAW at the teaching write: the joined value folds
     // before it stores, so the cell holds depth-1 truth and every
     // read is a flat lookup (flatten_row_stored's own header).
-    spine_put_node(spine, handle, GNode(NRowBound(flatten_row_stored(spine, next, stored)), reason))
+    spine_put_node(
+      spine,
+      handle,
+      GNode(NRowBound(flatten_row_stored(spine, next, stored, handle)), reason)
+    )
     let new_trail = trail_append(trail, trail_len, MSetRow(handle, old_node))
     let new_epoch = epoch + 1
     if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetRow(handle, old_node)) }
@@ -715,7 +722,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     let old_node = graph_node_at(spine, next, handle)
     // The finalize stores flat too (THE FLAT-CELL LAW — the published
     // verdict is a depth-1 value every caller reads without recursion).
-    spine_put_node(spine, handle, GNode(NRowBound(flatten_row_stored(spine, next, row)), reason))
+    spine_put_node(
+      spine,
+      handle,
+      GNode(NRowBound(flatten_row_stored(spine, next, row, handle)), reason)
+    )
     let new_trail = trail_append(trail, trail_len, MSetRow(handle, old_node))
     let new_epoch = epoch + 1
     if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetRow(handle, old_node)) }
@@ -866,6 +877,43 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
   },
   graph_rows_at(h) => resume(wmap_get_all(rows, h)),
+  graph_binder_note(h, fact) => // THE BINDER FACT's write (P0): newest first under the binder's handle,
+  // trailed as MBinderFact — a binder minted inside a speculative judgment
+  // is a handle the rollback hands out again, so its fact must go with it.
+  {
+    wmap_add(binders, h, fact)
+    let new_trail = trail_append(trail, trail_len, MBinderFact(h))
+    let new_epoch = epoch + 1
+    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MBinderFact(h)) }
+    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+  },
+  graph_binder_of(h) => resume(wmap_get(binders, h)),
+  graph_owe_late(g, payer) => // THE LATE PAYERS' write (P0): a frame called through a guard cell its
+  // declaration has not written yet. Newest first under the cell, trailed
+  // as MOweLate, so a rolled-back judgment's payments go with it.
+  {
+    wmap_add(late, g, payer)
+    let new_trail = trail_append(trail, trail_len, MOweLate(g))
+    let new_epoch = epoch + 1
+    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MOweLate(g)) }
+    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+  },
+  graph_late_payers(g) => resume(wmap_get_all(late, g)),
+  graph_claim_note(h, contract) => // THE CLAIMS' write (P0): a contract claimed of the value at a node,
+  // newest first under its handle, trailed as MClaimNote so a rolled-back
+  // judgment's claims go with it.
+  {
+    wmap_add(claims, h, contract)
+    let new_trail = trail_append(trail, trail_len, MClaimNote(h))
+    let new_epoch = epoch + 1
+    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MClaimNote(h)) }
+    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+  },
+  graph_claims_of(h) => resume(wmap_get_all(claims, h)),
+  graph_link_of(h) => resume(match graph_node_at(spine, next, h) {
+    GNode(NBound(TVar(b)), _) => Some(b),
+    _ => None,
+  }),
   graph_written_since(cp, below) => // The segment's write set, read off the trail's live tail — a slice
   // view (no copy) from the checkpoint to the logical length, folded for
   // the cells a bind moved. Entries above trail_len are stale by the
@@ -982,8 +1030,23 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       // inverse lands on its live cell — and MFreshNode entries count next
       // back down. Bands stay open (cells above the restored next are
       // stale-and-overwritten at re-mint, the logical-length discipline).
-      let new_next =
-        revert_trail(spine, spine_open, trail, trail_len, target_idx, next, gates, instances, demands, rows)
+      let new_next = revert_trail(
+        spine,
+        spine_open,
+        trail,
+        trail_len,
+        target_idx,
+        next,
+        {
+          binders: binders,
+          claims: claims,
+          demands: demands,
+          gates: gates,
+          instances: instances,
+          late: late,
+          rows: rows,
+        }
+      )
       resume() with next = new_next, trail_len = target_idx
     } else {
       // Walk the CURRENT trail backward, undoing each write in place into
@@ -1001,10 +1064,15 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
         trail,
         trail_len,
         target_idx,
-        gates,
-        instances,
-        demands,
-        rows
+        {
+          binders: binders,
+          claims: claims,
+          demands: demands,
+          gates: gates,
+          instances: instances,
+          late: late,
+          rows: rows,
+        }
       )
       // drop_last, never slice: the pop runs BEFORE the caller's
       // heap_reset, so a slice node minted here dies with the
@@ -1194,31 +1262,92 @@ fn merge_row(ref names, ref absents, ref row) = match row {
 // a `~>` mask became the whole row's: its `a' = a ∪ ca` filtered every
 // sibling edge with an install that never covered it (measured
 // 2026-09-26, `f() + ((g()) ~> h)` stored as `(r_f + r_g) − E`).
+//
+// AND NO CELL'S STORED ROW REACHES THE CELL. The fold runs before the put,
+// on `written`'s current content, so a chain may pass THROUGH the cell being
+// written, and a free terminal's edge was kept as its chain head: `D := D ∪
+// [G]` with `G → D → T` stored `D = [T, G]`, and the next fold through D
+// walked G → D → G until the stack ran out (measured 2026-10-01, two
+// mutually recursive callers' precondition guards; the occurs check had
+// compared the edge's first cell and its root, never the cells between). A
+// row is a set, so what reaches the cell adds nothing to it: such an edge
+// keeps its chain's terminal, and an edge that is the cell, or ends at it,
+// keeps nothing.
 // Mechanism-layer: state-passed, structural, zero ops.
-fn flatten_row_stored(ref spine, mint_bound, row) with !Mutate = match row {
+fn flatten_row_stored(ref spine, mint_bound, row, written) with !Mutate = match row {
   EfRow(p, a, t) => match t {
-    EtOpen(vs) => match flatten_row_edges(spine, mint_bound, edges_masked(vs, a), (p, [], [], false)) {
+    EtOpen(vs) => match flatten_row_edges(spine, mint_bound, edges_masked(vs, a), (p, [], [], false), written) {
       (rp, am, res, saw_all) => row_of_fold(rp, am, res, saw_all),
     },
     _ => row,
   },
 }
 
-fn flatten_row_edges(ref spine, mint_bound, ref vs: [RowEdge], acc) with !Mutate = match vs {
+fn flatten_row_edges(ref spine, mint_bound, ref vs: [RowEdge], acc, written) with !Mutate = match vs {
   [] => acc,
   [e, ...rest] => match acc {
     (p, am, res, saw_all) => {
-      let next = match chase_node(spine, mint_bound, edge_cell(e), 0) {
-        GNode(kind, _) => match edge_row_of(kind) {
-          Some(inner) => match edge_content_into(p, am, res, saw_all, edge_mask(e), flatten_row_stored(spine, mint_bound, inner)) {
-            (p2, am2, r2, s2, _) => (p2, am2, r2, s2),
+      let next = if edge_cell(e) == written {
+        acc
+      } else {
+        match chase_node(spine, mint_bound, edge_cell(e), 0) {
+          GNode(kind, _) => match edge_row_of(kind) {
+            Some(inner) => match edge_content_into(
+              p,
+              am,
+              res,
+              saw_all,
+              edge_mask(e),
+              flatten_row_stored(spine, mint_bound, inner, written)
+            ) {
+              (p2, am2, r2, s2, _) => (p2, am2, r2, s2),
+            },
+            None => (p, am, kept_edge(spine, mint_bound, res, e, written), saw_all),
           },
-          None => (p, am, tail_set_insert(res, e), saw_all),
-        },
+        }
       }
-      flatten_row_edges(spine, mint_bound, rest, next)
+      flatten_row_edges(spine, mint_bound, rest, next, written)
     },
   },
+}
+
+// A free terminal's edge as the fold keeps it: the chain head, through which
+// a later write anywhere along the chain still reaches the row — unless the
+// chain passes through the cell being written, when it names the terminal
+// instead, or nothing when the terminal is that cell. The chase reached the
+// terminal with no names and no masks on the way (either would have bound
+// the result), so the edge's own mask is the whole path's.
+fn kept_edge(spine, mint_bound, res, e, written) with !Mutate = if chain_passes(spine, mint_bound, edge_cell(e), written, 0) {
+  let t = chase_handle(spine, mint_bound, edge_cell(e), 0)
+  if t == written { res } else { tail_set_insert(res, row_edge(t, edge_mask(e))) }
+} else {
+  tail_set_insert(res, e)
+}
+
+// Does the link chain from `v` reach `written`? `chase_handle`'s walk, with
+// the comparison at every cell rather than at the root alone.
+fn chain_passes(spine, mint_bound, v, written, depth) with !Mutate = if v == written {
+  true
+} else if depth > 100 {
+  false
+} else {
+  match graph_node_at(spine, mint_bound, v) {
+    GNode(kind, _) => match kind {
+      NBound(ty) => match ty {
+        TVar(n) => chain_passes(spine, mint_bound, n, written, depth + 1),
+        _ => false,
+      },
+      NRowBound(row) => match row {
+        EfRow(_, _, EtOpen(edges)) => if len(edges) == 1 {
+          chain_passes(spine, mint_bound, edge_cell(last(edges)), written, depth + 1)
+        } else {
+          false
+        },
+        _ => false,
+      },
+      _ => false,
+    },
+  }
 }
 
 // The one nodes read. Every minted handle's cell was written at its own
@@ -1503,11 +1632,13 @@ fn occurs_in_eff_args_loop(spine, mint_bound, handle, ref args, i, n) with !Muta
 // open-count guard — its page dies with the region, and writing into it
 // would resurrect the doomed-allocation class. MFreshNode needs no step
 // here: the checkpoint restores `next` wholesale.
-// The gate and instance columns are NOT paged, so their two arms carry no
-// open-band guard: a pop lands on the live table whatever band the handle
-// is in, and the table itself outlives every fork (allocated at the root
-// install).
-fn revert_trail_into(ref spine, spine_open, ref trail, current, target, gates, instances, demands, rows) = if current <= target {
+// The LIFO note columns (gates, instances, demands, row notes, parameter
+// facts) are NOT paged, so their arms carry no open-band guard: a pop lands
+// on the live table whatever band the handle is in, and the table itself
+// outlives every fork (allocated at the root install). They travel as ONE
+// record — each was a parameter of its own threaded through every arm of
+// both walks, and a fifth column would have been a fifth.
+fn revert_trail_into(ref spine, spine_open, ref trail, current, target, cols) = if current <= target {
   ()
 } else {
   let idx = current - 1
@@ -1515,36 +1646,48 @@ fn revert_trail_into(ref spine, spine_open, ref trail, current, target, gates, i
   match mutation {
     MSetNode(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances, demands, rows)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
     MSetRow(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances, demands, rows)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
     MSetBoundary(h, old) => {
       if spine_band(h) < spine_open { spine_put_boundary(spine, h, old) }
-      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances, demands, rows)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
     MSetProduct(h, old) => {
       if spine_band(h) < spine_open { spine_put_product(spine, h, old) }
-      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances, demands, rows)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
-    MFreshNode(_) => revert_trail_into(spine, spine_open, trail, idx, target, gates, instances, demands, rows),
+    MFreshNode(_) => revert_trail_into(spine, spine_open, trail, idx, target, cols),
     MRowNote(h) => {
-      wmap_pop(rows, h)
-      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances, demands, rows)
+      wmap_pop(cols.rows, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
     MSetGate(h) => {
-      wmap_pop(gates, h)
-      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances, demands, rows)
+      wmap_pop(cols.gates, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
     MInstanceNote(h) => {
-      wmap_pop(instances, h)
-      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances, demands, rows)
+      wmap_pop(cols.instances, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
     MSetDemand(h) => {
-      wmap_pop(demands, h)
-      revert_trail_into(spine, spine_open, trail, idx, target, gates, instances, demands, rows)
+      wmap_pop(cols.demands, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MBinderFact(h) => {
+      wmap_pop(cols.binders, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MOweLate(h) => {
+      wmap_pop(cols.late, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
+    },
+    MClaimNote(h) => {
+      wmap_pop(cols.claims, h)
+      revert_trail_into(spine, spine_open, trail, idx, target, cols)
     },
   }
 }
@@ -1552,7 +1695,7 @@ fn revert_trail_into(ref spine, spine_open, ref trail, current, target, gates, i
 // The unpaired walker: same in-place undo (every touched band is open —
 // the guard is kept uniform as the belt), with MFreshNode counting `next`
 // back down.
-fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, gates, instances, demands, rows) = if current <= target {
+fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, cols) = if current <= target {
   next_handle
 } else {
   let idx = current - 1
@@ -1560,47 +1703,48 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, 
   match mutation {
     MSetNode(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances, demands, rows)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
     MSetRow(h, old) => {
       if spine_band(h) < spine_open { spine_put_node(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances, demands, rows)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
     MSetBoundary(h, old) => {
       if spine_band(h) < spine_open { spine_put_boundary(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances, demands, rows)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
     MSetProduct(h, old) => {
       if spine_band(h) < spine_open { spine_put_product(spine, h, old) }
-      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances, demands, rows)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
-    MFreshNode(_) => revert_trail(
-      spine,
-      spine_open,
-      trail,
-      idx,
-      target,
-      next_handle - 1,
-      gates,
-      instances,
-      demands,
-      rows
-    ),
+    MFreshNode(_) => revert_trail(spine, spine_open, trail, idx, target, next_handle - 1, cols),
     MRowNote(h) => {
-      wmap_pop(rows, h)
-      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances, demands, rows)
+      wmap_pop(cols.rows, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
     MSetGate(h) => {
-      wmap_pop(gates, h)
-      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances, demands, rows)
+      wmap_pop(cols.gates, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
     MInstanceNote(h) => {
-      wmap_pop(instances, h)
-      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances, demands, rows)
+      wmap_pop(cols.instances, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
     MSetDemand(h) => {
-      wmap_pop(demands, h)
-      revert_trail(spine, spine_open, trail, idx, target, next_handle, gates, instances, demands, rows)
+      wmap_pop(cols.demands, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MBinderFact(h) => {
+      wmap_pop(cols.binders, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MOweLate(h) => {
+      wmap_pop(cols.late, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
+    },
+    MClaimNote(h) => {
+      wmap_pop(cols.claims, h)
+      revert_trail(spine, spine_open, trail, idx, target, next_handle, cols)
     },
   }
 }
@@ -1621,7 +1765,7 @@ fn written_since(entries, below) = fold([], written_step(below), entries)
 fn written_step(below, acc, m) = match m {
   MSetNode(h, _) => note_written(acc, h, below),
   MSetRow(h, _) => note_written(acc, h, below),
-  MSetBoundary(_, _) | MFreshNode(_) | MSetGate(_) | MInstanceNote(_) | MSetDemand(_) | MSetProduct(_, _) | MRowNote(_) => acc,
+  MSetBoundary(_, _) | MFreshNode(_) | MSetGate(_) | MInstanceNote(_) | MSetDemand(_) | MSetProduct(_, _) | MRowNote(_) | MBinderFact(_) | MOweLate(_) | MClaimNote(_) => acc,
 }
 
 fn note_written(acc, h, below) =

@@ -71,6 +71,65 @@ type Ty
   // RN.1 — authored alias name (e.g. "Port") wrapping resolved type
   | TAlias(String, Ty)
 
+// ─── A cell holds a SHAPE ────────────────────────────────────────────
+// A refinement is a fact about a VALUE, read along the edges the value
+// flowed through (verify.mn's value walk) — never a property of a
+// unification class. Union-find merges every value a join can take and
+// every operand an operator meets, so a refinement written into a cell is
+// claimed for values that never earned it: `x - 1` over `x: Positive` was
+// typed Positive, and so was `if c { n } else { 0 }` (P0, 2026-10-01).
+// graph_bind writes this projection. A function type's interior is a
+// CONTRACT — its parameters' preconditions and its declared postcondition —
+// and rides whole: a call through a function value is judged against it.
+fn shape_of(ty) = if ty_carries_refinement(ty) { shape_strip(ty) } else { ty }
+
+fn ty_carries_refinement(ty) = match ty {
+  TRefined(_, _) => true,
+  TAlias(_, inner) => ty_carries_refinement(inner),
+  TReprPin(_, base) => ty_carries_refinement(base),
+  TList(e) => ty_carries_refinement(e),
+  TTuple(es) => any(ty_carries_refinement, es),
+  TName(_, args) => any(ty_carries_refinement, args),
+  TRecord(fs) => any(field_carries_refinement, fs),
+  TRecordOpen(fs, _) => any(field_carries_refinement, fs),
+  TCont(r, s, _, _) => ty_carries_refinement(r) || ty_carries_refinement(s),
+  TFun(_, _, _) => false,
+  TVar(_) => false,
+  TInt => false,
+  TFloat => false,
+  TUnit => false,
+  TByte => false,
+}
+
+fn field_carries_refinement(f) = match f {
+  (_, t) => ty_carries_refinement(t),
+}
+
+// An alias whose inner carries a refinement names that refinement, so its
+// shape is the stripped inner and the name goes with the predicate; a pin
+// keeps its width, which is representation and not a fact about values.
+fn shape_strip(ty) = match ty {
+  TRefined(base, _) => shape_of(base),
+  TAlias(_, inner) => shape_of(inner),
+  TReprPin(w, base) => TReprPin(w, shape_of(base)),
+  TList(e) => TList(shape_of(e)),
+  TTuple(es) => TTuple(map(shape_of, es)),
+  TName(n, args) => TName(n, map(shape_of, args)),
+  TRecord(fs) => TRecord(map(shape_field, fs)),
+  TRecordOpen(fs, v) => TRecordOpen(map(shape_field, fs), v),
+  TCont(r, s, d, w) => TCont(shape_of(r), shape_of(s), d, w),
+  TFun(_, _, _) => ty,
+  TVar(_) => ty,
+  TInt => ty,
+  TFloat => ty,
+  TUnit => ty,
+  TByte => ty,
+}
+
+fn shape_field(f) = match f {
+  (n, t) => (n, shape_of(t)),
+}
+
 // ─── Representation — the value-representation gradient (STEP 0) ─────
 // Repr is the SHARED READ all four deep axes ride: the cursor's answer
 // to "how wide, and in what machine class, does this Ty's value live?"
@@ -354,9 +413,9 @@ fn fold_sig_fields(fields: [(String, Ty)], i, n) = if i >= n {
 // ─── Ownership (spec 02 · spec 07) ─────────────────────────────────
 // Every function parameter wraps Ty with an Ownership marker.
 // Inference fills unmarked parameters; Own/Ref are explicit commitments.
-type TParam = TParam(String, Ty, Ownership, Ownership, Option(Node))
+type TParam = TParam(String, Ty, Ownership, Ownership, Option(Node), EffRow)
 
-// name, ty, authored, resolved, default
+// name, ty, authored, resolved, default, row
 // OW.2 — authored = what developer typed (Own/Ref/Unmarked)
 //        resolved = what infer_ownership determined
 // default = Some(expr_node) when the param has a
@@ -367,6 +426,15 @@ type TParam = TParam(String, Ty, Ownership, Ownership, Option(Node))
 //   callee's scope — the default has ONE home (this
 //   slot) and one eval context (the callee). A
 //   defaulted slot leaves a DefaultReason edge.
+// row = what the parameter's PRECONDITION guards: the
+//   row a call pays when its argument's claim against
+//   the parameter is not proven there. A declared fn's
+//   parameter carries a row cell born at its
+//   declaration and filled at its exit (a division the
+//   precondition proved total guards `Trap`); a
+//   parameter with no precondition guards nothing. The
+//   first face of the param-as-{type, row} projection
+//   named below.
 type Ownership
   // compiler decides (default)
   = Unmarked
@@ -392,28 +460,30 @@ type BranchMode
 // a TOTAL named projection defined ONCE here, never a positional
 // destructure at a consumer (THE CARRIED-TRUTH LAW — §4①: a product's
 // fields are projections read live). The single destructure of the
-// 5-tuple lives in each function below; reviewed once against the decl
-// (TParam(name, ty, authored, resolved, default) = slots 0..4).
+// 6-tuple lives in each function below; reviewed once against the decl
+// (TParam(name, ty, authored, resolved, default, row) = slots 0..5).
 //
 // Consumers split into three roles:
-//   LEAF       — read one aspect via param_{name,ty,authored,resolved,default}
+//   LEAF       — read one aspect via param_{name,ty,authored,resolved,default,row}
 //   PROPAGATOR — transform one aspect via param_with_ty / param_with_resolved,
-//                which carry the other four BY CONSTRUCTION (dropping a
+//                which carry the other five BY CONSTRUCTION (dropping a
 //                sibling field becomes unsayable — it is never named)
 //   PRODUCER   — mint via mk_param (the inferred/synthetic shape: no
-//                authored aspect, no default)
+//                authored aspect, no default, a row that guards nothing)
 //
 // Deepening (NAMED, sequenced post-first-light — §4⑤): a param projects to
 // {type, row} — ownership IS a Consume in the param's ROW, refinement IS a
-// refined type — and the 5-tuple DISSOLVES. These accessor bodies are that
-// collapse's larval seam: the {type,row} form swaps behind them with no
-// consumer touched (peer Hβ.types.param-projects-to-type-row).
+// refined type — and the tuple DISSOLVES. The row slot is that projection's
+// first face (P0, 2026-10-01): it carries what the precondition guards, and
+// ownership's Consume joins it when the tuple goes. These accessor bodies
+// are the collapse's larval seam: the {type,row} form swaps behind them
+// with no consumer touched (peer Hβ.types.param-projects-to-type-row).
 fn param_name(p) = match p {
-  TParam(n, _, _, _, _) => n,
+  TParam(n, _, _, _, _, _) => n,
 }
 
 fn param_ty(p) = match p {
-  TParam(_, t, _, _, _) => t,
+  TParam(_, t, _, _, _, _) => t,
 }
 
 // The same read as a PRESENT signature slot (EmitFnEntry above): a declared
@@ -422,16 +492,26 @@ fn param_ty(p) = match p {
 fn some_param_ty(p) = Some(param_ty(p))
 
 fn param_authored(p) = match p {
-  TParam(_, _, a, _, _) => a,
+  TParam(_, _, a, _, _, _) => a,
 }
 
 fn param_resolved(p) = match p {
-  TParam(_, _, _, r, _) => r,
+  TParam(_, _, _, r, _, _) => r,
 }
 
 fn param_default(p) = match p {
-  TParam(_, _, _, _, d) => d,
+  TParam(_, _, _, _, d, _) => d,
 }
+
+fn param_row(p) = match p {
+  TParam(_, _, _, _, _, g) => g,
+}
+
+// The row of a parameter with no precondition: it guards nothing, so a call
+// pays nothing for it whatever its argument is. One value, built once.
+let no_guard_row = EfRow([], [], EtClosed)
+
+fn guards_nothing() with Pure = no_guard_row
 
 // The one move-vs-borrow read of a param product: TRUE where a call site
 // borrows its arg. Authored Ref borrows; authored Own moves; an Unmarked
@@ -453,17 +533,22 @@ fn param_borrows(p) = match param_authored(p) {
   },
 }
 
-// Structure-preserving updaters for PROPAGATORS — carry the other four.
+// Structure-preserving updaters for PROPAGATORS — carry the other five.
 fn param_with_ty(p, t) = match p {
-  TParam(n, _, a, r, d) => TParam(n, t, a, r, d),
+  TParam(n, _, a, r, d, g) => TParam(n, t, a, r, d, g),
 }
 
 fn param_with_resolved(p, r2) = match p {
-  TParam(n, t, a, _, d) => TParam(n, t, a, r2, d),
+  TParam(n, t, a, _, d, g) => TParam(n, t, a, r2, d, g),
 }
 
-// Smart constructor for inferred/synthetic PRODUCERS — no authored aspect.
-fn mk_param(name, ty) = TParam(name, ty, Unmarked, Unmarked, None)
+fn param_with_row(p, g2) = match p {
+  TParam(n, t, a, r, d, _) => TParam(n, t, a, r, d, g2),
+}
+
+// Smart constructor for inferred/synthetic PRODUCERS — no authored aspect,
+// no precondition.
+fn mk_param(name, ty) = TParam(name, ty, Unmarked, Unmarked, None, guards_nothing())
 
 // ─── Resume discipline (spec 02 · Affect POPL 2025) ────────────────
 // Continuations discriminated at the type level so handler elimination
@@ -1132,6 +1217,60 @@ type Mutation
   | MSetProduct(Int, CallProduct)
   // a row note entered on a node (undo = pop the newest note)
   | MRowNote(Int)
+  // a binder's fact entered under its handle (undo = pop the newest)
+  | MBinderFact(Int)
+  // a payer recorded under an open guard cell (undo = pop the newest)
+  | MOweLate(Int)
+  // a contract claimed of the value at a node (undo = pop the newest)
+  | MClaimNote(Int)
+
+// What the graph knows of a BINDER the value walk reads through (P0),
+// keyed by the binder's own handle; the walk reaches it through a
+// reference's link, never through the unification class, which holds a
+// shape alone.
+type BinderFact
+  // A DECLARED function's parameter: its precondition, the row cell
+  // callers read for what that precondition guards, and what the judgment
+  // has charged to it so far. The charges ride the fact and the cell is
+  // written once, at the declaration's exit: a cell that grew after a
+  // caller read it would have handed that caller a stale copy, since a
+  // stored row folds what its bound edges hold when it is written.
+  = ParamFact({guard: Int, owes: EffRow, pre: Precondition})
+  // A pattern's binder for a PART of the value the pattern matched: the
+  // node it destructured (`whole`, the scrutinee's or an enclosing
+  // part's), where in it the part sits, and — for a constructor's field
+  // declared with a refinement — that contract, which every construction
+  // of the constructor owed where it was built. Destructuring is a
+  // value-flow edge, and this is the edge.
+  | PartFact({declared: Option(Ty), step: PartStep, whole: Int})
+
+// Where a destructured part sits in its whole: the whole itself (an
+// as-pattern binds the value it matches), a tuple's element, a
+// constructor's field by the constructor's name, a record's field, one of
+// a list's elements, or a list's or a record's rest.
+type PartStep = PartWhole | PartIndex(Int) | PartCtor(String, Int) | PartField(String) | PartElem | PartRest
+
+// Where a parameter's precondition comes from. An unannotated parameter
+// handed straight to a refined one LEARNS that precondition — its own
+// callers owe it from then on — while a parameter annotated with a plain
+// type stated its intent and learns nothing (the claim at that edge stays
+// a claim).
+type Precondition
+  // the developer wrote a refinement
+  = Stated(Ty)
+  // an argument edge handed the unannotated parameter to a refined one
+  | Learned(Ty)
+  // no annotation, nothing learned yet
+  | Unstated
+  // annotated with a type that states no refinement
+  | Unrefined
+
+fn pre_contract(pre) = match pre {
+  Stated(t) => Some(t),
+  Learned(t) => Some(t),
+  Unstated => None,
+  Unrefined => None,
+}
 
 // 14 variants, one per operator form in SYNTAX.md's operator
 // precedence table. Exhaustive set; add a variant here AND update
@@ -2011,8 +2150,8 @@ type Pat
 type LitValue = LVInt(Int) | LVFloat(Float) | LVString(String) | LVBool(Bool)
 
 // Domain — what a refinement states about the INHABITANTS of a type, read as
-// one fact rather than as the lower bound alone. `ty_lo` and its family asked
-// the same walk for half of this and there was no upper half at all, so a
+// one fact rather than as the lower bound alone. A lower-bound walk once
+// asked the same question for half of this and there was no upper half, so a
 // `Bit = Int where 0 <= self && self <= 1` could prove its floor and say
 // nothing about its ceiling.
 //
@@ -2405,6 +2544,24 @@ effect GraphRead {
   // node, newest first (a node that charged nothing answers the empty
   // list). row_of_subtree folds it over a subtree.
   graph_rows_at(Int) -> [EffRow]
+  // THE BINDER FACT's read (P0): what the graph knows of a binder the value
+  // walk reads through — a declared parameter or a constructor field's
+  // binder — by its handle; None for every other handle.
+  graph_binder_of(Int) -> Option(BinderFact)
+  // THE LATE PAYERS' read (P0): every frame row cell that called through an
+  // open guard cell — its declaration not yet exited — newest first.
+  graph_late_payers(Int) -> [Int]
+  // THE CLAIMS' read (P0): every contract claimed of the value at this
+  // node, newest first. At a hole it is what the fill must satisfy; at a
+  // let's value it is the annotation a reader of the binder may stand on.
+  graph_claims_of(Int) -> [Ty]
+  // A node's OWN link: the handle its binding names when it is bound to a
+  // bare variable, read without chasing. A reference is bound to its
+  // binder's cell exactly so (infer_var_ref), which makes this the edge
+  // from a use to what it uses — the one the value walk follows, where the
+  // chase would hand back the class root, which a join or an operator may
+  // have merged with values the binder never held.
+  graph_link_of(Int) -> Option(Int)
   // THE SEGMENT'S WRITE SET (C6): the cells below a handle frontier that a
   // bind since a checkpoint moved — a type or row cell overwritten in the
   // trail's MSetNode / MSetRow entries — each once, in first-write order.
@@ -2544,6 +2701,21 @@ effect GraphWrite {
   // what the e-graph's purity gate needs and what the frame-keyed row
   // could never give a sub-expression.
   graph_row_note(Int, EffRow)
+  // THE BINDER FACT's write (P0): a declared parameter's precondition and
+  // guard, noted where the parameter is declared and again where the
+  // judgment learns or charges it; a constructor field's binder, noted
+  // where its pattern binds — trailed as MBinderFact, so a speculative
+  // judgment's notes roll back with it; the newest note is the fact.
+  graph_binder_note(Int, BinderFact)
+  // THE LATE PAYERS' write (P0): a call reached a guard cell its
+  // declaration has not written yet, so the frame owes whatever the exit
+  // writes there. Keyed by the open cell, the payer's row cell the value;
+  // trailed as MOweLate, so a rolled-back judgment's payments go with it.
+  graph_owe_late(Int, Int)
+  // THE CLAIMS' write (P0): a refinement claimed of the value at a node,
+  // noted by `claim_refinement` where the claim is raised. Trailed as
+  // MClaimNote, so a rolled-back judgment's claims go with it.
+  graph_claim_note(Int, Ty)
   // The bind-home column's write (Hβ.lower.lowering-is-a-column step i):
   // lower's VarRef resolution arm — the ONE decision site — notes its
   // ls_resolve verdict at the use node's handle, an in-place spine cell

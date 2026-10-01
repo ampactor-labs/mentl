@@ -835,7 +835,7 @@ fn parse_one_param(ref tokens, pos) = match match kind_at(tokens, pos) {
       match parse_pat(tokens, p) {
         (pat, p_pat) => {
           let fresh = fresh_param_name(psp)
-          let param = TParam(fresh, TVar(fresh_handle(psp)), own_marker, own_marker, None)
+          let param = TParam(fresh, TVar(fresh_handle(psp)), own_marker, own_marker, None, guards_nothing())
           // reuse as the absent-annotation sentinel (byte-identical)
           let vref = nexpr(VarRef(fresh), psp)
           let bind = nstmt(LetStmt(pat, vref, vref), psp)
@@ -859,10 +859,10 @@ fn parse_one_param(ref tokens, pos) = match match kind_at(tokens, pos) {
           let p_after_ty = skip_ws(tokens, p_ty)
           if at(tokens, p_after_ty, TEq) {
             match parse_expr(tokens, skip_ws(tokens, p_after_ty + 1)) {
-              (default_expr, p_def) => (TParam(name, ty, own_marker, own_marker, Some(default_expr)), None, p_def),
+              (default_expr, p_def) => (TParam(name, ty, own_marker, own_marker, Some(default_expr), guards_nothing()), None, p_def),
             }
           } else {
-            (TParam(name, ty, own_marker, own_marker, None), None, p_ty)
+            (TParam(name, ty, own_marker, own_marker, None, guards_nothing()), None, p_ty)
           }
         },
       }
@@ -1586,10 +1586,10 @@ fn parse_config_params(ref tokens, pos) = {
         let p_after_ty = skip_ws(tokens, p_ty)
         match if at(tokens, p_after_ty, TEq) {
           match parse_expr(tokens, skip_ws(tokens, p_after_ty + 1)) {
-            (default_expr, p_def) => (TParam(name, pty, Unmarked, Unmarked, Some(default_expr)), p_def),
+            (default_expr, p_def) => (TParam(name, pty, Unmarked, Unmarked, Some(default_expr), guards_nothing()), p_def),
           }
         } else {
-          (TParam(name, pty, Unmarked, Unmarked, None), p_after_ty)
+          (TParam(name, pty, Unmarked, Unmarked, None, guards_nothing()), p_after_ty)
         } {
           (param, p_done) => {
             let p_next = skip_ws(tokens, p_done)
@@ -2126,7 +2126,7 @@ fn fresh_param_name(span: ValidSpan) = "{dp_prefix}{int_to_str(fresh_handle(span
 // have found it in production.
 fn fresh_param_under(prefix: String, span: ValidSpan) = {
   let nm = "{prefix}{int_to_str(fresh_handle(span))}"
-  (nm, TParam(nm, TVar(fresh_handle(span)), Unmarked, Unmarked, None))
+  (nm, TParam(nm, TVar(fresh_handle(span)), Unmarked, Unmarked, None, guards_nothing()))
 }
 
 // Convert a parsed expr (a lambda param, already parsed as an expression) to a
@@ -2163,8 +2163,8 @@ fn record_fields_to_pat(flds) = map({ (nm, v) => (nm, expr_to_pat(v)) }, flds)
 // any destructure pattern yields a fresh-named param plus the prepend-let
 // `let <pat> = <fresh>` that binds it at fn entry. Returns (TParam, Option(let)).
 fn pat_param_and_let(pat, span: ValidSpan) = match pat {
-  PVar(nm) => (TParam(nm, TVar(fresh_handle(span)), Unmarked, Unmarked, None), None),
-  PWild => (TParam("_", TVar(fresh_handle(span)), Unmarked, Unmarked, None), None),
+  PVar(nm) => (TParam(nm, TVar(fresh_handle(span)), Unmarked, Unmarked, None, guards_nothing()), None),
+  PWild => (TParam("_", TVar(fresh_handle(span)), Unmarked, Unmarked, None, guards_nothing()), None),
   _ => match fresh_param_under(dp_prefix, span) {
     (fresh, param) => {
       // reuse as the absent-annotation sentinel (byte-identical)
@@ -3013,7 +3013,7 @@ fn parse_lambda_params(ref tokens, pos, own buf, count) = {
   } else {
     let name = ident_at(tokens, p)
     let h = fresh_handle(span_at(tokens, p))
-    let param = TParam(name, TVar(h), Unmarked, Unmarked, None)
+    let param = TParam(name, TVar(h), Unmarked, Unmarked, None, guards_nothing())
     match push_node(buf, count, param) {
       (b1, c1) => {
         let p2 = skip_ws(tokens, p + 1)

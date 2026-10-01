@@ -539,6 +539,8 @@ x |> double |> square
 
 **A stage is APPLIED, never minted.** A call standing as a stage is completed in place (its hole filled by the piped value), and a function literal standing as a stage — `x |> (v) => v * 2`, `x |> { 0 => 1, n => n - 1 }` — is the piped value bound to its parameter, its body lowered in the frame the pipe stands in. Neither builds a closure, so neither costs the frame anything, and a stage-shaped chain inside a `with !Alloc` function stays allocation-free (real, 2026-09-28; before, each literal stage minted a closure per call under the same `!Alloc`). The parameter is a binder of that frame like any other: it may share a name with a local there, and the local reads its own value again once the stage closes.
 
+**Applying a stage owes what the stage demands.** The piped value fills the stage's parameter exactly as a call's argument fills it, so the parameter's refinement is claimed of the value at the pipe and the row its precondition guards is paid there when the claim is open: `30000.0 |> alpha` over `alpha(c: Hz)` refuses as `alpha(30000.0)` does, and a partial stage owes the contract of the slot it leaves open (real, 2026-10-01; the pipe raised no claim before, §«Refinement types»).
+
 ### `<|` — diverge (fanout)
 
 One input, multiple branches, output is a tuple of branch outputs. **Input is BORROWED into each branch** — a value cannot escape the branch tuple.
@@ -1303,6 +1305,55 @@ a callee passes are made inside the callee, and judging them there is
 refinement variables' work (`Hβ.verify.higher-order-refinement`). Until
 this landed the refinement was DROPPED at the crossing: a 70,900 Hz sweep
 reached an `Hz` filter and `mentl check` was clean.
+
+**A refinement is a fact a VALUE carries, read along the edges it flowed —
+never a property of its type** (real, 2026-10-01, P0). A value is what its
+sources are: a constant is its point, a reference reads its binder (a
+parameter's refinement, a `let`'s annotation, a constructor field's declared
+contract), a join takes every tail, a call is its callee's declared return,
+and a part a pattern destructured is the argument at that position where its
+whole was built. A computation inherits nothing: `fn dec(x: Positive) ->
+Positive = x - 1` leaves `0 < x - 1` honest `V_Pending`, and `let d = if c {
+n } else { 0 }` is the join of `n` and `0`, never `n`'s refinement. Until this
+landed refinements rode the unification class, so every join and every
+operator that met a refined value carried its refinement onto the result:
+six `with !Trap` programs checked clean and trapped at run time, and `ratio(t,
+n: Positive)` demanded Positive of `t` (boot 13e8484a).
+
+**A parameter's refinement is a PRECONDITION, and what it guards travels to
+the caller.** Inside the body it is assumed; every call owes it as a claim at
+the argument. A row fact the body proves BY the precondition is the
+precondition's to guard — `fn inv(n: Positive) with !Trap = 100 / n`
+accepts, and `Trap` waits on `n` — and a caller pays it exactly when its own
+claim is open: `inv(5)` owes nothing, `inv(m + 1)` charges `Trap` to its
+caller, and a caller passing its own `p: Positive` hands the guard on to its
+callers. A parameter with no annotation, handed straight into a refined
+position, learns the precondition (`fn wrap(x) = inv(x)` owes `Positive` of
+its callers). A function with no authored return publishes the contract every
+return tail carries, a self-call read as returning what the others do.
+
+**A `let` annotation is a CLAIM its value owes**, decided where the value is
+made and never a fact laid over it: `let k: Positive = e - 1` leaves `0 < e -
+1` open, and `100 / k` charges `Trap`. A reader of `k` may stand on the
+annotation for another claim — the debt is carried once, at the let — and
+never for a row fact.
+
+**A function's contract travels with the function** (real, 2026-10-01, P0·H).
+A lambda's parameter learns its precondition as a declared one does —
+`(c) => alpha(c)` demands `Hz` of every value it is called with — and every
+application owes it: a call through the value, a function crossing, and a
+pipe stage, which applies its stage and so claims of the piped value what a
+call's argument would owe (`30000.0 |> alpha` refuses as `alpha(30000.0)`
+does). A function-typed parameter learns from how its body applies it: what
+every application hands each position — `fn drive(f, c: Hz) = f(c)`
+publishes `f: (Hz) -> r` — and what a refined position demands of the result
+— `fn run(f) = alpha(f())` publishes `f: () -> Hz` — so a caller's crossing
+judges the function it hands in: a lambda's body against the demanded result,
+its own demands against what the callee provides. A `<~` cycle binds its
+lambda's parameter with no application to raise a claim, so that parameter
+learns nothing and a demand inside the body stays the body's debt. Until this
+landed the pipe raised no claim at all, and `0 |> inv` under `!Trap` checked
+clean and divided by zero (boot 13e8484a).
 
 The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); the Arc F.1 SMT handler swap discharges those by residual theory — same source, deeper proof engine.
 
@@ -2165,7 +2216,7 @@ operands, with three outcomes (real, 2026-09-30):
 |---|---|
 | a constant divisor that is not 0 (and, for `/`, not -1 — or a constant dividend that is not INT_MIN) | PROVEN — the site charges nothing |
 | a constant zero divisor (`1 / 0`), or `INT_MIN / -1` by constants | REFUSED — `E_RefinementRejected` at the site: the program's meaning is a trap |
-| a divisor whose refined type EXCLUDES the fatal point — `Positive` (`0 < self`) excludes 0 and -1; `NonZero` (`self != 0`) excludes 0, so it proves `%` outright and `/` only beside a dividend that cannot be INT_MIN | PROVEN |
+| a divisor whose every source EXCLUDES the fatal point — a constant, a length, or a parameter whose refinement does (`Positive` (`0 < self`) excludes 0 and -1; `NonZero` (`self != 0`) excludes 0, so it proves `%` outright and `/` only beside a dividend that cannot be INT_MIN) | PROVEN — and where it stands on a parameter's refinement, the `Trap` waits in that parameter's guard, paid by a caller whose argument claim is open |
 | a module value bound to a constant (`let lanes = 4`) | PROVEN — the fragment reads the let's own node |
 | anything else — a parameter nothing bounds, a local, a call | OPEN — the site charges **`Trap`** into the row |
 
@@ -2180,7 +2231,9 @@ The gradient teaches the annotation: the refinement on the divisor is the
 input that unlocks the proof — lib/dsp's six divisions by a hop or a grid
 width are proven by one refinement on the parameter (`hop: Positive`,
 `num_high: Positive`), and each caller pays the claim once, at the
-argument, where a literal folds and a computed value is honest debt. Whether the type excludes a point is asked of
+argument: a literal folds, and a computed value is honest debt that pays the
+guarded `Trap` at the call (`inv(m + 1)` under `!Trap` refuses; P0,
+§«Refinement types»). Whether the type excludes a point is asked of
 the refinement itself — its predicate decided with `self` bound to that
 point — so any refinement the fragment can decide at a constant serves,
 never a name-allowlist of "nonzero-ish" types.
