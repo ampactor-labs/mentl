@@ -985,7 +985,11 @@ authored_own_max: 62
 # 715 -> 708 (2026-09-28, R0d): seven left with the record pattern's
 # lower-time offsets and rest specs, which the emit reads by name now; the
 # emit's two new field-width reads carry none.
-authored_ref_max: 708
+# 708 -> 704 (2026-10-01, D3): the insert-above-line patch and its indent
+# helper left with three, the span-start compare and the comment census
+# lost three when they moved beside their readers, and the head splice that
+# replaced the patch carries two.
+authored_ref_max: 704
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the
