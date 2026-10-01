@@ -35,6 +35,57 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-01 · pin 13e8484aeed28cff (CLEAN m2 == m3) · THE GRADIENT READS ADDRESSES: THE
+  FIELD IS ONE MODULE'S, THE ARGMAX IS ITS HEAD, AND AN ACCEPTED CLAUSE IS
+  WRITTEN BY THE FORMATTER INTO ITS DECLARATION. D3, opened by its felt walk on
+  a two-module program, which found three defects before a line was changed.
+  On boot 9387fea1: `mentl main.mn:0` listed the helper's `twice` and `total`
+  under main's coordinates with main's own source lines (5 positions for a
+  3-declaration file — the tiers were filtered by LINE RANGE, and every module
+  numbers its lines from 1); `mentl edit main` opened on the PRELUDE's
+  `unwrap_or` (61:1) — the proximity compared bare spans and asked each one's
+  module by containment over module spans; and accepting the suggestion wrote
+  `  with Pure` as a new line above main.mn's first line — the suggestion
+  carried only its TEXT, and the patch inserted it above the position's line
+  number in the session's target file, which never parses and was the wrong
+  file. THE FORM: a position is a HANDLE of the caret's module
+  (`module_handles`, one column read per node; `latest_generation` keeps the
+  live mint per source position), proximity is read between two handles
+  (`position_proximity`: modules by `graph_module_of`, the enclosing
+  declaration by containment inside ONE module, cross-module nearness one
+  module's row of the reach table, `module_reach_of`), and the field and the
+  argmax read ONE order (`rank_positions`: score descending, then line and
+  column, then handle) — the two tie-breaks (the argmax's lowest handle, the
+  field's highest) are one. The suggestion carries its ANNOTATION
+  (`AnnotationSuggestion(Annotation, [String], Reason)`, the Annotation type
+  moved beside it in types.mn), and the accept writes the clause: the
+  formatter's head render (`render_fn_head`, one home with the whole
+  declaration's render) spliced over the declaration's head in the file of
+  the module the declaration belongs to, guarded by the formatter's
+  conservation census (moved from main.mn into format.mn); `PatchWrite` takes
+  the module it writes (`write_module`), the insert-above-line form deleted.
+  The session's opening caret is the entry's module node (it was handle 0, the
+  link root), and it projects its cursor by handle (`cursor_at(Span)` deleted —
+  its one caller re-resolved a handle it held through a module-blind scan).
+  The proposer's rank reads the same proximity: the hole, the name's
+  declaration from an index of every module's declarations (`decl_index`), each
+  use as a handle (`ref_handles_of`). Deleted with the span decay:
+  `module_path_of_span` and its scan, the by-path import walk
+  (`module_imports` and three helpers), the second argmax order, and the
+  eight-fold invites' six template suggestions — write-only payloads carrying
+  unlock labels nothing had proven (the verdict carries the position's Reason).
+  KILLS: (1) the first run of the fixture through m2 found one gradient
+  position — the leg ran without the stdlib mount, so `fold` resolved nowhere;
+  the legs use the gates' `/mentl-home` convention; (2) the first march refused
+  at the comment-ref ratchet: the C4 comment on `accept_fill` backticked the
+  deleted `replace_span`; (3) a bulk replacement in eight_loop.mn went through
+  python rather than the Edit tool (the per-edit hooks did not see it; the
+  pre-commit drift-audit does). Closed: `Hβ.cursor.module-of-a-span-is-containment`,
+  `Hβ.synth.proximity-compares-across-modules`. Named:
+  `Hβ.felt.accepted-clause-carries-its-proof`,
+  `Hβ.cursor.proximity-reads-the-call-graph`, `Hβ.felt.session-caret-never-moves`.
+  tests/frontier/gradient-module-demo, two legs, both RED on the boot. The wheel's emit did not move (m2 == m3).
+  Board: frontier 479/0/1 (the two new legs), crown, proof-exactness and effect identity green; the full board in the commit's state run. Cost: m3 leg 10.04s wall · 861MB peak RSS (882660 KB, min of 3), 461103 lines, census 0.
 - 2026-10-01 · pin 9387fea1990ef23f (TRANSITION m3 == m4) · A HELD RESUME RUNS ITS REMAINDER WHERE IT
   IS CALLED, AT RUNTIME AND IN THE ROW. Two defects at one seam, both found by
   measuring the declared-red `spine-callee-alloc` instead of trusting its

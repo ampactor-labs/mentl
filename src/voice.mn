@@ -78,9 +78,10 @@ type Register = RTerse | RPlayful | RExplain
 // Primitive: #7 (annotation gradient), with #8 (Reason) carrying proof.
 //
 // Substrate per Hμ.cursor §2 + GR §3.2 (live): the public shape IS
-// `AnnotationSuggestion(SuggestionKind, String, List, Reason)` from
-// types.mn — kind / the annotation text / the unlocked labels / reason. The
-// site span lives inside the Reason's outer Located wrapper.
+// `AnnotationSuggestion` from types.mn — the proven annotation, the
+// unlocked labels, the reason; the text the voice renders is
+// `show_annotation`'s projection of the annotation. The site span lives
+// inside the Reason's outer Located wrapper.
 //
 // Env-entries reach Mentl as snapshots so a turn is stateless w.r.t.
 // env updates. Name + Scheme + Reason + SchemeKind mirrors Env's
@@ -617,7 +618,7 @@ fn render_unlock_arm(situation) = match situation {
     let body = match s.gradient_next {
       None => [SLit("")],
       Some(suggestion) => match suggestion {
-        AnnotationSuggestion(_kind, ann_text, unlocks, _reason) => [SLit("Adding "), SAnnot(ann_text), SLit(" unlocks "), SCap(join_capability_labels(unlocks))],
+        AnnotationSuggestion(ann, unlocks, _reason) => [SLit("Adding "), SAnnot(show_annotation(ann)), SLit(" unlocks "), SCap(join_capability_labels(unlocks))],
       },
     }
     VoiceLine(TentUnlock, FCapability, body, select_modifier(situation, s.register))
@@ -662,7 +663,7 @@ fn render_teach_arm(situation) = match situation {
     let body = match s.gradient_next {
       None => [SLit("")],
       Some(suggestion) => match suggestion {
-        AnnotationSuggestion(_kind, ann_text, _unlocks, reason) => [SLit("Next: add "), SAnnot(ann_text), SLit(" on "), SSpan(suggestion_site_from_reason(reason))],
+        AnnotationSuggestion(ann, _unlocks, reason) => [SLit("Next: add "), SAnnot(show_annotation(ann)), SLit(" on "), SSpan(suggestion_site_from_reason(reason))],
       },
     }
     VoiceLine(TentTeach, FGradient, body, select_modifier(situation, s.register))

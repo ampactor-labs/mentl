@@ -2413,6 +2413,37 @@ for i in "${!compilers[@]}"; do
   else
     fail "cursor-address module identity (got: $(printf '%s' "$adout" | head -3); see $dir/addr-module.err)"
   fi
+  # ── THE GRADIENT READS ADDRESSES (D3) ─────────────────────────────
+  # The field of ONE module in the ONE order the session's argmax reads:
+  # score descending, then source position. A helper's decls sit inside the
+  # entry's line range, and on boot 9387fea1 the field listed them under
+  # main's coordinates (5 positions, `twice` at main:4 and `total` at main:6),
+  # tie-broken by handle. The session's head is that field's head, and its
+  # accept is a clause the formatter writes into the decl's own file: on the
+  # same boot the session focused the PRELUDE's `unwrap_or` (61:1) and
+  # accepting it wrote `  with Pure` above main.mn's first line.
+  gdemo="$ROOT/tests/frontier/gradient-module-demo"
+  gfout=$(wt_run --dir "$gdemo::." --dir "$ROOT::/mentl-home" "$compiler" main.mn:0 2>"$dir/gradient-field.err")
+  gorder=$(printf '%s\n' "$gfout" | grep -oE '^── main:[0-9]+:[0-9]+' | tr '\n' ' ')
+  if printf '%s' "$gfout" | grep -q '3 gradient position(s) in main' \
+     && [ "$gorder" = "── main:5:1 ── main:3:1 ── main:7:1 " ] \
+     && ! printf '%s' "$gfout" | grep -qE "'(twice|total)'"; then
+    pass "gradient field: the module's own positions, ranked by score then source order"
+  else
+    fail "gradient field (order: $gorder; see $dir/gradient-field.err)"
+  fi
+  gadir="$dir/gradient-accept"
+  rm -rf "$gadir"; mkdir -p "$gadir" && cp "$gdemo"/*.mn "$gadir/"
+  gaout=$(printf 'y\n' | timeout 60 "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$gadir::." --dir "$ROOT::/mentl-home" "$compiler" edit main 2>"$dir/gradient-accept.err")
+  if printf '%s' "$gaout" | grep -q "params of 'add'" \
+     && grep -qx 'fn add(a, b) with Pure = a + b' "$gadir/main.mn" \
+     && [ "$(grep -c 'with' "$gadir/main.mn")" = "1" ] \
+     && cmp -s "$gdemo/helper.mn" "$gadir/helper.mn" \
+     && wt_run --dir "$gadir::." --dir "$ROOT::/mentl-home" "$compiler" check main > /dev/null 2>&1; then
+    pass "gradient accept: the session's head is the field's head, and the clause lands in its declaration"
+  else
+    fail "gradient accept (main.mn now: $(tr '\n' '|' < "$gadir/main.mn" | head -c 200); see $dir/gradient-accept.err)"
+  fi
   fdemo="$ROOT/tests/frontier/propose-fan-demo"
   # The FIELD form (`mentl <file>:0`): the whole absence field ranked and
   # rendered — both holes with their Propose facets (the tie teaching), the

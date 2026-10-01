@@ -106,8 +106,11 @@ type InterrogationKind
 type InterrogationVerdict
   // substrate-honest: Reason walks back to the proof
   = VerdictClears(Reason)
-  // gradient: the suggestion that fills this slot
-  | VerdictInvites(AnnotationSuggestion)
+  // the slot is open here, and the position's own Reason says where. The
+  // payload is never read — only the variant is counted — so the six
+  // template suggestions this arm carried until 2026-10-01 were write-only,
+  // each with unlock labels nothing had proven.
+  | VerdictInvites(Reason)
 
 // ─── Per-position report — one record-shape (drift 7 closure) ──────
 type InterrogationReport
@@ -170,7 +173,7 @@ effect Interrogate {
 // this handler (the root gate's one-row read measured it, 2026-09-27).
 // `(handle, kind, reason)` is borrowed to eight branches via `<|`, each
 // branch running one tentacle's verdict, output the 8-tuple of
-// InterrogationVerdicts in primitive-order. Same shape as cursor_at —
+// InterrogationVerdicts in primitive-order. Same shape as cursor_at_handle —
 // Cursor's eight aspects surface as human-readable; InterrogationReport's
 // eight verdicts surface as structured artifacts the IDE walks. SAME
 // eight, FIVE roles, ONE method (per the recursive realization at the
@@ -191,9 +194,9 @@ fn interrogation_at(handle) = match graph_chase(handle) {
           NBound(_) => VerdictClears(r),
           NRowBound(_) => VerdictClears(r),
           NRecordRowBound(_, _) => VerdictClears(r),
-          NFree(_) => VerdictInvites(graph_invite_for(0, r)),
-          NRowFree(_) => VerdictInvites(graph_invite_for(0, r)),
-          NErrorHole(_) => VerdictInvites(graph_invite_for(0, r)),
+          NFree(_) => VerdictInvites(r),
+          NRowFree(_) => VerdictInvites(r),
+          NErrorHole(_) => VerdictInvites(r),
         },
       },
       // 2. Handler
@@ -201,16 +204,16 @@ fn interrogation_at(handle) = match graph_chase(handle) {
       // 3. Verb
       { (h, k, r) => verb_verdict_for(h, k, r) },
       // 4. Row
-      { (h, k, r) => row_verdict_for(h, k, r) },
+      { (_, k, r) => row_verdict_for(k, r) },
       // 5. Ownership
-      { (h, k, r) => ownership_verdict_for(h, k, r) },
+      { (_, k, r) => ownership_verdict_for(k, r) },
       // 6. Refinement
       { (h, _, r) => refinement_verdict_for(h, r) },
       // 7. Gradient
       {
         (h, _, r) => match teach_gradient(h) {
           None => VerdictClears(r),
-          Some(suggestion) => VerdictInvites(suggestion),
+          Some(_) => VerdictInvites(r),
         },
       },
       // 8. Reason
@@ -219,7 +222,7 @@ fn interrogation_at(handle) = match graph_chase(handle) {
           Inferred(_) => VerdictClears(r),
           Declared(_) => VerdictClears(r),
           Located(_, _) => VerdictClears(r),
-          _ => VerdictInvites(reason_invite_for(0, r)),
+          _ => VerdictInvites(r),
         },
       }
     ) {
@@ -296,7 +299,7 @@ fn handler_verdict_for(handle, kind, reason) with !Mutate = {
   } else if handle_under_tee_install(handle) {
     VerdictClears(reason)
   } else {
-    VerdictInvites(handler_invite_for(handle, reason))
+    VerdictInvites(reason)
   }
 }
 
@@ -328,16 +331,6 @@ fn is_pure_row(row) with Pure = match row {
   _ => false,
 }
 
-fn handler_invite_for(handle, reason) = AnnotationSuggestion(
-  SuggestEffectRow,
-  "~> <handler>   // an effect is unhandled at this position",
-  [],
-  Located(
-    span_zero(),
-    Inferred("eight-fold: Handler interrogation invites — non-Pure row, no enclosing ~> install")
-  )
-)
-
 // Verb clears when the position is inside a recognized pipe topology OR is
 // a leaf with no surrounding pipe. pipe_context_of_handle reads the live
 // parent chain from the AST-in-graph fabric (the enclosing PipeExpr is a
@@ -356,21 +349,17 @@ fn verb_verdict_for(handle, kind, reason) with !Mutate = match pipe_context_of_h
 
 // Row clears when the binding's row is bound (resolved at
 // inference). Free row variables surface as invites.
-fn row_verdict_for(handle, kind, reason) = match kind {
-  NBound(ty) => if row_is_ground(row_of_kind(kind)) {
-    VerdictClears(reason)
-  } else {
-    VerdictInvites(row_invite_for(handle, reason))
-  },
+fn row_verdict_for(kind, reason) = match kind {
+  NBound(_) => if row_is_ground(row_of_kind(kind)) { VerdictClears(reason) } else { VerdictInvites(reason) },
   NRowBound(_) => VerdictClears(reason),
-  _ => VerdictInvites(row_invite_for(handle, reason)),
+  _ => VerdictInvites(reason),
 }
 
 // Ownership clears when authored OR resolved is non-Unmarked.
 // Otherwise the gradient could suggest one (see Hμ.gradient-delta
 // delta_ownership).
-fn ownership_verdict_for(handle, kind, reason) = match ownership_of_kind(kind) {
-  Unmarked => VerdictInvites(ownership_invite_for(handle, reason)),
+fn ownership_verdict_for(kind, reason) = match ownership_of_kind(kind) {
+  Unmarked => VerdictInvites(reason),
   _ => VerdictClears(reason),
 }
 
@@ -379,54 +368,8 @@ fn refinement_verdict_for(handle, reason) with !Mutate = {
   // this handle. Pending obligations surface as invites (the
   // gradient could resolve them via SMT or refinement annotation).
   let pending = verify_pending_at(handle)
-  if len(pending) == 0 {
-    VerdictClears(reason)
-  } else {
-    VerdictInvites(refinement_invite_for(handle, reason, last(pending)))
-  }
+  if len(pending) == 0 { VerdictClears(reason) } else { VerdictInvites(reason) }
 }
-
-// ─── Invite constructors — each builds an AnnotationSuggestion ─────
-fn graph_invite_for(handle, reason) = AnnotationSuggestion(
-  SuggestEffectRow,
-  "?? — graph hole; gradient proposes a candidate",
-  [],
-  Located(span_zero(), Inferred("eight-fold: Graph interrogation invites — NFree at this handle"))
-)
-
-fn row_invite_for(handle, reason) = AnnotationSuggestion(
-  SuggestEffectRow,
-  "with <inferred-row>",
-  ["CMemoize", "CCompileTimeEval"],
-  Located(span_zero(), Inferred("eight-fold: Row interrogation invites — row-free at this binding"))
-)
-
-fn ownership_invite_for(handle, reason) = AnnotationSuggestion(
-  SuggestOwnership,
-  "own <param> | ref <param>",
-  ["CDeterministicDrop", "CZeroCopy"],
-  Located(
-    span_zero(),
-    Inferred("eight-fold: Ownership interrogation invites — Unmarked at this position")
-  )
-)
-
-fn refinement_invite_for(handle, reason, predicate) = AnnotationSuggestion(
-  SuggestRefinement,
-  "where <predicate>",
-  ["CEliminateBoundsCheck"],
-  Located(span_zero(), Inferred("eight-fold: Refinement interrogation invites — Verify-pending"))
-)
-
-fn reason_invite_for(handle, reason) = AnnotationSuggestion(
-  SuggestEffectRow,
-  "<documented-edge>",
-  [],
-  Located(
-    span_zero(),
-    Inferred("eight-fold: Reason interrogation invites — chain unrooted at named source")
-  )
-)
 
 // ─── Verdict extraction — for queries against a specific axis ──────
 fn extract_verdict(report, kind) with Pure = match report {

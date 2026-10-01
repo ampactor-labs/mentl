@@ -225,8 +225,10 @@ fn cursor_step(state) with !Mutate = match state {
   TransportState(s) => {
     // Compute the cursor: gradient argmax with caret bias.
     let cursor = cursor_argmax(s.caret)
-    // Project the eight-aspect CursorView at the cursor's position.
-    let view = cursor_at(span_of_cursor(cursor))
+    // Project the eight-aspect CursorView at the cursor's own handle — it
+    // was re-resolved through its span, a scan that cannot tell one file's
+    // line 3 from another's.
+    let view = cursor_at_handle(handle_of_cursor(cursor))
     // Render through the installed transport handler.
     surface_render(cursor, view)
     // Receive an action from the human, fold into the next state.
@@ -236,11 +238,11 @@ fn cursor_step(state) with !Mutate = match state {
         state_advance(state, cursor)
       },
       AccDefer => state_advance(state, cursor),
-      AccOverride(span) => {
-        let pinned = cursor_pinned(handle_at_span(span))
-        state_with_caret(state, Caret(handle_at_span(span), Inferred("?? override")))
-      },
-      AccCaretMove(span) => state_with_caret(state, Caret(handle_at_span(span), Inferred("text-caret-move"))),
+      AccOverride(span) => state_with_caret(state, Caret(handle_at_span(span, caret_module(s.caret)), Inferred("?? override"))),
+      AccCaretMove(span) => state_with_caret(
+        state,
+        Caret(handle_at_span(span, caret_module(s.caret)), Inferred("text-caret-move"))
+      ),
     }
   },
 }
@@ -274,37 +276,34 @@ fn state_with_caret(state, new_caret) = match state {
   }),
 }
 
-fn span_of_cursor(cursor) = match cursor {
-  Cursor(handle, _, _) => span_of_handle(handle),
+fn handle_of_cursor(cursor) = match cursor {
+  Cursor(handle, _, _) => handle,
 }
 
-// handle_at_span() — see src/cursor.mn (canonical scan-based impl).
-// Substrate-honest peer Hβ.graph.handle-at-span-effect-op would
-// promote this to a handle-at-span op on GraphRead;
-// blocked on adding the op to graph.mn's effect declaration.
+// handle_at_span() — see src/cursor.mn (the module-scoped resolver).
 fn apply_suggestion(cursor, view) with !Mutate = match cursor {
   Cursor(handle, _, _) => match view {
     CursorView(_, propose, _, _, _, _, teach, _) => // A hole accepts its PROPOSE survivor: the verdict says whether there
     // is one, and the accept path READS it rather than re-deriving it from
     // a survivor count. `VAsk` is the teaching TIE-BREAK — surface the
     // question, never guess between proven survivors (PLAN §5); `VNone`
-    // and non-hole positions accept the teach annotation as before.
+    // and non-hole positions accept the teach annotation.
     match propose {
       Proposal(p) => match p.verdict {
         VFill(survivor, reason) => if authored_hole(handle) {
           accept_fill(handle, survivor, reason)
         } else {
-          apply_teach_suggestion(teach)
+          accept_annotation(handle, teach)
         },
-        VAsk(_, _) => apply_teach_suggestion(teach),
-        VNone => apply_teach_suggestion(teach),
+        VAsk(_, _) => accept_annotation(handle, teach),
+        VNone => accept_annotation(handle, teach),
       },
     },
   },
 }
 
 // THE ACCEPT IS A GRAPH WRITE, AND THE TEXT IS ITS PROJECTION (C4,
-// 2026-09-30). Until this landing an accept was `replace_span` alone: the
+// 2026-09-30). Until this landing an accept was a text splice alone: the
 // medium proposed a value with a proof, the developer accepted, and the
 // graph forgot both — the re-derived node read as an authored literal and
 // `Why` at the position said "int literal", the one hop that was false.
@@ -318,14 +317,89 @@ fn apply_suggestion(cursor, view) with !Mutate = match cursor {
 fn accept_fill(handle, survivor, proof) with !Mutate = {
   let span = parse_span_of(handle)
   let text = render_candidate_source(survivor)
-  graph_accept_note(
-    module_path_of_handle(graph_module_of(handle)),
-    accepted_extent(span, text),
-    text,
-    proof
-  )
-  replace_span(span, text)
+  let module = module_path_of_handle(graph_module_of(handle))
+  graph_accept_note(module, accepted_extent(span, text), text, proof)
+  write_module(module, splice_span(fs_read_file(driver_module_path(module)), span, text))
 }
+
+// AN ACCEPTED ANNOTATION IS A CLAUSE THE FORMATTER WRITES (2026-10-01). The
+// proven annotation joins the declaration's own row clause, and the
+// declaration's head is re-rendered by the formatter's head render
+// (`render_fn_head`) and spliced over the head it replaces — `fn`, the
+// name, the parameters, the return type, the clause, through the binder —
+// in the file of the module the declaration belongs to. Until this landing
+// the accept inserted the suggestion's TEXT as a new line above the
+// declaration's line number, in the session's target file: `  with Pure`
+// above `fn add(a, b) = a + b` never parses, and a suggestion at another
+// module's declaration landed at that line of the wrong file. The head
+// render is guarded by the formatter's conservation census: a head whose
+// render would lose a name, a literal or a comment is not written.
+fn accept_annotation(handle, teach) with !Mutate = match teach {
+  None => (),
+  Some(suggestion) => match suggestion {
+    AnnotationSuggestion(ann, _unlocks, _reason) => match annotation_clause(ann) {
+      None => eprint_string("mentl edit: `{show_annotation(ann)}` is not a row clause — nothing written\n"),
+      Some(eff) => match graph_node_body(handle) {
+        NStmt(FnStmt(name, params, retty, effs, body)) => {
+          let module = module_path_of_handle(graph_module_of(handle))
+          let source = fs_read_file(driver_module_path(module))
+          let head = render_fn_head(name, params, retty, effs ++ [eff], body)
+          match splice_decl_head(source, parse_span_of(handle), node_start_span(body), head) {
+            Some(edited) => write_module(module, edited),
+            None => eprint_string("mentl edit: `{name}`'s head did not render conserved — nothing written\n"),
+          }
+        },
+        _ => eprint_string("mentl edit: the suggestion's position is not a declaration — nothing written\n"),
+      },
+    },
+  },
+}
+
+// The row-clause entry an annotation authors, or None for the annotations
+// that are not a clause (a refinement, an ownership marker, a handler
+// wrap), which no gradient candidate proposes today.
+fn annotation_clause(ann) = match ann {
+  APure(_) => Some((EPure, false, EcUnion)),
+  ANotEffect(name, _) => Some((ENamed(intern_str(name)), true, EcUnion)),
+  ARefined(_, _, _) => None,
+  AOwn(_, _) => None,
+  ARef(_, _) => None,
+  AWrapHandler(_, _, _) => None,
+}
+
+fn node_start_span(node) = match node {
+  N(_, sp, _) => sp,
+}
+
+// The head is the source from the declaration's start to the whitespace
+// before its body; the new head replaces it and the whitespace stays, so
+// a body on the next line stays there. The splice answers None when the
+// replaced head held a comment or any name or literal the new head does
+// not — the conservation census the fmt verb answers to.
+fn splice_decl_head(ref source, decl_sp, body_sp, ref head: String) = {
+  let n = byte_len(source)
+  match decl_sp {
+    Span(dl, dc, _, _) => match body_sp {
+      Span(bl, bc, _, _) => {
+        let start = find_line_start(source, dl, 1, 0, n) + (dc - 1)
+        let body_at = find_line_start(source, bl, 1, 0, n) + (bc - 1)
+        let head_end = fold(
+          body_at,
+          (e, i) => if is_space_byte(byte_at(source, i)) && i + 1 == e { i } else { e },
+          reverse(range(start, body_at))
+        )
+        let old_toks = lex(str_slice(source, start, head_end))
+        if count_comment_tokens(old_toks, 0, 0) > 0 || len(lost_atoms(old_toks, lex(head))) > 0 {
+          None
+        } else {
+          Some("{str_slice(source, 0, start)}{head}{str_slice(source, head_end, n)}")
+        }
+      },
+    },
+  }
+}
+
+fn is_space_byte(b) with Pure = b == 32 || b == 10 || b == 9 || b == 13
 
 // The extent the accepted text occupies after the splice: the hole's own
 // start, and the text's width past it. Every candidate renders on one line
@@ -359,13 +433,6 @@ fn accept_at(handle, view) with !Mutate = match view {
         false
       },
     },
-  },
-}
-
-fn apply_teach_suggestion(teach) = match teach {
-  None => (),
-  Some(suggestion) => match suggestion {
-    AnnotationSuggestion(_kind, ann_text, _unlocks, reason) => apply_patch_at_cursor(span_of_reason(reason), ann_text),
   },
 }
 
@@ -444,7 +511,7 @@ fn show_verify_count(preds) =
 fn show_suggestion(opt) = match opt {
   None => "(no next-step)",
   Some(suggestion) => match suggestion {
-    AnnotationSuggestion(_, ann_text, unlocks, _) => "add `{ann_text}` to unlock {int_to_str(len(unlocks))} capability(ies)",
+    AnnotationSuggestion(ann, unlocks, _) => "add `{show_annotation(ann)}` to unlock {int_to_str(len(unlocks))} capability(ies)",
   },
 }
 
@@ -456,13 +523,17 @@ fn parse_action(line) with Pure =
 // The Surface effect's terminal_transport projects the cursor; Patch is
 // how an Accept lands a suggestion into the source. One effect, one
 // handler (patch_to_file), composed in edit_run's chain.
+//
+// A write names the MODULE it writes — the module the accepted position
+// was born in, read off its handle by the accept — and the target is only
+// the entry the session re-derives after it. Until 2026-10-01 every write
+// went to the target's file at the position's line numbers, whichever
+// module the position was in.
 effect PatchWrite {
+  // the entry a write re-derives
   patch_set_target(String)
-  apply_patch_at_cursor(Span, String)
-  // Replace the exact byte range a source span covers — the hole-fill
-  // primitive (the Patch value's own semantic: span to replace, new text).
-  // apply_patch_at_cursor stays the annotation form (insert-above-line).
-  replace_span(Span, String)
+  // a module's whole new text, written to its file
+  write_module(String, String)
 }
 
 // A patch RE-DERIVES the module through the ONE weave read the session and
@@ -475,23 +546,8 @@ effect PatchWrite {
 // space, and the accepted node is the one the address reaches.
 handler patch_to_file with target_module = "" {
   patch_set_target(name) => resume() with target_module = name,
-  apply_patch_at_cursor(span, text) => {
-    let path = driver_module_path(target_module)
-    let source = fs_read_file(path)
-    match span {
-      Span(line, _, _, _) => {
-        let edited = splice_before_line(source, line, indent_annotation(text))
-        fs_write_file(path, edited)
-        driver_entry_with_ranges(target_module)
-        resume()
-      },
-    }
-  },
-  replace_span(span, text) => {
-    let path = driver_module_path(target_module)
-    let source = fs_read_file(path)
-    let edited = splice_span(source, span, text)
-    fs_write_file(path, edited)
+  write_module(module, text) => {
+    fs_write_file(driver_module_path(module), text)
     driver_entry_with_ranges(target_module)
     resume()
   },
@@ -508,14 +564,6 @@ fn splice_span(ref source, ref span, ref text: String) = {
       "{str_slice(source, 0, start)}{text}{str_slice(source, end, n)}"
     },
   }
-}
-
-fn indent_annotation(ref text: String) = "  {text}\n"
-
-fn splice_before_line(ref source, target_line, ref insert: String) = {
-  let n = byte_len(source)
-  let pos = find_line_start(source, target_line, 1, 0, n)
-  "{str_slice(source, 0, pos)}{insert}{str_slice(source, pos, n)}"
 }
 
 fn find_line_start(ref source, target, current, idx, n) = if current >= target {

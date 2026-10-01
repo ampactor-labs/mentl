@@ -1102,8 +1102,8 @@ type EmitFnEntry
 // (a snapshot copy of them was a write-only field: every destructure
 // ignored it); epoch reads through graph_epoch; and the per-module
 // overlay view is DELETED whole (graph_fork never performed — the module
-// partition never existed at runtime, and module-of-position reads live
-// through NModule span containment via module_path_of_span).
+// partition never existed at runtime, and module-of-position is the
+// module column stamped at each node's mint, read by graph_module_of).
 type Graph = Graph(Int, [(ValidSpan, Int)])
 
 // next: next fresh allocation
@@ -1353,16 +1353,34 @@ type Cursor = Cursor(Handle, Reason, Float)
 // dispatch. Per the gradient-delta walkthrough §3.2 promotion to live.
 type SuggestionKind = SuggestEffectRow | SuggestOwnership | SuggestRefinement | SuggestReturnType
 
-// AnnotationSuggestion — promoted from the gradient-delta walkthrough §3.2
-// (was shape-only) to live ADT. teach_gradient (mentl.mn) returns
-// Option(AnnotationSuggestion); CursorView.teach reads the suggestion.
-//
-// Fields:
-//   kind        — which axis (effect-row / ownership / refinement / return)
-//   annotation  — literal source text to add (e.g., "with Pure")
-//   unlocks     — capability labels unlocked (e.g., ["CMemoize", "CCompileTimeEval"])
-//   reason      — why the suggestion is highest-leverage at the position
-type AnnotationSuggestion = AnnotationSuggestion(SuggestionKind, String, [String], Reason)
+// An annotation the gradient can propose. Each variant carries an
+// Option(Span) — Some when the candidate originated from a user site
+// (hovered hole, quick-fix request); None for fully-internal speculation.
+// narrow_row threads this into the Located reason so the Why chain reads
+// at the user's coordinates, not 0:0-0:0.
+type Annotation
+  = APure(Option(Span))
+  | ARefined(String, Predicate, Option(Span))
+  | AOwn(String, Option(Span))
+  | ARef(String, Option(Span))
+  | AWrapHandler(String, Int, Option(Span))
+  // The general severance: !<name> for ANY name the link performs
+  // (Hβ.teach.severance-vocabulary-from-link). The fixed
+  // ANotAlloc/ANotIO/ANotNetwork trio is DELETED into it — known
+  // names keep their rich labels via capabilities_for_severance.
+  | ANotEffect(String, Option(Span))
+
+// What the gradient proposes at a position: the annotation PROVEN there,
+// the capabilities it unlocks, and why it leads. The annotation is the fact
+// an accept writes into the graph; its axis and its source text are
+// projections of it (mentl.mn's suggestion_kind_of and show_annotation),
+// read where they are rendered. Until 2026-10-01 the suggestion carried the TEXT in
+// the annotation's place, so an accept could only splice a string, and it
+// spliced "  with Pure" as a new line above the declaration — a file that
+// no longer parsed, in whatever file the session happened to target.
+// The unlock labels are kept because they are computed where the intern
+// table answers (a severance's known names are compared by handle).
+type AnnotationSuggestion = AnnotationSuggestion(Annotation, [String], Reason)
 
 // PipeContext — surrounding pipe topology at a position.
 // CursorView.topology reads the context. Reuses existing PipeKind for

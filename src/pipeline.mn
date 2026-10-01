@@ -947,7 +947,7 @@ fn tightening_named(name: String, t) = match t {
 fn render_gradient_result(result) = match result {
   None => "(no next-step annotation suggested)",
   Some(suggestion) => match suggestion {
-    AnnotationSuggestion(_kind, ann_text, unlocks, _reason) => "→ add {ann_text} to unlock {join_unlock_labels(unlocks)}",
+    AnnotationSuggestion(ann, unlocks, _reason) => "→ add {show_annotation(ann)} to unlock {join_unlock_labels(unlocks)}",
   },
 }
 

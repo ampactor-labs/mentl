@@ -66,8 +66,10 @@ import infer
 // projection cannot corrupt oracle state — exactly the constraint
 // PLAN §2's cached cursor locks for "surfaces query, never write."
 effect CursorRead {
-  cursor_at(Span) -> CursorView
-  // the by-HANDLE projection — a caller that already resolved the node reads it directly; re-resolving a handle it holds is the re-derivation (the cursor-address transport resolves once, then projects)
+  // the by-HANDLE projection — every caller holds the node it means; a span
+  // is not an address (every module numbers its lines from 1), and the
+  // span-addressed op this replaced resolved the session's own cursor
+  // through a module-blind scan
   cursor_at_handle(Handle) -> CursorView
   cursor_argmax(Caret) -> Cursor
   cursor_pinned(Handle) -> Cursor
@@ -85,26 +87,14 @@ effect CursorRead {
 // AFTER mentl_default lets cursor_default's perform calls bubble
 // `teach_gradient` / `teach_why` to mentl_default.
 handler cursor_default {
-  cursor_at(span) => // The eight kernel-primitive aspects fan out via `<|` — one position
+  cursor_at_handle(handle) => // The eight kernel-primitive aspects fan out via `<|` — one position
   // borrowed (read-only) to eight branches, each branch projects one
   // tentacle's lens, output is the 8-tuple in primitive-order. The
-  // shape on the page IS the cursor's read-tensor at this handle;
-  // per PLAN §2's cursor table
-  // and PLAN §2, each tentacle is the same
-  // graph projected through one kernel primitive.
-  //
-  // Ownership: `<|` borrows `(handle, kind)` to all branches — none
-  // can move it (drift 5 enforcement). The closure-as-branch syntax
-  // is structural, not vtable (drift 1 refusal). `kind` is destructured
-  // when it's the relevant input for the tentacle; `handle` when the
-  // tentacle reads the graph live (verify ledger, teach gradient,
-  // teach why); `_` discards the unread half — explicit per H6
-  // exhaustiveness, no `_ => fabricated` over the load-bearing pos
-  // (CLAUDE.md red-flag table).
-  resume(cursor_view_of(handle_at_span(span))),
-  cursor_at_handle(handle) => // The by-handle entry — the same eight-arm fan, resolution already done
-  // by the caller (the cursor-address transport resolves once via its
-  // line rule; re-resolving here would be the re-derivation).
+  // shape on the page IS the cursor's read-tensor at this handle (PLAN
+  // §2's cursor table: each tentacle is the same graph projected through
+  // one kernel primitive). Resolution is the caller's: the address
+  // transport resolves once by its line rule, the session holds its
+  // cursor's handle, and re-resolving either here is the re-derivation.
   resume(cursor_view_of(handle)),
   cursor_argmax(caret) => resume(cursor_argmax_compute(caret)),
   cursor_pinned(handle) => {
@@ -121,12 +111,12 @@ handler cursor_default {
   },
 }
 
-// ─── Multi-cursor projection — map over a span list ─────────────────
+// ─── Multi-cursor projection — map over a position list ─────────────
 //
 // The DELETED cursor_pair_at (binary special-case) was erased per
 // CLAUDE.md Anchor 6: pair-forms ARE the tell that an N-arity
 // peer is missing. Multi-cursor projection IS
-// `spans |> map((s) => cursor_at(s))` directly at the call site, the
+// `handles |> map(cursor_at_handle)` directly at the call site, the
 // op invoked as a BARE call (`perform` dissolved, SYNTAX.md). The
 // shape on the page IS the topology — the cursor reading N positions.
 // N cores reading simultaneously is a `><` fanout under its own
@@ -162,8 +152,8 @@ handler cursor_default {
 //   `|>` sequential through cursor_argmax_compute
 //   `~>` handler-attach for the CursorRead mode in force
 //   `<~` feedback closing on stability
-//   `><` parallel multi-cursor (a span-list fanout under ~> Thread)
-//   `<|` divergence into the eight aspects (inside cursor_at)
+//   `><` parallel multi-cursor (a position-list fanout under ~> Thread)
+//   `<|` divergence into the eight aspects (inside cursor_at_handle)
 //
 // This IS what mentl does. Not "compile" as a separate phase — the
 // edit IS the compile IS the projection IS the loop.
@@ -206,10 +196,59 @@ fn cursor_argmax_compute(caret) with !Mutate = {
   // rank among themselves by caret proximity; the annotation lattice is
   // the no-hole gradient. A structural tier, never a magic weight.
   //
+  // The positions are the CARET'S MODULE'S own, and the argmax is the head
+  // of the one ranked field (`rank_positions`), the list `mentl <file>:0`
+  // renders whole. Both halves were false until 2026-10-01: positions were
+  // every hole and declaration in the link, ranked by a proximity that
+  // compared bare line numbers across files, so `mentl edit main` focused
+  // the prelude's `unwrap_or` and accepting it wrote into main.mn; and the
+  // argmax broke ties toward the LOWEST handle while the field broke them
+  // toward the highest, so the field's head was not the session's focus.
+  //
   // drift-audit: ignore — holes reused twice (tier test + the tier itself); a `<|` reuse, not a `|>` chain
-  let holes = enumerate_hole_positions()
-  let positions = if len(holes) > 0 { holes } else { enumerate_gradient_positions() }
-  positions |> ((ps) => score_all_positions(ps, caret) |> ((scored) => argmax_or_default(scored, caret)))
+  let mh = caret_module(caret)
+  let holes = enumerate_hole_positions(mh)
+  let positions = if len(holes) > 0 { holes } else { enumerate_gradient_positions(mh) }
+  argmax_or_default(rank_positions(positions, caret), caret)
+}
+
+// The module a caret stands in — the module node itself when the caret is
+// at a file's start, the module a node was born in otherwise.
+fn caret_module(caret) = match caret {
+  Caret(h, _) => module_of_position(h),
+}
+
+fn caret_handle(caret) = match caret {
+  Caret(h, _) => h,
+}
+
+// A position's module is ONE column read (`graph_module_of`, stamped at the
+// mint); a module node is its own. A span cannot answer this: every module
+// numbers its lines from 1.
+fn module_of_position(h) = match graph_node_body(h) {
+  NModule(_) => h,
+  _ => graph_module_of(h),
+}
+
+// Every handle the module minted, in mint order — one word compare per
+// node against the module stamped at its birth.
+fn module_handles(mh: Int) with !Mutate = match graph_snapshot() {
+  Graph(next, _spans) => filter({ h => graph_module_of(h) == mh }, range(0, next)),
+}
+
+// A position in a session that has re-derived exists once per generation
+// at the same source position; the latest mint is the live one. The
+// identity is the span's START: an edit that reshapes a decl changes its
+// extent but not where it begins.
+fn latest_generation(handles) with !Mutate = filter(
+  (h) => !any((h2) => h2 > h && span_start_eq(caret_span_of_handle(h2), caret_span_of_handle(h)), handles),
+  handles
+)
+
+fn span_start_eq(a, b) with Pure = match a {
+  Span(asl, asc, _, _) => match b {
+    Span(bsl, bsc, _, _) => asl == bsl && asc == bsc,
+  },
 }
 
 // An AUTHORED hole: the parser mints NHole with a fresh nonzero id for
@@ -239,9 +278,8 @@ fn authored_hole(handle) with !Mutate = match graph_node_body(handle) {
   _ => false,
 }
 
-fn enumerate_hole_positions() with !Mutate = match graph_snapshot() {
-  Graph(next, _spans) => filter(authored_hole, range(0, next)),
-}
+fn enumerate_hole_positions(mh) with !Mutate =
+  latest_generation(filter(authored_hole, module_handles(mh)))
 
 // The name a ZERO-ARG call candidate calls, or None for every other shape.
 // One home for a read the proposer and the transport both make — the
@@ -272,10 +310,11 @@ fn callee_name_of(node) = match node {
 // junk handle's fabricated suggestion entered the field under whatever
 // coordinates its garbage span landed on (measured: prelude prose
 // rendered as the entry's own line 1 — the C1c-era virgin-walk residue,
-// closed here by the chased-kind filter it named).
-fn enumerate_gradient_positions() with !Mutate = match graph_snapshot() {
-  Graph(next, _spans) => filter(gradient_position, range(0, next)),
-}
+// closed here by the chased-kind filter it named). The module filter runs
+// FIRST, so the teach read is asked of the module's own declarations only,
+// never of the prelude's hundreds.
+fn enumerate_gradient_positions(mh) with !Mutate =
+  latest_generation(filter(gradient_position, module_handles(mh)))
 
 fn gradient_position(i) = match graph_node_body(i) {
   NStmt(s) => match s {
@@ -288,67 +327,104 @@ fn gradient_position(i) = match graph_node_body(i) {
   _ => false,
 }
 
-// Per-position scoring is independent — each handle's score reads
-// gates × proximity from the graph + pure decay table; map's tail
-// loop walks them. Cargo-class fan-out is a `><` under its own
-// `~> Thread` at this site (Hβ.lower.schedule-specialized-callee).
-fn score_all_positions(handles, caret) with !Mutate =
-  handles |> map((h) => score_one_position(h, caret))
-
-fn score_one_position(handle: Handle, caret) with !Mutate = {
-  let suggestion_opt = teach_gradient(handle)
-  let gates = match suggestion_opt {
-    None => // No annotation suggestion: an AUTHORED hole still gates — filling it
-    // unlocks the executable itself (E_UnresolvedHole is the refusal it
-    // lifts), so within the hole tier proximity alone ranks. Any other
-    // suggestion-less position stays gate-zero.
-    hole_gate(handle),
-    Some(suggestion) => match suggestion {
-      AnnotationSuggestion(_kind, _ann, unlocks, _reason) => len(unlocks),
-    },
-  }
-  let target_span = caret_span_of_handle(handle)
-  let proximity = caret_proximity_weight(caret, target_span)
-  match graph_chase(handle) {
-    GNode(_, reason) => Cursor(handle, Located(target_span, reason), float_of_int(gates) * proximity),
-  }
+// ─── The one ranked field ────────────────────────────────────────────
+//
+// THE ONE ORDER over a module's positions: score descending, then source
+// position, then handle. The argmax is its head (`argmax_or_default`) and
+// the field is all of it (`mentl <file>:0`, main.mn), so the position the
+// session focuses is the position the field lists first by construction.
+// Per-position scoring is independent; a fan across cores is a `><` under
+// its own `~> Thread` at this site (Hβ.lower.schedule-specialized-callee).
+fn rank_positions(handles, caret) -> [(Float, Handle)] with !Mutate = {
+  let reach = module_reach_of(caret_module(caret))
+  handles |> map((h) => position_key(h, caret, reach)) |> sort |> map(key_entry)
 }
 
-// ─── Caret proximity weighting ──────────────────────────────────────
+// The sort key: the score negated so the ascending structural sort puts
+// the highest first, then the position's own line and column.
+fn position_key(h, caret, reach) -> (Float, Int, Int, Handle) with !Mutate = match caret_span_of_handle(h) {
+  Span(sl, sc, _, _) => (0.0 - position_score(h, caret, reach), sl, sc, h),
+}
+
+fn key_entry(k: (Float, Int, Int, Handle)) -> (Float, Handle) = match k {
+  (neg, _, _, h) => (0.0 - neg, h),
+}
+
+// gates × proximity. The gates are the capabilities the position's proven
+// suggestion unlocks; an AUTHORED hole gates once (filling it lifts the
+// executable's own refusal, E_UnresolvedHole), so within the hole tier
+// proximity alone ranks. Any other suggestion-less position stays at zero.
+fn position_score(handle: Handle, caret, reach) -> Float with !Mutate = {
+  let gates = match teach_gradient(handle) {
+    None => hole_gate(handle),
+    Some(suggestion) => match suggestion {
+      AnnotationSuggestion(_ann, unlocks, _reason) => len(unlocks),
+    },
+  }
+  float_of_int(gates) * position_proximity(caret_handle(caret), handle, reach)
+}
+
+// A ranked position as the cursor the session projects: its handle, its
+// own span over its node's reason, its score.
+fn position_cursor(h, score) = match graph_chase(h) {
+  GNode(_, reason) => Cursor(h, Located(caret_span_of_handle(h), reason), score),
+}
+
+// ─── Proximity — read off the graph, between two positions ──────────
 //
 // Per the cursor walkthrough §5.1: the weights are literal floats encoding the
 // design assumption "the developer's attention has a gradient, but
 // the gradient never reaches zero, because cross-module impact still
-// matters."
+// matters." No learned weights; the decay table is the project residue.
 //
-// Pure. Reproducible. No learned weights. The decay table is
-// configurable via a weights handler (the Hμ.cursor.transport peer);
-// the defaults below are the project residue.
-fn caret_proximity_weight(caret, target_span) -> Float with !Mutate = match caret {
-  Caret(_, caret_reason) => {
-    let caret_span = caret_span_from_reason(caret_reason)
-    scope_distance_decay(caret_span, target_span)
+// Both ends are HANDLES. Their modules are one column read each, the
+// enclosing declaration is a containment test INSIDE one module (where
+// spans share coordinates), and a cross-module pair is near when the
+// first's module reaches the second's through import edges (`reach`, the
+// first module's closure, computed once by the caller). Until 2026-10-01
+// this decay took two SPANS, asked each one's module by containment over
+// module spans that every file numbers from line 1, and so read a decl on
+// line 1 of any file as the caret's own declaration.
+fn position_proximity(a, b, reach) -> Float with !Mutate = if a == b {
+  same_handle_weight()
+} else {
+  let ma = module_of_position(a)
+  let mb = module_of_position(b)
+  if ma == mb {
+    if same_enclosing_decl(a, b, ma) { same_decl_weight() } else { same_module_weight() }
+  } else if handles_contain(reach, mb) {
+    transitive_dep_weight()
+  } else {
+    cross_module_weight()
+  }
+}
+
+fn same_enclosing_decl(a, b, mh) with !Mutate = match enclosing_decl(a, mh) {
+  None => false,
+  Some(da) => match enclosing_decl(b, mh) {
+    None => false,
+    Some(db) => da == db,
   },
 }
+
+// The top-level declaration of module `mh` whose extent holds position
+// `h`; a module node itself sits in none of its declarations.
+fn enclosing_decl(h, mh) with !Mutate = match graph_node_body(mh) {
+  NModule(m) => decl_holding(m.decls, caret_span_of_handle(h)),
+  _ => None,
+}
+
+fn decl_holding(decls, sp) = fold(
+  None,
+  (acc, d) => match d {
+    N(_, dsp, dh) => if span_contains(dsp, sp) { Some(dh) } else { acc },
+  },
+  decls
+)
 
 fn caret_span_from_reason(reason) = match reason {
   Located(sp, _) => sp,
   _ => span_zero(),
-}
-
-// The decay reads the live module graph (same_module / transitive_dep walk
-// the import DAG in the weave), so it carries GraphRead — the spatial weight
-// is a projection of the graph's module structure, never a Pure constant.
-fn scope_distance_decay(caret_span, target_span) -> Float with !Mutate = if span_eq(caret_span, target_span) {
-  same_handle_weight()
-} else if same_enclosing_decl(caret_span, target_span) {
-  same_decl_weight()
-} else if same_module(caret_span, target_span) {
-  same_module_weight()
-} else if transitive_dep(caret_span, target_span) {
-  transitive_dep_weight()
-} else {
-  cross_module_weight()
 }
 
 // Proximity decay constants — literal floats, not learned. Per
@@ -365,42 +441,6 @@ fn transitive_dep_weight() -> Float with Pure = 0.4
 
 fn cross_module_weight() -> Float with Pure = 0.2
 
-// same_enclosing_decl / same_module / transitive_dep — these read the
-// graph's existing scope structure. Inline residue; the eight-
-// interrogation discipline at the cursor walkthrough §1 confirms each is a
-// pure read on substrate the graph already encodes (Graph + Env
-// primitive).
-//
-// Two spans share an enclosing decl iff their parent walks
-// intersect at a same-handle decl ancestor. Substrate read on the
-// graph's parent chain; today, span overlap is the proxy.
-fn same_enclosing_decl(caret_span, target_span) with Pure = span_overlaps(caret_span, target_span)
-
-// Module membership is read LIVE from the AST-in-graph fabric: each span's
-// enclosing module is the NModule weave entry whose span contains it. Two
-// spans are same-module iff they resolve to the SAME module path — a
-// projection of the import DAG the graph already holds, never an "assume
-// single-file" constant. When neither span sits under a NModule (a bare
-// single-unit weave with no module wrapper), both resolve to "" and are
-// same-module — the honest single-unit reading, read not assumed.
-fn same_module(caret_span, target_span) with !Mutate =
-  module_path_of_span(caret_span) == module_path_of_span(target_span)
-
-fn transitive_dep(caret_span, target_span) with !Mutate = {
-  // Cross-module-but-reachable: the target's module is imported (transitively)
-  // by the caret's module. Read the live import edges — the caret module's
-  // ImportStmt decls in the weave — and walk them. The decay then ranks a
-  // cross-module-but-depended-on impact (0.4) above an unrelated cross-module
-  // one (0.2), truthfully, from the import DAG.
-  let caret_mod = module_path_of_span(caret_span)
-  let target_mod = module_path_of_span(target_span)
-  if caret_mod == target_mod { false } else { module_imports(caret_mod, target_mod, []) }
-}
-
-// module_path_of_span and the import-reachability family both live in
-// graph.mn (DAG-homed beside parse_span_of: oracle reads the first, the
-// comment-reference gate reads the second, and every reader imports graph).
-//
 // ─── Argmax with default ────────────────────────────────────────────
 //
 // Per the cursor walkthrough §3: the no-candidates case is "fully annotated";
@@ -411,15 +451,16 @@ fn transitive_dep(caret_span, target_span) with !Mutate = {
 // The pin is an OVERRIDE edge, followed FIRST: if the caret's Reason marks
 // a `??`-pinned position, that position dominates the argmax by STRUCTURE
 // (reason_is_pinned), never by a float magnitude. Only when no pin is set
-// does the auto-scored reduce run. No 1e308 sentinel — the override is a
-// case, not a comparison.
-fn argmax_or_default(scored, caret) = match caret {
+// does the ranked field's head answer. No 1e308 sentinel — the override is
+// a case, not a comparison.
+fn argmax_or_default(ranked: [(Float, Handle)], caret) = match caret {
   Caret(handle, reason) => if reason_is_pinned(reason) {
     Cursor(handle, reason, 0.0)
-  } else if len(scored) == 0 {
-    Cursor(handle, Located(caret_span_from_reason(reason), Inferred("fully annotated")), 0.0)
   } else {
-    reduce_max_by_score(scored)
+    match ranked {
+      [] => Cursor(handle, Located(caret_span_from_reason(reason), Inferred("fully annotated")), 0.0),
+      [(score, h), ..._] => position_cursor(h, score),
+    }
   },
 }
 
@@ -431,15 +472,6 @@ fn reason_is_pinned(reason) = match reason {
   _ => false,
 }
 
-fn reduce_max_by_score(scored) = reduce(
-  scored,
-  (best, candidate) => match candidate {
-    Cursor(_, _, c_impact) => match best {
-      Cursor(_, _, b_impact) => if c_impact > b_impact { candidate } else { best },
-    },
-  }
-)
-
 // ─── Local pure helpers — one read each from the graph ──────────────
 //
 // Each helper extracts one of the eight aspects from a graph node.
@@ -447,9 +479,8 @@ fn reduce_max_by_score(scored) = reduce(
 // inference writes). The structure is the GNode; the
 // extraction is reproducible.
 //
-// The eight-arm fan — ONE projection body serving both cursor_at (span,
-// resolved here) and cursor_at_handle (pre-resolved). The eight aspects of
-// the one read (PLAN §2), each arm a tentacle.
+// The eight-arm fan — the ONE projection body `cursor_at_handle` serves.
+// The eight aspects of the one read (PLAN §2), each arm a tentacle.
 fn cursor_view_of(handle) = match graph_chase(handle) {
   GNode(kind, _reason) => {
     let pos = (handle, kind)
@@ -487,27 +518,16 @@ fn cursor_view_of(handle) = match graph_chase(handle) {
 // session `<~` loop deletes the re-parse and with it the generations); the
 // cursor-address transport does not ride it — it resolves once over mint
 // spans (address_resolve, main.mn) and projects via cursor_at_handle.
-// The producers carry the proof (`-> Handle`): the scan's miss default
-// is the ground 0 and its hit is the walk counter — one honest
-// obligation at scan_for_span replaces the three re-demanded copies at
-// the transport's Caret/pin boundaries; handle_at_span discharges by
-// typed identity through it.
-fn handle_at_span(span) -> Handle with !Mutate = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => scan_for_span(span, 0, next),
-  }
+// The span is read INSIDE the session's module, because a span alone names
+// a line in every file at once; a miss answers the module itself, the
+// caret at the file's start.
+fn handle_at_span(span, mh: Int) -> Handle with !Mutate = match find({ h => span_eq(span, reason_span_of(h)) }, module_handles(mh)) {
+  Some(h) => h,
+  None => mh,
 }
 
-fn scan_for_span(target, i, n) -> Handle with !Mutate = if i >= n {
-  0
-} else {
-  match graph_chase(i) {
-    GNode(_, reason) => {
-      let candidate_span = caret_span_from_reason(reason)
-      if span_eq(target, candidate_span) { i } else { scan_for_span(target, i + 1, n) }
-    },
-  }
+fn reason_span_of(h) with !Mutate = match graph_chase(h) {
+  GNode(_, reason) => caret_span_from_reason(reason),
 }
 
 // The CARET-flavored span read (caret_span_from_reason, not the plain

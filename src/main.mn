@@ -214,7 +214,7 @@ fn edit_run(target_opt) = {
   // cursor_default innermost of the projection handlers: its arms fan the
   // eight tentacles, performing Synth / Interrogate / Teach / Verify /
   // Graph ops that bubble OUTWARD to the installs around them. Without
-  // this install the Cursor ops (cursor_at / cursor_argmax / cursor_pinned)
+  // this install the Cursor ops (cursor_at_handle / cursor_argmax / cursor_pinned)
   // have no evidence on the session route — cursor_argmax is AMBIGUOUS
   // (ic_fixpoint_handler carries an arm too), so the singleton tier
   // cannot pick, and the first perform met the strict ev-scan miss.
@@ -232,22 +232,22 @@ fn edit_run(target_opt) = {
 // weave line, so the module-aware proximity decay ranks the entry's own
 // absences above the closure's.
 fn mentl_edit_session(entry_module) = match driver_entry_with_ranges(entry_module) {
-  (_ast, _mods) => {
-    let opening = entry_start_caret()
-    patch_set_target(entry_module)
-    cursor_session(opening)
+  (_ast, _mods) => match module_handle_of_path(entry_module) {
+    None => eprint_string("mentl edit: {entry_module} minted no module node — nothing to edit\n"),
+    Some(mh) => {
+      patch_set_target(entry_module)
+      cursor_session(entry_start_caret(mh))
+      ()
+    },
   },
 }
 
-// type_name_eq pins the compare `: String` — a bare `==` on two names
-// allocated by different passes is the pointer-eq class and never matches.
-// The entry's opening caret is line 1 of the entry's own file. This used to
-// SEARCH the range map for the entry's start line in the concatenated weave,
-// because a caret could only be expressed in that one coordinate space. Spans
-// are local from birth now, so the answer is the constant it always meant and
-// the search had nothing to find that the file did not already say.
-fn entry_start_caret() =
-  Caret(0, Located(Span(1, 1, 1, 1), Inferred("mentl edit session start — at the entry")))
+// The entry's opening caret stands at the entry's MODULE NODE — line 1 of
+// its own file, and the module every position the session ranks belongs
+// to. It stood at handle 0 (the link root) until 2026-10-01, which named no
+// module, so the session ranked the whole link and opened on the prelude.
+fn entry_start_caret(mh) =
+  Caret(mh, Located(Span(1, 1, 1, 1), Inferred("mentl edit session start — at the entry")))
 
 // ─── space_run — the ide, served by the wheel (`mentl space`)
 //
@@ -598,50 +598,6 @@ fn fmt_run(target) = infer_context(() => {
   }
 } ~> format_default ~> wasi_filesystem ~> mentl_default)
 
-// THE NAME CENSUS the conservation gate reads: the render's identifiers and
-// literals counted, then SPENT against the source's, and every source atom
-// left unpaid is a loss. A multiset rather than a sequence, because the
-// canonical render reorders on purpose (record fields sort at parse), and a
-// count rather than a set, because a render that keeps one of two uses of a
-// name has still lost one. A literal is keyed by its VALUE — `48_000` and `48000` are
-// one atom — so a spelling the render changes is not a loss here; that one
-// is `Hβ.fmt.literal-spelling-is-intent`.
-fn lost_atoms(src_toks, out_toks) = match fold((fold(smap_new(), atom_counted, out_toks), []), atom_spent, src_toks) {
-  (_, lost) => lost,
-}
-
-fn atom_counted(counts, t) = match atom_key(t) {
-  Some(k) => smap_add(counts, k, atom_count(counts, k) + 1),
-  None => counts,
-}
-
-fn atom_spent(acc, t) = match acc {
-  (counts, lost) => match atom_key(t) {
-    Some(k) => {
-      let c = atom_count(counts, k)
-      if c > 0 { (smap_add(counts, k, c - 1), lost) } else { (counts, push(lost, t)) }
-    },
-    None => acc,
-  },
-}
-
-fn atom_count(counts, k: String) = match smap_get(counts, k) {
-  Some(c) => c,
-  None => 0,
-}
-
-// What an authored token says, as the census compares it: a name as itself,
-// a literal by its value under a kind mark, so a name and a string that spell
-// it are two atoms. Keywords and punctuation are the render's to choose.
-fn atom_key(t) = match token_kind(t) {
-  TIdent(s) => Some(s),
-  TIntLit(n) => Some("#{int_to_str(n)}"),
-  TFloatLit(f) => Some("#{float_to_str(f)}"),
-  TStringLit(s) => Some("\"{s}"),
-  TStringPart(s) => Some("\"{s}"),
-  _ => None,
-}
-
 fn print_lost_atom(t) = match token_span(t) {
   Span(line, _, _, _) => match atom_key(t) {
     Some(k) => print_string("  lost: {k} (line {int_to_str(line)})\n"),
@@ -673,17 +629,6 @@ fn comment_text_present(ref toks, t: String, i) -> Bool = if i >= len(toks) {
   match token_kind(toks[i]) {
     TComment(u) => if u == t { true } else { comment_text_present(toks, t, i + 1) },
     _ => comment_text_present(toks, t, i + 1),
-  }
-}
-
-// One TComment token per authored prose line — the lexical census the
-// fmt conservation gate reads on both sides of the round trip.
-fn count_comment_tokens(ref tokens, i, acc) = if i >= len(tokens) {
-  acc
-} else {
-  match token_kind(tokens[i]) {
-    TComment(_) => count_comment_tokens(tokens, i + 1, acc + 1),
-    _ => count_comment_tokens(tokens, i + 1, acc),
   }
 }
 
@@ -1033,58 +978,11 @@ fn run_run(target, args) = {
 // expression is pure arithmetic over the count.
 fn check_run(target) = if pipeline_check(target) > 0 { 1 } else { 0 }
 
-// The file's own positions: a graph handle joins the field iff its span
-// lies inside the target's weave range — the range map is the one
-// authority on which lines are this file's.
-// Range-filter, then LATEST MINT WINS per span (address_better_a's tie
-// rule as the enumerator's law): the living session re-derives on a
-// moved tree, and the prior generation's node at the same source span
-// would double every position — the higher handle IS the current
-// generation. A stale-only span (a position the edit removed, whose
-// coordinates match nothing current) is the named residue the
-// generation floor retires (the session-epoch face).
-fn field_positions(handles, fstart, nlines) with !Mutate = field_dedup_spans(filter(
-  (h) => match caret_span_of_handle(h) {
-    Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
-  },
-  handles
-))
-
-// Identity is the span's START (the head anchor): an edit that
-// reshapes a decl changes its extent but not its position, so full
-// span equality missed the generation pair (measured: the tightened
-// decl's shorter head left its ghost standing).
-fn field_dedup_spans(handles) with !Mutate = filter(
-  (h) => !any((h2) => h2 > h && span_start_eq(caret_span_of_handle(h2), caret_span_of_handle(h)), handles),
-  handles
-)
-
-fn span_start_eq(ref a, ref b) with Pure = match a {
-  Span(asl, asc, _, _) => match b {
-    Span(bsl, bsc, _, _) => asl == bsl && asc == bsc,
-  },
-}
-
-// Rank by the one scorer, descending: structural sort ascends by the
-// (score, handle) pair — the compare fold's f64 leaf orders the score,
-// the handle breaks ties deterministically — then reverse. The pair list
-// rides the same wide-tuple machinery mn-generic-wide-tuple-pattern gates.
-// The return is PINNED (Float, Int): the score is wide and the pair
-// flows through generic sort/reverse whose schemes launder the element
-// to a var — the destructure downstream then floors ph to the f64's
-// interior word (measured: offset 4 in m3.wat, t1072064102 =
-// 0x3FE68F5C = the score's high bits rendered as a handle). The pin is
-// the representation Intent Boundary at the polymorphic boundary (the
-// CFC precedent) until instantiation carries bound structure across
-// the converged rounds.
-fn field_ranked(handles, caret0) -> [(Float, Handle)] with !Mutate = reverse(sort(map(
-  (h) => match score_one_position(h, caret0) {
-    Cursor(_, _, sc) => (sc, h),
-  },
-  handles
-)))
-
-fn render_field_tier(ranked: [(Float, Handle)], target: String, fstart, i) = if i >= len(ranked) {
+// A field tier renders in the ONE ranked order (`rank_positions`, the
+// order the session's argmax takes its head from), each position at its
+// own module's coordinates — a span is the module's own, so the line it
+// names is the line the developer reads.
+fn render_field_tier(ranked: [(Float, Handle)], target: String, i) = if i >= len(ranked) {
   ()
 } else {
   match list_index(ranked, i) {
@@ -1092,9 +990,9 @@ fn render_field_tier(ranked: [(Float, Handle)], target: String, fstart, i) = if 
       let pspan = caret_span_of_handle(ph)
       match pspan {
         Span(sl, sc, _, _) => {
-          print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
+          print("\n── {target}:{int_to_str(sl)}:{int_to_str(sc)}\n")
           render_at(cursor_at_handle(ph), ph, pspan, target)
-          render_field_tier(ranked, target, fstart, i + 1)
+          render_field_tier(ranked, target, i + 1)
         },
       }
     },
@@ -1107,84 +1005,79 @@ fn render_field_tier(ranked: [(Float, Handle)], target: String, fstart, i) = if 
 // authored hole first (absence categorically outranks — the same tier
 // law cursor_argmax_compute states; filling a hole lifts the
 // executable's own refusal), then the annotation-gradient positions,
-// each tier sorted by the ONE score_one_position projection. Each
-// position renders through the SAME cursor_at_handle + render_at path
-// the single-address form uses — a hole's line carries its Propose fan
-// (the survivor space), an annotation position its Teach line. The
-// argmax is this list's head; the field is the argmax UNCOLLAPSED —
-// the multi-cursor read, sequential (the per-position `><` under
+// each tier in the ONE ranked order (`rank_positions`). Each position
+// renders through the SAME cursor_at_handle + render_at path the
+// single-address form uses — a hole's line carries its Propose fan (the
+// survivor space), an annotation position its Teach line. The argmax is
+// this list's head; the field is the argmax UNCOLLAPSED — the
+// multi-cursor read, sequential (the per-position `><` under
 // `~> Thread` rides Hβ.ops.wasmtime-runner-migration).
-fn render_field(target: String, fstart, nlines) = {
-  let caret0 = Caret(0, Located(Span(fstart, 1, fstart, 1), Inferred("field read")))
-  let holes = field_positions(enumerate_hole_positions(), fstart, nlines)
-  // THE PROBLEM IS THE SOLUTION — absence is ONE node-kind, and the
-  // field ranks ALL of it: the pending proof obligations (the verify
-  // ledger's live debt — each a position whose resolution is the
-  // missing constraint) and the over-declared rows (each carrying its
-  // proven row, the MachineApplicable patch `mentl tighten` applies)
-  // join the holes and the gradient tier. The error list IS the work
-  // queue.
-  let pending = field_pending(verify_debt(), fstart, nlines)
-  let tights = field_tightenables(tightenables(), fstart, nlines)
-  let grads = field_positions(enumerate_gradient_positions(), fstart, nlines)
-  print("Field: {int_to_str(len(holes))} hole(s), {int_to_str(len(pending))} pending proof(s), {int_to_str(len(tights))} tightening(s), {int_to_str(len(grads))} gradient position(s) in {target}\n")
-  render_field_tier(field_ranked(holes, caret0), target, fstart, 0)
-  render_pending_tier(pending, target, fstart, 0)
-  render_tighten_tier(tights, target, fstart, 0)
-  render_field_tier(field_ranked(grads, caret0), target, fstart, 0)
-  0
+//
+// Every tier is the FILE'S MODULE'S own, read by module identity: a
+// position by the module stamped at its mint, a debt row by the module
+// handle it carries, a tightening by the module it was reported in.
+// Until 2026-10-01 the tiers were filtered by LINE RANGE, and every
+// module numbers its lines from 1, so the field of `main` listed an
+// imported helper's declarations under main's coordinates beside main's
+// own source lines.
+fn render_field(target: String) = match module_handle_of_path(target) {
+  None => {
+    eprint_string("mentl: {target} is in the weave but minted no module node — no field to read\n")
+    1
+  },
+  Some(mh) => {
+    let caret0 = Caret(mh, Located(Span(1, 1, 1, 1), Inferred("field read")))
+    let holes = enumerate_hole_positions(mh)
+    // THE PROBLEM IS THE SOLUTION — absence is ONE node-kind, and the
+    // field ranks ALL of it: the pending proof obligations (the verify
+    // ledger's live debt — each a position whose resolution is the
+    // missing constraint) and the over-declared rows (each carrying its
+    // proven row, the MachineApplicable patch `mentl tighten` applies)
+    // join the holes and the gradient tier. The error list IS the work
+    // queue.
+    let pending = filter({ (modh, _, _, _) => modh == mh }, verify_debt())
+    let tights = filter({ (_, _, _, _, dmod) => dmod == target }, tightenables())
+    let grads = enumerate_gradient_positions(mh)
+    print("Field: {int_to_str(len(holes))} hole(s), {int_to_str(len(pending))} pending proof(s), {int_to_str(len(tights))} tightening(s), {int_to_str(len(grads))} gradient position(s) in {target}\n")
+    render_field_tier(rank_positions(holes, caret0), target, 0)
+    render_pending_tier(pending, target, 0)
+    render_tighten_tier(tights, target, 0)
+    render_field_tier(rank_positions(grads, caret0), target, 0)
+    0
+  },
 }
 
-// The pending tier — the verify ledger's debt rows inside the file's
-// range, each rendered at its own span with the obligation and its
-// Reason (the Why-walk's edge). Ledger order IS accrual order ≈ source
-// order.
-fn field_pending(debt, fstart, nlines) = filter(
-  {
-    (_modh, dspan, _, _) => match dspan {
-      Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
-    },
-  },
-  debt
-)
-
-fn render_pending_tier(pending, target: String, fstart, i) = if i >= len(pending) {
+// The pending tier — the verify ledger's debt rows of the file's module,
+// each rendered at its own span with the obligation and its Reason (the
+// Why-walk's edge). Ledger order IS accrual order ≈ source order.
+fn render_pending_tier(pending, target: String, i) = if i >= len(pending) {
   ()
 } else {
   match list_index(pending, i) {
     (_modh, dspan, pred, reason) => match dspan {
       Span(sl, sc, _, _) => {
-        print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
+        print("\n── {target}:{int_to_str(sl)}:{int_to_str(sc)}\n")
         print("Pending: {show_predicate(pred)} — undischarged; a ground witness or a refinement collapses it\n")
         print("Why: {show_reason(reason)}\n")
-        render_pending_tier(pending, target, fstart, i + 1)
+        render_pending_tier(pending, target, i + 1)
       },
     },
   }
 }
 
-// The tightening tier — every T_OverDeclared the judgment banked whose
-// decl sits in the file's range: the declared row, the proven row, and
-// the standing patch invitation (`mentl tighten` authors it).
-fn field_tightenables(cands, fstart, nlines) = filter(
-  {
-    (_, _, _, tspan, _) => match tspan {
-      Span(sl, _, _, _) => sl >= fstart && sl < fstart + nlines,
-    },
-  },
-  cands
-)
-
-fn render_tighten_tier(tights, target: String, fstart, i) = if i >= len(tights) {
+// The tightening tier — every T_OverDeclared the judgment banked in the
+// file's module: the declared row, the proven row, and the standing patch
+// invitation (`mentl tighten` authors it).
+fn render_tighten_tier(tights, target: String, i) = if i >= len(tights) {
   ()
 } else {
   match list_index(tights, i) {
     (declared, used, name, tspan, _dmod) => match tspan {
       Span(sl, sc, _, _) => {
-        print("\n── {target}:{int_to_str(sl - fstart + 1)}:{int_to_str(sc)}\n")
+        print("\n── {target}:{int_to_str(sl)}:{int_to_str(sc)}\n")
         print(tighten_line(name, declared, used))
         print("  the proven row is the patch (mentl tighten authors it)\n")
-        render_tighten_tier(tights, target, fstart, i + 1)
+        render_tighten_tier(tights, target, i + 1)
       },
     },
   }
@@ -1280,7 +1173,7 @@ fn address_project(ranges, target: String, line, col) = match range_of_module(ra
       let start = 1
       let nlines = count_lines(text) + 1
       if line == 0 {
-        render_field(target, start, nlines)
+        render_field(target)
       } else if line < 0 {
         eprint_string("mentl: line {int_to_str(line)} — lines count from 1 (0 = the whole-file field)\n")
         1
@@ -1587,7 +1480,7 @@ fn render_at(view, h, pspan, target: String) = match view {
     // authored row is taught the tightening the judgment proved instead.
     match teach {
       Some(suggestion) => match suggestion {
-        AnnotationSuggestion(_, ann, unlocks, _) => print("Teach: add `{ann}` to unlock {join_unlock_labels(unlocks)}\n"),
+        AnnotationSuggestion(ann, unlocks, _) => print("Teach: add `{show_annotation(ann)}` to unlock {join_unlock_labels(unlocks)}\n"),
       },
       None => match graph_node_body(h) {
         NStmt(FnStmt(name, _, _, _, _)) => match banked_tightening(name, tightenables()) {

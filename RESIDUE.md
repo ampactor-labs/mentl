@@ -866,8 +866,8 @@ CLOSE: a fixture whose refuted candidate raises a located diagnostic, asserting
 the report names the module the candidate was judged in; and a `0:0-0:0` span
 reaching a user-facing report becomes a refusal rather than a coordinate.
 
-`Hβ.cursor.module-of-a-span-is-containment` — OPEN, BORN 2026-09-19 out of the
-address fix. `module_path_of_span` (graph.mn) answers "which module is this span
+`Hβ.cursor.module-of-a-span-is-containment` — CLOSED 2026-10-01 (D3), BORN
+2026-09-19 out of the address fix. `module_path_of_span` (graph.mn) answers "which module is this span
 in?" by scanning every node for an NModule whose span CONTAINS it. That was
 right while spans were offsets into one concatenated weave. It is not right now:
 each module's spans are its own 1-based coordinates, so an NModule span covers
@@ -890,6 +890,47 @@ decay is not reachable from user code. CLOSE: a rank fixture whose caret and
 candidate sit in different modules at a line both files reach, asserting the
 cross-module weight rather than the same-module one — seen RED first, which is
 also what turns the derivation into a measurement.
+CLOSED 2026-10-01 (D3), and the derivation became a measurement the moment a
+felt walk reached the decay from user code: on boot 9387fea1, `mentl edit main`
+over a two-module program opened on the PRELUDE's `unwrap_or` (61:1), accepting
+it wrote `  with Pure` above main.mn's first line, and `mentl main.mn:0` listed
+the helper's `twice` and `total` under main's coordinates beside main's own
+source lines. The scan and the by-path import walk it served are deleted.
+Proximity takes two HANDLES (`position_proximity`, cursor.mn): their modules are
+column reads, the enclosing declaration is a containment test inside ONE module
+(where spans share coordinates), and cross-module nearness is one module's row
+of the reach table (`module_reach_of`). tests/frontier/gradient-module-demo
+holds it, both legs RED on the boot.
+
+`Hβ.felt.accepted-clause-carries-its-proof` — OPEN, NAMED 2026-10-01 (D3). A
+hole's accept draws an edge before its text (C4), so the Why at the accepted
+value walks to the proposal that proved it. An accepted CLAUSE is written by the
+formatter (`render_fn_head` spliced over the declaration's head, the
+conservation census guarding it) and draws no edge: the re-derived
+declaration's row reads as authored, and nothing says the medium proposed it or
+what proved it (`narrow_row_proven`'s subsumption). CLOSE: the accept notes the
+clause as `graph_accept_note` notes a fill, the declared row's reason wraps
+`Accepted`, and `mentl <file>:<line>` at the declaration walks its Why to the
+proof.
+
+`Hβ.cursor.proximity-reads-the-call-graph` — OPEN, NAMED 2026-10-01 (D3).
+Inside one module the decay is three steps — the position itself, its
+declaration, the rest of the module — so a declaration the caret's own calls,
+or that calls it, is as far as any other. The graph holds those edges (the refs
+column), and nearness by reference distance is the gradient inside a file: the
+annotation on a callee is often the one that unlocks the caller's. CLOSE: a
+fixture where the caret's callee outranks an unrelated declaration of equal
+gates, seen RED on the step decay.
+
+`Hβ.felt.session-caret-never-moves` — OPEN, NAMED 2026-10-01 (D3). The edit
+session's caret opens at the entry's module node and never moves: the terminal
+transport reads accept and defer only, so the action ADT's override and
+caret-move arms are produced by no transport, and the same-declaration tier of
+the proximity is unreachable from the CLI session (the page reaches positions
+through the address route instead). Those arms resolve their span inside the
+caret's module now (`handle_at_span`), so they are correct when a transport
+produces them. CLOSE: a transport that delivers the developer's caret, and a
+leg where moving it reorders the field.
 
 `Hβ.graph.mutation-delta-is-write-only` — OPEN, BORN 2026-09-19. `graph_mutated(Int,
 Mutation)` (types.mn) carries `MSetNode(Int, GNode)` — *(handle, prior value)* —
@@ -3564,6 +3605,13 @@ import edges, and the rest of the link — and the search stops at the first rin
 that proves a survivor. So a name from another module no longer competes with
 the hole's own module at all. What stays open is the rank WITHIN one outer ring,
 which can hold several modules whose spans this fold still compares by line.
+CLOSED 2026-10-01 (D3): `candidate_rank` reads the cursor's own handle
+proximity — the hole, the name's declaration, each use — so a use in another
+module is as far as its module is from the hole's. The declaration is a handle
+from an index of every module's own declarations by the names they bind
+(`decl_index`, synth_proposer.mn — functions, handlers, constructors, ops), the
+uses are the refs collector's handles (`ref_handles_of`), and a name with no
+declaration node (a primitive) sits at the farthest tier.
 
 `Hβ.synth.vocabulary-ring-is-read-by-name` — OPEN, BORN 2026-09-25 with the
 ring search (src/synth_proposer.mn `vocabulary_rings`). The ring of a
@@ -3575,6 +3623,10 @@ publishes a judged fn as `Frozen(qs, ty)`, so the handle that
 That is PLAN §7's "Schemes are VALUES, not edges" showing through at a new
 reader. CLOSE: when a binding keeps its decl handle, the ring is one column
 read plus the import reach, and the name lists are deleted.
+2026-10-01 (D3): the proposer's rank builds the name → declaration index this
+entry's CLOSE asks for, from the module cells' own declarations
+(`decl_index`); the rings still read name lists, and reading a candidate's
+ring off its declaration's module through that index is the remaining move.
 
 `Hβ.parser.field-name-after-dot-drops-keyword` — CLOSED 2026-09-25 in the
 landing that found it. The record LITERAL reads a contextual keyword as a field

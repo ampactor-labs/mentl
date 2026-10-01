@@ -1784,6 +1784,26 @@ and this is the STATE.
   what the row says and nothing escapes the negation above it — and its
   design question is banked (`Hβ.effects.handler-pins-its-instance`).
 
+- **THE GRADIENT READS ADDRESSES — CLOSED 2026-10-01 (D3).** The felt walk
+  on a two-module program found the field, the session and the accept all
+  module-blind: `mentl main.mn:0` listed an imported helper's declarations
+  under main's coordinates (the tiers were filtered by line range, and every
+  module numbers its lines from 1), `mentl edit main` opened on the prelude's
+  `unwrap_or` (the proximity compared bare spans), and accepting its
+  suggestion wrote `  with Pure` above main.mn's first line (the suggestion
+  carried only text, inserted above a line number in the target file). A
+  position is a handle of the caret's module, proximity is read between two
+  handles, and the field and the argmax read one order — score, then source
+  position — so the session's focus is the field's head. The suggestion
+  carries its annotation, and the accept splices the formatter's own head
+  render over the declaration's head in its own module's file, guarded by the
+  formatter's conservation census. The proposer's rank reads the same
+  proximity (hole, declaration, uses — all handles). Named: the accepted
+  clause draws no edge yet (`Hβ.felt.accepted-clause-carries-its-proof`),
+  nearness inside a module is three steps where the call graph would be the
+  gradient (`Hβ.cursor.proximity-reads-the-call-graph`), and the CLI session's
+  caret never moves (`Hβ.felt.session-caret-never-moves`).
+
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
 

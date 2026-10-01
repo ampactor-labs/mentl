@@ -658,7 +658,7 @@ fn render_fn_decl(name, params, retty, effs, body) with !Mutate = match match re
   None => (render_param_list(params), body),
 } {
   (plist, b_node) => {
-    let head = "fn {name}({plist}){render_retty(retty)}{render_with_clause(effs)} ="
+    let head = fn_head_text(name, plist, retty, effs)
     let b = render_grouped_body(b_node)
     if str_contains(b, "\n") || fits_inline("{head} {b}") {
       "{head} {b}"
@@ -666,6 +666,20 @@ fn render_fn_decl(name, params, retty, effs, body) with !Mutate = match match re
       "{head}\n{indent_block(b)}"
     }
   },
+}
+
+// A declaration's head through its binder — the one shape the whole
+// declaration's render and an accepted clause's splice share.
+fn fn_head_text(name, plist, retty, effs) with !Mutate =
+  "fn {name}({plist}){render_retty(retty)}{render_with_clause(effs)} ="
+
+// The head ALONE, for a reader that writes a declaration's signature back
+// without its body: the same param re-sugaring the whole render does.
+fn render_fn_head(name, params, retty, effs, body) with !Mutate = match resugar_head(params, body) {
+  Some(pair) => match pair {
+    (plist, _) => fn_head_text(name, plist, retty, effs),
+  },
+  None => fn_head_text(name, render_param_list(params), retty, effs),
 }
 
 // The arms of a declaration whose only parameter an arm-list literal
@@ -1539,4 +1553,63 @@ type RenderContext
 fn unary_op_glyph(op) with Pure = match op {
   UNeg => "-",
   UNot => "!",
+}
+
+// ─── The conservation census — what a render may never lose ─────────
+//
+// THE NAME CENSUS a rendered text answers to: the render's identifiers and
+// literals counted, then SPENT against the source's, and every source atom
+// left unpaid is a loss. A multiset rather than a sequence, because the
+// canonical render reorders on purpose (record fields sort at parse), and a
+// count rather than a set, because a render that keeps one of two uses of a
+// name has still lost one. A literal is keyed by its VALUE — `48_000` and `48000` are
+// one atom — so a spelling the render changes is not a loss here; that one
+// is `Hβ.fmt.literal-spelling-is-intent`. Homed beside the formatter
+// because it is the formatter's law: the fmt verb's write and an accepted
+// clause's splice both answer to it.
+fn lost_atoms(src_toks, out_toks) = match fold((fold(smap_new(), atom_counted, out_toks), []), atom_spent, src_toks) {
+  (_, lost) => lost,
+}
+
+fn atom_counted(counts, t) = match atom_key(t) {
+  Some(k) => smap_add(counts, k, atom_count(counts, k) + 1),
+  None => counts,
+}
+
+fn atom_spent(acc, t) = match acc {
+  (counts, lost) => match atom_key(t) {
+    Some(k) => {
+      let c = atom_count(counts, k)
+      if c > 0 { (smap_add(counts, k, c - 1), lost) } else { (counts, push(lost, t)) }
+    },
+    None => acc,
+  },
+}
+
+fn atom_count(counts, k: String) = match smap_get(counts, k) {
+  Some(c) => c,
+  None => 0,
+}
+
+// What an authored token says, as the census compares it: a name as itself,
+// a literal by its value under a kind mark, so a name and a string that spell
+// it are two atoms. Keywords and punctuation are the render's to choose.
+fn atom_key(t) = match token_kind(t) {
+  TIdent(s) => Some(s),
+  TIntLit(n) => Some("#{int_to_str(n)}"),
+  TFloatLit(f) => Some("#{float_to_str(f)}"),
+  TStringLit(s) => Some("\"{s}"),
+  TStringPart(s) => Some("\"{s}"),
+  _ => None,
+}
+
+// One TComment token per authored prose line — the lexical census the
+// conservation gate reads on both sides of a round trip.
+fn count_comment_tokens(tokens, i, acc) = if i >= len(tokens) {
+  acc
+} else {
+  match token_kind(tokens[i]) {
+    TComment(_) => count_comment_tokens(tokens, i + 1, acc + 1),
+    _ => count_comment_tokens(tokens, i + 1, acc),
+  }
 }

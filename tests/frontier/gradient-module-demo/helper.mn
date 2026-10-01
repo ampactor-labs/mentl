@@ -1,0 +1,6 @@
+// A helper whose decls sit inside the entry's line range, so a field that
+// reads line numbers rather than modules lists them under the entry's
+// coordinates, and a session that ranks them can focus the wrong file.
+fn twice(x) = x * 2
+
+fn total(xs) = fold(0, (a, x) => a + x, xs)

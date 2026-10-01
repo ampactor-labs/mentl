@@ -470,7 +470,13 @@ fn walk_chain(handle, depth) = if depth > 50 || handle < 0 {
 // that column — O(refs), never O(graph) — and walks it from the TAIL
 // because the column prepends (newest first): oldest-first preserves
 // the scan-era answer order and its first-seen span dedup.
-fn refs_of_name(name) with !Mutate = {
+fn refs_of_name(name) with !Mutate = map({ (m, sp, _h) => (m, sp) }, ref_sites_of(name))
+
+// The same sites as their HANDLES — what a reader that measures nearness
+// between positions needs (the proposer's rank), one per source site.
+fn ref_handles_of(name) with !Mutate = map({ (_m, _sp, h) => h }, ref_sites_of(name))
+
+fn ref_sites_of(name) with !Mutate = {
   let hs = graph_refs_at(name)
   collect_ref_sites(hs, len(hs) - 1, make_list(0))
 }
@@ -500,7 +506,7 @@ fn collect_ref_sites(ref hs, i, acc) with !Mutate = if i < 0 {
   if sp == span_zero() || site_in(acc, m, sp, 0) {
     collect_ref_sites(hs, i - 1, acc)
   } else {
-    collect_ref_sites(hs, i - 1, push(acc, (m, sp)))
+    collect_ref_sites(hs, i - 1, push(acc, (m, sp, hs[i])))
   }
 }
 
@@ -965,7 +971,7 @@ fn census_label(shape) = match shape {
 }
 
 fn census_sites(shape) with !Mutate = match graph_snapshot() {
-  Graph(next, _) => census_walk(shape, 0, next, make_list(0)),
+  Graph(next, _) => map({ (m, sp, _h) => (m, sp) }, census_walk(shape, 0, next, make_list(0))),
 }
 
 // The weave walk's span is the node's OWN (raw) reason — the parse site.
@@ -999,7 +1005,7 @@ fn census_walk(shape, i, n, acc) with !Mutate = if i >= n {
     if sp == span_zero() || site_in(acc, m, sp, 0) {
       census_walk(shape, i + 1, n, acc)
     } else {
-      census_walk(shape, i + 1, n, push(acc, (m, sp)))
+      census_walk(shape, i + 1, n, push(acc, (m, sp, i)))
     }
   } else {
     census_walk(shape, i + 1, n, acc)
@@ -1010,7 +1016,7 @@ fn site_in(ref acc, ref m: String, ref sp, i) = if i >= len(acc) {
   false
 } else {
   match acc[i] {
-    (am, asp) => if am == m && asp == sp { true } else { site_in(acc, m, sp, i + 1) },
+    (am, asp, _h) => if am == m && asp == sp { true } else { site_in(acc, m, sp, i + 1) },
   }
 }
 

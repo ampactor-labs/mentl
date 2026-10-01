@@ -27,25 +27,9 @@ import infer
 
 import query
 
-// Mentl-owned ADTs
+// Mentl-owned ADTs (the Annotation a suggestion carries lives in types.mn,
+// beside the suggestion that carries it)
 //
-// Each variant carries an Option(Span) — Some when the candidate
-// originated from a user site (hovered hole, quick-fix request);
-// None for fully-internal speculation. narrow_row threads this into
-// the Located reason so the Why chain reads at the user's
-// coordinates, not 0:0-0:0.
-type Annotation
-  = APure(Option(Span))
-  | ARefined(String, Predicate, Option(Span))
-  | AOwn(String, Option(Span))
-  | ARef(String, Option(Span))
-  | AWrapHandler(String, Int, Option(Span))
-  // The general severance: !<name> for ANY name the link performs
-  // (Hβ.teach.severance-vocabulary-from-link). The fixed
-  // ANotAlloc/ANotIO/ANotNetwork trio is DELETED into it — known
-  // names keep their rich labels via capabilities_for_severance.
-  | ANotEffect(String, Option(Span))
-
 // handler_name, the target fn's handle, span;
 // proposes wrapping the target's body in a
 // handler that absorbs an offending effect
@@ -291,16 +275,14 @@ fn intern_severance_name(ann) = match ann {
   _ => (),
 }
 
-// Boundary wrap — (Annotation, Capability) inside the speculative
-// loop becomes the public AnnotationSuggestion shape Cursor reads.
-// Per Hμ.cursor §2.1: kind comes from the Annotation tag (drift 8 —
-// SuggestionKind ADT, never a string flag); annotation text is
-// `show_annotation`'s residue; unlocks is `capabilities_for_annotation`'s
-// list (multiple capabilities per annotation, not the lossy single
-// `unlock_capability`); reason wraps the anchor with Located.
+// Boundary wrap — the proven Annotation inside the speculative loop
+// becomes the public AnnotationSuggestion Cursor reads: the annotation
+// itself (its axis and its text are `suggestion_kind_of` and
+// `show_annotation`, read where rendered), the labels of every capability
+// it unlocks (`capabilities_for_annotation`, computed here where the
+// intern table answers), and the anchor's reason wrapped with Located.
 fn to_annotation_suggestion(ann, anchor_reason) = AnnotationSuggestion(
-  suggestion_kind_of(ann),
-  show_annotation(ann),
+  ann,
   capability_labels(capabilities_for_annotation(ann)),
   suggestion_reason(ann, anchor_reason)
 )

@@ -36,9 +36,9 @@
 // The per-module overlay family is DELETED (2026-07-25): graph_fork
 // never performed anywhere in the tree, so the module partition never
 // existed at runtime — every mint registered into one "global" row
-// feeding a filter nobody called. Module-of-position reads LIVE through
-// NModule span containment (module_path_of_span below), never a
-// per-mint side-ledger.
+// feeding a filter nobody called. Module-of-position is the module column
+// stamped at each node's mint (graph_module_of), never a side-ledger and
+// never a span — every module numbers its lines from 1.
 import types
 
 import effects
@@ -405,10 +405,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   graph_snapshot() => resume(Graph(next, span_index)),
   graph_node_body(handle) => resume(spine_body_at(spine, spine_open, handle)),
   graph_span_of(handle) => resume(spine_span_at(spine, spine_open, handle)),
-  graph_module_of(handle) => // The module a node was born in — ONE cell read, never the containment
-  // scan that module_path_of_span ran over every node (whose own comment
-  // named its "O(1) destiny"; this is that destiny). The read is
-  // spine_module_at's, shared with the accept read at graph_bind.
+  graph_module_of(handle) => // The module a node was born in — ONE cell read, never a containment
+  // scan over module spans (the last one, the proximity rank's, deleted
+  // 2026-10-01). The read is spine_module_at's, shared with the accept
+  // read at graph_bind.
   resume(spine_module_at(spine, spine_open, handle)),
   graph_module_current() => // Enter a module: every subsequent mint is attributed to it. The module
   // node attributes ITSELF, which is what makes the column total without a
@@ -1953,30 +1953,13 @@ fn callee_is_fanout(f) = match f {
 // "declared as ..."), so a patch target must read the weave, never the
 // reason. O(n) scan at felt cadence (once per accepted action); the O(1)
 // form is the handle-indexed span weave (the §5.O name-is-handle sibling).
-// The module path enclosing a span: the NModule weave entry whose span
-// contains this span. "" when no module wraps it (single-unit weave).
-// DAG-homed here (oracle and cursor both read it; both import graph) —
-// module-of-position is a LIVE projection of the NModule spans, never a
-// per-mint side-ledger. The O(next) scan's O(1) destiny is the
-// handle-indexed span weave (the §5.O name-is-handle sibling).
-fn module_path_of_span(span) with !Mutate = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => scan_for_enclosing_module(span, 0, next),
-  }
-}
-
-fn scan_for_enclosing_module(target, i, n) with !Mutate = if i >= n {
-  ""
-} else {
-  match graph_node_body(i) {
-    NModule(m) => if span_contains(m.span, target) { m.path } else { scan_for_enclosing_module(target, i + 1, n) },
-    _ => scan_for_enclosing_module(target, i + 1, n),
-  }
-}
-
-// Every module in this weave, in weave order — the same NModule cells
-// module_path_of_span narrows by containment, read whole instead.
+//
+// Every module in this weave, in weave order. A position's module is never
+// derived from these cells by span containment: every module numbers its
+// lines from 1, so a span alone lies inside every file long enough to reach
+// it, and the scan that answered that way (the proximity rank's, until
+// 2026-10-01) read a decl on line 1 of any module as the caret's own. A
+// node's module is the column `graph_module_of` reads.
 //
 // The DAG is a fact the driver PROVES on every invocation and then could not
 // show anyone: answering "which modules does this entry pull?" meant a shell
@@ -2096,15 +2079,14 @@ fn module_path_pick(mh: Int, acc, c) = match c {
 // wrong one: resolution fell back to the whole link's FLATTENED env,
 // where a name resolves whether or not the module writing it can reach
 // that name. Measured 2026-09-20: 0 unresolved on the entry link against
-// 57 per module. It is homed here beside `module_path_of_span` for the
-// reason that comment already gives — graph.mn is the DAG bottom, so
-// every reader imports it.
+// 57 per module. It is homed in graph.mn because graph.mn is the DAG
+// bottom, so every reader imports it.
 //
-// The judgment's readers (the comment-reference gate, the F0b import
-// check) ask it as handles through infer_ctx's cached table below; the
-// cursor's proximity rank still asks `module_imports` by path per call,
-// which walks the graph per hop and dies with the rank
-// (`Hβ.cursor.module-of-a-span-is-containment`).
+// Every reader asks it as HANDLES: the judgment's (the comment-reference
+// gate, the F0b import check) through infer_ctx's cached table below, the
+// cursor's proximity and the proposer's rank through one module's row of
+// it (`module_reach_of`). The by-path walk the proximity rank used per call
+// is deleted with the span-read decay it served (2026-10-01).
 //
 // The whole module DAG's reachability in ONE graph walk (F0b, 2026-09-27):
 // every module cell, its direct import paths read off its own decls, and
@@ -2113,14 +2095,24 @@ fn module_path_pick(mh: Int, acc, c) = match c {
 // table read, never a graph scan per VarRef.
 fn module_reach_table() with !Mutate = {
   let cells = module_cells()
-  // The prelude is linked into every compile unasked (driver_collect_dag
-  // seeds it before the entry), so its closure is every module's — the
-  // ambient world, absent only where no prelude resolves.
-  let ambient = match fold([], cell_handle_for("prelude"), cells) {
-    [] => [],
-    [ph, ..._] => module_closure(ph, cells),
-  }
+  let ambient = ambient_closure(cells)
   fold(wmap_new(64), reach_table_add(cells, ambient), cells)
+}
+
+// The prelude is linked into every compile unasked (driver_collect_dag
+// seeds it before the entry), so its closure is every module's — the
+// ambient world, absent only where no prelude resolves.
+fn ambient_closure(cells) = match fold([], cell_handle_for("prelude"), cells) {
+  [] => [],
+  [ph, ..._] => module_closure(ph, cells),
+}
+
+// One module's row of the table: the modules it reaches through import
+// edges, the ambient world included — for a reader asking of one module,
+// which builds no table for the rest.
+fn module_reach_of(mh: Int) with !Mutate = {
+  let cells = module_cells()
+  module_closure(mh, cells) ++ ambient_closure(cells)
 }
 
 fn reach_table_add(cells, ambient, table, cell) = match cell {
@@ -2161,47 +2153,12 @@ fn reach_table_has(table, from: Int, to: Int) = match wmap_get(table, from) {
   Some(closure) => handles_contain(closure, to),
 }
 
-// Does module `from` import `target` (transitively)? Reads the live
-// ImportStmt edges in `from`'s NModule decls; the `seen` accumulator
-// breaks import cycles. The module graph IS graph content — no side-ledger.
-fn module_imports(from, target, seen) with !Mutate = if from == "" || contains_path(seen, from) {
-  false
-} else {
-  let direct = module_import_paths(from)
-  if contains_path(direct, target) { true } else { any_imports(direct, target, [from] ++ seen) }
-}
-
-fn any_imports(paths, target, seen) with !Mutate = if len(paths) == 0 {
-  false
-} else if module_imports(last(paths), target, seen) {
-  true
-} else {
-  any_imports(drop_last(paths), target, seen)
-}
-
 fn contains_path(paths, target) = if len(paths) == 0 {
   false
 } else if last(paths) == target {
   true
 } else {
   contains_path(drop_last(paths), target)
-}
-
-// The direct import paths declared in module `path`'s NModule decls.
-fn module_import_paths(path) with !Mutate = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => scan_module_imports(path, 0, next),
-  }
-}
-
-fn scan_module_imports(path, i, n) with !Mutate = if i >= n {
-  []
-} else {
-  match graph_node_body(i) {
-    NModule(m) => if m.path == path { import_paths_of_decls(m.decls) } else { scan_module_imports(path, i + 1, n) },
-    _ => scan_module_imports(path, i + 1, n),
-  }
 }
 
 fn import_paths_of_decls(decls) = decls |> filter_map_imports
