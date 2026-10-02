@@ -1946,12 +1946,37 @@ and this is the STATE.
   whole (`Hβ.verify.provenance-through-destructure`), a type argument's
   function parts still read every field
   (`Hβ.verify.type-arg-part-reads-every-field`) — and, found after the
-  march and preempting D4, a handler's state links to its INIT, so the
-  proof never reads an arm's `resume … with` write: `100 / d` over `with d =
-  5` checks clean under `!Trap` while an arm writes `d = d - 5`, a
-  classified write is read as the init's public label, and a function
-  written into state is applied under the init's contract
-  (`Hβ.verify.handler-state-reads-only-its-init`).
+  march, a handler's state read as its INIT, which S5 closed (the next
+  bullet).
+- **A HANDLER'S STATE IS EVERY VALUE WRITTEN INTO IT — CLOSED 2026-10-02
+  (S5).** A state name was bound to its init's cell, so every walk that
+  reads a binder answered the init alone and an arm's `resume … with` write
+  was read by nothing. Measured on pin 53f7404b, each checked clean and
+  failed at run: `100 / d` over `with d = 5` under `!Trap` while an arm
+  wrote `d - 5`, `inv(d)` over `n: Positive`, and a function written into
+  state applied at 0 under the init's contract (exit 134 each); a
+  classified value written into a public-initialized state spliced clean
+  where a classified init refused. A state field binds where its init
+  stands and its binder fact names every writer — the init and each update
+  of the field — noted before any arm is judged (`StateFact`); the value
+  walk, the `!Flow` label, a function value's leaves and a part each read
+  the join of the writers, each as the expression it is. A write may read
+  its own state, so the walks run under a handler chain whose links are the
+  states entered (`StateWalk`, `walking_state_of`): a state re-entered
+  reads as unknown — exact for the label, sound for refinements — and the
+  part walk applies its reader where its path ends, inside every state it
+  entered (`path_read`). The race rule reads the facts, and its re-walk of
+  the arms deletes. An update naming no field of its handler is refused
+  (`E_MissingVariable`): `resume(0) with m = n + 1` beside `with n = 0`
+  compiled clean and `n` stayed 0. The wheel's open obligations hold at 37.
+  Open: a write that reads its state proves nothing of it, and the verdict
+  over a writer judged after the claim follows arm order, sound both ways
+  (`Hβ.verify.state-reads-its-invariant`). FOUND ON THE WAY, the next
+  soundness item: a function in a structure a call returns is read off its
+  unification class, which keeps whichever contract unified first —
+  `pick(false).f(0)` checks clean under `!Trap` and divides by zero on boots
+  1a68ecc0, 53f7404b and this pin (`Hβ.verify.class-read-keeps-one-contract`,
+  S6).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

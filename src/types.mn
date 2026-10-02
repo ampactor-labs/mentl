@@ -1390,6 +1390,23 @@ type BinderFact
   // of the constructor owed where it was built. Destructuring is a
   // value-flow edge, and this is the edge.
   | PartFact({declared: Option(Ty), step: PartStep, whole: Int})
+  // A handler's STATE field, noted on its init's node (a state binds where
+  // its init stands, as a let binds where its value does): every value
+  // written into it — the init and each arm's `resume … with` update of the
+  // field. A state at any read is one of them, so a walk reads the join of
+  // the writers. Noted before any arm is judged; until then a state was read
+  // as its init, so `100 / d` over `with d = 5` checked clean under `!Trap`
+  // while an arm wrote `d - 5`.
+  | StateFact({writes: [Int]})
+
+// A value walk's dynamic scope: the state binders whose writers it is
+// reading. A write may read the state it writes (`with d = d + 1`, or through
+// a let), so a walk that meets a state it is already inside reads it as
+// unknown rather than looping. The chain of handlers installed around the
+// walks IS the stack of states entered (verify.mn `walking_state_of`).
+effect StateWalk {
+  walking_state(b: Int) -> Bool
+}
 
 // Where a destructured part sits in its whole: the whole itself (an
 // as-pattern binds the value it matches), a tuple's element, a

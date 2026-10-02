@@ -1,0 +1,19 @@
+// expect: refuse E_EffectMismatch
+// A record state written from itself: `tick` writes `{count: acc.count + 1}`
+// and is judged first, so when `ask` reads `acc.count` every write is in
+// sight and reads the state again. The part walk reads each writer's part
+// INSIDE the state it entered, so the re-read is cut there, and the claim is
+// owed. A walk that handed the writers' part nodes back to be read after it
+// returned recursed until the compiler's stack ran out; this compiled clean
+// under `!Trap` on pin 53f7404b.
+effect Ask {
+  ask() -> Int
+  tick() -> Int
+}
+
+handler h with acc = {count: 1} {
+  tick() => resume(0) with acc = {count: acc.count + 1},
+  ask() => resume(100 / acc.count),
+}
+
+fn main() with !Trap = tick() + ask() ~> h

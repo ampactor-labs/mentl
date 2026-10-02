@@ -35,6 +35,79 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-02 · pin 852184886f52a848 (CLEAN m2 == m3) · A HANDLER'S STATE IS
+  EVERY VALUE WRITTEN INTO IT, AND THE WALK THAT READS IT RUNS INSIDE THE
+  STATES IT ENTERED — AND AN UPDATE NAMING NO FIELD IS REFUSED, NEVER
+  DROPPED. Found after S4's march. A state name was bound to its init's cell
+  (`bind_handler_state_names`), so every reference's link reached the init
+  expression and every walk that reads a binder answered the init alone; a
+  `resume … with` write was unified into the cell's shape and read by
+  nothing. Measured on pin 53f7404b and boot 1a68ecc0 alike, each checked
+  clean and failed at run: `100 / d` over `with d = 5` under `!Trap` while
+  an arm wrote `d - 5` (exit 134), `inv(d)` over `n: Positive` (134), and a
+  function written into state (`with f = inv`, init `succ`) applied at 0
+  (134); a classified value written into a public-initialized state spliced
+  clean where a classified init refused. The runtime values were right — the
+  proof read the init, the program did not. THE FORM: a state field binds
+  where its init stands (a let's convention), and a binder fact names every
+  writer — the init and each update of the field (`StateFact`), noted by a
+  pre-pass over the arms' bodies before any arm is judged
+  (`bind_handler_state_name`, `arm_updates`). Every walk that reads a binder
+  answers the join of the writers, each read as the expression it is: the
+  value walk (`state_leaves`), the `!Flow` label (`state_flow_label`), a
+  function value's leaves (`state_fn_leaves`), a part (`state_path_read`). A
+  write may read the state it writes, so the walks run under a handler chain
+  whose links are the states entered (`effect StateWalk`;
+  `walking_state_of(b)` around each state's writers; `no_state_walked`
+  beside every `graph_handler` install): a state re-entered reads as unknown
+  — EXACT for the label, whose writes join the state with what they add, and
+  SOUND for refinements. The part walk takes its READER and applies it where
+  the path ends, inside every state entered on the way (`part_read` over
+  `path_read`, a destructured part extending the path rather than composing
+  readers), and each of its seven consumers passes its reader — leaves,
+  labels, function leaves, claims, crossings, claim leaves, channel sources.
+  The race rule reads the facts (`state_field_written`) and its re-walk of
+  the arms deletes. An update naming no field of its handler is refused
+  (`E_MissingVariable`, "state field: m"): `resume(0) with m = n + 1` beside
+  `with n = 0` compiled clean and `n` stayed 0 (exit 0). KILLS (S4's fourth,
+  that a state reads none of its writes, is S4's record): (1) "re-entry can
+  read the state as its init, one unrolling" — refuted before a line: writes
+  `d + -3` and `d + 1` from 5 would prove `0 < d` while the program reaches
+  −1; (2) the first form returned the writers' part NODES for the consumer
+  to read after the walk returned, past the cut — `with acc = {count:
+  acc.count + 1}` with the writing arm first recursed until the compiler's
+  stack ran out (exit 134), and with the arms swapped it passed only because
+  the write's references had no links yet; (3) the fallback — a written
+  state's parts out of sight — was UNSOUND: a function in a written record
+  state (`r = {f: succ}`, written `{f: inv}`) fell to its class, which kept
+  `succ`'s contract, and `r.f(0)` checked clean and trapped; (4) the
+  reader-composing form, `part_read(??, step, read)` handed in as its own
+  reader, gave the reader parameter a mixed row and tripped B2's census
+  marker at eight arg edges where the wheel expects zero — the path form
+  forwards the reader unchanged and the count is zero. FOUND ON THE WAY,
+  PRE-EXISTING AND NEXT: a function inside a structure returned by a call is
+  read off its unification class, which keeps whichever contract unified
+  first — `fn pick(c) = if c { {f: succ} } else { {f: inv} }`,
+  `pick(false).f(0)` under `!Trap` checks clean and traps on boots 1a68ecc0,
+  53f7404b and this pin, and refuses with the branches swapped
+  (`Hβ.verify.class-read-keeps-one-contract`). Fixtures, each RED on
+  53f7404b: micros `mn-state-write-div`, `mn-state-write-refine`,
+  `mn-state-write-fn`, `mn-state-reset-owes`, `mn-state-record-fn` (exit
+  134), `mn-state-counter-owes`, `mn-state-let-cycle` (exit 16),
+  `mn-state-record-self` (exit 50), `mn-state-write-flow` (checked clean,
+  exit 12), `mn-state-update-unknown-field` (exit 0); controls
+  `mn-state-unwritten-proves` (20) and `mn-state-write-flow-public` (9)
+  unchanged; crown `leak-state-write` (exit 134) and
+  `sound-state-unwritten`. Micros 325/325, crown 128/128, proof-exactness
+  30/0, frontier 486/0/1; the wheel's open obligations hold at 37, and its
+  emit did not move (CLEAN). COST: the m3 leg 987,596 KB; the peak ceiling
+  995,000 → 1,000,000 on the fixed-input reading — the boot 979,780 KB on
+  this source, the candidate 976,060 / 977,788 / 989,188 KB, its judgment's
+  high-water 464.2 MB against 461.3 MB. Named:
+  `Hβ.verify.handler-state-reads-only-its-init` CLOSED;
+  `Hβ.verify.state-reads-its-invariant` (the inductive reading at re-entry,
+  and an authored state annotation) and
+  `Hβ.verify.class-read-keeps-one-contract` (next) born.
 - 2026-10-02 · pin 53f7404bedfa0208 (TRANSITION m3 == m4) · A STRUCTURE IS
   CLAIMED PART BY PART WHERE IT IS BUILT, AS IT IS ASSUMED PART BY PART WHERE
   IT IS TAKEN APART — AND A RECORD LITERAL NESTED IN ANOTHER IS BUILT, NOT

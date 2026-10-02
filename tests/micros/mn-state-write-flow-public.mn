@@ -1,0 +1,15 @@
+// expect: 9
+// The sound twin: every value written into `v` is public, so the splice
+// carries no secret and the program runs — `"msg: " ++ "pub"` is 8 bytes,
+// plus the 1 `stash` answers.
+effect Keep {
+  stash() -> Int
+  show_it() -> String
+}
+
+handler keeper with v = "public" {
+  stash() => resume(1) with v = "pub",
+  show_it() => resume("msg: {v}"),
+}
+
+fn main() = stash() + len(show_it()) ~> keeper

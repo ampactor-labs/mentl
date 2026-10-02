@@ -1,0 +1,15 @@
+// expect: refuse E_MissingVariable
+// An update naming no field of its handler writes nothing anything reads:
+// `m` is not a field beside `n`, so the write is refused rather than dropped.
+// Compiled clean on pin 53f7404b, where `n` stayed 0 (exit 0).
+effect Tick {
+  tick() -> Int
+  read() -> Int
+}
+
+handler h with n = 0 {
+  tick() => resume(0) with m = n + 1,
+  read() => resume(n),
+}
+
+fn main() = tick() + tick() + read() ~> h

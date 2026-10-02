@@ -1,0 +1,23 @@
+// expect: refuse E_RefinementRejected
+// A function held in a field of a written record state is every function
+// written there: `r.f` is `succ` at the install and `inv` after `arm_it`, so
+// applying it at 0 owes `inv`'s `Positive` of 0, refuted. Reading a written
+// state's parts as out of sight sent `r.f` to its class, which kept `succ`'s
+// contract and checked this clean; it divided by zero on pin 53f7404b.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn succ(n) = n + 1
+
+effect Pick {
+  arm_it() -> Int
+  call_it() -> Int
+}
+
+handler h with r = {f: succ} {
+  arm_it() => resume(0) with r = {f: inv},
+  call_it() => resume(r.f(0)),
+}
+
+fn main() with !Trap = arm_it() + call_it() ~> h

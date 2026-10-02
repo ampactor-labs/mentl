@@ -362,11 +362,35 @@ fn leaves_at_binder(b) = match graph_binder_of(b) {
       Some(c) => claimed_under(part_leaves(f.whole, f.step), c),
       None => part_leaves(f.whole, f.step),
     },
+    StateFact(f) => state_leaves(b, f.writes),
   },
   None => match graph_node_body(b) {
     NExpr(_) => graph_claims_of(b) |> fold(value_leaves(b, NoSelf), claimed_under),
     _ => [LUnknown],
   },
+}
+
+// A handler's state is every value written into it, each writer read as the
+// expression it is — the init's node is the state's binder, so reading it as
+// one would enter the state again. Inside its own writers the state is
+// unknown: sound, and short of the inductive reading, which would assume
+// there what every write must preserve.
+fn state_leaves(b, writes) = if walking_state(b) {
+  [LUnknown]
+} else {
+  writes |> flat_map(value_leaves(??, NoSelf)) ~> walking_state_of(b)
+}
+
+// No state entered: the root every value walk runs under, installed where
+// the graph is.
+handler no_state_walked {
+  walking_state(_) => resume(false),
+}
+
+// Inside state `b`'s writers: `b` answers yes, and any other state is asked
+// of the handler around this one — an arm's own perform resolves outward.
+handler walking_state_of(b) {
+  walking_state(x) => resume(x == b || walking_state(x)),
 }
 
 fn claimed_under(leaves, contract) = leaves |> map(LClaimed(contract, ??))
@@ -398,54 +422,94 @@ fn node_leaves(h) = match graph_binder_of(h) {
 // was not, the whole's own contracts are projected to the position (a
 // parameter's `(Int, Positive)` precondition answers `Positive` at its
 // second element).
-fn part_leaves(whole, step) = match part_nodes(whole, step) {
-  Some(nodes) => nodes |> flat_map(node_leaves),
+fn part_leaves(whole, step) = match part_read(whole, step, node_leaves_read) {
+  Some(leaves) => leaves,
   None => match step {
     PartRest => [LUnknown],
     _ => node_leaves(whole) |> map(project_leaf(??, step)),
   },
 }
 
-// The nodes a part can BE, read off its whole's construction; None when the
-// whole was not built where the walk sees. A constructor call of another
-// constructor holds no such part — the arm cannot match it — and answers no
-// nodes at all.
-fn part_nodes(whole, step) = match step {
-  PartWhole => Some([whole]),
-  _ => match graph_binder_of(whole) {
-    Some(fact) => match fact {
-      PartFact(f) => match part_nodes(f.whole, f.step) {
-        Some(outer) => all_parts(outer, step),
-        None => None,
+fn node_leaves_read(n) = Some(node_leaves(n))
+
+// The nodes a part can BE, read off its whole's construction, each read by
+// `read` where the walk stands; None when the whole was not built where the
+// walk sees. A constructor call of another constructor holds no such part —
+// the arm cannot match it — and answers no nodes at all. The reader runs
+// INSIDE every state the walk entered on the way, so a reader that meets one
+// of them again is cut there: a state's writer can read the state it writes
+// (`with acc = {count: acc.count + 1}`), and a walk that handed its nodes
+// back to be read after it returned recursed until the stack ran out.
+fn part_read(whole, step, read) = path_read(whole, [step], read)
+
+// The value at a path inside a whole. A destructured part's binder extends
+// the path into its own whole, so the reader is only ever forwarded and
+// applied where the path ends.
+fn path_read(whole, path, read) = match path {
+  [] => read(whole),
+  [step, ...rest] => match step {
+    PartWhole => path_read(whole, rest, read),
+    _ => match graph_binder_of(whole) {
+      Some(fact) => match fact {
+        PartFact(f) => path_read(f.whole, [f.step] ++ path, read),
+        ParamFact(_) => None,
+        StateFact(f) => state_path_read(whole, f.writes, path, read),
       },
-      ParamFact(_) => None,
-    },
-    None => match join_tails(whole) {
-      Some(tails) => all_parts(tails, step),
-      None => built_part(whole, step),
+      None => expr_path_read(whole, step, rest, read),
     },
   },
 }
 
-fn all_parts(wholes, step) = wholes |> fold(Some([]), gather_part(step, ??, ??))
+// The path into an expression: through each tail, or its construction.
+fn expr_path_read(whole, step, rest, read) = match join_tails(whole) {
+  Some(tails) => read_all(tails, path_read(??, [step] ++ rest, read)),
+  None => built_path_read(whole, step, rest, read),
+}
 
-fn gather_part(step, acc, whole) = match acc {
-  Some(nodes) => match part_nodes(whole, step) {
-    Some(more) => Some(nodes ++ more),
+// A state's path is each writer's, read off the writer as an expression;
+// inside its own writers the state is out of sight.
+fn state_path_read(b, writes, path, read) = if walking_state(b) {
+  None
+} else {
+  read_all(writes, writer_path_read(path, read, ??)) ~> walking_state_of(b)
+}
+
+fn writer_path_read(path, read, w) = match path {
+  [step, ...rest] => expr_path_read(w, step, rest, read),
+  [] => read(w),
+}
+
+// A reference's path is its binder's; a constructor named bare is a
+// construction with no fields; any other construction continues at the node
+// in the step's position.
+fn built_path_read(whole, step, rest, read) = match graph_node_body(whole) {
+  NExpr(VarRef(name)) => if constructor_named(name) {
+    nodes_path_read(bare_construction_part(step), rest, read)
+  } else {
+    match graph_link_of(whole) {
+      Some(b) => path_read(b, [step] ++ rest, read),
+      None => None,
+    }
+  },
+  _ => nodes_path_read(built_part(whole, step), rest, read),
+}
+
+fn nodes_path_read(found, rest, read) = match found {
+  Some(nodes) => read_all(nodes, path_read(??, rest, read)),
+  None => None,
+}
+
+fn read_all(hs, read) = hs |> fold(Some([]), gather_read(read, ??, ??))
+
+fn gather_read(read, acc, h) = match acc {
+  Some(found) => match read(h) {
+    Some(more) => Some(found ++ more),
     None => None,
   },
   None => None,
 }
 
 fn built_part(whole, step) = match graph_node_body(whole) {
-  NExpr(VarRef(name)) => if constructor_named(name) {
-    bare_construction_part(step)
-  } else {
-    match graph_link_of(whole) {
-      Some(b) => part_nodes(b, step),
-      None => None,
-    }
-  },
   NExpr(MakeTupleExpr(elems)) => match step {
     PartIndex(i) => nth_handle(elems, i),
     _ => None,
@@ -611,6 +675,7 @@ fn binder_path(b) = match graph_binder_of(b) {
   Some(fact) => match fact {
     ParamFact(_) => Some((b, [])),
     PartFact(f) => path_step(whole_path(f.whole), f.step),
+    StateFact(_) => None,
   },
   None => match graph_node_body(b) {
     NExpr(_) => flow_param_path(b),
@@ -675,6 +740,7 @@ fn param_result(ch) = match flow_param_path(ch) {
           None => None,
         },
         PartFact(_) => None,
+        StateFact(_) => None,
       },
       None => None,
     },
@@ -898,11 +964,22 @@ fn binder_flow_label(b) = match graph_binder_of(b) {
       None => Public,
     },
     PartFact(f) => flow_label_join(declared_label(f.declared), part_flow_label(f.whole, f.step)),
+    StateFact(f) => state_flow_label(b, f.writes),
   },
   None => match graph_node_body(b) {
     NExpr(_) => graph_claims_of(b) |> map(query_flow_label) |> fold(value_flow_label(b), flow_label_join),
     _ => Public,
   },
+}
+
+// A state is as classified as everything written into it, each writer read
+// as the expression it is. Inside its own writers it adds nothing, and that
+// is exact: a write's label joins the state's with what the write adds, so
+// the least label is the init's joined with every write's.
+fn state_flow_label(b, writes) = if walking_state(b) {
+  Public
+} else {
+  writes |> map(value_flow_label) |> fold(Public, flow_label_join) ~> walking_state_of(b)
 }
 
 fn declared_label(declared) = match declared {
@@ -912,10 +989,12 @@ fn declared_label(declared) = match declared {
 
 // A part is as classified as the nodes it can be where its whole was built
 // in sight, and as its whole where it was not.
-fn part_flow_label(whole, step) = match part_nodes(whole, step) {
-  Some(nodes) => labels_join(nodes),
+fn part_flow_label(whole, step) = match part_read(whole, step, flow_label_read) {
+  Some(labels) => labels |> fold(Public, flow_label_join),
   None => node_flow_label(whole),
 }
+
+fn flow_label_read(n) = Some([node_flow_label(n)])
 
 fn leaves_flow_label(leaves) = leaves |> map(leaf_flow_label) |> fold(Public, flow_label_join)
 

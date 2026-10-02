@@ -1670,7 +1670,9 @@ When an arm wants to evolve state, it uses a `with` clause on `resume`:
 inc() => resume() with n = n + 1
 ```
 
-The `with` clause lists state updates by field name. Unlisted state stays unchanged.
+The `with` clause lists state updates by field name. Unlisted state stays unchanged. A name that is not one of the handler's state fields is refused (`E_MissingVariable`, "state field: m") — the write would reach nothing anything reads (real, 2026-10-02; until then `resume(0) with m = n + 1` beside `with n = 0` compiled clean and dropped the write).
+
+**A state is every value written into it** (real, 2026-10-02, S5). At any read in an arm, a state field holds its init or whatever some arm last wrote, so everything the medium proves of it is proven of all of them: `100 / d` over `with d = 5` owes `d != 0` of every write — `with d = d - 5` in another arm leaves the division's claim open and refuses under `!Trap` — a classified write makes the state classified, and a function written into it is applied under every function it can be. A state no arm writes is its init at every read and proves what the init proves. A write that reads the state it writes (`with d = d + 1`) reads it there as unknown, so a counter's bound is owed rather than proven; reading it as the claim's own hypothesis — an inductive invariant — is the named next step (`Hβ.verify.state-reads-its-invariant`). Until this landed the proof read a state as its init alone, and all three of those shapes checked clean and failed at run.
 
 ### Installation
 

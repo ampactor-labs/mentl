@@ -4871,6 +4871,7 @@ fn stated_parameter(leaf) = match graph_link_of(leaf) {
     Some(fact) => match fact {
       ParamFact(_) => !learning_binder(b),
       PartFact(_) => false,
+      StateFact(_) => false,
     },
     None => false,
   },
@@ -8933,6 +8934,7 @@ fn published_params(params, handles, owner: String, span: ValidSpan) = {
           }
         },
         PartFact(_) => p,
+        StateFact(_) => p,
       },
       None => p,
     },
@@ -8978,6 +8980,7 @@ fn settle_own_guards(handles, row_handle) = handles |> each({
     Some(fact) => match fact {
       ParamFact(f) => late_charge(f.owes, graph_late_payers(f.guard), Some(row_handle)),
       PartFact(_) => (),
+      StateFact(_) => (),
     },
     None => (),
   },
@@ -9117,11 +9120,13 @@ fn claim_leaves(contract, h) =
   value_leaves(h, NoSelf) ++ (value_parts(contract) |> flat_map(part_claim_leaves(h, ??)))
 
 fn part_claim_leaves(h, part) = match part {
-  (step, pt) => match part_nodes(h, step) {
-    Some(nodes) => nodes |> flat_map(claim_leaves(pt, ??)),
+  (step, pt) => match part_read(h, step, claim_leaves_read(pt, ??)) {
+    Some(leaves) => leaves,
     None => path_leaves(h, [step]),
   },
 }
+
+fn claim_leaves_read(pt, n) = Some(claim_leaves(pt, n))
 
 // A guard's row as a call pays it: what its cell already holds is charged
 // at the call as closed names, and every cell still open — a declaration
@@ -9171,6 +9176,7 @@ fn carry_guard(row, param_h) = match graph_binder_of(param_h) {
   Some(fact) => match fact {
     ParamFact(f) => graph_binder_note(param_h, ParamFact({guard: f.guard, owes: row_join(f.owes, row), pre: f.pre})),
     PartFact(_) => (),
+    StateFact(_) => (),
   },
   None => (),
 }
@@ -9191,6 +9197,7 @@ fn learn_precondition(ah, contract) = if ty_carries_refinement(contract) && !is_
           Unrefined => (),
         },
         PartFact(_) => (),
+        StateFact(_) => (),
       },
       None => (),
     },
@@ -9346,6 +9353,7 @@ fn learn_fn_at(b, path, learn) = match graph_binder_of(b) {
       None => (),
     },
     PartFact(_) => (),
+    StateFact(_) => (),
   },
   None => (),
 }
@@ -9570,6 +9578,7 @@ fn learning_binder(b) = match graph_binder_of(b) {
       Unrefined => false,
     },
     PartFact(_) => false,
+    StateFact(_) => false,
   },
   None => false,
 }
@@ -9856,15 +9865,15 @@ fn claim_value_part(value_handle, span: ValidSpan, acc, part) =
 // contract, as one handed straight in does — and otherwise off the whole's
 // leaves at the part.
 fn value_part_claim(value_handle, span: ValidSpan, part) = match part {
-  (step, pt) => match part_nodes(value_handle, step) {
-    Some(nodes) => nodes |> fold(Some(true), claim_value_node(pt, span, ??, ??)),
+  (step, pt) => match part_read(value_handle, step, claim_value_node(pt, span, ??)) {
+    Some(verdicts) => verdicts |> fold(Some(true), and_decide),
     None => opaque_value_part(value_handle, [step], pt, span),
   },
 }
 
-fn claim_value_node(pt, span: ValidSpan, acc, n) = {
+fn claim_value_node(pt, span: ValidSpan, n) = {
   learn_precondition(n, pt)
-  and_decide(acc, claim_refinement(pt, n, span))
+  Some([claim_refinement(pt, n, span)])
 }
 
 // A part of a whole built out of sight is read off the whole's leaves at the
@@ -9939,15 +9948,14 @@ fn field_has_fn(f) = match f {
 fn cross_part(value_handle, span: ValidSpan, acc, part) = match part {
   (step, pt) => and_decide(
     acc,
-    match part_nodes(value_handle, step) {
-      Some(nodes) => nodes |> fold(Some(true), cross_node(pt, span, ??, ??)),
+    match part_read(value_handle, step, cross_node(pt, span, ??)) {
+      Some(verdicts) => verdicts |> fold(Some(true), and_decide),
       None => opaque_part(value_handle, [step], pt, span),
     }
   ),
 }
 
-fn cross_node(pt, span: ValidSpan, acc, n) =
-  and_decide(acc, apply_refinement_constraint(pt, n, span))
+fn cross_node(pt, span: ValidSpan, n) = Some([apply_refinement_constraint(pt, n, span)])
 
 // A function part of a whole built out of sight: a learning parameter's part
 // learns it, any other is read off the class; the refinements beside the
@@ -10330,6 +10338,7 @@ fn fn_leaves_at_binder(b, use_h) = match graph_binder_of(b) {
   Some(fact) => match fact {
     ParamFact(_) => [use_h],
     PartFact(f) => fn_leaves_of_part(f.whole, f.step, use_h),
+    StateFact(f) => state_fn_leaves(b, f.writes, use_h),
   },
   None => match graph_node_body(b) {
     NExpr(_) => fn_leaves(b),
@@ -10337,10 +10346,18 @@ fn fn_leaves_at_binder(b, use_h) = match graph_binder_of(b) {
   },
 }
 
-fn fn_leaves_of_part(whole, step, h) = match part_nodes(whole, step) {
-  Some(nodes) => nodes |> flat_map(fn_leaves),
+// A function held in a handler's state is every function written into it,
+// each writer read as the expression it is. Inside its own writers it is the
+// reference itself, read off its class like any value nothing here names.
+fn state_fn_leaves(b, writes, use_h) =
+  if walking_state(b) { [use_h] } else { writes |> flat_map(fn_leaves) ~> walking_state_of(b) }
+
+fn fn_leaves_of_part(whole, step, h) = match part_read(whole, step, fn_leaves_read) {
+  Some(leaves) => leaves,
   None => [h],
 }
+
+fn fn_leaves_read(n) = Some(fn_leaves(n))
 
 // A generic call's result is what its declared signature returns of its
 // arguments: a result typed by a quantified variable its row carries no
@@ -10635,11 +10652,13 @@ fn occurrence_sources(args, occ) = match occ {
 // the whole with the rest of the path.
 fn sources_at(h, path) = match path {
   [] => fn_leaves(h) |> map(SrcLeaf),
-  [step, ...rest] => match part_nodes(h, step) {
-    Some(nodes) => nodes |> flat_map(sources_at(??, rest)),
+  [step, ...rest] => match part_read(h, step, sources_read(rest, ??)) {
+    Some(sources) => sources,
     None => [SrcPart(h, path)],
   },
 }
+
+fn sources_read(rest, n) = Some(sources_at(n, rest))
 
 // What a callback hands back, at a path in its result: a lambda's body, a
 // declared function's return contract. A callback that is a learning
@@ -11660,7 +11679,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
     config_tparams
   )
   let state_binds = infer_handler_state_inits(state)
-  bind_handler_state_names(state_binds, hname, span)
+  bind_handler_state_names(state_binds, arms, hname, span)
   each(
     (arm) => {
       env_scope_enter()
@@ -11844,17 +11863,61 @@ fn bind_handler_config_params(config_tparams, hname) = each(
   config_tparams
 )
 
-fn bind_handler_state_names(state_binds, hname, span: ValidSpan) = each(
-  {
-    (name, ih) => env_extend(
+fn bind_handler_state_names(state_binds, arms, hname, span: ValidSpan) = {
+  let updates = arms |> flat_map(arm_updates)
+  state_binds |> each(bind_handler_state_name(updates, hname, span, ??))
+  updates |> each(refuse_stray_update(state_binds, ??))
+}
+
+// A state field binds where its init stands, and the init is one of its
+// values among the arms' writes: noted before any arm is judged, so no claim
+// an arm raises over the state reads it as its init alone.
+fn bind_handler_state_name(updates, hname: String, span: ValidSpan, bind) = match bind {
+  (name, ih) => {
+    env_extend(
       name,
       Frozen([], TVar(ih)),
       Located(span, LetBinding(name, Declared(hname))),
       ValueScheme
-    ),
+    )
+    graph_binder_note(
+      ih,
+      StateFact({writes: [ih] ++ (updates |> filter(update_names(name, ??)) |> map(update_value))})
+    )
   },
-  state_binds
-)
+}
+
+// Every `resume … with` update in an arm's body, read off the one total
+// child projection before the arm is judged.
+fn arm_updates(arm) = subtree_updates(node_handle(handler_arm_body(arm)))
+
+fn subtree_updates(h) = {
+  let body = graph_node_body(h)
+  let here = match body {
+    NExpr(ResumeExpr(_, updates)) => updates,
+    _ => [],
+  }
+  here ++ (body_child_handles(body) |> flat_map(subtree_updates))
+}
+
+fn update_names(name: String, upd) = state_field_name(upd) == name
+
+fn update_value(upd) = node_handle(state_field_init(upd))
+
+// An update naming no field of its handler writes nothing anything reads,
+// so it is refused, never dropped: `resume(0) with m = n + 1` beside `with n
+// = 0` compiled clean and `n` stayed 0 (pin 53f7404b).
+fn refuse_stray_update(state_binds, upd) = if any(bind_named(state_field_name(upd), ??), state_binds) {
+  ()
+} else {
+  match state_field_init(upd) {
+    N(_, s, _) => report(EMissingVariable("state field: {state_field_name(upd)}", s)),
+  }
+}
+
+fn bind_named(name: String, bind) = match bind {
+  (n, _) => n == name,
+}
 
 // ─── Resume cardinality — the arm's continuation multiplicity (Usage) ─────
 //

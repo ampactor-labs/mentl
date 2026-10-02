@@ -2752,39 +2752,57 @@ where its tail was built, and the tails out of sight to project — so a
 pattern reads each and a claim claims the built nodes where they stand and
 owes only the rest.
 
-`Hβ.verify.handler-state-reads-only-its-init` — OPEN, BORN 2026-10-02 (found
-after S4's march), PREEMPTING D4. A handler's state name is bound to its
-INIT's cell (`bind_handler_state_names`), so every reference's link reaches
-the init expression, and every walk that reads a binder — a value's leaves,
-its `!Flow` label, a function value's leaves — answers the init alone; a
-`resume … with` write is unified into the cell's shape and read by nothing.
-Measured on pin 53f7404b and boot 1a68ecc0 alike: `handler h with d = 5 {
-ask() => resume(100 / d), shrink() => resume(0) with d = d - 5 }` checks
-clean under `!Trap` and divides by zero (exit 134), as do `inv(d)` over `n:
-Positive` and a function written into state (`with f = inv`, the init
-`succ`) applied at 0; a classified value written into a public-initialized
-state splices clean where a classified init refuses. The runtime values are
-right — the proof reads the init, the program does not — and a state no arm
-writes still proves what its init states (exit 20). THE FORM: a state field
-is its own binder whose value edges are the init and every write.
-Registration mints one binder per field — the name bound to it, its cell
-unified with the init's — and, before any arm is judged, walks the arms for
-`resume … with name = e` updates (the one total child projection,
-`body_child_handles`) and notes a state fact on the binder naming the init
-and every update expression. Every binder reader answers the join of the
-writers: the value walk their leaves, the `!Flow` read their labels' join, a
-function value's walk their function leaves, a pattern their parts. A write
-that reads the state (`with d = d + 1`, through a let alike) re-enters the
-binder, so each walk carries the binders it is inside and reads a re-entered
-state as unknown — EXACT for the `!Flow` label, whose writes join the state
-with what they add (the least fixpoint is the init's label joined with every
-write's), and SOUND for refinements, where reading the hypothesis instead is
-the inductive invariant (the predicate holds of the init and every write
-preserves it) and the precision step after this one. A write not yet judged
-where a claim is decided reads unknown (its references have no link yet), so
-an earlier arm's claim over a state a later arm writes is owed, never
-proven. The race rule's re-walk of the arms by name
-(`handler_state_is_written`, lower) reads the fact instead, and deletes.
+`Hβ.verify.handler-state-reads-only-its-init` — CLOSED 2026-10-02 (S5),
+born the same day after S4's march. A handler's state name was bound to its
+INIT's cell, so every reference's link reached the init expression and every
+walk that reads a binder answered the init alone; a `resume … with` write was
+unified into the cell's shape and read by nothing. Measured on pin 53f7404b
+and boot 1a68ecc0 alike: `handler h with d = 5 { ask() => resume(100 / d),
+shrink() => resume(0) with d = d - 5 }` checked clean under `!Trap` and
+divided by zero (exit 134), as did `inv(d)` over `n: Positive` and a function
+written into state applied at 0; a classified write into a public-initialized
+state spliced clean. A state field binds where its init stands, a binder
+fact names every writer (`StateFact`, noted by a pre-pass over the arms
+before any arm is judged), and every walk that reads a binder reads the join
+of the writers under a handler chain of the states entered (`StateWalk`), a
+re-entered state reading as unknown; the part walk applies its reader inside
+every state it entered (`path_read`). Found and closed with it: an update
+naming no field of its handler was dropped with no diagnostic, and is
+refused. Micros `mn-state-*`, crown `leak-state-write` /
+`sound-state-unwritten`.
+
+`Hβ.verify.state-reads-its-invariant` — OPEN, BORN 2026-10-02 with S5. A
+state re-entered inside its own writers reads as unknown, so a write that
+reads the state proves nothing of it: `with d = d + 1` from 5 owes `d != 0`
+at `100 / d` (true of the program, an `Int` wrapping through 0, but the same
+cut leaves a state whose every write keeps its bound owing it too). And a
+writer in an arm judged after the claim reads unknown where its references
+have no link yet, so the verdict follows arm order: with `reset() => { let v
+= 7; resume(0) with d = v }` after `ask() => resume(100 / d)` the division is
+owed, with `reset` first it is proven (exit 14; both measured on the S5
+tree). Sound both ways. THE FORM: a claim over a state is decided at the
+handler's exit, every writer judged, by induction — it holds of the init
+and every write preserves it, the state read inside its writers AS the
+claim's hypothesis rather than as unknown — once per (state, predicate); and
+an authored state annotation (`with d: Positive = 5`), a claim every writer
+owes and every reader may stand on, as a let's annotation is.
+
+`Hβ.verify.class-read-keeps-one-contract` — OPEN, BORN 2026-10-02 with S5,
+SOUNDNESS, NEXT (S6). A function value the edge walks cannot see — a part of
+a call's result, a reference cut inside a state's own writers — is read off
+its unification class, and the class keeps the contract of whichever
+function unified into it first: with `fn pick(c) = if c { {f: succ} } else {
+{f: inv} }`, `pick(false).f(0)` under `!Trap` checks clean and divides by
+zero (exit 134) on boots 1a68ecc0, 53f7404b and the S5 tree, while the same
+program with the branches swapped refuses, and `same(pick(false)).f(0)`
+through a generic identity leaks alike. P0's merged-function face, closed by
+H4 wherever the function is in sight, survives here. THE FORM: the class
+merges function contracts as a lattice — a unification of two function
+types demands at each parameter what either demands and provides at the
+result what both provide — so a read off the class over-approximates every
+function merged into it, whatever the order; and a part of a call's result
+is read through the callee's return tails where its body is in sight, so the
+class is the fallback only where nothing is.
 
 `Hβ.emit.nested-record-literal-answers-the-inner-pointer` — CLOSED
 2026-10-02 (S4), found by the nested-part claim's fixture. A record literal

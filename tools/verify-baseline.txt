@@ -1256,4 +1256,13 @@ authored_ref_max: 703
 # one binary. The source's own growth (+175 net wheel lines) reads inside
 # it — the boot on this source 975,036 KB against the H4 pin's m3 leg
 # 978,500 KB. Same rule: ~1% over the highest reading of the landed form.
-selfcompile_peak_kb_max: 995000
+# 2026-10-02 (S5): 995000 -> 1000000. Fixed input — the candidate's own
+# wheel source through both compilers: the boot (53f7404b) 979,780 KB with
+# the judgment's heap high-water at 461.3 MB, the candidate 976,060 /
+# 977,788 / 989,188 KB at 464.2 MB (deterministic across the three) — +2.8
+# MB of judgment for the state walk: a writers fact per state field, a
+# handler install around each state's writers on every read, and the part
+# walk's reader carried down its path. The rest is spread, 13.1 MB across
+# three identical runs of one binary. Same rule: ~1% over the highest
+# reading of the landed form.
+selfcompile_peak_kb_max: 1000000

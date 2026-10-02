@@ -1,0 +1,19 @@
+// expect: refuse E_EffectMismatch
+// The cycle through a let: the write `k` is `d + 1`, read back through the
+// let's value, so the walk re-enters the state it is reading and must cut
+// there rather than loop. The judgment terminates, and the claim is owed.
+// Compiled clean under `!Trap` on pin 53f7404b (exit 16).
+effect Ask {
+  ask() -> Int
+  tick() -> Int
+}
+
+handler h with d = 5 {
+  ask() => resume(100 / d),
+  tick() => {
+    let k = d + 1
+    resume(0) with d = k
+  },
+}
+
+fn main() with !Trap = tick() + ask() ~> h

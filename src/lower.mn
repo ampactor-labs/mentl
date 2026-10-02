@@ -3497,38 +3497,24 @@ fn handler_arm_effects(hname: String) = match env_lookup(hname) {
 
 // A handler is stateful FOR THE RACE RULE when an arm WRITES the state
 // record — a `resume … with` update, the one writer SYNTAX gives state —
-// read off the decl's arms through the one total child projection
-// (`body_child_handles`, graph.mn). Declaring state is not writing it: a
+// read off each field's state fact, which the judgment noted with every
+// writer before any arm was judged (infer.mn `bind_handler_state_name`), an
+// update naming no field refused there. Declaring state is not writing it: a
 // handler whose arms only read `n` shares one immutable record across
-// instances, exactly as a config parameter would. The walk is structural
-// over the AST (a finite tree), so it carries no fuel to run out of — a
-// missed write would be a false acceptance.
+// instances, exactly as a config parameter would.
 fn handler_state_is_written(hname: String) = match handler_decl_of(hname) {
-  Some((_, _, arms)) => any_arm_writes_state(arms),
+  Some((_, state, _)) => any(state_field_written, state),
   None => false,
 }
 
-fn any_arm_writes_state(arms) = match arms {
-  [] => false,
-  [a, ...rest] => if subtree_writes_state(node_handle(handler_arm_body(a))) {
-    true
-  } else {
-    any_arm_writes_state(rest)
+// A field is written when its fact names a writer beyond its init.
+fn state_field_written(sf) = match graph_binder_of(node_handle(state_field_init(sf))) {
+  Some(fact) => match fact {
+    StateFact(f) => len(f.writes) > 1,
+    ParamFact(_) => false,
+    PartFact(_) => false,
   },
-}
-
-fn subtree_writes_state(h) = {
-  let body = graph_node_body(h)
-  let here = match body {
-    NExpr(ResumeExpr(_, updates)) => len(updates) > 0,
-    _ => false,
-  }
-  if here { true } else { subtree_writes_state_children(body_child_handles(body)) }
-}
-
-fn subtree_writes_state_children(hs) = match hs {
-  [] => false,
-  [ch, ...rest] => if subtree_writes_state(ch) { true } else { subtree_writes_state_children(rest) },
+  None => false,
 }
 
 // Run the exact zero-argument boundary and immediately project its one-field

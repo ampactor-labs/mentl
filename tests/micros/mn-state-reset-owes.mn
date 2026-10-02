@@ -1,0 +1,16 @@
+// expect: refuse E_EffectMismatch
+// A write of a constant is one of the state's values: `with d = 0` makes
+// `100 / d` a division by zero whenever `reset` runs first, so the division
+// cannot be proven total, its `Trap` is owed, and `!Trap` refuses. Checked
+// clean and divided by zero on pin 53f7404b (exit 134).
+effect Ask {
+  ask() -> Int
+  reset() -> Int
+}
+
+handler h with d = 5 {
+  ask() => resume(100 / d),
+  reset() => resume(0) with d = 0,
+}
+
+fn main() with !Trap = reset() + ask() ~> h
