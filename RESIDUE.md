@@ -2787,22 +2787,78 @@ claim's hypothesis rather than as unknown — once per (state, predicate); and
 an authored state annotation (`with d: Positive = 5`), a claim every writer
 owes and every reader may stand on, as a let's annotation is.
 
-`Hβ.verify.class-read-keeps-one-contract` — OPEN, BORN 2026-10-02 with S5,
-SOUNDNESS, NEXT (S6). A function value the edge walks cannot see — a part of
-a call's result, a reference cut inside a state's own writers — is read off
-its unification class, and the class keeps the contract of whichever
-function unified into it first: with `fn pick(c) = if c { {f: succ} } else {
-{f: inv} }`, `pick(false).f(0)` under `!Trap` checks clean and divides by
-zero (exit 134) on boots 1a68ecc0, 53f7404b and the S5 tree, while the same
-program with the branches swapped refuses, and `same(pick(false)).f(0)`
-through a generic identity leaks alike. P0's merged-function face, closed by
-H4 wherever the function is in sight, survives here. THE FORM: the class
-merges function contracts as a lattice — a unification of two function
-types demands at each parameter what either demands and provides at the
-result what both provide — so a read off the class over-approximates every
-function merged into it, whatever the order; and a part of a call's result
-is read through the callee's return tails where its body is in sight, so the
-class is the fallback only where nothing is.
+`Hβ.verify.class-read-keeps-one-contract` — CLOSED 2026-10-02 (S6), born
+with S5. With `fn pick(c) = if c { {f: succ} } else { {f: inv} }`,
+`pick(false).f(0)` under `!Trap` checked clean and divided by zero (exit
+134) on boots 1a68ecc0, 53f7404b and 85218488, and refused with the branches
+swapped. The form this entry proposed — the class merging contracts as a
+lattice at unify — was refuted by reading unify: two bound roots never link
+and each keeps its own type; only a FREE cell aliases the first, and the
+class a reader meets out of sight is always a PUBLISHED or STATED type. The
+census over twenty-three probes found three mechanisms. An inferred return
+published its class: a declaration or a lambda returning functions now
+publishes, at every function position of its return, the meet of every
+function the position can hold (`publish_position`, the path writer one home
+`fn_at_path`). A charge with no frame was dropped: the authored return's
+claim ran after its frame's exit and is raised inside it
+(`claim_authored_return`), and a module value let's init — judged in no
+frame — answers to the root gate off its nodes' charges
+(`report_unhandled_init`). A stated position was unified and never claimed:
+a nominal record's construction, a `resume` into an op's declared return,
+and a function's RESULT parts where it crosses into a parameter
+(`cross_result_fns`) each claim now. Crown `leak-fn-part-returned`,
+`leak-resume-fn-crosses`, `leak-authored-return-crosses`,
+`leak-nominal-field-crosses`, `leak-root-module-init`; micros `mn-fn-part-*`,
+`mn-fn-authored-option-return`, `mn-resume-record-of-fns`,
+`mn-nominal-field-refuted`.
+
+`Hβ.verify.op-return-is-a-contract` — OPEN, BORN 2026-10-02 with S6,
+PRECISION. A performer never stands on an op's declared refined return:
+`effect E { get_pos() -> Positive }` resumed with `5` refuses `100 /
+get_pos()` under `!Trap` (E_EffectMismatch, the division's claim left
+open), measured on the S6 tree. Sound: the value is never trusted, so
+nothing unproven runs. The resume
+claims the op's declared return as a stated position since S6, but the
+continuation's cell holds SHAPES, so a refined value return reaches the
+claim as its base and claims nothing. THE FORM: the arm carries the op's
+declared return beside its continuation (`inf_enter_arm`), every resume
+claims it — the resume in a called fn first, which has no arm types
+(`Hβ.infer.resume-in-a-called-fn-has-no-arm-types`) — and the value walk
+reads an op call's result as a declared function's return is read.
+
+`Hβ.effects.executable-row-includes-inits` — OPEN, BORN 2026-10-02 with S6,
+DESIGN. A module value let's init runs before `main`, so the executable
+performs what its inits perform, but nothing states what an init may
+perform: `let x = 100 / zero()` traps at init under `fn main() with !Trap`
+(exit 134 on the S6 tree), `main`'s negation judging `main` alone. Since S6
+an init's unhandled effect refuses at the root as `main`'s does. THE FORM:
+an executable's declared row is `main`'s, and its negations bind the inits
+too — an executable is its inits, then `main` — read at the root gate off
+each init's nodes as the unhandled check reads them; the init's row
+projected at the let's address beside its type.
+
+`Hβ.fmt.nominal-record-renders-its-variant` — OPEN, BORN 2026-10-02 with S6.
+`mentl fmt` renders `type R = {den: Positive}` as `type R = R({den:
+Positive})`: both spellings parse to one single-variant tree and the render
+writes the variant, so names are conserved while SYNTAX's documented form —
+`type X = {f1: T1, …}` — is never written, and principle 2 rejects the
+redundant one. The wheel's own records carry the variant form because fmt
+wrote them (`Gate`, `StateFact`, `SegmentVerdict`). THE FORM: the render
+reads the single-record shape (a lone variant named as its type, its one
+payload a record) and writes the record form; one re-render of the wheel.
+
+`Hβ.synth.candidate-row-is-unjudged` — OPEN, BORN 2026-10-02 with S6. The
+proof gate never judges a candidate's own row: at a hole in `fn mk() -> Box
+with !Alloc`, the medium proposes `Box(??)`, whose construction allocates,
+and accepting it refuses (measured on the S6 tree). The candidate is judged
+with no frame open, so its charges are noted on its nodes and read by
+nothing; the vocabulary filter re-derives each call's row from the callee's
+declared scheme instead. THE FORM: `candidate_proven` reads the candidate's
+row off its nodes (`row_of_subtree`) against the hole's allowed row — and
+decides first what an undeclared declaration's hole may widen to, since its
+closed inferred row is Pure for a body that is only a hole and would refuse
+every construction (`tests/proposals/record-fill.mn`): substrate cost
+admitted unless declared absent, every other effect the closed row's.
 
 `Hβ.emit.nested-record-literal-answers-the-inner-pointer` — CLOSED
 2026-10-02 (S4), found by the nested-part claim's fixture. A record literal

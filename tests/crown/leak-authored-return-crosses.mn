@@ -1,0 +1,13 @@
+// CROWN refinement (S6, 2026-10-02): an authored return is a stated
+// position, claimed inside the declaration's frame. `inv` crossing into `->
+// (Int) -> Int` pays the guard of the `Positive` it demands, in `mk`'s row,
+// and `mk()` brings it to `!Trap`. The claim ran after the frame's exit and
+// its payment was dropped, so this checked clean and divided by zero on pin
+// 85218488. Expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn mk() -> (Int) -> Int = inv
+
+fn main() with !Trap = mk()(0)

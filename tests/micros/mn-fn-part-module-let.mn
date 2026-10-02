@@ -1,0 +1,16 @@
+// expect: refuse E_RefinementRejected
+// A module value bound to a call's result carries what the call's
+// declaration publishes: `table.f` is the meet of `succ` and `inv`, so
+// `table.f(0)` is refuted. On pin 85218488 it kept `succ`'s contract and this
+// divided by zero (exit 134).
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn succ(n) = n + 1
+
+fn pick(c) = if c { {f: succ} } else { {f: inv} }
+
+let table = pick(false)
+
+fn main() with !Trap = table.f(0)

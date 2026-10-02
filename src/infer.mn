@@ -249,6 +249,14 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     resume() with stack = drop_last(stack) ++ [updated]
   },
   inf_add_row(row) => if len(stack) == 0 {
+    // No frame is open only where nothing declares a row: a module value
+    // let's init and a proposer's candidate. Each charge was noted on the
+    // node that makes it first (`inf_add_row_at`), which is where a reader
+    // finds it: the executable root gate reads a value let's init row off
+    // its nodes (`report_unhandled_init`); the proof gate does not yet read
+    // a candidate's (`Hβ.synth.candidate-row-is-unjudged`). An authored
+    // return's claim reached here after its declaration's frame had closed,
+    // and its payment was dropped until S6 moved the claim inside.
     resume()
   } else {
     // The union is a plain value join — never a resolve: a fold here
@@ -2863,131 +2871,118 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // the honest fact here is what the developer wrote.
   declare_authored_owns(params, span)
   infer_expr(body_node)
+  // The authored return is claimed INSIDE the declaration's frame, where a
+  // function crossing into it pays the guard of each demand the stated type
+  // does not provide, and before the frame's own guards settle. Raised after
+  // the exit, the payment joined whatever frame was open — none at module
+  // scope, where it was dropped — so `fn mk() -> (Int) -> Int = inv` with
+  // `mk()(0)` under `!Trap` checked clean and divided by zero (pin
+  // 852184886f52a848, S6). The claim reads the body's own edges, so it
+  // needs nothing the return unify below adds.
+  claim_authored_return(ret_ann, body_node, name, span)
   settle_own_guards(param_handles, row_handle)
   consume_exit_fn()
   let declared_effs = exit_frame()
   // Unify body's type with the declared return.
   match body_node {
     N(_, _, body_handle) => {
-      unify(body_handle, ret_handle, span, FnReturn(name, Inferred("body")))
       // The `-> RetTy` annotation is PINNED BEFORE the body (the assumed-
-      // signature slot value above), so the return unify just ran the body
-      // against the bound cell — a disagreeing body surfaces E_TypeMismatch
-      // through that one edge. What remains here is value-proof R2: the
-      // refined annotation discharged against the judged body node (the
-      // let-annotation's twin — `fn choose() -> Positive = 1` proves 0 < 1
-      // on the literal; a non-constant body stays honest V_Pending), and it
-      // runs AFTER the body precisely so the decide reads judged cells —
-      // with the IH already visible through the pinned slot (the old
-      // post-body rebind landed after this decide and the decl's own
-      // obligation read the join's bare base; probe-measured 2026-08-12).
-      match ret_ann {
-        N(ret_body, ret_span, _) => {
-          match ret_body {
-            NTypeAnn(ann_ty) => match quantify_ctor_ty(ann_ty, [], Located(span, Declared(name))) {
-              (resolved_ann, _q) => match body_node {
-                N(_, _, body_h) => {
-                  claim_refinement(resolved_ann, body_h, ret_span)
-                  ()
-                },
-              },
-            },
-            _ => (),
-          }
-          // H4: every fn return is an escape boundary — and a TRANSFER. The body
-          // value tagged with THIS fn's region re-tags into the parent's (the
-          // caller owns it now — Hβ.own.region-return-transfer); an outer-region
-          // or global tag already outlives this return; a dead-region tag is the
-          // genuine escape, reported with both spans. The check runs INSIDE the
-          // body region (the arm reads the stack top to know which region is
-          // "mine"); the exit follows.
-          check_escape(body_handle, span)
-          region_exit(body_region)
-          // ─── Ownership inference (§4⑤, arm 5) — the Hylo-quiet bar ──────
-          // After the body is inferred, classify each Unmarked param's ownership
-          // from its body use-count (0/1/2+ → Unmarked/Own/Ref); an authored own/ref
-          // becomes a CONSTRAINT the inferred is checked against. The inferred params
-          // are written BACK into the fn's TFun node (over the SAME param handles, so
-          // types stay live as TVar(h)) — so lower's Consume-elision and affine_ledger
-          // read the inferred ownership LIVE (Carried-Truth: written once at infer, read
-          // live everywhere, never re-derived per consumer). The lifetime hazard — a
-          // value outliving its region — is proven by check_escape (the region tracker,
-          // above at :434).
-          // REMOVED here (Stage 1b): a syntactic escape check that fired on
-          // use-count-plus-bare-return with no hazard model — 356 false alarms, min and
-          // every fold accumulator among them. The region tracker covers the real hazard.
-          // A return no annotation states is handed to a caller this body
-          // cannot see (`hand_on_value`); an authored one is crossed by its
-          // claim above.
-          match pinned_ret {
-            TVar(_) => hand_on_value(body_handle),
-            _ => (),
-          }
-          let inferred_params = infer_ownership(resolved_params, body_node)
-          graph_bind(
-            handle,
-            // The ret slot carries the SAME pinned value the pre-body signature
-            // rides: a declared return is the fn's postcondition, a contract,
-            // and a function type's interior is where contracts live. The
-            // params publish what the body learned of them (published_params).
-            TFun(
-              published_params(inferred_params, param_handles, name, span),
-              published_ret(pinned_ret, body_handle, ret_handle),
-              mk_ef_open([], row_handle)
-            ),
-            Located(span, Inferred("ownership-resolved params of '{name}'"))
-          )
-          // ─── Refinement narrowing (§4⑥, arm 6) — the verified cursor ────
-          // Walk the body's if/match/assert sites; at each index site under a proven
-          // path condition, write the narrowing edge into the graph (graph_narrow_set).
-          // lower's bounds-check read (graph_narrow_at) elides any check the path already
-          // proves (Carried-Truth: the narrowing is written ONCE here, read live at
-          // lower — never re-derived; the elision is a PROJECTION, not a recomputation).
-          infer_refinement_narrowing(body_node)
-          // ─── Declared effects enforcement (gap 1 + 2) ──────────────────
-          // If the FnStmt carries a declared effect row, verify the inferred
-          // body's row is subsumed by it. If so, rebind row_handle to the
-          // declared row so callers see the API contract. If not, emit
-          // E_EffectMismatch (body does more than the declaration admits).
-          // The declared row IS the gate — row_subsumes is the proof engine.
-          // `declared_effs` arrived with inf_exit_fn's return above: the popped
-          // frame's own declaration, so a nested fn can never clobber this one's.
-          if len(declared_effs) > 0 {
-            // D3 — `with Pure` is absolute: body row must be the pure row (not
-            // merely ⊆ some sugar row named Pure). When Pure appears
-            // anywhere in declared_effs, the declared row collapses to
-            // the pure row and any other declared names are a contradiction (a
-            // single warning surfaces them precisely in the contradiction
-            // diagnostic).
-            let has_pure = has_pure_declared(declared_effs)
-            // The registration fold runs FIRST, so the instance typing,
-            // the signed fold's meet (absent_contradicted_by), and the
-            // pin all judge the value-distinct forms — resolution
-            // happens once, at the one env-whole point, never inside
-            // the row algebra's compares.
-            let resolved_effs = resolve_declared_instances(declared_effs)
-            check_instance_args(resolved_effs, span)
-            let declared_row = build_declared_row(resolved_effs)
-            // THE GATE RUNS ON THE RESOLVED ROW, at every exit — a cycle
-            // member's, a HOF's, a solo's alike. It used to PARK a cycle
-            // member's gate until the group's chains closed, because the
-            // exit check was vacuous over a free edge and had to be re-run
-            // once the co-member resolved it (a deferral channel, a group
-            // drain, a pass-tail drain, and the signature-frees partition
-            // that decided which parks could ever resolve). With the gate
-            // carried BY the free edge, the write that resolves it is the
-            // check: the exit installs unconditionally and nothing parks.
-            enforce_row_gate(name, declared_row, has_pure, row_handle, span)
-          }
-          env_scope_exit()
-          // Generalize and re-extend. Located: this is the entry every later
-          // reader resolves (the flat env scans newest-first), so the decl span
-          // rides the reason for the Why chain and the executable gate's
-          // unhandled-effect diagnostic.
-          let scheme = generalize(handle)
-          env_extend(name, scheme, Located(span, Declared(name)), FnScheme)
-        },
+      // signature slot value above), so this unify runs the body against the
+      // bound cell — a disagreeing body surfaces E_TypeMismatch through that
+      // one edge.
+      unify(body_handle, ret_handle, span, FnReturn(name, Inferred("body")))
+      // H4: every fn return is an escape boundary — and a TRANSFER. The body
+      // value tagged with THIS fn's region re-tags into the parent's (the
+      // caller owns it now — Hβ.own.region-return-transfer); an outer-region
+      // or global tag already outlives this return; a dead-region tag is the
+      // genuine escape, reported with both spans. The check runs INSIDE the
+      // body region (the arm reads the stack top to know which region is
+      // "mine"); the exit follows.
+      check_escape(body_handle, span)
+      region_exit(body_region)
+      // ─── Ownership inference (§4⑤, arm 5) — the Hylo-quiet bar ──────
+      // After the body is inferred, classify each Unmarked param's ownership
+      // from its body use-count (0/1/2+ → Unmarked/Own/Ref); an authored own/ref
+      // becomes a CONSTRAINT the inferred is checked against. The inferred params
+      // are written BACK into the fn's TFun node (over the SAME param handles, so
+      // types stay live as TVar(h)) — so lower's Consume-elision and affine_ledger
+      // read the inferred ownership LIVE (Carried-Truth: written once at infer, read
+      // live everywhere, never re-derived per consumer). The lifetime hazard — a
+      // value outliving its region — is proven by check_escape (the region tracker,
+      // above at :434).
+      // REMOVED here (Stage 1b): a syntactic escape check that fired on
+      // use-count-plus-bare-return with no hazard model — 356 false alarms, min and
+      // every fold accumulator among them. The region tracker covers the real hazard.
+      // A return no annotation states is handed to a caller this body
+      // cannot see (`hand_on_value`); an authored one is crossed by its
+      // claim above.
+      match pinned_ret {
+        TVar(_) => hand_on_value(body_handle),
+        _ => (),
       }
+      let inferred_params = infer_ownership(resolved_params, body_node)
+      graph_bind(
+        handle,
+        // The ret slot carries the SAME pinned value the pre-body signature
+        // rides: a declared return is the fn's postcondition, a contract,
+        // and a function type's interior is where contracts live. The
+        // params publish what the body learned of them (published_params).
+        TFun(
+          published_params(inferred_params, param_handles, name, span),
+          published_ret(pinned_ret, body_handle, ret_handle),
+          mk_ef_open([], row_handle)
+        ),
+        Located(span, Inferred("ownership-resolved params of '{name}'"))
+      )
+      // ─── Refinement narrowing (§4⑥, arm 6) — the verified cursor ────
+      // Walk the body's if/match/assert sites; at each index site under a proven
+      // path condition, write the narrowing edge into the graph (graph_narrow_set).
+      // lower's bounds-check read (graph_narrow_at) elides any check the path already
+      // proves (Carried-Truth: the narrowing is written ONCE here, read live at
+      // lower — never re-derived; the elision is a PROJECTION, not a recomputation).
+      infer_refinement_narrowing(body_node)
+      // ─── Declared effects enforcement (gap 1 + 2) ──────────────────
+      // If the FnStmt carries a declared effect row, verify the inferred
+      // body's row is subsumed by it. If so, rebind row_handle to the
+      // declared row so callers see the API contract. If not, emit
+      // E_EffectMismatch (body does more than the declaration admits).
+      // The declared row IS the gate — row_subsumes is the proof engine.
+      // `declared_effs` arrived with inf_exit_fn's return above: the popped
+      // frame's own declaration, so a nested fn can never clobber this one's.
+      if len(declared_effs) > 0 {
+        // D3 — `with Pure` is absolute: body row must be the pure row (not
+        // merely ⊆ some sugar row named Pure). When Pure appears
+        // anywhere in declared_effs, the declared row collapses to
+        // the pure row and any other declared names are a contradiction (a
+        // single warning surfaces them precisely in the contradiction
+        // diagnostic).
+        let has_pure = has_pure_declared(declared_effs)
+        // The registration fold runs FIRST, so the instance typing,
+        // the signed fold's meet (absent_contradicted_by), and the
+        // pin all judge the value-distinct forms — resolution
+        // happens once, at the one env-whole point, never inside
+        // the row algebra's compares.
+        let resolved_effs = resolve_declared_instances(declared_effs)
+        check_instance_args(resolved_effs, span)
+        let declared_row = build_declared_row(resolved_effs)
+        // THE GATE RUNS ON THE RESOLVED ROW, at every exit — a cycle
+        // member's, a HOF's, a solo's alike. It used to PARK a cycle
+        // member's gate until the group's chains closed, because the
+        // exit check was vacuous over a free edge and had to be re-run
+        // once the co-member resolved it (a deferral channel, a group
+        // drain, a pass-tail drain, and the signature-frees partition
+        // that decided which parks could ever resolve). With the gate
+        // carried BY the free edge, the write that resolves it is the
+        // check: the exit installs unconditionally and nothing parks.
+        enforce_row_gate(name, declared_row, has_pure, row_handle, span)
+      }
+      env_scope_exit()
+      // Generalize and re-extend. Located: this is the entry every later
+      // reader resolves (the flat env scans newest-first), so the decl span
+      // rides the reason for the Why chain and the executable gate's
+      // unhandled-effect diagnostic.
+      let scheme = generalize(handle)
+      env_extend(name, scheme, Located(span, Declared(name)), FnScheme)
     },
   }
   each(report_guard_note, graph_guard_drain())
@@ -3698,6 +3693,17 @@ fn infer_expr(ref node) = match node {
                 let r_h = mint(Inferred("op result at resume"))
                 graph_bind(r_h, resume_input, Located(span, Inferred("resume carries the continuation input")))
                 unify(vh, r_h, span, Inferred("resume carries the continuation input"))
+                // The op's declared return is a STATED position the resumed
+                // value crosses into, in the arm's frame: a function demanding
+                // more than the declared type provides pays its guard here,
+                // where the performer, reading the op's declared type, cannot.
+                // Unified alone, `resume(inv)` into `get_fn() -> (Int) -> Int`
+                // let `get_fn()(0)` under `!Trap` divide by zero (pin
+                // 852184886f52a848, S6). A refined value return reaches here
+                // as its shape — the continuation's cell holds shapes — and
+                // the performer never stands on it
+                // (`Hβ.verify.op-return-is-a-contract`).
+                claim_refinement(resume_input, vh, span)
                 graph_bind(handle, answer, Located(span, Inferred("resume yields the continuation answer")))
                 // A HELD continuation is a record this resume CALLS, so its
                 // remainder runs here, inside whatever frame holds the resume —
@@ -5026,7 +5032,7 @@ fn infer_lambda(params, body_node, handle, span: ValidSpan, binder) = {
       }
       graph_bind(
         handle,
-        TFun(published, TVar(bh), mk_ef_open([], row_handle)),
+        TFun(published, published_fn_ret(TVar(bh), bh), mk_ef_open([], row_handle)),
         Located(span, Inferred("lambda"))
       )
       // H4: every lambda allocates a closure record on the heap.
@@ -6659,10 +6665,21 @@ fn check_nominal_record_loop(declared, provided, type_name, span: ValidSpan, i, 
     (dn, dt) => match list_index(provided, j) {
       (pn, pv) => if field_name_eq(dn, pn) {
         match pv {
-          N(_, _, vh) => {
+          N(_, fspan, vh) => {
             let expect_h = mint(Inferred("record field type"))
             graph_bind(expect_h, dt, Located(span, Inferred("declared field type")))
             unify(vh, expect_h, span, OpConstraint("record field", Inferred("declared"), Inferred("provided")))
+            // A declared field type is a STATED position, claimed as a
+            // constructor's argument is: a refined value claims its
+            // refinement, a function crossing in pays what it demands beyond
+            // what the field type provides, and an unannotated parameter
+            // placed there learns the contract. The unify alone met the
+            // shapes, so `R{den: 0}` under `type R = {den: Positive}`
+            // compiled clean, and `Ops{f: inv}` under `{f: (Int) -> Int}`,
+            // built behind `fn mk()`, let `mk().f(0)` divide by zero under
+            // `!Trap` (pin 852184886f52a848, S6).
+            learn_precondition(vh, dt)
+            claim_refinement(dt, vh, fspan)
             check_nominal_record_loop(declared, provided, type_name, span, i + 1, j + 1, ni, nj)
           },
         }
@@ -8941,6 +8958,28 @@ fn published_params(params, handles, owner: String, span: ValidSpan) = {
   })
 }
 
+// Value-proof R2 at the return: an authored `->` is claimed of the judged
+// body node, the let annotation's twin — `fn choose() -> Positive = 1`
+// proves 0 < 1 on the literal, a non-constant body stays honest V_Pending,
+// and a function crossing into a stated function type pays what it demands
+// beyond what the type provides. Read after the body, so the decide reads
+// judged cells, with the IH already visible through the slot pinned before
+// the body (the old post-body rebind landed after this decide and the decl's
+// own obligation read the join's bare base; probe-measured 2026-08-12).
+fn claim_authored_return(ret_ann, body_node, name: String, span: ValidSpan) = match ret_ann {
+  N(ret_body, ret_span, _) => match ret_body {
+    NTypeAnn(ann_ty) => match quantify_ctor_ty(ann_ty, [], Located(span, Declared(name))) {
+      (resolved_ann, _) => match body_node {
+        N(_, _, body_h) => {
+          claim_refinement(resolved_ann, body_h, ret_span)
+          ()
+        },
+      },
+    },
+    _ => (),
+  },
+}
+
 // The return the exit publishes: an authored `->` stands as written; with
 // none, the contract the body proves of every tail (verify.mn
 // `proven_return`), or the return cell itself when it proves none.
@@ -8952,21 +8991,64 @@ fn published_ret(pinned_ret, body_h, ret_h) = match pinned_ret {
   _ => pinned_ret,
 }
 
-// A declaration returning one of several function values publishes their
-// meet (`fn_contract`): its callers apply whichever it returns, so they owe
-// every precondition and are promised only what every one guarantees. The
-// class kept the first branch's contract — `pick(false)(0)` over `if c {
-// inv2 } else { inv }` divided by zero under `!Trap` (higher-order face 4).
-fn published_fn_ret(pinned_ret, body_h) = {
-  let leaves = fn_leaves(body_h)
-  if len(leaves) < 2 {
-    pinned_ret
-  } else {
-    match fn_contract(leaves) {
-      Some(t) => t,
-      None => pinned_ret,
+// A declaration or a lambda returning functions publishes, at every position
+// of its return that holds one, the meet of every function the position can
+// hold: its callers apply whichever arrives, so they owe every precondition
+// and are promised only what every one guarantees. The class kept the first
+// branch's contract — `pick(false)(0)` over `if c { inv2 } else { inv }`
+// divided by zero under `!Trap` (higher-order face 4), and until S6 so did a
+// function inside the structure a call returns: `pick(false).f(0)` over `if c
+// { {f: succ} } else { {f: inv} }`, a tuple's, an `Option`'s and a list's,
+// through a relay, a parameter, a module let and a lambda (pin
+// 852184886f52a848). Every other part of the return stays as the class states
+// it.
+fn published_fn_ret(pinned_ret, body_h) =
+  value_fn_positions(body_h) |> fold(pinned_ret, publish_position(body_h, ??, ??))
+
+fn publish_position(body_h, ret, pos) = match pos {
+  (_, path, _) => {
+    let sources = sources_at(body_h, path)
+    if len(sources) < 2 {
+      ret
+    } else {
+      match sources |> fold(None, meet_source) {
+        Some(t) => fn_at_path(ret, path, t, id),
+        None => ret,
+      }
     }
-  }
+  },
+}
+
+fn meet_source(acc, src) = match source_fn_type(src) {
+  Some(t) => match acc {
+    Some(a) => Some(fn_meet(a, t)),
+    None => Some(t),
+  },
+  None => acc,
+}
+
+// The function contract a source states: a function in sight its own type, a
+// part out of sight what its whole's class states at the part — a
+// declaration's publication, a parameter's learned contract — and nothing for
+// a learning parameter's, which the return hands on (`hand_on_value`).
+fn source_fn_type(src) = match source_learning(src) {
+  Some(_) => None,
+  None => match src {
+    SrcLeaf(leaf) => leaf_fn_type(leaf),
+    SrcPart(h, path) => match contract_at(chase_deep(TVar(h)), path) {
+      Some(t) => fn_type_of(t),
+      None => None,
+    },
+    SrcContract(c, _) => fn_type_of(c),
+    SrcUnknown => None,
+  },
+}
+
+fn fn_type_of(t) = match t {
+  TFun(ps, r, row) => Some(TFun(ps, r, row)),
+  TAlias(_, inner) => fn_type_of(inner),
+  TRefined(base, _) => fn_type_of(base),
+  _ => None,
 }
 
 // A call through this declaration's own guard while its body was judged —
@@ -9292,39 +9374,46 @@ fn unprovided_param(p) =
 
 // The parameter's contract with the function at a path replaced; the parts
 // beside it are the class's, scrubbed where the walk enters the class.
-fn with_fn_at(t, path, part) = match path {
+fn with_fn_at(t, path, part) = fn_at_path(t, path, part, class_scrub)
+
+// A type with the function at a path replaced, the class entered along the
+// path read through `read`: scrubbed for what a parameter learns, as it
+// stands for what a return publishes — whose other positions keep the
+// contracts the class states for them.
+fn fn_at_path(t, path, part, read) = match path {
   [] => part,
   [step, ...rest] => match t {
     TVar(_) => match chase_ty(t) {
       TVar(_) => t,
-      u => with_fn_at(class_scrub(u), path, part),
+      u => fn_at_path(read(u), path, part, read),
     },
     TList(e) => match step {
-      PartElem => TList(with_fn_at(e, rest, part)),
+      PartElem => TList(fn_at_path(e, rest, part, read)),
       _ => t,
     },
     TTuple(es) => match step {
-      PartIndex(i) => TTuple(es |> enumerate |> map(with_fn_in_slot(i, rest, part, ??))),
+      PartIndex(i) => TTuple(es |> enumerate |> map(fn_in_slot(i, rest, part, read, ??))),
       _ => t,
     },
-    TRecord(fs) => TRecord(fs |> map(with_fn_in_field(step, rest, part, ??))),
-    TRecordOpen(fs, v) => TRecordOpen(fs |> map(with_fn_in_field(step, rest, part, ??)), v),
+    TRecord(fs) => TRecord(fs |> map(fn_in_field(step, rest, part, read, ??))),
+    TRecordOpen(fs, v) => TRecordOpen(fs |> map(fn_in_field(step, rest, part, read, ??)), v),
     TName(n, args) => match step {
-      PartTypeArg(k) => TName(n, args |> enumerate |> map(with_fn_in_slot(k, rest, part, ??))),
+      PartTypeArg(k) => TName(n, args |> enumerate |> map(fn_in_slot(k, rest, part, read, ??))),
       _ => t,
     },
-    TAlias(n, inner) => TAlias(n, with_fn_at(inner, path, part)),
+    TAlias(n, inner) => TAlias(n, fn_at_path(inner, path, part, read)),
+    TRefined(base, pred) => TRefined(fn_at_path(base, path, part, read), pred),
     _ => t,
   },
 }
 
-fn with_fn_in_slot(i, rest, part, slot) = match slot {
-  (j, e) => if j == i { with_fn_at(e, rest, part) } else { e },
+fn fn_in_slot(i, rest, part, read, slot) = match slot {
+  (j, e) => if j == i { fn_at_path(e, rest, part, read) } else { e },
 }
 
-fn with_fn_in_field(step, rest, part, field) = match field {
+fn fn_in_field(step, rest, part, read, field) = match field {
   (n, ft) => match step {
-    PartField(m) => if n == m { (n, with_fn_at(ft, rest, part)) } else { (n, ft) },
+    PartField(m) => if n == m { (n, fn_at_path(ft, rest, part, read)) } else { (n, ft) },
     _ => (n, ft),
   },
 }
@@ -10259,26 +10348,90 @@ fn cross_result(aret, eret, body, value_handle, span: ValidSpan) = match fn_usag
       },
     },
   },
-  None => match demand_refinement(eret) {
-    Some(found) => match found {
-      (ename, pred) => if refined_as(aret, ename) {
-        ()
-      } else {
-        match body {
-          Some(b) => match b {
-            N(_, bspan, bh) => {
-              claim_refinement(eret, bh, bspan)
+  None => {
+    match demand_refinement(eret) {
+      Some(found) => match found {
+        (ename, pred) => if refined_as(aret, ename) {
+          ()
+        } else {
+          match body {
+            Some(b) => match b {
+              N(_, bspan, bh) => {
+                claim_refinement(eret, bh, bspan)
+                ()
+              },
+            },
+            None => {
+              verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
               ()
             },
-          },
-          None => {
-            verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
-            ()
-          },
-        }
+          }
+        },
       },
+      None => (),
+    }
+    if ty_has_fn(eret) {
+      cross_result_fns(aret, chase_deep(eret), body, value_handle, span)
+    } else {
+      ()
+    }
+  },
+}
+
+// The functions inside a structured result go wherever the receiver takes
+// them: each function the receiver's usage holds at a path meets what the
+// crossing function returns there — a lambda's body read at the path, any
+// other function's stated result at the path. A result's function parts
+// crossed nothing until S6: `run(pick)` over `fn run(g) = g(false).f(0)`
+// divided by zero under `!Trap` while the declaration handed in published,
+// at its result's `.f`, a function demanding `Positive` (pin
+// 852184886f52a848).
+fn cross_result_fns(aret, eret, body, value_handle, span: ValidSpan) =
+  fn_positions(0, eret, []) |> each(cross_result_fn(aret, eret, body, value_handle, span, ??))
+
+fn cross_result_fn(aret, eret, body, value_handle, span: ValidSpan, pos) = match pos {
+  (_, path, _) => match contract_at(eret, path) {
+    Some(ept) => match fn_usage(ept) {
+      Some(usage) => match usage {
+        (kps, kret) => match body {
+          Some(b) => match b {
+            N(_, _, bh) => sources_at(bh, path) |> each(cross_result_source(kps, kret, value_handle, span, ??)),
+          },
+          None => match contract_at(chase_deep(aret), path) {
+            Some(apt) => match fn_usage(apt) {
+              Some(stated) => match stated {
+                (sps, sret) => cross_contract_at(sps, sret, kps, kret, None, value_handle, span),
+              },
+              None => (),
+            },
+            None => (),
+          },
+        },
+      },
+      None => (),
     },
     None => (),
+  },
+}
+
+// One function a lambda's body returns at the path: a function in sight
+// crosses as an argument does, a learning parameter's part learns the usage,
+// and a part out of sight crosses as the contract its class states.
+fn cross_result_source(kps, kret, value_handle, span: ValidSpan, src) = match src {
+  SrcLeaf(leaf) => cross_leaf(kps, kret, value_handle, span, leaf),
+  _ => match source_learning(src) {
+    Some(at) => match at {
+      (b, path) => transport_at(b, path, kps, kret),
+    },
+    None => match source_fn_type(src) {
+      Some(t) => match fn_usage(t) {
+        Some(stated) => match stated {
+          (sps, sret) => cross_contract_at(sps, sret, kps, kret, None, value_handle, span),
+        },
+        None => (),
+      },
+      None => (),
+    },
   },
 }
 

@@ -1,0 +1,13 @@
+// CROWN refinement (S6, 2026-10-02): the meet `pick` publishes at `f`
+// demands `Positive`, and a constant that proves it owes nothing, so `!Trap`
+// holds — the control beside `leak-fn-part-returned`, which only the
+// argument separates.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn succ(n) = n + 1
+
+fn pick(c) = if c { {f: succ} } else { {f: inv} }
+
+fn main() with !Trap = pick(false).f(5)

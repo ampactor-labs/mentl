@@ -1,0 +1,14 @@
+// CROWN refinement (S6, 2026-10-02): a nominal record's declared field type
+// is a stated position, claimed where the record is built. `inv` crossing
+// into `f: (Int) -> Int` pays the guard of the `Positive` it demands, in
+// `mk`'s row. The construction only unified the shapes, so `mk().f(0)`
+// checked clean and divided by zero on pin 85218488. Expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+type Ops = Ops({f: (Int) -> Int})
+
+fn mk() = Ops{f: inv}
+
+fn main() with !Trap = mk().f(0)

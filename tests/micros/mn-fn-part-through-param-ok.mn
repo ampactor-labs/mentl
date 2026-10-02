@@ -1,0 +1,16 @@
+// expect: 2
+// With no negation to judge, the guard `run(pick)` pays at the crossing is
+// honest debt rather than a refusal: `run` hands its result's `f` a value
+// the crossing cannot see, so the `Positive` that `inv` demands there is
+// owed. `pick(true)` returns `succ`, and the program runs to `succ(1)`.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn succ(n) = n + 1
+
+fn pick(c) = if c { {f: succ} } else { {f: inv} }
+
+fn run(g) = g(true).f(1)
+
+fn main() = run(pick)

@@ -1,0 +1,16 @@
+// expect: refuse E_EffectMismatch
+// An authored return is claimed inside the declaration's frame, so a
+// function crossing into a stated function type inside it pays its guard in
+// the declaration's own row: `inv` into `Option((Int) -> Int)`. Claimed
+// after the frame's exit, the payment was dropped and this divided by zero
+// on pin 85218488 (exit 134).
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn mk() -> Option((Int) -> Int) = Some(inv)
+
+fn main() with !Trap = match mk() {
+  Some(g) => g(0),
+  None => 0,
+}

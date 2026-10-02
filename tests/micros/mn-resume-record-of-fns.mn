@@ -1,0 +1,18 @@
+// expect: refuse E_EffectMismatch
+// A resumed value crosses the op's declared return part by part: `inv` in
+// the record `get_ops` returns crosses into `f: (Int) -> Int` and pays the
+// guard of the `Positive` it demands, in the handler's row. The resume only
+// unified the shapes, so this divided by zero on pin 85218488 (exit 134).
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+effect E {
+  get_ops() -> {f: (Int) -> Int}
+}
+
+handler h {
+  get_ops() => resume({f: inv}),
+}
+
+fn main() with !Trap = get_ops().f(0) ~> h

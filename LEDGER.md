@@ -35,6 +35,86 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-02 · pin 6f62b7c400cb5a7b (CLEAN m2 == m3) · A FUNCTION'S CONTRACT
+  IS NEVER LOST AT A POSITION: AN INFERRED ONE PUBLISHES THE MEET OF EVERY
+  FUNCTION THAT REACHES IT, A STATED ONE IS CROSSED BY EACH FUNCTION PLACED
+  THERE — AND A MODULE LET'S INIT ANSWERS TO THE ROOT GATE. Found by S5 and
+  opened as `Hβ.verify.class-read-keeps-one-contract`: `pick(false).f(0)`
+  over `fn pick(c) = if c { {f: succ} } else { {f: inv} }` checked clean
+  under `!Trap` and divided by zero, and refused with the branches swapped.
+  The census ran before a line, over twenty-three probes on pin 85218488,
+  and the hole was three mechanisms wide. (M1) An INFERRED position
+  published its class, which kept the first branch's contract: a function
+  inside the record, tuple, `Option` or list a declaration returns, through
+  a relay, a module let and a lambda (exit 134 each). H4 had published the
+  meet for a WHOLE function return (`published_fn_ret`); the publication is
+  a fold over every function position of the return now
+  (`value_fn_positions`, `sources_at`, `publish_position`), a part out of
+  sight meeting as the contract its class states (`source_fn_type`), the
+  rest of the return kept as the class states it — the path writer
+  `with_fn_at` became one home, `fn_at_path`, reading the class scrubbed for
+  a parameter and as it stands (`id`) for a return — and lambdas publish
+  through it too. (M2) A CHARGE MADE WITH NO FRAME WAS DROPPED: `infer_fn`
+  raised the authored-return claim after `exit_frame`, so a function
+  crossing into `-> (Int) -> Int` or `-> Option((Int) -> Int)` paid its
+  guard into no frame at module scope (`inf_add_row`'s empty-stack arm) and
+  `mk()(0)` divided by zero; the claim runs inside the frame now, before the
+  frame's guards settle (`claim_authored_return`). A module value let is
+  judged in no frame at all, so the root gate never saw what its init
+  performs: `let x = op()` compiled and trapped at init where `fn main() =
+  op()` refused; the gate reads each value let's init row off its nodes'
+  charges (`report_unhandled_init`, `row_of_subtree`). (M3) A STATED
+  position was UNIFIED and never CLAIMED: a nominal record's construction
+  (`Ops{f: inv}` under `f: (Int) -> Int`, built behind `mk`) and a `resume`
+  into an op's declared return (`resume(inv)` into `get_fn() -> (Int) ->
+  Int`, and a record of functions) — each claims now, as a call's argument
+  does; and a function crossing into a parameter crossed nothing of its
+  RESULT's function parts, so `run(pick)` over `fn run(g) = g(false).f(0)`
+  trapped with `pick`'s meet in hand — `cross_result_fns` crosses each
+  function the receiver's usage holds at a path against what the crossing
+  function returns there (a lambda's body read at the path, a declaration's
+  stated result). `R{den: 0}` under `den: Positive`, which compiled clean,
+  is refuted at the `0`. KILLS: (1) "the class must merge contracts as a
+  lattice at unify" (the RESIDUE form) — refuted by reading unify: two bound
+  roots never link, each keeps its own type, and only a FREE cell aliases
+  the first; the class a reader meets out of sight is always a PUBLISHED or
+  STATED type, so the meet belongs at publication; (2) `with_fn_at` reused
+  for the return — it scrubs every sibling of the class it chases, which
+  would have stripped the contracts of a return's other positions; (3) "the
+  authored return leak is the crossing" — the crossing ran and recorded its
+  obligation (`pending 0 < self` at the stated position); its PAYMENT
+  reached `inf_add_row` with an empty stack; (4) "after M1 the parameter
+  route is closed" — a6 still trapped on the first build (m2s6a): the meet
+  was right and nothing read it, so `cross_result` grew the part crossing.
+  NOT TAKEN: the RESIDUE form's second half, reading a call result's parts
+  through the callee's tails — the walk cannot choose a branch, so on every
+  shape measured it answers what the published meet answers. FOUND ON THE
+  WAY: the proposer offers `Box(??)` at a hole under `-> Box with !Alloc`,
+  the candidate judged in no frame and its construction's charge read by
+  nothing (`Hβ.synth.candidate-row-is-unjudged`, with the policy question
+  its fix must answer first). Fixtures, each RED on 85218488 (exit 134
+  unless noted): crown `leak-fn-part-returned`, `leak-resume-fn-crosses`,
+  `leak-authored-return-crosses`, `leak-nominal-field-crosses`,
+  `leak-root-module-init`, control `sound-fn-part-proven` (20 on both);
+  micros `mn-fn-part-returned-record`, `-option`, `-list`, `-tuple`,
+  `mn-fn-part-relayed`, `mn-fn-part-module-let`, `mn-fn-part-lambda-return`,
+  `mn-fn-part-through-param`, `mn-fn-part-lambda-through-param`,
+  `mn-fn-authored-option-return`, `mn-resume-record-of-fns`,
+  `mn-nominal-field-refuted` (exit 0), controls `mn-fn-part-returned-ok`
+  (100) and `mn-fn-part-through-param-ok` (2). Micros 339/339, crown
+  134/134, proof-exactness 30/0, frontier 486/0/1; the wheel's open
+  obligations hold at 37 and its emit did not move (m2 == m3). The first
+  march refused at the comment-ref ratchet (0 → 1): a backticked `pick`, a
+  name from a comment's example, resolved nowhere — prose now. COST: the m3
+  leg 987,264 KB under the 1,000,000 ceiling, which stays: on one source the
+  pinned compiler's judgment high-water is 461.3 MB against the previous
+  boot's 465.4 MB, peaks 984,452 / 986,412 / 984,652 KB against 986,496 KB,
+  its output byte-identical run to run. Named:
+  `Hβ.verify.class-read-keeps-one-contract` CLOSED;
+  `Hβ.verify.op-return-is-a-contract`,
+  `Hβ.effects.executable-row-includes-inits`,
+  `Hβ.fmt.nominal-record-renders-its-variant` and
+  `Hβ.synth.candidate-row-is-unjudged` born.
 - 2026-10-02 · pin 852184886f52a848 (CLEAN m2 == m3) · A HANDLER'S STATE IS
   EVERY VALUE WRITTEN INTO IT, AND THE WALK THAT READS IT RUNS INSIDE THE
   STATES IT ENTERED — AND AN UPDATE NAMING NO FIELD IS REFUSED, NEVER

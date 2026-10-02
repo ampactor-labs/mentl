@@ -1,0 +1,17 @@
+// expect: refuse E_RefinementRejected
+// The meet is published at a type argument's position too: `pick` returns
+// `Some(succ)` or `Some(inv)`, so the function a match takes out of
+// `pick(false)` demands `Positive` and `g(0)` is refuted. On pin 85218488 the
+// `Option` kept `succ`'s contract and this divided by zero (exit 134).
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn succ(n) = n + 1
+
+fn pick(c) = if c { Some(succ) } else { Some(inv) }
+
+fn main() with !Trap = match pick(false) {
+  Some(g) => g(0),
+  None => 0,
+}

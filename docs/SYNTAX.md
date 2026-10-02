@@ -1004,6 +1004,11 @@ let c = Customer{name: "Morgan", age: 30}
 // p and c have different types; cannot be unified
 ```
 
+A nominal record's declared field types are claimed where the record is
+built, as a constructor's arguments are: `R{den: 0}` under `type R = {den:
+Positive}` refuses at the `0`, and a function placed at a function-typed
+field crosses into it (real, 2026-10-02 — both compiled clean before).
+
 **Brace-header slots close at `{` — the construction never extends a header.**
 Three grammar slots parse an expression whose own terminator is `{`: an `if`
 condition, a `match` scrutinee, and a handler declaration's state inits
@@ -1396,6 +1401,23 @@ variable is judged as handed values nothing there can name. Until this landed
 a function's contract rode its type, which unification merged and kept one
 side of: the join and the `fold` shapes checked clean under `!Trap` and
 divided by zero, and `g(30000.0)` refused a correct program (boot e23392f6).
+
+**A function's contract is never lost at a position** (real, 2026-10-02,
+S6). A declaration or a lambda returning functions publishes, at every
+position of its return that holds one, the meet of every function the
+position can hold: `fn pick(c) = if c { {f: succ} } else { {f: inv} }`
+makes `pick(c).f` demand `Positive` whichever branch runs — through a tuple,
+an `Option`, a list, a relay, a module value and a parameter alike. A
+position whose type is STATED is crossed by every function placed there,
+which pays there the guard of each demand the position does not provide: an
+authored return (`fn mk() -> (Int) -> Int = inv`), a nominal record's
+declared field (`Ops{f: inv}` under `{f: (Int) -> Int}`), an op's declared
+return at `resume` (`resume(inv)` into `get_fn() -> (Int) -> Int`), and the
+functions inside a function's result where it crosses into a parameter that
+applies them. Until this landed a published return kept the first branch's
+contract, a stated position was unified and never claimed, and an authored
+return's payment was dropped outside its declaration's frame: each shape
+checked clean under `!Trap` and divided by zero (pin 85218488).
 
 The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); the Arc F.1 SMT handler swap discharges those by residual theory — same source, deeper proof engine.
 
@@ -2405,6 +2427,11 @@ A `.mn` file is a sequence of top-level statements. Each is one of:
 A `.mn` file with no `main` function is a LIBRARY module — its declarations are imported by other modules. Compilation produces a WAT module whose `_start` is a clean exit.
 
 A `.mn` file with `fn main()` is an EXECUTABLE — `_start` invokes `main`.
+Its module value lets run first, so what an init performs is the
+executable's: an effect no handler serves refuses at the let as it would in
+`main` (real, 2026-10-02 — `let x = op()` compiled and trapped at init
+before). `main`'s declared row judges `main` alone
+(`Hβ.effects.executable-row-includes-inits`).
 
 ---
 

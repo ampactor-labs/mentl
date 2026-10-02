@@ -1971,12 +1971,34 @@ and this is the STATE.
   compiled clean and `n` stayed 0. The wheel's open obligations hold at 37.
   Open: a write that reads its state proves nothing of it, and the verdict
   over a writer judged after the claim follows arm order, sound both ways
-  (`Hβ.verify.state-reads-its-invariant`). FOUND ON THE WAY, the next
-  soundness item: a function in a structure a call returns is read off its
-  unification class, which keeps whichever contract unified first —
-  `pick(false).f(0)` checks clean under `!Trap` and divides by zero on boots
-  1a68ecc0, 53f7404b and this pin (`Hβ.verify.class-read-keeps-one-contract`,
-  S6).
+  (`Hβ.verify.state-reads-its-invariant`). FOUND ON THE WAY, and closed by
+  S6 (the next bullet): a function in a structure a call returns was read off
+  a class that kept one branch's contract.
+- **A FUNCTION'S CONTRACT IS NEVER LOST AT A POSITION — CLOSED 2026-10-02
+  (S6).** `pick(false).f(0)` over `fn pick(c) = if c { {f: succ} } else {
+  {f: inv} }` checked clean under `!Trap` and divided by zero, and a census of
+  twenty-three probes on pin 85218488 found three mechanisms behind it. An
+  INFERRED position published its class, which kept the first branch's
+  contract — a function inside a returned record, tuple, `Option` or list,
+  through a relay, a module let, a lambda and a parameter: every function
+  position of a declaration's or a lambda's return now publishes the meet of
+  every function the position can hold (H4's whole-function meet,
+  generalized). A CHARGE WITH NO FRAME WAS DROPPED: the authored return's
+  claim ran after its declaration's frame closed, so `fn mk() -> (Int) -> Int
+  = inv` paid its guard into nothing and `mk()(0)` trapped — the claim runs
+  inside the frame — and a module value let's init, judged in no frame, was
+  invisible to the root gate: `let x = op()` compiled and trapped at init
+  where `fn main() = op()` refused, and now refuses at the let. A STATED
+  position was UNIFIED, NEVER CLAIMED: a nominal record's construction, a
+  `resume` into an op's declared return, and a function's result parts where
+  it crosses into a parameter each claim now, and `R{den: 0}` under `den:
+  Positive` is refuted. The wheel's obligations hold at 37 and its emit did
+  not move. Open: a performer never stands on an op's refined return
+  (`Hβ.verify.op-return-is-a-contract`), `main`'s negations do not reach the
+  inits (`Hβ.effects.executable-row-includes-inits`), the proof gate never
+  judges a candidate's own row, so `Box(??)` is proposed under `!Alloc`
+  (`Hβ.synth.candidate-row-is-unjudged`), and fmt renders a nominal record as
+  its variant (`Hβ.fmt.nominal-record-renders-its-variant`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

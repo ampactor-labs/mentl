@@ -310,13 +310,36 @@ fn report_unhandled_effects(lowered) = match env_lookup("main") {
             walk_lemit(lowered)
             drain_effect_census()
           } ~> effect_census_collector ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> fn_lines_collector ~> yield_seen_collector ~> wasi_ops_collector
-          report_unhandled_names(p, 0, len(p), demands_to_enames(census, 0, []), reason_span_or_zero(reason))
+          let performed = demands_to_enames(census, 0, [])
+          report_unhandled_names(p, 0, len(p), performed, reason_span_or_zero(reason))
+          lowered |> each(report_unhandled_init(performed, ??))
         },
       },
       _ => (),
     },
   },
   None => (),
+}
+
+// A module value let's init runs in `$__init_lets` before `main`, so what it
+// performs is the executable's as much as what `main` performs, and it meets
+// the same two conjuncts at the let. Its row is the charges its subtree's
+// nodes carry (`row_of_subtree`): a module value let is judged in no
+// declaration's frame, so no frame row holds it. `let x = op()` with no
+// handler compiled and trapped at init, where `fn main() = op()` refused
+// (pin 852184886f52a848, S6).
+fn report_unhandled_init(performed, stmt) = match stmt {
+  LLet(h, _, _) => if reach_decl_name(stmt) == "" {
+    match row_of_subtree(h) {
+      Some(row) => match row {
+        EfRow(p, _, _) => report_unhandled_names(p, 0, len(p), performed, graph_span_of(h)),
+      },
+      None => (),
+    }
+  } else {
+    ()
+  },
+  _ => (),
 }
 
 // A drained demand is an ename already (the floor's ekey) or a yield's

@@ -1,0 +1,13 @@
+// expect: refuse E_RefinementRejected
+// A nominal record's declared field type is claimed where the record is
+// built, so `R{den: 0}` under `den: Positive` is refuted at the `0`. The
+// construction only unified the shapes and this compiled clean on pin
+// 85218488 (exit 0).
+type Positive = Int where 0 < self
+
+type R = R({den: Positive})
+
+fn main() = {
+  let r = R{den: 0}
+  r.den
+}
