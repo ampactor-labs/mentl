@@ -1736,10 +1736,31 @@ type Teaching
   | TeachNeed(String, Predicate, Span)
   | TeachNone
 
-// PipeContext — surrounding pipe topology at a position.
-// CursorView.topology reads the context. Reuses existing PipeKind for
-// the InsidePipe variant. Per the cursor walkthrough §2.1 + §4.
-type PipeContext = NoPipe | InsidePipe(PipeKind) | StartingPipe | EndingPipe
+// Where a node stands in one verb that holds it, each role naming its verb:
+// a `|>` chain's source or its i-th of n stages; the i-th of n branches of a
+// `><`; the i-th of n branches of a `<|` or the input it shares; a `~>`'s
+// body or its handler; a `<~`'s recurrence or its declared delay.
+type VerbRole
+  = ChainSource
+  | ChainStage(Int, Int)
+  | FanBranch(Int, Int)
+  | ShareBranch(Int, Int)
+  | FanInput
+  | InstallBody
+  | InstallHandler
+  | Recurrence
+  | FeedbackDelay
+
+// One verb on the path from a declaration down to a node: the site's handle
+// and the node's role there. The topology at a position is the list of them,
+// outermost first.
+type VerbFrame = VerbFrame(Int, VerbRole)
+
+// What running the node at a position performs: an expression's evaluation;
+// for a function value, its evaluation and its body when it is called — two
+// facts, because minting a closure costs what calling it never shows; at a
+// hole, whatever the position permits, which no row states.
+type RowFacet = Evaluates(EffRow) | WhenCalled(EffRow, EffRow) | HoleRow
 
 // CursorView — what cursor_default projects at the cursor's handle.
 // Each field is one of the eight kernel primitives, read off the
@@ -1747,14 +1768,14 @@ type PipeContext = NoPipe | InsidePipe(PipeKind) | StartingPipe | EndingPipe
 //
 //   query    — primitive #1 (Graph)            — what's bound here (NodeKind)
 //   propose  — primitive #2 (Handlers)         — Synth's candidates
-//   topology — primitive #3 (Five verbs)       — pipe context at the site
-//   row      — primitive #4 (Effect algebra)   — gating row
+//   topology — primitive #3 (Five verbs)       — the verbs that hold the node
+//   row      — primitive #4 (Effect algebra)   — what running it performs
 //   trace    — primitive #5 (Ownership)        — own/ref/inferred (existing ADT)
 //   verify   — primitive #6 (Refinement)       — pending obligations
 //   teach    — primitive #7 (Gradient)         — the gradient's Teaching
-//   why      — primitive #8 (HM + Reasons)     — walkable Reason chain
+//   why      — primitive #8 (HM + Reasons)     — the node's Reason chain, then its type's
 type CursorView
-  = CursorView(NodeKind, Proposal, PipeContext, EffRow, Ownership, [(Int, Span, Predicate, Reason)], Teaching, Reason)
+  = CursorView(NodeKind, Proposal, [VerbFrame], RowFacet, Ownership, [(Int, Span, Predicate, Reason)], Teaching, [Reason])
 
 // query   propose  topology     row     trace      verify  teach    why
 // ─── SpinePage — the graph's columns, named ONCE ─────────────────────────
@@ -1774,7 +1795,7 @@ type CursorView
 // copies of one type is the Carried-Truth Law at the declaration layer; the
 // name is its one home, and the next column is one line.
 type SpinePage
-  = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], products: [CallProduct], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
+  = SpinePage({bind: [BindHome], boundaries: [ExecutableBoundary], canon: [Int], comments: [(String, Span)], dispatch: [DispatchTier], installs: [InstallShape], module: [Int], narrowing: [Int], nodes: [GNode], parent: [Int], products: [CallProduct], program: [NodeBody], slots: [StateSlotHome], spans: [Span]})
 
 // Newlines in a flat string — a module's own extent, sized at its parse.
 fn count_lines(ref s) = count_lines_from(s, byte_len(s), 0, 0)
@@ -1854,6 +1875,12 @@ fn span_valid(s) with Pure = match s {
 }
 
 type ValidSpan = Span where span_valid(self)
+
+// The caret on a character is that character's extent. A span's end is one
+// past its last column, so a zero-width point at a node's end sat inside it:
+// the caret on a call's `(` answered the callee, and on the outer `)` the
+// inner call.
+fn caret_span(line, col) = Span(line, col, line, col + 1)
 
 fn span_contains(outer, inner) with Pure = match outer {
   Span(osl, osc, oel, oec) => match inner {
@@ -2714,6 +2741,10 @@ effect GraphRead {
   // line. TOTAL: every node is born inside a module, stdin's included, so
   // there is no absent case and no reader needs a "which file, if any" arm.
   graph_module_of(Int) -> Int
+  // the node whose body holds this one, drawn where that body registers, so a
+  // question about what surrounds a node walks up its ancestry; None for a
+  // module node and for a node no body holds
+  graph_parent_of(Int) -> Option(Int)
   // the module currently in force — what the next mint will be attributed to.
   // Read by the diagnostics register to stamp a report with the file it is
   // about, which is how narration scopes to the module the user named now
@@ -4648,8 +4679,28 @@ fn collect_slot_nodes(params, slots, i, n, out, count) = if i >= n {
   }
 }
 
+// The prefixes a desugar mints a parameter's name under, one home for the
+// spelling: `dp_prefix` for a pattern written in parameter position,
+// `al_prefix` for the arm-list literal's one parameter. They are two because
+// the formatter may render only the first back into parameter position
+// (parser.mn `fresh_param_under` says why).
+let dp_prefix = "__dp"
+
+let al_prefix = "__al"
+
+fn name_has_prefix(nm, prefix) =
+  byte_len(nm) >= byte_len(prefix) && str_slice(nm, 0, byte_len(prefix)) == prefix
+
+// A parameter no author named. A type renders it as its type alone, since
+// the name it carries exists in no source a developer can read.
+fn minted_param_name(nm) = name_has_prefix(nm, dp_prefix) || name_has_prefix(nm, al_prefix)
+
 fn show_tparam(ref tp) = {
-  let base = "{param_name(tp)}: {show_type(param_ty(tp))}"
+  let base = if minted_param_name(param_name(tp)) {
+    show_type(param_ty(tp))
+  } else {
+    "{param_name(tp)}: {show_type(param_ty(tp))}"
+  }
   match param_authored(tp) {
     Unmarked => match param_resolved(tp) {
       Unmarked => base,
@@ -4823,8 +4874,8 @@ fn show_predicate(ref pred) = match pred {
   "{show_flow_label(src)} ⊑ {show_flow_label(dst)}",
   PWithSelf(_, inner) => show_predicate(inner),
   PTotalDiv(op, a, b) => match op {
-    BMod => "{show_pred_operand(b)} != 0 (the divisor of {show_pred_operand(a)} % {show_pred_operand(b)})",
-    _ => "{show_pred_operand(b)} != 0 && {show_pred_operand(a)} / {show_pred_operand(b)} fits (never INT_MIN / -1)",
+    BMod => "{show_pred_operand(b)} != 0 (the divisor of {show_pred_atom(a)} % {show_pred_atom(b)})",
+    _ => "{show_pred_operand(b)} != 0 && {show_pred_atom(a)} / {show_pred_atom(b)} fits (never INT_MIN / -1)",
   },
   PProvides(provided) => show_provided(provided),
 }
@@ -4868,7 +4919,7 @@ fn show_pred_operand(handle) = match graph_node_body(handle) {
   },
   NExpr(BinOpExpr(op, l, r)) => match l {
     N(_, _, lh) => match r {
-      N(_, _, rh) => "{show_pred_operand(lh)} {binop_to_str(op)} {show_pred_operand(rh)}",
+      N(_, _, rh) => "{show_pred_atom(lh)} {binop_to_str(op)} {show_pred_atom(rh)}",
     },
   },
   NExpr(CallExpr(callee, args)) => // The canonical refinement vocabulary is call-shaped (len(self),
@@ -4878,11 +4929,52 @@ fn show_pred_operand(handle) = match graph_node_body(handle) {
   _ => "<expr>",
 }
 
+// An operand standing beside an operator keeps the parentheses its source
+// needs when it is itself an operation: the partiality claim of
+// `100 / (k - 1)` rendered `100 / k - 1`, a different program (measured on
+// boot 8b071ba3 at the caret's Verify facet and in the ledger's line alike).
+fn show_pred_atom(handle) = match graph_node_body(handle) {
+  NExpr(BinOpExpr(_, _, _)) => "({show_pred_operand(handle)})",
+  _ => show_pred_operand(handle),
+}
+
 fn show_callee_name(ref callee) with Pure = match callee {
   N(cbody, _, _) => match cbody {
     NExpr(VarRef(n)) => n,
     _ => "_",
   },
+}
+
+// One hop of a Reason chain in a developer's words, never its subtree: the
+// caret's Why prints each hop with it and walks the hops beneath, and the
+// emit's comment at a function boundary prints the head. `show_reason` below
+// is the other projection, the whole chain on one line.
+fn reason_phrase(reason) with !Mutate = match reason {
+  Declared(name) => "declared {name}",
+  Inferred(s) => s,
+  Fresh(_) => "a fresh type variable",
+  OpConstraint(op, _, _) => "the operator {op}",
+  VarLookup(name, _) => "{name} flows in here",
+  FnReturn(name, _) => "returned from {name}",
+  FnParam(name, i, _) => "parameter {int_to_str(i + 1)} of {name}",
+  MatchBranch(_, _) => "a match's branches",
+  ListElement(_) => "a list element",
+  IfBranch(_) => "an if's branches",
+  LetBinding(name, _) => "let {name}",
+  Unified(_, _) => "two provenances unified",
+  Instantiation(name, _) => "an instance of {name}",
+  UnifyFailed(_, _) => "a unification that failed",
+  Placeholder(_) => "authored here",
+  BinOpPlaceholder(_) => "an operator's operand",
+  MissingVar(name) => "{name} is unresolved",
+  Refinement(_, _) => "a refinement",
+  Located(_, inner) => reason_phrase(inner),
+  InferredCallReturn(name, _) => "the call to {name}",
+  InferredPipeResult(v, _) => "through {v}",
+  FreshInContext(_, ctx) => "fresh in {ctx}",
+  DefaultReason(name, _) => "{name} defaulted",
+  VerifyWitness(w) => "the witness {w}",
+  Accepted(text, proof, _) => "accepted `{text}` — proposed: {show_reason(proof)}",
 }
 
 fn show_reason(ref reason) with !Mutate = match reason {
@@ -4893,7 +4985,7 @@ fn show_reason(ref reason) with !Mutate = match reason {
   VarLookup(name, inner) => "lookup {name} → {show_reason(inner)}",
   FnReturn(name, inner) => // drift-audit: ignore — "return of" is a Reason rendering string, not a control keyword
   "return of {name} → {show_reason(inner)}",
-  FnParam(name, idx, inner) => "param {int_to_str(idx)} of {name} → {show_reason(inner)}",
+  FnParam(name, idx, _) => "parameter {int_to_str(idx + 1)} of {name}",
   MatchBranch(a, b) => "match branch: {show_reason(a)} ~ {show_reason(b)}",
   ListElement(inner) => "list element: {show_reason(inner)}",
   IfBranch(inner) => "if branch: {show_reason(inner)}",

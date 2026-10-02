@@ -987,7 +987,7 @@ fn render_field_tier(ranked: [(Float, Handle)], target: String, i) = if i >= len
 } else {
   match list_index(ranked, i) {
     (_, ph) => {
-      let pspan = caret_span_of_handle(ph)
+      let pspan = parse_span_of(ph)
       match pspan {
         Span(sl, sc, _, _) => {
           print("\n── {target}:{int_to_str(sl)}:{int_to_str(sc)}\n")
@@ -1365,6 +1365,18 @@ fn file_line(ref target: String, ref span) = match span {
   Span(sl, _, _, _) => "{target}:{int_to_str(sl)}",
 }
 
+// A site's address as the caret takes it: file, line and column.
+fn file_line_col(target: String, span) = match span {
+  Span(sl, sc, _, _) => "{target}:{int_to_str(sl)}:{int_to_str(sc)}",
+}
+
+// The Handler facet's sentence for a perform.
+fn show_served(en: String, served, target: String) with !Mutate = match served {
+  ServedBy(site, hname) => "{en} is served by `~> {hname}` at {file_line_col(target, parse_span_of(site))}",
+  ServedWhereCalled(site) => "{en} is performed when the function value at {file_line_col(target, parse_span_of(site))} is called — the install in force there serves it",
+  ServedByCaller(decl) => "no install inside `{body_decl_name(graph_node_body(decl))}` answers {en} — its row carries {en} to the callers",
+}
+
 // The three-case line rule (the panel's corrected form, deterministic):
 //  (a) among nodes whose span STARTS on the line (and, with a column,
 //      contains it) — `file:LINE` takes the WIDEST (the line's root),
@@ -1377,12 +1389,9 @@ fn file_line(ref target: String, ref span) = match span {
 //      gap — blank lines between decls are ordinary addresses, not errors).
 fn address_resolve(ref spans, gline, col) = match address_case_a(spans, gline, col, 0, len(spans), None) {
   Some(pick) => Some(pick),
-  None => {
-    let point = Span(gline, if col > 0 { col } else { 1 }, gline, if col > 0 { col } else { 1 })
-    match find_tightest(spans, point, None, 1000000000) {
-      Some(h) => span_pick_of(spans, h),
-      None => address_case_c(spans, gline, 0, len(spans), None),
-    }
+  None => match find_tightest(spans, caret_span(gline, if col > 0 { col } else { 1 }), None, 1000000000) {
+    Some(h) => span_pick_of(spans, h),
+    None => address_case_c(spans, gline, 0, len(spans), None),
   },
 }
 
@@ -1393,7 +1402,7 @@ fn address_case_a(ref spans, gline, col, i, n, best) = if i >= n {
     (s, h) => match s {
       Span(sl, sc, _, _) => {
         let hits = if sl == gline {
-          if col > 0 { span_contains(s, Span(gline, col, gline, col)) } else { true }
+          if col > 0 { span_contains(s, caret_span(gline, col)) } else { true }
         } else {
           false
         }
@@ -1453,10 +1462,16 @@ fn address_better_a(col, best, cand) = match best {
   },
 }
 
-fn address_bound(h) = match graph_chase(h) {
-  GNode(NBound(_), _) => true,
-  _ => false,
-}
+// "Was anything proven here" is the node's OWN cell, read unchased: a mint
+// inference never visited still carries the Placeholder it was born with.
+// The chase terminal answered a different question — whether the TYPE is
+// ground — and a variable whose type is generic (a recurrence's prior, the
+// parameter spliced into an interpolation) lost the caret to the node around
+// it (measured on boot 8b071ba3). An authored hole is the one cell left free
+// on purpose: nothing binds `let x = ??` until a proposal is accepted, and
+// the caret on it is where the medium proposes. What is left is a ghost,
+// counted and located by the `ghosts` facet (`node_is_ghost`).
+fn address_bound(h) = !node_is_ghost(h)
 
 fn span_pick_of(ref spans, h) = match find({ (_, eh) => eh == h }, spans) {
   Some(e) => match e {
@@ -1496,8 +1511,13 @@ fn print_refusal(pair) = match pair {
   (name, reason) => print("  · refused {name} — {show_reason(reason)}\n"),
 }
 
+// One open obligation at the caret, said as the ledger says it.
+fn print_obligation(entry) = match entry {
+  (m, sp, pred, _) => print("Verify: {obligation_text(m, sp, pred)}\n"),
+}
+
 fn render_at(view, h, pspan, target: String) = match view {
-  CursorView(kind, propose, _topology, row, trace, verify, teach, why) => {
+  CursorView(kind, propose, topology, row, trace, verify, teach, why) => {
     // The register-gated lede — the read side of the comment weave the
     // parser fills: a node carrying authored prose speaks its first line
     // before the Query facet, the same edge the Why engine walks.
@@ -1556,20 +1576,30 @@ fn render_at(view, h, pspan, target: String) = match view {
     match propose {
       Proposal(pj) => each(print_refusal, pj.rejected),
     }
-    match row {
-      EfRow([], [], EtClosed) => (),
-      _ => print("Effects: {show_effrow(row)}\n"),
+    // The Handler facet at a perform: which install serves the operation —
+    // the innermost `~>` on the declaration's path whose handler answers it.
+    match served_at(h) {
+      Some((en, served)) => print("Handler: {show_served(en, served, target)}\n"),
+      None => (),
     }
+    // The Topology facet: the verbs that hold the node, innermost first. A
+    // node no verb holds has nothing to say here.
+    if len(topology) > 0 {
+      print("Topology: {show_verb_path(topology, file_line_col(target, ??))}\n")
+    } else {
+      ()
+    }
+    // The Effects facet is SAID at every position, Pure included: "performs
+    // nothing" is a proven fact, and its absence used to read as no answer.
+    print("Effects: {show_row_facet(row)}\n")
     match trace {
       Unmarked => (),
       Own => print("Ownership: own\n"),
       Ref => print("Ownership: ref\n"),
     }
-    if len(verify) > 0 {
-      print("Verify: {int_to_str(len(verify))} obligation(s) at this node\n")
-    } else {
-      ()
-    }
+    // Each open obligation at the node, said as the ledger says it — a count
+    // told the developer that something was owed and not what.
+    each(print_obligation, verify)
     // The Teach facet says what it found. It printed one constant sentence
     // for every position the predicate fired at — "an annotation here would
     // unlock a capability", the suggestion itself discarded — so the facet
@@ -1589,9 +1619,22 @@ fn render_at(view, h, pspan, target: String) = match view {
         _ => (),
       },
     }
-    print("Why: ")
-    render_why_hops(why_expand(why, 0), target, 0)
+    // The Why: the node's own chain, then the chain its type is read from
+    // when its cell links to another.
+    match why {
+      [] => (),
+      [here, ...types] => {
+        print("Why: ")
+        render_why_hops(here, target, 0)
+        each(render_type_chain(target, ??), types)
+      },
+    }
   },
+}
+
+fn render_type_chain(target: String, chain) = {
+  print("     its type: ")
+  render_why_hops(chain, target, 0)
 }
 
 // A declaration node's own graph cell is a free var (the scheme lives in
@@ -1661,7 +1704,11 @@ fn source_slice(ref span, ref target: String) = match span {
       // instead. The end line was discarded here until 2026-08-16, and once
       // declarations carried their true extent a multi-line handler
       // declaration rendered a two-character fragment of its own keyword.
-      let b = if el > sl { lend } else { lstart + ec }
+      // A span's end column is EXCLUSIVE and 1-based, so its byte offset is
+      // `ec - 1` past the line's start; reading `ec` sliced one character too
+      // many — a one-letter variable rendered with the space after it, a
+      // callee with its opening parenthesis (measured on boot 8b071ba3).
+      let b = if el > sl { lend } else { lstart + ec - 1 }
       let lo = if a < lend { a } else { lstart }
       let hi = if b <= lend { b } else { lend }
       if hi > lo { "{str_slice(text, lo, hi)} : " } else { "" }
@@ -1711,7 +1758,8 @@ fn render_why_hops(reason, target: String, depth) = if depth > 7 {
     },
     _ => {
       if depth > 0 { print("     ") } else { () }
-      print("{show_reason(reason)}\n")
+      print("{reason_phrase(reason)}\n")
+      render_why_deeper(reason, target, depth)
     },
   }
 }
@@ -1738,21 +1786,6 @@ fn render_why_deeper(inner, target: String, depth) = match inner {
   IfBranch(br) => render_why_hops(br, target, depth + 1),
   Instantiation(_, br) => render_why_hops(br, target, depth + 1),
   _ => print_string(""),
-}
-
-fn reason_phrase(inner) = match inner {
-  VarLookup(name, _) => "{name} flows in here",
-  LetBinding(name, _) => "let {name}",
-  Declared(name) => "declared {name}",
-  Inferred(s) => s,
-  FnReturn(name, _) => "returned from {name}",
-  FnParam(name, i, _) => "parameter {name}",
-  InferredCallReturn(name, _) => "the call to {name}",
-  InferredPipeResult(v, _) => "through {v}",
-  MissingVar(name) => "{name} is unresolved",
-  Placeholder(_) => "authored here",
-  Accepted(text, proof, _) => "accepted `{text}` — proposed: {show_reason(proof)}",
-  _ => show_reason(inner),
 }
 
 // The value + comment ledes at a binding hop — both read LIVE from the

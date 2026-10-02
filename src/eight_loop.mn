@@ -31,7 +31,7 @@
 //   graph_chase / NodeKind / Reason          — src/graph.mn + types.mn
 //   query_default (Query tentacle)           — src/query.mn
 //   synth_propose (Propose tentacle)         — src/mentl.mn
-//   PipeContext / pipe_context_of_handle     — src/cursor.mn
+//   VerbFrame / verb_path_of                 — src/cursor.mn
 //   row_of_kind / EffRow                     — src/cursor.mn + effects.mn
 //   ownership_of_kind / Ownership            — src/cursor.mn + own.mn
 //   verify_pending_at / Predicate            — src/cursor.mn + verify.mn
@@ -201,8 +201,9 @@ fn interrogation_at(handle) = match graph_chase(handle) {
       },
       // 2. Handler
       { (h, k, r) => handler_verdict_for(h, k, r) },
-      // 3. Verb
-      { (h, k, r) => verb_verdict_for(h, k, r) },
+      // 3. Verb — every node's topology is read off its declaration's path
+      //    (`verb_path_of`), so the verb is never absent and always clears.
+      { (_, _, r) => VerdictClears(r) },
       // 4. Row
       { (_, k, r) => row_verdict_for(k, r) },
       // 5. Ownership
@@ -305,48 +306,22 @@ fn handler_verdict_for(handle, kind, reason) with !Mutate = {
   }
 }
 
-// Does an enclosing `~>` install govern this handle? The install's governed
-// body is the PTee's LEFT subtree; a position is covered when it sits inside
-// some PTee body in the weave. Live read of the install edges — the handler
-// chain IS the graph (PLAN §2), never a transient stack copy.
-fn handle_under_tee_install(handle) with !Mutate = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => scan_for_tee_governing(handle, 0, next),
-  }
-}
+// Does an enclosing `~>` install govern this handle? It does when the path
+// from its declaration passes through an install's body — the verbs the
+// caret's topology facet reads (`verb_path_of`). This was a scan of every
+// handle in the graph for a `~>` whose body WAS this node, so a position one
+// level inside the body was never governed.
+fn handle_under_tee_install(handle) with !Mutate = any(governs_by_install, verb_path_of(handle))
 
-fn scan_for_tee_governing(target, i, n) with !Mutate = if i >= n {
-  false
-} else {
-  match graph_node_body(i) {
-    NExpr(PipeExpr(PTee, body, _handler)) => match body {
-      N(_, _, bh) => if bh == target { true } else { scan_for_tee_governing(target, i + 1, n) },
-    },
-    _ => scan_for_tee_governing(target, i + 1, n),
-  }
+fn governs_by_install(frame) = match frame {
+  VerbFrame(_, InstallBody) => true,
+  _ => false,
 }
 
 fn is_pure_row(row) with Pure = match row {
   EfRow([], [], EtClosed) => true,
   EfRow([], _, EtClosed) => true,
   _ => false,
-}
-
-// Verb clears when the position is inside a recognized pipe topology OR is
-// a leaf with no surrounding pipe. pipe_context_of_handle reads the live
-// parent chain from the AST-in-graph fabric (the enclosing PipeExpr is a
-// weave entry whose child handle IS this handle) — never the old constant.
-// The verb tentacle now genuinely fires: a pipe-stage clears (it carries
-// its topology); a bare leaf expression that is NOT in a pipe and whose
-// body IS a pipe-shaped flow but unclassified would invite — today every
-// node has a definite weave position, so the four PipeContext cases all
-// clear (the topology is READ, never absent).
-fn verb_verdict_for(handle, kind, reason) with !Mutate = match pipe_context_of_handle(handle) {
-  NoPipe => VerdictClears(reason),
-  InsidePipe(_) => VerdictClears(reason),
-  StartingPipe => VerdictClears(reason),
-  EndingPipe => VerdictClears(reason),
 }
 
 // Row clears when the binding's row is bound (resolved at

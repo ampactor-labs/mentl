@@ -703,8 +703,7 @@ fn reaches_decl(name: String, target: String, seen) with !Mutate = if target == 
 
 fn contains_name(names, target: String) = any((n) => n == target, names)
 
-// A named fn's body node, read from the program weave directly — the
-// same walk enclosing_fn_decl_at does, keyed by name instead of span.
+// A named fn's body node, read from the program weave directly by name.
 // (The NModule-decls indirection read a projection the edit session's
 // weave does not always carry — main() leaked past the reach exclusion
 // because its body was unreachable through it; the weave is the one

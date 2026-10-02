@@ -35,6 +35,108 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-02 · pin 9d27c325ab2f23ee (TRANSITION m3 == m4) · THE EIGHT ASPECTS AT THE CARET,
+  EACH READ OFF THE GRAPH: A NODE SPANS WHAT IT CONSUMED, THE CARET IS A
+  CHARACTER, EVERY UPWARD QUESTION FOLLOWS A PARENT EDGE, AND A FACET SAYS
+  ONLY WHAT IS TRUE AT THE NODE. On boot 8b071ba3 `mentl <file:line:col>`
+  answered a fanout as `x + 1) >< (x + 2` (a node's extent was its first
+  token), a string literal as its closing quote, a generic variable as the
+  node around it, wrote no Topology line ever, said nothing about which
+  install serves a perform, read an expression's Effects off its TYPE (a
+  let binding a lambda said `Tick`, the body's effect, for a mint that
+  allocates), gave Verify as the count of whatever obligations shared the
+  LINE, printed the desugar's minted parameter in an arm list's type
+  (`(__al7550: (Int, Int)) -> Int`), ended a parameter's Why at a bare
+  name, and answered the callee for the caret on a call's `(`. Every
+  upward question — the verbs around a node, the install that serves it,
+  the declaration that holds it, what the installs between it and that
+  declaration absorb — was a SCAN: `path_to` searched down from the root,
+  and `pipe_context_of_handle`, `scan_for_tee_governing`,
+  `render_context_at` and `enclosing_fn_decl_at` walked the whole graph
+  per question. (U) The parent edge is a spine column written at the one
+  writer (`graph_register_node`): each node's children note it as their
+  parent as it registers, a module node's are its declarations, the cell
+  biased by one because handle 0 is a module, untrailed because a
+  candidate segment holds only fresh nodes and the last registration wins.
+  Every upward question reads it (`decl_path_to`, `ancestry`,
+  `enclosing_decl`), and the four scans, `path_to`, the containment walk
+  `node_contains_handle`, the span scan `decl_holding` and
+  `absorbed_around` are deleted. (S) A node's extent is the tokens it
+  consumed (`upto` over the token cursor), and the caret is the CHARACTER
+  under it (`caret_span`: the point `[col, col+1)`, one home for the CLI
+  address and the LSP), where a zero-width point at a node's exclusive end
+  had sat inside it. (T) Topology is the verb path read down the
+  declaration's path (`VerbFrame`: branch i of n of the `><`, stage k of
+  the `|>`, the recurrence the `<~` feeds, the body the `~>` governs).
+  (H) A perform says which install serves it, or that a function value
+  carries it to wherever it is called, or that no install inside the
+  declaration answers and its row carries the effect to the callers
+  (`Served`). (R) Effects is what evaluating the node performs — the
+  charges noted on the subtree (`row_of_subtree`), a lambda's, a nested
+  fn's, a tee's and a handler declaration's own, a `<~` folding only its
+  recurrence because the delay spec never runs — and a function value says
+  both what minting it costs and what calling it performs (`RowFacet`:
+  `Evaluates | WhenCalled | HoleRow`); Verify names each obligation whose
+  claim sits inside the node. (P) The Propose context reads the same path:
+  the innermost declaration and the installs between it and the hole
+  (`innermost_fn`, `allowed_row_at`), the whole-graph scan deleted. (W)
+  Why is the node's own reason chain and, when its cell links elsewhere,
+  its type's (`teach_why -> [Reason]`); a parameter's env entry carries
+  the parameter's own reason located at the signature
+  (`parameter 1 of ramp, at walk:13`), and a Reason hop has ONE phrase,
+  `reason_phrase` in types.mn — the caret's copy in main.mn and the emit's
+  third renderer for the WAT comment at a function boundary
+  (`emit_render_reason_oneline`, 25 arms) are deleted into it. (N) A type
+  renders a parameter no author named as its type alone; the two desugar
+  prefixes moved to types.mn, where the parser, the formatter and the
+  renderer all reach them. (A) `mentl where NAME` answers the address
+  (`inv(n)  at walk:11`): the verb named where said everything but where,
+  and the new medium-first gate made this session confess the gap three
+  times in an hour. (G) `mentl query <entry> ghosts` locates every cell the
+  parser minted and the judgment never bound: 18,681 on the wheel's link —
+  declaration and parameter names, `where` predicates, decl and op nodes,
+  return annotations, the `??` id cell, the arm-list desugar's mints — and
+  the caret's ghost test is that facet's predicate (`node_is_ghost`), one
+  home. Also: the unreachable facet parks a dispatched handler's arms under
+  its op names; `caret_span_of_handle`, an alias of `parse_span_of`, is
+  deleted into it; `authored_hole` moved down to query.mn. KILLS: (1) the
+  first ghost test read a free authored hole as a ghost and the hole lost
+  the caret to its `let` — the proposal battery's `type-tie` caught it;
+  (2) Effects at a `<~` said `Memory + Alloc` — the delay spec's
+  construction charged a frame that never runs it; (3) a let binding a
+  lambda hid the mint behind the body's effect — `WhenCalled` says both;
+  (4) the m2 build refused `own` as a binder (a keyword); (5) a comment's
+  backticked `enclosing_decl` resolved in the link but not in parser.mn's
+  closure; (6) the ref ratchet refused 700 > 698 (two new `ref` markers);
+  (7) "a pipe's claim sits elsewhere than a call's" — measured, both at the
+  application's span, and the precise form is the positions face of the
+  representation work, not a span copy plumbed further; (8) `caret_span`
+  declared `with Pure` was refused by the boot judging the tree through
+  `mentl where` — building a record allocates; (9) the checked-in drift
+  hook's first catch was this landing's own `ref` marker; (10) the IDE
+  twin read `main.mn:5:8` (the `m` of `map`) expecting the call, which held
+  on 8b071ba3 only because a call's extent was its first token — the call
+  is read on its `(`; (11) three frontier legs went red on expectations the
+  landing itself changed (a shape tie's member count read the Why's
+  indented hops, the module-identity leg expected D4's obligation count,
+  `where`'s head had no address); (12) the medium-first gate refused a
+  python read of wheel.mn that wrote a `.txt` — its rule now asks for a
+  `.mn` path opened for writing. Twenty-four frontier
+  assertions RED on 8b071ba3: caret extents 7, topology 3, handler 3,
+  effects and verify 7, Why 2, `where`'s address 2. Gates: micros 339/339, crown 134/0, PE
+  30/0, frontier 499/0/1 expected-red, the IDE gate green on the pinned
+  boot (twin reads 4.4–7.2 ms resident; the page open 186 ms, a read 5.8), proposals 24/24, teach 11/11, `mentl check
+  src/main.mn` 0 diagnostics, board 12/12 with effectful lambdas 228 →
+  225. Cost, on one fixed input: the boot 1,004,360 KB at 473.8 MB of judgment,
+  the candidate 1,030,344 / 1,040,132 / 1,028,572 KB at 499.7 MB; a variant
+  without the parent writes 1,005,616 KB at 476.0 MB, so 23.7 MB is the
+  write's per-registration scratch (a child list and a closure per node,
+  dropped at once) — the arena's to reclaim, and the ceiling (1,014,000 →
+  1,050,000) records the debt it owes back. m3 leg 1,034,740 KB, m4
+  1,041,948 KB. NAMED, not closed, each the positions face of P1:
+  the ghost cells, `refs of` a type or a pattern constructor (patterns and
+  annotations are not cells), a claim located at the value it claims.
+
 - 2026-10-02 · pin 8b071ba3c0aebbd0 (CLEAN m2 == m3) · THE SESSION KEEPS ITS
   GRAPH: ONE INSTANCE ANSWERS FOR THE SESSION'S LIFE, AN EDIT RE-JUDGES ONLY
   THE CONE IT MOVED, THE ACCEPT IS DRAWN INTO THE GRAPH THE SESSION KEEPS,

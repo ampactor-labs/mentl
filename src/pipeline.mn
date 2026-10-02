@@ -1498,6 +1498,7 @@ fn render_query_result(result) = match result {
   QRPerforms(rows) => render_perform_rows(rows),
   QROrphanClaims(rows) => render_orphan_rows(rows),
   QRCost(mods, lines, nodes) => "→ {int_to_str(mods)} module(s) · {int_to_str(lines)} source line(s) · {int_to_str(nodes)} node(s) minted",
+  QRGhosts(sites) => "→ {int_to_str(len(sites))} cell(s) minted and never judged{render_census_sites(sites)}",
   QRWhere(lines, sites) => "→ {str_join_indented(lines)}{render_where_sites(sites)}",
   QRError(msg) => "error: {msg}",
 }
@@ -1571,6 +1572,7 @@ type QueryVerb
   | QVPerforms
   | QVOrphanClaims
   | QVCost
+  | QVGhosts
   | QVSmt
   | QVUnknownVerb
 
@@ -1614,6 +1616,8 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVOrphanClaims
 } else if w == "cost" {
   QVCost
+} else if w == "ghosts" {
+  QVGhosts
 } else if w == "smt" {
   QVSmt
 } else {
@@ -1664,6 +1668,7 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVPerforms => QPerforms,
   QVOrphanClaims => QOrphanClaims,
   QVCost => QCost,
+  QVGhosts => QGhosts,
   QVSmt => QSmt,
   QVUnknownVerb => QUnknown(raw),
 }

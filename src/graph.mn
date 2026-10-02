@@ -138,6 +138,7 @@ fn spine_open_loop(own spine, opened, b) = if opened > b {
     module: make_list(spine_slots),
     narrowing: make_list(spine_slots),
     nodes: make_list(spine_slots),
+    parent: make_list(spine_slots),
     products: make_list(spine_slots),
     program: make_list(spine_slots),
     slots: make_list(spine_slots),
@@ -228,6 +229,32 @@ fn born_outside(spine, spine_open, module: Int, handle) =
   spine_module_at(spine, spine_open, handle) != module
 
 fn handle_is_not(module: Int, handle: Int) = handle != module
+
+// The tree's own edge, child to parent: drawn here, where a parent's body
+// registers, for every node that body holds — a module's declarations
+// included. The cell is BIASED BY ONE like the module column's, since a
+// module node may be handle 0, and a virgin cell reads as no parent. Not
+// trail-backed, for the module column's reason: a candidate a rolled-back
+// segment minted held only nodes minted in that segment, and a re-mint at
+// the same handle redraws its edge when its own parent registers. The last
+// registration wins, which is the tree a desugaring leaves (a `let`'s value
+// is a child of the match its block becomes).
+fn spine_put_parents(spine, parent, body) = match body {
+  NModule(m) => m.decls |> map(node_handle) |> each(spine_put_parent(spine, ??, parent)),
+  _ => body_child_handles(body) |> each(spine_put_parent(spine, ??, parent)),
+}
+
+fn spine_put_parent(spine, h, parent) = {
+  let _ = list_set(spine_page(spine, h).parent, spine_slot(h), parent + 1)
+  ()
+}
+
+fn spine_parent_at(spine, spine_open, h) = if spine_band(h) >= spine_open {
+  None
+} else {
+  let cell = list_index(spine_page(spine, h).parent, spine_slot(h))
+  if cell == 0 { None } else { Some(cell - 1) }
+}
 
 // THE ACCEPT EDGE, read at the one writer (C4). A node bound at an extent
 // the accepted column holds — same module, same span — takes its reason
@@ -432,6 +459,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // 2026-10-01). The read is spine_module_at's, shared with the accept
   // read at graph_bind.
   resume(spine_module_at(spine, spine_open, handle)),
+  graph_parent_of(handle) => resume(spine_parent_at(spine, spine_open, handle)),
   graph_module_current() => // Enter a module: every subsequent mint is attributed to it. The module
   // node attributes ITSELF, which is what makes the column total without a
   // sentinel — the first stamp has no earlier module to inherit, so it is
@@ -522,6 +550,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // source, where nothing is ever superseded.
   {
     spine_put_body(spine, handle, body)
+    spine_put_parents(spine, handle, body)
     match body {
       NModule(m) => match smap_get(modules_now, m.path) {
         Some(old) => if old == handle {
@@ -1936,12 +1965,15 @@ fn arm_body_handle(arm) with Pure = node_handle(arm.body)
 // graph_row_note) and joins the same charges into the FRAME's row cell; a
 // sub-expression's row was never readable, because the frame cell holds the
 // whole declaration's total. It is a fold now: a node's own notes, resolved
-// live, joined over its children's — with three constructs answering their
-// OWN notes alone, since what is under them does not run when they are
-// evaluated (a lambda and a nested fn mint a record whose body is latent; a
-// handler declaration installs nothing) or is already summarized (a `~>`
-// tee's note IS its body's row with the handler's absorption removed, so
-// descending would re-add what the install absorbs). A hole answers None:
+// live, joined over its children's — with four constructs answering their
+// OWN notes alone, or with one child, since what is under them does not run
+// when they are evaluated (a lambda and a nested fn mint a record whose body
+// is latent; a handler declaration installs nothing; a `<~` ticks its
+// recurrence and never evaluates its delay spec, which is judged in a frame
+// whose row is dropped — folding it made the caret say `Memory + Alloc` at
+// a cycle `!Alloc` accepts) or is already summarized (a `~>` tee's note IS
+// its body's row with the handler's absorption removed, so descending would
+// re-add what the install absorbs). A hole answers None:
 // an authored absence performs whatever the position may, and a reader
 // asking "is this provably pure?" must hear no. The e-graph's absorb gate
 // reads it; a sub-expression's Effects facet can.
@@ -1953,6 +1985,7 @@ fn row_of_subtree(h) with !Mutate = {
     NStmt(FnStmt(_, _, _, _, _)) => Some(here),
     NStmt(HandlerDeclStmt(_, _, _, _, _, _)) => Some(here),
     NExpr(PipeExpr(PTee, _, _)) => Some(here),
+    NExpr(PipeExpr(PFeedback, l, _)) => row_of_child(Some(here), node_handle(l)),
     body => fold(Some(here), row_of_child, body_child_handles(body)),
   }
 }
@@ -2309,6 +2342,13 @@ fn weave_line_extent() with !Mutate = fold(
 // allocation-free scan then measured O(n^2) over the snoc-spined log
 // (a 600s timeout at the same scale). The column is the same one write
 // projected by handle — the log survives for containment scans.
+//
+// It is the one place a position comes from. A span is a MINT fact: a chase
+// follows the binding chain (a hole unified with a call's result answered the
+// chase terminal's span), and even a node's own reason cell rebinds when
+// inference resolves it (a hole's last-bind reason carried the enclosing
+// binop's span — both measured). Only the birth index never moves. A miss
+// answers span_zero, which is what tells an authored hole from scaffolding.
 fn parse_span_of(handle) = graph_span_of(handle)
 
 // The ONLY route from a TypeHandle to a resolved Ty. Delegates to

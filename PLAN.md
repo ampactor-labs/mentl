@@ -60,9 +60,11 @@ the framing tethered to the actual developer at the keyboard.
 **`!Outside` scope** (§1): **toolchain reflexivity** — every lever to improve the
 medium is already inside it. Does NOT close the **intent space** (specs are born
 in the human's head) nor the **capability space** (Rice: sound-and-incomplete,
-accruing honest `V_Pending` debt). Two named residual Outsides: the external-SMT
-(`Hβ.verify.smt-handler-swap`) and the internal correctness oracle
-(`Hβ.closure.correctness-oracle-internal`).
+accruing honest `V_Pending` debt). One named residual Outside: the internal
+correctness oracle (`Hβ.closure.correctness-oracle-internal`). An external
+solver is not one — Verify's search is the medium's own (§11, 8.3), and a
+solver outside it is a proposer whose certificate the kernel checks, as a
+model behind `Synth` is (decided 2026-10-02).
 
 `!Outside` is not a new runtime effect beside `Alloc`, `Thread`, or `Flow`. It is
 the closure verdict projected over the existing medium: if improving Mentl still
@@ -314,10 +316,24 @@ as-inferred-effect (`own` performs `Consume`; `ref` is a row constraint; filled
 from use-count). **The measured invariant: if the developer has to think about
 it, the inference failed.**
 
-**⑥ The IFC frontier — the row carries information *flow*, not only capability
-presence.** `!E` + `~>` already subsumes capability-security. The extension: a
-row expressing "this `Secret` may not flow to `Log`" — non-interference proven
-like `!Alloc`. Sequenced as Phase 7 (§11).
+**⑥ Information flow is the influence walk, not a row element** (decided
+2026-10-02, superseding "the row carries information flow"). `!E` + `~>`
+already subsumes capability security; what flow adds is WHICH value may reach
+a sink, and the graph already carries that relation. Since P0 a refinement is
+read along a value's flow edges, since S5 a handler's state is every value
+written into it, and since E4 the parent edge gives control dependence (the
+branch a perform stands under). So a classification is a refinement on a
+source's declared type (`-> Untrusted`), a sink's demand is a precondition on
+its parameter (`exec(cmd: Trusted)`), a leak is `E_RefinementRejected` at the
+argument, and precondition inference carries the demand up the call graph to
+where the data enters; endorsement is a function whose declared return states
+the stronger label, the one place a policy check lives; an implicit flow is
+the ancestry walk to a classified scrutinee. A `Flow(Src, Sink)` row element
+and a label lattice beside it would be a second home for one fact (Morgan's
+challenge named the reification; the artifact P0, S5 and E4 built is the
+measurement). The agentic regime's forcing case — untrusted tool output must
+not reach a privileged sink — is the same machinery with the order reversed.
+Sequenced as Phase 7 (§11).
 
 **⑦ The felt experience is co-equal — reactivity IS the cursor's `<~`.** The
 cursor re-projecting on graph delta at the human boundary IS fine-grained
@@ -337,7 +353,7 @@ meets a caught-up seed; it is not a gate chased ahead of the form.
 2. **FELT — the human surface (L6).** `mentl where/why/edit`, the gradient, the
    Why button, reactivity — these *fall out as projections*, not added on top.
 3. **UNSURPASSABLE — the frontier.** Modal effect synthesis (§4③), IFC (§4⑥),
-   durable-execution-as-handler (§4④), value-ontology (§4①), Verify→SMT, native/
+   durable-execution-as-handler (§4④), value-ontology (§4①), Verify's own solver, native/
    GPU backends, e-graph. Each a move *within* the medium.
 
    **The felt endpoint:** a `??` is a typed CONSTRAINT; the cursor forks a finite,
@@ -941,10 +957,10 @@ and this is the STATE.
   shipping medium: a lifetime for the session's scratch — every answer keeps
   what it minted, so the image grows with every answer for the session's
   whole life (Arc C's boundary,
-  `Hβ.session.answer-scratch-outlives-the-answer`) — the EIGHT aspects at the
-  caret (E4: seven today), and a durable image boundary: a session derives
-  once per open, and a fresh process derives cold
-  (`Hβ.felt.accept-outlives-the-process`).
+  `Hβ.session.answer-scratch-outlives-the-answer`) — and a durable image
+  boundary: a session derives once per open, and a fresh process derives
+  cold (`Hβ.felt.accept-outlives-the-process`). The eight aspects at the
+  caret are read off the graph since E4 (the bullet after E2's).
 - **Demand linking / prelude caching** must be graph reachability, not a token
   allowlist. The demanded set is read from import edges, free-name binding edges,
   desugar-introduced names, and row/handler/type obligations; the prelude should
@@ -2090,6 +2106,32 @@ and this is the STATE.
   the program rather than its cone (`Hβ.session.edit-pays-for-the-program`),
   and a refusal crosses the wire only as MISS
   (`Hβ.session.answer-is-out-err-and-exit`).
+- **THE CARET READS THE GRAPH AT THE NODE — CLOSED 2026-10-02 (E4).** On
+  boot 8b071ba3 the caret answered a fanout by its first token, a generic
+  variable by the node around it and a call's `(` by its callee; it wrote no
+  Topology, said nothing of which install serves a perform, read Effects off
+  the TYPE (a let binding a lambda said its body's effect for a mint that
+  allocates) and counted the obligations sharing a line. A node spans the
+  tokens it consumed and the caret is the character under it
+  (`caret_span`); a parent edge drawn at the one writer answers every upward
+  question (`decl_path_to`, `ancestry`), and four whole-graph scans and the
+  downward path search are deleted. Each aspect projects where it has
+  something true to say: Query; Topology, the verb path down the
+  declaration; Handler, the install that serves a perform or why none on the
+  path does; Effects, what evaluating the node performs, and for a function
+  value what minting it costs and what calling it performs; Ownership;
+  Verify, each obligation inside the node named; Teach; and Why, the node's
+  own chain and then its type's, a parameter's read walking to its
+  signature through ONE Reason phrase where two stood (the caret's and the
+  emit's WAT comment, beside the chain renderer `show_reason`). `where`
+  answers the address; a minted parameter never renders. What it measured
+  and hands to the representation work (§11's order): 18,681 cells the
+  parser mints and the judgment never binds (`mentl query <entry> ghosts`)
+  — names, parameters, predicates, annotations — which are also why `refs
+  of` misses a type annotation or a pattern constructor, and why a claim
+  sits at the application rather than at the value it claims. The parent
+  write's per-registration scratch costs 23.7 MB the arena reclaims; the
+  ceiling (1,014,000 → 1,050,000) records that debt.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -2359,9 +2401,11 @@ gets justified.
 
 **THE DEFINITION OF DONE — one statement per §0 property, each a phase's
 terminal gate:** (1) *proof beats review* — the crown sound under polymorphism,
-Verify on a decidable fragment with honest V_Pending, SMT a certificate-checked
-handler swap, every armed class refusing. (2) *the negative is provable* —
-`!Flow` on the integrity dual-lattice, PC-labels, robust declassification.
+Verify on a decidable fragment with honest V_Pending, its search the medium's
+own (an outside solver a proposer whose certificate the kernel checks), every
+armed class refusing. (2) *the negative is provable* — flow refused where an
+`Untrusted` value reaches a `Trusted` sink, implicit flows included, both
+regimes first-class.
 (3) *intent is lossless* — the Why engine total, provenance projected at every
 surface, the fmt summit canonical. (4) *computation is durable* —
 persist-as-memcpy generalized to cross-machine cursor migration, the session a
@@ -2431,7 +2475,7 @@ times*, never *a second judgment reconciled with the first*.
 2026-08-11/12 selectors, whose corrected DEP chain it absorbs).** The
 production target until Morgan stands it down: the medium complete and
 all-powerful in WASM form, used in full through `mentl space` — live caret
-authoring AND proof faces (`!Flow` refusals, Why chains) on ONE page, for a
+authoring AND proof faces (flow refusals, Why chains) on ONE page, for a
 client audience. Native (Phase 10) waits behind that bar, named in positive
 form the whole time. The arcs, in order:
 
@@ -2756,10 +2800,10 @@ form the whole time. The arcs, in order:
   neighbouring field (tests/repro-wf/open-row-interior-site.mn). Terminal:
   ide-gate green Node + headless Chrome, session alive across actions,
   eight-aspect projections at the caret.
-- **Arc F · Proof faces on the page, repriced.** `!Flow` sink-sensitivity
-  (`.flowlabel-inference-in-hm` — labels as ROW facts at observation edges,
-  the predicate-name heuristic dies) + Why-chain/refusal badges riding the
-  transport. Struck as ALREADY LANDED: stride carrier (pin 7db29195),
+- **Arc F · Proof faces on the page, repriced.** Flow refusals as sink
+  preconditions over the influence walk (Phase 7 as re-scoped 2026-10-02 —
+  no row element, the label lattice deleted) + Why-chain/refusal badges
+  riding the transport. Struck as ALREADY LANDED: stride carrier (pin 7db29195),
   monomorphization face, uniform twinning with the f64-state guard,
   annotated-[Float] breadth end to end.
 - **Arc G · THE SEVERANCE MAP — the page that makes the thesis watchable.**
@@ -2834,6 +2878,32 @@ form the whole time. The arcs, in order:
   one design decision away from that grave.
   Peers: `Hβ.viz.severance-map`, `Hβ.viz.ambient-world-gutter`,
   `Hβ.viz.negative-space-diff`, `Hβ.viz.why-walk-elides-trivial-hops`.
+
+**THE ORDER FROM E4 (Morgan's questions, 2026-10-02) — foundations before
+surfaces.** Anything that depends on a lifetime is built twice if it is built
+before lifetimes exist, so the next three landings are representation, and
+E6, B2–B4 and Pulse scenes 2–4 follow them.
+(1) **THE ARENA** (Arc C, promoted before E6). An extent's publication
+outlives it and nothing else does — a declaration in the compiler, an answer
+in the session, a block in a program. The reset is O(1) to the extent's mark;
+what crosses is evacuated, rooted in the channels the row already names
+(graph and row writes are trailed, handler state is on the world chain, the
+result is the frame's return transfer, and only a `Mutate` into an older
+buffer needs a store log, which the row says when — a generational
+collector's write barrier, made static). The copy is O(published) and shrinks
+toward nothing as values become column words; the strategy per extent is a
+`~>` handler; handles become `{arena, offset}`; columns open lazily. Measured
+to justify the order: at least four of the eight landings before E4 raised
+the self-compile peak ceiling, 98% of the judgment's heap is scratch, E2's
+session keeps every answer's scratch, and E4's own parent edge costs 23.7 MB
+of per-registration scratch that this landing owes back below 1,010,000 KB.
+**Lowering-as-columns** is designed beside it — the same question, where a
+declaration's facts live and for how long.
+(2) **POSITIONS ARE CELLS.** Binders, patterns, annotations and predicates
+become the cells inference binds: the ghost count (18,681 on the wheel at
+E4, `mentl query <entry> ghosts`) to zero under a ratchet, `refs of` a type
+or a pattern constructor answered, a claim located at the value it claims.
+(3) **VERIFY'S OWN SOLVER** (8.3 as re-scoped).
 
 **CADENCE LAW (paid for twice):** one landing = build the WHOLE arc → verify
 once → board once → repin once. A march sweep per micro-edit spends the
@@ -3341,47 +3411,26 @@ The spine root finishes. Order inside the phase is the dependency order.
   crown battery whole (leaks reject, sounds accept, instances precise,
   worlds enforced) — DONE statement (2)'s first half.
 
-### Phase 7 · `!Flow` — the crown applied to data flow
+### Phase 7 · Flow — the influence walk gains control edges
 
-*(The phase's felt walk ran 2026-08-08 through the shim + fresh m2. The
-projection layer is real end-to-end — `mentl query <f> "flow NAME"` →
-QFlowOf → query_flow_label → predicate_flow_label — and the walk's one
-find landed: the TFun arm read the ROW alone, so a `-> Vault` source
-(`Vault = String where classified(self)`) answered Public while the
-value's own scheme answered Secret; the return-label join closes it
-(tests/frontier/mn-flow-refined-source.mn, seen RED against the boot at
-exactly that split). Two named truths from the walk: the classifier's
-vocabulary is a predicate-NAME heuristic (str_contains
-secret/classified/sensitive in predicate_flow_label) — a seed the
-`.flowlabel-inference-in-hm` chain replaces with labels as graph facts,
-never the shipped form; and FlowLabel's constructors (`Secret`,
-`Public`) occupy the user namespace, so a program's own `type Secret`
-collides with the label vocabulary — the namespacing question rides the
-inference landing.)*
-
-The C chain in its banked order, DEP-rooted on Phase 6:
-`Hβ.ifc.dcc-noninterference-gate` (FIRST FACE LANDED 2026-08-08, pin
-a025c3523a84 — and its first probe caught the ShowExpr desugar
-silently defeating the splice check: the wrapper bound every fragment
-to String, the label read classified Public, and a classified splice
-passed check with no fixture to see it; fixed by reading through the
-wrap, the leak/sound pair born RED. The check is CONSTRUCTION-site —
-sink-blind, conservatively sound; sink-sensitivity is the next step's
-buy, the RESIDUE entry carries the full remainder) →
-`.flowlabel-inference-in-hm` (STAMPED 2026-08-08, RESIDUE the home:
-the flow fact is a ROW element — Flow(Src, Sink) charged at
-observation edges, `!Flow(Secret, Log)` proving absence as !Alloc
-does, the §4⑥ absorption executed on the existing algebra; labels
-never ride the type union-find — one tainted Int would label every
-Int; the sink-edge move retires the construction-site over-refusal) →
-`.pc-label-implicit-flow` →
-`.integrity-dual-lattice` (the agentic regime's forcing function — the
-integrity spec that makes the mechanism honest) → `.declassify-robust` →
-`.flow-world-on-tcont` (labels survive TIME) → `.agentic-fides-target`.
-The honest disclaimer stands (the lattice proves where OUTPUT may go,
-never what a model does inside its window). Terminal gate:
-`!Flow(Untrusted -> Sink)` discharged like `!Alloc`, both regimes
-first-class — DONE statement (2) whole.
+**Re-scoped 2026-10-02** (§4⑥): no `Flow` row element and no label lattice.
+The phase is three moves on machinery that exists. (1) CONTROL EDGES: the
+influence walk that reads a value's label (P0·D's leaves, S5's state writes)
+also reads the parent edge to every branch, scrutinee and guard the value or
+the perform stands under — an implicit flow is that ancestry. (2) LABELS ARE
+REFINEMENTS: a source's declared return carries its classification, a sink's
+parameter its demand, and the integrity dual (`Untrusted` must not reach
+`Trusted`) is the same claim read the other way; a predicate over provenance
+is decided by the walk, never by a predicate's name. (3) DELETION:
+`FlowLabel`, `predicate_flow_label`, `query_flow_label`, `QFlowOf` and the
+construction-site splice check (`Hβ.ifc.dcc-noninterference-gate`'s first
+face, which caught the ShowExpr desugar defeating it on 2026-08-08) retire
+into the claim the splice's sink raises. Persistence needs nothing: a label
+is a refinement on a value in the image. The honest disclaimer stands — a
+proof says where OUTPUT may go, never what a model does inside its window.
+Terminal gate: `Untrusted` reaching a `Trusted` sink refused like `!Alloc`,
+both regimes first-class — DONE statement (2) whole.
+(`Hβ.ifc.flowlabel-inference-in-hm`'s row-element design is SUPERSEDED.)
 
 ### Phase 8 · Verification whole — proof beats review, measured
 
@@ -3397,15 +3446,29 @@ first-class — DONE statement (2) whole.
   `Hβ.verify.higher-order-refinement`, and the DSP tier
   (`Hβ.dsp.hz-ceiling-ambient-sample-rate`,
   `Hβ.dataflow.clock-calculus-sample-rate`) fill the fragment out.
-- **8.3 · The SMT handler swap** — `Hβ.verify.smt-handler-swap`: Z3/CVC5
-  behind `~> verify_smt`, certificate-CHECKED (the checker inside, the
-  solver outside), discharging the undecidable residue by residual theory;
-  if an external solver persists at DONE it is the NAMED external-SMT
-  `!Outside`, priced honestly. `Hβ.verify.ledger-soundness` (no silent
-  assume-true, the Dafny cautionary), `.proof-incrementality-cached-cursor`
-  (obligations re-discharge only in the changed cone),
-  `.reason-edge-pcc-certificate` (a discharged proof carries a walkable
-  certificate — proof-carrying code as a Reason projection).
+- **8.3 · Verify's own solver — the search Mentl already is.** Re-scoped
+  2026-10-02 from "Z3/CVC5 behind `~> verify_smt`". A CDCL(T) solver's parts
+  are already kernel machinery: union-find and the e-graph are congruence
+  closure, the trail with checkpoint and rollback is the assignment stack and
+  backjump, a fork is a case split, a gate checked at the one writer is
+  theory propagation, C6's first divergence between two trails is conflict
+  analysis, and promotion below a checkpoint is clause learning. So the solver
+  and the `??` proposer are ONE search: a satisfying model is a proposal, an
+  unsat core is 8.4's minimal inconsistent core, a learned conflict is the
+  computed question. The fragment, in the order the wheel's own debt names
+  it: path narrowing (all five partiality claims C5 left open on the wheel
+  are path-guarded, `Hβ.verify.partiality-reads-the-path-narrowing`),
+  overflow-aware Int intervals
+  (`Hβ.verify.interval-fragment-assumes-unbounded-int`), linear arithmetic
+  (difference logic, then simplex), equality from the e-graph, case splits by
+  fork. An external solver plugs in where a model does — behind the gate,
+  its certificate (Alethe/LFSC) checked by the kernel — and is never an
+  Outside (`Hβ.verify.smt-handler-swap` re-scoped to that proposer slot).
+  `Hβ.verify.ledger-soundness` (no silent assume-true, the Dafny
+  cautionary), `.proof-incrementality-cached-cursor` (obligations
+  re-discharge only in the changed cone), `.reason-edge-pcc-certificate` (a
+  discharged proof carries a walkable certificate — proof-carrying code as a
+  Reason projection).
 - **8.4 · Diagnostics' final form.** `Hβ.diag.catalog-as-projection`
   (report takes DiagKind; SYNTAX's three tables become projections of
   types.mn — the hand-kept second home dies),
@@ -3421,8 +3484,8 @@ first-class — DONE statement (2) whole.
   example answering the spec-oracle problem) and
   `.synth-handler-error-fed-back` (a refuted candidate returns as a
   lossless CONSTRAINT, not a lossy token). Terminal gate: DONE statement
-  (1) — the crown sound, Verify decidable-with-honest-debt, SMT
-  certificate-checked, every armed class refusing.
+  (1) — the crown sound, Verify decidable-with-honest-debt and its search
+  the medium's own, every armed class refusing.
 
 ### Phase 9 · TIME and SPACE ship — computation durable, cursors parallel
 
@@ -3493,9 +3556,9 @@ first-class — DONE statement (2) whole.
   `mentl run`/`asm`, wt-env.sh dies with it. `LEDGER.md` and `RESIDUE.md`
   begin dissolving into projections (`Hβ.query.generation-operand` —
   `mentl why --at <sha>`; the frontier ranking IS the residue index).
-  Terminal gate: DONE statement (7) — every lever inside, and the two
-  named residual Outsides (external SMT if it persists; the intent space,
-  permanently) stated as exactly what they are.
+  Terminal gate: DONE statement (7) — every lever inside, and the one
+  named residual Outside (the intent space, permanently) stated as exactly
+  what it is.
 
 ### Phase 11 · POLISHED — the felt surface whole, the loop closed, DONE measured
 

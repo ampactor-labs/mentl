@@ -119,7 +119,15 @@ fn board_bounds() = [
   // discovery fold's accumulator lambda became a reference
   // (`range_of_entry`), so the landing adds one — the address projection's
   // and the accept's draw remain — and the ceiling holds the 228 it measures.
-  Bound({ceiling: 228, shape: CsEffectfulLambda}),
+  //
+  // 228 -> 225 (2026-10-02, E4): the Propose context reads the one path from
+  // the declaration to the hole, so the two containment walks that searched
+  // each level's children for the hole (`find` and `any` over a lambda that
+  // re-walked the subtree) are deleted with the scan they served; the
+  // caret's Verify line prints through a named function from its first form;
+  // and the declaration around a position is read up the parent edges, so
+  // the span scan that found it, and the lambda it searched with, are gone.
+  Bound({ceiling: 225, shape: CsEffectfulLambda}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which

@@ -179,6 +179,9 @@ type Question
   // time, so a gate can refuse a landing that makes the medium process
   // more source to answer the same question.
   | QCost
+  // "ghosts" — the cells the parser minted that the judgment never bound,
+  // located: what the caret reads past, counted so the minting can stop
+  | QGhosts
   | QUnknown(String)
 
 type QueryResult
@@ -235,6 +238,8 @@ type QueryResult
   | QROrphanClaims([(String, String, Int)])
   // modules linked, source lines processed, nodes minted
   | QRCost(Int, Int, Int)
+  // (module, span) of each cell minted and never judged
+  | QRGhosts([(String, Span)])
   // the derived badges (plain lines) + the fanout sites
   | QRWhere([String], [WhereSite])
   | QRError(String)
@@ -376,6 +381,7 @@ handler query_default {
     QPerforms => resume(QRPerforms(effect_report(module_cells()))),
     QOrphanClaims => resume(QROrphanClaims(orphan_claim_report(module_cells()))),
     QCost => resume(QRCost(len(module_cells()), weave_line_extent(), graph_next())),
+    QGhosts => resume(QRGhosts(ghost_sites())),
     QUnknown(q) => resume(QRError("unknown query: {q}")),
   },
 }
@@ -721,7 +727,13 @@ fn reach_report(cells) = {
   let idx = ur_index(decls, 0, n, smap_new())
   match smap_get(idx, "main") {
     None => [],
-    Some(_) => ur_rows(decls, ur_walk(decls, idx, ["main"] ++ refine_roots(decls), smap_new()), 0, n, []),
+    Some(_) => ur_rows(
+      decls,
+      ur_walk(decls, idx, ["main"] ++ refine_roots(decls), smap_new(), smap_new()),
+      0,
+      n,
+      []
+    ),
   }
 }
 
@@ -803,18 +815,63 @@ fn ur_index(ref decls, i, n, idx) = if i >= n {
   }
 }
 
-// The worklist: pop a name, mark it, push the frees of its declaration.
-fn ur_walk(ref decls, idx, work, reached) = match work {
+// The worklist: pop a name, mark it, push the frees of its declaration —
+// except a DISPATCHED handler's arms, which run only when something reached
+// performs their operation: each arm's frees park under its op's name and are
+// released when that name is reached. Walking every arm of a reached handler
+// kept two Format operations nothing performs alive, with the whole-graph
+// parent scan one of them carried (measured 2026-10-02). A schedule class's
+// arms stay reached with the handler — the lowering performs them on a
+// fanout's behalf, and no source name ever does — read off the one roster
+// the judgment and the lowering classify an install by.
+fn ur_walk(ref decls, idx, work, reached, parked) = match work {
   [] => reached,
   [name, ...more] => match smap_get(reached, name) {
-    Some(_) => ur_walk(decls, idx, more, reached),
-    None => match smap_get(idx, name) {
-      None => ur_walk(decls, idx, more, reached),
-      Some(i) => match decls[i] {
-        (_, d) => ur_walk(decls, idx, more ++ collect_free_vars(d, []), smap_add(reached, name, 1)),
-      },
+    Some(_) => ur_walk(decls, idx, more, reached, parked),
+    None => {
+      let now = smap_add(reached, name, 1)
+      let released = flatten(smap_get_all(parked, name))
+      match smap_get(idx, name) {
+        None => ur_walk(decls, idx, more ++ released, now, parked),
+        Some(i) => match decls[i] {
+          (_, d) => match ur_decl_frees(d, now) {
+            (frees, park) => ur_walk(decls, idx, more ++ released ++ frees, now, fold(parked, ur_park, park)),
+          },
+        },
+      }
     },
   },
+}
+
+// A declaration's frees to walk now, and the arms it parks as (op, frees).
+fn ur_decl_frees(d, reached) = match d {
+  N(NStmt(HandlerDeclStmt(_, _, config, state, arms, _)), _, _) => match projection_of_effects(handler_effect_names(arms)) {
+    PDispatch => {
+      let cfg = free_vars_param_names(config)
+      let in_arms = cfg ++ map({ st => st.name }, state)
+      fold(
+        (flatten(map({ st => collect_free_vars(st.init, cfg) }, state)), []),
+        ur_arm(reached, in_arms, ??, ??),
+        arms
+      )
+    },
+    _ => (collect_free_vars(d, []), []),
+  },
+  _ => (collect_free_vars(d, []), []),
+}
+
+fn ur_arm(reached, in_arms, acc, arm) = match acc {
+  (now, park) => {
+    let frees = collect_free_vars(arm.body, in_arms ++ arm.args)
+    match smap_get(reached, handler_arm_op_name(arm)) {
+      Some(_) => (now ++ frees, park),
+      None => (now, push(park, (handler_arm_op_name(arm), frees))),
+    }
+  },
+}
+
+fn ur_park(parked, entry) = match entry {
+  (op, frees) => smap_add(parked, op, frees),
 }
 
 fn ur_rows(ref decls, reached, i, n, acc) = if i >= n {
@@ -862,6 +919,42 @@ fn ur_rows(ref decls, reached, i, n, acc) = if i >= n {
 // their phantom readers WITHOUT backticks, which is exactly why that
 // ratchet stayed at zero through every one of them.
 fn orphan_claim_report(cells) with !Mutate = fold([], orphan_rows_join, cells)
+
+// An AUTHORED hole: a `??` the parser minted with a fresh nonzero id and its
+// token's span (a syntax-error recovery hole is one too — an absence to fix
+// either way). The weave's absent-default NHole(0) and the driver's span-zero
+// scaffolding are not positions: there is nothing at 0:0 to render or patch.
+fn authored_hole(handle) with !Mutate = match graph_node_body(handle) {
+  NHole(id) => id != 0 && !span_eq(parse_span_of(handle), span_zero()),
+  _ => false,
+}
+
+// A cell the parser minted and the judgment never bound: its own reason is
+// still the placeholder it was born with once the whole program is judged.
+// An authored hole is free on purpose and is not one; a module node is the
+// file, not a cell inside it.
+fn node_is_ghost(h) with !Mutate = match graph_node_body(h) {
+  NModule(_) => false,
+  _ => match graph_reason_at(h) {
+    Placeholder(_) => !authored_hole(h),
+    _ => false,
+  },
+}
+
+// The ghosts facet: every current cell nothing judged, located. The caret
+// reads past them (`address_bound`); this is the instrument that finds the
+// minting that makes each one.
+fn ghost_sites() with !Mutate = match graph_snapshot() {
+  Graph(_, span_index) => span_index |> filter(ghost_entry) |> map(ghost_site),
+}
+
+fn ghost_entry(entry) with !Mutate = match entry {
+  (_, h) => graph_node_current(h) && node_is_ghost(h),
+}
+
+fn ghost_site(entry) with !Mutate = match entry {
+  (s, h) => (module_name_of_handle(graph_module_of(h)), s),
+}
 
 fn orphan_rows_join(acc, cell) with !Mutate = acc ++ orphan_rows_for(cell)
 
@@ -1512,16 +1605,6 @@ fn recursion_shape_of(fn_handle) = match graph_node_body(fn_handle) {
   _ => false,
 }
 
-// node_contains_handle — TREE containment: is `target` the node at
-// `h` or a descendant of it? The span form cannot answer this (decl
-// and body spans are head-anchored — the measured 2026-07-28 hole);
-// the tree IS the truth. Bounded by the subtree.
-fn node_contains_handle(h, target) with !Mutate = if h == target {
-  true
-} else {
-  any((c) => node_contains_handle(c, target), body_child_handles(graph_node_body(h)))
-}
-
 // ── the verb-shape read — the topology the bindings already draw ─────
 //
 // SYNTAX ⌖: `|>` is NEVER optional on a chain — `y |> f |> g` over
@@ -1754,7 +1837,7 @@ fn decl_badges(name: String, params, ret, row) with !Mutate = {
   let cp = graph_push_checkpoint()
   name_type_vars([TFun(params, ret, row)])
   let lines =
-    [decl_head(name, params, row)] ++ map(param_badge, params) ++ ["-> {value_type(ret)} @ {width_badge(ret)}"]
+    [decl_head(name, params, row) ++ decl_address(name)] ++ map(param_badge, params) ++ ["-> {value_type(ret)} @ {width_badge(ret)}"]
   graph_rollback(cp)
   QRWhere(
     lines ++ flat_map(tee_lines, body),
@@ -1829,6 +1912,19 @@ fn site_demanded(vias, site) = match site {
 
 fn decl_head(name: String, params, row) with !Mutate =
   "{name}({join(", ", map(param_name, params))}){show_row_suffix(row)}"
+
+// Where the declaration stands, in the developer's coordinates: its node off
+// the decls column, the module that node registered under, the line the
+// parser wrote. A function value with no declaration of its own — a
+// constructor, a module let holding a closure — has no line to give, and the
+// head stands alone.
+fn decl_address(name: String) with !Mutate = match smap_get(fanout_decls_index(), name) {
+  Some(h) => match parse_span_of(h) {
+    Span(sl, _, _, _) => "  at {module_name_of_handle(graph_module_of(h))}:{int_to_str(sl)}",
+  },
+  None => // drift-audit: ignore — no declaration node, so no address: the head is the whole answer
+  "",
+}
 
 fn param_badge(p) with !Mutate = value_badge(param_name(p), param_ty(p))
 

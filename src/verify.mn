@@ -1522,13 +1522,18 @@ fn debt_lines(ref debt, ref scope, i) = if i >= len(debt) {
 } else {
   match debt[i] {
     (modh, dspan, pred, _) => if debt_in_scope(modh, scope) {
-      eprint_string("verify: pending {classify_predicate(pred)} {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(dspan)}\n")
+      eprint_string("verify: {obligation_text(modh, dspan, pred)}\n")
     } else {
       ()
     },
   }
   debt_lines(debt, scope, i + 1)
 }
+
+// One open obligation said once: the ledger's summary lines and the Verify
+// facet at a caret read the same sentence.
+fn obligation_text(modh, dspan, pred) =
+  "pending {classify_predicate(pred)} {show_predicate(pred)} at {module_name_of_handle(modh)}:{show_span(dspan)}"
 
 fn debt_in_scope(modh, ref scope) = match scope {
   ScopeAll => true,

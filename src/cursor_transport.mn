@@ -171,7 +171,7 @@ handler terminal_transport with state = transport_state_init(Caret(0, Inferred("
 // the WASI boundary in one print_string. Any text-mode surface
 // (terminal, CI log, doc snapshot) reads the same projection.
 fn render_cursor_block(cursor, view) with !Mutate = match view {
-  CursorView(query, propose, topology, row, trace, verify, teach, why) => "Mentl @ " ++ show_handle_label(cursor) ++ "\n────────────────────────────────────────────\n" ++ "Query    │ " ++ show_node_kind(query) ++ "\nPropose  │ " ++ show_proposals(propose) ++ "\nTopology │ " ++ show_pipe_context(topology) ++ "\nRow      │ " ++ show_effrow(row) ++ "\nTrace    │ " ++ show_ownership(trace) ++ "\nVerify   │ " ++ show_verify_count(verify) ++ "\nTeach    │ " ++ show_teaching(teach) ++ "\nWhy      │ " ++ show_reason(why) ++ "\n",
+  CursorView(query, propose, topology, row, trace, verify, teach, why) => "Mentl @ " ++ show_handle_label(cursor) ++ "\n────────────────────────────────────────────\n" ++ "Query    │ " ++ show_node_kind(query) ++ "\nPropose  │ " ++ show_proposals(propose) ++ "\nTopology │ " ++ show_verb_path(topology, show_span) ++ "\nRow      │ " ++ show_row_facet(row) ++ "\nTrace    │ " ++ show_ownership(trace) ++ "\nVerify   │ " ++ show_verify_count(verify) ++ "\nTeach    │ " ++ show_teaching(teach) ++ "\nWhy      │ " ++ join(" — its type: ", map(show_reason, why)) ++ "\n",
 }
 
 // ─── LSP / web / vim transports — peer frame-adapters ───────────────
@@ -556,13 +556,6 @@ fn show_one_rejection(pair: (String, Reason)) with !Mutate = match pair {
 // the node's mint placeholder).
 fn show_one_proposal(proposal) with !Mutate = match proposal {
   (node, reason) => " · {render_candidate_source(node)} — {show_reason(reason)}",
-}
-
-fn show_pipe_context(ctx) = match ctx {
-  NoPipe => "(none)",
-  InsidePipe(pk) => "inside {show_pipe_kind(pk)}",
-  StartingPipe => "starts pipe",
-  EndingPipe => "ends pipe",
 }
 
 fn show_verify_count(preds) =

@@ -254,7 +254,7 @@ fn json_obj_get_unwrap(v, key) = match json_obj_get(v, key) {
 // at (line+1, char+1); refined ranges (selection-aware) land as
 // MV-LSP.range peer sub-handle.
 fn position_to_span(pos) = match pos {
-  (line, ch) => Span(line + 1, ch + 1, line + 1, ch + 1),
+  (line, ch) => caret_span(line + 1, ch + 1),
 }
 
 // ─── handle_* — LSP method bodies ─────────────────────────────────────

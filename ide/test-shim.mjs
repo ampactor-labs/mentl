@@ -109,7 +109,10 @@ const READ_BAR_MS = 50;   // PLAN §11.2's felt bar, measured here rather than a
   const opened = await sess.open();
   console.log(`[4] the session opens: ${opened.ok ? 'one derivation in ' + opened.ms.toFixed(0) + ' ms' : 'FAILED — ' + opened.why}`);
   const reads = [];
-  for (const [at, want] of [['main.mn:1:4', /^Query: .*double/m], ['main.mn:5:8', /^Query: map\(/m], ['main.mn:1:4', /^Query: .*double/m], ['main.mn:6:8', /^Query: fold\(/m]]) {
+  // A call is read on its `(`: the caret is the character under it, and the
+  // callee's name is a node of its own (E4 — on boot 8b071ba3 a call's extent
+  // was its first token, so the call and its callee tied at the name).
+  for (const [at, want] of [['main.mn:1:4', /^Query: .*double/m], ['main.mn:5:11', /^Query: map\(/m], ['main.mn:1:4', /^Query: .*double/m], ['main.mn:6:12', /^Query: fold\(/m]]) {
     const r = await sess.call(['mentl', at]);
     reads.push(r);
     const ok = r.exit === 0 && !r.trapped && want.test(r.out) && r.resident && r.ms < READ_BAR_MS;
@@ -117,7 +120,7 @@ const READ_BAR_MS = 50;   // PLAN §11.2's felt bar, measured here rather than a
     if (!ok) { bad++; console.log('      ' + (r.out || r.err || '').trim().split('\n').slice(0, 3).join('\n      ')); }
   }
   const t0 = performance.now();
-  const cold = await runWheel({ argv: ['mentl', 'main.mn:5:8'], vfs: Object.assign({}, sess.vfs) });
+  const cold = await runWheel({ argv: ['mentl', 'main.mn:5:11'], vfs: Object.assign({}, sess.vfs) });
   const cost = (r) => Number((r.err.match(/the answer cost (\d+) bytes/) || [0, 0])[1]);
   console.log(`    the same read cold: ${(performance.now() - t0).toFixed(0)} ms, exit ${cold.exit} (a fresh instance re-deriving the program)`);
   console.log(`    what a read costs the session's image: ${reads.map((r) => (cost(r) / 1024).toFixed(0) + ' KB').join(', ')}`);

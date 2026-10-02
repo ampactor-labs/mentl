@@ -4909,48 +4909,11 @@ fn emit_reason_comment_for_fn(name, body) = if len(body) == 0 {
   }
 }
 
-// Render a Reason chain as a one-line comment string. The full
-// structured walk lives in show_reason (types.mn); emit's variant
-// truncates to a single line so WAT stays readable.
+// The head of the reason a function's first node carries, for the comment
+// at its boundary: the one hop phrase the caret's Why prints, so the WAT and
+// the voice say the same words.
 fn emit_reason_summary(handle) = match graph_chase(handle) {
-  GNode(_, reason) => emit_render_reason_oneline(reason),
-}
-
-// The HEAD projection of a Reason chain — one level, for the fn-boundary
-// WAT comment. The full chain walk is show_reason (types.mn), the mentl
-// voice; this is a DIFFERENT projection (summary, no recursion past
-// Located), never a copy — and it enumerates the REAL Reason ADT
-// totally. The prior arm set matched nine constructors that do not
-// exist in Reason (GeneralizationOver, NFree, …: GNode kinds and
-// phantoms) while missing nine that do — the seed compiled the phantom
-// patterns without membership checking and the sentinel guard trapped
-// the first LetBinding-reasoned node (a match inside a handler arm).
-fn emit_render_reason_oneline(reason) = match reason {
-  Declared(n) => "declared as {n}",
-  Inferred(ctx) => "inferred from {ctx}",
-  Located(_, inner) => emit_render_reason_oneline(inner),
-  FnReturn(n, _) => "return of {n}",
-  FnParam(n, idx, _) => "param {int_to_str(idx)} of {n}",
-  VarLookup(n, _) => "lookup {n}",
-  Fresh(_) => "fresh tyvar",
-  FreshInContext(_, ctx) => "fresh in {ctx}",
-  InferredCallReturn(n, _) => "call return of {n}",
-  InferredPipeResult(n, _) => "pipe result of {n}",
-  IfBranch(_) => "if branch",
-  MatchBranch(_, _) => "match branch",
-  OpConstraint(op, _, _) => "op {op}",
-  ListElement(_) => "list element",
-  LetBinding(n, _) => "let {n}",
-  Unified(_, _) => "unified",
-  Refinement(_, _) => "refinement",
-  Instantiation(_, _) => "instantiation",
-  UnifyFailed(_, _) => "unify failed",
-  Placeholder(_) => "placeholder",
-  BinOpPlaceholder(_) => "binop placeholder",
-  MissingVar(n) => "missing {n}",
-  DefaultReason(n, _) => "defaulted {n}",
-  VerifyWitness(_) => "verify witness",
-  Accepted(text, _, _) => "accepted {text}",
+  GNode(_, reason) => reason_phrase(reason),
 }
 
 // Walk the function body once, projecting its locals row. ONE local

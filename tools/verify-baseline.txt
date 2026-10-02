@@ -1281,4 +1281,15 @@ authored_ref_max: 698
 # reads and the type-variable naming), inside a 14.5 MB spread across three
 # identical runs of one binary. Same rule: ~1% over the highest reading of
 # the landed form.
-selfcompile_peak_kb_max: 1014000
+# 2026-10-02 (E4): 1014000 -> 1050000, AND THE ARENA OWES IT BACK. Fixed
+# input — the candidate's own wheel source through both compilers: the boot
+# (8b071ba3) 1,004,360 KB with the judgment's heap high-water at 473.8 MB,
+# the candidate 1,030,344 / 1,040,132 / 1,028,572 KB at 499.7 MB (identical
+# to the byte across the three). A variant of the candidate with the parent
+# edge's writes removed read 1,005,616 KB at 476.0 MB, so 23.7 MB of the
+# 25.9 is the write: each registration builds its node's child list and a
+# closure to walk it, writes the edges, and drops both — scratch no reader
+# ever reaches, which the arena (the next landing, PLAN §11) reclaims at the
+# extent's end. That landing lowers this ceiling below 1,010,000 or says why
+# it cannot. Same rule otherwise: ~1% over the highest reading.
+selfcompile_peak_kb_max: 1050000

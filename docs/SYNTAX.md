@@ -1244,10 +1244,10 @@ memcpy-serializability are invariant under the pin.
 `mentl where` projects the chosen width as a derived badge — `s : Float @ f32
 (pinned)` when authored, `c : Float @ f64 (inferred)` when the gradient reached it
 — output, never input. Every parameter and local answers it, and a function
-answers its head with its inferred row before its parameters' and return's
-widths; a value whose type is still a variable reads `a : a @ per
-instantiation`, since every instantiation is specialized and takes its own
-width (real, 2026-10-02). A pin that names the width the gradient would already infer
+answers its head with its inferred row and the address it is declared at
+(`inv(n)  at main:11`) before its parameters' and return's widths; a value
+whose type is still a variable reads `a : a @ per instantiation`, since every
+instantiation is specialized and takes its own width (real, 2026-10-02). A pin that names the width the gradient would already infer
 is `W_RedundantRepr` (drop it; the gradient reaches it anyway). A pin equal to the
 floor on an integral type is likewise vacuous. **The same `repr` pin is a
 parameter annotation** (the Intent-Boundary peer of `own`/`ref` — §"The Intent

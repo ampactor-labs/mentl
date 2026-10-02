@@ -1941,19 +1941,23 @@ fn stmt_declared_names(node) = match node_body_of(node) {
 }
 
 fn stmt_decl_name(ref node) = match node {
-  N(body, _, _) => match body {
-    NStmt(FnStmt(name, _, _, _, _)) => name,
-    NStmt(TypeDefStmt(name, _)) => name,
-    NStmt(EffectDeclStmt(name, _, _)) => name,
-    NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => name,
-    NStmt(LetStmt(pat, _, _)) => match pat {
-      PVar(name) => name,
-      _ => // drift-audit: ignore — the documented no-key contract (a destructured let contributes no index entry; equal depths keep source order)
-      "",
-    },
-    _ => // drift-audit: ignore — the documented no-key contract (an unnamed stmt contributes no index entry; equal depths keep source order)
+  N(body, _, _) => body_decl_name(body),
+}
+
+// The name a declaration's body declares — read off the body, so a reader
+// holding only a handle asks `graph_node_body` and lands here.
+fn body_decl_name(body) = match body {
+  NStmt(FnStmt(name, _, _, _, _)) => name,
+  NStmt(TypeDefStmt(name, _)) => name,
+  NStmt(EffectDeclStmt(name, _, _)) => name,
+  NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => name,
+  NStmt(LetStmt(pat, _, _)) => match pat {
+    PVar(name) => name,
+    _ => // drift-audit: ignore — the documented no-key contract (a destructured let contributes no index entry; equal depths keep source order)
     "",
   },
+  _ => // drift-audit: ignore — the documented no-key contract (an unnamed stmt contributes no index entry; equal depths keep source order)
+  "",
 }
 
 // ─── The stmt-layer index — decl name → stmt position ───────────────────
@@ -2764,7 +2768,7 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // needs an origin from.
   graph_decl_note(handle)
   env_scope_enter()
-  let param_handles = mint_params(params, name)
+  let param_handles = mint_params(params, name, span)
   let ret_handle = mint(FnReturn(name, Inferred("return of '{name}'")))
   let row_handle = graph_fresh_row(Inferred("effects of '{name}'"))
   // Resolve params to shared identities ONCE (binds the handles); reused below
@@ -5028,7 +5032,7 @@ type ParamBinder = BoundByCallers | BoundByTheCycle
 
 fn infer_lambda(params, body_node, handle, span: ValidSpan, binder) = {
   env_scope_enter()
-  let param_handles = mint_params(params, "lambda")
+  let param_handles = mint_params(params, "lambda", span)
   let row_handle = graph_fresh_row(Inferred("lambda effects"))
   let typed = build_param_types(params, param_handles)
   let declared = match binder {
@@ -8834,17 +8838,20 @@ fn mint_param_placeholders(params, owner_name) = map(
   enumerate(params)
 )
 
-fn mint_params(params, owner_name) = map(
+fn mint_params(params, owner_name, span: ValidSpan) = map(
   {
     (idx, p) => {
       let name = param_name(p)
-      let h = mint(FnParam(owner_name, idx, Inferred("param of '{owner_name}'")))
+      let why = FnParam(owner_name, idx, Inferred("param of '{owner_name}'"))
+      let h = mint(why)
       // Mint the handle and bind the NAME to it in the body env; the handle's TYPE
       // (the shared identity for a type-param, the pinned Intent Boundary for a
       // concrete annotation) is bound ONCE by build_param_types, read live here —
       // never re-derived per consumer. A body read through the env's TVar(h) then
       // chases to the resolved param type (the eq/binop/++ dispatch, the emit width).
-      env_extend(name, Frozen([], TVar(h)), Declared(name), ParamScheme(param_authored(p)))
+      // The entry's reason is the parameter's own, located at the signature that
+      // declares it, so a read's Why ends at the declaration rather than a bare name.
+      env_extend(name, Frozen([], TVar(h)), Located(span, why), ParamScheme(param_authored(p)))
       h
     },
   },

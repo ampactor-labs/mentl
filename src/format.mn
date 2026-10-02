@@ -116,42 +116,18 @@ fn render_program(ast) = {
 
 // ─── render_node_at — render one node ─────────────────────────────
 //
-// The render-aspects of the formatter at one position fan out via <|.
-// `(node, kind, ctx)` is borrowed (read-only) to SEVEN render-aspect
-// branches: tokens, indent, line_break, comment, span, reason, sibling.
-// "doc" is NOT a separate aspect — `//`-vs-`///` dissolved to ONE comment
-// (SYNTAX.md comment-dissolution), so prose is the single `comment` aspect.
-// This IS the eight-arms-of-one-read (PLAN §2) projected to render: not
-// every kernel arm produces a distinct render branch. Outputs tuple
-// together; assemble_render composes them into the canonical String.
-fn render_node_at(handle) = {
-  // Handle-based throughout: the body reads via graph_node_body (the
-  // same projection the parent scan uses) — the old `graph_node_at(h)`
-  // one-arg call typechecked against an op binding while the
-  // direct-call tier emitted the two-arg raw fn, an op/fn name
-  // collision that only surfaced when this arm gained its first
-  // installer (the fmt verb).
+// A node's text is its prose, its indent, its tokens and its line break, read
+// in that order. This was a seven-branch fanout of which the assembly read
+// four: the span branch was a constant, the reason branch walked the node's
+// Why and threw it away, and the sibling branch read a "render context" that
+// SCANNED EVERY HANDLE IN THE GRAPH for a parent of this node — once per
+// top-level statement of every file `mentl fmt` touched — to answer a context
+// the indent never read and the separator mapped to "" in every case
+// (measured 2026-10-02, the third whole-graph parent scan the E4 caret audit
+// found; the cursor's and the eight-loop's read the declaration's path now).
+fn render_node_at(handle) with !Mutate = {
   let body = graph_node_body(handle)
-  let ctx = render_context_at(handle)
-  let pos = (body, handle, ctx)
-  match pos <| (
-    // 1. tokens
-    { (b, _, _) => render_body_tokens(b) },
-    // 2. indent (canonical)
-    { (b, _, c) => render_indent_for(b, c) },
-    // 3. line break
-    { (b, _, _) => render_line_break_after(b) },
-    // 4. the one comment, read live from the weave
-    { (_, h, _) => render_comment_at(h) },
-    // 5. span (debug only)
-    { (_, _, _) => "" },
-    // 6. reason (debug)
-    { (_, h, _) => render_reason_at(h) },
-    // 7. sibling glue
-    { (_, _, c) => render_sibling_separator(c) }
-  ) {
-    (tokens, indent, line_break, comment, span, reason, sibling) => assemble_render(tokens, indent, line_break, comment, span, reason, sibling),
-  }
+  render_comment_at(handle) ++ render_indent_for(body) ++ render_body_tokens(body) ++ render_line_break_after(body)
 }
 
 // ─── render_chain_node — render one verb-chain ────────────────────
@@ -721,17 +697,15 @@ fn resugar_walk(ref params, i, body, acc) with !Mutate = if i >= len(params) {
   }
 }
 
-// A name the PARAM-POSITION desugar minted rather than an author wrote —
-// `parser.mn`'s `dp_prefix` is the spelling's one home and this reads it
-// back. The arm-list literal's own prefix never answers true here, which
-// is the whole point of their being two (parser.mn `fresh_param_under`).
-fn is_dp_name(nm) =
-  byte_len(nm) >= byte_len(dp_prefix) && str_slice(nm, 0, byte_len(dp_prefix)) == dp_prefix
+// A name the PARAM-POSITION desugar minted rather than an author wrote,
+// read back through `dp_prefix`. The arm-list literal's own prefix never
+// answers true here, which is the whole point of their being two
+// (parser.mn `fresh_param_under`).
+fn is_dp_name(nm) = name_has_prefix(nm, dp_prefix)
 
 // The arm-list literal's own minted parameter, read back through
-// `al_prefix`, the spelling's one home.
-fn is_al_name(nm) =
-  byte_len(nm) >= byte_len(al_prefix) && str_slice(nm, 0, byte_len(al_prefix)) == al_prefix
+// `al_prefix`.
+fn is_al_name(nm) = name_has_prefix(nm, al_prefix)
 
 // The arms on ONE line — the literal's inline layout. A trailing comma is
 // the multi-line form's separator discipline, not the inline one's.
@@ -1406,7 +1380,7 @@ fn render_retty(retty) with !Mutate = match retty {
 // Canonical indent depth per node kind. Match-arm bodies +2; let-
 // value at same indent as let; fn body +2 from fn signature; etc.
 // Each kind's indent is the PARENT's indent + verb-class offset.
-fn render_indent_for(kind, ctx) = spaces(canonical_indent_depth(kind, ctx))
+fn render_indent_for(kind) = spaces(canonical_indent_depth(kind))
 
 fn render_line_break_after(kind) with Pure = match kind {
   NStmt(_) => "\n",
@@ -1428,81 +1402,6 @@ fn render_comment_at(h) with !Mutate = {
   if text == "" { "" } else { "//{replace(text, "\n", "\n//")}\n" }
 }
 
-// The reason aspect of the formatter's fanout: the handle chases to its
-// GNode; the Reason renders via the ONE canonical show_reason (types.mn) —
-// never a second compressed walk. Debug aspect — assemble_render decides
-// placement (today: dropped from the assembled text).
-fn render_reason_at(h) with !Mutate = match graph_chase(h) {
-  GNode(_, reason) => show_reason(reason),
-}
-
-// Sibling glue is a projection of RenderContext; the default context
-// carries no sibling info (render_context_at's parent-walk substrate),
-// so its separator is empty — an honest read, not a placeholder.
-fn render_sibling_separator(ctx) with Pure = match ctx {
-  RenderContextDefault => "",
-  RenderContextChain(_) => "",
-  RenderContextBlock(_) => "",
-  RenderContextTuple(_) => "",
-}
-
-// The row + Reason text projections are the ONE canonical renderers in
-// types.mn (show_effrow / show_reason / show_eff_name / show_eff_arg /
-// show_list) — never a second, weaker copy here. The format.mn duplicates
-// were DELETED (show_row / show_reason_compressed / show_effname /
-// show_effarg / show_joined): two renderers for one graph fact is the
-// Carried-Truth violation at the render layer. LSP hover reads the canonical
-// pair directly; the reason aspect above reads show_reason. "Compressed" is
-// show_reason at a tighter register, not a second walk.
-//
-// render_context_at reads the node's PARENT live from the AST-in-graph fabric:
-// the enclosing node is the weave entry whose body references this handle, so
-// the chain/block/tuple depth is a live read of that edge chain (the parent IS
-// an edge, not a missing index). canonical_indent_depth / sibling_separator
-// project the 2-/4-space layout from this real position.
-fn render_context_at(handle) with !Mutate = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => scan_for_render_parent(handle, 0, next),
-  }
-}
-
-fn scan_for_render_parent(target, i, n) with !Mutate = if i >= n {
-  RenderContextDefault
-} else {
-  match render_context_from_parent(target, graph_node_body(i)) {
-    RenderContextDefault => scan_for_render_parent(target, i + 1, n),
-    found => found,
-  }
-}
-
-// Project the render context from a candidate parent body: a PipeExpr parent
-// puts the target in a chain; a BlockExpr in a block; a tuple/list literal in
-// a tuple. Depth is the parent's own enclosing depth + 1 (read by recursion at
-// render time; the first enclosing edge is sufficient for the indent step).
-fn render_context_from_parent(target, body) = match body {
-  NExpr(PipeExpr(_, l, r)) => if child_is(target, l) || child_is(target, r) {
-    RenderContextChain(1)
-  } else {
-    RenderContextDefault
-  },
-  NExpr(BlockExpr(_, final)) => if child_is(target, final) { RenderContextBlock(1) } else { RenderContextDefault },
-  NExpr(MakeTupleExpr(elems)) => if any_child_is(target, elems) { RenderContextTuple(1) } else { RenderContextDefault },
-  _ => RenderContextDefault,
-}
-
-fn child_is(target, node) with Pure = match node {
-  N(_, _, h) => h == target,
-}
-
-fn any_child_is(target, nodes) = if len(nodes) == 0 {
-  false
-} else if child_is(target, last(nodes)) {
-  true
-} else {
-  any_child_is(target, drop_last(nodes))
-}
-
 fn render_branch_tuple(branches) = if len(branches) == 0 {
   ""
 } else {
@@ -1515,16 +1414,6 @@ fn render_branch_tuple(branches) = if len(branches) == 0 {
 
 fn render_non_chain(node) = render_node_at(node_handle(node))
 
-// String intent boundaries: the seven-fan's tuple elements reach here as
-// free vars (the branch returns don't ground the destructure), and `++`
-// on an unproven element is the loud floor — the annotations carry the
-// proof the concat dispatch reads (the §9 pointer-eq law's sibling).
-//
-// The one comment renders as a leading block above the declaration (the
-// verbatim //-prefixed prose from the weave); then indent, tokens, glue.
-fn assemble_render(tokens: String, indent: String, line_break: String, comment: String, span: String, reason: String, sibling: String) =
-  comment ++ indent ++ tokens ++ line_break ++ sibling
-
 fn format_one_stmt(stmt) = render_node_at(node_handle(stmt))
 
 fn ast_top_level_stmts(ast) with Pure = ast
@@ -1534,21 +1423,12 @@ fn ast_kind_of(node) with Pure = match node {
 }
 
 // node_handle() — see src/infer.mn (canonical Node-handle accessor).
-fn canonical_indent_depth(kind, ctx) with Pure = match kind {
+fn canonical_indent_depth(kind) with Pure = match kind {
   NStmt(_) => 0,
   NExpr(_) => left_edge_indent(),
   _ => // drift-audit: ignore — non-stmt/expr kinds sit at left edge; depth 0 IS their canonical indent, not a fabricated default
   0,
 }
-
-type RenderContext
-  = RenderContextDefault
-  // current chain depth
-  | RenderContextChain(Int)
-  // inside { ... } at depth
-  | RenderContextBlock(Int)
-  // inside (...) at depth
-  | RenderContextTuple(Int)
 
 // The unary operator glyph per SYNTAX.md — `-` negate, `!` logical-not.
 fn unary_op_glyph(op) with Pure = match op {

@@ -2314,8 +2314,12 @@ repeated move (put the per-handle fact in a column, write it at the one
 writer, migrate the readers, delete the side-structure) is exactly the
 shape here — the body scan IS the side-structure.
 
-`Hβ.ifc.flowlabel-inference-in-hm` — STAMPED 2026-08-08 (the C chain's
-second step; build-ready design, not yet built). TRACED, against the
+`Hβ.ifc.flowlabel-inference-in-hm` — SUPERSEDED 2026-10-02 (PLAN §4⑥, Phase
+7): the row element below is a second home for a fact the value walk (P0),
+the state writers (S5) and the parent edge (E4) already carry; flow is a
+refinement over provenance and a sink's precondition, and the label lattice
+deletes. Kept as the record of the design it replaces. STAMPED 2026-08-08
+(the C chain's second step; build-ready design, never built). TRACED, against the
 artifact: today's FlowLabel is COMPUTED per query (query_flow_label
 reads a Ty's refinement-predicate NAMES — secret/classified/sensitive),
 and the one enforcement is construction-site (every splice ⊑ Public).
@@ -14782,7 +14786,7 @@ via soft_clip` line — the refined alias's provenance chain at the return
 position).
 
 `Hβ.synth.vocabulary-arg-holes` · `Hβ.synth.vocabulary-reach-index` ·
-`Hβ.cursor.enclosing-decl-edge` (band M kin) ·
+`Hβ.cursor.enclosing-decl-edge` (CLOSED 2026-10-02, E4: a parent edge drawn at the one writer; the declaration around a position is read up it, and the span scan, the downward path search and four whole-graph scans are deleted) ·
 `Hβ.cursor.session-weave-epoch-scope` (DISSOLVED by the peer audit — the
 session `<~` loop deletes the re-parse that created it; §11) ·
 `Hβ.infer.alias-preserving-unify` (LANDED 2026-07-17 — not a unify-peel bug:

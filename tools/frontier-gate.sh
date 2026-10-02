@@ -2448,6 +2448,73 @@ for i in "${!compilers[@]}"; do
   else
     fail "cursor-address module identity (got: $(printf '%s' "$adout" | head -3); see $dir/addr-module.err)"
   fi
+  # ── THE EIGHT FACETS AT THE CARET (E4) ────────────────────────────
+  # One program, one address per facet. Every assertion was RED on boot
+  # 8b071ba3: a node's extent was its first token (`x + 1) >< (x + 2` for a
+  # fanout, a string literal its closing quote), the Query slice one
+  # character long, a generic variable lost the caret to the node around it,
+  # no Topology line was ever written, no perform said which install served
+  # it, an expression's Effects was suppressed or read off its type, and
+  # Verify gave a count of whatever obligations shared the LINE.
+  cdemo="$ROOT/tests/frontier/caret-facets"
+  caret_at() { (cd "$cdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$cdemo" --dir /tmp "$compiler" "walk.mn:$1" 2>>"$dir/caret.err"); }
+  cx=$(caret_at 15:16); cfan=$(caret_at 15:24); cstage=$(caret_at 17:27); ctick=$(caret_at 19:15)
+  cprev=$(caret_at 13:26); cdiv=$(caret_at 21:18); craw=$(caret_at 23:12); clam=$(caret_at 25:31); cstr=$(caret_at 29:20)
+  # The second walk, RED on the same boot: the caret on a call's `(` answered
+  # the callee and on an outer `)` the inner call (a point sat inside the span
+  # whose exclusive end it was), the `<~` node lost the caret to its whole
+  # declaration, an arm list's type printed the parameter the desugar minted,
+  # a let binding a lambda said its body's effect as its own, and a
+  # parameter's read ended its Why at a bare name.
+  cfb=$(caret_at 13:14); clet=$(caret_at 32:3); cpar=$(caret_at 13:32); carm=$(caret_at 15:38); ccall=$(caret_at 36:17)
+  if printf '%s' "$cx" | grep -q '^Query: x : Int$' \
+     && printf '%s' "$cfan" | grep -q '^Query: (x + 1) >< (x + 2) : (Int, Int)$' \
+     && printf '%s' "$cstr" | grep -q '^Query: "hello world" : String$' \
+     && printf '%s' "$cprev" | grep -q '^Query: prev : ' \
+     && printf '%s' "$ccall" | grep -q '^Query: both(3) : Int$' \
+     && printf '%s' "$cfb" | grep -q '^Query: ((prev) => prev + x) <~ delay(1) : ' \
+     && printf '%s' "$carm" | grep -q '^Query: { (a, b) => a + b } : ((Int, Int)) -> Int with Pure$'; then
+    pass "caret extents (a node spans the tokens it consumed; the caret is the character's extent; a minted parameter never renders)"
+  else
+    fail "caret extents (got: $(printf '%s' "$ccall" | head -1) / $(printf '%s' "$cfb" | head -1) / $(printf '%s' "$carm" | head -1); see $dir/caret.err)"
+  fi
+  if printf '%s' "$cpar" | grep -q '^Why: x flows in here, at walk:13$' \
+     && printf '%s' "$cpar" | grep -q '^     parameter 1 of ramp, at walk:13$'; then
+    pass "caret why (a parameter's read walks to the signature that declares it)"
+  else
+    fail "caret why (got: $(printf '%s' "$cpar" | grep -A1 '^Why'); see $dir/caret.err)"
+  fi
+  cwhere=$( (cd "$cdemo" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$cdemo" --dir /tmp "$compiler" where walk.mn inv 2>>"$dir/caret.err") | head -1)
+  if [ "$cwhere" = "→ inv(n)  at walk:11" ]; then
+    pass "where answers where (the declaration's address beside its head)"
+  else
+    fail "where answers where (got: $cwhere; see $dir/caret.err)"
+  fi
+  if printf '%s' "$cx" | grep -q '^Topology: branch 1 of 2 of the >< at walk:15:15, inside the source of the |> at walk:15:14$' \
+     && printf '%s' "$cstage" | grep -q '^Topology: stage 2 of 2 of the |> at walk:17:15$' \
+     && printf '%s' "$cprev" | grep -q '^Topology: the recurrence the <~ feeds back at walk:13:14$'; then
+    pass "caret topology (the verbs that hold the node, read down its declaration's path)"
+  else
+    fail "caret topology (got: $(printf '%s' "$cx" | grep '^Topology' ) / $(printf '%s' "$cstage" | grep '^Topology'); see $dir/caret.err)"
+  fi
+  if printf '%s' "$ctick" | grep -q '^Handler: Tick is served by `~> ticker` at walk:19:14$' \
+     && printf '%s' "$craw" | grep -q '^Handler: no install inside `raw` answers Tick' \
+     && printf '%s' "$clam" | grep -q '^Handler: Tick is performed when the function value at walk:25:25 is called'; then
+    pass "caret handler (the install that serves a perform, or why none on the path does)"
+  else
+    fail "caret handler (got: $(printf '%s' "$ctick" | grep '^Handler') / $(printf '%s' "$craw" | grep '^Handler'); see $dir/caret.err)"
+  fi
+  if printf '%s' "$cx" | grep -q '^Effects: Pure$' \
+     && printf '%s' "$cfb" | grep -q '^Effects: Pure$' \
+     && printf '%s' "$clet" | grep -q '^Effects: Memory + Alloc, and Tick when called$' \
+     && printf '%s' "$cdiv" | grep -q '^Effects: Trap$' \
+     && printf '%s' "$cstage" | grep -q '^Effects: Pure when called$' \
+     && printf '%s' "$cdiv" | grep -q '^Verify: pending partiality k - 1 != 0 && 100 / (k - 1) fits' \
+     && ! printf '%s' "$cstage" | grep -q '^Verify:'; then
+    pass "caret effects and verify (what running the node performs, said Pure too; each obligation inside the node, named)"
+  else
+    fail "caret effects/verify (got: $(printf '%s' "$cdiv" | grep -E '^(Effects|Verify)'); see $dir/caret.err)"
+  fi
   # ── THE GRADIENT READS ADDRESSES (D3) ─────────────────────────────
   # The field of ONE module in the ONE order the session's argmax reads:
   # score descending, then source position. A helper's decls sit inside the
@@ -2633,7 +2700,9 @@ for i in "${!compilers[@]}"; do
   # QUESTION, never the member list — the five survivors here print as
   # "5 proven survivors" and the one question line (exactly one indented
   # line under Propose); the two-survivor stage tie above still lists both.
-  qs_members=$(printf '%s\n' "$qs" | grep -cE '^  ' || true)
+  # A member line is indented two spaces; the Why's deeper hops are indented
+  # five (E4), so the count reads Propose's block alone.
+  qs_members=$(printf '%s\n' "$qs" | grep -cE '^  [^ ]' || true)
   if printf '%s' "$qs" | grep -q 'differ in SHAPE' && printf '%s' "$qs" | grep -q '5 proven survivors' && [ "$qs_members" -eq 1 ]; then
     pass "computed question: shape (an unread body never reads as agreement; past width three the count and the question alone)"
   else
@@ -2720,7 +2789,9 @@ for i in "${!compilers[@]}"; do
   odemo="$ROOT/tests/frontier/obligation-module-demo"
   odmain=$(wt_run --dir "$odemo::." --dir "$ROOT::/mentl-home" "$compiler" main.mn:3 2>/dev/null)
   odhelp=$(wt_run --dir "$odemo::." --dir "$ROOT::/mentl-home" "$compiler" helper.mn:3 2>/dev/null)
-  if ! printf '%s' "$odmain" | grep -q '^Verify:' && printf '%s' "$odhelp" | grep -q '^Verify: 1 obligation'; then
+  # E4: the facet names each obligation inside the node rather than counting
+  # the ones on its line.
+  if ! printf '%s' "$odmain" | grep -q '^Verify:' && printf '%s' "$odhelp" | grep -q '^Verify: pending partiality n != 0'; then
     pass "obligations at a node are its module's (the entry owes nothing; the helper owes its division)"
   else
     fail "obligation module identity (main: $(printf '%s' "$odmain" | grep '^Verify' | head -1); helper: $(printf '%s' "$odhelp" | grep '^Verify' | head -1))"
@@ -3596,7 +3667,9 @@ for i in "${!compilers[@]}"; do
   w_each=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" doubled_each 2>/dev/null)
   printf '%s' "$w_each" | grep -q 'fanout \[Seq, a branch per element\] at' || { w_ok=0; fail "where sequence fanout (got: $w_each)"; }
   w_head=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" ticks 2>/dev/null)
-  printf '%s' "$w_head" | grep -q '^→ ticks(x) with Tick$' || { w_ok=0; fail "where head with its inferred row (got: $w_head)"; }
+  # E4: the head carries the declaration's address (RED on boot 8b071ba3,
+  # whose head stopped at the row).
+  printf '%s' "$w_head" | grep -q '^→ ticks(x) with Tick  at .*mn-where-badges:10$' || { w_ok=0; fail "where head with its inferred row and address (got: $w_head)"; }
   printf '%s' "$w_head" | grep -q '^  x : Int @ i32 (inferred)$' || { w_ok=0; fail "where parameter badge (got: $w_head)"; }
   w_pin=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" s 2>/dev/null)
   printf '%s' "$w_pin" | grep -q '^→ s : Float @ f32 (pinned)$' || { w_ok=0; fail "where pinned parameter, SYNTAX's own example (got: $w_pin)"; }

@@ -81,7 +81,7 @@ type Context = Context([(String, Binding, Reason, SchemeKind)], EffRow, String, 
 // promises.
 effect Teach {
   teach_gradient(Int) -> Teaching
-  teach_why(Int) -> Reason
+  teach_why(Int) -> [Reason]
 }
 
 // ═══ Synth effect — proposers as handlers ══════════════════════════  // drift-audit: ignore — D.1.R reserved block; decoration removal is a separate sub-handle
@@ -1032,11 +1032,16 @@ fn verify_after_apply(handle) = match graph_chase(handle) {
   },
 }
 
-// Walk the reason DAG from a graph handle. Every unification, instantiation, and
-// subsumption wrote a Reason edge into the graph; `why_expand` recurses through the chain
-// until leaf reasons (Declared, Unmarked, MissingVar) terminate. Depth-limited at 20.    // drift-audit: ignore — "cycles" referencing graph cycle detection, not deferred work
-fn why_from_handle(handle) = match graph_chase(handle) {
-  GNode(_, reason) => why_expand(reason, 0),
+// The Why at a node, as the chains it is made of: the node's own reason —
+// what the node is and where its value comes from — and, when its cell links
+// to another, the reason of the cell its type is read from, the links between
+// elided. The terminal alone answered why the TYPE is what it is and never
+// why this node has it: at a parameter's use it said "int literal". Each
+// chain is expanded through the Reason edges it carries (`why_expand`).
+fn why_from_handle(handle) = {
+  let t = graph_chase_handle(handle)
+  let here = why_expand(graph_reason_at(handle), 0)
+  if t == handle { [here] } else { [here, why_expand(graph_reason_at(t), 0)] }
 }
 
 // H6: exhaustive Ty enumeration. Only TFun carries an explicit

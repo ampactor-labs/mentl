@@ -98,7 +98,7 @@ handler cursor_default {
   resume(cursor_view_of(handle)),
   cursor_argmax(caret) => resume(cursor_argmax_compute(caret)),
   cursor_pinned(handle) => {
-    let span = caret_span_of_handle(handle)
+    let span = parse_span_of(handle)
     match graph_chase(handle) {
       GNode(_, _anchor) => // Pinned-ness is STRUCTURAL — the Reason IS Located(span, "user pinned"),
       // read by case (reason_is_pinned), never a 1e308 float magnitude that
@@ -241,7 +241,7 @@ fn module_handles(mh: Int) with !Mutate = match graph_snapshot() {
 // identity is the span's START: an edit that reshapes a decl changes its
 // extent but not where it begins.
 fn latest_generation(handles) with !Mutate = filter(
-  (h) => !any((h2) => h2 > h && span_start_eq(caret_span_of_handle(h2), caret_span_of_handle(h)), handles),
+  (h) => !any((h2) => h2 > h && span_start_eq(parse_span_of(h2), parse_span_of(h)), handles),
   handles
 )
 
@@ -250,27 +250,6 @@ fn latest_generation(handles) with !Mutate = filter(
 // either way); the program weave's absent-default is NHole(0), never a
 // position.
 fn hole_gate(handle) with !Mutate = if authored_hole(handle) { 1 } else { 0 }
-
-// A hole is a POSITION only when it carries a source span: the parser's
-// `??` and recovery mints carry their token span; synthetic span-zero
-// hole nodes (driver scaffolding) are not caret targets — a position IS
-// a span, and there is nothing to render or patch at 0:0. The weave's
-// absent-default NHole(0) is likewise never a position.
-// The CARET test doubles as the live-generation filter: an edit session's
-// transport parses the module per projection pass, each pass minting its
-// own NHole at the SAME weave span (measured: three nodes, ids 17/41/65,
-// one span), and only the pass the live inference walked carries a Located
-// class root — so the reason-flavored span keeps the argmax off stale
-// generations' holes. The cost: a hole whose class root is an unlocated
-// mint (a bare `fn f() = ??` body unified with its fresh ret var) is not a
-// cursor position yet. The executable gate reads the WEAVE instead
-// (executable_hole, lower.mn) — its tree walk is single-generation by
-// construction. The two reads re-unify when session reads scope to the
-// live parse generation (Hβ.cursor.session-weave-epoch-scope).
-fn authored_hole(handle) with !Mutate = match graph_node_body(handle) {
-  NHole(id) => id != 0 && !span_eq(caret_span_of_handle(handle), span_zero()),
-  _ => false,
-}
 
 fn enumerate_hole_positions(mh) with !Mutate =
   latest_generation(filter(authored_hole, module_handles(mh)))
@@ -339,7 +318,7 @@ fn rank_positions(handles, caret) -> [(Float, Handle)] with !Mutate = {
 // The sort key: the two gains negated so the ascending structural sort puts
 // the highest first — debt before locks — then the position's own line and
 // column.
-fn position_key(h, caret, reach) -> (Float, Float, Int, Int, Handle) with !Mutate = match caret_span_of_handle(h) {
+fn position_key(h, caret, reach) -> (Float, Float, Int, Int, Handle) with !Mutate = match parse_span_of(h) {
   Span(sl, sc, _, _) => match position_score(h, caret, reach) {
     (debt, locks) => (0.0 - debt, 0.0 - locks, sl, sc, h),
   },
@@ -380,7 +359,7 @@ fn suggestion_gains(s, prox: Float) -> (Float, Float) = match s {
 // A ranked position as the cursor the session projects: its handle, its
 // own span over its node's reason, its score.
 fn position_cursor(h, score) = match graph_chase(h) {
-  GNode(_, reason) => Cursor(h, Located(caret_span_of_handle(h), reason), score),
+  GNode(_, reason) => Cursor(h, Located(parse_span_of(h), reason), score),
 }
 
 // ─── Proximity — read off the graph, between two positions ──────────
@@ -404,7 +383,7 @@ fn position_proximity(a, b, reach) -> Float with !Mutate = if a == b {
   let ma = module_of_position(a)
   let mb = module_of_position(b)
   if ma == mb {
-    if same_enclosing_decl(a, b, ma) { same_decl_weight() } else { same_module_weight() }
+    if same_enclosing_decl(a, b) { same_decl_weight() } else { same_module_weight() }
   } else if handles_contain(reach, mb) {
     transitive_dep_weight()
   } else {
@@ -412,28 +391,20 @@ fn position_proximity(a, b, reach) -> Float with !Mutate = if a == b {
   }
 }
 
-fn same_enclosing_decl(a, b, mh) with !Mutate = match enclosing_decl(a, mh) {
+fn same_enclosing_decl(a, b) with !Mutate = match enclosing_decl(a) {
   None => false,
-  Some(da) => match enclosing_decl(b, mh) {
+  Some(da) => match enclosing_decl(b) {
     None => false,
     Some(db) => da == db,
   },
 }
 
-// The top-level declaration of module `mh` whose extent holds position
-// `h`; a module node itself sits in none of its declarations.
-fn enclosing_decl(h, mh) with !Mutate = match graph_node_body(mh) {
-  NModule(m) => decl_holding(m.decls, caret_span_of_handle(h)),
-  _ => None,
+// The top-level declaration that holds position `h`, the last node of its
+// ancestry; a module node itself sits in none of its declarations.
+fn enclosing_decl(h) with !Mutate = match ancestry(h, [h]) {
+  Some(up) => Some(last(up)),
+  None => None,
 }
-
-fn decl_holding(decls, sp) = fold(
-  None,
-  (acc, d) => match d {
-    N(_, dsp, dh) => if span_contains(dsp, sp) { Some(dh) } else { acc },
-  },
-  decls
-)
 
 fn caret_span_from_reason(reason) = match reason {
   Located(sp, _) => sp,
@@ -503,9 +474,9 @@ fn cursor_view_of(handle) = match graph_chase(handle) {
       // 2. Handlers (Propose) — Synth's MultiShot
       { (h, _) => propose_at(h) },
       // 3. Five verbs (Topology)
-      { (h, _) => pipe_context_of_handle(h) },
+      { (h, _) => verb_path_of(h) },
       // 4. Boolean row (Unlock)
-      { (_, k) => row_of_kind(k) },
+      { (h, k) => row_facet_at(h, k) },
       // 5. Ownership-as-effect (Trace)
       { (_, k) => ownership_of_kind(k) },
       // 6. Refinement (Verify)
@@ -545,19 +516,7 @@ fn reason_span_of(h) with !Mutate = match graph_chase(h) {
 
 // The CARET-flavored span read (caret_span_from_reason, not the plain
 // Located-or-zero of query.mn's span_of_handle) — renamed apart from it:
-// two different truths shared one name and the seed silently picked one
-// (§9 dup-fn class); the wheel's own emit refused the collision (face 16).
-// The position's OWN site — the SPAN INDEX written at birth (the same
-// channel address resolution trusts), never a reason read. A span is a
-// MINT fact: graph_chase follows the binding chain (a hole unified with
-// a call's result answered the chase TERMINAL's span — the field
-// rendered the hole at width(n)'s position), and even the UNCHASED
-// reason cell rebinds when inference resolves the node (the hole's
-// last-bind reason carried the enclosing binop's span — both measured).
-// Only the birth index never moves. Miss answers span_zero — the
-// authored_hole guard's own sentinel.
-fn caret_span_of_handle(handle) = parse_span_of(handle)
-
+//
 // An unbound node's type IS its own type variable — the chase
 // terminated at this handle, so TVar(handle) is what HM proves.
 fn ty_of_kind(handle, kind) = match kind {
@@ -596,41 +555,223 @@ fn ownership_of_ty(ty) = match ty {
   _ => Unmarked,
 }
 
-// Pipe surroundings are read LIVE from the AST-in-graph fabric: every node
-// edge-links its body into the program weave at its handle (graph.mn
-// graph_register_node), so the enclosing PipeExpr is the weave entry whose
-// left/right child handle IS this node's handle. Scan the weave for that
-// parent; project the position from which side this node sits on:
-//   left child  → StartingPipe (this node feeds the verb)
-//   right child → InsidePipe(verb) (this node is the verb's stage)
-//   no parent pipe → NoPipe (a leaf, or the chain's outermost result)
-// The verb tentacle then actually fires — "you are mid-|> chain" is a live
-// read, never the old constant NoPipe.
-fn pipe_context_of_handle(handle) with !Mutate = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => scan_for_pipe_parent(handle, 0, next),
+// The verbs that hold a node: the path from its declaration down to it, read
+// along the tree's own edges, one frame for each verb site the path passes
+// through, outermost first. It replaces a scan of every handle in the graph
+// for a `PipeExpr` with the node as a child — which saw `|>`, `~>` and `<~`
+// as one undifferentiated "inside pipe", never `><` at all, and never
+// reached the render (measured on boot 8b071ba3: no Topology line at any
+// caret).
+fn verb_path_of(h) with !Mutate = {
+  let path = decl_path_to(h)
+  fold([], verb_frame_at(path, ??, ??), range(0, len(path) - 1))
+}
+
+// The path from a position's declaration down to it — what every upward
+// question at a caret reads: the verbs that hold the node, the install that
+// serves it, the function that encloses it and what the installs between
+// them absorb. Empty at a position no declaration holds. It is the ancestry
+// read up the parent edges and turned over; it was a search of the
+// declaration's whole subtree, found by comparing the position's span with
+// every declaration's in its module.
+fn decl_path_to(h) with !Mutate = match ancestry(h, [h]) {
+  Some(up) => reverse(up),
+  None => [],
+}
+
+// Up from a node to the declaration its module holds — the node first and
+// the declaration last. None for a module node and for a node no
+// declaration's body reaches.
+fn ancestry(h, up) with !Mutate = match graph_parent_of(h) {
+  None => None,
+  Some(p) => match graph_node_body(p) {
+    NModule(_) => Some(up),
+    _ => ancestry(p, push(up, p)),
+  },
+}
+
+// The frame the site at path[i] contributes, read off which child the path
+// takes next. A `|>` chain is one site however many pipes nest in it: an
+// inner pipe of the chain contributes nothing, and the chain's head names
+// the element the path enters.
+fn verb_frame_at(path, frames, i) with !Mutate = {
+  let site = list_index(path, i)
+  match verb_role(site, path, i) {
+    Some(role) => push(frames, VerbFrame(site, role)),
+    None => frames,
   }
 }
 
-fn scan_for_pipe_parent(target, i, n) with !Mutate = if i >= n {
-  NoPipe
+fn verb_role(site, path, i) with !Mutate = {
+  let next = list_index(path, i + 1)
+  match graph_node_body(site) {
+    NExpr(PipeExpr(PForward, _, _)) => if chain_continues_above(path, i) { None } else { chain_role(site, path, i + 1) },
+    NExpr(PipeExpr(PTee, l, _)) => Some(if node_handle(l) == next { InstallBody } else { InstallHandler }),
+    NExpr(PipeExpr(PFeedback, l, _)) => Some(if node_handle(l) == next { Recurrence } else { FeedbackDelay }),
+    NExpr(PipeExpr(PFanout(_), l, r)) => if node_handle(l) == next { Some(FanInput) } else { shared_branch_role(r, path, i + 2) },
+    NExpr(FanoutExpr(branches)) => match position_in(next, map(node_handle, branches)) {
+      Some(k) => Some(FanBranch(k, len(branches))),
+      None => None,
+    },
+    _ => None,
+  }
+}
+
+// A pipe that is the LEFT child of a `|>` above it is that chain's prefix.
+fn chain_continues_above(path, i) with !Mutate = if i == 0 {
+  false
 } else {
-  match pipe_position_in(target, graph_node_body(i)) {
-    NoPipe => scan_for_pipe_parent(target, i + 1, n),
-    found => found,
+  match graph_node_body(list_index(path, i - 1)) {
+    NExpr(PipeExpr(PForward, l, _)) => node_handle(l) == list_index(path, i),
+    _ => false,
   }
 }
 
-// Is `target` a stage of the PipeExpr at this weave entry? Project the
-// PipeKind verb and which side the target sits on. Non-pipe bodies → NoPipe.
-fn pipe_position_in(target, body) = match body {
-  NExpr(PipeExpr(verb, left, right)) => match left {
-    N(_, _, lh) => match right {
-      N(_, _, rh) => if lh == target { StartingPipe } else if rh == target { InsidePipe(verb) } else { NoPipe },
+// A chain's elements are its left spine flattened — the source, then each
+// stage in order — and the node's element is the first one the path enters.
+// A path that ends on an inner pipe of the chain enters none: it IS a prefix.
+fn chain_role(site, path, from) with !Mutate = {
+  let elems = chain_elements(site)
+  match fold(None, entered_element(elems, ??, ??), slice(path, from, len(path))) {
+    Some(k) => Some(if k == 0 { ChainSource } else { ChainStage(k, len(elems) - 1) }),
+    None => None,
+  }
+}
+
+fn chain_elements(h) with !Mutate = match graph_node_body(h) {
+  NExpr(PipeExpr(PForward, l, r)) => push(chain_elements(node_handle(l)), node_handle(r)),
+  _ => [h],
+}
+
+fn entered_element(elems, found, h) = match found {
+  Some(_) => found,
+  None => position_in(h, elems),
+}
+
+// A `<|` shares its input across the elements of the tuple on its right, and
+// the path enters the tuple before it enters a branch; a right side that is
+// not a tuple is the one branch. A path that ends ON the tuple enters none.
+fn shared_branch_role(r, path, at) with !Mutate = match graph_node_body(node_handle(r)) {
+  NExpr(MakeTupleExpr(elems)) => if at < len(path) {
+    match position_in(list_index(path, at), map(node_handle, elems)) {
+      Some(k) => Some(ShareBranch(k, len(elems))),
+      None => None,
+    }
+  } else {
+    None
+  },
+  _ => Some(ShareBranch(0, 1)),
+}
+
+// Which install serves an operation performed at a node — the Handler facet's
+// answer at a perform, read up the path the topology reads: the innermost
+// `~>` whose handler answers the op's effect. A function value minted on the
+// way up runs where it is called, so the search stops there; an operation no
+// install on the path answers leaves its declaration through the row.
+type Served = ServedBy(Int, String) | ServedWhereCalled(Int) | ServedByCaller(Int)
+
+// The op's effect and who serves it, when the node performs one: a call of
+// an operation, or the operation's name at the caret. The search reads the
+// node's ancestry, node first, and a perform no install on it answers is
+// carried by the row of the declaration that ends it.
+fn served_at(h) with !Mutate = match performed_effect(h) {
+  None => None,
+  Some(en) => match ancestry(h, [h]) {
+    None => None,
+    Some(up) => match fold(None, served_step(en, up, ??, ??), range(1, len(up))) {
+      Some(s) => Some((en, s)),
+      None => Some((en, ServedByCaller(last(up)))),
     },
   },
-  _ => NoPipe,
+}
+
+fn performed_effect(h) with !Mutate = match graph_node_body(h) {
+  NExpr(CallExpr(callee, _)) => op_named_at(node_handle(callee)),
+  NExpr(VarRef(_)) => op_named_at(h),
+  _ => None,
+}
+
+fn op_named_at(h) with !Mutate = match graph_node_body(h) {
+  NExpr(VarRef(name)) => op_effect_of(name),
+  _ => None,
+}
+
+fn served_step(en: String, up, found, i) with !Mutate = match found {
+  Some(_) => found,
+  None => {
+    let a = list_index(up, i)
+    match graph_node_body(a) {
+      NExpr(LambdaExpr(_, _)) => Some(ServedWhereCalled(a)),
+      NStmt(FnStmt(_, _, _, _, _)) => if i + 1 < len(up) { Some(ServedWhereCalled(a)) } else { None },
+      NExpr(PipeExpr(PTee, l, r)) => if node_handle(l) == list_index(up, i - 1) && handler_answers(tee_handler_name(r), en) {
+        Some(ServedBy(a, tee_handler_name(r)))
+      } else {
+        None
+      },
+      _ => None,
+    }
+  },
+}
+
+fn handler_answers(hname: String, en: String) with !Mutate = match handler_arms(hname) {
+  Some(arms) => string_in_list(handler_effect_names(arms), en),
+  None => false,
+}
+
+// The row facet spoken. A function value whose evaluation performs nothing
+// — a reference to a declaration — says only what calling it performs.
+fn show_row_facet(row) = match row {
+  Evaluates(r) => show_effrow(r),
+  WhenCalled(e, c) => if row_subsumes(e, mk_ef_pure()) {
+    "{show_effrow(c)} when called"
+  } else {
+    "{show_effrow(e)}, and {show_effrow(c)} when called"
+  },
+  HoleRow => "whatever its position permits — a hole states no row",
+}
+
+// The topology facet spoken, innermost verb first, each site placed by the
+// caller's address form — the address projection and the terminal transport
+// say it alike.
+fn show_verb_path(frames, place) with !Mutate =
+  join(", inside ", map(show_verb_frame(place, ??), reverse(frames)))
+
+fn show_verb_frame(place, frame) with !Mutate = match frame {
+  VerbFrame(site, role) => "{verb_role_text(role)} at {place(parse_span_of(site))}",
+}
+
+fn verb_role_text(role) = match role {
+  ChainSource => "the source of the |>",
+  ChainStage(i, n) => "stage {int_to_str(i)} of {int_to_str(n)} of the |>",
+  FanBranch(i, n) => "branch {int_to_str(i + 1)} of {int_to_str(n)} of the ><",
+  ShareBranch(i, n) => "branch {int_to_str(i + 1)} of {int_to_str(n)} of the <|",
+  FanInput => "the input the <| shares",
+  InstallBody => "the body the ~> governs",
+  InstallHandler => "the handler the ~> installs",
+  Recurrence => "the recurrence the <~ feeds back",
+  FeedbackDelay => "the delay the <~ declares",
+}
+
+fn position_in(h, hs) = match find({ (_, x) => x == h }, enumerate(hs)) {
+  Some((k, _)) => Some(k),
+  None => None,
+}
+
+// 4. What running the node performs: its evaluation, the fold over its
+// subtree's row notes (`row_of_subtree`), and for a function value also the
+// row its type carries, which calling it performs. A node typed as a
+// function is not always one to call: `let f = () => log(2)` is typed as its
+// value, and evaluating it mints the closure — `Memory + Alloc`, the fact a
+// `!Alloc` judges — which the first form hid behind `Log when called`. The
+// facet used to read the type's row for every node, which said nothing for
+// an expression (`100 / (k - 1)` showed no row while it charges `Trap`) and
+// was suppressed whenever it was empty.
+fn row_facet_at(h, kind) with !Mutate = match row_of_subtree(h) {
+  None => HoleRow,
+  Some(eval) => match ty_of_kind(h, kind) {
+    TFun(_, _, call) => WhenCalled(eval, call),
+    _ => Evaluates(eval),
+  },
 }
 
 // The Propose aspect: ONE read fills both the op's allowed row and the
@@ -676,13 +817,23 @@ fn propose_at(h) with !Mutate = if authored_hole(h) {
 // fn, the node's own row stands and the name is "".
 fn mentl_context_at(handle) with !Mutate = match env_snapshot() {
   Env(scope_bindings) => match graph_chase(handle) {
-    GNode(kind, _) => match enclosing_fn_decl_at(handle) {
-      Some(decl) => match decl {
-        (fname, effs, decl_h) => Context(scope_bindings, allowed_row_at(handle, decl_h, effs), fname, handle),
-      },
-      None => Context(scope_bindings, row_of_kind(kind), "", handle),
+    GNode(kind, _) => {
+      let path = decl_path_to(handle)
+      match fold(None, innermost_fn(path, ??, ??), range(0, len(path) - 1)) {
+        Some((fname, effs, k)) => Context(scope_bindings, allowed_row_at(path, k, effs), fname, handle),
+        None => Context(scope_bindings, row_of_kind(kind), "", handle),
+      }
     },
   },
+}
+
+// The function that encloses the position is the innermost one on its path:
+// a nested `fn` encloses tighter than the declaration that holds it. It was
+// found by scanning every handle in the graph for a function whose body
+// contained the position, a walk of each candidate's subtree per handle.
+fn innermost_fn(path, found, i) with !Mutate = match graph_node_body(list_index(path, i)) {
+  NStmt(FnStmt(name, _, _, effs, _)) => Some((name, effs, i)),
+  _ => found,
 }
 
 // What a candidate at the hole may perform: what the enclosing declaration
@@ -694,13 +845,10 @@ fn mentl_context_at(handle) with !Mutate = match env_snapshot() {
 // so an undeclared fn allowed Pure and `fn main() -> Int = (??) ~> h`
 // refused every candidate performing what `h` absorbs
 // (tests/frontier/mn-hole-row-absorbed.mn, measured 2026-09-25).
-fn allowed_row_at(hole, decl_h, effs) = {
-  let absorbed = match graph_node_body(decl_h) {
-    NStmt(FnStmt(_, _, _, _, body)) => absorbed_around(node_handle(body), hole),
-    _ => [],
-  }
+fn allowed_row_at(path, k, effs) = {
+  let absorbed = fold([], absorbed_step(path, ??, ??), range(k + 1, len(path) - 1))
   let base = if len(effs) == 0 {
-    match graph_chase(decl_h) {
+    match graph_chase(list_index(path, k)) {
       GNode(kind, _) => match resolve_row(row_of_kind(kind)) {
         EfRow(present, _, _) => mk_ef_closed(present),
       },
@@ -711,65 +859,21 @@ fn allowed_row_at(hole, decl_h, effs) = {
   union_row(base, mk_ef_closed(absorbed))
 }
 
-// The effects absorbed between a node and the hole below it: every `~>`
-// whose body side contains the hole contributes the names its handler's
+// The effects absorbed between the enclosing function and the hole: every
+// `~>` the path enters by its body side contributes the names its handler's
 // arms handle — the derivation `infer_pipe_tee` subtracts at the same edge.
-fn absorbed_around(node_h, hole) = if node_h == hole {
-  []
-} else {
-  let here = match graph_node_body(node_h) {
-    NExpr(PipeExpr(PTee, left, right)) => if node_contains_handle(node_handle(left), hole) {
-      match handler_arms_of(right) {
-        Some(arms) => derive_handler_enames(arms, 0, []),
-        None => [],
-      }
-    } else {
-      []
-    },
-    _ => [],
-  }
-  match find((c) => node_contains_handle(c, hole), body_child_handles(graph_node_body(node_h))) {
-    Some(c) => name_set_union(here, absorbed_around(c, hole)),
-    None => here,
-  }
-}
-
-// The enclosing fn DECLARATION at a handle — the innermost FnStmt whose
-// body TREE contains the handle. Spans cannot resolve containment
-// (decl and body parse spans are head-anchored — measured 2026-07-28:
-// a three-line body's span was two columns wide), so the walk descends
-// the tree through the ONE total child projection
-// (body_child_handles). Nesting resolves structurally: a candidate
-// whose own stmt node sits inside the current best's body is the
-// tighter enclosure and replaces it. O(weave × subtree) at felt
-// cadence; the O(1) form is the decl-containment edge on the node
-// (Hβ.cursor.enclosing-decl-edge).
-fn enclosing_fn_decl_at(handle) with !Mutate = match graph_snapshot() {
-  Graph(next, _spans) => enclosing_fn_scan(handle, 0, next, None),
-}
-
-fn enclosing_fn_scan(target, i, n, best) with !Mutate = if i >= n {
-  best
-} else {
-  match graph_node_body(i) {
-    NStmt(FnStmt(name, _params, _ret, effs, body)) => if node_contains_handle(node_handle(body), target) {
-      match best {
-        None => enclosing_fn_scan(target, i + 1, n, Some((name, effs, i))),
-        Some((bn, be, bi)) => // both contain the hole — the nested one wins: this decl's own
-        // stmt node inside the standing best's body means THIS is the
-        // inner declaration (a nested declaration is hoisted letrec
-        // sugar; its FnStmt node is a child of the outer body).
-        if node_contains_handle(bi, i) {
-          enclosing_fn_scan(target, i + 1, n, Some((name, effs, i)))
-        } else {
-          enclosing_fn_scan(target, i + 1, n, Some((bn, be, bi)))
-        },
-      }
-    } else {
-      enclosing_fn_scan(target, i + 1, n, best)
-    },
-    _ => enclosing_fn_scan(target, i + 1, n, best),
-  }
+// Each level used to re-walk its children's subtrees to find the one holding
+// the hole, which the path already knows.
+fn absorbed_step(path, acc, i) with !Mutate = match graph_node_body(list_index(path, i)) {
+  NExpr(PipeExpr(PTee, left, right)) => if node_handle(left) == list_index(path, i + 1) {
+    match handler_arms_of(right) {
+      Some(arms) => name_set_union(acc, derive_handler_enames(arms, 0, [])),
+      None => acc,
+    }
+  } else {
+    acc
+  },
+  _ => acc,
 }
 
 // verify_pending_at — Verify ledger holds ALL pending refinement
@@ -786,8 +890,12 @@ fn enclosing_fn_scan(target, i, n, best) with !Mutate = if i >= n {
 // of main.mn counted the pending claims on lines 3–5 of every module it
 // linked (D4's audit; the class D3 closed for positions).
 fn verify_pending_at(handle) with !Mutate =
-  verify_debt() |> filter(pending_in(graph_module_of(handle), caret_span_of_handle(handle), ??))
+  verify_debt() |> filter(pending_in(graph_module_of(handle), parse_span_of(handle), ??))
 
+// An obligation is AT a node when its claim sits inside the node's extent —
+// the node's own and its sub-expressions'. Lines used to be compared, so every
+// node on a line answered the line's whole debt — the source of a `|>` chain
+// counted the claim its second stage owes (measured on boot 8b071ba3).
 fn pending_in(m, target, o) = match o {
-  (dm, debt_span, _, _) => dm == m && span_overlaps(target, debt_span),
+  (dm, debt_span, _, _) => dm == m && span_contains(target, debt_span),
 }
