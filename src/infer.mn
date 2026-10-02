@@ -9098,7 +9098,7 @@ fn discharge_arg(p, ah, span: ValidSpan, call_h) = {
 fn pay_guard(row, contract, verdict, ah, call_h) = if guard_owes_nothing(row) {
   ()
 } else if claim_held(verdict) && ty_carries_refinement(contract) {
-  let leaves = value_leaves(ah, NoSelf)
+  let leaves = claim_leaves(contract, ah)
   if leaves_unproven(leaves) {
     pay_row(row, call_h)
   } else {
@@ -9106,6 +9106,21 @@ fn pay_guard(row, contract, verdict, ah, call_h) = if guard_owes_nothing(row) {
   }
 } else {
   pay_row(row, call_h)
+}
+
+// What a held claim stood on: the value's own leaves, and under a structured
+// contract every claimed part's — a part built in sight at each node it can
+// be, a part out of sight off the whole's leaves at the part. A structure
+// literal's own leaf is unknown, and reading it alone let a claim on its
+// parts pay no guard and carry none.
+fn claim_leaves(contract, h) =
+  value_leaves(h, NoSelf) ++ (value_parts(contract) |> flat_map(part_claim_leaves(h, ??)))
+
+fn part_claim_leaves(h, part) = match part {
+  (step, pt) => match part_nodes(h, step) {
+    Some(nodes) => nodes |> flat_map(claim_leaves(pt, ??)),
+    None => path_leaves(h, [step]),
+  },
 }
 
 // A guard's row as a call pays it: what its cell already holds is charged
@@ -9709,7 +9724,11 @@ fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
   },
   TRefined(_, PProvides(_)) => // a provision states what a position is handed; it claims nothing
   Some(true),
-  TRefined(_, pred) => verify_claim(graph_module_current(), span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
+  TRefined(base, pred) => // a refined structure claims its predicate and its parts
+  and_decide(
+    verify_claim(graph_module_current(), span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
+    cross_parts(base, value_handle, span)
+  ),
   TFun(eps, eret, _) => {
     fun_refinement_crossing(eps, eret, value_handle, span)
     Some(true)
@@ -9737,34 +9756,88 @@ fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
   _ => Some(true),
 }
 
-// A STRUCTURE crossing into a contract whose parts hold functions (H4·D): a
-// part the value was built with in sight crosses into the part's contract
-// — each element of `[inv]` into the element contract a parameter learned
-// where its body applied `fs[0]` — and a part of a learning parameter
-// learns it; a part of any other value is read off the value's class,
-// which is lossy, since a class merges what unification met. On boot
-// 13e8484a and pin e23392f6 a structure claimed nothing at all, so
-// `first([inv])` over `fn first(fs) = fs[0](0)` checked clean under `!Trap`
-// and divided by zero. A value refinement inside a structure is not judged
-// here (Hβ.verify.provenance-through-destructure).
-fn cross_parts(ty, value_handle, span: ValidSpan) = {
-  if contract_holds_fn(ty) {
-    contract_parts(ty) |> each(cross_part(value_handle, span, ??))
-  } else {
-    ()
-  }
+// A STRUCTURE claimed under a structured contract is claimed part by part,
+// and its verdict is theirs, met: every part holds, or one is refuted, or one
+// is owed. A VALUE part built in sight is claimed where it stands — `{den: 0}`
+// under `{den: Positive}` refuses at the `0` — and a value part of a whole
+// built out of sight is read off the whole's leaves at the part, or owed. A
+// FUNCTION part crosses into its contract (H4·D): each element of `[inv]`
+// into the element contract a parameter learned where its body applied
+// `fs[0]`, a part of a learning parameter teaching it, a part of any other
+// value read off its class, which is lossy. Until S4 a structure crossed its
+// function parts alone and answered held, while a callee ASSUMED its value
+// parts (`r.den` read `Positive` under `r: {den: Positive}`), so
+// `den_inv({den: 0})` under `!Trap` checked clean and divided by zero on boots
+// e23392f6 and 1a68ecc0 — and so did a tuple's part, a list's element taken
+// by a pattern, a nested record, and a record a `let` built or an
+// unannotated parameter filled.
+fn cross_parts(ty, value_handle, span: ValidSpan) =
+  and_decide(fn_parts_verdict(ty, value_handle, span), value_parts_verdict(ty, value_handle, span))
+
+fn fn_parts_verdict(ty, value_handle, span: ValidSpan) = if contract_holds_fn(ty) {
+  contract_parts(ty) |> fold(Some(true), cross_part(value_handle, span, ??, ??))
+} else {
+  Some(true)
+}
+
+fn value_parts_verdict(ty, value_handle, span: ValidSpan) = if ty_carries_refinement(ty) {
+  value_parts(ty) |> fold(Some(true), claim_value_part(value_handle, span, ??, ??))
+} else {
   Some(true)
 }
 
 // A contract's parts that hold a function, each with its step.
 fn contract_parts(ty) = match ty {
   TList(e) => fn_parts([(PartElem, e)]),
-  TTuple(es) => fn_parts(es |> enumerate |> map({ (i, e) => (PartIndex(i), e) })),
+  TTuple(es) => fn_parts(es |> enumerate |> map(index_step_of)),
   TRecord(fs) => fn_parts(fs |> map(field_step)),
   TRecordOpen(fs, _) => fn_parts(fs |> map(field_step)),
   TName(_, args) => fn_parts(args |> enumerate |> map(type_arg_step)),
   TAlias(_, inner) => contract_parts(inner),
   _ => [],
+}
+
+// A contract's parts that carry a refinement and hold no function — a part
+// holding one is a function part, whose crossing claims the refinements
+// inside it as it goes. A nominal contract's parts are its constructors'
+// fields at their declared types read at the contract's arguments, those
+// fields the arguments reach: a field with a refinement of its own is claimed
+// where the constructor is applied.
+fn value_parts(ty) = match ty {
+  TList(e) => refined_parts([(PartElem, e)]),
+  TTuple(es) => refined_parts(es |> enumerate |> map(index_step_of)),
+  TRecord(fs) => refined_parts(fs |> map(field_step)),
+  TRecordOpen(fs, _) => refined_parts(fs |> map(field_step)),
+  TName(n, _) => refined_parts(zip(variant_named_specs_at(TName(n, [])), variant_named_specs_at(ty)) |> flat_map(argument_fields)),
+  TAlias(_, inner) => value_parts(inner),
+  TRefined(base, _) => value_parts(base),
+  _ => [],
+}
+
+fn refined_parts(parts) = parts |> filter(part_is_refined)
+
+fn part_is_refined(part) = match part {
+  (_, t) => ty_carries_refinement(t) && !contract_holds_fn(t),
+}
+
+// A constructor's fields its type's arguments reach: those whose declared
+// type the arguments changed, each at its grounded type.
+fn argument_fields(pair) = match pair {
+  (declared, grounded) => match declared {
+    (_, cname, dtys) => match grounded {
+      (_, _, gtys) => zip(dtys, gtys) |> enumerate |> flat_map(argument_field(cname, ??)),
+    },
+  },
+}
+
+fn argument_field(cname: String, slot) = match slot {
+  (i, pair) => match pair {
+    (d, g) => if d == g { [] } else { [(PartCtor(cname, i), g)] },
+  },
+}
+
+fn index_step_of(slot) = match slot {
+  (i, e) => (PartIndex(i), e),
 }
 
 fn type_arg_step(slot) = match slot {
@@ -9773,6 +9846,50 @@ fn type_arg_step(slot) = match slot {
 
 fn field_step(f) = match f {
   (n, t) => (PartField(n), t),
+}
+
+fn claim_value_part(value_handle, span: ValidSpan, acc, part) =
+  and_decide(acc, value_part_claim(value_handle, span, part))
+
+// One value part claimed: where the whole was built in sight, at every node
+// the part can be — an unannotated parameter placed there learns the
+// contract, as one handed straight in does — and otherwise off the whole's
+// leaves at the part.
+fn value_part_claim(value_handle, span: ValidSpan, part) = match part {
+  (step, pt) => match part_nodes(value_handle, step) {
+    Some(nodes) => nodes |> fold(Some(true), claim_value_node(pt, span, ??, ??)),
+    None => opaque_value_part(value_handle, [step], pt, span),
+  },
+}
+
+fn claim_value_node(pt, span: ValidSpan, acc, n) = {
+  learn_precondition(n, pt)
+  and_decide(acc, claim_refinement(pt, n, span))
+}
+
+// A part of a whole built out of sight is read off the whole's leaves at the
+// part (verify.mn `path_leaves`): where every leaf states the part's
+// refinement — a parameter's precondition, a declared return, a let's claim,
+// each projected to the position — the claim holds on it, and otherwise it
+// is owed here. A structured part is read the same way at each of its own.
+fn opaque_value_part(h, path, pt, span: ValidSpan) = and_decide(
+  opaque_surface(h, path, pt, span),
+  value_parts(pt) |> fold(Some(true), opaque_sub_part(h, path, span, ??, ??))
+)
+
+fn opaque_sub_part(h, path, span: ValidSpan, acc, part) = match part {
+  (step, sub) => and_decide(acc, opaque_value_part(h, path ++ [step], sub, span)),
+}
+
+fn opaque_surface(h, path, pt, span: ValidSpan) = match demand_refinement(pt) {
+  Some(found) => match found {
+    (aname, pred) => if leaves_carry_alias(path_leaves(h, path), aname) {
+      Some(true)
+    } else {
+      verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
+    },
+  },
+  None => Some(true),
 }
 
 // A part whose contract is still a cell is one the receiver never applied:
@@ -9819,26 +9936,33 @@ fn field_has_fn(f) = match f {
   (_, t) => ty_has_fn(t),
 }
 
-fn cross_part(value_handle, span: ValidSpan, part) = match part {
-  (step, pt) => match part_nodes(value_handle, step) {
-    Some(nodes) => nodes |> each({
-      n => {
-        apply_refinement_constraint(pt, n, span)
-        ()
-      },
-    }),
-    None => opaque_part(value_handle, [step], pt, span),
-  },
+fn cross_part(value_handle, span: ValidSpan, acc, part) = match part {
+  (step, pt) => and_decide(
+    acc,
+    match part_nodes(value_handle, step) {
+      Some(nodes) => nodes |> fold(Some(true), cross_node(pt, span, ??, ??)),
+      None => opaque_part(value_handle, [step], pt, span),
+    }
+  ),
 }
 
-fn opaque_part(h, path, pt, span: ValidSpan) = match learning_path(h) {
-  Some(at) => match at {
-    (b, lp) => teach_part(b, lp ++ path, pt),
-  },
-  None => match contract_at(chase_deep(TVar(h)), path) {
-    Some(ct) => class_part(ct, pt, h, span),
-    None => (),
-  },
+fn cross_node(pt, span: ValidSpan, acc, n) =
+  and_decide(acc, apply_refinement_constraint(pt, n, span))
+
+// A function part of a whole built out of sight: a learning parameter's part
+// learns it, any other is read off the class; the refinements beside the
+// functions in it are claimed off the whole's leaves as any value part is.
+fn opaque_part(h, path, pt, span: ValidSpan) = {
+  match learning_path(h) {
+    Some(at) => match at {
+      (b, lp) => teach_part(b, lp ++ path, pt),
+    },
+    None => match contract_at(chase_deep(TVar(h)), path) {
+      Some(ct) => class_part(ct, pt, h, span),
+      None => (),
+    },
+  }
+  opaque_value_part(h, path, pt, span)
 }
 
 // A part of a learning parameter learns what its function parts cross into.

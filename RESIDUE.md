@@ -2728,25 +2728,74 @@ face above — a refinement a value carries through a generic call — is the
 same occurrence walk read with `value_leaves` instead of `fn_leaves`, and is
 what this entry still owes.
 
-`Hβ.verify.provenance-through-destructure` — MOSTLY CLOSED 2026-10-01 (P0).
-Every pattern binder for a part carries its whole and its position
-(`PartFact`, infer.mn `note_part`), and a field read names its receiver: a
-part is the construction's argument at that position where the whole was
-built in sight — a tuple, a constructor call, a record, a list literal,
-through lets and every join tail, a part of a part composed — and the
-whole's contract projected to the position where it was not (a tuple's, a
-record's or a list's declared contract, `contract_part`). The `!Flow` seed
-reads the same edge, so the public half of a mixed tuple is public
-(`mn-ifc-splice-part-public`). OPEN: a constructor's contract is not
-projected (`Option(Positive)` at `Some`'s field needs the constructor's
-scheme instantiated at the contract's arguments); an index read (`xs[i]`, a
-tuple's constant index) reads no part; a join whose tail is not a
-construction falls to the whole's contract for every tail; and a VALUE
-refinement inside a structure is never claimed — `let xs: [Positive] = [0]`
-compiles clean and runs on pin e23392f6 and boot 1a68ecc0 alike, the
-structure crossing (`cross_parts`) judging only the function parts. A
-nominal type's arguments are read since H4 (`PartTypeArg`) for function
-parts; their value parts wait on the same claim.
+`Hβ.verify.provenance-through-destructure` — MOSTLY CLOSED 2026-10-01 (P0)
+and 2026-10-02 (S4). Every pattern binder for a part carries its whole and
+its position (`PartFact`, infer.mn `note_part`), and a field read and an
+index read name their receiver (`xs[i]` the element, a tuple's constant
+index its position): a part is the construction's argument at that position
+where the whole was built in sight — a tuple, a constructor call, a record,
+a list literal, through lets and every join tail, a part of a part composed
+— and the whole's contract projected to the position where it was not (a
+tuple's, a record's or a list's declared contract, and a nominal contract's
+constructor field grounded at the contract's arguments, `Option(Positive)`
+at `Some`'s field being `Positive`: `contract_part`). The `!Flow` seed reads
+the same edge, so the public half of a mixed tuple is public
+(`mn-ifc-splice-part-public`). And since S4 a structure is CLAIMED part by
+part where it is built (`cross_parts`), so what a pattern assumes is what a
+construction owed: until then `let xs: [Positive] = [0]` compiled clean and
+`den_inv({den: 0})` under `!Trap` divided by zero on pin e23392f6 and boot
+1a68ecc0 alike. OPEN: a join one of whose tails is not a construction reads
+every tail off the whole's leaves — its built tails' parts unknown at a
+pattern and owed at a claim, where reading each as it was built would prove
+them. THE FORM: the part read answers both halves — the nodes a part can be
+where its tail was built, and the tails out of sight to project — so a
+pattern reads each and a claim claims the built nodes where they stand and
+owes only the rest.
+
+`Hβ.verify.handler-state-reads-only-its-init` — OPEN, BORN 2026-10-02 (found
+after S4's march), PREEMPTING D4. A handler's state name is bound to its
+INIT's cell (`bind_handler_state_names`), so every reference's link reaches
+the init expression, and every walk that reads a binder — a value's leaves,
+its `!Flow` label, a function value's leaves — answers the init alone; a
+`resume … with` write is unified into the cell's shape and read by nothing.
+Measured on pin 53f7404b and boot 1a68ecc0 alike: `handler h with d = 5 {
+ask() => resume(100 / d), shrink() => resume(0) with d = d - 5 }` checks
+clean under `!Trap` and divides by zero (exit 134), as do `inv(d)` over `n:
+Positive` and a function written into state (`with f = inv`, the init
+`succ`) applied at 0; a classified value written into a public-initialized
+state splices clean where a classified init refuses. The runtime values are
+right — the proof reads the init, the program does not — and a state no arm
+writes still proves what its init states (exit 20). THE FORM: a state field
+is its own binder whose value edges are the init and every write.
+Registration mints one binder per field — the name bound to it, its cell
+unified with the init's — and, before any arm is judged, walks the arms for
+`resume … with name = e` updates (the one total child projection,
+`body_child_handles`) and notes a state fact on the binder naming the init
+and every update expression. Every binder reader answers the join of the
+writers: the value walk their leaves, the `!Flow` read their labels' join, a
+function value's walk their function leaves, a pattern their parts. A write
+that reads the state (`with d = d + 1`, through a let alike) re-enters the
+binder, so each walk carries the binders it is inside and reads a re-entered
+state as unknown — EXACT for the `!Flow` label, whose writes join the state
+with what they add (the least fixpoint is the init's label joined with every
+write's), and SOUND for refinements, where reading the hypothesis instead is
+the inductive invariant (the predicate holds of the init and every write
+preserves it) and the precision step after this one. A write not yet judged
+where a claim is decided reads unknown (its references have no link yet), so
+an earlier arm's claim over a state a later arm writes is owed, never
+proven. The race rule's re-walk of the arms by name
+(`handler_state_is_written`, lower) reads the fact instead, and deletes.
+
+`Hβ.emit.nested-record-literal-answers-the-inner-pointer` — CLOSED
+2026-10-02 (S4), found by the nested-part claim's fixture. A record literal
+parked its base pointer in one scratch local every record literal shared,
+so a literal written as a field of another overwrote the outer's pointer
+and the outer answered the INNER's: `let r = {inner: {den: 5}}` bound `r`
+to `{den: 5}`, and `r.inner.den` read 0 with no diagnostic on every boot
+through 1a68ecc0. Variants and tuples had parked in their own scratch since
+July; a record parks in `$record_<h>` now, and the dead shared declarations
+went with it (5,129 functions declared both; the same source assembles
+126,323 bytes smaller). Micro `mn-record-nested-literal` (56).
 
 `Hβ.verify.relational-provision` — OPEN, BORN 2026-10-02 with H4. A learning
 parameter's provisions are what its OWN body hands it, so a use that leaves
@@ -2802,21 +2851,25 @@ name). THE FORM: the instantiation records its scheme on the reference's
 node at the one writer (the instance column already holds the copy edges),
 so the channel reads the edge.
 
-`Hβ.verify.type-arg-part-reads-every-field` — OPEN, BORN 2026-10-02 with H4.
-A nominal type's argument is a container of its values (`PartTypeArg`), and
-a construction in sight answers EVERY field for it (`built_part`), since
-which field a type argument types is the constructor's declaration, out of
-the walk's reach. Sound — the true sources are among them — and imprecise
-where a field of another type holds a function: with `type Tagged =
-T((Int) -> Int, a)` and `fn tag_apply(f, t) = match t { T(g, x) => f(x) +
-g(1) }`, `tag_apply({ h => h(0) }, T(inv, inv2))` refuses under `!Trap`,
-`inv` in the first field crossing into the callback's `h(0)` though only
-`inv2` reaches it (measured; boot e23392f6 refuses it as effect debt).
-Precise on `T(0, inv)` (a non-function field crosses nothing) and on
-`Option`, `Result` and a two-field `Pair`. THE FORM: the constructor's
-scheme maps each field to the type arguments it mentions, read at the
-construction — the projection `Hβ.verify.provenance-through-destructure`
-owes a constructor's contract.
+`Hβ.verify.type-arg-part-reads-every-field` — OPEN, BORN 2026-10-02 with H4,
+NARROWED 2026-10-02 at S4 to FUNCTION parts. A nominal type's argument is a
+container of its values (`PartTypeArg`), and a construction in sight answers
+EVERY field for it (`construction_part`), since the function crossing does
+not ask which field a type argument types. Sound — the true sources are
+among them — and imprecise where a field of another type holds a function:
+with `type Tagged = T((Int) -> Int, a)` and `fn tag_apply(f, t) = match t {
+T(g, x) => f(x) + g(1) }`, `tag_apply({ h => h(0) }, T(inv, inv2))` refuses
+under `!Trap`, `inv` in the first field crossing into the callback's `h(0)`
+though only `inv2` reaches it (measured; boot e23392f6 refuses it as effect
+debt). Precise on `T(0, inv)` (a non-function field crosses nothing) and on
+`Option`, `Result` and a two-field `Pair`. A VALUE part's claim no longer
+reads every field: S4 grounds the contract's constructors at its arguments
+and claims the fields whose declared type the arguments changed
+(`argument_fields`), so `res_inv(Err("bad"))` under `Result(Positive,
+String)` owes nothing of `Positive`. THE FORM: the same grounded read at the
+function crossing — the fields whose declared type mentions the argument's
+parameter (`variant_named_specs_at`, in types.mn below the judgment since
+S4).
 
 `Hβ.verify.crossing-guard-carries-to-the-provision` — OPEN, BORN 2026-10-02
 with H4. A function crossing into a position whose provision stands on a

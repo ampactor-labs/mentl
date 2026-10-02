@@ -1909,6 +1909,49 @@ and this is the STATE.
   walk passed, `Hβ.infer.tuple-index-through-an-unannotated-parameter`. The
   higher-order peer (`Hβ.verify.higher-order-refinement`) keeps face 1's
   remainder and κ, the one form that would answer every face at once.
+- **A STRUCTURE IS CLAIMED PART BY PART WHERE IT IS BUILT, AS IT IS ASSUMED
+  PART BY PART WHERE IT IS TAKEN APART — CLOSED 2026-10-02 (S4).** P0 made a
+  destructured part read its whole's contract projected to the position, so
+  a callee ASSUMES `r.den` is `Positive` under `r: {den: Positive}`; the
+  caller's claim of that contract crossed only the structure's function
+  parts and answered held, so the `Trap` the callee's division guarded was
+  neither paid nor carried. Measured on boots e23392f6 and 1a68ecc0, each
+  checked clean under `!Trap` and divided by zero: `den_inv({den: 0})`, a
+  tuple's position, a list's element taken by a pattern, a nested record, a
+  record a `let` built, an unannotated parameter placed in a record, and a
+  record handed straight through an unannotated parameter; and `let xs:
+  [Positive] = [0]` compiled clean. A structure's claim is the meet of its
+  parts' (`cross_parts`): a part built in sight is claimed at every node it
+  can be, an unannotated parameter placed there learning the contract, and a
+  part of a whole built out of sight is read off the whole's leaves at the
+  part — held where every leaf states it, owed otherwise; a guard is paid on
+  what the claim stood on, the parts' leaves (`claim_leaves`). A nominal
+  contract's parts are its constructors' fields grounded at its arguments
+  (`variant_named_specs_at`, moved from lower to types, one home the
+  judgment and the emit read), so `opt_inv(Some(5))` under
+  `Option(Positive)` proves its division and `res_inv(Err("bad"))` under
+  `Result(Positive, String)` owes nothing of `Positive`, where the boot
+  refused both; an index read is a part read (`100 / xs[0]` under `xs:
+  [Positive]`); a constructor is recognized by the env (`constructor_named`).
+  The wheel's open obligations 34 → 37, each a part the class had hidden:
+  `TypeVariants`' tag, `Graph`'s span index, `rank_positions`' handles.
+  Found on the way, in the emit: a record literal written as a field of
+  another parked its base pointer in the one scratch local every record
+  literal shared, so the outer answered the INNER's pointer — `let r =
+  {inner: {den: 5}}` bound `r` to `{den: 5}` and `r.inner.den` read 0 with
+  no diagnostic on every boot through 1a68ecc0; a record parks in its own
+  scratch now, as a variant and a tuple had since July
+  (`Hβ.emit.nested-record-literal-answers-the-inner-pointer`, closed). Open:
+  a join one of whose tails is not a construction reads every tail off the
+  whole (`Hβ.verify.provenance-through-destructure`), a type argument's
+  function parts still read every field
+  (`Hβ.verify.type-arg-part-reads-every-field`) — and, found after the
+  march and preempting D4, a handler's state links to its INIT, so the
+  proof never reads an arm's `resume … with` write: `100 / d` over `with d =
+  5` checks clean under `!Trap` while an arm writes `d = d - 5`, a
+  classified write is read as the init's public label, and a function
+  written into state is applied under the init's contract
+  (`Hβ.verify.handler-state-reads-only-its-init`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

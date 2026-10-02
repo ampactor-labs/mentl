@@ -328,6 +328,7 @@ fn value_leaves(h, bind) = match node_const_at(h, bind) {
       NExpr(CallExpr(callee, _)) => call_leaves(callee),
       NExpr(PipeExpr(PForward, _, stage)) => call_leaves(stage),
       NExpr(FieldExpr(recv, fname)) => part_leaves(node_handle(recv), PartField(fname)),
+      NExpr(IndexExpr(recv, idx)) => part_leaves(node_handle(recv), index_step(node_handle(recv), idx)),
       _ => [LUnknown],
     },
   },
@@ -437,28 +438,20 @@ fn gather_part(step, acc, whole) = match acc {
 }
 
 fn built_part(whole, step) = match graph_node_body(whole) {
-  NExpr(VarRef(_)) => match graph_link_of(whole) {
-    Some(b) => part_nodes(b, step),
-    None => None,
+  NExpr(VarRef(name)) => if constructor_named(name) {
+    bare_construction_part(step)
+  } else {
+    match graph_link_of(whole) {
+      Some(b) => part_nodes(b, step),
+      None => None,
+    }
   },
   NExpr(MakeTupleExpr(elems)) => match step {
     PartIndex(i) => nth_handle(elems, i),
     _ => None,
   },
-  NExpr(CallExpr(callee, args)) => match step {
-    PartCtor(cname, i) => match graph_node_body(node_handle(callee)) {
-      NExpr(VarRef(made)) => if made == cname { nth_handle(args, i) } else { None },
-      _ => None,
-    },
-    PartTypeArg(_) => // A type argument's values inside a construction are among its fields —
-    // every field, since which field a type argument types is the
-    // constructor's declaration, out of this walk's reach
-    // (Hβ.verify.type-arg-part-reads-every-field). A capitalized callee is
-    // a constructor: the case rule is the declaration.
-    match graph_node_body(node_handle(callee)) {
-      NExpr(VarRef(made)) => if names_a_constructor(made) { Some(args |> map(node_handle)) } else { None },
-      _ => None,
-    },
+  NExpr(CallExpr(callee, args)) => match graph_node_body(node_handle(callee)) {
+    NExpr(VarRef(made)) => if constructor_named(made) { construction_part(made, args, step) } else { None },
     _ => None,
   },
   NExpr(MakeRecordExpr(fields)) => field_part(fields, step),
@@ -467,6 +460,25 @@ fn built_part(whole, step) = match graph_node_body(whole) {
     PartElem => Some(elems |> map(node_handle)),
     _ => None,
   },
+  _ => None,
+}
+
+// A construction's part: the argument at its constructor's field, and none at
+// another constructor's — a pattern naming that one cannot match this value,
+// so it holds no such part, never one read off the whole. A type argument's
+// values are among the fields: every field, since which field a type
+// argument types is the constructor's declaration, out of this walk's reach
+// (Hβ.verify.type-arg-part-reads-every-field).
+fn construction_part(made: String, args, step) = match step {
+  PartCtor(cname, i) => if made == cname { nth_handle(args, i) } else { Some([]) },
+  PartTypeArg(_) => Some(args |> map(node_handle)),
+  _ => None,
+}
+
+// A constructor named bare is a construction with no fields.
+fn bare_construction_part(step) = match step {
+  PartCtor(_, _) => Some([]),
+  PartTypeArg(_) => Some([]),
   _ => None,
 }
 
@@ -525,9 +537,23 @@ fn contract_part(c, step) = match c {
   },
   TName(_, args) => match step {
     PartTypeArg(k) => if k < len(args) { Some(list_index(args, k)) } else { None },
+    PartCtor(cname, i) => ctor_field_contract(c, cname, i),
     _ => None,
   },
+  TRefined(base, _) => contract_part(base, step),
   _ => None,
+}
+
+// A nominal contract at a constructor's field: the field's declared type with
+// the type's parameters read at the contract's arguments — `Option(Positive)`
+// at `Some`'s field is `Positive` (types.mn `variant_named_specs_at`). A
+// value built with `Some` owes it where it is claimed, and a pattern over a
+// value under the contract may assume it.
+fn ctor_field_contract(c, cname: String, i) = match find(spec_named(cname), variant_named_specs_at(c)) {
+  Some(spec) => match spec {
+    (_, _, tys) => if i < len(tys) { Some(list_index(tys, i)) } else { None },
+  },
+  None => None,
 }
 
 fn field_contract(fs, step) = match step {
@@ -781,10 +807,16 @@ fn lo_add(ea, eb) = match ea {
 // precondition or a callee's postcondition carrying the alias — so the
 // value is already a member, and its obligation was owed where the leaf
 // was made.
-fn value_carries_alias(h, aname: String) = {
-  let leaves = value_leaves(h, NoSelf)
+fn value_carries_alias(h, aname: String) = leaves_carry_alias(value_leaves(h, NoSelf), aname)
+
+fn leaves_carry_alias(leaves, aname: String) =
   len(leaves) > 0 && all(leaf_carries(aname, ??), leaves)
-}
+
+// A value's leaves read at a path into it — each projected one step at a
+// time, as a destructured part reads its whole (`project_leaf`).
+fn path_leaves(h, path) = path |> fold(node_leaves(h), project_leaves)
+
+fn project_leaves(leaves, step) = leaves |> map(project_leaf(??, step))
 
 fn leaf_carries(aname: String, leaf) = match leaf {
   LParam(_, c) => ty_names_alias(c, aname),

@@ -1083,6 +1083,8 @@ nested.outer.inner
 
 Field access lowers to `LFieldLoad` with offset resolved at compile time from the record's type. O(1) load.
 
+A record literal written as a field of another is its own record: `let r = {inner: {den: 5}}` reads `r.inner.den` as 5 (real, 2026-10-02 — until then every record literal parked its base pointer in one shared scratch, so the outer literal answered the inner's pointer and `r.inner.den` read 0 with no diagnostic).
+
 ### Record update — spread into new record
 
 ```
@@ -1337,6 +1339,24 @@ made and never a fact laid over it: `let k: Positive = e - 1` leaves `0 < e -
 1` open, and `100 / k` charges `Trap`. A reader of `k` may stand on the
 annotation for another claim — the debt is carried once, at the let — and
 never for a row fact.
+
+**A structured contract is claimed part by part where the structure is
+built, as it is assumed part by part where it is taken apart** (real,
+2026-10-02, S4). Under `r: {den: Positive}` a field read or a pattern
+assumes `r.den` is `Positive`, so every construction handed there owes it
+of the part it builds: `den_inv({den: 0})` refuses at the `0`, a list
+literal owes `[Positive]`'s contract of every element, a tuple its
+position's, and a nominal contract its constructors' fields read at the
+type's arguments — `Option(Positive)` owes `Positive` of `Some`'s field and
+nothing of `None`, and `Result(Positive, String)` nothing of `Err`'s. A part
+of a value built out of sight is read off the value: held where every
+source states it at that part — a parameter's precondition, a declared
+return, a let's claim — and owed otherwise, the row its precondition guards
+paid where the claim is open. An index read is a part read (`100 / xs[0]`
+under `xs: [Positive]` is total), and `let xs: [Positive] = [0]` refuses
+where it is written. Until this landed a structure's claim crossed only its
+function parts, so seven shapes of this checked clean under `!Trap` and
+divided by zero.
 
 **A function's contract travels with the function** (real, 2026-10-01, P0·H).
 A lambda's parameter learns its precondition as a declared one does —

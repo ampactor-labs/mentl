@@ -1244,4 +1244,16 @@ authored_ref_max: 703
 # rise is the source: +1,543 net wheel lines, the pin's 934,912 KB → the
 # boot's 963,944 KB on the new source. Same rule: ~1% over the highest
 # reading of the landed form.
-selfcompile_peak_kb_max: 985000
+# 2026-10-02 (S4): 985000 -> 995000. Fixed input — the candidate's own wheel
+# source through both compilers: the boot (1a68ecc0) 975,036 KB with the
+# judgment's heap high-water at 458.3 MB, the candidate 978,744 / 979,344 /
+# 984,892 KB at 459.8 MB (deterministic across the three, its output
+# byte-identical run to run) — +1.5 MB of judgment for the structure parts a
+# claim now claims: each value part's claim and the claim noted on it, a
+# nominal contract's variants grounded at its arguments, the leaves a guard
+# is paid on, and three obligations the class had hidden (the wheel's open
+# claims 34 → 37). The rest is spread: 6.1 MB across three identical runs of
+# one binary. The source's own growth (+175 net wheel lines) reads inside
+# it — the boot on this source 975,036 KB against the H4 pin's m3 leg
+# 978,500 KB. Same rule: ~1% over the highest reading of the landed form.
+selfcompile_peak_kb_max: 995000

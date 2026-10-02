@@ -1,0 +1,12 @@
+// CROWN refinement (S4, 2026-10-02): a structure's part is owed where it is
+// built. `den_inv` assumes `r.den` is `Positive`, so the field `k + 1` owes
+// it, and the open claim pays the `Trap` the precondition guards. Checked
+// clean and divided by zero on boots e23392f6 and 1a68ecc0. Expect
+// E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn den_inv(r: {den: Positive}) = 100 / r.den
+
+fn run(k) with !Trap = den_inv({den: k + 1})
+
+fn main() = run(0 - 1)

@@ -35,6 +35,93 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-02 · pin 53f7404bedfa0208 (TRANSITION m3 == m4) · A STRUCTURE IS
+  CLAIMED PART BY PART WHERE IT IS BUILT, AS IT IS ASSUMED PART BY PART WHERE
+  IT IS TAKEN APART — AND A RECORD LITERAL NESTED IN ANOTHER IS BUILT, NOT
+  OVERWRITTEN. Found checking the ground under D4 the hour H4 landed. P0 made
+  a destructured part read its whole's contract projected to the position,
+  so a callee ASSUMES `r.den` is `Positive` under `r: {den: Positive}`; but
+  the caller's claim of a structured contract crossed only its function parts
+  (H4's `cross_parts`) and answered held, and `pay_guard` read the structure
+  literal's own leaf — unknown, which is neither unproven nor a parameter —
+  so the `Trap` the callee's division charged into the precondition's guard
+  was neither paid nor carried. Measured on boots e23392f6 and 1a68ecc0, each
+  checked clean under `!Trap` and divided by zero (exit 134):
+  `den_inv({den: 0})`, `second_inv((1, 0))` through a tuple pattern,
+  `head_inv([0])` through a list pattern, a nested record, a record a `let`
+  built, an unannotated parameter placed in a record, and a record handed
+  straight through an unannotated parameter; and `let xs: [Positive] = [0]`
+  compiled clean. A list read by `xs[i]` and an `Option` taken apart by
+  `Some(d)` refused, but only because those reads read nothing. THE FORM: a
+  structure's claim is the meet of its parts' (`cross_parts`: the function
+  parts' crossings and the value parts' claims, `and_decide`). A value part
+  built in sight is claimed at every node it can be, through lets, joins and
+  blocks (`part_nodes`), and an unannotated parameter placed there learns the
+  contract, as one handed straight in does (`learn_precondition`); a part of
+  a whole built out of sight is read off the whole's leaves projected to the
+  part (`path_leaves`) — held where every leaf states it, owed otherwise.
+  `pay_guard` pays or carries on what the claim stood on, the parts' leaves
+  (`claim_leaves`). A refined structure claims its predicate and its parts. A
+  nominal contract's parts are its constructors' fields at their declared
+  types grounded at the contract's arguments — `Option(Positive)` at
+  `Some`'s field is `Positive` — read by the claim (the fields the arguments
+  reach; a field with a refinement of its own is claimed where the
+  constructor is applied) and by the pattern (`contract_part`'s `PartCtor`
+  arm, `ctor_field_contract`), so `opt_inv(Some(5))` proves its division and
+  `res_inv(Err("bad"))` under `Result(Positive, String)` owes nothing of
+  `Positive`; the grounding read moved from lower to types
+  (`variant_named_specs_at` and its family, one home the judgment and the
+  emit both read). A construction of another constructor holds no such part
+  (`construction_part` answers none, as its comment had always said, where
+  the code answered "out of sight"), and a constructor is recognized by the
+  env, never the case rule (`constructor_named`). An index read is a part
+  read, so `head_inv([5])` over `100 / xs[0]` proves its division where the
+  boot refused it. The wheel's open obligations 34 → 37, each a part the
+  class had hidden: `TypeVariants`' tag over an `enumerate` index, `Graph`'s
+  span index (the graph handler's state), and `rank_positions`' handles over
+  `map`'s result. FOUND ON THE WAY, IN THE EMIT: a record literal written as
+  a field of another parked its base pointer in the one scratch local every
+  record literal shared, the inner literal overwrote it, and the outer
+  answered the INNER's pointer — `let r = {inner: {den: 5}}` bound `r` to
+  `{den: 5}`, and `r.inner.den` read 0 with no diagnostic on every boot
+  through 1a68ecc0 (13e8484a alike). Variants and tuples had parked in their
+  own scratch since July; records do now (`$record_<h>`), and the dead
+  shared declarations are deleted — 5,129 functions declared both, and their
+  names rode the name section, so the same source assembles 126,323 bytes
+  smaller (m2 2,736,485 → m3 2,610,162). FOUND AFTER THE MARCH, PRE-EXISTING
+  AND NEXT: a handler's state links to its INIT, so the proof reads the init
+  and never an arm's `resume … with` write — `100 / d` over `with d = 5`
+  checks clean under `!Trap` while an arm writes `d = d - 5`, a classified
+  write is spliced as the public init's label, and a function written into
+  state is applied under the init's contract (all three exit 134 or check
+  clean on this pin and on 1a68ecc0). KILLS: (1) "lists and `Option` are
+  sound" — refuted by `head_inv([0])` through a list pattern, which trapped:
+  only the index read was blind, and making it read the part without the
+  claim would have opened the hole wider; (2) "the nested record's trap is
+  the claim's" — refuted by `r.inner.den` with no division at all, which
+  read 0: the emit's; (3) the nested fixture's header said the boot "ran
+  without trapping" — its own probe on 1a68ecc0 trapped (exit 134),
+  corrected before the pin; (4) "a handler's state reads none of its writes,
+  so it reads nothing" — refuted by a constant-initialized state proving its
+  division (exit 20): it reads its INIT, which is the hole. Fixtures, each
+  RED on 1a68ecc0: micros `mn-refine-record-part-claim`,
+  `mn-refine-tuple-part-claim`, `mn-refine-list-part-claim`,
+  `mn-refine-nested-part-claim`, `mn-refine-let-part-claim`,
+  `mn-refine-part-learns`, `mn-refine-relay-part` (exit 134),
+  `mn-refine-let-list-annotation` (compiled clean, exit 1),
+  `mn-refine-option-part-ok`, `mn-refine-option-none-ok`,
+  `mn-refine-result-err-ok`, `mn-refine-index-part-ok` (refused,
+  E_EffectMismatch), `mn-record-nested-literal` (exit 0 for 56); crown
+  `leak-refine-record-part` and `leak-refine-list-part` (exit 134). Micros
+  313/313, crown 126/126, proof-exactness 30/0, frontier 486/0/1. COST: the
+  m3 leg 973,068 KB and the m4 leg 976,768 KB; the peak ceiling 985,000 →
+  995,000 on the fixed-input reading — the boot 975,036 KB on this source,
+  the candidate 978,744 / 979,344 / 984,892 KB, its judgment's high-water
+  459.8 MB against 458.3 MB. Named: `Hβ.verify.provenance-through-destructure`
+  loses three faces, `Hβ.verify.type-arg-part-reads-every-field` narrows to
+  function parts, and `Hβ.verify.handler-state-reads-only-its-init` is born
+  with its design.
+
 - 2026-10-02 · pin 1a68ecc0eef48ab1 (TRANSITION m3 == m4) · A FUNCTION VALUE
   IS EVERY FUNCTION IT CAN BE, AND APPLYING IT OWES WHAT EACH ONE DEMANDS —
   WHEREVER IT FLOWED: THROUGH A JOIN, THROUGH DATA, THROUGH A GENERIC CALLEE'S

@@ -3952,8 +3952,6 @@ fn emit_init_lets(value_lets) = if len(value_lets) > 0 {
   wat_emit(" (local $state_tmp i32)")
   wat_emit(" (local $f64_tmp f64)")
   wat_emit(" (local $wide_cell i32)")
-  wat_emit(" (local $variant_tmp i32)")
-  wat_emit(" (local $record_tmp i32)")
   wat_emit(" (local $scrut_tmp i32)")
   wat_emit(" (local $callee_closure i32)")
   wat_emit(" (local $alloc_size i32)")
@@ -4875,8 +4873,6 @@ fn emit_fn_body(name, param_names, body, captures_count) = {
   wat_emit(" (local $state_tmp i32)")
   wat_emit(" (local $f64_tmp f64)")
   wat_emit(" (local $wide_cell i32)")
-  wat_emit(" (local $variant_tmp i32)")
-  wat_emit(" (local $record_tmp i32)")
   wat_emit(" (local $scrut_tmp i32)")
   wat_emit(" (local $callee_closure i32)")
   wat_emit(" (local $alloc_size i32)")
@@ -5043,7 +5039,7 @@ fn walk_locals_expr(expr, acc) = match expr {
   LSimdLanes(h, lanes) => // SIMD lanes need a v128 accumulator local — replace_lane reads-modifies the
   // running vector. No heap local (the value is pure stack v128, not a pointer).
   walk_locals_list(lanes, if len(lanes) > 0 { ["simd_{int_to_str(h)} v128"] ++ acc } else { acc }),
-  LMakeRecord(_h, fs) => walk_locals_list(fs, acc),
+  LMakeRecord(h, fs) => walk_locals_list(fs, ["record_{int_to_str(h)} i32"] ++ acc),
   LMakeVariant(h, _t, fs) => walk_locals_list(fs, if len(fs) > 0 { ["variant_{int_to_str(h)} i32"] ++ acc } else { acc }),
   LMatch(_h, s, arms) => {
     // The root's scratch at the scrutinee's repr — the word scratch is every
@@ -6519,7 +6515,7 @@ fn emit_expr(expr) = match expr {
   LMakeTuple(h, elems) => emit_tuple_literal(h, elems),
   LSimdLanes(h, lanes) => emit_simd_lanes(h, lanes),
   LFanout(_h, lex, _, forms) => emit_expr(fanout_form(lex, forms)),
-  LMakeRecord(_h, fields) => {
+  LMakeRecord(h, fields) => {
     // Untagged heap layout: fields at the width-summed offset in declaration
     // sort order (the prefix-sum of repr_width — an f64 field is 8 inline
     // bytes). Mirrors LMakeVariant minus the tag word — records carry their
@@ -6527,10 +6523,19 @@ fn emit_expr(expr) = match expr {
     // SIZE is that same prefix-sum total (never n*4), so the record is exactly
     // as wide as its read-side offsets reach. emit_alloc routes through the
     // EmitMemory swap surface, same discipline as closures and variants.
+    // The base pointer parks in the literal's OWN scratch, `$record_<h>`, as
+    // a variant's and a tuple's do. Every record literal had shared one
+    // scratch local, so a record literal written as a field of another
+    // overwrote it and the outer literal answered the INNER's pointer —
+    // `let r = {inner: {den: 5}}` bound `r` to `{den: 5}`, and `r.inner.den`
+    // read 0 with no diagnostic, on every boot through 1a68ecc0.
     let size = product_byte_size(fields)
-    emit_alloc(size, "record_tmp")
-    emit_record_field_stores(fields)
-    wat_emit("    (local.get $record_tmp)\n")
+    let local_name = "record_{int_to_str(h)}"
+    emit_alloc(size, local_name)
+    emit_field_stores_acc(fields, 0, len(fields), 0, local_name)
+    wat_emit("    (local.get $")
+    wat_emit(local_name)
+    wat_emit(")\n")
   },
   LMakeVariant(h, tag_id, fields) => {
     // Per-handle scratch `$variant_<h>` avoids shared-$variant_tmp
@@ -9348,21 +9353,20 @@ fn variant_payload_offset(ptys, target, i, off) = if i >= len(ptys) {
   if i == target { here } else { variant_payload_offset(ptys, target, i + 1, here + repr_width(r)) }
 }
 
-// Record field stores: the STORE twin of the read-side width-summed
-// projection. Each field lands at the prefix-sum of repr_width over the
-// canonically-sorted preceding fields (align_for + repr_width — the IDENTICAL
-// fold lower's field_byte_offset_acc and emit_eq_leaf_conjunction run), and
-// is written with repr_store_op(field_repr) — an f64 field is 8 inline bytes
-// via f64.store, every i32/pointer field is i32.store at 4*i (byte-identical to
-// the pre-gradient form, Law 7). Carried-Truth: construction reads the SAME
-// offset+width the load side reads — never a flat 4*i the load re-derives as
-// f64. The field repr is the width the value is emitted at (`tail_expr_repr`,
-// the one decider): a record update's copied field is a load under the
-// update's own handle, and reading that handle stored every copy as a word.
-fn emit_record_field_stores(fields) = emit_field_stores_acc(fields, 0, len(fields), 0, "record_tmp")
-
-// The shared store-fold: place field i at the width-summed `off`, advance by
-// this field's repr_width. `local_name` is the record/variant base pointer.
+// The shared store-fold — the STORE twin of the read-side width-summed
+// projection: place field i at the width-summed `off`, advance by this
+// field's repr_width. `local_name` is the record, variant or tuple base
+// pointer, the literal's own scratch. Each field lands at the prefix-sum of
+// repr_width over the canonically-sorted preceding fields (align_for +
+// repr_width — the IDENTICAL fold lower's field_byte_offset_acc and
+// emit_eq_leaf_conjunction run), and is written with repr_store_op(field_repr)
+// — an f64 field is 8 inline bytes via f64.store, every i32/pointer field is
+// i32.store at 4*i (byte-identical to the pre-gradient form, Law 7).
+// Carried-Truth: construction reads the SAME offset+width the load side reads
+// — never a flat 4*i the load re-derives as f64. The field repr is the width
+// the value is emitted at (`tail_expr_repr`, the one decider): a record
+// update's copied field is a load under the update's own handle, and reading
+// that handle stored every copy as a word.
 fn emit_field_stores_acc(fields, i, n, off, local_name) = if i >= n {
   ()
 } else {

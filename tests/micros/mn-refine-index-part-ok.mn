@@ -1,0 +1,9 @@
+// expect: 20
+// An index read is a part read: `xs[0]` under `xs: [Positive]` stands on
+// the parameter's element contract, which every caller now owes. Boot
+// 1a68ecc0 read nothing at the index and refused this (E_EffectMismatch).
+type Positive = Int where 0 < self
+
+fn head_inv(xs: [Positive]) = 100 / xs[0]
+
+fn main() with !Trap = head_inv([5])

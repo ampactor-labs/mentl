@@ -71,10 +71,152 @@ type Ty
   // RN.1 — authored alias name (e.g. "Port") wrapping resolved type
   | TAlias(String, Ty)
 
-// The case rule, which is the declaration: a capitalized name is nominal —
-// a type, or a constructor of one (SYNTAX §«Generic type parameters»).
-fn names_a_constructor(name: String) =
-  byte_len(name) > 0 && byte_at(name, 0) >= 65 && byte_at(name, 0) <= 90
+// A name that resolves to a constructor where it stands — the env's own
+// answer, never a guess read off the name's first letter.
+fn constructor_named(name: String) = match env_lookup(name) {
+  Some(entry) => match entry {
+    (_, _, kind) => match kind {
+      ConstructorScheme(_, _) => true,
+      _ => false,
+    },
+  },
+  None => false,
+}
+
+// ─── The variant specs AT AN INSTANTIATION ───────────────────────────
+//
+// The DECLARED payload types with the type's own parameters replaced by the
+// arguments the graph proved at this use. `Some`'s declared payload is the
+// quantified var `a`, and every emit-side reader that took the declaration at
+// its word then compared, rendered, hashed and laid out a payload it could not
+// see. MEASURED 2026-09-18, three faces of the one read:
+//   `Some(BInt(7)) == Some(BInt(7))`  answered FALSE — the payload compared by
+//                                     address, while the monomorphic
+//                                     `BInt(7) == BInt(7)` was right
+//   `"{Some(BInt(7))}"`               rendered `Some(1048584)` — the address
+//   `let a = Some(1.5)`               never assembled: the binder's local was
+//                                     declared at the declared width and read
+//                                     at the proven one (`unknown local $v.f64`)
+// The first two are silent and the third is loud, which is the usual order:
+// the loud one is the same defect with a width behind it.
+//
+// A type with NO arguments grounds to itself, so every monomorphic ADT reads
+// exactly what it read before and the emit does not move for it.
+//
+// The same read is a CONTRACT's at its constructor's fields: `Option(Positive)`
+// grounds `Some`'s payload to `Positive`, which is what a value built with
+// `Some` owes where it is claimed and what a pattern over it may assume
+// (verify.mn `contract_part`). It lives here, below lowering, because the
+// judgment reads it too.
+//
+// This is not a second copy of `subst_ty`. That one FRESHENS — every
+// quantified var to a fresh var of its own domain — and its mapping is
+// var→var precisely because it serves ROW vars too, which have no `Ty` form.
+// This one GROUNDS, var→Ty, over the type arguments a nominal application
+// carries. Forcing the two into one walk would need a sum over codomains on
+// the compiler's hottest path to buy nothing; they are two operations.
+fn variant_specs_at(applied) = map(drop_variant_name, variant_named_specs_at(applied))
+
+fn drop_variant_name(spec) = match spec {
+  (t, _, tys) => (t, tys),
+}
+
+// The same read carrying each variant's constructor NAME — show prints it.
+fn variant_named_specs_at(applied) = match applied {
+  TName(name, args) => match env_lookup_variants(name) {
+    Some(entry) => match entry {
+      (binding, _r, kind) => match kind {
+        TypeVariants(specs) => if len(args) == 0 { specs } else { map(ground_variant_spec(type_params_of(binding), args), specs) },
+        _ => [],
+      },
+    },
+    None => [],
+  },
+  _ => [],
+}
+
+fn spec_named(cname: String, spec) = match spec {
+  (_, n, _) => n == cname,
+}
+
+// The declared parameters, read from the type's own RESULT form: the entry's
+// binding is `Frozen` over the result `TName(name, params)`, so the params
+// stand in exactly the positions the applied arguments do. Reading them from
+// the result rather than from the quantifier keeps the correspondence
+// positional by construction — a quantifier is a SET, and a set has no
+// positions.
+// Matched at `Frozen` directly rather than through `judgment_ty`: a
+// TypeVariants entry is registered Frozen at its own declaration, and going
+// through the general reader would drag generalize's whole row — including
+// WASI — into every emit-side payload read for a shape that cannot occur.
+fn type_params_of(binding) = match binding {
+  Frozen(_, ty) => match ty {
+    TName(_, params) => params,
+    _ => [],
+  },
+  Live(_) => // A Live binding here would mean the entry came from somewhere the
+  // registration does not reach; inventing parameters for it is the
+  // fabrication this whole read exists to end, so it grounds nothing.
+  [],
+}
+
+fn ground_variant_spec(params, args, spec) = match spec {
+  (t, cn, tys) => (t, cn, map(ground_ty(params, args), tys)),
+}
+
+// Replace each parameter var with the argument standing in its position.
+// H6-exhaustive over Ty: a constructor added here without an arm is a compile
+// error rather than a silently un-grounded payload.
+//
+// A `TFun`'s effect row and a `TCont`'s world pass through: a nominal type's
+// arguments are TYPES, so a row parameter is not constructible at this
+// boundary today. When it is, the row grounds through the same positions
+// (`Hβ.types.nominal-row-parameter`).
+fn ground_ty(params, args, ty) = match ty {
+  TVar(h) => ground_var(params, args, h, ty),
+  TList(elem) => TList(ground_ty(params, args, elem)),
+  TTuple(elems) => TTuple(map(ground_ty(params, args), elems)),
+  TName(n, as_applied) => TName(n, map(ground_ty(params, args), as_applied)),
+  TRecord(fields) => TRecord(map(ground_field(params, args), fields)),
+  TRecordOpen(fields, v) => TRecordOpen(map(ground_field(params, args), fields), v),
+  TFun(ps, ret, eff) => TFun(map(ground_param(params, args), ps), ground_ty(params, args, ret), eff),
+  TRefined(base, pred) => TRefined(ground_ty(params, args, base), pred),
+  TReprPin(r, base) => TReprPin(r, ground_ty(params, args, base)),
+  TAlias(n, inner) => TAlias(n, ground_ty(params, args, inner)),
+  TCont(input, answer, d, world) => TCont(ground_ty(params, args, input), ground_ty(params, args, answer), d, world),
+  TInt => ty,
+  TFloat => ty,
+  TUnit => ty,
+  TByte => ty,
+}
+
+fn ground_field(params, args, field) = match field {
+  (n, fty) => (n, ground_ty(params, args, fty)),
+}
+
+fn ground_param(params, args, p) = match p {
+  TParam(n, pty, authored, resolved, dflt, g) => TParam(n, ground_ty(params, args, pty), authored, resolved, dflt, g),
+}
+
+// The argument standing in this var's position. Keyed by the union-find ROOT
+// on both sides — a parameter var aliased since the declaration is still that
+// parameter, the same reason `subst_ty`'s own lookup is root-keyed. A var that
+// is not a parameter stays itself: a payload may carry vars the type does not
+// quantify, and inventing a grounding for one would be the fabrication this
+// whole read exists to end.
+fn ground_var(params, args, h, ty) = match find(param_at_root(h), enumerate(params)) {
+  Some(hit) => match hit {
+    (i, _) => if i < len(args) { list_index(args, i) } else { ty },
+  },
+  None => ty,
+}
+
+fn param_at_root(h, indexed) = match indexed {
+  (_, p) => match p {
+    TVar(ph) => graph_chase_handle(ph) == graph_chase_handle(h),
+    _ => false,
+  },
+}
 
 // ─── A cell holds a SHAPE ────────────────────────────────────────────
 // A refinement is a fact about a VALUE, read along the edges the value
