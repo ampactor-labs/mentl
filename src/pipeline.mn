@@ -627,14 +627,16 @@ wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, 
 // declared row, the proven body row, the fn name, and the decl span,
 // MachineApplicable); this collector banks each one as the judgment
 // fires it, so the tighten verb AND the frontier field read the same
-// candidates live. tighten_reset clears the bank at a generation
-// boundary — the living session re-derives on a moved tree, and stale
-// generations' candidates must not shadow the current truth.
+// candidates live. tighten_forget clears the bank at a generation
+// boundary for the modules about to be re-judged — the living session
+// re-judges a moved tree's cone, and a stale generation's candidates must
+// not shadow the current truth while a module outside the cone keeps its
+// own.
 effect Tighten {
   // the MODULE rides each candidate: `mentl tighten` edits a FILE, and a
   // local span names a line without naming which file's line it is.
   tightenables() -> [(EffRow, EffRow, String, Span, String)]
-  tighten_reset()
+  tighten_forget([String])
 }
 
 // The collecting forwarder over the Diag effect: TOverDeclared
@@ -663,7 +665,13 @@ handler tighten_collector with found = [] {
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
   tightenables() => resume(found),
-  tighten_reset() => resume() with found = [],
+  tighten_forget(modules) => resume() with found = filter(tightening_outside(modules), found),
+}
+
+// A banked tightening survives a forget unless its module is about to be
+// re-judged. `modules: [String]` carries the eq proof the name compare needs.
+fn tightening_outside(modules: [String], entry) = match entry {
+  (_, _, _, _, dmod) => !any((m) => m == dmod, modules),
 }
 
 // analyze_fns — the shared analysis-verb cursor: load+check the module,

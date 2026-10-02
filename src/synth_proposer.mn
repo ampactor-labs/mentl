@@ -716,11 +716,13 @@ fn fn_body_by_name(name: String) with !Mutate = {
   }
 }
 
+// The first CURRENT declaration of the name — a superseded generation's
+// `main` calls what the program used to call (graph_node_current).
 fn fn_body_scan(name: String, i, n) with !Mutate = if i >= n {
   None
 } else {
   match graph_node_body(i) {
-    NStmt(FnStmt(fname, _params, _ret, _effs, body)) => if fname == name { Some(body) } else { fn_body_scan(name, i + 1, n) },
+    NStmt(FnStmt(fname, _params, _ret, _effs, body)) => if fname == name && graph_node_current(i) { Some(body) } else { fn_body_scan(name, i + 1, n) },
     _ => fn_body_scan(name, i + 1, n),
   }
 }

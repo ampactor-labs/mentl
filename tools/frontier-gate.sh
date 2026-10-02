@@ -620,6 +620,32 @@ run_warm_world() {
   fi
 }
 
+# A warm compile reports each open claim ONCE. The image it restores carries
+# the proof ledger the cold run left, and the cone it re-judges re-accrues
+# its own claims, so the ledger forgets the obligations of each module it is
+# about to re-judge first (verify_forget, keyed by the module's current node).
+# RED on boot 713745c6: one edit to an entry carrying one open claim, and the
+# warm compile reported it twice — once at the span the edit had moved.
+run_warm_debt() {
+  local compiler="$1" dir="$2" label="warm-debt"
+  local wdir="$dir/$label.proj" n
+  rm -rf "$wdir"
+  mkdir -p "$wdir/.build"
+  printf 'type Positive = Int where 0 < self\n\nfn inv(n: Positive) = 100 / n\n\nfn main() = inv(len([1, 2]) - 1)\n' > "$wdir/main.mn"
+  wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
+    > /dev/null 2> "$dir/$label.1.err"
+  printf 'type Positive = Int where 0 < self\n\nfn inv(n: Positive) = 100 / n\n\nfn main() = inv(len([1, 2, 3]) - 1)\n' > "$wdir/main.mn"
+  wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" compile main \
+    > "$dir/$label.wat" 2> "$dir/$label.2.err"
+  n=$(grep -c '^verify: pending comparison 0 < self' "$dir/$label.2.err")
+  if grep -q '^warm: re-deriving main\.mn$' "$dir/$label.2.err" && [ "$n" = "1" ] \
+     && grep -q '^verify: pending comparison 0 < self at main:5:13-5:36$' "$dir/$label.2.err"; then
+    pass "$label: the warm compile reports the edited claim once, at its new span"
+  else
+    fail "$label: $n pending report(s) after one edit, want 1 at main:5:13-5:36 (see $dir/$label.2.err)"
+  fi
+}
+
 run_warm_incremental() {
   local compiler="$1" dir="$2" label="warm-inc"
   local wdir="$dir/$label.proj" refdir="$dir/$label.ref" rc
@@ -1596,6 +1622,9 @@ for i in "${!compilers[@]}"; do
   # ZERO lines — the compile restored run's image and emitted into run's
   # sink. Images are filed under world_key() now (run_warm_world's header).
   run_warm_world "$compiler" "$dir"
+  # The cone's proof ledger forgets before it re-accrues (run_warm_debt's
+  # header): RED on boot 713745c6, the edited claim reported twice.
+  run_warm_debt "$compiler" "$dir"
   # Pulse scene 1: the flagship renders, the oracle judges the file, and its
   # three one-line twins refuse (run_pulse_render's own header).
   run_pulse_render "$compiler" "$dir"
@@ -2775,12 +2804,78 @@ for i in "${!compilers[@]}"; do
   else
     fail "session MISS sentinel (got: $sess_miss)"
   fi
+  # A REFUSAL ANSWERS MISS (E2). A verb that refuses says why on stderr and
+  # gives its verdict as the exit code, and the wire carries neither — the
+  # socket's stderr is the server's terminal — so the session answers MISS
+  # and the cold route says the refusal whole. RED on boot 713745c6: the
+  # address past the end of the file answered nothing, as if it had
+  # succeeded, where the cold verb names the file's length and exits 1.
+  sess_ref=$(bash -c "exec 3<>/dev/tcp/127.0.0.1/${sess_port} 2>/dev/null && printf 'main.mn:999:1\n' >&3 && cat <&3" 2>/dev/null)
+  if [ "$sess_ref" = "MENTL-SESSION-MISS" ]; then
+    pass "session refusal answers MISS (the cold route says it whole)"
+  else
+    fail "session refusal answers MISS (got: [$sess_ref])"
+  fi
   # Kill by the port fingerprint — the subshell pid is the wrapper, and
   # killing it orphans the wasmtime grandchild (the stale-graph server
   # this leg's first red was).
   pkill -f "tcplisten=127.0.0.1:${sess_port}" 2>/dev/null
   kill "$sess_pid" 2>/dev/null
   wait "$sess_pid" 2>/dev/null
+  # ── the session on stdin (E2) ──────────────────────────────────────
+  # A host that preopens no listener owns the process's input instead — a
+  # browser worker, a pipe — and the session answers one line per verb, the
+  # answer written whole before the next line is read. The oracle is the
+  # cold verb byte for byte, then the refusal's MISS. RED on boot 713745c6:
+  # without a listener the verb refused.
+  stdir="$dir/session-stdin"
+  rm -rf "$stdir"
+  mkdir -p "$stdir"
+  printf 'fn width(n) = n + 2\n\nfn main() = width(40)\n' > "$stdir/main.mn"
+  printf 'audit\tmain\nmain.mn:999:1\n' \
+    | (cd "$stdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$stdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" session) \
+      > "$stdir/out.txt" 2> "$stdir/err.log"
+  { (cd "$stdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$stdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" audit main 2>/dev/null); echo MENTL-SESSION-MISS; } > "$stdir/want.txt"
+  if cmp -s "$stdir/out.txt" "$stdir/want.txt" && grep -q 'graph resident on stdin' "$stdir/err.log"; then
+    pass "session on stdin (the resident audit byte-equal to the cold verb, then the refusal's MISS)"
+  else
+    fail "session on stdin (diff $stdir/out.txt $stdir/want.txt; see $stdir/err.log)"
+  fi
+  # ── the accept's edge outlives the reply (E2) ──────────────────────
+  # Through the shim's own rule: ask the session, and on MISS run the verb
+  # cold. The session draws the accept into the graph it keeps, so the
+  # next read of the position walks to the proposal; a cold accept drew it
+  # in a process that ended with the reply. RED on boot 713745c6: the
+  # accept answered MISS, the cold accept wrote `1`, and the next resident
+  # read said "Why: int literal".
+  acdir="$dir/session-accept"
+  rm -rf "$acdir"
+  mkdir -p "$acdir"
+  printf 'type Positive = Int where 0 < self\n\nfn choose() -> Positive = ??\n\nfn main() = choose()\n' > "$acdir/main.mn"
+  ac_port=7393
+  pkill -f "tcplisten=127.0.0.1:${ac_port}" 2>/dev/null
+  sleep 1
+  (cd "$acdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$acdir::." --dir /tmp --dir "$ROOT::/mentl-home" -S "tcplisten=127.0.0.1:${ac_port}" "$compiler" session >"$acdir/session.log" 2>&1) &
+  ac_pid=$!
+  ac_ask() { bash -c "exec 3<>/dev/tcp/127.0.0.1/${ac_port} 2>/dev/null && printf '%s\n' \"\$1\" >&3 && cat <&3" _ "$1" 2>/dev/null; }
+  : > "$acdir/before.txt"
+  for _ in $(seq 1 60); do
+    ac_ask 'main.mn:3:27' > "$acdir/before.txt"
+    [ -s "$acdir/before.txt" ] && break
+    sleep 1
+  done
+  if [ "$(ac_ask "$(printf 'accept\tmain.mn:3:27')")" = "MENTL-SESSION-MISS" ]; then
+    (cd "$acdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$acdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" accept main.mn:3:27 > "$acdir/cold-accept.txt" 2>&1)
+  fi
+  ac_ask 'main.mn:3:27' > "$acdir/later.txt"
+  if grep -q '^Why: accepted `1` — proposed' "$acdir/later.txt" && grep -q 'fn choose() -> Positive = 1$' "$acdir/main.mn"; then
+    pass "session accept: the next read walks to the proposal"
+  else
+    fail "session accept (see $acdir/later.txt)"
+  fi
+  pkill -f "tcplisten=127.0.0.1:${ac_port}" 2>/dev/null
+  kill "$ac_pid" 2>/dev/null
+  wait "$ac_pid" 2>/dev/null
   # ── mentl space — the ide served by the wheel ──────────────────────
   # The verb absorbs ide/serve.mn whole: the accept loop lives in
   # src/main.mn, the listener is the shim's tcplisten preopen seam (WASI
@@ -2945,9 +3040,10 @@ for i in "${!compilers[@]}"; do
   # obligations (the verify ledger's live debt), over-declared rows
   # (each carrying its proven-row patch), and the gradient tier — and
   # the LIVING resolution: an edit that makes the row honest drops the
-  # tightening from the next frontier (the generation clears:
-  # tighten_reset + verify_reset before the re-derivation; the
-  # enumerators dedup by span START, latest mint wins). Seen RED on the
+  # tightening from the next frontier (the generation clears, for the
+  # cone the edit moved: tighten_forget + verify_forget before its
+  # re-judgment; the enumerators dedup by span START, latest mint wins).
+  # Seen RED on the
   # pre-rung boot: the count line had two tiers, the debt and the
   # tightenings were invisible to the field, and the second generation
   # doubled every position.

@@ -934,11 +934,17 @@ and this is the STATE.
   (`mutate_sink`, `lsp_adapter`), so the delta is write-only
   (`Hβ.graph.mutation-delta-is-write-only`). The warm start likewise restores an
   image and re-derives the compile over it (§5.O).
-- **Resident Space** is not yet the shipping medium. `mentl space` serves the
-  browser surface, and cursor/query/propose pieces exist, but the browser still
-  needs the resident graph session: one WASM instance, a durable image boundary,
-  incremental edit actions, per-caret eight-aspect projections, and an IDE gate
-  proving the instance stays alive across actions.
+- **Resident Space** keeps its graph since E2 (2026-10-02, the bullet after
+  D5's): one WASM instance answers for the session's life, an edit re-judges
+  only the cone it moved, the accept is drawn into the graph the session
+  keeps, and the IDE gate times every read. What stands between it and the
+  shipping medium: a lifetime for the session's scratch — every answer keeps
+  what it minted, so the image grows with every answer for the session's
+  whole life (Arc C's boundary,
+  `Hβ.session.answer-scratch-outlives-the-answer`) — the EIGHT aspects at the
+  caret (E4: seven today), and a durable image boundary: a session derives
+  once per open, and a fresh process derives cold
+  (`Hβ.felt.accept-outlives-the-process`).
 - **Demand linking / prelude caching** must be graph reachability, not a token
   allowlist. The demanded set is read from import edges, free-name binding edges,
   desugar-introduced names, and row/handler/type obligations; the prelude should
@@ -2053,6 +2059,37 @@ and this is the STATE.
   `flow of` miss locals (`Hβ.query.name-keyed-verbs-miss-locals`), and the
   other surfaces still print handles
   (`Hβ.voice.free-variables-render-as-handles`).
+- **THE SESSION KEEPS ITS GRAPH — CLOSED 2026-10-02 (E2).** The page's
+  session re-instantiated the wheel and zero-filled its memory on every
+  call, so each projection was a whole derivation and "sub-50 ms" had no
+  timer; the CLI's socket session re-derived the WHOLE weave on any edit; a
+  resident verb that refused answered nothing at exit 0; and the accept's
+  edge died with the cold process that drew it, so the next read said "Why:
+  int literal" (boot 713745c6). `mentl session` with no listener serves on
+  stdin — one line per verb, the answer written whole before the next line
+  is read — and the page's worker blocks inside that read on a
+  shared-memory channel, so ONE instance answers for the session's life
+  (`ide/session-client.js`, one client for the page and the node twin). A
+  moved tree re-judges its CONE through the warm compile's own machinery,
+  each ledger forgetting only the modules the cone re-judges
+  (`verify_forget`, which closed a warm compile reporting an edited claim
+  twice); a refusal answers MISS so the cold route says it whole; the
+  session answers the accept, so its edge survives into every later read.
+  What keeping a graph exposed: every by-name read answered for EVERY
+  generation the session held — after one edit the proposer offered
+  `main()` at a hole `main` calls. A module node's registration now
+  supersedes its path's last one and drops what that generation noted in
+  the name-keyed columns, so the columns, the scanners and the module cells
+  answer for the current generation (27 verbs over four edits, resident
+  against cold: 0 of 108 differ). Measured on the pinned boot's stdin
+  session: a read 14 ms keeping 420 KB, a hole read 25 ms (2.2 MB), an edit
+  97–101 ms (8.6–10.1 MB, the cone alone), the accept 105 ms; the node
+  twin's reads 5.2–9.4 ms resident against 216 ms cold; the page's, open
+  130 ms and a read 5.6 ms. Open: each answer's scratch is kept
+  (`Hβ.session.answer-scratch-outlives-the-answer`), an edit still pays for
+  the program rather than its cone (`Hβ.session.edit-pays-for-the-program`),
+  and a refusal crosses the wire only as MISS
+  (`Hβ.session.answer-is-out-err-and-exit`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -3687,10 +3724,12 @@ landed in 5–10; this phase is the finish that makes it FELT.
   itself turned them red; the task count is a measurement now, the stub
   control is armed only while the judgment spawns and prints VACUOUS
   otherwise, and the page compiles the boot in 353 ms (`SMOKE exit=0
-  tasks=0 watlines=4399 ms=353`). What the browser run does NOT show: the page's
-  `session-call` re-instantiates and zero-fills memory per call, and
-  "sub-50 ms" has no timer anywhere
-  (`Hβ.ide.session-call-reinstantiates-per-call`). The page runs THE BOOT
+  tasks=0 watlines=4399 ms=353`). The session keeps its graph since E2
+  (2026-10-02): one instance answers for the page's life over a
+  shared-memory channel, an edit re-judges its cone in that instance, and
+  the gate times every read against the cold route — the twin's leg 4, and
+  the browser's `SMOKE-SESSION open=130 read=5.6 resident=true query=true`
+  at pin 8b071ba3. The page runs THE BOOT
   ITSELF since 2026-09-27: the wheel's memory minimum is 32 pages and its
   allocator grows the memory on demand, so the page fetches
   `../boot/mentl.wasm` through `mentl space`, the node twin loads the same

@@ -207,6 +207,28 @@ fn spine_module_at(spine, spine_open, handle) = {
   cell - 1
 }
 
+// Whether the node at `handle` belongs to its module's CURRENT generation:
+// the module node it was born in has not been superseded by a later parse of
+// the same path (graph_register_node's one write), so the answer is the
+// module column's word and one probe of the superseded set.
+fn spine_current(spine, spine_open, superseded, handle) =
+  module_unsuperseded(superseded, spine_module_at(spine, spine_open, handle))
+
+// Whether a MODULE node is its path's latest parse. A module node's own
+// module column names the module that was open when it was minted, never
+// itself, so the question is asked of the handle directly.
+fn module_unsuperseded(superseded, module) = match wmap_get(superseded, module) {
+  Some(_) => false,
+  None => true,
+}
+
+// The purge's question at a supersession: was the node at `handle` born
+// anywhere but in the module node being superseded?
+fn born_outside(spine, spine_open, module: Int, handle) =
+  spine_module_at(spine, spine_open, handle) != module
+
+fn handle_is_not(module: Int, handle: Int) = handle != module
+
 // THE ACCEPT EDGE, read at the one writer (C4). A node bound at an extent
 // the accepted column holds — same module, same span — takes its reason
 // wrapped in `Accepted`, so every projection of the reason cell (the Why
@@ -381,7 +403,7 @@ fn poly_teach_line(owner: String, reason) =
 // costs one 4KB word-list per process — and a table minted lazily inside a
 // speculation region would outlive the region's heap_reset as a dangling
 // state pointer.
-handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), apps_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024) {
+handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), apps_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
   // graph_rollback pops. When the stack is empty, writes are at the
@@ -485,9 +507,33 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // parse-written program projection, distinct from the mutable
   // union-find type cell in the same page's nodes column — one handle, one
   // page, six columns. In-place cell write: no trail, no state rebind.
+  //
+  // A MODULE node's registration is also where its generation turns over:
+  // the path's previous module node is SUPERSEDED here, the one moment the
+  // fact exists, so every read after it can ask "is this node current?" in
+  // one word (graph_node_current) instead of walking the graph for module
+  // cells and keeping the last. The module column takes the handle in
+  // registration order, which is the order the walk it replaces kept, and
+  // the name-keyed columns drop what the superseded node's generation noted
+  // here too — once per supersession, so a read returns its column as it
+  // stands. Filtering at every read copied the column at every read, and
+  // the proof fragment reads the decls column at every global name it folds
+  // (module_let_const): the judgment ran 154 MB higher on the wheel's own
+  // source, where nothing is ever superseded.
   {
     spine_put_body(spine, handle, body)
-    resume()
+    match body {
+      NModule(m) => match smap_get(modules_now, m.path) {
+        Some(old) => if old == handle {
+          resume()
+        } else {
+          let keep = born_outside(spine, spine_open, old, ??)
+          resume() with modules_now = smap_add(modules_now, m.path, handle), superseded = wmap_add(superseded, old, 1), modules_col = push(filter(handle_is_not(old, ??), modules_col), handle), decls_col = filter(keep, decls_col), refs_col = smap_retain(refs_col, keep), apps_col = smap_retain(apps_col, keep)
+        },
+        None => resume() with modules_now = smap_add(modules_now, m.path, handle), modules_col = push(modules_col, handle),
+      },
+      _ => resume(),
+    }
   },
   graph_attach_comment(handle, text, span) => // The comment column — parse-attached prose in the handle's own page. A
   // comment is graph content (SYNTAX.md Comments): the parser attaches each
@@ -841,7 +887,13 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // read-side zero-skip/dedup already drops (the same discipline the
   // whole-graph scan applied to judgment re-mints).
   resume() with refs_col = smap_add(refs_col, name, ref_handle),
-  graph_refs_at(name) => resume(smap_get_all(refs_col, name)),
+  graph_refs_at(name) => // The name-keyed columns answer for the CURRENT generation: the
+  // registration that supersedes a module drops what its generation noted
+  // (graph_register_node), because a reader handed a re-judged module's older
+  // references, applications or declarations counts a program that no longer
+  // exists (the generation oracle, 2026-10-02: `refs twice` answered 2 where
+  // the tree held 1, `unreferenced` one short, `decls` twelve long).
+  resume(smap_get_all(refs_col, name)),
   graph_apply_note(name, app_handle) => // The application edge's write, the refs column's own contract: one
   // O(1) prepend per application, not trail-backed — a rolled-back
   // segment's note can name a handle a later mint reuses, and the reader
@@ -853,6 +905,9 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // same handle, readers dedup by handle).
   resume() with decls_col = push(decls_col, decl_handle),
   graph_decls_at() => resume(decls_col),
+  graph_node_current(h) => resume(spine_current(spine, spine_open, superseded, h)),
+  graph_module_now(path) => resume(smap_get(modules_now, path)),
+  graph_modules() => resume(modules_col),
   graph_hole_note(h) => // The value-holes column's pending half: lower's authored-hole arm is
   // the one writer (value-position is a lowering decision); the pair
   // lands at the next entry drain.
@@ -2066,69 +2121,28 @@ fn callee_is_fanout(f) = match f {
 // transitive-closure loop over `grep '^import'`, re-deriving by name what the
 // graph holds by edge. That hand walk is what this projection retires, and it
 // is a read of the weave, never a second walk of the filesystem.
-// ONE CELL PER MODULE, keyed by PATH. The trial and the final each parse, so
-// each mints its own NModule node for the same file — two cells, one module.
-// Every consumer of this projection was therefore double-counting: the cost
-// facet reported 107 modules and 119,128 source lines for a 53-module,
-// 59,501-line wheel, exactly 2n+1 (the link root is minted once). A module's
-// identity is what it RESOLVES TO, never the node that happens to represent
-// it — the same law driver_collect_visit's visited set keys on, and the same
-// one the census dedup needed. LAST wins, matching env_snapshot's dedup-to-
-// latest for the same reason: the final generation is the judged one.
-fn module_cells() with !Mutate = {
-  let snapshot = graph_snapshot()
-  match snapshot {
-    Graph(next, _spans) => dedup_module_cells(collect_module_cells(0, next), []),
-  }
-}
-
-// Keep the LAST cell for a path by skipping any that a later one supersedes.
-// The walk is handle-ascending, so the last cell is the FINAL generation's —
-// the judged one, whose decls are the nodes the returned ast actually holds.
-// Keeping the first would hand every consumer the trial's shadow tree.
-fn dedup_module_cells(ref cells, acc) = if len(cells) == 0 {
-  acc
-} else {
-  match cells[0] {
-    (_h, path, _s, _d) => dedup_module_cells(
-      rest(cells),
-      if cell_path_in(rest(cells), path, 0) { acc } else { push(acc, cells[0]) }
-    ),
-  }
-}
-
-fn cell_path_in(ref acc, ref path: String, i) = if i >= len(acc) {
-  false
-} else {
-  match acc[i] {
-    (_h, p, _s, _d) => if p == path { true } else { cell_path_in(acc, path, i + 1) },
-  }
-}
-
-// Every NModule node in the weave, as `(handle, path, span, decls)`.
+// ONE CELL PER MODULE, as `(handle, path, span, decls)`, read off the module
+// column graph_register_node writes: every current module node, in the order
+// the modules were registered. A module's identity is what it RESOLVES TO,
+// never the node that happens to represent it — a later parse of a path
+// supersedes its earlier node at registration, so no consumer is handed two
+// cells for one module. This walked every handle in the graph for module
+// bodies and kept the last per path with a quadratic dedup, once per query —
+// and a resident session's walk lengthened with every generation it kept.
 //
 // The HANDLE leads because it is the module's identity and the other three
-// are projections of the node it names — this walk is standing on it at `i`
-// and used to drop it, which `driver_module_ast`'s own comment had already
-// confessed ("discards the minted handle — reading the node instead of
-// re-filtering is the O(1) form once the mint keeps an edge to it"). Its
-// first consumer is `module_handle_of_path`, which is what lets an address
-// name a module by the edge rather than by containment: spans are per-module
-// 1-based, so a line number alone is not an address, and the caret projection
-// was answering `src/synth_proposer.mn:733` with `scan_number` from
-// `src/lexer.mn`.
-//
-// The cell's DECLS ride out with its path and span. Dropping them made
-// every consumer that wanted a module's own content re-derive it from
-// text — which is how 52 dead imports sat unseen: a grep cannot tell a
-// used name from one named in a comment, and the graph can.
-fn collect_module_cells(i, n) with !Mutate = if i >= n {
-  []
-} else {
-  match graph_node_body(i) {
-    NModule(m) => [(i, m.path, m.span, m.decls)] ++ collect_module_cells(i + 1, n),
-    _ => collect_module_cells(i + 1, n),
-  }
+// are projections of the node it names; the cell's DECLS ride out with its
+// path and span. Dropping them made every consumer that wanted a module's own
+// content re-derive it from text — which is how 52 dead imports sat unseen: a
+// grep cannot tell a used name from one named in a comment, and the graph
+// can.
+fn module_cells() with !Mutate = graph_modules() |> fold([], module_cell_of)
+
+// A module handle's cell. The column holds only handles registered as module
+// nodes, so the other arm keeps nothing.
+fn module_cell_of(acc, h) with !Mutate = match graph_node_body(h) {
+  NModule(m) => push(acc, (h, m.path, m.span, m.decls)),
+  _ => acc,
 }
 
 fn module_paths() with !Mutate = map({ (_h, p, _s, _d) => p }, module_cells())
@@ -2146,28 +2160,12 @@ fn module_paths() with !Mutate = map({ (_h, p, _s, _d) => p }, module_cells())
 // word compare against that handle — never a path re-matched per candidate,
 // and never span CONTAINMENT, which stopped being able to answer the question
 // the moment each module's spans became its own 1-based coordinates.
-// LAST wins, matching `module_cells`' own dedup-to-latest: the cells arrive in
-// mint order and the final generation is the judged one.
-fn module_handle_of_path(path: String) with !Mutate =
-  fold(None, module_handle_pick(path), module_cells())
-
-fn module_handle_pick(path: String, acc, c) = match c {
-  (h, p, _s, _d) => if p == path { Some(h) } else { acc },
-}
-
-// The path a module HANDLE names — `module_handle_of_path` read the other
-// way, over the same cells, so the two directions cannot disagree.
-fn module_path_of_handle(mh) with !Mutate = fold("", module_path_pick(mh), module_cells())
-
-// `mh: Int` is the Intent Boundary carrying the eq PROOF, not decoration:
-// the fold's accumulator leaves `mh` a bare variable at emit, so `h == mh`
-// would fall to a one-word compare, and the settle point refuses that as
-// E_ShapeUnprovable — right for a handle by luck, an address lie by
-// construction. The sibling
-// `module_handle_pick` annotates `path: String` for the same reason.
-fn module_path_pick(mh: Int, acc, c) = match c {
-  (h, p, _s, _d) => if h == mh { p } else { acc },
-}
+// The CURRENT node is read where its registration superseded the last one
+// (graph_module_now). This walked every handle in the graph for module cells
+// and kept the last per path — once per address a caret asked for, so a
+// resident session paid a whole-graph walk on every read, a longer one for
+// every generation it had kept.
+fn module_handle_of_path(path: String) with !Mutate = graph_module_now(path)
 
 // ─── Import reachability — can module A see module B's names? ────────
 //

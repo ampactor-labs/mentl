@@ -365,7 +365,11 @@ handler query_default {
     QCensus(shape) => resume(QRCensus(census_label(shape), census_sites(shape))),
     QWhere(name, scope) => resume(where_badges(name, scope)),
     QVariants(tname) => resume(variants_of(tname)),
-    QModules => resume(QRModules(module_paths())),
+    QModules => // A module SET, rendered in the order of its names: the cells arrive in
+    // mint order, which a resident session's re-judged modules leave
+    // behind the ones it kept, so the order had been the history of the
+    // session rather than a fact about the program.
+    resume(QRModules(module_paths() |> sort)),
     QImports => resume(QRImports(import_report(module_cells()))),
     QUnreferenced => resume(QRUnreferenced(unreferenced_report(module_cells()))),
     QUnreachable => resume(QRUnreachable(reach_report(module_cells()))),
@@ -1020,10 +1024,14 @@ fn span_of_node_raw(handle) with !Mutate = span_of_reason(graph_reason_at(handle
 // census missed its own fixture's `|>` because a lib module had already
 // claimed that line. The pair is unique again for the reason the coordinate
 // used to be, and now it says so instead of relying on it.
+// A site in a SUPERSEDED generation is not a site of the program: a session
+// that re-judged a module holds its older parse below the current one, at
+// spans the edit has since moved, so the (module, span) dedup cannot catch it
+// (graph_node_current).
 fn census_walk(shape, i, n, acc) with !Mutate = if i >= n {
   acc
 } else {
-  if census_matches(shape, i, graph_node_body(i)) {
+  if census_matches(shape, i, graph_node_body(i)) && graph_node_current(i) {
     let sp = span_of_node_raw(i)
     // A MODULE'S IDENTITY IS ITS PATH, never the node that represents it —
     // the same law driver_collect_visit's visited set already keys on. The
@@ -2242,11 +2250,17 @@ fn handler_providing_op(op_name) with !Mutate = match graph_snapshot() {
   Graph(next, _) => scan_handler_for_op(op_name, 0, next),
 }
 
+// The first CURRENT handler declaration — a re-judged module's superseded
+// generation still sits below it in the graph (graph_node_current).
 fn scan_handler_for_op(op_name, i, n) with !Mutate = if i >= n {
   None
 } else {
   match graph_node_body(i) {
-    NStmt(HandlerDeclStmt(hname, _eff, _cfg, _state, arms, _effs)) => if arms_include_op(arms, op_name) { Some(hname) } else { scan_handler_for_op(op_name, i + 1, n) },
+    NStmt(HandlerDeclStmt(hname, _eff, _cfg, _state, arms, _effs)) => if arms_include_op(arms, op_name) && graph_node_current(i) {
+      Some(hname)
+    } else {
+      scan_handler_for_op(op_name, i + 1, n)
+    },
     _ => scan_handler_for_op(op_name, i + 1, n),
   }
 }

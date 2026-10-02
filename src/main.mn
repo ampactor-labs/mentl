@@ -176,7 +176,7 @@ fn dispatch_invocation(verb) = match verb {
   VMarch => march_run(),
   VVerify(target) => verify_run(target),
   VMcp => mcp_run(session_at_read),
-  VSession => session_run(session_at_read),
+  VSession => session_run(session_answer),
   VNew(name) => new_project(name),
   VWith(hname, target) => with_run(hname, target),
   VWelcome => welcome_run(),
@@ -1129,7 +1129,14 @@ fn accept_run(target, line, col) = infer_context(() => match driver_entry_with_r
   (_ast, ranges) => accept_project(ranges, target, line, col),
 } ~> patch_to_file ~> terminal_transport ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> stdout_console ~> wasi_filesystem ~> tighten_collector)
 
-fn accept_project(ranges, target: String, line, col) = if line <= 0 {
+fn accept_project(ranges, target: String, line, col) =
+  if accept_draw(target, line, col) == 0 { address_project(ranges, target, line, col) } else { 1 }
+
+// The accept's DRAW — the position resolved by the address's own rule, the
+// edge drawn and the text written through whatever PatchWrite is installed —
+// shared by the CLI verb and the resident session, which differ only in what
+// re-judges the write. Answers the exit code the verb's verdict is.
+fn accept_draw(target: String, line, col) = if line <= 0 {
   eprint_string("mentl accept: an accept names one position — {target}:<line>:<col>\n")
   1
 } else {
@@ -1138,23 +1145,109 @@ fn accept_project(ranges, target: String, line, col) = if line <= 0 {
     Some(pick) => match pick {
       (_pspan, ph) => {
         patch_set_target(target)
-        if accept_at(ph, cursor_at_handle(ph)) { address_project(ranges, target, line, col) } else { 1 }
+        if accept_at(ph, cursor_at_handle(ph)) { 0 } else { 1 }
       },
     },
   }
 }
 
-// session_at_read — the resident session's at transport, built HERE
-// where the address renders live (imports flow main → mcp, never back)
-// and passed INTO mcp_run as a value (a stored fn carrying its row —
-// the transport-as-value the effect-poly ctor landing made a
-// capability). The same address core the CLI serves runs under mcp's
-// collecting console: the projection lines bank and return instead of
-// landing on fd 1.
-fn session_at_read(ranges, line, col) = {
-  address_project(ranges, "main", line, col)
-  console_taken()
-} ~> console_bank ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default
+// session_answer — the resident session's verbs, beside the cold dispatch
+// they answer for (dispatch_invocation, above), and handed to session_run
+// as a value because the transports live in mcp.mn and the verbs live here
+// (imports flow main → mcp, never back). The address (its eight aspects and
+// the line-0 field), the accept, query, audit and teach run the SAME
+// projection halves the cold verbs run, over the graph the session already
+// holds. A process-level verb, or a target other than the resident entry,
+// answers MISS and re-runs cold rather than answering about the wrong graph.
+//
+// THE ACCEPT ANSWERS HERE because its edge is the session's: drawn into the
+// resident graph, the provenance survives into every read the session
+// answers after it, where the cold route drew it in a process that ended
+// with the reply — the next projection at that position said "int literal".
+//
+// An answer hands back the session it LEAVES — the entry's decls, the range
+// map and the manifest — because a writer moves the tree, and the session
+// that answered it has already judged the move.
+fn session_answer(line, ast, ranges, manifest) = match parse_cli_args(session_argv(line)) {
+  ParseError(_) => // the cold route says a parse error whole: on stderr, exit 1
+  (session_miss(), (ast, ranges, manifest)),
+  Invocation(verb) => match verb {
+    VAccept(target, l, c) => if target == "main" {
+      session_accept(target, l, c, (ast, ranges, manifest))
+    } else {
+      (session_miss(), (ast, ranges, manifest))
+    },
+    _ => (session_read(verb, ast, ranges), (ast, ranges, manifest)),
+  },
+}
+
+// The verbs that read the session without moving it.
+fn session_read(verb, ast, ranges) = match verb {
+  VAt(target, l, c) => if target == "main" { session_whole(session_address(ranges, target, l, c)) } else { session_miss() },
+  VQuery(target, q) => if target == "main" {
+    "{render_query_result(ask(parse_query_string(target, q)))}\n"
+  } else {
+    session_miss()
+  },
+  VAudit(target) => if target == "main" { audit_project(ast) } else { session_miss() },
+  VTeach(target) => // A bare `teach` means "teach HERE" — the resident entry is here.
+  match target {
+    Some(m) => if m == "main" { teach_project(ast) } else { session_miss() },
+    None => teach_project(ast),
+  },
+  _ => // drift-audit: ignore — the wildcard IS the policy (cold-only verbs answer MISS by design; a new verb defaults to the cold path, never to a wrong resident answer)
+  session_miss(),
+}
+
+// THE SESSION'S ACCEPT. The edge is drawn and the file written exactly as
+// the CLI's accept draws and writes them (accept_draw — the one home), and
+// then the session's OWN living check re-judges what the write moved — the
+// motion an outside edit makes, through the one door that tracks the tree —
+// before the position is projected over the result.
+fn session_accept(target: String, l, c, held) = match held {
+  (ast, ranges, manifest) => match session_banked(() => accept_draw(target, l, c)) {
+    (drawn, _) => if drawn != 0 {
+      (session_miss(), held)
+    } else {
+      match session_current(ast, ranges, manifest) {
+        (a2, r2, m2, _moved) => (session_whole(session_address(r2, target, l, c)), (a2, r2, m2)),
+      }
+    },
+  },
+}
+
+// AN ANSWER IS RESIDENT ONLY WHEN IT IS WHOLE. A verb that refuses says why
+// on stderr and gives its verdict as the exit code, and the session's wire
+// carries neither: the socket's stderr is the SERVER's terminal and a wire
+// answer has no exit code. Measured 2026-10-02 on boot 713745c6 with a
+// session running: `mentl main.mn:999:1` answered nothing at exit 0, where
+// the cold verb prints "main has 4 lines; 999 is past the end" and exits 1.
+// A refusal answers MISS, and the cold route says it whole.
+fn session_whole(result) = match result {
+  (exit, lines) => if exit == 0 { str_concat_all(lines) } else { session_miss() },
+}
+
+// One address projection with its lines banked: the core the CLI serves
+// (address_project, accept_draw) runs under mcp's collecting console, so the
+// lines return to the caller instead of landing on fd 1, beside the
+// projection's own exit code. A write lands through patch_written, which
+// re-derives nothing: the session re-judges what moved.
+fn session_banked(project) = {
+  let exit = project()
+  (exit, console_taken())
+} ~> console_bank ~> patch_written ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default
+
+// The address projection, banked — the one bracket the session's reads, its
+// accept's projection and the mcp gate's at tool all answer through.
+fn session_address(ranges, target: String, l, c) =
+  session_banked(() => address_project(ranges, target, l, c))
+
+// session_at_read — the mcp gate's at tool, the same banked core: passed
+// INTO mcp_run as a value (a stored fn carrying its row — the
+// transport-as-value the effect-poly ctor landing made a capability).
+fn session_at_read(ranges, line, col) = match session_address(ranges, "main", line, col) {
+  (_, lines) => lines,
+}
 
 // address_project — the ONE address core, shared by the CLI transport
 // (at_run above, the projection landing on stdout_console) and the

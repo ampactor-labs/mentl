@@ -72,7 +72,7 @@ fi
 # Resident-first: when a session lives, EVERY verb is offered to it —
 # a tab-joined argv line over /dev/tcp, the answer streamed back. The
 # shim is a TRANSPORT, never a policy: WHICH verbs the session serves
-# is the medium's own dispatch (session_answer, mcp.mn — the one
+# is the medium's own dispatch (session_answer, main.mn — the one
 # home); anything it declines answers the MISS sentinel, and MISS or
 # a dead port falls through to the cold exec below. Resident and cold
 # run the same projections, so the answers agree byte-for-byte.

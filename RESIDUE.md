@@ -3325,7 +3325,15 @@ catch. Where that row lost the effect was not measured; `E_EffectMismatch`
 was not armed until 2026-09-25 and authored rows were inventories until A4.
 What remains is the projection: `Hβ.march.concurrency-is-a-projection`.
 
-`Hβ.ide.session-call-reinstantiates-per-call` — OPEN, read 2026-09-25.
+`Hβ.ide.session-call-reinstantiates-per-call` — CLOSED 2026-10-02 (E2;
+LEDGER carries pin 8b071ba3). The per-call roles are deleted: the worker's
+`session` role runs `mentl session` once and blocks inside the wheel's own
+read of stdin on a SharedArrayBuffer channel (Atomics.wait in the worker,
+Atomics.waitAsync on the host), so one instance answers every call for the
+session's life and an edit is re-judged in it. The timer exists: the node
+twin's leg 4 times each read resident against the same read cold (5.2–9.4 ms
+against 216 ms at the pin), and the browser reports `SMOKE-SESSION
+open=130 read=5.6`. The record of the open follows.
 `ide/wheel-worker.js:278-288` re-instantiates the wasm and zero-fills
 memory on every `session-call`, with `tasks:0` hard-coded (`:296`); a
 "delta update" is a whole-file replace in a JS map. So PLAN §11.2's
@@ -3430,7 +3438,10 @@ where an edit is a delta on the live node and the edge rides the node —
 the same law `Hβ.cursor.session-weave-epoch-scope` named for the session's
 hole generations. Until then the honest reading: an acceptance is
 provenance for the SESSION that made it, and the board holds exactly that
-(the twin's leg 6, the frontier's accept leg).
+(the twin's leg 6, the frontier's accept leg). E2 (2026-10-02) kept the
+graph and still re-judges an edit's cone by re-parsing it, so the accepted
+value's node is minted anew and the position key stands; it dies when an
+edit is a delta on the live node.
 
 `Hβ.felt.accept-outlives-the-process` — OPEN, BORN 2026-09-30, measured
 at C4's first probe. `mentl accept hole.mn:9:37` writes the edge, splices
@@ -3442,8 +3453,10 @@ never restores an image: only the compile route has a warm start, keyed
 by entry and world. E2's on-disk face is every verb restoring the entry's
 image and re-deriving the changed cone; the accept's durability is then
 `persist = memcpy`'s, by construction, with nothing to add here. The
-page's form of the same gap is `Hβ.ide.session-call-reinstantiates-per-
-call` (each call a fresh `_start` over a zero-filled memory).
+page's form of the same gap CLOSED with E2 (2026-10-02): the session
+answers the accept, the edge lands in the graph the session keeps, and
+every later read in that session walks to it (the twin's leg 6, the
+frontier's session-accept leg). The CLI's form stands as written above.
 
 `Hβ.felt.edit-session-reads-one-action` — OPEN, BORN 2026-09-30 from
 C4's felt walk on boot 4bc10808. `printf 'n\ny\n' | mentl edit two.mn`
@@ -3454,6 +3467,45 @@ read. The argmax also opened on `pick`'s tie rather than the caret's
 line-1 position (the caret biases, the gradient decides — PROGRAM D3–D5's
 score). E2's session is where the loop becomes a loop; the CLI's one-cycle
 form is what `mentl accept <address>` exists beside.
+
+`Hβ.session.answer-scratch-outlives-the-answer` — OPEN, BORN 2026-10-02
+with E2. Every answer the resident session gives keeps what it minted. A
+reset at the answer's end is unsound while an answer can grow graph state:
+a mint inside a read can open a spine page, and the graph handler's
+name-keyed columns take heap pointers that are not trail-backed. Measured
+on the pinned boot's stdin session: a plain read keeps 420 KB, a hole read
+2.2 MB, an edit 8.6–10.1 MB, the accept 10.9 MB. So the image grows with
+every answer for the session's whole life, and when the memory the host
+allows is spent the session traps; the client closes it loudly and the next
+call opens a fresh one, a whole derivation the developer feels as one slow
+answer. The form is §5.O layer 3's image/scratch boundary (Arc C,
+`Hβ.perf.per-decl-arena`): the graph's durable writes — pages, columns,
+handler state — allocate in the image, an answer's scratch in a region
+dropped when the answer is written. The unmoved tree's check, which already
+drops its region, is the first instance of the second.
+
+`Hβ.session.edit-pays-for-the-program` — OPEN, BORN 2026-10-02 with E2. An
+edit re-judges only its cone and still pays for the whole program twice
+over. Discovery re-reads every module's file and re-lexes its imports to
+rebuild the DAG, though the manifest check has just hashed every one and
+found which moved. And each supersession purges the superseded module's
+entries by scanning every bucket of the refs and applications columns. The
+form: an unmoved module's import edges ride its current module node, so
+discovery reads and lexes only the modules whose hash moved and any module
+a new import names; and each note records its bucket under the module that
+made it, so a supersession touches exactly that module's entries. Then an
+edit costs its cone.
+
+`Hβ.session.answer-is-out-err-and-exit` — OPEN, BORN 2026-10-02 with E2.
+A resident answer is its stdout alone. A verb that refuses answers MISS,
+and the cold route re-derives the whole program to say the refusal — its
+stderr and its exit code (the twin's leg 7 at pin 8b071ba3: 167 ms cold
+where a read is 5–9 ms). The form: the answer is the record `(exit, out,
+err)`. The console
+bank captures the verb's stderr beside its stdout, and each transport
+frames all three: the worker's reply already carries `out` and `err`, the
+exit code rides the session's per-answer line, and the socket gains a
+header. A refusal is then answered resident.
 
 `Hβ.synth.trail-segment-discarded-at-rollback` — OPEN, read 2026-09-25. The
 trail records handle + prior value per write (`Mutation`, src/types.mn), so

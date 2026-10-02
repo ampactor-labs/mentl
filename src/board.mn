@@ -111,7 +111,15 @@ fn board_bounds() = [
   // 231; both became references (`member_owed_late` as a one-hole partial,
   // `param_owed_late` mapped and joined by `row_join`), and the count fell
   // one below the ceiling it entered under.
-  Bound({ceiling: 229, shape: CsEffectfulLambda}),
+  //
+  // 229 -> 228 (2026-10-02, E2): the count read 227 at pin 713745c6, two
+  // under the ceiling the landing before left. The session's banked brackets
+  // minted four thunks and the board refused 230; the three around the
+  // address projection are one function (`session_address`), and the
+  // discovery fold's accumulator lambda became a reference
+  // (`range_of_entry`), so the landing adds one — the address projection's
+  // and the accept's draw remain — and the ceiling holds the 228 it measures.
+  Bound({ceiling: 228, shape: CsEffectfulLambda}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which

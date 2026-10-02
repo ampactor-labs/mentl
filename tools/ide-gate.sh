@@ -9,7 +9,9 @@
 #   resident session. The twin loads boot/mentl.wasm itself (2026-09-27).
 # Leg 2: the browser itself — mentl space serves the page, headless chrome
 #   loads /ide/?smoke, and the page's own console wire reports the compile
-#   verdict (exit, wat lines, spawned task count — reported). Skipped, loudly, when
+#   verdict (exit, wat lines, spawned task count — reported) and then the
+#   resident session's (one open, one read, both timed, the read answered by
+#   the session rather than a fresh instance). Skipped, loudly, when
 #   no browser or the mentl shim is absent. The browser is FOUND, not
 #   assumed: $MENTL_CHROME, then google-chrome / chromium /
 #   chromium-browser on PATH, then a Playwright chromium under
@@ -42,10 +44,13 @@ if [ -n "$browser" ] && command -v mentl >/dev/null 2>&1; then
   sp=$!
   sleep 2
   echo "  browser: $browser"
-  line=$(timeout 150 "$browser" --headless=new --disable-gpu --no-sandbox \
-    --enable-logging=stderr "http://127.0.0.1:$port/ide/?smoke" 2>&1 | grep -m1 -oE 'SMOKE[^"]*')
+  lines=$(timeout 150 "$browser" --headless=new --disable-gpu --no-sandbox \
+    --enable-logging=stderr "http://127.0.0.1:$port/ide/?smoke" 2>&1 | grep -m2 -oE 'SMOKE[^"]*')
   kill "$sp" 2>/dev/null
+  line=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE exit')
+  sline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-SESSION')
   echo "  $line"
+  echo "  $sline"
   case "$line" in
     "SMOKE exit=0 "*)
       tasks=$(echo "$line" | grep -oE 'tasks=[0-9]+' | cut -d= -f2)
@@ -60,6 +65,14 @@ if [ -n "$browser" ] && command -v mentl >/dev/null 2>&1; then
         echo "  browser leg: FAIL — exit 0 but no WAT came back (watlines=${watlines:-0})"; fail=1
       fi ;;
     *) echo "  browser leg: FAIL"; fail=1 ;;
+  esac
+  # The resident session in the browser itself (E2): the page's own client
+  # opens one instance and reads its graph twice — the second read must be
+  # answered by the session, not by a fresh instance, and must project.
+  case "$sline" in
+    *"resident=true query=true"*)
+      echo "  session leg: PASS — the page's session kept its graph (open $(echo "$sline" | grep -oE 'open=[0-9]+' | cut -d= -f2) ms, read $(echo "$sline" | grep -oE 'read=[0-9.]+' | cut -d= -f2) ms)" ;;
+    *) echo "  session leg: FAIL — ${sline:-no SMOKE-SESSION line}"; fail=1 ;;
   esac
 else
   echo "── ide gate · leg 2 SKIPPED (no browser found — set MENTL_CHROME — or the mentl shim missing) ──"

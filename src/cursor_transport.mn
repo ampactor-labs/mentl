@@ -324,7 +324,7 @@ fn apply_suggestion(cursor, view) with !Mutate = match cursor {
 fn accept_fill(handle, survivor, proof) with !Mutate = {
   let span = parse_span_of(handle)
   let text = render_candidate_source(survivor)
-  let module = module_path_of_handle(graph_module_of(handle))
+  let module = module_name_of_handle(graph_module_of(handle))
   graph_accept_note(module, accepted_extent(span, text), text, proof)
   write_module(module, splice_span(fs_read_file(driver_module_path(module)), span, text))
 }
@@ -366,7 +366,7 @@ fn accept_teaching(handle, teach) with !Mutate = match teach {
 fn accept_annotation(handle, s) with !Mutate = match s {
   AnnotationSuggestion(ann, _, _) => match graph_node_body(handle) {
     NStmt(FnStmt(name, params, retty, effs, body)) => {
-      let module = module_path_of_handle(graph_module_of(handle))
+      let module = module_name_of_handle(graph_module_of(handle))
       let source = fs_read_file(driver_module_path(module))
       match splice_decl_head(
         source,
@@ -602,6 +602,20 @@ handler patch_to_file with target_module = "" {
   write_module(module, text) => {
     fs_write_file(driver_module_path(module), text)
     driver_entry_with_ranges(target_module)
+    resume()
+  },
+}
+
+// A patch the RESIDENT SESSION writes: the text lands in the module's file
+// and nothing re-derives here, because the session's living check is the one
+// door a moved tree comes through — it re-judges the cone the write moved,
+// exactly as it re-judges an edit made outside the session, and the session
+// answers over that. Re-deriving here as well would judge one write twice,
+// and the second time the whole weave.
+handler patch_written {
+  patch_set_target(_) => resume(),
+  write_module(module, text) => {
+    fs_write_file(driver_module_path(module), text)
     resume()
   },
 }

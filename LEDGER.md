@@ -35,6 +35,102 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-02 · pin 8b071ba3c0aebbd0 (CLEAN m2 == m3) · THE SESSION KEEPS ITS
+  GRAPH: ONE INSTANCE ANSWERS FOR THE SESSION'S LIFE, AN EDIT RE-JUDGES ONLY
+  THE CONE IT MOVED, THE ACCEPT IS DRAWN INTO THE GRAPH THE SESSION KEEPS,
+  AND EVERY READ ANSWERS FOR THE CURRENT GENERATION. On boot 713745c6 the
+  page's session re-instantiated the wheel and zero-filled its memory on
+  every call (`session-call`: a fresh `_start` per projection, `tasks:0`
+  hard-coded), so "sub-50 ms" was a sentence with no timer; the CLI's
+  socket session re-derived the WHOLE weave on any edit; a resident verb
+  that refused answered nothing at exit 0 (`main.mn:999:1` over a running
+  session, where the cold verb names the file's length and exits 1); and
+  an accept answered MISS, ran cold, and drew its edge in a process that
+  ended with the reply, so the next resident read said "Why: int literal".
+  (T) `mentl session` with no listener serves on stdin — one line per verb,
+  the verb's argv tab-joined, the answer written whole before the next line
+  is read, so the read IS the frame. The worker's `session` role runs that
+  verb and blocks inside the wheel's own read of stdin on a
+  SharedArrayBuffer channel (Atomics.wait in the worker, Atomics.waitAsync
+  on the host, whose main thread may never block); one client,
+  `ide/session-client.js`, serves the page and the node twin, and the
+  per-call roles are deleted. Only a module that imports
+  `wasi.thread-spawn` arms the worker's pool. (W) An answer is resident
+  only when it is WHOLE: a refusal's whole answer is its stderr and its exit
+  code, which neither wire carries, so it answers MISS and the cold route
+  says it (`session_whole`). (C) A moved tree re-judges its CONE through the
+  warm compile's own machinery (`driver_session_cone`: `changed_modules`,
+  `downstream_closure`, `rederive_cone`), and each ledger forgets only what
+  the cone re-judges — `verify_forget` by module node, `tighten_forget` by
+  module name — where the whole-ledger reset had been sound only while every
+  edit re-derived everything. (A) The session answers the accept: the edge
+  is drawn and the file written through `accept_draw`, the one home the CLI
+  verb shares, under `patch_written`, which writes and re-derives nothing;
+  the session's own living check re-judges what the write moved, and the
+  answer hands back the session it leaves. (G) Keeping a graph exposed
+  every by-name read: each answered for EVERY generation the session held.
+  A module node's registration now supersedes its path's previous node —
+  `graph_node_current`, `graph_module_now` and `graph_modules` read what it
+  recorded — and drops what the superseded generation noted in the
+  name-keyed columns (refs, applications, decls); the three whole-graph
+  scanners skip superseded nodes; the module cells are read off the
+  registration column, where they were a whole-graph walk with a quadratic
+  dedup on every query; and the modules facet is sorted by name, its order
+  having been the session's history. (M) An unmoved tree's check drops what
+  it allocated, and every answer logs what it cost the image
+  (`session_cost`). Measured on the pinned boot over the stdin session: a
+  read 14 ms keeping 420 KB, a hole read 25 ms keeping 2.2 MB, an edit to
+  the entry 101 ms (8.6 MB; the cone `main.mn`), an edit to the helper
+  97 ms (10.1 MB; `helper.mn main.mn`), the accept 105 ms (10.9 MB), and
+  the next read walks to the proposal. The node twin: reads 5.2–9.4 ms
+  resident against 216 ms cold, an edit 47.9 ms, the accept 54.9 ms.
+  Headless Chromium over `mentl space`: `SMOKE-SESSION open=130 read=5.6
+  resident=true query=true`. A scratch generation oracle (27 verbs over four
+  states of a two-module tree, each resident answer against a cold process):
+  0 of 108 differ. Four frontier legs RED on the boot and green through m2:
+  the stdin session (the resident audit byte-equal to the cold verb, then
+  the refusal's MISS), the socket refusal's MISS, the accept's provenance at
+  the next read, and a warm compile reporting an edited claim once
+  (`run_warm_debt`). KILLS: (1) "re-registration shadows the stale
+  entries" — true of the env, false of the graph: after one edit the
+  proposer offered `main()` at a hole `main` calls (the first scan for
+  `main`'s body found the OLDEST `main`), the accept tied and fell cold, and
+  the oracle's first run counted nine divergences — decls twelve long,
+  `refs` two where the tree held one, `unreferenced` one short, the modules
+  facet in the session's history order. (2) The accept's first form judged
+  its write twice — `patch_to_file`'s whole weave, then the session's
+  check; the write-only patch leaves the session's one re-judgment of the
+  cone. (3) The twin's leg comparing every resident answer to cold compared
+  the accepted position too, where the provenance is the session's own and
+  must differ from a fresh process; it is excluded, not "fixed". (4) The
+  warm compile, which re-judges a cone inside a restored image, never
+  cleared its proof ledger: one edit to an entry carrying one open claim
+  reported it twice, once at the span the edit had moved (RED on the boot).
+  (5) The first form of generation currency filtered each name-keyed column
+  at every read, and the fixed-input reading caught it before the march: on
+  the wheel's own source the judgment ran 154 MB higher (625,528,256 bytes
+  against the boot's 471,206,528; peak 1,160,584 KB against 1,003,040),
+  because the proof fragment reads the decls column at every global name it
+  folds (`module_let_const`) and each read copied the column. The purge at
+  the supersession took the judgment to 244 KB below the boot on one
+  source. A refusal on the way: the effectful-lambda ratchet (229) refused
+  the first repin at 230 — three of the session's brackets minted the same
+  thunk around the address projection, and they are one function now
+  (`session_address`). The count then read 228, and HEAD's source read 227
+  (the landing before left the ceiling two above its count), so the
+  landing adds one and the ceiling follows the measurement to 228; the
+  repin that preceded the lowering was marched again. OPEN, named: each
+  answer keeps the scratch it
+  minted, so a long session grows with every answer and ends in a trap the
+  client turns into a fresh open
+  (`Hβ.session.answer-scratch-outlives-the-answer`, Arc C's); an edit
+  still pays for the program, not the cone — discovery re-reads every
+  module, and the purge scans every bucket of two columns
+  (`Hβ.session.edit-pays-for-the-program`); and a refusal crosses the wire
+  only as MISS (`Hβ.session.answer-is-out-err-and-exit`). Closed:
+  `Hβ.ide.session-call-reinstantiates-per-call`, and the page's face of
+  `Hβ.felt.accept-outlives-the-process`. Cost: m3 leg 15.03s wall · 979MB
+  peak RSS (1003256 KB).
 - 2026-10-02 · pin 713745c6a557dc01 (CLEAN m2 == m3) · `WHERE` RENDERS WHAT
   SYNTAX PROMISES: EACH FANOUT SITE AS ITS AUTHOR WROTE IT WITH THE BRANCHES
   IT SPAWNS, A FUNCTION'S HEAD WITH ITS INFERRED ROW, AND THE WIDTH OF EVERY

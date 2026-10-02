@@ -400,35 +400,20 @@ fn module_identity(r) = match r {
   },
 }
 
-// One module's top-level nodes cut from the weave ast by its range —
-// the resident session's scoping read (audit/teach over the entry
-// alone, matching the CLI's entry-parsed ast). The NModule mint below
-// computes this same filter and holds it in its decls field, but
-// discards the minted handle — reading the node instead of
-// re-filtering is the O(1) form once the mint keeps an edge to it.
-// The RANGES parameter was carried here at every call site and never read:
-// the decls come from the module's own NModule node (`module_cells`), which
-// is the whole point of the read below, so the weave's line ranges had
-// nothing left to answer once the span-containment cut was deleted. A
-// parameter nothing reads is a fact re-supplied at four sites to be dropped
-// at one — Carried-Truth with the arrow reversed.
-fn driver_module_ast(ref ast, ref target) with !Mutate =
-  module_decls_of(module_cells(), target, ast)
-
-// A module's own top-level nodes, READ from its NModule node — which holds
-// exactly what its own parse returned, because the parse runs inside it.
-// This used to CUT them out of the weave ast by span containment, and the
-// function's own comment named the fix: "the NModule mint below computes this
-// same filter and holds it in its decls field, but discards the minted handle
-// — reading the node instead of re-filtering is the O(1) form once the mint
-// keeps an edge to it." The mint keeps it now. The whole-ast fallback stands
-// for a target that is not a woven module (the stdin/blob path).
-fn module_decls_of(ref cells, ref target, ref ast) = if len(cells) == 0 {
-  ast
-} else {
-  match cells[0] {
-    (_h, path, _span, decls) => if path == target { decls } else { module_decls_of(rest(cells), target, ast) },
-  }
+// One module's top-level nodes — the resident session's scoping read
+// (audit/teach over the entry alone, matching the CLI's entry-parsed ast) —
+// READ from its current NModule node, which holds exactly what its own parse
+// returned because the parse runs inside it, found where its registration put
+// it (graph_module_now). This used to CUT them out of the weave ast by span
+// containment, then to walk every module cell for the path. The whole-ast
+// fallback stands for a target that is not a woven module (the stdin/blob
+// path).
+fn driver_module_ast(ref ast, ref target) with !Mutate = match graph_module_now(target) {
+  Some(h) => match graph_node_body(h) {
+    NModule(m) => m.decls,
+    _ => ast,
+  },
+  None => ast,
 }
 
 // THE RENDER SCOPE IS THE CALLER'S DECISION, NOT THIS MECHANISM'S. It was
@@ -461,26 +446,7 @@ fn driver_entry_scoped(ref entry_module, dscope) = {
   // back on each node. It now collects the module TEXTS, and the parse enters
   // each one — so the line accounting, the range map, and the four readers
   // that consumed it have nothing left to do.
-  match fold(
-    [],
-    (acc, entry) => {
-      let m = module_name_of(entry)
-      let p = module_path_of(entry)
-      // A module the resolver cannot find is REPORTED, never skipped. The
-      // `else` that once dropped it silently made `mentl check` say
-      // E_MissingModule while `mentl compile` on the same source said
-      // nothing and shipped WAT — two verbs, two answers, one truth.
-      // The absence is the walk's own None, not a second fs_exists probe.
-      match module_source_of(entry) {
-        Some(text) => push(acc, (m, p, text)),
-        None => {
-          report(EMissingModule(m, p, span_zero()))
-          acc
-        },
-      }
-    },
-    modules
-  ) {
+  match fold([], range_of_entry, modules) {
     mods => {
       // The render register at its one home, set BEFORE any parse or judgment
       // can narrate, so every user-target chain scopes to the file the user
@@ -534,8 +500,10 @@ fn warm_program() = list_index(warm_asts, 0) |> map({ (_, ss) => ss }) |> flatte
 // on every route (F0b): the cone re-judges a module under it, so a warm
 // cell and the cold cell it replaces are one identity, and the import edges
 // carried on the NModule resolve against restored and fresh cells alike.
-fn driver_tree_scan(ref entry_module) = {
-  let modules = driver_canonical_order(driver_collect_dag(entry_module))
+fn driver_tree_scan(ref entry_module) =
+  driver_scan_of(driver_canonical_order(driver_collect_dag(entry_module)))
+
+fn driver_scan_of(ref modules) = {
   let paths = map(module_path_of, modules)
   map(
     (entry) => match module_source_of(entry) {
@@ -608,7 +576,7 @@ fn driver_compile_entry(ref entry_module) = {
       (ast, ranges) => {
         driver_warm_persist(
           entry_module,
-          split_weave_by_module(ast, ranges),
+          split_weave_by_module(ranges),
           scan_pairs(driver_tree_scan(entry_module))
         )
         ast
@@ -653,9 +621,14 @@ fn driver_warm_persist(ref entry_module, ref asts, ref pairs) = if diag_errors()
   ()
 }
 
-// Attribute each weave statement to its module by the range map's line
-// spans — the split runs once at persist and its buckets ARE the
-// incremental cursor's reuse units.
+// The warm image's per-module stmt lists, READ from the module nodes — the
+// split runs once at persist and its buckets ARE the incremental cursor's
+// reuse units. Cutting one flat ast into per-module chunks by testing every
+// stmt's span against every module's weave range was the sixth machine the
+// module-blind parse needed; each module's parse now returns its own decls
+// and its NModule node holds them, so the cut has already happened — at the
+// only moment it could be exact rather than inferred from coordinates.
+//
 // The bucket is keyed by the module's PATH, the same identity the tree scan
 // and the manifest use — these pairs are read back by assoc_stmts on the warm
 // path, and a name key here against a path key there silently returns EMPTY
@@ -664,25 +637,10 @@ fn driver_warm_persist(ref entry_module, ref asts, ref pairs) = if diag_errors()
 // cold compile's 37644, the frontier's warm-inc divergence leg). The range
 // tuple carries name AND path; range_of_module keeps matching the NAME,
 // because that one is addressed by what a user typed.
-// The warm image's per-module stmt lists, READ from the module nodes. This
-// was the sixth machine the module-blind parse needed: cutting one flat ast
-// into per-module chunks by testing every stmt's span against every module's
-// weave range. Each module's parse now returns its own decls and its NModule
-// node holds them, so the cut has already happened — at the only moment it
-// could be exact rather than inferred from coordinates.
-fn split_weave_by_module(ref ast, ref ranges) with !Mutate = {
-  // module_cells, not the raw collect: the trial and the final each mint an
-  // NModule per file, and the raw walk's FIRST match is the trial's shadow
-  // tree. The deduped projection keeps the judged generation.
-  let cells = module_cells()
-  map(module_bucket(cells), ranges)
-}
+fn split_weave_by_module(ref ranges) with !Mutate = map(module_bucket, ranges)
 
-// The stage law's own shape: the cells are CONFIG, the module the flowing
-// datum, so the caller passes a hole-product rather than an anonymous fn
-// carrying a row nobody can read at the call site.
-fn module_bucket(ref cells, r) = match r {
-  (m, p, _text) => (p, module_decls_of(cells, m, [])),
+fn module_bucket(r) with !Mutate = match r {
+  (m, p, _text) => (p, driver_module_ast([], m)),
 }
 
 fn assoc_stmts(ref pairs, name: String) = match find({ (m, _) => m == name }, pairs) {
@@ -797,6 +755,13 @@ fn names_join(ref xs) = fold("", (acc, m) => if byte_len(acc) == 0 { m } else { 
 // resolved at all.
 fn rederive_cone(ref cone, scan) = map(
   (m) => {
+    // The obligations the module's CURRENT node carries are dropped before
+    // the judgment re-accrues them (verify_forget, types.mn — and the warm
+    // compile that reported one open claim twice after an edit).
+    match module_handle_of_path(scan_name_of_path(scan, m)) {
+      Some(h) => verify_forget([h]),
+      None => (),
+    }
     // The module is judged UNDER ITS OWN NAME — the identity the cold route
     // gave its cell, read off the scan. This once read
     // infer_program_converged, which names its single module "<stdin>" — so
@@ -813,6 +778,51 @@ fn rederive_cone(ref cone, scan) = map(
   },
   cone
 )
+
+// ─── The session's cone — the incremental cursor with nothing to restore ──
+// driver_incremental re-judges the changed cone inside a RESTORED image; the
+// resident session holds that world live, so the same cone re-judges into it
+// directly. Until this landed the session re-derived the WHOLE weave on any
+// edit — measured 2026-10-02 at 25.5 MB of image and the full prelude
+// closure's judgment for a one-character change to the entry, where the
+// cone is the entry alone. Discovery runs as driver_entry_scoped runs it
+// (silenced, under the link root), the cone is every module whose text moved
+// plus everything downstream of it, and the answer is the cone with the new
+// range map: the module texts the session's reads and its next manifest are
+// taken from. `forget` is handed the cone's module names before any of them
+// is re-judged — the session's own ledgers clear there, the proof ledger's
+// clear being rederive_cone's.
+fn driver_session_cone(ref entry_module, ref ranges, forget) = {
+  diag_scope(ScopeNone)
+  enter_link_root()
+  let modules = driver_canonical_order(driver_collect_dag(entry_module))
+  let scan = driver_scan_of(modules)
+  let cone = downstream_closure(scan, changed_modules(map(range_text_pair, ranges), scan_pairs(scan)))
+  forget(map(scan_name_of_path(scan, ??), cone))
+  diag_scope(ScopeModule(entry_module))
+  rederive_cone(cone, scan)
+  (cone, fold([], range_of_entry, modules))
+}
+
+// A range as the scan keys it: the module's path and its text's hash.
+fn range_text_pair(r) = match r {
+  (_m, p, text) => (p, str_hash(text)),
+}
+
+// The range a discovered module contributes: its name, path and text — the
+// one fold the whole-weave derivation and the session's cone both take. A
+// module the resolver cannot find is REPORTED, never skipped: the `else`
+// that once dropped it silently made `mentl check` say E_MissingModule while
+// `mentl compile` on the same source said nothing and shipped WAT — two
+// verbs, two answers, one truth. The absence is the walk's own None, not a
+// second fs_exists probe.
+fn range_of_entry(acc, entry) = match module_source_of(entry) {
+  Some(text) => push(acc, (module_name_of(entry), module_path_of(entry), text)),
+  None => {
+    report(EMissingModule(module_name_of(entry), module_path_of(entry), span_zero()))
+    acc
+  },
+}
 
 // Walk the post-order DAG and pair each module with its in-DAG deps.
 // In-DAG: dep PATHS that appear among the collected modules (filters

@@ -419,40 +419,47 @@ fn strip_cr(line) = {
 // The LIVING check — the session graph tracks the tree (the
 // incremental cursor's session face): before a message is answered,
 // the tree's manifest recomputes and compares against the banked one;
-// a moved tree re-derives INTO the resident world — re-registration
-// shadows the stale entries (the env's latest edge wins, the B-i
-// incremental law), the new generation's nodes join the living image,
-// and (ast, ranges, manifest) replace. NEVER a restore: the
-// swap-crossing law's third constraint IS this form — the image stays
-// the session's own memory, and the update is durable growth. The
-// no-project session passes through untouched. Named residue: a
-// DELETED decl's env entry lingers until a re-registration shadows it
-// (env has no unregister; the epoch/arena face retires it), and the
-// re-derivation is whole-weave — the changed-cone form rides the
-// fingerprint machinery when the session adopts it.
+// a moved tree re-judges its CONE into the resident world — every
+// module whose text moved and everything downstream of it, the warm
+// compile's own cone (driver_session_cone) — re-registration shadows
+// the stale entries (the env's latest edge wins, the B-i incremental
+// law), the new generation's nodes join the living image, and (ast,
+// ranges, manifest) replace. NEVER a restore: the swap-crossing law's
+// third constraint IS this form — the image stays the session's own
+// memory, and the update is durable growth. The no-project session
+// passes through untouched. Named residue: a DELETED decl's env entry
+// lingers until a re-registration shadows it (env has no unregister;
+// the epoch/arena face retires it).
 fn session_current(ast, ranges, manifest) = if len(ranges) == 0 {
   (ast, ranges, manifest, 0)
 } else {
+  // The check reads every module's text to hash it, and on an unmoved tree
+  // nothing it allocated outlives the comparison — so the region is
+  // dropped. A session that answers a thousand reads re-reads its tree a
+  // thousand times; before this mark each read kept every module's bytes
+  // in the image for the session's whole life.
+  let mark = heap_mark()
   let cand = driver_manifest(ranges)
   // Structural == over the word-triple lists — the sequence-of-struct
   // eq walker's first wheel-internal consumer (the manifest_same hand
   // walk dissolved into it, its written destiny).
   if cand == manifest {
+    heap_reset(mark)
     (ast, ranges, manifest, 0)
   } else {
-    // The generation boundary's clears, BEFORE the re-derivation: the
-    // new judgment re-fires every still-true T_OverDeclared and
-    // re-accrues every still-pending obligation; stale generations'
-    // entries must not shadow the current truth (their spans belong to
-    // a tree that no longer exists).
-    tighten_reset()
-    verify_reset()
-    match driver_entry_with_ranges("main") {
-      (full, r2) => {
-        eprint_string("session: tree moved — re-derived {int_to_str(len(r2))} modules; the graph is current\n")
+    // The generation boundary's clears, BEFORE the re-judgment and only for
+    // the cone: the new judgment re-fires every still-true T_OverDeclared
+    // and re-accrues every still-pending obligation of the modules it
+    // re-judges; a stale generation's entries must not shadow the current
+    // truth (their spans belong to a tree that no longer exists), and a
+    // module outside the cone keeps its own.
+    match driver_session_cone("main", ranges, tighten_forget) {
+      (cone, r2) => {
+        eprint_string("session: tree moved — re-judged {names_join(cone)}; the graph is current\n")
         // The bank re-hashes over the NEW range map (r2's paths), not
-        // cand — cand was hashed over the old module set.
-        (driver_module_ast(full, "main"), r2, driver_manifest(r2), 1)
+        // cand — cand was hashed over the old module set. The entry's own
+        // decls are read off its NModule node, the cone's fresh one.
+        (driver_module_ast(ast, "main"), r2, driver_manifest(r2), 1)
       },
     }
   }
@@ -494,73 +501,58 @@ fn mcp_loop(ast, ranges, manifest, at_read, current) = {
   }
 }
 
-// The RESIDENT SESSION (Hβ.session.resident-verbs): the server derives
-// the project graph ONCE, in its OWN memory, before the loop — the
-// analysis instances live for the server's whole life and every query
-// answers as a read. All three measured constraints hold by
-// construction: no swap exists, per-request strings live in the same
-// process, the image IS the session's memory. And the graph is LIVING:
-// the loop's session_current check re-derives into this same world
-// whenever the tree moves, so a read is true by construction — an
-// agent edits a file, asks, and the answer is about the tree as it is.
-// A propose still judges in its OWN nested infer_context — fresh
-// innermost instances shadow the session's (the world law), and its
-// mints die with the request region while the session's spine lives
-// below every mark. The derivation is resolution-conditional (the
-// prelude-seed precedent): outside a project, the gate serves propose
-// alone and query answers honestly.
 // ─── mentl session — the resident graph as the CLI's default transport ──
 //
-// The living session (the mcp serve loop's twin) behind the shim's
-// tcplisten seam: the graph derives ONCE, tracks the tree per
-// connection (session_current — the same living check the mcp loop
-// runs per message), and answers the READ verbs over a one-line wire
-// speaking the CLI's OWN grammar — the shim tab-joins argv, the
-// session parses it with parse_cli_args, one grammar two transports.
-// A verb the session does not serve (writers, process-level verbs, a
-// target that is not the resident entry) answers the MISS sentinel and
-// the shim falls back to the cold exec — resident-first, cold as the
-// fallback, byte-equal answers by construction (both routes run the
-// same projections over the same derivation law).
-fn session_run(at_read) = {
+// The graph derives ONCE and lives for the session, tracking the tree per
+// request (session_current — the same living check the mcp loop runs per
+// message), and answers verbs over a one-line wire speaking the CLI's OWN
+// grammar: a line is the verb's argv, tab-joined, parsed by
+// parse_cli_args — one grammar, every transport. WHICH verbs answer
+// resident is the medium's own dispatch, `answer`, passed in as a value
+// from main.mn where the verbs live (session_answer, beside the cold
+// dispatch it mirrors); a verb it does not serve answers the MISS
+// sentinel and the host falls back to the cold exec.
+//
+// TWO TRANSPORTS, ONE SESSION. A host that preopened a listener (the
+// install shim's -S tcplisten) gets one answer per connection. A host that
+// preopened none owns the process's input instead — a browser worker, a
+// pipe — and gets one answer per stdin line (session_line_loop). This
+// verb used to REFUSE without a listener, which is why the page re-ran
+// the whole compiler per projection: its worker had no socket to offer
+// and the session had no other door.
+fn session_run(answer) = {
   let lfd = find_listener()
-  if lfd < 0 {
-    // drift-audit: ignore — the flagged keyword is inside the teaching string (a quoted shell invocation), not control flow
-    eprint_string("mentl session: no listener preopened — the install shim adds -S tcplisten=127.0.0.1:7377 for this verb; by hand: wasmtime run <flags> --dir . -S tcplisten=127.0.0.1:7377 <boot> session\n")
-    1
-  } else {
-    // THE GUARD IS INSIDE THE BRACKET, which is mcp_run's own lesson one verb
-    // over — "The artifact directory is made INSIDE the bracket, because that
-    // is..." — learned there and not here. `fs_exists` is a Filesystem op and
-    // dispatch_invocation installs env / graph / mutate / diagnostics and no
-    // Filesystem, so this guard ran in a world that cannot answer it. It
-    // worked only while a stateless singleton could be direct-called with no
-    // record at all; the uniform world bracket ended that, and the guard
-    // trapped at its own dispatch (ev_declaring_node, i32.const 100524 =
-    // Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
-    // cost nothing on the path that reports no project.
-    infer_context(() => {
-      if !fs_exists(driver_module_path("main")) {
-        eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
-        1
-      } else {
-        match driver_entry_with_ranges("main") {
-          (ast, ranges) => {
-            eprint_string("mentl session: graph resident on 127.0.0.1:7377 — read verbs answer live; every other verb falls back cold through the shim\n")
-            session_sock_loop(
-              lfd,
-              driver_module_ast(ast, "main"),
-              ranges,
-              driver_manifest(ranges),
-              at_read,
-              session_current
-            )
-          },
-        }
-        0
+  // THE GUARD IS INSIDE THE BRACKET, which is mcp_run's own lesson one verb
+  // over — "The artifact directory is made INSIDE the bracket, because that
+  // is..." — learned there and not here. `fs_exists` is a Filesystem op and
+  // dispatch_invocation installs env / graph / mutate / diagnostics and no
+  // Filesystem, so this guard ran in a world that cannot answer it. It
+  // worked only while a stateless singleton could be direct-called with no
+  // record at all; the uniform world bracket ended that, and the guard
+  // trapped at its own dispatch (ev_declaring_node, i32.const 100524 =
+  // Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
+  // cost nothing on the path that reports no project.
+  infer_context(() => {
+    if !fs_exists(driver_module_path("main")) {
+      eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
+      1
+    } else {
+      match driver_entry_with_ranges("main") {
+        (ast, ranges) => {
+          let entry = driver_module_ast(ast, "main")
+          let manifest = driver_manifest(ranges)
+          if lfd < 0 {
+            eprint_string("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
+            session_line_loop(entry, ranges, manifest, answer, session_current)
+          } else {
+            eprint_string("mentl session: graph resident on the listener the host preopened (fd {int_to_str(lfd)}) — read verbs answer live; every other verb falls back cold through the shim\n")
+            session_sock_loop(lfd, entry, ranges, manifest, answer, session_current)
+          }
+        },
       }
-    } ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
-  }
+      0
+    }
+  } ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
 }
 
 // One connection = one verb line = one answer; the living check runs
@@ -568,15 +560,52 @@ fn session_run(at_read) = {
 // edited tree re-derives into the resident world before the answer.
 // The accept loop is space_loop's shape — constant stack for the
 // session's life, the graph threading through as values.
-fn session_sock_loop(lfd, ast, ranges, manifest, at_read, current) = {
+fn session_sock_loop(lfd, ast, ranges, manifest, answer, current) = {
   let conn = sock_accept_blocking(lfd)
   let line = strip_cr(session_read_line(conn))
+  let before = heap_mark()
   match current(ast, ranges, manifest) {
-    (a2, r2, m2, _moved) => {
-      sock_write_str(conn, session_answer(line, a2, r2, at_read))
-      fd_close(conn)
-      session_sock_loop(lfd, a2, r2, m2, at_read, current)
+    (a2, r2, m2, _moved) => match answer(line, a2, r2, m2) {
+      (text, (a3, r3, m3)) => {
+        sock_write_str(conn, text)
+        fd_close(conn)
+        session_cost(before)
+        session_sock_loop(lfd, a3, r3, m3, answer, current)
+      },
     },
+  }
+}
+
+// What an answer cost the image, on the session's log: a read the session
+// answers keeps what it minted (a reset would orphan spine pages later reads
+// still chase), so the image grows by this much per answer for the
+// session's whole life, and a moved tree's re-derivation is counted in the
+// answer that found it. The number is what a lifetime for the session's
+// scratch (§11 Arc C) has to bring to zero.
+fn session_cost(before) =
+  eprint_string("session: the answer cost {int_to_str(heap_mark() - before)} bytes of image\n")
+
+// One stdin line = one answer, for a host that owns the process's input.
+// THE READ IS THE FRAME: the answer is written whole before the session
+// asks for its next line, so a host serving this input knows the answer is
+// complete at the moment the session reads again — exact by construction,
+// with no delimiter in the answer to strip. EOF (or an empty line, outside
+// the wire's grammar as in the mcp loop) ends the session.
+fn session_line_loop(ast, ranges, manifest, answer, current) = {
+  let line = strip_cr(read_stdin_line())
+  if byte_len(line) == 0 {
+    ()
+  } else {
+    let before = heap_mark()
+    match current(ast, ranges, manifest) {
+      (a2, r2, m2, _moved) => match answer(line, a2, r2, m2) {
+        (text, (a3, r3, m3)) => {
+          print_string(text)
+          session_cost(before)
+          session_line_loop(a3, r3, m3, answer, current)
+        },
+      },
+    }
   }
 }
 
@@ -603,32 +632,26 @@ fn session_argv(line) = {
   ["mentl"] ++ trimmed
 }
 
-// The session serves the READS over the resident entry — at (the
-// eight-aspect address and the line-0 field), query, audit, teach —
-// through the SAME projections the cold verbs run. Everything else is
-// the MISS sentinel: writers and process-level verbs are cold by
-// design, and a target other than the resident entry re-derives cold
-// rather than answering about the wrong graph.
-fn session_answer(line, ast, ranges, at_read) = match parse_cli_args(session_argv(line)) {
-  ParseError(msg) => "session: {msg}\n",
-  Invocation(verb) => match verb {
-    VAt(target, l, c) => if target == "main" { str_concat_all(at_read(ranges, l, c)) } else { "MENTL-SESSION-MISS\n" },
-    VQuery(target, q) => if target == "main" {
-      "{render_query_result(ask(parse_query_string(target, q)))}\n"
-    } else {
-      "MENTL-SESSION-MISS\n"
-    },
-    VAudit(target) => if target == "main" { audit_project(ast) } else { "MENTL-SESSION-MISS\n" },
-    VTeach(target) => // A bare `teach` means "teach HERE" — the resident entry is here.
-    match target {
-      Some(m) => if m == "main" { teach_project(ast) } else { "MENTL-SESSION-MISS\n" },
-      None => teach_project(ast),
-    },
-    _ => // drift-audit: ignore — the wildcard IS the policy (cold-only verbs answer MISS by design; a new verb defaults to the cold path, never to a wrong resident answer)
-    "MENTL-SESSION-MISS\n",
-  },
-}
+// The wire's one word for "not here": a host reading it re-runs the verb
+// cold, where the whole answer — stdout, stderr and the exit code — is said
+// by the process that computed it.
+fn session_miss() = "MENTL-SESSION-MISS\n"
 
+// The RESIDENT SESSION (Hβ.session.resident-verbs): the server derives
+// the project graph ONCE, in its OWN memory, before the loop — the
+// analysis instances live for the server's whole life and every query
+// answers as a read. All three measured constraints hold by
+// construction: no swap exists, per-request strings live in the same
+// process, the image IS the session's memory. And the graph is LIVING:
+// the loop's session_current check re-derives into this same world
+// whenever the tree moves, so a read is true by construction — an
+// agent edits a file, asks, and the answer is about the tree as it is.
+// A propose still judges in its OWN nested infer_context — fresh
+// innermost instances shadow the session's (the world law), and its
+// mints die with the request region while the session's spine lives
+// below every mark. The derivation is resolution-conditional (the
+// prelude-seed precedent): outside a project, the gate serves propose
+// alone and query answers honestly.
 fn mcp_run(at_read) = {
   eprint_string("mentl mcp: the gate on stdio — nothing executes unproven\n")
   // ONE bracket, BOTH paths: the no-project session's tool arms carry

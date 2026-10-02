@@ -993,7 +993,11 @@ authored_own_max: 62
 # one marker; the new helpers the ratchet refused at 710 — the written-cell
 # chain walk and the cycle's late settlement — carry none, the grade reading
 # each parameter.
-authored_ref_max: 703
+# 703 -> 698 (2026-10-02, E2): the module cells read the registration
+# column, so the cell walk's lookup, dedup and path scan left with six
+# markers and the warm split with the two it threaded an unread ast and
+# the cells through; the session's cone discovery carries three.
+authored_ref_max: 698
 
 # 2026-08-08: the DRIFT-SHAPE ratchet (PLAN §11 5.6's absorption,
 # enforcement half) — the three absorbed drift modes counted by the

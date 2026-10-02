@@ -1,34 +1,38 @@
 /* wheel-worker.js — the wheel's execution host: the runner pattern at the
    browser host (the browser leg of Hβ.ops.wasmtime-runner-migration).
 
-   The pinned boot is a SPAWNING module: it imports the shared image
-   (env.memory, 8192-min/65536-max shared in the IDE derivation) plus
-   wasi.thread-spawn, and the converged judgment spawns a task per stmt.
-   Two substrate facts force this file's shape:
+   The pinned boot imports the shared image (env.memory — a 32-page minimum
+   since 2026-09-27, grown on demand by its own allocator) and the exec seam;
+   a module that can spawn also imports wasi.thread-spawn, which the boot has
+   not since the judgment stopped spawning (judge once, pin 7c9dc538). Two
+   substrate facts force this file's shape:
 
-     - memory.atomic.wait32 (the task join) is FORBIDDEN on the browser
-       main thread, so ALL wheel execution lives in workers — the page
-       never instantiates the module;
-     - wasi.thread-spawn needs a real host thread, so the shim spawns a
-       nested worker per task. Each task worker instantiates a FRESH
-       instance over the run's shared memory (the instance-per-thread
-       convention wasmtime follows; re-writing the module's constant data
-       segments over the live image is idempotent — identical bytes, the
-       same re-instantiation wasmtime performs per spawned thread) and
-       calls the module's own wasi_thread_start(tid, arg).
+     - memory.atomic.wait32 (a task join, the session's own wait) is
+       FORBIDDEN on the browser main thread, so ALL wheel execution lives in
+       workers — the page never instantiates the module;
+     - wasi.thread-spawn needs a real host thread, so for a module that
+       spawns the shim serves each task on a pooled worker. Each task
+       instantiates a FRESH instance over the run's shared memory (the
+       instance-per-thread convention wasmtime follows; re-writing the
+       module's constant data segments over the live image is idempotent —
+       identical bytes, the same re-instantiation wasmtime performs per
+       spawned thread) and calls the module's own wasi_thread_start(tid, arg).
 
    One script, two hosts — browser Worker and node worker_threads — so the
    page and the headless gate (ide/test-shim.mjs) drive the SAME execution
-   host and cannot drift. Two roles:
+   host and cannot drift. Three roles:
 
      {role:"run", module, memPages?, argv, stdin?, vfs?, stubSpawn?}
        (a reply carries `written`: the vfs files the wheel wrote — the
         accept's projection of the module back to its text)
         -> creates the shared memory, instantiates, runs _start, drains the
            task fan, posts {k:"result", exit, out, err, trapped, tasks}
-     {role:"task", module, memory, tids, tid, arg, seq, vfs?}
-        -> instantiates over the run's memory, calls wasi_thread_start,
-           posts {k:"task-done", seq, out, err}, closes itself
+     {role:"session", module, memPages?, vfs, channel}
+        -> ONE instance running `mentl session` for the session's life, its
+           stdin and its answers riding the channel (below)
+     {role:"arm", module, memory, tids, q, vfs?}
+        -> a pool worker: serves tasks off the run's queue, each through
+           wasi_thread_start, posting {k:"task-done", out, err} per task
 
    Synchronization is the WASM side's own: the task record's completion
    word joined by the wheel's atomic wait. The task-done message only
@@ -83,11 +87,14 @@ const cat = (cs) => { const n = cs.reduce((a, c) => a + c.length, 0); const b = 
    SharedArrayBuffer-backed views, so every read COPIES (.slice) before
    decoding — the one shared-memory tax; writes (TypedArray.set into a
    shared view) are allowed. */
-function makeShim({ memory, argv, stdin, vfs, spawnFn }) {
+function makeShim({ memory, argv, stdin, vfs, spawnFn, pull }) {
   const dv = () => new DataView(memory.buffer), u8 = () => new Uint8Array(memory.buffer);
-  const out = [], err = [];
-  const written = new Set();   // vfs files this instance wrote (the accept's projection)
-  let srcPos = 0;
+  let out = [], err = [];
+  let written = new Set();   // vfs files this instance wrote (the accept's projection)
+  // stdin is a byte array served from srcPos; `pull`, when the host owns the
+  // session's input, is asked for the NEXT bytes the moment the wheel reads
+  // past the end of these (null = EOF) — the resident session's frame.
+  let src = stdin, srcPos = 0;
   const fds = new Map(); let nextFd = 8;
   const args = (argv || []).map((s) => te.encode(s + "\0"));
   const argTotal = args.reduce((a, b) => a + b.length, 0);
@@ -114,10 +121,11 @@ function makeShim({ memory, argv, stdin, vfs, spawnFn }) {
       v.setUint32(o, t, true); return 0; },
     fd_read(fd, io, n, o) { const v = dv();
       if (fd === 0) {
-        if (!stdin) { v.setUint32(o, 0, true); return 0; }
+        if ((!src || srcPos >= src.length) && pull) { src = pull(); srcPos = 0; }
+        if (!src) { v.setUint32(o, 0, true); return 0; }
         let t = 0;
-        for (let i = 0; i < n && srcPos < stdin.length; i++) { const p = v.getUint32(io + 8 * i, true), l = v.getUint32(io + 8 * i + 4, true);
-          const k = Math.min(l, stdin.length - srcPos); u8().set(stdin.subarray(srcPos, srcPos + k), p); srcPos += k; t += k; }
+        for (let i = 0; i < n && srcPos < src.length; i++) { const p = v.getUint32(io + 8 * i, true), l = v.getUint32(io + 8 * i + 4, true);
+          const k = Math.min(l, src.length - srcPos); u8().set(src.subarray(srcPos, srcPos + k), p); srcPos += k; t += k; }
         v.setUint32(o, t, true); return 0;
       }
       const h = fds.get(fd); if (!h || h.dir) return 8; const d = vfs[h.name]; let t = 0;
@@ -159,7 +167,15 @@ function makeShim({ memory, argv, stdin, vfs, spawnFn }) {
   const seam = (name) => () => { throw new Error(`mentl_host.${name}: the exec seam has no in-page assembler (Hβ.felt.ide-run-in-page)`); };
   const mentl_host = { wat_write: seam("wat_write"), exec: seam("exec") };
   const writtenFiles = () => Object.fromEntries([...written].map((n) => [n, vfs[n]]));
-  return { imports: { env: { memory }, wasi_snapshot_preview1: proxy, wasi: { "thread-spawn": spawnFn }, mentl_host }, out, err, writtenFiles };
+  // What the instance said and wrote since the last take — one session
+  // answer's stdout, stderr and files — and the slate cleared for the next.
+  const take = () => {
+    const t = { out: cat(out), err: cat(err), written: writtenFiles() };
+    out = []; err = []; written = new Set();
+    return t;
+  };
+  return { imports: { env: { memory }, wasi_snapshot_preview1: proxy, wasi: { "thread-spawn": spawnFn }, mentl_host },
+           get out() { return out; }, get err() { return err; }, writtenFiles, take };
 }
 
 /* ── the pre-armed task pool over a shared-memory queue ────────────────────
@@ -267,69 +283,97 @@ function makeFan(q, tids, pool) {
   return { spawn, drain };
 }
 
-let residentSession = null;
+/* ── the resident session — ONE instance for the session's life (E2) ─────
+   `mentl session` with no listener preopened serves on stdin: each line is a
+   verb's argv, tab-joined, and the answer is written whole before the
+   session reads its next line (src/mcp.mn session_line_loop). This role runs
+   that instance and keeps it: the graph is derived once and every answer is
+   a read of it, where the role it replaces re-instantiated the module over a
+   zero-filled memory per call and re-derived the whole program each time.
+
+   The worker blocks INSIDE fd_read(0) between requests, and a blocked worker
+   can neither receive a postMessage nor flush one — so the channel is a
+   SharedArrayBuffer, exactly as the task queue's is and for the same reason.
+   THE READ IS THE FRAME: when the wheel asks for input past the current
+   request's bytes, its answer is whole — the shim publishes what the
+   instance said and wrote since the last request, then waits for the next.
+
+   Channel (one SAB, laid out by ide/session-client.js, the host side):
+   Int32 words [0] requests written · [1] request bytes · [2] replies
+   written · [3] reply bytes · [4] state (1 serving, 2 ended) · [5] request
+   region size · [6] reply region size; the request region at byte
+   CH_DATA, the reply region after it. Both carry JSON: a request
+   {line, delta: {path: text}} or {close: true}; a reply {state, out, err,
+   written: {path: text}, memoryBytes, exit?, trapped?}. */
+const CH_WORDS = 8, CH_DATA = 4 * CH_WORDS;
+function sessionServe({ module, memory, vfs, channel }) {
+  const ctl = new Int32Array(channel, 0, CH_WORDS);
+  const reqBytes = new Uint8Array(channel, CH_DATA, ctl[5]);
+  const repBytes = new Uint8Array(channel, CH_DATA + ctl[5], ctl[6]);
+  let served = 0, shim = null;
+  const asText = (files) => Object.fromEntries(Object.entries(files).map(([p, b]) => [p, td.decode(b.slice())]));
+  const publish = (state, extra) => {
+    const t = shim.take();
+    let body = te.encode(JSON.stringify(Object.assign({ state, out: td.decode(t.out), err: td.decode(t.err),
+      written: asText(t.written), memoryBytes: memory.buffer.byteLength }, extra || {})));
+    if (body.length > repBytes.length) {
+      // loud, never truncated text dressed as an answer
+      body = te.encode(JSON.stringify({ state, out: "", written: {}, memoryBytes: memory.buffer.byteLength, overflow: true,
+        err: `the answer (${body.length} bytes) exceeds the session channel's reply region (${repBytes.length} bytes)\n` }));
+    }
+    repBytes.set(body);
+    Atomics.store(ctl, 3, body.length);
+    Atomics.store(ctl, 4, state);
+    Atomics.add(ctl, 2, 1);
+    Atomics.notify(ctl, 2);
+  };
+  // the wheel asked for more input: its answer is whole
+  const pull = () => {
+    publish(1);
+    while (Atomics.load(ctl, 0) === served) Atomics.wait(ctl, 0, served);
+    served = Atomics.load(ctl, 0);
+    const req = JSON.parse(td.decode(reqBytes.slice(0, Atomics.load(ctl, 1))));
+    for (const [p, text] of Object.entries(req.delta || {})) vfs[p] = te.encode(text);
+    return req.close ? null : te.encode(req.line + "\n");
+  };
+  shim = makeShim({ memory, argv: ["mentl", "session"], stdin: null, vfs, pull,
+    // the judgment spawns nothing (judge once, pin 7c9dc538), and a module that
+    // cannot spawn does not import thread-spawn; a spawn reaching here is
+    // refused loudly by the wheel, never served by a pool nobody armed
+    spawnFn: () => -1 });
+  return WebAssembly.instantiate(module, shim.imports).then((inst) => {
+    try { inst.exports._start(); publish(2, { exit: 0 }); }
+    catch (e) {
+      if (e && e.exitCode !== undefined) publish(2, { exit: e.exitCode });
+      else publish(2, { exit: 1, trapped: String((e && e.message) || e) });
+    }
+  });
+}
+
+// Whether a module can spawn at all: the wasi-threads convention imports
+// `wasi.thread-spawn`, and the boot has not since the judgment stopped
+// spawning — so a run arms a pool only for a module that could use it,
+// where it used to arm twelve nested workers for every run of every module.
+const spawns = (module) => WebAssembly.Module.imports(module).some((i) => i.module === "wasi" && i.name === "thread-spawn");
 
 HOST.listen(async (msg) => {
-  if (msg.role === "session-init") {
-    const { module, memPages, vfs, stubSpawn, dbg } = msg;
+  if (msg.role === "session") {
+    const { module, memPages, vfs, channel, dbg } = msg;
     DEBUG = !!dbg;
     let memory = null, lastE = null;
-    try {
-      for (const p of [memPages || 16384, 8192]) {
-        try { memory = new WebAssembly.Memory({ initial: p, maximum: 65536, shared: true }); break; }
-        catch (e) { lastE = e; }
-      }
-      if (!memory) throw (lastE || new Error("Failed to allocate shared WebAssembly.Memory"));
-      const tids = new Int32Array(new SharedArrayBuffer(4));
-      Atomics.store(tids, 0, 1);
-      const sessionVfs = Object.assign({}, vfs || {});
-      let q = null, pool = null, fan = null;
-      if (!stubSpawn) {
-        q = qMake();
-        pool = makePool(POOL_N, { role: "arm", module, memory, tids, q, vfs: sessionVfs, dbg: DEBUG });
-        await pool.ready;
-        fan = makeFan(q, tids, pool);
-      }
-      residentSession = { module, memory, tids, q, pool, fan, vfs: sessionVfs, stubSpawn: !!stubSpawn };
-      HOST.post({ k: "session-ready" });
-    } catch (e) {
-      HOST.post({ k: "session-error", error: String((e && e.message) || e) });
+    for (const p of [memPages || 16384, 8192]) {
+      try { memory = new WebAssembly.Memory({ initial: p, maximum: 65536, shared: true }); break; }
+      catch (e) { lastE = e; }
     }
-  } else if (msg.role === "session-call") {
-    if (!residentSession) {
-      HOST.post({ k: "session-reply", id: msg.id, exit: 1, out: "", err: "no resident session active\n", trapped: "no session", tasks: 0 });
+    if (!memory) {
+      // no memory, no instance: answer the open with the reason, on the channel
+      const ctl = new Int32Array(channel, 0, CH_WORDS);
+      const body = te.encode(JSON.stringify({ state: 2, exit: 1, out: "", written: {}, trapped: String((lastE && lastE.message) || lastE) }));
+      new Uint8Array(channel, CH_DATA + ctl[5], ctl[6]).set(body);
+      Atomics.store(ctl, 3, body.length); Atomics.store(ctl, 4, 2); Atomics.add(ctl, 2, 1); Atomics.notify(ctl, 2);
       return;
     }
-    const { id, argv, stdin, vfsDelta } = msg;
-    if (vfsDelta) {
-      Object.assign(residentSession.vfs, vfsDelta);
-    }
-    let trapped = null, exit = 0;
-    new Uint8Array(residentSession.memory.buffer).fill(0);
-    Atomics.store(residentSession.tids, 0, 1);
-    const shim = makeShim({
-      memory: residentSession.memory,
-      argv: argv || [],
-      stdin: stdin || null,
-      vfs: residentSession.vfs,
-      spawnFn: residentSession.stubSpawn ? (() => -1) : ((a) => { const t = residentSession.fan.spawn(a); return t; }),
-    });
-    try {
-      const inst = await WebAssembly.instantiate(residentSession.module, shim.imports);
-      inst.exports._start();
-    } catch (e) {
-      if (e && e.exitCode !== undefined) exit = e.exitCode;
-      else trapped = String((e && e.message) || e);
-    }
-    const out = td.decode(cat(shim.out));
-    const err = td.decode(cat(shim.err));
-    HOST.post({ k: "session-reply", id, exit, out, err, trapped, tasks: 0, written: shim.writtenFiles() });
-  } else if (msg.role === "session-close") {
-    if (residentSession && residentSession.pool) {
-      residentSession.pool.killAll();
-    }
-    residentSession = null;
-    HOST.post({ k: "session-closed" });
+    await sessionServe({ module, memory, vfs: Object.assign({}, vfs || {}), channel });
   } else if (msg.role === "run") {
     const { module, memPages, argv, stdin, vfs, stubSpawn } = msg;
     DEBUG = !!msg.dbg;
@@ -347,7 +391,7 @@ HOST.listen(async (msg) => {
       Atomics.store(tids, 0, 1);
       DBG("memory ok, arming pool");
       let q = null;
-      if (!stubSpawn) {
+      if (!stubSpawn && spawns(module)) {
         q = qMake();
         const pool = makePool(POOL_N, { role: "arm", module, memory, tids, q, vfs: vfs || null, dbg: DEBUG });
         await pool.ready;   // every pool worker LOADED + ARMED before _start can block
@@ -355,7 +399,7 @@ HOST.listen(async (msg) => {
         fan = makeFan(q, tids, pool);
       }
       shim = makeShim({ memory, argv: argv || [], stdin: stdin || null, vfs: vfs || null,
-                        spawnFn: stubSpawn ? (() => -1) : ((a) => { const t = fan.spawn(a); DBG("spawn tid=" + t); return t; }) });
+                        spawnFn: fan ? ((a) => { const t = fan.spawn(a); DBG("spawn tid=" + t); return t; }) : (() => -1) });
       const inst = await WebAssembly.instantiate(module, shim.imports);
       DBG("instantiated, _start");
       try { inst.exports._start(); }

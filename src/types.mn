@@ -2719,6 +2719,19 @@ effect GraphRead {
   // about, which is how narration scopes to the module the user named now
   // that spans are local and a line range no longer distinguishes files.
   graph_module_current() -> Int
+  // Whether a node belongs to the CURRENT generation of its module: false
+  // for every node born in a module node that a later parse of the same
+  // path superseded. A resident session holds each re-judged module's older
+  // generation below the current one, and a read that does not ask this
+  // answers about a program that no longer exists — measured 2026-10-02,
+  // the proposer offering `main()` at a hole `main` calls, after one edit.
+  graph_node_current(Int) -> Bool
+  // the current module node of a path — the latest parse registered under
+  // it, read where the registration happened rather than by walking the
+  // whole graph for module cells and keeping the last
+  graph_module_now(String) -> Option(Int)
+  // every current module node, in the order the modules were registered
+  graph_modules() -> [Int]
   // resolve a node's parse-attached comment prose from the parallel comment weave (empty string if absent); the Why engine / formatter / cursor project it
   graph_comment_at(Int) -> String
   // the comment's own source span, carried from parse (zero span if absent) — the reference diagnostics anchor here
@@ -4231,11 +4244,17 @@ effect Verify {
   // decide, never a second decide beside the ledger's.
   verify(Int, Span, Predicate, Reason) -> Option(Bool)
   verify_debt() -> [(Int, Span, Predicate, Reason)]
-  // The generation boundary's clear: the living session re-derives on a
-  // moved tree and stale generations' obligations must not shadow the
-  // current judgment's re-accrual (the tighten_reset law at the proof
-  // ledger).
-  verify_reset()
+  // The generation boundary's clear, for the modules about to be re-judged:
+  // the obligations raised in each one's CURRENT node are dropped before its
+  // judgment re-accrues them, and every other module's stand, because a
+  // module outside the re-judged cone was judged against exactly the tree it
+  // is judged against now. It cleared the WHOLE ledger while the session
+  // re-derived the whole weave, which was the only thing that made that
+  // sound; and the warm compile, which re-judges a cone inside a restored
+  // image, never cleared at all — measured 2026-10-02 on boot 713745c6, one
+  // edit to an entry carrying one open claim and the warm compile reported
+  // it twice. Keyed by the module HANDLE so the arm stays graph-free.
+  verify_forget([Int])
 }
 
 // ifc non-interference: verify(span, PFlowLe(src, dst), reason)
