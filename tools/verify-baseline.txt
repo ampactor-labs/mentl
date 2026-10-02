@@ -1265,4 +1265,16 @@ authored_ref_max: 703
 # walk's reader carried down its path. The rest is spread, 13.1 MB across
 # three identical runs of one binary. Same rule: ~1% over the highest
 # reading of the landed form.
-selfcompile_peak_kb_max: 1000000
+# 2026-10-02 (D5): 1000000 -> 1014000. Fixed input — the candidate's own
+# wheel source through both compilers: the boot (b400dc74) 993,204 /
+# 1,007,728 / 994,648 KB, the candidate 1,002,888 / 1,003,488 / 1,003,132
+# KB, and the heap trace of the two identical to the byte but for 16 at the
+# judgment's high-water (469,652,320 against 469,652,336) and 48 when the
+# module is written (893,365,448 against 893,365,496); their outputs are
+# byte-identical. So the compiler grew nothing on its own input, and the
+# boot itself crossed the old ceiling on one of three runs of this source:
+# the rise is the source (the where projection's badges, its decls-column
+# reads and the type-variable naming), inside a 14.5 MB spread across three
+# identical runs of one binary. Same rule: ~1% over the highest reading of
+# the landed form.
+selfcompile_peak_kb_max: 1014000

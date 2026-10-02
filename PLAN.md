@@ -2032,6 +2032,27 @@ and this is the STATE.
   accepted annotation draws no edge (`Hβ.felt.accepted-clause-carries-its-proof`),
   and a representation pin waits on an overflow-aware interval fragment
   (`Hβ.verify.interval-fragment-assumes-unbounded-int`).
+- **`WHERE` RENDERS WHAT SYNTAX PROMISES — CLOSED 2026-10-02 (D5).** The
+  verb printed `>< [Thread]` where SYNTAX promises `>< [Thread ×4]`, the
+  same glyph for a `<|` and a sequence fanout, an empty line for every
+  function with no install or site, `not found` for every parameter and
+  local, and every generic type as a debug handle (boot b400dc74). A site
+  carries the shape its author wrote with the branch edges its boundary
+  holds, the schedule its frame installs read through the one projection
+  roster, and the callers that demand it threaded, read by the emit's own
+  rule (`fanout_reach_ask`, the one home of the ask) over the decls column;
+  the whole-program reach closure and the two whole-graph scans only this
+  verb used are deleted. A function answers its head with its inferred row
+  and the width of each parameter and of its return; a local is found the
+  way the judgment drew it, each reference in the asked module along its
+  link to the cell it reads; a free type variable renders as the name a
+  developer would write (bound inside a checkpoint, rolled back), its width
+  `per instantiation`. Open: the voice's gradient field stays unfilled
+  until an LSP code action carries an edit
+  (`Hβ.voice.situation-gradient-is-never-filled`), `type of`, `why` and
+  `flow of` miss locals (`Hβ.query.name-keyed-verbs-miss-locals`), and the
+  other surfaces still print handles
+  (`Hβ.voice.free-variables-render-as-handles`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

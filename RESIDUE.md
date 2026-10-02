@@ -293,6 +293,85 @@ the arm reads it. That is a signature change to the `propose` op and is the
 build. D4 retyped the field to the gradient's own answer (`Teaching`), so the
 voice can say a question or a need as well as an annotation; the writer still
 passes `TeachNone`.
+THE OTHER HALF OF THE BUILD, found on D5's walk (2026-10-02): filling the
+field is not enough, because the surface it feeds cannot act on it. The
+LSP's code actions are `CodeAction(title, edit)` with the edit always the
+empty string, built from the voice line's literal slots
+(`code_actions_from_slots`, src/lsp.mn), and the JSON projection drops the
+edit entirely (`map_code_actions_to_json` writes a title and a kind), so a
+filled `gradient_next` would put a proposal in the editor's menu that does
+nothing when chosen — a suggestion the developer cannot accept is the
+surface lying about what it offers. The close is two moves in one landing:
+(1) the performer holds the gradient — `handle_code_action` asks the
+declaration at the position for its `Teaching` (`decl_teaching`, the answer
+`mentl teach` and `mentl accept` read) and hands it to the `propose` it
+performs, so the arm renders what the performer proved rather than
+performing what its world cannot reach; (2) an ADD carries the edit `mentl
+accept` writes — the formatter's head render over the declaration's head
+span in its own module's file (`render_fn_head`, `splice_decl_head`, the
+conservation census guarding it), projected as an LSP `TextEdit` in the
+client's coordinates — while an ASK and a NEED carry no edit and render as
+the question or the predicate, never as an action. The witness: the IDE
+twin asks for code actions at `fn inv(n) = 100 / n`, applies the one
+returned, and the document then checks with no open claim.
+
+`Hβ.voice.free-variables-render-as-handles` — OPEN, BORN 2026-10-02 (D5),
+the TYPE face closed at `where` and every other reader still open. A
+variable still free in a type renders through `show_handle` as its debug
+handle — `t14162@e15942`, the forensic projection's honest "unresolved at
+epoch e" — and every reader-facing surface used that render: `mentl doc`
+printed `bare : (a: t14162@e15942 own — inferred, …) -> (t14162@e15942,
+t14163@e15942)`, `type of` the same, and the first D5 build's `where` badge
+`a : t14162@e15942 @ per instantiation`. A variable a declaration
+quantifies is GENERIC, not unresolved, and the surface's own spelling of a
+type parameter is a lowercase name (SYNTAX §«Generic type parameters»: the
+case rule is the declaration). `where` names them now (`name_type_vars`,
+src/query.mn): inside a checkpoint each free type variable is bound to the
+name it was declared with (`a` in `f: a -> b`, its cell minted with that
+name as its reason by `quantify_ctor_ty`) or the first letter not taken,
+the one renderer runs, and the rollback leaves the graph as the projection
+found it — `bare(a, b)` / `a : a @ per instantiation` / `-> (a, b)`. A raw
+bind on purpose: no judgment reads a display binding, so no demand on the
+cell is consulted, and the width read treats a lowercase type name as the
+type parameter the case rule says it is.
+REMAINING, one move per reader, each a bracket around its own render: the
+`doc` roster's signature lines, `type of`, the address projection's Query
+line and the LSP hover (the render runs after `ask` returns, so the
+bracket wraps the render there), and the diagnostic messages that print a
+type (`E_TypeMismatch` among them). THE ROW FACE is the same class one sort
+over and has no surface spelling to borrow: `fanned(a, b) with Memory +
+Alloc + WasiThreads(c, r9430@e386)` — the instance of an effect whose
+generic ops share a type variable and a thunk's row — keeps its row
+variable's handle. Its design is `Hβ.diag.raw-row-variables-in-mismatch`'s:
+a reader is owed the names and the count of what is still open, so an open
+tail renders as what it is open to (what the callback performs) rather
+than as a handle, and the `where` header and the mismatch message read the
+one rendering. The forensic projection keeps the handle: `mentl query
+<file> unresolved` is the surface that asks "unresolved at which epoch".
+
+`Hβ.query.name-keyed-verbs-miss-locals` — OPEN, BORN 2026-10-02 (D5), named
+when `where` learned to find a local and its siblings did not. `type of`,
+`why` and `flow of` read `env_lookup(name)` alone, and the env at the end of
+a judgment holds module-level names, so every parameter, `let`, pattern part
+and function literal's parameter answers "not found" (measured on boot
+b400dc74 over `let scale = 2.0`: `mentl why … scale` and `query … "type of
+scale"`). `where` reads a local the way the judgment drew it — each
+reference to the name in the module the question is about (`graph_refs_at`,
+filtered by `graph_module_of`) along its link (`graph_link_of`) to the cell
+it reads — with the question carrying its module (`QWhere(name, scope)`,
+`parse_query_string(scope, q)`). THE CLOSE: `QTypeOf`, `QWhy` and `QFlowOf`
+take the scope the same way and fall to the one binder read when the env
+has no entry — `binder_badges`' reads factored as the shared resolution:
+`type of` answers each binder's type, `why` walks each binder cell's own
+Reason, `flow of` reads each binder's label (`binder_flow_label`), several
+binders each with where they are first read. AND ITS SECOND FACE, the one
+the edge cannot reach: a binder nothing reads has no reference, so no link
+leads to it, and `where` answers "not found" for an unused `let` or
+parameter. The close is the refs column's definition-side sibling — a
+binders column written where the env extends a local (`env_extend` with a
+`ValueScheme` or `ParamScheme` entry): name → binder handle, read by the
+same resolution, priced against the self-compile peak before it lands (one
+name-map entry per local binder, the order of the refs column's own cost).
 
 `Hβ.oracle.ranked-queue-is-a-second-frontier` — OPEN, BORN 2026-09-21, found by
 pointing the medium's own reachability facet at the medium.
@@ -7944,6 +8023,57 @@ that pushes the pin through a HOF body's free terminals the way A3 pushes a
 negation. A surface for it: `handler sample_at(rate) with Sample(rate), count
 = 0` — the handler clause and its state in one `with`, which the parser does
 not take today (a handler carries a row clause or state, never both).
+THE BUILD-READY DESIGN (banked 2026-10-02 after a felt walk on boot b400dc74;
+built with Pulse scene 2, its first consumer). Measured, exit codes mod 256:
+`(read44()) ~> sample_at(48000)` runs to 48,000 (128) — the 44.1 kHz reader
+handed the wrong rate; `read48` and an unannotated reader run to 48,000,
+correctly; `read44() + sample_rate()` under the same install runs to 96,000
+(0) — the collision rule dropped the 44,100 claim, exactly the case above;
+`run(read44)` through `fn run(f) = f()` runs to 48,000. FIVE PIECES, each
+forced. (1) THE SURFACE IS A SERVED ROW, NOT THE `with` CLAUSE: A5 gave a
+handler's `with` row its meaning — a bound on what the ARMS perform — so
+`with Sample(rate)` would cap the arms at Sample, not say what the install
+serves. The served instance is the handler's result, written where a
+function writes its result: `handler sample_at(rate) -> Sample(rate) with
+count = 0 { … }`, a row of instances whose arguments are literals or config
+parameters; an omitted clause serves every instance of every effect the arms
+answer (today's meaning), and a served name the arms do not answer refuses
+at registration. HandlerDeclStmt and HandlerKind each gain the field — a
+coordinated arity edit, about fifty destructure sites — carrying `type
+ServedArg = SAFixed(EffArg) | SAConfig(Int)` per argument, resolved against
+the config parameters once, at registration. (2) THE PIN IS A GATE, AND THE
+GATE ALREADY EXISTS: an EtAll gate row's PRESENT set is ignored by
+`row_subsumes` today; giving it meaning makes `EfRow([Sample(48000)], [],
+EtAll)` the pin — a member of a named effect PROVABLY DISTINCT from the
+pinned instance is refused, an unclaimed member is served — and the whole A3
+machinery carries it unchanged: installed on the tee body's row cell after the
+body is judged (`gate_install` judges the ground content: `read44()` refuses
+at the install; `run(read44)` resolves through the call's instantiation and
+refuses there), pushed onto free terminals (`fn with48(f) = (f()) ~>
+sample_at(48000)` refuses `with48(read44)` at the argument edge), and
+`gate_through_mask` drops a pin whose name an inner install masks (that
+install serves those performs). A pin whose config argument is not ground —
+`~> sample_at(rate)` with `rate` a parameter — proves nothing distinct and
+admits everything: honest, not vacuous by accident. (3) THE COLLISION RULE
+KEEPS GROUND CLAIMS: two instances collide only when they are not provably
+distinct AND have the same groundness; a ground instance beside an ungrounded
+one is kept as a second member. The row is still an upper bound for a
+negation — the ungrounded member already covers every value — and the set
+stays finite (one member per ground literal the program writes, one
+ungrounded member per name), so the fixpoint the type-variable collision
+protects is untouched; `collision_upgrades`' ground-to-ungrounded arm dies.
+Only lib/dsp/clock.mn declares a value-parameterized effect, so the wheel's
+rows do not move. (4) DISPATCH STAYS innermost by key: a provably distinct
+claim beneath an install is REFUSED rather than allowed to escape, which is
+what keeps the runtime walk correct without instance keys at dispatch. (5)
+THE REFUSAL IS ITS OWN CLASS, armed at birth, born at wheel-zero:
+`E_InstanceNotServed(handler, served, performed, span)` — "`sample_at(48000)`
+serves Sample(48000), and the body performs Sample(44100) beneath it" — read
+from the pin gate's shape in `gate_judge` (a negation keeps
+`E_EffectMismatch`). FIXTURES, red on b400dc74: the four refusing shapes above
+(direct, collision, HOF call, HOF install) and the two serving controls, plus
+Pulse's per-sample path with its `!Sample(44100)` negations removed — the
+install alone refusing the 44.1 kHz stage is the scene-2 demonstration.
 
 `Hβ.parser.body-brace-has-its-own-discrimination` — CLOSED 2026-09-28 (L3).
 `fn rig() = { lead: saw() }` parsed as a BLOCK and refused its field names as
@@ -12091,6 +12221,21 @@ inverts for this name), the frontier leg + fixture (three badges
 asserted: a pinned repr, an op cardinality, a scheduled and an
 unscheduled fanout). The gate seen RED first: the fixture's `where`
 queries answer unknown-verb through the prior pin.
+WIDENED 2026-10-02 (D5, pin 713745c6) to what SYNTAX promises, and one
+claim above retracted: "the static walk is EXACT … the schedule never
+crosses a call boundary" stopped being true at B4, when a caller's install
+began reaching a callee's fanout by demand; the badge has named the demand
+since then and reads it by the emit's own rule now (`fanout_reach_ask` over
+the decls column). A site badges its author's glyph and its branch count
+(`>< [Thread ×4]`, `<| [Seq ×2]`, `fanout [Thread, a branch per element]`)
+with its schedule read through the one projection roster; a function
+badges its head with its inferred row, each parameter and its return; a
+local is found along each reference's link in the asked module; a free type
+variable shows as the name a developer writes, its width per
+instantiation. The PRICED line above no longer holds for the demand note:
+it walks every declaration's body once per question (the seeds), where the
+O(answer) form is the demand as a column the lowering writes when it
+notes a site's schedule.
 
 `Hβ.parser.pcompose-nary` — BUILT 2026-08-07 against this stamp (pin
 05fd2307ff43; the mn-fanout-nary micro runs 9 where the prior pin

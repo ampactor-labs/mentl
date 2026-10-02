@@ -357,7 +357,7 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
           // The read of the LIVE graph — the session's instances answer;
           // no derivation, no restore, no swap (the resident form the
           // swap-crossing refutation named).
-          let text = ask(parse_query_string(question)) |> render_query_result
+          let text = ask(parse_query_string("", question)) |> render_query_result
           (mcp_response(
             id,
             JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("{text}\n"))])])), ("isError", JBool(false))])
@@ -614,7 +614,7 @@ fn session_answer(line, ast, ranges, at_read) = match parse_cli_args(session_arg
   Invocation(verb) => match verb {
     VAt(target, l, c) => if target == "main" { str_concat_all(at_read(ranges, l, c)) } else { "MENTL-SESSION-MISS\n" },
     VQuery(target, q) => if target == "main" {
-      "{render_query_result(ask(parse_query_string(q)))}\n"
+      "{render_query_result(ask(parse_query_string(target, q)))}\n"
     } else {
       "MENTL-SESSION-MISS\n"
     },

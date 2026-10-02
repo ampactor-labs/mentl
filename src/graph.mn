@@ -1919,97 +1919,47 @@ fn body_child_handles(body) = match body {
   NTypeAnn(_) => [],
 }
 
-// ── THE FANOUT REACH — one rule, two readers ─────────────────────────
+// ── THE FANOUT REACH — one rule, asked one name at a time ────────────
 //
-// Which top-level functions reach a fanout through DIRECT calls: a fn whose
-// own body holds a `><`, a `<|` or a `fanout(f, xs)` call, or one that
-// directly calls a fn that does. A schedule an install demands crosses a
-// call exactly this far (lower's `spec_call_name`), so the emit reads this
-// set before it demands a callee's schedule twin, and `mentl where` reads
-// it to say which of a caller's installs reach a fanout site. A lambda's or
-// a nested fn's body is its own frame and never the enclosing fn's own
-// fanout (`Hβ.lower.schedule-through-a-value`); a call inside one is not a
-// direct call of the enclosing fn. The fixpoint closes over the whole
-// program's top-level declarations, read off the graph — the felt read; the
-// emit asks the same rule of ONE name (`fanout_reach_of`).
-fn fanout_reach_names() = match graph_snapshot() {
-  Graph(next, _) => {
-    let facts = fanout_facts(0, next, [])
-    fanout_reach_fix(facts, fold((smap_new(), []), fanout_seed_step, facts))
-  },
-}
-
-fn fanout_facts(i, n, acc) = if i >= n {
-  acc
-} else {
-  match graph_node_body(i) {
-    NStmt(FnStmt(fname, _, _, clause, body)) => // A fn declared `!Thread` keeps its own frame's schedule: it takes no
-    // demand and hands none on, so it is no fact of the reach — the
-    // negation read where it is authored, since a ground body's declared
-    // negation leaves nothing in the published row.
-    if declares_absent(clause, "Thread") {
-      fanout_facts(i + 1, n, acc)
-    } else {
-      match fanout_fact((false, []), node_handle(body)) {
-        (has_own, callees) => fanout_facts(i + 1, n, push(acc, (fname, has_own, callees))),
-      }
-    },
-    _ => fanout_facts(i + 1, n, acc),
-  }
-}
-
+// Whether a function reaches a fanout through DIRECT calls: its own body
+// holds a `><`, a `<|` or a `fanout(f, xs)` call, or it directly calls a fn
+// that does — never through a fn declared `!Thread`, which keeps its own
+// frame's schedule and hands no demand on. A schedule an install demands
+// crosses a call exactly this far (lower's `spec_call_name`), so the emit
+// asks this rule before it demands a callee's schedule twin, and `mentl
+// where` asks it, the same way, to say which callers' installs reach a
+// fanout site. A lambda's or a nested fn's body is its own frame and never
+// the enclosing fn's own fanout (`Hβ.lower.schedule-through-a-value`); a
+// call inside one is not a direct call of the enclosing fn.
+//
+// The whole-program closure that stood here beside this rule had one
+// reader, the `where` verb, which scanned every graph handle to build it
+// and every handle again to find a body by name; both read the decls
+// column now and the closure is gone (2026-10-02, D5).
+//
 // Whether a declaration's clause negates the named effect (`!Thread`) —
 // the authored negation, read off the FnStmt it stands on.
 fn declares_absent(clause, ename: String) =
   any({ (en, negated, _) => negated && str_eq(eff_name_str(en), ename) }, clause)
 
-// The reached set is a name map for membership beside the list of its
-// names in the order they joined.
-fn fanout_seed_step(acc, fact) = match acc {
-  (reached, names) => match fact {
-    (name, has_own, _) => if has_own { (smap_add(reached, name, 1), push(names, name)) } else { acc },
-  },
+// ONE ASK of the rule with the answers settled across asks carried in
+// `memo`: an ask that found no fanout from its root settles every name it
+// entered false (`fanout_reach_settle`), the root's reach being whole. The
+// emit's spec registry and `where`'s demand walk both ask through here.
+fn fanout_reach_ask(memo, decls, name: String) = match fanout_reach_of({entered: [], memo: memo, seen: smap_new()}, decls, name) {
+  (found, st) => (found, if found { st.memo } else { fold(st.memo, fanout_reach_settle, st.entered) }),
 }
 
-// Close over callers: a fn joins the set when any callee is in it, until a
-// round adds nothing.
-fn fanout_reach_fix(facts, reached) = match fold((reached, false), fanout_reach_step, facts) {
-  (reached2, grew) => if grew {
-    fanout_reach_fix(facts, reached2)
-  } else {
-    match reached2 {
-      (_, names) => names,
-    }
-  },
-}
-
-fn fanout_reach_step(acc, fact) = match acc {
-  ((reached, names), grew) => match fact {
-    (name, _, callees) => match smap_get(reached, name) {
-      Some(_) => acc,
-      None => if any(smap_has(reached), callees) {
-        ((smap_add(reached, name, 1), push(names, name)), true)
-      } else {
-        acc
-      },
-    },
-  },
-}
-
-// THE SAME RULE ASKED OF ONE NAME: whether this declaration's direct-call
-// reach holds a fanout — its own body, or a callee's, through direct calls
-// and never through a fn declared `!Thread` — walked outward from the name
-// and no further. The emit asks it of the few callees a spawning site
-// demands, and the whole-program closure above answered each by walking
-// every body: 22 MB on the wheel, for lib/persist's four Persist-class
-// sites (2026-09-30). The memo carries the answers settled across asks; a
-// name is entered ONCE per ask (the seen set, with the entered list its
-// order), and a second meeting — a cycle, or a callee two paths share — answers false
-// without walking again, since the ask's root settles it: a chain that
-// found a fanout settles true as it returns, and a root that found none
-// settles every name it entered false (`fanout_reach_settle`), the root's
-// reach being whole. The first form memoized nothing a cycle had touched
-// and re-walked the runtime's mutual recursion once per path,
+// THE RULE WALKED FROM ONE NAME and no further. The memo carries the
+// answers settled across asks; a name is entered ONCE per ask (the seen
+// set, with the entered list its order), and a second meeting — a cycle,
+// or a callee two paths share — answers false without walking again, since
+// the ask's root settles it: a chain that found a fanout settles true as it
+// returns, and a root that found none settles every name it entered false.
+// The whole-program closure it replaced answered each ask by walking every
+// body — 22 MB on the wheel, for lib/persist's four Persist-class sites
+// (2026-09-30) — and the first per-name form memoized nothing a cycle had
+// touched and re-walked the runtime's mutual recursion once per path,
 // exponentially: the wheel's compile reached 4.3 GB and never planned.
 fn fanout_reach_of(st, decls, name: String) = match smap_get(st.memo, name) {
   Some(v) => (v == 1, st),

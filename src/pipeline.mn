@@ -611,7 +611,7 @@ fn query(entry_module, question) = infer_context(() => {
         1
       },
       Some(_) => {
-        let q = parse_query_string(question)
+        let q = parse_query_string(entry_module, question)
         ask(q) |> render_query_result |> println
         0
       },
@@ -1511,12 +1511,27 @@ fn str_join_indented(lines) = match lines {
 // The site badges: the schedule word at the fanout's own line —
 // `>< [Thread] at file:line` — the exact fact lower reads ambiently,
 // projected statically (the where stamp's exactness law).
-fn render_where_sites(sites) = render_where_sites_from(sites)
+// A fanout site in SYNTAX's own form, `>< [Thread ×4]`: the verb its author
+// wrote, the schedule its frame installs with how many branches it spawns,
+// then the callers that demand it threaded where its frame installs none.
+fn render_where_sites(sites) = sites |> map(where_site_line) |> str_concat_all
 
-fn render_where_sites_from(sites) = match sites {
-  [] => "",
-  [(word, s), ...t] => "\n  >< [{word}] at {show_span(s)}{render_where_sites_from(t)}",
+fn where_site_line(site) = match site {
+  WhereSite(s) => "\n  {site_glyph(s.shape)} [{schedule_word(s.schedule)}{site_width(s.shape)}{site_demand(s.vias)}] at {show_span(s.span)}",
 }
+
+fn site_glyph(shape) = match shape {
+  Branches(FanShare, _) => "<|",
+  Branches(FanDistribute, _) => "><",
+  PerElement => "fanout",
+}
+
+fn site_width(shape) = match shape {
+  Branches(_, n) => " ×{int_to_str(n)}",
+  PerElement => ", a branch per element",
+}
+
+fn site_demand(vias) = if len(vias) == 0 { "" } else { "; Thread demanded via {join(", ", vias)}" }
 
 // show_flow_label — defined in types.mn alongside flow_label_join/flow_le.
 //
@@ -1597,23 +1612,27 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVUnknownVerb
 }
 
-fn parse_query_string(q) = {
-  // split returns a slice VIEW; the list-pattern match assumes the flat
-  // [len][elems] contract, so flatten once before matching (§7 face 13)
-  // — and read words ONCE, never re-split per arm (Carried-Truth).
-  let words = list_to_flat(split(" ", q))
+// `scope` is the module the question is about — the file the developer
+// named — and "" when it is about every module (a resident tool, the REPL).
+// Only a question that reads locals needs it: a local is found where it is
+// read, and the link's other modules read names of their own.
+fn parse_query_string(scope: String, q) = {
+  // read words ONCE, never re-split per arm (Carried-Truth); a list pattern
+  // reads any representation through the one length header, so the split's
+  // slice is matched as it is
+  let words = split(" ", q)
   match words {
     [] => QUnknown(q),
-    [w0] => build_question(classify_query_verb(w0), "", q),
-    [w0, w1] => build_question(classify_query_verb(w0), w1, q),
-    _ => build_question(classify_query_verb(query_head(words)), query_last(words), q),
+    [w0] => build_question(classify_query_verb(w0), "", q, scope),
+    [w0, w1] => build_question(classify_query_verb(w0), w1, q, scope),
+    _ => build_question(classify_query_verb(query_head(words)), query_last(words), q, scope),
   }
 }
 
 // build_question — pair the classified verb with its argument. Nullary verbs
 // (unresolved/verification) ignore the arg; unary verbs carry it. A verb whose
 // arity its arg cannot satisfy projects to QUnknown(raw) — the honest unknown.
-fn build_question(verb, arg, raw) = match verb {
+fn build_question(verb, arg, raw, scope: String) = match verb {
   QVUnresolved => QUnresolved,
   QVVerification => QVerifyDebt,
   QVType => QTypeOf(arg),
@@ -1627,7 +1646,7 @@ fn build_question(verb, arg, raw) = match verb {
     Some(shape) => QCensus(shape),
     None => QUnknown(raw),
   },
-  QVWhere => QWhere(arg),
+  QVWhere => QWhere(arg, scope),
   QVDecls => QDecls,
   QVVariants => QVariants(arg),
   QVModules => QModules,

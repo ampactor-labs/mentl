@@ -288,15 +288,15 @@ handler spec_registry with twins = smap_new(), count = 0, reach = smap_new(), de
   }),
   set_spec_twins(ns) => resume() with twins = fold(smap_new(), smap_add(??, ??, 1), ns), count = len(ns),
   fanout_reach_known(n) => // Asked only by a call under a spawning demand, and answered by walking
-  // that name's own reach and no further (`fanout_reach_of`, graph.mn —
-  // the rule's one home, which `mentl where` reads whole), the answers
-  // settled across asks in `reach`; a schedule-free module never asks and
-  // pays nothing for the rule's existence. The decl index is read off the
-  // decls column at the first ask.
+  // that name's own reach and no further (`fanout_reach_ask`, graph.mn —
+  // the rule's one home, which `mentl where` asks the same way), the
+  // answers settled across asks in `reach`; a schedule-free module never
+  // asks and pays nothing for the rule's existence. The decl index is read
+  // off the decls column at the first ask.
   {
     let idx = if decls_read { decls } else { fanout_decls_index() }
-    match fanout_reach_of({entered: [], memo: reach, seen: smap_new()}, idx, n) {
-      (found, st) => resume(found) with reach = if found { st.memo } else { fold(st.memo, fanout_reach_settle, st.entered) }, decls = idx, decls_read = true,
+    match fanout_reach_ask(reach, idx, n) {
+      (found, memo) => resume(found) with reach = memo, decls = idx, decls_read = true,
     }
   },
   site_schedule_note(h, s) => resume() with sites = wmap_add(sites, h, s), threaded = threaded || schedule_eq(s, Threaded),

@@ -2327,7 +2327,7 @@ fn repl_eval_line(line) = if byte_len(line) == 0 {
   ""
 } else {
   infer_program_converged(line)
-  render_query_result(ask(parse_query_string("type main")))
+  render_query_result(ask(parse_query_string("", "type main")))
 }
 
 // ─── new — the welcome's own WRITE

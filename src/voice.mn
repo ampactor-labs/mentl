@@ -785,7 +785,7 @@ fn focus_reason(target) = match target {
 // Verify-tentacle (refinement obligations). H6 exhaustive over
 // Question's 15 variants via pattern alternation per SYNTAX.md L956.
 fn tentacle_for_question(question) with Pure = match question {
-  QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QUnknown(_) => TentQuery,
+  QTypeOf(_) | QTypeAt(_) | QIntentOf(_) | QUnresolved | QEffects(_) | QRefsOf(_) | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QUnknown(_) => TentQuery,
   QOwnership(_) => TentTrace,
   QWhy(_) | QSubstChain(_) => TentWhy,
   QVerifyDebt | QSmt => TentVerify,
@@ -797,7 +797,7 @@ fn tentacle_for_question(question) with Pure = match question {
 // exhaustive over Question via pattern alternation.
 fn question_span(question) = match question {
   QTypeAt(s) => s,
-  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QUnknown(_) => span_zero(),
+  QTypeOf(_) | QIntentOf(_) | QUnresolved | QSubstChain(_) | QEffects(_) | QOwnership(_) | QWhy(_) | QRefsOf(_) | QVerifyDebt | QSmt | QHandlerProvider(_) | QFlowOf(_) | QCensus(_) | QDecls | QWhere(_, _) | QVariants(_) | QModules | QImports | QUnreferenced | QUnreachable | QPerforms | QOrphanClaims | QCost | QUnknown(_) => span_zero(),
 }
 
 // compose_propose_situation — sparse Situation for a propose gesture.
@@ -919,9 +919,10 @@ fn query_result_to_answer(result) = match result {
   QRError(_) => AnsSilence,
 }
 
-fn site_spans(sites) = match sites {
-  [] => [],
-  [(_, s), ...t] => [s] ++ site_spans(t),
+fn site_spans(sites) = map(where_site_span, sites)
+
+fn where_site_span(site) = match site {
+  WhereSite(s) => s.span,
 }
 
 // ─── Live forensic-result projections — the run ops read the graph ────

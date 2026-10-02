@@ -3473,9 +3473,11 @@ for i in "${!compilers[@]}"; do
   fi
 
   # ─── The where verb (PLAN §11 Phase 3.2, Hβ.cli.where-verb) ─────────
-  # Four derived badges: an inferred repr, an op's resume cardinality,
-  # a Thread-scheduled fanout, and the bare Seq default — each a line
-  # the medium narrates from facts the graph already proves.
+  # Derived badges: an inferred repr, an op's resume cardinality, each
+  # fanout site with its glyph, schedule and branch count, an install's
+  # absorption, a function's head with its inferred row, and the widths of
+  # its parameters and locals — each a line the medium narrates from facts
+  # the graph already proves.
   wdoc="$ROOT/tests/frontier/mn-where-badges.mn"
   w_ok=1
   w_repr=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" gain 2>/dev/null)
@@ -3483,16 +3485,34 @@ for i in "${!compilers[@]}"; do
   w_card=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" tick 2>/dev/null)
   printf '%s' "$w_card" | grep -q 'resume Int ->1 answer' || { w_ok=0; fail "where cardinality badge (got: $w_card)"; }
   w_sched=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" fanned 2>/dev/null)
-  printf '%s' "$w_sched" | grep -q '>< \[Thread\] at' || { w_ok=0; fail "where schedule badge (got: $w_sched)"; }
+  printf '%s' "$w_sched" | grep -q '>< \[Thread ×2\] at' || { w_ok=0; fail "where schedule badge (got: $w_sched)"; }
   w_seq=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" bare 2>/dev/null)
-  printf '%s' "$w_seq" | grep -q '>< \[Seq\] at' || { w_ok=0; fail "where seq-default badge (got: $w_seq)"; }
+  printf '%s' "$w_seq" | grep -q '>< \[Seq ×2\] at' || { w_ok=0; fail "where seq-default badge (got: $w_seq)"; }
+  # D5 (2026-10-02): the badges SYNTAX promises. Each RED on boot b400dc74,
+  # which printed `>< [Thread]` with no width, the same glyph for `<|` and
+  # for the sequence fanout, an empty `→` line for every function with no
+  # install or site, and `not found` for every parameter and local.
+  w_three=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" three 2>/dev/null)
+  printf '%s' "$w_three" | grep -q '>< \[Thread ×3\] at' || { w_ok=0; fail "where width badge, three branches (got: $w_three)"; }
+  printf '%s' "$w_three" | grep -q '^  a : a @ per instantiation$' || { w_ok=0; fail "where generic parameter named as written (got: $w_three)"; }
+  w_share=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" spread 2>/dev/null)
+  printf '%s' "$w_share" | grep -q '<| \[Seq ×2\] at' || { w_ok=0; fail "where share glyph (got: $w_share)"; }
+  w_each=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" doubled_each 2>/dev/null)
+  printf '%s' "$w_each" | grep -q 'fanout \[Seq, a branch per element\] at' || { w_ok=0; fail "where sequence fanout (got: $w_each)"; }
+  w_head=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" ticks 2>/dev/null)
+  printf '%s' "$w_head" | grep -q '^→ ticks(x) with Tick$' || { w_ok=0; fail "where head with its inferred row (got: $w_head)"; }
+  printf '%s' "$w_head" | grep -q '^  x : Int @ i32 (inferred)$' || { w_ok=0; fail "where parameter badge (got: $w_head)"; }
+  w_pin=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" s 2>/dev/null)
+  printf '%s' "$w_pin" | grep -q '^→ s : Float @ f32 (pinned)$' || { w_ok=0; fail "where pinned parameter, SYNTAX's own example (got: $w_pin)"; }
+  w_local=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" scale 2>/dev/null)
+  printf '%s' "$w_local" | grep -q '^→ scale : Float @ f64 (inferred)$' || { w_ok=0; fail "where local (got: $w_local)"; }
   # B4 (2026-09-30): a fanout site reports the schedules its CALLERS demand
   # of it through direct calls — `shared`'s own frame installs none (Seq),
   # and `twice` calls it under `parallel_compose`, so its site runs threaded
   # there; the badge says both, read off the one fanout-reach rule the emit
   # demands twins by. RED on boot 6f2ce437 (the badge knew only the frame).
   w_dem=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" shared 2>/dev/null)
-  printf '%s' "$w_dem" | grep -q '>< \[Seq; Thread demanded via twice\] at' || { w_ok=0; fail "where demanded-schedule badge (got: $w_dem)"; }
+  printf '%s' "$w_dem" | grep -q '>< \[Seq ×2; Thread demanded via twice\] at' || { w_ok=0; fail "where demanded-schedule badge (got: $w_dem)"; }
   # The bare why verb (SYNTAX's lag list, first name retired): the
   # Reason-chain walk as its own verb. Born RED 2026-08-08 (the prior
   # boot answered unknown-verb).
@@ -3540,7 +3560,7 @@ for i in "${!compilers[@]}"; do
   # graph's own facts. Born RED 2026-08-08 (the boot lacked the facet).
   w_tee=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" handled 2>/dev/null)
   printf '%s' "$w_tee" | grep -q '~> ticker absorbs Tick at' || { w_ok=0; fail "where tee badge (got: $w_tee)"; }
-  [ "$w_ok" = 1 ] && pass "where: repr, cardinality, schedule, and tee badges narrate (output, never input)"
+  [ "$w_ok" = 1 ] && pass "where: repr, cardinality, schedule with width, tee, head, parameter and local badges narrate (output, never input)"
 
   # ─── The lambda list-pattern parameter (PLAN §11 Phase 3.3) ─────────
   # `([h, ...t]) => h` parses and checks clean — the cover-grammar rest

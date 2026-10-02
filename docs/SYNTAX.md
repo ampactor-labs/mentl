@@ -619,7 +619,11 @@ representation gradient and the topology axis composing in ONE read). Because `<
 borrows read-only and `><` shares nothing, the schedule is PROVABLY race-free; a
 real-time region can declare `with !Thread` and the medium PROVES, transitively,
 that no spawn occurs (provable like `!Alloc` — Rayon/Faust cannot state this).
-`mentl where` badges the chosen strategy: `>< [Thread ×4]`, output not input.
+`mentl where` badges the chosen strategy: `>< [Thread ×4]`, output not input —
+each site in the glyph its author wrote with the branches it spawns (`<| [Seq
+×2]`; a sequence fanout as `fanout [Thread, a branch per element]`), and a
+site whose frame installs no schedule names the callers that demand it (real,
+2026-10-02).
 
 **The race-freedom claim has its gate (real, 2026-09-27).** A spawned branch
 runs in the world it was spawned in — the task record carries the install
@@ -1239,7 +1243,11 @@ memcpy-serializability are invariant under the pin.
 
 `mentl where` projects the chosen width as a derived badge — `s : Float @ f32
 (pinned)` when authored, `c : Float @ f64 (inferred)` when the gradient reached it
-— output, never input. A pin that names the width the gradient would already infer
+— output, never input. Every parameter and local answers it, and a function
+answers its head with its inferred row before its parameters' and return's
+widths; a value whose type is still a variable reads `a : a @ per
+instantiation`, since every instantiation is specialized and takes its own
+width (real, 2026-10-02). A pin that names the width the gradient would already infer
 is `W_RedundantRepr` (drop it; the gradient reaches it anyway). A pin equal to the
 floor on an integral type is likewise vacuous. **The same `repr` pin is a
 parameter annotation** (the Intent-Boundary peer of `own`/`ref` — §"The Intent

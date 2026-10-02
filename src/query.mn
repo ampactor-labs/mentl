@@ -147,7 +147,10 @@ type Question
   | QDecls
   // "where NAME" — the derived-badge projection (Hβ.cli.where-verb):
   // repr width, resume cardinality, fanout schedules. Output, never input.
-  | QWhere(String)
+  // The second field is the module the question is about: a local is
+  // found where it is read, and the link's other modules read names of
+  // their own ("" asks every module).
+  | QWhere(String, String)
   // "variants NAME" — the ADT-roster facet (the lowering stamp's
   // confessed missing projection): the type's constructors with their
   // arities, read from the env's ConstructorScheme registry — the same
@@ -232,9 +235,19 @@ type QueryResult
   | QROrphanClaims([(String, String, Int)])
   // modules linked, source lines processed, nodes minted
   | QRCost(Int, Int, Int)
-  // the derived badges (plain lines) + fanout sites as (schedule, span)
-  | QRWhere([String], [(String, Span)])
+  // the derived badges (plain lines) + the fanout sites
+  | QRWhere([String], [WhereSite])
   | QRError(String)
+
+// A fanout site as `where` reports it: how its branches are written and how
+// many it spawns, the schedule its own frame installs, the callers whose
+// installs demand it threaded (only where its own frame installs none),
+// and where it stands.
+type WhereSite = WhereSite({schedule: Schedule, shape: SiteShape, span: Span, vias: [String]})
+
+// A site's branches: a `><` or `<|` with the edges its boundary holds, or
+// the sequence fanout's one branch per element, counted at run time.
+type SiteShape = Branches(FanOwnership, Int) | PerElement
 
 // The single-op effect that routes every forensic question through
 // `query_default`. LSP methods (Arc F.2) are `Question` variants
@@ -350,7 +363,7 @@ handler query_default {
       },
     },
     QCensus(shape) => resume(QRCensus(census_label(shape), census_sites(shape))),
-    QWhere(name) => resume(where_badges(name)),
+    QWhere(name, scope) => resume(where_badges(name, scope)),
     QVariants(tname) => resume(variants_of(tname)),
     QModules => resume(QRModules(module_paths())),
     QImports => resume(QRImports(import_report(module_cells()))),
@@ -1695,33 +1708,203 @@ fn lambda_carries_row(h) with !Mutate = match graph_chase(h) {
 
 // ── the where projection — derived badges (Hβ.cli.where-verb) ────────
 //
-// Output, never input: repr width for a value, resume cardinality for
-// an op, the resolved schedule for a fn's fanout sites. Each badge is
-// a live read of a fact the graph already proves — the pinned/inferred
-// split reads the authored TReprPin in the scheme's own type, the
-// discipline rides the op's EffectOpScheme, and the schedule walk up
-// the enclosing `~>` chain is EXACT because a schedule never crosses a
-// call boundary (the parallel_map dissolution's law): lower's
-// ambient-stack read and this static walk answer identically by
-// construction — a lambda or nested fn resets the chain, the frame
-// fence's static mirror.
-fn where_badges(name: String) with !Mutate = match env_lookup(name) {
-  None => QRError("not found: {name}"),
+// Output, never input: a value's width, an op's resume cardinality, and a
+// function's head, parameters, return, installs and fanout sites. Each
+// badge is a live read of a fact the graph already proves. A width is the
+// repr its type projects, pinned when an authored `repr` decided it
+// anywhere along the type's chain; the discipline rides the op's
+// EffectOpScheme; an install's class and a site's schedule read the one
+// roster the judgment and the lowering read (`projection_of_effects`); a
+// site's width is the branch edges its boundary holds. A site's schedule
+// is its own frame's — a lambda or a nested fn resets the chain, the frame
+// fence's static mirror — and a caller's install reaches it only along a
+// demand, which `demanded_vias` reads by the emit's own rule.
+fn where_badges(name: String, scope: String) with !Mutate = match env_lookup(name) {
+  None => binder_badges(name, scope),
   Some(entry) => match entry {
     (scheme, _, kind) => match kind {
       EffectOpScheme(ename, _, _, disc) => QRWhere(["{name} : {ename} op — resume {op_resume_ty(scheme)} {disc_glyph(disc)} answer"], []),
       _ => {
         let ty = judgment_ty(scheme)
         match chase_type_deep(ty) {
-          TFun(_, _, _) => QRWhere(fn_tee_lines(name), fn_fanout_sites(name)),
-          chased => QRWhere(
-            ["{name} : {show_type(chased)} @ {repr_name(repr_of(chased))} ({pin_word(ty_has_repr_pin(ty))})"],
-            []
-          ),
+          TFun(params, ret, row) => decl_badges(name, params, ret, row),
+          _ => QRWhere([value_badge(name, ty)], []),
         }
       },
     },
   },
+}
+
+// A function's badges: its head with the row inference projected (A4 —
+// the signature carries only decisions, so the row is read here), each
+// parameter's width, its return's, every install in its body with what
+// the handler answers, and every fanout site with its schedule. A
+// function value with no declaration body (a module let holding a
+// closure, a constructor) answers its head, parameters and return.
+fn decl_badges(name: String, params, ret, row) with !Mutate = {
+  let body = decl_body(name)
+  let cp = graph_push_checkpoint()
+  name_type_vars([TFun(params, ret, row)])
+  let lines =
+    [decl_head(name, params, row)] ++ map(param_badge, params) ++ ["-> {value_type(ret)} @ {width_badge(ret)}"]
+  graph_rollback(cp)
+  QRWhere(
+    lines ++ flat_map(tee_lines, body),
+    body |> flat_map(fanout_sites(??, [])) |> demand_onto(name)
+  )
+}
+
+// THE VARIABLES A DEVELOPER WOULD WRITE. A type variable still free renders
+// as its handle (`t9538@e599`), the forensic projection's "unresolved at
+// epoch e"; a badge is not forensic, and a variable a declaration
+// quantifies is generic, not unresolved. Inside a checkpoint each free type
+// variable is bound to the name a developer would write — the one it was
+// declared with (`a` in `f: a -> b`), else the first letter not taken —
+// so the one renderer shows names, and the caller's rollback leaves the
+// graph as the projection found it. A raw bind: no judgment reads it, and
+// no demand on the cell is consulted. A row variable keeps its handle
+// (`Hβ.voice.free-variables-render-as-handles`).
+fn name_type_vars(tys) with !Mutate = {
+  let vars = tys |> flat_map(free_type_vars) |> unique
+  let picked = fold([], pick_name(flat_map(declared_name, vars), ??, ??), vars)
+  vars |> enumerate |> each(bind_picked(picked, ??))
+}
+
+fn free_type_vars(ty) with !Mutate = ty |> chase_deep |> free_in_ty |> filter(is_type_cell)
+
+fn is_type_cell(v) with !Mutate = match graph_chase(v) {
+  GNode(NFree(_), _) => true,
+  _ => false,
+}
+
+// The name a type parameter was written with: its cell is minted with the
+// authored lowercase name as its reason (`quantify_ctor_ty`).
+fn declared_name(v) with !Mutate = match graph_reason_at(v) {
+  Declared(n) => if is_type_param_name(n) { [n] } else { [] },
+  _ => [],
+}
+
+fn is_type_param_name(n: String) =
+  byte_len(n) > 0 && first_char_code(n) >= 97 && first_char_code(n) <= 122
+
+// A variable's name in first-appearance order: its declared one, else the
+// first letter neither declared by another variable nor picked already.
+fn pick_name(declared, picked, v) with !Mutate = match declared_name(v) {
+  [d] => push(picked, d),
+  _ => push(picked, first_untaken(declared ++ picked, 0)),
+}
+
+fn bind_picked(picked, iv) with !Mutate = match iv {
+  (i, v) => graph_bind(v, TName(picked[i], []), Inferred("the name a developer would write")),
+}
+
+// The letters a to z, then t26, t27 and onward — the first not already
+// taken.
+fn first_untaken(taken, i) = {
+  let n = if i < 26 { str_slice("abcdefghijklmnopqrstuvwxyz", i, i + 1) } else { "t{int_to_str(i)}" }
+  if string_in_list(taken, n) { first_untaken(taken, i + 1) } else { n }
+}
+
+// A site whose own frame installs no schedule runs under the one its
+// callers demand (B4), so only those carry the demand — read once, and
+// only when some site needs it.
+fn demand_onto(name: String, sites) with !Mutate =
+  if any(site_is_seq, sites) { map(site_demanded(demanded_vias(name), ??), sites) } else { sites }
+
+fn site_is_seq(site) = match site {
+  WhereSite(s) => schedule_is_seq(s.schedule),
+}
+
+fn site_demanded(vias, site) = match site {
+  WhereSite(s) => if schedule_is_seq(s.schedule) { WhereSite({...s, vias: vias}) } else { site },
+}
+
+fn decl_head(name: String, params, row) with !Mutate =
+  "{name}({join(", ", map(param_name, params))}){show_row_suffix(row)}"
+
+fn param_badge(p) with !Mutate = value_badge(param_name(p), param_ty(p))
+
+// SYNTAX's own badge: `s : Float @ f32 (pinned)`. The type names what the
+// value is and the width how it is laid out, so a bare-width pin shows its
+// base beside the width rather than twice.
+fn value_badge(name: String, ty) with !Mutate = "{name} : {value_type(ty)} @ {width_badge(ty)}"
+
+fn value_type(ty) with !Mutate = match chase_type_deep(ty) {
+  TReprPin(_, base) => show_type(base),
+  shown => show_type(shown),
+}
+
+// A width as the gradient settled it. A type that is still a variable has
+// no one width: every instantiation is specialized and takes its own (the
+// total monomorphization), so the floor the variable would read is not
+// what any caller runs. Under `name_type_vars` the variable reads as the
+// lowercase name a type parameter is written with — the case rule's own
+// spelling, which no judged type holds otherwise.
+fn width_badge(ty) with !Mutate = match chase_type_deep(ty) {
+  TVar(_) => "per instantiation",
+  TName(n, []) => if is_type_param_name(n) { "per instantiation" } else { known_width(TName(n, [])) },
+  chased => known_width(chased),
+}
+
+fn known_width(ty) with !Mutate = "{repr_name(repr_of(ty))} ({pin_word(ty_has_repr_pin(ty))})"
+
+// A declaration's body, read off the decls column by the index the emit
+// demands schedule twins through (`fanout_decls_index`), so the two cannot
+// disagree about which declaration a name is. A list: none, or one.
+fn decl_body(name: String) with !Mutate = match smap_get(fanout_decls_index(), name) {
+  Some(h) => match graph_node_body(h) {
+    NStmt(FnStmt(_, _, _, _, body)) => [node_handle(body)],
+    _ => [],
+  },
+  None => [],
+}
+
+// A name with no global entry is a LOCAL: a parameter, a let, a pattern's
+// part, a function literal's parameter. It is found the way the judgment
+// drew it — from each reference to the name in the module the question is
+// about (`graph_refs_at`) along the reference's link (`graph_link_of`) to
+// the cell it reads. One binder answers its badge alone; several, each
+// with where it is first read, which is what tells them apart on the page.
+// A binder nothing reads has no edge to follow and is not listed.
+fn binder_badges(name: String, scope: String) with !Mutate = {
+  let reads = graph_refs_at(name) |> filter(read_in(scope, ??)) |> flat_map(linked_read) |> reverse
+  match unique(map(read_binder, reads)) {
+    [] => QRError("not found: {name} — no declaration of it, and no binder of it read in {scope}"),
+    [b] => QRWhere([named_badge(name, b)], []),
+    binders => QRWhere(map(binder_line(name, reads, ??), binders), []),
+  }
+}
+
+// One binder's badge with its own variables named: binders of one name in
+// different scopes share no variables, so each line names its own.
+fn named_badge(name: String, b) with !Mutate = {
+  let cp = graph_push_checkpoint()
+  name_type_vars([TVar(b)])
+  let line = value_badge(name, TVar(b))
+  graph_rollback(cp)
+  line
+}
+
+fn read_in(scope: String, r) with !Mutate =
+  byte_len(scope) == 0 || module_name_of_handle(graph_module_of(r)) == scope
+
+fn linked_read(r) with !Mutate = match graph_link_of(r) {
+  Some(b) => [(b, r)],
+  None => [],
+}
+
+fn read_binder(read) = match read {
+  (b, _) => b,
+}
+
+// The refs column prepends, so the reads arrive reversed into judgment
+// order; a binder's first read is the first of its reads.
+fn binder_line(name: String, reads, b) with !Mutate = match reads |> filter(read_of(b, ??)) |> head {
+  (_, r) => "{named_badge(name, b)} — first read at {show_span(span_of_node_raw(r))}",
+}
+
+fn read_of(b, read) = match read {
+  (rb, _) => rb == b,
 }
 
 // The ADT-roster projection (the confessed missing facet): every
@@ -1808,109 +1991,69 @@ fn ty_has_repr_pin(ty) with Pure = match ty {
   _ => false,
 }
 
-// The fn's fanout sites with their resolved schedules: find the decl,
-// walk its body tracking the enclosing `~>` chain nearest-first.
-fn fn_fanout_sites(name: String) with !Mutate = match graph_snapshot() {
-  Graph(next, _) => find_fn_fanouts(name, 0, next),
-}
-
-fn find_fn_fanouts(name: String, i, n) with !Mutate = if i >= n {
-  []
-} else {
-  match graph_node_body(i) {
-    NStmt(FnStmt(fname, _, _, _, body)) => if fname == name {
-      fanout_sites(node_handle(body), [], demanded_note(name))
-    } else {
-      find_fn_fanouts(name, i + 1, n)
-    },
-    _ => find_fn_fanouts(name, i + 1, n),
-  }
-}
-
-// A site's word is its own frame's schedule; a site whose frame installs
-// none also names the spawning schedules its CALLERS demand of it through
-// direct calls (B4) — the note computed once per fn, appended where the
-// frame's own word is Seq (an install in the frame wins).
-fn fanout_sites(h, tees, note: String) with !Mutate = {
+// The fanout sites of a body, each with the schedule its own frame
+// installs: the enclosing `~>` chain outermost first, the innermost
+// schedule-class install winning. A function literal's or a nested fn's
+// body is another frame, so its sites start a chain of their own.
+fn fanout_sites(h, tees) with !Mutate = {
   let body = graph_node_body(h)
   match body {
-    NExpr(PipeExpr(PTee, l, r)) => fanout_sites(node_handle(l), [tee_handler_name(r)] ++ tees, note),
-    NExpr(FanoutExpr(branches)) => [(site_word(tees, note), span_of_node_raw(h))] ++ fanout_sites_list(branches, tees, note),
-    NExpr(PipeExpr(PFanout(_), l, r)) => // `<|` and the binary `><` pipe are fanout sites too
-    [(site_word(tees, note), span_of_node_raw(h))] ++ fanout_sites(node_handle(l), tees, note) ++ fanout_sites(node_handle(r), tees, note),
-    NExpr(CallExpr(f, args)) => if callee_is_fanout(f) {
-      [(site_word(tees, note), span_of_node_raw(h))] ++ fanout_sites_list(args, tees, note)
+    NExpr(PipeExpr(PTee, l, r)) => fanout_sites(node_handle(l), push(tees, tee_handler_name(r))),
+    NExpr(FanoutExpr(_)) => [where_site(h, Branches(FanDistribute, boundary_width(h)), tees)] ++ child_sites(body, tees),
+    NExpr(PipeExpr(PFanout(fan), _, _)) => [where_site(h, Branches(fan, boundary_width(h)), tees)] ++ child_sites(body, tees),
+    NExpr(CallExpr(f, _)) => if callee_is_fanout(f) {
+      [where_site(h, PerElement, tees)] ++ child_sites(body, tees)
     } else {
-      fanout_sites_children(body_child_handles(body), tees, note)
+      child_sites(body, tees)
     },
-    NExpr(LambdaExpr(_, lb)) => // the frame fence, statically mirrored — and no demand
-    // crosses into a function value
-    fanout_sites(node_handle(lb), [], ""),
-    NStmt(FnStmt(_, _, _, _, fb)) => fanout_sites(node_handle(fb), [], ""),
-    _ => fanout_sites_children(body_child_handles(body), tees, note),
+    NExpr(LambdaExpr(_, lb)) => fanout_sites(node_handle(lb), []),
+    NStmt(FnStmt(_, _, _, _, fb)) => fanout_sites(node_handle(fb), []),
+    _ => child_sites(body, tees),
   }
 }
 
-fn site_word(tees, note: String) = {
-  let word = schedule_word(tees)
-  if str_eq(word, "Seq") { word ++ note } else { word }
+fn child_sites(body, tees) with !Mutate =
+  body_child_handles(body) |> flat_map(fanout_sites(??, tees))
+
+fn where_site(h, shape, tees) with !Mutate =
+  WhereSite({schedule: schedule_of(tees), shape: shape, span: span_of_node_raw(h), vias: []})
+
+// The branch edges the judgment drew at the site, one per branch (the
+// `><` and `<|` judgments both write a FanoutBoundary). A fanout the
+// judgment never reached holds none of its own.
+fn boundary_width(h) with !Mutate = match graph_boundary_at(h) {
+  FanoutBoundary(edges) => len(edges),
+  NoBoundary => 0,
+  PendingContinuationBoundary(_, _, _, _) => 0,
+  ContinuationBoundary(_) => 0,
+  InterpBoundary(_) => 0,
 }
 
-fn fanout_sites_list(nodes, tees, note: String) with !Mutate = match nodes {
-  [] => [],
-  [nh, ...rest] => fanout_sites(node_handle(nh), tees, note) ++ fanout_sites_list(rest, tees, note),
-}
-
-fn fanout_sites_children(hs, tees, note: String) with !Mutate = match hs {
-  [] => [],
-  [ch, ...rest] => fanout_sites(ch, tees, note) ++ fanout_sites_children(rest, tees, note),
-}
-
-// THE DEMANDED SCHEDULES of a fn: every spawning schedule a caller's `~>`
-// install reaches this fn under, through direct calls — the same fanout
-// reach the emit demands twins by (`fanout_reach_names`, graph.mn), read at
-// the weave: a call standing inside a Thread-class extent demands its
-// callee; a demanded fn that reaches a fanout demands ITS direct callees in
-// turn; a callee whose row forbids `Thread` takes no demand. Rendered as
-// "; Thread demanded via <fn>" after the frame's own word.
-fn demanded_note(name: String) with !Mutate = {
-  let reach = fanout_reach_names()
-  match graph_snapshot() {
-    Graph(next, _) => match demand_seeds(0, next, []) {
-      seeds => match demand_close(seeds, reach, name, [], 0) {
-        [] => "",
-        vias => "; Thread demanded via {fold("", vias_text, vias)}",
-      },
-    },
-  }
+// THE CALLERS THAT DEMAND A FN THREADED, by the rule the emit demands its
+// schedule twins by: a call standing inside a Thread-class install demands
+// its callee, and a demanded fn whose direct-call reach holds a fanout
+// (`fanout_reach_ask`, graph.mn — the one home of that rule) hands the
+// demand to its direct callees in turn. The seeds are read off the decls
+// column; each caller's demand is walked once per fn it reaches.
+fn demanded_vias(name: String) with !Mutate = {
+  let decls = fanout_decls_index()
+  let seeds = fold([], decl_seeds, graph_decls_at())
+  seeds |> map(seed_via) |> unique |> filter(demand_reaches(decls, seeds, name, ??))
 }
 
 // Every (callee, via) a Thread-class install demands directly: the calls
-// standing in the extent of such an install, in the frame of the fn `via`.
-fn demand_seeds(i, n, acc) with !Mutate = if i >= n {
-  acc
-} else {
-  match graph_node_body(i) {
-    NStmt(FnStmt(fname, _, _, _, body)) => demand_seeds(i + 1, n, extent_calls(node_handle(body), [], fname, acc)),
-    _ => demand_seeds(i + 1, n, acc),
-  }
+// standing in the extent of such an install, each paired with the fn whose
+// frame holds the install.
+fn decl_seeds(acc, h) with !Mutate = match graph_node_body(h) {
+  NStmt(FnStmt(fname, _, _, _, body)) => extent_calls(node_handle(body), [], fname, acc),
+  _ => acc,
 }
 
 fn extent_calls(h, tees, via: String, acc) with !Mutate = {
   let body = graph_node_body(h)
   match body {
-    NExpr(PipeExpr(PTee, l, r)) => extent_calls(node_handle(l), [tee_handler_name(r)] ++ tees, via, acc),
-    NExpr(CallExpr(f, args)) => {
-      let acc2 = if str_eq(schedule_word(tees), "Thread") {
-        match f {
-          N(NExpr(VarRef(callee)), _, _) => push(acc, (callee, via)),
-          _ => acc,
-        }
-      } else {
-        acc
-      }
-      fold(acc2, extent_calls_step(tees, via), map(node_handle, args))
-    },
+    NExpr(PipeExpr(PTee, l, r)) => extent_calls(node_handle(l), push(tees, tee_handler_name(r)), via, acc),
+    NExpr(CallExpr(f, _)) => fold(seed_call(acc, f, tees, via), extent_calls_step(tees, via), body_child_handles(body)),
     NExpr(LambdaExpr(_, _)) => acc,
     NStmt(FnStmt(_, _, _, _, _)) => acc,
     _ => fold(acc, extent_calls_step(tees, via), body_child_handles(body)),
@@ -1919,130 +2062,110 @@ fn extent_calls(h, tees, via: String, acc) with !Mutate = {
 
 fn extent_calls_step(tees, via: String, acc, h) with !Mutate = extent_calls(h, tees, via, acc)
 
-// Close the seeds over the fanout reach: a demanded fn that reaches a
-// fanout hands the demand to its direct callees. Bounded by the fn count.
-fn demand_close(seeds, reach, name: String, vias, round) with !Mutate = {
-  let hit = seeds |> filter({ (callee, _) => str_eq(callee, name) }) |> map({ (_, via) => via })
-  let vias2 = fold(vias, note_via, hit)
-  if round >= len(reach) {
-    vias2
-  } else {
-    let next =
-      seeds |> filter({ (callee, _) => string_in_list(reach, callee) }) |> flat_map(callee_demands)
-    if len(next) == 0 { vias2 } else { demand_close(next, reach, name, vias2, round + 1) }
+fn seed_call(acc, f, tees, via: String) with !Mutate = if schedule_is_threaded(schedule_of(tees)) {
+  match f {
+    N(NExpr(VarRef(callee)), _, _) => push(acc, (callee, via)),
+    _ => acc,
   }
-}
-
-fn note_via(vias, via: String) = if string_in_list(vias, via) { vias } else { push(vias, via) }
-
-fn vias_text(acc: String, via: String) = if byte_len(acc) == 0 { via } else { "{acc}, {via}" }
-
-// The direct callees of a demanded fn, each demanded under the same via.
-fn callee_demands(seed) with !Mutate = match seed {
-  (callee, via) => match graph_snapshot() {
-    Graph(next, _) => fn_body_handle(callee, 0, next) |> match_body_calls(via),
-  },
-}
-
-fn match_body_calls(via: String, bh) with !Mutate = match bh {
-  None => [],
-  Some(h) => match fanout_fact((false, []), h) {
-    (_, callees) => map({ c => (c, via) }, callees),
-  },
-}
-
-fn fn_body_handle(name: String, i, n) with !Mutate = if i >= n {
-  None
 } else {
-  match graph_node_body(i) {
-    NStmt(FnStmt(fname, _, _, _, body)) => if str_eq(fname, name) { Some(node_handle(body)) } else { fn_body_handle(name, i + 1, n) },
-    _ => fn_body_handle(name, i + 1, n),
-  }
+  acc
+}
+
+fn seed_via(seed) = match seed {
+  (_, via) => via,
+}
+
+// Whether `via`'s demand reaches `name`: a round asks the reach rule of
+// every callee not yet walked, the ones whose reach holds a fanout hand the
+// demand to their direct callees, and the walk ends when a round meets
+// `name` or adds nothing new.
+fn demand_reaches(decls, seeds, name: String, via: String) with !Mutate = demand_round(
+  decls,
+  name,
+  seeds |> filter(seeded_by(via, ??)) |> map(seed_callee),
+  {memo: smap_new(), walked: smap_new()}
+)
+
+fn seeded_by(via: String, seed) = match seed {
+  (_, v) => str_eq(v, via),
+}
+
+fn seed_callee(seed) = match seed {
+  (callee, _) => callee,
+}
+
+fn demand_round(decls, name: String, frontier, st) with !Mutate = match fold((false, [], st), demand_step(decls, name, ??, ??), frontier) {
+  (true, _, _) => true,
+  (false, [], _) => false,
+  (false, next, st2) => demand_round(decls, name, next, st2),
+}
+
+fn demand_step(decls, name: String, acc, callee: String) with !Mutate = match acc {
+  (true, _, _) => acc,
+  (false, next, st) => if smap_has(st.walked, callee) {
+    acc
+  } else {
+    match fanout_reach_ask(st.memo, decls, callee) {
+      (found, memo) => {
+        let walked = smap_add(st.walked, callee, 1)
+        if found && str_eq(callee, name) {
+          (true, next, {memo: memo, walked: walked})
+        } else if found {
+          (false, fold(next, push, direct_callees(decls, callee)), {memo: memo, walked: walked})
+        } else {
+          (false, next, {memo: memo, walked: walked})
+        }
+      },
+    }
+  },
+}
+
+// The names a declaration calls directly, at its own frame (`fanout_fact`,
+// the pass the reach rule itself reads).
+fn direct_callees(decls, name: String) with !Mutate = match smap_get(decls, name) {
+  Some(h) => match graph_node_body(h) {
+    NStmt(FnStmt(_, _, _, _, body)) => match fanout_fact((false, []), node_handle(body)) {
+      (_, callees) => callees,
+    },
+    _ => [],
+  },
+  None => [],
 }
 
 // The capability-at-tee projection (§11 6.3's felt face): every `~>`
-// install in the fn's body rendered with the effect set its handler
-// absorbs — the modality as a DERIVED badge (output, never input),
-// read from the graph's own facts: the install node, the handler's
-// arms, each arm op's EffectOpScheme ename.
-fn fn_tee_lines(name: String) with !Mutate = match graph_snapshot() {
-  Graph(next, _) => find_fn_tees(name, 0, next),
-}
-
-fn find_fn_tees(name: String, i, n) with !Mutate = if i >= n {
-  []
-} else {
-  match graph_node_body(i) {
-    NStmt(FnStmt(fname, _, _, _, body)) => if fname == name { tee_lines(node_handle(body)) } else { find_fn_tees(name, i + 1, n) },
-    _ => find_fn_tees(name, i + 1, n),
-  }
-}
-
+// install in a body rendered with the effects its handler answers — the
+// modality as a DERIVED badge (output, never input), read off the
+// handler's arms by the judgment's own reader (`handler_effect_names`).
 fn tee_lines(h) with !Mutate = {
   let body = graph_node_body(h)
   match body {
-    NExpr(PipeExpr(PTee, l, r)) => {
-      let hn = tee_handler_name(r)
-      let line = if hn == "" {
-        []
-      } else {
-        ["~> {hn} absorbs {handler_absorbs_str(hn)} at {show_span(span_of_node_raw(h))}"]
-      }
-      line ++ tee_lines(node_handle(l))
-    },
-    NExpr(LambdaExpr(_, lb)) => tee_lines(node_handle(lb)),
-    NStmt(FnStmt(_, _, _, _, fb)) => tee_lines(node_handle(fb)),
-    _ => tee_lines_children(body_child_handles(body)),
+    NExpr(PipeExpr(PTee, l, r)) => tee_line(h, tee_handler_name(r)) ++ tee_lines(node_handle(l)),
+    _ => body_child_handles(body) |> flat_map(tee_lines),
   }
 }
 
-fn tee_lines_children(hs) with !Mutate = match hs {
-  [] => [],
-  [ch, ...rest] => tee_lines(ch) ++ tee_lines_children(rest),
+fn tee_line(h, hn: String) with !Mutate = if byte_len(hn) == 0 {
+  []
+} else {
+  match handler_arms(hn) {
+    Some(arms) => ["~> {hn} absorbs {join(" + ", handler_effect_names(arms))} at {show_span(span_of_node_raw(h))}"],
+    None => ["~> {hn} at {show_span(span_of_node_raw(h))} — no handler declaration by that name"],
+  }
 }
 
-// The handler's absorbed effect set: each arm's op resolves to its
-// EffectOpScheme's ename; distinct names join with " + ".
-fn handler_absorbs_str(hname: String) = match env_lookup(hname) {
+fn handler_arms(hname: String) = match env_lookup(hname) {
   Some(entry) => match entry {
-    (_, _, HandlerKind(_, _, _, _, arms)) => absorbs_join(arms, 0, len(arms), []),
-    _ => "?",
+    (_, _, HandlerKind(_, _, _, _, arms)) => Some(arms),
+    _ => None,
   },
-  None => "?",
+  None => None,
 }
 
-fn absorbs_join(arms, i, n, seen) = if i >= n {
-  join_names(seen, 0, len(seen), "")
-} else {
-  match env_lookup(handler_arm_op_name(list_index(arms, i))) {
-    Some((_, _, EffectOpScheme(ename, _, _, _))) => if name_in(seen, ename, 0, len(seen)) {
-      absorbs_join(arms, i + 1, n, seen)
-    } else {
-      absorbs_join(arms, i + 1, n, seen ++ [ename])
-    },
-    _ => absorbs_join(arms, i + 1, n, seen),
-  }
-}
-
-fn name_in(xs, x: String, i, n) =
-  if i >= n { false } else { if list_index(xs, i) == x { true } else { name_in(xs, x, i + 1, n) } }
-
-fn join_names(xs, i, n, acc: String) = if i >= n {
-  acc
-} else {
-  join_names(
-    xs,
-    i + 1,
-    n,
-    if byte_len(acc) == 0 { list_index(xs, i) } else { "{acc} + {list_index(xs, i)}" }
-  )
-}
-
-// A tee whose handler expression is not a named reference has no name
-// to classify — "" is the frame-fence sentinel schedule_in_stack itself
-// reads (lower.mn: a "" stack entry answers Seq), not a fabrication:
-// schedule_word env-lookups it to None and walks past, exactly as the
-// lower-side twin fences the unnameable frame.
+// A tee whose handler expression is not a named reference has no name to
+// classify — "" is the frame-fence sentinel schedule_installed itself reads
+// (lower.mn: a "" stack entry is the fence), not a fabrication: no
+// declaration answers it, so its class is a dispatch and the schedule read
+// walks past it.
 fn tee_handler_name(r) = match graph_node_body(node_handle(r)) {
   NExpr(VarRef(n)) => n,
   NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
@@ -2054,56 +2177,43 @@ fn tee_handler_name(r) = match graph_node_body(node_handle(r)) {
   "",
 }
 
-// Nearest install first, exactly schedule_in_stack's order: the first
-// handler covering a schedule effect names the strategy; none → Seq.
-fn schedule_word(tees) = match tees {
-  [] => "Seq",
-  [h, ...rest] => if handler_covers(h, "Thread") {
-    "Thread"
-  } else if handler_covers(h, "Simd") {
-    "Simd"
-  } else if handler_covers(h, "Gpu") {
-    "Gpu"
-  } else if handler_covers(h, "Persist") {
-    "Persisted"
-  } else {
-    schedule_word(rest)
+// The schedule a site runs under: the innermost install whose class is a
+// schedule, read off the roster the judgment prices an install by and the
+// lowering lowers it by (`projection_of_effects`); Seq when none is.
+fn schedule_of(tees) = fold(Seq, inner_schedule, tees)
+
+fn inner_schedule(acc, hname: String) = match handler_arms(hname) {
+  Some(arms) => match projection_of_effects(handler_effect_names(arms)) {
+    PSchedule(s) => s,
+    PDispatch => acc,
+    PDerivative => acc,
   },
+  None => acc,
 }
 
-// Does handler hname have an arm for any op the effect ename declares?
-// Two env reads — the handler's arms and the effect's op roster. Both
-// lists are env-stored (snoc/slice representations), so the walks are
-// index-based — a list PATTERN on a non-flat list is the flat-protocol
-// trap (the parse_query_string lesson, §7 face 13).
-fn handler_covers(hname: String, ename: String) = match env_lookup(hname) {
-  Some(entry) => match entry {
-    (_, _, HandlerKind(_, _, _, _, arms)) => match env_lookup(ename) {
-      Some(eentry) => match eentry {
-        (_, _, EffectDeclKind(ops)) => arms_cover_ops(arms, ops, 0, len(arms)),
-        _ => false,
-      },
-      None => false,
-    },
-    _ => false,
-  },
-  None => false,
+fn schedule_is_seq(s) = match s {
+  Seq => true,
+  Threaded => false,
+  Simd => false,
+  Gpu => false,
+  Persisted => false,
 }
 
-fn arms_cover_ops(arms, ops, i, n) = if i >= n {
-  false
-} else {
-  if ops_contain(ops, handler_arm_op_name(list_index(arms, i)), 0, len(ops)) {
-    true
-  } else {
-    arms_cover_ops(arms, ops, i + 1, n)
-  }
+fn schedule_is_threaded(s) = match s {
+  Threaded => true,
+  Seq => false,
+  Simd => false,
+  Gpu => false,
+  Persisted => false,
 }
 
-fn ops_contain(ops, target: String, i, n) = if i >= n {
-  false
-} else {
-  if list_index(ops, i) == target { true } else { ops_contain(ops, target, i + 1, n) }
+// The schedule as `where` names it (SYNTAX's `>< [Thread ×4]`).
+fn schedule_word(s) = match s {
+  Seq => "Seq",
+  Threaded => "Thread",
+  Simd => "Simd",
+  Gpu => "Gpu",
+  Persisted => "Persisted",
 }
 
 // span_of_handle — the node's source span, read live from its Reason chain

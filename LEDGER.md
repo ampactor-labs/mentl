@@ -35,6 +35,68 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-02 · pin 713745c6a557dc01 (CLEAN m2 == m3) · `WHERE` RENDERS WHAT
+  SYNTAX PROMISES: EACH FANOUT SITE AS ITS AUTHOR WROTE IT WITH THE BRANCHES
+  IT SPAWNS, A FUNCTION'S HEAD WITH ITS INFERRED ROW, AND THE WIDTH OF EVERY
+  PARAMETER AND LOCAL, GENERICS NAMED AS A DEVELOPER WRITES THEM. On boot
+  b400dc74 `mentl where` printed `>< [Thread]` where SYNTAX promises `><
+  [Thread ×4]`; the same `><` for a `<|` site and for the sequence fanout;
+  an empty `→` line for every function with no install or fanout site;
+  `not found` for every parameter and local, so SYNTAX's own example, `s :
+  Float @ f32 (pinned)` over a parameter, could not be asked; and every
+  generic type as a debug handle (`t14162@e15942`). (S) A site is a record
+  (`WhereSite`): the shape its author wrote — `Branches(FanOwnership, n)`,
+  n the branch edges its boundary holds, or `PerElement` — the schedule
+  its own frame installs, read through the ONE roster the judgment prices
+  an install by and the lowering lowers it by (`projection_of_effects`
+  over the judgment's `handler_effect_names`; the string-keyed walk that
+  re-derived the class with its own arm-cover test is deleted with it),
+  and the callers that demand it threaded where its frame installs none.
+  (D) The demand is read by the emit's own rule: seeds off the decls
+  column, each callee asked through `fanout_reach_ask` (graph.mn), now the
+  one home of the ask the emit's spec registry wrote inline. The
+  whole-program reach closure that stood beside the rule had one reader,
+  this verb, which built it by scanning every graph handle and found a
+  declaration's body by name with a second scan; both read the decls
+  column now and the closure is deleted. (H) A function answers its head
+  with the row inference projected (`ticks(x) with Tick` — A4: the
+  signature carries decisions, so the row is read here), each parameter's
+  width, its return's, then its installs and sites. (L) A name with no
+  global entry is a local, found the way the judgment drew it: each
+  reference to it in the module the question is about, along the
+  reference's link to the cell it reads; the question carries its module
+  (`QWhere(name, scope)`), since the link's other modules read names of
+  their own. (N) A type variable still free renders as the name a
+  developer would write: inside a checkpoint each is bound to the name it
+  was declared with or the first letter free, the one renderer runs, and
+  the rollback leaves the graph as found; its width reads `per
+  instantiation`, every instantiation being specialized and taking its
+  own. Eight assertions RED on the boot and green through m2 — `>< [Thread
+  ×3]`, `<| [Seq ×2]`, `fanout [Seq, a branch per element]`, `→ ticks(x)
+  with Tick`, `x : Int @ i32 (inferred)`, `s : Float @ f32 (pinned)`,
+  `scale : Float @ f64 (inferred)`, `a : a @ per instantiation` — and the
+  three standing schedule badges carry their widths. The flatten before
+  the query parser's list match is deleted with the comment that
+  justified it: a list pattern reads any representation through the one
+  length header. KILLS: (1) one naming pass across a name's binders — the
+  first m2 named four unrelated parameters called `a` as `a : a`, `a : b`,
+  `a : c`, `a : d`, letters that claimed a relation four scopes do not
+  share; each binder names its own. (2) `own` as a pattern binder — a
+  keyword, the first m2 refused with `E_MissingVariable`. A refusal on the
+  way: the comment-ref ratchet (0 → 3) caught three generated display
+  names written as backticked references in one comment. FOUND AND BANKED,
+  not fixed: filling the voice's gradient field would put proposals in the
+  editor's code-action menu that do nothing, because an LSP code action's
+  edit is the empty string and its JSON drops it
+  (`Hβ.voice.situation-gradient-is-never-filled` carries both halves of
+  the build now); `type of`, `why` and `flow of` still answer "not found"
+  for a local, and an unreferenced binder has no edge to find it by
+  (`Hβ.query.name-keyed-verbs-miss-locals`); every other surface still
+  renders free variables as handles, and a row variable keeps its handle
+  everywhere (`Hβ.voice.free-variables-render-as-handles`). The march's m3
+  leg read 992,672 KB against the fixed-input reads of 1,002,888–1,003,488
+  KB, inside the spread; the ceiling rose to 1,014,000 on those reads.
+  Cost: m3 leg 14.99s wall · 969MB peak RSS (992672 KB).
 - 2026-10-02 · pin b400dc74f2500a60 (CLEAN m2 == m3) · THE GRADIENT PROPOSES
   WHAT THE PROGRAM OWES: A PRECONDITION OR A RETURN CONTRACT PROVEN IN A
   BRACKET BY THE JUDGMENT'S OWN DECISIONS, RANKED BY WHAT IT DISCHARGES, AND
