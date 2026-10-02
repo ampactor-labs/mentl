@@ -1,0 +1,7 @@
+// teach 5: need
+// No refinement in reach excludes zero, so there is no annotation to
+// propose: the medium says what the parameter needs rather than offer a
+// clause that leaves the division unproven.
+fn inv(n) = 100 / n
+
+fn main() = inv(5)

@@ -1568,14 +1568,26 @@ fn unary_op_glyph(op) with Pure = match op {
 // is `Hβ.fmt.literal-spelling-is-intent`. Homed beside the formatter
 // because it is the formatter's law: the fmt verb's write and an accepted
 // clause's splice both answer to it.
-fn lost_atoms(src_toks, out_toks) = match fold((fold(smap_new(), atom_counted, out_toks), []), atom_spent, src_toks) {
+fn lost_atoms(src_toks, out_toks) = lost_atoms_beside(src_toks, out_toks, [])
+
+// The census of an edit that replaces a written name with one that states
+// it: each name in `stated` is counted as present once — an accepted
+// refinement over `n: Int` writes `n: NonZero`, and `Int` survives as the
+// base NonZero's own declaration names (D4). Nothing else is admitted.
+fn lost_atoms_beside(src_toks, out_toks, stated: [String]) = match fold(
+  (fold(fold(smap_new(), atom_counted, out_toks), key_counted, stated), []),
+  atom_spent,
+  src_toks
+) {
   (_, lost) => lost,
 }
 
 fn atom_counted(counts, t) = match atom_key(t) {
-  Some(k) => smap_add(counts, k, atom_count(counts, k) + 1),
+  Some(k) => key_counted(counts, k),
   None => counts,
 }
+
+fn key_counted(counts, k: String) = smap_add(counts, k, atom_count(counts, k) + 1)
 
 fn atom_spent(acc, t) = match acc {
   (counts, lost) => match atom_key(t) {

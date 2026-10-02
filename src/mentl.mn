@@ -30,38 +30,30 @@ import query
 // Mentl-owned ADTs (the Annotation a suggestion carries lives in types.mn,
 // beside the suggestion that carries it)
 //
-// handler_name, the target fn's handle, span;
-// proposes wrapping the target's body in a
-// handler that absorbs an offending effect
+// What a proven ABSENCE guarantees, named for the developer: a lock's label.
+// Each is a guarantee the row proves and a caller may rely on, never an
+// optimization the medium performs. The vocabulary once named five the
+// medium never does — memoization, compile-time evaluation, automatic
+// parallelization, bounds-check elimination and zero-copy transfer — and
+// the gradient ranked by COUNTING them, so `with Pure` won every tie on the
+// strength of three promises nothing kept (D4, 2026-10-02).
 type Capability
-  = CMemoize
-  | CParallelize
-  | CCompileTimeEval
-  | CRealTime
+  // !Alloc: a real-time callback may call it
+  = CRealTime
+  // !IO: it touches no file and no console
+  | CIsolated
+  // !Network: it reaches no network
   | CSandbox
-  | CEliminateBoundsCheck
-  | CZeroCopy
-  | CDeterministicDrop
-  // The general severance's unlock: the proven absence of a NAMED
-  // effect (the crown's own vocabulary as a capability label).
-  // Appended LAST so existing variant tags are unshifted.
+  // !Trap: no partial primitive it reaches can fail
+  | CTotal
+  // Pure: it performs nothing at all
+  | CPure
+  // !E for an effect with no domain meaning: the absence itself
   | CProvenAbsence(String)
 
+// span to replace, new text — the voice's edit request
 type Patch = Patch(Span, String)
 
-// span to replace, new text
-type Explanation = Explanation(String, String, String, Option(Patch), Reason)
-
-// code: E_MissingVariable, V_Pending, W_Suggestion, …
-//
-// canonical_md: docs/errors/<code>.md
-//
-// summary: one-line human-readable
-//
-// fix, present when MachineApplicable
-//
-// reason_chain: the Why chain
-//
 // The propose projection is `Proposal` (types.mn), beside the `Domain` its
 // value question carries: one VERDICT plus every vocabulary candidate the
 // ALLOWED row refused, each refusal keeping its Why (PLAN §5: the row pruning
@@ -79,25 +71,22 @@ type Context = Context([(String, Binding, Reason, SchemeKind)], EffRow, String, 
 // bound. The cursor carries the row handle,
 // never a lossy name-list re-derived from it
 // (Carried-Truth).
-type Candidate = Candidate(Node, Reason)
-
-// AST fragment + why it was proposed
 //
-// Teach effect — the five tentacle entry points (PLAN §1). `mentl_default`
-// projects the substrate for the developer: hover, gradient, why-chain, error catalog,
-// unlock preview.
+// Teach effect — the gradient and the Why, the two tentacles the cursor asks
+// of the substrate at a position. The effect once carried three more — a
+// hover accumulator, an error-catalog lookup and an unlock preview — that
+// nothing in the medium ever performed (`mentl query src/main.mn
+// unreferenced` named all three), with a handler arm and a catalog of
+// summaries behind them; they are deleted with D4 rather than kept as
+// promises.
 effect Teach {
-  teach_here(String, Span, Ty)
-  teach_gradient(Int) -> Option(AnnotationSuggestion)
+  teach_gradient(Int) -> Teaching
   teach_why(Int) -> Reason
-  teach_error(String, Span, Reason) -> Explanation
-  teach_unlock(Annotation) -> Capability
 }
 
 // ═══ Synth effect — proposers as handlers ══════════════════════════  // drift-audit: ignore — D.1.R reserved block; decoration removal is a separate sub-handle
-// Three ops: propose (main), verify_candidate (Mentl-internal),
-// enumerate_inhabitants (multi-shot raw). Any proposer — enumerative,
-// SMT, LLM, user — plugs in as a handler. The compiler verifies.
+// Any proposer — enumerative, SMT, LLM, user — plugs in as a handler; the
+// compiler verifies, inside the proposer's own segment walk.
 effect Synth {
   // the verdict with its Why + row-rejected vocabulary with theirs.
   // The target TYPE is not a parameter: the Context carries the hole's
@@ -106,14 +95,12 @@ effect Synth {
   // from the cell it described — and did, for exactly as long as the
   // proof gate compared candidates against it instead of against the cell.
   synth_propose(EffRow, Context) -> Proposal
-  verify_candidate(Candidate, Int) -> Bool
 }
 
-// Default Teach handler — the substrate's self-projection. Reads the graph through
-// GraphRead. Accumulates `teach_here` entries so the driver renders them as hover info.
-// Gradient and why use the speculative oracle and reason DAG respectively.
-handler mentl_default with annotations = [], performed = [] {
-  teach_here(name, span, ty) => resume() with annotations = [(name, span, ty)] ++ annotations,
+// Default Teach handler — the substrate's self-projection, reading the graph
+// through GraphRead: the gradient by the bracket that proves each annotation,
+// the Why by the reason DAG.
+handler mentl_default with performed = [] {
   teach_gradient(handle) => // The link's PERFORMED-name union, computed once and held as
   // handler state (handler = state — the Mentl-native memo): the
   // severance vocabulary is what the program actually performs, so
@@ -127,53 +114,68 @@ handler mentl_default with annotations = [], performed = [] {
     resume(gradient_next(handle, performed))
   },
   teach_why(handle) => resume(why_from_handle(handle)),
-  teach_error(code, span, reason) => resume(Explanation(code, "docs/errors/{code}.md", catalog_summary(code), None, reason)),
-  teach_unlock(annotation) => resume(unlock_capability(annotation)),
 }
 
-// Speculative oracle: for each candidate annotation, checkpoint → tentative apply →
-// run unification → record → rollback. Only PROVEN annotations reach the user.
-// The trail (graph.mn) makes the run O(M) where M = mutations recorded.
+// THE GRADIENT AT A DECLARATION (D4, 2026-10-02). Every annotation the
+// gradient proposes is PROVEN in a checkpoint bracket by the judgment's own
+// functions — the row gate's subsumption for a clause, the ledger's own
+// decision for a precondition's obligations and the call site's own claim
+// for its callers, the authored return's own claim for a postcondition — and
+// its leverage is what the bracket measured. Until D4 the gradient proposed
+// effect clauses alone, so at `fn inv(n) = 100 / n`, whose one unproven fact
+// is that `n` may be zero, it answered `with !Alloc`; the refinement that
+// makes the division total was promised by SYNTAX's partiality section and
+// had no constructor.
 //
-// Returns Option(AnnotationSuggestion) per Hμ.cursor §2 + GR §3.2 (live).
-// Internally pick_highest_leverage produces Option<(Annotation, Capability)>;
-// `to_annotation_suggestion` wraps at the boundary with kind / annotation
-// text / unlocked-capability labels / Reason — the public shape Cursor
-// reads off CursorView.teach.
+// The positions a declaration offers: each parameter its open obligations
+// lean on, the return when callers' open claims rest on it, and the row
+// clause while no row is authored (a row the author wrote is either tight or
+// proven over-declared, and that proof — T_OverDeclared, banked for `mentl
+// tighten` — is what the render layer reads instead).
 fn gradient_next(handle, performed) = match graph_node_body(handle) {
-  NStmt(FnStmt(_, _, _, effs, _)) => // The gradient teaches at a DECLARATION, where an annotation can be
-  // written, and only while it carries no authored row. A row the author
-  // wrote is either already tight or proven over-declared, and that proof —
-  // the judgment's T_OverDeclared, banked for `mentl tighten` — is the teach
-  // the render layer reads beside this (`banked_tightening`). Measured before
-  // (2026-09-25): `fn step(x) with !Alloc` and `fn add_pure(a, b) with Pure`
-  // were both told to add `!Alloc`, and the address surface fired at call
-  // sites (`fold(`, a fn used as a value) where no annotation can be written.
-  if len(effs) > 0 { None } else { gradient_at_decl(handle, performed) },
-  _ => None,
+  NStmt(FnStmt(name, params, retty, effs, body)) => match graph_chase(handle) {
+    GNode(NBound(ty), anchor) => match ty {
+      TFun(_, ret, _) => decl_teaching(
+        Decl({
+          anchor: anchor,
+          body: body,
+          effs: effs,
+          handle: handle,
+          name: name,
+          params: params,
+          ret: ret,
+          retty: retty,
+          ty: ty,
+        }),
+        performed
+      ),
+      _ => TeachNone,
+    },
+    _ => TeachNone,
+  },
+  _ => TeachNone,
 }
 
-fn gradient_at_decl(handle, performed) = {
-  let node = graph_chase(handle)
-  match node {
-    GNode(_, anchor_reason) => match node {
-      GNode(kind, _) => match kind {
-        NBound(ty) => match ty {
-          TFun(_, _, _) => {
-            let proven = try_each_annotation(handle, gradient_candidates(ty, performed), ty)
-            match pick_highest_leverage(proven) {
-              None => None,
-              Some(pair) => match pair {
-                (ann, _cap) => Some(to_annotation_suggestion(ann, anchor_reason)),
-              },
-            }
-          },
-          _ => None,
-        },
-        _ => None,
+// One declaration as the gradient reads it: its handle and name, the
+// signature it was written with, the type it was judged at, and the reason
+// its suggestions anchor to.
+type Decl
+  = Decl({anchor: Reason, body: Node, effs: [(EffName, Bool, EConn)], handle: Int, name: String, params: [TParam], ret: Ty, retty: Node, ty: Ty})
+
+fn decl_teaching(d, performed) = match d {
+  Decl(f) => {
+    let owed = open_obligations(f.handle)
+    let rows = if len(f.effs) > 0 { [] } else { row_suggestions(f, performed) }
+    let proven = precondition_suggestions(f, owed) ++ return_suggestions(f) ++ rows
+    match rank_suggestions(proven) {
+      [] => need_or_none(f, owed),
+      [best, ...rest] => if lev_discharged(best) == 0 && has_need(f, owed) {
+        need_or_none(f, owed)
+      } else {
+        teaching_from(best, rest)
       },
-    },
-  }
+    }
+  },
 }
 
 // The link's performed-name union WITH PREVALENCE: every env scheme's
@@ -182,7 +184,7 @@ fn gradient_at_decl(handle, performed) = {
 // at the one memo point. The count grades the law's "E happens in this
 // program" — a name half the link performs makes a stronger severance
 // than one fn's plumbing effect — and the sort IS the tie-ranking:
-// pick_highest_leverage's fallback takes the first proven candidate,
+// the ranking's stable insertion keeps the first proven candidate,
 // so equal-leverage generics resolve by prevalence, never by env
 // enumeration order (the uniform-!SmtSolver symptom). The env is the
 // one home the QEffects facet already reads per name; this is the
@@ -249,24 +251,17 @@ fn severance_negations(performed) = match performed {
   },
 }
 
-// The gradient's candidate enumeration, read by `gradient_at_decl`. The
-// severance vocabulary IS the link's performed set: one ANotEffect
-// candidate per performed name (known names keep their rich capability
-// labels through capabilities_for_severance), each proven by the same
-// negation-narrowing row read. `!E` is informative exactly when E happens
-// in this program and is absent from THIS fn's row — the proof loop
-// filters the present ones. Ownership markers are not candidates: the
-// apply step admits AOwn/ARef with no proof at all, so under a leverage
-// ranking they would win everywhere on no evidence, and an own/ref marker
-// is an Intent Boundary the author writes, never one the medium invents.
-fn gradient_candidates(ty, performed) = match ty {
-  TFun(_params, _ret, _row) => [APure(None)] ++ severance_negations(performed),
-  _ => [],
-}
+// The row clause's candidate enumeration: `with Pure`, then one ANotEffect
+// per name the link performs (known names keep their rich capability labels
+// through capabilities_for_severance), each proven by the same
+// negation-narrowing row read. `!E` is informative exactly when E happens in
+// this program and is absent from THIS fn's row — the proof filters the
+// present ones.
+fn gradient_candidates(performed) = [APure(None)] ++ severance_negations(performed)
 
 // The fork pre-warm's per-candidate step: a severance name meets the
 // intern table OUTSIDE any fork extent (the each in
-// try_each_annotation), so every in-fork intern_str is a probe HIT.
+// `row_suggestions`), so every in-fork intern_str is a probe HIT.
 fn intern_severance_name(ann) = match ann {
   ANotEffect(name, _) => {
     intern_str(name)
@@ -275,28 +270,14 @@ fn intern_severance_name(ann) = match ann {
   _ => (),
 }
 
-// Boundary wrap — the proven Annotation inside the speculative loop
-// becomes the public AnnotationSuggestion Cursor reads: the annotation
-// itself (its axis and its text are `suggestion_kind_of` and
-// `show_annotation`, read where rendered), the labels of every capability
-// it unlocks (`capabilities_for_annotation`, computed here where the
-// intern table answers), and the anchor's reason wrapped with Located.
-fn to_annotation_suggestion(ann, anchor_reason) = AnnotationSuggestion(
-  ann,
-  capability_labels(capabilities_for_annotation(ann)),
-  suggestion_reason(ann, anchor_reason)
-)
-
 // Map an Annotation variant to its SuggestionKind axis. Drift 8
 // closure: SuggestionKind is the tagged dispatch surface; the
 // match below is the only place the mapping lives.
 fn suggestion_kind_of(ann) with Pure = match ann {
   APure(_) => SuggestEffectRow,
-  ARefined(_, _, _) => SuggestRefinement,
-  AOwn(_, _) => SuggestOwnership,
-  ARef(_, _) => SuggestOwnership,
-  AWrapHandler(_, _, _) => SuggestEffectRow,
   ANotEffect(_, _) => SuggestEffectRow,
+  ARefined(_) => SuggestRefinement,
+  AReturns(_) => SuggestReturnType,
 }
 
 // Capability ADT to display label list. Used by AnnotationSuggestion.unlocks.
@@ -307,38 +288,40 @@ fn capability_labels(caps) = map(show_capability, caps)
 // Located/Unmarked chain that the Why-tentacle walks. Span comes from
 // the annotation's source-span field when present (user-originated
 // candidate), span_zero otherwise (fully internal speculation).
-fn suggestion_reason(ann, anchor) = {
+fn suggestion_reason(ann) = {
   let span = unwrap_source_span(annotation_source_span(ann))
   Located(span, Inferred(suggestion_kind_label(suggestion_kind_of(ann))))
 }
 
 fn annotation_source_span(ann) with Pure = match ann {
   APure(sp) => sp,
-  ARefined(_, _, sp) => sp,
-  AOwn(_, sp) => sp,
-  ARef(_, sp) => sp,
-  AWrapHandler(_, _, sp) => sp,
   ANotEffect(_, sp) => sp,
+  ARefined(_) => None,
+  AReturns(_) => None,
 }
 
 fn suggestion_kind_label(k) with Pure = match k {
   SuggestEffectRow => "gradient: effect-row tightening",
-  SuggestOwnership => "gradient: ownership marker",
-  SuggestRefinement => "gradient: refinement predicate",
-  SuggestReturnType => "gradient: result-type annotation",
+  SuggestRefinement => "gradient: a parameter's precondition",
+  SuggestReturnType => "gradient: a return contract",
 }
 
-// Try each candidate: checkpoint → tentative apply → verify → rollback.
-// Per-candidate is the divergent-fanout topology — each ann's
-// checkpoint isolates it from siblings, which IS the proof-search step;
-// map's tail loop runs them. Per-candidate proof on distinct cores
-// (peer Hβ.cursor.speculative-compile, needs per-thread graph) is a
-// `><` fanout under its own `~> Thread` at this site — the schedule is
-// read at the fanout's install, never across a call
-// (Hβ.lower.schedule-specialized-callee). Symmetric with the oracle's
-// per-position dispatch at src/oracle.mn:309.
-// Returns [(Annotation, Capability)] for annotations that passed.
-fn try_each_annotation(handle, candidates, base_ty) = {
+// A proven annotation and the position it annotates. The alternatives a
+// question chooses between share one position: a parameter, or the return.
+// Row clauses at one declaration are independent promises, never
+// alternatives — `!Alloc` does not exclude `!IO`.
+type Site = SiteParam(Int) | SiteReturn | SiteRow
+
+type Proven = Proven(Site, AnnotationSuggestion)
+
+// ── The row clause: a proven absence, locked ───────────────────────────
+//
+// Each candidate proven by the declaration gate's own engine: the narrowed
+// row bound in a checkpoint, the body's row asked to subsume it, rolled
+// back. A proven clause locks an absence the body already has — the gate
+// every edit of the body must meet — and discharges nothing.
+fn row_suggestions(f, performed) = {
+  let candidates = gradient_candidates(performed)
   // PRE-WARM THE INTERN below the fork marks: every severance name is
   // interned here ONCE, so every in-fork intern_str is a pure probe HIT.
   // A fork extent must never FIRST-intern — the table is durable state,
@@ -346,26 +329,584 @@ fn try_each_annotation(handle, candidates, base_ty) = {
   // reset zeroes it and the next candidate's probe walks garbage
   // (measured: the field leg trapped in intern_probe the moment this
   // site's heap leg landed — the image/scratch interleave's first live
-  // case, the two-channel design's own witness). The walk covers ANY
-  // candidate name — the fixed three-literal warm died with the trio.
-  //
+  // case, the two-channel design's own witness).
   candidates |> each(intern_severance_name)
-  candidates |> map((ann) => {
-    // The FORK TRIPLE (R6): this site held only the graph leg — the
-    // recon's "half a fork pair" — so a candidate's allocations
-    // outlived it and its world isolation rode extent-balance alone.
-    // All three legs now, the synth fan's exact shape.
-    //
+  candidates |> filter(row_clause_holds(f.handle, f.ty, ??)) |> map(row_suggestion(len(performed), ??))
+}
+
+// One candidate's bracket — the FORK TRIPLE (R6), the synth fan's exact
+// shape: the graph's checkpoint, the heap's mark, the world's top, each
+// restored, and a word carried out.
+fn row_clause_holds(handle, base_ty, ann) = {
+  let cp = graph_push_checkpoint()
+  let mark = heap_mark()
+  let w = world_top()
+  let proven = apply_annotation_tentatively(handle, ann, base_ty)
+  let ok = proven && verify_after_apply(handle)
+  graph_rollback(cp)
+  heap_reset(mark)
+  world_restore(w)
+  ok
+}
+
+// A clause's absences: `!E` locks one; `with Pure` locks every effect the
+// link performs, each of which it proves this declaration never reaches.
+fn row_suggestion(performed_count, ann) = Proven(
+  SiteRow,
+  AnnotationSuggestion(
+    ann,
+    Leverage({
+      absences: clause_absences(ann, performed_count),
+      discharged: 0,
+      locks: capability_labels(capabilities_for_annotation(ann)),
+      opened: 0,
+      refuted: 0,
+    }),
+    suggestion_reason(ann)
+  )
+)
+
+fn clause_absences(ann, performed_count) = match ann {
+  APure(_) => if performed_count > 1 { performed_count } else { 1 },
+  ANotEffect(_, _) => 1,
+  ARefined(_) => 0,
+  AReturns(_) => 0,
+}
+
+// ── The open obligations a declaration owes ────────────────────────────
+//
+// The ledger's open claims raised inside the declaration's extent IN ITS
+// OWN MODULE — the obligation carries its module, and every module numbers
+// its lines from 1, so an extent alone matches a stranger's claim at the
+// same lines. A claim pending over an authored hole is the hole's demand,
+// paid by its fill, and is the proposer's to answer.
+fn open_obligations(h) = verify_debt() |> filter(owed_at(graph_module_of(h), parse_span_of(h), ??))
+
+fn owed_at(m, sp, o) = match o {
+  (dm, dsp, pred, _) => dm == m && span_overlaps(sp, dsp) && !claim_is_a_holes_demand(pred),
+}
+
+// ── The precondition: an open obligation discharged ────────────────────
+//
+// Each open obligation names the parameters its value leans on that state no
+// precondition yet; each such parameter of THIS declaration is a position,
+// and every refinement alias the declaration's module reaches whose base is
+// the parameter's type is a candidate there. The search is guided by the
+// claim: a parameter no open obligation reads is never tried.
+fn precondition_suggestions(f, owed) = {
+  let aliases = aliases_in_reach(graph_module_of(f.handle))
+  owed |> flat_map(own_leans(f, ??)) |> fold([], add_lean, ??) |> flat_map(param_candidates(f, owed, aliases, ??))
+}
+
+// The leans of an obligation that are this declaration's own parameters,
+// each with its position — matched by identity, never by name: a declared
+// parameter's fact carries the guard cell its declaration's signature
+// carries at that position. An obligation raised here can lean on another
+// declaration's parameter — a callee's, through a crossing the claim could
+// not resolve: a refined function handed to an applier leaves the claim on
+// the applier's own parameter (tests/teach/need-is-own.mn) — or on a
+// lambda's inside the body, and neither is a position this declaration's
+// head can state.
+fn own_leans(f, o) = match o {
+  (_, _, pred, _) => predicate_leans(pred) |> flat_map(own_lean(f, ??)),
+}
+
+fn own_lean(f, lean) = match lean {
+  (b, name) => match f.ty {
+    TFun(pps, _, _) => match graph_binder_of(b) {
+      Some(fact) => match fact {
+        ParamFact(pf) => pps |> enumerate |> filter(guarded_by(pf.guard, ??)) |> map(lean_at_slot(b, name, ??)),
+        PartFact(_) => [],
+        StateFact(_) => [],
+      },
+      None => [],
+    },
+    _ => [],
+  },
+}
+
+fn guarded_by(g, ip) = match ip {
+  (_, p) => match param_row(p) {
+    EfRow(_, _, EtOpen(edges)) => any(edge_is(g, ??), edges),
+    _ => false,
+  },
+}
+
+fn edge_is(g, e) = edge_cell(e) == g
+
+fn lean_at_slot(b, name: String, ip) = match ip {
+  (i, _) => (b, name, i),
+}
+
+fn predicate_leans(pred) = match pred {
+  PTotalDiv(_, a, b) => value_leans(b) ++ value_leans(a),
+  PWithSelf(h, _) => value_leans(h),
+  _ => [],
+}
+
+// The parameters a value leans on that state no precondition, each with the
+// name a use reads it by: through a reference's own link (the value walk's
+// edge, never the unification class), a let's value, an arithmetic operand,
+// a join's tails. A call's result leans on its callee's contract, never on
+// what was handed to it, so a call ends the walk. A parameter with a
+// precondition — stated or learned — already has one; a parameter written
+// with a plain type leans like an unannotated one, and a refinement over it
+// is written only where the alias's base IS that type (`writable_over`), so
+// the name the developer wrote survives as the base the alias declares.
+fn value_leans(h) = match join_tails(h) {
+  Some(tails) => tails |> flat_map(value_leans),
+  None => match graph_node_body(h) {
+    NExpr(VarRef(name)) => if name == "self" { [] } else { link_leans(h, name) },
+    NExpr(BinOpExpr(_, l, r)) => value_leans(node_handle(l)) ++ value_leans(node_handle(r)),
+    NExpr(UnaryOpExpr(_, e)) => value_leans(node_handle(e)),
+    _ => [],
+  },
+}
+
+fn link_leans(use_h, name: String) = match graph_link_of(use_h) {
+  None => [],
+  Some(b) => match graph_binder_of(b) {
+    Some(fact) => match fact {
+      ParamFact(pf) => match pf.pre {
+        Unstated => [(b, name)],
+        Unrefined => [(b, name)],
+        Stated(_) => [],
+        Learned(_) => [],
+      },
+      PartFact(_) => [],
+      StateFact(_) => [],
+    },
+    None => match graph_node_body(b) {
+      NExpr(_) => value_leans(b),
+      _ => [],
+    },
+  },
+}
+
+fn add_lean(acc, lean) = match lean {
+  (b, _, _) => if any(lean_at(b, ??), acc) { acc } else { push(acc, lean) },
+}
+
+fn lean_at(b, lean) = match lean {
+  (x, _, _) => x == b,
+}
+
+// The refinement vocabulary a declaration's module can name: every `type X
+// = Base where pred` in a module it reaches through its imports (the
+// prelude's ambient closure included), each with the contract the env
+// registered for it — the Ty a written annotation resolves to, so the
+// bracket proves exactly what an accepted one would. A type the module does
+// not reach would be refused at the reference (E_MissingImport); the medium
+// never proposes it, and it never proposes a type no one declared.
+fn aliases_in_reach(mh) = module_reach_of(mh) |> flat_map(module_refinements)
+
+fn module_refinements(m) = match graph_node_body(m) {
+  NModule(mod) => mod.decls |> flat_map(refinement_alias),
+  _ => [],
+}
+
+fn refinement_alias(d) = match d {
+  N(body, _, _) => match body {
+    NStmt(RefineStmt(name, _, _)) => match env_lookup(name) {
+      Some(entry) => match entry {
+        (scheme, _, _) => [(name, judgment_ty(scheme))],
+      },
+      None => [],
+    },
+    _ => [],
+  },
+}
+
+fn param_candidates(f, owed, aliases, lean) = match lean {
+  (b, name, i) => aliases |> filter(binder_fits(b, ??)) |> filter(writable_over(param_ty(list_index(f.params, i)), ??)) |> flat_map(prove_precondition(f, owed, b, i, name, ??)),
+}
+
+// A refinement can be written over what the parameter says: nothing, or a
+// word type the alias refines — written `n: Int`, the accept writes `n:
+// NonZero`, and `Int` survives as the base the alias declares, which is what
+// the head's census counts it as (`stated_by`). Over any other written type
+// the accept would drop a name the developer chose, so it is no candidate.
+fn writable_over(written, alias) = match written {
+  TVar(_) => true,
+  _ => is_word_base(written) && alias_fits(written, alias),
+}
+
+fn is_word_base(t) = match t {
+  TInt => true,
+  TFloat => true,
+  TByte => true,
+  _ => false,
+}
+
+fn binder_fits(b, alias) = match graph_chase(b) {
+  GNode(NBound(t), _) => alias_fits(t, alias),
+  _ => false,
+}
+
+fn alias_fits(t, alias) = match alias {
+  (_, contract) => same_base(base_of(contract), base_of(t)),
+}
+
+fn base_of(t) = match t {
+  TAlias(_, inner) => base_of(inner),
+  TRefined(b, _) => base_of(b),
+  TReprPin(_, b) => base_of(b),
+  _ => t,
+}
+
+fn same_base(a, b) = match a {
+  TInt => match b {
+    TInt => true,
+    _ => false,
+  },
+  TFloat => match b {
+    TFloat => true,
+    _ => false,
+  },
+  TByte => match b {
+    TByte => true,
+    _ => false,
+  },
+  _ => false,
+}
+
+// THE PRECONDITION'S BRACKET. The candidate is stated on the parameter as an
+// authored refinement states it (its binder fact's precondition), and the
+// judgment's own decisions run against it: every open obligation of the
+// declaration through the ledger's decision, and every application of the
+// declaration the judgment drew through the call site's own two steps
+// (`dry_claim`). Counted inside, rolled back, built after: the bracket's
+// allocations die with it. An application the edge does not hold — a
+// partial's supplied argument, the declaration handed to another function
+// as a value — is judged when the annotation is accepted, not counted here
+// (`Hβ.teach.leverage-reads-direct-applications`).
+//
+// A candidate that refutes a body claim is no precondition; one that
+// discharges nothing is no gain. A REFUTED CALL is reported, not refused:
+// under the requirement the body states, it is a call that breaks it — the
+// program's own defect — and a stronger candidate refuting more calls is the
+// one asking more than the body needs.
+fn prove_precondition(f, owed, b, i, name: String, alias) = match alias {
+  (aname, contract) => {
     let cp = graph_push_checkpoint()
     let mark = heap_mark()
     let w = world_top()
-    let proven = apply_annotation_tentatively(handle, ann, base_ty)
-    let ok = proven && verify_after_apply(handle)
+    restate_param(b, contract)
+    let discharged = owed |> filter(obligation_holds) |> len
+    let broken = owed |> filter(obligation_refuted) |> len
+    let verdicts = latest_applications(applications_of(f.name)) |> map(claim_at_call(contract, i, ??))
+    let refuted = verdicts |> filter(verdict_refuted) |> len
+    let opened = verdicts |> filter(verdict_open) |> len
     graph_rollback(cp)
     heap_reset(mark)
     world_restore(w)
-    (ann, ok)
-  }) |> filter({ (_, ok) => ok }) |> map({ (ann, _) => (ann, unlock_capability(ann)) })
+    if discharged == 0 || broken > 0 {
+      []
+    } else {
+      let ann = ARefined({alias: aname, contract: contract, param: name})
+      [Proven(
+        SiteParam(i),
+        AnnotationSuggestion(
+          ann,
+          Leverage({absences: 0, discharged: discharged, locks: [], opened: opened, refuted: refuted}),
+          suggestion_reason(ann)
+        )
+      )]
+    }
+  },
+}
+
+fn restate_param(b, contract) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(pf) => graph_binder_note(b, ParamFact({guard: pf.guard, owes: pf.owes, pre: Stated(contract)})),
+    PartFact(_) => (),
+    StateFact(_) => (),
+  },
+  None => (),
+}
+
+fn obligation_holds(o) = match o {
+  (_, _, pred, _) => verdict_holds(predicate_decide(pred)),
+}
+
+fn obligation_refuted(o) = match o {
+  (_, _, pred, _) => verdict_refuted(predicate_decide(pred)),
+}
+
+fn verdict_holds(v) = match v {
+  Some(held) => held,
+  None => false,
+}
+
+fn verdict_refuted(v) = match v {
+  Some(held) => !held,
+  None => false,
+}
+
+fn verdict_open(v) = match v {
+  Some(_) => false,
+  None => true,
+}
+
+// Every application of a top-level declaration as the judgment drew it: the
+// application edge (`note_application` notes each one under every
+// declaration its callee can be) — a call, a pipe stage, a call through a
+// local holding it — each re-read at its handle, since an append-only note
+// can name a handle a rolled-back segment minted and a later mint reused.
+fn applications_of(name: String) = graph_applies_at(name) |> filter(applies(name, ??)) |> unique
+
+fn applies(name: String, h) = match graph_node_body(h) {
+  NExpr(CallExpr(callee, _)) => any(leaf_is(name, ??), fn_leaves(node_handle(callee))),
+  NExpr(PipeExpr(PForward, _, stage)) => any(leaf_is(name, ??), fn_leaves(node_handle(stage))),
+  _ => false,
+}
+
+fn leaf_is(name: String, leaf) = match graph_node_body(leaf) {
+  NExpr(VarRef(n)) => n == name && graph_link_of(leaf) == None,
+  _ => false,
+}
+
+// The arguments an application hands the declaration, in its parameters'
+// order: a call's positional product, a pipe's piped value.
+fn application_args(h) = match graph_node_body(h) {
+  NExpr(PipeExpr(PForward, left, _)) => [left],
+  _ => match graph_product_at(h) {
+    ProductOf(args, _) => args,
+    NoProduct => [],
+  },
+}
+
+// The callee node of a reference to the top-level `name`, or none.
+fn callee_named(callee, name: String) = match callee {
+  N(cb, _, ch) => match cb {
+    NExpr(VarRef(cn)) => if cn == name && graph_link_of(ch) == None { [ch] } else { [] },
+    _ => [],
+  },
+}
+
+// A session that has re-derived holds one application node per generation
+// at the same source extent; the latest mint is the live one. The identity
+// is the WHOLE extent in its module — two files' line 4 are two calls, and
+// a chain `x |> inv |> inv` holds two applications that begin together
+// (a declaration's position is its start, `latest_generation`; applications
+// nest at one start).
+fn latest_applications(apps) = apps |> filter(no_later_mint(apps, ??))
+
+fn no_later_mint(apps, h) = !any(later_mint_of(h, ??), apps)
+
+fn later_mint_of(h, h2) =
+  h2 > h && graph_module_of(h2) == graph_module_of(h) && parse_span_of(h2) == parse_span_of(h)
+
+// The claim an application raises at its argument under the candidate — the
+// call site's own two steps (`discharge_arg`: an unannotated parameter
+// handed straight in learns the precondition, then the claim) — answered by
+// a scratch ledger, its refutation narrated to no one.
+fn claim_at_call(contract, i, app_h) = {
+  let args = application_args(app_h)
+  if i < len(args) { dry_claim(contract, args[i]) } else { Some(true) }
+}
+
+fn dry_claim(contract, arg) = match arg {
+  N(_, sp, ah) => learn_then_claim(contract, ah, sp) ~> verify_ledger ~> diag_quiet,
+}
+
+fn learn_then_claim(contract, ah, sp: ValidSpan) = {
+  learn_precondition(ah, contract)
+  claim_refinement(contract, ah, sp)
+}
+
+// ── The return contract: callers' open claims discharged ───────────────
+//
+// A caller's open claim that rests on this declaration's result — a
+// refinement demanded of a call to it — is a claim a stated return lets
+// stand: a claim may stand on a contract its callee owes (P0), never a row
+// fact, so a partiality claim is no reason to propose one. Only where such a
+// claim exists is the return a position, and only while the declaration
+// authored no return.
+fn return_suggestions(f) = if authored_return(f.retty) {
+  []
+} else {
+  match verify_debt() |> flat_map(resting_on(f.name, ??)) {
+    [] => [],
+    resting => aliases_in_reach(graph_module_of(f.handle)) |> filter(ret_fits(f.ret, ??)) |> flat_map(prove_return(f, resting, ??)),
+  }
+}
+
+fn authored_return(retty) = match retty {
+  N(body, _, _) => match body {
+    NTypeAnn(_) => true,
+    _ => false,
+  },
+}
+
+fn ret_fits(ret, alias) = alias_fits(chase_deep(ret), alias)
+
+fn resting_on(name: String, o) = match o {
+  (_, _, pred, _) => match pred {
+    PWithSelf(h, _) => match value_calls(h, name) {
+      [] => [],
+      chs => [(pred, chs)],
+    },
+    _ => [],
+  },
+}
+
+// The callee nodes through which a value IS a call to `name`: the call, a
+// pipe stage naming it, a let of either, a join's tails.
+fn value_calls(h, name: String) = match join_tails(h) {
+  Some(tails) => tails |> flat_map(value_calls(??, name)),
+  None => match graph_node_body(h) {
+    NExpr(CallExpr(callee, _)) => callee_named(callee, name),
+    NExpr(PipeExpr(PForward, _, stage)) => callee_named(stage, name),
+    NExpr(VarRef(_)) => match graph_link_of(h) {
+      Some(b) => match graph_binder_of(b) {
+        Some(_) => [],
+        None => value_calls(b, name),
+      },
+      None => [],
+    },
+    _ => [],
+  },
+}
+
+// THE RETURN'S BRACKET. The body must prove the contract as the authored
+// return's own claim would (`claim_authored_return`: the claim alone, no
+// learning); each resting claim is then re-decided with every call it rests
+// on read as returning the contract — the edge `post_leaves` follows — and
+// counted.
+fn prove_return(f, resting, alias) = match alias {
+  (aname, contract) => {
+    let cp = graph_push_checkpoint()
+    let mark = heap_mark()
+    let w = world_top()
+    let body_holds = verdict_holds(dry_return_claim(contract, f.body))
+    resting |> each(rest_on_contract(contract, ??))
+    let discharged = resting |> filter(rest_holds) |> len
+    let refuted = resting |> filter(rest_refuted) |> len
+    graph_rollback(cp)
+    heap_reset(mark)
+    world_restore(w)
+    if body_holds && discharged > 0 {
+      let ann = AReturns({alias: aname, contract: contract})
+      [Proven(
+        SiteReturn,
+        AnnotationSuggestion(
+          ann,
+          Leverage({absences: 0, discharged: discharged, locks: [], opened: 0, refuted: refuted}),
+          suggestion_reason(ann)
+        )
+      )]
+    } else {
+      []
+    }
+  },
+}
+
+fn dry_return_claim(contract, body) = match body {
+  N(_, sp, bh) => claim_refinement(contract, bh, sp) ~> verify_ledger ~> diag_quiet,
+}
+
+fn rest_on_contract(contract, r) = match r {
+  (_, chs) => chs |> each(return_as(contract, ??)),
+}
+
+fn return_as(contract, ch) = match graph_chase(ch) {
+  GNode(NBound(t), reason) => match t {
+    TFun(ps, _, row) => graph_bind(ch, TFun(ps, contract, row), reason),
+    _ => (),
+  },
+  _ => (),
+}
+
+fn rest_holds(r) = match r {
+  (pred, _) => verdict_holds(predicate_decide(pred)),
+}
+
+fn rest_refuted(r) = match r {
+  (pred, _) => verdict_refuted(predicate_decide(pred)),
+}
+
+// ── The answer ─────────────────────────────────────────────────────────
+//
+// THE RANKING: what a suggestion proves, read lexicographically — debt
+// discharged first (the program becomes more proven), then fewer calls
+// refuted and fewer left open (a precondition asking less of its callers),
+// then the locks. A stable insertion, so equal suggestions keep their
+// enumeration order: preconditions in parameter order, the return, then
+// `with Pure` and the severances in prevalence order.
+fn rank_suggestions(proven) = fold([], insert_ranked, proven)
+
+fn insert_ranked(sorted, p) = match sorted {
+  [] => [p],
+  [q, ...rest] => if keys_less(proven_key(p), proven_key(q)) { [p] ++ sorted } else { [q] ++ insert_ranked(rest, p) },
+}
+
+fn proven_key(p) = match p {
+  Proven(_, s) => match s {
+    AnnotationSuggestion(_, lev, _) => match lev {
+      Leverage(l) => [0 - l.discharged, l.refuted, l.opened, 0 - l.absences],
+    },
+  },
+}
+
+fn keys_less(a, b) = match a {
+  [] => false,
+  [x, ...xs] => match b {
+    [] => false,
+    [y, ...ys] => if x < y { true } else if x > y { false } else { keys_less(xs, ys) },
+  },
+}
+
+fn lev_discharged(p) = match p {
+  Proven(_, s) => match s {
+    AnnotationSuggestion(_, lev, _) => match lev {
+      Leverage(l) => l.discharged,
+    },
+  },
+}
+
+// The answer from the ranking's head. A row clause is proposed outright. A
+// precondition or a return contract tied with another candidate for the SAME
+// position, proving and costing exactly the same, is a question: both are
+// proven, they mean different things, and the program cannot choose.
+fn teaching_from(best, rest) = match best {
+  Proven(site, s) => match site {
+    SiteRow => TeachAdd(s),
+    _ => match rest |> filter(same_choice(best, ??)) {
+      [] => TeachAdd(s),
+      ties => TeachAsk([s] ++ map(suggestion_of, ties)),
+    },
+  },
+}
+
+fn same_choice(a, b) = site_of(a) == site_of(b) && proven_key(a) == proven_key(b)
+
+fn site_of(p) = match p {
+  Proven(site, _) => site,
+}
+
+fn suggestion_of(p) = match p {
+  Proven(_, s) => s,
+}
+
+// A NEED: an open obligation leaning on a parameter that states no
+// precondition, where no alias the module reaches discharges it — the
+// predicate the parameter must carry, said where it is owed. It outranks a
+// lock: the unproven part of a declaration is where the next move is.
+fn need_or_none(f, owed) = match owed |> flat_map(need_of(f, ??)) {
+  [] => TeachNone,
+  [n, ..._] => n,
+}
+
+fn has_need(f, owed) = len(owed |> flat_map(need_of(f, ??))) > 0
+
+fn need_of(f, o) = match o {
+  (_, sp, pred, _) => match own_leans(f, o) {
+    [] => [],
+    [lean, ..._] => match lean {
+      (_, name, _) => [TeachNeed(name, pred, sp)],
+    },
+  },
 }
 
 // Speculative apply: compute the narrowed type/row, graph_bind it, and
@@ -383,43 +924,14 @@ fn apply_annotation_tentatively(handle, ann, base_ty) = match ann {
   // mint; identity is the intern handle from here on (EffName-is-a-
   // handle LANDED — comparisons are word i32.eq by type).
   narrow_row_proven(handle, base_ty, mk_ef_neg([ENamed(intern_str(name))]), sp),
-  ARefined(_, pred, sp) => {
-    // Narrowing the type via refinement — perform verify against the
-    // narrowed predicate. Ledger captures; rollback removes. The ledger
-    // carries this claim's discharge (band F's own path), so the apply
-    // itself admits.
-    let span = unwrap_source_span(sp)
-    verify(graph_module_current(), span, pred, Refinement(pred, PTrue))
-    true
-  },
-  AOwn(_, _) => // parameter-level marker; type narrowing at call sites
-  true,
-  ARef(_, _) => true,
-  AWrapHandler(handler_name, _target, sp) => {
-    // H5: speculatively narrow the row by subtracting the named
-    // handler's absorbed effects. The catalog lookup tells us what
-    // the handler handles; row arithmetic does the rest. The actual
-    // wrap (splice `handle ... with handler_name` around body) is
-    // a TEXT patch — out of substrate, into the patcher's surface.
-    let absorbed = catalog_handled_effects(handler_name)
-    if len(absorbed) == 0 {
-      true
-    } else {
-      let absorbed_row = mk_ef_closed(absorbed)
-      // The narrowed row is base_row - absorbed_row. The wrap's row
-      // arithmetic IS its proof: the proposed text patch installs the
-      // absorbing handler, so the residual row is true BY the wrap —
-      // unlike a bare narrowing, no body claim needs discharging.
-      match base_ty {
-        TFun(_params, _ret, base_row) => {
-          let narrowed = diff_row(base_row, absorbed_row)
-          narrow_row(handle, base_ty, narrowed, sp)
-          true
-        },
-        _ => true,
-      }
-    }
-  },
+  ARefined(_) => // A refinement is proven in its own bracket against the obligations it
+  // discharges (`prove_precondition`, `prove_return`); it narrows no row,
+  // and a narrowing of its own would prove nothing it claims. Until D4 this
+  // arm performed `verify` on a predicate no candidate ever supplied and
+  // answered true, and the ownership arms answered true with no proof at
+  // all — the reason ownership could never be offered under a ranking.
+  false,
+  AReturns(_) => false,
 }
 
 // A row NARROWING's apply + proof, one home: bind the narrowed TFun
@@ -442,60 +954,35 @@ fn unwrap_source_span(opt) = match opt {
   None => span_zero(),
 }
 
-// H5: the effects a named handler absorbs — read LIVE from its env
-// binding, never a static string-keyed table. A handler binds as
-// HandlerKind(the handled effect name, ...) (types.mn:117): the env already
-// PROVES which effect each handler absorbs (the `~>` row algebra
-// row(expr ~> h) = (row − E) ⊕ R reads the same E). The AWrapHandler
-// proposer reads it the same way — carry the handle, read the binding
-// live; the string table that re-derived this is dissolved. A name
-// that binds no handler (not found, or a non-handler kind) absorbs
-// nothing.
-fn catalog_handled_effects(handler_name) with !Mutate = match env_lookup(handler_name) {
-  None => [],
-  Some(entry) => match entry {
-    (_scheme, _reason, kind) => match kind {
-      HandlerKind(_, _, _, _, arms) => // The handled effect is a live projection of the arms (§2), not a field.
-      [ENamed(intern_str(derive_handler_ename(arms, handler_name)))],
-      _ => [],
-    },
-  },
-}
-
-// H5: capability unlocks for an annotation. !Alloc unlocks
-// CRealTime; !IO + Pure unlock CCompileTimeEval; etc. The list is what
+// What a proven clause guarantees, named. The list is what
 // `severance_named` filters on and `render_module_severance` spends: an
-// effect this map does not name severs just as provably and buys nothing
-// the audit can say, which is why the unnamed ones ride as one count at
-// the module — a gap in THIS function, not in the developer's code.
+// effect this map does not name severs just as provably, and rides as its
+// proven absence. A refinement guarantees no absence — its gain is the
+// obligations it discharges, counted where it was proven.
 fn capabilities_for_annotation(ann) = match ann {
-  APure(_) => [CMemoize, CCompileTimeEval, CParallelize],
-  ARefined(_, _, _) => [],
-  AOwn(_, _) => [CDeterministicDrop, CZeroCopy],
-  ARef(_, _) => [],
-  AWrapHandler(_, _, _) => // unlocks depend on what's wrapped
-  [],
-  ANotEffect(name, _) => // the general severance's unlock: the known names keep their rich
-  // labels (Alloc → RealTime, IO → CompileTimeEval+Sandbox, Network →
-  // Sandbox — capabilities_for_severance's own mapping); an unmapped
-  // name unlocks its proven absence itself, the crown's vocabulary as
-  // the capability.
+  APure(_) => [CPure],
+  ANotEffect(name, _) => // the known names keep their rich labels (capabilities_for_severance's
+  // own mapping); an unmapped name unlocks its proven absence itself, the
+  // crown's vocabulary as the capability.
   match capabilities_for_severance(ENamed(intern_str(name))) {
     [] => [CProvenAbsence(name)],
     known => known,
   },
+  ARefined(_) => [],
+  AReturns(_) => [],
 }
 
-// H5: capability unlocks for a SEVERANCE — adding `!E` to an fn
-// that doesn't perform E. Mirrors capabilities_for_annotation but
-// keyed by EffName (severance candidate's name).
+// What adding `!E` to a fn that does not perform E guarantees, for the
+// effects whose absence has a meaning beyond itself.
 fn capabilities_for_severance(name) = match name {
   ENamed(h) => if h == intern_str("Alloc") {
     [CRealTime]
   } else if h == intern_str("IO") {
-    [CCompileTimeEval, CSandbox]
+    [CIsolated]
   } else if h == intern_str("Network") {
     [CSandbox]
+  } else if h == intern_str("Trap") {
+    [CTotal]
   } else {
     []
   },
@@ -526,7 +1013,7 @@ fn narrow_row(handle, base_ty, narrow, source_span) = match base_ty {
 // This is NOT the proof — a bind always sticks, so boundness alone once
 // admitted an !Alloc claim on an allocating body; the proof is the
 // row subsumption apply_annotation_tentatively now returns, conjoined
-// with this read at try_each_annotation. Failure modes here:
+// with this read at `row_clause_holds`. Failure modes here:
 //   NErrorHole — occurs check or a structural conflict caused
 //                inference to record failure on the handle.
 //   NFree     — the apply didn't bind (shouldn't happen for a
@@ -543,36 +1030,6 @@ fn verify_after_apply(handle) = match graph_chase(handle) {
     NRecordRowBound(_, _) => false,
     NRowFree(_) => false,
   },
-}
-
-// The proven annotation that unlocks the MOST, counted in concrete
-// capabilities: `CProvenAbsence(E)` restates the annotation it came from
-// rather than unlocking anything a consumer reads, so it counts zero. Ties
-// keep the candidate order — prevalence order for the severances, the
-// link's most-performed name first — and Pure, the strongest single claim
-// (memoize, compile-time eval, parallelize), leads whenever it proves.
-// This replaced a literal ladder `[!Alloc, !IO, !Network, Pure]` that put
-// Pure last, so Pure won 0 of 165 measured suggestions although the
-// gradient tutorial promises it to a pure `add` (2026-09-25).
-fn pick_highest_leverage(proven) = match fold((None, -1), keep_more_leverage, proven) {
-  (best, _) => best,
-}
-
-fn keep_more_leverage(acc, candidate) = match acc {
-  (best, best_n) => match candidate {
-    (ann, _) => {
-      let n = concrete_leverage(ann)
-      if n > best_n { (Some(candidate), n) } else { (best, best_n) }
-    },
-  },
-}
-
-fn concrete_leverage(ann) =
-  capabilities_for_annotation(ann) |> filter(is_concrete_capability) |> len
-
-fn is_concrete_capability(cap) with Pure = match cap {
-  CProvenAbsence(_) => false,
-  _ => true,
 }
 
 // Walk the reason DAG from a graph handle. Every unification, instantiation, and
@@ -605,63 +1062,66 @@ fn extract_row(ty) with Pure = match ty {
   TReprPin(_, base) => extract_row(base),
 }
 
-// Map an annotation to the capability it unlocks: add this annotation, get this capability.
-fn unlock_capability(annotation) = match annotation {
-  APure(_) => CMemoize,
-  ARefined(_, _, _) => CEliminateBoundsCheck,
-  AOwn(_, _) => CDeterministicDrop,
-  ARef(_, _) => CZeroCopy,
-  AWrapHandler(_, _, _) => // Wrapping a body in an absorbing handler CONTAINS the offending effect —
-  // the sandbox capability, the same family a proven !Network unlocks.
-  CSandbox,
-  ANotEffect(name, _) => CProvenAbsence(name),
-}
-
-// One-line summary for an error code. Every code has a full entry at
-// `docs/errors/<code>.md`; `teach_error` returns the full Explanation with that path.
-fn catalog_summary(code) = match code {
-  "E_MissingVariable" => "Variable not found in scope",
-  "E_TypeMismatch" => "Type mismatch",
-  "E_PatternInexhaustive" => "Match does not cover every variant",
-  "E_OwnershipViolation" => "Double consume or ref escape",
-  "E_OccursCheck" => "Circular type (infinite type)",
-  "E_UnresolvedType" => "Type handle unresolved at codegen",
-  "E_RefinementRejected" => "Refinement obligation rejected by solver",
-  "E_PurityViolated" => "Function performs effects that violate declared purity",
-  "E_EffectMismatch" => "Effect row mismatch",
-  "E_HandlerUninstallable" => "Handler arms require effects not admitted by the enclosing declaration",
-  "E_FeedbackNoContext" => "<~ requires an iterative context (install an Iterate-class handler)",
-  "E_ReplayExhausted" => "Replay trace exhausted — recording too short or divergent run",
-  "P_ExpectedToken" => "Parser expected a specific token",
-  "P_UnexpectedToken" => "Parser hit a token that admits no production",
-  "V_Pending" => "Verification obligation recorded, solver not yet installed",
-  "W_Suggestion" => "Probable fix available (did-you-mean, synth)",
-  "T_Gradient" => "Annotation would unlock a capability",
-  "T_OverDeclared" => "Function declares a wider effect row than its body uses — tighten to unlock capabilities",
-  "T_ContinuationEscapes" => "Multi-shot continuation captured inside arena",
-  _ => "Unknown error code: {code}",
-}
-
-// Display — for driver rendering
+// The annotation's source text — what an accept writes, and what a
+// teach line names.
 fn show_annotation(ann) = match ann {
   APure(_) => "with Pure",
-  ARefined(name, _, _) => "refined {name}",
-  AOwn(name, _) => "own {name}",
-  ARef(name, _) => "ref {name}",
-  AWrapHandler(name, _, _) => "wrap with {name}",
   ANotEffect(name, _) => "with !{name}",
+  ARefined(r) => "{r.param}: {r.alias}",
+  AReturns(r) => "-> {r.alias}",
 }
 
 fn show_capability(cap) = match cap {
-  CMemoize => "Memoization (pure function caching)",
-  CParallelize => "Automatic parallelization",
-  CCompileTimeEval => "Compile-time evaluation",
   CRealTime => "Real-time safe (proven zero allocation)",
+  CIsolated => "Isolated (proven no file or console I/O)",
   CSandbox => "Sandbox (proven no network access)",
-  CEliminateBoundsCheck => "Bounds check elimination",
-  CZeroCopy => "Zero-copy (proven no ownership transfer)",
-  CDeterministicDrop => "Deterministic drop (proven single use)",
+  CTotal => "Total (proven never to trap)",
+  CPure => "Pure (proven to perform no effect at all)",
   CProvenAbsence(name) => "Proven absence of {name} (the transitive !{name})",
+}
+
+// What a suggestion buys, in the developer's words: the debt it discharges
+// and what it asks of the callers, or the guarantees it locks.
+fn show_leverage(lev) = match lev {
+  Leverage(l) => if l.discharged > 0 {
+    "discharges {counted(l.discharged, "open obligation")}{refuted_clause(l.refuted)}{opened_clause(l.opened)}"
+  } else {
+    "locks {join(", ", l.locks)}"
+  },
+}
+
+fn counted(n, noun: String) = if n == 1 { "1 {noun}" } else { "{int_to_str(n)} {noun}s" }
+
+fn refuted_clause(n) =
+  if n == 0 { "" } else { "; then {counted(n, "call")} that break the requirement refuse" }
+
+fn opened_clause(n) = if n == 0 { "" } else { "; {counted(n, "call")} would owe it, unproven" }
+
+// THE GRADIENT'S ANSWER AS TEXT — one home for every surface that speaks it
+// (the address surface's Teach facet, `mentl teach`, the edit session's
+// block): the annotation to add and what it buys; the alternatives a
+// question names; the predicate a parameter needs that no declared type
+// says.
+fn show_teaching(t) = match t {
+  TeachAdd(s) => match s {
+    AnnotationSuggestion(ann, lev, _) => "add `{show_annotation(ann)}` — {show_leverage(lev)}",
+  },
+  TeachAsk(ss) => "{join(" or ", map(quoted_annotation, ss))} — each {tie_leverage(ss)}; they mean different things, so which is meant?",
+  TeachNeed(param, pred, sp) => match sp {
+    Span(line, _, _, _) => "`{param}` must make {show_predicate(pred)} hold (line {int_to_str(line)}), and no refinement in reach states it — declare one and annotate `{param}`",
+  },
+  TeachNone => "(no next-step annotation)",
+}
+
+fn quoted_annotation(s) = match s {
+  AnnotationSuggestion(ann, _, _) => "`{show_annotation(ann)}`",
+}
+
+fn tie_leverage(ss) = match ss {
+  [] => "",
+  [s, ..._] => match s {
+    AnnotationSuggestion(_, lev, _) => show_leverage(lev),
+  },
 }
 
 // THE SECOND WHY RENDERER AND THE SECOND POSITION FANOUT ARE DELETED HERE,

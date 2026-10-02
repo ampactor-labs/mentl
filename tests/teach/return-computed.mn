@@ -1,0 +1,12 @@
+// teach 8: add -> Positive
+// The body proves the contract through the sum's lower bound, the claim a
+// stated return would raise, and the caller's open claim stands on it.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn inc(x: Positive) = x + 1
+
+fn h(p: Positive) = inv(inc(p))
+
+fn main() = h(3)

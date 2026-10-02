@@ -14,8 +14,10 @@
 //   clock.mn (spec 11)   → Clock / Tick / Sample / Deadline + IterContext
 //   own.mn (spec 07)     → affine_ledger handler arms, escape check
 //   verify.mn (spec 02)  → verify_ledger handler arms
-//   mentl.mn (spec 09)   → Annotation / Capability / Explanation / Patch
-//                          / Context / Candidate + Teach + Synth + mentl_default
+//   mentl.mn (spec 09)   → Capability / Patch / Context + Teach + Synth
+//                          + mentl_default (the Annotation a suggestion
+//                          carries, and the Teaching it answers with, live
+//                          here beside the CursorView that reads them)
 //   query.mn (spec 08)   → Question / QueryResult + query_default handler
 //
 // TVar(id) is a HANDLE into Graph. There is no apply(subst, ty).
@@ -1663,36 +1665,76 @@ type Cursor = Cursor(Handle, Reason, Float)
 // SuggestionKind — exhaustive ADT for the axis of an annotation
 // suggestion. Drift 8 closure: never a string flag; always tagged
 // dispatch. Per the gradient-delta walkthrough §3.2 promotion to live.
-type SuggestionKind = SuggestEffectRow | SuggestOwnership | SuggestRefinement | SuggestReturnType
+type SuggestionKind = SuggestEffectRow | SuggestRefinement | SuggestReturnType
 
-// An annotation the gradient can propose. Each variant carries an
-// Option(Span) — Some when the candidate originated from a user site
-// (hovered hole, quick-fix request); None for fully-internal speculation.
-// narrow_row threads this into the Located reason so the Why chain reads
-// at the user's coordinates, not 0:0-0:0.
+// An annotation the gradient can propose: an INPUT the developer writes
+// that the medium has PROVEN changes what the declaration proves (D4,
+// 2026-10-02). A row clause locks an absence the body already has; a
+// parameter's refinement is a precondition that discharges the body's open
+// claims; a return refinement is a postcondition the body proves and its
+// callers' open claims stand on. The refinements name an alias the
+// declaration's module reaches — a type the developer declared, never one
+// the medium invents — and carry the contract the bracket proved it with.
+//
+// Three kinds the gradient once named are not annotations it proposes, and
+// are absent rather than declared and never built: an ownership marker (the
+// grade is inferred and projected, and the quiet gate counts authored
+// markers DOWN — a marker the medium proposed would be the inference
+// failing), a handler wrap (it changes what the body MEANS, so it is a
+// fill the proposer judges at a `?? ~> h` hole, never an annotation), and a
+// representation pin (no proof the medium makes reads a width until the
+// interval fragment models the word it folds over —
+// `Hβ.verify.interval-fragment-assumes-unbounded-int`).
 type Annotation
   = APure(Option(Span))
-  | ARefined(String, Predicate, Option(Span))
-  | AOwn(String, Option(Span))
-  | ARef(String, Option(Span))
-  | AWrapHandler(String, Int, Option(Span))
   // The general severance: !<name> for ANY name the link performs
   // (Hβ.teach.severance-vocabulary-from-link). The fixed
   // ANotAlloc/ANotIO/ANotNetwork trio is DELETED into it — known
   // names keep their rich labels via capabilities_for_severance.
   | ANotEffect(String, Option(Span))
+  // a parameter's precondition: the parameter, the alias naming it
+  | ARefined({alias: String, contract: Ty, param: String})
+  // a declaration's return contract
+  | AReturns({alias: String, contract: Ty})
+
+// What a proven annotation buys, read off the bracket that proved it: the
+// open obligations it discharges — in its own declaration for a
+// precondition, at its callers for a return contract — the calls whose
+// claim it REFUTES (each a call that breaks the requirement: the program's
+// own defect, which the annotation makes the medium say), the calls whose
+// claim it leaves OPEN (debt a precondition moves to its callers), and the
+// effect absences it makes promises of — each a gate a later write must
+// meet: one for `!E`, and for `with Pure` every effect the program performs,
+// since it locks them all — with the guarantees they name. Debt discharged
+// is what makes a program more proven, so it ranks first; a lock changes no
+// proof today and ranks last.
+type Leverage = Leverage({absences: Int, discharged: Int, locks: [String], opened: Int, refuted: Int})
 
 // What the gradient proposes at a position: the annotation PROVEN there,
-// the capabilities it unlocks, and why it leads. The annotation is the fact
-// an accept writes into the graph; its axis and its source text are
-// projections of it (mentl.mn's suggestion_kind_of and show_annotation),
-// read where they are rendered. Until 2026-10-01 the suggestion carried the TEXT in
-// the annotation's place, so an accept could only splice a string, and it
+// what it buys, and why it leads. The annotation is the fact an accept
+// writes into the graph; its axis and its source text are projections of it
+// (mentl.mn's suggestion_kind_of and show_annotation), read where they are
+// rendered. Until 2026-10-01 the suggestion carried the TEXT in the
+// annotation's place, so an accept could only splice a string, and it
 // spliced "  with Pure" as a new line above the declaration — a file that
 // no longer parsed, in whatever file the session happened to target.
-// The unlock labels are kept because they are computed where the intern
-// table answers (a severance's known names are compared by handle).
-type AnnotationSuggestion = AnnotationSuggestion(Annotation, [String], Reason)
+type AnnotationSuggestion = AnnotationSuggestion(Annotation, Leverage, Reason)
+
+// The gradient's ANSWER at a declaration, as one value (§11.1's law at the
+// gradient: a list is the medium admitting it does not know). One proven
+// annotation is proposed. Two or more proven for ONE position — the same
+// parameter, or the return — that discharge the same obligations and
+// refute the same calls mean different things the program cannot choose
+// between, so the medium ASKS which is meant, naming them. An open
+// obligation that leans on a parameter while no alias in reach discharges
+// it is a NEED: the medium states the predicate the parameter must carry
+// and that no declared type says it — the missing vocabulary, taught.
+type Teaching
+  = TeachAdd(AnnotationSuggestion)
+  | TeachAsk([AnnotationSuggestion])
+  // the parameter, the open predicate it must make hold, where it is owed
+  | TeachNeed(String, Predicate, Span)
+  | TeachNone
 
 // PipeContext — surrounding pipe topology at a position.
 // CursorView.topology reads the context. Reuses existing PipeKind for
@@ -1709,13 +1751,10 @@ type PipeContext = NoPipe | InsidePipe(PipeKind) | StartingPipe | EndingPipe
 //   row      — primitive #4 (Effect algebra)   — gating row
 //   trace    — primitive #5 (Ownership)        — own/ref/inferred (existing ADT)
 //   verify   — primitive #6 (Refinement)       — pending obligations
-//   teach    — primitive #7 (Gradient)         — one next-step (or None)
+//   teach    — primitive #7 (Gradient)         — the gradient's Teaching
 //   why      — primitive #8 (HM + Reasons)     — walkable Reason chain
-//
-// Annotation is mentl.mn's existing ADT (APure/ANotEffect/AOwn/...).
-// Predicate is at types.mn:568.
 type CursorView
-  = CursorView(NodeKind, Proposal, PipeContext, EffRow, Ownership, [(Int, Span, Predicate, Reason)], Option(AnnotationSuggestion), Reason)
+  = CursorView(NodeKind, Proposal, PipeContext, EffRow, Ownership, [(Int, Span, Predicate, Reason)], Teaching, Reason)
 
 // query   propose  topology     row     trace      verify  teach    why
 // ─── SpinePage — the graph's columns, named ONCE ─────────────────────────
@@ -1766,6 +1805,13 @@ fn span_join(a, b) -> ValidSpan = match a {
 fn span_eq(a, b) with Pure = match a {
   Span(asl, asc, ael, aec) => match b {
     Span(bsl, bsc, bel, bec) => asl == bsl && asc == bsc && ael == bel && aec == bec,
+  },
+}
+
+// Two spans that begin at one position.
+fn span_start_eq(a, b) with Pure = match a {
+  Span(asl, asc, _, _) => match b {
+    Span(bsl, bsc, _, _) => asl == bsl && asc == bsc,
   },
 }
 
@@ -2699,6 +2745,10 @@ effect GraphRead {
   // graph VarRef scan and the oracle's quadratic count_dependents both
   // retire onto this O(bucket) read.
   graph_refs_at(String) -> [Int]
+  // The APPLICATION edge's read: every application handle noted under
+  // NAME, newest first — the reverse call graph a reader follows where it
+  // would otherwise scan the graph for call nodes (the gradient's bracket).
+  graph_applies_at(String) -> [Int]
   graph_decls_at() -> [Int]
   // The value-holes column's read: (hole handle, entry name) pairs — the
   // executable gate's whole input (lowering-is-a-column (ii), the first
@@ -2837,6 +2887,12 @@ effect GraphWrite {
   // handle) into the smap column, O(1) prepend per reference. The read
   // face is graph_refs_at; three whole-graph scans retire onto the pair.
   graph_ref_note(String, Int)
+  // The APPLICATION edge's write: `call_owes`, the one home where an
+  // application fills a declaration's parameters, notes (the name applied →
+  // the application's handle) for each top-level declaration its callee can
+  // be. The refs column's contract: append-only, so a reader re-reads the
+  // application at the handle and drops what no longer is one.
+  graph_apply_note(String, Int)
   // The decls column — the refs column's sibling at decl granularity:
   // the FnStmt judgment notes its own node handle; the read face is
   // graph_decls_at (the oracle queue's seed). Judgment rounds re-note,

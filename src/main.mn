@@ -1483,10 +1483,10 @@ fn render_at(view, h, pspan, target: String) = match view {
     // named no annotation and no capability anywhere. A declaration with an
     // authored row is taught the tightening the judgment proved instead.
     match teach {
-      Some(suggestion) => match suggestion {
-        AnnotationSuggestion(ann, unlocks, _) => print("Teach: add `{show_annotation(ann)}` to unlock {join_unlock_labels(unlocks)}\n"),
-      },
-      None => match graph_node_body(h) {
+      TeachAdd(_) => print("Teach: {show_teaching(teach)}\n"),
+      TeachAsk(_) => print("Teach: {show_teaching(teach)}\n"),
+      TeachNeed(_, _, _) => print("Teach: {show_teaching(teach)}\n"),
+      TeachNone => match graph_node_body(h) {
         NStmt(FnStmt(name, _, _, _, _)) => match banked_tightening(name, tightenables()) {
           Some(t) => match t {
             (declared, used) => print(tighten_line(name, declared, used)),
@@ -1778,7 +1778,18 @@ fn battery_libs() -> String =
 // judges the JUDGMENT, never stricter than the medium). This contract
 // is the frontier bash's dissolution channel: a refusal leg becomes a
 // fixture the medium reads itself.
-type Expect = ExpectRun(Int) | ExpectRefuse(String) | ExpectPropose(Int, Int, ProposeWant)
+type Expect
+  = ExpectRun(Int)
+  | ExpectRefuse(String)
+  | ExpectPropose(Int, Int, ProposeWant)
+  | ExpectTeach(Int, TeachWant)
+
+// A teach fixture's contract (D4): what the gradient answers at the
+// declaration on line L — one proven annotation whose source is the text,
+// a question naming its alternatives in rank order, a need, or nothing. The
+// annotation's own source projection is compared, never the rendered line,
+// so the voice may change without a fixture moving.
+type TeachWant = WantAdd(String) | WantAskOf(String) | WantNeed | WantNoTeach
 
 // A proposal fixture's contract (C7): what the medium must answer at the
 // hole — one proven survivor whose source is the text, a tie whose
@@ -1795,6 +1806,8 @@ fn battery_expect(src) = {
   let prefix = "// expect: "
   if byte_len(src) >= 11 && str_eq(str_slice(src, 0, 11), "// propose ") {
     battery_propose_expect(src)
+  } else if byte_len(src) >= 9 && str_eq(str_slice(src, 0, 9), "// teach ") {
+    battery_teach_expect(src)
   } else if byte_len(src) < 12 {
     None
   } else if !str_eq(str_slice(src, 0, 11), prefix) {
@@ -1848,6 +1861,27 @@ fn battery_propose_expect(src) = {
   }
 }
 
+// `// teach L: <want>` — the declaration's line, then the want: `add`
+// takes the rest of the line (an annotation's source carries spaces),
+// `ask` the alternatives joined by ` or `, `need` and `none` nothing.
+fn battery_teach_expect(src) = {
+  let line = battery_expect_digits(src, 9, 0)
+  let word_start = battery_skip_digits(src, 9) + 2
+  let word = battery_expect_word(src, word_start, word_start)
+  let rest_start = word_start + byte_len(word) + 1
+  if str_eq(word, "add") {
+    Some(ExpectTeach(line, WantAdd(battery_line_rest(src, rest_start, rest_start))))
+  } else if str_eq(word, "ask") {
+    Some(ExpectTeach(line, WantAskOf(battery_line_rest(src, rest_start, rest_start))))
+  } else if str_eq(word, "need") {
+    Some(ExpectTeach(line, WantNeed))
+  } else if str_eq(word, "none") {
+    Some(ExpectTeach(line, WantNoTeach))
+  } else {
+    None
+  }
+}
+
 fn battery_skip_digits(src, i) = if i >= byte_len(src) {
   i
 } else {
@@ -1867,32 +1901,91 @@ fn battery_line_rest(src, start, i) = if i >= byte_len(src) {
 // same address resolution and the same eight-aspect view the CLI's
 // `mentl <file>:<line>:<col>` builds, and the contract is compared to the
 // Verdict itself — structurally, never through the rendered line.
-fn battery_propose_step(stem, path: String, line, col, want) = match battery_verdict(path, line, col) {
+fn battery_propose_step(stem, path: String, line, col, want) = match battery_view(path, line, col) {
   None => {
     print_string("FAIL(propose) {stem}: no node at {path}:{int_to_str(line)}:{int_to_str(col)}\n")
     1
   },
-  Some(verdict) => if verdict_meets(want, verdict) {
-    print_string("PASS {stem}: propose {show_want(want)}\n")
-    0
-  } else {
-    print_string("FAIL(propose) {stem}: wanted {show_want(want)}, got {verdict_word(verdict)}\n")
-    1
-  },
-}
-
-fn battery_verdict(path: String, line, col) = infer_context(() => match driver_entry_with_ranges(path) {
-  (_ast, _ranges) => match address_pick(path, line, col) {
-    None => None,
-    Some(pick) => match pick {
-      (_pspan, ph) => match cursor_at_handle(ph) {
-        CursorView(_, propose, _, _, _, _, _, _) => match propose {
-          Proposal(p) => Some(p.verdict),
-        },
+  Some(view) => match view {
+    CursorView(_, propose, _, _, _, _, _, _) => match propose {
+      Proposal(p) => if verdict_meets(want, p.verdict) {
+        print_string("PASS {stem}: propose {show_want(want)}\n")
+        0
+      } else {
+        print_string("FAIL(propose) {stem}: wanted {show_want(want)}, got {verdict_word(p.verdict)}\n")
+        1
       },
     },
   },
+}
+
+// THE TEACH BATTERY (D4): the fixture is judged at its declaration's line
+// through the address route and the eight-aspect view, and the contract is
+// compared to the gradient's Teaching itself.
+fn battery_teach_step(stem, path: String, line, want) = match battery_view(path, line, 0) {
+  None => {
+    print_string("FAIL(teach) {stem}: no node at {path}:{int_to_str(line)}\n")
+    1
+  },
+  Some(view) => match view {
+    CursorView(_, _, _, _, _, _, teach, _) => if teach_meets(want, teach) {
+      print_string("PASS {stem}: teach {show_teach_want(want)}\n")
+      0
+    } else {
+      print_string("FAIL(teach) {stem}: wanted {show_teach_want(want)}, got {show_teaching(teach)}\n")
+      1
+    },
+  },
+}
+
+// The eight-aspect view at a fixture's address — the one read both
+// contracts judge, built as the CLI's `mentl <file>:<line>:<col>` builds it.
+fn battery_view(path: String, line, col) = infer_context(() => match driver_entry_with_ranges(path) {
+  (_ast, _ranges) => match address_pick(path, line, col) {
+    None => None,
+    Some(pick) => match pick {
+      (_pspan, ph) => Some(cursor_at_handle(ph)),
+    },
+  },
 } ~> cursor_default ~> synth_default ~> interrogate_default ~> mentl_default ~> tighten_collector)
+
+fn teach_meets(want, teach) = match want {
+  WantAdd(text) => match teach {
+    TeachAdd(s) => str_eq(suggestion_text(s), text),
+    TeachAsk(_) => false,
+    TeachNeed(_, _, _) => false,
+    TeachNone => false,
+  },
+  WantAskOf(texts) => match teach {
+    TeachAsk(ss) => str_eq(join(" or ", map(suggestion_text, ss)), texts),
+    TeachAdd(_) => false,
+    TeachNeed(_, _, _) => false,
+    TeachNone => false,
+  },
+  WantNeed => match teach {
+    TeachNeed(_, _, _) => true,
+    TeachAdd(_) => false,
+    TeachAsk(_) => false,
+    TeachNone => false,
+  },
+  WantNoTeach => match teach {
+    TeachNone => true,
+    TeachAdd(_) => false,
+    TeachAsk(_) => false,
+    TeachNeed(_, _, _) => false,
+  },
+}
+
+fn suggestion_text(s) = match s {
+  AnnotationSuggestion(ann, _, _) => show_annotation(ann),
+}
+
+fn show_teach_want(want) = match want {
+  WantAdd(text) => "add {text}",
+  WantAskOf(texts) => "ask {texts}",
+  WantNeed => "need",
+  WantNoTeach => "none",
+}
 
 fn verdict_meets(want, verdict) = match want {
   WantNone => match verdict {
@@ -2016,6 +2109,7 @@ fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(mic
       ExpectPropose(line, col, want) => // The driver takes the MODULE path — the file without its `.mn`, exactly
       // as the CLI's address form hands it over (path_to_module, cli.mn).
       battery_propose_step(stem, path_to_module("{dir}/{name}"), line, col, want),
+      ExpectTeach(line, want) => battery_teach_step(stem, path_to_module("{dir}/{name}"), line, want),
       ExpectRun(want) => match battery_compile(libs ++ src, stem) {
         (failed, nerr, _, exit) => if failed > 0 {
           print_string("FAILC {stem}\n")

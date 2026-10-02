@@ -290,7 +290,9 @@ arm by construction, and performing it there would mint exactly the defect
 `Hβ.effects.reachable-perform-with-no-install-compiles` names. The gradient
 has to arrive WITH the `propose` that asks for it: the performer holds it,
 the arm reads it. That is a signature change to the `propose` op and is the
-build.
+build. D4 retyped the field to the gradient's own answer (`Teaching`), so the
+voice can say a question or a need as well as an annotation; the writer still
+passes `TeachNone`.
 
 `Hβ.oracle.ranked-queue-is-a-second-frontier` — OPEN, BORN 2026-09-21, found by
 pointing the medium's own reachability facet at the medium.
@@ -911,7 +913,28 @@ declaration's row reads as authored, and nothing says the medium proposed it or
 what proved it (`narrow_row_proven`'s subsumption). CLOSE: the accept notes the
 clause as `graph_accept_note` notes a fill, the declared row's reason wraps
 `Accepted`, and `mentl <file>:<line>` at the declaration walks its Why to the
-proof.
+proof. D4 widens it: an accepted precondition (`n: NonZero`) or return
+contract (`-> Positive`) is written by the same head render and draws no edge
+either, so the Why at the parameter reads it as authored.
+
+`Hβ.teach.leverage-reads-direct-applications` — OPEN, BORN 2026-10-02 with
+D4. The precondition bracket counts what a candidate does to the program's
+applications of the declaration — the calls it refuses and the calls it
+leaves open — over the applications the judgment drew in `call_owes`: a
+call, a pipe stage, a call through a local that holds the declaration. Two
+applications are not on that edge: a PARTIAL's supplied argument, claimed
+where the partial is built, and the declaration handed to another function
+as a VALUE, whose applications are that function's and reach the contract
+through the crossing machinery (H4). A candidate one of those would refuse
+ranks as if it refused nothing: `fn main() = len(map(inv, [5, 0 - 3]))`
+with NonZero and Positive in reach ASKS between them (measured on the D4
+tree), where `inv(5) + inv(0 - 3)` answers NonZero. Never unsound — the
+written head is judged again — but the ranking is told less than the
+judgment knows. THE FORM: the bracket re-judges the CONE of the annotation,
+every application, partial and crossing whose judgment read the parameter's
+precondition — the incremental judgment's cone (PLAN §7: what is missing is
+the CONE); before it, a partial's construction and a crossing's channel
+noted on the same edge. CLOSE: the map form answers `add n: NonZero`.
 
 `Hβ.cursor.proximity-reads-the-call-graph` — OPEN, NAMED 2026-10-01 (D3).
 Inside one module the decay is three steps — the position itself, its
@@ -2673,7 +2696,12 @@ already carries the upper bound — and a sum is bounded below only where the
 operands' upper bounds prove it cannot wrap; or Int becomes the
 mathematical integer with overflow a row fact (`Trap` on overflow, the
 partiality law one primitive over), which is the decision the
-representation gradient owes.
+representation gradient owes. THE GRADIENT WAITS ON IT TOO (D4): a
+representation pin narrows a width, and a pin the gradient proposes must be
+PROVEN to hold every value the position sees — an interval read on both
+ends, this entry's own form. The gradient proposes `repr` where the fragment
+can say a value's interval fits the width; until then it proposes none,
+rather than a pin nothing proves.
 
 `Hβ.verify.row-facts-trust-proven-postconditions` — OPEN, BORN 2026-10-01
 with P0. A row fact stands on constants, lengths and preconditions, never on
@@ -2888,6 +2916,11 @@ function hands its argument; the result IS `g` — resolved at the caller's
 crossing, where both functions are in sight. A generic callee already has
 this from its scheme (the channel), so the relational provision is the
 channel for a callee whose signature is not parametric in the function.
+A third measured shape (D4's walk): `apply(inv, 0)` over `fn apply(f, x) =
+f(x)` and `fn inv(n: Positive) with !Trap = 100 / n` leaves the crossing's
+claim on `apply`'s parameter open at the call — main's row carries `Trap`
+and a `!Trap` there refuses, so it is sound — where the argument at that
+position is 0 and the claim is decidable one frame out.
 
 `Hβ.verify.channel-depth-one` — OPEN, BORN 2026-10-02 with H4. The channel
 reads a quantified variable at a callback's position, never at a position
@@ -3241,8 +3274,20 @@ PROGRAM E5's: the headless screenshot shows the editor's code with its
 spaces collapsed (`fnmain()withMemory+Alloc=`) — a font artifact or a CSS
 defect, to check in a real browser.
 
-`Hβ.teach.one-kind-and-a-constant-facet` — HALF CLOSED 2026-09-25 (the
-pin after 3cc9fdec; LEDGER carries it). Teach now reads what the
+`Hβ.teach.one-kind-and-a-constant-facet` — CLOSED 2026-10-02 (D4; the
+first half 2026-09-25, the pin after 3cc9fdec; LEDGER carries both). D4
+closed the rest: the annotation space is a precondition, a return contract
+and the row clause, each PROVEN in its bracket; the rank reads what each
+proves (debt, refused calls, open calls, absences) instead of counting
+labels; the answer is one `Teaching` (add, ask, need, none); the kinds no
+candidate was ever minted for are deleted (an ownership marker is an intent
+boundary the inference grades, a wrap is a fill); `T_Gradient` (a catalog row
+with no constructor) is deleted from SYNTAX's table, the gradient's answer
+being the Teach facet; a representation pin waits on the interval fragment's
+overflow (`Hβ.verify.interval-fragment-assumes-unbounded-int`); and the
+voice's field carries the same answer, still never filled
+(`Hβ.voice.situation-gradient-is-never-filled`). The record of the first
+half follows. Teach now reads what the
 declaration says and what the judgment proved: it teaches only at an
 unannotated declaration (a declared fn is taught the T_OverDeclared
 tightening the judgment banked), the literal ladder became a count of

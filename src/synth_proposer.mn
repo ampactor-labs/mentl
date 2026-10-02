@@ -44,7 +44,7 @@
 //                           on it; not stacked single-concern wrappers.
 //   Drift 6 (special):      Each candidate (Empty/SuggestEffectRow/
 //                           Constructor-fill/Lambda-shape) goes through
-//                           the SAME verify_candidate gate; no special-
+//                           the SAME `candidate_proven` gate; no special-
 //                           case for "easy" cases.
 //   Drift 7 (parallel arr): Candidate is one record-shape with Node +
 //                           Reason; not parallel (asts[], reasons[]).
@@ -89,7 +89,9 @@ type ProposerKind
   | ProposerVocabulary(VocabRing)
   // SMT solver via Verify-handler-swap (Arc F.1)
   | ProposerSMT
-  // wrap-handler suggestions per H5 AWrapHandler
+  // the handler catalog: an install proposed at a `?? ~> h` hole, named and
+  // not yet built. A wrap changes what the body means, so it is a fill
+  // judged here when it lands, never an annotation the gradient offers
   | ProposerHandlerCatalog
   // seeds the developer supplies at the position
   | ProposerUser
@@ -141,8 +143,8 @@ type SegmentVerdict = SegmentVerdict({proven: Bool, reason: Reason, writes: [(In
 //   refinement-aware SMT (0.7) · type-directed enumeration (0.5)
 //   — each a `~>`-installed Synth peer, named, post-first-light.
 //
-// Each proposer's arm calls verify_candidate to gate its output;
-// only proven candidates reach the parent. The chain composes via
+// Each proposer's output is gated by `candidate_proven` inside the segment
+// walk; only proven candidates reach the parent. The chain composes via
 // `~>` per primitive #2 (handlers); same kernel; one effect.
 //
 // Per PLAN §1: dead variants WIDEN the
@@ -199,18 +201,6 @@ handler synth_default {
         },
       },
     }
-  },
-  verify_candidate(candidate, hole_h) => // The real proof gate (PLAN.md §1: checkpoint -> INFER -> Verify ->
-  // rollback). The candidate is a real minted node in the graph; run
-  // the SAME infer walk that types all source over it, then UNIFY its
-  // cell with the hole's own, and discharge the hole's refinement
-  // against it — an NBound(TInt) alone proved only well-typedness, so
-  // every integer seed survived a `0 < self` target. The caller's
-  // checkpoint isolates this; rollback reverts the binds.
-  match candidate {
-    Candidate(node, reason) => // Through candidate_proven — the ONE definition, shared with the
-    // segment walk.
-    resume(candidate_proven(node, hole_h, reason)),
   },
 }
 
@@ -1760,7 +1750,7 @@ fn proposed_param(p) =
 // births every node through. The fabricated handle-0 form was the
 // load-bearing gap: a candidate with no handle cannot be inferred or
 // chased, so the proof gate verified a fixed meaningless node. Minting
-// edge-links the body into the graph weave so verify_candidate's
+// edge-links the body into the graph weave so the proof gate's
 // infer_expr walk binds the candidate's own handle (Carried-Truth: the
 // graph holds the node; the gate reads it live).
 fn synth_node(expr_body) with !Mutate = mint_node(NExpr(expr_body), span_zero())

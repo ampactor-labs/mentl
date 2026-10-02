@@ -1,0 +1,11 @@
+// teach 9: ask n: NonZero or n: Positive
+// Both refinements make the division total and the one call proves both, so
+// nothing in the program chooses: they mean different things — may n be
+// negative? — and the medium asks rather than guess (PLAN §5).
+type NonZero = Int where !(self == 0)
+
+type Positive = Int where 0 < self
+
+fn inv(n) = 100 / n
+
+fn main() = inv(5)

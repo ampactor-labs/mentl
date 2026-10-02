@@ -35,6 +35,88 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-02 · pin b400dc74f2500a60 (CLEAN m2 == m3) · THE GRADIENT PROPOSES
+  WHAT THE PROGRAM OWES: A PRECONDITION OR A RETURN CONTRACT PROVEN IN A
+  BRACKET BY THE JUDGMENT'S OWN DECISIONS, RANKED BY WHAT IT DISCHARGES, AND
+  ONE ANSWER — ADD, ASK, NEED OR NOTHING. At `fn inv(n) = 100 / n` the Teach
+  facet answered `with !Alloc` on boot 6f62b7c4: the gradient proposed
+  effect clauses alone, the refinement SYNTAX's partiality section names as a
+  division's proof had no constructor, and every suggestion was ranked by the
+  COUNT of capability labels it unlocked — `with Pure` "unlocked"
+  memoization, compile-time evaluation and automatic parallelization, three
+  things the medium never does. (R) A parameter an open obligation leans on
+  through the value walk — a reference's own link, a let, an operand, a
+  join's tails — that states no precondition is a position, matched to the
+  declaration's own signature by its guard cell, never by name; every
+  refinement alias the declaration's module reaches whose base is the
+  parameter's type is a candidate there (`aliases_in_reach`); the candidate
+  is stated on the binder inside a checkpoint/heap/world bracket, the
+  declaration's open obligations re-decided by the ledger's own decision,
+  and each application of the declaration dry-claimed through the call
+  site's own learn-then-claim on a scratch ledger (`dry_claim`). (T) A return
+  contract is proposed where a caller's open claim rests on a call to the
+  declaration: the body must prove it as the authored return's claim would,
+  and each resting claim is re-decided with the call read as returning it.
+  (V) The answer is ONE value, `Teaching`: ADD one proven annotation; ASK
+  when two candidates for one position prove and cost the same and mean
+  different things (`n: NonZero` or `n: Positive` with no call to choose);
+  NEED when no alias in reach discharges the claim, said as the predicate the
+  parameter must make hold; or nothing. The rank reads what each proves —
+  debt discharged, then calls refused, then calls left open, then absences
+  locked — so `NonZero` wins where a call passes -3, and `with Pure` counts
+  every effect the link performs as an absence it locks. (A) `mentl accept
+  <file>:<line>:<col>` at a declaration writes the answer through the
+  formatter's head render — a precondition as the parameter's type, a
+  contract as the return — and refuses an ask or a need, naming it; over a
+  parameter written `n: Int` the census counts `Int` present as the base
+  NonZero's own declaration names (`lost_atoms_beside`). (M) Obligations at a
+  node were matched by span alone: `mentl main.mn:3` counted helper.mn:3's
+  pending division on the boot; the address and the gradient read the module
+  first. (E) Applications of a declaration are a graph edge, drawn where the
+  judgment makes them (`graph_apply_note` in `call_owes`) — every top-level
+  declaration the callee can be, a call, a pipe stage or a local holding it
+  — read by name and re-read at the handle. DELETED: six capability labels
+  nothing performs (`Capability` is the five absences a row proves plus
+  `CProvenAbsence`), the Teach effect's hover, error and unlock ops with their
+  arms and catalog, the Synth effect's `verify_candidate` (the gate is
+  `candidate_proven`), `Explanation`, `Candidate`, and the annotation kinds no
+  candidate was ever minted for — an ownership marker is an intent boundary
+  the inference grades, and a handler wrap changes what the body means (a
+  fill, the proposer's); the voice's gradient field is the same `Teaching`
+  (still never filled). Eleven teach fixtures (`// teach L: add <text> | ask
+  <text> | need | none`, the proposal battery's sibling in the `test` verb):
+  ten answer `with !Alloc` or `with Pure` on boot 6f62b7c4, and the eleventh,
+  settled.mn, is the control that answers nothing on both; the frontier accepts three heads (`fn inv(n: NonZero) = 100 / n` twice, `fn
+  five() -> Positive = 5`) and compiles them with no pending claim (the boot
+  answered "no proposal at this position", exit 1), and holds the module
+  identity of an obligation (counted on the boot). KILLS: (1) the count of
+  capability labels as the rank — every lock counted one, ties fell to source
+  order and D3's field order moved; absences replaced it. (2) the prelude as
+  the refinement vocabulary — `E_DuplicateTypeName` against every program that
+  declares its own `Positive`; the vocabulary is what the module reaches. (3)
+  weakness read off the aliases' domains — a domain is what the fragment can
+  read of a predicate, an over-approximation, so it cannot order two
+  refinements; the rank measures the program instead. (4) the calls of a
+  declaration found by scanning the graph for call nodes — re-reading the diff
+  before the pin named it the §5.O re-derivation, and the probe showed it
+  blind to a pipe: `(5 |> inv) + ((0 - 3) |> inv)` asked NonZero or Positive
+  and answers NonZero through the edge. (5) a lean matched to the
+  declaration's parameter by NAME — a crossing's open claim leaned on the
+  parameter of the applier it was handed to, and `main` was told to annotate
+  that parameter (tests/teach/need-is-own.mn, the D4 first build). (6) a
+  plainly typed parameter as no position — `fn inv(n: Int) = 100 / n` was
+  taught `with !Memory` with its division unnamed; the census admitting the
+  replaced base closed it in the landing. A refusal on the way: the march's
+  comment-ref ratchet (0 → 2) caught two backticked names of a probe program
+  in the own-lean comment. Fixed-input cost on the D4 source (before the last
+  two fixes): boot 986,096 KB, the D4 compiler 993,816 KB, the judgment's
+  high-water +2.24 MB — the application edge; the m3 leg 995,420 KB under the
+  1,000,000 ceiling. Micros 339/339, crown 134/134, proof-exactness 30/0,
+  frontier 489/0/1 expected-red. Named:
+  `Hβ.teach.leverage-reads-direct-applications`; banked into
+  `Hβ.verify.interval-fragment-assumes-unbounded-int`: a representation pin
+  the gradient would propose waits on the fragment proving the interval
+  fits.
 - 2026-10-02 · pin 6f62b7c400cb5a7b (CLEAN m2 == m3) · A FUNCTION'S CONTRACT
   IS NEVER LOST AT A POSITION: AN INFERRED ONE PUBLISHES THE MEET OF EVERY
   FUNCTION THAT REACHES IT, A STATED ONE IS CROSSED BY EACH FUNCTION PLACED

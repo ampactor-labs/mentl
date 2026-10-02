@@ -1,0 +1,12 @@
+// teach 10: add n: NonZero
+// A pipe stage is an application: `(0 - 3) |> inv` fills inv's parameter as
+// `inv(0 - 3)` does, so Positive refuses it and NonZero is the precondition
+// the program allows. The calls were found by scanning the graph for call
+// nodes, which never saw a pipe, and the two candidates tied (D4).
+type NonZero = Int where !(self == 0)
+
+type Positive = Int where 0 < self
+
+fn inv(n) = 100 / n
+
+fn main() = (5 |> inv) + (0 - 3 |> inv)

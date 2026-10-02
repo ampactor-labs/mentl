@@ -212,8 +212,10 @@ fn interrogation_at(handle) = match graph_chase(handle) {
       // 7. Gradient
       {
         (h, _, r) => match teach_gradient(h) {
-          None => VerdictClears(r),
-          Some(_) => VerdictInvites(r),
+          TeachNone => VerdictClears(r),
+          TeachAdd(_) => VerdictInvites(r),
+          TeachAsk(_) => VerdictInvites(r),
+          TeachNeed(_, _, _) => VerdictInvites(r),
         },
       },
       // 8. Reason

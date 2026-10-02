@@ -1999,6 +1999,39 @@ and this is the STATE.
   judges a candidate's own row, so `Box(??)` is proposed under `!Alloc`
   (`Hβ.synth.candidate-row-is-unjudged`), and fmt renders a nominal record as
   its variant (`Hβ.fmt.nominal-record-renders-its-variant`).
+- **THE GRADIENT PROPOSES WHAT THE PROGRAM OWES — CLOSED 2026-10-02 (D4).**
+  At `fn inv(n) = 100 / n`, whose one unproven fact is that `n` may be zero,
+  the Teach facet answered `with !Alloc` (boot 6f62b7c4): the gradient
+  proposed effect clauses alone, ranked by the count of capability labels
+  each unlocked — `with Pure` "unlocked" memoization, compile-time evaluation
+  and automatic parallelization, three things the medium never does — and the
+  refinement SYNTAX's partiality section names as a division's proof had no
+  constructor. The gradient proposes what discharges an open obligation now,
+  each candidate PROVEN in a checkpoint bracket by the judgment's own
+  decisions: a precondition on a parameter of the declaration the claim
+  leans on (matched by its guard cell, never its name), from the refinement
+  aliases the module reaches, judged against the declaration's obligations
+  and every application of it the judgment drew; a return contract where a
+  caller's open claim rests on the declaration's result; the row clause
+  last, as a lock. The answer is ONE value — add one annotation, ask between
+  two that prove the same and mean different things (`n: NonZero` or `n:
+  Positive` with no call to choose), say the predicate a parameter needs
+  when no alias in reach states it, or nothing — ranked by what each proves:
+  debt discharged, then calls refused and left open, then absences, so
+  `NonZero` wins where a call passes -3. `mentl accept
+  <file>:<line>:<col>` at a declaration writes it through the formatter's
+  head render, over a written `n: Int` too (the census counts `Int` present
+  as the base the alias declares). Applications are a graph edge drawn where
+  they are judged (`call_owes`) — the first form scanned the graph for call
+  nodes and never saw a pipe stage — obligations at a node are
+  module-qualified (`main.mn:3` counted helper.mn:3's claim), and the
+  capabilities nothing performs, the Teach effect's three dead ops and
+  Synth's dead `verify_candidate` are deleted. Eleven teach fixtures run
+  through `mentl test tests/teach`. Open: the leverage counts direct
+  applications only (`Hβ.teach.leverage-reads-direct-applications`), an
+  accepted annotation draws no edge (`Hβ.felt.accepted-clause-carries-its-proof`),
+  and a representation pin waits on an overflow-aware interval fragment
+  (`Hβ.verify.interval-fragment-assumes-unbounded-int`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -2024,6 +2057,7 @@ bash tools/march-gate.sh --micros   # rungs + battery through boot's wheel-emitt
 bash tools/march.sh            # THE RATCHET: boot→m2→m3, ASSERTS m2 == m3; on m2 ≠ m3 runs m4 ITSELF and rules TRANSITION (re-pin from m3) vs BROKEN
 bash tools/frontier-gate.sh    # scheduled matrix + ?? authoring workflows (--compiler fresh for the current wheel)
 mentl test tests/proposals     # THE PROPOSAL BATTERY (C7): each fixture's first line is its contract — `// propose L:C: fill <text>` | `ask <arm>` | `none` — judged against the Verdict at that hole, never the rendered line (the frontier runs it)
+mentl test tests/teach         # THE TEACH BATTERY (D4): each fixture's first line is its contract — `// teach L: add <text>` | `ask <text>` | `need` | `none` — judged against the gradient's answer at the declaration on line L (the frontier runs it)
 bash tools/proof-exactness-gate.sh  # hole refuses · debt surfaces · suspension runs
 bash tools/ide-gate.sh         # the resident session: the node twin over ide/wheel-worker.js, then headless Chrome over `mentl space` (leg 2 skips loudly without chrome)
 bash tools/doc-truth.sh        # the docs' checkable claims vs the artifact: PROVENANCE sha == boot sha, ledger head pin, named commands exist (runs inside verify — prose gets a mechanical floor)
@@ -3431,8 +3465,9 @@ landed in 5–10; this phase is the finish that makes it FELT.
   block walk spawned exactly one task per block and joined it immediately, so
   the isolation was guarding a concurrency that was switched off. A candidate
   is judged inside `graph_push_checkpoint` + `heap_mark` + `world_top` … 
-  rollback on the ONE live graph now — the triple `try_each_annotation`
-  already owned, whose own comment called it *"the synth fan's exact shape"* —
+  rollback on the ONE live graph now — the triple the gradient's row bracket
+  already owned (`row_clause_holds` since D4), whose own comment calls it
+  *"the synth fan's exact shape"* —
   so the isolated per-candidate instance, the empty `graph_handler` that made
   a sibling's proof invisible, and the direct `spawn_task` at a constant width
   are all deleted, along with the banded partition that existed only to

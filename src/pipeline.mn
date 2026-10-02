@@ -926,7 +926,7 @@ fn map_fn_stmts(ast, project) = ast |> map({
 // only use is the splice, so unpinned the fn generalizes and the floor
 // renders every fn's teach line under a pointer numeral instead of its
 // name.
-fn render_gradients(tights, gradients: [(String, Option(AnnotationSuggestion))]) = if len(gradients) == 0 {
+fn render_gradients(tights, gradients: [(String, Teaching)]) = if len(gradients) == 0 {
   "All functions are at maximum annotation density.\n"
 } else {
   gradients |> map({ (name, result) => render_gradient_line(name, result, tights) }) |> str_concat_all
@@ -945,13 +945,15 @@ fn render_gradient_line(name: String, result, tights) =
 // declaration with an authored row is taught only that), else the plain
 // statement that nothing is suggested.
 fn teach_result_text(name: String, result, tights) = match result {
-  Some(_) => render_gradient_result(result),
-  None => match banked_tightening(name, tights) {
+  TeachNone => match banked_tightening(name, tights) {
     Some(t) => match t {
       (declared, used) => "→ tighten: declares {show_effrow(declared)}, the body proves {show_effrow(used)} (`mentl tighten` applies it)",
     },
-    None => render_gradient_result(result),
+    None => "→ {show_teaching(result)}",
   },
+  TeachAdd(_) => "→ {show_teaching(result)}",
+  TeachAsk(_) => "→ {show_teaching(result)}",
+  TeachNeed(_, _, _) => "→ {show_teaching(result)}",
 }
 
 // The judgment's banked T_OverDeclared for a declaration, by the name the
@@ -965,21 +967,6 @@ fn banked_tightening(name: String, tights) = match find(tightening_named(name), 
 
 fn tightening_named(name: String, t) = match t {
   (_, _, n, _, _) => n == name,
-}
-
-fn render_gradient_result(result) = match result {
-  None => "(no next-step annotation suggested)",
-  Some(suggestion) => match suggestion {
-    AnnotationSuggestion(ann, unlocks, _reason) => "→ add {show_annotation(ann)} to unlock {join_unlock_labels(unlocks)}",
-  },
-}
-
-fn join_unlock_labels(labels) = if len(labels) == 0 {
-  "(no capabilities)"
-} else {
-  let first = head(labels)
-  let rest = rest(labels)
-  fold(first, (acc, label) => acc ++ ", " ++ label, rest)
 }
 
 // H5: AuditReport record per fn — the structured projection Mentl's

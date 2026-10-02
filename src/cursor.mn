@@ -245,12 +245,6 @@ fn latest_generation(handles) with !Mutate = filter(
   handles
 )
 
-fn span_start_eq(a, b) with Pure = match a {
-  Span(asl, asc, _, _) => match b {
-    Span(bsl, bsc, _, _) => asl == bsl && asc == bsc,
-  },
-}
-
 // An AUTHORED hole: the parser mints NHole with a fresh nonzero id for
 // every `??` (and for each syntax-error recovery hole — an absence to fix
 // either way); the program weave's absent-default is NHole(0), never a
@@ -319,8 +313,10 @@ fn enumerate_gradient_positions(mh) with !Mutate =
 fn gradient_position(i) = match graph_node_body(i) {
   NStmt(s) => match s {
     FnStmt(_, _, _, _, _) => match teach_gradient(i) {
-      None => false,
-      Some(_) => true,
+      TeachNone => false,
+      TeachAdd(_) => true,
+      TeachAsk(_) => true,
+      TeachNeed(_, _, _) => true,
     },
     _ => false,
   },
@@ -340,28 +336,45 @@ fn rank_positions(handles, caret) -> [(Float, Handle)] with !Mutate = {
   handles |> map((h) => position_key(h, caret, reach)) |> sort |> map(key_entry)
 }
 
-// The sort key: the score negated so the ascending structural sort puts
-// the highest first, then the position's own line and column.
-fn position_key(h, caret, reach) -> (Float, Int, Int, Handle) with !Mutate = match caret_span_of_handle(h) {
-  Span(sl, sc, _, _) => (0.0 - position_score(h, caret, reach), sl, sc, h),
+// The sort key: the two gains negated so the ascending structural sort puts
+// the highest first — debt before locks — then the position's own line and
+// column.
+fn position_key(h, caret, reach) -> (Float, Float, Int, Int, Handle) with !Mutate = match caret_span_of_handle(h) {
+  Span(sl, sc, _, _) => match position_score(h, caret, reach) {
+    (debt, locks) => (0.0 - debt, 0.0 - locks, sl, sc, h),
+  },
 }
 
-fn key_entry(k: (Float, Int, Int, Handle)) -> (Float, Handle) = match k {
-  (neg, _, _, h) => (0.0 - neg, h),
+fn key_entry(k: (Float, Float, Int, Int, Handle)) -> (Float, Handle) = match k {
+  (neg_debt, neg_locks, _, _, h) => (0.0 - neg_debt - neg_locks, h),
 }
 
-// gates × proximity. The gates are the capabilities the position's proven
-// suggestion unlocks; an AUTHORED hole gates once (filling it lifts the
+// The gradient's two gains at a position, each weighted by proximity: the
+// proof debt its answer discharges or names (a NEED is debt the developer's
+// next declaration pays), then the guarantees it locks. Debt sorts first —
+// the unproven part of the module is where the next move is (D4; until then
+// one count of capability labels ranked every position, so a `with Pure`
+// claiming three optimizations nothing performs outranked the division that
+// could trap). An AUTHORED hole gates once (filling it lifts the
 // executable's own refusal, E_UnresolvedHole), so within the hole tier
-// proximity alone ranks. Any other suggestion-less position stays at zero.
-fn position_score(handle: Handle, caret, reach) -> Float with !Mutate = {
-  let gates = match teach_gradient(handle) {
-    None => hole_gate(handle),
-    Some(suggestion) => match suggestion {
-      AnnotationSuggestion(_ann, unlocks, _reason) => len(unlocks),
+// proximity alone ranks. Any other answer-less position stays at zero.
+fn position_score(handle: Handle, caret, reach) -> (Float, Float) with !Mutate = {
+  let prox = position_proximity(caret_handle(caret), handle, reach)
+  match teach_gradient(handle) {
+    TeachNone => (0.0, float_of_int(hole_gate(handle)) * prox),
+    TeachAdd(s) => suggestion_gains(s, prox),
+    TeachAsk(ss) => match ss {
+      [] => (0.0, 0.0),
+      [s, ..._] => suggestion_gains(s, prox),
     },
+    TeachNeed(_, _, _) => (prox, 0.0),
   }
-  float_of_int(gates) * position_proximity(caret_handle(caret), handle, reach)
+}
+
+fn suggestion_gains(s, prox: Float) -> (Float, Float) = match s {
+  AnnotationSuggestion(_, lev, _) => match lev {
+    Leverage(l) => (float_of_int(l.discharged) * prox, float_of_int(l.absences) * prox),
+  },
 }
 
 // A ranked position as the cursor the session projects: its handle, its
@@ -766,10 +779,15 @@ fn enclosing_fn_scan(target, i, n, best) with !Mutate = if i >= n {
 // handle, WHOLE: the Reason is the Why-walk's edge and the Span the
 // render's anchor — the old map-to-Predicate discarded both (the
 // converged judge caught the slot mismatch it left).
-fn verify_pending_at(handle) with !Mutate = {
-  let target_span = caret_span_of_handle(handle)
-  filter_by_span(target_span, verify_debt())
-}
+//
+// The subset is the handle's MODULE's: an obligation carries the module it
+// was raised in, and every module numbers its lines from 1, so a span alone
+// matched a stranger's claim on the same lines — a declaration on lines 3–5
+// of main.mn counted the pending claims on lines 3–5 of every module it
+// linked (D4's audit; the class D3 closed for positions).
+fn verify_pending_at(handle) with !Mutate =
+  verify_debt() |> filter(pending_in(graph_module_of(handle), caret_span_of_handle(handle), ??))
 
-fn filter_by_span(target, debt) =
-  filter({ (_m, debt_span, _, _) => span_overlaps(target, debt_span) }, debt)
+fn pending_in(m, target, o) = match o {
+  (dm, debt_span, _, _) => dm == m && span_overlaps(target, debt_span),
+}

@@ -829,9 +829,10 @@ fn ur_rows(ref decls, reached, i, n, acc) = if i >= n {
 //                 installed in every lowering route.
 //   Delta         "the Cursor handler's CursorView.teach field reads
 //                 through delta_pick" — no such field, 407 lines deleted.
-//   verify_candidate  its sibling's comment said the fan "mirrors the
-//                 sequential arm exactly"; it did not, and the unreached
-//                 copy was the drifted one.
+//   the Synth effect's unperformed candidate gate  its sibling's comment
+//                 said the fan "mirrors the sequential arm exactly"; it
+//                 did not, and the unreached copy was the drifted one
+//                 (deleted with D4, the op and its arm).
 //
 // WHAT THIS DOES NOT DO, stated because the honest limit is the whole
 // design: it does not read English. Deciding that "read by LEvPerform" is

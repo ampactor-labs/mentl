@@ -2293,9 +2293,16 @@ fact like `Alloc`: inferred and projected (`fn ratio(t, n) = t / n` renders
 `-> Int with Trap` at the address surface), transitive through calls, and
 provable absent — `fn ratio(t, n) with !Trap = t / n` refuses
 `E_EffectMismatch`, `fn ratio(t, n: Positive) with !Trap = t / n` accepts.
-The gradient teaches the annotation: the refinement on the divisor is the
-input that unlocks the proof — lib/dsp's six divisions by a hop or a grid
-width are proven by one refinement on the parameter (`hop: Positive`,
+The gradient PROPOSES the annotation (real, 2026-10-02): at `fn inv(n) =
+100 / n` the Teach facet names `n: NonZero` — the refinement in the module's
+reach that discharges the claim and that every call of `inv` satisfies — and
+`mentl accept <file>:<line>:<col>` at the declaration writes it, over a
+written `n: Int` too; where two refinements prove the same and the calls
+cannot choose between them it asks which is meant, and where none in reach
+states the claim it says the predicate the parameter needs. The refinement
+on the divisor is the input that unlocks the proof — lib/dsp's six
+divisions by a hop or a grid width are proven by one refinement on the
+parameter (`hop: Positive`,
 `num_high: Positive`), and each caller pays the claim once, at the
 argument: a literal folds, and a computed value is honest debt that pays the
 guarded `Trap` at the call (`inv(m + 1)` under `!Trap` refuses; P0,
@@ -2722,7 +2729,6 @@ token, so there is nothing to lift.*
 | `T_OverDeclared`      | a declared bare positive name beyond the proven row (the positive half only — a negation is a proof claim, never over-declared) | `MachineApplicable`  | `mentl tighten` writes the clause's residue |
 | `T_RowInventory`      | a declared clause whose bare positive names are exactly what the body proves, or a positive cap over an OPEN body row (which installs no gate and so constrains nothing) — the projected row written by hand (§«A signature is not an inventory») | `MachineApplicable` | `mentl tighten` writes the residue — negations, instance pins, or no clause |
 | `T_WordSlotBox`       | a wide value (a Float) boxed into a fresh cell to cross a callee's slot sized for a word — a list primitive's element (`list_set`) — inside a unit whose row does not say `Alloc`: the representation's cost, not the program's, until the slot takes the value's own width (`Hβ.value.seq-element-stride-carrier`). Said at the settle point by the allocation audit, which refuses every allocation that IS the program's | `MaybeIncorrect` | keep the value at a word's width where the slot is one, or wait for the carrier |
-| `T_Gradient`          | an annotation INPUT would narrow the cursor's projection | `MachineApplicable` | accept the suggestion to narrow             |
 | `W_Suggestion`        | probable Quick Fix available                  | `MaybeIncorrect`     | (Mentl-proposed)                                |
 | `W_RedundantWhere`    | `type X = Y where true` — vacuous predicate   | `MachineApplicable`  | drop the `where true`; alias is transparent     |
 | `W_EmptyRow`          | a named row (`type X = <row>`) resolves to `Pure` | `MaybeIncorrect`     | drop the alias; the row IS `Pure` already       |

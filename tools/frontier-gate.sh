@@ -2643,6 +2643,59 @@ for i in "${!compilers[@]}"; do
   else
     fail "proposal battery (see the battery lines above)"
   fi
+  # THE TEACH BATTERY (D4): every fixture in tests/teach carries a `// teach
+  # L: <want>` contract — the annotation the gradient proposes at the
+  # declaration on line L, the alternatives it asks between, a need, or
+  # nothing — judged by the medium's own test verb against the Teaching.
+  # RED on boot 6f62b7c4: the precondition, need and return fixtures were
+  # taught `with !Alloc` or `with Pure`, and the contract did not exist.
+  if wt_battery "$compiler" tests/teach "teach-through-m2"; then
+    pass "teach battery: every fixture's contract holds (preconditions, return contracts, questions, needs)"
+  else
+    fail "teach battery (see the battery lines above)"
+  fi
+  # THE ACCEPT WRITES WHAT THE GRADIENT PROVED (D4): `mentl accept` at a
+  # declaration writes the Teaching's annotation into its head through the
+  # formatter's head render, and the module re-judges with the debt gone —
+  # a precondition (the division total, no pending claim) and a return
+  # contract (the caller's claim standing on it). RED on boot 6f62b7c4: the
+  # accept at a declaration answered "no proposal at this position". A
+  # refinement over a parameter written `n: Int` replaces the written type,
+  # and the head's census counts `Int` present as the base NonZero declares.
+  tadir="$dir/teach-accept"
+  rm -rf "$tadir"; mkdir -p "$tadir"
+  cp "$ROOT/tests/teach/precondition-weakest.mn" "$tadir/pre.mn"
+  cp "$ROOT/tests/teach/return-constant.mn" "$tadir/ret.mn"
+  cp "$ROOT/tests/teach/precondition-over-a-plain-type.mn" "$tadir/plain.mn"
+  wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" accept pre.mn:12:1 > /dev/null 2>"$dir/teach-accept-pre.err"
+  tapre=$?
+  wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" accept ret.mn:7:1 > /dev/null 2>"$dir/teach-accept-ret.err"
+  taret=$?
+  wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" accept plain.mn:8:1 > /dev/null 2>"$dir/teach-accept-plain.err"
+  taplain=$?
+  tadebt=$( { wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile pre.mn 2>&1 >/dev/null; wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile ret.mn 2>&1 >/dev/null; wt_run --dir "$tadir::." --dir "$ROOT::/mentl-home" "$compiler" compile plain.mn 2>&1 >/dev/null; } | grep -c 'pending\| error' || true)
+  if [ "$tapre" = 0 ] && [ "$taret" = 0 ] && [ "$taplain" = 0 ] \
+     && [ "$(sed -n 12p "$tadir/pre.mn")" = "fn inv(n: NonZero) = 100 / n" ] \
+     && [ "$(sed -n 7p "$tadir/ret.mn")" = "fn five() -> Positive = 5" ] \
+     && [ "$(sed -n 8p "$tadir/plain.mn")" = "fn inv(n: NonZero) = 100 / n" ] \
+     && [ "$tadebt" = 0 ]; then
+    pass "teach accept: a precondition, a refinement over a written Int and a return contract written into their heads, the debt gone"
+  else
+    fail "teach accept (pre exit=$tapre line: $(sed -n 12p "$tadir/pre.mn"); ret exit=$taret line: $(sed -n 7p "$tadir/ret.mn"); plain exit=$taplain line: $(sed -n 8p "$tadir/plain.mn"); debt lines=$tadebt)"
+  fi
+  # OBLIGATIONS AT A NODE ARE THE NODE'S MODULE'S (D4): the Verify facet
+  # filtered the ledger by span alone, and every module numbers its lines
+  # from 1, so the entry's `total` on line 3 counted the helper's open
+  # division on ITS line 3. RED on boot 6f62b7c4: "Verify: 1 obligation(s)"
+  # at a declaration that owes nothing.
+  odemo="$ROOT/tests/frontier/obligation-module-demo"
+  odmain=$(wt_run --dir "$odemo::." --dir "$ROOT::/mentl-home" "$compiler" main.mn:3 2>/dev/null)
+  odhelp=$(wt_run --dir "$odemo::." --dir "$ROOT::/mentl-home" "$compiler" helper.mn:3 2>/dev/null)
+  if ! printf '%s' "$odmain" | grep -q '^Verify:' && printf '%s' "$odhelp" | grep -q '^Verify: 1 obligation'; then
+    pass "obligations at a node are its module's (the entry owes nothing; the helper owes its division)"
+  else
+    fail "obligation module identity (main: $(printf '%s' "$odmain" | grep '^Verify' | head -1); helper: $(printf '%s' "$odhelp" | grep '^Verify' | head -1))"
+  fi
   # ── the render register (DiagScope) ────────────────────────────────
   # A user-target projection over the FULL weave (repo root mounted, so
   # lib+src weave in) scopes narration to the user's file: the substrate's

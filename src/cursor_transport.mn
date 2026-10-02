@@ -171,7 +171,7 @@ handler terminal_transport with state = transport_state_init(Caret(0, Inferred("
 // the WASI boundary in one print_string. Any text-mode surface
 // (terminal, CI log, doc snapshot) reads the same projection.
 fn render_cursor_block(cursor, view) with !Mutate = match view {
-  CursorView(query, propose, topology, row, trace, verify, teach, why) => "Mentl @ " ++ show_handle_label(cursor) ++ "\n────────────────────────────────────────────\n" ++ "Query    │ " ++ show_node_kind(query) ++ "\nPropose  │ " ++ show_proposals(propose) ++ "\nTopology │ " ++ show_pipe_context(topology) ++ "\nRow      │ " ++ show_effrow(row) ++ "\nTrace    │ " ++ show_ownership(trace) ++ "\nVerify   │ " ++ show_verify_count(verify) ++ "\nTeach    │ " ++ show_suggestion(teach) ++ "\nWhy      │ " ++ show_reason(why) ++ "\n",
+  CursorView(query, propose, topology, row, trace, verify, teach, why) => "Mentl @ " ++ show_handle_label(cursor) ++ "\n────────────────────────────────────────────\n" ++ "Query    │ " ++ show_node_kind(query) ++ "\nPropose  │ " ++ show_proposals(propose) ++ "\nTopology │ " ++ show_pipe_context(topology) ++ "\nRow      │ " ++ show_effrow(row) ++ "\nTrace    │ " ++ show_ownership(trace) ++ "\nVerify   │ " ++ show_verify_count(verify) ++ "\nTeach    │ " ++ show_teaching(teach) ++ "\nWhy      │ " ++ show_reason(why) ++ "\n",
 }
 
 // ─── LSP / web / vim transports — peer frame-adapters ───────────────
@@ -293,10 +293,17 @@ fn apply_suggestion(cursor, view) with !Mutate = match cursor {
         VFill(survivor, reason) => if authored_hole(handle) {
           accept_fill(handle, survivor, reason)
         } else {
-          accept_annotation(handle, teach)
+          accept_teaching(handle, teach)
+          ()
         },
-        VAsk(_, _) => accept_annotation(handle, teach),
-        VNone => accept_annotation(handle, teach),
+        VAsk(_, _) => {
+          accept_teaching(handle, teach)
+          ()
+        },
+        VNone => {
+          accept_teaching(handle, teach)
+          ()
+        },
       },
     },
   },
@@ -322,49 +329,101 @@ fn accept_fill(handle, survivor, proof) with !Mutate = {
   write_module(module, splice_span(fs_read_file(driver_module_path(module)), span, text))
 }
 
-// AN ACCEPTED ANNOTATION IS A CLAUSE THE FORMATTER WRITES (2026-10-01). The
-// proven annotation joins the declaration's own row clause, and the
-// declaration's head is re-rendered by the formatter's head render
-// (`render_fn_head`) and spliced over the head it replaces — `fn`, the
-// name, the parameters, the return type, the clause, through the binder —
-// in the file of the module the declaration belongs to. Until this landing
-// the accept inserted the suggestion's TEXT as a new line above the
-// declaration's line number, in the session's target file: `  with Pure`
-// above `fn add(a, b) = a + b` never parses, and a suggestion at another
-// module's declaration landed at that line of the wrong file. The head
-// render is guarded by the formatter's conservation census: a head whose
-// render would lose a name, a literal or a comment is not written.
-fn accept_annotation(handle, teach) with !Mutate = match teach {
-  None => (),
-  Some(suggestion) => match suggestion {
-    AnnotationSuggestion(ann, _unlocks, _reason) => match annotation_clause(ann) {
-      None => eprint_string("mentl edit: `{show_annotation(ann)}` is not a row clause — nothing written\n"),
-      Some(eff) => match graph_node_body(handle) {
-        NStmt(FnStmt(name, params, retty, effs, body)) => {
-          let module = module_path_of_handle(graph_module_of(handle))
-          let source = fs_read_file(driver_module_path(module))
-          let head = render_fn_head(name, params, retty, effs ++ [eff], body)
-          match splice_decl_head(source, parse_span_of(handle), node_start_span(body), head) {
-            Some(edited) => write_module(module, edited),
-            None => eprint_string("mentl edit: `{name}`'s head did not render conserved — nothing written\n"),
-          }
+// THE GRADIENT'S ACCEPT (D4). A declaration's position carries no proposal;
+// what it carries is the gradient's answer, the one the Teach facet renders
+// there, accepted by the same verbs: one proven annotation is written into
+// the declaration's head; a question is refused with its alternatives named
+// (a tie between meanings is never guessed); a need says what is missing;
+// nothing to accept says so. Answers whether anything was written.
+fn accept_teaching(handle, teach) with !Mutate = match teach {
+  TeachAdd(s) => accept_annotation(handle, s),
+  TeachAsk(_) => {
+    eprint_string("mentl accept: {show_teaching(teach)}\n")
+    false
+  },
+  TeachNeed(_, _, _) => {
+    eprint_string("mentl accept: nothing to write — {show_teaching(teach)}\n")
+    false
+  },
+  TeachNone => {
+    eprint_string("mentl accept: no proposal at this position\n")
+    false
+  },
+}
+
+// AN ACCEPTED ANNOTATION IS A HEAD THE FORMATTER WRITES (2026-10-01; the
+// refinements D4). The proven annotation joins the declaration's own head —
+// a clause its row, a precondition its parameter's type, a contract its
+// return — and the head is re-rendered by the formatter's head render
+// (`render_fn_head`) and spliced over the head it replaces, in the file of
+// the module the declaration belongs to. Until 2026-10-01 the accept
+// inserted the suggestion's TEXT as a new line above the declaration's line
+// number, in the session's target file: `  with Pure` above `fn add(a, b) =
+// a + b` never parses, and a suggestion at another module's declaration
+// landed at that line of the wrong file. The head render is guarded by the
+// formatter's conservation census: a head whose render would lose a name, a
+// literal or a comment is not written.
+fn accept_annotation(handle, s) with !Mutate = match s {
+  AnnotationSuggestion(ann, _, _) => match graph_node_body(handle) {
+    NStmt(FnStmt(name, params, retty, effs, body)) => {
+      let module = module_path_of_handle(graph_module_of(handle))
+      let source = fs_read_file(driver_module_path(module))
+      match splice_decl_head(
+        source,
+        parse_span_of(handle),
+        node_start_span(body),
+        annotated_head(ann, name, params, retty, effs, body),
+        stated_by(ann, params)
+      ) {
+        Some(edited) => {
+          write_module(module, edited)
+          true
         },
-        _ => eprint_string("mentl edit: the suggestion's position is not a declaration — nothing written\n"),
-      },
+        None => {
+          eprint_string("mentl edit: `{name}`'s head did not render conserved — nothing written\n")
+          false
+        },
+      }
+    },
+    _ => {
+      eprint_string("mentl edit: the suggestion's position is not a declaration — nothing written\n")
+      false
     },
   },
 }
 
-// The row-clause entry an annotation authors, or None for the annotations
-// that are not a clause (a refinement, an ownership marker, a handler
-// wrap), which no gradient candidate proposes today.
-fn annotation_clause(ann) = match ann {
-  APure(_) => Some((EPure, false, EcUnion)),
-  ANotEffect(name, _) => Some((ENamed(intern_str(name)), true, EcUnion)),
-  ARefined(_, _, _) => None,
-  AOwn(_, _) => None,
-  ARef(_, _) => None,
-  AWrapHandler(_, _, _) => None,
+// The head an annotation writes: the declaration re-rendered with the
+// clause joined to its row, a parameter's type set to the alias, or the
+// return set to it.
+fn annotated_head(ann, name: String, params, retty, effs, body) with !Mutate = match ann {
+  APure(_) => render_fn_head(name, params, retty, effs ++ [(EPure, false, EcUnion)], body),
+  ANotEffect(n, _) => render_fn_head(name, params, retty, effs ++ [(ENamed(intern_str(n)), true, EcUnion)], body),
+  ARefined(r) => render_fn_head(name, params |> map(restated_param(r.param, r.alias, ??)), retty, effs, body),
+  AReturns(r) => render_fn_head(name, params, N(NTypeAnn(TName(r.alias, [])), span_zero(), 0), effs, body),
+}
+
+fn restated_param(pname: String, alias: String, p) = match p {
+  TParam(n, _, authored, resolved, default, row) => if n == pname { TParam(n, TName(alias, []), authored, resolved, default, row) } else { p },
+}
+
+// The written names an annotation replaces that its alias still states: a
+// refinement over a parameter written with a word type keeps that type as
+// the base the alias's own declaration names (`type NonZero = Int where
+// …`), so the census counts it present. A clause, a contract, and a
+// refinement over an unannotated parameter replace nothing.
+fn stated_by(ann, params) = match ann {
+  ARefined(r) => params |> flat_map(written_base(r.param, r.contract, ??)),
+  APure(_) => [],
+  ANotEffect(_, _) => [],
+  AReturns(_) => [],
+}
+
+fn written_base(pname: String, contract, p) = match p {
+  TParam(n, ty, _, _, _, _) => if n == pname && is_word_base(ty) && same_base(base_of(contract), ty) {
+    [show_type(ty)]
+  } else {
+    []
+  },
 }
 
 fn node_start_span(node) = match node {
@@ -375,8 +434,9 @@ fn node_start_span(node) = match node {
 // before its body; the new head replaces it and the whitespace stays, so
 // a body on the next line stays there. The splice answers None when the
 // replaced head held a comment or any name or literal the new head does
-// not — the conservation census the fmt verb answers to.
-fn splice_decl_head(ref source, decl_sp, body_sp, ref head: String) = {
+// not and the annotation does not state — the conservation census the fmt
+// verb answers to.
+fn splice_decl_head(ref source, decl_sp, body_sp, ref head: String, stated: [String]) = {
   let n = byte_len(source)
   match decl_sp {
     Span(dl, dc, _, _) => match body_sp {
@@ -389,7 +449,7 @@ fn splice_decl_head(ref source, decl_sp, body_sp, ref head: String) = {
           reverse(range(start, body_at))
         )
         let old_toks = lex(str_slice(source, start, head_end))
-        if count_comment_tokens(old_toks, 0, 0) > 0 || len(lost_atoms(old_toks, lex(head))) > 0 {
+        if count_comment_tokens(old_toks, 0, 0) > 0 || len(lost_atoms_beside(old_toks, lex(head), stated)) > 0 {
           None
         } else {
           Some("{str_slice(source, 0, start)}{head}{str_slice(source, head_end, n)}")
@@ -409,13 +469,16 @@ fn accepted_extent(span, text: String) = match span {
   Span(sl, sc, _, _) => Span(sl, sc, sl, sc + byte_len(text)),
 }
 
-// The address form's accept: the position's Propose verdict decides, and
-// only a single proven survivor at an authored hole draws the edge. A tie
-// is the question the medium asks, never a guess between proven survivors;
-// a filled position has nothing to accept. Answers whether an edge was
-// drawn, so the verb's exit code is the verdict.
+// The address form's accept: the position's Propose verdict decides at a
+// hole, and only a single proven survivor at an authored hole draws the
+// edge. A tie is the question the medium asks, never a guess between proven
+// survivors; a filled position has nothing to accept. A position with no
+// proposal accepts the gradient's answer there (D4) — `mentl accept
+// main.mn:4:1` on a declaration writes the annotation its Teach facet names.
+// Answers whether anything was written, so the verb's exit code is the
+// verdict.
 fn accept_at(handle, view) with !Mutate = match view {
-  CursorView(_, propose, _, _, _, _, _, _) => match propose {
+  CursorView(_, propose, _, _, _, _, teach, _) => match propose {
     Proposal(p) => match p.verdict {
       VFill(survivor, reason) => if authored_hole(handle) {
         accept_fill(handle, survivor, reason)
@@ -428,10 +491,7 @@ fn accept_at(handle, view) with !Mutate = match view {
         eprint_string("mentl accept: {int_to_str(len(survivors))} proven survivors — a tie is a question, never a guess: {show_divergence(divergence)}\n")
         false
       },
-      VNone => {
-        eprint_string("mentl accept: no proposal at this position\n")
-        false
-      },
+      VNone => accept_teaching(handle, teach),
     },
   },
 }
@@ -507,13 +567,6 @@ fn show_pipe_context(ctx) = match ctx {
 
 fn show_verify_count(preds) =
   if len(preds) == 0 { "no obligations" } else { "{int_to_str(len(preds))} pending" }
-
-fn show_suggestion(opt) = match opt {
-  None => "(no next-step)",
-  Some(suggestion) => match suggestion {
-    AnnotationSuggestion(ann, unlocks, _) => "add `{show_annotation(ann)}` to unlock {int_to_str(len(unlocks))} capability(ies)",
-  },
-}
 
 fn parse_action(line) with Pure =
   if line == "y" { AccAccept } else if line == "n" { AccDefer } else { AccDefer }

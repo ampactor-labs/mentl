@@ -2014,8 +2014,8 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 // body's graph performs resolve OUTER to the root's own instance and the
 // judgment happens on the one live graph. Isolation is the caller's fork
 // triple (`graph_push_checkpoint` + `world_top` … rollback + restore), the
-// same triple `try_each_annotation` has run at the annotation gradient all
-// along — its own comment names this site as its shape.
+// same triple `row_clause_holds` runs at the annotation gradient — the
+// gradient's own comment names this site as its shape.
 //
 // The fresh ledgers stay, and that is the point of keeping the chain: the
 // triple covers graph, heap and world ONLY, while a candidate's judgment
@@ -4830,30 +4830,46 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
 // application, which allocates nothing to learn that it owes nothing. A
 // callee out of sight — a function a call returned, a part of a value this
 // body cannot see into — states no use of what it is handed, so each
-// argument goes where nothing here can see (`handed_unknowingly`).
-fn call_owes(callees, args, call_h, span: ValidSpan) = match callees {
-  [one] => {
-    match learning_path(one) {
-      Some(at) => applied_by_choice(at, args),
-      None => {
-        match graph_chase(one) {
-          GNode(NBound(t), _) => contract_owes(t, args, call_h, span),
-          _ => (),
-        }
-        if callee_in_sight(one) { () } else { args |> each(handed_unknowingly(call_h, span, ??)) }
-      },
-    }
-    channel_leaf(args, call_h, span, one)
-  },
-  _ => {
-    callees |> each(learn_provision(??, args))
-    match fn_contract(callees) {
-      Some(c) => contract_owes(c, args, call_h, span),
-      None => (),
-    }
-    if all(callee_seen, callees) { () } else { args |> each(handed_unknowingly(call_h, span, ??)) }
-    channel_crossing(callees, args, call_h, span)
-  },
+// argument goes where nothing here can see (`handed_unknowingly`). Each
+// top-level declaration the callee can be is noted as applied here, so a
+// reader asking where it is applied follows the edge (`note_application`).
+fn call_owes(callees, args, call_h, span: ValidSpan) = {
+  callees |> each(note_application(call_h, ??))
+  match callees {
+    [one] => {
+      match learning_path(one) {
+        Some(at) => applied_by_choice(at, args),
+        None => {
+          match graph_chase(one) {
+            GNode(NBound(t), _) => contract_owes(t, args, call_h, span),
+            _ => (),
+          }
+          if callee_in_sight(one) { () } else { args |> each(handed_unknowingly(call_h, span, ??)) }
+        },
+      }
+      channel_leaf(args, call_h, span, one)
+    },
+    _ => {
+      callees |> each(learn_provision(??, args))
+      match fn_contract(callees) {
+        Some(c) => contract_owes(c, args, call_h, span),
+        None => (),
+      }
+      if all(callee_seen, callees) { () } else { args |> each(handed_unknowingly(call_h, span, ??)) }
+      channel_crossing(callees, args, call_h, span)
+    },
+  }
+}
+
+// The application edge, drawn where the application is judged: a reference
+// to a top-level declaration among the functions the callee can be — the
+// callee itself, a pipe's stage, the value a local holds — is noted under
+// its name (D4: the gradient's precondition bracket read the calls of a
+// declaration by scanning the whole graph for call nodes, and a pipe stage
+// was never one).
+fn note_application(call_h, leaf) = match graph_node_body(leaf) {
+  NExpr(VarRef(name)) => if graph_link_of(leaf) == None { graph_apply_note(name, call_h) } else { () },
+  _ => (),
 }
 
 // A callee whose use of what it is handed this body can read: a

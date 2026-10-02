@@ -1,0 +1,7 @@
+// teach 5: none
+// Its precondition stated and its row authored: nothing left to propose.
+type NonZero = Int where !(self == 0)
+
+fn inv(n: NonZero) with !Trap = 100 / n
+
+fn main() = inv(5)

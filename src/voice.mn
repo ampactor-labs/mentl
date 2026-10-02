@@ -107,7 +107,7 @@ type HandlerEntry = HandlerEntry({absorbs: EffRow, install_reason: Reason, insta
 // Primitives: #1 (graph), #2 (handlers_installed), #4 (rows),
 // #5 (ownership), #6 (refinements), #7 (gradient_next), #8 (reason).
 type Situation
-  = Situation({env_snapshot: [EnvEntry], facts: TopicFacts, gradient_next: Option(AnnotationSuggestion), handle: Option(Int), handlers_installed: [HandlerEntry], ownership_at_topic: Option(Ownership), prior_turn_tentacle: Option(Tentacle), prior_turn_topic: Option(Topic), reason_at_topic: Option(Reason), refinements: [Predicate], register: Register, row_at_topic: Option(EffRow), row_declared: Option(EffRow), tentacle: Tentacle, topic: Topic})
+  = Situation({env_snapshot: [EnvEntry], facts: TopicFacts, gradient_next: Teaching, handle: Option(Int), handlers_installed: [HandlerEntry], ownership_at_topic: Option(Ownership), prior_turn_tentacle: Option(Tentacle), prior_turn_topic: Option(Topic), reason_at_topic: Option(Reason), refinements: [Predicate], register: Register, row_at_topic: Option(EffRow), row_declared: Option(EffRow), tentacle: Tentacle, topic: Topic})
 
 // differs from row_at_topic → subsumption diag
 //
@@ -422,8 +422,10 @@ effect Interact {
 // to arrive with the `propose` that asks for it.
 fn silence_predicate(situation) with Pure = match situation {
   Situation(s) => match s.gradient_next {
-    None => true,
-    Some(_) => false,
+    TeachNone => true,
+    TeachAdd(_) => false,
+    TeachAsk(_) => false,
+    TeachNeed(_, _, _) => false,
   },
 }
 
@@ -610,16 +612,17 @@ fn render_topology_arm(situation) = match situation {
 }
 
 // render_unlock_arm — TentUnlock's render. Per MV §2.7.3 form
-// FCapability with EXCITED stance. Surfaces a capability that the
-// gradient_next would unlock. silence_predicate gated on gradient_next
-// AND gradient_unlocks_capability(gradient_next).
+// FCapability with EXCITED stance. Surfaces what the gradient's answer
+// proves: one annotation's leverage, or the question or need it asks.
 fn render_unlock_arm(situation) = match situation {
   Situation(s) => {
     let body = match s.gradient_next {
-      None => [SLit("")],
-      Some(suggestion) => match suggestion {
-        AnnotationSuggestion(ann, unlocks, _reason) => [SLit("Adding "), SAnnot(show_annotation(ann)), SLit(" unlocks "), SCap(join_capability_labels(unlocks))],
+      TeachNone => [SLit("")],
+      TeachAdd(suggestion) => match suggestion {
+        AnnotationSuggestion(ann, lev, _reason) => [SLit("Adding "), SAnnot(show_annotation(ann)), SLit(" "), SCap(show_leverage(lev))],
       },
+      TeachAsk(_) => [SLit(show_teaching(s.gradient_next))],
+      TeachNeed(_, _, _) => [SLit(show_teaching(s.gradient_next))],
     }
     VoiceLine(TentUnlock, FCapability, body, select_modifier(situation, s.register))
   },
@@ -655,16 +658,19 @@ fn render_verify_arm(situation) = match situation {
 
 // render_teach_arm — TentTeach's render. Per MV §2.7.3 form
 // FGradient with PATIENT-BUT-POINTED stance. Per AT1 + AT5 + AT9: the
-// canonical "next step" voice — surface gradient_next as one
-// annotation that unlocks one capability. silence_predicate gated on
-// gradient_next being Some.
+// canonical "next step" voice — surface the gradient's answer: the one
+// annotation to add, the question between two that mean different things,
+// or the predicate a parameter needs. silence_predicate gated on there
+// being an answer.
 fn render_teach_arm(situation) = match situation {
   Situation(s) => {
     let body = match s.gradient_next {
-      None => [SLit("")],
-      Some(suggestion) => match suggestion {
-        AnnotationSuggestion(ann, _unlocks, reason) => [SLit("Next: add "), SAnnot(show_annotation(ann)), SLit(" on "), SSpan(suggestion_site_from_reason(reason))],
+      TeachNone => [SLit("")],
+      TeachAdd(suggestion) => match suggestion {
+        AnnotationSuggestion(ann, _lev, reason) => [SLit("Next: add "), SAnnot(show_annotation(ann)), SLit(" on "), SSpan(suggestion_site_from_reason(reason))],
       },
+      TeachAsk(_) => [SLit("Next: " ++ show_teaching(s.gradient_next))],
+      TeachNeed(_, _, _) => [SLit("Next: " ++ show_teaching(s.gradient_next))],
     }
     VoiceLine(TentTeach, FGradient, body, select_modifier(situation, s.register))
   },
@@ -820,7 +826,7 @@ fn compose_propose_situation(target_handle, target_reason, prior_turn) = match m
   (prior_topic, prior_tent) => Situation({
     env_snapshot: [],
     facts: TopicFacts({error_code_at: None, is_hole: false, nested_call_depth: 0}),
-    gradient_next: None,
+    gradient_next: TeachNone,
     handle: Some(target_handle),
     handlers_installed: [],
     ownership_at_topic: None,
@@ -1273,19 +1279,6 @@ fn file_handle_eq(a, b) with Pure = match a {
   FileHandle(ai) => match b {
     FileHandle(bi) => ai == bi,
   },
-}
-
-// join_capability_labels — fold [String] into a comma-joined
-// String for FCapability rendering. Tail-recursive; allocation
-// bounded by total label length. The capabilities_for_annotation
-// substrate produces lists of size ≤ 3 today, so a flat fold is
-// honest.
-fn join_capability_labels(labels) = if len(labels) == 0 {
-  ""
-} else {
-  let head = last(labels)
-  let tail = drop_last(labels)
-  if len(tail) == 0 { head } else { "{head}, {join_capability_labels(tail)}" }
 }
 
 // suggestion_site_from_reason — extract the source Span from an
