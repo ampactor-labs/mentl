@@ -1,0 +1,10 @@
+// expect: 20
+// The control: the same callback applies what `map` hands back at 5, which
+// proves `inv`'s precondition, so `!Trap` holds.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn run_map(mk) = fold(0, (acc, f) => acc + f(5), map(mk, [1]))
+
+fn main() with !Trap = run_map({ _ => inv })

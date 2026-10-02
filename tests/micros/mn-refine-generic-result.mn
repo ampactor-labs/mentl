@@ -1,0 +1,14 @@
+// expect: refuse E_EffectMismatch
+// A generic call's result is what its signature returns of its arguments:
+// `id` returns the join it is handed, so applying the result owes `inv`'s
+// precondition. Checked clean and divided by zero on boot 13e8484a and pin
+// e23392f6.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn inv2(n) = n + 1
+
+fn run(k, c) with !Trap = id(if c { inv2 } else { inv })(k + 1)
+
+fn main() = run(0 - 1, false)

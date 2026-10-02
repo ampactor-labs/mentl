@@ -1,0 +1,13 @@
+// expect: refuse E_RefinementRejected
+// A callback's results are sources of the channel too: `map` hands back what
+// the caller's `mk` returns, and `fold` hands each of those to a callback
+// that applies it at 0. `mk` is `run_map`'s caller's choice, and what it
+// returns is `inv`. Checked clean under `!Trap` and divided by zero on boot
+// 13e8484a and pin e23392f6 (exit 134).
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn run_map(mk) = fold(0, (acc, f) => acc + f(0), map(mk, [1]))
+
+fn main() with !Trap = run_map({ _ => inv })

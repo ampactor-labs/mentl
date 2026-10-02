@@ -2916,6 +2916,13 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
           // REMOVED here (Stage 1b): a syntactic escape check that fired on
           // use-count-plus-bare-return with no hazard model — 356 false alarms, min and
           // every fold accumulator among them. The region tracker covers the real hazard.
+          // A return no annotation states is handed to a caller this body
+          // cannot see (`hand_on_value`); an authored one is crossed by its
+          // claim above.
+          match pinned_ret {
+            TVar(_) => hand_on_value(body_handle),
+            _ => (),
+          }
           let inferred_params = infer_ownership(resolved_params, body_node)
           graph_bind(
             handle,
@@ -4802,14 +4809,89 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   // nothing (its old raw-pred verify pended one forever-undecidable entry
   // per refined-param unification — noise the debt surfacing exposed).
   // The partial path's supplied-arg discharge is the same law at
-  // unify_args_positionally. A callee that is a function-typed parameter
-  // learns what this call hands it first (`learn_provision`).
-  learn_provision(fh, arg_handles)
-  match graph_chase(fh) {
-    GNode(NBound(TFun(dps, _, _)), _) => discharge_arg_refinements(dps, arg_handles, 0, span, handle),
-    _ => (),
-  }
+  // unify_args_positionally. What the call owes is what every function the
+  // callee can be demands, read along its edges (`call_owes`).
+  call_owes(fn_leaves(fh), arg_handles, handle, span)
   stage_continuation_boundary(cname, handle)
+}
+
+// What an application owes the functions its callee can be: each learning
+// parameter among them learns what the application hands it
+// (`learn_provision`), the rest owe the meet of their contracts
+// (`fn_contract`), and a generic callee carries the functions its arguments
+// hand in to the callbacks it hands them to (`channel_crossing`). The meet
+// of one contract is that contract, read off its node — the common
+// application, which allocates nothing to learn that it owes nothing. A
+// callee out of sight — a function a call returned, a part of a value this
+// body cannot see into — states no use of what it is handed, so each
+// argument goes where nothing here can see (`handed_unknowingly`).
+fn call_owes(callees, args, call_h, span: ValidSpan) = match callees {
+  [one] => {
+    match learning_path(one) {
+      Some(at) => applied_by_choice(at, args),
+      None => {
+        match graph_chase(one) {
+          GNode(NBound(t), _) => contract_owes(t, args, call_h, span),
+          _ => (),
+        }
+        if callee_in_sight(one) { () } else { args |> each(handed_unknowingly(call_h, span, ??)) }
+      },
+    }
+    channel_leaf(args, call_h, span, one)
+  },
+  _ => {
+    callees |> each(learn_provision(??, args))
+    match fn_contract(callees) {
+      Some(c) => contract_owes(c, args, call_h, span),
+      None => (),
+    }
+    if all(callee_seen, callees) { () } else { args |> each(handed_unknowingly(call_h, span, ??)) }
+    channel_crossing(callees, args, call_h, span)
+  },
+}
+
+// A callee whose use of what it is handed this body can read: a
+// declaration of the program, a lambda in sight, a parameter whose type was
+// written, and what a call of one returns — a partial completing it, or the
+// function its declared return states. A learning parameter is its
+// caller's choice and is read apart (`applied_by_choice`); a call of one
+// returns its caller's choice too.
+fn callee_in_sight(leaf) = match graph_node_body(leaf) {
+  NExpr(LambdaExpr(_, _)) => true,
+  NExpr(VarRef(name)) => if env_lookup_is_global(name) { true } else { stated_parameter(leaf) },
+  NExpr(CallExpr(callee, _)) => callee_in_sight(node_handle(callee)),
+  NExpr(PipeExpr(PForward, _, stage)) => callee_in_sight(node_handle(stage)),
+  _ => false,
+}
+
+fn callee_seen(leaf) = learning_param(leaf) || callee_in_sight(leaf)
+
+fn stated_parameter(leaf) = match graph_link_of(leaf) {
+  Some(b) => match graph_binder_of(b) {
+    Some(fact) => match fact {
+      ParamFact(_) => !learning_binder(b),
+      PartFact(_) => false,
+    },
+    None => false,
+  },
+  None => false,
+}
+
+// An argument handed where nothing states its use: every function it holds
+// meets that use as `source_unknowingly` reads it — a learning parameter's
+// learns it, a function in sight owes its demands as debt.
+fn handed_unknowingly(call_h, span: ValidSpan, ah) =
+  value_fn_positions(ah) |> each(unknowingly_at(call_h, span, ah, ??))
+
+fn unknowingly_at(call_h, span: ValidSpan, ah, pos) = match pos {
+  (_, path, _) => sources_at(ah, path) |> each(source_unknowingly(call_h, span, ??)),
+}
+
+// A contract is owed where the application fills its parameters: each
+// refined one claims of its argument (`discharge_arg`).
+fn contract_owes(t, args, call_h, span: ValidSpan) = match t {
+  TFun(dps, _, _) => if len(dps) == len(args) { discharge_arg_refinements(dps, args, 0, span, call_h) } else { () },
+  _ => (),
 }
 
 fn discharge_arg_refinements(dps, arg_handles, i, span: ValidSpan, call_h) = if i >= len(dps) || i >= len(arg_handles) {
@@ -4936,6 +5018,7 @@ fn infer_lambda(params, body_node, handle, span: ValidSpan, binder) = {
       inf_frame_params(param_handles ++ [bh])
       infer_expr(body_node)
       exit_frame()
+      hand_on_value(bh)
       let published = match binder {
         BoundByCallers => published_params(declared, param_handles, "lambda", span),
         BoundByTheCycle => declared,
@@ -5455,11 +5538,7 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match left {
         // learns what it is handed. The pipe raised nothing until P0·H:
         // `0 |> inv` under `!Trap` checked clean and divided by zero (boot
         // 13e8484a and the P0 tree alike).
-        learn_provision(rh, [lh])
-        match graph_chase(rh) {
-          GNode(NBound(TFun(dps, _, _)), _) => if len(dps) == 1 { discharge_arg(list_index(dps, 0), lh, span, handle) } else { () },
-          _ => (),
-        }
+        call_owes(fn_leaves(rh), [lh], handle, span)
         // A pipe stage is an application; its result node is a suspension
         // boundary exactly as a CallExpr's is (lower's k2 spine keys the
         // bare-VarRef stage's completion call by THIS pipe node's handle).
@@ -5967,6 +6046,14 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
       expect_same(a, b, span, reason),
       TVar(ha) => match b {
         TVar(hb) => unify(ha, hb, span, reason),
+        TRefined(base_b, _) => // A cell holds a shape (`shape_of`), so a refinement never enters
+        // it: the variable meets the BASE, as every other arm meets a
+        // refinement. Binding the wrapper ran the occurs check over a base
+        // that may be the cell itself — a provision over a function's
+        // position is `TRefined(TVar(c), …)` around that position's own cell
+        // — and `fn max_by(f, xs) = reduce(xs, …)` in the prelude refused as
+        // an infinite type (H4·D's first m2).
+        unify_types(a, base_b, span, reason),
         _ => // CARRIED-TRUTH: the left handle may ALREADY be bound (a use-site handle the graph
         // proved — e.g. a lambda arg's `(r) -> ret`). Read it live: if NBound,
         // unify `b` AGAINST that existing type, never `graph_bind` over it. The
@@ -8858,9 +8945,26 @@ fn published_params(params, handles, owner: String, span: ValidSpan) = {
 fn published_ret(pinned_ret, body_h, ret_h) = match pinned_ret {
   TVar(_) => match proven_return(body_h, ret_h) {
     Some(c) => c,
-    None => pinned_ret,
+    None => published_fn_ret(pinned_ret, body_h),
   },
   _ => pinned_ret,
+}
+
+// A declaration returning one of several function values publishes their
+// meet (`fn_contract`): its callers apply whichever it returns, so they owe
+// every precondition and are promised only what every one guarantees. The
+// class kept the first branch's contract — `pick(false)(0)` over `if c {
+// inv2 } else { inv }` divided by zero under `!Trap` (higher-order face 4).
+fn published_fn_ret(pinned_ret, body_h) = {
+  let leaves = fn_leaves(body_h)
+  if len(leaves) < 2 {
+    pinned_ret
+  } else {
+    match fn_contract(leaves) {
+      Some(t) => t,
+      None => pinned_ret,
+    }
+  }
 }
 
 // A call through this declaration's own guard while its body was judged —
@@ -9060,7 +9164,8 @@ fn carry_guard(row, param_h) = match graph_binder_of(param_h) {
 // precondition: its own callers owe it from then on, and the claim here is
 // discharged by it. Only a pure flow learns — the parameter itself, or a
 // let of it — since a join or a computation is not the parameter's value.
-fn learn_precondition(ah, contract) = if ty_carries_refinement(contract) {
+// A provision is what a position is handed, never a demand on it.
+fn learn_precondition(ah, contract) = if ty_carries_refinement(contract) && !is_provision(contract) {
   match flow_param(ah) {
     Some(b) => match graph_binder_of(b) {
       Some(fact) => match fact {
@@ -9086,71 +9191,301 @@ fn learn_precondition(ah, contract) = if ty_carries_refinement(contract) {
 // refined position demands of its result. It publishes with the parameter
 // (`published_params`), and a caller's function crossing judges the
 // function it hands in against both (`fun_refinement_crossing`) — `fn
-// drive(f, c: Hz) = f(c)` publishes `f: (Hz) -> r`, and `fn run(f) =
-// alpha(f())` publishes `f: () -> Hz`. Both had ridden the unification
-// class, and three proof-exactness fixtures went red the day P0 stripped
-// refinements from cells.
+// drive(f, c: Hz) = f(c)` publishes its function applied at its own
+// parameter, and `fn run(f) = alpha(f())` publishes `f: () -> Hz`. Both had
+// ridden the unification class, and three proof-exactness fixtures went red
+// the day P0 stripped refinements from cells.
 //
-// The contract learned so far: a stated function type keeps what was
-// written, so only an unstated parameter learns — from its class's shape
-// at the first application, then from what it has learned.
-fn learnable_fn(pre, b) = match pre {
-  Unstated => match graph_chase(b) {
-    GNode(NBound(TFun(ps, ret, row)), _) => Some((ps, ret, row)),
-    _ => None,
-  },
-  Learned(c) => match c {
-    TFun(ps, ret, row) => Some((ps, ret, row)),
-    _ => None,
-  },
+// A function at a PART of a parameter learns the same way, where the part
+// is applied — `fs[0](k)` teaches the list's elements — and the parameter's
+// contract becomes a structure with the learned function at that path, the
+// parts beside it scrubbed of whatever the class merged into them (H4·D: an
+// element applied inside `fn first(fs) = fs[0](0)` was judged against
+// nothing, and `first([inv])` under `!Trap` checked clean and divided by
+// zero on boot 13e8484a and pin e23392f6).
+//
+// The function a learning parameter holds at a path: a part its learned
+// contract holds as a type of its own is what was learned there; a part
+// still a cell — the whole parameter, while nothing is learned — is the
+// class's, read SCRUBBED (`class_scrub`): every position no application
+// has reached yet, and no demand on the result, since a class merges
+// whatever a unification met and its contract is nobody's.
+fn learnable_at(pre, b, path) = match pre {
+  Unstated => fn_at(TVar(b), path),
+  Learned(c) => fn_at(c, path),
   Stated(_) => None,
   Unrefined => None,
 }
 
-// What one application hands each position: the contract every value
-// passed there carries, met with what earlier applications handed it — a
-// position one application leaves unproven stays unproven, since the
-// function receives that value too.
-fn learn_provision(callee_h, arg_handles) = match flow_param(callee_h) {
-  Some(b) => match graph_binder_of(b) {
-    Some(fact) => match fact {
-      ParamFact(f) => match learnable_fn(f.pre, b) {
-        Some((ps, ret, row)) => if len(ps) == len(arg_handles) {
-          let provided = zip(ps, arg_handles) |> map(provided_at(f.pre, ??))
-          graph_binder_note(
-            b,
-            ParamFact({guard: f.guard, owes: f.owes, pre: Learned(TFun(provided, ret, row))})
-          )
-        } else {
-          ()
-        },
+fn fn_at(t, path) = match t {
+  TVar(_) => match chase_ty(t) {
+    TVar(_) => None,
+    u => fn_at(class_scrub(u), path),
+  },
+  TAlias(_, inner) => fn_at(inner, path),
+  _ => match path {
+    [] => match t {
+      TFun(ps, ret, row) => Some((ps, ret, row)),
+      _ => None,
+    },
+    [step, ...rest] => match contract_part(t, step) {
+      Some(part) => fn_at(part, rest),
+      None => None,
+    },
+  },
+}
+
+// A type read through its cell: a variable bound to a type is that type
+// (the chase follows variable chains), a free one itself.
+fn chase_ty(t) = match t {
+  TVar(h) => match graph_chase(h) {
+    GNode(NBound(u), _) => u,
+    _ => t,
+  },
+  _ => t,
+}
+
+// A class's structure as nothing learned: every function position handed
+// nothing yet, no guard on its row, and no demand on a result.
+fn class_scrub(t) = match t {
+  TFun(ps, ret, row) => TFun(ps |> map(unprovided_param), class_scrub(ret), row),
+  TList(e) => TList(class_scrub(e)),
+  TTuple(es) => TTuple(es |> map(class_scrub)),
+  TRecord(fs) => TRecord(fs |> map(scrub_field)),
+  TRecordOpen(fs, v) => TRecordOpen(fs |> map(scrub_field), v),
+  TName(n, args) => TName(n, args |> map(class_scrub)),
+  TAlias(_, _) => match shape_of(t) {
+    TAlias(n, inner) => TAlias(n, class_scrub(inner)),
+    s => class_scrub(s),
+  },
+  _ => shape_of(t),
+}
+
+fn scrub_field(f) = match f {
+  (n, t) => (n, class_scrub(t)),
+}
+
+fn unprovided_param(p) =
+  param_with_row(param_with_ty(p, provided_ty(param_ty(p), ProvidedNone)), guards_nothing())
+
+// The parameter's contract with the function at a path replaced; the parts
+// beside it are the class's, scrubbed where the walk enters the class.
+fn with_fn_at(t, path, part) = match path {
+  [] => part,
+  [step, ...rest] => match t {
+    TVar(_) => match chase_ty(t) {
+      TVar(_) => t,
+      u => with_fn_at(class_scrub(u), path, part),
+    },
+    TList(e) => match step {
+      PartElem => TList(with_fn_at(e, rest, part)),
+      _ => t,
+    },
+    TTuple(es) => match step {
+      PartIndex(i) => TTuple(es |> enumerate |> map(with_fn_in_slot(i, rest, part, ??))),
+      _ => t,
+    },
+    TRecord(fs) => TRecord(fs |> map(with_fn_in_field(step, rest, part, ??))),
+    TRecordOpen(fs, v) => TRecordOpen(fs |> map(with_fn_in_field(step, rest, part, ??)), v),
+    TName(n, args) => match step {
+      PartTypeArg(k) => TName(n, args |> enumerate |> map(with_fn_in_slot(k, rest, part, ??))),
+      _ => t,
+    },
+    TAlias(n, inner) => TAlias(n, with_fn_at(inner, path, part)),
+    _ => t,
+  },
+}
+
+fn with_fn_in_slot(i, rest, part, slot) = match slot {
+  (j, e) => if j == i { with_fn_at(e, rest, part) } else { e },
+}
+
+fn with_fn_in_field(step, rest, part, field) = match field {
+  (n, ft) => match step {
+    PartField(m) => if n == m { (n, with_fn_at(ft, rest, part)) } else { (n, ft) },
+    _ => (n, ft),
+  },
+}
+
+fn note_learned(b, f, path, part) = {
+  let base = match f.pre {
+    Learned(c) => c,
+    _ => TVar(b),
+  }
+  graph_binder_note(
+    b,
+    ParamFact({guard: f.guard, owes: f.owes, pre: Learned(with_fn_at(base, path, part))})
+  )
+}
+
+// One learning at a path: `learn` reads the function the parameter holds
+// there — its positions, its result and its row — and answers what it
+// becomes, or nothing to learn.
+fn learn_fn_at(b, path, learn) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(f) => match learnable_at(f.pre, b, path) {
+      Some(found) => match learn(found) {
+        Some(part) => note_learned(b, f, path, part),
         None => (),
       },
-      PartFact(_) => (),
+      None => (),
     },
-    None => (),
+    PartFact(_) => (),
   },
   None => (),
 }
 
-fn provided_at(pre, pair) = match pair {
-  (p, ah) => match leaves_contract(value_leaves(ah, NoSelf)) {
-    Some(c) => if still_provided(pre, param_ty(p), c) {
-      param_with_ty(p, c)
-    } else {
-      param_with_ty(p, shape_of(param_ty(p)))
-    },
-    None => param_with_ty(p, shape_of(param_ty(p))),
+// An APPLICATION reaching the function at a path: each position joins what
+// this application hands it, and a demand the application makes of the
+// result becomes the function's own unless one is already learned — a
+// second, other demand stays the body's own claim, open over the first.
+fn learn_application(b, path, provisions, demand) =
+  learn_fn_at(b, path, applied_with(provisions, demand, ??))
+
+fn applied_with(provisions, demand, found) = match found {
+  (ps, ret, row) => if len(ps) == len(provisions) {
+    Some(TFun(zip(ps, provisions) |> map(provided_with), learned_result(ret, demand), row))
+  } else {
+    None
   },
 }
 
-// The first application provides what it hands; a later one keeps a
-// position's contract only where it hands the same.
-fn still_provided(pre, prior, c) = match pre {
-  Unstated => true,
-  Learned(_) => same_contract(prior, c),
-  Stated(_) => false,
-  Unrefined => false,
+fn provided_with(pair) = match pair {
+  (p, provision) => param_with_ty(p, provision_join(param_ty(p), provision_ty(param_ty(p), provision))),
+}
+
+fn learned_result(ret, demand) = if ty_carries_contract(ret) {
+  ret
+} else {
+  match demand {
+    Some(d) => if ty_carries_contract(d) { d } else { ret },
+    None => ret,
+  }
+}
+
+// What one application hands each position: an EDGE to the node it hands —
+// the value itself, read live wherever a function crosses into this
+// contract — joined with what earlier applications handed it. It was a
+// contract copied off the node's leaves, which a constant never has, so
+// `fn apply5(f) = f(5)` published its function applied at nothing known,
+// and `apply5(inv)` under `!Trap` paid the guard on the precondition of the
+// function it handed in, for a division by 5.
+fn learn_provision(callee_h, arg_handles) = match learning_path(callee_h) {
+  Some(at) => applied_by_choice(at, arg_handles),
+  None => (),
+}
+
+// A learning parameter applied: it learns what each position is handed,
+// and what it is handed goes where this body cannot see — its caller chose
+// the function — so a learning function among the arguments is handed on
+// (`hand_on_value`).
+fn applied_by_choice(at, arg_handles) = {
+  learn_at(at, arg_handles)
+  arg_handles |> each(hand_on_value)
+}
+
+fn learn_at(at, arg_handles) = match at {
+  (b, path) => learn_application(b, path, arg_handles |> map({ ah => Handed(ProvidedAt([ah])) }), None),
+}
+
+// What an application hands one position: values it hands — by their
+// nodes, or beyond what can be named — or a contract it states for every
+// value it hands.
+type Provision = Handed(Provided) | ByContract(Ty)
+
+fn provision_ty(t, provision) = match provision {
+  Handed(provided) => provided_ty(t, provided),
+  ByContract(c) => c,
+}
+
+fn handed_unknown() = Handed(ProvidedBeyond([]))
+
+// Two provisions of one position, joined: the nodes of both, and beyond
+// them whatever either cannot name.
+fn provided_union(a, b) = match a {
+  ProvidedNone => b,
+  ProvidedAt(xs) => match b {
+    ProvidedNone => a,
+    ProvidedAt(ys) => ProvidedAt(nodes_union(xs, ys)),
+    ProvidedBeyond(ys) => ProvidedBeyond(nodes_union(xs, ys)),
+  },
+  ProvidedBeyond(xs) => match b {
+    ProvidedNone => a,
+    ProvidedAt(ys) => ProvidedBeyond(nodes_union(xs, ys)),
+    ProvidedBeyond(ys) => ProvidedBeyond(nodes_union(xs, ys)),
+  },
+}
+
+fn nodes_union(xs, ys) = xs ++ filter({ y => !any({ x => x == y }, xs) }, ys)
+
+// A position's type under a provision: its shape, scrubbed, refined by
+// what it is handed.
+fn provided_ty(t, provided) = TRefined(provision_base(t), PProvides(provided))
+
+fn provision_base(t) = match t {
+  TRefined(base, PProvides(_)) => base,
+  _ => class_scrub(t),
+}
+
+// What a position's type says it is handed; None for a contract — a
+// refinement or a function type the provider states.
+fn provided_of(t) = match t {
+  TRefined(_, PProvides(provided)) => Some(provided),
+  _ => None,
+}
+
+fn is_provision(t) = match provided_of(t) {
+  Some(_) => true,
+  None => false,
+}
+
+// The provision a receiver's position states, as an application handing on
+// to it provides it: an edge or a contract carries over, and a position
+// stating nothing is handed values nothing here can name.
+fn provision_of_ty(t) = match provided_of(t) {
+  Some(provided) => Handed(provided),
+  None => if ty_carries_contract(t) { ByContract(t) } else { handed_unknown() },
+}
+
+// Provisions join: nothing handed is the identity, the nodes every
+// application handed are their union, a contract joins only the same
+// contract, and anything else keeps the nodes it can name beside values it
+// cannot.
+fn provision_join(prior, next) = match provided_of(prior) {
+  Some(p) => match p {
+    ProvidedNone => next,
+    _ => match provided_of(next) {
+      Some(n) => provided_ty(prior, provided_union(p, n)),
+      None => provided_ty(prior, provided_union(p, ProvidedBeyond([]))),
+    },
+  },
+  None => match provided_of(next) {
+    Some(n) => match n {
+      ProvidedNone => prior,
+      _ => provided_ty(prior, provided_union(n, ProvidedBeyond([]))),
+    },
+    None => if same_contract(prior, next) { prior } else { provided_ty(prior, ProvidedBeyond([])) },
+  },
+}
+
+// A type states something a crossing is judged against: a refinement, a
+// provision that has reached it, or a function contract with one inside.
+fn ty_carries_contract(t) = match t {
+  TFun(ps, ret, _) => any(param_carries_contract, ps) || ty_carries_contract(ret),
+  TList(e) => ty_carries_contract(e),
+  TTuple(es) => any(ty_carries_contract, es),
+  TRecord(fs) => any(field_carries_contract, fs),
+  TRecordOpen(fs, _) => any(field_carries_contract, fs),
+  TName(_, args) => any(ty_carries_contract, args),
+  TRefined(_, PProvides(ProvidedNone)) => false,
+  TAlias(_, inner) => ty_carries_contract(inner) || ty_carries_refinement(t),
+  _ => ty_carries_refinement(t),
+}
+
+fn param_carries_contract(p) = ty_carries_contract(param_ty(p)) || !guard_owes_nothing(param_row(p))
+
+fn field_carries_contract(f) = match f {
+  (_, t) => ty_carries_contract(t),
 }
 
 // Two contracts the same refinement: named by one alias.
@@ -9167,57 +9502,139 @@ fn same_contract(a, b) = match contract_alias(a) {
 // the claim here stands on it (verify.mn `call_leaves`). A second, other
 // demand on the same result is not met into the first — it stays the
 // body's own claim, open over the first.
-fn learn_result_demand(ah, contract) = match applied_param(ah) {
-  Some(b) => match graph_binder_of(b) {
-    Some(fact) => match fact {
-      ParamFact(f) => match learnable_fn(f.pre, b) {
-        Some((ps, ret, row)) => if ty_carries_refinement(ret) {
-          ()
-        } else {
-          graph_binder_note(
-            b,
-            ParamFact({guard: f.guard, owes: f.owes, pre: Learned(TFun(ps, contract, row))})
-          )
-        },
-        None => (),
-      },
-      PartFact(_) => (),
-    },
-    None => (),
+fn learn_result_demand(ah, contract) = match applied_path(ah) {
+  Some(at) => match at {
+    (b, path) => learn_fn_at(b, path, demanded_with(contract, ??)),
   },
   None => (),
 }
 
-// The parameter a value is the result of APPLYING — a call or a pipe stage
-// whose callee is a parameter, through references and lets.
-fn applied_param(h) = match graph_node_body(h) {
-  NExpr(CallExpr(callee, _)) => flow_param(node_handle(callee)),
-  NExpr(PipeExpr(PForward, _, stage)) => flow_param(node_handle(stage)),
-  NExpr(BlockExpr(_, f)) => applied_param(node_handle(f)),
+fn demanded_with(contract, found) = match found {
+  (ps, ret, row) => if ty_carries_contract(ret) { None } else { Some(TFun(ps, contract, row)) },
+}
+
+// The learning parameter — or the function at a part of one — a value is
+// the result of APPLYING: a call or a pipe stage whose callee it is,
+// through references and lets.
+fn applied_path(h) = match graph_node_body(h) {
+  NExpr(CallExpr(callee, _)) => learning_path(node_handle(callee)),
+  NExpr(PipeExpr(PForward, _, stage)) => learning_path(node_handle(stage)),
+  NExpr(BlockExpr(_, f)) => applied_path(node_handle(f)),
   _ => None,
 }
 
-// The declared parameter a value IS, through references and lets.
-fn flow_param(h) = match graph_node_body(h) {
-  NExpr(VarRef(name)) => if name == "self" {
-    None
-  } else {
-    match graph_link_of(h) {
-      Some(b) => match graph_binder_of(b) {
-        Some(fact) => match fact {
-          ParamFact(_) => Some(b),
-          PartFact(_) => None,
-        },
-        None => match graph_node_body(b) {
-          NExpr(_) => flow_param(b),
-          _ => None,
-        },
-      },
-      None => None,
-    }
+// ─── What applying a function value owes (H4) ───────────────────────────
+//
+// A function-typed parameter that LEARNS its contract — no annotation, or
+// one it has learned — is a function this body cannot see: the one its
+// caller hands in is judged at that caller's crossing, against what this
+// body provides it. Its own type demands nothing here, and reading it as a
+// demand refused `g(30000.0)` in `fn outer(g) = drive(g, 440.0) +
+// g(30000.0)` because the callee PROVIDES `Hz` to its callback (higher-order
+// face 5). An authored function type is the body's own promise, and binds.
+fn learning_param(h) = match learning_path(h) {
+  Some(_) => true,
+  None => false,
+}
+
+// The learning parameter a value is — itself, or a part of it (verify.mn
+// `flow_param_path`) — with the path to the part.
+fn learning_path(h) = match flow_param_path(h) {
+  Some(at) => match at {
+    (b, path) => if learning_binder(b) { Some((b, path)) } else { None },
   },
-  NExpr(BlockExpr(_, f)) => flow_param(node_handle(f)),
-  _ => None,
+  None => None,
+}
+
+fn learning_binder(b) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(f) => match f.pre {
+      Unstated => true,
+      Learned(_) => true,
+      Stated(_) => false,
+      Unrefined => false,
+    },
+    PartFact(_) => false,
+  },
+  None => false,
+}
+
+// What every function a value can be demands, met: per position the
+// preconditions conjoined and the guards joined — an application owes each
+// — and the result the join of what each guarantees. None where no leaf is
+// a function this body can read.
+fn fn_contract(leaves) = leaves |> fold(None, meet_leaf)
+
+fn meet_leaf(acc, leaf) = match leaf_fn_type(leaf) {
+  Some(t) => match acc {
+    Some(a) => Some(fn_meet(a, t)),
+    None => Some(t),
+  },
+  None => acc,
+}
+
+fn leaf_fn_type(leaf) = if learning_param(leaf) {
+  None
+} else {
+  match graph_chase(leaf) {
+    GNode(NBound(TFun(ps, ret, row)), _) => Some(TFun(ps, ret, row)),
+    _ => None,
+  }
+}
+
+fn fn_meet(a, b) = match a {
+  TFun(pa, ra, row) => match b {
+    TFun(pb, rb, _) => if len(pa) == len(pb) { TFun(zip(pa, pb) |> map(param_meet), ret_join(ra, rb), row) } else { a },
+    _ => a,
+  },
+  _ => a,
+}
+
+fn param_meet(pair) = match pair {
+  (p, q) => param_with_row(
+    param_with_ty(p, contract_meet(param_ty(p), param_ty(q))),
+    row_join(param_row(p), param_row(q))
+  ),
+}
+
+// Two preconditions on one position, both owed: a side that demands nothing
+// owes nothing, one refinement twice is owed once, and two different ones
+// are conjoined over the shape they share.
+fn contract_meet(a, b) = match demand_refinement(b) {
+  None => a,
+  Some(db) => match demand_refinement(a) {
+    None => b,
+    Some(da) => if same_contract(a, b) {
+      a
+    } else {
+      match da {
+        (_, pa) => match db {
+          (_, pb) => TRefined(shape_of(a), PAnd(pa, pb)),
+        },
+      }
+    },
+  },
+}
+
+// Two guarantees on one result, either delivered: kept only where both are
+// the same refinement.
+fn ret_join(a, b) = if same_contract(a, b) { a } else { shape_of(a) }
+
+// A learning parameter handed on to a function-typed position learns that
+// position's contract: what the receiver hands each position joins what it
+// has been handed, and what the receiver demands of its result becomes its
+// own — the function its caller hands in meets both at that caller's
+// crossing. The function at a part of a parameter learns the same way.
+fn transport_at(b, path, eps, eret) =
+  learn_application(b, path, eps |> map({ ep => provision_of_ty(param_ty(ep)) }), Some(eret))
+
+// The declared parameter a value IS, through references and lets — the
+// whole parameter, never a part of it.
+fn flow_param(h) = match flow_param_path(h) {
+  Some(at) => match at {
+    (b, path) => if len(path) == 0 { Some(b) } else { None },
+  },
+  None => None,
 }
 
 // Apply a let-binding's `: T` annotation as a refinement constraint on the
@@ -9262,7 +9679,7 @@ fn apply_let_annotation(ann_ty, value_handle, span: ValidSpan) = match quantify_
 // it, a reader of a let's binder may lean on its annotation.
 fn claim_refinement(ty, value_handle, span: ValidSpan) = {
   let verdict = apply_refinement_constraint(ty, value_handle, span)
-  if ty_carries_refinement(ty) { note_claim(ty, value_handle) } else { () }
+  if ty_carries_refinement(ty) && !is_provision(ty) { note_claim(ty, value_handle) } else { () }
   verdict
 }
 
@@ -9290,19 +9707,160 @@ fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
   } else {
     apply_refinement_constraint(inner, value_handle, span)
   },
+  TRefined(_, PProvides(_)) => // a provision states what a position is handed; it claims nothing
+  Some(true),
   TRefined(_, pred) => verify_claim(graph_module_current(), span, subst_self(pred, value_handle), Refinement(pred, PTrue)),
   TFun(eps, eret, _) => {
     fun_refinement_crossing(eps, eret, value_handle, span)
     Some(true)
   },
-  TVar(h) => match graph_chase(h) {
-    GNode(NBound(TFun(eps, eret, _)), _) => {
-      fun_refinement_crossing(eps, eret, value_handle, span)
-      Some(true)
-    },
-    _ => Some(true),
+  TList(_) => cross_parts(ty, value_handle, span),
+  TTuple(_) => cross_parts(ty, value_handle, span),
+  TRecord(_) => cross_parts(ty, value_handle, span),
+  TRecordOpen(_, _) => cross_parts(ty, value_handle, span),
+  TName(_, _) => cross_parts(ty, value_handle, span),
+  TVar(_) => {
+    // A position whose contract is a variable states no use of what it is
+    // handed. A function in sight carries its own contract on to wherever it
+    // is applied, and a learning parameter's — whose contract is only what
+    // its uses here teach it — is handed on (`hand_on_value`), its
+    // structures' parts included. The arm crossed a function into the shape
+    // it was unified with until H4: `Some(inv)` under `!Trap` paid the
+    // guard of the function it held and refused (boot e23392f6), and a
+    // caller's function inside a list handed to `fn keep_list(xs) = xs` and
+    // applied off the result crossed nothing and trapped. A structured
+    // contract with variable parts — `fold`'s `[a]` — is the channel's to
+    // judge (`cross_parts`).
+    hand_on_value(value_handle)
+    Some(true)
   },
   _ => Some(true),
+}
+
+// A STRUCTURE crossing into a contract whose parts hold functions (H4·D): a
+// part the value was built with in sight crosses into the part's contract
+// — each element of `[inv]` into the element contract a parameter learned
+// where its body applied `fs[0]` — and a part of a learning parameter
+// learns it; a part of any other value is read off the value's class,
+// which is lossy, since a class merges what unification met. On boot
+// 13e8484a and pin e23392f6 a structure claimed nothing at all, so
+// `first([inv])` over `fn first(fs) = fs[0](0)` checked clean under `!Trap`
+// and divided by zero. A value refinement inside a structure is not judged
+// here (Hβ.verify.provenance-through-destructure).
+fn cross_parts(ty, value_handle, span: ValidSpan) = {
+  if contract_holds_fn(ty) {
+    contract_parts(ty) |> each(cross_part(value_handle, span, ??))
+  } else {
+    ()
+  }
+  Some(true)
+}
+
+// A contract's parts that hold a function, each with its step.
+fn contract_parts(ty) = match ty {
+  TList(e) => fn_parts([(PartElem, e)]),
+  TTuple(es) => fn_parts(es |> enumerate |> map({ (i, e) => (PartIndex(i), e) })),
+  TRecord(fs) => fn_parts(fs |> map(field_step)),
+  TRecordOpen(fs, _) => fn_parts(fs |> map(field_step)),
+  TName(_, args) => fn_parts(args |> enumerate |> map(type_arg_step)),
+  TAlias(_, inner) => contract_parts(inner),
+  _ => [],
+}
+
+fn type_arg_step(slot) = match slot {
+  (k, a) => (PartTypeArg(k), a),
+}
+
+fn field_step(f) = match f {
+  (n, t) => (PartField(n), t),
+}
+
+// A part whose contract is still a cell is one the receiver never applied:
+// what it does with the value — hand it on to a generic callee's callback —
+// is judged where it hands it (`channel_crossing`), not here, and reading
+// the cell's class would judge the function against whatever unification
+// merged into it.
+fn fn_parts(parts) = parts |> filter({ (_, t) => contract_holds_fn(t) })
+
+fn contract_holds_fn(t) = match t {
+  TFun(_, _, _) => true,
+  TList(e) => contract_holds_fn(e),
+  TTuple(es) => any(contract_holds_fn, es),
+  TRecord(fs) => any(field_holds_fn, fs),
+  TRecordOpen(fs, _) => any(field_holds_fn, fs),
+  TName(_, args) => len(args) > 0 && any(contract_holds_fn, args),
+  TAlias(_, inner) => contract_holds_fn(inner),
+  TRefined(base, _) => contract_holds_fn(base),
+  _ => false,
+}
+
+fn field_holds_fn(f) = match f {
+  (_, t) => contract_holds_fn(t),
+}
+
+// Does a type hold a function anywhere a part path reaches?
+fn ty_has_fn(t) = match t {
+  TFun(_, _, _) => true,
+  TVar(_) => match chase_ty(t) {
+    TVar(_) => false,
+    u => ty_has_fn(u),
+  },
+  TList(e) => ty_has_fn(e),
+  TTuple(es) => any(ty_has_fn, es),
+  TRecord(fs) => any(field_has_fn, fs),
+  TRecordOpen(fs, _) => any(field_has_fn, fs),
+  TName(_, args) => len(args) > 0 && any(ty_has_fn, args),
+  TAlias(_, inner) => ty_has_fn(inner),
+  TRefined(base, _) => ty_has_fn(base),
+  _ => false,
+}
+
+fn field_has_fn(f) = match f {
+  (_, t) => ty_has_fn(t),
+}
+
+fn cross_part(value_handle, span: ValidSpan, part) = match part {
+  (step, pt) => match part_nodes(value_handle, step) {
+    Some(nodes) => nodes |> each({
+      n => {
+        apply_refinement_constraint(pt, n, span)
+        ()
+      },
+    }),
+    None => opaque_part(value_handle, [step], pt, span),
+  },
+}
+
+fn opaque_part(h, path, pt, span: ValidSpan) = match learning_path(h) {
+  Some(at) => match at {
+    (b, lp) => teach_part(b, lp ++ path, pt),
+  },
+  None => match contract_at(chase_deep(TVar(h)), path) {
+    Some(ct) => class_part(ct, pt, h, span),
+    None => (),
+  },
+}
+
+// A part of a learning parameter learns what its function parts cross into.
+fn teach_part(b, path, pt) = match fn_usage(pt) {
+  Some(usage) => match usage {
+    (kps, kret) => transport_at(b, path, kps, kret),
+  },
+  None => contract_parts(pt) |> each({ (step, sub) => teach_part(b, path ++ [step], sub) }),
+}
+
+// A part read off a value's class crosses as the function contract the
+// class states there.
+fn class_part(ct, pt, h, span: ValidSpan) = match fn_usage(pt) {
+  Some(usage) => match usage {
+    (kps, kret) => match fn_usage(ct) {
+      Some(stated) => match stated {
+        (sps, sret) => cross_contract_at(sps, sret, kps, kret, None, h, span),
+      },
+      None => (),
+    },
+  },
+  None => (),
 }
 
 // A FUNCTION crossing a construction site carries its refinements across in
@@ -9321,45 +9879,275 @@ fn apply_refinement_constraint(ty, value_handle, span: ValidSpan) = match ty {
 //   parameter does not carry is honest debt here. The values live in the
 //   callee's body, where `Hβ.verify.higher-order-refinement`'s refinement
 //   variables would reach them.
-fn fun_refinement_crossing(eps, eret, value_handle, span: ValidSpan) = match chase_deep(TVar(value_handle)) {
-  TFun(aps, aret, _) => {
-    each(
-      {
-        (ap, ep) => {
-          match surface_refinement(chase_deep(param_ty(ap))) {
-            Some((aname, pred)) => if refined_as(chase_deep(param_ty(ep)), aname) {
-              ()
-            } else {
-              verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
-              ()
-            },
-            None => (),
-          }
+// The crossing value is every function it can be (`fn_leaves`, H4): each is
+// judged on its own, and a learning parameter handed on learns the
+// position's contract instead (`transport_at`) — the function its own
+// caller hands in meets that contract at that caller's crossing.
+fn fun_refinement_crossing(eps, eret, value_handle, span: ValidSpan) =
+  fn_leaves(value_handle) |> each(cross_leaf(eps, eret, value_handle, span, ??))
+
+// One function crossing into a contract: its own type, read off its node —
+// never chased through its positions' cells, which hold what unification
+// met, not what this function demands.
+fn cross_leaf(eps, eret, value_handle, span: ValidSpan, leaf) = match learning_path(leaf) {
+  Some(at) => match at {
+    (b, path) => transport_at(b, path, eps, eret),
+  },
+  None => match graph_chase(leaf) {
+    GNode(NBound(TFun(aps, aret, _)), _) => cross_contract_at(aps, aret, eps, eret, lambda_body(leaf), value_handle, span),
+    _ => (),
+  },
+}
+
+// A function stated by its positions `aps` and result `aret` against what
+// a receiver hands each position (`eps`) and demands of the result (`eret`).
+// The positions are judged where the values arrive — contravariant — and
+// the result where it leaves, covariant: a lambda's body is judged as a
+// return is.
+fn cross_contract_at(aps, aret, eps, eret, body, value_handle, span: ValidSpan) = {
+  if len(aps) == len(eps) {
+    zip(aps, eps) |> each(cross_position(value_handle, span, ??))
+  } else {
+    ()
+  }
+  cross_result(aret, eret, body, value_handle, span)
+}
+
+fn lambda_body(leaf) = match graph_node_body(leaf) {
+  NExpr(LambdaExpr(_, body)) => Some(body),
+  _ => None,
+}
+
+// One position: a value position decides the function's demand against
+// what the receiver hands it, and the row the demand guards is paid where
+// the function crosses unless the values handed prove it outright; a
+// FUNCTION position hands the function a function, whose own demands the
+// first function's usage of it must meet.
+fn cross_position(value_handle, span: ValidSpan, pair) = match pair {
+  (ap, ep) => if fn_position(param_ty(ap)) || fn_position(param_ty(ep)) {
+    cross_fn_position(param_ty(ap), param_ty(ep), value_handle, span)
+  } else {
+    match provision_verdict(param_ty(ep), param_ty(ap), span) {
+      PvStrict => (),
+      PvHeld => pay_crossing(param_row(ap), value_handle),
+      PvOpen => pay_crossing(param_row(ap), value_handle),
+    }
+  },
+}
+
+fn fn_position(t) = match t {
+  TFun(_, _, _) => true,
+  TRefined(base, _) => fn_position(base),
+  TAlias(_, inner) => fn_position(inner),
+  TVar(_) => match chase_ty(t) {
+    TFun(_, _, _) => true,
+    _ => false,
+  },
+  _ => false,
+}
+
+// How a function uses the function it is handed at a position: what it
+// hands each of that function's positions, and what it demands of its
+// result. None where nothing is known of the use.
+fn fn_usage(t) = match t {
+  TFun(ps, ret, _) => Some((ps, ret)),
+  TAlias(_, inner) => fn_usage(inner),
+  _ => None,
+}
+
+// What a position's values are judged by. A demand decided against values
+// handed is STRICT when every one folds to a constant that proves it — the
+// guard is not owed — and HELD when it stands on a precondition or a
+// postcondition, whose guard is paid where the function crosses; OPEN is
+// debt, raised here.
+type ProvidedVerdict = PvStrict | PvHeld | PvOpen
+
+fn provision_verdict(provided, demand, span: ValidSpan) = match demand_refinement(demand) {
+  None => PvHeld,
+  Some(found) => match found {
+    (aname, pred) => match provided_of(provided) {
+      Some(p) => match p {
+        ProvidedAt(ns) => provided_claims(demand, span, ns),
+        ProvidedBeyond(ns) => provided_meet(provided_claims(demand, span, ns), open_demand(pred, span)),
+        ProvidedNone => open_demand(pred, span),
+      },
+      None => if refined_as(provided, aname) { PvHeld } else { open_demand(pred, span) },
+    },
+  },
+}
+
+fn provided_claims(demand, span: ValidSpan, ns) =
+  ns |> map(provided_claim(demand, span, ??)) |> fold(PvStrict, provided_meet)
+
+// A demand decided against one value handed, at that value's node: the
+// claim's own verdict, then what it stood on.
+fn provided_claim(demand, span: ValidSpan, n) = match apply_refinement_constraint(demand, n, span) {
+  Some(held) => if held {
+    let leaves = value_leaves(n, NoSelf)
+    if leaves_unproven(leaves) || len(leaves_params(leaves)) > 0 { PvHeld } else { PvStrict }
+  } else {
+    PvOpen
+  },
+  None => PvOpen,
+}
+
+fn provided_meet(a, b) = match a {
+  PvOpen => PvOpen,
+  PvHeld => match b {
+    PvOpen => PvOpen,
+    _ => PvHeld,
+  },
+  PvStrict => b,
+}
+
+fn open_demand(pred, span: ValidSpan) = {
+  verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
+  PvOpen
+}
+
+// The refinement a type demands at its surface — a provision demands
+// nothing.
+fn demand_refinement(t) = match surface_refinement(t) {
+  Some(found) => match found {
+    (n, pred) => match pred {
+      PProvides(_) => None,
+      _ => Some((n, pred)),
+    },
+  },
+  None => None,
+}
+
+// A function position: the functions the receiver hands there meet the
+// usage the crossing function states of what it is handed — the receiver's
+// provision names them by their nodes (each read along its edges), or by a
+// contract it states.
+fn cross_fn_position(a_t, e_t, value_handle, span: ValidSpan) = match provided_of(e_t) {
+  Some(p) => match p {
+    ProvidedAt(ns) => ns |> flat_map(fn_leaves) |> each(cross_provided(fn_usage(a_t), value_handle, span, ??)),
+    ProvidedBeyond(ns) => {
+      ns |> flat_map(fn_leaves) |> each(cross_provided(fn_usage(a_t), value_handle, span, ??))
+      usage_of_unknown(fn_usage(a_t), span)
+    },
+    ProvidedNone => usage_of_unknown(fn_usage(a_t), span),
+  },
+  None => match fn_usage(e_t) {
+    Some(stated) => match stated {
+      (sps, sret) => match fn_usage(a_t) {
+        Some(usage) => match usage {
+          (kps, kret) => cross_contract_at(sps, sret, kps, kret, None, value_handle, span),
+        },
+        None => applied_unknowingly(sps, value_handle, span),
+      },
+    },
+    None => usage_of_unknown(fn_usage(a_t), span),
+  },
+}
+
+// A function the receiver handed, crossing into the usage. A learning
+// parameter of the RECEIVER's body is a value its own callers chose: the
+// crossing that would judge it is theirs
+// (Hβ.verify.relational-provision).
+fn cross_provided(usage, value_handle, span: ValidSpan, leaf) = if learning_param(leaf) {
+  ()
+} else {
+  match provided_contract(leaf) {
+    Some(found) => match found {
+      (aps, aret, body) => match usage {
+        Some(u) => match u {
+          (kps, kret) => cross_contract_at(aps, aret, kps, kret, body, value_handle, span),
+        },
+        None => applied_unknowingly(aps, value_handle, span),
+      },
+    },
+    None => (),
+  }
+}
+
+// What a provided function states of itself: its own type, read off its
+// node. A value this crossing cannot see as a function states nothing
+// here: a function inside a structure is reached where the structure was
+// built, through its part (`PartTypeArg` for a nominal type's), never off
+// the class a unification merged it into.
+fn provided_contract(leaf) = match graph_chase(leaf) {
+  GNode(NBound(TFun(aps, aret, _)), _) => Some((aps, aret, lambda_body(leaf))),
+  _ => None,
+}
+
+// A function applied with values nothing here can name: each demand is
+// debt, and its guard is paid where the function crosses.
+fn applied_unknowingly(aps, value_handle, span: ValidSpan) = aps |> each({
+  ap => if fn_position(param_ty(ap)) {
+    ()
+  } else {
+    match demand_refinement(param_ty(ap)) {
+      Some(found) => match found {
+        (_, pred) => {
+          open_demand(pred, span)
           pay_crossing(param_row(ap), value_handle)
         },
       },
-      zip(aps, eps)
-    )
-    let want = chase_deep(eret)
-    match surface_refinement(want) {
-      Some((ename, pred)) => if refined_as(chase_deep(aret), ename) {
+      None => pay_crossing(param_row(ap), value_handle),
+    }
+  },
+})
+
+// A function nothing here can name, handed where a usage demands of its
+// result: the demand is debt.
+fn usage_of_unknown(usage, span: ValidSpan) = match usage {
+  Some(found) => match found {
+    (_, kret) => match demand_refinement(kret) {
+      Some(d) => match d {
+        (_, pred) => {
+          open_demand(pred, span)
+          ()
+        },
+      },
+      None => (),
+    },
+  },
+  None => (),
+}
+
+// The result leaving the crossing function, against the receiver's demand:
+// a value demand is claimed of a lambda's body as a return is, and any
+// other function's result is covered only by a return naming the same
+// refinement; a FUNCTION demand — the receiver applies the result — judges
+// the functions the result can be against that usage.
+fn cross_result(aret, eret, body, value_handle, span: ValidSpan) = match fn_usage(eret) {
+  Some(usage) => match usage {
+    (kps, kret) => match body {
+      Some(b) => match b {
+        N(_, _, bh) => fun_refinement_crossing(kps, kret, bh, span),
+      },
+      None => match fn_usage(aret) {
+        Some(stated) => match stated {
+          (sps, sret) => cross_contract_at(sps, sret, kps, kret, None, value_handle, span),
+        },
+        None => (),
+      },
+    },
+  },
+  None => match demand_refinement(eret) {
+    Some(found) => match found {
+      (ename, pred) => if refined_as(aret, ename) {
         ()
       } else {
-        match graph_node_body(value_handle) {
-          NExpr(LambdaExpr(_, N(_, bspan, bh))) => {
-            claim_refinement(want, bh, bspan)
-            ()
+        match body {
+          Some(b) => match b {
+            N(_, bspan, bh) => {
+              claim_refinement(eret, bh, bspan)
+              ()
+            },
           },
-          _ => {
+          None => {
             verify_claim(graph_module_current(), span, pred, Refinement(pred, PTrue))
             ()
           },
         }
       },
-      None => (),
-    }
+    },
+    None => (),
   },
-  _ => (),
 }
 
 // A function crossing an argument edge goes where its callers' values are
@@ -9384,6 +10172,606 @@ fn surface_refinement(ty) = match ty {
 fn refined_as(ty, name: String) = match surface_refinement(ty) {
   Some((n, _)) => name != "" && n == name,
   None => false,
+}
+
+// ─── The functions a value can BE (H4) ───────────────────────────────────
+//
+// A function value's contract is read along the edges it flowed, as any
+// value's refinement is: a join is every tail, a reference its binder's
+// value — a let's, a destructured part's construction — a field or an
+// element its whole's construction at the position, and a generic call's
+// result the arguments its declared signature returns (`result_leaves`). A
+// parameter is itself, and so is any other node, whose own type is its own
+// contract: a reference to a declaration, a lambda, a call's result. The
+// class says nothing — a join of two function values merged their types and
+// kept the first branch's interior, so `if c { inv2 } else { inv }` called
+// at 0 under `!Trap` checked clean and divided by zero (boot 13e8484a, pin
+// e23392f6).
+fn fn_leaves(h) = match join_tails(h) {
+  Some(tails) => tails |> flat_map(fn_leaves),
+  None => match graph_node_body(h) {
+    NExpr(VarRef(_)) => match graph_link_of(h) {
+      Some(b) => fn_leaves_at_binder(b, h),
+      None => [h],
+    },
+    NExpr(FieldExpr(recv, fname)) => fn_leaves_of_part(node_handle(recv), PartField(fname), h),
+    NExpr(IndexExpr(recv, idx)) => fn_leaves_of_part(node_handle(recv), index_step(node_handle(recv), idx), h),
+    NExpr(CallExpr(_, _)) => result_leaves(h),
+    NExpr(PipeExpr(PForward, _, _)) => result_leaves(h),
+    _ => [h],
+  },
+}
+
+fn fn_leaves_at_binder(b, use_h) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(_) => [use_h],
+    PartFact(f) => fn_leaves_of_part(f.whole, f.step, use_h),
+  },
+  None => match graph_node_body(b) {
+    NExpr(_) => fn_leaves(b),
+    _ => [use_h],
+  },
+}
+
+fn fn_leaves_of_part(whole, step, h) = match part_nodes(whole, step) {
+  Some(nodes) => nodes |> flat_map(fn_leaves),
+  None => [h],
+}
+
+// A generic call's result is what its declared signature returns of its
+// arguments: a result typed by a quantified variable its row carries no
+// value of is one of the values the arguments hand in at that variable —
+// parametricity: the callee cannot make one of its own — so `id(if c {
+// inv2 } else { inv })` is whichever branch's function the join took. Any
+// other result is the call itself, read off its class.
+fn result_leaves(h) = match chase_ty(TVar(h)) {
+  TFun(_, _, _) => match application_of(h) {
+    Some(app) => match app {
+      (callee_h, args) => match declared_scheme(callee_h) {
+        Some(sch) => match sch {
+          (qs, dps, dret, drow) => match result_var(qs, dret, drow) {
+            Some(q) => match var_leaves(qs, dps, args, q) {
+              Some(leaves) => leaves,
+              None => [h],
+            },
+            None => [h],
+          },
+        },
+        None => [h],
+      },
+    },
+    None => [h],
+  },
+  _ => [h],
+}
+
+fn result_var(qs, dret, drow) = match bare_var(qs, dret) {
+  Some(q) => if any({ v => v == q }, free_in_row(drow)) { None } else { Some(q) },
+  None => None,
+}
+
+// The leaves of every source of a variable, when each source is a node in
+// sight.
+fn var_leaves(qs, dps, args, q) = {
+  let sources =
+    scheme_occurrences(qs, dps) |> filter(occ_source_of(q, ??)) |> flat_map(occurrence_sources(args, ??))
+  if len(sources) > 0 && all(source_in_sight, sources) {
+    Some(sources |> flat_map(source_leaf))
+  } else {
+    None
+  }
+}
+
+fn source_in_sight(src) = match src {
+  SrcLeaf(_) => true,
+  SrcPart(_, _) => false,
+  SrcContract(_, _) => false,
+  SrcUnknown => false,
+}
+
+fn source_leaf(src) = match src {
+  SrcLeaf(leaf) => [leaf],
+  SrcPart(_, _) => [],
+  SrcContract(_, _) => [],
+  SrcUnknown => [],
+}
+
+// The callee and the arguments a node applies: a saturated call's
+// product, or a pipe stage completed by the piped value.
+fn application_of(h) = match graph_node_body(h) {
+  NExpr(CallExpr(callee, _)) => match graph_product_at(h) {
+    ProductOf(nodes, open) => if len(open) == 0 && !any(is_authored_hole, nodes) {
+      match fn_leaves(node_handle(callee)) {
+        [one] => Some((one, nodes |> map(node_handle))),
+        _ => None,
+      }
+    } else {
+      None
+    },
+    NoProduct => None,
+  },
+  NExpr(PipeExpr(PForward, left, stage)) => match fn_leaves(node_handle(stage)) {
+    [one] => stage_application(one, [node_handle(left)]),
+    _ => None,
+  },
+  _ => None,
+}
+
+// A callee leaf applied to arguments: a reference applied to them, or a
+// partial application completed by them — the authored `??` slots first,
+// then the slots past its arguments.
+fn stage_application(sh, applied) = match graph_node_body(sh) {
+  NExpr(VarRef(_)) => Some((sh, applied)),
+  NExpr(CallExpr(callee, _)) => match graph_product_at(sh) {
+    ProductOf(nodes, open) => if len(open) > 0 || any(is_authored_hole, nodes) {
+      Some((node_handle(callee), completed_args(nodes, applied)))
+    } else {
+      None
+    },
+    NoProduct => None,
+  },
+  _ => None,
+}
+
+fn completed_args(nodes, applied) = {
+  let filled = nodes |> enumerate |> map(completed_slot(nodes, applied, ??))
+  let holes = count(is_authored_hole, nodes)
+  if holes < len(applied) { filled ++ slice(applied, holes, len(applied)) } else { filled }
+}
+
+fn completed_slot(nodes, applied, slot) = match slot {
+  (i, n) => if is_authored_hole(n) {
+    let k = count(is_authored_hole, slice(nodes, 0, i))
+    if k < len(applied) { applied[k] } else { node_handle(n) }
+  } else {
+    node_handle(n)
+  },
+}
+
+fn is_authored_hole(n) = match n {
+  N(NHole(id), _, _) => id != 0,
+  _ => false,
+}
+
+// A declared function's signature with its quantified variables, read
+// through the env by the reference's name — the reference holds an
+// instance, never the scheme
+// (Hβ.verify.generic-callee-scheme-read-by-name).
+fn declared_scheme(callee_h) = match graph_node_body(callee_h) {
+  NExpr(VarRef(name)) => if env_lookup_is_global(name) {
+    match env_lookup(name) {
+      Some(entry) => match entry {
+        (binding, _, kind) => match kind {
+          FnScheme => match judgment_pair(binding) {
+            (qs, ty) => match ty {
+              TFun(dps, dret, drow) => Some((qs, dps, dret, drow)),
+              _ => None,
+            },
+          },
+          _ => None,
+        },
+      },
+      None => None,
+    }
+  } else {
+    None
+  },
+  _ => None,
+}
+
+// ─── The channel through a generic call (H4·D) ──────────────────────────
+//
+// A generic callee moves values of a quantified variable without looking
+// at them — parametricity — so a value an argument hands in at a variable
+// is a value the callee may hand a function argument at the same variable.
+// Each such SOURCE crosses into each such SINK: `fold(0, (acc, f) => acc +
+// f(0), [inv])` hands the list's function to the callback's second
+// parameter, which applies it at 0. The callee's body is never read — `fold` hands its callback to a
+// handler — only its declared signature. A callback that is a learning
+// parameter of the caller learns the application instead: what each of its
+// positions is handed. On boot 13e8484a and pin e23392f6 that program
+// checked clean under `!Trap` and divided by zero.
+fn channel_crossing(callees, applied, call_h, span: ValidSpan) =
+  callees |> each(channel_leaf(applied, call_h, span, ??))
+
+// A reference is applied to the arguments as they stand; a partial stage
+// is completed by them first (`stage_application`).
+fn channel_leaf(applied, call_h, span: ValidSpan, leaf) = match graph_node_body(leaf) {
+  NExpr(VarRef(_)) => channel_application(leaf, applied, call_h, span),
+  _ => match stage_application(leaf, applied) {
+    Some(app) => match app {
+      (callee_h, args) => channel_application(callee_h, args, call_h, span),
+    },
+    None => (),
+  },
+}
+
+fn channel_application(callee_h, args, call_h, span: ValidSpan) = if channel_candidate(args) {
+  match declared_scheme(callee_h) {
+    Some(sch) => match sch {
+      (qs, dps, _, _) => channel_at(qs, dps, args, call_h, span),
+    },
+    None => (),
+  }
+} else {
+  ()
+}
+
+// A channel can carry a function only where an argument is a function
+// that is handed one, and another argument holds a function too — so
+// never through an application of one argument, a pipe stage among them.
+fn channel_candidate(args) =
+  len(args) >= 2 && any(receives_a_function, args) && count(holds_a_function, args) >= 2
+
+fn receives_a_function(h) = match graph_chase(h) {
+  GNode(NBound(TFun(ps, _, _)), _) => any({ p => ty_has_fn(param_ty(p)) }, ps),
+  _ => false,
+}
+
+fn holds_a_function(h) = match graph_chase(h) {
+  GNode(NBound(t), _) => ty_has_fn(t),
+  _ => false,
+}
+
+// Where a quantified variable stands in a declared signature: in an
+// argument's value at a path, or at a function argument's position or
+// result — that function found at a path in the argument — at a path
+// inside that end.
+type FnEnd = AtValue | AtParam(Int) | AtResult
+
+type Occurrence = Occ(Int, Int, [PartStep], FnEnd, [PartStep])
+
+// Where the values a variable takes come from at one application: a
+// function or value in sight, a part of an argument this walk cannot see
+// into, a contract a callback's declaration states for its result, or
+// nothing nameable.
+type ChannelSource = SrcLeaf(Int) | SrcPart(Int, [PartStep]) | SrcContract(Ty, Int) | SrcUnknown
+
+fn channel_at(qs, dps, args, call_h, span: ValidSpan) = {
+  let occs = scheme_occurrences(qs, dps)
+  let sources =
+    qs |> map({ q => (q, occs |> filter(occ_source_of(q, ??)) |> flat_map(occurrence_sources(args, ??))) })
+  callback_positions(dps) |> each(channel_callback(qs, sources, args, call_h, span, ??))
+}
+
+fn scheme_occurrences(qs, dps) =
+  dps |> enumerate |> flat_map({ (i, dp) => value_occurrences(qs, i, param_ty(dp), []) })
+
+fn value_occurrences(qs, i, t, path) = match t {
+  TVar(v) => if any({ q => q == v }, qs) { [Occ(v, i, path, AtValue, [])] } else { [] },
+  TList(e) => value_occurrences(qs, i, e, path ++ [PartElem]),
+  TTuple(es) => es |> enumerate |> flat_map({ (k, e) => value_occurrences(qs, i, e, path ++ [PartIndex(k)]) }),
+  TRecord(fs) => fs |> flat_map({ (n, ft) => value_occurrences(qs, i, ft, path ++ [PartField(n)]) }),
+  TRecordOpen(fs, _) => fs |> flat_map({ (n, ft) => value_occurrences(qs, i, ft, path ++ [PartField(n)]) }),
+  TFun(ps, r, _) => {
+    let at_params =
+      ps |> enumerate |> flat_map({ (j, p) => end_occurrences(qs, i, path, AtParam(j), param_ty(p), []) })
+    at_params ++ end_occurrences(qs, i, path, AtResult, r, [])
+  },
+  TName(_, args) => args |> enumerate |> flat_map(type_arg_values(qs, i, path, ??)),
+  TAlias(_, inner) => value_occurrences(qs, i, inner, path),
+  TRefined(base, _) => value_occurrences(qs, i, base, path),
+  TReprPin(_, base) => value_occurrences(qs, i, base, path),
+  _ => [],
+}
+
+// A nominal type is read as a container of its type arguments' values: the
+// variable standing at argument `k` is reached at `PartTypeArg(k)`, whose
+// parts are the fields of a construction in sight (verify.mn `built_part`).
+// `Option(a)` went unread until H4, so the function `Some(inv)` carries
+// reached no callback, and `opt_apply({ g => g(0) }, Some(inv))` over a
+// generic `opt_apply(f, o)` checked clean under `!Trap` and trapped.
+fn type_arg_values(qs, i, path, slot) = match slot {
+  (k, a) => value_occurrences(qs, i, a, path ++ [PartTypeArg(k)]),
+}
+
+// One end of a function argument: a function nested inside it is not read
+// (Hβ.verify.channel-depth-one).
+fn end_occurrences(qs, i, path, end, t, sub) = match t {
+  TVar(v) => if any({ q => q == v }, qs) { [Occ(v, i, path, end, sub)] } else { [] },
+  TList(e) => end_occurrences(qs, i, path, end, e, sub ++ [PartElem]),
+  TTuple(es) => es |> enumerate |> flat_map({ (k, e) => end_occurrences(qs, i, path, end, e, sub ++ [PartIndex(k)]) }),
+  TRecord(fs) => fs |> flat_map({ (n, ft) => end_occurrences(qs, i, path, end, ft, sub ++ [PartField(n)]) }),
+  TRecordOpen(fs, _) => fs |> flat_map({ (n, ft) => end_occurrences(qs, i, path, end, ft, sub ++ [PartField(n)]) }),
+  TName(_, args) => args |> enumerate |> flat_map(type_arg_ends(qs, i, path, end, sub, ??)),
+  TAlias(_, inner) => end_occurrences(qs, i, path, end, inner, sub),
+  TRefined(base, _) => end_occurrences(qs, i, path, end, base, sub),
+  TReprPin(_, base) => end_occurrences(qs, i, path, end, base, sub),
+  _ => [],
+}
+
+fn type_arg_ends(qs, i, path, end, sub, slot) = match slot {
+  (k, a) => end_occurrences(qs, i, path, end, a, sub ++ [PartTypeArg(k)]),
+}
+
+fn occ_source_of(q, occ) = match occ {
+  Occ(v, _, _, end, _) => if v == q { is_source_end(end) } else { false },
+}
+
+fn is_source_end(end) = match end {
+  AtValue => true,
+  AtResult => true,
+  AtParam(_) => false,
+}
+
+fn occurrence_sources(args, occ) = match occ {
+  Occ(_, i, path, end, sub) => if i < len(args) {
+    match end {
+      AtValue => sources_at(args[i], path),
+      AtResult => sources_at(args[i], path) |> flat_map(result_sources(sub, ??)),
+      AtParam(_) => [],
+    }
+  } else {
+    [SrcUnknown]
+  },
+}
+
+// The values at a path of an argument, along its edges: each part the value
+// was built with in sight, and its function leaves; a part out of sight is
+// the whole with the rest of the path.
+fn sources_at(h, path) = match path {
+  [] => fn_leaves(h) |> map(SrcLeaf),
+  [step, ...rest] => match part_nodes(h, step) {
+    Some(nodes) => nodes |> flat_map(sources_at(??, rest)),
+    None => [SrcPart(h, path)],
+  },
+}
+
+// What a callback hands back, at a path in its result: a lambda's body, a
+// declared function's return contract. A callback that is a learning
+// parameter — its own caller's choice — hands back nothing nameable
+// (Hβ.verify.channel-through-callback-results).
+fn result_sources(sub, src) = match src {
+  SrcLeaf(leaf) => if learning_param(leaf) {
+    [SrcUnknown]
+  } else {
+    match lambda_body(leaf) {
+      Some(body) => sources_at(node_handle(body), sub),
+      None => match graph_chase(leaf) {
+        GNode(NBound(TFun(_, ret, _)), _) => [contract_source(ret, sub, leaf)],
+        _ => [SrcUnknown],
+      },
+    }
+  },
+  SrcPart(_, _) => [SrcUnknown],
+  SrcContract(c, at) => match fn_usage(c) {
+    Some(stated) => match stated {
+      (_, sret) => [contract_source(sret, sub, at)],
+    },
+    None => [SrcUnknown],
+  },
+  SrcUnknown => [SrcUnknown],
+}
+
+fn contract_source(t, sub, at) = match contract_at(t, sub) {
+  Some(c) => if ty_carries_contract(c) { SrcContract(c, at) } else { SrcUnknown },
+  None => SrcUnknown,
+}
+
+// Every function a declared parameter holds, at its path in the argument.
+fn callback_positions(dps) =
+  dps |> enumerate |> flat_map({ (i, dp) => fn_positions(i, param_ty(dp), []) })
+
+fn fn_positions(i, t, path) = match t {
+  TFun(ps, _, _) => [(i, path, ps)],
+  TList(e) => fn_positions(i, e, path ++ [PartElem]),
+  TTuple(es) => es |> enumerate |> flat_map({ (k, e) => fn_positions(i, e, path ++ [PartIndex(k)]) }),
+  TRecord(fs) => fs |> flat_map({ (n, ft) => fn_positions(i, ft, path ++ [PartField(n)]) }),
+  TRecordOpen(fs, _) => fs |> flat_map({ (n, ft) => fn_positions(i, ft, path ++ [PartField(n)]) }),
+  TName(_, args) => args |> enumerate |> flat_map(type_arg_positions(i, path, ??)),
+  TAlias(_, inner) => fn_positions(i, inner, path),
+  TRefined(base, _) => fn_positions(i, base, path),
+  _ => [],
+}
+
+fn type_arg_positions(i, path, slot) = match slot {
+  (k, a) => fn_positions(i, a, path ++ [PartTypeArg(k)]),
+}
+
+fn channel_callback(qs, sources, args, call_h, span: ValidSpan, cb) = match cb {
+  (i, path, cps) => if i < len(args) && any(position_holds_var(qs, ??), cps) {
+    sources_at(args[i], path) |> each(callback_crossing(qs, sources, cps, call_h, span, ??))
+  } else {
+    ()
+  },
+}
+
+fn position_holds_var(qs, cp) = len(end_occurrences(qs, 0, [], AtValue, param_ty(cp), [])) > 0
+
+// One function the callee is handed at a callback position. A learning
+// parameter of the caller learns the application — what each position is
+// handed, and values nothing here can name at a position no variable
+// carries; a function in sight is judged at each position the variables'
+// sources reach, against the usage its own type states there.
+fn callback_crossing(qs, sources, cps, call_h, span: ValidSpan, cb) = match source_learning(cb) {
+  Some(at) => {
+    match at {
+      (b, lp) => learn_application(b, lp, cps |> map(channel_provision(qs, sources, ??)), None),
+    }
+    cps |> each(hand_on_position(qs, sources, ??))
+  },
+  None => cps |> enumerate |> each(position_crossing(qs, sources, source_positions(cb), call_h, span, ??)),
+}
+
+// What a learning callback is handed goes where this body cannot see: each
+// learning function among the sources reaching its positions is handed on.
+fn hand_on_position(qs, sources, cp) =
+  end_occurrences(qs, 0, [], AtValue, param_ty(cp), []) |> each(hand_on_occurrence(sources, ??))
+
+fn hand_on_occurrence(sources, occ) = match occ {
+  Occ(q, _, _, _, _) => var_sources(sources, q) |> each(hand_on),
+}
+
+// The learning parameter a source is a function of — itself, or a part of
+// it at a path — with the path to the function.
+fn source_learning(src) = match src {
+  SrcLeaf(leaf) => learning_path(leaf),
+  SrcPart(h, path) => match learning_path(h) {
+    Some(at) => match at {
+      (b, lp) => Some((b, lp ++ path)),
+    },
+    None => None,
+  },
+  SrcContract(_, _) => None,
+  SrcUnknown => None,
+}
+
+// The positions a function in sight states of itself.
+fn source_positions(src) = match src {
+  SrcLeaf(leaf) => match graph_chase(leaf) {
+    GNode(NBound(TFun(aps, _, _)), _) => Some(aps),
+    _ => None,
+  },
+  SrcPart(_, _) => None,
+  SrcContract(_, _) => None,
+  SrcUnknown => None,
+}
+
+// What a callback position is handed: the sources of its variable, joined
+// — a contract where the one source is a contract — and values nothing here
+// can name where no variable stands bare.
+fn channel_provision(qs, sources, cp) = match bare_var(qs, param_ty(cp)) {
+  Some(q) => sources_provision(var_sources(sources, q)),
+  None => handed_unknown(),
+}
+
+fn sources_provision(srcs) = match srcs {
+  [SrcContract(c, _)] => ByContract(c),
+  _ => Handed(srcs |> fold(ProvidedNone, source_provided)),
+}
+
+fn source_provided(acc, src) = provided_union(acc, provided_of_source(src))
+
+fn provided_of_source(src) = match src {
+  SrcLeaf(leaf) => if learning_param(leaf) { ProvidedBeyond([]) } else { ProvidedAt([leaf]) },
+  SrcPart(_, _) => ProvidedBeyond([]),
+  SrcContract(_, _) => ProvidedBeyond([]),
+  SrcUnknown => ProvidedBeyond([]),
+}
+
+fn bare_var(qs, t) = match t {
+  TVar(v) => if any({ q => q == v }, qs) { Some(v) } else { None },
+  TAlias(_, inner) => bare_var(qs, inner),
+  TRefined(base, _) => bare_var(qs, base),
+  TReprPin(_, base) => bare_var(qs, base),
+  _ => None,
+}
+
+fn var_sources(sources, q) = match find({ (v, _) => v == q }, sources) {
+  Some(found) => match found {
+    (_, srcs) => srcs,
+  },
+  None => [],
+}
+
+// One callback position: each variable standing there, at its path in the
+// position, carries its sources into the usage the callback states there.
+fn position_crossing(qs, sources, aps, call_h, span: ValidSpan, slot) = match slot {
+  (j, cp) => end_occurrences(qs, 0, [], AtValue, param_ty(cp), []) |> each(occurrence_crossing(sources, aps, j, call_h, span, ??)),
+}
+
+fn occurrence_crossing(sources, aps, j, call_h, span: ValidSpan, occ) = match occ {
+  Occ(q, _, _, _, sub) => var_sources(sources, q) |> each(source_into(usage_at(aps, j, sub), call_h, span, ??)),
+}
+
+fn usage_at(aps, j, sub) = match aps {
+  Some(ps) => if j < len(ps) {
+    match contract_at(param_ty(ps[j]), sub) {
+      Some(t) => fn_usage(t),
+      None => None,
+    }
+  } else {
+    None
+  },
+  None => None,
+}
+
+// A source crossing into a usage: a function in sight is judged against it
+// (a learning parameter learns it), a part out of sight of a learning
+// parameter learns it there, and a contract read off a class or a
+// declaration crosses as the contract it states. Under a usage nothing is
+// known of, every demand is debt.
+fn source_into(usage, call_h, span: ValidSpan, src) = match usage {
+  Some(found) => match found {
+    (kps, kret) => match src {
+      SrcLeaf(leaf) => cross_leaf(kps, kret, leaf, span, leaf),
+      SrcPart(h, path) => match learning_path(h) {
+        Some(at) => match at {
+          (b, lp) => transport_at(b, lp ++ path, kps, kret),
+        },
+        None => match contract_at(chase_deep(TVar(h)), path) {
+          Some(ct) => class_part(ct, TFun(kps, kret, mk_ef_pure()), h, span),
+          None => (),
+        },
+      },
+      SrcContract(c, at) => class_part(c, TFun(kps, kret, mk_ef_pure()), at, span),
+      SrcUnknown => usage_of_unknown(usage, span),
+    },
+  },
+  None => source_unknowingly(call_h, span, src),
+}
+
+// A source handed where nothing is known of its use: a function in sight
+// owes each demand as debt, and a learning parameter's function learns
+// that each position is handed values nothing here can name.
+fn source_unknowingly(call_h, span: ValidSpan, src) = match source_learning(src) {
+  Some(at) => learn_unknown_use(at),
+  None => match src {
+    SrcLeaf(leaf) => match graph_chase(leaf) {
+      GNode(NBound(TFun(aps, _, _)), _) => applied_unknowingly(aps, leaf, span),
+      _ => (),
+    },
+    SrcPart(_, _) => (),
+    SrcContract(c, at) => match fn_usage(c) {
+      Some(stated) => match stated {
+        (sps, _) => applied_unknowingly(sps, at, span),
+      },
+      None => (),
+    },
+    SrcUnknown => (),
+  },
+}
+
+fn learn_unknown_use(at) = match at {
+  (b, lp) => learn_fn_at(b, lp, unknown_with),
+}
+
+// ─── What this body cannot see (H4) ─────────────────────────────────────
+//
+// A learning parameter's usage is what its uses in sight teach it — the
+// applications of it and the contracts it crosses into. Everywhere else its
+// function goes is a use nothing here states: the caller's own function,
+// when it is handed to another learning parameter (`applied_by_choice`) or
+// to a generic callee's callback that is one (`hand_on_position`), and the
+// caller itself, when the body returns it. There it learns that each
+// position is handed values nothing here can name, since the provisions it
+// learned in sight are only what THIS body hands it. On the H4 tree before
+// this rule, `wrap(inv)(0)` over `wrap(g) = { let _ = g(5); g }` and
+// `run({ k => k(0) }, inv)` over `run(g, h) = { let _ = h(5); g(h) }` —
+// and five shapes like them — checked clean under `!Trap` and divided by
+// zero: the provision 5 was read precisely, and the use that applied the
+// function at 0 was out of sight. Boot e23392f6 refused each only because a
+// constant argument provided nothing there.
+fn hand_on_value(h) = value_fn_positions(h) |> each(hand_on_at(h, ??))
+
+// The functions a value's type holds, at their paths. A type that holds none
+// answers none before its deep chase is built — most values handed on hold
+// no function, and building a whole type to find nothing in it is a
+// derivation nothing asked for.
+fn value_fn_positions(h) =
+  if ty_has_fn(TVar(h)) { fn_positions(0, chase_deep(TVar(h)), []) } else { [] }
+
+fn hand_on_at(h, pos) = match pos {
+  (_, path, _) => sources_at(h, path) |> each(hand_on),
+}
+
+fn hand_on(src) = match source_learning(src) {
+  Some(at) => learn_unknown_use(at),
+  None => (),
+}
+
+fn unknown_with(found) = match found {
+  (ps, ret, row) => Some(TFun(ps |> map({ p => provided_with((p, handed_unknown())) }), ret, row)),
 }
 
 fn build_inferred_params(handles) = map((h) => mk_param("_", TVar(h)), handles)

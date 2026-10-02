@@ -1,0 +1,14 @@
+// CROWN refinement (H4·D, 2026-10-01): a function at a PART of a parameter
+// learns where the part is applied. `first` applies its list's first
+// element at `k`, so a caller handing `[inv]` owes `inv`'s precondition at a
+// value it cannot see, and pays the Trap it guards. Checked clean and
+// divided by zero on boot 13e8484a and pin e23392f6. Expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn first(fs, k) = fs[0](k)
+
+fn run(k) with !Trap = first([inv], k + 1)
+
+fn main() = run(0 - 1)

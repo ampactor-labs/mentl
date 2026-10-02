@@ -1,0 +1,13 @@
+// CROWN refinement (H4·D, 2026-10-01): the same through a record field. The
+// field's function is applied at `k`, so the record handed in owes the
+// precondition of the function it holds there. Checked clean and divided by
+// zero on boot 13e8484a and pin e23392f6. Expect E_EffectMismatch.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn call_field(r, k) = r.f(k)
+
+fn run(k) with !Trap = call_field({f: inv}, k + 1)
+
+fn main() = run(0 - 1)

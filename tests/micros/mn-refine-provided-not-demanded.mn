@@ -1,0 +1,14 @@
+// expect: 7
+// What a callee PROVIDES its callback is not what the callback DEMANDS.
+// `drive` hands `f` an `Hz`, so a function handed to `outer` meets `Hz` when
+// `drive` applies it — but `outer` also applies `g` itself, with 30000.0, and
+// the lambda it is handed demands nothing. On boot 13e8484a and pin e23392f6
+// `drive`'s provision rode the class into `g`'s type and `g(30000.0)` was
+// REFUSED (higher-order face 5): a correct program rejected.
+type Hz = Float where 0.0 < self && self < 22050.0
+
+fn drive(f, c: Hz) = f(c)
+
+fn outer(g) = drive(g, 440.0) + g(30000.0)
+
+fn main() = if outer({ c => c * 2.0 }) > 0.0 { 7 } else { 1 }

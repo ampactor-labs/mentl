@@ -1,0 +1,17 @@
+// expect: refuse E_EffectMismatch
+// The same hand-back through a structure: the returned list's element is
+// the caller's function, applied here at 5 and by the caller at 0. Every
+// function position of the return is a hand-off, so the parameter learns
+// that its position is handed values nothing here can name. The H4 tree
+// before that rule ran this to a trap (exit 134); boot e23392f6 refused
+// it by the same accident as the bare return.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn pack(g) = {
+  let _ = g(5)
+  [g]
+}
+
+fn main() with !Trap = pack(inv)[0](0)

@@ -1,0 +1,12 @@
+// expect: 20
+// The precision the channel keeps: a list parameter's functions handed to
+// `fold`'s callback learn the callback's use of them (applied at 5), so
+// `apply_all5([inv])` discharges at the crossing. A structured contract
+// with variable parts is the channel's to judge, never handed on.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn apply_all5(fs) = fold(0, (acc, f) => acc + f(5), fs)
+
+fn main() with !Trap = apply_all5([inv])

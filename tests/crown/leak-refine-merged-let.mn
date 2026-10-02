@@ -1,0 +1,17 @@
+// CROWN refinement (H4, 2026-10-01): the same merge inside one body. `f` is
+// whichever branch ran, so applying it owes both preconditions; the open
+// claim on `k + 1` pays the `Trap` that `inv`'s guards. Checked clean and
+// divided by zero on boot 13e8484a and pin e23392f6. Expect E_EffectMismatch
+// at run.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn inv2(n) = n + 1
+
+fn run(k, c) with !Trap = {
+  let f = if c { inv2 } else { inv }
+  f(k + 1)
+}
+
+fn main() = run(0 - 1, false)

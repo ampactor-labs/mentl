@@ -1,0 +1,10 @@
+// CROWN refinement (H4·D, 2026-10-01): the sound dual of the element leak —
+// `first` applies its list's element at 5, which proves `inv`'s
+// precondition outright, so no guard is owed and `!Trap` holds.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn first(fs) = fs[0](5)
+
+fn main() with !Trap = first([inv])

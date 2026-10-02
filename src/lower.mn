@@ -2988,31 +2988,38 @@ fn lower_pipe_stage(lo_l, right, handle) = match right {
       NExpr(CallExpr(f, cargs)) => len(cargs) < callee_arity_of(f),
       _ => false,
     }
+    // The completed application is the PIPE's value, so it carries the pipe
+    // node's handle, whose type is the stage's result. It carried the
+    // stage's, whose type is the partial's arrow, and every reader of the
+    // value's type read a function: `(xs |> map(f)) ++ [7]` refused as a
+    // shape it could not prove, `(2.0 |> scale(3.0)) > 5.0` checked clean
+    // and did not assemble, and `(2 |> wrap(3)) == [3, 2]` compared two
+    // addresses and answered false (boot e23392f6).
     match lo_r {
-      LDirectCall(dh, dfh, dn, dt, dargs) => if hole_at >= 0 {
-        completed_call(dh, dfh, dn, dt, splice_at(dargs, hole_at, lo_l))
+      LDirectCall(_, dfh, dn, dt, dargs) => if hole_at >= 0 {
+        completed_call(handle, dfh, dn, dt, splice_at(dargs, hole_at, lo_l))
       }
       // drift-audit: ignore — one completion per pipe node, not a loop accumulator
       else if is_partial {
-        completed_call(dh, dfh, dn, dt, dargs ++ [lo_l])
+        completed_call(handle, dfh, dn, dt, dargs ++ [lo_l])
       } else {
         LCall(handle, lo_r, [lo_l])
       },
-      LCall(ch, fn_, args) => if hole_at >= 0 {
-        LCall(ch, fn_, splice_at(args, hole_at, lo_l))
+      LCall(_, fn_, args) => if hole_at >= 0 {
+        LCall(handle, fn_, splice_at(args, hole_at, lo_l))
       }
       // drift-audit: ignore — one completion per pipe node, not a loop accumulator
       else if is_partial {
-        LCall(ch, fn_, args ++ [lo_l])
+        LCall(handle, fn_, args ++ [lo_l])
       } else {
         LCall(handle, lo_r, [lo_l])
       },
-      LMakeVariant(vh, tag, vargs) => if hole_at >= 0 {
-        LMakeVariant(vh, tag, splice_at(vargs, hole_at, lo_l))
+      LMakeVariant(_, tag, vargs) => if hole_at >= 0 {
+        LMakeVariant(handle, tag, splice_at(vargs, hole_at, lo_l))
       }
       // drift-audit: ignore — one completion per pipe node
       else if is_partial {
-        LMakeVariant(vh, tag, vargs ++ [lo_l])
+        LMakeVariant(handle, tag, vargs ++ [lo_l])
       } else {
         LCall(handle, lo_r, [lo_l])
       },

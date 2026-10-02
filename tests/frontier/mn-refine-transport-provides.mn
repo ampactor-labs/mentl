@@ -1,0 +1,13 @@
+// A function parameter handed on to another function learns that callee's
+// contract: `outer` passes `g` to `drive`, which provides `Hz`, so `outer`
+// provides `Hz` to `g` and the lambda's demand discharges at main's
+// crossing. Expect zero pending obligations; runs to 40.
+type Hz = Float where 0.0 < self && self < 22050.0
+
+fn alpha(c: Hz) -> Float = c * 2.0
+
+fn drive(f, c: Hz) = f(c)
+
+fn outer(g) = drive(g, 440.0)
+
+fn main() = if outer({ c => alpha(c) }) == 880.0 { 40 } else { 41 }

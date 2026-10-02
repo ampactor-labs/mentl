@@ -35,6 +35,128 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-02 · pin 1a68ecc0eef48ab1 (TRANSITION m3 == m4) · A FUNCTION VALUE
+  IS EVERY FUNCTION IT CAN BE, AND APPLYING IT OWES WHAT EACH ONE DEMANDS —
+  WHEREVER IT FLOWED: THROUGH A JOIN, THROUGH DATA, THROUGH A GENERIC CALLEE'S
+  SIGNATURE, AND TO WHERE THE BODY CANNOT SEE. P0 read a value's refinement
+  along its edges and left function values on their types, which unification
+  merged and kept one side of. Measured on boot 13e8484a and pin e23392f6,
+  each of these checked clean under `!Trap` and divided by zero: a join of two
+  functions applied (`fn pick(c) = if c { inv2 } else { inv }`, `pick(false)(k
+  + 1)` — the class kept the first branch's contract), a list of them (`[inv,
+  inv2]`, the class kept the last element's), a function at a part of a
+  parameter (`fn first(fs, k) = fs[0](k)` over `[inv]`, a record field alike),
+  a function a generic callee moves by its signature alone (`fold(0, (acc, f)
+  => acc + f(k + 1), [inv])` — `fold` hands its callback to a handler, so no
+  body was there to read), a callback that is the caller's own parameter (`fn
+  run_with(g) = fold(0, g, [inv])`), a caller's callback whose results `map`
+  hands to `fold` (`fn run_map(mk) = fold(0, (acc, f) => acc + f(0), map(mk,
+  [1]))`), and a generic call's result (`id(if c { inv2 } else { inv })(k +
+  1)`). And the same merging refused a correct program: `drive`'s provision of
+  `Hz` to its callback rode the class into `outer`'s `g`, so `g(30000.0)` owed
+  `Hz` though the lambda handed in demanded nothing (higher-order face 5). THE
+  FORM: a function value is every function it can be, read along its edges
+  (`fn_leaves`: a join every tail, a reference its binder's value, a
+  destructured part, a field or an element its whole's construction at the
+  position, a generic call's result the arguments its declared signature
+  returns of the result's variable), and ONE home for what an application
+  owes, the call's and the pipe's (`call_owes`): the leaves' preconditions
+  conjoined per position and their guards joined (`fn_contract`). What a body
+  PROVIDES a function is its own predicate, never the function's demand: a
+  learning parameter learns, per position, an EDGE to every value its
+  applications hand it (`PProvides(Provided)` — `ProvidedAt(nodes)`,
+  `ProvidedBeyond(nodes)` with the values nothing here can name beside the
+  nameable ones, `ProvidedNone`), read live where a function crosses in, so
+  `apply5(inv)` over `fn apply5(f) = f(5)` discharges where pin e23392f6
+  copied a contract off the value's leaves, which a constant never has, and
+  refused. A function at a PART of a parameter learns the same way, the
+  parameter's contract becoming a structure with the learned function at the
+  path (`with_fn_at`, the class beside it scrubbed), and a structure crossing
+  into such a contract crosses part by part (`cross_parts`). Through a generic
+  callee the medium reads the DECLARED SIGNATURE: a value an argument hands in
+  at a quantified variable is one the callee may hand a function argument at
+  the same variable — parametricity — so each source crosses into each
+  callback position (`channel_at`), and a learning callback learns the
+  application; a nominal type's arguments are a container of their values
+  (`PartTypeArg`: `Option(a)`'s values are its construction's fields). And
+  what a body cannot see is handed on, never assumed: a learning parameter's
+  provisions are what THIS body hands it, so a use that leaves the body —
+  returned from an unstated declaration or a lambda, handed to another
+  learning callee or to one out of sight, placed at a position whose contract
+  is a variable — teaches it that its positions are also handed values nothing
+  here can name (`hand_on_value`, `handed_unknowingly`). Found on the way, in
+  lower: a completed `|>` stage carried the STAGE's handle, whose type is the
+  partial's arrow, so `(xs |> map(f)) ++ [7]` refused as a shape it could not
+  prove, `(2.0 |> scale(3.0)) > 5.0` checked clean and did not assemble, and
+  `(2 |> wrap(3)) == [3, 2]` compared two addresses and answered false (boot
+  e23392f6); it carries the pipe node's now. KILLS, and what each named: (1)
+  the first m2 refused the prelude's `fn max_by(f, xs) = reduce(xs, …)` as an
+  infinite type — a provision over a function's position is a refinement
+  around that position's own cell, and unify bound the wrapper; a variable
+  meets the BASE of a refinement now, as every other arm does; (2) the first
+  provision was ONE node (`PIsNode`), and a function applied at two values
+  needs both — provisions are node sets; (3) the set's first top absorbed
+  everything (`ProvidedAny`), so `run_with` learning `inv` beside an unknown
+  forgot `inv`, and d13 (`run_with((acc, f) => acc + f(0))`) checked clean —
+  `ProvidedBeyond(nodes)` keeps what it can name beside what it cannot; (4)
+  the first structure crossing read a part whose contract is still a cell off
+  the class, and d14 (the same at `f(5)`) refused a correct program — a
+  variable part is the channel's to judge (`fn_parts` keeps the parts whose
+  contract holds a function); (5) a frontier run reported green measuring the
+  BOOT — the gate's default compiler — and the candidate's run is `--compiler
+  fresh`, which every H4 verdict here is; (6) the cost ratchet refused the
+  first build at 980,876 KB against 954,000: one-function applications folded
+  their one leaf through three handler installs and the channel gate ran at
+  every application, pipe stages included — `call_owes` takes the one-leaf
+  path straight and the channel only where two arguments hold functions and
+  one receives them (+14.7 MB → +9.1 MB on fixed input); (7) THE FIRST REPIN
+  WAS STOPPED AND RESTORED: the march repinned at 213ec3ec with `wrap(inv)(0)`
+  over `fn wrap(g) = { let _ = g(5); g }` dividing by zero — a provision read
+  as everything the function will ever be handed — and the boot was checked
+  back out; the class turned out to be seven sites (a return, a lambda's exit,
+  a learning callee's argument, a channel into a learning callback, an opaque
+  callee's argument, a variable position, a structure returned), one rule; (8)
+  the rule's first form chased the variable position's cell all the way down
+  and crossed the function into its own type, refusing `id([inv])` and the
+  local `fold` that never applies its list — `hand_on_value` reads only what a
+  learning function reaches, and the boot's own false refusals of `Some(inv)`
+  and `id(inv)` under `!Trap` went with it; (9) a fallback that read a
+  provided value's class when it was not visibly a function did not close
+  `opt_apply({ g => g(0) }, Some(inv))` — a trace showed the class holding the
+  lambda's provision `(Int where self is one of 0) -> Int`, which had unified
+  first — so it was deleted and the nominal arm reads the construction; (10)
+  the nominal arms first measured +11.0 MB of judgment on fixed input, 3.6 MB
+  of it each value handed on built into its whole deep type to find no
+  function in it — `value_fn_positions` asks first, +7.4 MB at the pin.
+  Fixtures, each RED where named: crown
+  `leak-refine-merged-{return,let,list}`, `leak-refine-{elem,field}-param`,
+  `leak-refine-channel-generic` (13e8484a and e23392f6),
+  `leak-refine-hof-of-hof` (a regression guard — e23392f6 refused it through
+  the class), `sound-refine-elem-strict`; micros
+  `mn-refine-fold-{callback,merged}`, `-list-param`, `-pipe-channel`,
+  `-sink-learn`, `-generic-result`, `-callback-result-channel` (clean on
+  both), `-provided-not-demanded`, `-apply5`, `-fold-merged-ok`,
+  `-nominal-channel-ok`, `-nominal-learn-ok`, `-nominal-result-ok` (refused on
+  e23392f6), `-escape-{return,data}`, `-handon-{learning-callee,channel,
+  opaque,var-param}` (traps on the H4 tree before the rule),
+  `-nominal-{channel,fields,result}` (refused with the exact class now),
+  `mn-pipe-stage-{concat,eq,float-compare}` (e23392f6), with `-fold-f5`,
+  `-sink-learn-ok`, `-channel-learning-source-ok`,
+  `-callback-result-channel-ok`, `-var-position-owes-nothing` and
+  `-ignored-list-owes-nothing` the controls; frontier
+  `mn-refine-transport-{provides,meets}`. Cost: m3 leg 978,500 KB, m4 leg
+  975,132 KB; the ceiling moved 954,000 → 985,000 on the fixed-input reading
+  (the boot 963,944 KB on the new source, the candidate's judgment +7.4 MB).
+  Named: `Hβ.verify.relational-provision`, `Hβ.verify.channel-depth-one`,
+  `Hβ.verify.channel-through-callback-results`,
+  `Hβ.verify.generic-callee-scheme-read-by-name`,
+  `Hβ.verify.type-arg-part-reads-every-field`,
+  `Hβ.verify.crossing-guard-carries-to-the-provision`,
+  `Hβ.infer.tuple-index-through-an-unannotated-parameter`. Closed: the
+  higher-order peer's faces 3, 4 and 5 (`Hβ.verify.higher-order-refinement`
+  keeps face 1's remainder and κ),
+  `Hβ.lower.pipe-stage-completed-call-carries-the-stage-handle`; the function
+  face of `Hβ.verify.contracts-through-parametric-calls`.
 - 2026-10-01 · pin e23392f6b1232f84 (TRANSITION m3 == m4) · A REFINEMENT IS A
   FACT A VALUE CARRIES, READ ALONG THE EDGES IT FLOWED — NEVER A PROPERTY OF
   ITS TYPE'S CLASS; A FUNCTION'S CONTRACT TRAVELS WITH THE FUNCTION, AND A PIPE

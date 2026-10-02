@@ -1,0 +1,16 @@
+// expect: refuse E_EffectMismatch
+// A function a call returned states no use of what it is handed: `mk(1)` is
+// whatever `run`'s caller made it, and the list it is handed holds `run`'s
+// caller's function. Every argument of a callee out of sight goes where
+// nothing here can see. The H4 tree before that rule ran this to a trap
+// (exit 134).
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn run(mk, h) = {
+  let _ = h(5)
+  mk(1)([h])
+}
+
+fn main() with !Trap = run({ _ => { fs => fs[0](0) } }, inv)

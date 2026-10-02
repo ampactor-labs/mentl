@@ -1228,4 +1228,20 @@ authored_ref_max: 703
 # rest of the rise is the source: +~1,100 net wheel lines, 915–925 →
 # 932–944 MB through one compiler. Same rule: ~1% over the highest reading
 # of the landed form.
-selfcompile_peak_kb_max: 954000
+# 2026-10-02 (H4): 954000 -> 985000. Fixed input — the candidate's own wheel
+# source through both compilers: the boot 963,944 KB with the judgment's heap
+# high-water at 449.3 MB, the candidate 971,828 / 970,956 / 974,784 KB at
+# 456.7 MB (deterministic across the three) — +7.4 MB of judgment for what an
+# application owes when its callee is a function value read along its edges.
+# Probe compilers on an earlier form attributed the call tail: 9.8 MB against
+# the boot's 3.9 MB for its own, the channel gate 1.1 MB of it and the
+# container crossing 0.2 MB. Two forms were cut before the pin: the first
+# cost +14.7 MB (a one-function application folded its one leaf through
+# three handler installs, and the channel gate ran at every application,
+# pipe stages included — `call_owes`), and the nominal arms first measured
+# +11.0 MB, 3.6 MB of it the deep type of every value handed on, built to
+# find no function in it — `value_fn_positions` asks first. The rest of the
+# rise is the source: +1,543 net wheel lines, the pin's 934,912 KB → the
+# boot's 963,944 KB on the new source. Same rule: ~1% over the highest
+# reading of the landed form.
+selfcompile_peak_kb_max: 985000

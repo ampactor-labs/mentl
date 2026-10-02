@@ -80,6 +80,8 @@ fn predicate_decide_at(ref pred, bind) = match pred {
   PWithSelf(sh, inner) => // bind `self` = sh over inner, through its tails when sh is a join
   decide_with_self(inner, SelfNode(sh)),
   PTotalDiv(op, a, b) => total_div_decide(op, a, b, bind),
+  PProvides(_) => // a provision states what arrives at a position, never a demand on it
+  Some(true),
 }
 
 // ─── Partiality — a primitive's precondition decided as a claim (C5) ──
@@ -448,6 +450,15 @@ fn built_part(whole, step) = match graph_node_body(whole) {
       NExpr(VarRef(made)) => if made == cname { nth_handle(args, i) } else { None },
       _ => None,
     },
+    PartTypeArg(_) => // A type argument's values inside a construction are among its fields —
+    // every field, since which field a type argument types is the
+    // constructor's declaration, out of this walk's reach
+    // (Hβ.verify.type-arg-part-reads-every-field). A capitalized callee is
+    // a constructor: the case rule is the declaration.
+    match graph_node_body(node_handle(callee)) {
+      NExpr(VarRef(made)) => if names_a_constructor(made) { Some(args |> map(node_handle)) } else { None },
+      _ => None,
+    },
     _ => None,
   },
   NExpr(MakeRecordExpr(fields)) => field_part(fields, step),
@@ -512,6 +523,10 @@ fn contract_part(c, step) = match c {
     PartElem => Some(e),
     _ => None,
   },
+  TName(_, args) => match step {
+    PartTypeArg(k) => if k < len(args) { Some(list_index(args, k)) } else { None },
+    _ => None,
+  },
   _ => None,
 }
 
@@ -531,31 +546,111 @@ fn call_leaves(ref callee) = match graph_node_body(node_handle(callee)) {
   _ => applied_leaves(node_handle(callee)),
 }
 
-// A function-typed parameter applied: its result under the return contract
-// the parameter carries — stated, or learned from the demand its result
-// meets — assumed here as a precondition is and owed where a caller hands
-// the function in, so a row fact standing on it grows the parameter's
-// guard. Any other callee: its return.
+// ── The declared parameter a value IS, and where in it (H4·D) ───────────
+//
+// A value flows from a parameter when it is the parameter, a part of it — an
+// element of a list parameter, a field of a record one, a position of a
+// tuple one, read by an index, a field access or a pattern that
+// destructured it — or a let of one of those. The path names the part, so a
+// parameter can learn what its body does with the function at `fs[0]` as
+// it learns what it does with the parameter itself. A join or a computation is not
+// the parameter's value, and a variant's field or a list's rest carries no
+// position a contract states.
+fn flow_param_path(h) = match graph_node_body(h) {
+  NExpr(VarRef(name)) => if name == "self" {
+    None
+  } else {
+    match graph_link_of(h) {
+      Some(b) => binder_path(b),
+      None => None,
+    }
+  },
+  NExpr(IndexExpr(recv, idx)) => path_step(flow_param_path(node_handle(recv)), index_step(node_handle(recv), idx)),
+  NExpr(FieldExpr(recv, fname)) => path_step(flow_param_path(node_handle(recv)), PartField(fname)),
+  NExpr(BlockExpr(_, f)) => flow_param_path(node_handle(f)),
+  _ => None,
+}
+
+// What an index reads: a list's element, or — a literal index over a
+// tuple — that position (SYNTAX §«Indexing»).
+fn index_step(recv_h, idx) = match graph_node_body(node_handle(idx)) {
+  NExpr(LitInt(k)) => match graph_chase(recv_h) {
+    GNode(NBound(TTuple(_)), _) => PartIndex(k),
+    _ => PartElem,
+  },
+  _ => PartElem,
+}
+
+fn binder_path(b) = match graph_binder_of(b) {
+  Some(fact) => match fact {
+    ParamFact(_) => Some((b, [])),
+    PartFact(f) => path_step(whole_path(f.whole), f.step),
+  },
+  None => match graph_node_body(b) {
+    NExpr(_) => flow_param_path(b),
+    _ => None,
+  },
+}
+
+// A destructured part's whole: an enclosing part's binder, or the node the
+// pattern matched.
+fn whole_path(w) = match graph_binder_of(w) {
+  Some(_) => binder_path(w),
+  None => flow_param_path(w),
+}
+
+fn path_step(at, step) = match at {
+  Some(found) => match found {
+    (b, path) => match step {
+      PartWhole => Some((b, path)),
+      PartIndex(_) => Some((b, path ++ [step])),
+      PartField(_) => Some((b, path ++ [step])),
+      PartElem => Some((b, path ++ [step])),
+      PartTypeArg(_) => Some((b, path ++ [step])),
+      PartCtor(_, _) => None,
+      PartRest => None,
+    },
+  },
+  None => None,
+}
+
+// The contract a structure states at a path.
+fn contract_at(c, path) = match path {
+  [] => Some(c),
+  [step, ...rest] => match contract_part(c, step) {
+    Some(part) => contract_at(part, rest),
+    None => None,
+  },
+}
+
+// A function-typed parameter applied — the parameter itself or a function at
+// a part of it: its result under the return contract the parameter carries
+// there, stated or learned from the demand its result meets, assumed here as
+// a precondition is and owed where a caller hands the function in, so a row
+// fact standing on it grows the parameter's guard. Any other callee: its
+// return.
 fn applied_leaves(ch) = match param_result(ch) {
   Some(leaf) => [leaf],
   None => post_leaves(ch),
 }
 
-fn param_result(ch) = match graph_link_of(ch) {
-  Some(b) => match graph_binder_of(b) {
-    Some(fact) => match fact {
-      ParamFact(f) => match pre_contract(f.pre) {
-        Some(c) => match c {
-          TFun(_, ret, _) => if ty_carries_refinement(ret) { Some(LParam(b, ret)) } else { None },
-          _ => None,
+fn param_result(ch) = match flow_param_path(ch) {
+  Some(at) => match at {
+    (b, path) => match graph_binder_of(b) {
+      Some(fact) => match fact {
+        ParamFact(f) => match pre_contract(f.pre) {
+          Some(c) => match contract_at(c, path) {
+            Some(t) => match t {
+              TFun(_, ret, _) => if ty_carries_refinement(ret) { Some(LParam(b, ret)) } else { None },
+              _ => None,
+            },
+            None => None,
+          },
+          None => None,
         },
-        None => None,
+        PartFact(_) => None,
       },
-      PartFact(_) => None,
-    },
-    None => match graph_node_body(b) {
-      NExpr(VarRef(_)) => param_result(b),
-      _ => None,
+      None => None,
     },
   },
   None => None,
@@ -841,6 +936,7 @@ fn pred_domain(pred) = match pred {
   PWithSelf(_, inner) => pred_domain(inner),
   PTotalDiv(_, _, _) => // a precondition on two operands states nothing about `self`
   dom_top(),
+  PProvides(_) => dom_top(),
 }
 
 fn dom_top() = DRange(None, None)
@@ -1335,6 +1431,7 @@ fn classify_predicate(pred) with Pure = match pred {
   PWithSelf(_, inner) => // the binder classifies as its body
   classify_predicate(inner),
   PTotalDiv(_, _, _) => "partiality",
+  PProvides(_) => "provision",
 }
 
 type SmtResult = SmtSat(String) | SmtUnsat | SmtUnknown
@@ -1407,6 +1504,7 @@ fn predicate_to_smt(ref pred) = match pred {
     BMod => "(distinct {handle_to_smt(b)} 0)",
     _ => "(and (distinct {handle_to_smt(b)} 0) (or (distinct {handle_to_smt(b)} (- 1)) (distinct {handle_to_smt(a)} (- 2147483648))))",
   },
+  PProvides(_) => "true",
 }
 
 fn smt_cmp_op(ref op) with Pure = match op {

@@ -71,6 +71,11 @@ type Ty
   // RN.1 — authored alias name (e.g. "Port") wrapping resolved type
   | TAlias(String, Ty)
 
+// The case rule, which is the declaration: a capitalized name is nominal —
+// a type, or a constructor of one (SYNTAX §«Generic type parameters»).
+fn names_a_constructor(name: String) =
+  byte_len(name) > 0 && byte_at(name, 0) >= 65 && byte_at(name, 0) <= 90
+
 // ─── A cell holds a SHAPE ────────────────────────────────────────────
 // A refinement is a fact about a VALUE, read along the edges the value
 // flowed through (verify.mn's value walk) — never a property of a
@@ -1247,8 +1252,17 @@ type BinderFact
 // Where a destructured part sits in its whole: the whole itself (an
 // as-pattern binds the value it matches), a tuple's element, a
 // constructor's field by the constructor's name, a record's field, one of
-// a list's elements, or a list's or a record's rest.
-type PartStep = PartWhole | PartIndex(Int) | PartCtor(String, Int) | PartField(String) | PartElem | PartRest
+// a list's elements, a list's or a record's rest, or — a nominal type read
+// as a container — the values of one of its type arguments, wherever its
+// constructors hold them.
+type PartStep
+  = PartWhole
+  | PartIndex(Int)
+  | PartCtor(String, Int)
+  | PartField(String)
+  | PartElem
+  | PartRest
+  | PartTypeArg(Int)
 
 // Where a parameter's precondition comes from. An unannotated parameter
 // handed straight to a refined one LEARNS that precondition — its own
@@ -2276,6 +2290,23 @@ type Predicate
   // the row — partiality as a row fact, so `!Trap` proves its absence
   // and the e-graph never drops an operand that could trap.
   | PTotalDiv(BinOp, Int, Int)
+  // A PROVISION (H4·D, 2026-10-01): what the body that holds a function
+  // hands it at one position. A function-typed parameter that learns its
+  // contract learns, at each position, an EDGE to every node its
+  // applications hand that position — read live wherever a function
+  // crosses into the contract, so a demand is decided against the value
+  // handed (`5` proves `Positive`, `0` refutes it) rather than against a
+  // contract copied off the value's leaves, which a constant never had. A
+  // provision states what ARRIVES, never what is demanded: read as a claim
+  // it holds. Inference mints it; it has no surface spelling.
+  | PProvides(Provided)
+
+// What one position of a function is handed: nothing yet — no application
+// has reached it, the identity of the join — the values at these nodes, or
+// the values at these nodes and others nothing here can name. The nodes are
+// kept beside the unnamed ones: a function handed there is still judged,
+// and a value handed there still refutes a demand it breaks.
+type Provided = ProvidedNone | ProvidedAt([Int]) | ProvidedBeyond([Int])
 
 // PExpr is DELETED: its leaves (PSelf/PInt/PEVar/PApp) were a lossy COPY of the
 // expression the AST node already holds (the deleted node_to_pexpr re-derived it with a
@@ -4561,6 +4592,17 @@ fn show_predicate(ref pred) = match pred {
     BMod => "{show_pred_operand(b)} != 0 (the divisor of {show_pred_operand(a)} % {show_pred_operand(b)})",
     _ => "{show_pred_operand(b)} != 0 && {show_pred_operand(a)} / {show_pred_operand(b)} fits (never INT_MIN / -1)",
   },
+  PProvides(provided) => show_provided(provided),
+}
+
+fn show_provided(provided) = match provided {
+  ProvidedNone => "self is never handed a value",
+  ProvidedAt(nodes) => "self is one of {join(", ", nodes |> map(show_pred_operand))}",
+  ProvidedBeyond(nodes) => if len(nodes) == 0 {
+    "self is any value"
+  } else {
+    "self is one of {join(", ", nodes |> map(show_pred_operand))}, or any value"
+  },
 }
 
 fn show_cmp_op(ref op) with Pure = match op {
@@ -4756,7 +4798,7 @@ fn query_flow_label(ref ty) = match ty {
 // A predicate call to a function whose name contains secret / classified /
 // sensitive raises the label. This reads the AUTHORED name
 // from the graph — not re-deriving, reading what the graph holds.
-// H6: exhaustive over all 8 Predicate variants (7 + PFlowLe).
+// H6: exhaustive over every Predicate variant.
 fn predicate_flow_label(ref pred) = match pred {
   PTrue => Public,
   PCompare(_, _, _) => // numeric comparison: not a secrecy annotation
@@ -4772,6 +4814,8 @@ fn predicate_flow_label(ref pred) = match pred {
   PWithSelf(_, inner) => // the `self` binder is transparent to flow
   predicate_flow_label(inner),
   PTotalDiv(_, _, _) => // a primitive's precondition: not a secrecy annotation
+  Public,
+  PProvides(_) => // a provision names the values handed, not a secrecy annotation
   Public,
   PBoolNode(h) => // Follow the handle into the graph — read the actual call node's callee name.
   // The callee name IS the authored intent; reading it is reading the graph.

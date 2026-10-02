@@ -1,0 +1,18 @@
+// CROWN refinement (H4, 2026-10-01): a list of functions merges its
+// elements' types as a join does, and an element applied is any of them.
+// `fs[0]` is `inv`, whose precondition guards a `Trap`; the open claim on
+// `k + 1` pays it. The class kept the LAST element's contract, so this order
+// checked clean and divided by zero on boot 13e8484a and pin e23392f6.
+// Expect E_EffectMismatch at run.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn inv2(n) = n + 1
+
+fn run(k) with !Trap = {
+  let fs = [inv, inv2]
+  fs[0](k + 1)
+}
+
+fn main() = run(0 - 1)

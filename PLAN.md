@@ -1843,12 +1843,9 @@ and this is the STATE.
   the contract its parametricity preserves
   (`Hβ.verify.contracts-through-parametric-calls`), and a row write that
   reaches its own cell is skipped whole, names and all
-  (`Hβ.effects.row-self-bind-skip-drops-names`). What it did not close,
-  measured on both trees: a function value merged at a join keeps the
-  contract of whichever branch unified first, so `if c { inv2 } else { inv
-  }` called at 0 under `!Trap` checks clean and traps (exit 134) — the
-  higher-order peer's fourth face (`Hβ.verify.higher-order-refinement`),
-  the next soundness item.
+  (`Hβ.effects.row-self-bind-skip-drops-names`). The merged function value
+  it left open — `if c { inv2 } else { inv }` called at 0 under `!Trap`
+  kept the first branch's contract and trapped — closed at H4 (below).
 - **A FUNCTION'S CONTRACT TRAVELS WITH THE FUNCTION, AND A PIPE STAGE IS AN
   APPLICATION — CLOSED 2026-10-01 (P0·H, the same pin).** P0's first march
   refused at proof-exactness, 21 pass / 5 red: `run(() => 30000.0)` into
@@ -1858,16 +1855,60 @@ and this is the STATE.
   into the function type. They are read along edges now. A lambda's
   parameter learns its precondition as a declared one does and the
   lambda's type publishes it; a function-typed parameter learns from how
-  its body applies it — what every application hands each position (a meet
-  over the applications) and what a refined position demands of its result
-  — and publishes both, so a caller's crossing judges the function it hands
-  in. Measuring that found a hole on both trees: a `|>` stage raised no
+  its body applies it — what every application hands each position and what
+  a refined position demands of its result — and publishes both, so a
+  caller's crossing judges the function it hands in. Measuring that found a hole on both trees: a `|>` stage raised no
   claim at all, so `0 |> inv` under `!Trap` checked clean and divided by
   zero and `30000.0 |> alpha` reached an `Hz` parameter — at the form this
   project calls never optional. The pipe is an application now, claiming of
   the piped value what the stage's parameter demands
   (`Hβ.verify.pipe-stage-raises-no-claim`). A `<~` cycle's lambda learns
   nothing, since no application raises a claim for its prior.
+- **A FUNCTION VALUE IS EVERY FUNCTION IT CAN BE, AND APPLYING IT OWES WHAT
+  EACH ONE DEMANDS, WHEREVER IT FLOWED — CLOSED 2026-10-02 (H4).** P0 read a
+  value's refinement along its edges and left function values on their
+  types, which unification merged and kept one side of. Measured on boot
+  13e8484a and pin e23392f6, each of these checked clean under `!Trap` and
+  divided by zero: a join of two functions applied (`if c { inv2 } else {
+  inv }`), a list of them, a function at a part of a parameter (`fn first(fs,
+  k) = fs[0](k)` over `[inv]`, a record field alike), one a generic callee
+  moves by its signature alone (`fold(0, (acc, f) => acc + f(k + 1),
+  [inv])`), a callback that is the caller's own parameter, a caller's
+  callback whose results `map` hands to `fold`, and a generic call's result
+  (`id(if c { inv2 } else { inv })(k + 1)`); and the merge refused a correct
+  program the other way — `drive`'s provision of `Hz` to its callback read as
+  `outer`'s `g` demanding `Hz` (higher-order face 5). A function value is now
+  every function it can be (`fn_leaves`: a join every tail, a reference its
+  binder's value, a part, a field or an element its whole's construction, a
+  generic call's result the arguments its signature returns of the result's
+  variable), and an application — call or pipe — owes each leaf's
+  preconditions, conjoined, and the rows they guard (`call_owes`). What a
+  body PROVIDES a function is an edge to the values it hands (`PProvides`),
+  never the function's demand, so `apply5(inv)` over `fn apply5(f) = f(5)`
+  discharges by `0 < 5` where the pin had refused it. A function at a part of
+  a parameter teaches the parameter's contract at that path; a generic
+  callee's DECLARED SIGNATURE carries each argument's values at a quantified
+  variable to every callback the variable reaches — parametricity, the
+  callee's body never read (the channel), a nominal type's arguments
+  included: `Option(a)`'s values are its construction's fields; and what the
+  body cannot see is handed on, never assumed — a function returned, handed
+  to another learning callee or to one out of sight, or placed where the
+  contract is a variable learns that it is also handed values nothing here
+  can name. The first repin (213ec3ec) was stopped and the boot restored
+  when `wrap(inv)(0)` over `fn wrap(g) = { let _ = g(5); g }` divided by
+  zero: a provision read as everything the function would ever be handed.
+  Found on the way: a completed `|>` stage carried the stage's handle, so
+  `(2 |> wrap(3)) == [3, 2]` compared two addresses and `(2.0 |> scale(3.0))
+  > 5.0` did not assemble
+  (`Hβ.lower.pipe-stage-completed-call-carries-the-stage-handle`, closed).
+  Named, each sound and imprecise: `Hβ.verify.relational-provision`,
+  `Hβ.verify.channel-depth-one`, `Hβ.verify.channel-through-callback-results`,
+  `Hβ.verify.generic-callee-scheme-read-by-name`,
+  `Hβ.verify.type-arg-part-reads-every-field`,
+  `Hβ.verify.crossing-guard-carries-to-the-provision`; and a language gap the
+  walk passed, `Hβ.infer.tuple-index-through-an-unannotated-parameter`. The
+  higher-order peer (`Hβ.verify.higher-order-refinement`) keeps face 1's
+  remainder and κ, the one form that would answer every face at once.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

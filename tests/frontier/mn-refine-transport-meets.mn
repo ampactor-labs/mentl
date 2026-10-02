@@ -1,0 +1,19 @@
+// What a parameter provides is the MEET over everywhere it is handed: `drive`
+// provides `Hz`, `drive2` provides whatever its own caller passes, so `outer`
+// promises nothing at that position and the lambda's demand for `Hz` is debt
+// where it crosses into `outer` — `drive2` calls it with 30000.0. On boot
+// 13e8484a the class kept `drive`'s provision and the demand discharged
+// silently; on pin e23392f6 the debt sat inside `outer`, the class reading
+// `drive`'s provision as `g`'s own demand. Expect exactly one pending
+// obligation.
+type Hz = Float where 0.0 < self && self < 22050.0
+
+fn alpha(c: Hz) -> Float = c * 2.0
+
+fn drive(f, c: Hz) = f(c)
+
+fn drive2(f, k) = f(k)
+
+fn outer(g) = drive(g, 440.0) + drive2(g, 30000.0)
+
+fn main() = if outer({ c => alpha(c) }) > 0.0 { 40 } else { 41 }

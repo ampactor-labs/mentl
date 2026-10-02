@@ -3168,6 +3168,28 @@ for i in "${!compilers[@]}"; do
     fail "interval fragment (pending comparisons: $iv_err, want 1)"
   fi
 
+  # H4 · a function parameter handed on learns its callee's contract: `outer`
+  # hands `g` to `drive`, which provides `Hz`, so the lambda's demand
+  # discharges at main's crossing — no debt, and it runs to 40.
+  run_program "$compiler" refine-transport-provides \
+    "$ROOT/tests/frontier/mn-refine-transport-provides.mn" 40 no "$dir"
+  # ... and what it provides is the MEET over everywhere it is handed:
+  # `drive2` provides nothing, so the lambda's demand is debt where it
+  # crosses into `outer` — exactly one pending, on main's line. Zero is a
+  # provision taken from one hand-off alone (boot 13e8484a); a pending inside
+  # `outer` is a provision read as the callback's own demand (pin e23392f6).
+  # Compiled through stdin, which never restores a warm image.
+  tm_src="$ROOT/tests/frontier/mn-refine-transport-meets.mn"
+  tm_main=$(grep -n '^fn main' "$tm_src" | cut -d: -f1)
+  tm_err=$(wt_run "$compiler" < "$tm_src" 2>&1 >/dev/null | grep 'verify: pending' || true)
+  tm_n=$(printf '%s\n' "$tm_err" | grep -c 'verify: pending' || true)
+  tm_at=$(printf '%s\n' "$tm_err" | grep -c ":$tm_main:" || true)
+  if [ "$tm_n" = "1" ] && [ "$tm_at" = "1" ]; then
+    pass "transport meets: a parameter provides the meet of every hand-off (1 pending, at main's crossing)"
+  else
+    fail "transport meets (pending: $tm_n, at main's line: $tm_at; want 1 and 1)"
+  fi
+
   # ─── The directional fn-arg edge (quiet-under-cap admits) ──────────
   # A Pure fn passed where a `with Tick` fn is expected ADMITS and runs
   # (RED through every pin before cd43c23c: "E_EffectMismatch: Pure vs

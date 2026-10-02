@@ -2641,8 +2641,10 @@ trapped on boot 13e8484a, and the same merging refused a correct program
 (verify.mn `value_leaves`), a parameter's refinement is a precondition whose
 guard row is paid by an open caller, a claim is noted on its value's node
 (`graph_claims_of`), and destructuring is an edge (`PartFact`). What the
-walk does not read yet is named in the entries below; a merged function
-value is the higher-order peer's fourth face.
+walk does not read yet is named in the entries below; function values —
+merged, moved through data and through generic callees — are read along
+their edges since H4 (2026-10-02), and what that read leaves is named
+beside it.
 
 `Hβ.verify.pipe-stage-raises-no-claim` — CLOSED 2026-10-01 (P0·H), found
 the day it closed. A `|>` stage is an application, and the pipe's judgment
@@ -2715,7 +2717,16 @@ arguments at `a`'s positions. THE FORM: `call_leaves` for a callee whose
 SCHEME returns a quantified variable reads the arguments' leaves at that
 variable's positions — an argument typed `[a]` projected to its element
 (`PartElem`), one typed `a` read whole — instead of the instantiation's
-shape.
+shape. THE FUNCTION FACE IS BUILT (H4, 2026-10-02): a generic call's result
+that is a function is read off its arguments at the result's variable
+(`result_leaves`), and a function an argument hands in at a variable crosses
+into every callback the variable reaches (the channel, `channel_at`), both
+through the callee's declared signature (`declared_scheme`); `id(if c {
+inv2 } else { inv })(k + 1)` and `fold(0, (acc, f) => acc + f(k + 1),
+[inv])` under `!Trap` refuse where both checked clean and trapped. The VALUE
+face above — a refinement a value carries through a generic call — is the
+same occurrence walk read with `value_leaves` instead of `fn_leaves`, and is
+what this entry still owes.
 
 `Hβ.verify.provenance-through-destructure` — MOSTLY CLOSED 2026-10-01 (P0).
 Every pattern binder for a part carries its whole and its position
@@ -2730,7 +2741,114 @@ reads the same edge, so the public half of a mixed tuple is public
 projected (`Option(Positive)` at `Some`'s field needs the constructor's
 scheme instantiated at the contract's arguments); an index read (`xs[i]`, a
 tuple's constant index) reads no part; a join whose tail is not a
-construction falls to the whole's contract for every tail.
+construction falls to the whole's contract for every tail; and a VALUE
+refinement inside a structure is never claimed — `let xs: [Positive] = [0]`
+compiles clean and runs on pin e23392f6 and boot 1a68ecc0 alike, the
+structure crossing (`cross_parts`) judging only the function parts. A
+nominal type's arguments are read since H4 (`PartTypeArg`) for function
+parts; their value parts wait on the same claim.
+
+`Hβ.verify.relational-provision` — OPEN, BORN 2026-10-02 with H4. A learning
+parameter's provisions are what its OWN body hands it, so a use that leaves
+the body — the parameter returned to the caller, handed to another learning
+callee or to one out of sight — teaches it that its positions are also
+handed values nothing here can name (`hand_on_value`), and a function a
+receiver hands that is its own learning parameter is judged at its callers'
+crossing (`cross_provided`). Sound, and imprecise exactly where the relation
+is decidable one frame out: `wrap(inv)(7)` over `fn wrap(g) = { let _ = g(5);
+g }` refuses under `!Trap` though the caller applies the returned `inv` at 7,
+and `run({ k => k(7) }, inv)` over `fn run(g, h) = { let _ = h(5); g(h) }`
+refuses though the callback applies `h` at 7 (both measured on the H4 tree
+and on boot e23392f6, which refuses them too). THE FORM: a provision that
+names the relation instead of erasing it — `h` is handed whatever `g`'s
+function hands its argument; the result IS `g` — resolved at the caller's
+crossing, where both functions are in sight. A generic callee already has
+this from its scheme (the channel), so the relational provision is the
+channel for a callee whose signature is not parametric in the function.
+
+`Hβ.verify.channel-depth-one` — OPEN, BORN 2026-10-02 with H4. The channel
+reads a quantified variable at a callback's position, never at a position
+of a function nested inside one (`end_occurrences`): `fn with_applier(cb, v)
+= cb({ f => f(v) })` hands its callback a function that applies what it is
+handed at `v`, and `with_applier({ ap => ap(inv) }, 5)` refuses under
+`!Trap` as debt though `inv` is applied at 5 — the provision through the
+nested function is out of the channel's reach, so it is judged as values
+nothing here can name. Sound (the same program at 0 refuses), imprecise on
+both trees (boot e23392f6 refuses both). THE FORM: occurrences carry a path
+of ends — a variable at a position of a function at a position of a
+callback — and the crossing walks the usage at the same path.
+
+`Hβ.verify.channel-through-callback-results` — OPEN, BORN 2026-10-02 with
+H4, NOT YET WITNESSED. A callback's RESULT is a source of the variable it
+returns (`result_sources`): a lambda's body and a declared function's return
+contract are read, and a callback that is a learning parameter hands back
+nothing nameable — its own caller chose it. `fn run_map(mk) = fold(0, (acc,
+f) => acc + f(0), map(mk, [1]))` with `run_map({ _ => inv })` refuses with
+the exact class and its twin at `f(5)` runs (it ran and trapped on boot
+e23392f6, so the shape this face was feared for is closed); the face stands
+where the learning callback's result is the only source and nothing else
+links the two. THE FORM: the learning callback learns that its result is
+applied where the source reaches — the sink half of the channel — rather
+than the source being unknown.
+
+`Hβ.verify.generic-callee-scheme-read-by-name` — OPEN, BORN 2026-10-02 with
+H4. The channel and a generic call's result read the callee's DECLARED
+signature with its quantified variables, and a reference holds an instance,
+never the scheme, so `declared_scheme` reads it through the env by the
+reference's name — the name read §2 calls the canonical re-derivation, a
+global's only. A let-bound or parameter callee has no scheme to read and its
+channel is not drawn (its functions judged as values nothing here can
+name). THE FORM: the instantiation records its scheme on the reference's
+node at the one writer (the instance column already holds the copy edges),
+so the channel reads the edge.
+
+`Hβ.verify.type-arg-part-reads-every-field` — OPEN, BORN 2026-10-02 with H4.
+A nominal type's argument is a container of its values (`PartTypeArg`), and
+a construction in sight answers EVERY field for it (`built_part`), since
+which field a type argument types is the constructor's declaration, out of
+the walk's reach. Sound — the true sources are among them — and imprecise
+where a field of another type holds a function: with `type Tagged =
+T((Int) -> Int, a)` and `fn tag_apply(f, t) = match t { T(g, x) => f(x) +
+g(1) }`, `tag_apply({ h => h(0) }, T(inv, inv2))` refuses under `!Trap`,
+`inv` in the first field crossing into the callback's `h(0)` though only
+`inv2` reaches it (measured; boot e23392f6 refuses it as effect debt).
+Precise on `T(0, inv)` (a non-function field crosses nothing) and on
+`Option`, `Result` and a two-field `Pair`. THE FORM: the constructor's
+scheme maps each field to the type arguments it mentions, read at the
+construction — the projection `Hβ.verify.provenance-through-destructure`
+owes a constructor's contract.
+
+`Hβ.verify.crossing-guard-carries-to-the-provision` — OPEN, BORN 2026-10-02
+with H4. A function crossing into a position whose provision stands on a
+PRECONDITION is held, and the guard its own demand protects is paid where it
+crosses: `fn wrap(m: Positive) with !Trap = drive(inv, m)` over `fn
+drive(f, c: Positive) = f(c)` refuses, though `drive` hands `inv` only
+values its own precondition guarantees and `wrap`'s `m: Positive` proves
+it (both trees refuse). THE FORM: a held verdict carries the crossing's
+guard to the guard of the precondition it stood on — `drive`'s `c` — exactly
+as an argument claim held on a caller's own parameter carries (`carry_guard`),
+so `wrap`'s strict claim on `m` pays nothing.
+
+`Hβ.infer.tuple-index-through-an-unannotated-parameter` — OPEN, MEASURED
+2026-10-02. `fn call_second(p) = p[1](0)` judges `p[1]` before any caller
+and infers a list, so `call_second((inv2, inv))` refuses `E_TypeMismatch`
+— a tuple is not a list — on both trees. SYNTAX §«Indexing» gives `[i]` to
+both and decides by the receiver's inferred type, which an unannotated
+parameter does not have where the index is judged. THE FORM: an index
+over an unresolved receiver is a CONSTRAINT on the receiver's cell (a gate,
+the A3 mechanism one more sort over) decided when the cell is bound — a list
+reads an element, a tuple of known arity reads the position.
+
+`Hβ.lower.pipe-stage-completed-call-carries-the-stage-handle` — CLOSED
+2026-10-02 (H4), found by the channel's pipe-stage fixtures. A `|>` stage
+completed in place is the PIPE's value, and the lowering built it with the
+STAGE's handle, whose type is the partial's arrow: every reader of the
+value's type read a function. `(xs |> map({ x => x + 1 })) ++ [7]` refused
+as a shape it could not prove, `(2.0 |> scale(3.0)) > 5.0` checked clean and
+did not assemble (`i32.gt_s` over two f64s), and `(2 |> wrap(3)) == [3, 2]`
+compared two addresses and answered false — 1, silently (boot e23392f6).
+The completed call, partial and variant carry the pipe node's handle
+(`lower_pipe_stage`); micros `mn-pipe-stage-{concat,float-compare,eq}`.
 
 `Hβ.effects.row-self-bind-skip-drops-names` — OPEN, BORN 2026-10-01 from
 P0's dig, NOT YET WITNESSED. `graph_bind_row` skips a write whole when the
@@ -7571,36 +7689,39 @@ MEASURED FACES it owns: (1) the parameter-side debt above; (2) CLOSED
 unified its operands and a refined alias rode the class, so `fn f(fb: Gain,
 x) = x + fb * 2.0` refused `f(0.5, -3.0)` and `ratio(t, n: Positive)` typed
 `t` Positive; a cell holds a shape now (`mn-refine-sibling-operand`, red on
-boot 13e8484a); (3) a RECORD OF FUNCTIONS — a rig field's function type
-crosses the argument edge as a record, which the crossing does not yet read,
-so a refinement riding a field is dropped as the direct argument's was; (4)
-MERGED FUNCTION VALUES (P0's felt walk) — the precondition a merge of two
-functions owes is whichever branch's type the class keeps: with `inv(n:
-Positive)` and an unrefined `inv2`, `fn pick(c) = if c { inv2 } else { inv
-}` under `fn main() with !Trap = pick(false)(0)` checks clean and divides by
-zero, while the same two in the other order refuse (measured alike on boot
-13e8484a and the P0 tree). A join of two function values owes the MEET of
-their preconditions — the refinement variable's meet, κ₁ ∧ κ₂ at the merged
-parameter. (5) A FUNCTION TYPE'S INTERIOR CONFLATES WHAT IS PROVIDED WITH
-WHAT IS DEMANDED (measured 2026-10-01, alike on boot 13e8484a and pin
-e23392f6): `drive`'s published `f: (Hz) -> r` says what `drive` hands its
-callback, and unified into `outer`'s `g` by `fn outer(g) = drive(g, 440.0) +
-g(30000.0)` it makes the direct call `g(30000.0)` owe `Hz` — refused,
-though the lambda `outer` is handed demands nothing. Sound, over-demanding.
-FACE (1) MOVED THE SAME DAY (P0·H), in a learned form rather than as κ: a
-function-typed parameter learns what its body hands each position (the meet
-over its applications) and what a refined position demands of its result,
-and a lambda's parameter learns its precondition, so `drive((c) =>
-alpha(c), 440.0)` discharges where `drive` provides `Hz` and `run(() =>
-30000.0)` refuses where `run` demands it. What the learned form leaves: a
-constant argument provides nothing, though it may satisfy a contract
-(`fn feed(f) = f(440.0)` hands a lambda demanding `Hz` honest debt at the
-crossing, measured); a second, different demand on one result stays the
-body's own claim rather than meeting into the first; and a crossing pays a
-function parameter's guard whatever the passed function proves of its
-result. κ — a demand variable per position, solved by the functions callers
-hand in and checked against what the body provides — is the one form that
-answers faces (1), (4) and (5) together.
+boot 13e8484a); (3) CLOSED 2026-10-02 by H4 — A RECORD OF FUNCTIONS: a
+structure crossing into a contract whose parts hold functions crosses part
+by part (`cross_parts`), and a function at a part of a parameter teaches the
+parameter's contract at that path (crown `leak-refine-field-param`,
+`leak-refine-elem-param`); (4) CLOSED 2026-10-02 by H4 — MERGED FUNCTION
+VALUES (P0's felt walk): `fn pick(c) = if c { inv2 } else { inv }` under
+`fn main() with !Trap = pick(false)(0)` checked clean and divided by zero
+while the other order refused (alike on boot 13e8484a and the P0 tree); a
+function value is every function it can be (`fn_leaves`) and an application
+owes each one's precondition, conjoined per position — the meet, read along
+edges rather than solved as κ₁ ∧ κ₂ (crown
+`leak-refine-merged-{return,let,list}`); (5) CLOSED 2026-10-02 by H4 — A
+FUNCTION TYPE'S INTERIOR CONFLATED WHAT IS PROVIDED WITH WHAT IS DEMANDED:
+`drive`'s published `f: (Hz) -> r`, unified into `outer`'s `g` by `fn
+outer(g) = drive(g, 440.0) + g(30000.0)`, made `g(30000.0)` owe `Hz` and
+refused a correct program (alike on boot 13e8484a and pin e23392f6); a
+provision is its own predicate now (`PProvides`, an edge to the values
+handed), never the function's demand (`mn-refine-provided-not-demanded`).
+FACE (1) MOVED AT P0·H, in a learned form rather than as κ: a function-typed
+parameter learns what its body hands each position and what a refined
+position demands of its result, and a lambda's parameter learns its
+precondition. Since H4 what a position is handed is an EDGE to the values,
+read live, so a constant provides itself: `fn feed(f) = f(440.0)`
+discharges a lambda demanding `Hz` and the same at 30000.0 refuses with the
+exact class (boot e23392f6 left both as debt). What the learned form still
+leaves: a second, different demand on one result stays the body's own claim
+rather than meeting into the first; a crossing pays a function parameter's
+guard whatever the passed function proves of its result; and what H4 names
+beside it (`Hβ.verify.relational-provision`, `Hβ.verify.channel-depth-one`,
+`Hβ.verify.crossing-guard-carries-to-the-provision`). κ — a demand variable
+per position, solved by the functions callers hand in and checked against
+what the body provides — is still the one form that would answer all of
+them at once.
 
 `Hβ.effects.distinct-instances-collapse-in-the-row` — CLOSED 2026-09-28 (L3).
 The row's name-set dedup keyed on the effect NAME and kept the first of two

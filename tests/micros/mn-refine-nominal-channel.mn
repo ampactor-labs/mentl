@@ -1,0 +1,17 @@
+// expect: refuse E_RefinementRejected
+// A nominal type is a container of its type arguments' values: `Option(a)`
+// in `opt_apply`'s declared signature carries the function `Some(inv)` was
+// built with to the callback the same `a` reaches, and the callback applies
+// it at 0. The constant decides the claim false. The H4 tree before the
+// nominal arm ran this to a trap (exit 134); boot e23392f6 refused it as
+// effect debt, by reading the class unification merged.
+type Positive = Int where 0 < self
+
+fn inv(n: Positive) = 100 / n
+
+fn opt_apply(f, o) = match o {
+  Some(x) => f(x),
+  None => 0,
+}
+
+fn main() with !Trap = opt_apply({ g => g(0) }, Some(inv))

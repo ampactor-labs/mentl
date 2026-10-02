@@ -1344,16 +1344,38 @@ A lambda's parameter learns its precondition as a declared one does —
 application owes it: a call through the value, a function crossing, and a
 pipe stage, which applies its stage and so claims of the piped value what a
 call's argument would owe (`30000.0 |> alpha` refuses as `alpha(30000.0)`
-does). A function-typed parameter learns from how its body applies it: what
-every application hands each position — `fn drive(f, c: Hz) = f(c)`
-publishes `f: (Hz) -> r` — and what a refined position demands of the result
-— `fn run(f) = alpha(f())` publishes `f: () -> Hz` — so a caller's crossing
-judges the function it hands in: a lambda's body against the demanded result,
-its own demands against what the callee provides. A `<~` cycle binds its
+does). A function-typed parameter learns from how its body applies it: the
+values every application hands each position — `fn drive(f, c: Hz) = f(c)`
+hands its function `c`'s values, which are `Hz`, and `fn feed(f) = f(440.0)`
+hands it `440.0` — and what a refined position demands of the result — `fn
+run(f) = alpha(f())` publishes `f: () -> Hz` — so a caller's crossing judges
+the function it hands in: a lambda's body against the demanded result, its
+own demands against the values the callee hands it. A `<~` cycle binds its
 lambda's parameter with no application to raise a claim, so that parameter
 learns nothing and a demand inside the body stays the body's debt. Until this
 landed the pipe raised no claim at all, and `0 |> inv` under `!Trap` checked
 clean and divided by zero (boot 13e8484a).
+
+**A function value is every function it can be** (real, 2026-10-02, H4). A
+join of two functions, a list or a record of them, a function a pattern took
+apart, a function a generic call returns: applying the value owes the
+precondition of every function it can be, conjoined per position, and the
+row each one guards — `pick(false)(0)` over `fn pick(c) = if c { inv2 } else
+{ inv }` owes `inv`'s `Positive` whichever branch comes first. What a body
+HANDS a function is never what that function DEMANDS: a function handed to
+`fn outer(g) = drive(g, 440.0) + g(30000.0)` is judged against both values it
+will be handed, not against `drive`'s `Hz` as a demand of its own. A function
+moving through a GENERIC callee is judged by the callee's signature alone —
+parametricity, the callee's body never read: `fold(0, (acc, f) => acc +
+f(0), [inv])` hands the list's `inv` to the callback, which applies it at 0,
+and refuses; a nominal type's arguments carry their values the same way, so
+`opt_apply({ g => g(0) }, Some(inv))` refuses through `Option(a)`. And what a
+body cannot see is never assumed: a function parameter it returns, hands to
+another function its caller chose, or places where the contract is a type
+variable is judged as handed values nothing there can name. Until this landed
+a function's contract rode its type, which unification merged and kept one
+side of: the join and the `fold` shapes checked clean under `!Trap` and
+divided by zero, and `g(30000.0)` refused a correct program (boot e23392f6).
 
 The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); the Arc F.1 SMT handler swap discharges those by residual theory — same source, deeper proof engine.
 

@@ -1133,14 +1133,15 @@ fn render_predicate_tokens(pred) with !Mutate = match pred {
   POr(a, b) => "{render_pred_grouped(a, 4, false)} || {render_pred_grouped(b, 4, true)}",
   PNot(p) => "!{render_pred_grouped(p, 90, false)}",
   PBoolNode(n) => render_pred_node(n),
-  PPatternMatch(p, n) => // The two non-surface predicates (inference-minted narrowing, IFC
-  // obligations) have no parseable spelling; the voice is their only
-  // projection, and the fmt verb's own reparse refuses loudly if one
-  // ever reaches a page.
+  PPatternMatch(p, n) => // The non-surface predicates (inference-minted narrowing, IFC
+  // obligations, partiality, provisions) have no parseable spelling; the
+  // voice is their only projection, and the fmt verb's own reparse
+  // refuses loudly if one ever reaches a page.
   show_predicate(PPatternMatch(p, n)),
   PFlowLe(src, dst) => show_predicate(PFlowLe(src, dst)),
   PWithSelf(_, inner) => render_predicate_tokens(inner),
   PTotalDiv(op, a, b) => show_predicate(PTotalDiv(op, a, b)),
+  PProvides(provided) => show_predicate(PProvides(provided)),
 }
 
 // Precedence-inverse at the predicate altitude — render_operand's rule
