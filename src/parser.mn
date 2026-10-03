@@ -3867,26 +3867,68 @@ fn free_vars_record_fields(flds, bound) = fold(
 )
 
 // Walk a statement list IN SOURCE ORDER, threading `bound` through each
-// binder so a statement sees exactly the names bound before it. Returns
-// `(accumulated_uses, final_bound)`. The walk ran from the last statement
-// back until 2026-10-03, so a later `let` bound its name over every
+// binder so a statement sees exactly the names bound before it — and a run
+// of `fn` declarations binds every name of the run before any of its bodies
+// is read (`stmt_runs`), so siblings reach each other in either direction.
+// Returns `(accumulated_uses, final_bound)`. The walk ran from the last
+// statement back until 2026-10-03, so a later `let` bound its name over every
 // statement before it: `{ let a = x; let x = 1; a + x }` inside a lambda
 // read the first statement's outer x as the later binding, captured nothing,
 // and the lowering refused the program it could not see a binding for
 // (tests/micros/mn-block-walk-source-order.mn).
-fn free_vars_stmts(stmts, bound, acc_frees) = fold((acc_frees, bound), free_vars_stmt_step, stmts)
+fn free_vars_stmts(stmts, bound, acc_frees) =
+  fold((acc_frees, bound), free_vars_run_step, stmt_runs(stmts))
 
-fn free_vars_stmt_step(acc, stmt) = match acc {
-  (frees, bound) => match stmt {
-    N(NStmt(LetStmt(pat, expr, _)), _, _) => (free_uses_merge(frees, collect_free_uses(expr, bound)), free_vars_merge(bound, free_vars_pat_binds(pat))),
-    N(NStmt(FnStmt(name, params, _, _, body_node)), _, _) => // A nested fn's name and parameters bind its own body; its name binds
-    // what follows it.
-    {
-      let inner = free_vars_merge(bound, [name] ++ free_vars_param_names(params))
-      (free_uses_merge(frees, collect_free_uses(body_node, inner)), free_vars_merge(bound, [name]))
+fn free_vars_run_step(acc, run) = match acc {
+  (frees, bound) => match run {
+    Joined(decls) => {
+      let inner = free_vars_merge(bound, run_names(decls))
+      match fold((frees, inner), free_vars_decl_step, decls) {
+        (frees2, _) => (frees2, inner),
+      }
     },
-    _ => (free_uses_merge(frees, collect_free_uses(stmt, bound)), bound),
+    Lone(stmt) => match stmt {
+      N(NStmt(LetStmt(pat, expr, _)), _, _) => (free_uses_merge(frees, collect_free_uses(expr, bound)), free_vars_merge(bound, free_vars_pat_binds(pat))),
+      _ => (free_uses_merge(frees, collect_free_uses(stmt, bound)), bound),
+    },
   },
+}
+
+// One fn of a run: its parameters bind its body beside every name the run
+// binds.
+fn free_vars_decl_step(acc, decl) = match acc {
+  (frees, inner) => match decl {
+    N(NStmt(FnStmt(_, params, _, _, body_node)), _, _) => (free_uses_merge(
+      frees,
+      collect_free_uses(body_node, free_vars_merge(inner, free_vars_param_names(params)))
+    ), inner),
+    _ => // a run holds fn declarations only (`stmt_runs`)
+    acc,
+  },
+}
+
+// A block's statements in their binding runs (`Run`): consecutive `fn`
+// declarations join one run and every other statement stands alone. A
+// statement between two fns ends the run, because a later fn may capture
+// what that statement computes, which does not exist while an earlier fn can
+// already be called. The free-name walk, the judgment and the lowering read
+// the same runs through this one rule, so a name's scope cannot differ
+// between them.
+fn stmt_runs(stmts) = runs_of(fn_joins, stmts)
+
+// A `fn` declaration joins its neighbours' run; any other statement ends it.
+fn fn_joins(node) = match node {
+  N(NStmt(FnStmt(_, _, _, _, _)), _, _) => Joined([node]),
+  _ => Lone(node),
+}
+
+// The names a run declares, in source order.
+fn run_names(decls) = flat_map(declared_fn_name, decls)
+
+fn declared_fn_name(decl) = match decl {
+  N(NStmt(FnStmt(name, _, _, _, _)), _, _) => [name],
+  _ => // a run holds fn declarations only (`stmt_runs`)
+  [],
 }
 
 fn free_vars_match_arms(arms, bound) = fold(

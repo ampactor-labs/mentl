@@ -2887,7 +2887,8 @@ fn lower_expr_body(e, handle, span) = match e {
     let free_uses = lower_seed_hrec(lower_seed_k(free_uses0))
     match resolve_captures_outer(free_uses, handle) {
       (captures_names, captures_exprs, captures_handles) => {
-        // Lambda is anonymous — empty fn_name; ls_outer_fn_name skips it.
+        // Lambda is anonymous — empty fn_name, which a nested fn's symbol
+        // path skips (`ls_fn_symbol`).
         // lambda_h = THIS lambda's own handle (the handle LMakeClosure uses
         // below).
         graph_emitfn_note(EmitFnEntry{
@@ -4074,41 +4075,54 @@ fn tuple_elem_offset(elems, target, i, off) = if i >= len(elems) {
   if i == target { here } else { tuple_elem_offset(elems, target, i + 1, here + repr_width(r)) }
 }
 
-// Statement lowering
+// Statement lowering: a statement list in its binding runs (`stmt_runs`),
+// each lowered into one buffer of `(buf, count)`.
 fn lower_stmt_list(stmts) = {
   let n = len(stmts)
   let initial_capacity = if n < 4 { 4 } else { n }
-  let buf = make_list(initial_capacity)
-  match lower_stmt_list_loop(stmts, 0, n, buf, 0) {
+  match fold((make_list(initial_capacity), 0), lower_run_into, stmt_runs(stmts)) {
     (final_buf, final_count) => slice(final_buf, 0, final_count),
   }
 }
 
-// Buffer-counter loop per Ω.3 discipline. Replaces the prior
-// `[lower_stmt(head)] ++ list_concat(lower_stmt_list(tail))` form
-// which was non-tail-recursive: each frame held list_concat's
-// continuation, so deep stmt lists (the wheel-source's hundreds of
-// fns at top level) blew the wasm stack. Tail recursion via
-// (buf, count) threading; one allocation per stmt; O(N) total.
-fn lower_stmt_list_loop(stmts, i, n, buf, count) = if i >= n {
-  (buf, count)
-} else {
-  let lo = lower_stmt(list_index(stmts, i))
-  // The value-holes drain at the top-level boundary: any hole not drained
-  // by an inner arm construction pairs with this stmt's reach name — a
-  // nested lambda/thunk/partial hole shares its container's reachability
-  // class, and "" (a module value let) is always live via __init_lets.
-  // The block-depth pairing question is MOOT under container-keep: a
-  // zero-nested container is unconditionally emitted, so its name is in
-  // the reach universe under any pairing — a block-let hole in an
-  // unreached fn refuses because the fn IS in the emitted tree (SYNTAX's
-  // "pruned dead code" means NOT-EMITTED); the seam dissolves at the
-  // relocation, where dead entries never construct (the 2026-08-12
-  // refutation's corrected defect 3).
-  graph_hole_drain(reach_decl_name(lo))
-  let extended = list_extend_to(buf, count + 1)
-  let written = list_set(extended, count, lo)
-  lower_stmt_list_loop(stmts, i + 1, n, written, count + 1)
+// A run of fn declarations binds every member's name before any member
+// mints, so a member that captures a sibling declared after it reads the
+// register the sibling's record will be set at; the emit fills the records
+// once every one of them exists (`emit_minted_bindings`).
+fn lower_run_into(acc, run) = match run {
+  Lone(stmt) => lowered_into(acc, lower_stmt(stmt)),
+  Joined(decls) => fold(acc, lower_member_into, zip(decls, flat_map(bind_member, decls))),
+}
+
+// A run member's name bound in the frame: the register its record is set at.
+fn bind_member(decl) = match decl {
+  N(NStmt(FnStmt(name, _, _, _, _)), _, handle) => [ls_bind_local(name, handle)],
+  _ => // a run holds fn declarations only
+  [],
+}
+
+fn lower_member_into(acc, member) = match member {
+  (N(NStmt(FnStmt(name, params, _, _, body_node)), _, handle), reg) => lowered_into(acc, lower_fn_mint(name, params, body_node, handle, reg)),
+  _ => // a run holds fn declarations only
+  acc,
+}
+
+// A lowered statement appended to the buffer. The value-holes drain at the
+// top-level boundary: any hole not drained by an inner arm construction
+// pairs with this stmt's reach name — a nested lambda/thunk/partial hole
+// shares its container's reachability class, and "" (a module value let)
+// is always live via __init_lets. The block-depth pairing question is MOOT
+// under container-keep: a zero-nested container is unconditionally
+// emitted, so its name is in the reach universe under any pairing — a
+// block-let hole in an unreached fn refuses because the fn IS in the
+// emitted tree (SYNTAX's "pruned dead code" means NOT-EMITTED); the seam
+// dissolves at the relocation, where dead entries never construct (the
+// 2026-08-12 refutation's corrected defect 3).
+fn lowered_into(acc, lo) = match acc {
+  (buf, count) => {
+    graph_hole_drain(reach_decl_name(lo))
+    (list_set(list_extend_to(buf, count + 1), count, lo), count + 1)
+  },
 }
 
 // Module scope is a frame: the frame of `$__init_lets`, the one function
@@ -4174,84 +4188,11 @@ fn lower_stmt_body(s, handle, span) = match s {
       lo,
     }
   },
-  FnStmt(name, params, _ret_ann, _effs, body_node) => {
-    // Bind the fn's name in the enclosing frame; the fn's handle is
-    // the type handle (TFun bound to handle by infer).
-    let reg = ls_bind_local(name, handle)
-    // A resume-BOUND callee — reachable from a MultiShot arm, per the
-    // resume_bindings closure at lower_program — takes the arm's continuation
-    // as an implicit TRAILING "__k" param: the k is an ARGUMENT, threaded
-    // by every MultiShot-context call site (lower_call_default), so the
-    // body's resumes resolve it as an ordinary local — never evidence.
-    //
-    let bind_h = ls_resume_bind_of(name)
-    let base_param_names = lower_param_names(params)
-    let param_names_list =
-      if bind_h == "" { base_param_names } else { base_param_names ++ ["__k", "__hrec"] }
-    // The param TYPES the enumeration entry carries — the resume-binding
-    // appendage floors, because __k and __hrec are the machinery's own
-    // words and the graph judged no type for them. (The handle-valued
-    // twin of this line was dead: project_nested_fn computes its own for
-    // the frame, and nothing here read it.)
-    let base_param_tys = entry_param_tys(handle, params)
-    let param_tys_list = if bind_h == "" { base_param_tys } else { base_param_tys ++ floor_tys(2) }
-    // The same "__k" seeding the lambda mint applies (an UNBOUND nested
-    // fn inside an arm may still call a bound sibling); a bound fn's own
-    // __k param shadows the seed harmlessly.
-    let free_uses0 = collect_free_uses(body_node, param_names_list)
-    let free_uses = if bind_h == "" { lower_seed_hrec(lower_seed_k(free_uses0)) } else { free_uses0 }
-    match resolve_captures_outer(free_uses, handle) {
-      (captures_names, captures_exprs, captures_handles) => {
-        // Per Hβ.first-light.nested-fn-name-discriminator (2026-05-06):
-        // query the closest enclosing named-fn BEFORE entering this fn's
-        // own frame. Empty string ⇒ top-level (use bare name). Non-empty
-        // ⇒ nested (mint <outer>_<inner>). Symmetric with $op_<handler>_<op>
-        // — both use semantic prefixes, NOT handle-ints. Reason chain
-        // walks back through the qualified name; Why-Engine reads it.
-        // Top-level fns keep bare name so `_start → $main` resolves;
-        // emit invariant preserved. Drift refused: 1 (no vtable lookup,
-        // direct semantic name composition); 8 (the discriminator is a
-        // composed name string, not a mode-int); 9 (lands the named
-        // peer — symmetric with handler-arm-fn-name-discriminator's
-        // third-instance abstraction-earned shape).
-        //
-        let outer = ls_outer_fn_name()
-        let fn_name = if outer == "" { name } else { "{outer}_{name}" }
-        graph_emitfn_note(EmitFnEntry{
-          caps: zip(captures_names, captures_handles),
-          fence: len(captures_exprs),
-          kind: EfkNested,
-          name: fn_name,
-          origin: handle,
-          params: zip(param_names_list, param_tys_list),
-          ret: ret_ty_of(handle),
-        })
-        // THE DIRECT SWAP (landing shape α, second kind): the LowFn is
-        // built by the column-seeded projector. The resume-binding
-        // context (THE CUT, bank A3 — the arm_state_ctx install, the
-        // appended __k/__hrec params) lives in project_nested_fn; the
-        // site keeps what feeds the columns.
-        match project_nested_fn(handle, fn_name, bind_h, zip(captures_names, captures_handles)) {
-          Some(fn_ir) => // THE BINDING KEEPS THE LOCAL NAMESPACE'S REGISTER, and that is not an
-          // accident to tidy away. Two namespaces meet here. The LOCAL one is
-          // what the body's own references speak in — the register
-          // `ls_bind_local` gave the name above (the source name unless it
-          // shadows), which a self-capture reads too — and the EMITTED
-          // symbol qualifies to outer_inner so nested fns get distinct wasm
-          // names. The LowFn carries only the second, so the wasm backend's
-          // closure emit spends it on the local binding too, and under
-          // qualification that binds the qualified local while the capture
-          // reads the local one. Binding this LLet to fn_name was tried at
-          // pin 3967d236b294 and REVERTED: it points the binding at the
-          // emitted namespace and leaves the local unbound, the same
-          // use-before-def one layer over. The fix is the LowFn carrying
-          // BOTH facts; the peer entry in RESIDUE carries the arc.
-          LLet(handle, reg, LMakeClosure(handle, fn_ir, captures_exprs)),
-          None => LInvariantFailure(handle, ProjectionOriginShape(handle)),
-        }
-      },
-    }
-  },
+  FnStmt(name, params, _ret_ann, _effs, body_node) => // Bind the fn's name in the enclosing frame (the fn's handle is the type
+  // handle, its TFun bound there by infer) and mint it at that register; a
+  // block's run of fns binds every name before it mints any
+  // (`lower_run_into`).
+  lower_fn_mint(name, params, body_node, handle, ls_bind_local(name, handle)),
   TypeDefStmt(_name, _variants) => LConst(handle, LInt(0)),
   EffectDeclStmt(_name, _params, _ops) => LConst(handle, LInt(0)),
   HandlerDeclStmt(name, _ename, config, state, arms, _effs) => {
@@ -4301,6 +4242,67 @@ fn lower_stmt_body(s, handle, span) = match s {
 }
 
 fn lower_stmt_as_expr(s, handle, span) = lower_stmt_body(s, handle, span)
+
+// A named fn's mint, at the register its name is bound to.
+fn lower_fn_mint(name, params, body_node, handle, reg) = {
+  // A resume-BOUND callee — reachable from a MultiShot arm, per the
+  // resume_bindings closure at lower_program — takes the arm's continuation
+  // as an implicit TRAILING "__k" param: the k is an ARGUMENT, threaded
+  // by every MultiShot-context call site (lower_call_default), so the
+  // body's resumes resolve it as an ordinary local — never evidence.
+  //
+  let bind_h = ls_resume_bind_of(name)
+  let base_param_names = lower_param_names(params)
+  let param_names_list =
+    if bind_h == "" { base_param_names } else { base_param_names ++ ["__k", "__hrec"] }
+  // The param TYPES the enumeration entry carries — the resume-binding
+  // appendage floors, because __k and __hrec are the machinery's own
+  // words and the graph judged no type for them. (The handle-valued
+  // twin of this line was dead: project_nested_fn computes its own for
+  // the frame, and nothing here read it.)
+  let base_param_tys = entry_param_tys(handle, params)
+  let param_tys_list = if bind_h == "" { base_param_tys } else { base_param_tys ++ floor_tys(2) }
+  // The same "__k" seeding the lambda mint applies (an UNBOUND nested
+  // fn inside an arm may still call a bound sibling); a bound fn's own
+  // __k param shadows the seed harmlessly.
+  let free_uses0 = collect_free_uses(body_node, param_names_list)
+  let free_uses = if bind_h == "" { lower_seed_hrec(lower_seed_k(free_uses0)) } else { free_uses0 }
+  match resolve_captures_outer(free_uses, handle) {
+    (captures_names, captures_exprs, captures_handles) => {
+      // The emitted symbol, asked BEFORE this fn's own frame is entered so
+      // the path is its enclosing fns' (`ls_fn_symbol`): the bare name at
+      // top level, so `_start → $main` resolves.
+      let fn_name = ls_fn_symbol(name, handle)
+      graph_emitfn_note(EmitFnEntry{
+        caps: zip(captures_names, captures_handles),
+        fence: len(captures_exprs),
+        kind: EfkNested,
+        name: fn_name,
+        origin: handle,
+        params: zip(param_names_list, param_tys_list),
+        ret: ret_ty_of(handle),
+      })
+      // THE DIRECT SWAP (landing shape α, second kind): the LowFn is
+      // built by the column-seeded projector. The resume-binding
+      // context (THE CUT, bank A3 — the arm_state_ctx install, the
+      // appended __k/__hrec params) lives in project_nested_fn; the
+      // site keeps what feeds the columns.
+      match project_nested_fn(handle, fn_name, bind_h, zip(captures_names, captures_handles)) {
+        Some(fn_ir) => // Two namespaces meet here, each carried by its own node. The LLet
+        // holds the LOCAL one — the register the name is bound at (the source
+        // name unless it shadows), which the body's own references, a
+        // self-capture and a sibling's capture read — and the LowFn holds the
+        // EMITTED symbol (`ls_fn_symbol`). The emit binds the record at the
+        // LLet's register (`emit_minted_bindings`) and names its body by the
+        // LowFn, so neither is read for the other. Binding this LLet to the
+        // symbol was tried at pin 3967d236b294 and reverted: it left the
+        // register the captures read unbound.
+        LLet(handle, reg, LMakeClosure(handle, fn_ir, captures_exprs)),
+        None => LInvariantFailure(handle, ProjectionOriginShape(handle)),
+      }
+    },
+  }
+}
 
 // Pattern lowering
 fn lower_match_arms(scrut_h, arms) = {
@@ -6272,7 +6274,7 @@ fn push_name(buf, count, name) = {
 //
 // Records are stored with their fields sorted by name; Mentl source reads
 // them by `.field`, so the physical layout is the emit's business.
-handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_yield = false, resume_binds = [], wide = smap_new(), walking = [] {
+handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_yield = false, resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
   ls_register_escaping(map) => // THE FLOW-CLOSURE map (name → escaping row), computed once at lower_program
   // and read live by THE SEAM. Some(row) for a top-level fn; None (→ the leaf)
   // for a nested fn / lambda / unknown name.
@@ -6301,10 +6303,9 @@ handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_y
   resume() with resume_binds = bs,
   ls_resume_bind_of(name) => resume(resume_bind_assoc(resume_binds, name, 0)),
   ls_enter_frame(fn_name, locals_in, locals_h, captures_in, captures_h, line_base) => // drift-audit: ignore — the capture side's paired name and handle lists (LUpval reads a capture by position); the local side is one binder list
-  // Per Hβ.first-light.nested-fn-name-discriminator (2026-05-06):
-  // fn_name carries the named-fn discriminator for nested-fn naming
-  // (lambda + synthetic frames pass ""). A parameter's register is its
-  // name: the signature declares it.
+  // fn_name is the frame's emitted symbol, the path a nested fn declared
+  // inside it extends (`ls_fn_symbol`); lambda and synthetic frames pass
+  // "". A parameter's register is its name: the signature declares it.
   {
     let frame = {
       binds: zip_with(param_bind, locals_in, locals_h),
@@ -6413,17 +6414,32 @@ handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_y
     }
   },
   ls_register_globals(names) => resume() with globals = names,
-  ls_outer_fn_name() => // Per Hβ.first-light.nested-fn-name-discriminator (2026-05-06):
-  // walks frames innermost-first, returns the first non-empty fn_name
-  // field. The closest enclosing named declaration; lambda frames have
-  // empty fn_name and are skipped. Empty string when top-level (no
-  // enclosing named-fn frame). Symmetric with $op_<handler>_<op> — both
-  // use semantic prefixes, NOT handle-ints. Drift refused: 1 (no
-  // vtable, direct field read); 8 (returns the actual name string,
-  // not a mode-keyed lookup); 9 (lands the discriminator-as-name
-  // peer alongside the handler-arm fn-name-discriminator's
-  // third-instance abstraction-earned shape).
-  resume(ls_outer_fn_name_loop(frames)),
+  ls_fn_symbol(name, h) => {
+    // A named fn's symbol is a projection of its declaration: a top-level
+    // name is unique by the module's own judgment, and a nested one is the
+    // path of enclosing named fns joined by `.`, which no identifier
+    // contains — so an f nested in a fn named a can never meet a sibling of
+    // a named a_f, as the two did under `_`. Two declarations one path names — a name shadowed
+    // across runs, the same helper in two branches — take `$1`, `$2` in the
+    // order they are lowered, kept by declaration so a second lowering of
+    // the same one answers the same symbol. Until 2026-10-03 the second
+    // shared the first's and the emit refused the program as the compiler's
+    // own naming collision (E_EmittedNameCollision).
+    let outer = ls_outer_fn_name_loop(frames)
+    if outer == "" {
+      resume(name)
+    } else {
+      match wmap_get(fn_symbols, h) {
+        Some(sym) => resume(sym),
+        None => {
+          let base = "{outer}.{name}"
+          let k = unwrap_or(smap_get(symbol_counts, base), 0)
+          let sym = if k == 0 { base } else { "{base}${int_to_str(k)}" }
+          resume(sym) with fn_symbols = wmap_add(fn_symbols, h, sym), symbol_counts = smap_add(symbol_counts, base, k + 1)
+        },
+      }
+    }
+  },
 }
 
 // Walk frames innermost-first; return first non-empty fn_name.

@@ -2192,7 +2192,8 @@ and this is the STATE.
   (`Hβ.arena.closure-evac-face`), regions per instance in a spawning module
   (`Hβ.arena.per-instance-regions`), region-typed mutation, the `addr` word
   channel, three imprecisions of the age claim, and nested fns that do not
-  hoist (`Hβ.infer.nested-fn-siblings-do-not-hoist`).
+  hoist (`Hβ.infer.nested-fn-siblings-do-not-hoist`, closed two bullets
+  on).
 - **EVERY EXTENT RUNS IN AN ARENA AND NOTHING ELSE RECLAIMS — CLOSED
   2026-10-03 (Arena·P2).** Past the judgment the heap climbed 288 → 741 MB
   with no exit, and every answer the resident session gave kept what it
@@ -2221,6 +2222,32 @@ and this is the STATE.
   (`Hβ.arena.closure-evac-face`), regions per instance
   (`Hβ.arena.per-instance-regions`), and a word with an address's
   provenance stored raw (`Hβ.arena.cast-addr-crosses-the-journal`).
+- **A BLOCK'S RUN OF `fn` DECLARATIONS IS ONE LETREC SCOPE — CLOSED
+  2026-10-03 (#126).** SYNTAX promised that a block's nested fns hoist so
+  they may reference each other, and the judgment refused `odd` inside its
+  sibling `even` with `E_MissingVariable`. A block's statements are read in
+  runs (`stmt_runs`): consecutive `fn` declarations join one, any other
+  statement stands alone, since a later fn may capture what it computes.
+  Three readers take the runs through that one rule — the free-name walk
+  binds every member's name for every member's body, the judgment
+  pre-registers the run and walks its binding groups callee-first as the
+  module's (`judge_fn_run`), and the lowering binds every member's register
+  before it mints any — and the emit mints a body's adjacent closure
+  bindings in two phases, every record allocated and bound before any is
+  filled (`emit_minted_bindings`), which absorbs the self-capture special
+  case. Found on the way, each RED on the prior boot: a nested fn's symbol
+  `{outer}_{name}` made a name shadowed across runs, one helper name in two
+  branches, and a sibling spelled like the path one symbol, which the emit
+  refused as its own collision — the symbol is the declaration's path joined
+  by `.` now (`ls_fn_symbol`); and the exhaustiveness check read an
+  as-pattern as covering nothing, three readers each walking an arm's top
+  pattern — one projection now (`pat_tops`), `E_PatternInexhaustive` armed
+  at zero. The module's free-name walk ran outside every arena, its scratch
+  outliving it: in one, over the wheel's source, the judgment's heap 288.6
+  → 228.3 MB, peak 581,804 → 519,548 KB, the ceiling 594,000 → 529,000.
+  Open: each reader materializes the runs
+  (`Hβ.parser.block-runs-read-by-each-reader`, riding with positions as
+  cells).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

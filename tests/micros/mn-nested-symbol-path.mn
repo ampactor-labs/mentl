@@ -1,0 +1,14 @@
+// expect: 42
+// A NESTED SYMBOL IS THE PATH OF ITS ENCLOSING FNS JOINED BY `.`, WHICH NO
+// IDENTIFIER CONTAINS: `a`'s `f` is `main.a.f` and the sibling `a_f` is
+// `main.a_f`. Measured 2026-10-03 on boot 91257716: the path joined by `_`
+// spelled both `main_a_f`, and the emit refused the program as the
+// compiler's own naming collision (E_EmittedNameCollision).
+fn main() = {
+  fn a() = {
+    fn f() = 40
+    f()
+  }
+  fn a_f() = 2
+  a() + a_f()
+}

@@ -1,0 +1,13 @@
+// expect: 42
+// A BLOCK'S RUN OF `fn` DECLARATIONS IS ONE LETREC SCOPE: `even` reads
+// `odd`, declared after it, and the two reach each other in either
+// direction. Measured 2026-10-03 on boot 91257716: `even`'s `odd` resolved
+// nowhere, so the judgment refused the program (E_MissingVariable: odd) —
+// against SYNTAX's own "nested fns may reference each other".
+fn parity(n) = {
+  fn even(k) = if k == 0 { true } else { odd(k - 1) }
+  fn odd(k) = if k == 0 { false } else { even(k - 1) }
+  if even(n) { 1 } else { 0 }
+}
+
+fn main() = parity(10) * 42

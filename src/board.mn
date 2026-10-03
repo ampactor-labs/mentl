@@ -127,7 +127,12 @@ fn board_bounds() = [
   // caret's Verify line prints through a named function from its first form;
   // and the declaration around a position is read up the parent edges, so
   // the span scan that found it, and the lambda it searched with, are gone.
-  Bound({ceiling: 225, shape: CsEffectfulLambda}),
+  //
+  // 225 -> 223 (2026-10-03, #126): the exhaustiveness check's three readers
+  // of an arm's top pattern read one projection (`pat_tops`), and the two
+  // accumulator lambdas that walked arms and alternations became references
+  // (`arm_tags`, `top_tag`).
+  Bound({ceiling: 223, shape: CsEffectfulLambda}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which

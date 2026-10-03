@@ -67,6 +67,12 @@ effect InferCtx {
   // never inside this handler's arm. A no-frame exit answers a negative cell.
   inf_exit_fn() -> ([(EffName, Bool, EConn)], Int, EffRow, Span)
   inf_frame_params([Int])
+  // A block's run of fn declarations (`judge_fn_run`) pre-registers its
+  // members mid-walk, above the pass's prereg ceiling, before any of their
+  // bodies is read; while the run is judged, every exit keeps what those
+  // registrations reach, as the ceiling keeps the module's.
+  inf_keep_open([Int])
+  inf_keep_close()
   inf_add_effect(EffName)
   inf_add_row(EffRow)
   // Strip every edge reaching the cell from the open frame's accumulated row
@@ -125,7 +131,7 @@ effect InferCtx {
   inf_decl_module(String) -> Int
 }
 
-handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceiling = 0, decl_entry = 0, reach = [], decl_modules = [] {
+handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceiling = 0, decl_entry = 0, reach = [], decl_modules = [], kept = [] {
   inf_module_reaches(from, to) => {
     let table = if len(reach) == 0 { module_reach_table() } else { reach }
     resume(reach_table_has(table, from, to)) with reach = table
@@ -173,6 +179,8 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     let frame = last(stack)
     resume() with stack = push(drop_last(stack), {...frame, params: ps})
   },
+  inf_keep_open(cells) => resume() with kept = push(kept, cells),
+  inf_keep_close() => if len(kept) == 0 { resume() } else { resume() with kept = drop_last(kept) },
   inf_exit_fn() => if len(stack) == 0 {
     resume(([], 0 - 1, mk_ef_pure(), span_zero()))
   } else {
@@ -214,8 +222,11 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
     // with zero diagnostics (measured 2026-09-27, adv-self-arg). The cell
     // is a live link exactly as a pre-registered cell is; the declaration's
     // own exit cuts the edge to itself (row_without_self) as it always did.
+    // AND THE OPEN RUNS' REGISTRATIONS: a block member judged before the
+    // sibling it calls chains the sibling's pre-registered row cell, minted
+    // above the ceiling and free until the sibling's own judgment fills it.
     let keep =
-      signature_free_roots(stack |> map((fr) => fr.params) |> flatten) ++ (drop_last(stack) |> map((fr) => fr.row_handle))
+      signature_free_roots((stack |> map((fr) => fr.params) |> flatten) ++ flatten(kept)) ++ (drop_last(stack) |> map((fr) => fr.row_handle))
     let published =
       row_keep_completion(row_without_self(frame.accumulated_row, frame.row_handle), mint_ceiling, keep)
     // The popped frame's declaration comes back to the closer — the
@@ -1086,26 +1097,21 @@ fn pre_register_effect(ref node) = match node {
 }
 
 fn pre_register_stmt(seen, ref node) = match node {
-  N(body, span, handle) => match body {
-    NStmt(FnStmt(name, params, ret_ann, _effs, _body_node)) => match smap_get(seen, name) {
-      Some(_) => {
-        report(EDuplicateFnName(name, span))
-        seen
-      },
-      None => {
-        // ONE NAME, TWO KINDS, judged at the fn's own write: effects register
-        // before this fold, so an op of the same name is already in the env
-        // and this declaration would silently WIN (every call then reaches
-        // the fn, the linked module's own calls of its op mistyped — measured
-        // 2026-09-17 as E_TypeMismatch noise inside threading.mn, exit 0,
-        // WAT emitted). register_one_op's arm covers the other order.
-        match env_lookup(name) {
-          Some((_, _, EffectOpScheme(prior_effect, _, _, _))) => report(EFnShadowsOp(name, prior_effect, span)),
-          _ => (),
-        }
-        pre_register_fn_sig(name, params, ret_ann, handle, span)
-        smap_add(seen, name, 1)
-      },
+  N(body, span, _) => match body {
+    NStmt(FnStmt(name, _, _, _, _)) => {
+      // ONE NAME, TWO KINDS, judged at the fn's own write: effects register
+      // before this fold, so an op of the same name is already in the env
+      // and this declaration would silently WIN (every call then reaches
+      // the fn, the linked module's own calls of its op mistyped — measured
+      // 2026-09-17 as E_TypeMismatch noise inside threading.mn, exit 0,
+      // WAT emitted). register_one_op's arm covers the other order. A
+      // block's fn shadows an op lexically, as any local binding does, and
+      // is not asked.
+      match env_lookup(name) {
+        Some((_, _, EffectOpScheme(prior_effect, _, _, _))) => report(EFnShadowsOp(name, prior_effect, span)),
+        _ => (),
+      }
+      pre_register_fn_once(seen, node)
     },
     NStmt(TypeDefStmt(name, variants)) => {
       register_type_constructors(name, variants)
@@ -1119,6 +1125,23 @@ fn pre_register_stmt(seen, ref node) = match node {
     // every handler sig in THIS fold reads a complete effect env.
     seen,
   },
+}
+
+// One fn declaration's pre-registration, refusing a second of its name in
+// one namespace — the module's, or a block's run of fns (`judge_fn_run`).
+fn pre_register_fn_once(seen, node) = match node {
+  N(NStmt(FnStmt(name, params, ret_ann, _, _)), span, handle) => match smap_get(seen, name) {
+    Some(_) => {
+      report(EDuplicateFnName(name, span))
+      seen
+    },
+    None => {
+      pre_register_fn_sig(name, params, ret_ann, handle, span)
+      smap_add(seen, name, 1)
+    },
+  },
+  _ => // only a fn declaration pre-registers here
+  seen,
 }
 
 // The handler's identity IS a parsed fact: its effect (derivable from the
@@ -1341,8 +1364,10 @@ fn infer_program_once(stmts, parse_end) = {
   // count cannot reach zero while both passes exist, and the retirement
   // condition below is not a gate the walk can pass — the pass is what has
   // to go. The layers ride out to order the final's planned sweep (one
-  // collection, two readers).
-  let frees_all = stmt_frees(stmts)
+  // collection, two readers). The walk is an extent whose publication is
+  // the frees table alone, so it runs in an arena: every list it builds on
+  // the way — each block's runs among them — dies at its exit.
+  let frees_all = stmt_frees(stmts) ~> arena
   let name_idx = layer_name_index(map(stmt_decl_name, stmts), 0, smap_new())
   let groups = scc_groups(frees_all, name_idx)
   trial_group_walk(stmts, groups, 0)
@@ -2177,7 +2202,27 @@ fn branch_replay_one(name, scheme, reason, kind) = match scheme {
   },
 }
 
-fn infer_stmt_list(stmts) = each(infer_stmt, stmts)
+// A block's statements, judged run by run (`stmt_runs`). A lone statement
+// judges as it stands. A run of fn declarations judges as the module's
+// declarations do: every member is pre-registered before any body is read,
+// so siblings reach each other in either direction, then the run's binding
+// groups — Tarjan over the same free names — judge callee-first, each cycle
+// as one unit under the cycle discipline.
+fn infer_run(run) = match run {
+  Lone(stmt) => infer_stmt(stmt),
+  Joined(decls) => judge_fn_run(decls),
+}
+
+fn judge_fn_run(decls) = {
+  fold(smap_new(), pre_register_fn_once, decls)
+  inf_keep_open(map(node_handle, decls))
+  trial_group_walk(
+    decls,
+    scc_groups(stmt_frees(decls), layer_name_index(map(stmt_decl_name, decls), 0, smap_new())),
+    0
+  )
+  inf_keep_close()
+}
 
 // A `fn` declared in a block is MINTED where it is declared: lowering builds
 // its closure record there — its captures, or an empty record with none — so
@@ -3481,7 +3526,7 @@ fn infer_expr(ref node) = match node {
     },
     NExpr(BlockExpr(stmts, final_expr)) => {
       env_scope_enter()
-      infer_stmt_list(stmts)
+      each(infer_run, stmt_runs(stmts))
       nested_fns_charge(stmts)
       infer_expr(final_expr)
       match final_expr {
@@ -8035,71 +8080,67 @@ fn infer_match_arm_iter(arms, scrut, result_h, span: ValidSpan, i, n) = if i >= 
   }
 }
 
-// Walk arms, gathering each PCon's tag_id (deduped via set_insert).
-// Non-PCon arms (wildcards, vars, lits) contribute no tag. The seed's
-// transfer is structural (the fold chain absorbs it) — an authored `own`
-// here claimed a consume the callee's param product cannot see (`fold`'s
-// function parameter is a param callee, product unreadable → the seed
-// reads), and the
-// grade now says so (§11 4.2's one wheel narration; band H's bar is
-// fewer authored markers, not more).
-fn collect_arm_tags(arms, init) = fold(
-  init,
-  (acc, arm) => match arm {
-    (pat, _body) => collect_pat_tags(pat, acc),
-  },
-  arms
-)
+// The alternatives a pattern answers for at its top — the one read the
+// exhaustiveness check makes of an arm. An as-pattern answers for what its
+// inner pattern does and an alternation for every branch, so the three
+// readers below cannot see one form and miss the other: each walked the
+// pattern itself, all three knew PAlt (once a voice match covering every
+// variant read "misses 11 of 13"), and none knew PAs, so `lone @ Lone(_)`
+// beside `Joined(ms)` was refused as inexhaustive until 2026-10-03.
+fn pat_tops(pat) = match pat {
+  PAs(_, inner) => pat_tops(inner),
+  PAlt(branches) => flat_map(pat_tops, branches),
+  top => [top],
+}
 
-// An alternation covers the UNION of its branches — flatten. The counter
-// was blind to PAlt: two H6-exhaustive alternation matches in voice read
-// "misses 11 of 13" while covering every variant (the census's own find).
-fn collect_pat_tags(pat, own acc) = match pat {
+// The tags the arms' constructors name, deduped.
+fn collect_arm_tags(arms, init) = fold(init, arm_tags, arms)
+
+fn arm_tags(acc, arm) = match arm {
+  (pat, _body) => fold(acc, top_tag, pat_tops(pat)),
+}
+
+fn top_tag(acc, top) = match top {
   PCon(name, _) => match env_lookup(name) {
-    Some(entry) => match entry {
-      (_, _, kind) => match kind {
-        ConstructorScheme(tag, _) => set_insert(acc, int_to_str(tag)),
-        _ => acc,
-      },
-    },
-    None => acc,
+    Some((_, _, ConstructorScheme(tag, _))) => set_insert(acc, int_to_str(tag)),
+    _ => acc,
   },
-  PAlt(branches) => fold(acc, (a, b) => collect_pat_tags(b, a), branches),
   _ => acc,
 }
 
-// Read total_variants from any one PCon arm's ConstructorScheme.
-// All variants of a single declaring type carry the same total; the
-// FIRST hit is sufficient. Returns 0 when no PCon arm is present
-// (e.g., literal-only match) — the exhaustiveness check skips.
-fn arms_total_variants(arms) = if len(arms) == 0 {
-  0
+// The variant count of the type the arms' constructors declare — every
+// constructor of one type carries the same, so the first found answers. No
+// constructor among the arms (a literal-only match) leaves 0, and the check
+// skips.
+fn arms_total_variants(arms) = fold(0, arm_total, arms)
+
+fn arm_total(found, arm) = match arm {
+  (pat, _body) => fold(found, top_total, pat_tops(pat)),
+}
+
+fn top_total(found, top) = if found > 0 {
+  found
 } else {
-  match last(arms) {
-    (pat, _body) => match pat {
-      PCon(name, _) => match env_lookup(name) {
-        Some(entry) => match entry {
-          (_, _, kind) => match kind {
-            ConstructorScheme(_, total) => total,
-            _ => arms_total_variants(drop_last(arms)),
-          },
-        },
-        None => arms_total_variants(drop_last(arms)),
-      },
-      _ => arms_total_variants(drop_last(arms)),
+  match top {
+    PCon(name, _) => match env_lookup(name) {
+      Some((_, _, ConstructorScheme(_, total))) => total,
+      _ => found,
     },
+    _ => found,
   }
 }
 
-// Wildcard detection: PWild or PVar at the top level catches
-// everything the prior arms don't.
-fn arms_have_wildcard(arms) = any({ (pat, _body) => pat_has_wildcard(pat) }, arms)
+// A wildcard or a binder at an arm's top covers whatever the other arms do
+// not.
+fn arms_have_wildcard(arms) = any(arm_has_wildcard, arms)
 
-fn pat_has_wildcard(pat) = match pat {
+fn arm_has_wildcard(arm) = match arm {
+  (pat, _body) => any(top_covers_all, pat_tops(pat)),
+}
+
+fn top_covers_all(top) = match top {
   PWild => true,
   PVar(_) => true,
-  PAlt(branches) => // A wildcard inside an alternation covers the remainder the same way.
-  any(pat_has_wildcard, branches),
   _ => false,
 }
 

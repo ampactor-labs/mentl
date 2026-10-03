@@ -1,0 +1,13 @@
+// expect: refuse E_MissingVariable
+// A STATEMENT BETWEEN TWO `fn` DECLARATIONS ENDS THE RUN. `second` captures
+// `k`, which is computed between the two, so `second` cannot exist while
+// `first` can already be called: `first`'s `second` is out of scope, and the
+// judgment says so at the name.
+fn offset_by(base) = {
+  fn first() = second() + 1
+  let k = base * 2
+  fn second() = k
+  first()
+}
+
+fn main() = offset_by(20)

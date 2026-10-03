@@ -35,6 +35,79 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-03 · pin 0a096302d535adc2 (TRANSITION m3 == m4) · A BLOCK'S RUN
+  OF `fn` DECLARATIONS IS ONE LETREC SCOPE, AND A NESTED FN'S SYMBOL IS ITS
+  DECLARATION'S PATH. SYNTAX said a block's nested fns are hoisted into a
+  local letrec scope so they may reference each other, and the judgment
+  refused `odd` inside its sibling `even` with `E_MissingVariable` (measured
+  on 9ec6db48 and again on 91257716). THE RUN: a block's statements are read
+  in runs (`Run`, `runs_of`, `stmt_runs`) — consecutive `fn` declarations
+  join one, any other statement stands alone, since a later fn may capture
+  what it computes — and three readers take them through that one rule. The
+  free-name walk binds every name of a run for every body of it
+  (`free_vars_run_step`). The judgment pre-registers the run's members
+  (`pre_register_fn_once`, also the module's refusal of a duplicate,
+  `E_DuplicateFnName`) and walks the run's binding groups callee-first as the
+  module's (`judge_fn_run` over `scc_groups` and `trial_group_walk`, each
+  group in an arena), keeping the members' pre-registered cells across every
+  exit while the run is open (`inf_keep_open`): they are minted above the
+  enclosing declaration's mint ceiling, so an exit's prune would drop them as
+  scratch. The lowering binds every member's register before it mints any
+  (`lower_run_into`). THE EMIT mints a body's adjacent closure bindings in
+  two phases — every record allocated, headed and bound to its register,
+  then every record's captures, `<~` lines and lane pairs filled
+  (`emit_minted_bindings`) — so a member capturing a later sibling reads a
+  record that exists, and the self-capture special case it absorbs (the
+  early bind and `self_capture_name`) is deleted; a closure let outside a run
+  is the one-binding case of the same two phases. THE SYMBOL: a nested fn
+  was emitted as `{outer}_{name}`, so a name shadowed across two runs, one
+  helper name in two branches, and `a`'s `f` beside a top-level fn spelled
+  like that path were one symbol, and the emit refused each program as its
+  own naming collision (`E_EmittedNameCollision` on 91257716). The symbol is
+  a projection of the declaration now (`ls_fn_symbol`, kept by handle): the
+  path joined by `.`, which no identifier contains, with `$k` on a repeated
+  path. THE PATTERN: the exhaustiveness check read an as-pattern as covering
+  nothing — three readers of an arm's top pattern each walked it, all three
+  knew alternations and none knew `@` — and the boot refused the wheel's own
+  `run_step` when it was written with one. One projection answers the three
+  (`pat_tops`), and `E_PatternInexhaustive` is ARMED, its census on the
+  wheel zero. MEASURED, the twelve new fixtures through 91257716 and through
+  this boot: ten RED there (nine fail to compile, and the duplicate refuses
+  as an emitted-name collision, not `E_DuplicateFnName`), the run-break
+  control refusing `E_MissingVariable` on both, and the as-pattern fixture
+  passing its exit contract on both — beside one false diagnostic there and
+  none here; all twelve green here. Fixed input, the wheel's source this pin
+  carries through both boots, two runs each: peak 581,804 / 584,476 KB
+  against 519,548 / 517,784 KB; the judgment's heap 288,583,160 →
+  228,258,576 B, the heap when the module is written 439,536,560 →
+  379,216,504 B; the march's census 19,879 exits, 0 kept, 618,948 KB
+  reclaimed, 54,943 KB moved against 19,894, 0, 689,545 and 55,206. The
+  60.3 MB is the module's free-name walk (`stmt_frees`), which ran outside
+  every arena, so all the scratch it built outlived it; in one now, it keeps
+  only the frees table it publishes. The march: m3 leg 14.04 s at 523,740 KB,
+  m4 leg 13.85 s at 520,840 KB; the ceiling 594,000 → 529,000. KILLS: (1)
+  "the first probe's `E_DuplicateFnName` is the hoisting" — the probe's
+  helper was named `split`, a name the library declares; renamed, the
+  refusal was `E_MissingVariable`, the gap SYNTAX's promise names. (2) "the
+  runs' materialization is the +1.76 MB" — the classifier as a two-hole
+  partial instead of a mapped list took it to +0.80 MB, and the delta
+  stood at the judgment's end with nothing after it moving; the free-name
+  walk's arena then reclaimed 60.3 MB, both costs inside it. (3) "the
+  as-pattern fixture can be seen RED" — its contract is an exit, and the
+  class only narrated on the boot, so it ran to 42 beside one false error;
+  armed, a false error now fails it. (4) "write `run_step` with an
+  as-pattern" — the boot's checker refused the wheel it was compiling, a
+  compiler's checker being its parent's, which is how the exhaustiveness
+  defect surfaced; `run_step` is written without one. (5) the drift audit
+  refused one word in a fixture's comment and the comment-ref gate one
+  backticked example symbol no declaration carries — prose now. Open: each
+  of the three readers materializes the runs
+  (`Hβ.parser.block-runs-read-by-each-reader`, rides with positions becoming
+  cells). Closed: `Hβ.infer.nested-fn-siblings-do-not-hoist`. Board at the
+  pin, whole: micros 351/351 and the negation probes 37/37 through the
+  pinned boot, the fixed point m2 == m3 on it, crown, proof-exactness and
+  effect identity green, frontier 543 / 0 / 1, the IDE gate green on both
+  legs (the page compiled the boot in 260 ms; a session read 3.7 ms).
 - 2026-10-03 · pin 912577160150bf94 (TRANSITION m3 == m4) · THE ARENA AT
   EVERY EXTENT: EACH DECLARATION'S LOWERING, EACH EMITTED UNIT, EACH ANSWER
   AND EACH SPECULATION RUNS IN ONE, AND THE RAW REWIND IS GONE. The arena

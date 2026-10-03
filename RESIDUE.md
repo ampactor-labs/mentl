@@ -3589,15 +3589,62 @@ table face. The form: a reference at a known instantiation demands the
 callee's moved-shape twin exactly as a direct call does — a reference is a
 use site with an instantiation.
 
-`Hβ.infer.nested-fn-siblings-do-not-hoist` — OPEN, measured 2026-10-03 on
-boot 9ec6db48: SYNTAX promises that a block's nested fns are hoisted into a
-local letrec scope so siblings may call each other, and the judgment refuses
-`is_odd` inside its sibling `is_even` with `E_MissingVariable`. The
-free-name walk binds a nested fn's name for what FOLLOWS it in the block
-(the arena landing's source-order walk), so the call graph and the judgment
-agree on the unhoisted form; the hoisted form binds every nested fn's name
-across the block's whole run of declarations before any body is judged —
-pre-registration at block scope, the shape the module already has.
+`Hβ.infer.nested-fn-siblings-do-not-hoist` — CLOSED 2026-10-03 (#126).
+SYNTAX promised that a block's nested fns are hoisted into a local letrec
+scope, and the judgment refused `odd` inside its sibling `even` with
+`E_MissingVariable` (measured on boot 9ec6db48 and again on 91257716). A
+block's statements are read in RUNS now (`Run`, `runs_of`, `stmt_runs`):
+consecutive `fn` declarations join one run, any other statement stands
+alone. Three readers take the runs through that one rule. The free-name walk
+binds every name of a run for every body of it. The judgment pre-registers
+the run's members (`pre_register_fn_once`, the module's own refusal of a
+duplicate) and walks the run's binding groups callee-first exactly as the
+module's (`judge_fn_run`), keeping the members' pre-registered cells across
+every exit while the run is open (`inf_keep_open`). The lowering binds every
+member's register before it mints any (`lower_run_into`). The emit mints a
+body's adjacent closure bindings in two phases — every record allocated,
+headed and bound before any is filled (`emit_minted_bindings`) — which
+absorbs the self-capture special case: the early bind and
+`self_capture_name` are deleted. A statement between two fns ends the run,
+because a later fn may capture what it computes. Eight `mn-nested-run-*`
+fixtures RED on the boot, the derivative reading among them, and green on
+the new tree; the run-break control refuses on both.
+
+Two defects found on the way, both closed in the landing. A nested fn's
+emitted symbol was `{outer}_{name}`: two declarations one path names — a
+name shadowed across runs, the same helper in two branches — and `a`'s `f`
+beside a sibling `a_f` all emitted as one symbol, and the emit refused the
+program as the compiler's own naming collision. The symbol is a projection
+of the declaration now (`ls_fn_symbol`): the path joined by `.`, which no
+identifier contains, with `$k` on a repeated path, kept by declaration
+(`mn-nested-same-name-branches`, `mn-nested-symbol-path`,
+`mn-nested-run-shadow-across`, each RED on the boot). And the exhaustiveness
+check read an as-pattern as covering nothing: three readers of an arm's top
+pattern each walked it themselves, and all three knew alternations and none
+knew `@`. One projection answers them (`pat_tops`), and
+`E_PatternInexhaustive` is armed, its census on the wheel zero. Its fixture
+(`mn-as-pattern-exhaustive`) could not be RED on the boot by its contract —
+the class narrated there, so the program ran to 42 beside one false error
+(`diags=1`, `diags=0` on the new tree); armed, it fails the fixture if the
+false error ever returns.
+
+What the measurement found beside it: the module's free-name walk
+(`stmt_frees`) ran outside every arena, so all the scratch it built
+outlived it. In an arena now it reclaims 60.3 MB of the judgment's heap on
+the wheel (288.58 → 228.25 MB on one input). The block runs are
+materialized by each of their three readers — the parser could carry them
+on the block once (`Hβ.parser.block-runs-read-by-each-reader`).
+
+`Hβ.parser.block-runs-read-by-each-reader` — OPEN, born 2026-10-03 with
+#126. A block's runs are computed by one rule (`stmt_runs`) and
+materialized three times, by the free-name walk, the judgment and the
+lowering. Every reader but the module free-name walk runs inside an arena,
+so the copies die at once; the cost is the walk itself, O(statements) per
+reader. The form: the parser builds the runs once and the block carries
+them (`BlockExpr` over `[Run(Node, Node)]`), so the three readers and
+every walker of a block read the same list. That is a representation
+change to every `BlockExpr` reader, and it rides with positions becoming
+cells (#108), where a block's statements become graph edges anyway.
 
 `Hβ.emit.memory-gc-handler` — OPEN, named in §11's Phase 10 and given its
 home here on 2026-10-03, when the arena narrowed it. A collector strategy

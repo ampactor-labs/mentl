@@ -381,9 +381,9 @@ fn hash_is_agg(ty) = match ty {
 // The closure-mint face of `spec_target_name`'s redirect (lower.mn, where
 // the reference face lives beside the key projection it reads): inside a
 // twin's emission the bracket carries the active enc, and a nested record
-// whose twin exists gets its table index redirected — captures,
-// self-binding, and local naming keep the ORIGINAL name (the record local is
-// the closure value; only the offset-0 index points at the twin body).
+// whose twin exists gets its table index redirected — captures and the
+// binding's register keep the ORIGINAL name (the record local is the closure
+// value; only the offset-0 index points at the twin body).
 // Outside a bracket enc is "" — floor.
 fn spec_closure_name(name: String) = if !spec_twins_exist() {
   name
@@ -5858,16 +5858,31 @@ fn emit_params(names, preprs) = each(
 // still yields the uniform i32 (every $ft results i32), so a
 // statement-position perform is exactly this law's instance — the
 // scratch stores in the perform-miss postmortem window were the
-// first on the m2 path and left [i32, i32] at an if-branch end.
-fn emit_body(stmts) = emit_body_seq(stmts, 0)
+// first on the m2 path and left [i32, i32] at an if-branch end. The
+// statements are read in their runs: adjacent closure bindings are minted
+// together (`emit_minted_bindings`), and a binding leaves no word.
+fn emit_body(stmts) = {
+  let runs = runs_of(mint_joins, stmts)
+  if len(runs) == 0 {
+    ()
+  } else {
+    each(emit_statement_run, drop_last(runs))
+    emit_value_run(last(runs))
+  }
+}
 
-fn emit_body_seq(stmts, i) = if i >= len(stmts) {
-  ()
-} else {
-  let s = list_index(stmts, i)
-  emit_expr(s)
-  if i < len(stmts) - 1 && lexpr_leaves_value(s) { wat_emit("    (drop)\n") } else { () }
-  emit_body_seq(stmts, i + 1)
+fn emit_statement_run(run) = match run {
+  Joined(bindings) => emit_minted_bindings(bindings),
+  Lone(s) => {
+    emit_expr(s)
+    if lexpr_leaves_value(s) { wat_emit("    (drop)\n") } else { () }
+  },
+}
+
+// The body's last run: its word, when it leaves one, is the body's value.
+fn emit_value_run(run) = match run {
+  Joined(bindings) => emit_minted_bindings(bindings),
+  Lone(s) => emit_expr(s),
 }
 
 // The default IS the law — every expression emission yields one word;
@@ -6585,11 +6600,14 @@ fn emit_expr(expr) = match expr {
     wat_emit(spec_target_name(h, name))
     wat_emit(")\n")
   },
-  LLet(h, name, val) => {
-    emit_expr(val)
-    wat_emit("    (local.set $")
-    wat_emit(local_wat_name(name, llet_repr(h, val)))
-    wat_emit(")\n")
+  LLet(h, name, val) => match minted_binding(expr) {
+    Some(b) => emit_minted_bindings([b]),
+    None => {
+      emit_expr(val)
+      wat_emit("    (local.set $")
+      wat_emit(local_wat_name(name, llet_repr(h, val)))
+      wat_emit(")\n")
+    },
   },
   LUpval(h, idx) => {
     // W7: read captured value from the closure record at offset
@@ -6713,62 +6731,12 @@ fn emit_expr(expr) = match expr {
     // The body's performs dispatch through the live world chain, so the
     // record carries captures only — no evidence region.
     //
-    // Allocation routes through `perform emit_alloc(size, target)`,
-    // dispatched by the installed EmitMemory handler. Bump today;
-    // future arena / GC handlers swap the WAT without touching
-    // this site.
-    let nc = len(captures_exprs)
-    let size = 8 + 4 * nc + 4 * len(lines)
-    // THE RECORD POINTER PARKS IN A PER-HANDLE LOCAL, never the shared
-    // `$state_tmp`, and the reason was measured rather than foreseen: a
-    // capture that is ITSELF a closure re-enters this very arm and
-    // overwrites the scratch, so the outer mint's closing read handed back
-    // the INNER record. `fn f(p, x) = p(x) + 1` with
-    // `let g = f((n) => n * 2)` answered `g(4) == 8` — `p(4)`, the capture
-    // called in the callee's place — at exit 0 with ZERO diagnostics,
-    // because `g` WAS the lambda. `LCall` already carries this exact fix
-    // one arm over (`$call_<h>`, Hβ.emit.lcall-per-handle-state-scratch);
-    // the mint is the same class, and a second site of one shape is the
-    // census law's stop.
-    let rec_local = mkclo_local(h)
-    emit_record_alloc(size, nc, rec_local)
-    // Store the table index at offset 0 (the nested twin's index when the
-    // active bracket names one — spec_closure_name).
-    wat_emit("    (local.get ${rec_local})\n")
-    wat_emit("    (global.get $")
-    wat_emit(spec_closure_name(fn_name))
-    wat_emit("_idx)\n")
-    wat_emit("    (i32.store offset=0)\n")
-    // Store capture count at offset 4 — the fence.
-    wat_emit("    (local.get ${rec_local})\n")
-    wat_emit("    (i32.const ")
-    wat_emit(int_to_str(nc))
-    wat_emit(") (i32.store offset=4)\n")
-    // A self-recursive closure binds its OWN local to the record BEFORE
-    // filling captures, so the self-capture reads the record, not the LLet's
-    // not-yet-set local — which is a null fn_ptr, the parse_int nested-go
-    // indirect-call-type-mismatch that trapped m3 in the lexer.
-    // The self-capture is found by IDENTITY (its handle IS this closure's)
-    // and the bind targets THE NAME IT READS: those are the two halves the
-    // name-matched predecessor got wrong once the nested-fn discriminator
-    // qualifies the emitted symbol, since the local namespace stays
-    // source-named. $<that name> is a declared in-scope local exactly when
-    // a self-capture exists; the LLet's own local.set re-binds harmlessly.
-    // Mirrors the seed, which binds every let-bound closure's local early.
-    match self_capture_name(captures_exprs, h) {
-      "" => (),
-      selfnm => {
-        wat_emit("    (local.set $")
-        wat_emit(local_wat_name(selfnm, RI32))
-        wat_emit(" (local.get ${rec_local}))\n")
-      },
-    }
-    // Store each capture at offset 8 + 4*i.
-    emit_capture_stores(captures_exprs, 0, rec_local)
-    // The body's `<~` lines follow the captures — one ring each.
-    emit_line_mints(lines, rec_local)
-    // Result: closure pointer on stack.
-    wat_emit("    (local.get ${rec_local})\n")
+    // A mint where a value stands holds nothing minted after it — a closure
+    // that reaches itself or a sibling is a binding's, minted in two phases
+    // by `emit_minted_bindings` — so it is headed and filled in one go.
+    emit_closure_head(h, fn_name, len(captures_exprs), lines)
+    emit_closure_fill(captures_exprs, lines, mkclo_local(h))
+    wat_emit("    (local.get ${mkclo_local(h)})\n")
   },
   LMakeContinuation(h, LFn(resume_fn_name, _arity, _param_names, _body, _fence, lines), captures_exprs, state_idx, ret_slot) => {
     // H7 — the multi-shot continuation record, CLOSURE-IDENTICAL HEAD
@@ -6799,8 +6767,8 @@ fn emit_expr(expr) = match expr {
     // lines (one ring each, shared by every resumption of this k as every
     // other heap write of the remainder is).
     let size = 8 + 4 * nc + 12 + 4 * len(lines)
-    // Per-handle, for the reason the closure arm above measured: the head
-    // IS the closure head, so it inherits the clobber too — a continuation
+    // Per-handle, for the reason `mkclo_local` states: the head IS the
+    // closure head, so it inherits the clobber too — a continuation
     // capturing a closure would return the capture.
     let rec_local = mkclo_local(h)
     emit_alloc(size, rec_local)
@@ -9674,13 +9642,116 @@ fn emit_unaryop_for(h, op) = match op {
   UNot => wat_emit("    (i32.eqz)\n"),
 }
 
-// Emit the stores for each capture in the closure record.
-// Captures are indexed from 0; each stored at offset 8 + 4*i.
 // The per-handle local a record mint parks its pointer in — one home, so
 // the emit and `walk_locals_expr`'s declaration cannot name it differently
 // (which is a wat_asm error rather than a silent wrong, but only because
-// the assembler is outside the medium).
+// the assembler is outside the medium). Per handle and never the shared
+// `$state_tmp`, and the reason was measured rather than foreseen: a capture
+// that is ITSELF a closure re-enters the mint and overwrote the scratch, so
+// the outer mint's closing read handed back the INNER record. `fn f(p, x) =
+// p(x) + 1` with `let g = f((n) => n * 2)` answered `g(4) == 8` — `p(4)`,
+// the capture called in the callee's place — at exit 0 with ZERO
+// diagnostics, because `g` WAS the lambda. `LCall` carries this exact fix
+// one arm over (`$call_<h>`, Hβ.emit.lcall-per-handle-state-scratch); the
+// mint is the same class, and a second site of one shape is the census
+// law's stop.
 fn mkclo_local(h) = "mkclo_{int_to_str(h)}"
+
+// A closure record's head, in the local `mkclo_local` names: the record
+// allocated through the installed EmitMemory strategy, its table index at
+// offset 0 (the nested twin's when the active bracket names one —
+// `spec_closure_name`) and its capture count at offset 4, the fence. Then
+// `emit_closure_fill` writes the captures at 8 + 4·i and the body's `<~`
+// lines after them.
+fn emit_closure_head(h, fn_name, nc, lines) = {
+  let rec_local = mkclo_local(h)
+  emit_record_alloc(8 + 4 * nc + 4 * len(lines), nc, rec_local)
+  wat_emit("    (local.get ${rec_local})\n")
+  wat_emit("    (global.get $")
+  wat_emit(spec_closure_name(fn_name))
+  wat_emit("_idx)\n")
+  wat_emit("    (i32.store offset=0)\n")
+  wat_emit("    (local.get ${rec_local})\n")
+  wat_emit("    (i32.const ")
+  wat_emit(int_to_str(nc))
+  wat_emit(") (i32.store offset=4)\n")
+}
+
+fn emit_closure_fill(captures, lines, rec_local: String) = {
+  emit_capture_stores(captures, 0, rec_local)
+  emit_line_mints(lines, rec_local)
+}
+
+// A closure binding the emit mints in two phases: the register the binding
+// sets, and the mint — its record's handle, its table entry, its captures
+// and `<~` lines, and the lane pairs a mint under a reading writes beside
+// its captures.
+type MintedBinding
+  = MintedBinding({caps: [LowExpr], entry: String, lines: [(Int, Int, LineHome)], pairs: [LowExpr], record: Int, reg: String})
+
+// The closure a statement binds, read whole, or None for any other
+// statement.
+fn minted_binding(s) = match s {
+  LLet(h, name, val) => match closure_mint(val) {
+    Some((mint, pairs)) => match mint {
+      LMakeClosure(ch, LFn(entry, _, _, _, _, lines), caps) => Some(MintedBinding({
+        caps: caps,
+        entry: entry,
+        lines: lines,
+        pairs: pairs,
+        record: ch,
+        reg: local_wat_name(name, llet_repr(h, val)),
+      })),
+      _ => None,
+    },
+    None => None,
+  },
+  _ => None,
+}
+
+// A value that mints a closure: alone, or under a reading with the lane
+// pairs the mint writes beside its captures.
+fn closure_mint(val) = match val {
+  LMakeClosure(_, _, _) => Some((val, [])),
+  LWasiCall(_, n, args) => match (derive_op_of(n), args) {
+    (Some(DoMintLanes), [mint, ...pairs]) => Some((mint, pairs)),
+    _ => None,
+  },
+  _ => None,
+}
+
+// A run of closure bindings, minted in two phases: every record is
+// allocated, headed and bound to its register before any is filled, so a
+// record that holds a binding minted after it — a block's run of `fn`
+// declarations reaching each other, or one reaching itself — reads that
+// binding's record and never a register not yet set. Nothing else a
+// binding captures is bound by a binding after it, so every other run of
+// closure bindings mints exactly what one phase would.
+fn emit_minted_bindings(bindings) = {
+  each(emit_binding_head, bindings)
+  each(emit_binding_fill, bindings)
+}
+
+fn emit_binding_head(b) = match b {
+  MintedBinding(r) => {
+    emit_closure_head(r.record, r.entry, len(r.caps), r.lines)
+    wat_emit("    (local.set ${r.reg} (local.get ${mkclo_local(r.record)}))\n")
+  },
+}
+
+fn emit_binding_fill(b) = match b {
+  MintedBinding(r) => {
+    emit_closure_fill(r.caps, r.lines, mkclo_local(r.record))
+    emit_lane_pairs(mkclo_local(r.record), len(r.caps), r.pairs)
+  },
+}
+
+// A statement that binds a closure's mint joins the run the emit mints
+// together; any other statement stands alone.
+fn mint_joins(s) = match minted_binding(s) {
+  Some(b) => Joined([b]),
+  None => Lone(s),
+}
 
 // The record's `<~` lines: one ring per site, allocated with the record
 // and stored at the slot lower assigned the site (`LhSlot`, past the
@@ -9723,35 +9794,6 @@ fn emit_capture_stores(captures, base_i, rec_local: String) = each(
   },
   enumerate(captures)
 )
-
-// Does this closure capture ITSELF — a self-recursive nested function (a
-// go-style inner fn whose body calls itself)? Its self-capture is an LLocal referencing fn_name, filled from
-// the enclosing scope where fn_name is the closure's own let-binding. That
-// binding is the local the LLet sets AFTER the closure is built, so the
-// self-capture must be bound to the record early or it reads a null fn_ptr
-// (the parse_int nested-go indirect-call-type-mismatch). field_name_eq carries the
-// String proof (a bare `==` would pointer-eq the names — this session's class).
-// The self-capture, read by IDENTITY and answered with the name the
-// EMITTED BODY uses for it. A nested fn binds its own name to its own
-// handle in the enclosing frame, and a self-reference resolves through
-// that bind, so the capture's handle IS the closure's handle — one
-// comparison, no strings, immune to whether the fn's emitted symbol has
-// been qualified. The predecessor compared the capture's name against
-// the LowFn's name, which are drawn from two different namespaces the
-// moment the nested-fn discriminator qualifies: the local one stays
-// source-named while the symbol becomes outer_inner, so the match went
-// false, the early bind below was skipped, and the closure's fn_ptr read
-// an unset local (the trap: indirect call type mismatch in the lexer).
-// Returning the NAME rather than a Bool closes the second half of the
-// same defect — the bind targets what the body actually reads.
-// "" = no self-capture.
-fn self_capture_name(captures, closure_h) = match captures {
-  [] => "",
-  [c, ...rest] => match c {
-    LLocal(ch, nm) => if ch == closure_h { nm } else { self_capture_name(rest, closure_h) },
-    _ => self_capture_name(rest, closure_h),
-  },
-}
 
 // Emit the stores for each payload of an ADT variant record, after the tag
 // word at offset 0 (`emit_variant_stores_acc`).

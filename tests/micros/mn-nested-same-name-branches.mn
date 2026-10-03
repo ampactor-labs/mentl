@@ -1,0 +1,14 @@
+// expect: 42
+// ONE NAME IN TWO BRANCHES IS TWO DECLARATIONS, AND EACH EMITS AS ITS OWN
+// SYMBOL: `pick`'s two `f`s are `pick.f` and `pick.f$1`. Measured 2026-10-03
+// on boot 91257716: both emitted as `pick_f`, and the emit refused the
+// program as the compiler's own naming collision (E_EmittedNameCollision).
+fn pick(c) = if c {
+  fn f() = 40
+  f()
+} else {
+  fn f() = 2
+  f()
+}
+
+fn main() = pick(true) + pick(false)

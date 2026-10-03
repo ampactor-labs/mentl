@@ -1,0 +1,14 @@
+// expect: 42
+// TWO MEMBERS OF ONE RUN THAT CAPTURE EACH OTHER AND THE ENCLOSING FRAME:
+// `a` holds `b` and `step`, `b` holds `a` and `step`. Each record holds a
+// sibling minted after it, so the emit allocates and binds every record of
+// the run before it fills any; one record at a time, `a`'s capture of `b`
+// would read a register not yet set. Twenty steps alternate between the two,
+// so the count is 20 and the answer 20 + 22.
+fn count_down(limit, step) = {
+  fn a(k) = if k <= 0 { 0 } else { 1 + b(k - step) }
+  fn b(k) = if k <= 0 { 0 } else { 1 + a(k - step) }
+  a(limit)
+}
+
+fn main() = count_down(20, 1) + 22

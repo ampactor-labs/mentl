@@ -1,0 +1,11 @@
+// expect: 42
+// TWO RUNS, TWO SCOPES: a `let` between the two `fn f` declarations ends the
+// first run, so the second `f` shadows the first for what follows it, as a
+// second `let` of one name does. `one` read the first `f` before the second
+// existed.
+fn main() = {
+  fn f() = 1
+  let one = f()
+  fn f() = 41
+  f() + one
+}

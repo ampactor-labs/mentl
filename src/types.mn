@@ -2385,6 +2385,38 @@ type Stmt
   // representation; expansion at build_declared_row, never in Ty)
   | RowAliasStmt(String, [(EffName, Bool, EConn)])
 
+// A sequence in its runs (`runs_of`): adjacent members that join make ONE
+// run and every other member stands alone. A block's `fn` declarations
+// join, every name of the run in scope in every body of the run and in
+// everything after it (`stmt_runs`); so do the closure bindings the emit
+// mints together (`emit_minted_bindings`).
+type Run = Joined([a]) | Lone(b)
+
+// The runs of a sequence: `joins` reads each member as a one-member run,
+// and adjacent joined runs merge.
+fn runs_of(joins, xs) = fold([], run_step(joins), xs)
+
+fn run_step(joins, runs, x) = {
+  let member = joins(x)
+  match member {
+    Joined(ms) => match last_joined(runs) {
+      Some(prev) => push(drop_last(runs), Joined(prev ++ ms)),
+      None => push(runs, member),
+    },
+    Lone(_) => push(runs, member),
+  }
+}
+
+// The joined run a list of runs ends with, if it ends with one.
+fn last_joined(runs) = if len(runs) == 0 {
+  None
+} else {
+  match last(runs) {
+    Joined(members) => Some(members),
+    Lone(_) => None,
+  }
+}
+
 // type X = T — transparent alias (no `where`, RHS a
 // single type-expression, not a record literal, not a
 // `|`-alternation). Infer registers TAlias(X, T); X and
@@ -3752,6 +3784,12 @@ fn diag_refuses(d) with Pure = match d {
   // Census on the wheel at arming: 0.
   True,
   EDuplicateFnName(_, _) => True,
+  EPatternInexhaustive(_, _, _) => // ARMED 2026-10-03, the day its one false shape closed: an as-pattern
+  // read as covering nothing, so `whole @ Leaf(_)` beside `Pair(a, b)` was
+  // "misses 1 of 2" (`pat_tops`). Unarmed, a match missing a variant
+  // compiled and trapped when the variant arrived — the hard error SYNTAX
+  // names, emitted. Census on the wheel at arming: 0.
+  True,
   EEmittedNameCollision(_, _) => // ARMED at birth (2026-09-10) and born at ZERO on every program measured,
   // which is the point: it does not police a mistake, it holds an invariant
   // that was true by two unrelated accidents. Authored duplicates are refused
@@ -4250,8 +4288,10 @@ effect LowerScope {
   ls_bind_fb_prior(String, Int)
   ls_resolve(String) -> (Resolution, Int)
   ls_register_globals([String])
-  // closest enclosing named-fn frame; "" for top-level
-  ls_outer_fn_name() -> String
+  // the symbol a named fn declaration (name, handle) emits as: its name at
+  // top level, else the enclosing named fn's symbol, a `.` and its name,
+  // and `$k` on the k-th further declaration that path names
+  ls_fn_symbol(String, Int) -> String
   // checkpoint = current frame's local count
   ls_push_scope() -> Int
   // truncate frame locals back to checkpoint

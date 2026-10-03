@@ -1,0 +1,11 @@
+// expect: refuse E_DuplicateFnName
+// ONE RUN, ONE NAMESPACE: every name of a run is in scope in every body of
+// the run, so two members of one name leave each reference meaning both. The
+// module refuses its second `fn f`; a run refuses it the same way. Measured
+// 2026-10-03 on boot 91257716: the second `f` shadowed the first and the
+// program answered 2.
+fn main() = {
+  fn f() = 1
+  fn f() = 2
+  f()
+}

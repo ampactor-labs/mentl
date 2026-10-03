@@ -1,0 +1,15 @@
+// expect: 42
+// A RUN IS JUDGED AS THE MODULE'S DECLARATIONS ARE, BINDING GROUP BY BINDING
+// GROUP: `pair` uses `ident`, declared after it, at Int and at String, so
+// `ident` must be judged and generalized before `pair` reads it. Judged in
+// source order, `ident`'s cell would be one monomorphic variable that Int and
+// String both write.
+fn both() = {
+  fn pair() = (ident(40), ident("ab"))
+  fn ident(x) = x
+  match pair() {
+    (n, s) => n + len(s),
+  }
+}
+
+fn main() = both()

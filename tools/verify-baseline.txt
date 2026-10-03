@@ -1342,4 +1342,15 @@ authored_ref_max: 698
 # KB and its m4 leg — the landed form compiling itself — at 587,688 KB. The
 # previous boot crosses this ceiling on this input. Same rule: ~1% over the
 # highest reading of the landed form.
-selfcompile_peak_kb_max: 594000
+# 2026-10-03 (#126): 594000 -> 529000. A block's run of fn declarations is
+# one letrec scope, and the module's free-name walk (`stmt_frees`), which ran
+# outside every arena, runs in one: its scratch no longer outlives it. Fixed
+# input, the wheel's own source through the previous boot (91257716) and
+# through the boot this landing pins (0a096302), two runs each: 581,804 /
+# 584,476 KB against 519,548 / 517,784 KB; the judgment's heap 288,583,160 B
+# against 228,258,576 B, the heap when the module is written 439,536,560 B
+# against 379,216,504 B. The pinning march read its m3 leg at 523,740 KB and
+# its m4 leg — the landed form compiling itself — at 520,840 KB. The
+# previous boot crosses this ceiling on this input. Same rule: ~1% over the
+# highest reading of the landed form.
+selfcompile_peak_kb_max: 529000
