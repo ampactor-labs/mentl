@@ -32,12 +32,11 @@
 // end (newest first), and wmap_pop drops the newest entry by reading the
 // snoc's parent — the same push-at-END / drop_last discipline every Mentl
 // stack keeps (graph_handler's checkpoint_stack). That discipline is what
-// lets a trail-backed map be undone inside a speculation region: the pop
-// allocates nothing and the surviving bucket is the pre-add object, so a
-// rollback that runs before the region's heap_reset never leaves a bucket
-// pointing into freed memory (a rebuilt bucket would be minted in the
-// region and die with it). The former prepend-and-scan-forward form had no
-// pop and no way to grow one without that hazard.
+// lets a trail-backed map be undone inside a speculation for nothing: the
+// pop allocates nothing and the surviving bucket is the pre-add object, so
+// once the rollback has run the speculation's arena finds no bucket of its
+// own to move (a rebuilt bucket would be minted inside and copied out at
+// the exit).
 fn wmap_new(n) = list_filled(n, [])
 
 // The key is pinned `Int` at every entry: the primitive's own law is that

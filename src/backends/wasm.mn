@@ -68,8 +68,8 @@ handler wat_to_file(fd) {
 // wat_to_host — the sink the EXECUTOR reads: each segment streams to the
 // host's own buffer through the Process seam (lib/io.mn's Host effect —
 // mentl_host.wat_write in tools/runner), exactly as wat_to_file hands bytes
-// to an fd before resuming, so the emit phase's per-fn region resets can
-// never touch the product. The module is then assembled and run by
+// to an fd before resuming, so the product leaves the process a segment at
+// a time and no emission arena ever holds it. The module is then assembled and run by
 // host_exec, which reads the whole streamed text — no wat2wasm, no file,
 // no in-image copy: `mentl run` and the in-process battery install this
 // sink and the program runs in the same process that compiled it.
@@ -84,13 +84,11 @@ handler wat_to_host {
 // materializes ONCE at the end via str_concat_all. Handles BOTH
 // WasmOut.wat_emit AND WatBuffer.wat_collect — one handler, two effects.
 //
-// SCOPE LAW: per-fn installs ONLY — one record, inside one region
-// bracket, collected before that region resets. A whole-compile install
-// banks each segment's POINTER while the emit phase's per-fn region
-// resets zero the segments beneath it; the collect then walks reset
-// records (garbage tags at flat_fill, runaway lengths at the drain).
-// Whole-compile products stream through wat_stdout / wat_to_file, whose
-// arms hand the bytes to the host before any reset can run.
+// SCOPE: per-fn installs, collected inside the fn's own arena. A
+// whole-compile install would be sound — each segment it banks is stored
+// into its state, so every per-fn arena's exit journals and moves it — but
+// it holds the whole module's text at once, which is why whole-compile
+// products stream through wat_stdout / wat_to_file / wat_to_host instead.
 //
 // Per the eight interrogations on the substrate-honest accumulator:
 //   Graph:      buf is a List<String-handle>; count tracks position.
@@ -554,10 +552,13 @@ fn emit_reach_fix(work, st, program, keys, recs, settles) = if len(work) == 0 {
           Unreached => {
             // A base body's keys are fixed by its own source types, so the
             // lineage starts again here, and the body is settled at the
-            // floor it emits at.
+            // floor it emits at. The walk's scratch dies with the demands
+            // it publishes (an arena, lib/arena.mn).
             let stmt = list_index(program, i)
-            if settles { settle_decl(nm, stmt) }
-            let ds = map(ref_demand([], ??), low_refs([], stmt))
+            let ds = {
+              if settles { settle_decl(nm, stmt) }
+              map(ref_demand([], ??), low_refs([], stmt))
+            } ~> arena
             emit_reach_fix(
               ds ++ w2,
               (dbuf, dn, seen, list_set(live, i, Reached), wide),
@@ -605,7 +606,7 @@ fn emit_reach_fix(work, st, program, keys, recs, settles) = if len(work) == 0 {
                 inner
               },
             },
-          }
+          } ~> arena
           // the runtime family a twin's emission can mint that its floor did
           // not (lower seeds the same names per entry, wide_seed)
           let family = if wide { [] } else { map(demand_base, spec_wide_family()) }
@@ -1852,10 +1853,10 @@ fn jvp_slot(key: String, slot) = match slot {
 // beside them are named by it too.
 fn emit_jvp_twin(jr) = {
   spec_ctx_set(jr.pairs, jr.enc)
-  let m = heap_mark()
-  wat_emit(emit_twin_to_string(jr.rec, jr.sym))
-  wat_emit(if fn_record_is_wide(jr.rec) { emit_one_wrapper_to_string(jr.rec) } else { "" })
-  heap_reset(m)
+  {
+    wat_emit(emit_twin_to_string(jr.rec, jr.sym))
+    wat_emit(if fn_record_is_wide(jr.rec) { emit_one_wrapper_to_string(jr.rec) } else { "" })
+  } ~> arena
   spec_ctx_clear()
 }
 
@@ -2422,14 +2423,14 @@ fn emit_planned(plan) = match plan {
     each(
       {
         tw => {
-          // The twin's emission is a region too: pairs/enc live OUTSIDE the
-          // mark (allocated with spec_recs above), the registry commit stores
-          // pre-mark pointers, and both strings stream before the reset.
+          // The twin's emission is an arena too: its pairs and key were
+          // allocated with spec_recs above, and both strings stream before
+          // its exit.
           spec_ctx_set(tw.pairs, tw.enc)
-          let m = heap_mark()
-          wat_emit(emit_one_fn_to_string(tw.rec, alloc_units))
-          wat_emit(if fn_record_is_wide(tw.rec) { emit_one_wrapper_to_string(tw.rec) } else { "" })
-          heap_reset(m)
+          {
+            wat_emit(emit_one_fn_to_string(tw.rec, alloc_units))
+            wat_emit(if fn_record_is_wide(tw.rec) { emit_one_wrapper_to_string(tw.rec) } else { "" })
+          } ~> arena
           spec_ctx_clear()
         },
       },
@@ -3101,9 +3102,10 @@ fn walk_lemit_pat(pat) = match pat {
 //
 // Bytes, read at the site's handle under whatever twin bracket is active —
 // a Float twin's ring holds f64 slots where the floor's holds words. The
-// zero-init contract is the allocator's ($heap_reset_impl's virginity law):
-// a fresh ring reads head 0 and depth zeros, the "no prior iteration"
-// convention every line has always had.
+// zero-init contract is the allocator's — memory above the line reads zero,
+// and an arena's exit zeroes what it reclaims (lib/arena.mn): a fresh ring
+// reads head 0 and depth zeros, the "no prior iteration" convention every
+// line has always had.
 fn line_ring_bytes(h: Int, depth: Int) = 8 + depth * repr_width(repr_of(lookup_ty(h)))
 
 // The instance global a STATIC site reads its ring's address from — one per
@@ -3833,8 +3835,8 @@ fn emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, table_al
     wat_emit(int_to_str(8 * len(slots)))
     wat_emit("))\n")
     emit_globals_pair(slots)
-    // VIRGINITY IS THE RESTORE'S CONTRACT TOO ($heap_reset_impl's law at
-    // the image altitude): the restored heap line rewinds to the image
+    // VIRGINITY IS THE RESTORE'S CONTRACT TOO (the arena exit's law at the
+    // image altitude — memory above the line reads zero): the restored heap line rewinds to the image
     // extent, so [size, old-bump) — this process's dead pre-swap heap —
     // must read as never-allocated, or post-restore allocations serve
     // stale bytes as unwritten slots (measured: the warm path's saturate
@@ -4531,25 +4533,10 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw) = {
   } else {
     wat_emit("  (func $heap_mark_impl (result i32)(global.get $heap_ptr))\n")
   }
-  // heap_reset RESTORES VIRGINITY: the region [mark, bump) is zeroed before
-  // the rewind, so the post-reset world is bit-identical to the
-  // never-allocated world. The whole runtime's zero-reads (slot_present's
-  // Option niche, every unwritten make_list slot) held only by the ACCIDENT
-  // of monotonicity — wasm's zero-init pages made unwritten slots read 0
-  // because memory was never reused; the first reuse without this fill
-  // served stale bytes as placed arg slots (the battery's compile-#2 kill).
-  // A dedicated fn, never inline: the fill needs a temporary for the mark,
-  // and the callers' scratch locals may be live (the wrong-scratch class).
-  // The reset writes the line where the strategy keeps it.
-  if spawns {
-    wat_emit("  (func $heap_reset_impl (param $mark i32)(local.get $mark)(i32.const 0)(i32.atomic.load (i32.const 64))(local.get $mark)(i32.sub)(memory.fill)(i32.atomic.store (i32.const 64)(local.get $mark)))\n")
-  } else {
-    wat_emit("  (func $heap_reset_impl (param $mark i32)(local.get $mark)(i32.const 0)(global.get $heap_ptr)(local.get $mark)(i32.sub)(memory.fill)(global.set $heap_ptr (local.get $mark)))\n")
-  }
   // $world_push — cons one [key@0][entry@4][parent@8][install_world@12]
   // node onto the live world chain (the install's runtime edge; a
-  // dedicated fn like $heap_reset_impl, never inline — the callers' scratch
-  // may be live at the install site). entry is the install's own
+  // dedicated fn, never inline — the callers' scratch locals may be live at
+  // the install site, the wrong-scratch class). entry is the install's own
   // [record][base] view (ONE view object, never copied); install_world is
   // the chain as saved BEFORE this install's pushes — the world the arm
   // dispatch sets around the arm call (deep-handler semantics: an arm's
@@ -4717,7 +4704,12 @@ fn emit_arena_runtime() = {
   wat_emit("  (func $ar_scratch_clear (call $ar_zero (global.get $ar_bm) (i32.add (global.get $ar_bm) (global.get $ar_bmsz)) (i32.const 0)) (call $ar_zero (global.get $ar_rl) (i32.add (global.get $ar_rl) (i32.shl (global.get $ar_rn) (i32.const 3))) (i32.const 0)) (call $ar_zero (global.get $ar_ll) (i32.add (global.get $ar_ll) (i32.mul (global.get $ar_ln) (i32.const 12))) (i32.const 0)) (call $ar_zero (global.get $ar_c0) (global.get $ar_cp) (i32.const 0)))\n")
   wat_emit("  (func $ar_restore (local $i i32) (local $e i32) (local.set $i (i32.const 0)) (block $d1 (loop $l1 (br_if $d1 (i32.ge_u (local.get $i) (global.get $ar_ln))) (local.set $e (i32.add (global.get $ar_ll) (i32.mul (local.get $i) (i32.const 12)))) (i32.store (i32.load (local.get $e)) (i32.load offset=8 (local.get $e))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $l1))) (local.set $i (i32.const 0)) (block $d2 (loop $l2 (br_if $d2 (i32.ge_u (local.get $i) (global.get $ar_rn))) (local.set $e (i32.add (global.get $ar_rl) (i32.shl (local.get $i) (i32.const 3)))) (i32.store (i32.load (local.get $e)) (i32.load offset=4 (local.get $e))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $l2))))\n")
   wat_emit("  (func $ar_commit (param $m i32) (local $i i32) (local $e i32) (local $s i32) (local $f i32) (local.set $s (i32.sub (global.get $ar_cp) (global.get $ar_c0))) (local.set $i (i32.const 0)) (block $d (loop $l (br_if $d (i32.ge_u (local.get $i) (global.get $ar_rn))) (local.set $e (i32.load (i32.add (global.get $ar_rl) (i32.shl (local.get $i) (i32.const 3))))) (i32.store (local.get $e) (i32.sub (i32.load (local.get $e)) (global.get $ar_delta))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $l)))\n")
-  wat_emit("    (if (i32.gt_u (i32.shr_u (global.get $ar_cp) (i32.const 10)) (global.get $ar_high)) (then (global.set $ar_high (i32.shr_u (global.get $ar_cp) (i32.const 10))))) (memory.copy (global.get $ar_dst) (global.get $ar_c0) (local.get $s)) (local.set $f (i32.add (global.get $ar_dst) (local.get $s)))\n")
+  // The slide copies only when something moved: the copy space is reached
+  // by the first copy into it, so an exit that moved nothing has its copy
+  // space starting past the memory's end — and wasm bounds-checks a
+  // zero-length copy too (measured 2026-10-03: the battery's first fixture,
+  // a 14 MB region at a process's start, trapped here).
+  wat_emit("    (if (i32.gt_u (i32.shr_u (global.get $ar_cp) (i32.const 10)) (global.get $ar_high)) (then (global.set $ar_high (i32.shr_u (global.get $ar_cp) (i32.const 10))))) (if (local.get $s) (then (memory.copy (global.get $ar_dst) (global.get $ar_c0) (local.get $s)))) (local.set $f (i32.add (global.get $ar_dst) (local.get $s)))\n")
   wat_emit("    (call $ar_zero (local.get $m) (global.get $ar_t) (local.get $f)) (call $ar_scratch_clear)\n")
   wat_emit("    (global.set $ar_freed (i32.add (global.get $ar_freed) (i32.shr_u (i32.sub (global.get $ar_t) (local.get $f)) (i32.const 10)))) (global.set $ar_moved (i32.add (global.get $ar_moved) (i32.shr_u (local.get $s) (i32.const 10)))) (global.set $heap_ptr (local.get $f)))\n")
   wat_emit("  (func $ar_compact (param $j0 i32) (param $o i32) (local $i i32) (local $w i32) (local $e i32) (local $d i32) (local.set $i (local.get $j0)) (local.set $w (local.get $j0)) (block $done (loop $l (br_if $done (i32.ge_u (local.get $i) (global.get $ar_jn))) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (local.get $i) (i32.const 3)))) (if (i32.lt_u (i32.load (local.get $e)) (local.get $o)) (then (local.set $d (i32.add (global.get $ar_jb) (i32.shl (local.get $w) (i32.const 3)))) (i32.store (local.get $d) (i32.load (local.get $e))) (i32.store offset=4 (local.get $d) (i32.load offset=4 (local.get $e))) (local.set $w (i32.add (local.get $w) (i32.const 1))))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $l))) (call $ar_zero (i32.add (global.get $ar_jb) (i32.shl (local.get $w) (i32.const 3))) (i32.add (global.get $ar_jb) (i32.shl (global.get $ar_jn) (i32.const 3))) (i32.const 0)) (global.set $ar_jn (local.get $w)))\n")
@@ -4921,6 +4913,7 @@ fn emit_evac_leaves(leaves) = {
   emit_evac_dispatch(leaves)
 }
 
+// A leaf is one emitted unit, so its scratch dies at its own exit.
 fn emit_evac_leaf(leaf) = match leaf {
   (sig, sh) => {
     let k = leaf_code(evac_leaf_named(sig))
@@ -4930,7 +4923,7 @@ fn emit_evac_leaf(leaf) = match leaf {
       ShSum(specs) => emit_evac_sum(sig, k, specs),
     }
   },
-}
+} ~> arena
 
 fn emit_evac_head(sig: String, locals: String) = {
   wat_emit("  (func $evac_{sig} (param $p i32) (result i32){locals}\n")
@@ -5087,31 +5080,17 @@ fn evac_leaf_scans(leaf) = match leaf {
 // in lower.mn. Order matches `collect_fn_emit_records` traversal, so
 // $<name>_idx globals line up with the function table.
 //
-// Cargo-class per-fn parallel emit (Hβ.emit.row-aware-parallel-emit):
-// each (name, params, body, captures_count) record is INDEPENDENT —
-// no shared state across fn bodies once the string-table / fn-index
-// pre-passes have run. map walks each to its own wat_to_string handler
-// instance; resulting strings emit sequentially to wat_stdout
-// preserving source order (Q-B.7.3 determinism guarantee). N-core emit
-// is a `><` fanout under `~> Thread` at this site
-// (Hβ.lower.schedule-specialized-callee).
-// Per-fn EMISSION IS A REGION (§5.O layer 3 at the emit phase — measured
-// 2026-07-25: the streamed product leaves the process, so per-fn
-// transients die at the fn boundary; post-region emission allocates ~0).
-// Build → stream → reset: the string is written before the reset, and
-// nothing durable is minted inside one fn's emission — the per-fn
-// metadata handlers (body_context and kin) OVERWRITE their state before
-// any read, so a dangling region pointer is never read; that
-// overwrite-before-read discipline is this bracket's standing contract.
-// The old map-then-each held EVERY fn's full text simultaneously — the
-// whole module's emission materialized before one byte was written.
+// The records share no state once the string-table and fn-index pre-passes
+// have run. They are emitted in source order, each fn's text streamed
+// before the next one's is built, so one fn's text is held at a time. Each
+// fn's emission is an arena (lib/arena.mn): its text leaves the process, so
+// its transients die at its exit, and whatever it stores into older memory
+// is journaled where it is stored and moves there. Emitting the records
+// across cores is a fanout whose branches each need a region of their own
+// instance's (Hβ.arena.per-instance-regions).
 fn emit_functions(fn_records, units) = each(emit_function_bracketed(units, ??), fn_records)
 
-fn emit_function_bracketed(units, r) = {
-  let m = heap_mark()
-  wat_emit(emit_one_fn_to_string(r, units))
-  heap_reset(m)
-}
+fn emit_function_bracketed(units, r) = wat_emit(emit_one_fn_to_string(r, units)) ~> arena
 
 // ─── The word-face wrappers (§5.U at the table boundary) ──────────────
 // A fn whose NATIVE signature carries a wide slot cannot sit at its word
@@ -5125,11 +5104,7 @@ fn emit_function_bracketed(units, r) = {
 // divergence shape in miniature: a wrapper deref'ing at a width its callee
 // never signed.
 fn emit_wide_wrappers(fn_records) = each(
-  (r) => {
-    let m = heap_mark()
-    wat_emit(emit_one_wrapper_to_string(r))
-    heap_reset(m)
-  },
+  (r) => wat_emit(emit_one_wrapper_to_string(r)) ~> arena,
   fn_records |> filter(fn_record_is_wide)
 )
 
@@ -7243,11 +7218,6 @@ fn emit_expr(expr) = match expr {
         wat_emit("    (call $globals_save)(i32.const 0)\n")
       } else if import_name == "image_restore" {
         wat_emit("    (call $image_restore)\n")
-      } else if import_name == "heap_reset" {
-        // unit-typed: the call consumes the arg; the (i32.const 0) closes the
-        // result slot — the atomic_store precedent. The impl zeroes the
-        // region before rewinding (virginity restored — see its emission).
-        wat_emit("    (call $heap_reset_impl)(i32.const 0)\n")
       } else if import_name == "spawn_task" {
         // The task-record substrate (threading.mn's WasiThreads ops): the
         // impl fns live beside $alloc in the preamble, emitted only for a
@@ -8147,12 +8117,13 @@ fn emit_distinct_fold_leaves(op, tys, seen) = if len(tys) == 0 {
   if ls_find_str_local(seen, sig, 0) >= 0 {
     emit_distinct_fold_leaves(op, drop_last(tys), seen)
   } else {
+    // Each helper is one emitted unit, so its scratch dies at its own exit.
     match op {
       FoldEq => emit_one_eq_helper(sig, ty),
       FoldCompare => emit_one_compare_helper(sig, ty),
       FoldHash => emit_one_hash_helper(sig, ty),
       FoldShow => emit_one_show_helper(sig, ty),
-    }
+    } ~> arena
     emit_distinct_fold_leaves(op, drop_last(tys), [sig] ++ seen)
   }
 }
@@ -8160,10 +8131,6 @@ fn emit_distinct_fold_leaves(op, tys, seen) = if len(tys) == 0 {
 // The four leaves behind the one walk. Emission order (eq, compare, hash,
 // show) preserves the module layout the four separate entry fns produced.
 fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = {
-  // One region over the four leaf families: the closures record lives
-  // outside the mark; every generated helper streams as it is built.
-  //
-  let m = heap_mark()
   emit_distinct_fold_leaves(FoldEq, closures.eq, [])
   emit_distinct_fold_leaves(FoldCompare, closures.cmp, [])
   emit_distinct_fold_leaves(FoldHash, closures.hash, [])
@@ -8171,7 +8138,6 @@ fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
   // The arena's leaves were settled with the plan (their indices ride the
   // journal), so they are read back rather than collected again.
   if arena_live() { emit_evac_leaves(arena_leaves()) } else { () }
-  heap_reset(m)
 }
 
 // ─── The sequence-of-struct walkers — the fold leaves' SEQUENCE arm ────

@@ -3,8 +3,9 @@
 // An arena's allocations die at its exit except what its publication
 // reaches: the body's value, and what the body stored into memory older than
 // the arena. What survives moves out of the arena's region and the rest is
-// reclaimed in one step, the memory zero again behind it — the virginity
-// every reset keeps (lib/memory.mn's `heap_reset`).
+// reclaimed in one step, the memory zero again behind it, so every read of a
+// slot nothing wrote answers zero after an exit as it did before one. It is
+// the one way an extent's memory is reclaimed.
 //
 // The arena HANDLES THE BODY'S ALLOCATION: it answers `Alloc`, so the
 // projection roster (src/effects.mn) classes its install as an arena and the
@@ -27,7 +28,6 @@
 handler arena {
   alloc(n) => resume(alloc(n)),
   heap_mark() => resume(heap_mark()),
-  heap_reset(m) => resume(heap_reset(m)),
 }
 
 // The fact that code opens an arena, charged to the frame the install stands

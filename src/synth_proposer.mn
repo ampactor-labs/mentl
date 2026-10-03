@@ -1084,21 +1084,29 @@ fn segment_verify(candidates, hole_h, below) = if len(candidates) == 0 {
 // branch, never the developer's program being wrong. Replaying it would
 // make the proposer print errors about code nobody wrote. So the join is
 // the proven branch's alone; the refutation survives as the verdict.
+//
+// The segment is an arena (lib/arena.mn): the candidate's judgment
+// allocates as much as a declaration's, and what crosses its exit is the
+// outcome it carries out — the branch's facts, the context cells it moved —
+// and what it stored into older memory that the rollback did not undo.
 fn judge_in_segment(hole_h, base, seed, iseed, below, candidate) = {
-  let cp = graph_push_checkpoint()
-  let w = world_top()
-  let outcome = segment_judge(
-    candidate_node(candidate),
-    hole_h,
-    candidate_reason(candidate),
-    base,
-    seed,
-    iseed,
-    cp,
-    below
-  )
-  graph_rollback(cp)
-  world_restore(w)
+  let outcome = {
+    let cp = graph_push_checkpoint()
+    let w = world_top()
+    let judged = segment_judge(
+      candidate_node(candidate),
+      hole_h,
+      candidate_reason(candidate),
+      base,
+      seed,
+      iseed,
+      cp,
+      below
+    )
+    graph_rollback(cp)
+    world_restore(w)
+    judged
+  } ~> arena
   match outcome {
     (proven, inner, writes) => if proven {
       branch_join(inner)

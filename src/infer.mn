@@ -1530,15 +1530,16 @@ fn parse_one_module(m) = match m {
 // re-judge with planned handle numbering and every scheme already
 // published. Neither is needed by a callee-first walk whose declared-row
 // gate reads its own signature (infer_program_once), so the driver is the
-// walk plus the two cost lines the board reads.
+// walk plus the cost line the board reads.
 //
-// The cost lines are the maintainer's instrument and ride the register's
-// scope read: unscoped compiles (march / census / battery) print them, a
-// user-target verb's ScopeModule quiets them. `image` is the classified
-// byte count the arena's boundary fixes itself from; `heap` is the
-// judgment's high-water — EXACT, because the bump image is monotonic and
-// the judgment never resets it, where peak RSS measured 33MB of kernel
-// jitter across byte-identical runs (Hβ.perf.cost-ratchet-reads-the-image).
+// The cost line is the maintainer's instrument and rides the register's
+// scope read: unscoped compiles (march / census / battery) print it, a
+// user-target verb's ScopeModule quiets it. `heap` is where the line stands
+// when the judgment ends — EXACT, because the line moves only where the
+// program moves it, up at an allocation and down at an arena's exit, so
+// byte-identical runs read one number where peak RSS measured 33MB of
+// kernel jitter (Hβ.perf.cost-ratchet-reads-the-image). The arenas' census
+// is read once the module is written (`arena_line`, pipeline.mn).
 // The `passes:` line and the movers report both measured the second pass
 // and go with it; the movers ratchet reads zero because there is nothing
 // left for a scheme to move between.
@@ -1547,10 +1548,7 @@ fn infer_modules_converged(ref mods) = {
   let parse_end = graph_next()
   infer_program_once(stmts, parse_end)
   match diag_scope_of() {
-    ScopeAll => {
-      eprint_string("heap: {int_to_str(heap_mark())} byte(s) at the judgment's high-water line\n")
-      eprint_string("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB\n")
-    },
+    ScopeAll => eprint_string("heap: {int_to_str(heap_mark())} byte(s) when the judgment ends\n"),
     _ => (),
   }
   stmts

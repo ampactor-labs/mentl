@@ -392,9 +392,8 @@ fn space_run() = {
 //
 // The wheel compiles IN-PROCESS through the canonical stdin chain with
 // the emission STREAMED through wat_to_file — bytes reach the host at
-// every segment, so the emit phase's per-fn region resets never touch
-// the product (the collecting sink's whole-compile install read reset
-// records; its scope law lives at wat_to_string's decl). The fresh
+// every segment, so the module's text is never held whole (the collecting
+// sink's scope lives at wat_to_string's decl). The fresh
 // generation compares against the verb's OWN previous one
 // (.build/march/m2.wat, read before written). Never the keyed bash
 // cache: that cache equals this very emission whenever it is fresh — a
@@ -1210,7 +1209,7 @@ fn session_accept(target: String, l, c, held) = match held {
       (session_miss(), held)
     } else {
       match session_current(ast, ranges, manifest) {
-        (a2, r2, m2, _moved) => (session_whole(session_address(r2, target, l, c)), (a2, r2, m2)),
+        (a2, r2, m2) => (session_whole(session_address(r2, target, l, c)), (a2, r2, m2)),
       }
     },
   },
@@ -2144,9 +2143,9 @@ fn show_want(want) = match want {
 }
 
 // One micro, one fresh chain — the same chain compile_stdin drives, with
-// the emission STREAMED through wat_to_host to the executor (the
-// whole-compile collecting install read region-reset segments — the scope
-// law at wat_to_string's decl) and then RUN there: the program's exit comes
+// the emission STREAMED through wat_to_host to the executor (the module's
+// text is never held whole — the scope at wat_to_string's decl) and then
+// RUN there: the program's exit comes
 // back as a value through the Process seam, so the battery judges
 // `// expect: N` itself instead of printing a manifest for a bash loop
 // that spawned an assembler and a runtime per fixture. Returns
@@ -2174,59 +2173,39 @@ fn battery_compile(src, stem) = compile_context(() => {
       process_exec(argv_wire([stem]))
     },
   }
-  // THE CLASSES, never the rendered lines. A line banked during emit points
-  // into the twin loop's region and is zeroed by its heap_reset before any
-  // reader gets there (GateLedger's own record); the class is a data-section
-  // literal. The refuse contract compares names now, so the substring scan
-  // over prose is gone with it.
+  // THE CLASSES, never the rendered lines: the refuse contract compares
+  // names, so no substring scan over prose decides a verdict.
   let classes = gate_classes()
   let nerr = diag_errors()
   (if exit < 0 { 1 } else { 0 }, nerr, classes, exit)
 } ~> process_host ~> mcp_diag_collector ~> wasi_filesystem)
 
 fn battery_run(dir, names) = {
-  // libs is MATERIALIZED flat (str_concat("", x) — the view-flatten idiom)
-  // BELOW the loop's first mark: a concat spine here would be poisoned by
-  // the region resets — compile #1's flatten memoizes the flat buffer INTO
-  // the spine nodes (an in-place memo pointing above the mark), the reset
-  // kills the buffer, and compile #2 reads garbage (measured: any second
-  // compile trapped in infer until this line).
+  // The libs and the fixture names are flat before the first micro: each
+  // compile reads `libs ++ src` and indexes the names, and a flat sequence
+  // answers both in one step.
   let libs = str_concat("", battery_libs())
-  // The names list flattens below the mark for the same reason (sort returns
-  // a concat spine; indexing memoizes in place).
   let micros = list_to_flat(sort(filter(ends_with(??, ".mn"), names)))
-  // A RAW recursion, not a handler fold: each call's compile is a REGION
-  // (heap_mark before, heap_reset after — everything the micro allocated is
-  // dead once its WAT is written, and every micro starts at the same
-  // watermark, so per-micro output is deterministic regardless of
-  // predecessors). A handler-based fold cannot host the region: its own
-  // iteration machinery allocates per-step frames the reset would kill
-  // (measured: iteration 2 trapped in op_fold_handler_yield). The
-  // recursion's only cross-iteration state is word params — nothing lives
-  // above the mark.
   battery_loop(dir, libs, micros, 0, 0)
 }
 
+// Each micro's compile is an ARENA (lib/arena.mn): what the compile
+// allocated is dead once its verdict is printed, except what it stored into
+// memory older than the micro, so the battery's peak is one compile's live
+// set, never the sum, and a micro's output cannot depend on the micros
+// before it unless something it stored outlived it — which the arena's
+// census counts as moved.
 fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(micros) {
   fails
 } else {
-  // Each micro's compile is a REGION: mark before, reset after — the
-  // virginity contract (heap_reset zeroes [mark, bump)) makes every
-  // compile start at the same watermark with genuinely virgin memory, so
-  // per-micro output is deterministic regardless of predecessors and the
-  // battery's peak stays one compile's live set (~192MB measured), not
-  // the sum. The cross-compile trap that blocked this form was the
-  // effect-census collector running as a NULL-STATE singleton in emit's
-  // walk extent (its accumulator at address 12 — below the mark, never
-  // reset, holding a stale pointer into the region): closed at the root
-  // by the project_emit_state install + the SingletonUninstalled guard,
-  // and the full battery runs region-bracketed 112/112.
-  //
-  let mark = heap_mark()
-  let name = micros[i]
+  let step = battery_step(dir, libs, micros[i]) ~> arena
+  battery_loop(dir, libs, micros, i + 1, fails + step)
+}
+
+fn battery_step(dir: String, libs, name: String) = {
   let stem = str_slice(name, 0, byte_len(name) - 3)
   let src = fs_read_file_impl("{dir}/{name}")
-  let step = match battery_expect(src) {
+  match battery_expect(src) {
     None => {
       print_string("NOEXPECT {stem}\n")
       1
@@ -2268,8 +2247,6 @@ fn battery_loop(dir: String, libs, micros: [String], i, fails) = if i >= len(mic
       },
     },
   }
-  heap_reset(mark)
-  battery_loop(dir, libs, micros, i + 1, fails + step)
 }
 
 // assert_reporter — the Test effect's pass/fail reporter handler. Each

@@ -432,7 +432,7 @@
 >   by ACCIDENT (zero-reads true only because monotonic allocation never
 >   reuses wasm's zero-init pages) is a bug the first new capability
 >   exposes — name the accident, then make it a CONTRACT at the one writer
->   (heap_reset now restores virginity).
+>   (the arena's exit zeroes what it reclaims).
 > - **wasm-tools FIRST — the mechanical instruments, before any hand-reading of a
 >   backtrace (proven 2026-07-08; the emit-diff was the biggest under-use).** The
 >   self-hosting bug class is ALWAYS "m2 works, m2's emit of the wheel (m3)

@@ -504,8 +504,9 @@ fn report_holes(holes, i) = if i >= len(holes) {
 // root included), so the three routes cannot drift. Under the whole-link
 // scope it says where the heap stands when saturation ends, when the
 // lowering's pre-passes end, when lowering ends, when the module is planned
-// and when it is written, beside the judgment's own line, so the compile's
-// cost reads as six phases rather than one peak — the emit's share was
+// and when it is written, beside the judgment's own line, then the arenas'
+// census, so the compile's cost reads as six phases rather than one peak,
+// and what its extents reclaimed as one count — the emit's share was
 // found by exactly these marks (2026-09-28: two quadratic dedups, 120MB),
 // the plan's by the one added when the allocation audit joined it, and the
 // reach walk's by the two added when the cost ratchet refused a landing
@@ -523,13 +524,27 @@ fn compile_remainder(ast) = {
       heap_line("when the module is planned")
       emit_planned(plan)
       heap_line("when the module is written")
+      arena_line()
     },
-    Withheld(_, refused) => refuse_to_emit(refused),
+    Withheld(_, refused) => {
+      arena_line()
+      refuse_to_emit(refused)
+    },
   }
 }
 
 fn heap_line(at: String) = match diag_scope_of() {
   ScopeAll => eprint_string("heap: {int_to_str(heap_mark())} byte(s) {at}\n"),
+  ScopeNone => (),
+  ScopeModule(_) => (),
+}
+
+// The arenas' census for the whole compile — every exit the judgment's
+// groups, the lowering's declarations and the emitted reach's demands made —
+// read where the compile ends, once the module is written or before a
+// refusal says why it was not, so one line counts them all.
+fn arena_line() = match diag_scope_of() {
+  ScopeAll => eprint_string("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB\n"),
   ScopeNone => (),
   ScopeModule(_) => (),
 }

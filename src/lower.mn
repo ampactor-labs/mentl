@@ -5924,7 +5924,7 @@ fn grounded_scan(bindings, i, n, ename: String) = if i >= n {
 // language meets the instruction set (the wasi-import list's sibling;
 // the op names ARE the identity, declared in one home).
 fn is_substrate_mem_op(name: String) with Pure =
-  name == "store_i32" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "alloc" || name == "heap_mark" || name == "heap_reset" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
+  name == "store_i32" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
 
 // The Cast capability's one op — erased at lower to its operand (the
 // identity at the word level; memory.mn carries the decl and the law).
@@ -6183,14 +6183,16 @@ fn lower_program(stmts) = {
   // The flow-closure, computed ONCE (the cached cursor): name → escaping row.
   // Read live by THE SEAM's two consumers; the env is fully typed here (infer
   // ran), so own_dispatched + the call-edge fixpoint are both available.
-  ls_register_escaping(compute_escaping_rows(stmts))
+  // Each pre-pass is an arena (lib/arena.mn): its fact crosses, the walk
+  // that found it does not.
+  ls_register_escaping(compute_escaping_rows(stmts) ~> arena)
   // band B M1.3 — the A1 gate's global short-circuit: does any declared
   // effect carry a MultiShot-graded op? No ⇒ nothing can yield ⇒ can_yield
   // is false everywhere and the k2 machinery contributes zero bytes (Law 7).
-  ls_register_may_yield(program_may_yield(stmts))
+  ls_register_may_yield(program_may_yield(stmts) ~> arena)
   // THE CUT — the resume-capability bindings (dormant when no op grades
   // MultiShot: zero arms seed the closure, the list is empty).
-  ls_register_resume_binds(resume_bindings(stmts))
+  ls_register_resume_binds(resume_bindings(stmts) ~> arena)
   // No pre-register pass: every handler decl's (config, state, arms) is
   // already in the env's HandlerKind (register_handler), so an install
   // resolves its handler's decl live (handler_decl_of) regardless of source
@@ -6821,7 +6823,7 @@ fn reach_seed_stmts(stmts, i, n, outs, enq, r0, fbuf, fc) = if i >= n {
 } else if reach_stmt_defers(list_index(stmts, i)) {
   reach_seed_stmts(stmts, i + 1, n, outs, enq, r0, fbuf, fc)
 } else {
-  let lo = lower_stmt(list_index(stmts, i))
+  let lo = lower_stmt(list_index(stmts, i)) ~> arena
   graph_hole_drain(reach_decl_name(lo))
   let outs2 = list_set(outs, i, lo)
   match lo {
@@ -6857,7 +6859,7 @@ fn reach_construct_loop(stmts, map, outs, enq, rbuf, rn, fbuf, fc) = if fc == 0 
       let outs2 = if slot_present(list_index(outs, i)) {
         outs
       } else {
-        let lo = lower_stmt(list_index(stmts, i))
+        let lo = lower_stmt(list_index(stmts, i)) ~> arena
         graph_hole_drain(reach_decl_name(lo))
         list_set(outs, i, lo)
       }

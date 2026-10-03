@@ -134,22 +134,13 @@ type ArenaStat = ArExits | ArKept | ArFreed | ArMoved | ArHigh
 // allocation is forbidden.
 effect Alloc {
   // (size) -> ptr
-  // The REGION verbs — the arena's first grain (§5.O layer 3). A batch
-  // boundary (one micro's compile inside `mentl test`, one decl inside the
-  // future per-decl arena) marks the bump pointer, does its work, and resets:
-  // everything the region allocated is dead by construction at the boundary,
-  // and determinism IMPROVES — each region starts at the same watermark
-  // regardless of its predecessors. Reset to a mark you did not take (or
-  // with live handles above it) is the caller's ownership obligation — the
-  // same contract every region system carries.
   alloc(Int) -> Int
+  // Where the heap line stands: the cost lines read it, and an arena opens
+  // at it. There is no rewind beside it — reclaiming an extent is the
+  // arena's (lib/arena.mn), which keeps what the extent published and zeroes
+  // the memory behind it, so no reclaim depends on its caller knowing that
+  // nothing older points into what it drops.
   heap_mark() -> Int
-  // rewinds AND zeroes [mark, bump): the post-reset world is
-  // bit-identical to the never-allocated world, so every
-  // zero-read (the Option-niche slot_present, unwritten
-  // make_list slots) stays true under reuse — virginity is
-  // the reset's CONTRACT, not monotonicity's accident
-  heap_reset(Int)
 }
 
 // The live world's identity: the install chain from world_top() down, hashed

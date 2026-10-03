@@ -35,6 +35,88 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-03 · pin 912577160150bf94 (TRANSITION m3 == m4) · THE ARENA AT
+  EVERY EXTENT: EACH DECLARATION'S LOWERING, EACH EMITTED UNIT, EACH ANSWER
+  AND EACH SPECULATION RUNS IN ONE, AND THE RAW REWIND IS GONE. The arena
+  landed at the judgment's binding groups; the heap then climbed from 288 MB
+  to 741 MB through the lowering and the emission with no exit, and every
+  answer the resident session gave kept what it minted. THE PLACEMENTS, each
+  publishing what its extent is for: each statement's lowering
+  (`reach_seed_stmts`, `reach_construct_loop`) and the lowering's three
+  pre-passes (`compute_escaping_rows`, `program_may_yield`,
+  `resume_bindings`), each publishing its fact; the emitted reach's demand
+  walks in `emit_reach_fix`; each emitted function
+  (`emit_function_bracketed`), JVP twin, spec twin, wide wrapper, fold leaf
+  and evac leaf, each streaming its text before its exit; each session
+  answer (`session_line_loop`, `session_sock_loop`) and mcp message
+  (`mcp_loop`), publishing the next (tree, ranges, manifest) and every edge
+  the answer drew into older memory, journaled and moved; each battery
+  fixture (`battery_step`); and each speculation — the row clause bracket
+  (`row_clause_holds`), the precondition and return proofs
+  (`prove_precondition`, `prove_return`) and the synth fan's segment
+  (`judge_in_segment`), each carrying out a word or an outcome. THE
+  DELETIONS: `heap_reset` leaves `Alloc` and `$heap_reset_impl` leaves the
+  emit — an extent's memory is reclaimed by an arena and by nothing else,
+  so a rewind that drops a region something older still points into is
+  unsayable (`mn-heap-region` became `mn-raw-rewind-unsayable`, a refusal
+  contract: RED on every boot through f950ebfd, where the rewind ran to 42);
+  the raw mark/reset brackets it served — the emit's per-fn bracket, the
+  fold-leaf helpers, the session's `resettable` flag and
+  `session_current`'s region — are arenas, so no convention ("the per-fn
+  handlers overwrite their state before any read") holds anything up; the
+  in-place diagnostic bank (`diag_bank_slots`, `diag_bank_bytes`) is a plain
+  collector whose commits journal; the pre-warm intern
+  (`intern_severance_name`) is gone, a name interned inside a speculation
+  staying in the table as interning anywhere does. The census prints once,
+  where the compile ends, on a planned module and a refused one alike
+  (`arena_line`). And `mentl where NAME` at a handler declaration answers
+  the effects its arms answer and its address — RED on fb8921e3, which
+  answered the handler's type and no address, the facet a session confessed
+  with `# verb-gap`. MEASURED, fixed input (the wheel source this pin
+  carries, through the previous boot f950ebfd and through the compiler it
+  emits): peak 870,088 / 871,608 KB against 575,228 / 574,564 KB; the heap
+  when the module is written 741,519,312 B against 437,965,368 B, when
+  lowering ends 590,975,608 against 354,415,592, when the pre-passes end
+  391,145,360 against 306,871,088; the census 4,486 exits and 206,967 KB
+  reclaimed against 19,772 exits, 0 kept, 609,951 KB reclaimed, 54,768 KB
+  moved. The march: m3 leg 13.74 s at 579,940 KB, m4 leg 14.10 s at 587,688
+  KB; the ceiling 884,000 → 594,000. The session over one project, the same
+  six verb lines through both boots, answers byte-identical: a read kept
+  344,536 B and keeps 24, a hole read 950,304 and 120, an edit 8,044,080
+  and 119,600, the accept 9,031,664 and 119,664 — what an answer keeps is
+  what the session learned. THE PIN BELOW IT, f950ebfd (TRANSITION, m3
+  870,176 KB, m4 870,228 KB), carries one fix the battery found when each
+  fixture first ran in an arena: an exit that moves nothing, out of a region
+  larger than the memory had grown before it opened (the first fixture's
+  compile, 14 MB at a process's start), has its copy space past the
+  memory's end, and the slide copied zero bytes from there, which wasm
+  bounds-checks. The slide runs only when something moved;
+  `nothing-moved-past-memory` exits 134 on fb8921e3 and 42 since. It is
+  pinned alone because a compiler's own runtime is written by its parent:
+  the march's battery runs through m2, whose exit the boot's emitter writes,
+  so the guard had to be in the boot first. KILLS: (1) "a second trap" — the
+  fixture still trapped on the m2 patched with the guard; that m2's EMITTER
+  predated the guard and wrote the unguarded exit into the fixture (the
+  guard's count in the fixture's WAT: 0), one bug a generation behind. (2)
+  "the guard alone clears the battery" stood: this pin's march ran the
+  battery through an m2 whose exit the previous boot wrote — the guard and
+  nothing else of this landing's runtime — and it held 339/339. (3) the
+  frontier's arena census leg went red once the census moved to the
+  compile's end — a refused compile printed no census; it prints before
+  the refusal says why. (4) "pin it all at once" —
+  the march refused before its board, the battery through an m2 whose exit
+  the old boot wrote. (5) the comment-ref gate refused one backticked name
+  (`c0` is a WAT local, not a declaration) — prose now. Stale prose trued
+  on the way: `battery_run`'s "in-place memo" (lists.mn has none); the emit's
+  per-fn paragraph, which named a parallel fanout the code does not have and
+  a peer with no home; RESIDUE's "the wheel reads `addr` nowhere" (it reads
+  it in four word tests, the warm image's header and the persisted branch's
+  wire, and stores none). Closed: `Hβ.arena.extents-beyond-the-judgment`,
+  `Hβ.session.answer-scratch-outlives-the-answer`. Board at the pin: micros
+  through m2 339/339 (an m2 whose exit the previous boot wrote — the guard
+  and nothing else), crown, proof-exactness and effect identity green,
+  frontier 543 / 0 / 1 (the heap-region leg's three passes are one refusal
+  pass now).
 - 2026-10-03 · pin fb8921e335daa8a0 (TRANSITION m3 == m4) · THE ARENA: AN
   EXTENT'S ALLOCATIONS DIE AT ITS EXIT EXCEPT WHAT ITS PUBLICATION REACHES,
   AND WHAT IT STORED INTO OLDER MEMORY IS JOURNALED WHERE THE STORE HAPPENS,

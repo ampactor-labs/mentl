@@ -68,20 +68,9 @@ effect GateLedger {
   // order (each line carries its own newline, as the stderr log prints it).
   gate_facts() -> String
   // THE CLASSES, not the prose: `diag_code(diag)` per report, in order — the
-  // refuse contract compares names, never a substring of rendered prose. A
-  // class name is a data-section literal, so the pointer banked is stable
-  // across every region; the SLOT it is banked into is the collector's own
-  // in-place storage (see the handler), because a bank that ALLOCATES on
-  // report dies with the region the report was raised in.
+  // refuse contract compares names, never a substring of rendered prose.
   gate_classes() -> [String]
 }
-
-// The bank's capacities — allocated once at install, filled in place. A
-// judgment that reports more than this many diagnostics keeps counting past
-// the slots and says so in its text, never silently.
-let diag_bank_slots = 8192
-
-let diag_bank_bytes = 1048576
 
 // The session's collecting console — the address projection's transport
 // at the MCP surface. The SAME core that narrates to stdout on the CLI
@@ -106,43 +95,20 @@ handler console_bank with lines = [] {
 // judgment replays each banked diag through the root chain at the join),
 // so no separate absorb arm exists to fold them.
 //
-// THE BANK IS WRITTEN IN PLACE into storage allocated at install, below
-// every region a compile opens. A diagnostic raised inside a region (the
-// twin loop's, when emission still reported; a battery micro's own mark)
-// has a bank that `push`es its class allocate the cell there — zeroed at
-// that region's reset, overwritten by whatever allocates next.
-// Measured 2026-09-18 on exactly that shape: the refuse contract read
-// 5,784 banked classes for a judgment that reported five, and whether
-// the wanted class was among them depended on which fixture ran before —
-// a battery green by accident. The class NAME is a data-section literal
-// and survives every region; only a cell holding its pointer dies. So: a
-// flat slot list for the classes and a byte buffer for the lines, filled
-// by in-place stores (list_set / mem_copy) with word counters as the only
-// state that moves; the reads hand out views of the filled prefix,
-// allocated at read time outside every region. A report past the
-// capacity is COUNTED and named in the text, never dropped silently.
-handler mcp_diag_collector with slots = make_list(diag_bank_slots), n = 0, text = str_of_buf(bytes_buf(diag_bank_bytes)), tlen = 0, dropped = 0 {
+// A report raised inside an arena this install encloses — a judgment
+// group's, a declaration's lowering, an emitted fn's — banks like any
+// other: the state commit is journaled where it is stored, and the arena's
+// exit moves the class and the line out with it (lib/arena.mn).
+handler mcp_diag_collector with classes = [], lines = [] {
   diag_report(diag, line, dmod) => {
     // Forward outward with the SAME rendered line; the bank keeps it too.
     diag_report(diag, line, dmod)
-    if n < diag_bank_slots { list_set(slots, n, diag_code(diag)) } else { slots }
-    let need = byte_len(line)
-    if tlen + need <= diag_bank_bytes {
-      // str_payload of the flat stride-1 bank is its byte address, no copy.
-      mem_copy(str_payload(text) + tlen, str_payload(line), need)
-      resume() with n = n + 1, tlen = tlen + need
-    } else {
-      resume() with n = n + 1, dropped = dropped + 1
-    }
+    resume() with classes = push(classes, diag_code(diag)), lines = push(lines, line)
   },
   diag_errors() => resume(diag_errors()),
   diag_refusals() => resume(diag_refusals()),
-  gate_facts() => resume(if dropped == 0 {
-    str_slice(text, 0, tlen)
-  } else {
-    str_slice(text, 0, tlen) ++ "… {int_to_str(dropped)} diagnostic line(s) did not fit the bank\n"
-  }),
-  gate_classes() => resume(slice(slots, 0, if n < diag_bank_slots { n } else { diag_bank_slots })),
+  gate_facts() => resume(str_concat_all(lines)),
+  gate_classes() => resume(classes),
 }
 
 // mcp_judge — the canonical judgment over one proposal, batch-shaped at
@@ -230,12 +196,7 @@ fn mcp_tools_result() = JObj([("tools", JArr([JObj([("name", JStr("propose")), (
 // tools/call — the gate's propose plus the resident session's reads. A
 // verdict is a SUCCESSFUL tool result whether the gate proved or refused
 // (isError is reserved for a malformed call); the head line + the
-// diagnostic lines are the content. Returns (response, resettable):
-// a session READ answers from the living graph and must NOT reset the
-// request region — its small mints (a question's parse nodes) are
-// durable session growth, and a reset would orphan spine pages the
-// session's later reads still chase (the fork-spine class at the serve
-// loop). Everything else resets as before.
+// diagnostic lines are the content.
 fn mcp_tool_call(id, params, ast, ranges, at_read) = {
   let name = match json_obj_get(params, "name") {
     Some(JStr(s)) => s,
@@ -252,23 +213,23 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
         Some(JStr(source)) => match mcp_judge(source, ".build/mcp/last.wat") {
           (banked, nerr, nref, emitted) => {
             let text = mcp_verdict_text(banked, nerr, nref, emitted, ".build/mcp/last.wat")
-            (mcp_response(
+            mcp_response(
               id,
               JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])), ("isError", JBool(false))])
-            ), 1)
+            )
           },
         },
-        _ => (mcp_response(
+        _ => mcp_response(
           id,
           JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("propose needs arguments.source — a string of Mentl source\n"))])])), ("isError", JBool(true))])
-        ), 1),
+        ),
       }
     },
     "at" => if len(ranges) == 0 {
-      (mcp_response(
+      mcp_response(
         id,
         JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("no project graph resident — the server started outside a project (no resolvable main); at projects the living session\n"))])])), ("isError", JBool(true))])
-      ), 1)
+      )
     } else {
       let lineo = match json_obj_get(params, "arguments") {
         Some(args) => json_obj_get(args, "line"),
@@ -287,66 +248,65 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
           // console — the transport is the install (at_read is the
           // closure main.mn built where the renders live).
           let banked = at_read(ranges, float_to_int(lf), col)
-          (mcp_response(
+          mcp_response(
             id,
             JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr(str_concat_all(banked)))])])), ("isError", JBool(false))])
-          ), 0)
+          )
         },
-        _ => (mcp_response(
+        _ => mcp_response(
           id,
           JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("at needs arguments.line (an integer, counting from 1)\n"))])])), ("isError", JBool(true))])
-        ), 1),
+        ),
       }
     },
     "frontier" => if len(ranges) == 0 {
-      (mcp_response(
+      mcp_response(
         id,
         JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("no project graph resident — the server started outside a project (no resolvable main); frontier projects the living session\n"))])])), ("isError", JBool(true))])
-      ), 1)
+      )
     } else {
       // The field read (address line 0 — the whole ranked absence
-      // field) through the same at transport; a session read never
-      // resets its region.
+      // field) through the same at transport.
       let banked = at_read(ranges, 0, 1)
-      (mcp_response(
+      mcp_response(
         id,
         JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr(str_concat_all(banked)))])])), ("isError", JBool(false))])
-      ), 0)
+      )
     },
     "audit" => if len(ranges) == 0 {
-      (mcp_response(
+      mcp_response(
         id,
         JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("no project graph resident — the server started outside a project (no resolvable main); audit projects the living session\n"))])])), ("isError", JBool(true))])
-      ), 1)
+      )
     } else {
       // The SAME projection the CLI's audit verb serves (audit_project,
       // one home) over the RESIDENT entry ast — no derivation, a living
-      // read; a session read never resets its region.
+      // read.
       let text = audit_project(ast)
-      (mcp_response(
+      mcp_response(
         id,
         JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])), ("isError", JBool(false))])
-      ), 0)
+      )
     },
     "teach" => if len(ranges) == 0 {
-      (mcp_response(
+      mcp_response(
         id,
         JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("no project graph resident — the server started outside a project (no resolvable main); teach reads the living session\n"))])])), ("isError", JBool(true))])
-      ), 1)
+      )
     } else {
       // teach_project — the gradient's next-annotation read, the CLI
       // verb's own projection over the resident entry ast.
       let text = teach_project(ast)
-      (mcp_response(
+      mcp_response(
         id,
         JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr(text))])])), ("isError", JBool(false))])
-      ), 0)
+      )
     },
     "query" => if len(ranges) == 0 {
-      (mcp_response(
+      mcp_response(
         id,
         JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("no project graph resident — the server started outside a project (no resolvable main); query reads the living session\n"))])])), ("isError", JBool(true))])
-      ), 1)
+      )
     } else {
       let qo = match json_obj_get(params, "arguments") {
         Some(args) => json_obj_get(args, "question"),
@@ -358,22 +318,22 @@ fn mcp_tool_call(id, params, ast, ranges, at_read) = {
           // no derivation, no restore, no swap (the resident form the
           // swap-crossing refutation named).
           let text = ask(parse_query_string("", question)) |> render_query_result
-          (mcp_response(
+          mcp_response(
             id,
             JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("{text}\n"))])])), ("isError", JBool(false))])
-          ), 0)
+          )
         },
-        _ => (mcp_response(
+        _ => mcp_response(
           id,
           JObj([("content", JArr([JObj([("type", JStr("text")), ("text", JStr("query needs arguments.question — e.g. 'type main'\n"))])])), ("isError", JBool(true))])
-        ), 1),
+        ),
       }
     },
-    _ => (mcp_error(
+    _ => mcp_error(
       id,
       -32602,
       "unknown tool: {name} — the server serves propose, query, at, frontier, audit, and teach"
-    ), 1),
+    ),
   }
 }
 
@@ -383,11 +343,11 @@ fn mcp_params_of(req) = match json_obj_get(req, "params") {
 }
 
 fn mcp_request(id, method, params, ast, ranges, at_read) = match method {
-  "initialize" => (mcp_response(id, mcp_initialize_result(params)), 1),
-  "tools/list" => (mcp_response(id, mcp_tools_result()), 1),
+  "initialize" => mcp_response(id, mcp_initialize_result(params)),
+  "tools/list" => mcp_response(id, mcp_tools_result()),
   "tools/call" => mcp_tool_call(id, params, ast, ranges, at_read),
-  "ping" => (mcp_response(id, JObj([])), 1),
-  _ => (mcp_error(id, -32601, "method not found: {method}"), 1),
+  "ping" => mcp_response(id, JObj([])),
+  _ => mcp_error(id, -32601, "method not found: {method}"),
 }
 
 // A message without an id is a notification (initialized, cancelled, …):
@@ -399,14 +359,14 @@ fn mcp_dispatch(req, ast, ranges, at_read) = {
     "",
   }
   match json_obj_get(req, "id") {
-    None => ("", 1),
+    None => "",
     Some(id) => mcp_request(id, method, mcp_params_of(req), ast, ranges, at_read),
   }
 }
 
 fn mcp_handle(line, ast, ranges, at_read) = match json_parse(line) {
   JOk(req, _) => mcp_dispatch(req, ast, ranges, at_read),
-  JErr(m, pos) => (mcp_error(JNull, -32700, "parse error at byte {int_to_str(pos)}: {m}"), 1),
+  JErr(m, pos) => mcp_error(JNull, -32700, "parse error at byte {int_to_str(pos)}: {m}"),
 }
 
 // A client that frames with \r\n leaves the \r on the line after the
@@ -431,21 +391,15 @@ fn strip_cr(line) = {
 // lingers until a re-registration shadows it (env has no unregister;
 // the epoch/arena face retires it).
 fn session_current(ast, ranges, manifest) = if len(ranges) == 0 {
-  (ast, ranges, manifest, 0)
+  (ast, ranges, manifest)
 } else {
   // The check reads every module's text to hash it, and on an unmoved tree
-  // nothing it allocated outlives the comparison — so the region is
-  // dropped. A session that answers a thousand reads re-reads its tree a
-  // thousand times; before this mark each read kept every module's bytes
-  // in the image for the session's whole life.
-  let mark = heap_mark()
-  let cand = driver_manifest(ranges)
-  // Structural == over the word-triple lists — the sequence-of-struct
-  // eq walker's first wheel-internal consumer (the manifest_same hand
-  // walk dissolved into it, its written destiny).
-  if cand == manifest {
-    heap_reset(mark)
-    (ast, ranges, manifest, 0)
+  // nothing it allocated outlives the comparison: the bytes die with the
+  // answer's arena (session_line_loop). Structural == over the word-triple
+  // lists — the sequence-of-struct eq walker's first wheel-internal consumer
+  // (the manifest_same hand walk dissolved into it, its written destiny).
+  if driver_manifest(ranges) == manifest {
+    (ast, ranges, manifest)
   } else {
     // The generation boundary's clears, BEFORE the re-judgment and only for
     // the cone: the new judgment re-fires every still-true T_OverDeclared
@@ -456,10 +410,10 @@ fn session_current(ast, ranges, manifest) = if len(ranges) == 0 {
     match driver_session_cone("main", ranges, tighten_forget) {
       (cone, r2) => {
         eprint_string("session: tree moved — re-judged {names_join(cone)}; the graph is current\n")
-        // The bank re-hashes over the NEW range map (r2's paths), not
-        // cand — cand was hashed over the old module set. The entry's own
-        // decls are read off its NModule node, the cone's fresh one.
-        (driver_module_ast(ast, "main"), r2, driver_manifest(r2), 1)
+        // The bank re-hashes over the NEW range map (r2's paths) — the
+        // check above hashed the old module set. The entry's own decls are
+        // read off its NModule node, the cone's fresh one.
+        (driver_module_ast(ast, "main"), r2, driver_manifest(r2))
       },
     }
   }
@@ -467,37 +421,38 @@ fn session_current(ast, ranges, manifest) = if len(ranges) == 0 {
 
 // The serve loop — a RAW recursion over the session triple (ast,
 // ranges, manifest — the battery_loop law holds; at_read is a stored
-// value). Each message is a REGION: mark before the read, print the
-// response, reset, recur — the server's heap stays flat, every
-// propose's full compile included. TWO exceptions never reset: a
-// session READ (resettable = 0 — its small mints are durable session
-// growth; a reset would orphan spine pages later reads still chase),
-// and a message whose living check found the tree MOVED (the fresh
-// generation was minted after this message's mark — resetting would
-// hand the next message dangling handles, the fork-spine class). The
-// response prints BEFORE any reset. read_stdin_line answers "" at
-// EOF; a blank line is outside the newline-delimited-JSON contract,
-// so "" ends the session on either reading.
+// value). Each message is an ARENA (lib/arena.mn): the response prints
+// inside it, and its exit reclaims what the message allocated except
+// what it published — the next triple, and what it stored into older
+// memory: a read's parse nodes and any spine page they opened, a moved
+// tree's fresh generation, every one journaled where it was stored. So
+// the server's heap holds what the session learned and nothing else,
+// every propose's full compile included. read_stdin_line answers "" at
+// EOF; a blank line is outside the newline-delimited-JSON contract, so
+// "" ends the session on either reading.
 fn mcp_loop(ast, ranges, manifest, at_read, current) = {
-  let mark = heap_mark()
-  let line = read_stdin_line()
-  if byte_len(line) == 0 {
-    ()
-  } else {
-    // `current` is the living check AS A VALUE (the at_read precedent):
-    // the resident path passes session_current — its derivation row
-    // absorbed by the session bracket — and the no-project path passes
-    // the Pure identity, so the loop stays row-polymorphic and the
-    // derivation effects never reach the bare root.
-    match current(ast, ranges, manifest) {
-      (a2, r2, m2, moved) => match mcp_handle(strip_cr(line), a2, r2, at_read) {
-        (out, resettable) => {
+  let next = {
+    let line = read_stdin_line()
+    if byte_len(line) == 0 {
+      None
+    } else {
+      // `current` is the living check AS A VALUE (the at_read precedent):
+      // the resident path passes session_current — its derivation row
+      // absorbed by the session bracket — and the no-project path passes
+      // the Pure identity, so the loop stays row-polymorphic and the
+      // derivation effects never reach the bare root.
+      match current(ast, ranges, manifest) {
+        (a2, r2, m2) => {
+          let out = mcp_handle(strip_cr(line), a2, r2, at_read)
           if byte_len(out) > 0 { print_string(out) }
-          if resettable == 1 && moved == 0 { heap_reset(mark) } else { () }
-          mcp_loop(a2, r2, m2, at_read, current)
+          Some((a2, r2, m2))
         },
-      },
+      }
     }
+  } ~> arena
+  match next {
+    None => (),
+    Some((a2, r2, m2)) => mcp_loop(a2, r2, m2, at_read, current),
   }
 }
 
@@ -561,27 +516,31 @@ fn session_run(answer) = {
 // The accept loop is space_loop's shape — constant stack for the
 // session's life, the graph threading through as values.
 fn session_sock_loop(lfd, ast, ranges, manifest, answer, current) = {
-  let conn = sock_accept_blocking(lfd)
-  let line = strip_cr(session_read_line(conn))
   let before = heap_mark()
-  match current(ast, ranges, manifest) {
-    (a2, r2, m2, _moved) => match answer(line, a2, r2, m2) {
-      (text, (a3, r3, m3)) => {
-        sock_write_str(conn, text)
-        fd_close(conn)
-        session_cost(before)
-        session_sock_loop(lfd, a3, r3, m3, answer, current)
+  let next = {
+    let conn = sock_accept_blocking(lfd)
+    let line = strip_cr(session_read_line(conn))
+    match current(ast, ranges, manifest) {
+      (a2, r2, m2) => match answer(line, a2, r2, m2) {
+        (text, held) => {
+          sock_write_str(conn, text)
+          fd_close(conn)
+          held
+        },
       },
-    },
+    }
+  } ~> arena
+  session_cost(before)
+  match next {
+    (a3, r3, m3) => session_sock_loop(lfd, a3, r3, m3, answer, current),
   }
 }
 
-// What an answer cost the image, on the session's log: a read the session
-// answers keeps what it minted (a reset would orphan spine pages later reads
-// still chase), so the image grows by this much per answer for the
-// session's whole life, and a moved tree's re-derivation is counted in the
-// answer that found it. The number is what a lifetime for the session's
-// scratch (§11 Arc C) has to bring to zero.
+// What an answer cost the image, on the session's log. Each answer is an
+// arena (lib/arena.mn), so this is what it PUBLISHED: the nodes a question
+// minted and the spine pages they opened, the edges an accept drew, a moved
+// tree's fresh generation — what the session learned, and nothing it only
+// computed on the way to the answer.
 fn session_cost(before) =
   eprint_string("session: the answer cost {int_to_str(heap_mark() - before)} bytes of image\n")
 
@@ -592,20 +551,28 @@ fn session_cost(before) =
 // with no delimiter in the answer to strip. EOF (or an empty line, outside
 // the wire's grammar as in the mcp loop) ends the session.
 fn session_line_loop(ast, ranges, manifest, answer, current) = {
-  let line = strip_cr(read_stdin_line())
-  if byte_len(line) == 0 {
-    ()
-  } else {
-    let before = heap_mark()
-    match current(ast, ranges, manifest) {
-      (a2, r2, m2, _moved) => match answer(line, a2, r2, m2) {
-        (text, (a3, r3, m3)) => {
-          print_string(text)
-          session_cost(before)
-          session_line_loop(a3, r3, m3, answer, current)
+  let before = heap_mark()
+  let next = {
+    let line = strip_cr(read_stdin_line())
+    if byte_len(line) == 0 {
+      None
+    } else {
+      match current(ast, ranges, manifest) {
+        (a2, r2, m2) => match answer(line, a2, r2, m2) {
+          (text, held) => {
+            print_string(text)
+            Some(held)
+          },
         },
-      },
+      }
     }
+  } ~> arena
+  match next {
+    None => (),
+    Some((a3, r3, m3)) => {
+      session_cost(before)
+      session_line_loop(a3, r3, m3, answer, current)
+    },
   }
 }
 
@@ -682,7 +649,7 @@ fn mcp_run(at_read) = {
         },
       }
     } else {
-      mcp_loop([], [], [], at_read, (a, r, m) => (a, r, m, 0))
+      mcp_loop([], [], [], at_read, (a, r, m) => (a, r, m))
     }
   } ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
   0

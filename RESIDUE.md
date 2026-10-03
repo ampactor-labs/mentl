@@ -3472,8 +3472,18 @@ line-1 position (the caret biases, the gradient decides — PROGRAM D3–D5's
 score). E2's session is where the loop becomes a loop; the CLI's one-cycle
 form is what `mentl accept <address>` exists beside.
 
-`Hβ.session.answer-scratch-outlives-the-answer` — OPEN, BORN 2026-10-02
-with E2. Every answer the resident session gives keeps what it minted. A
+`Hβ.session.answer-scratch-outlives-the-answer` — CLOSED 2026-10-03
+(Arena·P2, pin 912577160150bf94), BORN 2026-10-02 with E2. Each answer runs
+in `~> arena` (`session_line_loop`, `session_sock_loop`, `mcp_loop`),
+publishing the next (tree, ranges, manifest); what it stores into older
+memory — a spine page a mint opened, a name-keyed column's entry, an
+accept's edge — is journaled where it is stored and moves at the exit, which
+answers the objection below without a trail. `session_current`'s raw region
+and the `resettable` flag beside it are deleted. Measured over one project,
+the same six verb lines through boot f950ebfd and the closing pin, answers
+byte-identical: a read kept 344,536 B and keeps 24, a hole read 950,304 and
+120, an edit 8,044,080 and 119,600, the accept 9,031,664 and 119,664. The
+record as it stood: Every answer the resident session gives keeps what it minted. A
 reset at the answer's end is unsound while an answer can grow graph state:
 a mint inside a read can open a spine page, and the graph handler's
 name-keyed columns take heap pointers that are not trail-backed. Measured
@@ -3492,8 +3502,16 @@ it writes and the edges it draws — the edges are graph writes, so their
 stores into the graph's older buffers journal and move — and what is left
 is the placement (`Hβ.arena.extents-beyond-the-judgment`).
 
-`Hβ.arena.extents-beyond-the-judgment` — OPEN, BORN 2026-10-03 with the
-arena (Arena·P2). The judgment's binding groups each run in an arena; the
+`Hβ.arena.extents-beyond-the-judgment` — CLOSED 2026-10-03 (Arena·P2, pin
+912577160150bf94). Each statement's lowering and the lowering's three
+pre-passes, each demand walk of the emitted reach, each emitted function,
+twin, wrapper and leaf, each session answer, each battery fixture and each
+speculation run in an arena, and `heap_reset` is deleted from `Alloc`.
+Over the wheel's source, the previous boot (f950ebfd) against the candidate
+it compiles: the heap when lowering ends 590,975,608 B → 354,415,592, when
+the module is written 741,519,312 → 437,965,368; peak 870,088 / 871,608 KB
+→ 575,228 / 574,564; the census 19,772 exits, 0 kept, 609,951 KB
+reclaimed, 54,768 KB moved. The record as it stood: The judgment's binding groups each run in an arena; the
 lowering's, the emission's and the resident session's extents run in none,
 so their scratch lives for the compile. Measured on the pinned boot over the
 wheel: the heap stands at 288 MB at the judgment's high-water, 591 MB when
@@ -3532,11 +3550,16 @@ the region at the exit. A language arc of its own — region polymorphism in
 rows — never a precondition of the journal's soundness.
 
 `Hβ.arena.cast-addr-crosses-the-journal` — OPEN, BORN 2026-10-03, measured.
-`Cast`'s `addr` turns a pointer into a word, and a word stored raw into
-older memory is a store the journal cannot see: the address dangles after
-the exit. It is the one channel left — a `list_set` reached as a value
-journals through its table face, and a raw store of a list is a type error.
-The wheel reads `addr` nowhere. The form: what `addr` answers is a word
+A word that is an address — `Cast`'s `addr`, and what `alloc` and
+`bytes_buf` answer — stored raw into older memory is a store the journal
+cannot see: the address dangles after the exit. It is the one channel left
+— a `list_set` reached as a value journals through its table face, a raw
+store of a list is a type error, and the raw rewind beside `heap_mark` is
+deleted (Arena·P2). The wheel stores none: it reads `addr` in four word
+tests (the spine readers ask whether a cell was ever written) and hands it
+to two writes that leave the process (the warm image's header, a persisted
+branch's wire), and every raw buffer `alloc` or `bytes_buf` answers is local
+scratch, up-cast (`str_of_buf`) before anything stores it. The form: what `addr` answers is a word
 with an address's provenance, a type of its own, whose raw store journals
 with no leaf, so the exit keeps the region rather than move a value it
 cannot read.
@@ -11804,9 +11827,9 @@ that carried it, over the source it pinned, peaks 863,636–874,384 KB
 against the prior boot's 1,061,396–1,065,228 KB on that source, the
 judgment's high-water 288.0 MB against 511.3 MB, the census 4,487 exits,
 0 kept, 206,870 KB reclaimed, 49,914 KB moved; the ceiling 1,050,000 →
-884,000. Open, each named: the lowering's, the emission's and the
-session's extents (`Hβ.arena.extents-beyond-the-judgment` — the
-placement, no new mechanism), `Hβ.arena.closure-evac-face`,
+884,000. Open, each named: the extents beyond the judgment
+(`Hβ.arena.extents-beyond-the-judgment`, closed the same day by
+Arena·P2), `Hβ.arena.closure-evac-face`,
 `Hβ.arena.per-instance-regions`, `Hβ.arena.region-typed-mutation`,
 `Hβ.arena.cast-addr-crosses-the-journal`, `Hβ.arena.claims-of-a-cycle`,
 `Hβ.arena.constructor-results-are-fresh`,

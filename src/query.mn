@@ -1859,7 +1859,9 @@ fn where_badges(name: String, scope: String) with !Mutate = match graph_decls_at
 
 // A type-level declaration's answer, empty for any other: a type's or an
 // effect's head at its address, then one line per constructor or op; an
-// alias is the line the formatter writes for it, at its address.
+// alias is the line the formatter writes for it, at its address; a handler
+// is the effects its arms answer, at its address (the install's badge,
+// `tee_line`, read at the declaration).
 fn type_level_lines(h) with !Mutate = match graph_node_body(h) {
   NStmt(s) => match s {
     TypeDefStmt(name, variants) => named_lines(flat_map(variant_tys, variants), "type {name}{decl_at(h)}", variant_badge, variants),
@@ -1872,9 +1874,9 @@ fn type_level_lines(h) with !Mutate = match graph_node_body(h) {
     RefineStmt(_, _, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
     AliasStmt(_, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
     RowAliasStmt(_, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
+    HandlerDeclStmt(name, _, _, _, arms, _) => ["handler {name} absorbs {join(" + ", handler_effect_names(arms))}{decl_at(h)}"],
     FnStmt(_, _, _, _, _) => [],
     LetStmt(_, _, _) => [],
-    HandlerDeclStmt(_, _, _, _, _, _) => [],
     ExprStmt(_) => [],
     ImportStmt(_) => [],
   },

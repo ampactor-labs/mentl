@@ -421,9 +421,9 @@ fn poly_teach_line(owner: String, reason) =
 // would pay 64KB per page for either. Both are allocated at the install,
 // not lazily at the first write: every graph_handler install is a ROOT
 // install (eleven, all at verb entries), never per decl, so the eager table
-// costs one 4KB word-list per process — and a table minted lazily inside a
-// speculation region would outlive the region's heap_reset as a dangling
-// state pointer.
+// costs one 4KB word-list per process and no write tests for it — and a
+// table minted lazily inside a speculation would be copied out of the
+// speculation's arena at its exit, a cost the eager one never pays.
 handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spine_open = spine_open0, trail = [], trail_len = 0, epoch = 0, next = 0, span_index = span_index0, checkpoint_stack = [], comment_refs = [], refs_col = smap_new(), apps_col = smap_new(), decls_col = [], emitfns_col = [], emitfns_idx = [], emitfns_idx_covers = 0, sigs_col = [], holes_pend = [], holes_col = [], cur_module = 0, guard_diags = [], gates = wmap_new(1024), instances = wmap_new(1024), demands = wmap_new(1024), accepted = [], rows = wmap_new(1024), binders = wmap_new(1024), late = wmap_new(1024), claims = wmap_new(1024), modules_now = smap_new(), superseded = wmap_new(64), modules_col = [] {
   graph_chase(handle) => // checkpoint_stack tracks active speculation depth. Each
   // graph_push_checkpoint pushes the current trail_len; each
@@ -1172,11 +1172,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
           rows: rows,
         }
       )
-      // drop_last, never slice: the pop runs BEFORE the caller's
-      // heap_reset, so a slice node minted here dies with the
-      // region and the next fork walks a zeroed cell. On the
-      // always-snoc stack drop_last is the parent READ — the pop
-      // allocates nothing and the surviving value is pre-fork.
+      // drop_last, never slice: on the always-snoc stack drop_last is
+      // the parent READ — the pop allocates nothing and the surviving
+      // value is the pre-fork stack, so the fork's arena has nothing of
+      // it to move (a slice minted here would be copied out at the exit).
       resume() with spine = cp.spine, spine_open = cp.spine_open, next = cp.next, trail = cp.trail, trail_len = target_idx, span_index = cp.span_index, comment_refs = cp.comment_refs, checkpoint_stack = drop_last(checkpoint_stack)
     }
   },

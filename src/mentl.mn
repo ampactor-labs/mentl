@@ -259,17 +259,6 @@ fn severance_negations(performed) = match performed {
 // present ones.
 fn gradient_candidates(performed) = [APure(None)] ++ severance_negations(performed)
 
-// The fork pre-warm's per-candidate step: a severance name meets the
-// intern table OUTSIDE any fork extent (the each in
-// `row_suggestions`), so every in-fork intern_str is a probe HIT.
-fn intern_severance_name(ann) = match ann {
-  ANotEffect(name, _) => {
-    intern_str(name)
-    ()
-  },
-  _ => (),
-}
-
 // Map an Annotation variant to its SuggestionKind axis. Drift 8
 // closure: SuggestionKind is the tagged dispatch surface; the
 // match below is the only place the mapping lives.
@@ -320,34 +309,24 @@ type Proven = Proven(Site, AnnotationSuggestion)
 // row bound in a checkpoint, the body's row asked to subsume it, rolled
 // back. A proven clause locks an absence the body already has — the gate
 // every edit of the body must meet — and discharges nothing.
-fn row_suggestions(f, performed) = {
-  let candidates = gradient_candidates(performed)
-  // PRE-WARM THE INTERN below the fork marks: every severance name is
-  // interned here ONCE, so every in-fork intern_str is a pure probe HIT.
-  // A fork extent must never FIRST-intern — the table is durable state,
-  // and a first insert allocates its canonical row IN the region: the
-  // reset zeroes it and the next candidate's probe walks garbage
-  // (measured: the field leg trapped in intern_probe the moment this
-  // site's heap leg landed — the image/scratch interleave's first live
-  // case, the two-channel design's own witness).
-  candidates |> each(intern_severance_name)
-  candidates |> filter(row_clause_holds(f.handle, f.ty, ??)) |> map(row_suggestion(len(performed), ??))
-}
+fn row_suggestions(f, performed) =
+  gradient_candidates(performed) |> filter(row_clause_holds(f.handle, f.ty, ??)) |> map(row_suggestion(len(performed), ??))
 
-// One candidate's bracket — the FORK TRIPLE (R6), the synth fan's exact
-// shape: the graph's checkpoint, the heap's mark, the world's top, each
-// restored, and a word carried out.
+// One candidate's bracket — the synth fan's shape (judge_in_segment): the
+// graph's checkpoint and the world's top, each restored, inside an arena
+// (lib/arena.mn), and a word carried out. The arena reclaims what the
+// candidate allocated and keeps what it stored into older memory that the
+// rollback did not undo — a name it was the first to intern stays in the
+// table, as interning anywhere else would leave it.
 fn row_clause_holds(handle, base_ty, ann) = {
   let cp = graph_push_checkpoint()
-  let mark = heap_mark()
   let w = world_top()
   let proven = apply_annotation_tentatively(handle, ann, base_ty)
   let ok = proven && verify_after_apply(handle)
   graph_rollback(cp)
-  heap_reset(mark)
   world_restore(w)
   ok
-}
+} ~> arena
 
 // A clause's absences: `!E` locks one; `with Pure` locks every effect the
 // link performs, each of which it proves this declaration never reaches.
@@ -575,8 +554,9 @@ fn same_base(a, b) = match a {
 // judgment's own decisions run against it: every open obligation of the
 // declaration through the ledger's decision, and every application of the
 // declaration the judgment drew through the call site's own two steps
-// (`dry_claim`). Counted inside, rolled back, built after: the bracket's
-// allocations die with it. An application the edge does not hold — a
+// (`dry_claim`). Counted inside, rolled back, built after: the bracket is an
+// arena (lib/arena.mn) and its counts are what cross its exit. An
+// application the edge does not hold — a
 // partial's supplied argument, the declaration handed to another function
 // as a value — is judged when the annotation is accepted, not counted here
 // (`Hβ.teach.leverage-reads-direct-applications`).
@@ -588,30 +568,33 @@ fn same_base(a, b) = match a {
 // one asking more than the body needs.
 fn prove_precondition(f, owed, b, i, name: String, alias) = match alias {
   (aname, contract) => {
-    let cp = graph_push_checkpoint()
-    let mark = heap_mark()
-    let w = world_top()
-    restate_param(b, contract)
-    let discharged = owed |> filter(obligation_holds) |> len
-    let broken = owed |> filter(obligation_refuted) |> len
-    let verdicts = latest_applications(applications_of(f.name)) |> map(claim_at_call(contract, i, ??))
-    let refuted = verdicts |> filter(verdict_refuted) |> len
-    let opened = verdicts |> filter(verdict_open) |> len
-    graph_rollback(cp)
-    heap_reset(mark)
-    world_restore(w)
-    if discharged == 0 || broken > 0 {
-      []
-    } else {
-      let ann = ARefined({alias: aname, contract: contract, param: name})
-      [Proven(
-        SiteParam(i),
-        AnnotationSuggestion(
-          ann,
-          Leverage({absences: 0, discharged: discharged, locks: [], opened: opened, refuted: refuted}),
-          suggestion_reason(ann)
-        )
-      )]
+    let counts = {
+      let cp = graph_push_checkpoint()
+      let w = world_top()
+      restate_param(b, contract)
+      let discharged = owed |> filter(obligation_holds) |> len
+      let broken = owed |> filter(obligation_refuted) |> len
+      let verdicts = latest_applications(applications_of(f.name)) |> map(claim_at_call(contract, i, ??))
+      let refuted = verdicts |> filter(verdict_refuted) |> len
+      let opened = verdicts |> filter(verdict_open) |> len
+      graph_rollback(cp)
+      world_restore(w)
+      (discharged, broken, refuted, opened)
+    } ~> arena
+    match counts {
+      (discharged, broken, refuted, opened) => if discharged == 0 || broken > 0 {
+        []
+      } else {
+        let ann = ARefined({alias: aname, contract: contract, param: name})
+        [Proven(
+          SiteParam(i),
+          AnnotationSuggestion(
+            ann,
+            Leverage({absences: 0, discharged: discharged, locks: [], opened: opened, refuted: refuted}),
+            suggestion_reason(ann)
+          )
+        )]
+      },
     }
   },
 }
@@ -773,31 +756,34 @@ fn value_calls(h, name: String) = match join_tails(h) {
 // return's own claim would (`claim_authored_return`: the claim alone, no
 // learning); each resting claim is then re-decided with every call it rests
 // on read as returning the contract — the edge `post_leaves` follows — and
-// counted.
+// counted, in an arena whose counts are what cross its exit.
 fn prove_return(f, resting, alias) = match alias {
   (aname, contract) => {
-    let cp = graph_push_checkpoint()
-    let mark = heap_mark()
-    let w = world_top()
-    let body_holds = verdict_holds(dry_return_claim(contract, f.body))
-    resting |> each(rest_on_contract(contract, ??))
-    let discharged = resting |> filter(rest_holds) |> len
-    let refuted = resting |> filter(rest_refuted) |> len
-    graph_rollback(cp)
-    heap_reset(mark)
-    world_restore(w)
-    if body_holds && discharged > 0 {
-      let ann = AReturns({alias: aname, contract: contract})
-      [Proven(
-        SiteReturn,
-        AnnotationSuggestion(
-          ann,
-          Leverage({absences: 0, discharged: discharged, locks: [], opened: 0, refuted: refuted}),
-          suggestion_reason(ann)
-        )
-      )]
-    } else {
-      []
+    let counts = {
+      let cp = graph_push_checkpoint()
+      let w = world_top()
+      let body_holds = verdict_holds(dry_return_claim(contract, f.body))
+      resting |> each(rest_on_contract(contract, ??))
+      let discharged = resting |> filter(rest_holds) |> len
+      let refuted = resting |> filter(rest_refuted) |> len
+      graph_rollback(cp)
+      world_restore(w)
+      (body_holds, discharged, refuted)
+    } ~> arena
+    match counts {
+      (body_holds, discharged, refuted) => if body_holds && discharged > 0 {
+        let ann = AReturns({alias: aname, contract: contract})
+        [Proven(
+          SiteReturn,
+          AnnotationSuggestion(
+            ann,
+            Leverage({absences: 0, discharged: discharged, locks: [], opened: 0, refuted: refuted}),
+            suggestion_reason(ann)
+          )
+        )]
+      } else {
+        []
+      },
     }
   },
 }

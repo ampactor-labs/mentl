@@ -1329,4 +1329,17 @@ authored_ref_max: 698
 # arena census 4,487 exits, 0 kept, 206,870 KB reclaimed, 49,914 KB moved.
 # The two pins after it read their m3 legs at 867,132 and 869,872 KB under
 # this ceiling. Same rule: ~1% over the highest reading of the landed form.
-selfcompile_peak_kb_max: 884000
+# 2026-10-03 (Arena·P2): 884000 -> 594000. The arena placed at the extents
+# beyond the judgment — each declaration's lowering, the lowering's
+# pre-passes, each emitted reach demand, each emitted function, twin,
+# wrapper and leaf, each session answer, each speculation — and the raw
+# rewind deleted. Fixed input, the wheel's own source through the previous
+# boot (f950ebfd, which carries the exit's slide guard and no new arena)
+# and through the candidate it compiles: 870,088 / 871,608 KB with the heap
+# at 741,519,312 B when the module is written, against 575,228 / 574,564 KB
+# at 437,965,368 B, the arena census 19,772 exits, 0 kept, 609,951 KB
+# reclaimed, 54,768 KB moved. The pinning march read its m3 leg at 579,940
+# KB and its m4 leg — the landed form compiling itself — at 587,688 KB. The
+# previous boot crosses this ceiling on this input. Same rule: ~1% over the
+# highest reading of the landed form.
+selfcompile_peak_kb_max: 594000

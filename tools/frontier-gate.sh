@@ -1626,12 +1626,17 @@ for i in "${!compilers[@]}"; do
   # transport switched off. The thirteenth reaches `list_set` as a VALUE: no
   # leaf can be carried through the call, so its table face journals with
   # none and the exit keeps — refused at compile on boot 9ec6db48 as an
-  # internal invariant, a correct program the medium would not run.
+  # internal invariant, a correct program the medium would not run. The
+  # fourteenth moves nothing out of a region larger than the memory had grown
+  # before it opened, so the exit's copy space lies past the memory's end —
+  # a trap at the exit on boot fb8921e3 (a zero-length copy there is out of
+  # bounds too), found by the battery once each fixture ran in an arena.
   capture_arena_shadow "$compiler" "$dir" || continue
   for leg in value-moves dropped-is-reclaimed handler-buffer-moves \
              plain-buffer-moves state-commit-moves nested ring-history-moves \
              growth-link closure-keeps journal-overflow-keeps \
-             spawning-module-runs-the-body generic-store-moves value-store-keeps; do
+             spawning-module-runs-the-body generic-store-moves value-store-keeps \
+             nothing-moved-past-memory; do
     run_program "$compiler" "arena-$leg" \
       "$ROOT/tests/frontier/arena/$leg.mn" 42 arena "$dir"
   done
@@ -1854,8 +1859,11 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-aggregate-show.mn" 42 yes "$dir"
   run_program "$compiler" aggregate-hash \
     "$ROOT/tests/frontier/mn-aggregate-hash.mn" 42 yes "$dir"
-  run_program "$compiler" heap-region \
-    "$ROOT/tests/frontier/mn-heap-region.mn" 42 yes "$dir"
+  # The raw rewind is unsayable: an extent's memory is reclaimed by an arena
+  # and nothing else. RED on every boot through fb8921e3, where this ran to
+  # 42 (the region verb it called is the one P2 deleted).
+  run_refusal_linked "$compiler" raw-rewind-unsayable \
+    "$ROOT/tests/frontier/mn-raw-rewind-unsayable.mn" E_MissingVariable "$dir"
   run_program "$compiler" top-level-let \
     "$ROOT/tests/frontier/mn-top-level-let.mn" 42 yes "$dir"
   # A nominal record satisfies a structural field demand by its own
@@ -3783,6 +3791,12 @@ for i in "${!compilers[@]}"; do
   printf '%s' "$w_pin" | grep -q '^→ s : Float @ f32 (pinned)$' || { w_ok=0; fail "where pinned parameter, SYNTAX's own example (got: $w_pin)"; }
   w_local=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" scale 2>/dev/null)
   printf '%s' "$w_local" | grep -q '^→ scale : Float @ f64 (inferred)$' || { w_ok=0; fail "where local (got: $w_local)"; }
+  # Arena·P2 (2026-10-03): a handler declaration answers the effects its arms
+  # answer and its address, as a type's and an effect's do. RED on boot
+  # fb8921e3, which answered the handler's type and no address — the gap a
+  # session confessed (`# verb-gap`) when it had to search for one.
+  w_hand=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" ticker 2>/dev/null)
+  printf '%s' "$w_hand" | grep -q '^→ handler ticker absorbs Tick  at .*mn-where-badges:28$' || { w_ok=0; fail "where handler declaration (got: $w_hand)"; }
   # B4 (2026-09-30): a fanout site reports the schedules its CALLERS demand
   # of it through direct calls — `shared`'s own frame installs none (Seq),
   # and `twice` calls it under `parallel_compose`, so its site runs threaded

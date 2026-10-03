@@ -641,7 +641,8 @@ Measured at the landing: ~8.4s wall, ~1.70GB peak RSS (three reads
 within ±0.03% — the earlier "~694MB" claim was an era-stale number this
 read corrects). The arena's win landed as that ceiling FALLING — 1,050,000
 → 884,000 KB on 2026-10-03, read off three runs of the boot that carried
-it. state.sh
+it, and 884,000 → 594,000 the same day once every extent ran in one.
+state.sh
 still shows the footprint; raising any ceiling stays an explicit
 in-commit act, the census pattern applied to cost. Paid for by measurement: the judgment's peak moved
 563MB → 3,044MB (07-25 → 07-29) across unmeasured landings and fell 823MB at
@@ -676,11 +677,12 @@ session's reports under .build/research are its first corpus
    its publication reaches, which moves by type, so the reset costs what
    crossed, never what died. Reclaiming is reachability from the
    publication, not a `Consume` (ownership's regions stay compile-time).
-   Placed at the judgment's binding groups: the judgment's high-water fell
-   511 → 288 MB and the self-compile's peak 1,065 → 874 MB. Remaining: the
-   lowering's, the emission's and the session's extents
-   (`Hβ.arena.extents-beyond-the-judgment`), and the per-thread regions
-   layer 4 needs (`Hβ.arena.per-instance-regions`).
+   Placed at the judgment's binding groups (its high-water 511 → 288 MB,
+   the self-compile's peak 1,065 → 874 MB) and then at every extent beyond
+   them — each declaration's lowering, each emitted unit, each session
+   answer, each speculation (the heap when the module is written 741 → 438
+   MB, the peak 870 → 575 MB). Remaining: the per-thread regions layer 4
+   needs (`Hβ.arena.per-instance-regions`).
 4. **Parallel cursors** — the level-set partition at DECL granularity on the
    compile spine, infer/lower/emit fanned across cores with (arena_id, offset)
    deterministic handle partitioning so native_m3==native_m4 holds
@@ -809,9 +811,11 @@ and this is the STATE.
   except what its publication reaches. Ownership's regions stay what they
   were — compile-time root-tagging and return-transfer — and the arena does
   not read them: an exit decides by reachability from the extent's
-  publication, never by a `Consume`. The judgment's binding groups run in
-  one; the lowering, the emission and the session do not yet
-  (`Hβ.arena.extents-beyond-the-judgment`).
+  publication, never by a `Consume`. Every extent runs in one — the
+  judgment's binding groups, each declaration's lowering, each emitted
+  unit, each session answer, each speculation — and nothing else reclaims:
+  the raw rewind beside `heap_mark` is deleted (the bullet after the
+  arena's).
 - **`persist = memcpy` IS BUILT, and this line said it was absent** — the doc
   rot named as violation #1, measured 2026-09-07. `lib/persist.mn` writes
   `[0, heap-line)` plus a bounded globals header STRAIGHT FROM THE IMAGE to
@@ -966,14 +970,13 @@ and this is the STATE.
 - **Resident Space** keeps its graph since E2 (2026-10-02, the bullet after
   D5's): one WASM instance answers for the session's life, an edit re-judges
   only the cone it moved, the accept is drawn into the graph the session
-  keeps, and the IDE gate times every read. What stands between it and the
-  shipping medium: a lifetime for the session's scratch — every answer keeps
-  what it minted, so the image grows with every answer for the session's
-  whole life; the arena is that lifetime's mechanism since 2026-10-03, and
-  no answer runs in one yet
-  (`Hβ.session.answer-scratch-outlives-the-answer`) — and a durable image
-  boundary: a session derives once per open, and a fresh process derives
-  cold (`Hβ.felt.accept-outlives-the-process`). The eight aspects at the
+  keeps, and the IDE gate times every read. Each answer runs in an arena
+  since 2026-10-03 and keeps what the session learned and nothing it only
+  computed — a read 24 bytes, an edit's fresh generation 119,600
+  (`Hβ.session.answer-scratch-outlives-the-answer`, closed; the bullet
+  after the arena's). What stands between it and the shipping medium is a
+  durable image boundary: a session derives once per open, and a fresh
+  process derives cold (`Hβ.felt.accept-outlives-the-process`). The eight aspects at the
   caret are read off the graph since E4 (the bullet after E2's).
 - **Demand linking / prelude caching** must be graph reachability, not a token
   allowlist. The demanded set is read from import edges, free-name binding edges,
@@ -2115,11 +2118,11 @@ and this is the STATE.
   session: a read 14 ms keeping 420 KB, a hole read 25 ms (2.2 MB), an edit
   97–101 ms (8.6–10.1 MB, the cone alone), the accept 105 ms; the node
   twin's reads 5.2–9.4 ms resident against 216 ms cold; the page's, open
-  130 ms and a read 5.6 ms. Open: each answer's scratch is kept
-  (`Hβ.session.answer-scratch-outlives-the-answer`), an edit still pays for
-  the program rather than its cone (`Hβ.session.edit-pays-for-the-program`),
-  and a refusal crosses the wire only as MISS
-  (`Hβ.session.answer-is-out-err-and-exit`).
+  130 ms and a read 5.6 ms. Open: an edit still pays for the program
+  rather than its cone (`Hβ.session.edit-pays-for-the-program`), and a
+  refusal crosses the wire only as MISS
+  (`Hβ.session.answer-is-out-err-and-exit`); each answer's kept scratch
+  closed at Arena·P2 (`Hβ.session.answer-scratch-outlives-the-answer`).
 - **THE CARET READS THE GRAPH AT THE NODE — CLOSED 2026-10-02 (E4).** On
   boot 8b071ba3 the caret answered a fanout by its first token, a generic
   variable by the node around it and a call's `(` by its callee; it wrote no
@@ -2184,14 +2187,40 @@ and this is the STATE.
   boot: a function's parameters read as references in the judgment's call
   graph (a false cycle of seventeen through the list substrate), and a
   block's statements read last first. Two facets the dig confessed: `prose
-  NEEDLE`, and `variants` of an effect. Open: the lowering's, the
-  emission's and the session's extents
-  (`Hβ.arena.extents-beyond-the-judgment` — the heap climbs from 288 MB to
-  741 MB after the judgment with no exit), a closure's move
+  NEEDLE`, and `variants` of an effect. Open: the extents beyond the
+  judgment (closed the same day, the next bullet), a closure's move
   (`Hβ.arena.closure-evac-face`), regions per instance in a spawning module
   (`Hβ.arena.per-instance-regions`), region-typed mutation, the `addr` word
   channel, three imprecisions of the age claim, and nested fns that do not
   hoist (`Hβ.infer.nested-fn-siblings-do-not-hoist`).
+- **EVERY EXTENT RUNS IN AN ARENA AND NOTHING ELSE RECLAIMS — CLOSED
+  2026-10-03 (Arena·P2).** Past the judgment the heap climbed 288 → 741 MB
+  with no exit, and every answer the resident session gave kept what it
+  minted. Each statement's lowering and the lowering's pre-passes, each
+  demand walk of the emitted reach, each emitted function, twin, wrapper
+  and leaf, each session answer and mcp message, each battery fixture and
+  each speculation (the row clause bracket, the precondition and return
+  proofs, the synth fan's segment) runs in one, publishing what its extent
+  is for: a lowering's registries, an emitted unit's text, an answer's next
+  (tree, ranges, manifest) and the edges it drew into older memory, each
+  journaled where it was stored. `heap_reset` is deleted from `Alloc`, so a
+  rewind that drops a region something older still points into is
+  unsayable, and the raw brackets that leaned on a convention — the per-fn
+  emission's, the fold leaves', the session's — are arenas. Over the
+  wheel's source, the previous boot against the candidate it compiles: the
+  heap when the module is written 741.5 → 438.0 MB, peak 870,088 → 575,228
+  KB, 19,772 exits and none kept; the ceiling 884,000 → 594,000. A session
+  answer keeps what the session learned: a read 344,536 B → 24, a hole
+  read 950,304 → 120, an edit 8,044,080 → 119,600, the accept 9,031,664 →
+  119,664, the answers byte-identical. Found on the way: an exit that moved
+  nothing out of a region larger than the memory had grown before it
+  opened slid zero bytes from past the memory's end, which wasm
+  bounds-checks — the battery's first fixture trapped once each ran in an
+  arena; the slide runs only when something moved, pinned first because a
+  compiler's runtime is written by its parent. Open: a closure's move
+  (`Hβ.arena.closure-evac-face`), regions per instance
+  (`Hβ.arena.per-instance-regions`), and a word with an address's
+  provenance stored raw (`Hβ.arena.cast-addr-crosses-the-journal`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -2953,8 +2982,10 @@ says where a barrier is owed (the age claim, read along the target's
 edges), so a store into the scope's own buffers costs nothing. Placed at the
 judgment's binding groups: high-water 511 → 288 MB, the self-compile 1,065
 → 874 MB, the ceiling 1,050,000 → 884,000, the debt E4 recorded paid.
-REMAINING: the lowering's, the emission's and the session's extents
-(`Hβ.arena.extents-beyond-the-judgment` — the placement, no new mechanism).
+Then placed at every extent beyond the judgment the same day (Arena·P2):
+each declaration's lowering, each emitted unit, each session answer, each
+speculation — the heap when the module is written 741 → 438 MB, the ceiling
+884,000 → 594,000 — with the raw rewind deleted, so nothing else reclaims.
 `{arena, offset}` handles and lazily opened columns are no longer the
 reset's precondition — the journal sees every pointer write into older
 memory — and stay 9.2's deterministic partition. **Lowering-as-columns**
@@ -3095,7 +3126,7 @@ calculus). Full mechanics: `LEDGER.md`.
   not is gone, and the image is still the graph is still the heap.
   Reclaiming is reachability from the publication, not a `Consume`:
   ownership's regions stay compile-time. Placed at the judgment's binding
-  groups; the rest is placement (`Hβ.arena.extents-beyond-the-judgment`).
+  groups and at every extent beyond them (Arena·P2, §7).
 - **4.4 · Ownership's frontier faces.** The quiet gate ✅ LANDED 2026-08-07
   (verify's quiet-gate ratchet: 83 authored own / 817 authored ref in src/,
   param-position text count seen RED at ceiling 1, monotone DOWN — each
