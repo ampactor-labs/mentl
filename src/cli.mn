@@ -169,7 +169,7 @@ fn verb_specs() = [VerbSpec(
   } else {
     ParseError("query needs a target and a question: mentl query <path> <question>")
   },
-  "why / type / effects / ownership, walked to your words"
+  "why / type / effects / ownership, walked to your words; a directory: a site facet across its programs"
 ), VerbSpec(
   "where",
   "<path> <name>",

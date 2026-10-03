@@ -97,8 +97,6 @@ import math
 
 import net
 
-import tuples
-
 import cli
 
 // The verb grammar — EntryVerb, the VerbSpec table, parse_cli_args and
@@ -293,7 +291,7 @@ fn space_read_request(conn) = {
   let n = sock_read(conn, buf, cap)
   let got = if n < 0 { 0 } else { n }
   let str = bytes_buf(got)
-  mem_copy(str + 8, buf, got)
+  mem_copy(addr_at(str, 8), buf, got)
   str_of_buf(str)
 }
 
@@ -2275,10 +2273,77 @@ fn audit_run(target) = {
 
 // ─── query_run — structured ad-hoc query
 //
-// `mentl query <module> "<question>"` — read-only query against
-// the substrate. Per traces/a-day §0800 + DESIGN §8 mentl query.
-fn query_run(target, question) =
-  query(target, question) ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+// `mentl query <module> "<question>"` — read-only query against the
+// substrate. A DIRECTORY is a tree of independent programs, each its own
+// link as `mentl test <dir>` runs them, and a site facet answers across all
+// of them (`query_dir`). The directory probe is a filesystem op, so the
+// bracket covers it, as the battery's does.
+fn query_run(target, question) = match fs_list_dir_impl(target) {
+  Some(names) => query_dir(dir_base(target), names, question),
+  None => query(target, question),
+} ~> stdout_console ~> wasi_filesystem ~> mentl_default ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
+
+// Every program in the directory judged on its own fresh chain, each inside
+// an arena so the walk's peak is one judgment's live set, and asked the
+// question; the sites in each program's own module are the answer. A facet
+// that answers anything but sites refuses, naming the ones that do.
+fn query_dir(dir: String, names, question) = {
+  let programs = list_to_flat(sort(filter(ends_with(??, ".mn"), names)))
+  let answers = map(query_program(dir, question, ??), programs)
+  if any(answer_is_not_sites, answers) {
+    eprint_string("mentl query: a directory answers the site facets — refs of NAME, census SHAPE, text NEEDLE, prose NEEDLE, decls\n")
+    1
+  } else {
+    let found = flat_map(answer_sites, answers)
+    let unread = len(filter(answer_is_unread, answers))
+    if unread > 0 {
+      eprint_string("mentl query: {int_to_str(unread)} program(s) in {dir} never joined the weave\n")
+    } else {
+      ()
+    }
+    println("→ {int_to_str(len(found))} {fold("site(s)", answer_label, answers)} across {int_to_str(len(programs))} program(s){render_census_sites(found)}")
+    0
+  }
+}
+
+fn query_program(dir: String, question, name: String) =
+  query_sites(path_to_module("{dir}/{name}"), question) ~> arena
+
+fn dir_base(dir: String) =
+  if ends_with(dir, "/") { str_slice(dir, 0, byte_len(dir) - 1) } else { dir }
+
+fn answer_is_not_sites(answer) = match answer {
+  Some(found) => match found {
+    Some(_) => false,
+    None => true,
+  },
+  None => false,
+}
+
+fn answer_is_unread(answer) = match answer {
+  Some(_) => false,
+  None => true,
+}
+
+fn answer_sites(answer) = match answer {
+  Some(found) => match found {
+    Some(pair) => match pair {
+      (_, sites) => sites,
+    },
+    None => [],
+  },
+  None => [],
+}
+
+fn answer_label(label, answer) = match answer {
+  Some(found) => match found {
+    Some(pair) => match pair {
+      (l, _) => l,
+    },
+    None => label,
+  },
+  None => label,
+}
 
 // ─── verify_run — the medium judges its own source (`mentl verify`)
 //

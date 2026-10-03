@@ -9,17 +9,17 @@
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn fill(slot) = {
-  let p = word_addr(alloc(8))
-  store_i32(addr_word(p), 42)
+  let p = alloc(8)
+  store_i32(p, 42)
   store_addr(slot, p)
   len(build(50))
 }
 
 fn main() = {
-  let slot = word_addr(alloc(8))
+  let slot = alloc(8)
   let n = fill(slot) ~> arena
   let junk = build(400)
-  if n == 50 && load_i32(addr_word(load_addr(slot))) == 42 && len(junk) == 400 && arena_stat(ArKept) == 1 {
+  if n == 50 && load_i32(load_addr(slot)) == 42 && len(junk) == 400 && arena_stat(ArKept) == 1 {
     42
   } else {
     1

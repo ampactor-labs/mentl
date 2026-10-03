@@ -408,7 +408,7 @@ fn vocabulary_rings(hole_h) = match graph_node_body(graph_module_of(hole_h)) {
     // whose module is anything else was minted outside every module — a
     // defect in the caller, which traps rather than answering with an
     // empty vocabulary nobody could tell from a real one.
-    load_i32(0 - 1)
+    out_of_range()
     {home: [], imported: []}
   },
 }

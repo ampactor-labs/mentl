@@ -65,11 +65,11 @@ fn read_headers_until_blank(buf, written, cap) = {
     } else {
       let new_cap = cap * 2
       let new_buf = bytes_buf(new_cap)
-      mem_copy(new_buf + 8, buf + 8, written)
+      mem_copy(addr_at(new_buf, 8), addr_at(buf, 8), written)
       (new_buf, new_cap)
     } {
       (buf2, cap2) => {
-        store_i8(buf2 + 8 + written, b)
+        store_i8(addr_at(buf2, 8 + written), b)
         let new_written = written + 1
         if header_terminator_seen(buf2, new_written) {
           store_i32(buf2, new_written - 4)
@@ -90,10 +90,10 @@ fn read_headers_until_blank(buf, written, cap) = {
 fn header_terminator_seen(buf, written) = if written < 4 {
   false
 } else {
-  let b3 = load_i8(buf + 8 + written - 4)
-  let b2 = load_i8(buf + 8 + written - 3)
-  let b1 = load_i8(buf + 8 + written - 2)
-  let b0 = load_i8(buf + 8 + written - 1)
+  let b3 = load_i8(addr_at(buf, 8 + written - 4))
+  let b2 = load_i8(addr_at(buf, 8 + written - 3))
+  let b1 = load_i8(addr_at(buf, 8 + written - 2))
+  let b0 = load_i8(addr_at(buf, 8 + written - 1))
   b3 == 13 && b2 == 10 && b1 == 13 && b0 == 10
 }
 
@@ -164,7 +164,7 @@ fn read_body_loop(buf, written, total) = if written >= total {
   written
 } else {
   let chunk_size = total - written
-  let nread = read_chunk(0, buf + 8 + written, chunk_size)
+  let nread = read_chunk(0, addr_at(buf, 8 + written), chunk_size)
   if nread == 0 { written } else { read_body_loop(buf, written + nread, total) }
 }
 

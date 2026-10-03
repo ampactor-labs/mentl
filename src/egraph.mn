@@ -49,7 +49,7 @@ import io
 fn egraph_extract(handle) = extract_chase(handle, 0)
 
 fn extract_chase(handle, depth) = if depth > 1000 {
-  load_i32(0 - 1)
+  out_of_range()
 } else {
   let to = graph_canon_at(handle)
   if to == handle { handle } else { extract_chase(to, depth + 1) }

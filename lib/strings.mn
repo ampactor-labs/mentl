@@ -29,11 +29,12 @@
 //
 // Effects declared in std/compiler/types.mn:
 //   Memory: load_i32, store_i32, load_i8, store_i8, mem_copy, byte_at, byte_len
-//   Alloc:  alloc(size) -> Int
+//   Alloc:  alloc(size) -> Addr
 //
 // A String IS [byte] (§4①): its byte face is the sequence face. byte_len IS
 // len (the count at +0, shape-invariant across flat/slice/concat); byte_at IS
-// list_index — the carrier reads the byte at stride 1 (load_i8(s + 8 + i)),
+// list_index — the carrier reads the byte at stride 1 (load_i8 of the
+// address 8 + i bytes into the record),
 // tag-dispatched over every representation. The byte VALUE returns as a word
 // (repr RI32), ground-equal to Int at check level (same_ground), so byte
 // arithmetic and comparisons read naturally; the SLOT stays stride-1, guarded
@@ -127,8 +128,7 @@ fn str_compare(a, b) -> Int = {
 // one sequence-eq derivation reused, no second byte-matcher. Empty needle
 // is contained; a needle longer than the haystack is not. The row carries
 // +Alloc honestly (each window is a 16-byte view record) until band-I
-// fusion tightens the view away. Used by the IFC flow-label heuristic
-// (query.mn: a `secret`/`classified`/`sensitive` name flows Secret).
+// fusion tightens the view away.
 fn str_contains(haystack: String, needle: String) -> Bool = {
   let hlen = byte_len(haystack)
   let nlen = byte_len(needle)
@@ -182,13 +182,13 @@ fn fill_concat_all(xs: [String], i, n, dest, w) = if i >= n {
 } else {
   let s = list_index(xs, i)
   let m = byte_len(s)
-  mem_copy(dest + 8 + w, str_payload(s), m)
+  mem_copy(addr_at(dest, 8 + w), str_payload(s), m)
   fill_concat_all(xs, i + 1, n, dest, w + m)
 }
 
 fn str_slice(s, start, end) = slice(s, start, end)
 
-// str_payload(s) — a raw pointer to s's byte_len(s) CONTIGUOUS stride-1 bytes:
+// str_payload(s) — the address of s's byte_len(s) CONTIGUOUS stride-1 bytes:
 // THE materialization boundary. A rope/slice flattens first (list_to_flat, a
 // no-op on a flat record); a byte sequence whose record carries a wider
 // stride — a [byte] built through generic word-list construction, since
@@ -197,7 +197,11 @@ fn str_slice(s, start, end) = slice(s, start, end)
 // path syscalls all read this one projection.
 fn str_payload(s) = {
   let flat = flat_raw(s)
-  if seq_stride(flat) == 1 { flat + 8 } else { str_repack_stride1(flat, seq_stride(flat)) + 8 }
+  if seq_stride(flat) == 1 {
+    addr_at(flat, 8)
+  } else {
+    addr_at(str_repack_stride1(flat, seq_stride(flat)), 8)
+  }
 }
 
 // The stride-1 repack: copy each element word into a fresh byte record. The
@@ -213,7 +217,7 @@ fn str_repack_stride1(flat, stride) = {
 fn str_repack_loop(flat, dest, stride, i, n) = if i >= n {
   ()
 } else {
-  store_i8(dest + 8 + i, load_strided(flat + 8, i, stride))
+  store_i8(addr_at(dest, 8 + i), load_strided(addr_at(flat, 8), i, stride))
   str_repack_loop(flat, dest, stride, i + 1, n)
 }
 
@@ -301,7 +305,7 @@ fn str_unescape_into(s, i, n, dest, w) = if i >= n {
   ()
 } else if is_hex_escape(s, i, n) {
   let decoded = hex_val(byte_at(s, i + 2)) * 16 + hex_val(byte_at(s, i + 3))
-  store_i8(dest + 8 + w, decoded)
+  store_i8(addr_at(dest, 8 + w), decoded)
   str_unescape_into(s, i + 4, n, dest, w + 1)
 } else if byte_at(s, i) == 92 && i + 1 < n {
   let esc = byte_at(s, i + 1)
@@ -316,10 +320,10 @@ fn str_unescape_into(s, i, n, dest, w) = if i >= n {
   } else {
     esc
   }
-  store_i8(dest + 8 + w, decoded)
+  store_i8(addr_at(dest, 8 + w), decoded)
   str_unescape_into(s, i + 2, n, dest, w + 1)
 } else {
-  store_i8(dest + 8 + w, byte_at(s, i))
+  store_i8(addr_at(dest, 8 + w), byte_at(s, i))
   str_unescape_into(s, i + 1, n, dest, w + 1)
 }
 
@@ -350,7 +354,7 @@ effect ByteSink {
 
 handler byte_sink(dest) with w = 0 {
   emit_byte(b) => {
-    store_i8(dest + 8 + w, b)
+    store_i8(addr_at(dest, 8 + w), b)
     resume() with w = w + 1
   },
 }
@@ -402,32 +406,9 @@ fn hex_nibble(v) = byte_at(hex_glyphs(), v)
 fn int_to_str(n) = if n == 0 {
   str_of_single_byte(48)
 } else if n == 0 - 2147483648 {
-  // INT_MIN can't be negated in i32 (0 - INT_MIN = INT_MIN).
-  // Hardcode the 11-byte string "-2147483648".
-  let ptr = bytes_buf(11)
-  // '-'
-  store_i8(ptr + 8, 45)
-  // '2'
-  store_i8(ptr + 9, 50)
-  // '1'
-  store_i8(ptr + 10, 49)
-  // '4'
-  store_i8(ptr + 11, 52)
-  // '7'
-  store_i8(ptr + 12, 55)
-  // '4'
-  store_i8(ptr + 13, 52)
-  // '8'
-  store_i8(ptr + 14, 56)
-  // '3'
-  store_i8(ptr + 15, 51)
-  // '6'
-  store_i8(ptr + 16, 54)
-  // '4'
-  store_i8(ptr + 17, 52)
-  // '8'
-  store_i8(ptr + 18, 56)
-  str_of_buf(ptr)
+  // INT_MIN can't be negated in i32 (0 - INT_MIN = INT_MIN), so its
+  // spelling is the literal.
+  "-2147483648"
 } else if n < 0 {
   // "-"
   let neg = str_of_single_byte(45)
@@ -467,26 +448,28 @@ fn to_string(x) = int_to_str(x)
 // body types self-consistently and never runs; the table carries a -> Int.
 fn hash(x) = x
 
-// str_of_buf — the construction boundary: a raw [count][tag_word][bytes] buffer
-// word IS a String, which IS [byte] (§4①, a handle is a word). The identity
-// projection that returns a builder's raw buffer as the typed sequence its
-// consumers read.
+// str_of_buf — the construction boundary: the address of a filled
+// [count][tag_word][bytes] buffer IS a String, which IS [byte] (§4①, a handle
+// is a word). The identity projection that returns a builder's buffer as the
+// typed sequence its consumers read — the one way from an address back to a
+// structured value.
 fn str_of_buf(buf) with Pure = buf
 
 // bytes_buf(n) — allocate a fresh flat [byte] buffer for n bytes, headered as
 // the unified sequence record: [count=n @0][tag_word=pack_tag(0,1) @+4][bytes
 // @+8]. THE one home for byte-string construction; every builder fills its
-// bytes at ptr + 8, so list_index reads them at stride 1 through the carrier.
+// bytes from addr_at(ptr, 8), so list_index reads them at stride 1 through
+// the carrier.
 fn bytes_buf(n) = {
   let ptr = alloc(8 + n)
   store_i32(ptr, n)
-  store_i32(ptr + 4, pack_tag(0, 1))
+  store_i32(addr_at(ptr, 4), pack_tag(0, 1))
   ptr
 }
 
 fn str_of_single_byte(b) = {
   let ptr = bytes_buf(1)
-  store_i8(ptr + 8, b)
+  store_i8(addr_at(ptr, 8), b)
   str_of_buf(ptr)
 }
 
@@ -498,7 +481,7 @@ fn int_to_str_positive(n) = {
   let used = int_write_digits(scratch, end_pos, n)
   let len = end_pos - used
   let dest = bytes_buf(len)
-  mem_copy(dest + 8, scratch + used, len)
+  mem_copy(addr_at(dest, 8), addr_at(scratch, used), len)
   str_of_buf(dest)
 }
 
@@ -509,7 +492,7 @@ fn int_write_digits(buf, pos, n) = if n == 0 {
 } else {
   let digit = n - n / 10 * 10
   let new_pos = pos - 1
-  store_i8(buf + new_pos, 48 + digit)
+  store_i8(addr_at(buf, new_pos), 48 + digit)
   int_write_digits(buf, new_pos, n / 10)
 }
 
@@ -686,14 +669,14 @@ fn float_zero_pad(n) = if n <= 0 {
   str_of_buf(bytes_buf(0))
 } else {
   let dest = bytes_buf(n)
-  float_fill_zeros(dest + 8, 0, n)
+  float_fill_zeros(addr_at(dest, 8), 0, n)
   str_of_buf(dest)
 }
 
 fn float_fill_zeros(ptr, i, n) = if i >= n {
   ()
 } else {
-  store_i8(ptr + i, 48)
+  store_i8(addr_at(ptr, i), 48)
   float_fill_zeros(ptr, i + 1, n)
 }
 
@@ -714,7 +697,7 @@ fn float_digits_to_str(digits, start, end) = if start >= end {
 } else {
   let len = end - start
   let dest = bytes_buf(len)
-  float_fill_digit_bytes(dest + 8, digits, start, end, start)
+  float_fill_digit_bytes(addr_at(dest, 8), digits, start, end, start)
   str_of_buf(dest)
 }
 
@@ -729,7 +712,7 @@ fn float_fill_digit_bytes(buf, digits, start, end, i) = if i >= end {
   // their int part IS digit-empty, start=0). The buffer index (i - start)
   // stays relative.
   let d = digit_at(digits, i)
-  store_i8(buf + (i - start), 48 + d)
+  store_i8(addr_at(buf, i - start), 48 + d)
   float_fill_digit_bytes(buf, digits, start, end, i + 1)
 }
 
@@ -1128,7 +1111,7 @@ fn str_slice_from_list(ref lst, n) = {
 fn str_slice_from_list_loop(ref lst, dest, i, n) = if i >= n {
   ()
 } else {
-  store_i8(dest + 8 + i, list_index(lst, i))
+  store_i8(addr_at(dest, 8 + i), list_index(lst, i))
   str_slice_from_list_loop(lst, dest, i + 1, n)
 }
 

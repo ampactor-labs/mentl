@@ -93,14 +93,17 @@ effect InferCtx {
   inf_exit_arm()
   inf_arm_tys() -> Option(Int)
   // The install-frame mark: a tee body's frame is ONE install's scope, so
-  // same-named effect-instance fragments inside it (yield's + result's)
-  // join by position; any other frame is a plain accumulation (joining a
-  // caller's independent callee instances unified Float with Int across
-  // the wheel — the 286-error m3 census).
+  // same-named instance fragments of an effect ITS HANDLER answers (yield's
+  // + result's) join by position; an effect the handler does not answer is
+  // a plain accumulation there, as it is in every other frame (joining a
+  // caller's independent callee instances unified Float with Int across the
+  // wheel — the 286-error m3 census — and, inside persist's install, a cast
+  // of a list with a cast of a thunk, which no handler serves).
   // The mark carries what the tee ABSORBS, so the remainder world knows
-  // which enclosing tee delimits a perform site's continuation.
+  // which enclosing tee delimits a perform site's continuation, and the
+  // accumulation seam knows which instances are one install's.
   inf_mark_install_frame([EffName])
-  inf_frame_is_install() -> Bool
+  inf_install_absorbs() -> [EffName]
   // The pass's prereg ceiling — graph_next at the moment pre-registration
   // completed, set once per pass by its driver. The finalize's completion
   // prune reads it: a free edge minted at or above it is an unconstrained
@@ -241,7 +244,13 @@ handler infer_ctx with stack = [], arm_stack = [], install_marks = [], mint_ceil
   },
   inf_mark_install_frame(handled) => // drift-audit: ignore — bounded-depth mark PUSH paired with the exit's pop (§9 push-at-END), not a loop accumulator
   resume() with install_marks = push(install_marks, (len(stack), handled)),
-  inf_frame_is_install() => resume(if len(install_marks) == 0 { false } else { mark_depth(last(install_marks)) == len(stack) }),
+  inf_install_absorbs() => resume(if len(install_marks) == 0 {
+    []
+  } else {
+    match last(install_marks) {
+      (depth, handled) => if depth == len(stack) { handled } else { [] },
+    }
+  }),
   inf_remainder_world(ename) => resume(remainder_world(stack, install_marks, ename)),
   inf_add_effect(name) => if len(stack) == 0 {
     resume()
@@ -448,17 +457,22 @@ fn inf_add_row_unified_at(h, row) = {
 }
 
 fn inf_add_row_unified(row) = {
-  if inf_frame_is_install() {
+  let absorbed = inf_install_absorbs()
+  if len(absorbed) > 0 {
     match row {
       EfRow(np, _, _) => match inf_current_row() {
         EfRow(cp, _, _) => each(
           {
-            EParameterized(n, args_b) => match find({ EParameterized(cn, _) => cn == n, _ => false }, cp) {
-              Some(EParameterized(_, args_a)) => // Row-side args are EffArg (EAType-wrapped) — unwrap to the Ty
-              // lists unify_instance_args joins; feeding the wrappers minted
-              // garbage nodes and joined those instead of the elements.
-              unify_instance_args(eparam_arg_tys(args_a), eparam_arg_tys(args_b), 0, span_zero()),
-              _ => (),
+            EParameterized(n, args_b) => if name_set_contains(absorbed, ENamed(n)) {
+              match find({ EParameterized(cn, _) => cn == n, _ => false }, cp) {
+                Some(EParameterized(_, args_a)) => // Row-side args are EffArg (EAType-wrapped) — unwrap to the Ty
+                // lists unify_instance_args joins; feeding the wrappers minted
+                // garbage nodes and joined those instead of the elements.
+                unify_instance_args(eparam_arg_tys(args_a), eparam_arg_tys(args_b), 0, span_zero()),
+                _ => (),
+              }
+            } else {
+              ()
             },
             _ => (),
           },
@@ -1573,7 +1587,7 @@ fn infer_modules_converged(ref mods) = {
   let parse_end = graph_next()
   infer_program_once(stmts, parse_end)
   match diag_scope_of() {
-    ScopeAll => eprint_string("heap: {int_to_str(heap_mark())} byte(s) when the judgment ends\n"),
+    ScopeAll => eprint_string("heap: {heap_mark()} byte(s) when the judgment ends\n"),
     _ => (),
   }
   stmts
@@ -4211,11 +4225,11 @@ cname == "to_string" || cname == "hash" ||
 // exact list_index pattern (self-consistent raw body, typed calls).
 cname == "byte_len" || cname == "byte_at" ||
 // The String BUILDERS: their bodies alloc a [count][tag][bytes] record and
-// return its word (self-consistent Int inside, the int_to_str pattern);
+// return its address (self-consistent inside, the int_to_str pattern);
 // typed here so the projected RESULT is the String consumers read, never the
-// raw buffer word. str_payload is the reader that resolves a String to its
-// contiguous stride-1 payload pointer — String in, word out (the WASI
-// materialization boundary; the seq-addr down-cast in table form).
+// raw buffer. str_payload is the reader that resolves a String to the
+// address of its contiguous stride-1 payload — String in, address out (the
+// WASI materialization boundary; the seq-addr down-cast in table form).
 cname == "str_slice" || cname == "str_concat" || cname == "str_of_single_byte" || cname == "str_payload" || cname == "str_of_buf" || cname == "float_to_str" || cname == "float_zero_pad" || cname == "float_format_fixed" || cname == "float_format_scientific" || cname == "float_render_positive" || cname == "float_digits_to_str"
 
 // seq_force — bind the i-th argument's type to `ty` (a no-op past the end).
@@ -4255,9 +4269,7 @@ fn seq_force(ah, i, ty, span: ValidSpan) = if len(ah) > i {
 // never type a caller (the lib-first order made that scheme visible and
 // every `|> list_set(??, …)` pipe mismatched — 14 wheel sites). A
 // position typed by a fresh var (seq_unconstrained) is deliberately
-// unconstrained: the emit-dispatched generics (to_string/hash), the raw
-// construction boundaries (str_of_buf — the buffer word IS a String,
-// §4①), and the float formatters' digit-buffer heads.
+// unconstrained: the presence test (slot_present) reads any slot's word.
 fn seq_op_sig(cname: String, elem) = match cname {
   "last" => Some(([TList(elem)], elem)),
   "list_index" => Some(([TList(elem), TInt], elem)),
@@ -4268,17 +4280,17 @@ fn seq_op_sig(cname: String, elem) = match cname {
   "str_slice" => Some(([ty_string, TInt, TInt], ty_string)),
   "str_concat" => Some(([ty_string, ty_string], ty_string)),
   "str_of_single_byte" => Some(([TInt], ty_string)),
-  "str_payload" => // str_payload resolves a String to its contiguous stride-1 payload. The
-  // face leaves the word unconstrained, so each caller reads it as its use
-  // proves: a number where it is offset, an address where a memory op takes it.
-  Some(([ty_string], seq_unconstrained())),
-  "str_of_buf" => Some(([seq_unconstrained()], ty_string)),
+  "str_payload" => // str_payload resolves a String to the address of its contiguous stride-1
+  // payload; str_of_buf is the way back, a filled buffer's address read as
+  // the String it holds.
+  Some(([ty_string], TAddr)),
+  "str_of_buf" => Some(([TAddr], ty_string)),
   "float_to_str" => Some(([TFloat], ty_string)),
   "float_render_positive" => Some(([TFloat], ty_string)),
   "float_zero_pad" => Some(([TInt], ty_string)),
-  "float_format_fixed" => Some(([seq_unconstrained(), TInt], ty_string)),
-  "float_format_scientific" => Some(([seq_unconstrained(), TInt], ty_string)),
-  "float_digits_to_str" => Some(([seq_unconstrained(), TInt, TInt], ty_string)),
+  "float_format_fixed" => Some(([TList(TInt), TInt], ty_string)),
+  "float_format_scientific" => Some(([TList(TInt), TInt], ty_string)),
+  "float_digits_to_str" => Some(([TList(TInt), TInt, TInt], ty_string)),
   "slot_present" => Some(([seq_unconstrained()], TName("Bool", []))),
   "to_string" => Some(([seq_read_whole()], ty_string)),
   "hash" => Some(([seq_read_whole()], TInt)),
@@ -6948,6 +6960,20 @@ fn numeric_demand(lh, op, span: ValidSpan) = {
   }
 }
 
+// An operand already bound to an aggregate refuses its arithmetic site — the
+// demand's bound case, judged before the operands meet so it is the site's
+// one diagnostic.
+fn arith_refuses(h, op, span: ValidSpan) = match graph_chase(graph_chase_handle(h)) {
+  GNode(NBound(ty), _) => match arith_operand_class(ty) {
+    AoAggregate => {
+      report(EArithOnAggregate("`{binop_to_str(op)}` on {show_type(ty)}", span))
+      true
+    },
+    _ => false,
+  },
+  _ => false,
+}
+
 fn numeric_gate_op(g: NumericGate) = match g {
   NumericGate(r) => r.op,
 }
@@ -7605,7 +7631,15 @@ fn tail_may_grow(tail) = match tail {
 fn infer_binop(handle, op, lh, rh, span: ValidSpan) = {
   let lbl = binop_to_str(op)
   match binop_kind(op) {
-    BKArith => {
+    BKArith => // The demand is judged on both operands BEFORE they meet: an aggregate
+    // on either side refuses the site once, the unify that would report the
+    // same mistake as a mismatch is skipped, and the result is a hole, so
+    // the refusal does not echo where the result is used. Unified first,
+    // `p + 8` over an address reported the mismatch and the refusal both,
+    // and `8 + p` only mismatches — at the operator and again at the use.
+    if arith_refuses(lh, op, span) || arith_refuses(rh, op, span) {
+      graph_bind_hole(handle, Located(span, OpConstraint(lbl, Inferred("refused"), Inferred("operand"))))
+    } else {
       unify(lh, rh, span, OpConstraint(lbl, Inferred("left"), Inferred("right")))
       numeric_demand(lh, op, span)
       partiality_gate(handle, op, lh, rh, span)

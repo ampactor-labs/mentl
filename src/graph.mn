@@ -177,7 +177,7 @@ fn spine_put_module(ref spine, h, m) = {
 fn spine_module_name(ref spine, spine_open, m) = match spine_body_at(spine, spine_open, m) {
   NModule(mm) => mm.path,
   _ => {
-    load_i32(0 - 1)
+    out_of_range()
     ""
   },
 }
@@ -190,7 +190,7 @@ fn spine_module_name(ref spine, spine_open, m) = match spine_body_at(spine, spin
 // answering a fabricated 0 that every reader downstream would have to
 // re-check (the surrender-fallback this column exists to end).
 fn spine_module_at(spine, spine_open, handle) = {
-  if spine_band(handle) >= spine_open { load_i32(0 - 1) } else { 0 }
+  if spine_band(handle) >= spine_open { out_of_range() } else { 0 }
   // The cell holds the module handle BIASED BY ONE — the Option-niche word
   // this file already uses for mint_high's "0 = unlimited". It is not
   // decoration: a fresh graph's FIRST mint is handle 0, so the first module
@@ -198,7 +198,7 @@ fn spine_module_at(spine, spine_open, handle) = {
   // 0" from "never stamped" — measured, the day this column landed, as a
   // trap on handle 1 whose module really was 0.
   let cell = list_index(spine_page(spine, handle).module, spine_slot(handle))
-  if cell == 0 { load_i32(0 - 1) } else { 0 }
+  if cell == 0 { out_of_range() } else { 0 }
   cell - 1
 }
 
@@ -339,7 +339,7 @@ fn spine_body_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   NHole(0)
 } else {
   let cell = list_index(spine_page(spine, h).program, spine_slot(h))
-  if addr(cell) == 0 { NHole(0) } else { cell }
+  if slot_present(cell) { cell } else { NHole(0) }
 }
 
 // The birth-span column read — a virgin cell (never parse-indexed) is
@@ -349,14 +349,14 @@ fn spine_span_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   span_zero()
 } else {
   let cell = list_index(spine_page(spine, h).spans, spine_slot(h))
-  if addr(cell) == 0 { span_zero() } else { cell }
+  if slot_present(cell) { cell } else { span_zero() }
 }
 
 fn spine_comment_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
   ("", span_zero())
 } else {
   let cell = list_index(spine_page(spine, h).comments, spine_slot(h))
-  if addr(cell) == 0 { ("", span_zero()) } else { cell }
+  if slot_present(cell) { cell } else { ("", span_zero()) }
 }
 
 fn spine_canon_at(ref spine, spine_open, h) = if spine_band(h) >= spine_open {
@@ -1023,7 +1023,7 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // the caller and traps rather than storing a fact the trail cannot
   // carry. Not trailed for the same reason. The read is graph_bind's.
   {
-    if len(checkpoint_stack) > 0 { load_i32(0 - 1) } else { 0 }
+    if len(checkpoint_stack) > 0 { out_of_range() } else { 0 }
     resume() with accepted = push(accepted, (path, span, text, proof))
   },
   graph_bind_note(use_handle, bh) => // The bind-home column (lowering-is-a-column
@@ -1469,7 +1469,7 @@ fn graph_node_at(ref spine, mint_bound, idx) = if idx >= mint_bound {
   GNode(NFree(0), Fresh(idx))
 } else {
   let cell = list_index(spine_page(spine, idx).nodes, spine_slot(idx))
-  if addr(cell) == 0 { GNode(NFree(0), Fresh(idx)) } else { cell }
+  if slot_present(cell) { cell } else { GNode(NFree(0), Fresh(idx)) }
 }
 
 // Occurs check

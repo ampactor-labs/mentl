@@ -2248,28 +2248,47 @@ and this is the STATE.
   Open: each reader materializes the runs
   (`Hβ.parser.block-runs-read-by-each-reader`, riding with positions as
   cells).
-- **AN ADDRESS IS A TYPE OF ITS OWN — LANDED 2026-10-03 (#129, the first
-  of two pins).** An arena's exit moves a value by its type, and every
-  address was typed Int: one held where the exit looks was copied as a
-  number and the cell it named reclaimed under it — five probes silent on
-  the prior boot (the arena's value, a slot written raw, a record's field, a
-  list's element, bits copied by `mem_copy`). `Addr` is a type now
-  (`TAddr`): a word in every machine respect and not a number — arithmetic
-  on it refuses, it orders by magnitude (the one `WordOrder` both compares
-  read), it shows as the unsigned number it names (a generated leaf the
-  show collection demands) — and its move is opaque, so an address of the
-  region where the exit looks keeps the region. `Memory` gains `addr_at`,
+- **AN ADDRESS IS A TYPE OF ITS OWN, AND THE LIBRARY SPEAKS IT — CLOSED
+  2026-10-03 (#129, two pins).** An arena's exit moves a value by its type,
+  and every address was typed Int: one held where the exit looks was copied
+  as a number and the cell it named reclaimed under it — five probes silent
+  (the arena's value 109 for 14, a slot written raw 1 for 42, a record's
+  field 1 for 6, bits `mem_copy` carried 1 for 42, a list's element 7 for
+  12). THE FIRST PIN made `Addr` a type (`TAddr`): a word in every machine
+  respect and not a number — arithmetic on it refuses, it orders by
+  magnitude (the one `WordOrder` both compares read), it shows as the
+  unsigned number it names — and its move is opaque, so an address of the
+  region where the exit looks keeps the region; `Memory` gained `addr_at`,
   `addr_diff`, `load_addr`, `store_addr` (journaled with no leaf),
-  `null_addr` and the two puns where a value crosses the runtime's word
-  protocol. Found on the way, silent on the prior boot: a sum ordered a
-  nullary variant's sentinel against the other operand's ADDRESS, so `B(5)
-  < A` was false over `type T = B(Int) | A`; tags order first now, and the
-  wheel's own 28 sum compares took it. Open, the second pin, compiled by
-  this one: the library's raw code typed with the address
-  (`Hβ.arena.cast-addr-crosses-the-journal`) and arithmetic's refusal said
-  once per site (`Hβ.infer.arith-refusal-beside-a-mismatch`). Bits copied by
-  `mem_copy`, and a word computed from an address, stay the program's own
-  claim — the guarantee is about values.
+  `null_addr` and the two puns. THE SECOND PIN, compiled by the first: the
+  library speaks it — `alloc`, `heap_mark` and `Cast`'s `addr` answer an
+  address, every raw load and store takes one, the list runtime's node
+  links are addresses and its element words cross by the puns — and
+  arithmetic on an address is one refusal per site, judged on both operands
+  before they meet. Of the five probes, two keep the region now and two are
+  refused as written (an address stored where a word goes, one among
+  numbers); the copy answered 1 for 42 through this pin's compiler — the
+  first pin had declared the bits `mem_copy` copies the program's own claim,
+  and the probe refuted the boundary. A raw copy is OPAQUE now: bits carry
+  no type, so a copy that writes memory older than an open arena keeps that
+  arena's region and the exit reads no copied byte; the form first built
+  instead read every copied word at four byte offsets for something that
+  looked like an address of the region, a conservative collector's scan the
+  arena's own design had refused, and it is deleted. A store that says what
+  it stores keeps an arena reclaiming: a wide list slot copies its scalar as
+  the number it is (`scalar_copy`), where its raw copy kept the region (exit
+  1 for 42 on that form). Found on the
+  way: an install frame joined the instances of an effect its handler does
+  not answer (two `Cast`s beside an unrelated handler refused at
+  `main:0:0`), the JSON escaper wrote its count into the buffer it had
+  outgrown (`"a"` serialized as a NUL) and passed control bytes raw, a sum
+  ordered a nullary variant's sentinel against an address, and three floor
+  comments narrated unresolved references on every battery fixture. What
+  stays the program's own claim is a NUMBER made from an address — a pun, a
+  distance — since a number names nothing an exit could read. Open: pure
+  word arithmetic — bitwise operations, address offsets, the puns — is
+  declared in `Memory`, so a function doing only arithmetic cannot be
+  `Pure` (`Hβ.memory.word-arithmetic-is-memory`, the next landing).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

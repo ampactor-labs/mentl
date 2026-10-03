@@ -542,7 +542,7 @@ fn session_sock_loop(lfd, ast, ranges, manifest, answer, current) = {
 // tree's fresh generation — what the session learned, and nothing it only
 // computed on the way to the answer.
 fn session_cost(before) =
-  eprint_string("session: the answer cost {int_to_str(heap_mark() - before)} bytes of image\n")
+  eprint_string("session: the answer cost {int_to_str(addr_diff(heap_mark(), before))} bytes of image\n")
 
 // One stdin line = one answer, for a host that owns the process's input.
 // THE READ IS THE FRAME: the answer is written whole before the session
@@ -584,7 +584,7 @@ fn session_read_line(conn) = {
   let n = sock_read(conn, buf, cap)
   let got = if n < 0 { 0 } else { n }
   let str = bytes_buf(got)
-  mem_copy(str + 8, buf, got)
+  mem_copy(addr_at(str, 8), buf, got)
   let s = str_of_buf(str)
   let nl = find_char(s, byte_len(s), 0, 10)
   if nl < 0 { s } else { str_slice(s, 0, nl) }

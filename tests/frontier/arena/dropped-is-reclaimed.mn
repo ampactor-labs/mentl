@@ -9,6 +9,6 @@ fn main() = {
   let before = heap_mark()
   let s = churn(100) ~> arena
   let after = heap_mark()
-  let virgin = load_i32(after) == 0 && load_i32(after + 4096) == 0
+  let virgin = load_i32(after) == 0 && load_i32(addr_at(after, 4096)) == 0
   if s == 5000 && after == before && virgin { 42 } else { 1 }
 }

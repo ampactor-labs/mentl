@@ -39,30 +39,47 @@ import strings
 //
 // Every op mirrors a WASI preview1 import 1:1; the host runtime IS
 // the handler (lower maps each op to its `wasi_snapshot_preview1`
-// import — the import IS the handler install). Errno returns are
-// Int per the WASI ABI; refinement of errno spaces is Verify's
-// post-L2 work.
+// import — the import IS the handler install). A parameter the host
+// reads or writes memory through is an Addr; errno returns are Int per
+// the WASI ABI, and refinement of errno spaces is Verify's post-L2 work.
 effect WASI {
-  fd_write(Int, Int, Int, Int) -> Int
-  fd_read(Int, Int, Int, Int) -> Int
+  // (fd, iovs, iovs_len, nwritten)
+  fd_write(Int, Addr, Int, Addr) -> Int
+  // (fd, iovs, iovs_len, nread)
+  fd_read(Int, Addr, Int, Addr) -> Int
   fd_close(Int) -> Int
-  fd_prestat_get(Int, Int) -> Int
-  fd_prestat_dir_name(Int, Int, Int) -> Int
-  fd_fdstat_get(Int, Int) -> Int
-  fd_readdir(Int, Int, Int, Int, Int) -> Int
-  path_open(Int, Int, Int, Int, Int, Int, Int, Int, Int) -> Int
-  path_create_directory(Int, Int, Int) -> Int
-  path_filestat_get(Int, Int, Int, Int, Int) -> Int
-  path_unlink_file(Int, Int, Int) -> Int
-  path_rename(Int, Int, Int, Int, Int, Int) -> Int
+  // (fd, prestat)
+  fd_prestat_get(Int, Addr) -> Int
+  // (fd, path, path_len)
+  fd_prestat_dir_name(Int, Addr, Int) -> Int
+  // (fd, fdstat)
+  fd_fdstat_get(Int, Addr) -> Int
+  // (fd, buf, buf_len, cookie, bufused)
+  fd_readdir(Int, Addr, Int, Int, Addr) -> Int
+  // (dirfd, dirflags, path, path_len, oflags, rights_base, rights_inheriting,
+  // fdflags, opened_fd)
+  path_open(Int, Int, Addr, Int, Int, Int, Int, Int, Addr) -> Int
+  // (dirfd, path, path_len)
+  path_create_directory(Int, Addr, Int) -> Int
+  // (dirfd, flags, path, path_len, filestat)
+  path_filestat_get(Int, Int, Addr, Int, Addr) -> Int
+  // (dirfd, path, path_len)
+  path_unlink_file(Int, Addr, Int) -> Int
+  // (old_dirfd, old_path, old_len, new_dirfd, new_path, new_len)
+  path_rename(Int, Addr, Int, Int, Addr, Int) -> Int
   // The socket pair (2026-07-10, mentl serves natively): the host preopens
   // the LISTENER (wasmtime -S tcplisten); sock_accept yields a connection fd
   // the fd_* ops above already speak; poll_oneoff is the honest blocking
   // wait both nonblocking ends demand (lib/net.mn wraps them).
-  sock_accept(Int, Int, Int) -> Int
-  poll_oneoff(Int, Int, Int, Int) -> Int
-  args_sizes_get(Int, Int) -> Int
-  args_get(Int, Int) -> Int
+  //
+  // (fd, flags, accepted_fd)
+  sock_accept(Int, Int, Addr) -> Int
+  // (subscriptions, events, nsubscriptions, nevents)
+  poll_oneoff(Addr, Addr, Int, Addr) -> Int
+  // (argc, argv_buf_size)
+  args_sizes_get(Addr, Addr) -> Int
+  // (argv, argv_buf)
+  args_get(Addr, Addr) -> Int
   proc_exit(Int)
 }
 
@@ -75,10 +92,10 @@ effect WASI {
 // no in-image collecting sink is sound for a whole module), and host_exec
 // assembles, instantiates and runs the streamed module in its own instance
 // over its own memory, returning its exit as a value (a trap answers 134).
-// (ptr, len) pairs, the fd_write_bytes idiom; argv is NUL-joined.
+// (address, len) pairs, the fd_write_bytes idiom; argv is NUL-joined.
 effect Host {
-  host_wat_write(Int, Int)
-  host_exec(Int, Int) -> Int
+  host_wat_write(Addr, Int)
+  host_exec(Addr, Int) -> Int
 }
 
 // wasi_args — the process argv as a [String], read live from the host at
@@ -89,19 +106,19 @@ effect Host {
 // each argv[i] is a C-string materialized into a flat [len][bytes] Mentl string
 // (the read_stdin buffer→string layout). argv[0] is the program name, so the
 // self-compile (`m2 < wheel`, argc=1) still parses to VCompileStdin (len < 2).
-fn cstr_len(cstr, i) = if load_i8(cstr + i) == 0 { i } else { cstr_len(cstr, i + 1) }
+fn cstr_len(cstr, i) = if load_i8(addr_at(cstr, i)) == 0 { i } else { cstr_len(cstr, i + 1) }
 
 fn cstr_to_string(cstr) = {
   let n = cstr_len(cstr, 0)
   let s = bytes_buf(n)
-  mem_copy(s + 8, cstr, n)
+  mem_copy(addr_at(s, 8), cstr, n)
   str_of_buf(s)
 }
 
 fn wasi_args_build(argv_ptr, argc, i, acc) = if i >= argc {
   acc
 } else {
-  let cstr = load_i32(argv_ptr + i * 4)
+  let cstr = load_addr(addr_at(argv_ptr, i * 4))
   wasi_args_build(argv_ptr, argc, i + 1, push(acc, cstr_to_string(cstr)))
 }
 
@@ -149,8 +166,8 @@ handler fail_exit {
 
 // ─── The one syscall-marshal pair ──────────────────────────────
 //
-// fd_write_bytes — ONE fd_write over the contiguous span [ptr, ptr+len).
-// The iov + nwritten record is the syscall's argument marshaling,
+// fd_write_bytes — ONE fd_write over the contiguous span of len bytes from
+// ptr. The iov + nwritten record is the syscall's argument marshaling,
 // alloc'd per call: [ptr@0][len@4][nwritten@8]. Returns the host's
 // bytes-written count; the print family discards it (a stdout short-
 // write has no recovery worth a loop at this altitude), stream writers
@@ -158,10 +175,10 @@ handler fail_exit {
 // contract — partial writes + EAGAIN — so it marshals its own).
 fn fd_write_bytes(fd, ptr, len) = {
   let iov = alloc(12)
-  store_i32(iov, ptr)
-  store_i32(iov + 4, len)
-  fd_write(fd, iov, 1, iov + 8)
-  load_i32(iov + 8)
+  store_addr(iov, ptr)
+  store_i32(addr_at(iov, 4), len)
+  fd_write(fd, iov, 1, addr_at(iov, 8))
+  load_i32(addr_at(iov, 8))
 }
 
 // read_chunk — ONE fd_read of up to `size` bytes into buf. The twin
@@ -169,10 +186,10 @@ fn fd_write_bytes(fd, ptr, len) = {
 // read (0 = EOF).
 fn read_chunk(fd, buf, size) = {
   let iov = alloc(12)
-  store_i32(iov, buf)
-  store_i32(iov + 4, size)
-  fd_read(fd, iov, 1, iov + 8)
-  load_i32(iov + 8)
+  store_addr(iov, buf)
+  store_i32(addr_at(iov, 4), size)
+  fd_read(fd, iov, 1, addr_at(iov, 8))
+  load_i32(addr_at(iov, 8))
 }
 
 // Stdout
@@ -228,7 +245,7 @@ fn fd_read_all(fd) = {
   match fd_read_loop(fd, buf, 0, initial_cap) {
     (final_buf, total) => {
       let str = bytes_buf(total)
-      mem_copy(str + 8, final_buf, total)
+      mem_copy(addr_at(str, 8), final_buf, total)
       str_of_buf(str)
     },
   }
@@ -245,7 +262,7 @@ fn fd_read_loop(fd, buf, offset, capacity) = {
     (buf, capacity)
   } {
     (cur_buf, cur_cap) => {
-      let nread = read_chunk(fd, cur_buf + offset, chunk_size)
+      let nread = read_chunk(fd, addr_at(cur_buf, offset), chunk_size)
       if nread == 0 { (cur_buf, offset) } else { fd_read_loop(fd, cur_buf, offset + nread, cur_cap) }
     },
   }
@@ -276,7 +293,7 @@ fn read_stdin_line() = {
   match read_line_loop(buf, 0, initial_cap) {
     (final_buf, total) => {
       let str = bytes_buf(total)
-      mem_copy(str + 8, final_buf, total)
+      mem_copy(addr_at(str, 8), final_buf, total)
       str_of_buf(str)
     },
   }
@@ -298,7 +315,7 @@ fn read_line_loop(buf, offset, capacity) = match if offset + 1 > capacity {
       if b == 10 {
         (cur_buf, offset)
       } else {
-        store_i8(cur_buf + offset, b)
+        store_i8(addr_at(cur_buf, offset), b)
         read_line_loop(cur_buf, offset + 1, cur_cap)
       }
     }
@@ -349,8 +366,9 @@ fn fs_at(path_str) = match fs_path_view(path_str) {
       (best_fd, best_len) => if best_fd == 0 {
         (fs_dir_fd(), pp, plen)
       } else {
-        let skip = if best_len < plen && load_i8(pp + best_len) == 47 { best_len + 1 } else { best_len }
-        (best_fd, pp + skip, plen - skip)
+        let skip =
+          if best_len < plen && load_i8(addr_at(pp, best_len)) == 47 { best_len + 1 } else { best_len }
+        (best_fd, addr_at(pp, skip), plen - skip)
       },
     }
   },
@@ -363,7 +381,7 @@ fn fs_best_preopen(pp, plen, fd, best_fd, best_len) = if fd >= 16 {
 } else {
   let prestat = alloc(8)
   if fd_prestat_get(fd, prestat) == 0 && load_i8(prestat) == 0 {
-    let nlen = load_i32(prestat + 4)
+    let nlen = load_i32(addr_at(prestat, 4))
     let nbuf = alloc(nlen)
     if fd_prestat_dir_name(fd, nbuf, nlen) == 0 && fs_preopen_prefix(nbuf, nlen, pp, plen) && nlen > best_len {
       fs_best_preopen(pp, plen, fd + 1, fd, nlen)
@@ -385,12 +403,12 @@ fn fs_preopen_prefix(nbuf, nlen, pp, plen) = if nlen == 1 && load_i8(nbuf) == 47
 } else if !fs_bytes_eq(nbuf, pp, nlen, 0) {
   false
 } else {
-  nlen == plen || load_i8(pp + nlen) == 47
+  nlen == plen || load_i8(addr_at(pp, nlen)) == 47
 }
 
 fn fs_bytes_eq(a, b, n, i) = if i >= n {
   true
-} else if load_i8(a + i) != load_i8(b + i) {
+} else if load_i8(addr_at(a, i)) != load_i8(addr_at(b, i)) {
   false
 } else {
   fs_bytes_eq(a, b, n, i + 1)
@@ -437,13 +455,13 @@ fn fs_readdir_loop(fd, cookie, acc) = {
 fn fs_parse_dirents(buf, end, off, acc, last_cookie, saw_whole) = if off + 24 > end {
   (acc, last_cookie, saw_whole)
 } else {
-  let d_next = load_i32(buf + off)
-  let namlen = load_i32(buf + off + 16)
+  let d_next = load_i32(addr_at(buf, off))
+  let namlen = load_i32(addr_at(buf, off + 16))
   if off + 24 + namlen > end {
     (acc, last_cookie, saw_whole)
   } else {
     let name = bytes_buf(namlen)
-    mem_copy(name + 8, buf + off + 24, namlen)
+    mem_copy(addr_at(name, 8), addr_at(buf, off + 24), namlen)
     fs_parse_dirents(buf, end, off + 24 + namlen, push(acc, str_of_buf(name)), d_next, true)
   }
 }

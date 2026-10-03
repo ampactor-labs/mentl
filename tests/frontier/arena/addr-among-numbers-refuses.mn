@@ -1,0 +1,16 @@
+// An address in a list of numbers: a list holds one element type, and an
+// address is not a number, so `[b, 5]` is refused (E_TypeMismatch). With
+// `alloc` answering an Int, on boot 2198ed97 with that pin's library, the
+// list moved as numbers, the buffer its first element named was reclaimed
+// under it, and the program answered 7 for 12 with no diagnostic.
+fn mk() = {
+  let b = alloc(16)
+  store_i32(b, 7)
+  [b, 5]
+}
+
+fn main() = {
+  let r = mk() ~> arena
+  let xs = [9, 9, 9, 9]
+  load_i32(r[0]) + r[1] + len(xs) - 4
+}

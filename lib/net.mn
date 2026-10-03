@@ -16,9 +16,9 @@ fn poll_fd(fd, tag) = {
   // userdata lo (an arbitrary marker)
   store_i32(sub, 7)
   // userdata hi
-  store_i32(sub + 4, 0)
-  store_i8(sub + 8, tag)
-  store_i32(sub + 16, fd)
+  store_i32(addr_at(sub, 4), 0)
+  store_i8(addr_at(sub, 8), tag)
+  store_i32(addr_at(sub, 16), fd)
   let ev = alloc(32)
   let nev = alloc(4)
   poll_oneoff(sub, ev, 1, nev)
@@ -63,13 +63,13 @@ fn sock_read(fd, buf, cap) = {
   poll_fd(fd, 1)
   let iov = alloc(8)
   let nread_ptr = alloc(4)
-  store_i32(iov, buf)
-  store_i32(iov + 4, cap)
+  store_addr(iov, buf)
+  store_i32(addr_at(iov, 4), cap)
   let errno = fd_read(fd, iov, 1, nread_ptr)
   if errno == 0 { load_i32(nread_ptr) } else if errno == 6 { sock_read(fd, buf, cap) } else { 0 }
 }
 
-// sock_write_all — write the whole [ptr, ptr+len) region, looping on
+// sock_write_all — write the whole region of len bytes from ptr, looping on
 // partial writes (a socket buffer fills mid-stream on anything big) and
 // polling writable on EAGAIN. The write loop IS the contract; a single
 // fd_write on a 1.9MB wasm body silently truncates.
@@ -78,12 +78,12 @@ fn sock_write_all(fd, ptr, len) = if len <= 0 {
 } else {
   let iov = alloc(8)
   let nw_ptr = alloc(4)
-  store_i32(iov, ptr)
-  store_i32(iov + 4, len)
+  store_addr(iov, ptr)
+  store_i32(addr_at(iov, 4), len)
   let errno = fd_write(fd, iov, 1, nw_ptr)
   if errno == 0 {
     let nw = load_i32(nw_ptr)
-    if nw <= 0 { () } else { sock_write_all(fd, ptr + nw, len - nw) }
+    if nw <= 0 { () } else { sock_write_all(fd, addr_at(ptr, nw), len - nw) }
   } else if errno == 6 {
     poll_fd(fd, 2)
     sock_write_all(fd, ptr, len)

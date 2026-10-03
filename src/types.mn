@@ -4559,7 +4559,7 @@ fn diag_report_at(diag, dmod) = diag_report(diag, diag_line(diag, dmod), dmod)
 fn module_name_of_handle(h) = match graph_node_body(h) {
   NModule(m) => m.path,
   _ => {
-    load_i32(0 - 1)
+    out_of_range()
     ""
   },
 }

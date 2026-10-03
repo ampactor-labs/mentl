@@ -33,10 +33,10 @@ fn run(i: Int, acc: Float) -> Float = if i == 0 { acc } else { run(i - 1, acc + 
 fn measured() = {
   let before = heap_mark()
   let r = run(1000, 0.0)
-  let grown = heap_mark() - before
+  let grown = addr_diff(heap_mark(), before)
   (grown, r)
 }
 
-fn main() = match (measured()) ~> accumulate_shape {
+fn main() = match measured() ~> accumulate_shape {
   (grown, r) => if grown == 0 && r == 250250.0 { 40 } else { 41 },
 }

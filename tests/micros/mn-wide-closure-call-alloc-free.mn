@@ -12,11 +12,12 @@ fn twice(x: Float) -> Float = x * 2.0
 
 fn step(f, x: Float) with !Alloc = f(x)
 
-fn run(f, i: Int, acc: Float) -> Float = if i == 0 { acc } else { run(f, i - 1, acc + step(f, 0.5)) }
+fn run(f, i: Int, acc: Float) -> Float =
+  if i == 0 { acc } else { run(f, i - 1, acc + step(f, 0.5)) }
 
 fn main() = {
   let before = heap_mark()
   let r = run(twice, 1000, 0.0)
-  let grown = heap_mark() - before
+  let grown = addr_diff(heap_mark(), before)
   if grown == 0 && r == 1000.0 { 40 } else { 41 }
 }

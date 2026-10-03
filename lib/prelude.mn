@@ -107,12 +107,10 @@ fn map_result(f, res) = match res {
 // One effect.  Every collection operation is a handler on it.
 effect Iterate {
   yield(element)
-  // result() DELIVERS the handler's collected value — the accumulator for
-  // fold, [b] for map, the count for count — so its return type IS the
-  // handler's result, polymorphic in `r` (the case rule; `r` = a type param).
-  // Declared `-> ()` it forced every `resume(<value>)` arm to Unit, collapsing
-  // fold's accumulator to () — the bug infer_seq_op existed to override.  With
-  // `-> r` each collection op DERIVES its own type from its handler's resume.
+  // result() delivers the handler's collected value — the accumulator for
+  // fold, the mapped list for map, the count for count — so its return type
+  // is a type parameter, and each collection op derives its own type from
+  // what its handler resumes with.
   result() -> r
 }
 

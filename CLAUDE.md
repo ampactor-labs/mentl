@@ -487,7 +487,10 @@
 > `mentl query <entry> unreferenced` (one hop) · `unreachable` (transitive
 > from main, fn decls — partitioned into modules CARRYING dead weight, with
 > their reached/unreached ratio, and modules the entry links WHOLE and never
-> calls into) · `refs of NAME` · `census <shape>` · `decls` ·
+> calls into) · `refs of NAME` · `census <shape>` · `decls` (each of
+> these, and `text`/`prose` below, also answers over a DIRECTORY of
+> independent programs — `mentl query tests/frontier/arena "refs of X"` —
+> every program judged on its own link, its own sites kept) ·
 > `variants NAME` (an ADT's constructors, or an effect's operations, with
 > their arities) · `ghosts`
 > (every cell the parser minted and the judgment never bound) ·

@@ -31,6 +31,6 @@ fn train(w: Float, i: Int) -> Float = if i == 0 { w } else { train(train_step(w,
 fn main() -> Int = {
   let before = heap_mark()
   let w = train(0.0, 1000)
-  let grown = heap_mark() - before
+  let grown = addr_diff(heap_mark(), before)
   if grown == 0 && float_to_int(w + 0.5) == 3 { 40 } else { 41 }
 }

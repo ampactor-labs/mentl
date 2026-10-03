@@ -2,26 +2,31 @@
 effect G {
   g_mint(Int) -> Int
 }
+
 effect D {
-  d_log(Int) -> ()
+  d_log(Int)
 }
+
 handler g_h with ctr = 50 {
   g_mint(n) => resume(ctr + n),
 }
+
 handler d_h with seen = 0 {
   d_log(n) => resume() with seen = n,
 }
+
 fn deep(span) with G + D = {
   d_log(span)
   g_mint(span)
 }
+
 fn mid(e) with G + D + Memory = {
-  store_i32(0, 0)
+  store_i32(null_addr(), 0)
   deep(e)
 }
+
 fn outer(x) with G + D + Memory = mid(x)
+
 fn main(q) = {
   outer(7)
-}
-  ~> g_h
-  ~> d_h
+} ~> g_h ~> d_h

@@ -257,7 +257,7 @@ fn scan_string_loop(src, pos, buf, written, cap) = if pos >= byte_len(src) {
   } else {
     match grow_buf_if_needed(buf, written, cap) {
       (buf2, cap2) => {
-        store_i8(buf2 + 8 + written, b)
+        store_i8(addr_at(buf2, 8 + written), b)
         scan_string_loop(src, pos + 1, buf2, written + 1, cap2)
       },
     }
@@ -269,7 +269,7 @@ fn grow_buf_if_needed(buf, written, cap) = if written < cap {
 } else {
   let new_cap = cap * 2
   let new_buf = bytes_buf(new_cap)
-  mem_copy(new_buf + 8, buf + 8, written)
+  mem_copy(addr_at(new_buf, 8), addr_at(buf, 8), written)
   (new_buf, new_cap)
 }
 
@@ -281,7 +281,7 @@ fn handle_escape(src, pos, buf, written, cap) = if pos >= byte_len(src) {
     (b_out, ok) => if ok {
       match grow_buf_if_needed(buf, written, cap) {
         (buf2, cap2) => {
-          store_i8(buf2 + 8 + written, b_out)
+          store_i8(addr_at(buf2, 8 + written), b_out)
           scan_string_loop(src, pos + 1, buf2, written + 1, cap2)
         },
       }
@@ -442,57 +442,46 @@ fn json_serialize(v) = match v {
 
 fn serialize_string(s) = "\"{escape_string(s)}\""
 
-// escape_string — escape JSON-special bytes (\, ", control chars).
-// Builds a fresh buffer; caller frees nothing (bump allocator).
+// escape_string — the JSON spelling of a byte string: the bytes RFC 8259
+// requires escaped (quote, reverse solidus, every control byte) take their
+// escape, and the rest stand as themselves. Two passes as topology, the
+// str_escape form: a fold counts the escaped length for the one
+// allocation, then `each` streams every byte's spelling into the ByteSink
+// whose cursor is the handler's state. The buffer is the length it needs,
+// so no pass grows it.
 fn escape_string(s) = {
-  let n = byte_len(s)
-  let buf = bytes_buf(n * 2)
-  store_i32(buf, 0)
-  let written = escape_string_loop(s, 0, n, buf, 0, n * 2)
-  store_i32(buf, written)
-  str_of_buf(buf)
+  let ptr = s |> fold(0, json_escape_len_acc) |> bytes_buf
+  s |> each(json_escape_emit) ~> byte_sink(ptr)
+  str_of_buf(ptr)
 }
 
-fn escape_string_loop(s, i, n, buf, written, cap) = if i >= n {
-  written
-} else {
-  let b = byte_at(s, i)
-  match grow_buf_if_needed(buf, written + 2, cap) {
-    (buf1, cap1) => // "
-    if b == 34 {
-      store_i8(buf1 + 8 + written, 92)
-      store_i8(buf1 + 8 + written + 1, 34)
-      escape_string_loop(s, i + 1, n, buf1, written + 2, cap1)
-    }
-    // \
-    else if b == 92 {
-      store_i8(buf1 + 8 + written, 92)
-      store_i8(buf1 + 8 + written + 1, 92)
-      escape_string_loop(s, i + 1, n, buf1, written + 2, cap1)
-    }
-    // newline
-    else if b == 10 {
-      store_i8(buf1 + 8 + written, 92)
-      store_i8(buf1 + 8 + written + 1, 110)
-      escape_string_loop(s, i + 1, n, buf1, written + 2, cap1)
-    }
-    // CR
-    else if b == 13 {
-      store_i8(buf1 + 8 + written, 92)
-      store_i8(buf1 + 8 + written + 1, 114)
-      escape_string_loop(s, i + 1, n, buf1, written + 2, cap1)
-    }
-    // tab
-    else if b == 9 {
-      store_i8(buf1 + 8 + written, 92)
-      store_i8(buf1 + 8 + written + 1, 116)
-      escape_string_loop(s, i + 1, n, buf1, written + 2, cap1)
-    } else {
-      store_i8(buf1 + 8 + written, b)
-      escape_string_loop(s, i + 1, n, buf1, written + 1, cap1)
-    },
+fn json_escape_len_acc(acc, b) with Pure = acc + json_escape_len(b)
+
+// The short escapes are two bytes; any other control byte is the six-byte
+// `\u00XX`; everything else is itself.
+fn json_escape_len(b) with Pure =
+  if b == 34 || b == 92 || b == 10 || b == 13 || b == 9 { 2 } else if b < 32 { 6 } else { 1 }
+
+fn json_escape_emit(b) = {
+  let k = json_escape_len(b)
+  if k == 1 {
+    emit_byte(b)
+  } else if k == 2 {
+    emit_byte(92)
+    emit_byte(json_escape_tail(b))
+  } else {
+    emit_byte(92)
+    emit_byte(117)
+    emit_byte(48)
+    emit_byte(48)
+    emit_byte(hex_nibble(i32_and(b / 16, 15)))
+    emit_byte(hex_nibble(i32_and(b, 15)))
   }
 }
+
+// The letter after the backslash of a two-byte escape.
+fn json_escape_tail(b) with Pure =
+  if b == 10 { 110 } else if b == 13 { 114 } else if b == 9 { 116 } else { b }
 
 fn serialize_array(items) = "[{serialize_array_inner(items, 0, len(items), "")}]"
 

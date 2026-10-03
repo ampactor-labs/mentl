@@ -38,12 +38,18 @@ effect Thread {
 // `!SharedMemory` proves no cross-instance synchronization; `Pure +
 // !SharedMemory` is the strictest parallelizable-no-sync contract.
 effect SharedMemory {
-  atomic_load_i32(Int) -> Int
-  atomic_store_i32(Int, Int)
-  atomic_rmw(Int, RmwOp, Int) -> Int
-  atomic_cmpxchg(Int, Int, Int) -> Int
-  wait_i32(Int, Int, Int) -> WaitResult
-  notify(Int, Int) -> Int
+  // (addr) -> value
+  atomic_load_i32(Addr) -> Int
+  // (addr, value)
+  atomic_store_i32(Addr, Int)
+  // (addr, op, operand) -> the word before
+  atomic_rmw(Addr, RmwOp, Int) -> Int
+  // (addr, expected, replacement) -> the word before
+  atomic_cmpxchg(Addr, Int, Int) -> Int
+  // (addr, expected, timeout)
+  wait_i32(Addr, Int, Int) -> WaitResult
+  // (addr, count) -> the waiters woken
+  notify(Addr, Int) -> Int
   fence()
 }
 

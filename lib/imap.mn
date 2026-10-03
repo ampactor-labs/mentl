@@ -95,7 +95,7 @@ fn wmap_pop(idx, k: Int) = {
   let b = wmap_bucket(idx, k)
   let bucket = list_index(idx, b)
   match last(bucket) {
-    (bk, _) => if bk == k { 0 } else { load_i32(0 - 1) },
+    (bk, _) => if bk == k { 0 } else { out_of_range() },
   }
   list_set(idx, b, drop_last(bucket))
 }

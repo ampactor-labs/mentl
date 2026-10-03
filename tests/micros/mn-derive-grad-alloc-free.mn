@@ -36,6 +36,6 @@ fn main() -> Int = {
   let ws = {a: 2.0, b: 1.0}
   let before = heap_mark()
   let total = spin(ws, 3.0, 10.0, 1000, 0.0)
-  let grown = heap_mark() - before
+  let grown = addr_diff(heap_mark(), before)
   if grown == 0 && float_to_int(total + 0.5) == 360000 { 40 } else { 41 }
 }

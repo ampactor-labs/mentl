@@ -1869,6 +1869,14 @@ generic, like a polymorphic function), and one the arms share — State's `s`,
 read by `get` and written by `set` — stays the effect's parameter. The
 handler declaration decides it, since only the arms know whether they hold
 the type fixed.
+▶ A THIRD FACE, CLOSED 2026-10-03 (#129, pin 10cd1956fefa7abf): an install frame joined
+the same-named instances of EVERY effect its body performed, where the join
+the type face describes belongs only to the effects its handler answers. Two
+`Cast`s at two types inside an unrelated handler's install refused with
+`List(Int) vs () -> Int` at `main:0:0` on boot 2198ed97
+(`tests/micros/mn-cast-two-types-one-install.mn`, 42 now). The frame joins
+only what its handler answers (`inf_install_absorbs`); the type face above
+stands.
 
 `Hβ.tools.cost-ratchet-reads-one-sample` — RESOLVED 2026-09-07, the banked
 fix built as prescribed. `read_cost` (tools/march.sh) no longer convicts on
@@ -3549,29 +3557,53 @@ at the store a value no leaf can move into an older one, instead of keeping
 the region at the exit. A language arc of its own — region polymorphism in
 rows — never a precondition of the journal's soundness.
 
-`Hβ.arena.cast-addr-crosses-the-journal` — OPEN, BORN 2026-10-03, measured;
-its first pin LANDED the same day (#129, pin 2198ed97). An arena's exit moves
-a value by its type, and every address was typed Int: an address held where
-the exit looks was copied as a number, and the cell it named was reclaimed
-under it. Five probes measured it silent on boot 0a096302 — the arena's
-value 109 for 14, a slot written raw 1 for 42, a record's field 1 for 6, a
-list's element 7 for 12, bits copied by `mem_copy` 1 for 42. THE FORM, built
-at the first pin: `Addr` is a type of its own (`TAddr`) — a word that is not
-a number, compared by identity, ordered by magnitude, shown unsigned — and
-its move is opaque, so an address of the region where the exit looks keeps
-the region; `Memory` carries the ops that move, measure, read and write one,
-`store_addr` journaled with no leaf. THE SECOND PIN, by the compiler the
-first one is (the boot reads an undeclared `Addr` as a nominal with no
-variants, so the library cannot name the type until a compiler that knows it
-compiles it): the library's raw code typed — `alloc`, `heap_mark` and
-`Cast`'s `addr` answering an address, the raw loads and stores taking one,
-`str_payload`'s face an address and `str_of_buf` taking one, the list
-runtime's node links addresses and its element words behind the two puns,
-the virgin-slot tests `slot_present`, the deliberate out-of-bounds reads one
-helper — and the four Int fixtures beside the typed ones. What stays the
-program's own claim, by the form: a word COMPUTED from an address (a
-distance added to a mark) and bits copied by `mem_copy`; the guarantee is
-about values, and a bounds proof over raw memory is the generative peer.
+`Hβ.arena.cast-addr-crosses-the-journal` — CLOSED 2026-10-03 (#129, two
+pins: 2198ed97, then 10cd1956fefa7abf), measured. An arena's exit moves a value by its
+type, and every address was typed Int: an address held where the exit looks
+was copied as a number, and the cell it named was reclaimed under it. Five
+probes measured it silent on boot 0a096302 — the arena's value 109 for 14, a
+slot written raw 1 for 42, a record's field 1 for 6, a list's element 7 for
+12, bits copied by `mem_copy` 1 for 42 — and boot 2198ed97 with its own
+library answered all five the same. THE FIRST PIN: `Addr` is a type of its
+own (`TAddr`) — a word that is not a number, compared by identity, ordered by
+magnitude, shown unsigned — and its move is opaque, so an address of the
+region where the exit looks keeps the region; `Memory` carries the ops that
+move, measure, read and write one, `store_addr` journaled with no leaf. THE
+SECOND PIN, by the compiler the first one is (the boot reads an undeclared
+`Addr` as a nominal with no variants, so the library cannot name the type
+until a compiler that knows it compiles it): the library's raw code typed —
+`alloc`, `heap_mark` and `Cast`'s `addr` answering an address, the raw loads
+and stores taking one, `str_payload`'s face an address and `str_of_buf`
+taking one, the list runtime's node links addresses and its element words
+behind the two puns, the virgin-slot tests `slot_present`, the deliberate
+out-of-bounds reads one helper. On it the arena's value and the record's
+field keep the region (14, 6); the slot written raw and the list's element
+are refused as written, an address stored where a word goes and one among
+numbers (`arena/addr-stored-as-word-refuses`,
+`arena/addr-among-numbers-refuses`), and their typed forms answer 42 and 12.
+THE COPY REFUTED THIS ENTRY'S OWN BOUNDARY. It said bits `mem_copy` copies
+stay the program's own claim, and an address a typed store wrote into a
+young buffer, copied by `mem_copy` into older memory, answered 1 for 42
+through the second pin's compiler: the program wrote no pun, its bytes just
+carried no type. A raw copy is OPAQUE: a copy that writes memory older than
+the open arena journals its destination with a leaf that keeps the region
+(`$mem_copy_j`), and the exit reads no copied byte — `arena/addr-copy-keeps`
+answers 42, and 1 on boot 2198ed97 compiling this pin's library, whose emit
+has no barrier on a copy. The form built first READ the copy: every word it
+wrote was journaled raw and the exit checked each at all four byte offsets
+for a value of the region — a conservative collector's scan, the shape the
+arena's design refused at its first kill, guessing addresses from numbers
+in the very pin whose law is that a number names nothing. It was marched,
+questioned before it was committed, and deleted. Every `mem_copy` in the
+wheel writes a buffer allocated just before it but one: the wide arm of
+`store_strided`, which copied a float's bytes into a packed list slot that
+may be older — opaque, that keeps the region on every wide `list_set` into
+an older list (`arena/wide-slot-reclaims`, exit 1 for 42 on that form). A
+wide slot holds a number by the value ontology, so it is copied as one
+(`scalar_copy`: `store_f64` of what `load_f64` read), and nothing in the
+wheel or the library journals a copy. What stays the program's claim is a
+NUMBER made from an address — a pun through `addr_word`, a distance added
+to one — since a number names nothing the exit could read.
 
 `Hβ.emit.sum-order-ranks-a-sentinel-against-an-address` — CLOSED 2026-10-03
 (#129, pin 2198ed97). A sum's generated compare took a nullary variant's
@@ -3585,16 +3617,33 @@ tags name one variant, so two sentinels answer 0 and two records compare
 their payloads (`emit_one_compare_sum_helper`). The wheel's own 28 sum
 compares took it. `tests/micros/mn-sum-order-tag-first.mn`.
 
-`Hβ.infer.arith-refusal-beside-a-mismatch` — OPEN, BORN 2026-10-03
-(diagnostic, sound). Arithmetic unifies its operands before it demands a
-number of them, so `p + 8` over an address reports the mismatch of `Addr`
-with `Int` and then `E_ArithOnAggregate` — two diagnostics for one mistake,
-as any aggregate operand beside a number takes — and `8 + p` reports only
-mismatches, at the operator and again where its result is used, the demand
-being read off the left operand (both measured on the pin's m2). The form: the
-demand is judged on both operands before they meet, and a refusal there
-stands for the site, the unify skipped. Rides the second pin of #129, whose
-rewrites of raw address arithmetic make the noise matter.
+`Hβ.infer.arith-refusal-beside-a-mismatch` — CLOSED 2026-10-03 (#129, pin
+10cd1956fefa7abf). Arithmetic unified its operands before it demanded a number of them,
+so `p + 8` over an address reported the mismatch of `Addr` with `Int` and
+then `E_ArithOnAggregate` — two diagnostics for one mistake, as any aggregate
+operand beside a number took — and `8 + p` reported only mismatches, at the
+operator and again where its result was used, the demand being read off the
+left operand (both measured on the first pin's m2). The demand is judged on
+both operands before they meet now (`arith_refuses`), and a refusal stands
+for the site: the result is a hole and the unify is skipped, so `p + 8` and
+`8 + p` each report one `E_ArithOnAggregate` and nothing downstream
+(measured on the second pin's m2; `tests/micros/mn-addr-arith-refuses.mn`).
+
+`Hβ.memory.word-arithmetic-is-memory` — OPEN, BORN 2026-10-03 (imprecision,
+sound). `Memory` declares the operations that compute on a word beside those
+that read and write memory: `i32_and`, `i32_or`, `i32_xor`, `i32_shl`, and
+since #129 `addr_at`, `addr_diff`, `null_addr` and the two puns. None of them
+touches memory, so a function doing only word arithmetic is charged `Memory`
+and cannot be `Pure` — `wav_data`, an offset from a buffer's address, lost
+its `with Pure` at #129's second pin. THE FORM: word arithmetic is a
+primitive the compiler registers, as it registers `float_of_int`, and
+`Memory` holds the operations that read and write memory and nothing else.
+TWO PINS by the bootstrap seam: the compiler learns the primitives while the
+library still declares the ops (the declaration shadows them, so nothing
+moves), then the library deletes its declarations. The retype of every
+fixture that computes on an address is the census its first move needs, and
+`mentl query <dir> "refs of NAME"` (grown at #129's second pin) answers it
+across the fixture directories without a grep.
 
 `Hβ.arena.claims-of-a-cycle` — OPEN, BORN 2026-10-03 (imprecision, sound).
 A function's age claim is a least fixpoint over its own recursive calls; a
@@ -3617,9 +3666,15 @@ direct calls. A lambda's parameters have no claim, and a function reached as
 a value journals its parameter stores from its base body, where the stored
 value's type is a variable and so has no leaf: the exit keeps the region.
 `list_set` reached as a value is the same case at the primitive, through its
-table face. The form: a reference at a known instantiation demands the
-callee's moved-shape twin exactly as a direct call does — a reference is a
-use site with an instantiation.
+table face. Until the form lands, the exit asks such a slot's word whether it
+lies in the region: the stored VALUE's own word face, a handle or a scalar,
+read conservatively — a scalar that happens to fall there keeps the region,
+never the reverse. It is the one place the exit still reads a word whose
+type it does not know (a raw copy's bytes are never read since #129's second
+pin: the copy is opaque and keeps). The form: a reference at a known
+instantiation demands the callee's moved-shape twin exactly as a direct call
+does — a reference is a use site with an instantiation — and the typed twin
+deletes the read.
 
 `Hβ.infer.nested-fn-siblings-do-not-hoist` — CLOSED 2026-10-03 (#126).
 SYNTAX promised that a block's nested fns are hoisted into a local letrec
@@ -11910,8 +11965,8 @@ judgment's high-water 288.0 MB against 511.3 MB, the census 4,487 exits,
 (`Hβ.arena.extents-beyond-the-judgment`, closed the same day by
 Arena·P2), `Hβ.arena.closure-evac-face`,
 `Hβ.arena.per-instance-regions`, `Hβ.arena.region-typed-mutation`,
-`Hβ.arena.cast-addr-crosses-the-journal`, `Hβ.arena.claims-of-a-cycle`,
-`Hβ.arena.constructor-results-are-fresh`,
+`Hβ.arena.cast-addr-crosses-the-journal` (closed by #129's two pins),
+`Hβ.arena.claims-of-a-cycle`, `Hβ.arena.constructor-results-are-fresh`,
 `Hβ.arena.closure-parameter-stores`.
 
 `Hβ.own.use-after-move` — BUILT (2026-08-07, pin 8ba768c810c4, before

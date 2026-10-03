@@ -607,12 +607,18 @@ fn driver_compile_entry(ref entry_module) = {
 // per-decl arena's image/scratch split, which the old comment named as
 // the thing the capacity would dissolve with — that split makes the image
 // SMALLER, a good and separate win; it was never what made it unwritable.
+//
+// No continuation names this image: a warm start re-enters through the
+// roots the globals record restores (`warm_asts` and its siblings), so the
+// header's continuation word is the null address. It named the asts list
+// as though a list were the record a resume enters, and no reader ever
+// took it.
 fn driver_warm_persist(ref entry_module, ref asts, ref pairs) = if diag_errors() == 0 {
   fs_mkdir(".build")
   list_set(warm_asts, 0, asts)
   list_set(warm_manifest, 0, pairs)
   list_set(warm_entry, 0, entry_module)
-  persist(image_header(addr(asts)), driver_warm_path(entry_module))
+  persist(image_header(null_addr()), driver_warm_path(entry_module))
 } else {
   ()
 }

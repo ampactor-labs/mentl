@@ -7,8 +7,8 @@
 fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
 
 fn cell(v) = {
-  let p = word_addr(alloc(8))
-  store_i32(addr_word(p), v)
+  let p = alloc(8)
+  store_i32(p, v)
   p
 }
 
@@ -21,6 +21,6 @@ fn cells() = {
 fn main() = {
   let ps = cells() ~> arena
   let junk = build(400)
-  let total = load_i32(addr_word(ps[0])) + load_i32(addr_word(ps[1])) + load_i32(addr_word(ps[2]))
+  let total = load_i32(ps[0]) + load_i32(ps[1]) + load_i32(ps[2])
   if total == 12 && len(junk) == 400 && arena_stat(ArKept) == 1 { 42 } else { 1 }
 }

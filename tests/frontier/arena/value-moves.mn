@@ -7,7 +7,7 @@ fn main() = {
   let before = heap_mark()
   let xs = build(200) ~> arena
   let after = heap_mark()
-  let grew = after - before
+  let grew = addr_diff(after, before)
   if fold(0, add_int, xs) == 20100 && len(xs) == 200 && grew < 40000 && arena_stat(ArExits) == 1 {
     42
   } else {

@@ -2139,7 +2139,7 @@ fn name_strs_minus(names, mask) = filter({ n => !any(eff_name_is(n), mask) }, na
 // walk of the plan found when the cost ratchet refused a landing 22 MB
 // heavier at every other step's size, so it stands as a line of its own.
 fn reach_heap_line() = match diag_scope_of() {
-  ScopeAll => eprint_string("heap: {int_to_str(heap_mark())} byte(s) when the emitted reach settles\n"),
+  ScopeAll => eprint_string("heap: {heap_mark()} byte(s) when the emitted reach settles\n"),
   ScopeNone => (),
   ScopeModule(_) => (),
 }
@@ -4631,17 +4631,20 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw) = {
 // twinned by the class that move needs. A list slot (`list_set`'s direct
 // call, through `$list_set_j`), a handler's state commit and a `<~` tick each
 // write the leaf where the store happens; a store whose value's type no twin
-// bound writes leaf 0, as does `list_set` reached as a value (through its
-// table face), and a word stores with no barrier at all. Only stores
-// into memory below the innermost open arena's mark are journaled, and only
-// while one is open — outside, a barrier costs one compare. The journal's
-// block is the instance's first allocation (below).
+// bound writes leaf 0, as do `list_set` reached as a value (through its
+// table face) and `store_addr`, and a word stores with no barrier at all.
+// Bytes `mem_copy` writes carry no type, so a copy into older memory
+// journals its destination with a leaf that keeps the region (-1), and no
+// copied byte is ever read. Only stores into memory below the innermost open
+// arena's mark are journaled, and only while one is open — outside, a
+// barrier costs one compare. The journal's block is the instance's first
+// allocation (below).
 //
 // THE EXIT asks no one. The sweep checks every journaled slot that holds a
-// value of the region: an entry whose type its barrier could not see (leaf
-// 0 — a function, a continuation, a variable no twin bound) and an
-// overflowed journal KEEP the region, nothing moved, which is sound for any
-// program. Otherwise every such value moves through its leaf into scratch
+// value of the region — an entry whose type its barrier could not see (leaf
+// 0 — a function, a continuation, a variable no twin bound, an address) —
+// and every raw copy into older memory, and either, like an overflowed
+// journal, KEEPS the region, nothing moved, which is sound for any program. Otherwise every such value moves through its leaf into scratch
 // above the region (a copy's address is its TEMP; the original's first word
 // holds it, a bitmap says it moved, the copy log remembers the word it
 // overwrote), the copies are scanned in order (Cheney's queue, the log), and
@@ -4686,9 +4689,18 @@ fn emit_arena_runtime() = {
   // slot is older than the open arena — an address names memory the exit
   // cannot read, so finding one of the region's there keeps the region.
   wat_emit("  (func $store_addr_j (param $s i32) (param $v i32) (call $arena_slot_note (local.get $s) (i32.const 0)) (i32.store (local.get $s) (local.get $v)))\n")
+  // Bytes copied by `mem_copy` carry no type: an address a typed store wrote
+  // into a young buffer can be copied out of it into an older one, and
+  // nothing can say which of the copied bytes, if any, were one. So a copy
+  // that writes memory older than the open arena journals its destination
+  // with leaf -1 and the exit keeps the region, reading none of the bytes —
+  // a number names nothing, and the exit never reads one as an address. A
+  // store that knows its type says it (`store_addr`, `store_f64`, a list
+  // slot), which is how a program keeps an arena reclaiming past it.
+  wat_emit("  (func $mem_copy_j (param $d i32) (param $s i32) (param $n i32) (memory.copy (local.get $d) (local.get $s) (local.get $n)) (if (local.get $n) (then (call $arena_slot_note (local.get $d) (i32.const -1)))))\n")
   // A journal entry read back: the slot it names, and the leaf its value
-  // moves through (-3 a boxed float, 0 a type its barrier could not see, a
-  // leaf index otherwise).
+  // moves through (-3 a boxed float, -1 a raw copy's destination, which
+  // keeps, 0 a type its barrier could not see, a leaf index otherwise).
   wat_emit("  (func $ar_entry_slot (param $e i32) (result i32) (i32.load (local.get $e)))\n")
   wat_emit("  (func $ar_entry_leaf (param $e i32) (result i32) (i32.load offset=4 (local.get $e)))\n")
   // The moving machinery the leaves call.
@@ -4707,7 +4719,7 @@ fn emit_arena_runtime() = {
   wat_emit("  (func $arena_sweep (param $m i32) (param $j0 i32) (result i32) (local $t i32) (local $i i32) (local $e i32) (local $s i32) (local $v i32) (local $k i32) (local $n i32) (local $r i32)\n")
   wat_emit("    (global.set $ar_exits (i32.add (global.get $ar_exits) (i32.const 1))) (local.set $t (call $heap_mark_impl)) (global.set $ar_m (local.get $m)) (global.set $ar_t (local.get $t)) (global.set $ar_abort (i32.const 0)) (global.set $ar_bm (i32.const 0)) (global.set $ar_rn (i32.const 0)) (global.set $ar_ln (i32.const 0)) (global.set $ar_lscan (i32.const 0))\n")
   wat_emit("    (if (global.get $ar_jover) (then (return (i32.const 0))))\n")
-  wat_emit("    (local.set $i (local.get $j0)) (block $ok (loop $chk (br_if $ok (i32.ge_u (local.get $i) (global.get $ar_jn))) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (local.get $i) (i32.const 3)))) (if (call $ar_young (i32.load (call $ar_entry_slot (local.get $e)))) (then (if (i32.eqz (call $ar_entry_leaf (local.get $e))) (then (return (i32.const 0)))))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $chk)))\n")
+  wat_emit("    (local.set $i (local.get $j0)) (block $ok (loop $chk (br_if $ok (i32.ge_u (local.get $i) (global.get $ar_jn))) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (local.get $i) (i32.const 3)))) (if (i32.eq (call $ar_entry_leaf (local.get $e)) (i32.const -1)) (then (return (i32.const 0))) (else (if (call $ar_young (i32.load (call $ar_entry_slot (local.get $e)))) (then (if (i32.eqz (call $ar_entry_leaf (local.get $e))) (then (return (i32.const 0)))))))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $chk)))\n")
   wat_emit("    (local.set $n (i32.sub (local.get $t) (local.get $m))) (global.set $ar_bm (local.get $t)) (global.set $ar_bmsz (i32.and (i32.add (i32.shr_u (local.get $n) (i32.const 6)) (i32.const 15)) (i32.const -8))) (global.set $ar_rl (i32.add (global.get $ar_bm) (global.get $ar_bmsz))) (global.set $ar_ll (i32.add (global.get $ar_rl) (i32.shl (i32.add (i32.sub (global.get $ar_jn) (local.get $j0)) (i32.const 1)) (i32.const 3)))) (global.set $ar_c0 (i32.and (i32.add (i32.add (global.get $ar_ll) (i32.add (local.get $n) (i32.shr_u (local.get $n) (i32.const 1)))) (i32.const 7)) (i32.const -8))) (global.set $ar_cp (global.get $ar_c0)) (global.set $ar_cend (i32.add (global.get $ar_c0) (local.get $n)))\n")
   wat_emit("    (global.set $ar_dst (local.get $m)) (global.set $ar_delta (i32.sub (global.get $ar_c0) (global.get $ar_dst))) (call $memory_reach (global.get $ar_ll))\n")
   wat_emit("    (local.set $i (local.get $j0)) (block $done (loop $root (br_if $done (i32.ge_u (local.get $i) (global.get $ar_jn))) (br_if $done (global.get $ar_abort)) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (local.get $i) (i32.const 3)))) (local.set $s (call $ar_entry_slot (local.get $e))) (local.set $v (i32.load (local.get $s))) (if (call $ar_young (local.get $v)) (then (local.set $k (call $ar_entry_leaf (local.get $e))) (if (i32.or (i32.gt_s (local.get $k) (i32.const 0)) (i32.eq (local.get $k) (i32.const -3))) (then (local.set $r (i32.add (global.get $ar_rl) (i32.shl (global.get $ar_rn) (i32.const 3)))) (i32.store (local.get $r) (local.get $s)) (i32.store offset=4 (local.get $r) (local.get $v)) (global.set $ar_rn (i32.add (global.get $ar_rn) (i32.const 1))) (i32.store (local.get $s) (if (result i32) (i32.eq (local.get $k) (i32.const -3)) (then (call $ar_box8 (local.get $v))) (else (call $ar_evac_by (local.get $k) (local.get $v))))))))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $root)))\n")
@@ -7154,7 +7166,13 @@ fn emit_expr(expr) = match expr {
       } else if import_name == "load_f64" {
         wat_emit("    (f64.load)\n")
       } else if import_name == "mem_copy" {
-        wat_emit("    (memory.copy)(i32.const 0)\n")
+        // Bytes copied into memory older than an open arena are journaled
+        // raw, so an address the copy carried out of the region keeps it.
+        if arena_live() {
+          wat_emit("    (call $mem_copy_j)(i32.const 0)\n")
+        } else {
+          wat_emit("    (memory.copy)(i32.const 0)\n")
+        }
       } else if import_name == "addr_at" {
         wat_emit("    (i32.add)\n")
       } else if import_name == "addr_diff" {

@@ -1,0 +1,16 @@
+// expect: 42
+// The JSON serializer's string escape, over the shapes that defeated it: a
+// one-byte string, a string whose first bytes all escape, and a control
+// byte with no short escape. The escaper grew its buffer and returned only
+// the count, so the caller wrote that count into the buffer it had started
+// with — `"a"` serialized as a NUL, `"\""` as two — and a control byte with
+// no short spelling crossed raw, which no JSON reader admits.
+import json
+
+fn main() = {
+  let a = json_serialize(JStr("a"))
+  let q = json_serialize(JStr("\""))
+  let nx = json_serialize(JStr("\nx"))
+  let c1 = json_serialize(JStr("\x01"))
+  if a == "\"a\"" && q == "\"\\\"\"" && nx == "\"\\nx\"" && c1 == "\"\\u0001\"" { 42 } else { 1 }
+}

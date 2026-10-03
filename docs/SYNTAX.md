@@ -2317,15 +2317,15 @@ chain differentiable.
 An address names memory: the raw memory operations read from and write to
 one (lib/memory.mn's `Memory`). Its type is `Addr`, and it is a word in every
 machine respect — one i32, equal by identity, hashed as itself — and NOT a
-number (real, 2026-10-03; the library's own raw code is retyped with it at the
-next pin, the compiler that knows the type being the one that compiles it):
+number (real, 2026-10-03). `alloc` and `heap_mark` answer one, `Cast`'s `addr`
+answers the address a value lives at, and every raw load and store takes one:
 
 | An address…                       | …is                                                         |
 |-----------------------------------|-------------------------------------------------------------|
 | compared `==` / `!=`              | identity: two allocations are two addresses                 |
 | ordered `<` `<=` `>` `>=`         | by MAGNITUDE — wasm32's memory runs to 4 GB, so one past 2 GB is above one below it, where the signed order of an Int would put it under |
 | shown (`"{p}"`)                   | the unsigned number it names (`4294967280`, never `-16`)    |
-| in arithmetic (`p + 8`)           | refused, `E_ArithOnAggregate`: it moves by `addr_at(p, 8)` and is measured by `addr_diff(q, p)` |
+| in arithmetic (`p + 8`, `8 + p`)  | refused, one `E_ArithOnAggregate` at the operator whichever side it stands on: it moves by `addr_at(p, 8)` and is measured by `addr_diff(q, p)` |
 | read and written                  | `load_addr` / `store_addr`; a byte, a word or a float at it through the raw loads and stores |
 | at a word slot                    | `addr_word` / `word_addr`, the identity on the machine, where a value crosses the runtime's word protocol |
 
@@ -2333,9 +2333,16 @@ The type is what an arena's exit reads (§`~>` — lib/arena.mn): an address of
 the arena's region found where the exit looks — the arena's value, a field, an
 element, a slot `store_addr` wrote into older memory — keeps the region, since
 nothing can say what the address names; held as an Int it was copied as a
-number and the cell reclaimed under it, silently. The guarantee is about
-VALUES: a word computed from an address, or bits copied by `mem_copy`, is the
-program's own claim.
+number and the cell reclaimed under it, silently. What stays the program's
+own claim is a NUMBER made from an address — a pun through `addr_word`, or a
+distance added to one — since a number names nothing an exit could read.
+
+A raw copy carries bits, and bits carry no type, so the exit never reads one
+as an address: a `mem_copy` that writes memory older than an open arena keeps
+that arena's region whatever the bytes were. A store that says what it
+stores is how a program keeps an arena reclaiming past it — a float into a
+packed list moves nothing on its account, and neither does a byte, a word
+or a float stored through the raw stores.
 
 ---
 

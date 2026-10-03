@@ -35,6 +35,97 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-03 · pin 10cd1956fefa7abf (TRANSITION m3 == m4) · THE LIBRARY SPEAKS THE ADDRESS, AND
+  A RAW COPY IS OPAQUE (#129, the second of two pins). The first pin made
+  `Addr` a type and left the library raw, since a compiler's checker is its
+  parent's. This one, compiled by it, types the library: `alloc`,
+  `heap_mark` and `Cast`'s `addr` answer an address, every raw load and
+  store takes one, `str_payload`'s face is an address and `str_of_buf` takes
+  one, the list runtime's node links are addresses (`load_addr`,
+  `store_addr`) and its element words cross by the two puns, the graph's
+  four virgin-slot tests read `slot_present`, and every deliberate
+  out-of-bounds read is one helper (`out_of_range`). Arithmetic on an
+  address is one refusal per site: the demand is judged on both operands
+  before they meet (`arith_refuses`), the result a hole and the unify
+  skipped, so `p + 8` and `8 + p` each report one `E_ArithOnAggregate`
+  where the first pin reported a mismatch beside it. THE FIVE PROBES,
+  re-measured on boot 2198ed97 with its own library — all five compiled and
+  answered wrong: the arena's value 109 for 14, a slot written raw 1 for 42,
+  a record's field 1 for 6, bits `mem_copy` carried 1 for 42, a list's
+  element 7 for 12. Through this pin's compiler the value and the field keep
+  the region (14, 6), the raw slot and the list element are refused as
+  written (`E_TypeMismatch`) with their typed forms answering 42 and 12, and
+  the copy answered 1 for 42: an address a typed store wrote into a young
+  buffer, carried by `mem_copy` into older memory with no pun anywhere. The
+  first pin had declared copied bits the program's own claim; a raw copy is
+  OPAQUE now — one that writes memory older than the open arena journals
+  its destination with a leaf that keeps the region (`$mem_copy_j`), and the
+  exit reads no copied byte — 42, and 1 on boot 2198ed97 compiling this
+  pin's library. A wide list slot copies its scalar as the number it is
+  (`scalar_copy`), so a float written into an older packed list keeps no
+  region (`arena/wide-slot-reclaims`: 42, and 1 on this landing's m2 with
+  the slot's bytes copied raw). FOUND ON THE WAY: (1) an install frame
+  joined the same-named instances of EVERY effect its body performed, where
+  only the effects its handler answers are one instantiation — two `Cast`s
+  at two types inside an unrelated handler's install refused with
+  `List(Int) vs () -> Int` at `main:0:0` on boot 2198ed97
+  (`mn-cast-two-types-one-install`, 42 now; `inf_install_absorbs`); (2) the
+  JSON escaper grew its buffer and returned only the count, so the caller
+  wrote it into the buffer it had started with — `"a"` serialized as a NUL,
+  `"\""` as two bytes — and passed a control byte with no short escape raw;
+  it measures the escaped length first and writes through a byte sink
+  (`json_escape_len`, `json_escape_emit`; the frontier's `json-escape-total`
+  exit 1 there, 42 here); (3) the warm image's header named the module ASTs
+  as the continuation it re-enters, a list no resume enters and nothing
+  read — the null address now; (4) lib/tuples.mn was dead, imported and
+  never called, its comment naming a peer recorded nowhere — deleted with
+  its import; (5) three floor comments posed prose as references and
+  narrated on every battery fixture, 2,596 warning lines in one battery run
+  and 116 after, the fixtures' own. KILLS: (1) "Cast's type variable
+  unifies across every perform in the link" — two instances with no install
+  over them checked clean; (2) "an arm's cast beside a cast elsewhere"; (3)
+  "one install, a cast in its body and one in its arm" — each probe passed,
+  and the join was the install frame's; (4) "the boot refuses the five
+  shapes as written" — my first measurement linked this pin's library to the
+  boot, and against its own library it compiled all five and answered
+  wrong; (5) "bits `mem_copy` copies stay the program's claim" — the first
+  pin's boundary, refuted by its own probe; (6) the battery cannot link an
+  import, so the JSON fixture runs as a frontier project (`run_project`);
+  (7) "the exit reads a raw copy for addresses" — the form built first
+  journaled every word a copy wrote below the mark and checked each at all
+  four byte offsets for a value of the region. It marched to a TRANSITION
+  and repinned, and then the question came — is this the Mentl way? It was
+  not: a conservative collector's scan, the shape the arena's first kill
+  refused, guessing addresses from numbers in the pin whose law is that a
+  number names nothing, re-deriving at the exit what the judgment knew at
+  `store_addr`, and the tree contradicted itself (`lib/memory.mn` called the
+  copied bits the program's claim while the emitter scanned them). The
+  boot was restored before anything was committed and the scan deleted;
+  (8) "a content claim on raw memory carries the fact" — a second home for
+  types the value layer already carries, since the precise copy is the
+  typed one (`list_set`, `list_copy_into`), each slot journaled by its
+  element's leaf. Seventeen fixtures retyped (`alloc` answers an address,
+  `heap_mark` arithmetic is `addr_diff` and `addr_at`, a cast compares with
+  `null_addr()`), six added. What stays the program's claim is a number
+  made from an address. The facet this pin's work logged at the hook —
+  `refs of NAME` across a directory of independent programs — is grown
+  here, not banked: `mentl query <dir> "<facet>"` judges each program in
+  the directory on its own link inside an arena and keeps the sites in its
+  own module, for refs, census, text, prose and decls, and refuses any
+  other facet naming those (`query_dir`, `query_sites`; one judged-query
+  helper serves the file and the directory, `query_judged`) —
+  `store_addr` in tests/frontier/arena: 2 references across 23 programs,
+  3.3 s. Named, the next landing: `Hβ.memory.word-arithmetic-is-memory`
+  (bitwise operations and address offsets are `Memory` ops, so `wav_data`
+  lost `with Pure`).
+  Fixed input, the wheel's source this pin carries through both compilers,
+  read twice each: peak 517,896 / 521,968 → 523,808 / 521,884 KB (equal
+  within the reading's jitter), 14.3 / 15.2 → 15.3 / 14.0 s, the
+  judgment's heap 230,199,824 → 230,194,304 B, the module written
+  381,132,800 → 381,114,352 B, the census 19,987 exits and 0 kept on both
+  — the per-push `store_addr` barrier in the new compiler's own list
+  runtime and the opaque copy cost nothing measurable, and no copy in the
+  wheel keeps a region. Cost: m4 leg 14.66s wall · 507MB peak RSS (520088 KB), m3 leg 519,548 KB. Board whole: micros 355/355 through the pinned boot, crown 134/0, proof-exactness 30/0, effect identity green, frontier 564 pass / 0 red / 1 expected-red, the IDE gate green, census 0, doc-truth green; `authored_own_max` 62 → 61, the fall at #126 held here.
 - 2026-10-03 · pin 2198ed974ede7e87 (TRANSITION m3 == m4) · THE COMPILER
   KNOWS AN ADDRESS (#129, the first of two pins). Addresses were typed Int,
   and an arena's exit moves a value by its type: an address held where the

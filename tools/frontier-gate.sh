@@ -650,6 +650,26 @@ run_pulse_render() {
 # the world its handlers built, and a `compile` after it must not restore
 # that image into its own output — the image is filed under world_key(), so
 # the compile finds none and derives, and the second verb's WAT is whole.
+# A program that links library modules by import runs as a project — the
+# `run` verb resolves its imports the way a developer's program does, where
+# a battery fixture is compiled over the runtime floor alone — and answers
+# its expected exit.
+run_project() {
+  local compiler="$1" dir="$2" label="$3" source="$4" expected="$5"
+  local pdir="$dir/$label.proj" rc
+  rm -rf "$pdir"
+  mkdir -p "$pdir"
+  cp "$source" "$pdir/main.mn"
+  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" run main \
+    > "$dir/$label.run.out" 2> "$dir/$label.run.err"
+  rc=$?
+  if [ "$rc" -eq "$expected" ]; then
+    pass "$label: runs to $expected"
+  else
+    fail "$label: run exit=$rc, want $expected (see $dir/$label.run.err)"
+  fi
+}
+
 run_warm_world() {
   local compiler="$1" dir="$2" label="warm-world"
   local wdir="$dir/$label.proj" rc lines
@@ -791,6 +811,8 @@ run_refusal_linked() {
   case "$link_runtime" in
     derive)
       cat "${DERIVE_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err" ;;
+    arena)
+      cat "${ARENA_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err" ;;
     *)
       cat "${RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$err" ;;
   esac
@@ -1631,20 +1653,34 @@ for i in "${!compilers[@]}"; do
   # before it opened, so the exit's copy space lies past the memory's end —
   # a trap at the exit on boot fb8921e3 (a zero-length copy there is out of
   # bounds too), found by the battery once each fixture ran in an arena.
-  # The last four hold an ADDRESS where the exit looks — as the value, in a
-  # slot `store_addr` journaled, as a record's field, as a list's element —
-  # and each keeps the region, since nothing can say what an address names.
-  # Held as Ints, the same four programs read 0, 0, 0 and 2 where they compute
-  # 42, 42, 42 and 12, silently, on boot 0a096302; typed, none compiled there.
+  # The next five hold an ADDRESS where the exit looks — as the value, in a
+  # slot `store_addr` journaled, as a record's field, as a list's element, in
+  # bytes `mem_copy` carried into older memory — and each keeps the region,
+  # since nothing can say what an address names, and the exit reads no copied
+  # byte at all. Held as Ints, the first four read 0, 0, 0 and 2 where they
+  # compute 42, 42, 42 and 12, silently, on boot 0a096302; typed, none
+  # compiled there. The fifth answered 1 on boot 2198ed97 with this pin's
+  # library, whose emit had no barrier on a raw copy. The last writes a float
+  # into a packed list older than the arena: a wide slot holds a number,
+  # copied as one, so the exit reclaims past it — exit 1, the region kept,
+  # on this landing's m2 with the slot's bytes copied raw. Two refusals
+  # follow: an address stored where a word goes, and one in a list of
+  # numbers, each compiling and answering wrong (1 for 42, 7 for 12) on boot
+  # 2198ed97 with that pin's library, where `alloc` and the cast answered Ints.
   capture_arena_shadow "$compiler" "$dir" || continue
   for leg in value-moves dropped-is-reclaimed handler-buffer-moves \
              plain-buffer-moves state-commit-moves nested ring-history-moves \
              growth-link closure-keeps journal-overflow-keeps \
              spawning-module-runs-the-body generic-store-moves value-store-keeps \
              nothing-moved-past-memory addr-value-keeps addr-store-keeps \
-             addr-field-keeps addr-list-keeps; do
+             addr-field-keeps addr-list-keeps addr-copy-keeps \
+             wide-slot-reclaims; do
     run_program "$compiler" "arena-$leg" \
       "$ROOT/tests/frontier/arena/$leg.mn" 42 arena "$dir"
+  done
+  for leg in addr-stored-as-word-refuses addr-among-numbers-refuses; do
+    run_refusal_linked "$compiler" "arena-$leg" \
+      "$ROOT/tests/frontier/arena/$leg.mn" E_TypeMismatch "$dir" arena
   done
   run_program "$compiler" scheduled-int \
     "$ROOT/tests/frontier/mn-scheduled-fanout-int.mn" 60 yes "$dir"
@@ -1745,6 +1781,10 @@ for i in "${!compilers[@]}"; do
   # Pulse scene 1: the flagship renders, the oracle judges the file, and its
   # three one-line twins refuse (run_pulse_render's own header).
   run_pulse_render "$compiler" "$dir"
+  # The JSON serializer's string escape over the shapes that defeated it — a
+  # one-byte string serialized as a NUL, a quote as two, a control byte with
+  # no short spelling crossed raw. RED on boot 2198ed97: exit 1.
+  run_project "$compiler" "$dir" json-escape-total "$ROOT/tests/frontier/mn-json-escape-total.mn" 42
   # Real host-thread spawn over the shared image (the task-record substrate:
   # import-shape memory, shared-cell allocator, $spawn_task_impl/$join_task_impl).
   # Seen RED on the pre-task-record boot: 134, unaligned atomic in the join.

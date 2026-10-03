@@ -534,7 +534,7 @@ fn compile_remainder(ast) = {
 }
 
 fn heap_line(at: String) = match diag_scope_of() {
-  ScopeAll => eprint_string("heap: {int_to_str(heap_mark())} byte(s) {at}\n"),
+  ScopeAll => eprint_string("heap: {heap_mark()} byte(s) {at}\n"),
   ScopeNone => (),
   ScopeModule(_) => (),
 }
@@ -599,42 +599,88 @@ fn compile_source(source) =
 
 fn check_source(source) = infer_context(() => source |> infer_program_converged ~> mentl_default)
 
-fn query(entry_module, question) = infer_context(() => {
-  // COLD by the swap-crossing law (Hβ.session.resident-verbs — the
-  // measured refutation is in the §7 ledger): a mid-verb image restore
-  // kills every pre-swap heap value — the caller's own argv strings,
-  // the chain's own handler records — and survives only by allocation
-  // coincidence. The warm form for the projection verbs is the
-  // RESIDENT SESSION (the image as the session's own memory, no swap —
-  // the named peer carries the measured constraints); fresh derivation
-  // here IS the sound form for a per-process verb.
-  // The WEAVE judgment — `driver_entry_with_ranges` is the ONE discovery
-  // home, because a module judged SOLO is judged without its layer's
-  // vocabulary (the per-module-env-overlay residue) and every query over
-  // it runs against a partially-broken env.
+fn query(entry_module, question) = match query_judged(entry_module, query_render(question, ??)) {
+  None => {
+    // The ENTRY never joined the weave (E_MissingModule already reported at
+    // the walk): there is no judged source to project, and a confident
+    // answer over the empty weave is the silent-fallback class
+    // (Hβ.query.unreadable-source-refusal — the census printed "0 sites"
+    // for a file the judge could not read). Productive-under-error stays for
+    // JUDGED files; a missing entry refuses the question itself.
+    eprint_string("mentl query: no source to project — {entry_module} never joined the weave\n")
+    1
+  },
+  Some(_) => 0,
+}
+
+fn query_render(question, m: String) =
+  ask(parse_query_string(m, question)) |> render_query_result |> println
+
+// The entry judged and read: `read` runs over the judged graph, inside the
+// chain that judged it, and None says the entry never joined the weave.
+//
+// COLD by the swap-crossing law (Hβ.session.resident-verbs — the measured
+// refutation is in the §7 ledger): a mid-verb image restore kills every
+// pre-swap heap value — the caller's own argv strings, the chain's own
+// handler records — and survives only by allocation coincidence. The warm
+// form for the projection verbs is the RESIDENT SESSION (the image as the
+// session's own memory, no swap — the named peer carries the measured
+// constraints); fresh derivation here IS the sound form for a per-process
+// verb. The WEAVE judgment — `driver_entry_with_ranges` is the ONE discovery
+// home, because a module judged SOLO is judged without its layer's
+// vocabulary (the per-module-env-overlay residue) and every query over it
+// runs against a partially-broken env.
+fn query_judged(entry_module: String, read) = infer_context(() => {
   match driver_entry_with_ranges(entry_module) {
     (_ast, ranges) => match range_of_module(ranges, entry_module) {
-      None => {
-        // The ENTRY never joined the weave (E_MissingModule already
-        // reported at the walk): there is no judged source to project,
-        // and a confident answer over the empty weave is the
-        // silent-fallback class (Hβ.query.unreadable-source-refusal —
-        // the census printed "0 sites" for a file the judge could not
-        // read). Productive-under-error stays for JUDGED files; a
-        // missing entry refuses the question itself.
-        eprint_string("mentl query: no source to project — {entry_module} never joined the weave\n")
-        1
-      },
-      Some(_) => {
-        let q = parse_query_string(entry_module, question)
-        ask(q) |> render_query_result |> println
-        0
-      },
+      None => None,
+      Some(_) => Some(read(entry_module)),
     },
   }
 } ~>
 // the derivation's fs_read — handled in-chain, as compile/check do
 wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry)
+
+// One program's answer to a SITE facet, kept to the program's own module —
+// what `mentl query <dir> …` asks of each program in a directory, since the
+// library every program links would otherwise answer once per program. None
+// is an entry that never joined the weave; Some(None) a facet that answers
+// something other than located sites, which has no meaning across programs.
+fn query_sites(entry_module: String, question) =
+  query_judged(entry_module, own_sites_of(question, ??))
+
+fn own_sites_of(question, m: String) = own_sites(ask(parse_query_string(m, question)), m)
+
+fn own_sites(answer, m: String) = match answer {
+  QRRefs(sites) => Some(("reference(s)", filter(site_in_module(m, ??), sites))),
+  QRCensus(label, sites) => Some((label, filter(site_in_module(m, ??), sites))),
+  QRDecls(sites) => Some(("judged decl(s)", filter(site_in_module(m, ??), sites))),
+  QRType(_, _) => None,
+  QRIntent(_) => None,
+  QRUnresolved(_) => None,
+  QRChain(_) => None,
+  QREffects(_) => None,
+  QROwnership(_) => None,
+  QRWhy(_) => None,
+  QRVerifyDebt(_) => None,
+  QRSmt(_) => None,
+  QRHandlerProvider(_) => None,
+  QRFlowLabel(_, _) => None,
+  QRModules(_) => None,
+  QRImports(_) => None,
+  QRUnreferenced(_) => None,
+  QRUnreachable(_) => None,
+  QRPerforms(_) => None,
+  QROrphanClaims(_) => None,
+  QRCost(_, _, _) => None,
+  QRGhosts(_) => None,
+  QRWhere(_, _) => None,
+  QRError(_) => None,
+}
+
+fn site_in_module(m: String, site) = match site {
+  (sm, _) => sm == m,
+}
 
 // ─── The tightening bank — T_OverDeclared as a live frontier fact ────
 //

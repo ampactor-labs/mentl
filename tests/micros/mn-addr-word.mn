@@ -7,8 +7,8 @@
 // main answers 1 — and on boot 0a096302 the program did not compile, the type
 // and its operations unknown there.
 fn main() = {
-  let p = word_addr(alloc(16))
-  let q = word_addr(alloc(16))
+  let p = alloc(16)
+  let q = alloc(16)
   let high = word_addr(0 - 16)
   let low = word_addr(16)
   let moved = addr_at(p, 8)

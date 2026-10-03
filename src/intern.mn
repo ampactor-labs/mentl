@@ -92,7 +92,7 @@ handler intern_view(buckets0, entries0, count0) {
     match intern_probe(list_index(buckets0, b), src, s, e, 0, len(list_index(buckets0, b))) {
       Some(row) => resume(row),
       None => {
-        load_i32(0 - 1)
+        out_of_range()
         resume(("", 0, None))
       },
     }
@@ -104,7 +104,7 @@ handler intern_view(buckets0, entries0, count0) {
       Some(row) => match row {
         (_canonical, h, _kw) => resume(h),
       },
-      None => resume(load_i32(0 - 1)),
+      None => resume(out_of_range()),
     }
   },
   intern_name_of(h) => resume(list_index(entries0, h)),

@@ -17,39 +17,39 @@
 // Memory — linear memory read/write. Operations on WASM's linear
 // memory. Each maps to one instruction. The developer writes the
 // intent; the substrate emits the opcode.
-// The structure-forgetting DOWN-cast (§5.R band D's seq-addr-downcast,
-// landed as phase-A vocabulary): addr projects any value's word face —
-// for a heap value that word IS its address ("a handle IS a word").
-// Sound in the negative position only (a concrete Int comes OUT; no
-// from_addr up-cast exists, ever — str_of_buf stays the one localized
-// coercion). Capability-gated by the row: `with Cast` admits it and a
-// declared `!Cast` severs it transitively, the user-effect class. Lower
-// ERASES the perform to its operand (identity at the word level, zero
-// emission), so the substrate is the handler and no census demand ever
-// reaches the executable gate — the row is the entire point. Zero
-// readers in the wheel; the first consumer is the arena-gated
-// signature-driven seq-op landing.
+// Cast — a value's address. A heap value's word IS the address of its
+// record ("a handle IS a word"), and addr answers it as one, typed, so it
+// stays an address wherever it goes: an arena's exit that finds one of its
+// region's addresses keeps the region rather than reclaim what it names.
+// The way back from an address to a structured value is str_of_buf alone,
+// the one localized coercion. Capability-gated by the row: `with Cast`
+// admits it and a declared `!Cast` severs it transitively, the user-effect
+// class. Lower erases the perform to its operand (identity at the word
+// level, zero emission), so the row is the entire point.
 effect Cast {
-  addr(a) -> Int
+  addr(a) -> Addr
 }
 
 effect Memory {
   // 32-bit store/load — full i32 word at address
   //
   // (addr, value)
-  store_i32(Int, Int)
+  store_i32(Addr, Int)
   // (addr) -> value
-  load_i32(Int) -> Int
+  load_i32(Addr) -> Int
   // 8-bit store/load — single byte at address
   //
   // (addr, byte)
-  store_i8(Int, Int)
+  store_i8(Addr, Int)
   // (addr) -> byte (0-255)
-  load_i8(Int) -> Int
-  // Bulk memory copy — src to dst, n bytes
+  load_i8(Addr) -> Int
+  // Bulk memory copy — src to dst, n bytes, as bits. Bits carry no type,
+  // so a copy that writes memory older than an open arena keeps that
+  // arena's region, and no copied byte is ever read as an address; a store
+  // that says what it stores is how a program keeps an arena reclaiming.
   //
   // (dst, src, n)
-  mem_copy(Int, Int, Int)
+  mem_copy(Addr, Addr, Int)
   // ─── Addresses ───────────────────────────────────────────────────────
   // An address is the word that names memory: what an allocation answers,
   // what a load reads from and a store writes to. It is a word in every
@@ -58,8 +58,9 @@ effect Memory {
   // exit reads: an address of its region found where the exit looks (its
   // value, a field, an element, a slot its barriers journaled) keeps the
   // region whole, since nothing can say what the address names. The
-  // guarantee is about values: a word computed from an address, or bits
-  // copied by mem_copy, is the program's own claim.
+  // guarantee is about values: a word computed from an address is the
+  // program's own claim, and bits copied by mem_copy are opaque — written
+  // into older memory, they keep the arena.
   //
   // (addr, bytes) -> the address that many bytes on
   addr_at(Addr, Int) -> Addr
@@ -94,9 +95,9 @@ effect Memory {
   // width at a typed site. Project 1:1 to f64.load / f64.store.
   //
   // (addr, value)
-  store_f64(Int, Float)
+  store_f64(Addr, Float)
   // (addr) -> value
-  load_f64(Int) -> Float
+  load_f64(Addr) -> Float
   // ─── The rooted-image persist substrate (§4④: persist = memcpy) ────
   // The image [0, heap-line) plus the mutable globals IS the whole program
   // state (wasm call frames live engine-side, outside linear memory), so a
@@ -116,13 +117,13 @@ effect Memory {
   // globals_save — write every mutable global to an 8-byte-slot record at
   // dst. Slot 0 is the heap line (the persist packer patches it to the
   // image extent so restore rewinds allocation to the persisted moment).
-  globals_save(Int)
+  globals_save(Addr)
   // image_restore — the whole-image swap: stage the wire's globals+image
   // above both heaps, copy the image down over [0, size), restore the
   // globals, return the wire's named continuation address. Raw preamble
   // choreography (no allocation may interleave; the caller's heap values
   // die under it — read everything you need into locals first).
-  image_restore(Int) -> Int
+  image_restore(Addr) -> Addr
   // Integer XOR — two i32 values, returns i32
   // Lowers to WASM's i32.xor. Not a bitwise operator in the
   // language — a substrate primitive. Used by hash functions.
@@ -159,15 +160,21 @@ type ArenaStat = ArExits | ArKept | ArFreed | ArMoved | ArHigh
 // this distinction is load-bearing for real-time audio paths where
 // allocation is forbidden.
 effect Alloc {
-  // (size) -> ptr
-  alloc(Int) -> Int
-  // Where the heap line stands: the cost lines read it, and an arena opens
-  // at it. There is no rewind beside it — reclaiming an extent is the
+  // (size) -> the address of the fresh bytes
+  alloc(Int) -> Addr
+  // Where the heap line stands: the cost lines measure from it, and an arena
+  // opens at it. There is no rewind beside it — reclaiming an extent is the
   // arena's (lib/arena.mn), which keeps what the extent published and zeroes
   // the memory behind it, so no reclaim depends on its caller knowing that
   // nothing older points into what it drops.
-  heap_mark() -> Int
+  heap_mark() -> Addr
 }
+
+// A deliberate trap: a word read at the last address, which no memory a
+// wasm32 instance can grow to holds, so the read faults wherever it runs —
+// the one home of the out-of-range refusal the runtime makes where a
+// structural contract breaks.
+fn out_of_range() = load_i32(word_addr(0 - 1))
 
 // The live world's identity: the install chain from world_top() down, hashed
 // over each node's effect key and its handler's slot-0 arm word — a table
@@ -175,16 +182,22 @@ effect Alloc {
 // agree whatever state they hold. A persisted image carries the world that
 // wrote it (handler = state: the graph's own handlers return with the graph,
 // and the persisting verb's output sink with them), so it may resume only
-// into that world; the driver files warm images under this key.
-fn world_key() = world_key_from(world_top(), -2128831035)
+// into that world; the driver files warm images under this key. A world is
+// the word of its chain's top node, so the walk reads it as the address it
+// names.
+fn world_key() = world_key_from(word_addr(world_top()), -2128831035)
 
-fn world_key_from(n, h) = if n == 0 {
+fn world_key_from(n, h) = if n == null_addr() {
   h
 } else {
-  let entry = load_i32(n + 4)
-  let record = load_i32(entry)
-  let arm = load_i32(record + 8 + 4 * (load_i32(record + 4) + load_i32(entry + 4)))
-  world_key_from(load_i32(n + 8), i32_xor(i32_xor(h, load_i32(n)) * 16777619, arm) * 16777619)
+  let entry = load_addr(addr_at(n, 4))
+  let record = load_addr(entry)
+  let arm =
+    load_i32(addr_at(record, 8 + 4 * (load_i32(addr_at(record, 4)) + load_i32(addr_at(entry, 4)))))
+  world_key_from(
+    load_addr(addr_at(n, 8)),
+    i32_xor(i32_xor(h, load_i32(n)) * 16777619, arm) * 16777619
+  )
 }
 
 // Pure — the empty effect row. Pure is not an effect with operations
