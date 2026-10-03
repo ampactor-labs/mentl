@@ -1667,6 +1667,17 @@ for i in "${!compilers[@]}"; do
   # follow: an address stored where a word goes, and one in a list of
   # numbers, each compiling and answering wrong (1 for 42, 7 for 12) on boot
   # 2198ed97 with that pin's library, where `alloc` and the cast answered Ints.
+  # The last eight suspend an arena (2026-10-03): an op performed inside it
+  # and answered outside it — a held resume, a multi-shot one, an arm that
+  # never resumes, a perform in a callee of the arena's body, an arena
+  # standing where its value is used, a list-valued arena, a rest that stores
+  # into older memory, and a rest that performs again. The exit keeps the
+  # region rather than end the extent, and each resumption runs the rest of
+  # the body in a fresh instance around every segment it encloses. On boot
+  # 10cd1956 (the census clause stripped, the stat being new) six trap at 134
+  # — the exit had reclaimed the continuation, or the arena's tail call met
+  # the floor — and two answer silently wrong: the abandoning arm read the
+  # argument the exit reclaimed (1), and the list came back empty (length 0).
   capture_arena_shadow "$compiler" "$dir" || continue
   for leg in value-moves dropped-is-reclaimed handler-buffer-moves \
              plain-buffer-moves state-commit-moves nested ring-history-moves \
@@ -1674,7 +1685,9 @@ for i in "${!compilers[@]}"; do
              spawning-module-runs-the-body generic-store-moves value-store-keeps \
              nothing-moved-past-memory addr-value-keeps addr-store-keeps \
              addr-field-keeps addr-list-keeps addr-copy-keeps \
-             wide-slot-reclaims; do
+             wide-slot-reclaims held-resume-reenters multishot-resume-reenters \
+             abort-suspends resume-nests-exactly arena-is-a-junction \
+             list-value-reenters older-store-reenters reyield-reenters; do
     run_program "$compiler" "arena-$leg" \
       "$ROOT/tests/frontier/arena/$leg.mn" 42 arena "$dir"
   done

@@ -1380,6 +1380,24 @@ fn can_yield(callee_handle) = if !ls_program_may_yield() {
   }
 }
 
+// Whether an install's handler is an arena — the one roster's answer,
+// read off the effects its arms answer.
+fn is_arena_tee(handler_node) =
+  install_opens_arena(projection_of(extract_handler_name(handler_node)))
+
+// Whether an arena's body may suspend: a module that never yields cannot,
+// and otherwise the arena's own row says whether its body may carry an
+// effect whose handler suspends — the read a call's boundary takes of its
+// callee, made of the subtree the arena brackets.
+fn arena_may_yield(h) = if !ls_program_may_yield() {
+  false
+} else {
+  match row_of_subtree(h) {
+    Some(row) => row_may_multishot(row),
+    None => true,
+  }
+}
+
 // A row MAY carry a MultiShot-graded effect: its known names say so, or
 // any tail edge is unproven. Total over the three tails — the unproven
 // forms answer true (check), never a fabricated "safe".
@@ -2461,11 +2479,14 @@ fn first_diverging(stmts, i) = if i >= len(stmts) {
 fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline(op_name) {
   MultiShot => // A MultiShot perform NEVER calls the arm — it YIELDS (band B k1). The
   // on-spine sites are consumed by lower_body_reified, which constructs
-  // the real k; one reaching the ordinary dispatch is OFF-spine (an
-  // if/match/nested-call interior, or args-bearing) — the LOUD floor,
-  // k2's composition home. The floor carries the EMPTY op name (the emit
-  // floors on op == "", NEVER on the k value — an abandon yield's k is
-  // also a bare LConst, so op-name is the discriminator).
+  // the real k; one reaching the ordinary dispatch is OFF-spine (a `let`'s
+  // value, a later statement, an argument, a right operand, a branch), and
+  // every evaluation of it would yield with no continuation to carry. It
+  // lowers to the floor, which the settle point refuses wherever the
+  // emitted reach holds it (`settle_yield`) — never in a body nothing runs.
+  // The floor carries the EMPTY op name (the emit floors on op == "", NEVER
+  // on the k value — an abandon yield's k is also a bare LConst, so op-name
+  // is the discriminator).
   LYield(handle, "", [], LConst(handle, LInt(0))),
   Abandon => // M4 — an Abandon perform yields from ANY position with a DEAD k (the
   // arm never resumes, so the continuation is abandoned). The k slot is a
@@ -5233,6 +5254,10 @@ fn k2_spine_call(node) = match node {
           },
         },
       },
+      PTee => // An arena whose body may suspend is a boundary as a call is: its body
+      // is a frame of its own whose remainder rides the arena's re-entry,
+      // and the rest of THIS frame is the next segment out.
+      if is_arena_tee(r) && arena_may_yield(node_handle(node)) { Some(node) } else { None },
       _ => None,
     },
     NExpr(CallExpr(f, args)) => match f {
@@ -5650,10 +5675,15 @@ fn k2_floor_guard(e, terminus) = match e {
   LDerive(h, seed, b) => // The derivative reading brackets nothing: its body's value lands where
   // the reading's own does, so the terminus passes straight through.
   LDerive(h, seed, k2_floor_guard(b, terminus)),
-  LArena(h, b) => // An arena's exit runs after its body, so a yield crossing it would
-  // skip the exit and leave the body's region unreclaimed: the body's
-  // boundary is checked here, never passed through.
-  LArena(h, k2_floor_guard(b, false)),
+  LArena(h, b) => {
+    // A yield the body carries out suspends the arena at its exit — its
+    // region kept, its re-entry wrapped around the continuation — and flows
+    // on as the arena's own value, so the body's boundary is checked exactly
+    // where the arena's is. An arena that may suspend where nothing checks
+    // is the loud floor, as a call there is.
+    let walked = LArena(h, k2_floor_guard(b, terminus))
+    if terminus || !arena_may_yield(h) { walked } else { k2_floor_wrap(h, walked) }
+  },
   LReturn(h, inner) => LReturn(h, k2_floor_guard(inner, true)),
   LCall(h, f, args) => // The k2 call-boundary rides EVERY can-yield non-tail call (the carrier
   // was LSuspend when evidence-threaded calls were a separate node; bare

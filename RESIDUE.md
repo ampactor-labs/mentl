@@ -3531,6 +3531,44 @@ commits journal), an emitted unit publishes bytes into the sink, and an
 answer publishes its text and the edges it drew. The session's face is
 `Hβ.session.answer-scratch-outlives-the-answer`.
 
+`Hβ.arena.suspended-by-a-continuation` — CLOSED 2026-10-03 (C×A). An op
+performed inside an arena and answered by a handler outside it suspends what
+the arena encloses — the continuation the arm holds and the perform's
+arguments live in the arena's region — and the exit ran on the way out
+anyway, reclaiming both from under the arm. Eight fixtures measured it on
+boot 10cd1956 (`tests/frontier/arena/`, the census clause stripped since the
+stat is new): a held resume, a multi-shot resume, a perform in a callee
+whose rest builds after it, an arena standing where its value is used, a
+rest storing into older memory and a rest performing again each trapped
+(exit 134 — the exit had reclaimed the continuation, or the arena's tail
+call met the floor); an abandoning arm read an argument the exit had
+reclaimed, and a list-valued arena came back empty (exit 1 each). THE FORM: the exit is flag-aware — a yield unwinding
+through it SUSPENDS the arena (the region kept and joined to the extent
+around it, the journal compacted to the parent, `ArSuspended` counted) and
+wraps the yielded continuation in `$__k_arena`, whose every resumption opens
+a fresh arena around the WHOLE wrapped chain before any of it runs and exits
+it where the body ends, moving the value out by its leaf. The arena body
+stays its own frame, and its tee is a capture point in the enclosing frame
+(a k2 junction, as a call that may suspend is), so the rest of that frame
+resumes at the arena's value. Measured on the candidate: all eight 42; under
+an arm resuming three times, `fn step() = work() ~> arena` over `fn work() =
+pick() + len(build(200)) - 200` grows the heap 96 bytes against 19,240 with
+no arena. KILLS. (1) A crossing test comparing open arena marks with the
+serving install record's address at every reified perform: the yield
+unwinding through an exit IS the crossing, so the exit reads `$yield_flag`
+— the live fact — and no arena stack is kept to compare against. (2)
+Reopening per segment, where each frame re-enters: a callee's rest after the
+perform is an inner segment that runs before the arena's own frame
+re-enters, so it would run outside the fresh arena; the wrap is taken at the
+exit, around everything the arena enclosed. (3) Hoisting the arena into its
+enclosing frame's spine: every tee body is already a reification frame, and
+the hoist would have been a second spine grammar for one fact — the tee
+became a junction instead. (4) The census line read `430777 suspended` on
+m2: m2's runtime is written by its parent, whose stat table has five arms,
+so the sixth read the default; the line is right from m3 on (the Arena·P2
+lesson, read again). Beside it, the floor the suspension exposed REPORTS now
+(`Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`).
+
 `Hβ.arena.closure-evac-face` — OPEN, BORN 2026-10-03. A function value or a
 continuation has no leaf: its type does not say what its record captures,
 so an exit that finds one of the region's in a journaled slot keeps the
@@ -5287,7 +5325,15 @@ handler and costs an allocation per yield on a wide answer, which the row
 must price (L0's Memory + Alloc on a multi-shot perform already charges the
 k record); the second allocates nothing. Gates: the two programs above,
 RED today by assembly; then the face rule's answer clause deletes, and
-`arm_face_roots` with it.
+`arm_face_roots` with it. ▶ THE SAME CLAUSE FROM ITS OTHER SIDE, measured
+2026-10-03 on boot 10cd1956 and the C×A m2 alike: an arm that OBSERVES its
+answer refuses even where the answer is a word. `handler two { gen() => {
+let a = resume([1, 2]); let b = resume([3]); a ++ b } }` installed over
+`gen() ++ [9]` is `E_ShapeUnprovable` — "`++` on t7615@e16435, emitting
+op_two_gen" — because the BASE arm is what is emitted: the answer is no
+part of the arm's key, so no install's answer ever reaches the arm's body.
+Width was never the root; the key is. Both faces close when an install keys
+its arms at its answer as it keys them at its effect's instance.
 
 `Hβ.emit.twin-key-is-what-the-body-reads` — **CLOSED 2026-09-28 (R0d),
 pin 2d7845607e804eb4.** A twin is keyed by what its body reads: a variable
@@ -7351,11 +7397,15 @@ written for native and true one substrate earlier): a frame is a record,
 a continuation is that record's extent, capture is a copy and any
 position reifies — which also makes a checkpoint inside an arm resumable
 (the refuter's F correction) and the held record's reclaim O(1)
-(`Hβ.lower.held-resume-record-is-not-reclaimed` closes with it). Until
-then: the floor REPORTS. A perform of a reified op at an off-spine
-position is a compile-time finding at the site (the `T_FieldOffsetUnprovable`
-precedent: a floor written and never said is the class), never a bare
-trap, and the finding is the first thing this peer lands.
+(`Hβ.lower.held-resume-record-is-not-reclaimed` closes with it). THE
+FLOOR REPORTS since 2026-10-03 (C×A): a held or multi-shot perform off the
+spine is `E_ContinuationUncapturable` at the perform, armed at birth and
+said at the settle point over the emitted reach — the R0″ shape — so a
+body nothing runs is never refused. The first form said it at lowering and
+refused a perform in a function nothing calls
+(`tests/micros/mn-perform-off-spine-dead.mn` holds 1 now); the boot compiled
+`tests/micros/mn-perform-off-spine-refuses.mn` clean and trapped at 134.
+What stays open is the peer itself: any position reifies.
 
 `Hβ.lower.ad-is-a-demanded-projection` — FORWARD MODE LANDED 2026-09-28
 (L4a of the Pulse sprint, pin 0976f1d7da263d74); the derivative across dynamic

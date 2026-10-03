@@ -540,11 +540,12 @@ fn heap_line(at: String) = match diag_scope_of() {
 }
 
 // The arenas' census for the whole compile — every exit the judgment's
-// groups, the lowering's declarations and the emitted reach's demands made —
-// read where the compile ends, once the module is written or before a
-// refusal says why it was not, so one line counts them all.
+// groups, the lowering's declarations and the emitted reach's demands made,
+// and every arena a suspended computation left — read where the compile
+// ends, once the module is written or before a refusal says why it was not,
+// so one line counts them all.
 fn arena_line() = match diag_scope_of() {
-  ScopeAll => eprint_string("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB\n"),
+  ScopeAll => eprint_string("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB, {int_to_str(arena_stat(ArSuspended))} suspended\n"),
   ScopeNone => (),
   ScopeModule(_) => (),
 }

@@ -701,7 +701,7 @@ fn settle_node(site: String, expr) = match expr {
   LTailCall(_, _, _) => (),
   LDirectCall(_, _, _, _, _) => (),
   LReturn(_, _) => (),
-  LYield(_, _, _, _) => (),
+  LYield(h, op, _, _) => settle_yield(h, op),
   LKExtend(_, _) => (),
   LIf(_, _, _, _) => (),
   LBlock(_, _) => (),
@@ -723,6 +723,27 @@ fn settle_node(site: String, expr) = match expr {
   LStateSlotStore(_, _, _, _) => (),
   LStateInit(_, _, _, _) => (),
   LWasiCall(_, _, _) => (),
+}
+
+// A floor standing where a perform stands: the op suspends the computation
+// around it — its handler resumes it more than once, holds it, or abandons
+// it — and nothing captured the rest of the computation at this position, so
+// every evaluation of it would reach the floor. The floor a can-yield call's
+// check writes (`k2_floor_wrap`) stands at a call that may never yield, and
+// stays the runtime's.
+fn settle_yield(h, op: String) = if op == "" {
+  match graph_node_body(h) {
+    NExpr(CallExpr(f, _)) => {
+      let name = callee_name(f)
+      match op_resume_discipline(name) {
+        MultiShot => report_at(h, EContinuationUncapturable(name, parse_span_of(h))),
+        _ => (),
+      }
+    },
+    _ => (),
+  }
+} else {
+  ()
 }
 
 // A binary operator's operand, read where its emission reads it
@@ -2301,7 +2322,14 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       // drift-audit: ignore — one-time module-scope append, not a loop accumulator
       // W5 string interning — seed the string_table handler so downstream
       // LString emits can look up the offset via perform string_offset.
-      let table_fn_names = if yield_seen > 0 { all_fn_names ++ ["__k_compose"] } else { all_fn_names }
+      //
+      // An arena lives where one instance owns the line (a spawning module's
+      // arena is its body, `Hβ.arena.per-instance-regions`), decided here
+      // once: the table, the runtime and every exit read it. Where an arena
+      // lives in a module that yields, its re-entry is a k too, resident
+      // beside the composer.
+      let arena_on = arena_demanded() && ls_find_str_local(wasi_ops, "spawn_task", 0) < 0
+      let table_fn_names = all_fn_names ++ k_helper_names(yield_seen > 0, arena_on)
       set_string_entries(string_entries)
       // The per-fn `<~` line lists, seeded for the install emit (a handler
       // record is sized by the sum over its arm fns) and read here for the
@@ -2321,6 +2349,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
       {
         adjoint_registers: derived.adjoint_registers,
         alloc_units: alloc_units,
+        arena_on: arena_on,
         fn_records: fn_records,
         fold_closures: fold_closures,
         jvp_faces: jvp_face_map(derived.faces),
@@ -2351,11 +2380,17 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
   }
 }
 
+// The synthesized k helpers the table carries, appended after every named
+// function so no index moves: the composer where the module yields, and the
+// arena's re-entry beside it where an arena also lives.
+fn k_helper_names(yields, arena_on) =
+  if !yields { [] } else if arena_on { ["__k_compose", "__k_arena"] } else { ["__k_compose"] }
+
 // The module, written from its plan. Nothing here decides: every fact it
 // reads was settled before the gate, and the registries the writes consult
 // (the twins, the string offsets, the per-fn lines) were seeded by the plan.
 fn emit_planned(plan) = match plan {
-  {adjoint_registers, alloc_units, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_seen} => {
+  {adjoint_registers, alloc_units, arena_on, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_seen} => {
     let line_globals = line_global_slots(line_owners)
     emit_header()
     emit_type_section(vectors, yield_seen)
@@ -2371,12 +2406,13 @@ fn emit_planned(plan) = match plan {
     // spawn proof rather than inferred from it (see emit_memory_decl).
     let socketed = ls_find_str_local(wasi_ops, "sock_accept", 0) >= 0
     emit_memory_decl(spawns, spawns || socketed, ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0)
-    // An arena lives where one instance owns the line (a spawning module's
-    // arena is its body, `Hβ.arena.per-instance-regions`); its leaves are
-    // settled here, before any function is written, because every barrier
-    // and every claim writes a leaf's index.
-    let arena_on = arena_demanded() && !spawns
-    set_arena_leaves(if arena_on { evac_leaf_list(fold_closures.evac) } else { [] }, arena_on)
+    // A live arena's leaves are settled here, before any function is
+    // written, because every barrier and every claim writes a leaf's index.
+    set_arena_leaves(
+      if arena_on { evac_leaf_list(fold_closures.evac) } else { [] },
+      arena_on,
+      arena_on && yield_seen > 0
+    )
     if arena_on { emit_arena_runtime() } else { () }
     emit_line_globals(line_owners)
     emit_tangent_ring_globals(tangent_rings)
@@ -2467,6 +2503,7 @@ fn emit_planned(plan) = match plan {
     // bubble op), $__k_world (the frozen-world read). Dormant until a k2
     // boundary calls extend; emitted only when the module yields (Law 7).
     if yield_seen > 0 { emit_k_compose_pair() }
+    if yield_seen > 0 && arena_on { emit_arena_reentry() }
     // band B M2b — one redrive fn per LIVE MultiShot-armed handler: the
     // dispatch loop's one home (the install bracket and every resume
     // flag-arm call the same fn).
@@ -4661,7 +4698,7 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw) = {
 fn emit_arena_runtime() = {
   wat_emit("  (global $ar_depth (mut i32) (i32.const 0))\n  (global $ar_mark (mut i32) (i32.const 0))\n  (global $ar_jb (mut i32) (i32.const 0))\n  (global $ar_jn (mut i32) (i32.const 0))\n  (global $ar_jover (mut i32) (i32.const 0))\n")
   wat_emit("  (global $ar_m (mut i32) (i32.const 0))\n  (global $ar_t (mut i32) (i32.const 0))\n  (global $ar_bm (mut i32) (i32.const 0))\n  (global $ar_bmsz (mut i32) (i32.const 0))\n  (global $ar_rl (mut i32) (i32.const 0))\n  (global $ar_rn (mut i32) (i32.const 0))\n  (global $ar_ll (mut i32) (i32.const 0))\n  (global $ar_ln (mut i32) (i32.const 0))\n  (global $ar_lscan (mut i32) (i32.const 0))\n  (global $ar_c0 (mut i32) (i32.const 0))\n  (global $ar_cp (mut i32) (i32.const 0))\n  (global $ar_cend (mut i32) (i32.const 0))\n  (global $ar_dst (mut i32) (i32.const 0))\n  (global $ar_delta (mut i32) (i32.const 0))\n  (global $ar_abort (mut i32) (i32.const 0))\n")
-  wat_emit("  (global $ar_exits (mut i32) (i32.const 0))\n  (global $ar_kept (mut i32) (i32.const 0))\n  (global $ar_freed (mut i32) (i32.const 0))\n  (global $ar_moved (mut i32) (i32.const 0))\n  (global $ar_high (mut i32) (i32.const 0))\n")
+  wat_emit("  (global $ar_exits (mut i32) (i32.const 0))\n  (global $ar_kept (mut i32) (i32.const 0))\n  (global $ar_freed (mut i32) (i32.const 0))\n  (global $ar_moved (mut i32) (i32.const 0))\n  (global $ar_high (mut i32) (i32.const 0))\n  (global $ar_susp (mut i32) (i32.const 0))\n")
   // The block — 262144 journal entries of 8 bytes — is the instance's FIRST
   // allocation (`emit_start`), below every mark any code can take, so no
   // region, commit, keep or reset ever moves or frees it, and a persisted
@@ -4740,29 +4777,79 @@ fn emit_arena_runtime() = {
   wat_emit("  (func $arena_close (param $m i32) (param $j0 i32) (param $o i32) (param $go i32) (result i32) (local $e i32) (local $k i32)\n")
   wat_emit("    (if (local.get $go) (then (block $done (loop $drain (br_if $done (global.get $ar_abort)) (br_if $done (i32.ge_u (global.get $ar_lscan) (global.get $ar_ln))) (local.set $e (i32.add (global.get $ar_ll) (i32.mul (global.get $ar_lscan) (i32.const 12)))) (global.set $ar_lscan (i32.add (global.get $ar_lscan) (i32.const 1))) (local.set $k (i32.load offset=4 (local.get $e))) (if (i32.gt_s (local.get $k) (i32.const 0)) (then (call $ar_scan_by (local.get $k) (i32.load (i32.load (local.get $e)))))) (br $drain))) (if (global.get $ar_abort) (then (call $ar_restore) (local.set $go (i32.const 0))))))\n")
   wat_emit("    (if (local.get $go) (then (call $ar_commit (local.get $m))) (else (global.set $ar_kept (i32.add (global.get $ar_kept) (i32.const 1))) (if (global.get $ar_bm) (then (call $ar_scratch_clear)))))\n")
-  wat_emit("    (global.set $ar_depth (i32.sub (global.get $ar_depth) (i32.const 1))) (if (i32.eqz (global.get $ar_depth)) (then (global.set $ar_jn (i32.const 0))) (else (call $ar_compact (local.get $j0) (local.get $o)))) (global.set $ar_mark (local.get $o)) (global.set $ar_m (i32.const 0)) (global.set $ar_t (i32.const 0)) (local.get $go))\n")
+  wat_emit("    (call $ar_pop (local.get $j0) (local.get $o)) (global.set $ar_m (i32.const 0)) (global.set $ar_t (i32.const 0)) (local.get $go))\n")
+  // Leaving an instance, whether it exited or suspended: one level shallower,
+  // and the journal holds only what the extent around it still needs — the
+  // stores into memory older than ITS mark, or nothing at the outermost.
+  wat_emit("  (func $ar_pop (param $j0 i32) (param $o i32) (global.set $ar_depth (i32.sub (global.get $ar_depth) (i32.const 1))) (if (i32.eqz (global.get $ar_depth)) (then (global.set $ar_jn (i32.const 0))) (else (call $ar_compact (local.get $j0) (local.get $o)))) (global.set $ar_mark (local.get $o)))\n")
+  // A SUSPENDED instance: a yield is unwinding through the exit, so nothing
+  // the extent allocated may die — its region joins the extent around it, no
+  // byte read or moved — and the census counts it.
+  wat_emit("  (func $arena_suspend (param $j0 i32) (param $o i32) (global.set $ar_susp (i32.add (global.get $ar_susp) (i32.const 1))) (call $ar_pop (local.get $j0) (local.get $o)))\n")
   // The census read: a nullary ArenaStat IS its tag word, in declaration order.
-  wat_emit("  (func $arena_stat_impl (param $s i32) (result i32) (block $b4 (block $b3 (block $b2 (block $b1 (block $b0 (br_table $b0 $b1 $b2 $b3 $b4 (local.get $s))) (return (global.get $ar_exits))) (return (global.get $ar_kept))) (return (global.get $ar_freed))) (return (global.get $ar_moved))) (global.get $ar_high))\n")
+  wat_emit("  (func $arena_stat_impl (param $s i32) (result i32) (block $b5 (block $b4 (block $b3 (block $b2 (block $b1 (block $b0 (br_table $b0 $b1 $b2 $b3 $b4 $b5 (local.get $s))) (return (global.get $ar_exits))) (return (global.get $ar_kept))) (return (global.get $ar_freed))) (return (global.get $ar_moved))) (return (global.get $ar_high))) (global.get $ar_susp))\n")
+}
+
+// THE ARENA'S RE-ENTRY — the continuation segment a suspended arena wraps
+// around everything its body's yield carried out. Emitted where an arena
+// lives and a computation can yield; called through the table like every k
+// (`[fn_ptr@0][nc=2][inner@8][leaf@12][state_idx=0@16][ret_slot=0@20]
+// [world@24]`, the composer's head). Running it opens a FRESH instance, runs
+// the wrapped chain — the rest of the arena's body and every segment the
+// yield composed inside it — and exits where the body ends: the value moves
+// through the leaf the record carries, as the arena's own exit moves it. A
+// chain that suspends again suspends this instance too and wraps the fresh
+// continuation in the same re-entry, so each resumption is its own instance
+// and every segment of a resumed chain runs inside the arenas that enclosed
+// it when it suspended, in the order they enclosed it. A dead continuation
+// (an abandoning yield's `$yield_k` = 0) is never wrapped: nothing resumes it.
+fn emit_arena_reentry() = {
+  wat_emit("  (func $__k_arena_extend (param $leaf i32) (local $nk i32)\n")
+  wat_emit("    (if (i32.eqz (global.get $yield_k)) (then (return)))\n")
+  wat_emit("    (local.set $nk (call $alloc (i32.const 28)))\n")
+  wat_emit("    (i32.store offset=0 (local.get $nk) (global.get $__k_arena_idx))\n")
+  wat_emit("    (i32.store offset=4 (local.get $nk) (i32.const 2))\n")
+  wat_emit("    (i32.store offset=8 (local.get $nk) (global.get $yield_k))\n")
+  wat_emit("    (i32.store offset=12 (local.get $nk) (local.get $leaf))\n")
+  wat_emit("    (i32.store offset=16 (local.get $nk) (i32.const 0))\n")
+  wat_emit("    (i32.store offset=20 (local.get $nk) (i32.const 0))\n")
+  wat_emit("    (i32.store offset=24 (local.get $nk) (call $__k_world (global.get $yield_k)))\n")
+  wat_emit("    (global.set $yield_k (local.get $nk))\n")
+  wat_emit("  )\n")
+  wat_emit("  (func $__k_arena (param $__state i32) (param $v i32) (result i32) (local $ik i32) (local $o i32) (local $j i32) (local $m i32) (local $r i32) (local $t i32) (local $g i32) (local $k i32) (local $mv i32)\n")
+  wat_emit("    (local.set $o (global.get $ar_mark)) (local.set $j (global.get $ar_jn)) (call $arena_enter) (local.set $m (global.get $ar_mark))\n")
+  wat_emit("    (local.set $ik (i32.load offset=8 (local.get $__state)))\n")
+  wat_emit("    (local.set $r (call_indirect (type $ft2) (local.get $ik) (local.get $v) (i32.load (local.get $ik))))\n")
+  wat_emit("    (if (global.get $yield_flag) (then (call $arena_suspend (local.get $j) (local.get $o)) (call $__k_arena_extend (i32.load offset=12 (local.get $__state))) (return (i32.const 0))))\n")
+  wat_emit("    (local.set $k (i32.load offset=12 (local.get $__state))) (local.set $mv (i32.or (i32.gt_s (local.get $k) (i32.const 0)) (i32.eq (local.get $k) (i32.const -3))))\n")
+  wat_emit("    (local.set $g (call $arena_sweep (local.get $m) (local.get $j))) (local.set $t (local.get $r))\n")
+  wat_emit("    (if (local.get $g) (then (if (call $ar_young (local.get $r)) (then (if (local.get $mv) (then (local.set $t (if (result i32) (i32.eq (local.get $k) (i32.const -3)) (then (call $ar_box8 (local.get $r))) (else (call $ar_evac_by (local.get $k) (local.get $r)))))) (else (if (i32.eqz (local.get $k)) (then (call $ar_opaque (local.get $r))))))))))\n")
+  wat_emit("    (local.set $g (call $arena_close (local.get $m) (local.get $j) (local.get $o) (local.get $g)))\n")
+  wat_emit("    (if (i32.and (local.get $g) (local.get $mv)) (then (local.set $r (call $ar_final (local.get $t)))))\n")
+  wat_emit("    (local.get $r))\n")
 }
 
 // What the emission reads of the module's arenas, settled by the plan: the
-// evacuation leaves in index order, each leaf's index by its sig, and
-// whether the arena is live at all — a module that opens none, and a
-// spawning one, emit an arena as its body.
+// evacuation leaves in index order, each leaf's index by its sig, whether
+// the arena is live at all — a module that opens none, and a spawning one,
+// emit an arena as its body — and whether a computation can suspend through
+// one, which a module that never yields cannot.
 effect ArenaLeaves {
-  set_arena_leaves([(String, Shape)], Bool)
+  set_arena_leaves([(String, Shape)], Bool, Bool)
   arena_leaves() -> [(String, Shape)]
   arena_leaf_index(String) -> Option(Int)
   arena_live() -> Bool
+  arena_suspends() -> Bool
 }
 
-handler arena_registry with demanded = false, leaves = [], index = smap_new(), live = false {
+handler arena_registry with demanded = false, leaves = [], index = smap_new(), live = false, suspends = false {
   arena_demand_note() => resume() with demanded = true,
   arena_demanded() => resume(demanded),
-  set_arena_leaves(xs, on) => resume() with leaves = xs, index = smap_build(leaf_numbering(xs)), live = on,
+  set_arena_leaves(xs, on, susp) => resume() with leaves = xs, index = smap_build(leaf_numbering(xs)), live = on, suspends = susp,
   arena_leaves() => resume(leaves),
   arena_leaf_index(sig) => resume(smap_get(index, sig)),
   arena_live() => resume(live),
+  arena_suspends() => resume(suspends),
 }
 
 // A leaf's index is its position plus one — the number a journal entry, a
@@ -4778,13 +4865,37 @@ fn number_leaf(acc, leaf) = match leaf {
 // barriers journaled; the value moves through its own leaf; the close
 // drains, commits or keeps, and pops. A value of a type no leaf moves aborts
 // the exit when it is in the region, which keeps the region.
+//
+// A body that SUSPENDED reaches the exit with a yield unwinding through it
+// and a placeholder for its value. Nothing the extent allocated may die
+// then: the continuation the yield carries out and the perform's arguments
+// live in the region, and the rest of the body has not run. So the arena is
+// suspended — closed with its region kept, joined to the extent around it —
+// and the unwinding continuation is wrapped in the arena's own re-entry
+// (`$__k_arena`), so each resumption runs the suspended rest inside a fresh
+// instance that exits where the body ends, around every segment the
+// continuation holds.
 fn emit_arena(h, b) = {
   let hs = int_to_str(h)
   let t = evac_type_at(h)
   let ev = evac_of(t)
   wat_emit("    (local.set $__ar_o_{hs} (global.get $ar_mark))\n    (local.set $__ar_j_{hs} (global.get $ar_jn))\n    (call $arena_enter)\n    (local.set $__ar_m_{hs} (global.get $ar_mark))\n")
   emit_expr(b)
-  wat_emit("    (local.set $__ar_v_{hs})\n    (local.set $__ar_g_{hs} (call $arena_sweep (local.get $__ar_m_{hs}) (local.get $__ar_j_{hs})))\n")
+  wat_emit("    (local.set $__ar_v_{hs})\n")
+  if arena_suspends() {
+    wat_emit("    (if (global.get $yield_flag) (then (call $arena_suspend (local.get $__ar_j_{hs}) (local.get $__ar_o_{hs})) (call $__k_arena_extend (i32.const {int_to_str(leaf_code(evac_leaf(t)))}))) (else\n")
+    emit_arena_exit(hs, t, ev)
+    wat_emit("    ))\n")
+  } else {
+    emit_arena_exit(hs, t, ev)
+  }
+  wat_emit("    (local.get $__ar_v_{hs})\n")
+}
+
+// The exit itself, the body's value parked in its register: sweep, move the
+// value through its leaf, close, and read the value at its final address.
+fn emit_arena_exit(hs, t, ev) = {
+  wat_emit("    (local.set $__ar_g_{hs} (call $arena_sweep (local.get $__ar_m_{hs}) (local.get $__ar_j_{hs})))\n")
   match ev {
     EvShape(_) => wat_emit("    (local.set $__ar_r_{hs} (local.get $__ar_v_{hs}))\n    (if (local.get $__ar_g_{hs}) (then (if (call $ar_young (local.get $__ar_v_{hs})) (then (local.set $__ar_r_{hs} (call $evac_{evac_sig(t)} (local.get $__ar_v_{hs})))))))\n"),
     EvOpaque => wat_emit("    (if (local.get $__ar_g_{hs}) (then (call $ar_opaque (local.get $__ar_v_{hs}))))\n"),
@@ -4798,7 +4909,6 @@ fn emit_arena(h, b) = {
     EvWord => (),
     EvWide => (),
   }
-  wat_emit("    (local.get $__ar_v_{hs})\n")
 }
 
 // The arena's own registers, mirror-true to `emit_arena`: the outer mark,

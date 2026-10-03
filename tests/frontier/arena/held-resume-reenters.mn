@@ -1,0 +1,31 @@
+// A held resume whose op is performed inside an arena and answered by a
+// handler outside it. The perform unwinds through the arena's exit, so the
+// exit suspends the arena rather than end it: the continuation and the
+// perform's argument were allocated in the region, and the arm reads the
+// argument after the resumed remainder has run. The remainder re-enters a
+// fresh arena of its own, which reclaims what the remainder built.
+// Expected (0 + 300 - 293) + len(xs) = 7 + 10 = 17, one suspension, and one
+// exit — the resumption's.
+effect Note {
+  note(xs: [Int]) -> Int
+}
+
+handler h {
+  note(xs) => {
+    let r = resume(0)
+    r + len(xs)
+  },
+}
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn body() = note(build(10)) + len(build(300)) - 293 ~> arena
+
+fn main() = {
+  let r = body() ~> h
+  if r == 17 && arena_stat(ArSuspended) == 1 && arena_stat(ArExits) == 1 && arena_stat(ArFreed) > 0 {
+    42
+  } else {
+    1
+  }
+}

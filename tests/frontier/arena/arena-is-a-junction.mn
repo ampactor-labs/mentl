@@ -1,0 +1,22 @@
+// An arena whose body suspends stands where its value is used: the rest of
+// the enclosing expression runs after each resumption's arena exits, on the
+// value that exit published. Expected (0 * 10 + 5) + (1 * 10 + 5) +
+// (2 * 10 + 5) = 45 and three exits.
+effect Pick {
+  pick() -> Int
+}
+
+handler thrice {
+  pick() => resume(0) + resume(1) + resume(2),
+}
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn work() = pick() + len(build(200)) - 200
+
+fn step() = (work() ~> arena) * 10 + 5
+
+fn main() = {
+  let r = step() ~> thrice
+  if r == 45 && arena_stat(ArExits) == 3 { 42 } else { 1 }
+}

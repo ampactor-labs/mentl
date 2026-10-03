@@ -5197,7 +5197,15 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
       inf_mark_install_frame(arm_names)
       infer_expr(left)
       exit_frame()
-      if opens_arena { ages_depth(0 - 1) } else { () }
+      if opens_arena {
+        ages_depth(0 - 1)
+        // A body that suspends leaves the arena's frame, and the rest of THIS
+        // frame resumes at the arena's value — the arena is a boundary as a
+        // call is, staged while this frame is the live one.
+        stage_continuation_boundary("~>", handle)
+      } else {
+        ()
+      }
       infer_expr(right)
       // The install itself, in the frame it stands in: a dispatched install
       // builds its record and pushes its world, so it allocates, and `!Alloc`

@@ -1,0 +1,26 @@
+// The arena is in the caller and the perform in a callee whose remainder
+// builds after it. A resumption re-enters the arena BEFORE the callee's
+// remainder runs, exactly as the first run entered it before the call, so
+// what the callee builds after the perform dies at each resumption's exit.
+// Expected 0 + 1 + 2 = 3, three exits, and the heap no further than the
+// three continuations and what the resumptions published.
+effect Pick {
+  pick() -> Int
+}
+
+handler thrice {
+  pick() => resume(0) + resume(1) + resume(2),
+}
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn work() = pick() + len(build(200)) - 200
+
+fn step() = work() ~> arena
+
+fn main() = {
+  let before = heap_mark()
+  let r = step() ~> thrice
+  let grew = addr_diff(heap_mark(), before)
+  if r == 3 && grew < 4000 && arena_stat(ArExits) == 3 { 42 } else { 1 }
+}

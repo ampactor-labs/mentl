@@ -35,6 +35,55 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-03 · pin cf8a6d500a41d7ba (TRANSITION m3 == m4) · A SUSPENDED ARENA KEEPS ITS REGION,
+  AND EACH RESUMPTION IS AN ARENA OF ITS OWN (C×A). An op performed inside
+  an arena and answered outside it suspends what the arena encloses, and
+  the exit ran on the way out anyway: the continuation the arm held and the
+  perform's arguments were the arena's, reclaimed from under the arm. Eight
+  frontier legs on boot 10cd1956 (the census clause stripped, the stat
+  being new): a held resume, a multi-shot resume, a perform in a callee
+  whose rest builds after it, an arena standing where its value is used, a
+  rest storing into older memory and a rest performing again each trapped
+  at 134; an abandoning arm read an argument the exit had reclaimed and a
+  list-valued arena came back empty (exit 1 each). THE FORM: the exit is
+  flag-aware — a yield unwinding through it SUSPENDS the arena
+  (`$arena_suspend`: the region kept, the journal compacted to the parent,
+  `ArSuspended` counted) and wraps the yielded continuation
+  (`$__k_arena_extend`); every resumption of the wrap opens a fresh arena
+  around the whole wrapped chain before any of it runs and exits it where
+  the body ends, moving the value out by its leaf (`$__k_arena`). The arena
+  body stays its own frame and its tee is a k2 junction of the frame it
+  stands in (`k2_spine_call`'s `PTee` arm, `arena_may_yield` reading the
+  subtree's row; `stage_continuation_boundary` at the tee in infer), and a
+  non-terminus arena that may suspend is floor-wrapped like a call that
+  may. All eight 42 on the candidate; under an arm resuming three times the
+  heap grows 96 bytes against 19,240 with no arena. AND THE FLOOR THE
+  SUSPENSION EXPOSED REPORTS: a held or multi-shot perform off the spine is
+  `E_ContinuationUncapturable` (armed at birth), said at the settle point
+  over the emitted reach (`settle_yield`), never at lowering — the boot
+  compiled `mn-perform-off-spine-refuses` clean and trapped at 134, and
+  `mn-perform-off-spine-dead` (1) holds the reach. FOUND, measured on the
+  boot and the candidate alike and banked on its peer as the next item: an
+  arm that observes its answer (`a ++ b` over its resumptions' `[Int]`
+  answers) refuses `E_ShapeUnprovable` — the base arm is emitted, since the
+  answer is no part of an arm's key
+  (`Hβ.continuations.redrive-reads-the-answer-as-a-word`, its other face).
+  KILLS: (1) a crossing test comparing open arena marks with the serving
+  install's address at every reified perform — the yield unwinding through
+  the exit IS the crossing, read live off `$yield_flag`; (2) reopening per
+  segment where each frame re-enters — a callee's rest is an inner segment
+  that runs before the arena's frame re-enters, so it would run outside the
+  fresh arena; the wrap is taken at the exit; (3) hoisting the arena into
+  its enclosing frame's spine — a second spine grammar for a frame that
+  already is one; (4) the refusal said at lowering refused a perform in a
+  function nothing calls (R0′'s lesson, read again); (5) "the census counts
+  suspensions wrong" — `430777 suspended` on m2 was m2's runtime, written by
+  its parent with a five-arm stat table. Fixed input (the wheel's source,
+  boot against the candidate, two runs each): peak 523,104 / 531,144 KB
+  against 523,248 / 532,168, the module-written heap +29,752 bytes.
+  Micros 357, crown 134/0, proof-exactness 30/0, frontier 588/0/1.
+  m4 leg 14.89s wall · 511MB peak RSS (524124 KB).
+
 - 2026-10-03 · pin 10cd1956fefa7abf (TRANSITION m3 == m4) · THE LIBRARY SPEAKS THE ADDRESS, AND
   A RAW COPY IS OPAQUE (#129, the second of two pins). The first pin made
   `Addr` a type and left the library raw, since a compiler's checker is its

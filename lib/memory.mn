@@ -144,11 +144,12 @@ effect Memory {
 }
 
 // The arenas' census: how many exits ran, how many kept their region, the
-// KB reclaimed and moved, and the highest line an exit reached (KB) — what
-// the emitter reads where an arena lives, and zero where none does.
+// KB reclaimed and moved, the highest line an exit reached (KB), and how
+// many arenas a suspended computation left open — what the emitter reads
+// where an arena lives, and zero where none does.
 fn arena_stat(s: ArenaStat) = 0
 
-type ArenaStat = ArExits | ArKept | ArFreed | ArMoved | ArHigh
+type ArenaStat = ArExits | ArKept | ArFreed | ArMoved | ArHigh | ArSuspended
 
 // Alloc — heap allocation. Bump allocator in WASM linear memory.
 // alloc(n) advances the heap pointer by n bytes (8-byte aligned)

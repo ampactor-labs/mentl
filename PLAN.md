@@ -2289,6 +2289,29 @@ and this is the STATE.
   word arithmetic — bitwise operations, address offsets, the puns — is
   declared in `Memory`, so a function doing only arithmetic cannot be
   `Pure` (`Hβ.memory.word-arithmetic-is-memory`, the next landing).
+- **A SUSPENDED ARENA KEEPS ITS REGION, AND EACH RESUMPTION IS AN ARENA OF
+  ITS OWN — CLOSED 2026-10-03 (C×A).** An op performed inside an arena and
+  answered outside it suspends what the arena encloses, and the exit ran on
+  the way out anyway, reclaiming the arm's continuation and the perform's
+  arguments: on boot 10cd1956 six shapes trapped at 134 and two answered
+  wrong — an abandoning arm read a reclaimed argument, a list-valued arena
+  came back empty. The exit reads the live fact now: a yield unwinding
+  through it SUSPENDS the arena (the region kept and joined to the extent
+  around it, `ArSuspended` counted) and wraps the continuation, and every
+  resumption opens a fresh arena around everything the original enclosed —
+  a callee's rest as much as the body's own — before any of it runs. The
+  arena tee is a capture point of the frame it stands in, so the rest of
+  that frame resumes at the arena's value. Under an arm resuming three
+  times the heap grows 96 bytes against 19,240 with no arena. The floor the
+  suspension exposed REPORTS: a held or multi-shot perform where no
+  continuation can be captured yet is `E_ContinuationUncapturable` at the
+  perform, armed at birth and said over the emitted reach — the boot
+  compiled it clean and trapped. Found, and next: an arm that observes its
+  answer (`a ++ b` over its resumptions) refuses `E_ShapeUnprovable`, since
+  an install keys its arms at its effect's instance and never at its answer
+  (`Hβ.continuations.redrive-reads-the-answer-as-a-word`, its second face);
+  and capture at every position stays
+  `Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

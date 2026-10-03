@@ -1,0 +1,27 @@
+// expect: 1
+// The refusal an uncapturable perform takes is said where the emitted reach
+// holds it, never in a body nothing runs: `never` performs `pick` where no
+// continuation can be captured, and nothing calls it, so the program
+// compiles and runs to (0 + 0) + (1 + 0) = 1. Said at lowering, the class
+// refused this program over code that never executes (the form first built,
+// caught before the march).
+effect Pick {
+  pick() -> Int
+}
+
+handler both {
+  pick() => {
+    let a = resume(0)
+    let b = resume(1)
+    a + b
+  },
+}
+
+fn never() = {
+  let v = pick()
+  v + 1
+}
+
+fn body() = pick() + 0
+
+fn main() = body() ~> both
