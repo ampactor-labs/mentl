@@ -228,6 +228,8 @@ fn enumerate_typed(target_ty, allowed_effects, context) = match target_ty {
   TByte => enumerate_int_literals(context),
   TFloat => enumerate_float_literals(context),
   TUnit => one_unit_candidate(context),
+  TAddr => // an address has no literal: only the ops that answer one mint it
+  [],
   TVar(_) => one_hole_candidate(context),
   TRecord(fields) => enumerate_records(fields, context),
   TRecordOpen(fields, rest) => enumerate_records(fields, context),

@@ -481,6 +481,7 @@ fn is_word_at(h) = if h == 0 {
     TInt => true,
     TUnit => true,
     TByte => true,
+    TAddr => true,
     TName(n, args) => len(args) == 0 && field_name_eq(n, "Bool"),
     _ => false,
   }
@@ -1349,9 +1350,10 @@ fn jvp_wasi(h, name: String, jargs) = match seq_values(h, jargs) {
 }
 
 fn is_store_op(name: String) =
-  name == "store_f64" || name == "store_i32" || name == "store_i8" || name == "mem_copy"
+  name == "store_f64" || name == "store_i32" || name == "store_i8" || name == "store_addr" || name == "mem_copy"
 
-fn is_load_op(name: String) = name == "load_f64" || name == "load_i32" || name == "load_i8"
+fn is_load_op(name: String) =
+  name == "load_f64" || name == "load_i32" || name == "load_i8" || name == "load_addr"
 
 // ─── Statements and bodies ────────────────────────────────────────────
 //

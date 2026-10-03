@@ -3549,20 +3549,52 @@ at the store a value no leaf can move into an older one, instead of keeping
 the region at the exit. A language arc of its own — region polymorphism in
 rows — never a precondition of the journal's soundness.
 
-`Hβ.arena.cast-addr-crosses-the-journal` — OPEN, BORN 2026-10-03, measured.
-A word that is an address — `Cast`'s `addr`, and what `alloc` and
-`bytes_buf` answer — stored raw into older memory is a store the journal
-cannot see: the address dangles after the exit. It is the one channel left
-— a `list_set` reached as a value journals through its table face, a raw
-store of a list is a type error, and the raw rewind beside `heap_mark` is
-deleted (Arena·P2). The wheel stores none: it reads `addr` in four word
-tests (the spine readers ask whether a cell was ever written) and hands it
-to two writes that leave the process (the warm image's header, a persisted
-branch's wire), and every raw buffer `alloc` or `bytes_buf` answers is local
-scratch, up-cast (`str_of_buf`) before anything stores it. The form: what `addr` answers is a word
-with an address's provenance, a type of its own, whose raw store journals
-with no leaf, so the exit keeps the region rather than move a value it
-cannot read.
+`Hβ.arena.cast-addr-crosses-the-journal` — OPEN, BORN 2026-10-03, measured;
+its first pin LANDED the same day (#129, pin 2198ed97). An arena's exit moves
+a value by its type, and every address was typed Int: an address held where
+the exit looks was copied as a number, and the cell it named was reclaimed
+under it. Five probes measured it silent on boot 0a096302 — the arena's
+value 109 for 14, a slot written raw 1 for 42, a record's field 1 for 6, a
+list's element 7 for 12, bits copied by `mem_copy` 1 for 42. THE FORM, built
+at the first pin: `Addr` is a type of its own (`TAddr`) — a word that is not
+a number, compared by identity, ordered by magnitude, shown unsigned — and
+its move is opaque, so an address of the region where the exit looks keeps
+the region; `Memory` carries the ops that move, measure, read and write one,
+`store_addr` journaled with no leaf. THE SECOND PIN, by the compiler the
+first one is (the boot reads an undeclared `Addr` as a nominal with no
+variants, so the library cannot name the type until a compiler that knows it
+compiles it): the library's raw code typed — `alloc`, `heap_mark` and
+`Cast`'s `addr` answering an address, the raw loads and stores taking one,
+`str_payload`'s face an address and `str_of_buf` taking one, the list
+runtime's node links addresses and its element words behind the two puns,
+the virgin-slot tests `slot_present`, the deliberate out-of-bounds reads one
+helper — and the four Int fixtures beside the typed ones. What stays the
+program's own claim, by the form: a word COMPUTED from an address (a
+distance added to a mark) and bits copied by `mem_copy`; the guarantee is
+about values, and a bounds proof over raw memory is the generative peer.
+
+`Hβ.emit.sum-order-ranks-a-sentinel-against-an-address` — CLOSED 2026-10-03
+(#129, pin 2198ed97). A sum's generated compare took a nullary variant's
+sentinel, when either operand was one, and compared it as a word against the
+other operand — a fielded variant's ADDRESS — so every nullary variant ranked
+below every fielded one whatever their declaration order: `B(5) < A` was
+false over `type T = B(Int) | A`, and the program answered 1 for 10 on boot
+0a096302 with no diagnostic. A value's tag is read uniformly now — the
+sentinel itself, or the record's first word — tags order first, and equal
+tags name one variant, so two sentinels answer 0 and two records compare
+their payloads (`emit_one_compare_sum_helper`). The wheel's own 28 sum
+compares took it. `tests/micros/mn-sum-order-tag-first.mn`.
+
+`Hβ.infer.arith-refusal-beside-a-mismatch` — OPEN, BORN 2026-10-03
+(diagnostic, sound). Arithmetic unifies its operands before it demands a
+number of them, so `p + 8` over an address reports the mismatch of `Addr`
+with `Int` and then `E_ArithOnAggregate` — two diagnostics for one mistake,
+as any aggregate operand beside a number takes — and `8 + p` reports only
+mismatches, at the operator and again where its result is used, the demand
+being read off the left operand (both measured on the pin's m2). The form: the
+demand is judged on both operands before they meet, and a refusal there
+stands for the site, the unify skipped. Rides the second pin of #129, whose
+rewrites of raw address arithmetic make the noise matter.
 
 `Hβ.arena.claims-of-a-cycle` — OPEN, BORN 2026-10-03 (imprecision, sound).
 A function's age claim is a least fixpoint over its own recursive calls; a

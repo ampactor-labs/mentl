@@ -1631,12 +1631,18 @@ for i in "${!compilers[@]}"; do
   # before it opened, so the exit's copy space lies past the memory's end —
   # a trap at the exit on boot fb8921e3 (a zero-length copy there is out of
   # bounds too), found by the battery once each fixture ran in an arena.
+  # The last four hold an ADDRESS where the exit looks — as the value, in a
+  # slot `store_addr` journaled, as a record's field, as a list's element —
+  # and each keeps the region, since nothing can say what an address names.
+  # Held as Ints, the same four programs read 0, 0, 0 and 2 where they compute
+  # 42, 42, 42 and 12, silently, on boot 0a096302; typed, none compiled there.
   capture_arena_shadow "$compiler" "$dir" || continue
   for leg in value-moves dropped-is-reclaimed handler-buffer-moves \
              plain-buffer-moves state-commit-moves nested ring-history-moves \
              growth-link closure-keeps journal-overflow-keeps \
              spawning-module-runs-the-body generic-store-moves value-store-keeps \
-             nothing-moved-past-memory; do
+             nothing-moved-past-memory addr-value-keeps addr-store-keeps \
+             addr-field-keeps addr-list-keeps; do
     run_program "$compiler" "arena-$leg" \
       "$ROOT/tests/frontier/arena/$leg.mn" 42 arena "$dir"
   done

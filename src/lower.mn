@@ -3988,6 +3988,7 @@ fn record_full_fields(ty) = match ty {
   TFloat => None,
   TUnit => None,
   TByte => None,
+  TAddr => None,
   TList(_) => None,
   TTuple(_) => None,
   TFun(_, _, _) => None,
@@ -4362,6 +4363,7 @@ fn ty_handle_of(ty) = match ty {
   TFloat => 0,
   TUnit => 0,
   TByte => 0,
+  TAddr => 0,
   TList(_) => 0,
   TTuple(_) => 0,
   TFun(_, _, _) => 0,
@@ -4566,7 +4568,7 @@ fn record_known_fields(ty) = match tuple_pat_strip(ty) {
   TReprPin(_, inner) => record_known_fields(inner),
   TAlias(_, inner) => record_known_fields(inner),
   TRefined(inner, _) => record_known_fields(inner),
-  TVar(_) | TInt | TFloat | TUnit | TByte | TList(_) | TTuple(_) | TFun(_, _, _) | TCont(_, _, _, _) => [],
+  TVar(_) | TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TTuple(_) | TFun(_, _, _) | TCont(_, _, _, _) => [],
 }
 
 fn field_named(name: String, f) = match f {
@@ -4578,7 +4580,7 @@ fn tuple_elem_tys(ty) = match tuple_pat_strip(ty) {
   TReprPin(_, inner) => tuple_elem_tys(inner),
   TAlias(_, inner) => tuple_elem_tys(inner),
   TRefined(inner, _) => tuple_elem_tys(inner),
-  TVar(_) | TInt | TFloat | TUnit | TByte | TList(_) | TFun(_, _, _) | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) => [],
+  TVar(_) | TInt | TFloat | TUnit | TByte | TAddr | TList(_) | TFun(_, _, _) | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) => [],
 }
 
 fn list_elem_ty(ty) = match tuple_pat_strip(ty) {
@@ -4586,7 +4588,7 @@ fn list_elem_ty(ty) = match tuple_pat_strip(ty) {
   TReprPin(_, inner) => list_elem_ty(inner),
   TAlias(_, inner) => list_elem_ty(inner),
   TRefined(inner, _) => list_elem_ty(inner),
-  TVar(_) | TInt | TFloat | TUnit | TByte | TTuple(_) | TFun(_, _, _) | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) => TVar(0),
+  TVar(_) | TInt | TFloat | TUnit | TByte | TAddr | TTuple(_) | TFun(_, _, _) | TName(_, _) | TRecord(_) | TRecordOpen(_, _) | TCont(_, _, _, _) => TVar(0),
 }
 
 // A constructor's payload types at the scrutinee — none where no type
@@ -5926,7 +5928,7 @@ fn grounded_scan(bindings, i, n, ename: String) = if i >= n {
 // language meets the instruction set (the wasi-import list's sibling;
 // the op names ARE the identity, declared in one home).
 fn is_substrate_mem_op(name: String) with Pure =
-  name == "store_i32" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
+  name == "store_i32" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "addr_at" || name == "addr_diff" || name == "load_addr" || name == "store_addr" || name == "null_addr" || name == "addr_word" || name == "word_addr" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "alloc" || name == "heap_mark" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
 
 // The Cast capability's one op — erased at lower to its operand (the
 // identity at the word level; memory.mn carries the decl and the law).
@@ -7449,6 +7451,7 @@ fn site_record_full(it0) = match fold_strip(it0) {
   TFloat => None,
   TUnit => None,
   TByte => None,
+  TAddr => None,
   TList(_) => None,
   TTuple(_) => None,
   TFun(_, _, _) => None,
@@ -7470,6 +7473,7 @@ fn site_record_known(it0) = match fold_strip(it0) {
   TFloat => [],
   TUnit => [],
   TByte => [],
+  TAddr => [],
   TList(_) => [],
   TTuple(_) => [],
   TFun(_, _, _) => [],
@@ -7733,6 +7737,9 @@ fn evac_of(ty) = match fold_strip(slot_ty(ty)) {
   TInt => EvWord,
   TByte => EvWord,
   TUnit => EvWord,
+  TAddr => // a word that names memory nothing here can read: the region it
+  // points into stays whole rather than move what it cannot see
+  EvOpaque,
   TFloat => EvWide,
   TList(e) => EvShape(ShSeq(e)),
   TTuple(es) => EvShape(ShProduct(es)),

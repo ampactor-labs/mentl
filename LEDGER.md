@@ -35,6 +35,65 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-03 · pin 2198ed974ede7e87 (TRANSITION m3 == m4) · THE COMPILER
+  KNOWS AN ADDRESS (#129, the first of two pins). Addresses were typed Int,
+  and an arena's exit moves a value by its type: an address held where the
+  exit looks was read as a number, copied verbatim, and the cell it named
+  was reclaimed under it. Five probes measured it silent on boot 0a096302 —
+  an arena's value 109 for 14, a slot written raw 1 for 42, a record field
+  1 for 6, a list element 7 for 12, and bits copied raw 1 for 42 — and the
+  four fixtures this pin carries, run as Ints there, read 0, 0, 0 and 2 for
+  42, 42, 42 and 12. THE TYPE: `Addr` is a Ty arm of its own (`TAddr`),
+  named by the parser. A word in every machine respect — repr i32, equal
+  by identity, hashed as itself — and not a number: arithmetic on it is
+  `E_ArithOnAggregate` (`arith_operand_class`), it unifies only with itself
+  (`same_ground` holds no Int arm for it), it orders by MAGNITUDE (one
+  `WordOrder` read by the top-level compare and the generated field
+  compare, `word_order_of`), and it shows as the unsigned number it names
+  through a generated leaf (`$show_a`, `show_is_leaf`), collected by the
+  show closure wherever an address sits. Its move is opaque (`evac_of`):
+  an address of the region found as the arena's value, a field, an element
+  or a journaled slot aborts the move and keeps the region. THE OPS:
+  `Memory` gains `addr_at` and `addr_diff` (the address moved and measured
+  — `i32.add`, `i32.sub`), `load_addr`, `store_addr` (journaled with leaf 0
+  wherever an arena is live, `$store_addr_j`), `null_addr`, and the two
+  puns `addr_word` / `word_addr` (the identity on the machine) where a value
+  crosses the runtime's word protocol. The library is still raw: it is
+  retyped at the next pin, by the compiler this one is, since a compiler's
+  checker is its parent's — the boot reads an undeclared `Addr` as a
+  nominal with no variants, whose compare would load tags. For that pin,
+  `str_payload`'s face leaves its result unconstrained. FOUND ON THE WAY,
+  making the word compare order-aware: a SUM ordered a nullary variant's
+  sentinel against the other operand's ADDRESS, ranking every nullary
+  variant below every fielded one whatever their declaration order —
+  `B(5) < A` false over `type T = B(Int) | A`, the program answering 1 for
+  10 on boot 0a096302 with no diagnostic. A value's tag is read uniformly
+  now (the sentinel itself, or the record's first word), tags order first
+  and equal tags name one variant; the wheel's own 28 sum compares took the
+  fix. KILLS: (1) "a variantless nominal `Addr`" — its eq, compare, hash
+  and show would read tags off a word (the refuter's first finding); a Ty
+  arm. (2) "`load_addr` in `Cast`" — every raw reader would carry the
+  laundering capability in its row; it is a `Memory` op. (3) "an address
+  shows through int_to_str" — signed above 2 GB; then "the reach finds the
+  unsigned renderer by scanning the sig for its letter" — field and type
+  names carry the letter; the leaf is generated and demanded by the show
+  collection itself, so no reach is asked. (4) "the arithmetic refusal is
+  one diagnostic" — `p + 8` reports the mismatch of `Addr` with `Int`
+  beside it, as any aggregate operand beside a number does; carried to
+  the next pin, whose rewrites make it matter. MEASURED, seven fixtures:
+  the four arena legs and `mn-addr-word` refuse on the boot
+  (`E_EffectUnhandled` — the ops are performs it cannot serve) and pass
+  here (42 each), `mn-sum-order-tag-first` 1 there and 10 here,
+  `mn-addr-arith-refuses` refusing on both (the boot's unknown nominal is
+  an aggregate too). Fixed input, the wheel's source this pin carries
+  through both boots: peak 515,544 → 516,132 KB, the judgment's heap
+  228,566,816 → 228,563,312 B, the module written 379,836,656 → 379,836,816
+  B; the census 19,912 exits, 0 kept, on both. The march: m3 leg 13.87 s at
+  516,120 KB, m4 leg 14.04 s at 516,000 KB, under the 529,000 ceiling.
+  Board at the pin, whole: micros 354/354 (351 and the three new) and the
+  negation probes 37/37 through the pinned boot, crown 134/0,
+  proof-exactness 30/0, effect identity green, frontier 555 / 0 / 1 (the
+  four arena legs among them), the IDE gate green on both legs.
 - 2026-10-03 · pin 0a096302d535adc2 (TRANSITION m3 == m4) · A BLOCK'S RUN
   OF `fn` DECLARATIONS IS ONE LETREC SCOPE, AND A NESTED FN'S SYMBOL IS ITS
   DECLARATION'S PATH. SYNTAX said a block's nested fns are hoisted into a

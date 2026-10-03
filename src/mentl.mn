@@ -1040,6 +1040,7 @@ fn extract_row(ty) with Pure = match ty {
   TFloat => mk_ef_pure(),
   TUnit => mk_ef_pure(),
   TByte => mk_ef_pure(),
+  TAddr => mk_ef_pure(),
   TList(_) => mk_ef_pure(),
   TTuple(_) => mk_ef_pure(),
   TVar(_) => mk_ef_pure(),

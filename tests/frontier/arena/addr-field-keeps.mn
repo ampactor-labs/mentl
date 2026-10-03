@@ -1,0 +1,25 @@
+// A record carrying an address as one of its fields, returned as the
+// arena's value. The record moves by its type, and its address field is a
+// value no leaf can move, so the move aborts and the exit keeps the region:
+// the cell the field names reads back whole. Exit 42 when it does and the
+// exit was a keep. With the field an Int the record moved and the cell was
+// reclaimed under it, reading 0 for 42 on boot 0a096302 with no diagnostic;
+// typed, it did not compile there.
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn boxed(v) = {
+  let p = word_addr(alloc(8))
+  store_i32(addr_word(p), v)
+  let _ = build(50)
+  {at: p, tag: 7}
+}
+
+fn main() = {
+  let r = boxed(42) ~> arena
+  let junk = build(400)
+  if load_i32(addr_word(r.at)) == 42 && r.tag == 7 && len(junk) == 400 && arena_stat(ArKept) == 1 {
+    42
+  } else {
+    1
+  }
+}

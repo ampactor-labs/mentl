@@ -50,6 +50,32 @@ effect Memory {
   //
   // (dst, src, n)
   mem_copy(Int, Int, Int)
+  // ─── Addresses ───────────────────────────────────────────────────────
+  // An address is the word that names memory: what an allocation answers,
+  // what a load reads from and a store writes to. It is a word in every
+  // machine respect and not a number — it moves by addr_at, never by
+  // arithmetic, and orders by magnitude — and its type is what an arena's
+  // exit reads: an address of its region found where the exit looks (its
+  // value, a field, an element, a slot its barriers journaled) keeps the
+  // region whole, since nothing can say what the address names. The
+  // guarantee is about values: a word computed from an address, or bits
+  // copied by mem_copy, is the program's own claim.
+  //
+  // (addr, bytes) -> the address that many bytes on
+  addr_at(Addr, Int) -> Addr
+  // (a, b) -> the bytes from b to a
+  addr_diff(Addr, Addr) -> Int
+  // (addr) -> the address stored there
+  load_addr(Addr) -> Addr
+  // (addr, value) — journaled where the slot is older than an open arena
+  store_addr(Addr, Addr)
+  // The address no allocation answers, which a virgin slot reads.
+  null_addr() -> Addr
+  // An address's word, and the address a word names: the puns where a value
+  // crosses the runtime's word protocol (a list slot holds its element as a
+  // word). Each is the identity on the machine.
+  addr_word(Addr) -> Int
+  word_addr(Int) -> Addr
   // The live world — the top of the install chain ($world_g; emit projects
   // the global read, the heap_mark shape). 0 = the empty world. A Memory
   // read, not an Alloc verb: the perform path reads it on every dispatch.

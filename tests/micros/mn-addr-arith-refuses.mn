@@ -1,0 +1,8 @@
+// expect: refuse E_ArithOnAggregate
+// An address is a word and not a number: it moves by addr_at, and `+` on it
+// is arithmetic on where memory is, which the judgment refuses where it is
+// written. On boot 0a096302 the type was unknown and this did not compile.
+fn main() = {
+  let p = word_addr(alloc(16))
+  addr_word(p + 8)
+}

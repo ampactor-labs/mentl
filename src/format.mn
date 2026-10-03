@@ -1070,6 +1070,7 @@ fn render_type_tokens(ref ty) with !Mutate = match ty {
   TFloat => "Float",
   TUnit => "()",
   TByte => "Byte",
+  TAddr => "Addr",
   TList(elem) => "[{render_type_tokens(elem)}]",
   TTuple(elems) => "({render_type_list(elems, 0)})",
   TFun(params, ret, row) => "({render_tparam_types(params, 0)}) -> {render_type_tokens(ret)}{render_row_surface(row)}",

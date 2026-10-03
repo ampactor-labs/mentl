@@ -2248,6 +2248,28 @@ and this is the STATE.
   Open: each reader materializes the runs
   (`Hβ.parser.block-runs-read-by-each-reader`, riding with positions as
   cells).
+- **AN ADDRESS IS A TYPE OF ITS OWN — LANDED 2026-10-03 (#129, the first
+  of two pins).** An arena's exit moves a value by its type, and every
+  address was typed Int: one held where the exit looks was copied as a
+  number and the cell it named reclaimed under it — five probes silent on
+  the prior boot (the arena's value, a slot written raw, a record's field, a
+  list's element, bits copied by `mem_copy`). `Addr` is a type now
+  (`TAddr`): a word in every machine respect and not a number — arithmetic
+  on it refuses, it orders by magnitude (the one `WordOrder` both compares
+  read), it shows as the unsigned number it names (a generated leaf the
+  show collection demands) — and its move is opaque, so an address of the
+  region where the exit looks keeps the region. `Memory` gains `addr_at`,
+  `addr_diff`, `load_addr`, `store_addr` (journaled with no leaf),
+  `null_addr` and the two puns where a value crosses the runtime's word
+  protocol. Found on the way, silent on the prior boot: a sum ordered a
+  nullary variant's sentinel against the other operand's ADDRESS, so `B(5)
+  < A` was false over `type T = B(Int) | A`; tags order first now, and the
+  wheel's own 28 sum compares took it. Open, the second pin, compiled by
+  this one: the library's raw code typed with the address
+  (`Hβ.arena.cast-addr-crosses-the-journal`) and arithmetic's refusal said
+  once per site (`Hβ.infer.arith-refusal-beside-a-mismatch`). Bits copied by
+  `mem_copy`, and a word computed from an address, stay the program's own
+  claim — the guarantee is about values.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.

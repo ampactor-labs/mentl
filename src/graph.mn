@@ -1492,6 +1492,7 @@ fn occurs_in(spine, mint_bound, handle, ref ty) with !Mutate = match ty {
   TFloat => false,
   TUnit => false,
   TByte => false,
+  TAddr => false,
   TVar(id) => // The leaf answers "does handle occur in the type GRAPH reachable from
   // here" — three tiers, each a hole the selfapply fixture found trapping
   // the compiler (f(f) spun chase_deep/subst_ty to stack exhaustion with

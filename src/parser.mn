@@ -3353,6 +3353,8 @@ fn parse_type_atom(ref tokens, pos) = match kind_at(tokens, pos) {
       TName("Bool", [])
     } else if str_eq(v, "Unit") {
       TUnit
+    } else if str_eq(v, "Addr") {
+      TAddr
     } else {
       TName(v, [])
     }

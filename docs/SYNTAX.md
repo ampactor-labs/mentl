@@ -2227,10 +2227,18 @@ case (what was `str_eq`):
 
 | Operand shape                              | Structural-eq projection                          |
 |--------------------------------------------|---------------------------------------------------|
-| scalar (`Int`, `Bool`, byte, nullary tag)  | `i32.eq` / `i32.ne` — value equality IS structural |
+| scalar (`Int`, `Bool`, byte, nullary tag, address) | `i32.eq` / `i32.ne` — value equality IS structural |
 | sequence (`[a]`, incl. `String = [Byte]`)  | length-then-element recursion (`[Byte]` case is byte-compare) |
 | product (record / tuple)                   | field-wise recursion over the sorted field set    |
 | sum (ADT)                                  | tag-equality then payload recursion               |
+
+The ordering operators `<` `<=` `>` `>=` are the same derivation with a 3-way
+leaf: a word orders by its value (an address by its magnitude, §«Addresses»),
+a sequence length-then-element, a product field-wise, and a sum by its
+variants' DECLARATION order first and its payloads second — so over `type T =
+B(Int) | A`, `B(5) < A` holds (real, 2026-10-03: the generated compare had
+ranked a nullary variant's word against the other operand's address, and that
+program answered the opposite with no diagnostic).
 
 **Drift-refusal preserved:** `==` on a heap value never emits pointer comparison —
 pointer-eq lying as structural equality is the silent fallback
@@ -2273,7 +2281,7 @@ clauses») — and the operand's cell decides:
 |-----------------------------------------------|------------------------------------------------|
 | bound to a word (`Int`, `Float`, `Byte`, an alias or refinement of one, a `repr` pin) | the instruction at the operand's repr — `i32.*` at the floor, `f64.*`/`f32.*`/`i64.*` where the gradient or a pin says so |
 | still FREE at the operator                    | the cell carries the demand (a `NumericGate`); the one writer judges whatever later enters it — a word passes, a variable inherits the gate, an aggregate refuses — and instantiation copies it onto the fresh var, so a generic `a * b` refuses `{x: 1}` at the CALL that instantiates it |
-| bound to a product / sum / sequence / function / continuation / unit | `E_ArithOnAggregate` REFUSES at the judgment — arithmetic on an aggregate has no meaning the value ontology gives it; the operands are addresses |
+| bound to a product / sum / sequence / function / continuation / unit, or an address | `E_ArithOnAggregate` REFUSES at the judgment — arithmetic on an aggregate has no meaning the value ontology gives it; the operands are addresses, and an address moves by `addr_at` (§«Addresses») |
 
 **THE THIRD MEASURED HOLE, closed 2026-09-27 in its second form.** The
 arithmetic arm of the emit read only the operands' emitted WIDTHS, so a
@@ -2303,6 +2311,31 @@ longer exists. Arithmetic on a USER type is not pointer arithmetic and not
 a trait: it arrives as a numeric projection's rules
 (`Hβ.lower.ad-is-a-demanded-projection`), the same mechanism that makes a
 chain differentiable.
+
+### Addresses — the word that names memory
+
+An address names memory: the raw memory operations read from and write to
+one (lib/memory.mn's `Memory`). Its type is `Addr`, and it is a word in every
+machine respect — one i32, equal by identity, hashed as itself — and NOT a
+number (real, 2026-10-03; the library's own raw code is retyped with it at the
+next pin, the compiler that knows the type being the one that compiles it):
+
+| An address…                       | …is                                                         |
+|-----------------------------------|-------------------------------------------------------------|
+| compared `==` / `!=`              | identity: two allocations are two addresses                 |
+| ordered `<` `<=` `>` `>=`         | by MAGNITUDE — wasm32's memory runs to 4 GB, so one past 2 GB is above one below it, where the signed order of an Int would put it under |
+| shown (`"{p}"`)                   | the unsigned number it names (`4294967280`, never `-16`)    |
+| in arithmetic (`p + 8`)           | refused, `E_ArithOnAggregate`: it moves by `addr_at(p, 8)` and is measured by `addr_diff(q, p)` |
+| read and written                  | `load_addr` / `store_addr`; a byte, a word or a float at it through the raw loads and stores |
+| at a word slot                    | `addr_word` / `word_addr`, the identity on the machine, where a value crosses the runtime's word protocol |
+
+The type is what an arena's exit reads (§`~>` — lib/arena.mn): an address of
+the arena's region found where the exit looks — the arena's value, a field, an
+element, a slot `store_addr` wrote into older memory — keeps the region, since
+nothing can say what the address names; held as an Int it was copied as a
+number and the cell reclaimed under it, silently. The guarantee is about
+VALUES: a word computed from an address, or bits copied by `mem_copy`, is the
+program's own claim.
 
 ---
 

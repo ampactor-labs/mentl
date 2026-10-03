@@ -306,8 +306,8 @@ fn spec_is_agg(ty) with Pure = match ty {
   _ => false,
 }
 
-// The scalar/word face of show — the synthesized call (aggregates never
-// reach this; emit_show dispatches them to the direct leaf call).
+// The scalar/word face of show — the synthesized call (a show through a
+// generated leaf never reaches this; emit_show dispatches it to the leaf).
 fn show_node_of(h, x) = {
   let ty = show_hash_ty(x)
   match ty {
@@ -318,8 +318,16 @@ fn show_node_of(h, x) = {
     TName(_, _) => x,
     TRecord(_) => x,
     TRecordOpen(_, _) => x,
+    TAddr => x,
     _ => LCall(h, LGlobal(h, "int_to_str"), [x]),
   }
+}
+
+// A show the generated `$show_<sig>` leaf renders: every aggregate, and an
+// address, whose leaf reads the word unsigned.
+fn show_is_leaf(ty) = match ty {
+  TAddr => true,
+  _ => spec_is_agg(ty),
 }
 
 fn hash_node_of(h, x) = {
@@ -359,7 +367,7 @@ fn emit_agg_leaf_call(prefix, ty, x) = {
 // executable site where it would be anything else (`settle_node`).
 fn emit_show(h, x) = {
   let ty = show_hash_ty(x)
-  if spec_is_agg(ty) { emit_agg_leaf_call("show_", ty, x) } else { emit_expr(show_node_of(h, x)) }
+  if show_is_leaf(ty) { emit_agg_leaf_call("show_", ty, x) } else { emit_expr(show_node_of(h, x)) }
 }
 
 fn emit_hash(h, x) = {
@@ -1238,8 +1246,8 @@ fn alloc_walk(unit, e) = match e {
     alloc_walk_nested(unit, name, body)
     false
   },
-  LShow(h, x) => // an aggregate's show is the generated leaf, which builds its string
-  if spec_is_agg(show_hash_ty(x)) {
+  LShow(h, x) => // a show through a generated leaf builds its string there
+  if show_is_leaf(show_hash_ty(x)) {
     let built = alloc_at(unit, h, AsShow)
     let below = alloc_walk(unit, x)
     built || below
@@ -4674,6 +4682,10 @@ fn emit_arena_runtime() = {
   // (`slot_face`), which journals with leaf 0, so an exit that finds a value
   // of its region there keeps the region rather than move what it cannot read.
   wat_emit("  (func $list_set_v (param $st i32) (param $l i32) (param $i i32) (param $v i32) (result i32) (return_call $list_set_j (local.get $st) (local.get $l) (local.get $i) (local.get $v) (i32.const 0)))\n")
+  // An address stored by `store_addr`: journaled with leaf 0 wherever the
+  // slot is older than the open arena — an address names memory the exit
+  // cannot read, so finding one of the region's there keeps the region.
+  wat_emit("  (func $store_addr_j (param $s i32) (param $v i32) (call $arena_slot_note (local.get $s) (i32.const 0)) (i32.store (local.get $s) (local.get $v)))\n")
   // A journal entry read back: the slot it names, and the leaf its value
   // moves through (-3 a boxed float, 0 a type its barrier could not see, a
   // leaf index otherwise).
@@ -7143,6 +7155,27 @@ fn emit_expr(expr) = match expr {
         wat_emit("    (f64.load)\n")
       } else if import_name == "mem_copy" {
         wat_emit("    (memory.copy)(i32.const 0)\n")
+      } else if import_name == "addr_at" {
+        wat_emit("    (i32.add)\n")
+      } else if import_name == "addr_diff" {
+        wat_emit("    (i32.sub)\n")
+      } else if import_name == "load_addr" {
+        wat_emit("    (i32.load)\n")
+      } else if import_name == "store_addr" {
+        // An address stored into memory older than an open arena is
+        // journaled opaque, so an exit that finds one of its region's
+        // addresses there keeps the region instead of leaving it to dangle.
+        if arena_live() {
+          wat_emit("    (call $store_addr_j)(i32.const 0)\n")
+        } else {
+          wat_emit("    (i32.store)(i32.const 0)\n")
+        }
+      } else if import_name == "null_addr" {
+        wat_emit("    (i32.const 0)\n")
+      } else if import_name == "addr_word" || import_name == "word_addr" {
+        // An address is a word: the pun is the type's, and the instruction
+        // stream carries the operand through unchanged.
+        ()
       } else if import_name == "i32_xor" {
         wat_emit("    (i32.xor)\n")
       } else if import_name == "i32_or" {
@@ -8550,8 +8583,30 @@ fn emit_cmp_for_ty(op, ty) = match ty {
   TTuple(_) => emit_cmp_agg_call(fold_sig(ty), op),
   TName(_, _) => emit_cmp_agg_call(fold_sig(ty), op),
   TFloat => emit_binop_repr(op, RF64),
-  _ => // Int / Unit / resolved-TVar / nullary-tag / fn-idx / cont-ptr — word compare.
-  emit_binop_repr(op, RI32),
+  _ => // Int / Unit / resolved-TVar / nullary-tag / fn-idx / cont-ptr / address —
+  // word compare, in the word's own order.
+  match word_order_of(ty) {
+    Signed => emit_binop_repr(op, RI32),
+    Unsigned => emit_unsigned_cmp(op),
+  },
+}
+
+// How a word orders: an Int by its sign, an address by its magnitude —
+// wasm32's memory runs to 4 GB, so the signed order would put an address past
+// 2 GB below one under it.
+type WordOrder = Signed | Unsigned
+
+fn word_order_of(ty) = match ty {
+  TAddr => Unsigned,
+  _ => Signed,
+}
+
+fn emit_unsigned_cmp(op) = match op {
+  BLt => wat_emit("    (i32.lt_u)\n"),
+  BGt => wat_emit("    (i32.gt_u)\n"),
+  BLe => wat_emit("    (i32.le_u)\n"),
+  BGe => wat_emit("    (i32.ge_u)\n"),
+  _ => emit_binop(op),
 }
 
 // A sequence compare: insert __state under (a, b) (the W7 convention), call the
@@ -8613,40 +8668,33 @@ fn emit_one_compare_helper(sig, ty) = match fold_strip(ty) {
 }
 
 // emit_one_compare_sum_helper — the $compare_n<Name> sum helper. A nullary
-// variant is a sentinel word, a fielded variant a heap record [tag@0][f0@4]…:
-//   - if either operand is a sentinel (< heap_base): compare as words (sub-sign).
-//     A nullary tag word vs another word orders by the value; that IS the tag
-//     order (declaration order = tag id = sentinel value).
-//   - else both heap records: compare tags (sign of difference); if equal,
-//     descend the matched variant's payload conjunction (first non-zero wins).
+// variant is a sentinel word, a fielded variant a heap record [tag@0][f0@4]…,
+// so a value's TAG is the sentinel itself or the record's first word. Tags
+// order first (declaration order = tag id); equal tags name one variant, so
+// both operands are sentinels (equal) or both records, whose payloads order
+// next (first non-zero wins). The sentinel was once compared as a word
+// against the other operand's ADDRESS, which ranked a nullary variant below
+// every fielded one whatever their declaration order (measured 2026-10-03:
+// `B(5) < A` false over `type T = B(Int) | A`).
 fn emit_one_compare_sum_helper(sig, applied) = {
   let specs = variant_specs_at(applied)
+  let hb = int_to_str(heap_base())
   wat_emit("  (func $compare_")
   wat_emit(sig)
   wat_emit(" (param $__state i32) (param $a i32) (param $b i32) (result i32)")
   wat_emit(" (local $ta i32) (local $tb i32) (local $c i32)")
   wat_emit(" (local $state_tmp i32) (local $callee_closure i32) (local $alloc_size i32)")
   wat_emit(" (local $fa f64) (local $fb f64)\n")
-  // Sentinel guard: either operand below heap_base ⇒ word ordering (sign of a-b).
+  wat_emit("    (local.set $ta (if (result i32) (i32.lt_u (local.get $a) (i32.const {hb})) (then (local.get $a)) (else (i32.load offset=0 (local.get $a)))))\n")
+  wat_emit("    (local.set $tb (if (result i32) (i32.lt_u (local.get $b) (i32.const {hb})) (then (local.get $b)) (else (i32.load offset=0 (local.get $b)))))\n")
   wat_emit("    (if (result i32)\n")
-  wat_emit("      (i32.or\n")
-  wat_emit("        (i32.lt_u (local.get $a) (i32.const ")
-  wat_emit(int_to_str(heap_base()))
-  wat_emit("))\n")
-  wat_emit("        (i32.lt_u (local.get $b) (i32.const ")
-  wat_emit(int_to_str(heap_base()))
-  wat_emit(")))\n")
+  wat_emit("      (i32.ne (local.get $ta) (local.get $tb))\n")
   wat_emit("      (then ")
-  emit_word_sign_compare("(local.get $a)", "(local.get $b)")
+  emit_word_sign_compare(Signed, "(local.get $ta)", "(local.get $tb)")
   wat_emit(")\n")
   wat_emit("      (else\n")
-  wat_emit("        (local.set $ta (i32.load offset=0 (local.get $a)))\n")
-  wat_emit("        (local.set $tb (i32.load offset=0 (local.get $b)))\n")
-  wat_emit("        (if (result i32)\n")
-  wat_emit("          (i32.ne (local.get $ta) (local.get $tb))\n")
-  wat_emit("          (then ")
-  emit_word_sign_compare("(local.get $ta)", "(local.get $tb)")
-  wat_emit(")\n")
+  wat_emit("        (if (result i32) (i32.lt_u (local.get $a) (i32.const {hb}))\n")
+  wat_emit("          (then (i32.const 0))\n")
   wat_emit("          (else\n")
   emit_compare_sum_tag_dispatch(specs, 0, len(specs))
   // Four body closes (the func is closed by "  )" below) — the same
@@ -8659,14 +8707,18 @@ fn emit_one_compare_sum_helper(sig, applied) = {
 
 // Sign of (x - y) as -1/0/1, both operands WAT s-expression strings on demand.
 // `(select 1 (select -1 0 (i32.lt_s x y)) (i32.gt_s x y))`: gt ⇒ 1, else lt ⇒
-// -1, else 0. Unsigned-domain tag/sentinel values stay in i32 range, lt_s/gt_s
-// order them correctly (heap_base() < 2^31).
-fn emit_word_sign_compare(x, y) = {
-  wat_emit("(select (i32.const 1) (select (i32.const -1) (i32.const 0) (i32.lt_s ")
+// -1, else 0, in the order given: a tag takes the signed one, an address the
+// unsigned.
+fn emit_word_sign_compare(order, x, y) = {
+  let s = match order {
+    Signed => "s",
+    Unsigned => "u",
+  }
+  wat_emit("(select (i32.const 1) (select (i32.const -1) (i32.const 0) (i32.lt_{s} ")
   wat_emit(x)
   wat_emit(" ")
   wat_emit(y)
-  wat_emit(")) (i32.gt_s ")
+  wat_emit(")) (i32.gt_{s} ")
   wat_emit(x)
   wat_emit(" ")
   wat_emit(y)
@@ -8675,9 +8727,9 @@ fn emit_word_sign_compare(x, y) = {
 
 // Per-variant tag dispatch for compare: tags already proven equal, descend the
 // matched fielded variant's payload conjunction. A purely-nullary variant
-// contributes nothing (its values never reach here — the sentinel guard caught
-// them). No fielded variant matched past equal tags ⇒ equal nullary records
-// (impossible past the guard): terminal 0 (equal).
+// contributes nothing (two of its sentinels answered 0 before the dispatch).
+// No fielded variant matched past equal tags ⇒ equal nullary records
+// (impossible past that answer): terminal 0 (equal).
 fn emit_compare_sum_tag_dispatch(specs, i, n) = if i >= n {
   wat_emit("            (i32.const 0)\n")
 } else {
@@ -8793,21 +8845,22 @@ fn emit_field_cmp(fty) = match fty {
     wat_emit("    (local.set $fa)\n")
     wat_emit("    (select (i32.const 1) (select (i32.const -1) (i32.const 0) (f64.lt (local.get $fa) (local.get $fb))) (f64.gt (local.get $fa) (local.get $fb)))\n")
   },
-  _ => // Int / Unit / resolved-TVar / nullary-tag — word sign-of-difference. The
-  // stack has [a_field, b_field]; (select 1 (select -1 0 (i32.lt_s)) (i32.gt_s))
-  // needs the pair twice, so reload through scratch.
-  emit_word_field_sign_compare(),
+  _ => // Int / Unit / resolved-TVar / nullary-tag / address — word
+  // sign-of-difference in the word's own order. The stack has [a_field,
+  // b_field]; (select 1 (select -1 0 (i32.lt_s)) (i32.gt_s)) needs the pair
+  // twice, so reload through scratch.
+  emit_word_field_sign_compare(word_order_of(fty)),
 }
 
 // Word field compare with the pair on the stack: save both, then emit the
 // select using the saved locals twice. Reuses the helper's $alloc_size (a) and
 // $callee_closure (b) scratch.
-fn emit_word_field_sign_compare() = {
+fn emit_word_field_sign_compare(order) = {
   // b
   wat_emit("    (local.set $callee_closure)\n")
   // a
   wat_emit("    (local.set $alloc_size)\n")
-  emit_word_sign_compare("(local.get $alloc_size)", "(local.get $callee_closure)")
+  emit_word_sign_compare(order, "(local.get $alloc_size)", "(local.get $callee_closure)")
   wat_emit("\n")
 }
 
@@ -8931,7 +8984,20 @@ fn eq_subtys_variants(specs, i, n, seen, acc) = if i >= n {
 fn emit_one_show_helper(sig, ty) = match fold_strip(ty) {
   TName(_, _) => emit_one_show_sum_helper(sig, fold_strip(ty)),
   TList(elem) => emit_one_show_list_helper(sig, elem),
+  TAddr => emit_one_show_addr_helper(sig),
   _ => emit_one_show_product_helper(sig, ty),
+}
+
+// The word leaf in the unsigned order: an address renders as the number it
+// names. One past 2 GB reads negative as an Int, so it renders as its
+// quotient and last digit by ten, each taken unsigned — the quotient is
+// below 2^31 and nonzero, so its signed rendering is its value.
+fn emit_one_show_addr_helper(sig) = {
+  emit_show_header(sig)
+  wat_emit("    (if (result i32) (i32.ge_s (local.get $a) (i32.const 0))\n")
+  wat_emit("      (then (call $int_to_str (local.get $__state) (local.get $a)))\n")
+  wat_emit("      (else (call $str_concat (local.get $__state) (call $int_to_str (local.get $__state) (i32.div_u (local.get $a) (i32.const 10))) (call $int_to_str (local.get $__state) (i32.rem_u (local.get $a) (i32.const 10))))))\n")
+  wat_emit("  )\n")
 }
 
 // The helper header: (func $show_<sig> (param $__state i32) (param $a i32)
@@ -9034,6 +9100,7 @@ fn emit_show_field_render(off, r, fty) = match fty {
   TRecordOpen(_, _) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   TTuple(_) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   TName(_, _) => emit_show_call_field("show_{fold_sig(fty)}", off, r),
+  TAddr => emit_show_call_field("show_{fold_sig(fty)}", off, r),
   _ => // Int / Unit / resolved-TVar / closure / continuation — render the word.
   emit_show_call_field("int_to_str", off, r),
 }
@@ -9159,6 +9226,7 @@ fn emit_show_variant_payload_render(off, pty) = match pty {
   TRecordOpen(_, _) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TTuple(_) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   TName(_, _) => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
+  TAddr => emit_show_call_variant("show_{fold_sig(pty)}", off, pty),
   _ => emit_show_call_variant("int_to_str", off, pty),
 }
 
@@ -9247,6 +9315,7 @@ fn emit_show_list_elem_render(elem) = match elem {
   TRecordOpen(_, _) => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TTuple(_) => emit_show_call_listidx("show_{fold_sig(elem)}"),
   TName(_, _) => emit_show_call_listidx("show_{fold_sig(elem)}"),
+  TAddr => emit_show_call_listidx("show_{fold_sig(elem)}"),
   _ => emit_show_call_listidx("int_to_str"),
 }
 
@@ -9319,6 +9388,8 @@ fn show_subtys(ty, seen, acc) = match fold_strip(ty) {
     let specs = variant_specs_at(fold_strip(ty))
     show_subtys_variants(specs, 0, len(specs), [fold_sig(fold_strip(ty))] ++ seen, [ty] ++ acc)
   },
+  TAddr => // an address renders through its own leaf, wherever it sits
+  [ty] ++ acc,
   _ => acc,
 }
 

@@ -1,0 +1,20 @@
+// expect: 42
+// An address is a word that names memory: equal to itself, distinct from
+// another allocation's, moved by addr_at and measured by addr_diff — and
+// ordered by MAGNITUDE, since wasm32's memory runs to 4 GB. An address past
+// 2 GB reads negative as an Int, so the signed order would put it below one
+// under it; it shows as the unsigned number it names. Every check holds or
+// main answers 1 — and on boot 0a096302 the program did not compile, the type
+// and its operations unknown there.
+fn main() = {
+  let p = word_addr(alloc(16))
+  let q = word_addr(alloc(16))
+  let high = word_addr(0 - 16)
+  let low = word_addr(16)
+  let moved = addr_at(p, 8)
+  if p == p && p != q && addr_diff(moved, p) == 8 && high > low && low < high && "{high}" == "4294967280" && "{low}" == "16" {
+    42
+  } else {
+    1
+  }
+}

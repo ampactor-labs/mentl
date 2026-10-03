@@ -1,0 +1,27 @@
+// An address the arena allocated, stored by store_addr into a slot older than
+// the arena. The store's barrier journals the slot with no leaf — an address
+// names memory the exit cannot read — so the exit that finds one of its
+// region's addresses there keeps the region, and the cell the slot names
+// reads back whole. Exit 42 when it does and the exit was a keep. Stored as
+// an Int by store_i32, the slot was invisible to the journal and the cell
+// read 0 for 42 on boot 0a096302, with no diagnostic; typed, it did not
+// compile there.
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn fill(slot) = {
+  let p = word_addr(alloc(8))
+  store_i32(addr_word(p), 42)
+  store_addr(slot, p)
+  len(build(50))
+}
+
+fn main() = {
+  let slot = word_addr(alloc(8))
+  let n = fill(slot) ~> arena
+  let junk = build(400)
+  if n == 50 && load_i32(addr_word(load_addr(slot))) == 42 && len(junk) == 400 && arena_stat(ArKept) == 1 {
+    42
+  } else {
+    1
+  }
+}

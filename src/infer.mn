@@ -2405,6 +2405,10 @@ fn ty_alpha_eq(t1, t2, m) = match t1 {
     TByte => true,
     _ => false,
   }, m),
+  TAddr => (match t2 {
+    TAddr => true,
+    _ => false,
+  }, m),
   TList(e1) => match t2 {
     TList(e2) => ty_alpha_eq(e1, e2, m),
     _ => (false, m),
@@ -2663,6 +2667,7 @@ fn mycroft_row_pairs(t1, t2, acc) = match t1 {
   TFloat => acc,
   TUnit => acc,
   TByte => acc,
+  TAddr => acc,
 }
 
 fn mycroft_tail_pair(row1, row2, acc) = match row1 {
@@ -4263,8 +4268,10 @@ fn seq_op_sig(cname: String, elem) = match cname {
   "str_slice" => Some(([ty_string, TInt, TInt], ty_string)),
   "str_concat" => Some(([ty_string, ty_string], ty_string)),
   "str_of_single_byte" => Some(([TInt], ty_string)),
-  "str_payload" => // str_payload resolves a String to its contiguous stride-1 payload pointer.
-  Some(([ty_string], TInt)),
+  "str_payload" => // str_payload resolves a String to its contiguous stride-1 payload. The
+  // face leaves the word unconstrained, so each caller reads it as its use
+  // proves: a number where it is offset, an address where a memory op takes it.
+  Some(([ty_string], seq_unconstrained())),
   "str_of_buf" => Some(([seq_unconstrained()], ty_string)),
   "float_to_str" => Some(([TFloat], ty_string)),
   "float_render_positive" => Some(([TFloat], ty_string)),
@@ -6181,6 +6188,9 @@ fn unify_types(ref a, ref b, span: ValidSpan, reason) = {
       // value-equality); without this arm TByte fell to the catch-all's
       // type_mismatch and refused Byte vs Byte itself.
       expect_same(a, b, span, reason),
+      TAddr => // An address meets only an address: same_ground holds no Int arm
+      // for it, so the number an address is never was and is a mismatch.
+      expect_same(a, b, span, reason),
       TVar(ha) => match b {
         TVar(hb) => unify(ha, hb, span, reason),
         TRefined(base_b, _) => // A cell holds a shape (`shape_of`), so a refinement never enters
@@ -6409,6 +6419,10 @@ fn same_ground(ref a, ref b) with Pure = match a {
   TByte => match b {
     TByte => true,
     TInt => true,
+    _ => false,
+  },
+  TAddr => match b {
+    TAddr => true,
     _ => false,
   },
   TVar(_) => // Compound types: same_ground rejects; unify_types handles structurally
@@ -7180,6 +7194,7 @@ fn shape_whole_roots(t) = match t {
   TFloat => [],
   TUnit => [],
   TByte => [],
+  TAddr => [],
   TList(e) => shape_whole_roots(e),
   TTuple(es) => flat_map(shape_whole_roots, es),
   TFun(ps, r, _) => flat_map(param_whole_roots, ps) ++ shape_whole_roots(r),
@@ -7220,6 +7235,7 @@ fn shape_outer_roots(t) = match t {
   TFloat => [],
   TUnit => [],
   TByte => [],
+  TAddr => [],
   TList(_) => [],
   TTuple(_) => [],
   TFun(_, _, _) => [],
@@ -8358,6 +8374,7 @@ fn generalize_pair(handle) = {
           TFloat => ([], body_ty),
           TUnit => ([], body_ty),
           TByte => ([], body_ty),
+          TAddr => ([], body_ty),
           TVar(v) => ([v], body_ty),
           TList(_) => (free_in_ty(body_ty), body_ty),
           TTuple(_) => (free_in_ty(body_ty), body_ty),
@@ -8438,6 +8455,7 @@ fn chase_probe_tag(ty) = match ty {
   TFloat => "TFloat",
   TUnit => "TUnit",
   TByte => "TByte",
+  TAddr => "TAddr",
   TReprPin(_, _) => "TReprPin",
 }
 
@@ -8469,6 +8487,7 @@ fn chase_changes(ty, d) = if d > 200 {
     TFloat => false,
     TUnit => false,
     TByte => false,
+    TAddr => false,
     TVar(h) => match graph_chase(h) {
       GNode(kind, _) => match kind {
         NBound(_) => true,
@@ -8583,6 +8602,7 @@ fn chase_deep_build(ty, d) = if d > 200 {
     TFloat => ty,
     TUnit => ty,
     TByte => ty,
+    TAddr => ty,
     TVar(h) => match graph_chase(h) {
       GNode(kind, _) => match kind {
         NBound(inner) => chase_deep_at(inner, d + 1),
@@ -8705,6 +8725,7 @@ fn free_in_ty(ty) = match ty {
   TFloat => [],
   TUnit => [],
   TByte => [],
+  TAddr => [],
   TVar(id) => [id],
   TList(elem) => free_in_ty(elem),
   TTuple(elems) => free_in_list(elems),
@@ -8935,6 +8956,7 @@ fn subst_changes(ty, mapping) = match ty {
   TFloat => false,
   TUnit => false,
   TByte => false,
+  TAddr => false,
   TVar(id) => // THE CHECK CHASES, SO THE BUILD CAN SHARE. This answered TRUE for every
   // bound var — "an NBound var inlines its binding (always differs)" — and
   // in a JUDGED decl most vars are bound, so check-then-build was here but
@@ -9067,6 +9089,7 @@ fn subst_ty_build(ty, mapping) = match ty {
   TFloat => ty,
   TUnit => ty,
   TByte => ty,
+  TAddr => ty,
   TVar(id) => {
     // THE FROZEN READ — the mapping decides BEFORE any live chase. A var in
     // the mapping was free at the freeze, so whatever bound it since is
@@ -12001,6 +12024,7 @@ fn cap_result_fn_row(t) = match t {
   TFloat => TFloat,
   TUnit => TUnit,
   TByte => TByte,
+  TAddr => TAddr,
 }
 
 fn cap_result_field(f) = match f {
