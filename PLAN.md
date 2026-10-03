@@ -2312,6 +2312,45 @@ and this is the STATE.
   (`Hβ.continuations.redrive-reads-the-answer-as-a-word`, its second face);
   and capture at every position stays
   `Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`.
+- **AN ARM'S VALUE IS THE INSTALL'S VALUE — CLOSED 2026-10-03 (AN-1).** A
+  handler's type carried its effect's instance and never its answer, so no
+  install met what the arms answered: on boot cf8a6d50 an arm answering a
+  String under an Int body compiled and ran, an arm observing its answer
+  over two resumptions refused `E_ShapeUnprovable` because the BASE arm was
+  emitted, and a multi-shot handler answering a Float did not assemble, the
+  driver reading its answer as a word. The type is `Handler(instance,
+  answer)` now — the answer the cell every arm's value is judged into,
+  minted once at pre-registration and read by the registration as its row
+  cells are, quantified with the instance, met at every install by the
+  body's answer — so an install keys its arms at its answer as at its
+  instance (the face rule's answer clause and `arm_face_roots` deleted),
+  and a wide value crosses the continuation face in a REGISTER, never a
+  cell: the composer, the arena re-entry and the driver call through one
+  word-arity face blind to the types, a Float resumed or answered crosses
+  in a per-instance lane beside the word slot (the machine ABI's split
+  register classes read into wasm; nothing boxed, no row moved — the same
+  two-resumption program at Int and at Float grows the heap by the same
+  bytes), and a multi-shot op's arguments cross in the yield's record at
+  their widths, where a Float argument had refused to assemble. The parity
+  half is Koka's and Effekt's typed handlers; past them, arms twinned per
+  install at instance and answer, and the zero-allocation face. What the
+  law exposed, closed with it: every value walk read a tee as nothing it
+  could read, so `100 / ((…) ~> h)` was debt whatever `h` answered and an
+  arm answering a classified value spliced clean — a tee's value is the
+  body's tails and each arm's tails now (a `resume` tail hands the
+  remainder's answer through), read by the refinement, the flow label and
+  the function-value walks alike; `proc_exit(Int) -> !`, a never-returning
+  op answering a bare variable, so `fail_exit` answers any install. And the
+  felt half, measured after the gates were green: the install's refusal
+  said `Int vs List(Byte)` and nothing of the arm — the mismatch reporter's
+  own signature took the unify's Reason and dropped it — so the diagnostic
+  carries its Reason now (`ETypeMismatch(Ty, Ty, Reason, Span)`), the
+  install's is the arm whose value is its own, and the refusal reads
+  `Int vs List(Byte) — ~> pipe → at 15:13-15:27: inferred from the arm bail
+  of handler h`, the caret's Why at the tee reaching the arm; `mentl where`
+  says what a handler answers beside what it absorbs (`handler zero absorbs
+  Ask, answers Int`; a variable, under the name a developer writes, when
+  every arm resumes) and what each install answers.
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -3555,7 +3594,7 @@ The spine root finishes. Order inside the phase is the dependency order.
   sweep continues rule-by-rule), and the
   capability-at-tee PROJECTION — ✅ LANDED 2026-08-08 (pin
   2dcd736eb4e6): `mentl where` renders every install as
-  `~> h absorbs E at <span>`, the effect set from the handler's own
+  `~> h absorbs E, answers T at <span>`, the effect set from the handler's own
   arms — the modality as a derived badge, the felt face real.
 - **6.4 · TIME's world enforced** — the `TCont` world stops being inert.
   THE CAPTURE IS LANDED, verified at the 2026-08-08 phase walk:

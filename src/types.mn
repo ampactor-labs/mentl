@@ -1431,10 +1431,13 @@ type BinderFact
   | StateFact({writes: [Int]})
 
 // A value walk's dynamic scope: the state binders whose writers it is
-// reading. A write may read the state it writes (`with d = d + 1`, or through
-// a let), so a walk that meets a state it is already inside reads it as
-// unknown rather than looping. The chain of handlers installed around the
-// walks IS the stack of states entered (verify.mn `walking_state_of`).
+// reading, and the handler declarations whose arms it is reading. A write
+// may read the state it writes (`with d = d + 1`, or through a let), so a
+// walk that meets a state it is already inside reads it as unknown rather
+// than looping; an arm may install its own handler, and the arms met again
+// add no tail (the least fixed point, exact). The chain of handlers
+// installed around the walks IS the stack of states and declarations
+// entered (verify.mn `walking_state_of`).
 effect StateWalk {
   walking_state(b: Int) -> Bool
 }
@@ -3186,7 +3189,7 @@ type DiagKind
   // ─── infer (E_/T_) ───────────────────────────────────────────────
   | WCommentRefUnresolved(String, String, Span)
   // a vs b — operands carried live
-  | ETypeMismatch(Ty, Ty, Span)
+  | ETypeMismatch(Ty, Ty, Reason, Span)
   // type-list arity a vs b
   | ETypeArityMismatch(Int, Int, Span)
   // ctor name, declared fields, pattern binds
@@ -3511,7 +3514,7 @@ fn diag_span(d) with Pure = match d {
   EInternalInvariant(_, s) => s,
   WRedundantWhere(s) => s,
   WCommentRefUnresolved(_, _, s) => s,
-  ETypeMismatch(_, _, s) => s,
+  ETypeMismatch(_, _, _, s) => s,
   ETypeArityMismatch(_, _, s) => s,
   EConstructorArity(_, _, _, s) => s,
   EHandlerArmArity(_, _, _, s) => s,
@@ -3591,7 +3594,7 @@ fn diag_source(d) with Pure = match d {
   "compiler",
   WRedundantWhere(_) => "parser",
   WCommentRefUnresolved(_, _, _) => "infer",
-  ETypeMismatch(_, _, _) => "infer",
+  ETypeMismatch(_, _, _, _) => "infer",
   ETypeArityMismatch(_, _, _) => "infer",
   EConstructorArity(_, _, _, _) => "infer",
   EHandlerArmArity(_, _, _, _) => "infer",
@@ -3670,7 +3673,7 @@ fn diag_code(d) with Pure = match d {
   EInternalInvariant(_, _) => "E_InternalInvariant",
   WRedundantWhere(_) => "W_RedundantWhere",
   WCommentRefUnresolved(_, _, _) => "W_CommentRefUnresolved",
-  ETypeMismatch(_, _, _) => "E_TypeMismatch",
+  ETypeMismatch(_, _, _, _) => "E_TypeMismatch",
   ETypeArityMismatch(_, _, _) => "E_TypeMismatch",
   EConstructorArity(_, _, _, _) => "E_ConstructorArity",
   EHandlerArmArity(_, _, _, _) => "E_HandlerArmArity",
@@ -4016,7 +4019,7 @@ fn diag_refuses(d) with Pure = match d {
   // its inferred row is a program whose proof is false, and nothing
   // executes unproven.
   True,
-  ETypeMismatch(_, _, _) => // ARMED 2026-09-25, one pin after E_EffectMismatch, on the harm that
+  ETypeMismatch(_, _, _, _) => // ARMED 2026-09-25, one pin after E_EffectMismatch, on the harm that
   // pin measured: a build of the compiler whose own source carried two
   // E_TypeMismatch (a frame record missing a field at two literals) reported
   // them, EMITTED anyway, and the resulting compiler trapped on every program
@@ -4108,7 +4111,7 @@ fn diag_applicability(d) with Pure = match d {
   EArithOnAggregate(_, _) => Unspecified,
   ERefinementRejected(_, _) => Unspecified,
   EVerifyUnencodable(_) => Unspecified,
-  ETypeMismatch(_, _, _) => Unspecified,
+  ETypeMismatch(_, _, _, _) => Unspecified,
   ETypeArityMismatch(_, _, _) => Unspecified,
   EConstructorArity(_, _, _, _) => MaybeIncorrect,
   EHandlerArmArity(_, _, _, _) => MaybeIncorrect,
@@ -4146,7 +4149,7 @@ fn diag_message(d) with !Mutate = match d {
   EInternalInvariant(note, _) => "internal invariant: {note}",
   WRedundantWhere(_) => "`where true` is a vacuous predicate — drop it",
   WCommentRefUnresolved(owner, name, _) => "comment on `{owner}` references `{name}`, which resolves nowhere — a backticked name is a reference; if this is prose, drop the backticks",
-  ETypeMismatch(a, b, _) => "{show_type(a)} vs {show_type(b)}",
+  ETypeMismatch(a, b, reason, _) => "{show_type(a)} vs {show_type(b)} — {reason_line(reason)}",
   ETypeArityMismatch(a, b, _) => "type list arity mismatch: {int_to_str(a)} vs {int_to_str(b)}",
   EConstructorArity(name, declared, got, _) => "constructor {name} takes {int_to_str(declared)} fields; the pattern binds {int_to_str(got)}",
   EHandlerArmArity(name, declared, got, _) => "op {name} declares {int_to_str(declared)} params; the arm binds {int_to_str(got)}",
@@ -5099,6 +5102,17 @@ fn show_reason(ref reason) with !Mutate = match reason {
   DefaultReason(pname, span) => "{pname} defaulted at {show_span(span)}",
   VerifyWitness(model) => "proved by SMT witness: {model}",
   Accepted(text, proof, inner) => "accepted `{text}` — {show_reason(proof)} → {show_reason(inner)}",
+}
+
+// A diagnostic's reason on the diagnostic's own line: the outer address is
+// the span the diagnostic already carries, so it is dropped, and what
+// remains is the chain the unify was asked with. A mismatch used to drop
+// it at the reporter (`type_mismatch` took the reason and discarded it), so
+// `Int vs List(Byte)` at an install said nothing of the arm that answered
+// the second.
+fn reason_line(reason) with !Mutate = match reason {
+  Located(_, inner) => show_reason(inner),
+  _ => show_reason(reason),
 }
 
 fn show_span(ref span) = match span {

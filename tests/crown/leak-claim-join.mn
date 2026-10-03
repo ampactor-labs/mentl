@@ -2,7 +2,11 @@
 // if's cell was unified with its first tail, a parameter refined Positive,
 // so `d` was typed Positive though its else tail is 0, and `100 / d` was
 // proven by a refinement no value in the join earned. Boot 13e8484a: zero
-// pending obligations, `!Trap` accepted, trap at run. Expect E_EffectMismatch.
+// pending obligations, `!Trap` accepted, trap at run. From P0 the launder
+// was gone and the claim stayed OPEN, so `!Trap` refused it
+// (E_EffectMismatch); since 2026-10-03 the else tail IS the fatal point and
+// REFUTES the claim where it stands — the text writes the trap — so the
+// leak is the claim's own class. Expect E_RefinementRejected.
 type Positive = Int where 0 < self
 
 fn f(c, n: Positive) with !Trap = {

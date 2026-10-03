@@ -1,0 +1,16 @@
+// expect: 20
+// The sound twin: the body's tail and the arm's value both exclude zero, so
+// the division is proven under `!Trap` and the program runs. On boot
+// cf8a6d50 the walk read the tee as unknown and refused the program with
+// debt it did not owe.
+effect Ask {
+  ask() -> Int
+}
+
+handler five {
+  ask() => 5,
+}
+
+fn g() with !Trap = 100 / (({ let _ = ask(); 5 }) ~> five)
+
+fn main() = g()

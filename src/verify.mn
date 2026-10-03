@@ -114,11 +114,15 @@ fn total_div_decide(op, a, b, bind) = match op {
 }
 
 // Is the value at `h` provably not `k`? A constant answers outright (equal
-// is Some(false) — the refutation); otherwise every leaf of the value must
-// exclude the point; otherwise open.
+// is Some(false) — the refutation); otherwise the leaves decide as a claim
+// over a join does: every leaf excluding the point proves it, a leaf that IS
+// the point refutes it (a join's tail, an arm's answer at an install — the
+// text writes the trap), anything else leaves it open. Until 2026-10-03 a
+// leaf at the point answered open, so `100 / ((…) ~> zero)` was debt under
+// `!Trap` where the arm's `0` refutes it.
 fn node_excludes(h, k, bind) = match node_const_at(h, bind) {
   Some(v) => not_decide(litval_eq(v, LVInt(k))),
-  None => if leaves_exclude(value_leaves(h, bind), k) { Some(true) } else { None },
+  None => leaves_exclude(value_leaves(h, bind), k),
 }
 
 // THE IMPLICATION READ: a contract excludes a point exactly when one of its
@@ -155,7 +159,7 @@ fn i32_min() with Pure = 0 - 2147483647 - 1
 // never decided, so `fn note_hz(k) -> Hz = match k { 0 => 220.0, … }` left a
 // pending obligation behind every literal-armed match.
 fn decide_with_self(inner, bind) = match bind {
-  SelfNode(sh) => match join_tails(sh) {
+  SelfNode(sh) => match value_tails(sh) {
     Some(tails) => fold(Some(true), decide_tail(inner, ??, ??), tails),
     None => predicate_decide_at(inner, bind),
   },
@@ -178,6 +182,80 @@ fn join_tails(h) = match graph_node_body(h) {
 
 fn tail_of_arm(arm) = match arm {
   (_, body) => node_handle(body),
+}
+
+// A VALUE's tails: a join's, or a tee's — the body it governs and every arm
+// of the handler it installs (`install_arm_tails`). The one home the claim
+// decider, the leaves, the path read, the flow label and the function-value
+// walk read a value's structure through. A claim NOTED over a value stays
+// with the join's own tails (`note_claim`): a handler's arms are shared by
+// every install, and a note there would claim for all of them.
+fn value_tails(h) = match join_tails(h) {
+  Some(tails) => Some(tails),
+  None => match graph_node_body(h) {
+    NExpr(PipeExpr(PTee, left, right)) => match install_arm_tails(right) {
+      Some(tails) => Some([node_handle(left)] ++ tails),
+      None => None,
+    },
+    _ => None,
+  },
+}
+
+// A TEE's value is every value its install can answer: the body's tails —
+// the body completing, or a resuming arm's remainder answering, which is
+// the body's own value — and each arm's tails of its own. An arm whose tail
+// is the `resume` hands the remainder's answer through and adds no value;
+// any other tail is a value of the install's. A handler's arms met again
+// while they are being read add nothing: an arm installing its own handler
+// makes the tails a fixed point whose least solution is the body's, so the
+// re-entry is exact, never a floor. The walk's dynamic scope (`StateWalk`)
+// knows the handler by its residual row cell — minted once at
+// pre-registration, the one cell every reference to the handler reads it
+// through, so the declaration's identity is on the env entry and no name
+// is scanned for it. None when the install's handler is not a declaration
+// the graph noted, so each walk keeps its own floor. Until 2026-10-03
+// every walk read a tee as nothing it could read, so `100 / ((…) ~> h)`
+// was debt whatever `h` answered.
+fn install_arm_tails(right) = match env_lookup(tee_handler_name(right)) {
+  Some(entry) => match entry {
+    (_, _, kind) => match kind {
+      HandlerKind(r_handle, _, _, _, arms) => if walking_state(r_handle) {
+        Some([])
+      } else {
+        Some(arms |> flat_map({ arm => arm_tails(node_handle(arm.body)) }) ~> walking_state_of(r_handle))
+      },
+      _ => None,
+    },
+  },
+  None => None,
+}
+
+// The handler a tee installs, by the name its right side carries — a bare
+// reference, or a configured handler applied to its arguments — read off the
+// node, since the install column is the lowering's, written after every
+// claim is decided. A tee whose handler expression is not a named reference
+// has no name to classify: "" is the frame-fence sentinel
+// `schedule_installed` itself reads (lower.mn: a "" stack entry is the
+// fence), not a fabrication — no declaration answers it, so its class is a
+// dispatch and the schedule read walks past it. One home for the judgment,
+// the query and the caret.
+fn tee_handler_name(r) = match graph_node_body(node_handle(r)) {
+  NExpr(VarRef(n)) => n,
+  NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
+    NExpr(VarRef(n)) => n,
+    _ => // drift-audit: ignore — the frame-fence sentinel, documented above
+    "",
+  },
+  _ => // drift-audit: ignore — the frame-fence sentinel, documented above
+  "",
+}
+
+fn arm_tails(h) = match value_tails(h) {
+  Some(tails) => tails |> flat_map(arm_tails),
+  None => match graph_node_body(h) {
+    NExpr(ResumeExpr(_, _)) => [],
+    _ => [h],
+  },
 }
 
 // A comparison decides iff BOTH operands reduce to ground constants under the
@@ -324,7 +402,7 @@ type Leaf
 
 fn value_leaves(h, bind) = match node_const_at(h, bind) {
   Some(v) => [LPoint(v)],
-  None => match join_tails(h) {
+  None => match value_tails(h) {
     Some(tails) => tails |> flat_map(value_leaves(??, bind)),
     None => match graph_node_body(h) {
       NExpr(VarRef(name)) => if name == "self" { self_leaves(bind) } else { binder_leaves(h) },
@@ -468,7 +546,7 @@ fn path_read(whole, path, read) = match path {
 }
 
 // The path into an expression: through each tail, or its construction.
-fn expr_path_read(whole, step, rest, read) = match join_tails(whole) {
+fn expr_path_read(whole, step, rest, read) = match value_tails(whole) {
   Some(tails) => read_all(tails, path_read(??, [step] ++ rest, read)),
   None => built_path_read(whole, step, rest, read),
 }
@@ -816,23 +894,25 @@ fn contract_alias(c) = match c {
 
 // ── What the leaves answer — each reader asks its own question ──────────
 //
-// A ROW fact: every leaf excludes the point, on what is proven (a constant,
-// a length) or assumed under contract (a parameter's precondition) — never
-// on a postcondition still owed or on the Add fold.
-fn leaves_exclude(leaves, k) = len(leaves) > 0 && all(leaf_excludes(k, ??), leaves)
+// A ROW fact, three-valued over the leaves (`and_decide`): proven when every
+// leaf excludes the point, on what is proven (a constant, a length) or
+// assumed under contract (a parameter's precondition) — never on a
+// postcondition still owed or on the Add fold; REFUTED when a leaf is the
+// point itself; open otherwise, and open over no leaves at all.
+fn leaves_exclude(leaves, k) =
+  if len(leaves) == 0 { None } else { fold(Some(true), leaf_exclude_step(k, ??, ??), leaves) }
+
+fn leaf_exclude_step(k, acc, leaf) = and_decide(acc, leaf_excludes(k, leaf))
 
 fn leaf_excludes(k, leaf) = match leaf {
-  LPoint(v) => match litval_eq(v, LVInt(k)) {
-    Some(eq) => !eq,
-    None => false,
-  },
-  LParam(_, c) => contract_excludes(c, k),
-  LLength => k < 0,
+  LPoint(v) => not_decide(litval_eq(v, LVInt(k))),
+  LParam(_, c) => if contract_excludes(c, k) { Some(true) } else { None },
+  LLength => if k < 0 { Some(true) } else { None },
   LClaimed(_, beneath) => leaf_excludes(k, beneath),
-  LPost(_) => false,
-  LSum(_) => false,
-  LRet(_) => false,
-  LUnknown => false,
+  LPost(_) => None,
+  LSum(_) => None,
+  LRet(_) => None,
+  LUnknown => None,
 }
 
 // A CLAIM's lower bound: the least of every leaf's, each answering — a
@@ -943,7 +1023,7 @@ fn leaf_unproven(leaf) = match leaf {
 // class had carried them, by the same merging that laundered refinements.
 fn value_flow_label(h) = match node_const_at(h, NoSelf) {
   Some(_) => Public,
-  None => match join_tails(h) {
+  None => match value_tails(h) {
     Some(tails) => labels_join(tails),
     None => match graph_node_body(h) {
       NExpr(VarRef(_)) => match graph_link_of(h) {

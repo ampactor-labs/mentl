@@ -1687,7 +1687,8 @@ for i in "${!compilers[@]}"; do
              addr-field-keeps addr-list-keeps addr-copy-keeps \
              wide-slot-reclaims held-resume-reenters multishot-resume-reenters \
              abort-suspends resume-nests-exactly arena-is-a-junction \
-             list-value-reenters older-store-reenters reyield-reenters; do
+             list-value-reenters older-store-reenters reyield-reenters \
+             float-value-reenters; do
     run_program "$compiler" "arena-$leg" \
       "$ROOT/tests/frontier/arena/$leg.mn" 42 arena "$dir"
   done
@@ -2038,6 +2039,12 @@ for i in "${!compilers[@]}"; do
   # unregistered since the march_emit dig; registered with the fix.
   run_program "$compiler" install-config-capture \
     "$ROOT/tests/frontier/mn-install-config-capture.mn" 12 io-rec "$dir"
+  # AN-1: a never-returning op answers a bare variable, so fail_exit's arm
+  # answers any install; the body's Int is the install's answer and the
+  # process exits 1 through proc_exit (refused E_TypeMismatch while proc_exit
+  # answered unit and no install had met an arm's answer).
+  run_program "$compiler" "never-op-answer" \
+    "$ROOT/tests/frontier/mn-never-op-answer.mn" 1 io-rec "$dir"
   # The root-row governance gate's three tiers, each pinned: an
   # EVIDENCE-floor demand refuses even with an install elsewhere (a
   # dead-chain perform walks garbage evidence, no belt — the one strict
@@ -3855,7 +3862,21 @@ for i in "${!compilers[@]}"; do
   # fb8921e3, which answered the handler's type and no address — the gap a
   # session confessed (`# verb-gap`) when it had to search for one.
   w_hand=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" ticker 2>/dev/null)
-  printf '%s' "$w_hand" | grep -q '^→ handler ticker absorbs Tick  at .*mn-where-badges:28$' || { w_ok=0; fail "where handler declaration (got: $w_hand)"; }
+  # AN-1 (2026-10-03): a handler's type is `Handler(instance, answer)`, so the
+  # line says what the arms ANSWER beside what they absorb — a variable, under
+  # the name a developer writes, when every arm resumes and the answer is each
+  # install's body's (`ticker`); the type itself when an arm's own value bound
+  # it (`zero` answers Int). RED on boot cf8a6d50, whose handler type carried
+  # no answer.
+  printf '%s' "$w_hand" | grep -q '^→ handler ticker absorbs Tick, answers a  at .*mn-where-badges:28$' || { w_ok=0; fail "where handler declaration (got: $w_hand)"; }
+  w_zero=$(wt_run --dir "$ROOT" "$compiler" where "$ROOT/tests/micros/mn-refine-install-answer.mn" zero 2>/dev/null)
+  printf '%s' "$w_zero" | grep -q '^→ handler zero absorbs Ask, answers Int  at .*mn-refine-install-answer:12$' || { w_ok=0; fail "where handler answer (got: $w_zero)"; }
+  # The install's refusal carries the reason its unify was asked with — the
+  # mismatch reporter had taken the reason and dropped it — so a body and an
+  # arm disagreeing names the arm: `Int vs List(Byte) — ~> pipe → at 15:…:
+  # inferred from the arm bail of handler h`. RED on cf8a6d50 (compiled clean).
+  w_arm=$(wt_run --dir "$ROOT" "$compiler" check "$ROOT/tests/micros/mn-arm-answer-is-the-install.mn" 2>&1 >/dev/null)
+  printf '%s' "$w_arm" | grep -q 'E_TypeMismatch error: Int vs List(Byte) — ~> pipe → at 15:[0-9]*-15:[0-9]*: inferred from the arm bail of handler h at' || { w_ok=0; fail "install refusal names the arm (got: $w_arm)"; }
   # B4 (2026-09-30): a fanout site reports the schedules its CALLERS demand
   # of it through direct calls — `shared`'s own frame installs none (Seq),
   # and `twice` calls it under `parallel_compose`, so its site runs threaded
@@ -3909,7 +3930,7 @@ for i in "${!compilers[@]}"; do
   # names the handler and the effect set its arms absorb, from the
   # graph's own facts. Born RED 2026-08-08 (the boot lacked the facet).
   w_tee=$(wt_run --dir "$ROOT" "$compiler" where "$wdoc" handled 2>/dev/null)
-  printf '%s' "$w_tee" | grep -q '~> ticker absorbs Tick at' || { w_ok=0; fail "where tee badge (got: $w_tee)"; }
+  printf '%s' "$w_tee" | grep -q '~> ticker absorbs Tick, answers Int at' || { w_ok=0; fail "where tee badge (got: $w_tee)"; }
   [ "$w_ok" = 1 ] && pass "where: repr, cardinality, schedule with width, tee, head, parameter and local badges narrate (output, never input)"
 
   # ─── The lambda list-pattern parameter (PLAN §11 Phase 3.3) ─────────
@@ -4116,6 +4137,19 @@ for i in "${!compilers[@]}"; do
     pass "dcc gate: derived values carry their sources' labels (5/5), a public part stays public"
   else
     fail "dcc gate derived face (rejections: $ifc_derived, want 5; public-part rejections: $ifc_public, want 0)"
+  fi
+
+  # The install face (AN-1): a tee's value is every value its install can
+  # answer, so an arm answering a classified value classifies the install's
+  # value and its splice refuses; the public twin accepts. Seen RED on boot
+  # cf8a6d50: the label walk joined the tee's children — the perform and the
+  # handler's name, both Public — and the leak compiled clean (0 rejections).
+  ifc_tee_leak=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-tee-arm-leak.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
+  ifc_tee_public=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" check "$ROOT/tests/frontier/mn-ifc-tee-arm-public.mn" 2>&1 >/dev/null | grep -c "E_RefinementRejected" || true)
+  if [ "$ifc_tee_leak" -ge 1 ] && [ "$ifc_tee_public" -eq 0 ]; then
+    pass "dcc gate: an arm's classified answer classifies the install ($ifc_tee_leak), a public arm stays public"
+  else
+    fail "dcc gate install face (leak rejections: $ifc_tee_leak, want >=1; public rejections: $ifc_tee_public, want 0)"
   fi
 
   # ─── The unused-wide-param gate (Hβ.emit.unused-wide-param-floor): an

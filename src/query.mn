@@ -1874,7 +1874,7 @@ fn type_level_lines(h) with !Mutate = match graph_node_body(h) {
     RefineStmt(_, _, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
     AliasStmt(_, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
     RowAliasStmt(_, _) => ["{render_stmt_tokens(s)}{decl_at(h)}"],
-    HandlerDeclStmt(name, _, _, _, arms, _) => ["handler {name} absorbs {join(" + ", handler_effect_names(arms))}{decl_at(h)}"],
+    HandlerDeclStmt(name, _, _, _, arms, _) => [handler_line(name, arms, h)],
     FnStmt(_, _, _, _, _) => [],
     LetStmt(_, _, _) => [],
     ExprStmt(_) => [],
@@ -1957,11 +1957,9 @@ fn decl_badges(name: String, params, ret, row) with !Mutate = {
   name_type_vars([TFun(params, ret, row)])
   let lines =
     [decl_head(name, params, row) ++ decl_address(name)] ++ map(param_badge, params) ++ ["-> {value_type(ret)} @ {width_badge(ret)}"]
+  let tees = flat_map(tee_lines, body)
   graph_rollback(cp)
-  QRWhere(
-    lines ++ flat_map(tee_lines, body),
-    body |> flat_map(fanout_sites(??, [])) |> demand_onto(name)
-  )
+  QRWhere(lines ++ tees, body |> flat_map(fanout_sites(??, [])) |> demand_onto(name))
 }
 
 // THE VARIABLES A DEVELOPER WOULD WRITE. A type variable still free renders
@@ -2386,11 +2384,31 @@ fn tee_lines(h) with !Mutate = {
   }
 }
 
+// A handler declaration's line: what its arms absorb and what they answer —
+// the answer under the names a developer writes, as a function's head is,
+// since a handler whose every arm resumes answers each install's body and
+// its answer is a variable of its scheme.
+fn handler_line(name: String, arms, h) with !Mutate = {
+  let cp = graph_push_checkpoint()
+  let answer = match handler_answer_of(name) {
+    Some(a) => {
+      name_type_vars([a])
+      ", answers {value_type(a)}"
+    },
+    None => "",
+  }
+  graph_rollback(cp)
+  "handler {name} absorbs {join(" + ", handler_effect_names(arms))}{answer}{decl_at(h)}"
+}
+
+// An install's line in a function's badges: the handler, what it absorbs
+// and what this install answers — the tee's own type, the body's answer met
+// by the arms'.
 fn tee_line(h, hn: String) with !Mutate = if byte_len(hn) == 0 {
   []
 } else {
   match handler_arms(hn) {
-    Some(arms) => ["~> {hn} absorbs {join(" + ", handler_effect_names(arms))} at {show_span(span_of_node_raw(h))}"],
+    Some(arms) => ["~> {hn} absorbs {join(" + ", handler_effect_names(arms))}, answers {value_type(lookup_ty(h))} at {show_span(span_of_node_raw(h))}"],
     None => ["~> {hn} at {show_span(span_of_node_raw(h))} — no handler declaration by that name"],
   }
 }
@@ -2401,22 +2419,6 @@ fn handler_arms(hname: String) = match env_lookup(hname) {
     _ => None,
   },
   None => None,
-}
-
-// A tee whose handler expression is not a named reference has no name to
-// classify — "" is the frame-fence sentinel schedule_installed itself reads
-// (lower.mn: a "" stack entry is the fence), not a fabrication: no
-// declaration answers it, so its class is a dispatch and the schedule read
-// walks past it.
-fn tee_handler_name(r) = match graph_node_body(node_handle(r)) {
-  NExpr(VarRef(n)) => n,
-  NExpr(CallExpr(callee, _)) => match graph_node_body(node_handle(callee)) {
-    NExpr(VarRef(n)) => n,
-    _ => // drift-audit: ignore — the frame-fence sentinel, documented above
-    "",
-  },
-  _ => // drift-audit: ignore — the frame-fence sentinel, documented above
-  "",
 }
 
 // The schedule a site runs under: the innermost install whose class is a

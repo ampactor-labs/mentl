@@ -1,8 +1,11 @@
-// expect: refuse E_EffectMismatch
+// expect: refuse E_RefinementRejected
 // A write of a constant is one of the state's values: `with d = 0` makes
-// `100 / d` a division by zero whenever `reset` runs first, so the division
-// cannot be proven total, its `Trap` is owed, and `!Trap` refuses. Checked
-// clean and divided by zero on pin 53f7404b (exit 134).
+// `100 / d` a division by zero whenever `reset` runs first, and the state
+// owes `d != 0` of every write — a writer that IS the fatal point refutes
+// the division where it stands, as a join's `0` tail does. Checked clean
+// and divided by zero on pin 53f7404b (exit 134); OWED, never refuted, on
+// every boot through cf8a6d50, where a leaf at the point answered open and
+// only `!Trap` caught it.
 effect Ask {
   ask() -> Int
   reset() -> Int

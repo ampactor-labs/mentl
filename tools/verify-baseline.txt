@@ -1356,4 +1356,20 @@ authored_ref_max: 698
 # its m4 leg — the landed form compiling itself — at 520,840 KB. The
 # previous boot crosses this ceiling on this input. Same rule: ~1% over the
 # highest reading of the landed form.
-selfcompile_peak_kb_max: 529000
+# AN-1 (2026-10-03): the handler's answer in its type, the arms keyed at it,
+# the continuation face's register, the install's reason naming the arm.
+# Fixed input, the wheel's own source (the AN-1 tree) through the previous
+# boot (cf8a6d50) and through the candidate m2 (ea30a8f3), three runs each
+# under the same concurrent load, the minimum being the honest estimator
+# (a peak sample is biased high — the single first readings spread
+# 534,596 / 537,792 / 531,004 KB for the boot and 541,844 / 531,536 /
+# 532,908 KB for the candidate): boot 531,004 KB against candidate 531,536
+# KB, the compiler at parity (+532 KB, 0.1%); the judgment's heap
+# 231,805,736 B against 231,862,352 B (+55 KB), the heap when the module is
+# written 384,840,064 B against 387,541,248 B (+2.6 MB: 9,787 more WAT
+# lines, the arm twins keyed per install at their answer and the lane-faced
+# wrappers). The previous boot crosses the 529,000 ceiling on this input,
+# so the rise is the source's (the compiler grew by the landing's own
+# code), not the compiler's. Same rule: ~1% over the highest reading of
+# the landed form, read as the minimum of three.
+selfcompile_peak_kb_max: 539000

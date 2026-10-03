@@ -6,8 +6,12 @@
 # the prelude's own positive-path noise doesn't mask the signal) through the
 # compiler-under-test.
 #
-#   leak-*   MUST emit E_EffectMismatch (a body performs a forbidden effect)
-#   sound-*  MUST NOT (the gate must not over-reject)
+#   leak-*        MUST emit E_EffectMismatch (a body performs a forbidden effect)
+#   leak-root-*   MUST emit E_EffectUnhandled (a row reaches the executable root)
+#   leak-claim-*  MUST emit E_RefinementRejected (a laundered refinement refuted
+#                 at the claim itself — a join's or a state's tail IS the fatal
+#                 point, 2026-10-03)
+#   sound-*       MUST NOT raise any of the three (the gate must not over-reject)
 #
 # Compiler-under-test: $GATE_WASM (default the keyed boot->m2 artifact), or point
 # MENTL_BOOT at any wheel. Pre-L1 shape of `mentl verify --crown`.
@@ -46,12 +50,16 @@ for f in tests/crown/*.mn; do
   # negation's. Counting either for every leak (2026-09-27 → 2026-09-28)
   # made 24 negation crucibles green by a root refusal they never tested —
   # none installs a handler — so a negation regression would have passed
-  # unseen. A sound crucible must raise neither.
-  n=$(printf '%s' "$err" | grep -c 'E_EffectMismatch\|E_EffectUnhandled')
+  # unseen. The third class (2026-10-03): a refinement leak whose laundered
+  # value IS the fatal point is refuted at the claim (E_RefinementRejected),
+  # one altitude before the row — the leak-claim-* crucibles are the claim's.
+  # A sound crucible must raise none of the three.
+  n=$(printf '%s' "$err" | grep -c 'E_EffectMismatch\|E_EffectUnhandled\|E_RefinementRejected')
   case "$name" in
-    leak-root-*) want="reject (root)"; n_own=$(printf '%s' "$err" | grep -c 'E_EffectUnhandled');;
-    leak-*)      want="reject (negation)"; n_own=$(printf '%s' "$err" | grep -c 'E_EffectMismatch');;
-    *)           n_own=0;;
+    leak-root-*)  want="reject (root)"; n_own=$(printf '%s' "$err" | grep -c 'E_EffectUnhandled');;
+    leak-claim-*) want="reject (claim)"; n_own=$(printf '%s' "$err" | grep -c 'E_RefinementRejected');;
+    leak-*)       want="reject (negation)"; n_own=$(printf '%s' "$err" | grep -c 'E_EffectMismatch');;
+    *)            n_own=0;;
   esac
   case "$name" in
     leak-*)  ok=$([ "$n_own" -ge 1 ] && echo 1 || echo 0);;

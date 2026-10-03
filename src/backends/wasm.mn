@@ -1884,7 +1884,7 @@ fn emit_jvp_twin(jr) = {
   spec_ctx_set(jr.pairs, jr.enc)
   {
     wat_emit(emit_twin_to_string(jr.rec, jr.sym))
-    wat_emit(if fn_record_is_wide(jr.rec) { emit_one_wrapper_to_string(jr.rec) } else { "" })
+    wat_emit(if fn_record_is_wide(jr.rec) { emit_one_wrapper_to_string(jr.rec, jr.sym) } else { "" })
   } ~> arena
   spec_ctx_clear()
 }
@@ -2473,7 +2473,7 @@ fn emit_planned(plan) = match plan {
           spec_ctx_set(tw.pairs, tw.enc)
           {
             wat_emit(emit_one_fn_to_string(tw.rec, alloc_units))
-            wat_emit(if fn_record_is_wide(tw.rec) { emit_one_wrapper_to_string(tw.rec) } else { "" })
+            wat_emit(if fn_record_is_wide(tw.rec) { emit_one_wrapper_to_string(tw.rec, tw.base) } else { "" })
           } ~> arena
           spec_ctx_clear()
         },
@@ -2608,18 +2608,13 @@ handler yield_seen_collector with n = 0 {
 
 // The seventh projection — the executable gate's EVIDENCE CENSUS: every
 // walking perform's demand (the dispatch's own effect key, carried on the
-// node; LYield's non-empty op) and every install's
-// absorbed enames (LHandleWith's arm groups). The gate walks the SAME
-// post-reach tree emit walks and reads THIS drain — the artifact is the
-// truth source; a lower-side ledger caching the same facts was the
-// Carried-Truth violation this projection deleted.
+// node; LYield's non-empty op). The gate walks the SAME post-reach tree
+// emit walks and reads THIS drain — the artifact is the truth source; a
+// lower-side ledger caching the same facts was the Carried-Truth violation
+// this projection deleted.
 effect EmitEffectCensus {
   // an ekey (ename) or a yield's op name — the gate resolves ops to enames
   visit_effect_demand(String)
-  // a singleton direct perform, with the handler name its dispatch will
-  // look up. Ignored everywhere except inside an install's own inits,
-  // where preinstall_init_scope compares it to that install's handler.
-  visit_direct_perform(String, String)
   // the demands. The census used to carry a second list — every ename an
   // install's arm groups absorb, anywhere in the tree — whose one reader
   // was the executable root gate's "installed somewhere" credit, deleted
@@ -2631,35 +2626,32 @@ effect EmitEffectCensus {
 
 handler effect_census_collector with demands = [] {
   visit_effect_demand(n) => if string_in_list(demands, n) { resume() } else { resume() with demands = push(demands, n) },
-  visit_direct_perform(_, _) => // Outside an inits walk a direct perform says nothing about extent —
-  // the world lookup is a live runtime read and the belt beneath it is
-  // the honest answer (1016 such guards in the wheel's own emit, every
-  // one under a live install at runtime).
-  resume(),
   drain_effect_census() => resume(demands),
 }
 
 // THE INITS' OWN SCOPE, drawn as an install rather than threaded as a flag.
 // Walking an install's inits is the one place the lowered tree already
 // proves a perform precedes its handler's existence, so a `~>` over that
-// sub-walk is the whole mechanism. A direct perform naming THIS handler
-// walks a chain the install's `world_push` has not yet extended, so the
-// walk provably reaches the end — it refuses here instead of trapping
-// there (`Hβ.emit.self-init-singleton-call-is-statically-uninstalled`).
+// sub-walk is the whole mechanism. A walking perform of an op THIS handler
+// alone declares walks a chain the install's `world_push` has not yet
+// extended, so the walk provably reaches the end — it refuses here instead
+// of trapping there (`Hβ.emit.self-init-singleton-call-is-statically-uninstalled`).
+// The uniqueness is the op's own fact, read where the dispatch reads it
+// (`lower_op_default_handler`). Until 2026-10-03 it rode the dispatch as a
+// NAMED arm, which a handler whose installs may key their arms never names
+// — every resuming handler, once its answer keys them — so the refusal went
+// quiet and the root gate's `E_EffectUnhandled` was all that stood.
 handler preinstall_init_scope(own_handler, init_span) {
-  visit_direct_perform(hn, op) => {
-    // `hn` is the handler's NAME, not its node — the walk identifies handlers
-    // by String here — so this site has nothing to report AT and falls back
-    // to the module in force. Shape 4 of the identity arc, seen from the
-    // diagnostic boundary: a name cannot be attributed, a handle can.
-    if hn == own_handler { report(EInitPerformsOwnOp(hn, op, init_span)) } else { () }
-    resume()
-  },
   visit_effect_demand(n) => // The inits' demands are the module's demands: both flow on to the
   // collector outside (an arm's own perform resolves OUTER of its install).
-  // The scope is exhaustive over `EmitEffectCensus` by these two arms
-  // (`E_HandlerInexhaustive`, 2026-09-30).
+  // The site has nothing to report AT — the walk identifies handlers by
+  // name — and falls back to the module in force (shape 4 of the identity
+  // arc: a name cannot be attributed, a handle can).
   {
+    match lower_op_default_handler(n) {
+      Some(hn) => if hn == own_handler { report(EInitPerformsOwnOp(hn, n, init_span)) } else { () },
+      None => (),
+    }
     visit_effect_demand(n)
     resume()
   },
@@ -3055,18 +3047,12 @@ fn walk_lemit_expr(expr) = match expr {
   // literals flow through, so string_offset resolves it to a stable nonzero
   // data offset (else every key collides at 0), and registers the effect as
   // a demand. The lexical dispatch walks nothing, so it registers nothing.
-  // A dispatch that names its handler announces it for the preinstall-init
-  // scope, which is listening only inside an install's own inits walk.
   {
     match disp {
-      PdFrame(_, hname, op_name) => visit_direct_perform(hname, op_name),
-      PdWalk(ekey, _, op_name, target) => {
+      PdFrame(_, _, _) => (),
+      PdWalk(ekey, _, op_name, _) => {
         visit_string(ekey)
         visit_effect_demand(op_name)
-        match target {
-          ArmNamed(hname) => visit_direct_perform(hname, op_name),
-          ArmSlot => (),
-        }
       },
       PdDriver(_, _) => (),
     }
@@ -3237,12 +3223,58 @@ fn emit_line_globals(owners) = each(
 // share only MEMORY, so the flag is thread-local by construction): $yield_flag
 // (1 = a MultiShot perform is unwinding), $yield_op (the interned op-name key
 // the install drivers compare), $yield_k (the reified continuation record).
-// Emitted only when the module yields (the sixth projection).
+// Emitted only when the module yields (the sixth projection). Beside them the
+// LANE a wide value crosses the continuation face in (`emit_to_continuation`).
 fn emit_yield_globals() = {
   wat_emit("  (global $yield_flag (mut i32) (i32.const 0))\n")
   wat_emit("  (global $yield_op (mut i32) (i32.const 0))\n")
   wat_emit("  (global $yield_k (mut i32) (i32.const 0))\n")
   wat_emit("  (global $yield_args (mut i32) (i32.const 0))\n")
+  wat_emit("  (global $__lane_f64 (mut f64) (f64.const 0))\n")
+}
+
+// ─── THE CONTINUATION FACE ─────────────────────────────────────────────
+// A continuation, and an arm its driver answers, are called by runtime code
+// blind to their types — the composer, an arena's re-entry, the driver — so
+// they are reached through one word-arity type. A wide value does not cross
+// that face as a heap cell: it crosses in the LANE, a per-instance register
+// of its width, set immediately before the call and read immediately after
+// it, with nothing between that could set it again (the `$__dt` register's
+// protocol, one width over — the SysV ABI's split register classes read into
+// wasm: words in the integer slots, a double in a float register). The
+// face's word carries nothing then. A runtime helper between two segments —
+// the composer, an arena's re-entry — touches no lane, so what one segment
+// answers reaches the next as it left. The closure word face
+// (`emit_wide_ref`) boxes because its callers keep the value; nothing here
+// is kept past the call. A multi-shot op's ARGUMENTS cross in the yield's
+// record, a product laid out at their widths (`emit_yield_arg_stores`), and
+// the arm's face reads them there: a lane is for the two crossings that
+// have no slot at all, a resumed value and an answer.
+type FaceLane = NoLane | LaneAt(String) | LaneFloor
+
+// The lane a width crosses in: a word has none, a double has the register,
+// and a width with no producer anywhere in the emit yet is a floor.
+fn lane_of(r) = match r {
+  RI32 => NoLane,
+  RF64 => LaneAt("$__lane_f64"),
+  RI64 => LaneFloor,
+  RF32 => LaneFloor,
+  RV128 => LaneFloor,
+}
+
+fn emit_lane_floor() =
+  wat_emit("    (unreachable) ;; continuation face: a width with no producer yet\n")
+
+fn emit_to_continuation(r) = match lane_of(r) {
+  NoLane => (),
+  LaneAt(l) => wat_emit("    (global.set {l})\n    (i32.const 0)\n"),
+  LaneFloor => emit_lane_floor(),
+}
+
+fn emit_from_continuation(r) = match lane_of(r) {
+  NoLane => (),
+  LaneAt(l) => wat_emit("    (drop)\n    (global.get {l})\n"),
+  LaneFloor => emit_lane_floor(),
 }
 
 // band B M1.4 — one arg of the yield's transient record: evaluate (the
@@ -3252,23 +3284,30 @@ fn emit_yield_globals() = {
 fn emit_yield_arg_stores(args, h, i) = if i >= len(args) {
   ()
 } else {
-  emit_expr(list_index(args, i))
-  wat_emit("    (local.set $state_tmp)\n")
-  wat_emit("    (local.get $yargs_")
-  wat_emit(int_to_str(h))
-  wat_emit(")(local.get $state_tmp)(i32.store offset=")
-  wat_emit(int_to_str(4 * i))
-  wat_emit(")\n")
+  let a = list_index(args, i)
+  let r = tail_expr_repr(a)
+  emit_expr(a)
+  // The record is a product and takes its widths: an 8-byte slot per
+  // argument, each stored at its own width, so a multi-shot op's wide
+  // argument crosses the driver as a value and never as a word.
+  match lane_of(r) {
+    NoLane => wat_emit("    (local.set $state_tmp)\n    (local.get $yargs_{int_to_str(h)})(local.get $state_tmp)(i32.store offset={int_to_str(8 * i)})\n"),
+    LaneAt(_) => wat_emit("    (local.set $f64_tmp)\n    (local.get $yargs_{int_to_str(h)})(local.get $f64_tmp)({repr_wat(r)}.store offset={int_to_str(8 * i)})\n"),
+    LaneFloor => emit_lane_floor(),
+  }
   emit_yield_arg_stores(args, h, i + 1)
 }
 
 // band B M1.4 — the driver's args push: one load per declared arm arg, read
-// once from the transient $yield_args record at fixed word offsets.
+// once from the transient $yield_args record at its 8-byte slot. The driver
+// is blind to the arm's widths (one driver per handler serves every twin),
+// so it pushes each slot's word; a wide slot's word is unused, the arm's
+// continuation face reading that slot at its width.
 fn emit_driver_arg_loads(n, i) = if i >= n {
   ()
 } else {
   wat_emit("        (global.get $yield_args)(i32.load offset=")
-  wat_emit(int_to_str(4 * i))
+  wat_emit(int_to_str(8 * i))
   wat_emit(")\n")
   emit_driver_arg_loads(n, i + 1)
 }
@@ -4821,9 +4860,9 @@ fn emit_arena_reentry() = {
   wat_emit("    (local.set $ik (i32.load offset=8 (local.get $__state)))\n")
   wat_emit("    (local.set $r (call_indirect (type $ft2) (local.get $ik) (local.get $v) (i32.load (local.get $ik))))\n")
   wat_emit("    (if (global.get $yield_flag) (then (call $arena_suspend (local.get $j) (local.get $o)) (call $__k_arena_extend (i32.load offset=12 (local.get $__state))) (return (i32.const 0))))\n")
-  wat_emit("    (local.set $k (i32.load offset=12 (local.get $__state))) (local.set $mv (i32.or (i32.gt_s (local.get $k) (i32.const 0)) (i32.eq (local.get $k) (i32.const -3))))\n")
+  wat_emit("    (local.set $k (i32.load offset=12 (local.get $__state))) (local.set $mv (i32.gt_s (local.get $k) (i32.const 0)))\n")
   wat_emit("    (local.set $g (call $arena_sweep (local.get $m) (local.get $j))) (local.set $t (local.get $r))\n")
-  wat_emit("    (if (local.get $g) (then (if (call $ar_young (local.get $r)) (then (if (local.get $mv) (then (local.set $t (if (result i32) (i32.eq (local.get $k) (i32.const -3)) (then (call $ar_box8 (local.get $r))) (else (call $ar_evac_by (local.get $k) (local.get $r)))))) (else (if (i32.eqz (local.get $k)) (then (call $ar_opaque (local.get $r))))))))))\n")
+  wat_emit("    (if (local.get $g) (then (if (call $ar_young (local.get $r)) (then (if (local.get $mv) (then (local.set $t (call $ar_evac_by (local.get $k) (local.get $r)))) (else (if (i32.eqz (local.get $k)) (then (call $ar_opaque (local.get $r))))))))))\n")
   wat_emit("    (local.set $g (call $arena_close (local.get $m) (local.get $j) (local.get $o) (local.get $g)))\n")
   wat_emit("    (if (i32.and (local.get $g) (local.get $mv)) (then (local.set $r (call $ar_final (local.get $t)))))\n")
   wat_emit("    (local.get $r))\n")
@@ -4883,7 +4922,7 @@ fn emit_arena(h, b) = {
   emit_expr(b)
   wat_emit("    (local.set $__ar_v_{hs})\n")
   if arena_suspends() {
-    wat_emit("    (if (global.get $yield_flag) (then (call $arena_suspend (local.get $__ar_j_{hs}) (local.get $__ar_o_{hs})) (call $__k_arena_extend (i32.const {int_to_str(leaf_code(evac_leaf(t)))}))) (else\n")
+    wat_emit("    (if (global.get $yield_flag) (then (call $arena_suspend (local.get $__ar_j_{hs}) (local.get $__ar_o_{hs})) (call $__k_arena_extend (i32.const {int_to_str(leaf_code(face_leaf(t)))}))) (else\n")
     emit_arena_exit(hs, t, ev)
     wat_emit("    ))\n")
   } else {
@@ -4960,6 +4999,17 @@ fn evac_leaf(ty) = match evac_of(ty) {
   EvOpaque => LfOpaque,
   EvWord => LfWord,
   EvWide => LfBoxed,
+}
+
+// The leaf a value crosses the continuation face with (`$__k_arena`'s
+// re-entry): a wide value is in the lane and the face's word carries
+// nothing, so there is nothing of it to move — never the box a wide value
+// takes in a word SLOT.
+fn face_leaf(ty) = match evac_of(ty) {
+  EvWide => LfWord,
+  EvWord => LfWord,
+  EvOpaque => LfOpaque,
+  EvShape(_) => evac_leaf(ty),
 }
 
 fn evac_sig(ty) = move_sig(fold_strip(slot_ty(ty)))
@@ -5238,7 +5288,7 @@ fn emit_function_bracketed(units, r) = wat_emit(emit_one_fn_to_string(r, units))
 // divergence shape in miniature: a wrapper deref'ing at a width its callee
 // never signed.
 fn emit_wide_wrappers(fn_records) = each(
-  (r) => wat_emit(emit_one_wrapper_to_string(r)) ~> arena,
+  (r) => wat_emit(emit_one_wrapper_to_string(r, fn_record_name(r))) ~> arena,
   fn_records |> filter(fn_record_is_wide)
 )
 
@@ -5246,10 +5296,72 @@ fn fn_record_is_wide(r) = match r {
   (nm, _ps, _b, _f) => symbol_is_wide(nm),
 }
 
-fn emit_one_wrapper_to_string(record) = {
-  emit_wide_wrapper(record)
+// A wide symbol's table face, by who calls through it: a continuation, or an
+// arm its driver answers, at the continuation face (the lane); every other
+// symbol at the word face its blind callers keep (a cell). `base` is the
+// symbol the enumeration knows — a twin's base, whose kind is the twin's.
+fn emit_one_wrapper_to_string(record, base: String) = {
+  match continuation_face_of(base) {
+    None => emit_wide_wrapper(record),
+    Some(source) => emit_continuation_wrapper(record, source),
+  }
   wat_collect()
 } ~> emit_memory_bump ~> wat_to_string
+
+// Where a continuation-faced symbol's wide parameter is read from: a
+// continuation's one value from the lane, a multi-shot arm's argument from
+// the yield's record. A symbol no blind caller reaches (a closure, a
+// partial, a nested fn, an init, a one-shot arm) keeps the word face.
+type FaceSource = FromLane | FromYieldRecord
+
+fn continuation_face_of(base: String) = match graph_emitfn_at(base) {
+  [] => None,
+  entries => match last(entries) {
+    EmitFnEntry(e) => match e.kind {
+      EfkK => Some(FromLane),
+      EfkArm(op, _) => if op_answers_its_driver(op) { Some(FromYieldRecord) } else { None },
+      EfkPartial => None,
+      EfkLambda => None,
+      EfkThunk => None,
+      EfkNested => None,
+      EfkInit(_) => None,
+    },
+  },
+}
+
+// The continuation face: each wide parameter read from where its caller left
+// it — a continuation's value from the lane, an arm's argument from the
+// yield's record at its slot (the arm's vector is the k then the op's
+// arguments, so parameter i is argument i − 1) — the native body called, a
+// wide answer left in the lane and a word of nothing returned.
+fn emit_continuation_wrapper(record, source) = match record {
+  (name, param_names, _body, _) => match sig_of_symbol(name, len(param_names)) {
+    (preprs, sig_ret) => {
+      wat_emit("  (func $wf${name} (param $__state i32)")
+      each({ (i, _) => wat_emit(" (param $wp{int_to_str(i)} i32)") }, enumerate(param_names))
+      wat_emit(" (result i32)\n    (local.get $__state)\n")
+      each(
+        {
+          (i, _) => {
+            let r = list_index(preprs, i)
+            match lane_of(r) {
+              NoLane => wat_emit("    (local.get $wp{int_to_str(i)})\n"),
+              LaneAt(l) => match source {
+                FromLane => wat_emit("    (global.get {l})\n"),
+                FromYieldRecord => wat_emit("    (global.get $yield_args) ({repr_wat(r)}.load offset={int_to_str(8 * (i - 1))})\n"),
+              },
+              LaneFloor => emit_lane_floor(),
+            }
+          },
+        },
+        enumerate(param_names)
+      )
+      wat_emit("    (call ${name})\n")
+      emit_to_continuation(sig_ret)
+      wat_emit("  )\n")
+    },
+  },
+}
 
 fn emit_wide_wrapper(record) = match record {
   (name, param_names, body, _) => match sig_of_symbol(name, len(param_names)) {
@@ -5539,10 +5651,16 @@ fn walk_locals_expr(expr, acc) = match expr {
   // LCall shape mints (staging locals) — mirror-true to the emit arm, which
   // means its record slot too: the head IS the closure head.
   [mkclo_local(h) ++ " i32"] ++ walk_locals_list(captures, acc),
-  LResumeK(h, k, v) => walk_locals_expr(
-    LCall(h, k, [v]),
-    ["__rk_wprev_{int_to_str(h)} i32"] ++ (["__rk_val_{int_to_str(h)} i32"] ++ acc)
-  ),
+  LResumeK(h, k, v) => // The answer comes back off the continuation face at its own width
+  // (`emit_from_continuation`), so its scratch is declared there — a word
+  // scratch under a Float answer refused to assemble.
+  {
+    let r = repr_of(lookup_ty(h))
+    walk_locals_expr(
+      LCall(h, k, [v]),
+      ["__rk_wprev_{int_to_str(h)} i32"] ++ (["{local_wat_name("__rk_val_{int_to_str(h)}", r)} {repr_wat(r)}"] ++ acc)
+    )
+  },
   LYield(h, _, args, k) => {
     // k = the record boundary above. An args-bearing yield parks its
     // transient record ptr in a per-site local — the only slot inner arg
@@ -6548,13 +6666,17 @@ fn emit_install(h, body, hname, inits, arm_names, lanes) = {
     // on return is a FOREIGN op — the value falls out of the bracket
     // with the flag intact and the enclosing boundary sees it (the
     // bubble, k1's law, unchanged).
+    // The driver speaks the continuation face: a wide answer is parked, handed
+    // to it in the lane and read back from the lane, which holds what was
+    // handed when no arm ran and the last arm's answer when one did.
     let hs = int_to_str(h)
+    let answer = repr_of(lookup_ty(h))
     wat_emit("    (local.set $__hres_{hs})\n")
-    wat_emit("    (local.get $")
-    wat_emit(local_name)
-    wat_emit(")(local.get $__hres_{hs})(call $op___redrive_")
-    wat_emit(hname)
-    wat_emit(")(local.set $__hres_{hs})\n")
+    wat_emit("    (local.get ${local_name})(local.get $__hres_{hs})\n")
+    emit_to_continuation(answer)
+    wat_emit("    (call $op___redrive_{hname})\n")
+    emit_from_continuation(answer)
+    wat_emit("    (local.set $__hres_{hs})\n")
     wat_emit("    (local.get $__hres_{hs})\n")
   }
   // world restore — unconditional, mirroring the unconditional save
@@ -6613,7 +6735,7 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
   // adapter (Hβ.emit.generic-op-box-is-unrowed). A driver is not an op and
   // keeps the word protocol it was written in.
   match disp {
-    PdDriver(_, _) => emit_args_word(args),
+    PdDriver(_, _) => emit_args_continuation(args),
     _ => emit_expr_list(args),
   }
   // (2) the arm's identity, where the target does not already name it: the
@@ -6679,10 +6801,10 @@ fn emit_perform(h, disp, args, jvp) = if perform_is_query(disp) {
       wat_emit("))\n")
     },
   }
-  // An op's arm answers at the site's own face; a driver's word result
-  // stands for the wide one the site proves.
+  // An op's arm answers at the site's own face; a driver answers at the
+  // continuation face, a wide answer in the lane.
   match disp {
-    PdDriver(_, _) => emit_wide_deref(repr_of(lookup_ty(h))),
+    PdDriver(_, _) => emit_from_continuation(repr_of(lookup_ty(h))),
     _ => (),
   }
 }
@@ -6964,15 +7086,13 @@ fn emit_expr(expr) = match expr {
     emit_expr(k_expr)
     wat_emit("    (global.set $yield_k)\n")
     if len(args) > 0 {
-      // The args record: [arg0][arg1]… at fixed word offsets, consumed
-      // once by the matching driver dispatch (k is durable; args are
-      // not). The record ptr parks in the per-site $yargs local — every
-      // shared scratch is clobberable by an inner arg emission; each
-      // arg VALUE parks in $state_tmp only after its own emission
-      // completes. A non-word op arg meets the arm's loud call
-      // mismatch (the callsite-result-width family), never a silent
-      // truncation.
-      emit_alloc(4 * len(args), "state_tmp")
+      // The args record: [arg0][arg1]… at 8-byte slots, each argument at
+      // its own width (`emit_yield_arg_stores`), consumed once by the
+      // matching driver dispatch (k is durable; args are not). The record
+      // ptr parks in the per-site $yargs local — every shared scratch is
+      // clobberable by an inner arg emission; each arg VALUE parks in its
+      // width's scratch only after its own emission completes.
+      emit_alloc(8 * len(args), "state_tmp")
       wat_emit("    (local.get $state_tmp)(local.set $yargs_")
       wat_emit(int_to_str(h))
       wat_emit(")\n")
@@ -7124,11 +7244,13 @@ fn emit_expr(expr) = match expr {
     wat_emit("))\n")
     // A continuation is the one closure kind a runtime helper also calls
     // blind to its type ($__k_compose), so its table face is the WORD face
-    // and the resume speaks it (`emit_word_face_call`).
+    // and the resume speaks it (`emit_word_face_call`); the answer comes
+    // back at its own width and parks in a scratch of that width.
+    let rk_val = local_wat_name("__rk_val_{int_to_str(h)}", repr_of(lookup_ty(h)))
     emit_word_face_call(h, k_expr, [val_expr])
-    wat_emit("    (local.set $__rk_val_{int_to_str(h)})\n")
+    wat_emit("    (local.set ${rk_val})\n")
     wat_emit("    (global.set $world_g (local.get $__rk_wprev_{int_to_str(h)}))\n")
-    wat_emit("    (local.get $__rk_val_{int_to_str(h)})\n")
+    wat_emit("    (local.get ${rk_val})\n")
   },
   LHandleWith(h, body, _handler, hname, inits, arm_names) => emit_install(h, body, hname, inits, arm_names, None),
   LDerive(h, _seed, _body) => // The derivative reading: the install builds no record and pushes no world
@@ -7794,13 +7916,12 @@ fn emit_install_world(disp, hs: String) = match disp {
   },
 }
 
-// The statically-known arm name, for the two shapes that have one.
-// Word-face an argument list: each arg emits at its native width, then a
-// wide one crosses by reference.
-fn emit_args_word(args) = each(
+// An argument list at the continuation face: each argument at its own
+// width, and a wide one into the lane, its word slot carrying nothing.
+fn emit_args_continuation(args) = each(
   (a) => {
     emit_expr(a)
-    emit_wide_ref(tail_expr_repr(a))
+    emit_to_continuation(tail_expr_repr(a))
   },
   args
 )
@@ -7924,18 +8045,17 @@ fn repr_letter(r) with Pure = match r {
   RV128 => "v",
 }
 
-// The word face of the indirect boundary, spoken by a caller BLIND to its
-// callee's type. In user code that is a continuation's resume alone: the
-// composer calls ks it cannot type, so a k is always reached at its word
-// index. A wide argument crosses by reference and a wide result comes back by
-// dereference; the callee's word slot holds its `$wf$` face (`emit_fn_refs`).
+// A resume: the continuation face of the indirect boundary. The composer
+// calls ks it cannot type, so a k is always reached at its word index, whose
+// slot holds the face that reads and writes the lane (`emit_wide_wrapper`);
+// a wide value crosses in the lane both ways.
 fn emit_word_face_call(h, func, args) = {
   emit_expr(func)
   wat_emit("    (local.set $call_{int_to_str(h)})\n    (local.get $call_{int_to_str(h)})\n")
-  emit_args_word(args)
+  emit_args_continuation(args)
   wat_emit("    (local.get $call_{int_to_str(h)}) (i32.load offset=0)\n")
   wat_emit("    (call_indirect (type {call_ft_name(args)}))\n")
-  emit_wide_deref(repr_of(lookup_ty(h)))
+  emit_from_continuation(repr_of(lookup_ty(h)))
 }
 
 // The direct call's signature: THE CALLEE'S OWN, read from the column under

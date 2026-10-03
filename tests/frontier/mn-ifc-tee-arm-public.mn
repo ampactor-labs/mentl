@@ -1,0 +1,20 @@
+// The public twin of mn-ifc-tee-arm-leak: the arm answers a public string,
+// so the install's value is public and the splice is admitted. Exit 0.
+type Vault = String where classified(self)
+fn classified(s) = true
+fn getpw() -> Vault = "hunter2"
+effect Ask {
+  ask() -> String
+}
+handler plain {
+  ask() => "ok",
+}
+fn show() = {
+  let s = (ask()) ~> plain
+  "msg: {s}"
+}
+fn main() = {
+  let _ = show()
+  let _ = getpw()
+  0
+}

@@ -1,0 +1,41 @@
+// expect: 42
+// A Float crossing a continuation allocates nothing of its own: the same
+// two-resumption program at Int and at Float grows the heap by the same
+// number of bytes, the continuation record and nothing per crossing. A box
+// per resumed value and per answer would add sixteen bytes a crossing.
+effect Fp {
+  fp() -> Float
+}
+
+effect Ip {
+  ip() -> Int
+}
+
+handler fboth {
+  fp() => {
+    let a = resume(1.0)
+    let b = resume(2.0)
+    a + b
+  },
+}
+
+handler iboth {
+  ip() => {
+    let a = resume(1)
+    let b = resume(2)
+    a + b
+  },
+}
+
+fn fbody() = fp() + 0.5
+
+fn ibody() = ip() + 5
+
+fn main() = {
+  let f0 = addr_word(heap_mark())
+  let f = fbody() ~> fboth
+  let f1 = addr_word(heap_mark())
+  let i = ibody() ~> iboth
+  let i1 = addr_word(heap_mark())
+  if f == 4.0 && i == 13 && f1 - f0 == i1 - f1 { 42 } else { 1 }
+}

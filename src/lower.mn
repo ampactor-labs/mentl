@@ -4802,7 +4802,7 @@ fn handler_decl_instance(hname: String) = match env_lookup(hname) {
     (scheme, _, kind) => match kind {
       HandlerKind(_, _, _, _, _) => match judgment_pair(scheme) {
         (_, sty) => match handler_result_ty(sty) {
-          TName(_, [inst]) => Some(inst),
+          TName(_, [inst, _]) => Some(inst),
           _ => None,
         },
       },
@@ -5060,10 +5060,9 @@ fn lower_resume_callk(handle, val, state_updates) = {
 //
 // The resume-resolution LADDER (band B M1.6, bank Ruling 2 as amended by
 // A3) — the k is an ARGUMENT, never evidence:
-//   lexical  — "__k" is the arm's own leading param (the k1 fast path;
-//              arm params bind handle 0, so the node handle carries
-//              the type), or a resume-bound callee's appended trailing
-//              param (lower_call_default threads it as a real argument).
+//   lexical  — "__k" is the arm's own leading param (the k1 fast path),
+//              or a resume-bound callee's appended trailing param
+//              (lower_call_default threads it as a real argument).
 //   capture  — "__k" was captured into this lambda's record (the
 //              ResumeExpr free-vars arm reports it; resolve_captures_outer
 //              threaded it) — the LUpval read, N frames deep.
@@ -5077,9 +5076,9 @@ fn lower_resume_callk(handle, val, state_updates) = {
 // emitted signature and a resume through the dead k traps loudly at the
 // fn_ptr load of address 0, never silently.
 fn resume_k_arg(handle) = match ls_resolve("__k") {
-  (res, lh) => match res {
-    RLocal(reg) => LLocal(local_ty_handle(lh, handle), reg),
-    RUpval(slot) => LUpval(local_ty_handle(lh, handle), slot),
+  (res, _lh) => match res {
+    RLocal(reg) => LLocal(0, reg),
+    RUpval(slot) => LUpval(0, slot),
     RFbPrior(_) => LConst(handle, LInt(0)),
     RGlobal => LConst(handle, LInt(0)),
   },
@@ -5140,10 +5139,15 @@ fn resume_hrec_arg(handle) = match ls_resolve("__hrec") {
   },
 }
 
+// The k is a WORD — the continuation record's pointer — read at handle 0 as
+// the record `__hrec` is, whatever the resume node is typed: since the
+// answer rides the handler's type (2026-10-03) a resume's node is the
+// install's answer, and naming the k local at that node declared `$__k.f64`
+// under a Float answer where the arm's parameter is `$__k`.
 fn resolve_resume_k(handle) = match ls_resolve("__k") {
-  (res, lh) => match res {
-    RLocal(reg) => LLocal(local_ty_handle(lh, handle), reg),
-    RUpval(slot) => LUpval(local_ty_handle(lh, handle), slot),
+  (res, _lh) => match res {
+    RLocal(reg) => LLocal(0, reg),
+    RUpval(slot) => LUpval(0, slot),
     RFbPrior(_) => LInvariantFailure(handle, ResumeKOutsideLadder),
     RGlobal => LInvariantFailure(handle, ResumeKOutsideLadder),
   },
@@ -5784,10 +5788,9 @@ fn lower_resume_snapshot(handle, val, updates, fields) = match resume_commit_pre
   (prefix, val_name) => LBlock(
     handle,
     // drift-audit: ignore — one-shot stmt-list concat, no loop
-    // The snapshot is read back at the VALUE's handle — the node whose type
-    // the scratch was declared at — never the resume node's, whose type is
-    // the handler's answer (a Float resume value read at the answer's word
-    // width named a local that was never declared).
+    // The snapshot is read back at the VALUE's handle, the node the scratch
+    // is declared at (`resume_commit_prefix`) — never the resume node's,
+    // whose type is the handler's answer.
     prefix ++ [LReturn(handle, LLocal(node_handle(val), val_name))]
   ),
 }
@@ -5804,10 +5807,21 @@ fn lower_resume_snapshot(handle, val, updates, fields) = match resume_commit_pre
 // every arm state read is a LIVE load through that record, so the next
 // resume in the same arm sees the committed value).
 fn resume_commit_prefix(handle, val, updates, fields, record) = {
+  // Each scratch is declared at its VALUE's node — the resume value at the
+  // argument's, an update at its init's — the same handle every read of it
+  // carries below. The resume node's own type is the handler's ANSWER, and
+  // a scratch declared there was named at the answer's width and read at
+  // the value's: once an install bound the answer (a Float-answering
+  // handler resuming with `()`), the two names differed and the module did
+  // not assemble.
   let val_name = "__resume_val_{int_to_str(handle)}"
-  let val_let = LLet(handle, val_name, lower_expr(val))
+  let val_let = LLet(node_handle(val), val_name, lower_expr(val))
   let lets = map(
-    (upd) => LLet(handle, resume_upd_local(upd, handle), lower_expr(state_field_init(upd))),
+    (upd) => LLet(
+      node_handle(state_field_init(upd)),
+      resume_upd_local(upd, handle),
+      lower_expr(state_field_init(upd))
+    ),
     updates
   )
   // The state-slot-home column (lowering-is-a-column step i): the resolved
@@ -6167,13 +6181,15 @@ fn find_override(overrides, target: String) = match overrides {
 // answers 0 for a ctor's Float payload, a tuple's String element, a `Float`
 // parameter), and a local is monomorphic, so the reading node carries the
 // same truth: inference bound its cell to the local's type. Every read of a
-// resolved local asks this ONE rule — the VarRef lowering, the two `__k`
-// resolvers, the k-hole read and the capture a closure mint stores. Through
-// 2026-09-27 it was written inline at the first four and absent at the
-// fifth, so a captured Float floored to a word at the mint while the body
-// read it wide (`fn make(fb: Float) = (x) => x + fb` checked clean and did
-// not assemble). The rule retires when a binder is a graph node with its own
-// cell, so no binder is ever handle 0 (`Hβ.lower.binder-is-a-node`).
+// resolved local asks this ONE rule — the VarRef lowering, the k-hole read
+// and the capture a closure mint stores. Through 2026-09-27 it was written
+// inline at the first two and absent at the third, so a captured Float
+// floored to a word at the mint while the body read it wide (`fn make(fb:
+// Float) = (x) => x + fb` checked clean and did not assemble). The two `__k`
+// resolvers read a word at handle 0 instead: a resume's node is typed at
+// the install's answer, never at the record pointer the k local holds. The
+// rule retires when a binder is a graph node with its own cell, so no
+// binder is ever handle 0 (`Hβ.lower.binder-is-a-node`).
 fn local_ty_handle(binder_h, use_h) = if binder_h == 0 { use_h } else { binder_h }
 
 // W7.1 — called at `LambdaExpr` / `FnStmt` lower-time, BEFORE entering
@@ -7852,17 +7868,19 @@ fn twin_site_key(h, name: String) = twin_key(spec_site_pairs(h, name))
 // so an arm signs the widths its body reads; and a performer emits its
 // arguments at its own site's widths, which are the same instance's — the tee
 // unifies every perform with the handler's — so the two faces agree
-// (`call_site_vector`, wasm.mn). One variable no face carries: the answer a
-// multi-shot or abandon arm hands its driver, which the redrive reads as a
-// word. An install whose key binds that answer to a wide scalar keeps the base
-// arms (`Hβ.emit.arm-twin-converts-at-its-face`).
+// (`call_site_vector`, wasm.mn). The handler's ANSWER is keyed the same way:
+// it is the second argument of the handler's type, met at the install by the
+// body's answer (`install_answer`, infer.mn), so an arm that observes its
+// answer runs at the answer its install gives it, and a wide answer crosses
+// the driver and every continuation at its own width (the continuation
+// face, wasm.mn).
 fn arm_site_pairs(install_h) = match graph_install_at(install_h) {
   NoInstall => [],
   InstallOf(hname, hexpr_h, cfg_hs, _) => match env_lookup(hname) {
     None => [],
     Some(entry) => match entry {
       (scheme, _r, kind) => match kind {
-        HandlerKind(_, _, _, _, arms) => arm_pairs_of(judgment_pair(scheme), hexpr_h, cfg_hs, arms),
+        HandlerKind(_, _, _, _, _) => arm_pairs_of(judgment_pair(scheme), hexpr_h, cfg_hs),
         _ => // a name that is not a handler has no arms to key
         [],
       },
@@ -7870,17 +7888,11 @@ fn arm_site_pairs(install_h) = match graph_install_at(install_h) {
   },
 }
 
-fn arm_pairs_of(jp, hexpr_h, cfg_hs, arms) = match jp {
+fn arm_pairs_of(jp, hexpr_h, cfg_hs) = match jp {
   (qs, sty) => if len(qs) == 0 {
     []
   } else {
-    let pairs = arm_pairs_walk(sty, spec_resolve(lookup_ty(hexpr_h)), cfg_hs)
-    let facing = arm_face_roots(arms)
-    if any({ (v, t) => repr_is_wide(repr_of(t)) && any({ f => f == v }, facing) }, pairs) {
-      []
-    } else {
-      spec_pairs_sort(pairs)
-    }
+    spec_pairs_sort(arm_pairs_walk(sty, spec_resolve(lookup_ty(hexpr_h)), cfg_hs))
   },
 }
 
@@ -7907,21 +7919,8 @@ fn arm_pair_step(acc, pc) = match pc {
   (p, h) => spec_pairs_walk(param_ty(p), spec_resolve(lookup_ty(h)), acc),
 }
 
-// The variables no face carries: the answer a multi-shot or abandon arm hands
-// its driver, which reads it as a word.
-fn arm_face_roots(arms) = match arms {
-  [] => [],
-  [a, ..._] => if any(arm_answers_its_driver, arms) {
-    map(graph_chase_handle, free_in_ty(chase_deep(lookup_ty(node_handle(handler_arm_body(a))))))
-  } else {
-    []
-  },
-}
-
-fn arm_answers_its_driver(a) = op_answers_its_driver(handler_arm_op_name(a))
-
-// Whether an op's arms are reached by its driver, at the word face, rather
-// than called by the performer at the op's declared one.
+// Whether an op's arms are reached by its driver, at the continuation face
+// (wasm.mn), rather than called by the performer at the op's declared one.
 fn op_answers_its_driver(op: String) = match op_resume_discipline(op) {
   OneShot => false,
   MultiShot => true,

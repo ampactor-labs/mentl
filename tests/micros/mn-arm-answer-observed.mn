@@ -1,0 +1,22 @@
+// expect: 5
+// An arm that observes its answer is emitted at the answer its install
+// gives it: `a ++ b` concatenates the two resumptions' lists. The install's
+// body answers [Int], so the arm runs keyed at [Int]: [1, 2, 9] ++ [3, 9]
+// has five elements. On boot cf8a6d50 the compile refused with
+// E_ShapeUnprovable, "`++` on t…, emitting op_two_gen": the answer was no
+// part of the arm's key, so the base arm was emitted with it unknown.
+effect Gen {
+  gen() -> [Int]
+}
+
+handler two {
+  gen() => {
+    let a = resume([1, 2])
+    let b = resume([3])
+    a ++ b
+  },
+}
+
+fn body() = gen() ++ [9]
+
+fn main() = len(body() ~> two)

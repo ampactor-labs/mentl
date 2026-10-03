@@ -35,6 +35,144 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-03 · pin 311479e1144cc884 (TRANSITION m3 == m4) · AN ARM'S VALUE IS THE INSTALL'S VALUE
+  (AN-1). A handler's type carried its effect's instance and never its
+  answer, so no install met what the arms answered: on boot cf8a6d50
+  `handler h { bail() => "not a number" }` over `(bail() + 1) ~> h` compiled
+  and ran; an arm observing its answer (`a ++ b` over two resumptions)
+  refused `E_ShapeUnprovable`, the base arm being emitted; and a multi-shot
+  handler answering a Float did not assemble, the driver reading its answer
+  as a word. THE FORM, three halves. The TYPE is `Handler(instance, answer)`
+  — the answer the cell every arm's value is judged into, minted once at
+  pre-registration and read by the registration as `r_handle` and
+  `w_handle` are (`prereg_answer_cell`), quantified with the instance
+  (instantiation keys by the chased root, so an answer bound to an arm's
+  variable still freshens per install), met at every install by the body's
+  own answer (`install_answer`). The KEY: the face-roots exclusion,
+  `arm_face_roots` and `arm_answers_its_driver` are deleted, so
+  `arm_pairs_walk` keys the arm twins at the answer as at the instance. The
+  FACE: a continuation, and an arm its driver answers, are called through
+  one word-arity type by code blind to their types — the composer, the
+  arena re-entry, the driver — and a wide value crosses it in a per-instance
+  REGISTER beside the word slot (`$__lane_f64`; `lane_of`,
+  `emit_to_continuation`, `emit_from_continuation`,
+  `emit_continuation_wrapper` chosen by `continuation_face_of`), set
+  immediately before the call and read immediately after it — the `$__dt`
+  protocol one width over, the machine ABI's own shape (words in the integer
+  slots, a double in a float register) — and the helpers between two
+  segments touch no register. A multi-shot op's ARGUMENTS cross in the
+  yield's record at their widths (8-byte slots, `emit_yield_arg_stores`; the
+  driver pushes each slot's word and the arm's face reads a wide one from
+  the record), where a Float argument had refused to assemble. The arena
+  re-entry's leaf for a wide value is a word (`face_leaf`), and
+  `$__k_arena`'s box8 arm, correct by accident, is deleted.
+  `proc_exit(Int) -> !`: a never-returning op answers a bare variable, so
+  `fail_exit` answers any install. WHAT THE LAW EXPOSED, closed with it:
+  every value walk read a tee as nothing it could read — a tee's value is
+  the body's tails and each arm's tails now (`install_arm_tails`, a `resume`
+  tail adding none; `tee_handler_name` moved to verify.mn as the one reader
+  of the install column's judgment-time twin), read by the refinement, the
+  flow-label and the function-value walks alike: the refinement face was
+  debt where a refutation and a proof stood, the IFC face a LEAK (an arm
+  answering a classified value spliced clean on the boot). KILLS: (1) "the
+  answer is a word the driver can read" — the Float fixture refused to
+  assemble on the boot; (2) "box at the face" — a cell per crossing under no
+  row, the no-box fixture its contract; (3) "keep the base arms when a face
+  root is wide" — deleted; (4) the re-entry's box8 arm; (5) "N positional
+  lanes" — the argument record is a product and takes its widths; (6) "two
+  mints, one answer"; (7) "the tee's walk proves from the body alone" —
+  refuted on the boot before a line: unknown was debt; (8) the install
+  column is the lowering's; (9) the arm header read the instance through a
+  one-argument `Handler` match (`handler_decl_instance`), nine fixtures with
+  a word header under an f64 body; (10) the resume scratches were declared
+  at the resume node, the answer's type, one name while it was free and two
+  once bound (`resume_commit_prefix` declares at the value's node); (11)
+  `mn-backtrack-full` ran on a type confusion the law refuses, an Int
+  wearing an Option's type; (12) the Int-op/Float-answer shape has no spine
+  form until capture at every position; (13) a duplicate reader and a
+  one-argument call of the wrapper emitter refused the first m2; (14) the
+  two `__k` resolvers named the k local at the RESUME node's type — under
+  the law, the install's answer — so a Float answer declared `$__k.f64`
+  where the arm's parameter is `$__k` (three wide multi-shot fixtures did
+  not assemble); the k is a record pointer, a word, read at handle 0 as
+  `__hrec` is; (15) `E_InitPerformsOwnOp` rode the dispatch's named arm,
+  which `handler_may_key` withholds from every handler whose scheme
+  quantifies a variable — every resuming handler, once its answer does —
+  so the two init-refusal fixtures fell to the root gate alone; the
+  uniqueness of an op's provider is the op's own fact
+  (`lower_op_default_handler`), read at the demand, and
+  `visit_direct_perform` is deleted with its two announcements; (16) the
+  claim decider read a tee through the join's tails alone, so
+  `100 / (({ let _ = ask(); 5 }) ~> zero)` stayed OPEN under `!Trap`
+  (debt, the row refusal) where the arm's `0` refutes it — `value_tails`
+  is the one home every value walk reads structure through, the three
+  tee arms written on the way deleted, a claim noted over a value staying
+  with the join's own tails; an arm installing its own handler is a
+  re-entry that adds no tail (the least fixed point, exact), the walk's
+  scope keyed by the handler's residual row cell; (17) the guard's first
+  key, `decl_named`, was a by-name scan declared in query.mn, which
+  verify cannot import without a cycle — `E_MissingImport` refused it
+  before a line ran, and the identity was on the env entry; (18) the
+  resume's answer scratch was declared a word while the face hands the
+  answer back at its width (`local.set` expected i32, got f64) — it is
+  declared and named at the answer's repr; (19) a leaf that IS the fatal
+  point answered OPEN, never a refutation — `leaves_exclude` was a Bool —
+  so the arm's `0` was debt; the leaves decide three-valued now, a point
+  leaf at the fatal point refuting as a join's tail that folds false does —
+  which flipped S5's `mn-state-reset-owes` from owed to REFUTED (an arm
+  writing `d = 0` beside `100 / d`: the state owes `d != 0` of every write,
+  the writer fails it, and the program divided by zero on the pin that
+  banked it), re-banked to the stronger verdict by hand (Law 11).
+  Gates RED on cf8a6d50: micros `mn-arm-answer-is-the-install` (refuse `E_TypeMismatch` — compiled and
+  ran), `mn-arm-answer-observed` (5 — `E_ShapeUnprovable`),
+  `mn-multishot-float-answer` (42 — did not assemble),
+  `mn-multishot-float-answer-no-box` (42), `mn-abandon-answer-refuses`
+  (refuse — compiled clean), `mn-multishot-float-arg` (42 — did not
+  assemble), `mn-refine-install-answer` (refuse `E_RefinementRejected` —
+  debt on the boot) and `-proven` (20 — refused on the boot), the control
+  `mn-handler-answer-per-install` (42, green on both); frontier
+  `arena/float-value-reenters` (42), `mn-never-op-answer` (1, io-linked),
+  the dcc block's `mn-ifc-tee-arm-leak` / `-public`, and the where legs
+  (`answers Int` on `zero` and on `handled`'s install, `answers a` on
+  `ticker`, the refusal naming the arm); crown `leak-claim-join`
+  (`E_RefinementRejected`, the claim's own class — the judge counts three
+  classes now). Micros 366/366, crown 134/0 (the judge counts three
+  classes now — `leak-root-*` by `E_EffectUnhandled`, `leak-claim-*` by
+  `E_RefinementRejected`, every other leak by `E_EffectMismatch`, a sound
+  crucible by none), proof-exactness 30/0, frontier 595/0/1 expected-red,
+  each through the seventh m2 (ea30a8f3). Fixed input: boot cf8a6d50 531,004 KB against candidate ea30a8f3 531,536 KB on
+  one wheel source, the minimum of three runs each (the single readings
+  spread 531–542 MB for one binary, the ratchet's own jitter) — the
+  compiler at parity (+532 KB); the judgment's heap 231,805,736 → 231,862,352
+  B (+55 KB), the heap when the module is written 384,840,064 → 387,541,248
+  B (+2.6 MB: 9,787 more WAT lines, the arm twins keyed per install at their
+  answer and the lane-faced wrappers); the previous boot crosses the old
+  ceiling on this input, so the rise is the source's — ceiling 529,000 →
+  539,000. m3 leg 23.35s wall · 521MB peak RSS (533,608 KB) and m4 leg 22.44s · 519MB (532,432 KB), both under the 539,000 ceiling
+
+KILLS (21)–(24), after the gates were green on the sixth m2 — the felt checks:
+(21) the install's refusal said `Int vs List(Byte)` and nothing of the arm:
+`install_answer` asked its unify with a Reason naming the law, and the
+mismatch reporter's own signature confessed the drop (`type_mismatch(a, b,
+span, reason)` reported `ETypeMismatch(a, b, span)`) — the diagnostic
+carries the Reason its unify was asked with now (`ETypeMismatch(Ty, Ty,
+Reason, Span)`, `reason_line` rendering it past the diagnostic's own span),
+and the install's reason is the arm whose value is its own
+(`install_reason` / `answer_reason`: the first arm with a tail past every
+`resume`, located at the arm; the attachment itself when every arm resumes),
+the one reason the tee node is bound with, so the caret's Why at the tee
+reaches the arm; (22) `where` rendered a handler without what it answers —
+`handler both absorbs Fp` — and a function's install line without what the
+install answers; both say it now (`handler zero absorbs Ask, answers Int`,
+`~> ticker absorbs Tick, answers Int at …`), a free answer under the name a
+developer writes; (23) the first reader of "an arm with a value of its own"
+was named `arm_answers`, which query.mn already declares with two parameters
+for the `provider of` facet — infer.mn's own link judged clean and the boot
+refused query.mn's at `arms_for_op` (`mentl fmt`, three type errors): one
+namespace, one name (`arm_own_value`); (24) `infer_pipe` kept a PTee arm
+binding the tee's reason a second time under a comment reading "today we
+don't have handler-value typing" — unreachable since `infer_pipe_tee` took
+the dispatch, a second home for the tee's reason, deleted.
 - 2026-10-03 · pin cf8a6d500a41d7ba (TRANSITION m3 == m4) · A SUSPENDED ARENA KEEPS ITS REGION,
   AND EACH RESUMPTION IS AN ARENA OF ITS OWN (C×A). An op performed inside
   an arena and answered outside it suspends what the arena encloses, and

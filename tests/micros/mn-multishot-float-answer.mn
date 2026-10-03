@@ -1,0 +1,24 @@
+// expect: 42
+// A multi-shot op whose answer is a Float: each resumption runs the rest of
+// the body at f64 and hands its answer back to the arm, which sums the two,
+// (1.0 + 0.5) + (2.0 + 0.5) = 4.0. On boot cf8a6d50 the module did not
+// assemble: the install handed its f64 to a driver that read a word, and the
+// base arm added the two resumptions' box addresses.
+effect Fp {
+  fp() -> Float
+}
+
+handler both {
+  fp() => {
+    let a = resume(1.0)
+    let b = resume(2.0)
+    a + b
+  },
+}
+
+fn plain() = fp() + 0.5
+
+fn main() = {
+  let r = plain() ~> both
+  if r == 4.0 { 42 } else { 1 }
+}

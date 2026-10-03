@@ -5194,9 +5194,10 @@ arm)`; a frame-resolved perform calls its install's own twin
 through the record's slot, since two installs may run two arm sets
 (`handler_may_key`); and the multi-shot driver reads its arm through the
 slot for the same reason (`arm_slot_offset`). The declaration's state inits
-evaluate under the install's key. THE FACE RULE stays: a key binding an
-effect-instance variable, or a multi-shot arm's answer, to a wide scalar
-keeps the base arms (`Hβ.emit.arm-twin-converts-at-its-face`). Gates, each
+evaluate under the install's key. THE FACE RULE that stood here — a key binding a
+multi-shot arm's answer to a wide scalar keeps the base arms — is DELETED
+with AN-1 (2026-10-03): the answer keys the arms and crosses the driver in
+a register (`Hβ.continuations.redrive-reads-the-answer-as-a-word`). Gates, each
 RED on boot b29e319b: micros `mn-arm-config-two-shapes` (46; 134),
 `-walked` (46; 134), `-multishot` (30; 134), `mn-handler-float-state` (0;
 1), `mn-handler-config-annotated` (0; 1); frontier `mn-arm-config-record`
@@ -5233,9 +5234,12 @@ reading needs it: `derive.mn`'s `deriving(prev, …)` reads its config's
 fields in five arms. Gates: the e2 fixture and a3 turn green, and two
 installs of one handler with two config shapes each read their own.
 
-`Hβ.emit.arm-twin-converts-at-its-face` — **THE INSTANCE HALF CLOSED
-2026-09-28 (R0c), pin 0bc8383e8b6ced84; the answer half is
-`Hβ.continuations.redrive-reads-the-answer-as-a-word`.** *(The adapter this
+`Hβ.emit.arm-twin-converts-at-its-face` — **CLOSED: the instance half
+2026-09-28 (R0c), pin 0bc8383e8b6ced84; the answer half 2026-10-03 (AN-1),
+with `Hβ.continuations.redrive-reads-the-answer-as-a-word` — an install
+keys its arms at its answer as at its instance (`Handler(instance,
+answer)`), and the face rule's answer clause is deleted with
+`arm_face_roots`.** *(The adapter this
 entry describes is DELETED 2026-09-30, R0j: a perform speaks its SITE'S
 face, as a closure call does, and the arm twinned at the install's instance
 is that face by construction — `Hβ.emit.generic-op-box-is-unrowed` carries
@@ -5302,7 +5306,133 @@ first: base arms under a wide answer may already refuse at assembly).
 `eq-in-arm-pointer`'s declared-standing failure is this class on
 comparison; it should close with it. R0c's third part.
 
-`Hβ.continuations.redrive-reads-the-answer-as-a-word` — A MULTI-SHOT
+`Hβ.continuations.redrive-reads-the-answer-as-a-word` — **CLOSED
+2026-10-03 (AN-1), pin 311479e1144cc884.** THE FORM BUILT is neither of the two
+the entry below weighed: one driver per handler, as the first kept, and no
+allocation, as the second kept. The handler's type is `Handler(instance,
+answer)` — the answer the cell every arm's value is judged into, minted once
+at pre-registration and read by the registration as its row cells are,
+quantified with the instance, met at every install by the body's answer
+(`install_answer`, infer.mn) — so the answer keys the arm twins as the
+instance does (`arm_pairs_of`, lower.mn; the face-roots exclusion deleted)
+and an arm observing its answer runs at the answer its install gives it.
+THE CONTINUATION FACE (wasm.mn): a continuation, and an arm its driver
+answers, are called through one word-arity face by code blind to their
+types, and a wide value crosses it in a per-instance register beside the
+word slot — `$__lane_f64`, `emit_to_continuation` / `emit_from_continuation`
+— set immediately before the call and read immediately after it, the
+`$__dt` register's protocol one width over and the machine ABI's own shape
+(words in the integer slots, a double in a float register); the runtime
+helpers between two segments (`$__k_compose`, `$__k_arena`, the arena's
+sweep and close) touch no register, so what one segment answers reaches
+the next as it left. A multi-shot op's ARGUMENTS cross in the yield's
+record at their widths — 8-byte slots, each stored at its own width
+(`emit_yield_arg_stores`), the driver pushing each slot's word and the
+arm's continuation face reading a wide one from the record — where the
+record had parked every argument through an i32 scratch and a Float
+argument refused to assemble (`expected i32, found f64`). The arena
+re-entry's leaf for a wide value is a word, nothing to move
+(`face_leaf`), and `$__k_arena`'s box8 arm — correct by accident, since
+`ar_young(0)` is false and `ar_final(0)` is 0 — is deleted by contract.
+`proc_exit(Int) -> !` (lib/io.mn): a never-returning op answers a bare
+variable, so `fail_exit`'s arm answers any install now that an install
+meets its arms' answer. KILLS: (1) "the answer is a word the driver can
+read" — the Float fixture refused to assemble on cf8a6d50; (2) "box at the
+face" — a cell per crossing, 16 B per resumed value and answer, under no
+row (`mn-multishot-float-answer-no-box` holds the heap-growth equality);
+(3) "keep the base arms when a face root is wide" (`arm_face_roots`, R0c's
+compromise) — deleted; (4) the re-entry's box8 arm; (5) "N positional
+lanes" for a multi-shot op's wide arguments — the record is a product and
+takes its widths; (6) "two mints, one answer" — the registration reads the
+pre-registered cell; (7) "the tee's value walk proves from the body alone"
+— refuted on the boot before a line: a tee read as unknown was DEBT, so
+the precise form (the body's tails and each arm's tails, a `resume` tail
+adding none — `install_arm_tails`, verify.mn) is a refutation where debt
+stood and a proof where a refusal stood, and the IFC face is the one hole
+(an arm answering a classified value spliced clean — `mn-ifc-tee-arm-leak`);
+(8) the install column is the lowering's, written after every claim is
+decided, so the verify walk reads the handler off the tee's right node;
+(9) the arm header read the handler's instance through a one-argument
+`Handler` match (`handler_decl_instance`), signing every arm twin's op
+parameters at the word floor under a body reading f64; (10) the resume
+scratches were declared at the resume node — the answer's type — and read
+at the value's, one name while the answer was free and two once an install
+bound it; (11) `mn-backtrack-full` ran on a type confusion (an Int wearing
+an Option's type, a `None` arm over an Int body) the law refuses — it
+answers the Option its arms do now; (12) the Int-op/Float-answer shape has
+no spine form until capture at every position; (13) a duplicate
+`fn_record_name` and a one-argument call of the wrapper emitter refused the
+first m2; (14) the two `__k` resolvers named the k local at the RESUME
+node's type — under the law the install's answer — so a Float answer
+declared `$__k.f64` where the arm's parameter is `$__k` and three wide
+multi-shot fixtures did not assemble: a continuation is a record pointer, a
+word, read at handle 0 as `__hrec` is (`resolve_resume_k`, `resume_k_arg`);
+(15) `E_InitPerformsOwnOp` rode the dispatch's NAMED arm, which
+`handler_may_key` withholds from every handler whose scheme quantifies a
+variable — every resuming handler, once its answer does — so the two
+init-refusal fixtures fell to the root gate alone; the uniqueness of an
+op's provider is the op's own fact (`lower_op_default_handler`), the
+inits' scope reads it at the demand, and `visit_direct_perform` is deleted
+with its two announcements; (16) the claim decider read a tee through the
+join's tails alone, so `100 / (({ let _ = ask(); 5 }) ~> zero)` stayed OPEN
+under `!Trap` — debt, the row refusal — where the arm's `0` refutes it:
+`value_tails` (verify.mn) is the one home every value walk reads structure
+through, the three tee arms written on the way deleted, a claim noted over
+a value staying with the join's own tails since a handler's arms are every
+install's; an arm installing its own handler is a re-entry that adds no
+tail (the least fixed point, exact), the walk's scope keyed by the
+handler's residual row cell; (17) that guard's first key, `decl_named`,
+was a by-name scan declared in query.mn, which verify cannot import without
+a cycle — `E_MissingImport` refused it before a line ran, and the identity
+was on the env entry already; (18) the resume's answer scratch was
+declared a word while the face hands the answer back at its width
+(`local.set` expected i32, got f64) — declared and named at the answer's
+repr now, the one decider every local reads; (19) a leaf that IS the
+fatal point answered OPEN, never a refutation (`leaves_exclude` was a
+Bool), so the arm's `0` was debt — the leaves decide three-valued
+(`leaf_excludes : Option(Bool)` under `and_decide`), a point leaf at the
+fatal point refuting as a join's tail that folds false does — which
+flipped S5's `mn-state-reset-owes` (an arm writing `d = 0` beside
+`100 / d`) from owed to REFUTED, the stronger verdict by S5's own law
+("owes `d != 0` of every write") on a program that divided by zero on the
+pin that banked it; re-banked by hand (Law 11). THE FELT CHECKS, run
+after the gates were green and each a fill: (20) the install's refusal said
+`Int vs List(Byte)` and nothing of the arm — `install_answer` asked its
+unify with a Reason naming the law, and the mismatch reporter's own
+signature confessed the drop (`type_mismatch(a, b, span, reason)` reported
+`ETypeMismatch(a, b, span)`); the diagnostic carries the Reason its unify
+was asked with now (`ETypeMismatch(Ty, Ty, Reason, Span)`, `reason_line`
+rendering it past the diagnostic's own span), and the install's reason is
+the arm whose value is its own (`install_reason` / `answer_reason`: the
+first arm with a tail past every `resume`, located at the arm; the
+attachment itself when every arm resumes), the one reason the tee node is
+bound with, so the refusal reads `Int vs List(Byte) — ~> pipe → at
+15:13-15:27: inferred from the arm bail of handler h` and the caret's Why at
+the tee reaches the arm; (21) `where` rendered a handler without what it
+answers and a function's install line without what the install answers —
+`handler zero absorbs Ask, answers Int`, `handler ticker absorbs Tick,
+answers a` (a free answer under the name a developer writes), `~> ticker
+absorbs Tick, answers Int at 12:28-12:46` now (`handler_answer_of`, the
+one reader `prereg_answer_cell` reads through); (22) the first reader of
+"an arm with a value of its own" was named `arm_answers`, which query.mn
+declares with two parameters for the `provider of` facet — infer.mn's own
+link judged clean and the boot refused query.mn's at `arms_for_op` with
+three type errors: one namespace, one name (`arm_own_value`); (23)
+`infer_pipe` kept a PTee arm binding the tee's reason a second time under
+"today we don't have handler-value typing" — unreachable since
+`infer_pipe_tee` took the dispatch, a second home, deleted. GATES, each
+RED on boot cf8a6d50: the frontier's where legs (`answers Int` on `zero`
+and on `handled`'s install, `answers a` on `ticker`, the refusal naming the
+arm — no answer in the type, the reason dropped); micros
+`mn-arm-answer-is-the-install` (refuse E_TypeMismatch; compiled and ran),
+`mn-arm-answer-observed` (5; E_ShapeUnprovable), `mn-multishot-float-answer`
+(42; did not assemble), `mn-multishot-float-answer-no-box` (42),
+`mn-abandon-answer-refuses` (refuse), `mn-multishot-float-arg` (42; did not
+assemble), `mn-refine-install-answer` (refuse `E_RefinementRejected`; debt on
+the boot) and `-proven` (20; refused on the boot), the control
+`mn-handler-answer-per-install` (42, green on both); frontier
+`arena/float-value-reenters` (42), `mn-never-op-answer` (exit 1,
+io-linked), and the dcc block's `mn-ifc-tee-arm-leak` / `-public`. THE ENTRY AS WRITTEN: A MULTI-SHOT
 INSTALL WHOSE ANSWER IS WIDE DOES NOT ASSEMBLE, after a clean check.
 Measured 2026-09-28 on 30a35888 and on R0c's m2 alike: `effect C {
 choose() -> Float }` under `handler both(cfg) { choose() => resume(cfg.x) +
@@ -8249,11 +8379,10 @@ adapters (`$of$<arm>`, `adapter_op`, the declared-face helpers `op_abi` /
 not an op and keeps the word protocol it was written in.
 tests/micros/mn-wide-op-perform-alloc-free.mn: 42 on boot 5d267d26 boxing
 silently, refused by the audit through the first m2, 42 and silent through
-the second. The one shape where a site's face and its arm's still differ is
-an install that keeps its base arms for a wide driver answer
-(`Hβ.continuations.redrive-reads-the-answer-as-a-word`) — such a program
-does not assemble today, and a perform there meets the type trap, never a
-silent value.
+the second. The one shape where a site's face and its arm's still differed —
+an install keeping its base arms for a wide driver answer — closed
+2026-10-03 (`Hβ.continuations.redrive-reads-the-answer-as-a-word`): the
+answer keys the arms and crosses the driver in a register.
 
 `Hβ.driver.warm-image-restores-a-foreign-world` — CLOSED 2026-09-28 (L3).
 `mentl run x.mn` then `mentl compile x.mn` printed zero lines of WAT, and the

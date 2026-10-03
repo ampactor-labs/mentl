@@ -80,7 +80,10 @@ effect WASI {
   args_sizes_get(Addr, Addr) -> Int
   // (argv, argv_buf)
   args_get(Addr, Addr) -> Int
-  proc_exit(Int)
+  // Never returns: the host ends the process, so the op answers a bare
+  // variable — any install an arm ending in it answers (SYNTAX
+  // §«Unit return omission»). Its emit is `(call $proc_exit)(unreachable)`.
+  proc_exit(Int) -> !
 }
 
 // Host — the medium's own host seam beside preview1, served by tools/runner

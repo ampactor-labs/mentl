@@ -1203,7 +1203,12 @@ fn pre_register_handler_sig(hname, config, state, arms) = {
   let inst_ty = TName(ename, map(TVar, inst_vars))
   let inst_h = mint(Inferred("effect '{ename}' instance"))
   graph_bind(inst_h, inst_ty, Inferred("effect '{ename}' instance"))
-  let handler_ty = TName("Handler", [inst_ty])
+  // A handler is typed by what it answers as well as by what it handles: an
+  // arm's value is its install's value, so the answer is the second argument
+  // of the handler's type, quantified like the instance, and every install
+  // meets it with its own body's answer (`install_answer`).
+  let answer_h = mint(Inferred("the answer of '{hname}'"))
+  let handler_ty = TName("Handler", [inst_ty, TVar(answer_h)])
   let config_tparams = mint_handler_config_tparams(config, hname, 0)
   let scheme_body =
     if len(config) == 0 { handler_ty } else { TFun(config_tparams, handler_ty, mk_ef_closed([])) }
@@ -1220,7 +1225,7 @@ fn pre_register_handler_sig(hname, config, state, arms) = {
   // cells to the config fns' row roots, and a placeholder chases nowhere.
   env_extend(
     hname,
-    Frozen(inst_vars, scheme_body),
+    Frozen(inst_vars ++ [answer_h], scheme_body),
     Declared(hname),
     HandlerKind(r_handle, w_handle, config_tparams, state, arms)
   )
@@ -3426,7 +3431,11 @@ fn check_instance_args(effs, span: ValidSpan) = each(
 )
 
 fn check_one_instance_arg(arg, pty, span: ValidSpan) = match instance_arg_scalar_ty(arg) {
-  Some(aty) => if same_ground(aty, fold_strip(pty)) { () } else { report(ETypeMismatch(aty, pty, span)) },
+  Some(aty) => if same_ground(aty, fold_strip(pty)) {
+    ()
+  } else {
+    report(ETypeMismatch(aty, pty, Inferred("a parameterized effect's instance argument"), span))
+  },
   None => (),
 }
 
@@ -5207,6 +5216,8 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
         ()
       }
       infer_expr(right)
+      let attach = install_reason(right, span)
+      install_answer(right, body_answer_h, span, attach)
       // The install itself, in the frame it stands in: a dispatched install
       // builds its record and pushes its world, so it allocates, and `!Alloc`
       // accepted every one while the heap grew per call (40 bytes for a
@@ -5253,11 +5264,7 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
         inf_add_row_at(handle, body_row),
       }
       match left {
-        N(_, _, lh) => graph_bind(
-          handle,
-          TVar(lh),
-          Located(span, InferredPipeResult("~>", Inferred("handler attachment")))
-        ),
+        N(_, _, lh) => graph_bind(handle, TVar(lh), attach),
       }
     },
   }
@@ -5620,13 +5627,13 @@ fn tname_args(ty) = match ty {
   _ => [],
 }
 
-// The handler's instance type from a `Handler(P)` value type. P is the WHOLE
-// effect instance (bound by unify_op_payload to `TName(E, [args])`), so
+// The handler's instance type from a `Handler(P, A)` value type. P is the
+// WHOLE effect instance (bound by unify_op_payload to `TName(E, [args])`), so
 // unify_types walks it per-position against the body's performed instance.
 fn handler_payload_ty(ty) = match ty {
   TName(n, args) => if n == "Handler" {
     match args {
-      [inner] => Some(inner),
+      [inner, _] => Some(inner),
       _ => None,
     }
   } else {
@@ -5634,6 +5641,65 @@ fn handler_payload_ty(ty) = match ty {
   },
   _ => None,
 }
+
+// What a handler answers, from its value type `Handler(P, A)` — or from the
+// result of a configured handler's scheme, which a bare reference to it
+// instantiates whole.
+fn handler_answer_ty(ty) = match ty {
+  TName(n, args) => if n == "Handler" {
+    match args {
+      [_, answer] => Some(answer),
+      _ => None,
+    }
+  } else {
+    None
+  },
+  TFun(_, res, _) => handler_answer_ty(res),
+  _ => None,
+}
+
+// AN ARM'S VALUE IS THE INSTALL'S VALUE. An arm that does not resume answers
+// the install, and one that resumes answers it with what the remainder
+// answered, so every arm is judged into the handler's answer, and each
+// install meets that answer with its own body's. Until 2026-10-03 the
+// handler's type carried its effect's instance and not its answer, and no
+// install ever met it: an arm answering a String under an Int body compiled
+// clean and ran (`tests/micros/mn-arm-answer-is-the-install.mn`), and an arm
+// that observed its answer was emitted at the floor, its answer a variable
+// no install bound (`tests/micros/mn-arm-answer-observed.mn`).
+fn install_answer(right, body_answer_h, span: ValidSpan, reason) = match right {
+  N(_, _, rh) => match handler_answer_ty(lookup_ty(rh)) {
+    Some(answer) => unify_types(answer, TVar(body_answer_h), span, reason),
+    None => (),
+  },
+}
+
+// What an install's value stands on — the one reason the tee node is bound
+// with and the install's unify is asked with: through `~>`, the first arm
+// whose value is its own, located where it was written (a `resume` tail
+// hands the remainder's answer through, which is the body's), or the
+// attachment itself when every arm resumes. So a mismatch at the install
+// reads `Int vs List(Byte) — ~> pipe → at 13:3-13:27: inferred from the arm
+// bail of handler h`, and the caret's Why at the tee reaches the arm.
+fn install_reason(right, span: ValidSpan) =
+  Located(span, InferredPipeResult("~>", answer_reason(right)))
+
+fn answer_reason(right) = match env_lookup(callee_name(right)) {
+  Some(entry) => match entry {
+    (_, _, kind) => match kind {
+      HandlerKind(_, _, _, _, arms) => match find(arm_own_value, arms) {
+        Some(arm) => Located(span_of_node(arm.body), Inferred("the arm {arm.op_name} of handler {callee_name(right)}")),
+        None => Inferred("handler attachment"),
+      },
+      _ => Inferred("handler attachment"),
+    },
+  },
+  None => Inferred("handler attachment"),
+}
+
+// An arm whose value is the install's: a tail of its own past every
+// `resume` (`arm_tails`, the value walk's reader of the same fact).
+fn arm_own_value(arm) = len(arm_tails(node_handle(arm.body))) > 0
 
 // The type args of a parameterized effect's payload (EAType only; a scalar
 // effect arg like Sample(44100) carries no type).
@@ -5718,17 +5784,12 @@ fn infer_pipe(kind, left, right, handle, span: ValidSpan) = match left {
       //
       // unreachable; handled in infer_fanout
       (),
-      PTee => // ~> tee — handler attachment. Result type = body type. Row:
-      // row(expr ~> h) = (row(expr) - handled(h)) + row(h). Today we
-      // don't have handler-value typing so arm_row can't be extracted
-      // from RHS; the result-type binding is the same for both block
-      // and inline forms (the parser has already built the correct
-      // tree shape — block wraps whole chain, inline wraps one stage).
-      graph_bind(
-        handle,
-        TVar(lh),
-        Located(span, InferredPipeResult("~>", Inferred("handler attachment")))
-      ),
+      PTee => // A tee is judged by `infer_pipe_tee` before `infer_pipe` fires (the
+      // PipeExpr arm in infer_expr dispatches it there): the install's answer
+      // met with the body's, its row, its reason naming the arm that answers.
+      //
+      // unreachable; handled in infer_pipe_tee
+      (),
       PFeedback => // <~ feedback — SYNTAX §«<~» requires an iterative context: an
       // Iterate-class effect in the enclosing stack AT THE SITE. The check
       // that stood here read iter_context() — the COMPILER'S OWN runtime
@@ -6927,7 +6988,7 @@ fn infer_index_force(rh, handle, span: ValidSpan) = {
   }
 }
 
-fn type_mismatch(ref a, ref b, span: ValidSpan, reason) = report(ETypeMismatch(a, b, span))
+fn type_mismatch(ref a, ref b, span: ValidSpan, reason) = report(ETypeMismatch(a, b, reason, span))
 
 // ─── The numeric gate — arithmetic's demand on a type cell ───────────
 // `+ - * / %` and unary `-` unify their operands and ask one more thing of
@@ -11014,7 +11075,7 @@ fn refined_as(ty, name: String) = match surface_refinement(ty) {
 // kept the first branch's interior, so `if c { inv2 } else { inv }` called
 // at 0 under `!Trap` checked clean and divided by zero (boot 13e8484a, pin
 // e23392f6).
-fn fn_leaves(h) = match join_tails(h) {
+fn fn_leaves(h) = match value_tails(h) {
   Some(tails) => tails |> flat_map(fn_leaves),
   None => match graph_node_body(h) {
     NExpr(VarRef(_)) => match graph_link_of(h) {
@@ -12232,6 +12293,32 @@ fn effect_op_names(en: String) = match env_lookup(en) {
   None => [],
 }
 
+// What a handler answers, read off the scheme it published: the second
+// argument of its `Handler` type, under the config arrow when the handler
+// takes config — ground once an arm's own value bound it, a variable while
+// every arm resumes and the answer is each install's body's. `mentl where`
+// renders it beside what the arms absorb.
+fn handler_answer_of(hname: String) = match env_lookup(hname) {
+  Some(entry) => match entry {
+    (scheme, _, kind) => match kind {
+      HandlerKind(_, _, _, _, _) => match scheme {
+        Frozen(_, body) => handler_answer_ty(body),
+        _ => None,
+      },
+      _ => None,
+    },
+  },
+  None => None,
+}
+
+// The answer cell a pre-registration minted for a handler
+// (`pre_register_handler_sig`): its answer while it is still that variable.
+fn prereg_answer_cell(hname: String) = match handler_answer_of(hname) {
+  Some(TVar(a)) => Some(a),
+  Some(_) => None,
+  None => None,
+}
+
 fn derive_handler_ename(arms, fallback: String) = if len(arms) == 0 {
   fallback
 } else {
@@ -12260,7 +12347,18 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   let inst_ty = TName(ename, map(TVar, inst_vars))
   let inst_h = mint(Inferred("effect '{ename}' instance"))
   graph_bind(inst_h, inst_ty, Inferred("effect '{ename}' instance"))
-  let handler_ty = TName("Handler", [inst_ty])
+  // The cell every arm's value is judged into: an arm answers its install,
+  // so this is the second argument of the handler's type, and generalized
+  // with it after the arms, each install meets it with its body's answer.
+  // READ off the pre-registered type, as `r_handle` and `w_handle` are read
+  // below — one cell, minted once — so a forward reference judged against
+  // the pre-registered scheme and the arms meet the same answer; a handler
+  // declared inside a body was never pre-registered and mints its own.
+  let s_h = match prereg_answer_cell(hname) {
+    Some(a) => a,
+    None => mint(Inferred("handler result of '{hname}'")),
+  }
+  let handler_ty = TName("Handler", [inst_ty, TVar(s_h)])
   let config_tparams = mint_handler_config_tparams(config, hname, 0)
   let scheme_body =
     if len(config) == 0 { handler_ty } else { TFun(config_tparams, handler_ty, mk_ef_closed([])) }
@@ -12300,7 +12398,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   }
   env_extend(
     hname,
-    Frozen(inst_vars, scheme_body),
+    Frozen(inst_vars ++ [s_h], scheme_body),
     Declared(hname),
     HandlerKind(r_handle, w_handle, config_tparams, state, arms)
   )
@@ -12332,7 +12430,6 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   // for every arm; per-arm scopes isolate only the op params.
   env_scope_enter()
   bind_handler_config_params(config_tparams, hname)
-  let s_h = mint(Inferred("handler result of '{hname}'"))
   // Accumulate the arms' residual row R into r_handle: inferring each arm
   // body under this row scope routes every effect it performs (incl. a call
   // to a function-valued config arg) into r_handle via inf_add_effect/

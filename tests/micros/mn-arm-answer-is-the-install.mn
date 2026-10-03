@@ -1,0 +1,18 @@
+// expect: refuse E_TypeMismatch
+// An arm's value is the install's value: an arm that does not resume
+// answers the install, so what it answers must be what the install's body
+// answers. Here the body answers an Int and the arm a String. On boot
+// cf8a6d50 the program compiled clean and ran (exit 0): the handler's type
+// carried its effect's instance and not its answer, so no install ever met
+// the answer its arms were judged under. The refusal names the arm: `Int vs
+// List(Byte) — ~> pipe → at 15:13-15:27: inferred from the arm bail of
+// handler h` (the frontier's where leg holds the text).
+effect Bail {
+  bail() -> Int
+}
+
+handler h {
+  bail() => "not a number",
+}
+
+fn main() = (bail() + 1) ~> h

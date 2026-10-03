@@ -18,8 +18,13 @@
 //     try_each(0): twac(() => resume(10), retry): attempt(10) → abort →
 //       None (via twac's live bracket) → resume = None → attempted = None
 //       → retry → try_each(1): attempt(20) → None → try_each(2):
-//       attempt(30) → Some(30) → attempted = Some(30) → 30.
-//   Arm returns 30 → exit 30.
+//       attempt(30) → Some(30) → attempted = Some(30) → Some(30).
+//   Arm returns Some(30); main unwraps it → exit 30.
+//   AN ARM'S VALUE IS THE INSTALL'S VALUE (2026-10-03): until then twac
+//   answered `value` — an Int wearing an Option's type — and the root
+//   `~> my_catch` answered `None` over an Int body; the judgment refuses
+//   both now (`Int vs Option(t)` at the install), so every install here
+//   answers the Option its arms do, and main unwraps once at the root.
 effect Choice {
   choose(options) -> Int
 }
@@ -38,8 +43,8 @@ handler my_catch {
 fn twac(try_fn, catch_fn) = {
   let attempted = (try_fn()) ~> my_catch
   match attempted {
-    Some(value) => value,
-    None        => catch_fn()
+    None  => catch_fn(),
+    found => found,
   }
 }
 
@@ -72,4 +77,10 @@ fn body() with Choice + Abort + Memory + Alloc = pick_one() |> attempt
 // precise verdict — a multi-shot remainder's effects charged in the world
 // its resumption runs in — is band B's TCont world at the resume site
 // (Hβ.continuations.remainder-row-charged-at-perform-site).
-fn main() = { body() } ~> bt ~> my_catch
+fn main() = {
+  let r = body() ~> bt ~> my_catch
+  match r {
+    Some(v) => v,
+    None => 0,
+  }
+}

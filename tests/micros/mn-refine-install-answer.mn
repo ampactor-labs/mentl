@@ -1,0 +1,18 @@
+// expect: refuse E_RefinementRejected
+// A tee's value is every value its install can answer: an abandoning arm's
+// value IS the install's value, so a division whose body tail is a constant
+// is refuted when an arm answers zero — the claim decides over the body's
+// tails and the arms' as it decides over a join's. On boot cf8a6d50 the
+// value walk read a tee as nothing it could read, so the claim stayed open
+// and `!Trap` refused with debt where the refutation names the cause.
+effect Ask {
+  ask() -> Int
+}
+
+handler zero {
+  ask() => 0,
+}
+
+fn g() with !Trap = 100 / (({ let _ = ask(); 5 }) ~> zero)
+
+fn main() = g()

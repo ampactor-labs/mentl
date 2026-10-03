@@ -1477,6 +1477,20 @@ contract, a stated position was unified and never claimed, and an authored
 return's payment was dropped outside its declaration's frame: each shape
 checked clean under `!Trap` and divided by zero (pin 85218488).
 
+**A tee's value is every value its install can answer** (real, 2026-10-03).
+The value walk reads a `~>` node as the body's tails and each arm's tails of
+the installed handler — an arm whose tail is the `resume` hands the
+remainder's answer through and adds no value of its own — so `100 / (({ let _
+= ask(); 5 }) ~> zero)` with `zero`'s arm answering `0` is refuted
+(`E_RefinementRejected`), and with the arm answering `5` it is proven under
+`!Trap` and runs; the flow label reads the same leaves, so an arm answering a
+classified value classifies the install and its splice refuses. Until this
+landed every walk read a tee as nothing it could read: the refutation was
+debt, the proof was a refusal the program did not owe, and the classified
+arm's splice compiled clean on boot cf8a6d50
+(`tests/micros/mn-refine-install-answer.mn`,
+`mn-refine-install-answer-proven.mn`, `tests/frontier/mn-ifc-tee-arm-leak.mn`).
+
 The predicate is a compile-time obligation; at gradient-top it erases entirely (no runtime check). `Verify`'s default ledger accrues what it cannot discharge statically (`V_Pending`); the Arc F.1 SMT handler swap discharges those by residual theory — same source, deeper proof engine.
 
 ---
@@ -1549,6 +1563,19 @@ is therefore admitted exactly when the op's own row is — and a held or
 multi-shot op's row says `Memory + Alloc`, because reifying the remainder is
 what such a perform builds (§«Resume discipline»).
 
+**A wide value crosses a continuation in a register, never a cell** (real,
+2026-10-03). The caller of a continuation, and the driver that runs a
+multi-shot arm, are blind to the types they call through — one word-arity
+face serves every chain — so a Float resumed into a continuation, or answered
+by a multi-shot arm, crosses in a per-instance register beside the word slot,
+set immediately before the call and read immediately after it (the machine
+ABI's own shape: words in the integer slots, a double in a float register),
+and a multi-shot op's arguments cross in the yield's record at their widths.
+Nothing is boxed and no row changes: the same two-resumption program at Int
+and at Float grows the heap by the same bytes
+(`tests/micros/mn-multishot-float-answer-no-box.mn`); until this landed the
+driver read a wide answer as a word and such a program did not assemble.
+
 ### Unit return omission
 
 If an effect op returns unit `()`, the `-> ()` clause may be omitted:
@@ -1564,7 +1591,11 @@ Both forms are accepted; absence is the idiomatic short form. Non-unit returns M
 (`abort() -> !` — the control cut the Abandon discipline reads; a bare type
 variable `fail(msg: String) -> a` is the bottom-producing sibling whose return
 unifies with any consumer). The form parses and checks clean (probed at pin
-62542a59, the Phase 3 felt walk — zero diagnostics).
+62542a59, the Phase 3 felt walk — zero diagnostics). `proc_exit(Int) -> !` is the
+WASI op's own declaration (lib/io.mn, 2026-10-03): the host ends the process,
+so the op answers a bare variable and an arm ending in it answers any
+install — which is what makes `fail_exit` installable over a body of any type
+now that an install meets its arms' answer (§«Handler declarations»).
 
 ### Calling resume with unit
 
@@ -1744,6 +1775,36 @@ other honest form declares the ops the handler answers as their own effect.
 Koka and Effekt require the same; the split-effect pair — two handlers
 covering one effect's disjoint op sets — is written as two effects.
 
+### An arm's value is the install's value — `Handler(instance, answer)`
+
+A handler is typed by what it handles and by what it answers: `Handler(E,
+A)`, the effect's instance and the ANSWER — the cell every arm's body is
+judged into, quantified with the instance when the arms leave it free, and
+met at every install by the body's own answer. An arm that resumes answers
+the install with what the remainder answered, so its value is the body's;
+an arm that does not resume answers the install itself, so its value must
+be the body's: `handler h { bail() => "not a number" }` installed over
+`(bail() + 1) ~> h` refuses `E_TypeMismatch` at the install — `Int vs
+List(Byte) — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler
+h`, the Reason the unify was asked with, which names the arm whose value is
+its own (a `resume` tail hands the remainder's answer through, so a handler
+whose every arm resumes answers its install's body) — and the caret's Why at
+the tee walks to that arm. `mentl where` says what a handler answers beside
+what it absorbs (`handler zero absorbs Ask, answers Int`; `handler ticker
+absorbs Tick, answers a`, the variable under the name a developer writes)
+and what each install in a function answers (`~> ticker absorbs Tick, answers
+Int at 12:28-12:46`). The arms are keyed at the answer as at the instance, so an
+arm that observes its answer (`a ++ b` over two resumptions) runs at the
+answer its install gives it, and a multi-shot handler answering a Float
+assembles (real, 2026-10-03). Until then the handler's type carried its
+instance alone and no install ever met the arms' answer: the String arm
+above compiled and ran, the observing arm refused `E_ShapeUnprovable`, and
+the Float answer did not assemble (`tests/micros/mn-arm-answer-is-the-install.mn`,
+`mn-arm-answer-observed.mn`, `mn-multishot-float-answer.mn`, each measured
+on boot cf8a6d50). A never-returning op answers a bare variable
+(`proc_exit(Int) -> !`), so an arm ending in one — `fail_exit`'s
+`proc_exit(1)` — answers any install.
+
 ### State updates via `with` on resume
 
 When an arm wants to evolve state, it uses a `with` clause on `resume`:
@@ -1754,7 +1815,7 @@ inc() => resume() with n = n + 1
 
 The `with` clause lists state updates by field name. Unlisted state stays unchanged. A name that is not one of the handler's state fields is refused (`E_MissingVariable`, "state field: m") — the write would reach nothing anything reads (real, 2026-10-02; until then `resume(0) with m = n + 1` beside `with n = 0` compiled clean and dropped the write).
 
-**A state is every value written into it** (real, 2026-10-02, S5). At any read in an arm, a state field holds its init or whatever some arm last wrote, so everything the medium proves of it is proven of all of them: `100 / d` over `with d = 5` owes `d != 0` of every write — `with d = d - 5` in another arm leaves the division's claim open and refuses under `!Trap` — a classified write makes the state classified, and a function written into it is applied under every function it can be. A state no arm writes is its init at every read and proves what the init proves. A write that reads the state it writes (`with d = d + 1`) reads it there as unknown, so a counter's bound is owed rather than proven; reading it as the claim's own hypothesis — an inductive invariant — is the named next step (`Hβ.verify.state-reads-its-invariant`). Until this landed the proof read a state as its init alone, and all three of those shapes checked clean and failed at run.
+**A state is every value written into it** (real, 2026-10-02, S5). At any read in an arm, a state field holds its init or whatever some arm last wrote, so everything the medium proves of it is proven of all of them: `100 / d` over `with d = 5` owes `d != 0` of every write — `with d = d - 5` in another arm leaves the division's claim open and refuses under `!Trap`, and `with d = 0` in another arm REFUTES it where it stands (`E_RefinementRejected`, real 2026-10-03: a writer that is the fatal point fails the claim as a join's `0` tail does; it was owed, never refuted, before) — a classified write makes the state classified, and a function written into it is applied under every function it can be. A state no arm writes is its init at every read and proves what the init proves. A write that reads the state it writes (`with d = d + 1`) reads it there as unknown, so a counter's bound is owed rather than proven; reading it as the claim's own hypothesis — an inductive invariant — is the named next step (`Hβ.verify.state-reads-its-invariant`). Until this landed the proof read a state as its init alone, and all three of those shapes checked clean and failed at run.
 
 ### Installation
 
@@ -2382,6 +2443,7 @@ operands, with three outcomes (real, 2026-09-30):
 |---|---|
 | a constant divisor that is not 0 (and, for `/`, not -1 — or a constant dividend that is not INT_MIN) | PROVEN — the site charges nothing |
 | a constant zero divisor (`1 / 0`), or `INT_MIN / -1` by constants | REFUSED — `E_RefinementRejected` at the site: the program's meaning is a trap |
+| a divisor one of whose sources IS the fatal point — a join's tail (`100 / (if c { 5 } else { 0 })`), an installed arm's answer (`100 / ((…) ~> zero)` with `zero` answering `0`) | REFUSED — the text writes the trap on that tail, as a claim over a join refuses at the tail that folds false (real, 2026-10-03; such a tail answered OPEN before, debt where the refutation names the cause) |
 | a divisor whose every source EXCLUDES the fatal point — a constant, a length, or a parameter whose refinement does (`Positive` (`0 < self`) excludes 0 and -1; `NonZero` (`self != 0`) excludes 0, so it proves `%` outright and `/` only beside a dividend that cannot be INT_MIN) | PROVEN — and where it stands on a parameter's refinement, the `Trap` waits in that parameter's guard, paid by a caller whose argument claim is open |
 | a module value bound to a constant (`let lanes = 4`) | PROVEN — the fragment reads the let's own node |
 | anything else — a parameter nothing bounds, a local, a call | OPEN — the site charges **`Trap`** into the row |
@@ -2806,7 +2868,7 @@ token, so there is nothing to lift.*
 | `E_ImportNameCollision` | two selective imports bind the same name    | `MaybeIncorrect`     | narrow the selective sets so each name binds one edge |
 | `E_MissingImport`     | a name resolves only because the whole link carries it: declared at module level in a module the referencing module never imports, directly or transitively (the prelude's closure is ambient — the driver links it into every compile). ARMED at birth, 2026-09-27: the per-module solo sweep as one read of the one judgment, naming both modules at the reference | `MaybeIncorrect` | add `import <declaring module>` to the referencing module |
 | `E_UnknownArgLabel`   | a labeled arg names no declared parameter     | `MaybeIncorrect`     | check the label against the parameter names    |
-| `E_TypeMismatch`      | unification failed                            | `Unspecified`        | adjust types; widen / narrow                   |
+| `E_TypeMismatch`      | unification failed — the message carries the Reason the unify was asked with, past the diagnostic's own span (`Int vs List(Byte) — ~> pipe → at 15:13-15:27: inferred from the arm bail of handler h`; real 2026-10-03 — the reporter had taken the reason and dropped it, so a mismatch said its two types and nothing of why they met) | `Unspecified`        | adjust types; widen / narrow                   |
 | `E_OccursCheck`       | infinite type                                 | `Unspecified`        | restructure to break cycle                     |
 | `E_OrphanHandlerAttach` | `~>` with no preceding chain                | `Unspecified`        | delete `~>` or supply body                     |
 | `E_PipeIntoComplete`  | `x \|> f(…)` where `f(…)` has no hole (already a complete value, not a `A -> B`) | `MaybeIncorrect` | leave a hole for the piped value (drop an arg or mark it `??`) |
