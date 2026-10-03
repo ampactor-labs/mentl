@@ -937,7 +937,21 @@ loop_scaffold_refs_max: 3
 # finds them from the site; `emit_runtime_contract` seeds only what the
 # emit mints with no node to walk, and it is unchanged. The set diffed
 # against pin 6f2ce437 is exactly those four in, none out.
-desugar_vocabulary: 45
+# 2026-10-03 · 45 -> 46 · RE-DERIVED, and the seed does NOT follow. One
+# substrate operation entered with the arena: `arena_stat`, the census read
+# a program and the compiler's own census line ask of the exits. It is
+# declared in lib/memory.mn with its no-arena meaning, which is all the boot
+# can compile, and the lowering recognizes the name as the substrate
+# operation (`is_substrate_mem_op`, the fanout precedent); every use is the
+# name written in source, so reachability finds the declaration from the
+# use and the emit mints none. The arena's journal entries are NOT
+# vocabulary: they are typed where the store happens — `list_set` reached
+# by a direct call is emitted as the journaling store with its element's
+# leaf, and a state commit or a `<~` tick journals at its own emission —
+# so no library name stands between the store and the journal, and none
+# can be renamed out from under it. The set diffed against pin 9d27c325 is
+# exactly `arena_stat` in, none out.
+desugar_vocabulary: 46
 
 # 2026-09-11 · 812 -> 811 · the gate's own DOWN arm, held. Bisected with the
 # gate's regex to pin 0bd0525e, and the retired marker is `ref strict` in
@@ -1292,4 +1306,27 @@ authored_ref_max: 698
 # ever reaches, which the arena (the next landing, PLAN §11) reclaims at the
 # extent's end. That landing lowers this ceiling below 1,010,000 or says why
 # it cannot. Same rule otherwise: ~1% over the highest reading.
-selfcompile_peak_kb_max: 1050000
+# 2026-10-03 (THE ARENA): 1050000 -> 1080000 FOR THE MARCH THAT PINS IT, and
+# lowered in the same commit once the pin carries the arena (the next entry).
+# The march's m3 leg is the OLD boot's compile of the source, and the old
+# boot predates `~> arena`, so that leg runs no arena and reclaims nothing.
+# Fixed input — the candidate's own wheel source through both compilers: the
+# boot (9d27c325) 1,065,228 / 1,061,396 KB with the judgment's heap
+# high-water at 511,293,968 B and 955,252,656 B when the module is written;
+# the candidate 1,066,020 / 1,070,320 KB at 499,810,024 B and 952,492,688 B.
+# The candidate is CHEAPER than the boot on its own input by 11.5 MB at the
+# judgment and 2.8 MB at the end (the false seventeen-member cycle the
+# parameter edge closed is gone); the rise is the source — the arena's
+# runtime, its leaves and the age analysis — and the boot crosses the old
+# ceiling on it too. Same rule: ~1% over the highest reading.
+# 2026-10-03 (THE ARENA, the pin carrying it): 1080000 -> 884000, the debt
+# E4's entry named paid with 126 MB to spare. The new boot (d7d9da55) over
+# the source it pinned, three runs: 874,384 / 863,636 / 869,816 KB, beside
+# the march's own m4 leg of the same compiler on the same source at
+# 857,616 KB; the heap trace identical to the byte across the three — the
+# judgment's high-water 288,018,688 B against the old boot's 511,293,968,
+# 740,839,304 B when the module is written against 955,252,656, and the
+# arena census 4,487 exits, 0 kept, 206,870 KB reclaimed, 49,914 KB moved.
+# The two pins after it read their m3 legs at 867,132 and 869,872 KB under
+# this ceiling. Same rule: ~1% over the highest reading of the landed form.
+selfcompile_peak_kb_max: 884000

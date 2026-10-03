@@ -686,7 +686,9 @@ fn rank_insert(sorted, rc) = match sorted {
 
 // Does `name`'s free-name closure reach `target`? collect_free_vars
 // over-approximates the call edge (a reference without a call also
-// excludes — the safe direction). `seen` breaks cycles.
+// excludes — the safe direction). `seen` breaks cycles. The walk runs over
+// the DECLARATION, so its parameters bind its body: walked over the body
+// alone, a parameter named like a declaration read as a call to it.
 fn reaches_decl(name: String, target: String, seen) with !Mutate = if target == "" {
   false
 } else if name == target {
@@ -694,35 +696,42 @@ fn reaches_decl(name: String, target: String, seen) with !Mutate = if target == 
 } else if contains_name(seen, name) {
   false
 } else {
-  match fn_body_by_name(name) {
+  match fn_decl_by_name(name) {
     None => false,
-    Some(body) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
-    any((n) => reaches_decl(n, target, [name] ++ seen), collect_free_vars(body, [])),
+    Some((params, body)) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
+    any(
+      (n) => reaches_decl(n, target, [name] ++ seen),
+      collect_free_vars(body, free_vars_param_names(params))
+    ),
   }
 }
 
 fn contains_name(names, target: String) = any((n) => n == target, names)
 
-// A named fn's body node, read from the program weave directly by name.
-// (The NModule-decls indirection read a projection the edit session's
+// A named fn's parameters and body, read from the program weave directly by
+// name. (The NModule-decls indirection read a projection the edit session's
 // weave does not always carry — main() leaked past the reach exclusion
 // because its body was unreachable through it; the weave is the one
 // truth both walks read.)
-fn fn_body_by_name(name: String) with !Mutate = {
+fn fn_decl_by_name(name: String) with !Mutate = {
   let snapshot = graph_snapshot()
   match snapshot {
-    Graph(next, _spans) => fn_body_scan(name, 0, next),
+    Graph(next, _spans) => fn_decl_scan(name, 0, next),
   }
 }
 
 // The first CURRENT declaration of the name — a superseded generation's
 // `main` calls what the program used to call (graph_node_current).
-fn fn_body_scan(name: String, i, n) with !Mutate = if i >= n {
+fn fn_decl_scan(name: String, i, n) with !Mutate = if i >= n {
   None
 } else {
   match graph_node_body(i) {
-    NStmt(FnStmt(fname, _params, _ret, _effs, body)) => if fname == name && graph_node_current(i) { Some(body) } else { fn_body_scan(name, i + 1, n) },
-    _ => fn_body_scan(name, i + 1, n),
+    NStmt(FnStmt(fname, params, _ret, _effs, body)) => if fname == name && graph_node_current(i) {
+      Some((params, body))
+    } else {
+      fn_decl_scan(name, i + 1, n)
+    },
+    _ => fn_decl_scan(name, i + 1, n),
   }
 }
 
@@ -1251,7 +1260,7 @@ fn keep_named_refusal(verdicts, acc, indexed) = match indexed {
 fn candidate_proven(node, hole_h, reason) = {
   {
     infer_expr(node)
-  } ~> row_gate ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
+  } ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
   match node {
     N(_, span, h) => {
       unify(hole_h, h, span, reason)
@@ -1634,9 +1643,9 @@ fn candidate_denotation(seen, node) = match callee_name_of(node) {
   Some(name) => if contains_name(seen, name) {
     None
   } else {
-    match fn_body_by_name(name) {
+    match fn_decl_by_name(name) {
       None => None,
-      Some(body) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
+      Some((_, body)) => // drift-audit: ignore — bounded by call-graph depth (the seen set), not a loop accumulator
       candidate_denotation([name] ++ seen, body),
     }
   },

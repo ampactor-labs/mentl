@@ -152,6 +152,13 @@ DERIVE_RTLIBS=(
   "$ROOT/lib/ml/grad.mn"
 )
 
+# The arena lib set (2026-10-03): the base runtime plus lib/arena.mn's
+# `arena` handler and the `Arena` effect its install charges.
+ARENA_RTLIBS=(
+  "${RTLIBS[@]}"
+  "$ROOT/lib/arena.mn"
+)
+
 total_pass=0
 total_fail=0
 # Declared standing failures (frontier_expected_red) — not reds. See judge().
@@ -321,6 +328,8 @@ run_program() {
       cat "${MATH_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
     derive)
       cat "${DERIVE_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
+    arena)
+      cat "${ARENA_RTLIBS[@]}" "$source" | wt_run "$compiler" > "$wat" 2> "$cerr" ;;
     *)
       wt_run "$compiler" < "$source" > "$wat" 2> "$cerr" ;;
   esac
@@ -350,6 +359,9 @@ run_program() {
   elif [ "$link_runtime" = derive ]; then
     comm -23 "$normalized" "$DERIVE_SHADOW" > "$unexpected"
     shadow="; inherited-shadow=$(wc -l < "$DERIVE_SHADOW")"
+  elif [ "$link_runtime" = arena ]; then
+    comm -23 "$normalized" "$ARENA_SHADOW" > "$unexpected"
+    shadow="; inherited-shadow=$(wc -l < "$ARENA_SHADOW")"
   else
     cp "$normalized" "$unexpected"
   fi
@@ -458,6 +470,48 @@ PY
     pass "$label corrupt-gcount belt (exit=$rc — the layout trap fired)"
   else
     fail "$label corrupt-gcount admitted (exit=$rc; see $dir/$label.g.out)"
+  fi
+}
+
+# The persist gate's arena face: the persist lib set plus lib/arena.mn, one
+# build, two processes. Leg A persists the image from inside an open arena
+# (exit 40); leg B swaps it in, opens and exits an arena of its own, and
+# reads what A's arena allocated through A's thunk (exit 42). The arena's
+# depth, mark and journal length are not in the image — they describe A's
+# stack — so B runs outside A's arenas and A's region is ordinary heap there.
+run_persist_arena() {
+  local compiler="$1" dir="$2" label="arena-persist-resumes-outside"
+  local src="$ROOT/tests/frontier/arena/persist-resumes-outside.mn"
+  local wat="$dir/$label.wat" wasm="$dir/$label.wasm"
+  local cerr="$dir/$label.compile.err" aerr="$dir/$label.assemble.err"
+  local pdir="$dir/$label.tmp" rc
+  cat "${PERSIST_RTLIBS[@]}" "$ROOT/lib/arena.mn" "$src" | wt_run "$compiler" > "$wat" 2> "$cerr"
+  rc=$?
+  local normalized="$dir/$label.normalized" unexpected="$dir/$label.unexpected"
+  normalize_errors "$cerr" > "$normalized"
+  comm -23 "$normalized" "$PERSIST_SHADOW" > "$unexpected"
+  if [ "$rc" -ne 0 ] || [ -s "$unexpected" ]; then
+    fail "$label compile (exit=$rc new-errors=$(wc -l < "$unexpected"); see $cerr)"
+    return
+  fi
+  if ! wt_asm "$wat" "$wasm" 2> "$aerr"; then
+    fail "$label assemble ($(head -1 "$aerr"))"
+    return
+  fi
+  mkdir -p "$pdir"
+  rm -f "$pdir/persist-resumes-outside.img"
+  wt_run --dir "$pdir::/tmp" "$wasm" > "$dir/$label.a.out" 2> "$dir/$label.a.err"
+  rc=$?
+  if [ "$rc" -ne 40 ]; then
+    fail "$label leg-a persist inside the arena (exit=$rc expected=40; see $dir/$label.a.err)"
+    return
+  fi
+  wt_run --dir "$pdir::/tmp" "$wasm" resume > "$dir/$label.b.out" 2> "$dir/$label.b.err"
+  rc=$?
+  if [ "$rc" -eq 42 ]; then
+    pass "$label (leg A 40 inside the arena, leg B 42 outside it)"
+  else
+    fail "$label leg-b resume (exit=$rc expected=42; see $dir/$label.b.err)"
   fi
 }
 
@@ -1027,6 +1081,24 @@ capture_derive_shadow() {
   pass "derive shadow captured ($(wc -l < "$DERIVE_SHADOW") inherited errors)"
 }
 
+# The ARENA shadow — the arena legs' link set with an empty main, so a leg
+# may only add refusals its libraries do not already carry.
+capture_arena_shadow() {
+  local compiler="$1" dir="$2"
+  local wat="$dir/arena-shadow.wat" err="$dir/arena-shadow.err"
+
+  { cat "${ARENA_RTLIBS[@]}"; printf '\nfn main() = 0\n'; } \
+    | wt_run "$compiler" > "$wat" 2> "$err"
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    fail "arena shadow compile (exit=$rc; see $err)"
+    return 1
+  fi
+  ARENA_SHADOW="$dir/arena-shadow.normalized"
+  normalize_errors "$err" > "$ARENA_SHADOW"
+  pass "arena shadow captured ($(wc -l < "$ARENA_SHADOW") inherited errors)"
+}
+
 # A generic on-disk DATA VALIDATOR + a LIVE oracle cross-check. Mentl reads a
 # committed fixture (copied to /tmp), computes discrete facts over it, and
 # asserts exit 42; then the SAME on-disk bytes are run through a python oracle
@@ -1532,6 +1604,37 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/derive-crucible/grad.mn" 42 derive "$dir"
   run_refusal_linked "$compiler" derive-grad-series \
     "$ROOT/tests/frontier/derive-crucible/grad-series.mn" E_DerivativeUnreachable "$dir" derive
+  # ── THE ARENA (2026-10-03): `(body) ~> arena` ──
+  # What the body allocated and did not publish is reclaimed at the exit;
+  # the value, and what the body stored into older memory, moves out of the
+  # region by its type — the type the STORE knew, journaled where the store
+  # happened, so no handler names anything at the exit. Ten legs, each RED
+  # on boot 9d27c325 (exit 1 — the install ran as an ordinary handler:
+  # nothing reclaimed, no exit counted), each 42 on the landing's m2: the
+  # value moves; the dropped is reclaimed and the memory behind the line is
+  # zero again; a handler's in-place buffer and a plain buffer written by
+  # plain code (the second KEPT its region under the owner protocol, RED on
+  # that form's m2); a rebound state's commit; nested arenas; a `<~` line's
+  # pointer history; a buffer replaced by its own growth; and two that KEEP
+  # the region rather than move a value no leaf moves (a closure, a journal
+  # overflow), each still correct. The eleventh is a control, 42 on both: a
+  # module that spawns owns no region per instance, so its arena runs the
+  # body. The twelfth stores through a GENERIC helper: the helper's claim
+  # names the parameter it stores into, the call hands it the handler's
+  # state, so the value's type is a demand and the helper's twin journals the
+  # leaf — RED (exit 1, the region kept) on an m2 built with that call's
+  # transport switched off. The thirteenth reaches `list_set` as a VALUE: no
+  # leaf can be carried through the call, so its table face journals with
+  # none and the exit keeps — refused at compile on boot 9ec6db48 as an
+  # internal invariant, a correct program the medium would not run.
+  capture_arena_shadow "$compiler" "$dir" || continue
+  for leg in value-moves dropped-is-reclaimed handler-buffer-moves \
+             plain-buffer-moves state-commit-moves nested ring-history-moves \
+             growth-link closure-keeps journal-overflow-keeps \
+             spawning-module-runs-the-body generic-store-moves value-store-keeps; do
+    run_program "$compiler" "arena-$leg" \
+      "$ROOT/tests/frontier/arena/$leg.mn" 42 arena "$dir"
+  done
   run_program "$compiler" scheduled-int \
     "$ROOT/tests/frontier/mn-scheduled-fanout-int.mn" 60 yes "$dir"
   run_program "$compiler" scheduled-float \
@@ -1608,6 +1711,9 @@ for i in "${!compilers[@]}"; do
   # 42). Seen RED on the pre-image boot: the image ops are unrecognized
   # substrate, so the executable refuses at compile.
   run_persist_image "$compiler" "$dir"
+  # The arena face of the same gate: an image persisted inside an open arena
+  # resumes outside it (2026-10-03).
+  run_persist_arena "$compiler" "$dir"
   # B-i landing 2: the warm-start cache — run 2 restores run 1's analyzed
   # image and must emit byte-identical WAT. RED before the landing: the
   # warm line never prints (every run re-derives).
@@ -2114,21 +2220,23 @@ for i in "${!compilers[@]}"; do
     pass "under-application crucible: loud at assemble (invalid WAT refused; the banked peer names the suspension fix)"
   fi
 
-  # The arena census print (Hβ.perf.per-decl-arena 2a-ii, the DEP chain's
-  # named next landing): the compile's stderr carries the accumulated
-  # image-classified byte count — the extent-delta account the
-  # image_enter/exit brackets feed — beside the judgment channel. RED
-  # first: image_bytes had zero performers when this leg was written.
+  # The arena census (2026-10-02, replacing the image-classified byte count
+  # the deleted ImageAlloc brackets fed): the compiler judges each binding
+  # group inside an arena, and the compile's stderr reports the exits, the
+  # exits that kept their region, and the KB reclaimed. An exit that keeps is
+  # correct and reclaims nothing, so on the wheel's own judgment it is a
+  # finding: the keeps must read 0.
   wt_run "$compiler" < "$ROOT/tests/frontier/mn-census-verbs.mn" > "$dir/arena.wat" 2> "$dir/arena.compile.err"
-  if grep -qE '^image: [0-9]+ image-classified byte' "$dir/arena.compile.err"; then
-    img_n=$(grep -oE '^image: [0-9]+' "$dir/arena.compile.err" | grep -oE '[0-9]+')
-    if [ "$img_n" -gt 0 ]; then
-      pass "arena census: the compile reports its image-classified bytes ($img_n)"
+  if grep -qE '^arena: [0-9]+ exit\(s\), [0-9]+ kept' "$dir/arena.compile.err"; then
+    ar_exits=$(grep -oE '^arena: [0-9]+' "$dir/arena.compile.err" | grep -oE '[0-9]+')
+    ar_kept=$(grep -oE '[0-9]+ kept' "$dir/arena.compile.err" | grep -oE '[0-9]+')
+    if [ "$ar_exits" -gt 0 ] && [ "$ar_kept" -eq 0 ]; then
+      pass "arena census: the judgment's groups exit their arenas ($ar_exits exits, 0 kept)"
     else
-      fail "arena census: the image line reads 0 — the brackets classify nothing"
+      fail "arena census: $ar_exits exits, $ar_kept kept — an exit that keeps reclaims nothing"
     fi
   else
-    fail "arena census: no image line on the compile's stderr — the census print is prose, not mechanism"
+    fail "arena census: no arena line on the compile's stderr — the census print is prose, not mechanism"
   fi
 
   # The lib/lists.mn movers ratchet stood here (the trial/final divergence
@@ -3865,6 +3973,26 @@ for i in "${!compilers[@]}"; do
     fail "decls facet (column projection; got: $(printf '%s' "$df_out" | tail -1))"
   fi
 
+  # ─── The reading facets: text, prose, writes of ─────────────────────
+  # What a program SAYS and WRITES, asked of one fixture: the string
+  # literal holding facet-literal-marker, the comment holding
+  # facet-prose-marker (sited at the comment), and the two values written
+  # into the counter's state (its init, its update). The first and third
+  # were built with no gate; the second was confessed as a verb gap four
+  # times in a day. Born RED 2026-10-03: the boot answered "unknown query"
+  # to all three.
+  rf_doc="$ROOT/tests/frontier/mn-reading-facets.mn"
+  rf_text=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "text facet-literal-marker" 2>/dev/null)
+  rf_prose=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "prose facet-prose-marker" 2>/dev/null)
+  rf_writes=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$rf_doc" "writes of sum" 2>/dev/null)
+  if printf '%s' "$rf_text" | grep -q "1 string literal(s)" && printf '%s' "$rf_text" | grep -q "mn-reading-facets:19" \
+     && printf '%s' "$rf_prose" | grep -q "1 comment(s)" && printf '%s' "$rf_prose" | grep -q "mn-reading-facets:1:" \
+     && printf '%s' "$rf_writes" | grep -q "counter.sum: 2 write(s)" && printf '%s' "$rf_writes" | grep -q "sum + n"; then
+    pass "reading facets: text (the literal at 19), prose (the comment at 1), writes of (init and update)"
+  else
+    fail "reading facets (text: $(printf '%s' "$rf_text" | head -1) · prose: $(printf '%s' "$rf_prose" | head -1) · writes: $(printf '%s' "$rf_writes" | head -1))"
+  fi
+
   # ─── The flow facet on a refined source (PLAN §11 Phase 7 walk) ─────
   # `query <fixture> "flow NAME"` projects the flow label. Two altitudes
   # over one refined alias (Vault = String where classified(self)): the
@@ -3984,6 +4112,15 @@ for i in "${!compilers[@]}"; do
     pass "variants facet: the ADT roster projects (None/0, Some/1)"
   else
     fail "variants facet (got: $(printf '%s' "$vr_out" | head -1))"
+  fi
+  # An effect is a sum of requests, so `variants` of an effect is its op
+  # roster (2026-10-03 — confessed as a verb gap the same day; the boot
+  # answered "no constructors found").
+  vo_out=$(wt_run --dir "$ROOT" --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" query "$ROOT/tests/frontier/mn-reading-facets.mn" "variants Count" 2>/dev/null)
+  if printf '%s' "$vo_out" | grep -q "add/1" && printf '%s' "$vo_out" | grep -q "total/0"; then
+    pass "variants facet: an effect's op roster projects (add/1, total/0)"
+  else
+    fail "variants facet over an effect (got: $(printf '%s' "$vo_out" | head -1))"
   fi
 
   # ─── The module-set facet (`modules` — the DAG the driver proves on

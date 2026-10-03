@@ -132,6 +132,7 @@ type LostWhy
   | LwReturn
   | LwRecursion
   | LwQueryInTwin
+  | LwArena
 
 // ─── The linear program ────────────────────────────────────────────────
 //
@@ -157,8 +158,10 @@ type Lin
 // choice whose branches hold both kinds and end in their value; a query
 // answered into a local; a twin's exit handing its tangent back; a call
 // into a known function's twin, with the tangent beside each active Float
-// argument and the result's tangent name where the result moves; and a
-// twin's exit through another twin's call.
+// argument and the result's tangent name where the result moves; a twin's
+// exit through another twin's call; and an arena, whose statements run
+// inside it and end in its value, with the perform its exit makes of the
+// handlers around it.
 type Beside
   = SPrim(LowExpr)
   | STan(Int, String, Lin)
@@ -168,6 +171,7 @@ type Beside
   | SOut(Int, Lin)
   | STwinCall(Int, String, Int, String, String, String, [LowExpr], [Option(Lin)], Option(String))
   | STail(Int, Int, String, String, String, [LowExpr], [Option(Lin)])
+  | SArena(Int, String, [Beside])
 
 // What a value answers when it is a query of a product seed: the gradient,
 // read by destructuring where it is asked — the query's Float handle, the
@@ -234,6 +238,7 @@ fn lost_story(a) = match a {
       LwReturn => "it leaves a called function through an early return (at {at})",
       LwRecursion => "it passes through a recursive call (at {at})",
       LwQueryInTwin => "a derivative is asked inside a called function (at {at})",
+      LwArena => "it is read again after the exit of the arena at {at}, which moved it",
     }
   },
   AActive => "its tangent is carried",
@@ -262,6 +267,7 @@ fn only_story(why, h) = {
     LwMemory => "a memory read at {at}",
     LwCaller => "a lost argument at {at}",
     LwGradientValue => "a gradient held as a value at {at}",
+    LwArena => "a value read again after an arena's exit moved it, at {at}",
   }
 }
 
@@ -336,6 +342,7 @@ fn stmt_forward(s) = match s {
     }
   },
   STail(h, fh, _name, sym, key, vals, lins) => [LDirectCall(h, fh, twin_name(sym, key, false), true, twin_args_of(vals, lins, 0, []))],
+  SArena(h, v, stmts) => bound_choice(h, v, LArena(h, LBlock(h, lower_forward(stmts)))),
 }
 
 fn arm_forward(arm) = match arm {
@@ -371,6 +378,7 @@ fn stmt_has_tan(s) = match s {
   SOut(_, _) => true,
   STwinCall(_, _, _, _, _, _, _, _, _) => true,
   STail(_, _, _, _, _, _, _) => true,
+  SArena(_, _, stmts) => stmts_have_tan(stmts),
 }
 
 fn arm_has_tan(arm) = match arm {
@@ -388,6 +396,7 @@ fn stmt_queries(n, s) = match s {
   SOut(_, _) => n,
   STwinCall(_, _, _, _, _, _, _, _, _) => n,
   STail(_, _, _, _, _, _, _) => n,
+  SArena(_, _, stmts) => n + count_queries(stmts),
 }
 
 fn arm_queries(n, arm) = match arm {
@@ -707,6 +716,7 @@ fn jvp(e, env, cx) = match e {
     dv_forward_only(h, LwSecondOrder)
     jv([], e, LinZero, ALost(h, LwUnentered))
   },
+  LArena(h, b) => jvp_arena(h, b, env, cx),
   LMakeContinuation(h, _, _, _, _) => jvp_unentered(h, e),
   LResumeK(h, _, _) => jvp_unentered(h, e),
   LYield(h, _, _, _) => jvp_unentered(h, e),
@@ -1207,6 +1217,7 @@ fn leaves_value(e) = match e {
   LResumeK(_, _, _) => true,
   LHandleWith(_, _, _, _, _, _) => true,
   LDerive(_, _, _) => true,
+  LArena(_, _) => true,
   LFeedback(_, _, _, _, _) => true,
   LPerform(_, _, _) => true,
   LFieldLoad(_, _, _) => true,
@@ -1447,6 +1458,54 @@ fn jvp_if(h, c, t, el, env, cx) = {
     act
   )
 }
+
+// An arena under the reading: its body's statements run inside it and the
+// value's tangent is bound before the exit, so the reading never reads a
+// value the exit moved. The reverse projection reads residuals again after
+// the exit — a match's scrutinee, a twin call's arguments — so an arena
+// whose statements leave a pointer there keeps the reading forward.
+fn jvp_arena(h, b, env, cx) = {
+  let jb = jvp(b, env, cx)
+  grad_consumed(h, jb)
+  let carry = act_active(jv_act(jb)) && is_float_at(h)
+  let tname = temp(h, 4)
+  let v = temp(h, 5)
+  let stmts = branch_close((jv_pre(jb), jb), tname, carry, h)
+  match fold(None, moved_residual, stmts) {
+    Some(rh) => dv_forward_only(rh, LwArena),
+    None => (),
+  }
+  jv([SArena(h, v, stmts)], LLocal(h, v), if carry { LinName(h, tname) } else { LinZero }, jv_act(jb))
+}
+
+// The first residual a statement leaves that the reverse sweep reads after an
+// arena's exit and that is not a number held by value.
+fn moved_residual(found, s) = match found {
+  Some(_) => found,
+  None => match s {
+    SMatch(_, _, sc, arms) => if held_by_value(lexpr_handle(sc)) {
+      fold(None, moved_residual_arm, arms)
+    } else {
+      Some(lexpr_handle(sc))
+    },
+    STwinCall(h, _, _, _, _, _, vals, _, _) => if all(value_held, vals) { None } else { Some(h) },
+    STail(h, _, _, _, _, vals, _) => if all(value_held, vals) { None } else { Some(h) },
+    SIf(_, _, _, t, e) => fold(fold(None, moved_residual, t), moved_residual, e),
+    SArena(_, _, inner) => fold(None, moved_residual, inner),
+    SPrim(_) => None,
+    STan(_, _, _) => None,
+    SQuery(_, _, _, _) => None,
+    SOut(_, _) => None,
+  },
+}
+
+fn moved_residual_arm(found, arm) = match arm {
+  (_, _, stmts) => fold(found, moved_residual, stmts),
+}
+
+fn value_held(e) = held_by_value(lexpr_handle(e))
+
+fn held_by_value(h) = is_word_at(h) || is_float_at(h)
 
 // A match: the scrutinee's tangent is named before it so a root binder
 // reads it. A match on a product seed's gradient is the destructuring the
@@ -2018,6 +2077,7 @@ fn rv_stmt(s, before, roots) = match s {
   SOut(_, _) => [],
   STwinCall(h, v, fh, name, _sym, _key, vals, _lins, _rt) => [LLet(h, v, LDirectCall(h, fh, name, false, vals))],
   STail(h, fh, name, _sym, _key, vals, _lins) => [LLet(h, temp(h, 12), LDirectCall(h, fh, name, false, vals))],
+  SArena(h, v, stmts) => bound_choice(h, v, LArena(h, LBlock(h, rv_stmts(stmts, before, roots)))),
 }
 
 fn rv_arm(before, roots, arm) = match arm {
@@ -2071,6 +2131,7 @@ fn rv_names_of(acc, s) = match s {
     None => acc,
   },
   STail(_, _, _, _, _, _, _) => acc,
+  SArena(_, _, stmts) => fold(acc, rv_names_of, stmts),
 }
 
 fn rv_arm_names(acc, arm) = match arm {
@@ -2120,6 +2181,9 @@ fn rv_back_stmt(s, qh) = match s {
     None => [],
   },
   STail(h, fh, _name, sym, key, vals, lins) => rv_adjoint_call(h, fh, sym, key, vals, lins, LLocal(h, "__g")),
+  SArena(_, _, stmts) => // Every statement of the arena ran, and the residuals the sweep reads are
+  // numbers in frame locals (`jvp_arena`), so the sweep needs no arena.
+  rv_backward(stmts, qh),
 }
 
 fn rv_back_arm(h, qh, arm) = match arm {
@@ -2206,6 +2270,7 @@ fn exit_handle_of(acc, s) = if acc != 0 {
     SOut(h, _) => h,
     STwinCall(_, _, _, _, _, _, _, _, _) => acc,
     STail(h, _, _, _, _, _, _) => h,
+    SArena(_, _, inner) => exit_handle(inner),
   }
 }
 
@@ -2526,6 +2591,7 @@ fn node_touches(e) = match e {
   LCall(_, _, _) => true,
   LTailCall(_, _, _) => true,
   LHandleWith(_, _, _, _, _, _) => false,
+  LArena(_, _) => false,
   LConst(_, _) => false,
   LLocal(_, _) => false,
   LGlobal(_, _) => false,
@@ -2604,6 +2670,7 @@ fn callee_of(e) = match e {
   LResumeK(_, _, _) => [],
   LHandleWith(_, _, _, _, _, _) => [],
   LDerive(_, _, _) => [],
+  LArena(_, _) => [],
   LFeedback(_, _, _, _, _) => [],
   LFieldLoad(_, _, _) => [],
   LConvert(_, _, _) => [],
@@ -2757,6 +2824,7 @@ fn seed_lanes(h, seed) = match seed {
   LResumeK(_, _, _) => None,
   LHandleWith(_, _, _, _, _, _) => None,
   LDerive(_, _, _) => None,
+  LArena(_, _) => None,
   LFeedback(_, _, _, _, _) => None,
   LPerform(_, _, _) => None,
   LFieldLoad(_, _, _) => None,

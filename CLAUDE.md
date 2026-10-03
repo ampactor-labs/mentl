@@ -488,17 +488,26 @@
 > from main, fn decls — partitioned into modules CARRYING dead weight, with
 > their reached/unreached ratio, and modules the entry links WHOLE and never
 > calls into) · `refs of NAME` · `census <shape>` · `decls` ·
-> `variants NAME` (an ADT's constructors with their arities) · `ghosts`
+> `variants NAME` (an ADT's constructors, or an effect's operations, with
+> their arities) · `ghosts`
 > (every cell the parser minted and the judgment never bound) ·
 > `modules` / `imports` / `performs` / `orphan-claims` · `smt` (every
 > undischarged obligation as an SMT-LIB assertion — the set Phase 8.3's own
-> solver decides, readable today); `mentl verify`
+> solver decides, readable today) · `text NEEDLE` (every string literal
+> containing it, spaces included — the emit's WAT is string literals, which
+> no identifier edge reaches) · `prose NEEDLE` (every comment containing it,
+> at the comment — prose is graph content, attached to the node it
+> precedes) · `writes of FIELD` (every value written into
+> a handler state field of that name, off the writers the judgment noted) ·
+> `provider of OP` (every handler declaring an arm for it, at the arm's
+> line); `mentl verify`
 > (the standing bounds on a program's own source, read off one judged
 > graph — a breach refuses); `mentl
 > <file:line>` (the line's ROOT — widest node) and `<file:line:col>` (the
 > CHARACTER under the caret, so the TIGHTEST node — a `??`, a lambda's
 > param) for the eight-aspect read with the Lede; `mentl where <file>
-> <name>` (the declaration's head, row, widths and address) and `mentl why
+> <name>` (the declaration's head, row, widths and address — a type's, an
+> effect's or an alias's too, every one the name names) and `mentl why
 > <file> <name>`; `mentl doc <module>` for the decl roster with types and
 > ledes. A question none of these answers is the facet to grow — in the
 > same landing, never a grep absorbed into habit. **This is a GATE now, not

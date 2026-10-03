@@ -1,0 +1,38 @@
+// arena.mn — the arena: `(body) ~> arena`.
+//
+// An arena's allocations die at its exit except what its publication
+// reaches: the body's value, and what the body stored into memory older than
+// the arena. What survives moves out of the arena's region and the rest is
+// reclaimed in one step, the memory zero again behind it — the virginity
+// every reset keeps (lib/memory.mn's `heap_reset`).
+//
+// The arena HANDLES THE BODY'S ALLOCATION: it answers `Alloc`, so the
+// projection roster (src/effects.mn) classes its install as an arena and the
+// lowering replaces the install with the arena itself — no record, no world
+// push, and these arms never run. The body's allocations still bump the one
+// heap line; the arena is where on that line they begin.
+//
+// What the body stored into older memory is JOURNALED where the store
+// happens, with the type the store already knows. Whether a store can reach
+// older memory is read off its target's edges — a buffer the scope allocated
+// cannot, a parameter is its callers' question, a handler's state its
+// installs' — and a list slot's store, a state commit or a `<~` tick that can
+// reads its value as a move, so the body is specialized by what carrying
+// that value out of a region needs. At the exit a journaled slot that holds
+// a value of the region is a root, moved through its own type; a value whose
+// type its store could not see — a function, a continuation — keeps the
+// whole region, nothing moved, and the census says so, because moving a
+// value whose type is unknown is the one thing the arena never does. The
+// exit asks no one: nothing the program wrote has to name a buffer.
+handler arena {
+  alloc(n) => resume(alloc(n)),
+  heap_mark() => resume(heap_mark()),
+  heap_reset(m) => resume(heap_reset(m)),
+}
+
+// The fact that code opens an arena, charged to the frame the install stands
+// in and answered by no handler — so `main`'s row says whether the program
+// opens one, which is what turns every store's barrier on.
+effect Arena {
+  
+}

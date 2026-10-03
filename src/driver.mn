@@ -253,10 +253,6 @@ fn driver_extract_imports(ref source) = source |> lex |> import_edges ~> diag_qu
 // the §4④ image-persist peer (Hβ.persist.module-image-cache): the
 // graph image memcpy'd whole, keyed by source + transitive dep
 // hashes — never a second serializer.
-// ImageAlloc is honest, and it arrived by DELETION: a singleton judge block
-// now runs its branch as a direct call instead of a spawned task, and a task's
-// body row never reached its spawner. The allocation was always performed —
-// the thread boundary was hiding it from the row.
 // The ENTRY is the argument, not a name to re-resolve. The walk already
 // probed the path, already read the source, and already recorded absence as
 // None — so this read is three deletions: the second driver_module_path (up
@@ -747,8 +743,6 @@ fn names_join(ref xs) = fold("", (acc, m) => if byte_len(acc) == 0 { m } else { 
 // closure's own projection): each module parses fresh and infers into
 // the restored world — re-registration shadows its stale entries — and
 // keeps its statement bucket for the reassembly.
-// ImageAlloc: the same deletion as driver_check_module above — the branch's
-// allocation stopped hiding behind a thread boundary.
 // The cone's elements ARE paths (driver_tree_scan's identity), so the read
 // is the read — the driver_module_path call that stood here re-resolved a
 // name the scan had already resolved, and against a path it would not have

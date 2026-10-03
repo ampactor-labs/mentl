@@ -1,0 +1,37 @@
+// A buffer written in place by a handler installed outside the arena: the
+// store journals its slot with the type it stores, so the values the slots
+// hold move out with that type, and nothing names the buffer.
+effect Stash {
+  put([Int])
+  get(Int) -> [Int]
+}
+
+handler stash with buf = make_list(8), n = 0 {
+  put(x) => {
+    let _ = list_set(buf, n, x)
+    resume() with n = n + 1
+  },
+  get(i) => resume(buf[i]),
+}
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn work() = {
+  let junk = build(300)
+  put(build(10))
+  put(build(20))
+  len(junk)
+}
+
+fn main() = {
+  let k = work() ~> arena
+  let a = get(0)
+  let b = get(1)
+  if k == 300 && fold(0, add_int, a) == 55 && fold(0, add_int, b) == 210 && arena_stat(ArExits) == 1 && arena_stat(ArKept) == 0 {
+    42
+  } else {
+    1
+  }
+} ~> stash

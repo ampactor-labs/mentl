@@ -399,6 +399,11 @@ type LowExpr
   // body's derivative program, the primal unchanged and a tangent beside
   // every value the seed reaches.
   | LDerive(Int, LowExpr, LowExpr)
+  // An ARENA (`~> arena`, lib/arena.mn): the body whose allocations die at
+  // the exit but for what its value and the barriers' journal reach. No
+  // record, no world push, no question asked of anyone: the arena's install
+  // IS the arena, as the derivative's is its reading.
+  | LArena(Int, LowExpr)
   // <~ desugaring (iterative ctx required)
   // (LF.B) the prior-iteration output of feedback handle h, read LIVE from the
   // $__fb_prev_<h> local the LFeedback emit declares + loads. A `<~` lambda
@@ -656,6 +661,7 @@ fn lexpr_handle(e) with Pure = match e {
   LMatch(h, _, _) => h,
   LHandleWith(h, _, _, _, _, _) => h,
   LDerive(h, _, _) => h,
+  LArena(h, _) => h,
   LFeedback(h, _, _, _, _) => h,
   LFeedbackPrior(h) => h,
   LPerform(h, _, _) => h,
@@ -1457,7 +1463,12 @@ fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
   match last(stmts) {
     N(b, _, _) => {
       let binds2 = match b {
-        NStmt(HandlerDeclStmt(hname, _, _, _, arms, _)) => bind_from_arms(arms, hname, summaries, decls, binds),
+        NStmt(HandlerDeclStmt(hname, _, config, state, arms, _)) => {
+          // An arm's config, state fields and arguments are its binders, never
+          // a call — the arm walk binds them as the free-name walk does.
+          let in_arms = free_vars_param_names(config) ++ map({ st => st.name }, state)
+          bind_from_arms(arms, hname, in_arms, summaries, decls, binds)
+        },
         _ => binds,
       }
       bind_from_handlers(drop_last(stmts), summaries, decls, binds2)
@@ -1465,15 +1476,35 @@ fn bind_from_handlers(stmts, summaries, decls, binds) = if len(stmts) == 0 {
   }
 }
 
-fn bind_from_arms(arms, hname, summaries, decls, binds) = if len(arms) == 0 {
+fn bind_from_arms(arms, hname, in_arms, summaries, decls, binds) = if len(arms) == 0 {
   binds
 } else {
   let arm = last(arms)
   let binds2 = match op_resume_discipline(handler_arm_op_name(arm)) {
-    MultiShot => bind_closure(collect_free_vars(handler_arm_body(arm), []), hname, summaries, decls, binds),
+    MultiShot => bind_closure(
+      callable_names(handler_arm_body(arm), in_arms ++ arm.args),
+      hname,
+      summaries,
+      decls,
+      binds
+    ),
     _ => binds,
   }
-  bind_from_arms(drop_last(arms), hname, summaries, decls, binds2)
+  bind_from_arms(drop_last(arms), hname, in_arms, summaries, decls, binds2)
+}
+
+// The functions a body can reach by name: its free names, and every fn
+// declared inside it. A nested fn's name is bound by its own declaration, so
+// the free-name walk never reports it, yet the arm reaches it — the closure
+// found the arm's nested try_each in tests/micros/mn-backtrack-full.mn only
+// because the walk leaked a nested fn's self-reference out as a free name,
+// and when the leak closed (2026-10-03) that fn lost its continuation and
+// the program trapped.
+fn callable_names(body, bound) =
+  free_vars_merge(collect_free_vars(body, bound), map(decl_entry_name, collect_fn_decls(body, [])))
+
+fn decl_entry_name(entry) = match entry {
+  (n, _, _, _) => n,
 }
 
 // Worklist closure: bind each marked free name, then its body's marked
@@ -1516,12 +1547,12 @@ fn usage_is_marked(u) = match u {
 }
 
 fn collect_free_vars_of_decl(decls, name: String) = {
-  let hits = filter({ (n, _, _) => n == name }, decls)
+  let hits = filter({ (n, _, _, _) => n == name }, decls)
   if len(hits) == 0 {
     []
   } else {
     match head(hits) {
-      (_, body, _) => collect_free_vars(body, []),
+      (_, body, _, pnames) => callable_names(body, pnames),
     }
   }
 }
@@ -2237,6 +2268,14 @@ fn schedule_installed_at(stack, i) = if i < 0 {
 effect DerivativeDemand {
   derivative_demand_note()
   derivative_demanded() -> Bool
+}
+
+// An arena's DEMAND, drawn the same way where an LArena is built: a module
+// that opens none carries no journal, no exit and no barrier — a store
+// emits as the plain store it always was — so its bytes are what they were.
+effect ArenaDemand {
+  arena_demand_note()
+  arena_demanded() -> Bool
 }
 
 // A handler's install class (src/effects.mn's roster) at the lowering.
@@ -3096,6 +3135,13 @@ fn lower_pipe(kind, left, right, handle) = match kind {
           [seed, ..._] => LDerive(handle, seed, lo_l),
           [] => LDerive(handle, LConst(handle, LFloat(0.0)), lo_l),
         }
+      },
+      PArena => // The arena replaces the install the same way: no record, no world
+      // push. Its exit asks no one — every store its body made into older
+      // memory journaled its own type where it happened.
+      {
+        arena_demand_note()
+        LArena(handle, lo_l)
       },
       _ => LHandleWith(handle, lo_l, lo_r, hname, config_inits, arm_groups),
     }
@@ -4234,10 +4280,13 @@ fn lower_stmt_body(s, handle, span) = match s {
     // A PROJECTION's arms are not lowered: an install of it builds no
     // record, so nothing could ever call them. The derivative reading's arm
     // states what `d(v)` means and derive reads that meaning as a rewrite; its
-    // body names a primitive with no forward lowering on purpose.
+    // body names a primitive with no forward lowering on purpose. An arena's
+    // arms forward its body's allocation, which the substrate answers anyway.
     let arm_decls = match projection_of(name) {
       PDerivative => [],
-      _ => lower_handler_arms_as_decls(arms, name, config, state),
+      PArena => [],
+      PSchedule(_) => lower_handler_arms_as_decls(arms, name, config, state),
+      PDispatch => lower_handler_arms_as_decls(arms, name, config, state),
     }
     LBlock(handle, list_concat(arm_decls, [LConst(handle, LInt(0))]))
   },
@@ -5597,6 +5646,10 @@ fn k2_floor_guard(e, terminus) = match e {
   LDerive(h, seed, b) => // The derivative reading brackets nothing: its body's value lands where
   // the reading's own does, so the terminus passes straight through.
   LDerive(h, seed, k2_floor_guard(b, terminus)),
+  LArena(h, b) => // An arena's exit runs after its body, so a yield crossing it would
+  // skip the exit and leave the body's region unreclaimed: the body's
+  // boundary is checked here, never passed through.
+  LArena(h, k2_floor_guard(b, false)),
   LReturn(h, inner) => LReturn(h, k2_floor_guard(inner, true)),
   LCall(h, f, args) => // The k2 call-boundary rides EVERY can-yield non-tail call (the carrier
   // was LSuspend when evidence-threaded calls were a separate node; bare
@@ -5871,7 +5924,7 @@ fn grounded_scan(bindings, i, n, ename: String) = if i >= n {
 // language meets the instruction set (the wasi-import list's sibling;
 // the op names ARE the identity, declared in one home).
 fn is_substrate_mem_op(name: String) with Pure =
-  name == "store_i32" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "alloc" || name == "ialloc" || name == "image_enter" || name == "image_exit" || name == "image_bytes" || name == "heap_mark" || name == "heap_reset" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore"
+  name == "store_i32" || name == "load_i32" || name == "store_i8" || name == "load_i8" || name == "store_f64" || name == "load_f64" || name == "mem_copy" || name == "i32_xor" || name == "i32_or" || name == "i32_and" || name == "i32_shl" || name == "alloc" || name == "heap_mark" || name == "heap_reset" || name == "world_top" || name == "world_restore" || name == "image_key" || name == "globals_area" || name == "globals_save" || name == "image_restore" || name == "arena_stat"
 
 // The Cast capability's one op — erased at lower to its operand (the
 // identity at the word level; memory.mn carries the decl and the law).
@@ -6520,6 +6573,7 @@ fn low_refs(acc, expr) = match expr {
   LPerform(_h, disp, args) => low_refs_list(perform_target_refs(acc, disp), args),
   LHandleWith(ih, b, hn, hname, inits, arm_names) => low_refs_list(low_refs(low_refs(init_refs(arm_refs(acc, ih, arm_names), ih, hname), b), hn), inits),
   LDerive(_h, seed, b) => low_refs(low_refs(acc, b), seed),
+  LArena(_h, b) => low_refs(acc, b),
   LLet(_h, _n, inner) => low_refs(acc, inner),
   LMakeClosure(_h, LFn(_n, _a, _p, body, _f, _l), caps) => low_refs_list(low_refs_list(acc, body), caps),
   LMakeContinuation(_h, LFn(_n, _a, _p, body, _f, _l), caps, _, _) => low_refs_list(low_refs_list(acc, body), caps),
@@ -6612,6 +6666,7 @@ fn frame_children(expr) = match expr {
   LResumeK(_, k, v) => [k, v],
   LHandleWith(_, b, hn, _, inits, _) => [b, hn] ++ inits,
   LDerive(_, seed, b) => [seed, b],
+  LArena(_, b) => [b],
   LFeedback(_, _, _, b, s) => [b, s],
   LFeedbackPrior(_) => [],
   LPerform(_, _, args) => args,
@@ -6873,6 +6928,7 @@ fn reach_nested_names(d, acc) = match d {
   LIf(_h, _c, t, e) => reach_nested_names_list(e, reach_nested_names_list(t, acc)),
   LHandleWith(_h, b, _hn, _hname, _inits, _an) => reach_nested_names(b, acc),
   LDerive(_h, _seed, b) => reach_nested_names(b, acc),
+  LArena(_h, b) => reach_nested_names(b, acc),
   _ => acc,
 }
 
@@ -7524,7 +7580,7 @@ fn spec_site_pairs(h, name: String) = spec_site_pairs_resolved(name, spec_resolv
 // The judgment enters each such read on the variable's cell as a shape
 // demand (`shape_demand`, infer.mn), and instantiation carries a callee's
 // reads into its callers, so the fact is on the cell by the time anything is
-// emitted (`var_structure_read`). Everywhere else a variable is read at its
+// emitted (`var_read`). Everywhere else a variable is read at its
 // width. So an observed variable keys by its structure (`observed_code`)
 // and every other one by its width's digit, and the substitution the twin is
 // emitted under is the same fact: an observed variable is bound to its type,
@@ -7534,6 +7590,11 @@ fn spec_site_pairs(h, name: String) = spec_site_pairs_resolved(name, spec_resolv
 // instantiation's layout. Keying every structured variable whole, which this
 // replaced, made 3,030 twins of the wheel's generics where the bodies are
 // 975 (measured 2026-09-28): `map` had 192 twins of two bodies.
+//
+// An arena's barrier is the third read (`MovedShape`): a store into memory
+// older than an arena carries its value out of the region by its type, so a
+// body whose store can reach such memory reads the class the move needs, and
+// keys by it — where the program opens an arena, and nowhere else.
 fn twin_key(pairs) = {enc: fold("", twin_enc_step, pairs), pairs: filter(twin_keeps, pairs)}
 
 fn twin_enc_step(acc: String, p) = acc ++ twin_pair_code(p)
@@ -7544,7 +7605,11 @@ fn twin_enc_step(acc: String, p) = acc ++ twin_pair_code(p)
 // reads it free. A variable still free at the site proves nothing, and keys
 // at the floor.
 fn twin_pair_code(p) = match p {
-  (w, t) => if var_structure_read(w) { observed_code(t) } else { spec_repr_digit(t) },
+  (w, t) => match var_read(w) {
+    ReadsStructure => observed_code(t),
+    ReadsMove => moved_code(t),
+    ReadsWidth => spec_repr_digit(t),
+  },
 }
 
 fn observed_code(t) = match fold_strip(t) {
@@ -7552,16 +7617,164 @@ fn observed_code(t) = match fold_strip(t) {
   _ => fold_sig(t),
 }
 
-fn twin_keeps(p) = match p {
-  (w, t) => var_structure_read(w) || repr_is_wide(repr_of(t)),
+// A moved variable keys by what its move needs: a word moves nothing, so
+// every word instantiation shares one twin (`w` — no move sig and no width
+// digit begins with it); a float in a word slot moves its box and keys by
+// its width, as an unobserved float does; anything else moves by its shape
+// and keys by its move sig, where a variable the type still holds is opaque
+// and never collides with a word. A variable still free keys at the floor,
+// where the barrier cannot see the type and its entry keeps the region.
+fn moved_code(t) = match fold_strip(t) {
+  TVar(_) => spec_repr_digit(t),
+  _ => match evac_of(t) {
+    EvWord => "w",
+    EvWide => spec_repr_digit(t),
+    EvShape(_) => move_sig(t),
+    EvOpaque => move_sig(t),
+  },
 }
 
-// Whether a body reads this variable's structure: a shape demand on its cell.
-fn var_structure_read(w) = any(is_shape_demand, graph_demands_of(w))
+fn twin_keeps(p) = match p {
+  (w, t) => match var_read(w) {
+    ReadsStructure => true,
+    ReadsMove => moved_bound(t),
+    ReadsWidth => repr_is_wide(repr_of(t)),
+  },
+}
 
-fn is_shape_demand(d) = match d {
-  DemandShape(_) => true,
+// A moved variable is bound in its twin unless it is still free: the barrier
+// reads the bound type to choose its leaf, or to know a word needs none.
+fn moved_bound(t) = match fold_strip(t) {
+  TVar(_) => false,
+  _ => true,
+}
+
+// What a body reads of a variable, off the demands on its cell: its
+// structure, a move, or its width alone.
+type VarRead = ReadsStructure | ReadsMove | ReadsWidth
+
+fn var_read(w) = {
+  let ds = graph_demands_of(w)
+  if any(is_structure_demand, ds) {
+    ReadsStructure
+  } else if any(is_move_demand, ds) && program_opens_arenas() {
+    ReadsMove
+  } else {
+    ReadsWidth
+  }
+}
+
+fn is_structure_demand(d) = match d {
+  DemandShape(read) => match read {
+    WholeShape => true,
+    OuterShape => true,
+    MovedShape => false,
+  },
   DemandNumber(_) => false,
+}
+
+fn is_move_demand(d) = match d {
+  DemandShape(read) => match read {
+    MovedShape => true,
+    WholeShape => false,
+    OuterShape => false,
+  },
+  DemandNumber(_) => false,
+}
+
+// Whether the program opens an arena. An arena's install charges `Arena` to
+// the frame it stands in and no handler answers it, so `main`'s row carries
+// it exactly when an arena is reachable — the judged fact, settled before a
+// single body is lowered, that every barrier's read is keyed by.
+fn program_opens_arenas() = match env_lookup("main") {
+  Some(entry) => match entry {
+    (scheme, _, _) => match judgment_ty(scheme) {
+      TFun(_, _, row) => match resolve_row(row) {
+        EfRow(p, _, _) => any(names_arena, p),
+      },
+      _ => false,
+    },
+  },
+  None => false,
+}
+
+fn names_arena(e) = eff_name_str(e) == "Arena"
+
+// What carrying a value of a type out of an arena's region needs — the one
+// classification the twin key, the barriers and the exit's leaves all read:
+// nothing for a word (a sentinel included), nothing for a float unless it is
+// boxed in a word slot, a refusal to move a value of a type nothing here can
+// see into, and a move by its shape.
+type Evac = EvWord | EvWide | EvOpaque | EvShape(Shape)
+
+// A shape a leaf moves by: a sequence's element type, a product's field
+// types in layout order, each fielded variant's tag and payload types.
+type Shape = ShSeq(Ty) | ShProduct([Ty]) | ShSum([(Int, [Ty])])
+
+fn evac_of(ty) = match fold_strip(slot_ty(ty)) {
+  TInt => EvWord,
+  TByte => EvWord,
+  TUnit => EvWord,
+  TFloat => EvWide,
+  TList(e) => EvShape(ShSeq(e)),
+  TTuple(es) => EvShape(ShProduct(es)),
+  TRecord(fs) => evac_record(record_full_fields(TRecord(fs))),
+  TRecordOpen(fs, v) => evac_record(record_full_fields(TRecordOpen(fs, v))),
+  TName(n, args) => match nominal_record_fields(n) {
+    Some(fs) => // A nominal record's fields are read off its declaration, which a type
+    // argument does not ground — a generic one's layout is not known here.
+    if len(args) == 0 { EvShape(ShProduct(map(field_type_of, fs))) } else { EvOpaque },
+    None => evac_sum(variant_specs_at(TName(n, args))),
+  },
+  TFun(_, _, _) => EvOpaque,
+  TCont(_, _, _, _) => EvOpaque,
+  TVar(_) => EvOpaque,
+  TAlias(_, inner) => evac_of(inner),
+  TRefined(base, _) => evac_of(base),
+  TReprPin(_, base) => evac_of(base),
+}
+
+// A record moves by its whole sorted field set; one whose fields the row
+// never closed is a layout nothing here can see.
+fn evac_record(full) = match full {
+  Some(fs) => EvShape(ShProduct(map(field_type_of, fs))),
+  None => EvOpaque,
+}
+
+fn field_type_of(field) = match field {
+  (_, t) => t,
+}
+
+// A sum whose variants all carry nothing is a word (its values are the
+// sentinels below heap_base); one with no variants at all is a name nothing
+// here can see.
+fn evac_sum(specs) = if any(variant_fielded, specs) {
+  EvShape(ShSum(specs))
+} else if len(specs) > 0 {
+  EvWord
+} else {
+  EvOpaque
+}
+
+fn variant_fielded(spec) = match spec {
+  (_, payloads) => len(payloads) > 0,
+}
+
+// Whether the exit looks at a value of this class where it is stored: one
+// it moves, or one whose type it cannot see into.
+fn evac_moves(ev) = match ev {
+  EvShape(_) => true,
+  EvOpaque => true,
+  EvWord => false,
+  EvWide => false,
+}
+
+// A float is a pointer only boxed in a word slot.
+fn evac_boxes(ev) = match ev {
+  EvWide => true,
+  EvShape(_) => false,
+  EvOpaque => false,
+  EvWord => false,
 }
 
 // A reference site's key.

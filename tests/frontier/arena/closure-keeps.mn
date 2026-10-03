@@ -1,0 +1,12 @@
+// A value no leaf can move — a closure holding a young list — keeps the
+// region: the program stays correct and nothing is reclaimed.
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn summer(xs) = (k) => k + fold(0, add_int, xs)
+
+fn main() = {
+  let f = summer(build(10)) ~> arena
+  if f(100) == 155 && arena_stat(ArKept) == 1 { 42 } else { 1 }
+}

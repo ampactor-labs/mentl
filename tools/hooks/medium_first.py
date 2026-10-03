@@ -36,6 +36,10 @@ VERBS = """Ask the medium first:
   mentl query src/main.mn decls              the declaration roster with spans
   mentl query src/main.mn unreachable        what nothing reaches
   mentl query src/main.mn "census <shape>"   a structural shape, counted
+  mentl query src/main.mn "text NEEDLE"      every string literal holding it (the emit's WAT)
+  mentl query src/main.mn "prose NEEDLE"     every comment holding it, at the comment
+  mentl query src/main.mn "writes of FIELD"  every value written into a handler state field
+  mentl query src/main.mn "provider of OP"   every handler with an arm for it, at the arm
   mentl doc <module>                         a module's decls with types and ledes
   mentl <file:line[:col]>                    the eight aspects at a position
 If no verb answers the question, that absence is the finding: run the search
@@ -112,14 +116,70 @@ def head(ws):
     return []
 
 
+# Options whose value is the next word, and the ones that supply the pattern
+# (so the first operand is a path, not the pattern).
+VALUE_OPTS = {"-A", "-B", "-C", "-m", "-e", "-f", "-g", "-t", "-T", "--max-count",
+              "--include", "--exclude", "--type", "--type-not", "--glob", "--regexp",
+              "--file", "--context", "--after-context", "--before-context"}
+PATTERN_OPTS = {"-e", "-f", "--regexp", "--file"}
+FILTER_OPTS = {"-g", "-t", "--include", "--type", "--glob"}
+
+
+def search_operands(args):
+    """A searcher's path operands and the file filters it was given. The
+    pattern is not a path: it is the first operand unless -e or -f supplied
+    it, and a pattern that merely mentions a `.mn` file searches nothing
+    (refusing `grep 'prelude.mn' tools/*.sh` was this gate's first defect)."""
+    operands, filters, pattern_given, i = [], [], False, 0
+    while i < len(args):
+        w = args[i]
+        if w == "--":
+            operands.extend(args[i + 1:])
+            break
+        if w.startswith("-") and len(w) > 1:
+            name, _, inline = w.partition("=") if w.startswith("--") else (w[:2], "", w[2:])
+            if name in PATTERN_OPTS:
+                pattern_given = True
+            if name in VALUE_OPTS:
+                value = inline if inline else (args[i + 1] if i + 1 < len(args) else "")
+                if name in FILTER_OPTS:
+                    filters.append(value)
+                if not inline:
+                    i += 1
+            i += 1
+            continue
+        operands.append(w)
+        i += 1
+    return (operands if pattern_given else operands[1:]), filters
+
+
+def recursive(cmd, args):
+    if cmd in ("rg", "ag", "ack"):
+        return True
+    return any(w in ("-r", "-R", "--recursive") or
+               (w.startswith("-") and not w.startswith("--") and ("r" in w[1:] or "R" in w[1:]))
+               for w in args)
+
+
 def bash_search(segment):
     ws = head(words(segment))
     if not ws:
         return False
     if ws[0] == "git" and len(ws) > 1 and ws[1] == "grep":
         return any(names_mn_source(w) for w in ws[2:]) or "--" not in ws
-    if os.path.basename(ws[0]) in SEARCHERS:
-        return any(names_mn_source(w) for w in ws[1:])
+    cmd = os.path.basename(ws[0])
+    if cmd in SEARCHERS:
+        paths, filters = search_operands(ws[1:])
+        if paths:
+            return any(names_mn_source(w) for w in paths)
+        # No path: a recursive search reads the working directory, which is
+        # source unless a filter keeps it to other files. A plain grep with no
+        # path reads stdin, the filter form that passes.
+        if not recursive(cmd, ws[1:]):
+            return False
+        if filters and not any(".mn" in f or f in ("*", "**", "**/*") for f in filters):
+            return False
+        return names_mn_source(os.getcwd()) or os.getcwd().rstrip("/") == project_dir().rstrip("/")
     return False
 
 
@@ -129,7 +189,10 @@ def bash_write(segment, command):
         return False
     cmd = os.path.basename(ws[0])
     if cmd in ("sed", "perl") and any(w.startswith("-i") or w == "-pi" for w in ws[1:]):
-        return any(names_mn_source(w) for w in ws[1:])
+        # The script is not a target: an expression that mentions a `.mn`
+        # name edits whatever files follow it, not that name.
+        targets, _ = search_operands([w for w in ws[1:] if not w.startswith("-i") and w != "-pi"])
+        return any(names_mn_source(w) for w in targets)
     if cmd == "tee":
         return any(names_mn_source(w) for w in ws[1:] if not w.startswith("-"))
     if cmd in ("python", "python3") and re.search(

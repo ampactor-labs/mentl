@@ -639,7 +639,9 @@ block carries it, and `selfcompile_peak_kb_max` in verify-baseline
 ratchets the peak (a breach refuses the repin, seen RED at ceiling 1).
 Measured at the landing: ~8.4s wall, ~1.70GB peak RSS (three reads
 within ±0.03% — the earlier "~694MB" claim was an era-stale number this
-read corrects). The arena's win lands as that ceiling FALLING. state.sh
+read corrects). The arena's win landed as that ceiling FALLING — 1,050,000
+→ 884,000 KB on 2026-10-03, read off three runs of the boot that carried
+it. state.sh
 still shows the footprint; raising any ceiling stays an explicit
 in-commit act, the census pattern applied to cost. Paid for by measurement: the judgment's peak moved
 563MB → 3,044MB (07-25 → 07-29) across unmeasured landings and fell 823MB at
@@ -669,11 +671,16 @@ session's reports under .build/research are its first corpus
    buckets). `Hβ.runtime.indexed-map-primitive` finishes as: those two re-key by
    handle onto the one primitive once names are handles. Each a Carried-Truth
    deletion.
-3. **Per-decl arena** (`Hβ.perf.per-decl-arena`, gated on
-   `Hβ.infer.region-on-tee-alloc-absorb`) — each decl's transient scratch is
-   `own`ed and `Consume`d at the decl boundary; the region drop IS the arena reset
-   (O(1)), `!Alloc` after; the 4GB working set collapses to one decl's live set →
-   cache-resident. Activates the dormant emit_memory_arena swap (wasm.mn:139).
+3. **The arena** (`Hβ.perf.per-decl-arena`, LANDED 2026-10-03) —
+   `(body) ~> arena`: an extent's allocations die at its exit except what
+   its publication reaches, which moves by type, so the reset costs what
+   crossed, never what died. Reclaiming is reachability from the
+   publication, not a `Consume` (ownership's regions stay compile-time).
+   Placed at the judgment's binding groups: the judgment's high-water fell
+   511 → 288 MB and the self-compile's peak 1,065 → 874 MB. Remaining: the
+   lowering's, the emission's and the session's extents
+   (`Hβ.arena.extents-beyond-the-judgment`), and the per-thread regions
+   layer 4 needs (`Hβ.arena.per-instance-regions`).
 4. **Parallel cursors** — the level-set partition at DECL granularity on the
    compile spine, infer/lower/emit fanned across cores with (arena_id, offset)
    deterministic handle partitioning so native_m3==native_m4 holds
@@ -797,8 +804,14 @@ Ground FIRST: `bash tools/state.sh` (the whole board). State-as-PROJECTION is
 arbiter. Where a design section and this audit disagree, §4/§5 is the TARGET
 and this is the STATE.
 
-- **Regions** are compile-time root-tagging + return-transfer, NOT a runtime
-  arena. The `emit_memory_arena` swap is dormant (§5.O open work).
+- **Regions are runtime since the arena** (2026-10-03, the bullet after
+  E4's): `(body) ~> arena` reclaims an extent's allocations at its exit
+  except what its publication reaches. Ownership's regions stay what they
+  were — compile-time root-tagging and return-transfer — and the arena does
+  not read them: an exit decides by reachability from the extent's
+  publication, never by a `Consume`. The judgment's binding groups run in
+  one; the lowering, the emission and the session do not yet
+  (`Hβ.arena.extents-beyond-the-judgment`).
 - **`persist = memcpy` IS BUILT, and this line said it was absent** — the doc
   rot named as violation #1, measured 2026-09-07. `lib/persist.mn` writes
   `[0, heap-line)` plus a bounded globals header STRAIGHT FROM THE IMAGE to
@@ -956,8 +969,9 @@ and this is the STATE.
   keeps, and the IDE gate times every read. What stands between it and the
   shipping medium: a lifetime for the session's scratch — every answer keeps
   what it minted, so the image grows with every answer for the session's
-  whole life (Arc C's boundary,
-  `Hβ.session.answer-scratch-outlives-the-answer`) — and a durable image
+  whole life; the arena is that lifetime's mechanism since 2026-10-03, and
+  no answer runs in one yet
+  (`Hβ.session.answer-scratch-outlives-the-answer`) — and a durable image
   boundary: a session derives once per open, and a fresh process derives
   cold (`Hβ.felt.accept-outlives-the-process`). The eight aspects at the
   caret are read off the graph since E4 (the bullet after E2's).
@@ -2132,6 +2146,52 @@ and this is the STATE.
   sits at the application rather than at the value it claims. The parent
   write's per-registration scratch costs 23.7 MB the arena reclaims; the
   ceiling (1,014,000 → 1,050,000) records that debt.
+- **AN EXTENT'S ALLOCATIONS DIE AT ITS EXIT EXCEPT WHAT ITS PUBLICATION
+  REACHES — THE ARENA, LANDED 2026-10-03.** At least four of the eight
+  landings before E4 raised the self-compile's peak ceiling, 98% of the
+  judgment's heap was scratch, and nothing reclaimed any of it: the bump
+  image never freed. `(body) ~> arena` (lib/arena.mn) is an install the
+  lowering replaces (`LArena`) — no record, no world push — and its exit
+  reclaims everything the body allocated except the body's value and what
+  the body stored into memory older than the arena. Those MOVE, by type: a
+  list slot's direct `list_set`, a handler's state commit and a `<~` tick
+  each write a journal entry where the store happens, with the leaf its
+  value moves through (the fold's fifth leaf, `$evac_<sig>` /
+  `$scan_<sig>`), and the exit copies what the publication reaches, slides
+  the copies down to the mark and zeroes what it touched. A value whose
+  type its store could not see — a function, a continuation, a store
+  through `list_set` reached as a value — has no leaf, and the exit keeps
+  the whole region rather than move it: correct for any program, reclaiming
+  nothing. The judgment's AGE CLAIM decides which stores need a leaf at all
+  — a buffer the scope allocated cannot be older, a parameter is its
+  callers' question (each function publishes the parameters it stores into,
+  transported at every direct call), a handler's state its installs' — so
+  only those bodies are twinned by the shape they move. The judgment's
+  binding groups each run in one. Measured on the boot over the wheel,
+  three runs identical to the byte in their heap trace: 4,487 exits, 0
+  kept, 206,870 KB reclaimed, 49,914 KB moved; the judgment's high-water
+  288 MB against the prior boot's 511 MB; the self-compile 863,636–874,384
+  KB against 1,061,396–1,065,228; the ceiling 1,050,000 → 884,000, E4's
+  debt paid with 126 MB to spare, and the pin's own march measured both
+  legs under it (869,872 and 875,644 KB). THE COLUMNS-FIRST PRECONDITION IS
+  SUPERSEDED: a reset was unsound while a published value could reach
+  older memory by a pointer write no bracket saw
+  (`Hβ.graph.column-pointees-are-words`); the journal sees every such
+  write with its type, so the reset is sound with the value graph as it
+  is. The dormant strategy that claimed the name — `emit_memory_arena`,
+  installed by nothing, its `$arena_ptr` moved by nothing and persisted in
+  every image — is deleted. Found on the way, silent and RED on the prior
+  boot: a function's parameters read as references in the judgment's call
+  graph (a false cycle of seventeen through the list substrate), and a
+  block's statements read last first. Two facets the dig confessed: `prose
+  NEEDLE`, and `variants` of an effect. Open: the lowering's, the
+  emission's and the session's extents
+  (`Hβ.arena.extents-beyond-the-judgment` — the heap climbs from 288 MB to
+  741 MB after the judgment with no exit), a closure's move
+  (`Hβ.arena.closure-evac-face`), regions per instance in a spawning module
+  (`Hβ.arena.per-instance-regions`), region-typed mutation, the `addr` word
+  channel, three imprecisions of the age claim, and nested fns that do not
+  hoist (`Hβ.infer.nested-fn-siblings-do-not-hoist`).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -2394,7 +2454,8 @@ column as though speed were a work item. It is not. The test:
 > the 140× came from deleting re-derivations. Every time.
 
 So total monomorphization is not perf work — it is the erasure boundary lying.
-The arena is not perf work — it is ownership having a real reclaim.
+The arena is not perf work — it is an extent's lifetime being a fact: what
+the extent publishes outlives it, and nothing else does.
 Name-is-handle is not perf work — it is a name being an edge. Speed is the
 side effect in all three, and treating it as the goal is how a wrong change
 gets justified.
@@ -2883,22 +2944,23 @@ form the whole time. The arcs, in order:
 surfaces.** Anything that depends on a lifetime is built twice if it is built
 before lifetimes exist, so the next three landings are representation, and
 E6, B2–B4 and Pulse scenes 2–4 follow them.
-(1) **THE ARENA** (Arc C, promoted before E6). An extent's publication
-outlives it and nothing else does — a declaration in the compiler, an answer
-in the session, a block in a program. The reset is O(1) to the extent's mark;
-what crosses is evacuated, rooted in the channels the row already names
-(graph and row writes are trailed, handler state is on the world chain, the
-result is the frame's return transfer, and only a `Mutate` into an older
-buffer needs a store log, which the row says when — a generational
-collector's write barrier, made static). The copy is O(published) and shrinks
-toward nothing as values become column words; the strategy per extent is a
-`~>` handler; handles become `{arena, offset}`; columns open lazily. Measured
-to justify the order: at least four of the eight landings before E4 raised
-the self-compile peak ceiling, 98% of the judgment's heap is scratch, E2's
-session keeps every answer's scratch, and E4's own parent edge costs 23.7 MB
-of per-registration scratch that this landing owes back below 1,010,000 KB.
-**Lowering-as-columns** is designed beside it — the same question, where a
-declaration's facts live and for how long.
+(1) **THE ARENA — LANDED 2026-10-03** (the §7 bullet after E4's). An
+extent's publication outlives it and nothing else does: the exit moves the
+body's value and every value the body stored into older memory — each such
+store journaled where it happens, with the type the store knows — and
+resets the line behind the copies, so an exit costs what crossed. The row
+says where a barrier is owed (the age claim, read along the target's
+edges), so a store into the scope's own buffers costs nothing. Placed at the
+judgment's binding groups: high-water 511 → 288 MB, the self-compile 1,065
+→ 874 MB, the ceiling 1,050,000 → 884,000, the debt E4 recorded paid.
+REMAINING: the lowering's, the emission's and the session's extents
+(`Hβ.arena.extents-beyond-the-judgment` — the placement, no new mechanism).
+`{arena, offset}` handles and lazily opened columns are no longer the
+reset's precondition — the journal sees every pointer write into older
+memory — and stay 9.2's deterministic partition. **Lowering-as-columns**
+was not designed in this landing, and the arena is why it need not be: it
+is now only the question of where a declaration's facts live
+(`Hβ.lower.lowering-is-a-column`), separate from how long its scratch does.
 (2) **POSITIONS ARE CELLS.** Binders, patterns, annotations and predicates
 become the cells inference binds: the ghost count (18,681 on the wheel at
 E4, `mentl query <entry> ghosts`) to zero under a ratchet, `refs of` a type
@@ -3014,32 +3076,26 @@ calculus). Full mechanics: `LEDGER.md`.
   in-baseline justification; rung 3 dissolves the class and the
   order-dependence with it). Gate: tests/frontier/mn-usage-grade.mn, three
   asserts seen RED.
-- **4.3 · The per-decl arena** (`Hβ.perf.per-decl-arena`, gated on
-  `Hβ.infer.region-on-tee-alloc-absorb`). It is a hub, and more rides on it than
-  was ever written down: the String=`[Byte]` value-ontology dissolution names it
-  THE keystone dep; `persist = memcpy`'s image/scratch split; the 4GB ceiling
-  that killed a frontier leg and has shadowed the whole constructors arc; the
-  allocation payoff of `instantiate-shares-never-clones`; and total
-  monomorphization, which needs the headroom its duplication costs. STAMPED
-  2026-08-07 and then CORRECTED BY ITS OWN BUILD (`RESIDUE.md` carries the
-  full record): steps 0 (cost instrumentation), 1 (the ImageAlloc
-  vocabulary), and 2a (the extent-delta census + family 1, the spine's
-  band-open bracket) are LANDED — and before family 2, the build refuted the
-  design's core: site-classification is UNSOUND for the value graph, because
-  published values (Ty/GNode/schemes) are allocated during inference and
-  published by pointer-write, so no bracket at the publish site classifies
-  them and a per-decl reset would zero live column pointees. The sound form
-  is COLUMNS FIRST — the 5.2/5.5 column arc makes the image set = pages +
-  flat buffers by construction — so 4.3 PAUSES at 2a and 2b's fork/reset
-  DEP-GATES on that arc (the DEP-gate is the next thing to build, not a
-  stop: the arc is §11's own next phase). 4.3 and 9.1 still converge on one
-   boundary; the fleet's 2026-07-17 "output-invariant" refutation stands.
-   LIFETIME VOCABULARY (2026-08-26): the target has no runtime
-   allocation/reclamation subsystem — monotone image pages ARE the graph ARE
-   the heap ARE the continuation store; lifetime is ownership proving extents
-   droppable, compaction a `~>` handler over the image-map fold. The arena,
-   GC, and snapshot questions are that ONE question, resumed at Arc C of §11's
-   Space spine.
+- **4.3 · The per-decl arena** (`Hβ.perf.per-decl-arena`) — ✅ LANDED
+  2026-10-03, in the form its own 2026-08-07 refutation priced and passed
+  over: EVACUATION. It is a hub — the String=`[Byte]` dissolution names it
+  THE keystone dep, `persist = memcpy`'s image/scratch split rides it, the
+  ceiling that killed a frontier leg shadowed the whole constructors arc,
+  `instantiate-shares-never-clones` cashes its allocation payoff here, and
+  total monomorphization needed its headroom. The 2026-08-07 build refuted
+  site classification (a published value reaches older memory by a pointer
+  write no bracket sees) and chose COLUMNS FIRST; the arena answers that
+  objection at the write itself — every store into memory older than an
+  open arena is journaled where it happens, with the type the store knows —
+  so the reset is sound with the value graph as it is, and the column arc
+  is no longer its precondition (`RESIDUE.md` carries both records). The
+  fleet's 2026-07-17 "output-invariant" refutation stood: three TRANSITION
+  pins. LIFETIME VOCABULARY: an extent's lifetime is a `~>` install, never
+  a subsystem beside the program — what it publishes moves, what it does
+  not is gone, and the image is still the graph is still the heap.
+  Reclaiming is reachability from the publication, not a `Consume`:
+  ownership's regions stay compile-time. Placed at the judgment's binding
+  groups; the rest is placement (`Hβ.arena.extents-beyond-the-judgment`).
 - **4.4 · Ownership's frontier faces.** The quiet gate ✅ LANDED 2026-08-07
   (verify's quiet-gate ratchet: 83 authored own / 817 authored ref in src/,
   param-position text count seen RED at ceiling 1, monotone DOWN — each

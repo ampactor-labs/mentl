@@ -1529,14 +1529,17 @@ else if str_eq(list_index(lst, i), s) {
 // WHAT AN INSTALL DOES TO ITS EXTENT — the one read of a handler's class,
 // from the effects its arms answer. Most handlers are DISPATCHED to: a
 // perform finds them and runs an arm, and the install builds the record it
-// runs against. Two classes are PROJECTIONS instead, readings the lowering
+// runs against. Three classes are PROJECTIONS instead, readings the lowering
 // applies to the extent itself: a schedule decides how a `><` inside it runs,
-// and the derivative reading decides what the extent computes beside its
-// value (`~> grad(w)`, lib/ml/grad.mn). The class is recognized by the effect
-// a handler answers, so a program that declares its own Thread or Derivative
-// effect gets the same reading. The judgment and the lowering read this one
-// roster: what an install costs and what it lowers to are one decision.
-type Projection = PDispatch | PSchedule(Schedule) | PDerivative
+// the derivative reading decides what the extent computes beside its value
+// (`~> grad(w)`, lib/ml/grad.mn), and an arena — a handler of its body's
+// allocation (`~> arena`, lib/arena.mn) — decides how long the body's values
+// live: past the exit, only what its publication reaches. The class is
+// recognized by the effect a handler answers, so a program that declares its
+// own Thread or Derivative effect gets the same reading. The judgment and the
+// lowering read this one roster: what an install costs and what it lowers to
+// are one decision.
+type Projection = PDispatch | PSchedule(Schedule) | PDerivative | PArena
 
 fn projection_of_effects(enames) = if string_in_list(enames, "Thread") {
   PSchedule(Threaded)
@@ -1548,6 +1551,8 @@ fn projection_of_effects(enames) = if string_in_list(enames, "Thread") {
   PSchedule(Persisted)
 } else if string_in_list(enames, "Derivative") {
   PDerivative
+} else if string_in_list(enames, "Alloc") {
+  PArena
 } else {
   PDispatch
 }

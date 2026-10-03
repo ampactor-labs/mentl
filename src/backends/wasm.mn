@@ -113,24 +113,11 @@ handler wat_to_host {
 // to O(B+N) — millions-times speedup at wheel-scale.
 handler wat_to_string with buf = make_list(64), count = 0 {
   wat_emit(s) => {
-    // IMAGE family (5) of six (arena 2a-ii): the buffer's growth extent —
-    // the segment slots outlive every per-decl reset (they die at this
-    // record's own region, which is 2b's boundary to fix from the measured
-    // number, not this bracket's). The extend computes inside the bracket.
-    image_enter()
     let extended = list_extend_to(buf, count + 1)
     let written = list_set(extended, count, s)
-    image_exit()
     resume() with buf = written, count = count + 1
   },
-  wat_collect() => {
-    // Family (5)'s materialization: the one-shot str_concat_all is the
-    // extent's largest single allocation.
-    image_enter()
-    let all = str_concat_all(slice(buf, 0, count))
-    image_exit()
-    resume(all)
-  },
+  wat_collect() => resume(str_concat_all(slice(buf, 0, count))),
 }
 
 // heap_base is the threshold separating sentinel ADT values from heap
@@ -142,14 +129,15 @@ handler wat_to_string with buf = make_list(64), count = 0 {
 fn heap_base() with Pure = 4096
 
 // EmitMemory effect — alloc strategy as a handler swap.
-// `perform emit_alloc(size, target_local)` emits the WAT sequence that
-// allocates `size` bytes and stores the resulting pointer into
-// `$<target_local>`. Different memory strategies install different handlers:
-//
-//   emit_memory_bump   — monotonic bump from $heap_ptr
-//   emit_memory_arena  — region-tracked alloc with O(1) drop on scope exit (W5)
-//   a full collector with header tags is the named peer
-//   Hβ.emit.memory-gc-handler (post-first-light)
+// `emit_alloc(size, target_local)` emits the WAT sequence that allocates
+// `size` bytes and stores the resulting pointer into `$<target_local>`. The
+// strategies are `emit_memory_bump`, the monotonic bump from the one heap
+// line, and `emit_memory_audited`, the same bump held to what the allocation
+// audit measured of the unit; a full collector with header tags is the named
+// peer Hβ.emit.memory-gc-handler. Reclaiming an extent is not a strategy of
+// the allocator: `(body) ~> arena` (lib/arena.mn) moves what the extent
+// published out of its region and resets the line behind it, on the same
+// bump every strategy writes.
 //
 // Anchor 5: the backend's memory model is a one-handler swap — DESIGN 7.3
 // "the handler IS the backend" extends to memory strategy without disturbing
@@ -172,9 +160,8 @@ effect EmitMemory {
 // (call $alloc (i32.const size))) against the single aligned allocator $alloc,
 // whose body emit_memory_decl emits. No inline bump — the bump pattern's
 // 5707-spelling re-derivation is deleted, read live from the one $alloc fn.
-// Per-strategy $alloc BODIES chosen by the installed handler are the
-// follow-up Hβ.emit.memory-strategy-body-swap; until it lands the body is
-// bump, emitted directly, and the swap is a one-fn-body change.
+// The body is the bump, and it is the only one: an arena reclaims on the
+// same line, and a collector's body is the peer named above.
 fn alloc_into_text(size, target_local: String) = {
   wat_emit("    (local.set $")
   wat_emit(target_local)
@@ -187,34 +174,6 @@ fn alloc_top_text() = wat_emit("    (call $alloc)\n")
 
 handler emit_memory_bump {
   emit_alloc(size, target_local) => {
-    alloc_into_text(size, target_local)
-    resume()
-  },
-  emit_alloc_top() => {
-    alloc_top_text()
-    resume()
-  },
-}
-
-// emit_memory_arena (W5) — sibling handler demonstrating the
-// EmitMemory swap surface. Same effect, different pointer, different
-// reclamation semantics. Region arenas allocate from `$arena_ptr`;
-// on scope exit, the pointer resets to the entry snapshot,
-// reclaiming the whole region in O(1). Here the emit is identical
-// to bump except for the pointer name — the region-enter/exit
-// emission is a future refinement once a `~>` install that absorbs
-// Alloc opens a region (peer Hβ.infer.region-on-tee-alloc-absorb,
-// E3). The SHAPE is what matters: the emitter can swap
-// `~> emit_memory_bump` for `~> emit_memory_arena` at its allocating
-// brackets (the per-fn emission, the init lets, the fold leaves — each
-// installed INSIDE the sink live there, because this arm performs
-// wat_emit and an arm's performs resolve outer of its own install) with
-// no other source change, producing different WAT. DESIGN Ch 7.3 "the
-// handler IS the backend" — memory strategy is a handler swap.
-handler emit_memory_arena {
-  emit_alloc(size, target_local) => // Same strategy-invariant call site; the arena's region-reset semantics live
-  // in its $alloc body (the body-swap follow-up above).
-  {
     alloc_into_text(size, target_local)
     resume()
   },
@@ -710,6 +669,9 @@ fn settle_node(site: String, expr) = match expr {
   },
   LShow(h, x) => settle_shape(site, h, "a show", x),
   LHash(h, x) => settle_shape(site, h, "a hash", x),
+  LArena(h, _) => // the exit moves the value by its whole structure, which a variable
+  // does not have
+  settle_shape(site, h, "an arena's exit", expr),
   LMatch(_, _, arms) => each({ (p, _) => settle_pattern(p) }, arms),
   LMakeClosure(_, LFn(_, _, _, _, _, lines), _) => settle_minted_lines(site, lines),
   LMakeContinuation(_, LFn(_, _, _, _, _, lines), _, _, _) => settle_minted_lines(site, lines),
@@ -900,8 +862,13 @@ fn settle_depth_at(site: String, base: String, h, n: String, pairs) = if any(pai
 }
 
 fn pair_read_past_floor(p) = match p {
-  (w, _t) => len(graph_demands_of(w)) > 0 && !spec_enc_is_floor(twin_pair_code(p)),
+  (w, _t) => any(read_past_a_move, graph_demands_of(w)) && !spec_enc_is_floor(twin_pair_code(p)),
 }
+
+// A move read past the cap is sound at the base: the barrier there cannot see
+// the type, and its entry keeps the region rather than moving a value wrong.
+// Every other demand reads the variable, and the base would read it as a word.
+fn read_past_a_move(d) = !is_move_demand(d)
 
 // ─── THE ALLOCATION AUDIT — what a unit's code builds, read against the row
 // the judgment gave it ────────────────────────────────────────────────────
@@ -967,6 +934,7 @@ type AllocSite
   | AsListRest
   | AsRecordRest
   | AsInstall
+  | AsArena
   | AsAllocation
   | AsSpawn
   | AsStateCell
@@ -1111,6 +1079,7 @@ fn alloc_owner_row(owner) = match owner {
     PDerivative => alloc_handler_row(hname),
     PSchedule(_) => RowGranted("an install's cells are built at the install's own cost"),
     PDispatch => RowGranted("an install's cells are built at the install's own cost"),
+    PArena => RowGranted("an arena's exit moves what survives at the arena's own cost"),
   },
   OwnedByModule => RowGranted("module scope claims no row"),
   OwnedByNothing => RowAbsent("it has no enumeration entry, so no row"),
@@ -1137,16 +1106,6 @@ fn row_names_say(p, ename: String) = name_set_contains(p, ENamed(intern_str(enam
 // from the read.
 fn row_read_allows(r) = match r {
   RowOf(_, alloc) => alloc,
-  RowGranted(_) => true,
-  RowAbsent(_) => false,
-}
-
-// Whether a row read says ENAME — the ask a substrate op makes of its OWN
-// effect (`ialloc` is `ImageAlloc`, never `Alloc`).
-fn row_read_says(r, ename: String) = match r {
-  RowOf(row, _) => match row {
-    EfRow(p, _, _) => row_names_say(p, ename),
-  },
   RowGranted(_) => true,
   RowAbsent(_) => false,
 }
@@ -1182,25 +1141,16 @@ fn alloc_unit_allows(unit) = match unit {
   AllocUnit(u) => row_read_allows(u.row),
 }
 
-fn alloc_unit_says(unit, ename: String) = match unit {
-  AllocUnit(u) => row_read_says(u.row, ename),
-}
-
 // A construct in UNIT builds: true, and refused at the construct when the
 // unit's row does not say `Alloc`. The site is named only for the refusal.
-fn alloc_at(unit, h, site) = alloc_unit_allows(unit) || alloc_refuse(unit, h, site, "Alloc")
+fn alloc_at(unit, h, site) = alloc_unit_allows(unit) || alloc_refuse(unit, h, site)
 
-// A substrate op builds under its OWN effect: `ialloc` asks the row for
-// `ImageAlloc`, which is what lib/memory.mn rows it under.
-fn alloc_asks(unit, h, site, ename: String) =
-  alloc_unit_says(unit, ename) || alloc_refuse(unit, h, site, ename)
-
-fn alloc_refuse(unit, h, site, ename: String) = {
+fn alloc_refuse(unit, h, site) = {
   match unit {
     AllocUnit(u) => report_at(
       h,
       EInternalInvariant(
-        "{alloc_site_text(site)} allocates in `{u.names}`, {alloc_row_text(u.row, ename)} — a construct the judgment never charged",
+        "{alloc_site_text(site)} allocates in `{u.names}`, {alloc_row_text(u.row)} — a construct the judgment never charged",
         parse_span_of(h)
       )
     ),
@@ -1225,8 +1175,8 @@ fn alloc_boxed(unit, h, cname: String) = {
   true
 }
 
-fn alloc_row_text(r, ename: String) = match r {
-  RowOf(row, _) => "whose row `{show_effrow(row)}` does not say `{ename}`",
+fn alloc_row_text(r) = match r {
+  RowOf(row, _) => "whose row `{show_effrow(row)}` does not say `Alloc`",
   RowAbsent(why) => "where {why}",
   RowGranted(why) => "where {why}",
 }
@@ -1243,6 +1193,7 @@ fn alloc_site_text(s) = match s {
   AsListRest => "a list pattern's rest",
   AsRecordRest => "a record pattern's rest",
   AsInstall => "an install's record",
+  AsArena => "an arena's exit, which moves what survives,",
   AsAllocation => "an allocation",
   AsSpawn => "a spawned task's record",
   AsStateCell => "a handler state's cell",
@@ -1393,8 +1344,6 @@ fn alloc_walk(unit, e) = match e {
   LWasiCall(h, op, args) => {
     let built = if op == "alloc" {
       alloc_at(unit, h, AsAllocation)
-    } else if op == "ialloc" {
-      alloc_asks(unit, h, AsAllocation, "ImageAlloc")
     } else if op == "spawn_task" {
       alloc_at(unit, h, AsSpawn)
     } else {
@@ -1414,6 +1363,11 @@ fn alloc_walk(unit, e) = match e {
     let s = alloc_walk(unit, seed)
     let body = alloc_walk(unit, b)
     s || body
+  },
+  LArena(h, b) => {
+    let built = alloc_at(unit, h, AsArena)
+    let body = alloc_walk(unit, b)
+    built || body
   },
   LLet(_, _, inner) => alloc_walk(unit, inner),
   LUnaryOp(_, _, inner) => alloc_walk(unit, inner),
@@ -2408,14 +2362,13 @@ fn emit_planned(plan) = match plan {
     // spawn proof rather than inferred from it (see emit_memory_decl).
     let socketed = ls_find_str_local(wasi_ops, "sock_accept", 0) >= 0
     emit_memory_decl(spawns, spawns || socketed, ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0)
-    // The image bracket's globals (arena 2a) — demand-gated on the
-    // pair's own performs, the spawn-cell precedent: a module that
-    // never brackets carries none. Depth (nesting), mark (the
-    // outermost enter's bump watermark), bytes (the accumulated
-    // extent deltas — the census image_bytes reads).
-    if ls_find_str_local(wasi_ops, "image_enter", 0) >= 0 {
-      wat_emit("  (global $image_depth (mut i32) (i32.const 0))\n  (global $image_mark (mut i32) (i32.const 0))\n  (global $image_bytes (mut i32) (i32.const 0))\n")
-    }
+    // An arena lives where one instance owns the line (a spawning module's
+    // arena is its body, `Hβ.arena.per-instance-regions`); its leaves are
+    // settled here, before any function is written, because every barrier
+    // and every claim writes a leaf's index.
+    let arena_on = arena_demanded() && !spawns
+    set_arena_leaves(if arena_on { evac_leaf_list(fold_closures.evac) } else { [] }, arena_on)
+    if arena_on { emit_arena_runtime() } else { () }
     emit_line_globals(line_owners)
     emit_tangent_ring_globals(tangent_rings)
     // The register a twin hands its result's tangent back through: one f64
@@ -2443,7 +2396,8 @@ fn emit_planned(plan) = match plan {
       table_all,
       wide_all,
       any(vector_is_wide, vectors),
-      if lanes_on() { Some(jvp_face_names(jvp_faces, table_all)) } else { None }
+      if lanes_on() { Some(jvp_face_names(jvp_faces, table_all)) } else { None },
+      arena_leaves()
     )
     emit_fn_index_globals(table_all, fn_table_base())
     emit_static_top_closures(top_fn_names ++ spec_names ++ jvp_names, table_all, 0)
@@ -2510,7 +2464,15 @@ fn emit_planned(plan) = match plan {
     each(emit_one_redrive, redrives)
     emit_init_lines(line_owners, tangent_rings)
     emit_init_lets(value_lets)
-    emit_start(top_fn_names, value_lets, len(line_owners) > 0, main_param_count(), yield_seen, spawns)
+    emit_start(
+      top_fn_names,
+      value_lets,
+      len(line_owners) > 0,
+      main_param_count(),
+      yield_seen,
+      spawns,
+      arena_on
+    )
     emit_footer()
   },
 }
@@ -2765,7 +2727,7 @@ fn slot_already_recorded(entries, target: String, i, n) = if i >= n {
 // page (address 12 — below every region mark, never reset, holding a stale
 // pointer into the region; the cross-compile trap of 2026-07-22). The walk's
 // row names the ops; the bracket is the row's dynamic-extent obligation.
-fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = {
+fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = {
   walk_lemit(lowered)
   // A twin whose base the module does not emit is still that base's body,
   // so the base owes it every fact the body carries — its strings, its
@@ -3037,6 +2999,7 @@ fn walk_lemit_expr(expr) = match expr {
     walk_lemit_expr(seed)
     walk_lemit_expr(b)
   },
+  LArena(_h, b) => walk_lemit_expr(b),
   LFeedback(_h, _d, _home, b, s) => {
     walk_lemit_expr(b)
     walk_lemit_expr(s)
@@ -3652,9 +3615,15 @@ fn fn_record_span(r) with !Mutate = match r {
 // and run the derivative program of whatever record they found. The absent
 // entry's empty signature matches no site's, so `call_indirect` refuses at
 // its type check where a face was reached the reading never demanded.
-fn emit_fn_table(fn_names, wide_names, native_half, jvp_faces) = {
+// THE ARENA'S LEAVES are two more regions past the faces: the evacuation
+// leaves and the scan leaves, each at its index and each `$ft1`-typed, so
+// the exit dispatches a leaf by index through one `call_indirect` — index
+// 0 the opaque answer, a leaf that never scans its none — and the module
+// a dispatcher writes is as flat at three hundred leaves as at one.
+fn emit_fn_table(fn_names, wide_names, native_half, jvp_faces, leaves) = {
   let n = len(fn_names)
-  if n == 0 {
+  let live = arena_live()
+  if n == 0 && !live {
     ()
   } else {
     let word_faces = if native_half { 2 } else { 1 }
@@ -3662,32 +3631,56 @@ fn emit_fn_table(fn_names, wide_names, native_half, jvp_faces) = {
       Some(_) => word_faces + 1,
       None => word_faces,
     }
+    let leaf_slots = if live { 2 * (len(leaves) + 1) } else { 0 }
     wat_emit("  (table $fns ")
-    wat_emit(int_to_str(fn_table_base() + faces * n))
+    wat_emit(int_to_str(fn_table_base() + faces * n + leaf_slots))
     wat_emit(" funcref)\n")
-    wat_emit("  (elem $fns (i32.const ")
-    wat_emit(int_to_str(fn_table_base()))
-    wat_emit(")")
-    emit_fn_refs(fn_names, wide_names)
+    if live { emit_arena_table(fn_table_base() + faces * n, leaves) } else { () }
+    if n == 0 { () } else { emit_fn_faces(fn_names, wide_names, native_half, jvp_faces, n, word_faces) }
+  }
+}
+
+fn emit_arena_table(base, leaves) = {
+  let scan_base = base + len(leaves) + 1
+  wat_emit("  (global $ar_evac_base i32 (i32.const {int_to_str(base)}))\n  (global $ar_scan_base i32 (i32.const {int_to_str(scan_base)}))\n")
+  wat_emit("  (elem $ar_evac_leaves (i32.const {int_to_str(base)}) $ar_evac_none")
+  each(emit_evac_ref, leaves)
+  wat_emit(")\n  (elem $ar_scan_leaves (i32.const {int_to_str(scan_base)}) $ar_scan_none")
+  each(emit_scan_ref, leaves)
+  wat_emit(")\n")
+}
+
+fn emit_evac_ref(leaf) = wat_emit(" $evac_{evac_leaf_sig(leaf)}")
+
+fn emit_scan_ref(leaf) = if evac_leaf_scans(leaf) {
+  wat_emit(" $scan_{evac_leaf_sig(leaf)}")
+} else {
+  wat_emit(" $ar_scan_none")
+}
+
+fn emit_fn_faces(fn_names, wide_names, native_half, jvp_faces, n, word_faces) = {
+  wat_emit("  (elem $fns (i32.const ")
+  wat_emit(int_to_str(fn_table_base()))
+  wat_emit(")")
+  emit_fn_refs(fn_names, wide_names)
+  wat_emit(")\n")
+  if native_half {
+    wat_emit("  (global $native_face i32 (i32.const {int_to_str(n)}))\n")
+    wat_emit("  (elem $fns_native (i32.const {int_to_str(fn_table_base() + n)})")
+    emit_native_refs(fn_names)
     wat_emit(")\n")
-    if native_half {
-      wat_emit("  (global $native_face i32 (i32.const {int_to_str(n)}))\n")
-      wat_emit("  (elem $fns_native (i32.const {int_to_str(fn_table_base() + n)})")
-      emit_native_refs(fn_names)
+  } else {
+    ()
+  }
+  match jvp_faces {
+    Some(fs) => {
+      wat_emit("  (global $jvp_face i32 (i32.const {int_to_str(word_faces * n)}))\n")
+      wat_emit("  (elem $fns_jvp (i32.const {int_to_str(fn_table_base() + word_faces * n)})")
+      emit_native_refs(fs)
       wat_emit(")\n")
-    } else {
-      ()
-    }
-    match jvp_faces {
-      Some(fs) => {
-        wat_emit("  (global $jvp_face i32 (i32.const {int_to_str(word_faces * n)}))\n")
-        wat_emit("  (elem $fns_jvp (i32.const {int_to_str(fn_table_base() + word_faces * n)})")
-        emit_native_refs(fs)
-        wat_emit(")\n")
-        wat_emit("  (func $__jvp_absent (unreachable))\n")
-      },
-      None => (),
-    }
+      wat_emit("  (func $__jvp_absent (unreachable))\n")
+    },
+    None => (),
   }
 }
 
@@ -3738,10 +3731,16 @@ fn emit_fn_refs(names, wide_names) = each(
   (name) => {
     let wide = any((w) => field_name_eq(w, name), wide_names)
     wat_emit(if wide { " $wf$" } else { " $" })
-    wat_emit(name)
+    wat_emit(slot_face(name))
   },
   names
 )
+
+// A list slot's store reached through the table lands on its journaling face
+// where an arena lives (`emit_arena_runtime`), at the same position: a
+// direct call carries the stored value's leaf, and a call through a value
+// cannot.
+fn slot_face(name: String) = if name == "list_set" && arena_live() { "list_set_v" } else { name }
 
 // Per-function table-index globals. At LMakeClosure emit, we push
 // `(global.get $<name>_idx)` to get the i32 table index — no list
@@ -3851,18 +3850,22 @@ fn emit_image_substrate(wasi_ops, line_globals, value_lets, yield_seen, table_al
   }
 }
 
-// The census: every mutable global this module declares, in the record's
-// slot order — the substrate quartet, the yield quartet when the module
-// yields, one address word per static `<~` line (the ring itself is an
-// image record the copy carries), one word per top-level let (their
-// globals are word-faced by construction).
+// The census: the mutable globals an image carries, in the record's slot
+// order — the substrate trio, the yield quartet when the module yields, one
+// address word per static `<~` line (the ring itself is an image record the
+// copy carries), one word per top-level let (their globals are word-faced by
+// construction). An arena's globals are not among them: its depth, mark and
+// journal length describe extents open on the writer's stack, which no image
+// carries, so a resumed process runs outside every arena its writer had
+// open, and what the image holds of an open arena's region is ordinary heap
+// there, which no exit reclaims.
 fn image_global_slots(line_globals, value_lets, yield_seen) = {
   let yq = if yield_seen > 0 {
     [("yield_flag", "i32"), ("yield_op", "i32"), ("yield_k", "i32"), ("yield_args", "i32")]
   } else {
     []
   }
-  [("heap_ptr", "i32"), ("arena_ptr", "i32"), ("world_g", "i32"), ("tid_g", "i32")] ++ yq ++ line_globals ++ map({ (name, _) => (name, "i32") }, value_lets)
+  [("heap_ptr", "i32"), ("world_g", "i32"), ("tid_g", "i32")] ++ yq ++ line_globals ++ map({ (name, _) => (name, "i32") }, value_lets)
 }
 
 fn emit_globals_pair(slots) = {
@@ -4193,6 +4196,7 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LMatch(_h, s, arms) => collect_call_vectors_arms(arms, collect_call_vectors_expr(s, acc)),
   LHandleWith(_h, b, hn, _hn2, inits, _arms) => collect_call_vectors_expr(b, collect_call_vectors_expr(hn, collect_call_vectors_list(inits, acc))),
   LDerive(_h, seed, b) => collect_call_vectors_expr(b, collect_call_vectors_expr(seed, acc)),
+  LArena(_h, b) => collect_call_vectors_expr(b, acc),
   LFeedback(_h, _d, _home, b, s) => collect_call_vectors_expr(s, collect_call_vectors_expr(b, acc)),
   LWasiCall(_h, _n, args) => collect_call_vectors_list(args, acc),
   LFieldLoad(_h, rec, _o) => collect_call_vectors_expr(rec, acc),
@@ -4473,12 +4477,6 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw) = {
   // makes current_id answerable. Unconditional (a thread-free module's
   // thread_id truthfully answers 0).
   wat_emit("  (global $tid_g (mut i32) (i32.const 0))\n")
-  // Arena pointer (W5 swap surface). emit_memory_arena allocates
-  // from this pointer; scope exits reset it to a saved snapshot
-  // for O(1) region drop. Lives in the same address space as the
-  // bump heap; only one strategy is active per emit (the installed
-  // EmitMemory handler decides which pointer moves).
-  wat_emit("  (global $arena_ptr (mut i32) (i32.const 1048576))\n")
   // The live WORLD — the top of the install chain, the runtime half of
   // TCont's world index (the world-as-value substrate; PLAN named-residue
   // Hβ.cli.infer-context-bracket carries the converged design). A node is
@@ -4617,6 +4615,469 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw) = {
   if wants_rmw {
     wat_emit("  (func $atomic_rmw_impl (param $addr i32) (param $op i32) (param $val i32) (result i32)(block $bad (block $b5 (block $b4 (block $b3 (block $b2 (block $b1 (block $b0 (br_table $b0 $b1 $b2 $b3 $b4 $b5 $bad (local.get $op)))(return (i32.atomic.rmw.add (local.get $addr)(local.get $val))))(return (i32.atomic.rmw.sub (local.get $addr)(local.get $val))))(return (i32.atomic.rmw.and (local.get $addr)(local.get $val))))(return (i32.atomic.rmw.or (local.get $addr)(local.get $val))))(return (i32.atomic.rmw.xor (local.get $addr)(local.get $val))))(return (i32.atomic.rmw.xchg (local.get $addr)(local.get $val))))(unreachable))\n")
   }
+}
+
+// ─── THE ARENA (lib/arena.mn) — the journal and the exit ─────────────────
+//
+// An arena is an extent of the one heap line: what its body allocated past
+// its mark dies at its exit except what its publication reaches. The body's
+// value is reached through its type; what the body stored into memory OLDER
+// than the arena is reached through the JOURNAL, which every such store
+// writes where it happens. The exit moves what is reached and slides it down
+// to where the extent began, so the line ends just past the survivors and
+// everything above it is zero again.
+//
+// THE JOURNAL. An entry is two words: the slot a store wrote, and the leaf
+// its value moves through. The barrier knows the type wherever the store can
+// reach memory older than an arena: the judgment reads each store's target
+// along its value's edges — fresh, a parameter its callers answer for, a
+// handler's state its installs answer for, or older — and a store that can
+// reach older memory reads its value as a move (`MovedShape`), so its body is
+// twinned by the class that move needs. A list slot (`list_set`'s direct
+// call, through `$list_set_j`), a handler's state commit and a `<~` tick each
+// write the leaf where the store happens; a store whose value's type no twin
+// bound writes leaf 0, as does `list_set` reached as a value (through its
+// table face), and a word stores with no barrier at all. Only stores
+// into memory below the innermost open arena's mark are journaled, and only
+// while one is open — outside, a barrier costs one compare. The journal's
+// block is the instance's first allocation (below).
+//
+// THE EXIT asks no one. The sweep checks every journaled slot that holds a
+// value of the region: an entry whose type its barrier could not see (leaf
+// 0 — a function, a continuation, a variable no twin bound) and an
+// overflowed journal KEEP the region, nothing moved, which is sound for any
+// program. Otherwise every such value moves through its leaf into scratch
+// above the region (a copy's address is its TEMP; the original's first word
+// holds it, a bitmap says it moved, the copy log remembers the word it
+// overwrote), the copies are scanned in order (Cheney's queue, the log), and
+// the pass commits: roots are rewritten from TEMP to FINAL, the copies slide
+// down in one `memory.copy`, every byte the exit touched above the new line
+// is zeroed, and the line moves. A value no leaf can move — a function, a
+// continuation, a type the emitter could not see — found while moving makes
+// the exit ABORT instead: every moved original gets its first word back,
+// every root its value, and the region is kept. A spawning module's arena is
+// its body alone (`Hβ.arena.per-instance-regions`).
+//
+// The census rides five counters `arena_stat` reads: exits, kept exits, the
+// KB reclaimed and moved, and the highest line an exit reached.
+fn emit_arena_runtime() = {
+  wat_emit("  (global $ar_depth (mut i32) (i32.const 0))\n  (global $ar_mark (mut i32) (i32.const 0))\n  (global $ar_jb (mut i32) (i32.const 0))\n  (global $ar_jn (mut i32) (i32.const 0))\n  (global $ar_jover (mut i32) (i32.const 0))\n")
+  wat_emit("  (global $ar_m (mut i32) (i32.const 0))\n  (global $ar_t (mut i32) (i32.const 0))\n  (global $ar_bm (mut i32) (i32.const 0))\n  (global $ar_bmsz (mut i32) (i32.const 0))\n  (global $ar_rl (mut i32) (i32.const 0))\n  (global $ar_rn (mut i32) (i32.const 0))\n  (global $ar_ll (mut i32) (i32.const 0))\n  (global $ar_ln (mut i32) (i32.const 0))\n  (global $ar_lscan (mut i32) (i32.const 0))\n  (global $ar_c0 (mut i32) (i32.const 0))\n  (global $ar_cp (mut i32) (i32.const 0))\n  (global $ar_cend (mut i32) (i32.const 0))\n  (global $ar_dst (mut i32) (i32.const 0))\n  (global $ar_delta (mut i32) (i32.const 0))\n  (global $ar_abort (mut i32) (i32.const 0))\n")
+  wat_emit("  (global $ar_exits (mut i32) (i32.const 0))\n  (global $ar_kept (mut i32) (i32.const 0))\n  (global $ar_freed (mut i32) (i32.const 0))\n  (global $ar_moved (mut i32) (i32.const 0))\n  (global $ar_high (mut i32) (i32.const 0))\n")
+  // The block — 262144 journal entries of 8 bytes — is the instance's FIRST
+  // allocation (`emit_start`), below every mark any code can take, so no
+  // region, commit, keep or reset ever moves or frees it, and a persisted
+  // image holds it at the same address its resuming instance does. (It was
+  // allocated per outermost arena and reclaimed by compacting the survivors
+  // onto it; an exit that KEPT its region left the block under it and the
+  // next arena allocated another, two megabytes per keep, until the line ran
+  // out — 2026-10-03, the first run in which the compiler's own judgment
+  // kept regions.)
+  wat_emit("  (func $arena_enter (if (i32.eqz (global.get $ar_depth)) (then (global.set $ar_jn (i32.const 0)) (global.set $ar_jover (i32.const 0)))) (global.set $ar_depth (i32.add (global.get $ar_depth) (i32.const 1))) (global.set $ar_mark (call $heap_mark_impl)))\n")
+  wat_emit("  (func $ar_journal (param $a i32) (param $b i32) (local $e i32) (if (i32.ge_u (global.get $ar_jn) (i32.const 262144)) (then (global.set $ar_jover (i32.const 1)) (return))) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (global.get $ar_jn) (i32.const 3)))) (i32.store (local.get $e) (local.get $a)) (i32.store offset=4 (local.get $e) (local.get $b)) (global.set $ar_jn (i32.add (global.get $ar_jn) (i32.const 1))))\n")
+  wat_emit("  (func $arena_slot_note (param $s i32) (param $k i32) (if (i32.eqz (global.get $ar_depth)) (then (return))) (if (i32.ge_u (local.get $s) (global.get $ar_mark)) (then (return))) (call $ar_journal (local.get $s) (local.get $k)))\n")
+  // A list slot's barrier, called in place of `list_set` by a direct call
+  // (`direct_call_target`) with the leaf of the value the call stores. Only a
+  // word list's slot can hold a pointer — a byte list or a packed float list
+  // stores none — so the barrier reads the tag word the store itself is about
+  // to read.
+  wat_emit("  (func $list_set_j (param $st i32) (param $l i32) (param $i i32) (param $v i32) (param $k i32) (result i32) (if (i32.eqz (i32.load offset=4 (local.get $l))) (then (call $arena_slot_note (i32.add (local.get $l) (i32.add (i32.const 8) (i32.shl (local.get $i) (i32.const 2)))) (local.get $k)))) (return_call $list_set (local.get $st) (local.get $l) (local.get $i) (local.get $v)))\n")
+  // The same store reached through the table — `list_set` as a value, called
+  // where the stored type is not known: its slot holds this face
+  // (`slot_face`), which journals with leaf 0, so an exit that finds a value
+  // of its region there keeps the region rather than move what it cannot read.
+  wat_emit("  (func $list_set_v (param $st i32) (param $l i32) (param $i i32) (param $v i32) (result i32) (return_call $list_set_j (local.get $st) (local.get $l) (local.get $i) (local.get $v) (i32.const 0)))\n")
+  // A journal entry read back: the slot it names, and the leaf its value
+  // moves through (-3 a boxed float, 0 a type its barrier could not see, a
+  // leaf index otherwise).
+  wat_emit("  (func $ar_entry_slot (param $e i32) (result i32) (i32.load (local.get $e)))\n")
+  wat_emit("  (func $ar_entry_leaf (param $e i32) (result i32) (i32.load offset=4 (local.get $e)))\n")
+  // The moving machinery the leaves call.
+  wat_emit("  (func $ar_young (param $p i32) (result i32) (i32.and (i32.ge_u (local.get $p) (global.get $ar_m)) (i32.lt_u (local.get $p) (global.get $ar_t))))\n")
+  wat_emit("  (func $ar_fwd (param $p i32) (result i32) (local $i i32) (local.set $i (i32.shr_u (i32.sub (local.get $p) (global.get $ar_m)) (i32.const 3))) (i32.and (i32.load8_u (i32.add (global.get $ar_bm) (i32.shr_u (local.get $i) (i32.const 3)))) (i32.shl (i32.const 1) (i32.and (local.get $i) (i32.const 7)))))\n")
+  wat_emit("  (func $ar_copy (param $p i32) (param $sz i32) (param $k i32) (result i32) (local $t i32) (local $n i32) (local $e i32) (local $i i32) (if (global.get $ar_abort) (then (return (local.get $p)))) (if (i32.lt_u (local.get $sz) (i32.const 4)) (then (return (local.get $p)))) (if (i32.gt_u (i32.add (local.get $p) (local.get $sz)) (global.get $ar_t)) (then (global.set $ar_abort (i32.const 1)) (return (local.get $p)))) (local.set $n (i32.and (i32.add (local.get $sz) (i32.const 7)) (i32.const -8))) (local.set $t (global.get $ar_cp)) (if (i32.gt_u (i32.add (local.get $t) (local.get $n)) (global.get $ar_cend)) (then (global.set $ar_abort (i32.const 1)) (return (local.get $p)))) (local.set $e (i32.add (global.get $ar_ll) (i32.mul (global.get $ar_ln) (i32.const 12)))) (if (i32.gt_u (i32.add (local.get $e) (i32.const 12)) (global.get $ar_c0)) (then (global.set $ar_abort (i32.const 1)) (return (local.get $p)))) (call $memory_reach (i32.add (local.get $t) (local.get $n))) (memory.copy (local.get $t) (local.get $p) (local.get $sz)) (global.set $ar_cp (i32.add (local.get $t) (local.get $n))) (i32.store (local.get $e) (local.get $p)) (i32.store offset=4 (local.get $e) (local.get $k)) (i32.store offset=8 (local.get $e) (i32.load (local.get $p))) (global.set $ar_ln (i32.add (global.get $ar_ln) (i32.const 1))) (local.set $i (i32.shr_u (i32.sub (local.get $p) (global.get $ar_m)) (i32.const 3))) (local.set $e (i32.add (global.get $ar_bm) (i32.shr_u (local.get $i) (i32.const 3)))) (i32.store8 (local.get $e) (i32.or (i32.load8_u (local.get $e)) (i32.shl (i32.const 1) (i32.and (local.get $i) (i32.const 7))))) (i32.store (local.get $p) (local.get $t)) (local.get $t))\n")
+  wat_emit("  (func $ar_box8 (param $p i32) (result i32) (if (i32.eqz (call $ar_young (local.get $p))) (then (return (local.get $p)))) (if (call $ar_fwd (local.get $p)) (then (return (i32.load (local.get $p))))) (call $ar_copy (local.get $p) (i32.const 8) (i32.const 0)))\n")
+  wat_emit("  (func $ar_opaque (param $p i32) (if (call $ar_young (local.get $p)) (then (global.set $ar_abort (i32.const 1)))))\n")
+  // Index 0 of the two leaf regions (`emit_arena_table`): the value no leaf
+  // moves, and the copy with nothing to scan.
+  wat_emit("  (func $ar_evac_none (param $p i32) (result i32) (call $ar_opaque (local.get $p)) (local.get $p))\n  (func $ar_scan_none (param $t i32) (result i32) (i32.const 0))\n")
+  wat_emit("  (func $ar_stride (param $sc i32) (result i32) (if (result i32) (i32.eq (local.get $sc) (i32.const 1)) (then (i32.const 1)) (else (if (result i32) (i32.eq (local.get $sc) (i32.const 2)) (then (i32.const 8)) (else (if (result i32) (i32.eq (local.get $sc) (i32.const 3)) (then (i32.const 16)) (else (if (result i32) (i32.eq (local.get $sc) (i32.const 4)) (then (i32.const 2)) (else (i32.const 4))))))))))\n")
+  wat_emit("  (func $ar_final (param $r i32) (result i32) (if (result i32) (i32.ge_u (local.get $r) (global.get $ar_c0)) (then (i32.sub (local.get $r) (global.get $ar_delta))) (else (local.get $r))))\n")
+  wat_emit("  (func $ar_zero (param $a i32) (param $b i32) (param $f i32) (if (i32.lt_u (local.get $a) (local.get $f)) (then (local.set $a (local.get $f)))) (if (i32.gt_u (local.get $b) (local.get $a)) (then (memory.fill (local.get $a) (i32.const 0) (i32.sub (local.get $b) (local.get $a))))))\n")
+  // The sweep: the check, the scratch above the region, and the roots.
+  wat_emit("  (func $arena_sweep (param $m i32) (param $j0 i32) (result i32) (local $t i32) (local $i i32) (local $e i32) (local $s i32) (local $v i32) (local $k i32) (local $n i32) (local $r i32)\n")
+  wat_emit("    (global.set $ar_exits (i32.add (global.get $ar_exits) (i32.const 1))) (local.set $t (call $heap_mark_impl)) (global.set $ar_m (local.get $m)) (global.set $ar_t (local.get $t)) (global.set $ar_abort (i32.const 0)) (global.set $ar_bm (i32.const 0)) (global.set $ar_rn (i32.const 0)) (global.set $ar_ln (i32.const 0)) (global.set $ar_lscan (i32.const 0))\n")
+  wat_emit("    (if (global.get $ar_jover) (then (return (i32.const 0))))\n")
+  wat_emit("    (local.set $i (local.get $j0)) (block $ok (loop $chk (br_if $ok (i32.ge_u (local.get $i) (global.get $ar_jn))) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (local.get $i) (i32.const 3)))) (if (call $ar_young (i32.load (call $ar_entry_slot (local.get $e)))) (then (if (i32.eqz (call $ar_entry_leaf (local.get $e))) (then (return (i32.const 0)))))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $chk)))\n")
+  wat_emit("    (local.set $n (i32.sub (local.get $t) (local.get $m))) (global.set $ar_bm (local.get $t)) (global.set $ar_bmsz (i32.and (i32.add (i32.shr_u (local.get $n) (i32.const 6)) (i32.const 15)) (i32.const -8))) (global.set $ar_rl (i32.add (global.get $ar_bm) (global.get $ar_bmsz))) (global.set $ar_ll (i32.add (global.get $ar_rl) (i32.shl (i32.add (i32.sub (global.get $ar_jn) (local.get $j0)) (i32.const 1)) (i32.const 3)))) (global.set $ar_c0 (i32.and (i32.add (i32.add (global.get $ar_ll) (i32.add (local.get $n) (i32.shr_u (local.get $n) (i32.const 1)))) (i32.const 7)) (i32.const -8))) (global.set $ar_cp (global.get $ar_c0)) (global.set $ar_cend (i32.add (global.get $ar_c0) (local.get $n)))\n")
+  wat_emit("    (global.set $ar_dst (local.get $m)) (global.set $ar_delta (i32.sub (global.get $ar_c0) (global.get $ar_dst))) (call $memory_reach (global.get $ar_ll))\n")
+  wat_emit("    (local.set $i (local.get $j0)) (block $done (loop $root (br_if $done (i32.ge_u (local.get $i) (global.get $ar_jn))) (br_if $done (global.get $ar_abort)) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (local.get $i) (i32.const 3)))) (local.set $s (call $ar_entry_slot (local.get $e))) (local.set $v (i32.load (local.get $s))) (if (call $ar_young (local.get $v)) (then (local.set $k (call $ar_entry_leaf (local.get $e))) (if (i32.or (i32.gt_s (local.get $k) (i32.const 0)) (i32.eq (local.get $k) (i32.const -3))) (then (local.set $r (i32.add (global.get $ar_rl) (i32.shl (global.get $ar_rn) (i32.const 3)))) (i32.store (local.get $r) (local.get $s)) (i32.store offset=4 (local.get $r) (local.get $v)) (global.set $ar_rn (i32.add (global.get $ar_rn) (i32.const 1))) (i32.store (local.get $s) (if (result i32) (i32.eq (local.get $k) (i32.const -3)) (then (call $ar_box8 (local.get $v))) (else (call $ar_evac_by (local.get $k) (local.get $v))))))))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $root)))\n")
+  wat_emit("    (i32.const 1))\n")
+  // The close: drain the queue, then commit or restore, then pop.
+  wat_emit("  (func $ar_scratch_clear (call $ar_zero (global.get $ar_bm) (i32.add (global.get $ar_bm) (global.get $ar_bmsz)) (i32.const 0)) (call $ar_zero (global.get $ar_rl) (i32.add (global.get $ar_rl) (i32.shl (global.get $ar_rn) (i32.const 3))) (i32.const 0)) (call $ar_zero (global.get $ar_ll) (i32.add (global.get $ar_ll) (i32.mul (global.get $ar_ln) (i32.const 12))) (i32.const 0)) (call $ar_zero (global.get $ar_c0) (global.get $ar_cp) (i32.const 0)))\n")
+  wat_emit("  (func $ar_restore (local $i i32) (local $e i32) (local.set $i (i32.const 0)) (block $d1 (loop $l1 (br_if $d1 (i32.ge_u (local.get $i) (global.get $ar_ln))) (local.set $e (i32.add (global.get $ar_ll) (i32.mul (local.get $i) (i32.const 12)))) (i32.store (i32.load (local.get $e)) (i32.load offset=8 (local.get $e))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $l1))) (local.set $i (i32.const 0)) (block $d2 (loop $l2 (br_if $d2 (i32.ge_u (local.get $i) (global.get $ar_rn))) (local.set $e (i32.add (global.get $ar_rl) (i32.shl (local.get $i) (i32.const 3)))) (i32.store (i32.load (local.get $e)) (i32.load offset=4 (local.get $e))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $l2))))\n")
+  wat_emit("  (func $ar_commit (param $m i32) (local $i i32) (local $e i32) (local $s i32) (local $f i32) (local.set $s (i32.sub (global.get $ar_cp) (global.get $ar_c0))) (local.set $i (i32.const 0)) (block $d (loop $l (br_if $d (i32.ge_u (local.get $i) (global.get $ar_rn))) (local.set $e (i32.load (i32.add (global.get $ar_rl) (i32.shl (local.get $i) (i32.const 3))))) (i32.store (local.get $e) (i32.sub (i32.load (local.get $e)) (global.get $ar_delta))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $l)))\n")
+  wat_emit("    (if (i32.gt_u (i32.shr_u (global.get $ar_cp) (i32.const 10)) (global.get $ar_high)) (then (global.set $ar_high (i32.shr_u (global.get $ar_cp) (i32.const 10))))) (memory.copy (global.get $ar_dst) (global.get $ar_c0) (local.get $s)) (local.set $f (i32.add (global.get $ar_dst) (local.get $s)))\n")
+  wat_emit("    (call $ar_zero (local.get $m) (global.get $ar_t) (local.get $f)) (call $ar_scratch_clear)\n")
+  wat_emit("    (global.set $ar_freed (i32.add (global.get $ar_freed) (i32.shr_u (i32.sub (global.get $ar_t) (local.get $f)) (i32.const 10)))) (global.set $ar_moved (i32.add (global.get $ar_moved) (i32.shr_u (local.get $s) (i32.const 10)))) (global.set $heap_ptr (local.get $f)))\n")
+  wat_emit("  (func $ar_compact (param $j0 i32) (param $o i32) (local $i i32) (local $w i32) (local $e i32) (local $d i32) (local.set $i (local.get $j0)) (local.set $w (local.get $j0)) (block $done (loop $l (br_if $done (i32.ge_u (local.get $i) (global.get $ar_jn))) (local.set $e (i32.add (global.get $ar_jb) (i32.shl (local.get $i) (i32.const 3)))) (if (i32.lt_u (i32.load (local.get $e)) (local.get $o)) (then (local.set $d (i32.add (global.get $ar_jb) (i32.shl (local.get $w) (i32.const 3)))) (i32.store (local.get $d) (i32.load (local.get $e))) (i32.store offset=4 (local.get $d) (i32.load offset=4 (local.get $e))) (local.set $w (i32.add (local.get $w) (i32.const 1))))) (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $l))) (call $ar_zero (i32.add (global.get $ar_jb) (i32.shl (local.get $w) (i32.const 3))) (i32.add (global.get $ar_jb) (i32.shl (global.get $ar_jn) (i32.const 3))) (i32.const 0)) (global.set $ar_jn (local.get $w)))\n")
+  wat_emit("  (func $arena_close (param $m i32) (param $j0 i32) (param $o i32) (param $go i32) (result i32) (local $e i32) (local $k i32)\n")
+  wat_emit("    (if (local.get $go) (then (block $done (loop $drain (br_if $done (global.get $ar_abort)) (br_if $done (i32.ge_u (global.get $ar_lscan) (global.get $ar_ln))) (local.set $e (i32.add (global.get $ar_ll) (i32.mul (global.get $ar_lscan) (i32.const 12)))) (global.set $ar_lscan (i32.add (global.get $ar_lscan) (i32.const 1))) (local.set $k (i32.load offset=4 (local.get $e))) (if (i32.gt_s (local.get $k) (i32.const 0)) (then (call $ar_scan_by (local.get $k) (i32.load (i32.load (local.get $e)))))) (br $drain))) (if (global.get $ar_abort) (then (call $ar_restore) (local.set $go (i32.const 0))))))\n")
+  wat_emit("    (if (local.get $go) (then (call $ar_commit (local.get $m))) (else (global.set $ar_kept (i32.add (global.get $ar_kept) (i32.const 1))) (if (global.get $ar_bm) (then (call $ar_scratch_clear)))))\n")
+  wat_emit("    (global.set $ar_depth (i32.sub (global.get $ar_depth) (i32.const 1))) (if (i32.eqz (global.get $ar_depth)) (then (global.set $ar_jn (i32.const 0))) (else (call $ar_compact (local.get $j0) (local.get $o)))) (global.set $ar_mark (local.get $o)) (global.set $ar_m (i32.const 0)) (global.set $ar_t (i32.const 0)) (local.get $go))\n")
+  // The census read: a nullary ArenaStat IS its tag word, in declaration order.
+  wat_emit("  (func $arena_stat_impl (param $s i32) (result i32) (block $b4 (block $b3 (block $b2 (block $b1 (block $b0 (br_table $b0 $b1 $b2 $b3 $b4 (local.get $s))) (return (global.get $ar_exits))) (return (global.get $ar_kept))) (return (global.get $ar_freed))) (return (global.get $ar_moved))) (global.get $ar_high))\n")
+}
+
+// What the emission reads of the module's arenas, settled by the plan: the
+// evacuation leaves in index order, each leaf's index by its sig, and
+// whether the arena is live at all — a module that opens none, and a
+// spawning one, emit an arena as its body.
+effect ArenaLeaves {
+  set_arena_leaves([(String, Shape)], Bool)
+  arena_leaves() -> [(String, Shape)]
+  arena_leaf_index(String) -> Option(Int)
+  arena_live() -> Bool
+}
+
+handler arena_registry with demanded = false, leaves = [], index = smap_new(), live = false {
+  arena_demand_note() => resume() with demanded = true,
+  arena_demanded() => resume(demanded),
+  set_arena_leaves(xs, on) => resume() with leaves = xs, index = smap_build(leaf_numbering(xs)), live = on,
+  arena_leaves() => resume(leaves),
+  arena_leaf_index(sig) => resume(smap_get(index, sig)),
+  arena_live() => resume(live),
+}
+
+// A leaf's index is its position plus one — the number a journal entry, a
+// claim and a copy's scan carry, 0 being the opaque answer.
+fn leaf_numbering(leaves) = fold([], number_leaf, leaves)
+
+fn number_leaf(acc, leaf) = match leaf {
+  (sig, _) => push(acc, (sig, len(acc) + 1)),
+}
+
+// An arena where one is live: its mark and the journal's length are saved
+// as it opens; its body runs; the sweep checks and moves the roots its
+// barriers journaled; the value moves through its own leaf; the close
+// drains, commits or keeps, and pops. A value of a type no leaf moves aborts
+// the exit when it is in the region, which keeps the region.
+fn emit_arena(h, b) = {
+  let hs = int_to_str(h)
+  let t = evac_type_at(h)
+  let ev = evac_of(t)
+  wat_emit("    (local.set $__ar_o_{hs} (global.get $ar_mark))\n    (local.set $__ar_j_{hs} (global.get $ar_jn))\n    (call $arena_enter)\n    (local.set $__ar_m_{hs} (global.get $ar_mark))\n")
+  emit_expr(b)
+  wat_emit("    (local.set $__ar_v_{hs})\n    (local.set $__ar_g_{hs} (call $arena_sweep (local.get $__ar_m_{hs}) (local.get $__ar_j_{hs})))\n")
+  match ev {
+    EvShape(_) => wat_emit("    (local.set $__ar_r_{hs} (local.get $__ar_v_{hs}))\n    (if (local.get $__ar_g_{hs}) (then (if (call $ar_young (local.get $__ar_v_{hs})) (then (local.set $__ar_r_{hs} (call $evac_{evac_sig(t)} (local.get $__ar_v_{hs})))))))\n"),
+    EvOpaque => wat_emit("    (if (local.get $__ar_g_{hs}) (then (call $ar_opaque (local.get $__ar_v_{hs}))))\n"),
+    EvWord => (),
+    EvWide => (),
+  }
+  wat_emit("    (local.set $__ar_g_{hs} (call $arena_close (local.get $__ar_m_{hs}) (local.get $__ar_j_{hs}) (local.get $__ar_o_{hs}) (local.get $__ar_g_{hs})))\n")
+  match ev {
+    EvShape(_) => wat_emit("    (if (local.get $__ar_g_{hs}) (then (local.set $__ar_v_{hs} (call $ar_final (local.get $__ar_r_{hs})))))\n"),
+    EvOpaque => (),
+    EvWord => (),
+    EvWide => (),
+  }
+  wat_emit("    (local.get $__ar_v_{hs})\n")
+}
+
+// The arena's own registers, mirror-true to `emit_arena`: the outer mark,
+// the journal length and the mark at entry, the go flag, the moved value's
+// TEMP, and the value at its own width.
+fn arena_locals(h) = {
+  let hs = int_to_str(h)
+  ["__ar_o_{hs} i32", "__ar_j_{hs} i32", "__ar_m_{hs} i32", "__ar_g_{hs} i32", "__ar_r_{hs} i32", "__ar_v_{hs} {repr_wat(repr_of(lookup_ty(h)))}"]
+}
+
+// ─── THE FIFTH FOLD LEAF — evacuation ──────────────────────────────────
+//
+// An arena's exit moves a value by its type, so the fold has a leaf for it:
+// `$evac_<sig>` takes a value of the type and answers where its copy is —
+// itself when it is not in the region, the copy a first visit made when it
+// is — and `$scan_<sig>` moves what a copy points to. A pointer field the
+// leaves cannot move (a function, a continuation, a type the emission could
+// not see) aborts the exit if its value is in the region; the exit then
+// keeps the region whole. What a type's value needs to move — the `Evac`
+// class — is the lowering's (lower.mn `evac_of`), because a twin is keyed by
+// it before anything is emitted.
+fn evac_type_moves(ty) = evac_moves(evac_of(ty))
+
+// The type a site's value moves by: the node's type under the bracket the
+// site is emitted in, aliases and refinements stripped.
+fn evac_type_at(h) = fold_strip(slot_ty(chase_deep(lookup_ty(h))))
+
+// A site's class. A value with no node — a frame read the lowering minted —
+// has a type the emission cannot see.
+fn evac_at(h) = if h == 0 { EvOpaque } else { evac_of(evac_type_at(h)) }
+
+// The leaf a value is moved through, as the exit's runtime reads it: a word
+// is nothing to move, a float in a word slot is a box, a value no leaf can
+// move is opaque, and a shape is the leaf at its index.
+type EvacLeaf = LfWord | LfBoxed | LfOpaque | LfAt(Int)
+
+// The runtime's encoding of a leaf — the one projection to the integers the
+// journal, the claims and the dispatchers carry. (-2, absent, is the claims
+// table's own answer and never a leaf.)
+fn leaf_code(lf) = match lf {
+  LfWord => -1,
+  LfBoxed => -3,
+  LfOpaque => 0,
+  LfAt(k) => k,
+}
+
+fn evac_leaf(ty) = match evac_of(ty) {
+  EvShape(_) => evac_leaf_named(evac_sig(ty)),
+  EvOpaque => LfOpaque,
+  EvWord => LfWord,
+  EvWide => LfBoxed,
+}
+
+fn evac_sig(ty) = move_sig(fold_strip(slot_ty(ty)))
+
+// A shape's leaf by its sig, settled before any function is written. A
+// shape the fold collection never met is a site the plan did not see, and
+// it says so: the barrier it would have written moves nothing.
+fn evac_leaf_named(sig: String) = match arena_leaf_index(sig) {
+  Some(k) => LfAt(k),
+  None => {
+    diag_report_at(
+      EInternalInvariant(
+        "an arena barrier asks for the leaf of `{sig}`, which the fold collection never met",
+        span_zero()
+      ),
+      ""
+    )
+    LfOpaque
+  },
+}
+
+// Whether a store of this node's value into older memory is journaled.
+fn evac_journals(h) = evac_moves(evac_at(h))
+
+fn evac_leaf_at(h) = if h == 0 { LfOpaque } else { evac_leaf(evac_type_at(h)) }
+
+fn evac_leaf_sig(leaf) = match leaf {
+  (s, _) => s,
+}
+
+fn evac_sig_is(sig: String, leaf) = match leaf {
+  (s, _) => s == sig,
+}
+
+// A root the fold collection met: the type a site moves, kept once per sig.
+fn evac_root_add(roots, ty) = match evac_of(ty) {
+  EvShape(_) => {
+    let t = fold_strip(slot_ty(ty))
+    if any(same_move_sig(move_sig(t), ??), roots) { roots } else { push(roots, t) }
+  },
+  EvOpaque => roots,
+  EvWord => roots,
+  EvWide => roots,
+}
+
+fn same_move_sig(sig: String, r) = move_sig(r) == sig
+
+// Every leaf the roots reach, each once by sig with the shape it moves by,
+// in the order first met — the order the indices are read off.
+fn evac_leaf_list(roots) = fold([], evac_add, roots)
+
+fn evac_add(acc, ty) = match evac_of(ty) {
+  EvShape(sh) => {
+    let sig = evac_sig(ty)
+    if any(evac_sig_is(sig, ??), acc) { acc } else { evac_add_shape(push(acc, (sig, sh)), sh) }
+  },
+  EvOpaque => acc,
+  EvWord => acc,
+  EvWide => acc,
+}
+
+// What a shape's copies point to: a sequence's elements, a product's
+// fields, every variant's payloads.
+fn evac_add_shape(acc, sh) = match sh {
+  ShSeq(e) => evac_add(acc, e),
+  ShProduct(ftys) => fold(acc, evac_add, ftys),
+  ShSum(specs) => fold(acc, evac_add_variant, specs),
+}
+
+fn evac_add_variant(acc, spec) = match spec {
+  (_, payloads) => fold(acc, evac_add, payloads),
+}
+
+// The bytes a product's fields span, each at its slot width.
+fn evac_fields_end(ftys, off) = fold(off, evac_field_end, ftys)
+
+fn evac_field_end(off, fty) = {
+  let r = slot_repr(fold_strip(fty))
+  align_for(off, r) + repr_width(r)
+}
+
+// Every leaf, then the two dispatchers the exit calls by index.
+fn emit_evac_leaves(leaves) = {
+  each(emit_evac_leaf, leaves)
+  emit_evac_dispatch(leaves)
+}
+
+fn emit_evac_leaf(leaf) = match leaf {
+  (sig, sh) => {
+    let k = leaf_code(evac_leaf_named(sig))
+    match sh {
+      ShSeq(e) => emit_evac_seq(sig, k, e),
+      ShProduct(ftys) => emit_evac_product(sig, k, ftys),
+      ShSum(specs) => emit_evac_sum(sig, k, specs),
+    }
+  },
+}
+
+fn emit_evac_head(sig: String, locals: String) = {
+  wat_emit("  (func $evac_{sig} (param $p i32) (result i32){locals}\n")
+  wat_emit("    (if (i32.eqz (call $ar_young (local.get $p))) (then (return (local.get $p))))\n")
+  wat_emit("    (if (call $ar_fwd (local.get $p)) (then (return (i32.load (local.get $p)))))\n")
+}
+
+// One pointer slot of a copy at `base + off`: its value, when it is in the
+// region, moves and the slot takes the FINAL address. An element slot of a
+// word list may hold a float only boxed, and the box moves.
+fn emit_evac_slot(base: String, off, fty, boxed) = match evac_of(fty) {
+  EvShape(_) => wat_emit("    (local.set $v (i32.load offset={int_to_str(off)} (local.get ${base}))) (if (call $ar_young (local.get $v)) (then (i32.store offset={int_to_str(off)} (local.get ${base}) (i32.sub (call $evac_{evac_sig(fty)} (local.get $v)) (global.get $ar_delta)))))\n"),
+  EvOpaque => wat_emit("    (call $ar_opaque (i32.load offset={int_to_str(off)} (local.get ${base})))\n"),
+  EvWide => if boxed {
+    wat_emit("    (local.set $v (i32.load offset={int_to_str(off)} (local.get ${base}))) (if (call $ar_young (local.get $v)) (then (i32.store offset={int_to_str(off)} (local.get ${base}) (i32.sub (call $ar_box8 (local.get $v)) (global.get $ar_delta)))))\n")
+  } else {
+    ()
+  },
+  EvWord => (),
+}
+
+// A product's fields, each at its width-summed offset — the fold every
+// construction and every load of the type runs.
+fn emit_evac_fields(base: String, ftys, off) = match ftys {
+  [] => (),
+  [fty, ...rest] => {
+    let r = slot_repr(fold_strip(fty))
+    let here = align_for(off, r)
+    emit_evac_slot(base, here, fty, false)
+    emit_evac_fields(base, rest, here + repr_width(r))
+  },
+}
+
+fn emit_evac_product(sig: String, k, ftys) = {
+  let size = evac_fields_end(ftys, 0)
+  let scans = any(evac_type_moves, ftys)
+  emit_evac_head(sig, "")
+  wat_emit("    (call $ar_copy (local.get $p) (i32.const {int_to_str(size)}) (i32.const {int_to_str(if scans { k } else { 0 })})))\n")
+  if scans {
+    wat_emit("  (func $scan_{sig} (param $t i32) (result i32) (local $v i32)\n")
+    emit_evac_fields("t", ftys, 0)
+    wat_emit("    (i32.const 0))\n")
+  } else {
+    ()
+  }
+}
+
+// A sum: a fielded variant is [tag@0][payloads], each payload at the offset
+// the variant's own layout gives it; a nullary variant is a sentinel below
+// the heap and never reaches here.
+fn emit_evac_sum(sig: String, k, specs) = {
+  let scans = any(variant_moves, specs)
+  emit_evac_head(sig, " (local $tg i32)")
+  wat_emit("    (local.set $tg (i32.load (local.get $p)))\n")
+  each(emit_evac_sum_case(k, ??), specs)
+  wat_emit("    (global.set $ar_abort (i32.const 1))\n    (local.get $p))\n")
+  if scans {
+    wat_emit("  (func $scan_{sig} (param $t i32) (result i32) (local $tg i32) (local $v i32)\n")
+    wat_emit("    (local.set $tg (i32.load (local.get $t)))\n")
+    each(emit_scan_sum_case, specs)
+    wat_emit("    (i32.const 0))\n")
+  } else {
+    ()
+  }
+}
+
+fn variant_moves(spec) = match spec {
+  (_, payloads) => any(evac_type_moves, payloads),
+}
+
+fn emit_evac_sum_case(k, spec) = match spec {
+  (tag, payloads) => if len(payloads) == 0 {
+    ()
+  } else {
+    let k2 = if any(evac_type_moves, payloads) { k } else { 0 }
+    wat_emit("    (if (i32.eq (local.get $tg) (i32.const {int_to_str(tag)})) (then (return (call $ar_copy (local.get $p) (i32.const {int_to_str(evac_fields_end(payloads, 4))}) (i32.const {int_to_str(k2)})))))\n")
+  },
+}
+
+fn emit_scan_sum_case(spec) = match spec {
+  (tag, payloads) => if any(evac_type_moves, payloads) {
+    wat_emit("    (if (i32.eq (local.get $tg) (i32.const {int_to_str(tag)})) (then\n")
+    emit_evac_fields("t", payloads, 4)
+    wat_emit("    (return (i32.const 0))))\n")
+  } else {
+    ()
+  },
+}
+
+// A sequence node, by its tag: flat [count][tag][elements at the stride the
+// tag word carries], snoc [count][tag][left][element], concat
+// [count][tag][left][right], slice [count][tag][base][start]. The links are
+// sequences of the same type; an element moves only from a word slot.
+fn emit_evac_seq(sig: String, k, elem) = {
+  emit_evac_head(sig, " (local $tw i32) (local $tg i32)")
+  wat_emit("    (local.set $tw (i32.load offset=4 (local.get $p))) (local.set $tg (i32.and (local.get $tw) (i32.const 15)))\n")
+  wat_emit("    (if (i32.eqz (local.get $tg)) (then (return (call $ar_copy (local.get $p) (i32.add (i32.const 8) (i32.mul (i32.load (local.get $p)) (call $ar_stride (i32.shr_u (local.get $tw) (i32.const 4))))) (i32.const {int_to_str(k)})))))\n")
+  wat_emit("    (if (i32.eq (local.get $tg) (i32.const 1)) (then (return (call $ar_copy (local.get $p) (i32.add (i32.const 12) (call $ar_stride (i32.shr_u (local.get $tw) (i32.const 4)))) (i32.const {int_to_str(k)})))))\n")
+  wat_emit("    (call $ar_copy (local.get $p) (i32.const 16) (i32.const {int_to_str(k)})))\n")
+  let ev = evac_of(elem)
+  let elems = evac_moves(ev) || evac_boxes(ev)
+  wat_emit("  (func $scan_{sig} (param $t i32) (result i32) (local $tw i32) (local $tg i32) (local $v i32) (local $i i32) (local $n i32) (local $a i32)\n")
+  wat_emit("    (local.set $tw (i32.load offset=4 (local.get $t))) (local.set $tg (i32.and (local.get $tw) (i32.const 15)))\n")
+  wat_emit("    (if (i32.eqz (local.get $tg)) (then\n")
+  if elems {
+    wat_emit("      (if (i32.eqz (i32.shr_u (local.get $tw) (i32.const 4))) (then (local.set $n (i32.load (local.get $t))) (local.set $i (i32.const 0)) (block $d (loop $l (br_if $d (i32.ge_u (local.get $i) (local.get $n))) (local.set $a (i32.add (local.get $t) (i32.add (i32.const 8) (i32.shl (local.get $i) (i32.const 2)))))\n")
+    emit_evac_slot("a", 0, elem, true)
+    wat_emit("      (local.set $i (i32.add (local.get $i) (i32.const 1))) (br $l)))))\n")
+  } else {
+    ()
+  }
+  wat_emit("      (return (i32.const 0))))\n")
+  emit_evac_link(sig, 8)
+  wat_emit("    (if (i32.eq (local.get $tg) (i32.const 1)) (then\n")
+  if elems {
+    wat_emit("      (if (i32.eqz (i32.shr_u (local.get $tw) (i32.const 4))) (then (local.set $a (i32.add (local.get $t) (i32.const 12)))\n")
+    emit_evac_slot("a", 0, elem, true)
+    wat_emit("      ))\n")
+  } else {
+    ()
+  }
+  wat_emit("      (return (i32.const 0))))\n")
+  wat_emit("    (if (i32.eq (local.get $tg) (i32.const 3)) (then\n")
+  emit_evac_link(sig, 12)
+  wat_emit("    ))\n    (i32.const 0))\n")
+}
+
+fn emit_evac_link(sig: String, off) =
+  wat_emit("    (local.set $v (i32.load offset={int_to_str(off)} (local.get $t))) (if (call $ar_young (local.get $v)) (then (i32.store offset={int_to_str(off)} (local.get $t) (i32.sub (call $evac_{sig} (local.get $v)) (global.get $ar_delta)))))\n")
+
+// The exit's two calls by index, through the leaves' own table regions
+// (`emit_arena_table`): an index past the last — a code no leaf carries —
+// is the opaque answer, as index 0 is.
+fn emit_evac_dispatch(leaves) = {
+  let l = int_to_str(len(leaves))
+  wat_emit("  (func $ar_evac_by (param $k i32) (param $p i32) (result i32)\n    (if (i32.gt_u (local.get $k) (i32.const {l})) (then (call $ar_opaque (local.get $p)) (return (local.get $p))))\n    (call_indirect (type $ft1) (local.get $p) (i32.add (global.get $ar_evac_base) (local.get $k))))\n")
+  wat_emit("  (func $ar_scan_by (param $k i32) (param $t i32)\n    (if (i32.gt_u (local.get $k) (i32.const {l})) (then (return)))\n    (drop (call_indirect (type $ft1) (local.get $t) (i32.add (global.get $ar_scan_base) (local.get $k)))))\n")
+}
+
+// Whether a leaf's copies carry anything to move: a sequence always (its
+// links), a product or a sum when a field or payload does.
+fn evac_leaf_scans(leaf) = match leaf {
+  (_, sh) => match sh {
+    ShSeq(_) => true,
+    ShProduct(ftys) => any(evac_type_moves, ftys),
+    ShSum(specs) => any(variant_moves, specs),
+  },
 }
 
 // emit_functions deep-walks the lowered program and emits a WASM
@@ -4820,6 +5281,7 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LResumeK(_h, k, v) => collect_fn_emit_records_expr(k) ++ collect_fn_emit_records_expr(v),
   LHandleWith(_h, b, hn, _hname, inits, _arm_names) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(hn) ++ collect_fn_emit_records(inits),
   LDerive(_h, seed, b) => collect_fn_emit_records_expr(seed) ++ collect_fn_emit_records_expr(b),
+  LArena(_h, b) => collect_fn_emit_records_expr(b),
   LFeedback(_h, _d, _home, b, s) => collect_fn_emit_records_expr(b) ++ collect_fn_emit_records_expr(s),
   LPerform(_h, _d, args) => collect_fn_emit_records(args),
   LWasiCall(_h, _n, args) => collect_fn_emit_records(args),
@@ -5074,6 +5536,7 @@ fn walk_locals_expr(expr, acc) = match expr {
     },
     None => acc,
   },
+  LArena(h, b) => if arena_live() { walk_locals_expr(b, arena_locals(h) ++ acc) } else { walk_locals_expr(b, acc) },
   LWasiCall(h, n, args) => // The reading's lane ops park a record's address in a per-site local
   // (`lane_local`), mirror-true to their emission; the calls, performs and
   // installs the reading marks declare their own inside.
@@ -5445,7 +5908,7 @@ fn lexpr_leaves_value(e) = match e {
   _ => true,
 }
 
-fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, threaded) = {
+fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, threaded, arena_on) = {
   // Top-level closures are static data; the static `<~` rings allocate
   // through $__init_lines and top-level VALUE lets initialize through
   // $__init_lets, run FIRST in program order — rings before lets, since an
@@ -5460,6 +5923,9 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, thre
     // shared line mid-run).
     wat_emit("    (i32.atomic.store (i32.const 64) (i32.const 1048576))\n")
   }
+  // The arenas' journal, before anything else is allocated
+  // (`emit_arena_runtime`).
+  if arena_on { wat_emit("    (global.set $ar_jb (call $alloc (i32.const 2097152)))\n") }
   if has_lines { wat_emit("    (call $__init_lines (i32.const 0))\n    (drop)\n") }
   if len(value_lets) > 0 { wat_emit("    (call $__init_lets (i32.const 0))\n    (drop)\n") }
   if ls_find_str_local(top_fn_names, "main", 0) >= 0 {
@@ -6224,6 +6690,7 @@ fn emit_expr(expr) = match expr {
           enumerate(args)
         )
         let site_repr = repr_of(lookup_ty(h))
+        let target = direct_call_target(cname2, args)
         // A tail call must agree with the ENCLOSING fn's native result exactly;
         // when the callee's emitted result is the word face of a wide site type
         // the deref must run after the call, so the tail form demotes there —
@@ -6231,17 +6698,17 @@ fn emit_expr(expr) = match expr {
         if tail {
           if repr_is_wide(ret_repr) == repr_is_wide(site_repr) {
             wat_emit("    (return_call $")
-            wat_emit(cname2)
+            wat_emit(target)
             wat_emit(")\n")
           } else {
             wat_emit("    (call $")
-            wat_emit(cname2)
+            wat_emit(target)
             wat_emit(")\n")
             if repr_is_wide(site_repr) { emit_wide_deref(site_repr) } else { () }
           }
         } else {
           wat_emit("    (call $")
-          wat_emit(cname2)
+          wat_emit(target)
           wat_emit(")\n")
           if repr_is_wide(site_repr) && repr_is_wide(ret_repr) == false {
             emit_wide_deref(site_repr)
@@ -6610,6 +7077,7 @@ fn emit_expr(expr) = match expr {
     // install in them or refuses before the gate — emission says nothing.
     wat_emit("    (unreachable)  ;; derivative reading with no derived program\n"),
   },
+  LArena(h, b) => if arena_live() { emit_arena(h, b) } else { emit_expr(b) },
   LFeedback(h, depth, home, body, _spec) => {
     // <~ feedback — the site's line is a ring owned by the record of the
     // function that contains the cycle (`LineHome`, types.mn). Its address
@@ -6685,6 +7153,18 @@ fn emit_expr(expr) = match expr {
     } else {
       wat_emit("    ({rw}.store offset=8 (local.get $__ring_{hs}) (local.get $__fb_{hs}))\n")
     }
+    // A line's pointer stored into a ring older than an open arena is
+    // journaled with its leaf, as a state commit's is.
+    if arena_live() && evac_journals(h) {
+      let slot = if depth > 1 {
+        "(local.get $__fbp_{hs})"
+      } else {
+        "(i32.add (local.get $__ring_{hs}) (i32.const 8))"
+      }
+      wat_emit("    (call $arena_slot_note {slot} (i32.const {int_to_str(leaf_code(evac_leaf_at(h)))}))\n")
+    } else {
+      ()
+    }
   },
   LPerform(h, disp, args) => emit_perform(h, disp, args, false),
   LWasiCall(h, import_name, args) => match derive_op_of(import_name) {
@@ -6730,32 +7210,6 @@ fn emit_expr(expr) = match expr {
         wat_emit("    (i32.shl)\n")
       } else if import_name == "alloc" {
         emit_alloc_top()
-      } else if import_name == "ialloc" {
-        // The IMAGE allocator (arena step 1-2 form, memory.mn's own note):
-        // rides the one bump — with no per-decl reset live the spaces are
-        // indistinguishable, so the classification lands at the ROW while
-        // the emission stays $alloc. Step 2b forks this to $ialloc over its
-        // own pointer when the image-map fold draws the boundary, in the
-        // same TRANSITION that lands the reset bracket.
-        emit_alloc_top()
-      } else if import_name == "image_enter" {
-        // The bracket pair (arena 2a — memory.mn's decl carries the
-        // design): the census rides the EXTENT DELTA, never the
-        // allocator's hot path — the outermost enter saves the bump mark,
-        // the matching exit accumulates (bump - mark) into $image_bytes.
-        // The trailing const closes the unit result slot (the heap_reset
-        // idiom). The three globals emit demand-gated beside the memory
-        // decl. The heap line reads through $heap_mark_impl — the call site
-        // is STRATEGY-INVARIANT: the first census print measured 0 on the
-        // wheel because these arms hardcoded $heap_ptr, a global the
-        // threaded module never moves (the live line is the shared cell at
-        // 64), so every delta read heap_ptr − heap_ptr. The neighbor op
-        // (heap_mark) had the right shape the whole time.
-        wat_emit("    (if (i32.eqz (global.get $image_depth))(then (global.set $image_mark (call $heap_mark_impl))))(global.get $image_depth)(i32.const 1)(i32.add)(global.set $image_depth)(i32.const 0)\n")
-      } else if import_name == "image_exit" {
-        wat_emit("    (global.get $image_depth)(i32.const 1)(i32.sub)(global.set $image_depth)(if (i32.eqz (global.get $image_depth))(then (global.set $image_bytes (i32.add (global.get $image_bytes)(i32.sub (call $heap_mark_impl)(global.get $image_mark))))))(i32.const 0)\n")
-      } else if import_name == "image_bytes" {
-        wat_emit("    (global.get $image_bytes)\n")
       } else if import_name == "heap_mark" {
         // The heap line's HOME is the strategy's (per-instance global vs the
         // shared cell) — the impl fn beside $alloc owns it; the call site is
@@ -6765,6 +7219,12 @@ fn emit_expr(expr) = match expr {
         wat_emit("    (global.get $world_g)\n")
       } else if import_name == "world_restore" {
         wat_emit("    (global.set $world_g)(i32.const 0)\n")
+      } else if import_name == "arena_stat" {
+        if arena_live() {
+          wat_emit("    (call $arena_stat_impl)\n")
+        } else {
+          wat_emit("    (drop)(i32.const 0)\n")
+        }
       } else if import_name == "tangent_in" {
         // The derivative reading's return register (src/derive.mn): a twin's
         // exit writes its result's tangent, the caller reads it the instant the
@@ -6924,6 +7384,15 @@ fn emit_expr(expr) = match expr {
     } else {
       emit_expr(value)
       wat_emit("    (i32.store offset={int_to_str(slot_offset)})\n")
+      // A pointer committed into a record older than an open arena is
+      // journaled with its leaf (the record is a frame read, so reading it
+      // again is reading the same word).
+      if arena_live() && evac_journals(lexpr_handle(value)) {
+        emit_expr(record)
+        wat_emit("    (i32.const {int_to_str(slot_offset)}) (i32.add) (i32.const {int_to_str(leaf_code(evac_leaf_at(lexpr_handle(value))))}) (call $arena_slot_note)\n")
+      } else {
+        ()
+      }
     }
   },
   LStateInit(_h, _hname, slot, value) => {
@@ -7285,6 +7754,33 @@ fn perform_vector_at(h, args) = site_vector(args, repr_of(lookup_ty(h)))
 // disagreement is a LOUD type trap, never a silent value. A tail call keeps
 // its true `return_call` at any width, because the native face's result is
 // the site's own.
+// The function a direct call reaches. A store into a list slot where an arena
+// lives reaches it through its barrier, `$list_set_j`, carrying the leaf of
+// the value it stores (pushed here, after the arguments): the one place the
+// stored value's type is known, read under the bracket the call is emitted
+// in. A word stores with no barrier, since a word never points. A call
+// through `list_set` as a value carries no leaf and reaches the slot's table
+// face (`slot_face`), which journals with none.
+fn direct_call_target(cname2: String, args) = if cname2 == "list_set" && len(args) == 3 && arena_live() {
+  match store_leaf(args[2]) {
+    Some(k) => {
+      wat_emit("    (i32.const {int_to_str(k)})\n")
+      "list_set_j"
+    },
+    None => cname2,
+  }
+} else {
+  cname2
+}
+
+// The leaf a stored value moves through, or none for a word.
+fn store_leaf(v) = match evac_at(lexpr_handle(v)) {
+  EvWord => None,
+  EvWide => Some(leaf_code(LfBoxed)),
+  EvShape(_) => Some(leaf_code(evac_leaf_at(lexpr_handle(v)))),
+  EvOpaque => Some(leaf_code(LfOpaque)),
+}
+
 fn emit_closure_call(h, func, args, tail) = emit_closure_call_at(h, func, args, tail, false)
 
 // The call at its face: the derivative face under the reading (`jvp`), one
@@ -7498,8 +7994,9 @@ fn emit_eq_sum_call(sig, neg) = {
 // to its own helper (recursive ADTs descend the value at runtime, finite);
 // inline expansion would not terminate on a self-referential type, a call does.
 //
-// fold_sig / fold_sig_list / fold_sig_fields moved to their Carried-Truth home
-// (types.mn) — the structural signature every fold leaf shares.
+// fold_sig lives at its Carried-Truth home (types.mn) — the structural
+// signature every fold leaf shares — with `move_sig` beside it, the one an
+// arena's evacuation leaves are named by.
 //
 // ─── THE UNIFIED EACH — the fold's ONE collection walk + ONE dedup walk ────
 //
@@ -7522,28 +8019,55 @@ fn emit_eq_sum_call(sig, neg) = {
 // operation fact.
 type FoldOp = FoldCompare | FoldEq | FoldHash | FoldShow
 
-fn fold_closures_empty() = {cmp: [], eq: [], hash: [], show: []}
+fn fold_closures_empty() = {cmp: [], eq: [], evac: [], hash: [], show: []}
 
 // The closed-record pins are load-bearing (Intent Boundary): an unannotated
 // acc infers a partial OPEN record per accessor, and an open receiver's field
 // offsets are computed over the partial set while the record sorts over the
 // full one (Hβ.lower.trecordopen-wrong-field — this fn's first compile hit
 // that floor at runtime).
-fn fold_acc_eq(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, lh) =
-  {cmp: acc.cmp, eq: eq_operand_contrib(lh, acc.eq), hash: acc.hash, show: acc.show}
+fn fold_acc_eq(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, lh) =
+  {cmp: acc.cmp, eq: eq_operand_contrib(lh, acc.eq), evac: acc.evac, hash: acc.hash, show: acc.show}
 
 // The ordering contribution IS the eq contribution (cmp_agg_operand_contrib
 // was a byte-copy of eq_operand_contrib — deleted; one reach, two slots).
-fn fold_acc_cmp(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, lh) =
-  {cmp: eq_operand_contrib(lh, acc.cmp), eq: acc.eq, hash: acc.hash, show: acc.show}
+fn fold_acc_cmp(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, lh) =
+  {cmp: eq_operand_contrib(lh, acc.cmp), eq: acc.eq, evac: acc.evac, hash: acc.hash, show: acc.show}
 
-fn fold_acc_hash(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, arg) =
-  {cmp: acc.cmp, eq: acc.eq, hash: hash_operand_contrib(arg, acc.hash), show: acc.show}
+fn fold_acc_hash(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, arg) = {
+  cmp: acc.cmp,
+  eq: acc.eq,
+  evac: acc.evac,
+  hash: hash_operand_contrib(arg, acc.hash),
+  show: acc.show,
+}
 
-fn fold_acc_show(acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, arg) =
-  {cmp: acc.cmp, eq: acc.eq, hash: acc.hash, show: show_operand_contrib(arg, acc.show)}
+fn fold_acc_show(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, arg) = {
+  cmp: acc.cmp,
+  eq: acc.eq,
+  evac: acc.evac,
+  hash: acc.hash,
+  show: show_operand_contrib(arg, acc.show),
+}
 
-fn fold_trigger_binop(op, lh, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = match op {
+// What an arena's exit moves by type: the arena's value, a handler state's
+// a `<~` line's pointer, and a value a list slot stores — every store whose
+// barrier journals the slot with the leaf. Collected only in a module that
+// opens an arena, so every other module's fold is what it was.
+fn fold_acc_evac(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, ty) = if arena_demanded() {
+  {cmp: acc.cmp, eq: acc.eq, evac: evac_root_add(acc.evac, ty), hash: acc.hash, show: acc.show}
+} else {
+  acc
+}
+
+fn fold_acc_evac_at(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, h) =
+  if h == 0 { acc } else { fold_acc_evac(acc, evac_type_at(h)) }
+
+// A list slot's store moves the value it stores by the value's type.
+fn fold_acc_store(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, n: String, args) =
+  if n == "list_set" && len(args) == 3 { fold_acc_evac_at(acc, lexpr_handle(args[2])) } else { acc }
+
+fn fold_trigger_binop(op, lh, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = match op {
   BEq => fold_acc_eq(acc, lh),
   BNe => fold_acc_eq(acc, lh),
   BLt => fold_acc_cmp(acc, lh),
@@ -7553,16 +8077,16 @@ fn fold_trigger_binop(op, lh, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}
   _ => acc,
 }
 
-fn collect_fold_tys_list(stmts, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = if len(stmts) == 0 {
+fn collect_fold_tys_list(stmts, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = if len(stmts) == 0 {
   acc
 } else {
   collect_fold_tys_list(drop_last(stmts), collect_fold_tys_expr(last(stmts), acc))
 }
 
-fn collect_fold_tys_arms(arms, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) =
+fn collect_fold_tys_arms(arms, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) =
   collect_fold_tys_arms_from(arms, acc, 0)
 
-fn collect_fold_tys_arms_from(arms, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}, i) = if i >= len(arms) {
+fn collect_fold_tys_arms_from(arms, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, i) = if i >= len(arms) {
   acc
 } else {
   match list_index(arms, i) {
@@ -7570,11 +8094,11 @@ fn collect_fold_tys_arms_from(arms, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show:
   }
 }
 
-fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = match expr {
+fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = match expr {
   LShow(_h, x) => collect_fold_tys_expr(x, fold_acc_show(acc, x)),
   LHash(_h, x) => collect_fold_tys_expr(x, fold_acc_hash(acc, x)),
   LCall(_h, f, args) => collect_fold_tys_expr(f, collect_fold_tys_list(args, acc)),
-  LDirectCall(_h, _fh, _n, _t, args) => collect_fold_tys_list(args, acc),
+  LDirectCall(_h, _fh, n, _t, args) => collect_fold_tys_list(args, fold_acc_store(acc, n, args)),
   LTailCall(_h, f, args) => collect_fold_tys_expr(f, collect_fold_tys_list(args, acc)),
   LBinOp(_h, op, l, r) => collect_fold_tys_expr(r, collect_fold_tys_expr(l, fold_trigger_binop(op, lexpr_handle(l), acc))),
   LResumeK(_h, k, v) => collect_fold_tys_expr(v, collect_fold_tys_expr(k, acc)),
@@ -7597,12 +8121,13 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
   LMatch(_h, s, arms) => collect_fold_tys_arms(arms, collect_fold_tys_expr(s, acc)),
   LHandleWith(_h, b, hn, _hn2, inits, _arms) => collect_fold_tys_expr(b, collect_fold_tys_expr(hn, collect_fold_tys_list(inits, acc))),
   LDerive(_h, seed, b) => collect_fold_tys_expr(b, collect_fold_tys_expr(seed, acc)),
-  LFeedback(_h, _d, _home, b, s) => collect_fold_tys_expr(s, collect_fold_tys_expr(b, acc)),
+  LArena(h, b) => collect_fold_tys_expr(b, fold_acc_evac_at(acc, h)),
+  LFeedback(h, _d, _home, b, s) => collect_fold_tys_expr(s, collect_fold_tys_expr(b, fold_acc_evac_at(acc, h))),
   LPerform(_h, _d, args) => collect_fold_tys_list(args, acc),
   LWasiCall(_h, _n, args) => collect_fold_tys_list(args, acc),
   LFieldLoad(_h, rec, _o) => collect_fold_tys_expr(rec, acc),
   LConvert(_h, _, operand) => collect_fold_tys_expr(operand, acc),
-  LStateSlotStore(_h, _o, v, _) => collect_fold_tys_expr(v, acc),
+  LStateSlotStore(_h, _o, v, _) => collect_fold_tys_expr(v, fold_acc_evac_at(acc, lexpr_handle(v))),
   LStateInit(_h, _hn, _s, v) => collect_fold_tys_expr(v, acc),
   LConst(_, _) => acc,
   LLocal(_, _) => acc,
@@ -7634,7 +8159,7 @@ fn emit_distinct_fold_leaves(op, tys, seen) = if len(tys) == 0 {
 
 // The four leaves behind the one walk. Emission order (eq, compare, hash,
 // show) preserves the module layout the four separate entry fns produced.
-fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]}) = {
+fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = {
   // One region over the four leaf families: the closures record lives
   // outside the mark; every generated helper streams as it is built.
   //
@@ -7643,6 +8168,9 @@ fn emit_fold_leaf_helpers(closures: {cmp: [Ty], eq: [Ty], hash: [Ty], show: [Ty]
   emit_distinct_fold_leaves(FoldCompare, closures.cmp, [])
   emit_distinct_fold_leaves(FoldHash, closures.hash, [])
   emit_distinct_fold_leaves(FoldShow, closures.show, [])
+  // The arena's leaves were settled with the plan (their indices ride the
+  // journal), so they are read back rather than collected again.
+  if arena_live() { emit_evac_leaves(arena_leaves()) } else { () }
   heap_reset(m)
 }
 
@@ -8364,18 +8892,10 @@ fn emit_field_agg_cmp(sig) = {
 // type (the fields TRecord/TTuple already carry; a tuple's positional elems
 // ARE its product fields). Non-product types have no field set (empty).
 fn product_field_tys(ty) = match fold_strip(ty) {
-  TRecord(fields) => field_tys_of(fields, 0, len(fields)),
-  TRecordOpen(fields, _) => field_tys_of(fields, 0, len(fields)),
+  TRecord(fields) => map(field_type_of, fields),
+  TRecordOpen(fields, _) => map(field_type_of, fields),
   TTuple(elems) => elems,
   _ => [],
-}
-
-fn field_tys_of(fields, i, n) = if i >= n {
-  []
-} else {
-  match list_index(fields, i) {
-    (_name, ty) => [ty] ++ field_tys_of(fields, i + 1, n),
-  }
 }
 
 // A == operand contributes its aggregate type AND every nested aggregate its

@@ -3486,7 +3486,104 @@ answer. The form is §5.O layer 3's image/scratch boundary (Arc C,
 `Hβ.perf.per-decl-arena`): the graph's durable writes — pages, columns,
 handler state — allocate in the image, an answer's scratch in a region
 dropped when the answer is written. The unmoved tree's check, which already
-drops its region, is the first instance of the second.
+drops its region, is the first instance of the second. THE MECHANISM EXISTS
+SINCE 2026-10-03: an answer can run in `~> arena`, its publication the text
+it writes and the edges it draws — the edges are graph writes, so their
+stores into the graph's older buffers journal and move — and what is left
+is the placement (`Hβ.arena.extents-beyond-the-judgment`).
+
+`Hβ.arena.extents-beyond-the-judgment` — OPEN, BORN 2026-10-03 with the
+arena (Arena·P2). The judgment's binding groups each run in an arena; the
+lowering's, the emission's and the resident session's extents run in none,
+so their scratch lives for the compile. Measured on the pinned boot over the
+wheel: the heap stands at 288 MB at the judgment's high-water, 591 MB when
+lowering ends and 741 MB when the module is written — the whole rise past
+the judgment is extents no exit reclaims. The mechanism is built; what each
+placement must answer is where its publication goes: a declaration's
+lowering publishes into the lowering's registries (handler states, so their
+commits journal), an emitted unit publishes bytes into the sink, and an
+answer publishes its text and the edges it drew. The session's face is
+`Hβ.session.answer-scratch-outlives-the-answer`.
+
+`Hβ.arena.closure-evac-face` — OPEN, BORN 2026-10-03. A function value or a
+continuation has no leaf: its type does not say what its record captures,
+so an exit that finds one of the region's in a journaled slot keeps the
+whole region, nothing moved (`closure-keeps` pins it; the wheel's census
+reads 0 kept, so the wheel never stores one into older memory inside a
+group). The form: the captures are known where the record is minted, each
+at its own type, so the code pointer can name its capture layout — the fn
+table maps a closure's code to its move leaf, and the exit moves a closure
+by what it captured.
+
+`Hβ.arena.per-instance-regions` — OPEN, BORN 2026-10-03. In a module that
+spawns, globals are per instance while the heap line is one shared cell, so
+an instance's region interleaves with every other instance's allocations;
+the arena there runs its body and reclaims nothing
+(`spawning-module-runs-the-body`). The form: each instance owns a segment of
+the line carved from the shared cell, with its own journal, so an exit
+reclaims its own instance's region — §5.O layer 4's per-thread arenas.
+
+`Hβ.arena.region-typed-mutation` — OPEN, BORN 2026-10-03. The journal decides
+at run time what a row could prove at compile time: `Mutate` indexed by the
+region it writes, with outlives constraints between regions, would elide the
+barrier where a target provably lives in the store's own region and refuse
+at the store a value no leaf can move into an older one, instead of keeping
+the region at the exit. A language arc of its own — region polymorphism in
+rows — never a precondition of the journal's soundness.
+
+`Hβ.arena.cast-addr-crosses-the-journal` — OPEN, BORN 2026-10-03, measured.
+`Cast`'s `addr` turns a pointer into a word, and a word stored raw into
+older memory is a store the journal cannot see: the address dangles after
+the exit. It is the one channel left — a `list_set` reached as a value
+journals through its table face, and a raw store of a list is a type error.
+The wheel reads `addr` nowhere. The form: what `addr` answers is a word
+with an address's provenance, a type of its own, whose raw store journals
+with no leaf, so the exit keeps the region rather than move a value it
+cannot read.
+
+`Hβ.arena.claims-of-a-cycle` — OPEN, BORN 2026-10-03 (imprecision, sound).
+A function's age claim is a least fixpoint over its own recursive calls; a
+call into a member of its binding group that has not published yet reads as
+unknown, and the store it reaches demands the move — more twins than the
+program needs. The form: one fixpoint over the group, every member's claim
+published together, the shape the group's completion fold already has.
+
+`Hβ.arena.constructor-results-are-fresh` — OPEN, BORN 2026-10-03
+(imprecision, sound). A claim's `returns` names the parameters a function's
+result may be, or nothing; a function whose result it allocated publishes
+nothing, so a caller's store into that result reads as a store into older
+memory and demands the move, though the result is the caller's scope's own.
+The form: `returns` distinguishes fresh from unknown, and a fresh result
+transports as fresh.
+
+`Hβ.arena.closure-parameter-stores` — OPEN, BORN 2026-10-03 (imprecision,
+sound). Claims are published for declared functions and transported at
+direct calls. A lambda's parameters have no claim, and a function reached as
+a value journals its parameter stores from its base body, where the stored
+value's type is a variable and so has no leaf: the exit keeps the region.
+`list_set` reached as a value is the same case at the primitive, through its
+table face. The form: a reference at a known instantiation demands the
+callee's moved-shape twin exactly as a direct call does — a reference is a
+use site with an instantiation.
+
+`Hβ.infer.nested-fn-siblings-do-not-hoist` — OPEN, measured 2026-10-03 on
+boot 9ec6db48: SYNTAX promises that a block's nested fns are hoisted into a
+local letrec scope so siblings may call each other, and the judgment refuses
+`is_odd` inside its sibling `is_even` with `E_MissingVariable`. The
+free-name walk binds a nested fn's name for what FOLLOWS it in the block
+(the arena landing's source-order walk), so the call graph and the judgment
+agree on the unhoisted form; the hoisted form binds every nested fn's name
+across the block's whole run of declarations before any body is judged —
+pre-registration at block scope, the shape the module already has.
+
+`Hβ.emit.memory-gc-handler` — OPEN, named in §11's Phase 10 and given its
+home here on 2026-10-03, when the arena narrowed it. A collector strategy
+for what no extent's exit reclaims: a region an exit KEEPS (a value no leaf
+moves — `Hβ.arena.closure-evac-face`), and a program whose allocation has no
+extent at all (a server loop that grows one state forever). Everything an
+arena's exit moves, the collector would have to trace; what is left is
+exactly what the arena cannot see, so the collector is its complement,
+never a second strategy for the same heap.
 
 `Hβ.session.edit-pays-for-the-program` — OPEN, BORN 2026-10-02 with E2. An
 edit re-judges only its cone and still pays for the whole program twice
@@ -11669,6 +11766,51 @@ the image/scratch split makes the allocation site's class a fact the
 reset reads. Every other push-banking handler in the wheel updates during
 inference, where no region is open today; the day one opens there, this
 record is the first thing to re-measure.
+
+▶ LANDED 2026-10-03 (pins d7d9da55 and fb8921e3, TRANSITION each) IN THE
+FORM THIS RECORD PRICED AS (i) AND PASSED OVER — EVACUATION — with the three
+objections to it answered by the artifact rather than argued. The walker
+cost: the leaves are generated per type by the fold (`$evac_<sig>` /
+`$scan_<sig>`, the fifth leaf beside eq, cmp, hash and show), so no hand
+serializer exists. Shared identity: a forwarding bitmap and the copy's
+address in the original's first word, so a value reached twice moves once.
+The pointer-write publish channel that refuted site classification (THE
+CORE REFUTATION above): every store into memory older than the arena
+writes a JOURNAL entry where it happens — the slot and the leaf its value
+moves through — at the three typed store sites (a direct `list_set`, a
+handler's state commit, a `<~` tick); a store whose type no leaf names (a
+function, a continuation, `list_set` reached as a value) journals with
+none, and the exit keeps the region rather than move it. The judgment's
+age claim says which stores can reach older memory at all (fresh, a
+parameter its callers answer for, a state its installs answer for, or
+older), so only those bodies are twinned by the leaf they need. The column
+arc is therefore NOT a prerequisite for a sound reset
+(`Hβ.graph.column-pointees-are-words` is superseded as a soundness
+precondition; it remains the Carried-Truth form for a column's values).
+The reset is the extent's: `(body) ~> arena`, the region install absorbing
+`Alloc` that this record's gate peer named
+(`Hβ.infer.region-on-tee-alloc-absorb`, CLOSED by the same landing); the
+judgment's binding groups each run in one. The paragraph above asked for a
+re-measure "the day one opens there" — that day is this landing, and the
+law it states is answered by the state commit's barrier: a handler whose
+arms run inside an arena it was installed outside of has every cell they
+store demanded at its install, so a state written in the region journals
+its value and the value moves at the exit (the census reads 0 kept across
+the wheel's 4,487 exits, and m3 == m4). The dormant `emit_memory_arena`
+and its never-moved `$arena_ptr` are DELETED (the second pin), and with
+them `Hβ.emit.memory-strategy-body-swap`'s arena face: an arena reclaims on
+the one bump line, so the allocator keeps one body. MEASURED: the boot
+that carried it, over the source it pinned, peaks 863,636–874,384 KB
+against the prior boot's 1,061,396–1,065,228 KB on that source, the
+judgment's high-water 288.0 MB against 511.3 MB, the census 4,487 exits,
+0 kept, 206,870 KB reclaimed, 49,914 KB moved; the ceiling 1,050,000 →
+884,000. Open, each named: the lowering's, the emission's and the
+session's extents (`Hβ.arena.extents-beyond-the-judgment` — the
+placement, no new mechanism), `Hβ.arena.closure-evac-face`,
+`Hβ.arena.per-instance-regions`, `Hβ.arena.region-typed-mutation`,
+`Hβ.arena.cast-addr-crosses-the-journal`, `Hβ.arena.claims-of-a-cycle`,
+`Hβ.arena.constructor-results-are-fresh`,
+`Hβ.arena.closure-parameter-stores`.
 
 `Hβ.own.use-after-move` — BUILT (2026-08-07, pin 8ba768c810c4, before
 the arena exactly as prescribed). The mechanism was one leg's ORDER:

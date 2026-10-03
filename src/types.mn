@@ -513,16 +513,27 @@ fn fold_strip(ty) with Pure = match ty {
 // Two types share a sig iff they fold identically (the same structural-eq the
 // cursor derives for records — the proof IS the name). Alias/refinement-stripped
 // first, like every other fold-through.
-fn fold_sig(ty) = match fold_strip(ty) {
+fn fold_sig(ty) = sig_of(ty, "i")
+
+// The name of what an arena's exit moves: a variable the type still holds is
+// OPAQUE, never a word. A leaf moving `[(Int, a)]` shares nothing with the one
+// moving `[(Int, Int)]` — the first must refuse a young value in its second
+// field, the second never looks — and a twin keyed by a move is keyed the same
+// way. The word reading shared them, and the exit left a pointer behind in the
+// region it zeroed (2026-10-03: the compiler's own judgment trapped reading a
+// demand list the exit had reclaimed).
+fn move_sig(ty) = sig_of(ty, "o")
+
+fn sig_of(ty, var_sig: String) = match fold_strip(ty) {
   TInt => "i",
   TFloat => "d",
   TUnit => "u",
   TByte => // packed 1-byte slot — distinct from "i" so
   //   [byte] and [Int] never share a fold helper
   "b",
-  TVar(_) => // unresolved handle — a word
-  "i",
-  TList(elem) => "l{fold_sig(elem)}",
+  TVar(_) => // unresolved handle — a word to every fold leaf, opaque to a move
+  var_sig,
+  TList(elem) => "l{sig_of(elem, var_sig)}",
   TName(n, args) => // Nominal — the name carries identity, AND the arguments carry the rest of
   // it. This arm read `"n{n}"` and dropped `args` until 2026-09-18; its
   // comment said "name carries identity", which is true of a nullary nominal
@@ -534,29 +545,29 @@ fn fold_sig(ty) = match fold_strip(ty) {
   // its own leaf, exactly as total monomorphization twins a function per the
   // types its call sites prove. A type with no arguments renders as it always
   // did, so every monomorphic ADT keeps its helper name.
-  if len(args) == 0 { "n{n}" } else { "n{n}{fold_sig_list(args, 0, len(args))}_" },
-  TTuple(elems) => "t{fold_sig_list(elems, 0, len(elems))}_",
-  TRecord(fs) => "r{fold_sig_fields(fs, 0, len(fs))}_",
-  TRecordOpen(fs, _) => "r{fold_sig_fields(fs, 0, len(fs))}_",
+  if len(args) == 0 { "n{n}" } else { "n{n}{sig_list(args, var_sig)}_" },
+  TTuple(elems) => "t{sig_list(elems, var_sig)}_",
+  TRecord(fs) => "r{sig_fields(fs, var_sig)}_",
+  TRecordOpen(fs, _) => "r{sig_fields(fs, var_sig)}_",
   TFun(_, _, _) => // closure — folds at the function leaf
   "fn",
   TCont(_, _, _, _) => // continuation pointer — a word here
   // fold_strip already removed TAlias/TRefined; reaching them is impossible.
   "k",
-  TAlias(_, inner) => fold_sig(inner),
-  TRefined(base, _) => fold_sig(base),
-  TReprPin(_, base) => fold_sig(base),
+  TAlias(_, inner) => sig_of(inner, var_sig),
+  TRefined(base, _) => sig_of(base, var_sig),
+  TReprPin(_, base) => sig_of(base, var_sig),
 }
 
-fn fold_sig_list(elems, i, n) =
-  if i >= n { "" } else { "_{fold_sig(list_index(elems, i))}{fold_sig_list(elems, i + 1, n)}" }
+fn sig_list(elems, var_sig: String) = fold("", sig_elem(var_sig, ??, ??), elems)
 
-fn fold_sig_fields(fields: [(String, Ty)], i, n) = if i >= n {
-  ""
-} else {
-  match list_index(fields, i) {
-    (name, ty) => "_{name}{fold_sig(ty)}{fold_sig_fields(fields, i + 1, n)}",
-  }
+fn sig_elem(var_sig: String, acc: String, t) = "{acc}_{sig_of(t, var_sig)}"
+
+fn sig_fields(fields: [(String, Ty)], var_sig: String) =
+  fold("", sig_field(var_sig, ??, ??), fields)
+
+fn sig_field(var_sig: String, acc: String, field) = match field {
+  (name, ty) => "{acc}_{name}{sig_of(ty, var_sig)}",
 }
 
 // ─── Ownership (spec 02 · spec 07) ─────────────────────────────────
@@ -1580,7 +1591,15 @@ type NumericGate = NumericGate({op: BinOp, span: Span})
 // row holds). A variable no shape reaches is read at its width alone, so a
 // twin keys it by its representation digit and never by its structure —
 // which is exactly how many distinct bodies an instantiation can emit.
-type ShapeRead = WholeShape | OuterShape
+//
+// A MOVE is an arena's read: a store into memory an arena may outlive, and
+// the arena's own value, are carried out of the region by their whole
+// structure, so the read reaches every variable in the type as a whole read
+// does — but what a twin keys by is the class the move needs (a word moves
+// nothing, a float in a word slot moves its box, anything else moves by its
+// shape), and only in a program that opens an arena, since nowhere else is
+// there a barrier to read it.
+type ShapeRead = WholeShape | OuterShape | MovedShape
 
 type TypeDemand = DemandNumber(NumericGate) | DemandShape(ShapeRead)
 

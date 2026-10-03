@@ -135,8 +135,8 @@ fn infer_context(body) =
 // arm_state_ctx, spec_registry. A caller supplies only its SINK and its
 // filesystem/persist prefix, because that is the only part that ever differs.
 //
-// The allocation strategy (emit_memory_bump, the swap point for
-// emit_memory_arena) is NOT in this chain. Its arm performs `wat_emit`, and
+// The allocation strategy (emit_memory_bump, or emit_memory_audited where a
+// planned unit is emitted) is NOT in this chain. Its arm performs `wat_emit`, and
 // an arm's performs resolve OUTER of its own install — so a strategy
 // installed here wrote to whatever sink enclosed this chain, and every route
 // that installs its sink inside the body (a march's file, a battery's host
@@ -156,7 +156,7 @@ fn infer_context(body) =
 // its own generation while tools/march.sh, which the board actually calls,
 // stayed green. A chain with one home cannot lose a handler to a copy.
 fn emit_context(body) =
-  body() ~> string_table ~> line_registry ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> derived_registry ~> emit_site_module
+  body() ~> string_table ~> line_registry ~> mentl_default ~> lower_scope ~> lower_handler_stack_ctx ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> derived_registry ~> arena_registry ~> emit_site_module
 
 // A route that LOWERS installs both stacks, emit inside analysis, and that
 // nesting order is itself a fact — so it has one home too rather than being
@@ -1444,6 +1444,10 @@ fn render_orphan_row(row) = match row {
 fn render_orphan_rows(rows) =
   "→ {int_to_str(len(rows))} declaration(s) explained at length and referenced by nothing\n{str_join_indented(map(render_orphan_row, rows))}"
 
+fn render_provider_site(site) = match site {
+  (hname, address) => "\n  {hname}{address}",
+}
+
 fn render_query_result(result) = match result {
   QRType(ty, reason) => "→ {show_type(ty)}\n  Reason: {show_reason(reason)}",
   QRIntent(effs) => {
@@ -1482,14 +1486,15 @@ fn render_query_result(result) = match result {
   // `predicate_to_smt_lib` is verify.mn's own serializer — this render is
   // its first reader, and Phase 8.3's handler swap is its second.
   "→ {int_to_str(len(obligations))} obligation(s) as SMT-LIB{render_smt_lines(obligations)}",
-  QRHandlerProvider(provider) => match provider {
-    Some(name) => "→ handled by {name}",
-    None => "→ no handler installed",
+  QRHandlerProvider(sites) => if len(sites) == 0 {
+    "→ no handler declares an arm for it"
+  } else {
+    "→ {int_to_str(len(sites))} handler(s) declare an arm for it{str_concat_all(map(render_provider_site, sites))}"
   },
   QRFlowLabel(label, reason) => "→ {show_flow_label(label)}\n  Reason: {show_reason(reason)}",
   QRCensus(label, sites) => "→ {int_to_str(len(sites))} {label}{render_census_sites(sites)}",
-  QRDecls(sites) => // The decls column's projection — the oracle queue's own seed set,
-  // rendered located so the seed is inspectable at the CLI.
+  QRDecls(sites) => // The decls column's projection: every declaration the judgment
+  // noted, located.
   "→ {int_to_str(len(sites))} judged decl(s){render_census_sites(sites)}",
   QRModules(paths) => "→ {int_to_str(len(paths))} module(s) in the weave\n  {str_join_indented(paths)}",
   QRImports(rows) => render_import_rows(rows),
@@ -1574,6 +1579,9 @@ type QueryVerb
   | QVCost
   | QVGhosts
   | QVSmt
+  | QVText
+  | QVProse
+  | QVWrites
   | QVUnknownVerb
 
 fn classify_query_verb(w: String) with Pure = if w == "type" {
@@ -1620,6 +1628,12 @@ fn classify_query_verb(w: String) with Pure = if w == "type" {
   QVGhosts
 } else if w == "smt" {
   QVSmt
+} else if w == "text" {
+  QVText
+} else if w == "prose" {
+  QVProse
+} else if w == "writes" {
+  QVWrites
 } else {
   QVUnknownVerb
 }
@@ -1670,8 +1684,15 @@ fn build_question(verb, arg, raw, scope: String) = match verb {
   QVCost => QCost,
   QVGhosts => QGhosts,
   QVSmt => QSmt,
+  QVText => // The needle is everything after the verb, spaces included: a WAT
+  // fragment such as `(type $ft1)` is one question, never its last word.
+  QCensus(CsText(words_after_the_verb(raw))),
+  QVProse => QCensus(CsProse(words_after_the_verb(raw))),
+  QVWrites => QStateWrites(arg),
   QVUnknownVerb => QUnknown(raw),
 }
+
+fn words_after_the_verb(q: String) = join(" ", rest(split(" ", q)))
 
 // The shape classifier at the grammar's one boundary: a named judgment
 // shape, "anonymous", or one of the five glyphs matched THROUGH

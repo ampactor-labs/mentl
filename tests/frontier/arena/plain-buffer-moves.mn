@@ -1,0 +1,26 @@
+// A buffer older than the arena, written in place by plain code inside it:
+// no handler stands between the store and the buffer, and none is needed —
+// the store journals its slot with the type it stores, so the values move
+// out and the region is reclaimed.
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn fill(buf) = {
+  let junk = build(300)
+  let _ = list_set(buf, 0, build(10))
+  let _ = list_set(buf, 1, build(20))
+  len(junk)
+}
+
+fn main() = {
+  let buf = make_list(4)
+  let k = fill(buf) ~> arena
+  let a = buf[0]
+  let b = buf[1]
+  if k == 300 && fold(0, add_int, a) == 55 && fold(0, add_int, b) == 210 && arena_stat(ArExits) == 1 && arena_stat(ArKept) == 0 {
+    42
+  } else {
+    1
+  }
+}

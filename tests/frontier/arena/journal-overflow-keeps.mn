@@ -1,0 +1,27 @@
+// More in-place writes than the journal holds: the arena cannot know every
+// slot it would have to move, so it keeps its region, and the program is
+// correct.
+effect Stash {
+  put([Int])
+  get(Int) -> [Int]
+}
+
+handler stash with buf = make_list(8), n = 0 {
+  put(x) => {
+    let _ = list_set(buf, n % 8, x)
+    resume() with n = n + 1
+  },
+  get(i) => resume(buf[i]),
+}
+
+fn put_one(i) = put([i])
+
+fn main() = {
+  let k = {
+    each(put_one, range(0, 300000))
+    7
+  } ~> arena
+  let a = get(0)
+  let b = get(7)
+  if k == 7 && a[0] == 299992 && b[0] == 299999 && arena_stat(ArKept) == 1 { 42 } else { 1 }
+} ~> stash

@@ -25,6 +25,8 @@
 // holes, not one-and-halt.
 import graph
 
+import arena
+
 import verify
 
 import env
@@ -1348,7 +1350,7 @@ fn infer_program_once(stmts, parse_end) = {
   // The prose gate judges here, on the one generation of comment cells the
   // parse minted — [0, parse_end) is exactly that generation.
   comment_refs_check(stmts, 0, parse_end)
-} ~> row_gate ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
+} ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx
 
 // No private ledgers. The trial installed its own affine_ledger /
 // region_tracker / verify_ledger so its undischarged debt would die with
@@ -1546,8 +1548,8 @@ fn infer_modules_converged(ref mods) = {
   infer_program_once(stmts, parse_end)
   match diag_scope_of() {
     ScopeAll => {
-      eprint_string("image: {int_to_str(image_bytes())} image-classified byte(s)\n")
       eprint_string("heap: {int_to_str(heap_mark())} byte(s) at the judgment's high-water line\n")
+      eprint_string("arena: {int_to_str(arena_stat(ArExits))} exit(s), {int_to_str(arena_stat(ArKept))} kept, {int_to_str(arena_stat(ArFreed))} KB reclaimed, {int_to_str(arena_stat(ArMoved))} KB moved, line peak {int_to_str(arena_stat(ArHigh))} KB\n")
     },
     _ => (),
   }
@@ -1664,11 +1666,15 @@ fn scc_pop(st, v, own members) = match st {
 fn imin(a, b) = if a < b { a } else { b }
 
 // The judgment's walk — binding groups in callee-first order, each a
-// singleton judged once or a CYCLE judged as ONE unit.
+// singleton judged once or a CYCLE judged as ONE unit. Each group is an
+// ARENA (lib/arena.mn): what its judgment allocated and did not publish
+// dies at its end. The group publishes into the graph, the env and the
+// intern table, and every store it makes into their older memory journals
+// itself, with the type the store knows, where it happens.
 fn trial_group_walk(ref stmts, ref groups, g) = if g >= len(groups) {
   ()
 } else {
-  trial_judge_group(stmts, sort(groups[g]))
+  trial_judge_group(stmts, sort(groups[g])) ~> arena
   trial_group_walk(stmts, groups, g + 1)
 }
 
@@ -1951,6 +1957,9 @@ fn body_decl_name(body) = match body {
   NStmt(TypeDefStmt(name, _)) => name,
   NStmt(EffectDeclStmt(name, _, _)) => name,
   NStmt(HandlerDeclStmt(name, _, _, _, _, _)) => name,
+  NStmt(RefineStmt(name, _, _)) => name,
+  NStmt(AliasStmt(name, _)) => name,
+  NStmt(RowAliasStmt(name, _)) => name,
   NStmt(LetStmt(pat, _, _)) => match pat {
     PVar(name) => name,
     _ => // drift-audit: ignore — the documented no-key contract (a destructured let contributes no index entry; equal depths keep source order)
@@ -2034,7 +2043,7 @@ fn layer_name_index(ref names, i, idx) = if i >= len(names) {
 // read them.
 fn segment_bracket(body, base, iseed) = match base {
   (bb, bc, bi, bg) => match iseed {
-    (ib, ie, ic) => body() ~> row_gate ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi, bg) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
+    (ib, ie, ic) => body() ~> row_gate ~> store_ages ~> infer_ctx ~> fresh_for_inference ~> resume_summaries_ctx ~> affine_ledger ~> region_tracker ~> verify_ledger ~> lookup_ty_graph ~> env_handler(bb, bc, bi, bg) ~> mutate_sink ~> diag_branch ~> intern_view(ib, ie, ic),
   },
 }
 
@@ -2202,6 +2211,7 @@ fn infer_stmt(ref node) = match node {
       infer_expr(expr)
       match expr {
         N(_, val_span, eh) => {
+          ages_let(eh)
           // The let STATEMENT's value IS its expression: bind the stmt node to
           // the value's var (one union-find edge). Unbound, every block-let's
           // own node sat NFree while lower keys LLet by the STMT handle and two
@@ -2232,8 +2242,12 @@ fn infer_stmt(ref node) = match node {
       // commits round 1; only a poly-fingerprinted refusal retries.
       infer_fn_speculative(name, params, body_node, ret_ann, effs, handle, span)
     },
-    NStmt(TypeDefStmt(_, _)) => (),
-    NStmt(EffectDeclStmt(_, _, _)) => (),
+    NStmt(TypeDefStmt(_, _)) => // The decls column's fourth writer: a type, an effect and an alias
+    // are declarations a name names, so `mentl where` finds them where it
+    // finds a function — by what they declare, in the column — and the
+    // decls facet lists them.
+    graph_decl_note(handle),
+    NStmt(EffectDeclStmt(_, _, _)) => graph_decl_note(handle),
     NStmt(HandlerDeclStmt(hname, ename, config, state, arms, effs)) => {
       // The decls column, third writer. An ARM is an emittable entry whose
       // name is composed at lower and cannot be parsed back to (handler,
@@ -2252,15 +2266,15 @@ fn infer_stmt(ref node) = match node {
     // entry per refined type, permanently — self unbound). Discharge
     // lives at CONSTRUCTION sites: apply_refinement_constraint substitutes
     // the live value node for self (value-proof R2) and decides or pends
-    // against a value that exists.
-    (),
+    // against a value that exists. What is noted is the declaration.
+    graph_decl_note(handle),
     NStmt(AliasStmt(_, _)) => // Transparent alias `type X = T`: registered at pre_register_stmt.
     // No predicate, no Verify — the difference from RefineStmt is exactly
     // the absent `where` (SYNTAX.md §«Type aliases»).
-    (),
+    graph_decl_note(handle),
     NStmt(RowAliasStmt(_, _)) => // Named effect row: registered at pre_register_alias; expansion
     // at build_declared_row (Hβ.types.named-effect-rows).
-    (),
+    graph_decl_note(handle),
     _ => (),
   },
 }
@@ -2874,7 +2888,9 @@ fn infer_fn(name, params, body_node, ret_ann, effs, handle, span: ValidSpan, pol
   // own param). Authored only: infer_ownership runs AFTER the body, so
   // the honest fact here is what the developer wrote.
   declare_authored_owns(params, span)
+  ages_open_fn(param_handles)
   infer_expr(body_node)
+  ages_close_fn(name, param_handles, node_handle(body_node))
   // The authored return is claimed INSIDE the declaration's frame, where a
   // function crossing into it pays the guard of each demand the stated type
   // does not provide, and before the frame's own guards settle. Raised after
@@ -3745,6 +3761,12 @@ fn infer_expr(ref node) = match node {
                       let fh = mint(Inferred("resume state field type"))
                       graph_bind(fh, instantiate(scheme), Located(span, VarLookup(state_field_name(upd), reason)))
                       unify(uh, fh, span, Inferred("resume state update carries the state field's type"))
+                      // The commit stores into the install's record: its claim is
+                      // on the state field it names.
+                      match instantiate(scheme) {
+                        TVar(sb) => ages_store_binder(sb, [uh]),
+                        _ => demand_move(uh),
+                      }
                     },
                   },
                   None => (),
@@ -3830,6 +3852,10 @@ fn infer_expr(ref node) = match node {
           },
         }
         infer_pipe(kind, left, right, handle, span)
+        // Each tick stores the output into a ring its record owns, which an
+        // arena opened inside the record's life outlives, so the arena's
+        // barrier reads the output as a move.
+        shape_demand(handle, MovedShape)
       },
     },
     NExpr(FanoutExpr(branches)) => infer_fanout_nary(branches, handle, span),
@@ -4245,6 +4271,12 @@ fn infer_seq_op(cname, fh, args, handle, span: ValidSpan) = {
       (ptys, ret) => {
         seq_force_list(ah, ptys, 0, span)
         graph_bind(handle, ret, Located(span, Inferred("substrate face of '{cname}'")))
+        // An in-place store: its claim is on the buffer it writes.
+        if cname == "list_set" && len(ah) == 3 {
+          ages_store(list_index(ah, 0), [list_index(ah, 2)])
+        } else {
+          ()
+        }
       },
     },
     None => // A table member with no face row is unreachable by construction
@@ -4822,6 +4854,7 @@ fn infer_call_saturated(args, fh, handle, span: ValidSpan, cname) = {
   // unify_args_positionally. What the call owes is what every function the
   // callee can be demands, read along its edges (`call_owes`).
   call_owes(fn_leaves(fh), arg_handles, handle, span)
+  ages_call(fh, cname, arg_handles)
   stage_continuation_boundary(cname, handle)
 }
 
@@ -5043,7 +5076,9 @@ fn infer_lambda(params, body_node, handle, span: ValidSpan, binder) = {
     N(_, _, bh) => {
       inf_enter_fn(row_handle, bh, span, [])
       inf_frame_params(param_handles ++ [bh])
+      ages_open(AgeClosure)
       infer_expr(body_node)
+      ages_pop()
       exit_frame()
       hand_on_value(bh)
       let published = match binder {
@@ -5090,18 +5125,26 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
         Some(arms) => derive_handler_enames(arms, 0, []),
         None => [],
       }
+      // What the install is, read off the one roster that also decides what
+      // it costs and what it lowers to. An arena's body is an epoch of its
+      // own: what the scope held before it is older than every store inside.
+      let projection = projection_of_effects(map(eff_name_str, arm_names))
+      let opens_arena = install_opens_arena(projection)
+      if opens_arena { ages_depth(1) } else { () }
       inf_enter_fn(body_row_h, body_answer_h, span, [])
       inf_mark_install_frame(arm_names)
       infer_expr(left)
       exit_frame()
+      if opens_arena { ages_depth(0 - 1) } else { () }
       infer_expr(right)
       // The install itself, in the frame it stands in: a dispatched install
       // builds its record and pushes its world, so it allocates, and `!Alloc`
       // accepted every one while the heap grew per call (40 bytes for a
-      // stateless handler, measured 2026-09-28). What it costs is read off
-      // the one roster that also decides what it lowers to.
-      inf_add_row_at(handle, install_cost(arm_names))
+      // stateless handler, measured 2026-09-28).
+      inf_add_row_at(handle, install_cost(projection))
+      install_reads(projection, left)
       let body_row = read_bound_row(body_row_h)
+      ages_install(callee_name(right), body_row)
       match handler_e_r(right) {
         Some(er) => {
           note_bare_handler_product(right)
@@ -5154,11 +5197,35 @@ fn infer_pipe_tee(left, right, handle, span: ValidSpan) = {
 // src/effects.mn): a dispatched install — a schedule's included — builds the
 // record its arms run against and pushes its world; a derivative reading
 // replaces the install with the extent's derivative program and builds
-// nothing. An install whose handler does not resolve is dispatched.
-fn install_cost(arm_names) = match projection_of_effects(map(eff_name_str, arm_names)) {
+// nothing; an arena builds no record either, but its exit moves what
+// survives into the frame's own region and asks every handler around it to
+// name the slots it wrote in place. An install whose handler does not
+// resolve is dispatched.
+fn install_cost(projection) = match projection {
   PDerivative => mk_ef_pure(),
   PSchedule(_) => construction_row(),
   PDispatch => construction_row(),
+  PArena => mk_ef_closed([ENamed(intern_str("Memory")), ENamed(intern_str("Alloc")), ENamed(intern_str("Arena"))]),
+}
+
+fn install_opens_arena(projection) = match projection {
+  PArena => true,
+  PDerivative => false,
+  PSchedule(_) => false,
+  PDispatch => false,
+}
+
+// What an install's own exit reads of its value: an arena carries the value
+// out of the region it reclaims, so the value's type is read as a move and
+// every instantiation keys its own twin by the class that move needs. The
+// other classes read nothing of it.
+fn install_reads(projection, left) = match projection {
+  PArena => match left {
+    N(_, _, lh) => shape_demand(lh, MovedShape),
+  },
+  PDerivative => (),
+  PSchedule(_) => (),
+  PDispatch => (),
 }
 
 // The RHS handler's (handled_effect, residual_row) from its HandlerKind env
@@ -7015,8 +7082,10 @@ fn shape_reach(cell, read) = match graph_instances_of(cell) {
   },
 }
 
-// A whole read covers an outer one. The dedup is also what ends the walk on
-// a cycle.
+// A whole read covers an outer one and a move, since it keys every type it
+// meets by its structure and reaches every variable in it. A move reaches as
+// far but keys coarser, and an outer read keys as fine but reaches less, so
+// neither covers the other. The dedup is also what ends the walk on a cycle.
 fn shape_covers(read, d) = match d {
   DemandNumber(_) => false,
   DemandShape(have) => match have {
@@ -7024,6 +7093,12 @@ fn shape_covers(read, d) = match d {
     OuterShape => match read {
       OuterShape => true,
       WholeShape => false,
+      MovedShape => false,
+    },
+    MovedShape => match read {
+      MovedShape => true,
+      WholeShape => false,
+      OuterShape => false,
     },
   },
 }
@@ -7031,12 +7106,14 @@ fn shape_covers(read, d) = match d {
 fn shape_push(read, ty) = match read {
   WholeShape => each(shape_install(??, WholeShape), shape_whole_roots(ty)),
   OuterShape => each(shape_install(??, OuterShape), shape_outer_roots(ty)),
+  MovedShape => each(shape_install(??, MovedShape), shape_whole_roots(ty)),
 }
 
 // A record row variable bound to more fields and what follows them.
 fn shape_push_row(read, fields, tail) = {
   match read {
     WholeShape => each(shape_install(??, WholeShape), flat_map(field_whole_roots, fields)),
+    MovedShape => each(shape_install(??, MovedShape), flat_map(field_whole_roots, fields)),
     OuterShape => (),
   }
   match tail {
@@ -7119,6 +7196,344 @@ fn row_end_roots(end) = match end {
 fn record_row_write(t, fields, tail, reason) = {
   each(shape_push_row(??, fields, tail), flat_map(demand_shape, graph_demands_of(t)))
   graph_bind_record_row(t, fields, tail, reason)
+}
+
+// ─── THE ARENA'S STORE CLAIM — a store's target is as old as what it names ──
+//
+// An arena's barrier journals a store into memory older than the arena with
+// the leaf its value moves through, and a variable's leaf is known only in a
+// twin keyed by it, so a store of a variable's value twins its body by the
+// class the move needs (`MovedShape`). Keying EVERY store that way was the
+// first form (2026-10-03), and it twinned the prelude for buffers no arena
+// outlives — `map` 117 times, `fold` 102, the list substrate 152 each — until
+// the emission's growth ate the whole of what the arenas reclaimed. A store
+// needs the leaf only where its TARGET can be older than an arena open at the
+// store, and that is a fact the graph carries along the value's edges:
+//   - a target the scope allocated — `alloc`, a literal, a call whose result
+//     is fresh — owes nothing;
+//   - a declared function's PARAMETER is its callers' question: the function
+//     publishes the parameter as stored into, with the cells a move demands
+//     (`AgeSummary`), and each call asks it of its argument (`ages_call`);
+//   - a handler's STATE is its installs' question: an install whose body can
+//     open an arena demands every cell the arms store into the state
+//     (`ages_install`);
+//   - anything else — a capture, a module value, a part of another value, an
+//     op's result, a closure's parameter — and any target older than an arena
+//     the scope opened around the store, demands at the store.
+// The barrier itself stands wherever an arena lives and is sound whatever
+// this answers: a store whose type the emission cannot see journals opaque,
+// and its arena keeps its region. So a wrong answer here costs a kept region
+// or a twin, never a wrong program.
+type StoreTarget = TgParam(Int) | TgState(Int) | TgOlder
+
+// What a scope is to a store: a declared function with its parameters, a
+// closure (whose parameters and captures predate any call of it), or a
+// handler's arms with its state fields.
+type AgeScopeKind = AgeFn([Int]) | AgeClosure | AgeArm(String, [Int])
+
+// A scope being judged: its kind, the lets it bound with the depth of the
+// arenas it had opened around each, the depth now, and the parameter stores
+// it has noted.
+type AgeScope = AgeScope({depth: Int, kind: AgeScopeKind, lets: [(Int, Int)], stores: [(Int, [Int])]})
+
+// A declared function's claim, published where its judgment ends: the
+// parameters its result may be (Some([]) a fresh result, None one older than
+// the call), and the parameters it stores into, by position, with the cells
+// a move demands.
+type AgeSummary = AgeSummary({returns: Option([Int]), stores: [(Int, [Int])]})
+
+effect StoreAges {
+  ages_open(AgeScopeKind)
+  ages_pop()
+  ages_top() -> Option(AgeScope)
+  ages_put(AgeScope)
+  ages_publish(String, AgeSummary)
+  ages_summary(String) -> Option(AgeSummary)
+  ages_state_add(String, [Int])
+  ages_state_cells(String) -> [Int]
+}
+
+handler store_ages with scopes = [], fns = smap_new(), states = smap_new() {
+  ages_open(kind) => resume() with scopes = scopes ++ [AgeScope({depth: 0, kind: kind, lets: [], stores: []})],
+  ages_pop() => resume() with scopes = drop_last(scopes),
+  ages_top() => resume(if len(scopes) == 0 { None } else { Some(last(scopes)) }),
+  ages_put(s) => resume() with scopes = drop_last(scopes) ++ [s],
+  ages_publish(name, s) => resume() with fns = smap_add(fns, name, s),
+  ages_summary(name) => resume(smap_get(fns, name)),
+  ages_state_add(name, cells) => resume() with states = smap_add(states, name, cells ++ cells_of(states, name)),
+  ages_state_cells(name) => resume(cells_of(states, name)),
+}
+
+fn cells_of(states, name: String) = match smap_get(states, name) {
+  Some(cells) => cells,
+  None => [],
+}
+
+// A declared function's scope at its top level, a closure's anywhere else: a
+// function judged inside another is a value its body can carry anywhere.
+fn ages_open_fn(param_handles) = match ages_top() {
+  None => ages_open(AgeFn(param_handles)),
+  Some(_) => ages_open(AgeClosure),
+}
+
+// The claim a declared function publishes as its judgment ends; a nested one
+// publishes nothing, its stores having demanded where they stood. A function
+// that returns its own recursive call reads that call through the claim being
+// formed, so the claim is its LEAST FIXPOINT: it starts at "fresh" and is
+// read again through what the last round found until a round adds nothing —
+// `list_copy_into` returns its `dst` or itself, so it returns `dst`, where
+// reading the unpublished call as older made every buffer it grows older too
+// (the measured first form: `map` still twinned 119 times). A round can only
+// add a parameter or fall to older, so the rounds are bounded by the
+// parameters.
+fn ages_close_fn(name: String, param_handles, body_h) = match ages_top() {
+  Some(scope) => match scope {
+    AgeScope(r) => match r.kind {
+      AgeFn(_) => {
+        let stores = map(store_at_index(param_handles, ??), r.stores)
+        ages_claim_fixpoint(name, scope, body_h, param_handles, stores, Some([]))
+        ages_pop()
+      },
+      AgeClosure => ages_pop(),
+      AgeArm(_, _) => ages_pop(),
+    },
+  },
+  None => (),
+}
+
+fn ages_claim_fixpoint(name: String, scope, body_h, params, stores, claim) = {
+  ages_publish(name, AgeSummary({returns: claim, stores: stores}))
+  let next = returns_of(store_targets(body_h, scope), params)
+  if same_claim(next, claim) {
+    ()
+  } else {
+    ages_claim_fixpoint(name, scope, body_h, params, stores, next)
+  }
+}
+
+fn same_claim(a, b) = match a {
+  Some(xs) => match b {
+    Some(ys) => len(xs) == len(ys) && all(index_in(ys, ??), xs),
+    None => false,
+  },
+  None => match b {
+    Some(_) => false,
+    None => true,
+  },
+}
+
+fn index_in(ys, x) = any(handle_is(x, ??), ys)
+
+fn state_bind_handle(bind) = match bind {
+  (_, ih) => ih,
+}
+
+// The parameters a result may be, each once.
+fn returns_of(targets, params) = if all(target_is_param, targets) {
+  Some(fold([], add_index, map(target_param_index(params, ??), targets)))
+} else {
+  None
+}
+
+fn add_index(acc, i) = if index_in(acc, i) { acc } else { push(acc, i) }
+
+fn target_is_param(t) = match t {
+  TgParam(_) => true,
+  TgState(_) => false,
+  TgOlder => false,
+}
+
+fn target_param_index(params, t) = match t {
+  TgParam(b) => handle_position(params, b),
+  TgState(_) => 0 - 1,
+  TgOlder => 0 - 1,
+}
+
+fn store_at_index(params, entry) = match entry {
+  (b, cells) => (handle_position(params, b), cells),
+}
+
+fn handle_position(params, b) = match find(pair_at_handle(b, ??), enumerate(params)) {
+  Some(pair) => match pair {
+    (i, _) => i,
+  },
+  None => 0 - 1,
+}
+
+fn pair_at_handle(b, pair) = match pair {
+  (_, h) => h == b,
+}
+
+fn handle_is(a, b) = a == b
+
+// A let's value, bound at the depth of the arenas the scope has opened around
+// it.
+fn ages_let(h) = match ages_top() {
+  Some(scope) => match scope {
+    AgeScope(r) => ages_put(AgeScope({...r, lets: push(r.lets, (h, r.depth))})),
+  },
+  None => (),
+}
+
+// An arena the scope opens around what follows (1), and closes (-1): what the
+// scope held before it is older than every store inside it.
+fn ages_depth(delta) = match ages_top() {
+  Some(scope) => match scope {
+    AgeScope(r) => ages_put(AgeScope({...r, depth: r.depth + delta})),
+  },
+  None => (),
+}
+
+// A store of values of the cells' types into the value at `target_h`.
+fn ages_store(target_h, cells) = match ages_top() {
+  Some(scope) => each(ages_settle(scope, cells, ??), store_targets(target_h, scope)),
+  None => each(demand_move, cells),
+}
+
+// A store into a binder itself — a state commit's.
+fn ages_store_binder(b, cells) = match ages_top() {
+  Some(scope) => each(ages_settle(scope, cells, ??), binder_targets(b, scope)),
+  None => each(demand_move, cells),
+}
+
+fn ages_settle(scope, cells, t) = match t {
+  TgOlder => each(demand_move, cells),
+  TgParam(b) => match ages_top() {
+    Some(now) => match now {
+      AgeScope(r) => ages_put(AgeScope({...r, stores: push(r.stores, (b, cells))})),
+    },
+    None => each(demand_move, cells),
+  },
+  TgState(_) => match scope {
+    AgeScope(r) => match r.kind {
+      AgeArm(hname, _) => ages_state_add(hname, cells),
+      AgeFn(_) => each(demand_move, cells),
+      AgeClosure => each(demand_move, cells),
+    },
+  },
+}
+
+fn demand_move(cell) = shape_demand(cell, MovedShape)
+
+// The targets a store into the value at `h` reaches, read from the scope the
+// store stands in — none when the scope allocated it.
+fn store_targets(h, scope) = match graph_node_body(h) {
+  NExpr(VarRef(_)) => match graph_link_of(h) {
+    Some(b) => binder_targets(b, scope),
+    None => [TgOlder],
+  },
+  NExpr(CallExpr(callee, args)) => call_targets(callee, args, scope),
+  NExpr(MakeListExpr(_)) => [],
+  NExpr(BlockExpr(_, f)) => store_targets(node_handle(f), scope),
+  NExpr(IfExpr(_, t, e)) => store_targets(node_handle(t), scope) ++ store_targets(node_handle(e), scope),
+  NExpr(MatchExpr(_, arms)) => flat_map(arm_targets(scope, ??), arms),
+  _ => [TgOlder],
+}
+
+fn arm_targets(scope, arm) = match arm {
+  (_, body) => store_targets(node_handle(body), scope),
+}
+
+fn binder_targets(b, scope) = match scope {
+  AgeScope(r) => match graph_binder_of(b) {
+    Some(fact) => match fact {
+      ParamFact(_) => match r.kind {
+        AgeFn(params) => if r.depth == 0 && any(handle_is(b, ??), params) { [TgParam(b)] } else { [TgOlder] },
+        AgeClosure => [TgOlder],
+        AgeArm(_, _) => [TgOlder],
+      },
+      StateFact(_) => match r.kind {
+        AgeArm(_, states) => if r.depth == 0 && any(handle_is(b, ??), states) { [TgState(b)] } else { [TgOlder] },
+        AgeFn(_) => [TgOlder],
+        AgeClosure => [TgOlder],
+      },
+      PartFact(_) => [TgOlder],
+    },
+    None => match find(let_at(b, ??), r.lets) {
+      Some(found) => match found {
+        (_, d) => if d == r.depth { store_targets(b, scope) } else { [TgOlder] },
+      },
+      None => [TgOlder],
+    },
+  },
+}
+
+fn let_at(b, entry) = match entry {
+  (h, _) => h == b,
+}
+
+// A call's result: `alloc`'s is fresh by what the op is, a declared
+// function's is what its claim says of the arguments it returns, and any
+// other's is older than the call.
+fn call_targets(callee, args, scope) = match callee {
+  N(body, _, ch) => match body {
+    NExpr(VarRef(cname)) => match graph_link_of(ch) {
+      Some(_) => [TgOlder],
+      None => if cname == "alloc" {
+        []
+      } else {
+        match ages_summary(cname) {
+          Some(summary) => match summary {
+            AgeSummary(s) => match s.returns {
+              Some(idxs) => flat_map(arg_targets(args, scope, ??), idxs),
+              None => [TgOlder],
+            },
+          },
+          None => [TgOlder],
+        }
+      },
+    },
+    _ => [TgOlder],
+  },
+}
+
+fn arg_targets(args, scope, i) = if i >= 0 && i < len(args) {
+  match list_index(args, i) {
+    N(NExpr(LabeledArg(_, _)), _, _) => [TgOlder],
+    a => store_targets(node_handle(a), scope),
+  }
+} else {
+  [TgOlder]
+}
+
+// A call into a declared function asks every parameter the function stores
+// into of the argument that fills it.
+fn ages_call(callee_h, cname: String, arg_handles) = match graph_link_of(callee_h) {
+  Some(_) => (),
+  None => match ages_summary(cname) {
+    Some(summary) => match summary {
+      AgeSummary(s) => each(ages_transport(arg_handles, ??), s.stores),
+    },
+    None => (),
+  },
+}
+
+fn ages_transport(args, entry) = match entry {
+  (i, cells) => if i >= 0 && i < len(args) {
+    ages_store(list_index(args, i), cells ++ [list_index(args, i)])
+  } else {
+    each(demand_move, cells)
+  },
+}
+
+// An install answers for its handler's state: one whose body can open an
+// arena runs the arms inside an arena the state predates, so every cell the
+// arms store into the state is a move.
+fn ages_install(hname: String, body_row) = match ages_state_cells(hname) {
+  [] => (),
+  cells => if row_may_open_arena(body_row) { each(demand_move, cells) } else { () },
+}
+
+fn row_may_open_arena(row) = match resolve_row(row) {
+  EfRow(present, _, tail) => any(names_arena_effect, present) || tail_may_grow(tail),
+}
+
+fn names_arena_effect(e) = eff_name_str(e) == "Arena"
+
+fn tail_may_grow(tail) = match tail {
+  EtClosed => false,
+  EtOpen(edges) => len(edges) > 0,
+  EtAll => true,
 }
 
 // `BinOp` / `UnaryOp` inference — dispatched on `BinOpKind`.
@@ -11856,6 +12271,9 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
   )
   let state_binds = infer_handler_state_inits(state)
   bind_handler_state_names(state_binds, arms, hname, span)
+  // The arms store into the state their install allocated, and an install
+  // answers for it (`ages_install`).
+  ages_open(AgeArm(hname, map(state_bind_handle, state_binds)))
   each(
     (arm) => {
       env_scope_enter()
@@ -11865,6 +12283,7 @@ fn register_handler(hname, ename_parsed, config, state, arms, effs, span: ValidS
     },
     arms
   )
+  ages_pop()
   // The arm scope's SIGNATURE is the handler's config cells + its result:
   // an arm's call into a config fn charges a judgment-era row edge that
   // escapes through the scheme at every install (the config tparam rides
@@ -12195,9 +12614,9 @@ fn classify_fixpoint(stmts) = {
   // list_index(decls, i) would be O(N²) per round (§5.O: read a flat array O(1),
   // never re-walk a spine). Both decls and the entries are flat hereafter.
   let decls = list_to_flat(collect_fn_decls_list(stmts, []))
-  let tails = list_to_flat(map({ (n, _, t) => (n, t) }, decls))
+  let tails = list_to_flat(map({ (n, _, t, _) => (n, t) }, decls))
   let summaries =
-    classify_rounds(decls, smap_build(tails), list_to_flat(map({ (n, _, _) => (n, RNone) }, decls)))
+    classify_rounds(decls, smap_build(tails), list_to_flat(map({ (n, _, _, _) => (n, RNone) }, decls)))
   (summaries, tails)
 }
 
@@ -12218,7 +12637,7 @@ fn classify_grade_all(decls, i) = if i >= len(decls) {
   []
 } else {
   match list_index(decls, i) {
-    (n, b, _) => // drift-audit: ignore — prepend-cons recursion, O(N) total
+    (n, b, _, _) => // drift-audit: ignore — prepend-cons recursion, O(N) total
     [(n, resume_grade(b))] ++ classify_grade_all(decls, i + 1),
   }
 }
@@ -12346,7 +12765,9 @@ fn resume_use_eq(a, b) = match a {
   },
 }
 
-// Every fn decl in the program — top-level and nested — as (name, body).
+// Every fn decl in the program — top-level and nested — as (name, body,
+// tail-transparent parameter indices, parameter names): the names are what
+// a walk of the body alone binds, since a parameter is never a reference.
 // The walk mirrors resume_grade's enumeration (the same child-bearing
 // forms); a form added to one without the other starves the summary map.
 fn collect_fn_decls_list(nodes, acc) = if len(nodes) == 0 {
@@ -12358,7 +12779,10 @@ fn collect_fn_decls_list(nodes, acc) = if len(nodes) == 0 {
 fn collect_fn_decls(node, acc) = match node {
   N(body, _, _) => match body {
     NStmt(FnStmt(name, params, _, _, b)) => // drift-audit: ignore — decl-count-bounded cons, not a hot loop
-    collect_fn_decls(b, [(name, b, tail_transparent_params(params, b))] ++ acc),
+    collect_fn_decls(
+      b,
+      [(name, b, tail_transparent_params(params, b), free_vars_param_names(params))] ++ acc
+    ),
     NStmt(HandlerDeclStmt(_, _, _, _, arms, _)) => collect_fn_decls_arms(arms, acc),
     NStmt(LetStmt(_, v, _)) => collect_fn_decls(v, acc),
     NStmt(ExprStmt(e)) => collect_fn_decls(e, acc),

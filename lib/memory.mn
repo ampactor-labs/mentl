@@ -116,6 +116,13 @@ effect Memory {
   i32_shl(Int, Int) -> Int
 }
 
+// The arenas' census: how many exits ran, how many kept their region, the
+// KB reclaimed and moved, and the highest line an exit reached (KB) — what
+// the emitter reads where an arena lives, and zero where none does.
+fn arena_stat(s: ArenaStat) = 0
+
+type ArenaStat = ArExits | ArKept | ArFreed | ArMoved | ArHigh
+
 // Alloc — heap allocation. Bump allocator in WASM linear memory.
 // alloc(n) advances the heap pointer by n bytes (8-byte aligned)
 // and returns the old pointer. No free. No GC. Region-based
@@ -143,45 +150,6 @@ effect Alloc {
   // make_list slots) stays true under reuse — virginity is
   // the reset's CONTRACT, not monotonicity's accident
   heap_reset(Int)
-}
-
-// ImageAlloc — the IMAGE space's allocator (the arena's classification
-// layer, Hβ.perf.per-decl-arena §11 4.3). A record that OUTLIVES the
-// per-decl mark/reset — a spine page, an env or intern growth, a
-// published scheme, an output buffer, a banked diagnostic — allocates
-// through ialloc, and the writer's own row says so: `with ImageAlloc`
-// IS the classification (never a runtime tag), and `!ImageAlloc` proves
-// a path never publishes. The image [0, image-line) is band B's persist
-// set — scratch excluded from snapshots by construction. Emission in
-// the step-1..2 form rides the one bump (a call to $alloc; with no
-// reset live the spaces are indistinguishable); step 3 forks the
-// pointer when the image-map fold draws the image/scratch boundary,
-// and the per-decl reset lands with it.
-effect ImageAlloc {
-  // (size) -> ptr
-  ialloc(Int) -> Int
-  // The bracket pair — an extent whose allocations belong to the image
-  // (the classification's one seam for constructor-built structures: a
-  // spine page or an env bucket allocates through the emitted
-  // constructors, so no wheel-source alloc() call exists to swap; the
-  // EXTENT carries the fact). Depth-counted like borrow_enter/exit —
-  // nested brackets each add one. The census rides the EXTENT DELTA,
-  // never the allocator's hot path: the outermost enter saves the bump
-  // mark, the matching exit adds (bump - mark) to the image-bytes
-  // account — everything an extent allocated is image-classified by
-  // the extent rule, so the delta IS the measurement. The allocator
-  // forks on the depth at step 2b's TRANSITION, and the `~>` absorb
-  // spelling is the gate peer's refinement once installs reach the
-  // substrate allocator.
-  image_enter()
-  image_exit()
-  // The census read — the accumulated image-classified bytes (2a-ii's
-  // measurement). ZERO performers today: the driver's print beside the
-  // movers line is the NAMED NEXT LANDING of the arena chain
-  // (Hβ.perf.per-decl-arena's corrected DEP chain, step 1), not a live
-  // mechanism — 2b's image/scratch boundary is fixed from that measured
-  // number once the print exists.
-  image_bytes() -> Int
 }
 
 // The live world's identity: the install chain from world_top() down, hashed

@@ -35,6 +35,111 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-03 · pin fb8921e335daa8a0 (TRANSITION m3 == m4) · THE ARENA: AN
+  EXTENT'S ALLOCATIONS DIE AT ITS EXIT EXCEPT WHAT ITS PUBLICATION REACHES,
+  AND WHAT IT STORED INTO OLDER MEMORY IS JOURNALED WHERE THE STORE HAPPENS,
+  WITH THE TYPE THE STORE KNOWS. `(body) ~> arena` (lib/arena.mn): `arena`
+  answers `Alloc` by forwarding, so the projection roster classes the install
+  `PArena` and the lowering replaces it with `LArena` — no record, no world
+  push, the arms never run; the install charges `Arena`, answered by no
+  handler, so `main`'s row says whether the program opens one, which is what
+  turns every barrier on. THE JOURNAL: an entry is (slot, leaf) — the slot a
+  store wrote and the leaf its value moves through — written by a list slot's
+  direct `list_set` (through `$list_set_j`), a handler's state commit and a
+  `<~` tick, only into memory below the innermost open arena's mark and only
+  while one is open (outside, one compare); its block is the instance's first
+  allocation. THE EXIT asks no one: a sweep checks every journaled slot
+  holding a value of the region (leaf 0 or an overflow KEEPS the region,
+  nothing moved — sound for any program), the roots and the value move by type
+  into scratch through the generated leaves (`$evac_<sig>` / `$scan_<sig>`,
+  the fold's fifth leaf, Cheney's queue on the copy log, a bitmap for
+  forwarding), then the commit rewrites roots, slides the copies down in one
+  `memory.copy`, zeroes what the exit touched and moves the line; a value no
+  leaf moves found mid-move ABORTS the exit and restores every word it
+  touched. The judgment's binding groups each run in an arena
+  (`trial_group_walk`). THE AGE CLAIM decides which stores need the leaf: a
+  store's target is read along its value's edges — a buffer the scope
+  allocated owes nothing; a declared function's parameter is its callers'
+  question (its claim publishes the parameters it stores into and the
+  parameters its result may be, a least fixpoint over its own recursive calls,
+  transported at every call); a handler's state is its installs' question (an
+  install whose body can open an arena demands every cell the arms store);
+  anything else, and any target older than an arena the scope opened, demands
+  at the store (`MovedShape`). A twin is keyed by that demand only where the
+  program opens an arena (A1: a variable is OPAQUE in a move's identity —
+  `move_sig` renders it "o", never a word). MEASURED, three pins: d7d9da55
+  (TRANSITION) — the m3 leg, the old boot's m2 which opens no arena, 13.57 s
+  at 1,073,176 KB; the m4 leg 14.61 s at 857,616 KB. The new boot over the
+  source it pinned, three runs identical to the byte in their heap trace:
+  874,384 / 863,636 / 869,816 KB peak against the old boot's
+  1,061,396–1,065,228 on that source, the judgment's high-water 288,018,688 B
+  against 511,293,968, 740,839,304 B when the module is written against
+  955,252,656, and the census 4,487 exits, 0 kept, 206,870 KB reclaimed,
+  49,914 KB moved. The ceiling rose to 1,080,000 for the march that pinned it
+  and fell to 884,000 once the pin carried the arena — E4's debt paid with 126
+  MB to spare. 9ec6db48 (TRANSITION) — the dormant strategy deleted, its m3
+  leg the arena-carrying compiler at 867,132 KB under the lowered ceiling,
+  superseded before it was blessed. fb8921e3 (TRANSITION) — the m3 leg 13.60 s
+  at 869,872 KB, the m4 leg 13.39 s at 875,644 KB, both under it. Fixed input
+  before the first pin (the old boot against the candidate on the candidate's
+  own source): judgment 511,293,968 B against 499,810,024, module written
+  955,252,656 B against 952,492,688 — the candidate cheaper on its own input
+  before it opened an arena. THE TWO LATER CUTS, the second and third pins:
+  the dormant W5 strategy — `emit_memory_arena`, a handler nothing installed,
+  allocating from a `$arena_ptr` global nothing moved and every image header
+  carried — is deleted, a second and false home of "the arena" beside the real
+  one; a persisted image is one slot smaller (3,146,304 → 3,146,296 B on the
+  new persist leg, where an image written inside an open arena resumes outside
+  it, a control 42 on both boots). And `list_set` reached as a value, refused
+  at the settle point as an internal invariant, journals through its table
+  face with no leaf and keeps the region (`value-store-keeps`, refused at
+  compile on 9ec6db48, 42 after) — the floor a declared storing function
+  reached as a value already had, measured by probe before the cut. FOUND ON
+  THE WAY, silent and RED on 9d27c325: a function's PARAMETERS read as
+  references in the judgment's call graph (`fn a(b) = b` beside `fn b(n)` was
+  a false cycle and `b`'s two calls of `a` were refused as `Int vs Bool`;
+  `alloc_list_sc(count, sc)` closed a false cycle of seventeen through the
+  list substrate and the prelude's `count`) — mn-param-is-not-a-reference
+  expects 7; and a block's statements were read LAST FIRST, so a later `let`
+  bound its name over an earlier read and a lambda reading the outer value was
+  refused (E_InternalInvariant) — mn-block-walk-source-order expects 11. And
+  measured, not fixed: a block's nested fns do not hoist, so siblings cannot
+  call each other (`Hβ.infer.nested-fn-siblings-do-not-hoist`). Two facets the
+  dig confessed: `mentl query <entry> "prose NEEDLE"`, every comment holding
+  it at the comment's span; and `variants` of an effect, its operations (the
+  boot answered "no constructors found"). KILLS, in order: (1) a generational
+  collector with a card-marking barrier — a foreign shape, Morgan's "is this
+  the Mentl way?"; (2) the first re-derivation broke on non-lexical
+  checkpoints, continuations, contiguity under persist, monotone state
+  rollback and region 0; (3) owners naming their slots at the exit — unsound
+  for plain code (a `list_set` into a buffer older than the arena dangled),
+  with a typed barrier inside `list_set` (re-twins the prelude per element
+  type), region typing (a language arc, named) and untyped evacuation (no
+  runtime types) refuted beside it; (4) typed at EVERY store — +2,444
+  functions and +163 MB at the m3 leg, eating the gain; (5) the instrument's
+  m4 trap in `demand_install`: `fold_sig` rendered a variable as a word, so
+  `[(Int, V)]`'s leaf was `[(Int, Int)]`'s and a pointer dangled (A1); (6) the
+  journal block allocated per outermost arena leaked two megabytes per KEPT
+  region until the line ran out; (7) the "reclaimed" census counted that
+  churn; (8) `map` still twinned 119 times under the claim — not the claim:
+  the false seventeen-member cycle judged `list_extend_to` before its callee
+  had published; (9) two fixed rounds were not a least fixpoint (duplicates
+  grew the claim; a rotating recursion needs a round per parameter); (10) the
+  resume binding found the arm's nested fn only through the walk's leak of a
+  self-reference, and mn-backtrack-full trapped when it closed
+  (`callable_names`); (11) a node rebuilt from a span the graph holds raised a
+  `ValidSpan` claim nothing discharged (+1 obligation); (12) the march refused
+  twice at the comment-reference ratchet, on names a comment posed as
+  references. Micros 339/339 through the pinned boot; crown, proof-exactness
+  and effect-identity green; frontier 542 pass / 0 red / 1 expected-red.
+  Named: the lowering's, the emission's and the session's extents
+  (`Hβ.arena.extents-beyond-the-judgment`), `Hβ.arena.closure-evac-face`,
+  `Hβ.arena.per-instance-regions`, `Hβ.arena.region-typed-mutation`,
+  `Hβ.arena.cast-addr-crosses-the-journal`, `Hβ.arena.claims-of-a-cycle`,
+  `Hβ.arena.constructor-results-are-fresh`,
+  `Hβ.arena.closure-parameter-stores`,
+  `Hβ.infer.nested-fn-siblings-do-not-hoist`.
+
 - 2026-10-02 · pin 9d27c325ab2f23ee (TRANSITION m3 == m4) · THE EIGHT ASPECTS AT THE CARET,
   EACH READ OFF THE GRAPH: A NODE SPANS WHAT IT CONSUMED, THE CARET IS A
   CHARACTER, EVERY UPWARD QUESTION FOLLOWS A PARENT EDGE, AND A FACET SAYS

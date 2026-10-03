@@ -1,0 +1,18 @@
+// expect: 7
+// A FUNCTION'S PARAMETER IS A BINDER, NEVER A REFERENCE. `fn a(b) = b`
+// names no declaration: its `b` is its own argument. Measured 2026-10-03 on
+// boot 9d27c325: the judgment's call graph read the parameter as an edge to
+// `fn b`, so `a` and `b` formed one false cycle, the cycle discipline judged
+// `a` monomorphic inside `b`, and `b`'s two calls of `a` — at Int and at
+// Bool — were refused as `Int vs Bool`. In the wheel the same edge ran from
+// `alloc_list_sc(count, sc)` to the prelude's `count` and closed a false
+// cycle of seventeen declarations through the list substrate.
+fn b(n) = {
+  let p = a(1)
+  let q = a(true)
+  n
+}
+
+fn a(b) = b
+
+fn main() = b(7)

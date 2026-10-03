@@ -1,0 +1,36 @@
+// State rebound inside the arena by a handler installed outside it: the
+// commit journals the slot with its type, and the value moves.
+effect Acc {
+  acc_put([Int])
+  acc_taken() -> [[Int]]
+}
+
+handler acc with xs = [] {
+  acc_put(x) => resume() with xs = push(xs, x),
+  acc_taken() => resume(xs),
+}
+
+fn build(n) = if n == 0 { [] } else { build(n - 1) ++ [n] }
+
+fn add_int(a, b) = a + b
+
+fn work() = {
+  let junk = build(300)
+  acc_put(build(10))
+  acc_put(build(4))
+  len(junk)
+}
+
+fn sum_all(xss) = fold(0, add_list_sum, xss)
+
+fn add_list_sum(a, xs) = a + fold(0, add_int, xs)
+
+fn main() = {
+  let k = work() ~> arena
+  let r = acc_taken()
+  if k == 300 && len(r) == 2 && sum_all(r) == 65 && arena_stat(ArExits) == 1 && arena_stat(ArKept) == 0 {
+    42
+  } else {
+    1
+  }
+} ~> acc

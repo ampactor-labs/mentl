@@ -3765,7 +3765,15 @@ fn free_vars_state_updates(updates, bound) = fold(
 // expression this walk can descend (Hβ.types.predicate-is-expr).
 fn free_vars_stmt(s, bound) = match s {
   LetStmt(_, expr, _) => collect_free_uses(expr, bound),
-  FnStmt(_, _, _, _, body_node) => collect_free_uses(body_node, bound),
+  FnStmt(_, params, _, _, body_node) => // A function's parameters bind its body, as a lambda's do. They read as
+  // references until 2026-10-03, so a parameter named like a declaration was
+  // an edge to it: `fn a(b) = b` beside `fn b(n)` made one false cycle, its
+  // discipline made `a` monomorphic inside `b`, and `b`'s two calls of `a`
+  // were refused as `Int vs Bool`; `alloc_list_sc(count, sc)` closed a false
+  // cycle of seventeen through the list substrate and the prelude's `count`.
+  // The function's own name stays a reference, which is the self-edge that
+  // makes a recursive declaration a cycle.
+  collect_free_uses(body_node, free_vars_merge(bound, free_vars_param_names(params))),
   ExprStmt(expr) => collect_free_uses(expr, bound),
   TypeDefStmt(_, _) => [],
   EffectDeclStmt(_, _, _) => [],
@@ -3858,33 +3866,27 @@ fn free_vars_record_fields(flds, bound) = fold(
   flds
 )
 
-// Walk a statement list, threading `bound` through `LetStmt`s so
-// subsequent statements see the new bindings. Returns
-// `(accumulated_uses, final_bound)`.
-fn free_vars_stmts(stmts, bound, acc_frees) = if len(stmts) == 0 {
-  (acc_frees, bound)
-} else {
-  let stmt = last(stmts)
-  match stmt {
-    N(stmt_body, _, _) => match stmt_body {
-      NStmt(LetStmt(pat, expr, _)) => {
-        let frees = collect_free_uses(expr, bound)
-        let new_bound = free_vars_merge(bound, free_vars_pat_binds(pat))
-        free_vars_stmts(drop_last(stmts), new_bound, free_uses_merge(acc_frees, frees))
-      },
-      NStmt(FnStmt(name, _, _, _, body_node)) => {
-        // Nested named fn — its name is in scope for siblings and the
-        // final expression (recursive / mutual references resolve via env).
-        let frees = collect_free_uses(body_node, bound)
-        let new_bound = free_vars_merge(bound, [name])
-        free_vars_stmts(drop_last(stmts), new_bound, free_uses_merge(acc_frees, frees))
-      },
-      _ => {
-        let frees = collect_free_uses(stmt, bound)
-        free_vars_stmts(drop_last(stmts), bound, free_uses_merge(acc_frees, frees))
-      },
+// Walk a statement list IN SOURCE ORDER, threading `bound` through each
+// binder so a statement sees exactly the names bound before it. Returns
+// `(accumulated_uses, final_bound)`. The walk ran from the last statement
+// back until 2026-10-03, so a later `let` bound its name over every
+// statement before it: `{ let a = x; let x = 1; a + x }` inside a lambda
+// read the first statement's outer x as the later binding, captured nothing,
+// and the lowering refused the program it could not see a binding for
+// (tests/micros/mn-block-walk-source-order.mn).
+fn free_vars_stmts(stmts, bound, acc_frees) = fold((acc_frees, bound), free_vars_stmt_step, stmts)
+
+fn free_vars_stmt_step(acc, stmt) = match acc {
+  (frees, bound) => match stmt {
+    N(NStmt(LetStmt(pat, expr, _)), _, _) => (free_uses_merge(frees, collect_free_uses(expr, bound)), free_vars_merge(bound, free_vars_pat_binds(pat))),
+    N(NStmt(FnStmt(name, params, _, _, body_node)), _, _) => // A nested fn's name and parameters bind its own body; its name binds
+    // what follows it.
+    {
+      let inner = free_vars_merge(bound, [name] ++ free_vars_param_names(params))
+      (free_uses_merge(frees, collect_free_uses(body_node, inner)), free_vars_merge(bound, [name]))
     },
-  }
+    _ => (free_uses_merge(frees, collect_free_uses(stmt, bound)), bound),
+  },
 }
 
 fn free_vars_match_arms(arms, bound) = fold(

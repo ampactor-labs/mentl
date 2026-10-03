@@ -1,0 +1,37 @@
+// An image persisted inside an open arena, resumed by a fresh process.
+//
+// Leg A (no argv): inside an arena, build a list the arena allocates, park a
+// thunk that reads it in the typed root, persist the whole image, exit 40.
+// Leg B ("resume"): swap A's image in, open an arena of its own that builds
+// and drops a list, then call A's thunk — exit 42 when the list A's arena
+// allocated reads back whole. A's arenas were open on A's stack, which no
+// image carries, so B runs outside every one of them: A's region is
+// ordinary heap in B, below the line B's own arena opens at.
+let seed = [0]
+
+fn read_seed() = list_index(seed, 0)
+
+let root = [read_seed]
+
+fn build(n) = if n == 0 { [] } else { push(build(n - 1), n * n) }
+
+fn park() = {
+  let xs = build(6)
+  let thunk = () => list_index(xs, 2) + list_index(xs, 5) - 3
+  list_set(root, 0, thunk)
+  persist(image_header(addr(thunk)), "/tmp/persist-resumes-outside.img")
+  40
+}
+
+fn churn() = len(build(200))
+
+fn main(argv) = {
+  if len(argv) > 1 {
+    let k = image_resume("/tmp/persist-resumes-outside.img")
+    let n = churn() ~> arena
+    let thunk = list_index(root, 0)
+    if addr(thunk) == k && n == 200 { thunk() } else { 1 }
+  } else {
+    park() ~> arena
+  }
+} ~> persist_to_disk ~> fail_exit

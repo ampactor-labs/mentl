@@ -370,7 +370,7 @@ fn check_exhaustive(patterns) = {
 }
 ```
 
-A nested `fn name(params) = body` is a declaration scoped to its block: its name is in scope in its own body and in its sibling fns' (the compiler hoists them into a local letrec scope, so nested fns may reference each other), and it is generalized — one nested `fn ident(x) = x` serves an Int and a String. A block-scope `let name = (params) => body` is a closure VALUE, and the two differ in exactly that: the `let` binds after its value, so its name is not in scope in its own body, it is not generalized, and it may shadow — `let f = (x) => f(x) * 10` calls the `f` bound before it.
+A nested `fn name(params) = body` is a declaration scoped to its block: its name is in scope in its own body and in its sibling fns' (the compiler hoists them into a local letrec scope, so nested fns may reference each other — the lathe lags here: today a nested fn's name is in scope only in its own body and after its declaration, and a sibling that calls one declared below it is refused, `Hβ.infer.nested-fn-siblings-do-not-hoist`), and it is generalized — one nested `fn ident(x) = x` serves an Int and a String. A block-scope `let name = (params) => body` is a closure VALUE, and the two differ in exactly that: the `let` binds after its value, so its name is not in scope in its own body, it is not generalized, and it may shadow — `let f = (x) => f(x) * 10` calls the `f` bound before it.
 
 **A nested fn is MINTED where it is declared** (real, 2026-09-30). Its closure record — its captures, or an empty record with none — is built when the block reaches the declaration, so the declaring frame pays `Memory + Alloc` once per nested fn, exactly as it pays for a lambda it mints (§«Function literals»): `fn adder(k) with !Alloc = { fn add(x) = x + k; add }` refuses. Until this landed the judgment never charged it, and every maker in lib/dsp returning its nested stage carried a row of `Pure`. A nested fn that captures nothing could be the module's static record and cost nothing; the charge follows that representation the day the lowering builds it (`Hβ.lower.captureless-nested-fn-is-static`).
 
@@ -867,6 +867,34 @@ write that would store a lost tangent into a record refuses where it stands,
 since the record's later readers could not know. A `d` outside every reading
 leaves `Derivative` unhandled at the root. A `<~` line a closure record owns is
 `Hβ.derive.closure-line-tangent`.
+
+**An arena is the third: the extent's allocations die at its exit** (real,
+2026-10-03). `(body) ~> arena` — lib/arena.mn's `arena`, which answers `Alloc`
+by forwarding — evaluates `body` exactly as it evaluates without the install,
+and at the exit reclaims everything the body allocated except what its
+publication reaches: the body's value, and each value the body stored into
+memory older than the arena. Those move, by type, and the line resets behind
+the copies, so an exit costs what crossed and never what died.
+
+```
+fn total_of(n) = (build(n) |> fold(0, add)) ~> arena   // the list dies; the sum crosses
+```
+
+Like a schedule and a reading, the install is recognized by the effect its
+handler answers; it builds no record and pushes no world, and it charges
+`Arena` — an effect no handler answers — so `main`'s row says whether a program
+opens one, and a program that opens none pays nothing at a store. A store into
+older memory is known where it happens: a list slot's `list_set`, a handler's
+state commit and a `<~` tick each journal the slot with the type the store
+knows, wherever the judgment cannot prove the target belongs to the extent — a
+buffer the extent allocated owes nothing, a parameter is its callers' question,
+a handler's state its installs'. A value whose type the store cannot see — a
+function, a continuation, a store through `list_set` reached as a value — is
+never moved: the exit keeps the whole region instead, correct for any program
+and reclaiming nothing (`Hβ.arena.closure-evac-face`). Reclamation is
+reachability from the publication, never a `Consume`: ownership's regions stay
+compile-time facts. In a module that spawns, the arena runs its body and
+reclaims nothing (`Hβ.arena.per-instance-regions`).
 
 ### `<~` — feedback (cycle closure)
 
@@ -2704,7 +2732,7 @@ token, so there is nothing to lift.*
 | `E_ZeroDelayFeedback` | `x <~ delay(0)` — a cycle with no delay: the prior would be the value being computed. ARMED (refuses the executable); one arm of the depth read, both the `delay` and `Delay` spellings | `MaybeIncorrect` | raise the delay to at least 1 |
 | `E_ComputedDelayDepth` | `x <~ delay(n - 1)` — the depth is a runtime value. A feedback line is a fixed set of declared slots, so an unreadable depth cannot be held, and the site would silently get one slot. ARMED, the sibling arm of the same read | `MaybeIncorrect` | write the depth as a literal, or hold the history yourself |
 | `E_OwnershipViolation`| `own` consumed twice / escapes ref scope      | `Unspecified`        | restructure to single-consume or use `ref`     |
-| `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident — the bump heap never frees — so it is a use-after-free the day §5.O layer 3's arena gives `Consume` a real reclaim | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
+| `E_UseAfterMove`      | a borrow-READ of a name the affine ledger already moved — the read half of affine beside `E_OwnershipViolation`'s consume half. ARMED 2026-09-15: it narrated while its own census held at zero (the arming law its decl and fixture both stated), and a narration held at zero is a counter standing in for a proof. Sound today only by accident: the heap frees only where an extent ends — an arena's exit, a reset — never at a `Consume`, so it is a use-after-free the day a `Consume` reclaims | `Unspecified` | drop the read, or restructure so the move happens after it — never a patch |
 | `E_HandlerUninstallable` | handler arms need effects context disallows | `MaybeIncorrect`   | widen ambient row or restructure handler       |
 | `E_HandlerInexhaustive` | a handler's arms answer some ops of an effect and not others (§«A handler is exhaustive») — an install absorbs every op of the effects its arms answer, so the missing op would escape the row and reach nothing at runtime. ARMED at birth, 2026-09-30, born at wheel-zero; the shape it refuses was a false absence proof that trapped | `HasPlaceholders` | add the arm; forward the op outward (`op(…) => resume(op(…))`); or declare the ops this handler answers as their own effect |
 | `E_ThreadedBranchEffect` | under a threaded schedule, a branch's row carries an effect whose covering handler at the fanout's frame — or, for a fanout a caller's schedule demands, along the demand's chain of installs, the callback parameter's row read at the instantiating site — writes its state (`resume … with`), lies beyond the frame fence with no demand reaching it, or reaches such a handler through its own arms (§`><`). ARMED, born at wheel-zero | `MaybeIncorrect` | install a handler that writes no state at the fanout's frame, or install the handler inside the branch |

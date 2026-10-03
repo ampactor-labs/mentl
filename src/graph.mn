@@ -116,13 +116,7 @@ fn spine_page(ref spine, h) -> SpinePage = list_index(spine, spine_band(h))
 fn spine_ensure(own spine, spine_open, b) = if b < spine_open {
   (spine, spine_open)
 } else {
-  // IMAGE family (1) of six (arena 2a-ii, Hβ.perf.per-decl-arena): the
-  // spine's pages OUTLIVE every per-decl reset — the bracket classifies
-  // the whole growth extent (table + pages) and feeds the census delta.
-  image_enter()
-  let grown = spine_open_loop(list_extend_to(spine, b + 1), spine_open, b)
-  image_exit()
-  grown
+  spine_open_loop(list_extend_to(spine, b + 1), spine_open, b)
 }
 
 fn spine_open_loop(own spine, opened, b) = if opened > b {
@@ -512,9 +506,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       (sp, so) => {
         spine_put_node(sp, next, GNode(NFree(epoch), reason))
         spine_put_module(sp, next, cur_module + 1)
-        let new_trail = trail_append(trail, trail_len, MFreshNode(next))
-        if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(next)) }
-        resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = trail_len + 1
+        let m = MFreshNode(next)
+        let j = journaling(checkpoint_stack)
+        if !j { graph_mutated(epoch, m) }
+        resume(next) with spine = sp, spine_open = so, next = next + 1, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
       },
     }
   },
@@ -522,9 +517,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     (sp, so) => {
       spine_put_node(sp, next, GNode(NRowFree(epoch), reason))
       spine_put_module(sp, next, cur_module + 1)
-      let new_trail = trail_append(trail, trail_len, MFreshNode(next))
-      if len(checkpoint_stack) == 0 { graph_mutated(epoch, MFreshNode(next)) }
-      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = new_trail, trail_len = trail_len + 1
+      let m = MFreshNode(next)
+      let j = journaling(checkpoint_stack)
+      if !j { graph_mutated(epoch, m) }
+      resume(next) with spine = sp, spine_open = so, next = next + 1, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
     },
   },
   graph_register_node(handle, body) => // Edge-link a node's body into the one graph at its handle — the program
@@ -654,10 +650,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     let old_boundary = spine_boundary_at(spine, spine_open, site_handle)
     spine_put_boundary(spine, site_handle, boundary)
     let mutation = MSetBoundary(site_handle, old_boundary)
-    let new_trail = trail_append(trail, trail_len, mutation)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, mutation) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, mutation) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, mutation), trail_len = trail_len_after(trail_len, j)
   },
   graph_bind(handle, ty, reason) => // The guard reads THIS instance's state DIRECTLY: the occurs family is
   // mechanism-layer (state-passed, zero ops), so the check can neither
@@ -713,10 +709,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       handle,
       GNode(NBound(shape_of(ty)), accepted_reason(accepted, spine, spine_open, handle, reason))
     )
-    let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
+    let m = MSetNode(handle, old_node)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_bind_hole(handle, reason) => // The productive-under-error poison write (infer.mn:24's law, given its
   // graph op): the node becomes an OBSERVED FAILURE. No occurs check — a hole
@@ -725,10 +722,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   {
     let old_node = graph_node_at(spine, next, handle)
     spine_put_node(spine, handle, GNode(NErrorHole(reason), reason))
-    let new_trail = trail_append(trail, trail_len, MSetNode(handle, old_node))
+    let m = MSetNode(handle, old_node)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetNode(handle, old_node)) } else { () }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_bind_row(handle, row, reason) => // A row is a SET, so a row var referencing itself (v = names ∪ v) is
   // idempotent — the least fixed point is `names`, v contributes nothing new,
@@ -782,10 +780,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       handle,
       GNode(NRowBound(flatten_row_stored(spine, next, stored, handle)), reason)
     )
-    let new_trail = trail_append(trail, trail_len, MSetRow(handle, old_node))
+    let m = MSetRow(handle, old_node)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetRow(handle, old_node)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_finalize_row(handle, row, reason) => // The decl-exit REPLACE — inf_exit_fn publishing the frame's accumulated
   // row as the fn's verdict. Not a join: the frame's accumulation is the
@@ -802,10 +801,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       handle,
       GNode(NRowBound(flatten_row_stored(spine, next, row, handle)), reason)
     )
-    let new_trail = trail_append(trail, trail_len, MSetRow(handle, old_node))
+    let m = MSetRow(handle, old_node)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetRow(handle, old_node)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_compress_row(v, row) => // Path compression at the row sort — an OPTIMIZATION write, distinct
   // from the judgment bind by OP so the policy lives where the band facts
@@ -827,10 +827,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     {
       let old_node = graph_node_at(spine, next, v)
       spine_put_node(spine, v, GNode(NRowBound(row), Inferred("row path compression")))
-      let new_trail = trail_append(trail, trail_len, MSetRow(v, old_node))
+      let m = MSetRow(v, old_node)
+      let j = journaling(checkpoint_stack)
       let new_epoch = epoch + 1
-      if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetRow(v, old_node)) }
-      resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+      if !j { graph_mutated(new_epoch, m) }
+      resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
     }
   },
   graph_gate_add(handle, gate) => // The gate column's one write: a LIFO push under the cell's handle,
@@ -841,15 +842,16 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // beyond the trail's own.
   {
     wmap_add(gates, handle, gate)
-    let new_trail = trail_append(trail, trail_len, MSetGate(handle))
+    let m = MSetGate(handle)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetGate(handle)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_instance_note(root, fresh) => {
     wmap_add(instances, root, fresh)
-    let new_trail = trail_append(trail, trail_len, MInstanceNote(root))
-    resume() with trail = new_trail, trail_len = trail_len + 1
+    let j = journaling(checkpoint_stack)
+    resume() with trail = trail_after(trail, trail_len, j, MInstanceNote(root)), trail_len = trail_len_after(trail_len, j)
   },
   graph_gates_of(handle) => resume(wmap_get_all(gates, handle)),
   graph_instances_of(handle) => resume(wmap_get_all(instances, handle)),
@@ -859,10 +861,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // behind.
   {
     wmap_add(demands, handle, demand)
-    let new_trail = trail_append(trail, trail_len, MSetDemand(handle))
+    let m = MSetDemand(handle)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetDemand(handle)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_demands_of(handle) => resume(wmap_get_all(demands, handle)),
   graph_bind_record_row(handle, fields, tail, reason) => // The record-row residual bind — a `...R` rest's remaining fields, under
@@ -880,10 +883,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
       // proven, continuing, or assumed. It is never re-derived here, because
       // the fields alone cannot say which of the three produced them.
       spine_put_node(spine, handle, GNode(NRecordRowBound(fields, tail), reason))
-      let new_trail = trail_append(trail, trail_len, MSetRow(handle, old_node))
+      let m = MSetRow(handle, old_node)
+      let j = journaling(checkpoint_stack)
       let new_epoch = epoch + 1
-      if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MSetRow(handle, old_node)) }
-      resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+      if !j { graph_mutated(new_epoch, m) }
+      resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
     }
   },
   graph_index_span(span, handle) => // ─── Rollback — the oracle's undo ────────────────────────────────
@@ -961,10 +965,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // beyond the trail's own.
   {
     wmap_add(rows, h, row)
-    let new_trail = trail_append(trail, trail_len, MRowNote(h))
+    let m = MRowNote(h)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MRowNote(h)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_rows_at(h) => resume(wmap_get_all(rows, h)),
   graph_binder_note(h, fact) => // THE BINDER FACT's write (P0): newest first under the binder's handle,
@@ -972,10 +977,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // is a handle the rollback hands out again, so its fact must go with it.
   {
     wmap_add(binders, h, fact)
-    let new_trail = trail_append(trail, trail_len, MBinderFact(h))
+    let m = MBinderFact(h)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MBinderFact(h)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_binder_of(h) => resume(wmap_get(binders, h)),
   graph_owe_late(g, payer) => // THE LATE PAYERS' write (P0): a frame called through a guard cell its
@@ -983,10 +989,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // as MOweLate, so a rolled-back judgment's payments go with it.
   {
     wmap_add(late, g, payer)
-    let new_trail = trail_append(trail, trail_len, MOweLate(g))
+    let m = MOweLate(g)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MOweLate(g)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_late_payers(g) => resume(wmap_get_all(late, g)),
   graph_claim_note(h, contract) => // THE CLAIMS' write (P0): a contract claimed of the value at a node,
@@ -994,10 +1001,11 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   // judgment's claims go with it.
   {
     wmap_add(claims, h, contract)
-    let new_trail = trail_append(trail, trail_len, MClaimNote(h))
+    let m = MClaimNote(h)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, MClaimNote(h)) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, m) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, m), trail_len = trail_len_after(trail_len, j)
   },
   graph_claims_of(h) => resume(wmap_get_all(claims, h)),
   graph_link_of(h) => resume(match graph_node_at(spine, next, h) {
@@ -1049,10 +1057,10 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
     let old = spine_product_at(spine, spine_open, h)
     spine_put_product(spine, h, ProductOf(nodes, open))
     let mutation = MSetProduct(h, old)
-    let new_trail = trail_append(trail, trail_len, mutation)
+    let j = journaling(checkpoint_stack)
     let new_epoch = epoch + 1
-    if len(checkpoint_stack) == 0 { graph_mutated(new_epoch, mutation) }
-    resume() with epoch = new_epoch, trail = new_trail, trail_len = trail_len + 1
+    if !j { graph_mutated(new_epoch, mutation) }
+    resume() with epoch = new_epoch, trail = trail_after(trail, trail_len, j, mutation), trail_len = trail_len_after(trail_len, j)
   },
   graph_product_at(h) => resume(spine_product_at(spine, spine_open, h)),
   graph_emitfn_note(entry) => // The emittable-fn
@@ -1174,13 +1182,26 @@ handler graph_handler(spine0, spine_open0, span_index0) with spine = spine0, spi
   },
   graph_commit_checkpoint(_target_idx) => // The ACCEPT half of speculation: drop the newest checkpoint record
   // WITHOUT restoring — every write since the push stands as truth, the
-  // trail keeps its entries (an enclosing checkpoint's rollback still
-  // walks them), and mutation events resume when the stack empties. An
-  // empty stack is a benign no-op (the push/commit pair's belt).
+  // trail keeps its entries while an enclosing checkpoint's rollback can
+  // still walk them, and mutation events resume when the stack empties.
+  // Committing the OUTERMOST checkpoint leaves nothing that can read an
+  // entry, so the trail is dropped whole: it is the speculation's scratch,
+  // empty whenever no checkpoint is open, so each speculation grows its own
+  // inside the extent it runs in and an arena reclaims it with the rest.
+  // Reusing one buffer across speculations wrote every entry into memory
+  // older than the arena, and a buffer the growth had replaced was a slot
+  // no owner names — the region was kept (seven of the wheel's nine keeps,
+  // 2026-10-02). An empty stack is a benign no-op (the push/commit pair's
+  // belt).
   if len(checkpoint_stack) == 0 {
     resume()
   } else {
-    resume() with checkpoint_stack = drop_last(checkpoint_stack)
+    let rest = drop_last(checkpoint_stack)
+    if len(rest) == 0 {
+      resume() with checkpoint_stack = rest, trail = [], trail_len = 0
+    } else {
+      resume() with checkpoint_stack = rest
+    }
   },
 }
 
@@ -1844,6 +1865,21 @@ fn revert_trail(ref spine, spine_open, ref trail, current, target, next_handle, 
 // relevant tier's first sweep).
 fn trail_append(trail, trail_len, own mutation) =
   list_set(list_extend_to(trail, trail_len + 1), trail_len, mutation)
+
+// Whether a write is journaled: an undo entry is read only by an open
+// checkpoint's rollback (or a segment's written-set), so with no checkpoint
+// open nothing can ever read it. Every write of the whole compile used to be
+// journaled regardless — the trail grew with the program and was the largest
+// single class the crossing census found beside a declaration's own scratch
+// (2026-10-02).
+fn journaling(checkpoint_stack) = len(checkpoint_stack) > 0
+
+// The trail and its logical length after one write, as one decision: the
+// entry lands only while it is journaled.
+fn trail_after(trail, trail_len, journaled, mutation) =
+  if journaled { trail_append(trail, trail_len, mutation) } else { trail }
+
+fn trail_len_after(trail_len, journaled) = if journaled { trail_len + 1 } else { trail_len }
 
 // The cells a run of trail entries BOUND, below a handle frontier, each
 // once in first-write order: the type and row overwrites are the writes
