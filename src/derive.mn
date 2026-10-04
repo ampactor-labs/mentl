@@ -722,6 +722,15 @@ fn jvp(e, env, cx) = match e {
   LResumeK(h, _, _) => jvp_unentered(h, e),
   LYield(h, _, _, _) => jvp_unentered(h, e),
   LKExtend(h, _) => jvp_unentered(h, e),
+  LAbandon(h, op, args) => // An abandoning perform: its arguments are evaluated here and handed to a
+  // handler outside the reading, and the extent is left — nothing after it
+  // runs, so no tangent of it is ever asked for.
+  match seq_values(h, jvp_list(args, env, cx)) {
+    (pre, vals, _) => jv(pre, LAbandon(h, op, vals), LinZero, AInactive),
+  },
+  LUnwind(_) => // A boundary check: the frame leaves when the flag is up, and the position
+  // carries no value the reading could differentiate.
+  jv_plain(e),
   LDeclareFn(_) => jv_plain(e),
   LInvariantFailure(_, _) => jv_plain(e),
 }
@@ -1205,6 +1214,8 @@ fn leaves_value(e) = match e {
   LMakeClosure(_, _, _) => true,
   LYield(_, _, _, _) => true,
   LKExtend(_, _) => true,
+  LAbandon(_, _, _) => true,
+  LUnwind(_) => true,
   LMakeContinuation(_, _, _, _, _) => true,
   LIf(_, _, _, _) => true,
   LBlock(_, _) => true,
@@ -2607,6 +2618,8 @@ fn node_touches(e) = match e {
   LMakeClosure(_, _, _) => false,
   LYield(_, _, _, _) => false,
   LKExtend(_, _) => false,
+  LAbandon(_, _, _) => false,
+  LUnwind(_) => false,
   LMakeContinuation(_, _, _, _, _) => false,
   LDeclareFn(_) => false,
   LIf(_, _, _, _) => false,
@@ -2658,6 +2671,8 @@ fn callee_of(e) = match e {
   LMakeClosure(_, _, _) => [],
   LYield(_, _, _, _) => [],
   LKExtend(_, _) => [],
+  LAbandon(_, _, _) => [],
+  LUnwind(_) => [],
   LMakeContinuation(_, _, _, _, _) => [],
   LDeclareFn(_) => [],
   LIf(_, _, _, _) => [],
@@ -2812,6 +2827,8 @@ fn seed_lanes(h, seed) = match seed {
   LMakeClosure(_, _, _) => None,
   LYield(_, _, _, _) => None,
   LKExtend(_, _) => None,
+  LAbandon(_, _, _) => None,
+  LUnwind(_) => None,
   LMakeContinuation(_, _, _, _, _) => None,
   LDeclareFn(_) => None,
   LIf(_, _, _, _) => None,

@@ -2340,7 +2340,57 @@ and this is the STATE.
   body's tails and each arm's tails now (a `resume` tail hands the
   remainder's answer through), read by the refinement, the flow label and
   the function-value walks alike; `proc_exit(Int) -> !`, a never-returning
-  op answering a bare variable, so `fail_exit` answers any install. And the
+  op answering a bare variable, so `fail_exit` answers any install.
+- **A NON-RESUMING ARM ABANDONS, AND A DEAD CONTINUATION UNWINDS FROM ANY
+  POSITION — CLOSED 2026-10-03 (AN-2).** The grade of an arm with no
+  resume read the op's DECLARED RETURN: a bare variable or unit (`fail ->
+  a`) graded OneShot, so the arm's value flowed back into the performing
+  frame as the op's result. Ten shapes measured on boot 311479e1: `let s:
+  String = boom("x"); len(s) + 100` under an arm answering 7 answered 100;
+  `g(ab(), 1)` called `g` with the dummy; `ab() + note(1)` performed `note`
+  after the abandon; a `let`-bound abandon did not assemble; an abandon
+  leaving a callee called off the spine trapped at the multi-shot floor; a
+  held resume whose continuation abandoned a foreign op answered 12 for 5;
+  an abandon's argument record was an allocation under `!Alloc` (100 for
+  3); a thread's abandon trapped at the thunk's floor; and a call off the
+  spine whose callee yields LIVE compiled and trapped. `RNone` is `Abandon`
+  always; an abandoning perform is `LAbandon` — its arguments into a
+  per-instance AREA allocated once at start (the widest perform's arity,
+  journaled with their leaves where they are stored), no continuation, the
+  op, the flag, and a STRUCTURED branch to the innermost landing: an install
+  body's block (the driver runs the arm; a foreign op bubbles; the world
+  restore always runs), an arena body's block (the arena EXITS — the
+  arguments move out of the region through the journal, the rest is
+  reclaimed; only a LIVE continuation suspends it), or the function's
+  return (`Unwind`, `unwind_scope` over the emission, `emit_unwind`). Every
+  boundary a raised flag can cross — a can-yield call off the spine, an
+  install or an arena off the terminus, a direct arm call of a handler whose
+  arms may unwind, a fanout's spawn and join — is `LUnwind`: a dead
+  continuation unwinds, a live one is the floor, REFUSED at the settle point
+  where the callee's row proves an op whose handler resumes it
+  (`E_ContinuationUncapturable` naming the callee and the op,
+  `settle_unwind`). The k2 spine reifies a remainder only for a callee that
+  may yield live (`can_yield_live`); `$__k_extend` and `$__k_arena_extend`
+  compose nothing for a dead continuation. A thread's abandon rides the
+  task record (op at +16, the area at +20) and `$join_task_impl` RE-RAISES
+  it in the joiner, first in join order; a live yield leaving a thread traps
+  loudly. On the wheel, which already yielded (2,694 runtime floors on the
+  boot's own emission): one driver (`fail_exit`), 286 install landings, 26
+  arena landings, 2,661 boundary checks that unwind, one abandon site and an
+  8-byte area, +1.0% WAT and parity peak RSS (535,004 against the boot's
+  532,696 KB on one source). Twelve micros and two frontier legs, ten of them RED-first
+  on the boot; the arena's `abort-suspends` leg re-derived into
+  `abort-exits` (no suspension, two exits, nothing kept, the argument
+  intact) after the first exit reclaimed the list under the arm — the red
+  that named the area's journal entry. Named: a held resume's remainder
+  after a FOREIGN live yield is in no continuation
+  (`Hβ.lower.arm-remainder-after-a-foreign-live-yield`), the checks are a
+  flag protocol an engine's unwinder makes free
+  (`Hβ.emit.unwind-by-engine-exceptions`), the join is a boundary by name
+  until a task handle carries its branch's row
+  (`Hβ.threads.join-performs-the-branch-row`), and an op whose every
+  provider diverges needs no unwind at all
+  (`Hβ.lower.diverging-provider-direct-call`). And the
   felt half, measured after the gates were green: the install's refusal
   said `Int vs List(Byte)` and nothing of the arm — the mismatch reporter's
   own signature took the unify's Reason and dropped it — so the diagnostic
@@ -3714,8 +3764,9 @@ both regimes first-class — DONE statement (2) whole.
   (the session a value that moves), `Hβ.persist.module-image-cache` (band
   O — cross-run compile skip as image persist, the deleted .kai layer's
   lesson honored), `Hβ.driver.per-module-env-overlay`'s image face, and
-  the multishot polish: `Hβ.lower.either-install-negotiation`,
-  `.multishot-uzero-abort`, `Hβ.infer.tail-recursion-resume-cardinality`,
+  the multishot polish: `Hβ.lower.either-install-negotiation`
+  (`.multishot-uzero-abort` CLOSED 2026-10-03 — an abandoning perform is
+  the unwind, AN-2), `Hβ.infer.tail-recursion-resume-cardinality`,
   `Hβ.lower.held-resume-record-is-not-reclaimed` (the held single
   resume's record, O(1) once frames live in the image). The demonstration
   workload is Pulse's learned effect, and it is a PROJECTION, not a

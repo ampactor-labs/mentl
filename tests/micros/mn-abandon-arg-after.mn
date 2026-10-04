@@ -1,0 +1,26 @@
+// expect: 5
+// AN-2 — an abandon in ARGUMENT position: `g` must never be called with the
+// dummy. `g` performs `note`, whose arm abandons with 105, so the exit code
+// says whether `g` ran: 5 means the unwind left `f` at `ab()`, 105 means `g`
+// ran on the dummy. On boot 311479e1 `g` ran and the program answered 105.
+effect Ab {
+  ab() -> Int
+}
+
+effect Log {
+  note(n: Int) -> Int
+}
+
+handler h {
+  ab() => 5,
+}
+
+handler loud {
+  note(n) => 105,
+}
+
+fn g(x, y) = note(x + y)
+
+fn f() = g(ab(), 1)
+
+fn main() = ((f()) ~> loud) ~> h

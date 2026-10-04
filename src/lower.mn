@@ -325,6 +325,24 @@ type LowExpr
   // install driver's parked $__hres), which is what makes the check correct
   // INSIDE an install body (a `(return)` here would skip the driver bracket).
   | LKExtend(Int, LowExpr)
+  // AN-2 (2026-10-03) — the DEAD-k yield: a perform of an op whose every arm
+  // abandons (`Abandon`). handle, op name, the op's lowered args. The emit
+  // stores the args in the instance's yield-args area at their widths, sets
+  // $yield_op, $yield_k = 0 and $yield_flag, and UNWINDS to the innermost
+  // landing — an install body's block, so its driver runs (an owned op
+  // dispatches, a foreign one bubbles) and its world restores; an arena
+  // body's block, so its exit runs; the function's return otherwise. Nothing
+  // of the frame past the perform runs: `g(ab(), 1)` called `g` with the
+  // dummy and `let v = ab(); v + 1` left a block with no value on boot
+  // 311479e1. No record is built, so `!Alloc` holds over an abandon.
+  | LAbandon(Int, String, [LowExpr])
+  // The boundary check's raised-flag arm: the frame has nothing more to do.
+  // A dead continuation ($yield_k == 0) unwinds to the innermost landing; a
+  // live one is the floor (unreachable) — the frame cannot reify a remainder
+  // here — refused at the settle point where the callee's row proves a
+  // multi-shot op (`settle_unwind`, backends/wasm.mn). handle = the
+  // boundary's node.
+  | LUnwind(Int)
   | LMakeContinuation(Int, LowFn, [LowExpr], Int, Int)
   // H7 — multi-shot continuation record per the H7 walkthrough §1.2.
   // handle, resume-fn, captures, state_index, ret_slot.
@@ -649,6 +667,8 @@ fn lexpr_handle(e) with Pure = match e {
   LResumeK(h, _, _) => h,
   LYield(h, _, _, _) => h,
   LKExtend(h, _) => h,
+  LAbandon(h, _, _) => h,
+  LUnwind(h) => h,
   LDeclareFn(_) => 0,
   LIf(h, _, _, _) => h,
   LBlock(h, _) => h,
@@ -1365,16 +1385,25 @@ fn names_diff_strs(ref xs, ref mask) = filter((n) => !string_in_list(mask, n), x
 //      non-TFun callee type is UNPROVEN ⇒ check — the one-global.get cost is
 //      the price of the A1 hole (a free row var at the callee's one lowering
 //      hid try_fn's yield from every name read).
-fn can_yield(callee_handle) = if !ls_program_may_yield() {
+fn can_yield(callee_handle) = may_yield_by(callee_handle, effect_has_multishot_op)
+
+// Whether the callee may yield a LIVE continuation — one its handler resumes
+// — which is the k2 spine's question: only a live k needs this frame's
+// remainder reified. A callee that can only ABANDON (every op its row
+// carries is answered by arms that never resume) needs the boundary check
+// alone, since its k is dead and nothing resumes into a remainder (AN-2).
+fn can_yield_live(callee_handle) = may_yield_by(callee_handle, effect_has_live_op)
+
+fn may_yield_by(callee_handle, effect_pred) = if !ls_program_may_yield() {
   false
 } else {
   let name = callee_name_of_handle(callee_handle)
   let flow = if len(name) == 0 { lambda_escaping_row(callee_handle) } else { escaping_row(name) }
-  if names_have_multishot(flow) {
+  if any(effect_pred, flow) {
     true
   } else {
     match lookup_ty(callee_handle) {
-      TFun(_, _, row) => row_may_multishot(row),
+      TFun(_, _, row) => row_may_yield_by(row, effect_pred),
       _ => true,
     }
   }
@@ -1389,11 +1418,17 @@ fn is_arena_tee(handler_node) =
 // and otherwise the arena's own row says whether its body may carry an
 // effect whose handler suspends — the read a call's boundary takes of its
 // callee, made of the subtree the arena brackets.
-fn arena_may_yield(h) = if !ls_program_may_yield() {
+fn arena_may_yield(h) = arena_may_yield_by(h, effect_has_multishot_op)
+
+// The k2 spine's question of an arena: may its body carry out a LIVE
+// continuation, whose remainder rides the arena's re-entry.
+fn arena_may_yield_live(h) = arena_may_yield_by(h, effect_has_live_op)
+
+fn arena_may_yield_by(h, effect_pred) = if !ls_program_may_yield() {
   false
 } else {
   match row_of_subtree(h) {
-    Some(row) => row_may_multishot(row),
+    Some(row) => row_may_yield_by(row, effect_pred),
     None => true,
   }
 }
@@ -1401,53 +1436,87 @@ fn arena_may_yield(h) = if !ls_program_may_yield() {
 // A row MAY carry a MultiShot-graded effect: its known names say so, or
 // any tail edge is unproven. Total over the three tails — the unproven
 // forms answer true (check), never a fabricated "safe".
-fn row_may_multishot(row) = match row {
-  EfRow(names, _, t) => if names_have_multishot(eff_names_of(names)) {
+fn row_may_multishot(row) = row_may_yield_by(row, effect_has_multishot_op)
+
+fn row_may_yield_by(row, effect_pred) = match row {
+  EfRow(names, _, t) => if any(effect_pred, eff_names_of(names)) {
     true
   } else {
     match t {
       EtClosed => false,
       EtAll => true,
-      EtOpen(vs) => edges_may_multishot(vs),
+      EtOpen(vs) => edges_may_yield_by(vs, effect_pred),
     }
   },
 }
 
-fn edges_may_multishot(ref vs: [RowEdge]) = match vs {
+fn edges_may_yield_by(ref vs: [RowEdge], effect_pred) = match vs {
   [] => false,
   [e, ...rest] => {
     let here = match graph_chase(edge_cell(e)) {
       GNode(kind, _) => match edge_row_of(kind) {
-        Some(inner) => row_may_multishot(inner),
+        Some(inner) => row_may_yield_by(inner, effect_pred),
         None => true,
       },
     }
-    if here { true } else { edges_may_multishot(rest) }
+    if here { true } else { edges_may_yield_by(rest, effect_pred) }
   },
 }
-
-fn names_have_multishot(enames) = any(effect_has_multishot_op, enames)
 
 // The effect→ops edge lives in the env (EffectDeclKind, register_effect_ops);
 // each op's resume grade lives on its EffectOpScheme (inference joined the
-// handler arms' Usage grades). Two live reads — no side registry.
-fn effect_has_multishot_op(ename) = match env_lookup(ename) {
-  Some(entry) => match entry {
-    (_, _, kind) => match kind {
-      EffectDeclKind(op_names) => any(
-        (op) => match op_resume_discipline(op) {
-          MultiShot => true,
-          Abandon => // M4 — an abandon op yields, so its row can_yield: the caller treats the call as a k2 boundary and propagates the flag (risky → Some(risky) → the install)
-          true,
-          _ => false,
-        },
-        op_names
-      ),
-      _ => false,
-    },
-  },
-  None => false,
+// handler arms' Usage grades). Two live reads — no side registry. An effect
+// yields when any of its ops suspends the perform — a multi-shot op (a live
+// continuation) or an abandoning one (a dead continuation: the caller
+// treats the call as a boundary and unwinds on the flag).
+fn effect_has_multishot_op(ename) = effect_has_op_by(ename, disc_yields)
+
+fn effect_has_live_op(ename) = effect_has_op_by(ename, disc_live)
+
+fn disc_yields(d) = match d {
+  MultiShot => true,
+  Abandon => true,
+  OneShot => false,
+  Either => false,
 }
+
+fn disc_live(d) = match d {
+  MultiShot => true,
+  Abandon => false,
+  OneShot => false,
+  Either => false,
+}
+
+// An op's discipline satisfies the predicate — the one test every reader of
+// an effect's ops applies, a reference with its predicate supplied.
+fn op_disc_holds(disc_pred, op) = disc_pred(op_resume_discipline(op))
+
+fn effect_has_op_by(ename, disc_pred) = any(op_disc_holds(disc_pred), effect_op_names(ename))
+
+// The first op a row carries whose handler resumes it — what the settle
+// point refuses on: a live continuation leaving a callee at a boundary this
+// frame holds no remainder for (`settle_unwind`). None where the row's
+// names prove no such op; an open tail is no proof, so the floor stays the
+// runtime's there.
+fn row_live_op(row) = match row {
+  EfRow(names, _, _) => first_live_op(eff_names_of(names)),
+}
+
+fn first_live_op(enames) = match enames {
+  [] => None,
+  [e, ...rest] => match effect_live_op(e) {
+    Some(op) => Some(op),
+    None => first_live_op(rest),
+  },
+}
+
+fn effect_live_op(ename) = find(op_disc_holds(disc_live), effect_op_names(ename))
+
+// A handler whose arms JOIN a thread may return with the flag raised: a
+// branch's abandon is re-raised at the join (`$join_task_impl`), so the
+// performer of such a handler's op checks after it as it checks after one
+// whose arms may yield.
+fn effect_joins_a_thread(ename: String) = ename == "WasiThreads"
 
 fn resume_bind_assoc(binds, name: String, i) = if i >= len(binds) {
   ""
@@ -1587,6 +1656,38 @@ fn program_may_yield(stmts) = any(
   },
   stmts
 )
+
+// AN-2 — the ops a direct perform must CHECK after: every op of every
+// handler whose residual row (what its arms perform) may yield, by name or
+// by an open tail, or joins a thread, whose abandon the join re-raises. A
+// OneShot arm is called directly; when it — or what it called — abandons,
+// it returns with the flag raised and a dummy, and the performer would run
+// on without the check. Computed once at lower_program, as the global
+// short-circuit is; [] where nothing yields.
+fn unwinding_ops(stmts) = flat_map(
+  {
+    N(body, _, _) => match body {
+      NStmt(HandlerDeclStmt(hname, _, _, _, arms, _)) => if handler_may_unwind(hname) { map(handler_arm_op_name, arms) } else { [] },
+      _ => [],
+    },
+  },
+  stmts
+)
+
+// A handler may unwind when its residual row — the cell `register_handler`
+// judged the arms under, read as `handler_arm_effects` reads it — may yield.
+fn handler_may_unwind(hname: String) = match env_lookup(hname) {
+  Some(entry) => match entry {
+    (_, _, kind) => match kind {
+      HandlerKind(r, _, _, _, _) => {
+        let row = mk_ef_open([], r)
+        row_may_multishot(row) || row_may_yield_by(row, effect_joins_a_thread)
+      },
+      _ => false,
+    },
+  },
+  None => false,
+}
 
 // Effect-row names as bare strings, in the row's (already-canonical) order.
 // EPure is the union identity and never enters a row name-set (consumed to
@@ -2474,6 +2575,17 @@ fn first_diverging(stmts, i) = if i >= len(stmts) {
   first_diverging(stmts, i + 1)
 }
 
+// The diverging statement lowers as the expression that diverges: a binder
+// it would have bound is dead, and a block ending in a `let` has no value
+// (`let v = ab(); v + 1` did not assemble — nothing on the stack).
+fn diverging_expr(stmt) = match stmt {
+  N(b, _, _) => match b {
+    NStmt(ExprStmt(e)) => e,
+    NStmt(LetStmt(_, init, _)) => init,
+    _ => stmt,
+  },
+}
+
 // Lexical install wins over the keyed forward (a nested handler shadows the
 // caller's evidence) — the seed's $lower_perform order, byte-faithful.
 fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline(op_name) {
@@ -2488,18 +2600,14 @@ fn lower_perform_dispatch(handle, op_name, lo_args) = match op_resume_discipline
   // on the k value — an abandon yield's k is also a bare LConst, so op-name
   // is the discriminator).
   LYield(handle, "", [], LConst(handle, LInt(0))),
-  Abandon => // M4 — an Abandon perform yields from ANY position with a DEAD k (the
-  // arm never resumes, so the continuation is abandoned). The k slot is a
-  // bare LConst(0) → the emit stores $yield_k = 0 (never read) and takes
-  // the real-yield path (op non-empty): set op/args/flag, return the
-  // width-honest dummy. The driver runs the arm, the arm returns without
-  // calling k, the loop exits flag-clear delivering the arm value as the
-  // install's — abandon by construction. The perform's own frame deadens
-  // its remainder (lower_expr's BlockExpr arm — an Abandon perform
-  // diverges); everything up the stack propagates via the EXISTING k2
-  // call-boundary check (never a bare return, which would skip an
-  // install's driver bracket — the M1.3 finding).
-  LYield(handle, op_name, lo_args, LConst(handle, LInt(0))),
+  Abandon => // An Abandon perform yields from ANY position with a DEAD k: the arm
+  // never resumes, so the continuation is abandoned and the frame unwinds
+  // to its landing (`LAbandon`). The driver runs the arm with k = 0, the
+  // arm returns without calling it, and the loop exits flag-clear
+  // delivering the arm's value as the install's. Everything up the stack
+  // unwinds through the boundary checks (never a bare return, which would
+  // skip an install's driver bracket — the M1.3 finding).
+  LAbandon(handle, op_name, lo_args),
   _ => lower_perform_walk(handle, op_name, lo_args),
 }
 
@@ -2830,7 +2938,7 @@ fn lower_expr_body(e, handle, span) = match e {
     let result = match first_diverging(stmts, 0) {
       Some(i) => {
         let lo_prefix = lower_stmt_list(take(i, stmts))
-        let lo_diverge = lower_expr(list_index(stmts, i))
+        let lo_diverge = lower_expr(diverging_expr(list_index(stmts, i)))
         LBlock(handle, list_concat(lo_prefix, [lo_diverge]))
       },
       None => {
@@ -3690,12 +3798,21 @@ fn fanout_form_of(handle, schedule, branches) = match schedule {
 
 // One branch's spawn, bound to its ticket handle as a let-local the join
 // below reads after every spawn has launched.
+// A spawn or a join perform returns with the flag raised when its branch
+// abandoned — run inline by a sequential schedule's arm, or re-raised at the
+// join from a thread's task record (`$join_task_impl`) — so the fanout
+// checks after each, per branch, where the branch's row may yield (AN-2).
+fn branch_checked(h, thunk, e) = match lookup_ty(lexpr_handle(thunk)) {
+  TFun(_, _, row) => if ls_program_may_yield() && row_may_multishot(row) { k2_floor_wrap(h, e) } else { e },
+  _ => e,
+}
+
 fn spawn_let_at(handle, indexed) = match indexed {
   (i, branch) => match branch {
     ScheduledBoundary(thunk, _, _, thread_ticket_h, _, _) => LLet(
       thread_ticket_h,
       "__fanout_spawn_{int_to_str(i)}_{int_to_str(handle)}",
-      lower_perform_dispatch(thread_ticket_h, "spawn", [thunk])
+      branch_checked(thread_ticket_h, thunk, lower_perform_dispatch(thread_ticket_h, "spawn", [thunk]))
     ),
     InvalidScheduledBoundary(boundary_h, invariant) => LLet(
       boundary_h,
@@ -3707,13 +3824,13 @@ fn spawn_let_at(handle, indexed) = match indexed {
 
 fn spawn_join_at(handle, indexed) = match indexed {
   (i, branch) => match branch {
-    ScheduledBoundary(_, result_h, carrier_h, thread_ticket_h, _, _) => {
+    ScheduledBoundary(thunk, result_h, carrier_h, thread_ticket_h, _, _) => {
       let joined = lower_perform_dispatch(
         carrier_h,
         "thread_join",
         [LLocal(thread_ticket_h, "__fanout_spawn_{int_to_str(i)}_{int_to_str(handle)}")]
       )
-      LFieldLoad(result_h, joined, FByIndex(0))
+      LFieldLoad(result_h, branch_checked(carrier_h, thunk, joined), FByIndex(0))
     },
     InvalidScheduledBoundary(boundary_h, invariant) => LInvariantFailure(boundary_h, invariant),
   },
@@ -3724,7 +3841,11 @@ fn persist_let_at(handle, indexed) = match indexed {
     ScheduledBoundary(thunk, _, _, _, persist_ticket_h, _) => LLet(
       persist_ticket_h,
       "__fanout_persist_{int_to_str(i)}_{int_to_str(handle)}",
-      lower_perform_dispatch(persist_ticket_h, "persist_branch", [thunk])
+      branch_checked(
+        persist_ticket_h,
+        thunk,
+        lower_perform_dispatch(persist_ticket_h, "persist_branch", [thunk])
+      )
     ),
     InvalidScheduledBoundary(boundary_h, invariant) => LLet(
       boundary_h,
@@ -3736,13 +3857,13 @@ fn persist_let_at(handle, indexed) = match indexed {
 
 fn persist_join_at(handle, indexed) = match indexed {
   (i, branch) => match branch {
-    ScheduledBoundary(_, result_h, carrier_h, _, persist_ticket_h, _) => {
+    ScheduledBoundary(thunk, result_h, carrier_h, _, persist_ticket_h, _) => {
       let joined = lower_perform_dispatch(
         carrier_h,
         "join_persist",
         [LLocal(persist_ticket_h, "__fanout_persist_{int_to_str(i)}_{int_to_str(handle)}")]
       )
-      LFieldLoad(result_h, joined, FByIndex(0))
+      LFieldLoad(result_h, branch_checked(carrier_h, thunk, joined), FByIndex(0))
     },
     InvalidScheduledBoundary(boundary_h, invariant) => LInvariantFailure(boundary_h, invariant),
   },
@@ -5003,6 +5124,7 @@ fn lower_resume_oneshot(handle, val, state_updates) = if len(state_updates) == 0
 fn lower_resume_callk(handle, val, state_updates) = {
   let kr = "__kr_{int_to_str(handle)}"
   let kr2 = "__kr2_{int_to_str(handle)}"
+  let rd = "__rd_{int_to_str(handle)}"
   let hname = current_arm_handler()
   match if len(state_updates) == 0 {
     ([], "")
@@ -5033,19 +5155,26 @@ fn lower_resume_callk(handle, val, state_updates) = {
               [
                 LLet(
                   handle,
-                  "__rd_{int_to_str(handle)}",
+                  rd,
                   LPerform(handle, PdDriver("__redrive_{hname}", resolve_hrec(handle)), [LLocal(handle, kr)])
                 ),
                 // The redrive LOOPS this handler's OWN ops (dispatch-until-clear),
-                // so a flag STILL raised after it is a FOREIGN op — M4 made abort
-                // an Abandon yield, so a resumed continuation that aborts bubbles
-                // its yield back through here (backtrack's try-fn resume feeding
-                // my_catch). It must PROPAGATE to the enclosing driver, NOT floor:
-                // __rd (a flagged dummy) flows up with the flag intact, the
-                // caller's driver/composer catches it, and a genuinely-unhandled
-                // foreign op still traps LOUDLY at the _start backstop. Flooring
-                // here (the pre-M4 form) trapped the legitimate foreign crossing.
-                LLocal(handle, "__rd_{int_to_str(handle)}")
+                // so a flag STILL raised after it is a FOREIGN op. A DEAD one (an
+                // abandon the continuation performed — backtrack's try-fn resume
+                // feeding my_catch) UNWINDS the arm's frame: nothing of the arm
+                // past its resume runs, and the driver that called the arm bubbles
+                // the flag to the enclosing check (AN-2; before, the dummy flowed
+                // into the arm's own code after the resume). A LIVE foreign yield
+                // keeps flowing as the dummy with the flag intact — the arm's
+                // remainder after a resume is in no k, the named peer
+                // `Hβ.lower.arm-remainder-after-a-foreign-live-yield`; a
+                // genuinely-unhandled op still traps LOUDLY at the _start backstop.
+                LIf(
+                  handle,
+                  LGlobal(handle, "yield_flag"),
+                  [LIf(handle, LGlobal(handle, "yield_k"), [LLocal(handle, rd)], [LUnwind(handle)])],
+                  [LLocal(handle, rd)]
+                )
               ]
             )],
             [LLocal(handle, kr)]
@@ -5253,7 +5382,7 @@ fn k2_spine_call(node) = match node {
         Some(deeper) => Some(deeper),
         None => match r {
           N(rb, _, rfh) => match rb {
-            NExpr(VarRef(_)) => if can_yield(rfh) { Some(node) } else { None },
+            NExpr(VarRef(_)) => if can_yield_live(rfh) { Some(node) } else { None },
             _ => None,
           },
         },
@@ -5261,7 +5390,7 @@ fn k2_spine_call(node) = match node {
       PTee => // An arena whose body may suspend is a boundary as a call is: its body
       // is a frame of its own whose remainder rides the arena's re-entry,
       // and the rest of THIS frame is the next segment out.
-      if is_arena_tee(r) && arena_may_yield(node_handle(node)) { Some(node) } else { None },
+      if is_arena_tee(r) && arena_may_yield_live(node_handle(node)) { Some(node) } else { None },
       _ => None,
     },
     NExpr(CallExpr(f, args)) => match f {
@@ -5269,7 +5398,7 @@ fn k2_spine_call(node) = match node {
         NExpr(VarRef(name)) => // An effect op is k1's business (its MultiShot form yields at the
         // perform itself); a k2 boundary is an ordinary CALL whose callee
         // may carry a yield out.
-        if lower_effect_name_of_op(name) == "" && can_yield(fh) {
+        if lower_effect_name_of_op(name) == "" && can_yield_live(fh) {
           Some(node)
         }
         // M4 — the callee doesn't yield, but an ARG might: the first
@@ -5647,34 +5776,26 @@ fn k2_floor_guard(e, terminus) = match e {
   LHandleWith(h, b, hn, hname, inits, an) => {
     // A4 — the install crossing COMPOSES. An install is TRANSPARENT to the
     // terminus flag: a yield exiting its bracket lands exactly where the
-    // install's own value lands, so the body's boundary is checked IFF the
-    // install's position is (the enclosing driver / caller / composer) OR
-    // its own driver exists (multishot_ops_of != []). The crossing itself
-    // is sound by the world arc: the k record freezes the live $world_g
-    // handle at reify — chain nodes are immutable image records, so the
-    // frozen world keeps every intermediate install (record, config) alive
-    // after its bracket exits — and LResumeK re-enters under it, resolving
-    // the remainder's performs through that chain. The re-install-in-k this
-    // floor was parked for arrives by REPRESENTATION, not by a rebuild;
-    // the unhandled-effect compile gate is what makes "an enclosing check
-    // exists" a static fact at every terminus. A foreign terminus yield
-    // under a driver is the same composition: the driver bubbles it, the
-    // outer check catches, the frozen world re-enters (the old foreign
-    // clause re-derived crossing-safety the k record now CARRIES). A
-    // driverless install in a NON-checked position still wraps loud below —
-    // that remainder is in no k (the measured 9-not-29 value loss), the
-    // honest floor until the k2 spine form composes across non-terminus
-    // installs.
-    let has_driver = len(multishot_ops_of(hname)) > 0
-    let rebuilt = LHandleWith(
-      h,
-      k2_floor_guard(b, has_driver || terminus),
-      k2_floor_guard(hn, false),
-      hname,
-      k2_floor_list(inits),
-      an
-    )
-    if has_driver || terminus { rebuilt } else { k2_floor_wrap(h, rebuilt) }
+    // install's own value lands, and that position is ALWAYS checked — by
+    // the install's own driver for its own ops, and for a FOREIGN yield
+    // (dead or live) that falls out of the bracket by the check around the
+    // install or the terminus it stands at — so the body's boundary is the
+    // install's. The crossing itself is sound by the world arc: the k
+    // record freezes the live $world_g handle at reify — chain nodes are
+    // immutable image records, so the frozen world keeps every intermediate
+    // install (record, config) alive after its bracket exits — and LResumeK
+    // re-enters under it, resolving the remainder's performs through that
+    // chain. The re-install-in-k this floor was parked for arrives by
+    // REPRESENTATION, not by a rebuild; the unhandled-effect compile gate is
+    // what makes "an enclosing check exists" a static fact at every
+    // terminus. A foreign terminus yield under a driver is the same
+    // composition: the driver bubbles it, the outer check catches, the
+    // frozen world re-enters. A driverFUL install off the terminus went
+    // unchecked until AN-2 (`has_driver || terminus`): its driver bubbled a
+    // foreign yield out with the flag raised and the frame ran on the dummy.
+    let rebuilt =
+      LHandleWith(h, k2_floor_guard(b, true), k2_floor_guard(hn, false), hname, k2_floor_list(inits), an)
+    if terminus { rebuilt } else { k2_floor_wrap(h, rebuilt) }
   },
   LDerive(h, seed, b) => // The derivative reading brackets nothing: its body's value lands where
   // the reading's own does, so the terminus passes straight through.
@@ -5714,6 +5835,8 @@ fn k2_floor_guard(e, terminus) = match e {
   LResumeK(h, k2_floor_guard(k, false), k2_floor_guard(v, false)),
   LYield(h, op, args, k) => LYield(h, op, k2_floor_list(args), k2_floor_guard(k, false)),
   LKExtend(h, k) => LKExtend(h, k2_floor_guard(k, false)),
+  LAbandon(h, op, args) => LAbandon(h, op, k2_floor_list(args)),
+  LUnwind(_) => e,
   LDeclareFn(fn_) => LDeclareFn(fn_),
   LMakeList(h, es) => LMakeList(h, k2_floor_list(es)),
   LMakeTuple(h, es) => LMakeTuple(h, k2_floor_list(es)),
@@ -5724,7 +5847,17 @@ fn k2_floor_guard(e, terminus) = match e {
   LMakeRecord(h, fs) => LMakeRecord(h, k2_floor_list(fs)),
   LMakeVariant(h, t, fs) => LMakeVariant(h, t, k2_floor_list(fs)),
   LFeedback(h, d, home, b, s) => LFeedback(h, d, home, k2_floor_guard(b, false), k2_floor_guard(s, false)),
-  LPerform(h, d, args) => LPerform(h, d, k2_floor_list(args)),
+  LPerform(h, d, args) => {
+    // A direct arm call returns with the flag raised when the arm — or what
+    // it called — abandoned: the performer checks, as a caller does, where
+    // some provider of the op may unwind (`ls_unwinding_op`). The driver is
+    // not a perform and owns its own flag.
+    let walked = LPerform(h, d, k2_floor_list(args))
+    match perform_op_name(d) {
+      Some(op) => if terminus || !ls_unwinding_op(op) { walked } else { k2_floor_wrap(h, walked) },
+      None => walked,
+    }
+  },
   LWasiCall(h, n, args) => LWasiCall(h, n, k2_floor_list(args)),
   LFieldLoad(h, rec, o) => LFieldLoad(h, k2_floor_guard(rec, false), o),
   LConvert(h, k, x) => LConvert(h, k, k2_floor_guard(x, false)),
@@ -5738,10 +5871,11 @@ fn k2_floor_guard(e, terminus) = match e {
   LInvariantFailure(_, _) => e,
 }
 
-// The junction park's name test — `__kr_{handle}` is the spine machinery's
-// own mint (never a user name), the structural marker that its init's
-// boundary is already composed.
-fn k2_is_park(name: String) = len(name) >= 5 && str_slice(name, 0, 5) == "__kr_"
+// The park's name test — `__kr_{handle}` is the spine junction's own mint
+// and `__kf_{handle}` the boundary check's (never a user name), the
+// structural marker that its init's boundary is already checked.
+fn k2_is_park(name: String) =
+  len(name) >= 5 && (str_slice(name, 0, 5) == "__kr_" || str_slice(name, 0, 5) == "__kf_")
 
 fn k2_floor_list(es) = map((x) => k2_floor_guard(x, false), es)
 
@@ -5755,20 +5889,20 @@ fn k2_floor_last(stmts, terminus) = {
   map({ (i, s) => k2_floor_guard(s, if i == n - 1 { terminus } else { false }) }, enumerate(stmts))
 }
 
-// The loud floor: park width-honest, trap at a raised flag, else the value.
-// The trap is the SAME comment-marked LYield floor the census greps — the
-// off-spine k2 boundary's positive-form home until its spine form lands
-// with its crucible. The if's else value is DROPPED — its one job is
-// agreeing in width with the if node's (h = the wrapped call), so it is a
-// zero read at EMIT (`LZero`). Chosen here, at lowering, the width read the
-// base body's type, and a twin of that body emitted under a Float bracket
-// typed the if f64 over an i32 zero: the wheel's own Float `fold_handler`
-// arm twin did not assemble.
+// THE BOUNDARY CHECK: park the value width-honest; at a raised flag the frame
+// is done — a dead continuation unwinds to its landing, a live one is the
+// floor (`LUnwind`, refused at the settle point where the callee's row
+// proves it). The if's else value is DROPPED — its one job is agreeing in
+// width with the if node's (h = the wrapped boundary), so it is a zero read
+// at EMIT (`LZero`). Chosen here, at lowering, the width read the base
+// body's type, and a twin of that body emitted under a Float bracket typed
+// the if f64 over an i32 zero: the wheel's own Float `fold_handler` arm twin
+// did not assemble.
 fn k2_floor_wrap(h, s) = {
   let kf = "__kf_{int_to_str(h)}"
   LBlock(
     h,
-    [LLet(h, kf, s), LIf(h, LGlobal(h, "yield_flag"), [LYield(h, "", [], LConst(h, LInt(0)))], [LConst(h, LZero)]), LLocal(h, kf)]
+    [LLet(h, kf, s), LIf(h, LGlobal(h, "yield_flag"), [LUnwind(h)], [LConst(h, LZero)]), LLocal(h, kf)]
   )
 }
 
@@ -6239,7 +6373,11 @@ fn lower_program(stmts) = {
   // band B M1.3 — the A1 gate's global short-circuit: does any declared
   // effect carry a MultiShot-graded op? No ⇒ nothing can yield ⇒ can_yield
   // is false everywhere and the k2 machinery contributes zero bytes (Law 7).
-  ls_register_may_yield(program_may_yield(stmts) ~> arena)
+  let yields = program_may_yield(stmts) ~> arena
+  ls_register_may_yield(yields)
+  // AN-2 — the ops whose direct performs are followed by the boundary
+  // check; nothing unwinds in a program where nothing yields.
+  ls_register_unwinding_ops(if yields { unwinding_ops(stmts) ~> arena } else { [] })
   // THE CUT — the resume-capability bindings (dormant when no op grades
   // MultiShot: zero arms seed the closure, the list is empty).
   ls_register_resume_binds(resume_bindings(stmts) ~> arena)
@@ -6322,7 +6460,7 @@ fn push_name(buf, count, name) = {
 //
 // Records are stored with their fields sorted by name; Mentl source reads
 // them by `.field`, so the physical layout is the emit's business.
-handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_yield = false, resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
+handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_yield = false, unwinding = [], resume_binds = [], wide = smap_new(), walking = [], fn_symbols = wmap_new(64), symbol_counts = smap_new() {
   ls_register_escaping(map) => // THE FLOW-CLOSURE map (name → escaping row), computed once at lower_program
   // and read live by THE SEAM. Some(row) for a top-level fn; None (→ the leaf)
   // for a nested fn / lambda / unknown name.
@@ -6340,6 +6478,8 @@ handler lower_scope with frames = [], globals = [], esc_rows = smap_new(), may_y
   // lower_program from the declared effects × their ops' inferred disciplines.
   resume() with may_yield = b,
   ls_program_may_yield() => resume(may_yield),
+  ls_register_unwinding_ops(ops) => resume() with unwinding = ops,
+  ls_unwinding_op(op) => resume(string_in_list(unwinding, op)),
   ls_register_resume_binds(bs) => // The actually-performed effect set — noted once per perform site at the
   // dispatch choke point, deduped by name. The executable gate reads it:
   // a row name with no perform anywhere reachable is a declared contract
@@ -6651,6 +6791,8 @@ fn low_refs(acc, expr) = match expr {
   low_refs(low_refs_list(acc, args), k),
   LKExtend(_h, k) => // A k2 boundary reaches through its frame_k record the same way.
   low_refs(acc, k),
+  LAbandon(_h, _op, args) => low_refs_list(acc, args),
+  LUnwind(_h) => acc,
   LDeclareFn(LFn(_n, _a, _p, body, _f, _l)) => low_refs_list(acc, body),
   LBlock(_h, stmts) => low_refs_list(acc, stmts),
   LIf(_h, c, t, e) => low_refs_list(low_refs_list(low_refs(acc, c), t), e),
@@ -6718,6 +6860,8 @@ fn frame_children(expr) = match expr {
   LMakeClosure(_, _, caps) => caps,
   LYield(_, _, args, k) => args ++ [k],
   LKExtend(_, k) => [k],
+  LAbandon(_, _, args) => args,
+  LUnwind(_) => [],
   LMakeContinuation(_, _, caps, _, _) => caps,
   LDeclareFn(_) => [],
   LIf(_, c, t, e) => [c] ++ t ++ e,

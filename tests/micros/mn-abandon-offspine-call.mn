@@ -1,0 +1,22 @@
+// expect: 5
+// AN-2 — an abandon leaving a callee called OFF the spine (`let x = inner()`):
+// the caller's boundary check unwinds its frame to the install's landing, and
+// the arm's value is the install's value. On boot 311479e1 the check was the
+// multi-shot floor and the program trapped (exit 134) on a dead continuation
+// that needed no remainder at all.
+effect Ab {
+  ab() -> Int
+}
+
+handler h {
+  ab() => 5,
+}
+
+fn inner() = ab() + 1
+
+fn outer() = {
+  let x = inner()
+  x * 10
+}
+
+fn main() = (outer()) ~> h

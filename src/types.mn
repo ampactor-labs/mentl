@@ -3356,8 +3356,10 @@ type DiagKind
   // captured yet — a position the remainder builder does not rebuild (a
   // `let`'s value, a statement past the first, an argument, a right operand,
   // a branch). Every perform of such an op suspends, so the site would trap
-  // the moment it ran: the op name (C×A, 2026-10-03)
-  | EContinuationUncapturable(String, Span)
+  // the moment it ran: the op name, and the callee through which the op is
+  // reached when the position is a CALL whose row proves the op ("" at a
+  // perform) (C×A, 2026-10-03; the call face AN-2)
+  | EContinuationUncapturable(String, String, Span)
   // a derivative the reading cannot carry to the place that asks for it: a
   // `d(v)` whose argument's tangent was lost (to an aggregate, a closure call,
   // a perform, a line ticked outside the reading, a derivative's own
@@ -3566,7 +3568,7 @@ fn diag_span(d) with Pure = match d {
   EUnresolvedType(_, _, s) => s,
   EEffectUnhandled(_, _, s) => s,
   EThreadedBranchEffect(_, _, s) => s,
-  EContinuationUncapturable(_, s) => s,
+  EContinuationUncapturable(_, _, s) => s,
   EDerivativeUnreachable(_, s) => s,
   EUnresolvedHole(_, s) => s,
   EFieldOffsetUnprovable(_, s) => s,
@@ -3646,7 +3648,7 @@ fn diag_source(d) with Pure = match d {
   EUnresolvedType(_, _, _) => "lower",
   EEffectUnhandled(_, _, _) => "effects",
   EThreadedBranchEffect(_, _, _) => "lower",
-  EContinuationUncapturable(_, _) => "lower",
+  EContinuationUncapturable(_, _, _) => "lower",
   EDerivativeUnreachable(_, _) => "lower",
   EUnresolvedHole(_, _) => "verify",
   EFieldOffsetUnprovable(_, _) => "lower",
@@ -3725,7 +3727,7 @@ fn diag_code(d) with Pure = match d {
   EUnresolvedType(_, _, _) => "E_UnresolvedType",
   EEffectUnhandled(_, _, _) => "E_EffectUnhandled",
   EThreadedBranchEffect(_, _, _) => "E_ThreadedBranchEffect",
-  EContinuationUncapturable(_, _) => "E_ContinuationUncapturable",
+  EContinuationUncapturable(_, _, _) => "E_ContinuationUncapturable",
   EDerivativeUnreachable(_, _) => "E_DerivativeUnreachable",
   EUnresolvedHole(_, _) => "E_UnresolvedHole",
   EFieldOffsetUnprovable(_, _) => "E_FieldOffsetUnprovable",
@@ -3891,7 +3893,7 @@ fn diag_refuses(d) with Pure = match d {
   // spawned instances resume into is a definite race on one shared state
   // record; a handler beyond the frame fence is unprovable from the site.
   True,
-  EContinuationUncapturable(_, _) => // ARMED at birth (2026-10-03): the floor it replaces trapped the moment
+  EContinuationUncapturable(_, _, _) => // ARMED at birth (2026-10-03): the floor it replaces trapped the moment
   // the perform ran and said nothing before — a program that compiled clean
   // and exited 134. Every perform of a multi-shot or held op suspends, so
   // the site is certain to reach the floor whenever it runs.
@@ -4102,7 +4104,7 @@ fn diag_applicability(d) with Pure = match d {
   EHandlerInexhaustive(_, _, _, _) => HasPlaceholders,
   EEffectUnhandled(_, _, _) => MaybeIncorrect,
   EThreadedBranchEffect(_, _, _) => MaybeIncorrect,
-  EContinuationUncapturable(_, _) => MaybeIncorrect,
+  EContinuationUncapturable(_, _, _) => MaybeIncorrect,
   EDerivativeUnreachable(_, _) => Unspecified,
   EUnresolvedHole(_, _) => HasPlaceholders,
   EFieldOffsetUnprovable(_, _) => MaybeIncorrect,
@@ -4204,7 +4206,7 @@ fn diag_message(d) with !Mutate = match d {
   EUnresolvedType(h, epoch, _) => "handle {int_to_str(h)} @epoch={int_to_str(epoch)}",
   EEffectUnhandled(ename, proposal, _) => "effect {ename} reaches the executable root with no absorbing handler — calling one of its ops would read garbage evidence at runtime; nothing executes unproven. {proposal}",
   EThreadedBranchEffect(ename, why, _) => "effect {ename} is performed inside a threaded branch and {why} — two spawned instances would race, or reach a handler this site cannot see. Install a stateless handler for {ename} at the fanout's own frame, or install the handler inside the branch",
-  EContinuationUncapturable(op, _) => "`{op}` suspends the computation around it — its handler resumes it more than once, or after doing more work — and the rest of the computation cannot be captured at this position yet: a continuation is captured where the perform is the first work its function, block or arena does — the whole expression, or an operand of an operator chain whose earlier operands are plain values. Move the perform there, or move what precedes it into a function the perform's function calls",
+  EContinuationUncapturable(op, via, _) => "{uncapturable_subject(op, via)} suspends the computation around it — its handler resumes it more than once, or after doing more work — and the rest of the computation cannot be captured at this position yet: a continuation is captured where the perform or the call is the first work its function, block or arena does — the whole expression, or an operand of an operator chain whose earlier operands are plain values. Move it there, or move what precedes it into a function that is called before it",
   EDerivativeUnreachable(why, _) => "{why} — the derivative reading would answer zero here, and zero is not what the program asked for; nothing is emitted rather than a wrong slope",
   EUnresolvedHole(h, _) => "unresolved value hole (handle {int_to_str(h)}) — fill it (accept a proven survivor) or suspend it into a parameter product",
   EFieldOffsetUnprovable(why, _) => "{why} — the receiver's row never closed where this is emitted, so there is no slot to read; close the row: annotate the receiver at its Intent Boundary, or give the call site a shape its specialization can key on",
@@ -4341,6 +4343,10 @@ effect LowerScope {
   ls_register_may_yield(Bool)
   // the A1 prove-absence gate's global short-circuit: no MultiShot op anywhere ⇒ nothing can yield ⇒ every row proves absence
   ls_program_may_yield() -> Bool
+  // AN-2 — the ops some provider of which may UNWIND: a handler whose residual row may yield, by name or by an open tail, every op of its arms (computed once at lower_program; [] when nothing yields)
+  ls_register_unwinding_ops([String])
+  // whether a direct perform of this op must be followed by the boundary check — an arm abandoning past it returns with the flag raised
+  ls_unwinding_op(String) -> Bool
   // THE CUT (bank A3) — [(fn_name, hname)]: resume-bearing fns reachable from a MultiShot arm, bound to their handler (computed once at lower_program)
   ls_register_resume_binds([(String, String)])
   // the fn's bound handler name; "" = unbound (no wrap, no evidence threading)
@@ -5114,6 +5120,11 @@ fn reason_line(reason) with !Mutate = match reason {
   Located(_, inner) => show_reason(inner),
   _ => show_reason(reason),
 }
+
+// What suspends at an uncapturable position: the op performed there, or the
+// callee whose row proves it performs the op somewhere inside.
+fn uncapturable_subject(op: String, via: String) =
+  if byte_len(via) == 0 { "`{op}`" } else { "`{via}`, whose row carries `{op}`," }
 
 fn show_span(ref span) = match span {
   Span(sl, sc, el, ec) => "{int_to_str(sl)}:{int_to_str(sc)}-{int_to_str(el)}:{int_to_str(ec)}",

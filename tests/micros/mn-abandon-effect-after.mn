@@ -1,0 +1,23 @@
+// expect: 5
+// AN-2 — nothing after an abandon runs. `ab()` abandons at the head of an
+// operator chain; `note(1)` after it must never perform. `loud`'s arm
+// abandons too, with 105, so the exit code says whether it ran: 5 means the
+// unwind left the chain at `ab()`, 105 means the dummy flowed on into
+// `note`. On boot 311479e1 the dummy flowed and the program answered 105.
+effect Ab {
+  ab() -> Int
+}
+
+effect Log {
+  note(n: Int) -> Int
+}
+
+handler h {
+  ab() => 5,
+}
+
+handler loud {
+  note(n) => 105,
+}
+
+fn main() = ((ab() + note(1)) ~> loud) ~> h

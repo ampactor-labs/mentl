@@ -1686,9 +1686,9 @@ for i in "${!compilers[@]}"; do
              nothing-moved-past-memory addr-value-keeps addr-store-keeps \
              addr-field-keeps addr-list-keeps addr-copy-keeps \
              wide-slot-reclaims held-resume-reenters multishot-resume-reenters \
-             abort-suspends resume-nests-exactly arena-is-a-junction \
+             abort-exits resume-nests-exactly arena-is-a-junction \
              list-value-reenters older-store-reenters reyield-reenters \
-             float-value-reenters; do
+             float-value-reenters abandon-through-arena; do
     run_program "$compiler" "arena-$leg" \
       "$ROOT/tests/frontier/arena/$leg.mn" 42 arena "$dir"
   done
@@ -1726,6 +1726,16 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-threaded-branch-caller.mn" E_ThreadedBranchEffect "$dir"
   run_refusal_linked "$compiler" threaded-branch-transitive \
     "$ROOT/tests/frontier/mn-threaded-branch-transitive.mn" E_ThreadedBranchEffect "$dir"
+  # AN-2 — an abandon inside a branch: the thread entry banks the op and its
+  # argument area in the task record, the join re-raises it in the joiner
+  # (first in join order wins), and the unwind continues from the join to
+  # the install whose arm answers. RED on boot 311479e1: the branch thread
+  # trapped at the thunk's floor (134). The sequential twin runs the thunk
+  # inline in the spawn arm and unwinds through the arm's own call boundary.
+  run_program "$compiler" abandon-threaded \
+    "$ROOT/tests/frontier/mn-abandon-threaded.mn" 5 yes "$dir"
+  run_program "$compiler" abandon-sequential \
+    "$ROOT/tests/frontier/mn-abandon-sequential.mn" 5 yes "$dir"
   # A held resume through a `!Alloc` callee runs the remainder inside the
   # callee's extent, and the remainder carries the op's own multi-shot cost.
   # The resume performs its continuation's world (the handler's remainder

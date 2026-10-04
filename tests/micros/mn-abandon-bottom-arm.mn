@@ -1,0 +1,20 @@
+// expect: 7
+// AN-2 — a non-resuming arm of an op answering a bare variable (`boom -> a`)
+// ABANDONS: its value is the install's value, and nothing after the perform
+// runs. On boot 311479e1 the op's bottom return graded the arm OneShot, its
+// 7 flowed back to the perform as the String `s`, and `len(s) + 100`
+// answered 100 — a silent wrong at the shape every `fail` writes.
+effect Boom {
+  boom(msg: String) -> a
+}
+
+handler h {
+  boom(m) => 7,
+}
+
+fn f() = {
+  let s: String = boom("x")
+  len(s) + 100
+}
+
+fn main() = (f()) ~> h

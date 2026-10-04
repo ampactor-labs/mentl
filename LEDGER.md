@@ -35,6 +35,96 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-03 · pin e7f6e2b946f44c04 (TRANSITION m3 == m4) · A NON-RESUMING ARM ABANDONS, AND A DEAD
+  CONTINUATION UNWINDS FROM ANY POSITION (AN-2). The grade of an arm with no
+  resume read the op's DECLARED RETURN: a bare variable or unit (`fail -> a`)
+  graded OneShot, so the arm's value flowed back into the performing frame as
+  the op's result, and the perform's own frame ran on. Ten shapes on boot
+  311479e1: `let s: String = boom("x"); len(s) + 100` under an arm answering
+  7 answered 100; `g(ab(), 1)` called `g` with the dummy (105 for 5); `ab()
+  + note(1)` performed `note` after the abandon (105 for 5); a `let`-bound
+  abandon did not assemble ("expected i32 but nothing on stack"); an abandon
+  leaving a callee called off the spine trapped at the multi-shot floor
+  (134); a held resume whose continuation abandoned a foreign op answered 12
+  for 5; an abandon's argument record was an 8-byte allocation under
+  `!Alloc` (100 for 3); a thread's abandon trapped at the thunk's floor
+  (134); and a call off the spine whose callee yields LIVE compiled and
+  trapped. THE FORM. `RNone` is `Abandon` always (`arm_disc_of`, the
+  bottom-return hedge deleted). An abandoning perform is `LAbandon`: its
+  arguments into a per-instance AREA (`$yield_args`, allocated once at
+  instance start — `_start`, the thread entry — sized by the widest
+  perform's arity, `yield_area_slots`; every argument evaluated before any
+  is stored, address-value pairs on the operand stack consumed last slot
+  first, since an argument's own evaluation may run a yield-and-resume cycle
+  through the same area; a pointer slot journaled with its leaf, as a state
+  commit's is), no continuation (`$yield_k` zero), the op key, the flag, and
+  a STRUCTURED branch to the innermost landing (`emit_unwind`): an install
+  body's block (`$__land_<h>` — the driver runs the arm for its own op, a
+  foreign op bubbles, the world restore always runs), an arena body's block
+  (`$__aland_<h>` — the arena EXITS, the arguments' pointees moving out of
+  the region through the journal, the rest reclaimed; only a LIVE
+  continuation suspends it, `$__k_arena` and the exit reading `$yield_k`),
+  or the function's return. The landings are a stack the emission keeps
+  (`effect Unwind`, `unwind_scope` over `emit_planned`, `unwind_frame` at
+  every fn body and the init lets). Every boundary a raised flag can cross
+  is `LUnwind` (`k2_floor_wrap`): a can-yield call off the spine, an install
+  or an arena off the terminus, a direct arm call of a handler whose arms
+  may unwind (`unwinding_ops`, computed once at `lower_program` — a handler
+  whose residual row may yield, or joins a thread), a fanout's spawn and
+  join (`branch_checked`); a dead continuation unwinds, a live one is the
+  floor, REFUSED at the settle point where the callee's row proves an op
+  whose handler resumes it (`settle_unwind`, `row_live_op`;
+  `E_ContinuationUncapturable` carries the callee as its second field). The
+  k2 spine reifies a remainder only for a callee that may yield LIVE
+  (`can_yield_live`, `arena_may_yield_live`); `LKExtend`, `$__k_extend` and
+  `$__k_arena_extend` compose nothing for a dead continuation; the held
+  resume's redrive check unwinds the arm on a dead foreign yield
+  (`lower_resume_callk`). A thread's abandon rides the task record — 24
+  bytes now, the op at +16 and the area at +20, written by
+  `$wasi_thread_start` — and `$join_task_impl` RE-RAISES it in the joiner,
+  first in join order, copying the area; a live yield leaving a thread traps
+  loudly there. THE WHEEL already yielded (2,694 runtime floors on the boot's
+  own emission of it); the candidate emits one driver (`fail_exit`), 286
+  install landings, 26 arena landings, 2,661 boundary checks that unwind,
+  one abandon site and an 8-byte area: WAT 545,520 → 551,087 lines (+1.0%),
+  peak RSS 535,004 against the boot's 532,696 KB on one source, the judgment
+  unmoved. KILLS, each a measurement. (1) "A dead continuation holds nothing
+  of the region, so an arena EXITS and the arguments survive in the area" —
+  the area holds the ADDRESSES; the frontier's `abort-suspends` leg read a
+  reclaimed list (len 0 for 10) on the first candidate, which named the
+  journal entry: the perform's arguments are a publication of the extent
+  and move by their leaves, demanded where a state commit demands its own
+  (`fold_acc_evac_args`); the leg is `abort-exits`, re-derived by hand under
+  the arena's one law. (2) "Set `$yield_k` and store the arguments in
+  evaluation order" — an argument's evaluation can run a whole yield-and-
+  resume cycle inside a callee, which moves `$yield_k` and writes the same
+  area; the args go first, through the operand stack, and the k after. (3)
+  A boundary check is a continuation (derive.mn): the derivative reading
+  refused scene 1's distortion (`derive-distort`, 7 diagnostics) at every
+  `LUnwind` its extent reached — an abandon's arguments are evaluated and
+  the extent is left, a check carries no value; the reading passes both.
+  (4) "`heap_mark` inside the `!Alloc` function measures its allocation" —
+  `heap_mark` is an `Alloc` op, so the fixture measured nothing and refused
+  on both compilers; the mark is the caller's. (5) The battery's link set
+  does not carry `arena`: the arena fixture is a frontier leg. (6) The
+  first march REFUSED before the board: the effectful-lambda census read
+  225 past 223 — two readers of an effect's ops each tested a discipline
+  through a lambda and the fold demanding each perform argument's leaf
+  was one — and all three became references (`op_disc_holds` as a
+  one-hole partial over `effect_op_names`, `fold_acc_evac_expr` by name,
+  which `fold_acc_store` reads too); the count fell to 222 and the ceiling
+  follows it (`src/board.mn`). Twelve micros
+  (ten RED-first: 100, assembly, 105, 105, 100, 12, 134, compiled-clean,
+  and the two controls) and two frontier legs RED-first on the boot (134 /
+  trap), the two arena legs RED on the boot (exit 1); micros 377/377, crown
+  134/0, PE 30/0, frontier 604/0/1 through the candidate. Named:
+  `Hβ.lower.arm-remainder-after-a-foreign-live-yield`,
+  `Hβ.emit.unwind-by-engine-exceptions`,
+  `Hβ.threads.join-performs-the-branch-row`,
+  `Hβ.lower.diverging-provider-direct-call`. Closed:
+  `Hβ.lower.multishot-uzero-abort`, `Hβ.lower.abandon-with-resume-arm`, the
+  dead half of `Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`.
+  m4 leg 22.60s wall · 518MB peak RSS (530932 KB).
 - 2026-10-03 · pin 311479e1144cc884 (TRANSITION m3 == m4) · AN ARM'S VALUE IS THE INSTALL'S VALUE
   (AN-1). A handler's type carried its effect's instance and never its
   answer, so no install met what the arms answered: on boot cf8a6d50

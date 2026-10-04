@@ -1,0 +1,22 @@
+// expect: refuse E_ContinuationUncapturable
+// AN-2 — a callee that may yield a LIVE continuation, called where this
+// frame holds no remainder for it (`let x = inner()`): the boundary check
+// could only floor at run time, so the settle point refuses, naming the
+// callee and the op its row carries. On boot 311479e1 the program compiled
+// and trapped at the floor.
+effect Choice {
+  choose() -> Int
+}
+
+handler both {
+  choose() => resume(1) + resume(2),
+}
+
+fn inner() = choose() * 10
+
+fn outer() = {
+  let x = inner()
+  x + 1
+}
+
+fn main() = (outer()) ~> both

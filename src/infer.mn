@@ -8304,7 +8304,7 @@ fn infer_one_handler_arm(arm: {args: [String], body: Node, op_name: String}, res
   // arm frame's own row cell, which is what the arms PERFORM, not what a
   // resume RUNS.
   let continuation_disc =
-    disc_join(arm_disc_of(resume_grade(arm.body), op_ret_ty), op_resume_discipline(arm.op_name))
+    disc_join(arm_disc_of(resume_grade(arm.body)), op_resume_discipline(arm.op_name))
   graph_bind(
     continuation_h,
     TCont(op_ret_ty, TVar(result_h), continuation_disc, mk_ef_open([], world_h)),
@@ -12563,28 +12563,12 @@ fn draw_op_edges(arms, hname) = if len(arms) == 0 {
     Some(entry) => match entry {
       (scheme, reason, kind) => match kind {
         EffectOpScheme(ename, cur_default, ambiguous, cur_disc) => {
-          // M4 — the UZero ABANDON grade. An arm that never resumes must
-          // deliver its value as the INSTALL's, abandoning the continuation
-          // (under the driver: don't call k, return — the loop exits flag-
-          // clear with the arm value). But that only MATTERS when the arm
-          // returns a MEANINGFUL value: the op's return type gates it.
-          //   `fail(msg) -> a` (bare quantified TVar) and `abort() -> !`
-          //   (the never type, parsed TUnit — types.mn:1571 documents abort
-          //   as intentionally OneShot) are BOTTOM: no value flows back, so
-          //   the direct-dispatch OneShot path is already correct and the
-          //   arm terminates (proc_exit) or unifies via the free var. They
-          //   stay OneShot — so NO wheel op changes disc (Law 7 wheel-wide:
-          //   m2 == m3, the abandon forms are added arms exercised only by
-          //   out-of-wheel crucibles).
-          //   `abort() -> Option` (a concrete TName) is the value-returning
-          //   case the crucibles test: its None must reach the install, not
-          //   the perform site — MultiShot, abandon via the driver.
-          // A genuinely unit-returning UZero arm wanting abandon is the
-          // named follow-up Hβ.lower.uzero-unit-abandon (none in the wheel;
-          // () carries no value, so return-vs-abandon is observationally
-          // near-equivalent — the concrete-non-unit signal captures every
-          // meaningful case).
-          let arm_disc = arm_disc_of(grade, scheme_ret_ty(scheme))
+          // An arm that never resumes ABANDONS: its value is the install's,
+          // delivered by the driver (the arm returns without calling k and
+          // the loop exits flag-clear with it), whatever the op's declared
+          // return — `arm_disc_of` carries the record of the bottom-return
+          // hedge this replaced.
+          let arm_disc = arm_disc_of(grade)
           let disc = disc_join(cur_disc, arm_disc)
           // default/ambiguous evolve as before; disc always joins in.
           match if ambiguous || field_name_eq(cur_default, hname) {
@@ -13061,16 +13045,18 @@ fn collect_fn_decls_updates(updates, acc) = if len(updates) == 0 {
 // they fold — one lattice home for this walk and own.mn's mode-paired
 // ownership grade (§11 4.2; own cannot import infer).
 //
-// M4 — the resume grade JOINED with the op's return type. UMany always
-// drives a real k (MultiShot); UOne is the tail-resumptive fast path
-// (OneShot, byte-identical). UZero — the arm NEVER resumes — is the
-// abandon case, but abandon only MATTERS when a value flows back: a
-// bottom return (a bare quantified TVar like `fail -> a`, or `!` which
-// parses TUnit) has nothing to abandon, so it stays OneShot (the wheel's
-// documented-OneShot abort/fail — Law 7 wheel-wide). A concrete return
-// (`abort -> Option`) must abandon, delivering the arm value to the
-// install through the driver → MultiShot.
-fn arm_disc_of(grade, ret) = match grade {
+// The resume grade decides the op's discipline. RMany drives a real k
+// (MultiShot); RDeep is the same record called once; RTail is the stack
+// return (OneShot). RNone — the arm NEVER resumes — is ABANDON: the arm's
+// value is the install's value (AN-1) and the continuation is dead, so the
+// perform unwinds to the install. There is no "bottom return" exception.
+// `fail -> a` graded OneShot handed the arm's value back to the perform site
+// as whatever `a` had unified with — `let s: String = fail("x"); len(s) +
+// 100` answered 100 on boot 311479e1, the arm's 7 read as a String — and
+// `abort -> !` parses TUnit, a value like any other. The wheel's two
+// never-resuming handlers, `catch_abort` and `fail_exit`, abandon now
+// (AN-2, 2026-10-03).
+fn arm_disc_of(grade) = match grade {
   RMany => MultiShot,
   RDeep => // ONE use, HELD: the arm computes after the remainder returns, so the
   // remainder is reified as the continuation record and called once — the
@@ -13080,22 +13066,7 @@ fn arm_disc_of(grade, ret) = match grade {
   // after the resume (tests/micros/mn-oneshot-nontail-resume.mn).
   MultiShot,
   RTail => OneShot,
-  RNone => match ret {
-    TVar(_) => // bottom: `fail -> a` — the free var unifies with any consumer; the arm terminates
-    OneShot,
-    TUnit => // `abort -> !` (parsed TUnit) / unit — no value to abandon; Hβ.lower.uzero-unit-abandon names the rare genuine-unit case
-    OneShot,
-    _ => // value-returning UZero (`abort -> Option`): the None must reach the install, not the perform site — the dead-continuation yield
-    Abandon,
-  },
-}
-
-// The op's declared return type, read from its EffectOpScheme's TFun —
-// the one place the op's signature lives (Carried-Truth: read it live,
-// never re-derive). A non-arrow scheme (never a real op) floors to TUnit.
-fn scheme_ret_ty(scheme) = match judgment_ty(scheme) {
-  TFun(_, ret, _) => ret,
-  _ => TUnit,
+  RNone => Abandon,
 }
 
 // disc_join — the monotone op-level join: OneShot is the identity, MultiShot

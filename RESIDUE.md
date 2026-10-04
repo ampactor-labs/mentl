@@ -3568,6 +3568,64 @@ m2: m2's runtime is written by its parent, whose stat table has five arms,
 so the sixth read the default; the line is right from m3 on (the Arena·P2
 lesson, read again). Beside it, the floor the suspension exposed REPORTS now
 (`Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`).
+▶ CORRECTED 2026-10-03 (AN-2): only a LIVE continuation suspends an arena. A
+DEAD one — an abandoning arm's — holds nothing of the region beyond what the
+perform's arguments reach, and those are a publication of the extent, so the
+exit RUNS: the arguments' slots in the per-instance area are journaled where
+the perform stores them, with their leaves, and the sweep moves what they
+reach; the rest is reclaimed and the arena's own boundary check unwinds on.
+The first form of that exit stored the slots unjournaled, and the frontier's
+`abort-suspends` leg read a reclaimed list (len 0 for 10) — the red that
+named the journal entry. The leg is `abort-exits` now, re-derived by hand
+under the arena's one law: no suspension, two exits, nothing kept, the arm's
+10 intact.
+
+`Hβ.lower.arm-remainder-after-a-foreign-live-yield` — OPEN, BORN 2026-10-03
+(AN-2). A held resume whose continuation yields a FOREIGN op that is LIVE —
+its handler resumes it — returns into the arm with the flag raised and
+`$yield_k` set, and the arm's code after its `resume` is in no continuation:
+an arm's remainder is never reified, so the dummy flows into it. Measured on
+boot 311479e1 as a trap inside the arm (`dbl { ask() => { let r = resume(1);
+r * 2 } }` under `twice { pick() => resume(10) + resume(20) }` over `ask() +
+pick()`, whose deep-handler answer is 64). A DEAD foreign yield unwinds the
+arm since AN-2 (`lower_resume_callk`'s dead path); the live one keeps the
+floor it had. The form: the arm's remainder after a resume is a continuation
+segment of its own, composed onto the foreign yield as a frame's remainder is
+(`LKExtend` at the resume) — capture at every position, one frame over
+(`Hβ.lower.offspine-perform-is-the-frame-not-in-the-image`).
+
+`Hβ.emit.unwind-by-engine-exceptions` — OPEN, BORN 2026-10-03 (AN-2). The
+unwind is a FLAG PROTOCOL: every boundary a raised flag can cross reads
+`$yield_flag` after the call and branches — one global read and a conditional
+each, 2,661 sites on the wheel — the portable form on a substrate with no
+non-local exit. Wasm's exception handling (`throw` / `try_table`) and a native
+backend's unwinder (PLAN §11 10.1) make the fast path free: an abandon THROWS,
+a landing CATCHES, and no boundary reads anything. The landings and the law
+are one home either way; the engine form replaces the emission of the checks,
+never the protocol.
+
+`Hβ.threads.join-performs-the-branch-row` — OPEN, BORN 2026-10-03 (AN-2). A
+thread's abandon is re-raised at the join BY NAME: `WasiThreads.join_task` is
+a boundary the lowering knows (`effect_joins_a_thread`, lower.mn; the
+`join_task` call's own check, wasm.mn), and every op of a handler whose arms
+join is registered as unwinding. The typed form: a task handle carries the
+branch's ROW — a `TCont`-shaped type minted at the spawn — so the join's row
+IS the branch's and every check falls out of `can_yield` with no name read;
+the race rule reads the same row. The first-wins rule (a flag already raised
+keeps its op) is the join ORDER's; the row form makes the choice a value the
+program can see.
+
+`Hβ.lower.diverging-provider-direct-call` — OPEN, BORN 2026-10-03 (AN-2). An
+op every provider of which never returns — the wheel's `fail`, served by
+`fail_exit` alone, which ends the process — needs no unwind at all: its arm
+could be called directly and nothing after the call would ever run, so no
+boundary need check for it. The wheel pays the general form: one driver, 286
+install landings, 26 arena landings and 2,661 checks for an op that never
+comes back. The medium has no bottom type to say "never returns" of a
+handler's ARM (`proc_exit(Int) -> !` answers a bare variable), so a
+provider's divergence is not a fact the lowering can read; with it, an op
+whose every provider diverges lowers its perform as a direct call and the
+wheel's checks vanish by construction.
 
 `Hβ.arena.closure-evac-face` — OPEN, BORN 2026-10-03. A function value or a
 continuation has no leaf: its type does not say what its record captures,
@@ -7340,7 +7398,12 @@ frontier's `world-resume-frozen`) declared `with Choice` / `with Cell` /
 row read the op's own name alone — and refused `Choice vs Choice + Memory +
 Alloc`; the caps are deleted (the positive row is inferred and projected,
 A4) and every one runs to its banked exit. NOT charged, named rather than guessed: an Abandon
-op's dummy-k yield (`Hβ.lower.multishot-uzero-abort`'s path), unmeasured.
+op's dummy-k yield (`Hβ.lower.multishot-uzero-abort`'s path), unmeasured —
+MEASURED 2026-10-03 (AN-2): that yield allocated its argument record under a
+row that said nothing (the boot answered 100 for 3 on
+`tests/micros/mn-abandon-alloc.mn`), and the dummy-k yield is gone whole: an
+abandoning perform allocates nothing, its arguments crossing in the
+per-instance area, so `!Alloc` holds over it and the peer is closed.
 HOW THE MOST POWERFUL MEDIUM DOES IT, and where this form stops short: the
 charge here is the JOIN over every handler of the op, so an op served by
 one two-resume handler and one tail-resumptive handler carries `Alloc` at
@@ -7535,7 +7598,15 @@ body nothing runs is never refused. The first form said it at lowering and
 refused a perform in a function nothing calls
 (`tests/micros/mn-perform-off-spine-dead.mn` holds 1 now); the boot compiled
 `tests/micros/mn-perform-off-spine-refuses.mn` clean and trapped at 134.
-What stays open is the peer itself: any position reifies.
+▶ THE DEAD HALF CLOSED 2026-10-03 (AN-2): a continuation nothing resumes needs
+no capture, so an abandoning perform unwinds from ANY position — a `let`, an
+argument, an operand, a branch — through every landing to the install whose
+arm answers (`LAbandon`, `LUnwind`); the floor stood only for the live half.
+And the live half's CALL face reports: a call off the spine whose callee's
+row proves an op whose handler resumes it is `E_ContinuationUncapturable`
+naming the callee and the op (`settle_unwind`), where the boot compiled
+`let x = inner()` over `fn inner() = choose() * 10` and trapped. What stays
+open is the peer itself: any position reifies a live continuation.
 
 `Hβ.lower.ad-is-a-demanded-projection` — FORWARD MODE LANDED 2026-09-28
 (L4a of the Pulse sprint, pin 0976f1d7da263d74); the derivative across dynamic
@@ -15276,7 +15347,10 @@ re-tag under region polymorphism is the arena increment) ·
 partial-effectful-callee + partial-local-callee: the mint routes through
 the LambdaExpr machinery) / `.partial-prefix-arity` (lower.mn floors,
 typed) ·
-`Hβ.lower.k2-remainder-fncall` · `Hβ.lower.abandon-with-resume-arm` ·
+`Hβ.lower.k2-remainder-fncall` · `Hβ.lower.abandon-with-resume-arm` (CLOSED
+2026-10-03, AN-2: an abandoning arm beside a resuming one is one handler with
+a driver, the dead continuation unwinding to it —
+`tests/micros/mn-abandon-in-foreign-resume.mn`) ·
 `Hβ.lower.stateful-install-crossing-yield` (band B kin) ·
 `Hβ.cli.audit-row-var-render` (cosmetic) ·
 `Hβ.emit.int-splice-empty` · `Hβ.emit.f64-closure-capture-box` ·

@@ -703,6 +703,8 @@ fn settle_node(site: String, expr) = match expr {
   LReturn(_, _) => (),
   LYield(h, op, _, _) => settle_yield(h, op),
   LKExtend(_, _) => (),
+  LAbandon(_, _, _) => (),
+  LUnwind(h) => settle_unwind(h),
   LIf(_, _, _, _) => (),
   LBlock(_, _) => (),
   LMakeList(_, _) => (),
@@ -726,17 +728,16 @@ fn settle_node(site: String, expr) = match expr {
 }
 
 // A floor standing where a perform stands: the op suspends the computation
-// around it — its handler resumes it more than once, holds it, or abandons
-// it — and nothing captured the rest of the computation at this position, so
-// every evaluation of it would reach the floor. The floor a can-yield call's
-// check writes (`k2_floor_wrap`) stands at a call that may never yield, and
-// stays the runtime's.
+// around it — its handler resumes it more than once, or after doing more
+// work — and nothing captured the rest of the computation at this position,
+// so every evaluation of it would reach the floor. (An abandoning perform
+// never floors: its continuation is dead and it unwinds, `LAbandon`.)
 fn settle_yield(h, op: String) = if op == "" {
   match graph_node_body(h) {
     NExpr(CallExpr(f, _)) => {
       let name = callee_name(f)
       match op_resume_discipline(name) {
-        MultiShot => report_at(h, EContinuationUncapturable(name, parse_span_of(h))),
+        MultiShot => report_at(h, EContinuationUncapturable(name, "", parse_span_of(h))),
         _ => (),
       }
     },
@@ -744,6 +745,32 @@ fn settle_yield(h, op: String) = if op == "" {
   }
 } else {
   ()
+}
+
+// A boundary check standing where a LIVE continuation may cross: the
+// callee's row proves an op whose handler resumes it, and this frame holds
+// no remainder for it — a dead continuation unwinds through the check, a
+// live one is the floor at run time (`LUnwind`). Said at the call, naming
+// the callee and the op. A callee whose row is open proves nothing, and the
+// floor stays the runtime's there; a boundary that is not a call — an
+// install, an arena, a resume, a fanout's branch — is checked by the row
+// of what it brackets and never refused here.
+fn settle_unwind(h) = match graph_node_body(h) {
+  NExpr(CallExpr(f, _)) => {
+    let name = callee_name(f)
+    if field_name_eq(lower_effect_name_of_op(name), "") {
+      match lookup_ty(node_handle(f)) {
+        TFun(_, _, row) => match row_live_op(row) {
+          Some(op) => report_at(h, EContinuationUncapturable(op, name, parse_span_of(h))),
+          None => (),
+        },
+        _ => (),
+      }
+    } else {
+      ()
+    }
+  },
+  _ => (),
 }
 
 // A binary operator's operand, read where its emission reads it
@@ -1307,13 +1334,15 @@ fn alloc_walk(unit, e) = match e {
     let below = alloc_walk_list(unit, args, 0)
     callee || below
   },
-  LYield(_, op, args, k) => {
-    // the argument record of a multi-shot perform: the op's cost, recorded
-    let built = byte_len(op) > 0 && len(args) > 0
+  LYield(_, _, args, k) => {
+    // A perform's arguments cross in the per-instance area the start
+    // allocated once (`emit_yield_arg_stores`): nothing is built here.
     let below = alloc_walk_list(unit, args, 0)
     let rest = alloc_walk(unit, k)
-    built || below || rest
+    below || rest
   },
+  LAbandon(_, _, args) => alloc_walk_list(unit, args, 0),
+  LUnwind(_) => false,
   LKExtend(_, k) => {
     // the continuation's extension: the op's cost, recorded
     let built = true
@@ -2311,7 +2340,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
   // (fold collection moved below the spec demand analysis — a twin's body is
   // re-collected under its bracket so its substituted aggregate sigs exist)
   match project_emit_state(lowered, twin_bases, fold_closures) {
-    (all_fn_names, top_fn_names, string_entries, fn_lines, wasi_ops, yield_seen) => {
+    (all_fn_names, top_fn_names, string_entries, fn_lines, wasi_ops, yield_seen, yield_arity) => {
       // band B M1.2 (the k2/k3 bank, Ruling 1) — the composer is CALLED INDIRECT
       // (it is the fn_ptr@0 of every composed k record), so unlike every other
       // synthesized helper it is TABLE-RESIDENT: appended to the fn-name set
@@ -2374,6 +2403,7 @@ fn plan_reached(lowered, fn_records, twin_bases, all_records, spec_demands, twin
         vectors: vectors,
         wasi_ops: wasi_ops,
         wide_fn_names: wide_fn_names,
+        yield_arity: yield_arity,
         yield_seen: yield_seen,
       }
     },
@@ -2390,7 +2420,7 @@ fn k_helper_names(yields, arena_on) =
 // reads was settled before the gate, and the registries the writes consult
 // (the twins, the string offsets, the per-fn lines) were seeded by the plan.
 fn emit_planned(plan) = match plan {
-  {adjoint_registers, alloc_units, arena_on, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_seen} => {
+  {adjoint_registers, alloc_units, arena_on, fn_records, fold_closures, jvp_faces, jvp_names, jvp_recs, jvp_wide, line_owners, lowered, redrives, spec_names, spec_recs, spec_wide, string_entries, table_fn_names, tangent_rings, top_fn_names, vectors, wasi_ops, wide_fn_names, yield_arity, yield_seen} => {
     let line_globals = line_global_slots(line_owners)
     emit_header()
     emit_type_section(vectors, yield_seen)
@@ -2405,7 +2435,15 @@ fn emit_planned(plan) = match plan {
     // The socket seam's own proof, read from the module's ops beside the
     // spawn proof rather than inferred from it (see emit_memory_decl).
     let socketed = ls_find_str_local(wasi_ops, "sock_accept", 0) >= 0
-    emit_memory_decl(spawns, spawns || socketed, ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0)
+    // The per-instance area a perform's arguments cross in, sized by the
+    // widest perform; a module that never yields has none (Law 7).
+    let yield_slots = if yield_seen > 0 { yield_area_slots(yield_arity) } else { 0 }
+    emit_memory_decl(
+      spawns,
+      spawns || socketed,
+      ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0,
+      yield_slots
+    )
     // A live arena's leaves are settled here, before any function is
     // written, because every barrier and every claim writes a leaf's index.
     set_arena_leaves(
@@ -2516,11 +2554,12 @@ fn emit_planned(plan) = match plan {
       len(line_owners) > 0,
       main_param_count(),
       yield_seen,
+      yield_slots,
       spawns,
       arena_on
     )
     emit_footer()
-  },
+  } ~> unwind_scope(yield_seen > 0),
 }
 
 // ─── Single-walk multi-projection emit pre-pass ─────────────────────
@@ -2592,18 +2631,24 @@ effect EmitWasiOp {
 }
 
 // The sixth projection (band B k1): does the module YIELD anywhere? A
-// MultiShot yield site (LYield / a gated install's driver) fires visit_yield;
-// the yield globals ($yield_flag/$yield_op/$yield_k) and the _start
-// unhandled-yield backstop emit ONLY when seen — a OneShot-only module (the
-// wheel) fires zero visits, so its emitted bytes are unchanged (Law 7).
+// yield site — a multi-shot perform, an abandoning one, a boundary check —
+// fires visit_yield; the yield globals ($yield_flag/$yield_op/$yield_k),
+// the argument area and the _start unhandled-yield backstop emit ONLY when
+// seen — a OneShot-only module fires zero visits, so its emitted bytes are
+// unchanged (Law 7). The widest perform's arity sizes the area its
+// arguments cross in (`emit_start`).
 effect EmitYield {
   visit_yield()
+  visit_yield_args(Int)
   drain_yield_seen() -> Int
+  drain_yield_arity() -> Int
 }
 
-handler yield_seen_collector with n = 0 {
+handler yield_seen_collector with n = 0, arity = 0 {
   visit_yield() => resume() with n = n + 1,
+  visit_yield_args(k) => resume() with arity = if k > arity { k } else { arity },
   drain_yield_seen() => resume(n),
+  drain_yield_arity() => resume(arity),
 }
 
 // The seventh projection — the executable gate's EVIDENCE CENSUS: every
@@ -2753,7 +2798,7 @@ fn slot_already_recorded(entries, target: String, i, n) = if i >= n {
 
 // project_emit_state — single-tree-walk; six projections drained at end.
 // Returns (all_fn_names, top_fn_names, string_entries, state_slots, wasi,
-// yield_seen). Replaces the prior `<|` fan-out (parallel walks of the same
+// yield_seen, yield_arity). Replaces the prior `<|` fan-out (parallel walks of the same
 // tree) with ONE walk and visitor-handler accumulators. Order-preserving:
 // per-projection encounter order matches the prior per-walk order. The
 // chained `~>` install establishes the handler stack at the body's op-call
@@ -2786,7 +2831,8 @@ fn project_emit_state(lowered, twin_bases, closures: {cmp: [Ty], eq: [Ty], evac:
   let lines = drain_fn_lines()
   let wasi = drain_wasi_ops()
   let yseen = drain_yield_seen()
-  (names, tops, strs, lines, wasi, yseen)
+  let yarity = drain_yield_arity()
+  (names, tops, strs, lines, wasi, yseen, yarity)
 } ~> fn_names_collector ~> top_fn_names_collector ~> string_literal_collector ~> fn_lines_collector ~> wasi_ops_collector ~> yield_seen_collector ~> effect_census_collector
 
 // The names of a decl the module does not emit, dropped where they are
@@ -2944,15 +2990,28 @@ fn walk_lemit_expr(expr) = match expr {
     walk_lemit_expr(v)
   },
   LYield(_, op_name, args, k) => // band B k1: a yield reads the yield globals and interns its op key (the
-  // driver's compare reads the SAME offset); descend the k record. The floor
-  // form ("" op) interns the empty string — harmless, gated modules only.
+  // driver's compare reads the SAME offset); its arguments size the area
+  // they cross in; descend the k record. The floor form ("" op) interns the
+  // empty string — harmless, gated modules only.
   {
     visit_yield()
+    visit_yield_args(len(args))
     visit_string(op_name)
     if field_name_eq(op_name, "") { () } else { visit_effect_demand(op_name) }
     walk_lemit_list(args)
     walk_lemit_expr(k)
   },
+  LAbandon(_, op_name, args) => // An abandoning perform is a perform: its op is demanded, its arguments
+  // cross in the same area, and the module yields (AN-2).
+  {
+    visit_yield()
+    visit_yield_args(len(args))
+    visit_string(op_name)
+    visit_effect_demand(op_name)
+    walk_lemit_list(args)
+  },
+  LUnwind(_) => // A boundary check reads the yield globals.
+  visit_yield(),
   LKExtend(_, k) => // band B M1.3: a k2 boundary needs the yield machinery (globals + the
   // composer pair) exactly as a yield does; its frame_k record descends
   // like LYield's k.
@@ -3277,25 +3336,95 @@ fn emit_from_continuation(r) = match lane_of(r) {
   LaneFloor => emit_lane_floor(),
 }
 
-// band B M1.4 — one arg of the yield's transient record: evaluate (the
-// emission may clobber every shared scratch), park the VALUE in $state_tmp
-// (nothing runs between the set and the store), write through the per-site
-// record ptr.
-fn emit_yield_arg_stores(args, h, i) = if i >= len(args) {
-  ()
-} else {
-  let a = list_index(args, i)
-  let r = tail_expr_repr(a)
+// ─── THE LANDINGS — where a dead continuation's unwind lands ───────────
+// A yield whose continuation is dead — an abandoning arm's, or a boundary
+// check meeting a raised flag with `$yield_k` zero — is done with its
+// frame: nothing after it runs, and nothing resumes it. The frame leaves by
+// a STRUCTURED branch to the innermost landing, never a bare return past a
+// bracket: an install body's block, so the install's driver runs and its
+// world restore follows; an arena body's block, so the arena exits — a
+// dead continuation holds nothing of the region beyond what the perform's
+// arguments reach, which the journal moves, and only a live one suspends
+// it; or the function's own return. The landings are a stack the emission
+// keeps as it enters each bracket, read where a yield unwinds.
+type UnwindTarget = ToReturn(Repr) | ToBlock(String, Repr)
+
+effect Unwind {
+  unwind_frame(UnwindTarget)
+  unwind_push(UnwindTarget)
+  unwind_pop()
+  unwind_target() -> UnwindTarget
+  unwind_live() -> Bool
+}
+
+// Installed once over the module's emission (`emit_planned`): each function
+// body opens with its own return as the frame's landing, every install and
+// arena body pushes its block while it is emitted, and `live` says whether
+// the module yields at all — a module that never does emits no landing
+// block and no check (Law 7).
+handler unwind_scope(live) with frame = ToReturn(RI32), landings = [] {
+  unwind_frame(t) => resume() with frame = t, landings = [],
+  unwind_push(t) => resume() with landings = landings ++ [t],
+  unwind_pop() => resume() with landings = drop_last(landings),
+  unwind_target() => resume(if len(landings) == 0 { frame } else { last(landings) }),
+  unwind_live() => resume(live),
+}
+
+// The unwind itself: the landing's value is a zero at its width — never
+// read, the flag says why the frame is leaving — and the branch takes it.
+fn emit_unwind() = match unwind_target() {
+  ToReturn(r) => {
+    emit_zero_at(r)
+    // drift-audit: ignore
+    wat_emit("    (return)\n")
+  },
+  ToBlock(label, r) => {
+    emit_zero_at(r)
+    wat_emit("    (br ${label})\n")
+  },
+}
+
+// A perform's arguments, into the per-instance area `$yield_args` names —
+// the record the driver loads them from, a product laid out at 8-byte slots
+// each at its own width, so a wide argument crosses as a value. The area is
+// allocated once at instance start (`emit_start`, the thread entry), sized
+// by the widest perform, so no perform allocates for them and `!Alloc`
+// holds. Every argument is EVALUATED before any is STORED — an argument's
+// own evaluation may run a whole yield-and-resume cycle inside a callee,
+// which writes this same area — so each pushes the area's address and then
+// its value, and the stores run last slot first, consuming the pairs.
+fn emit_yield_arg_stores(args) = {
+  each(emit_yield_arg_push, args)
+  each(emit_yield_slot_store, reverse(enumerate(args)))
+}
+
+fn emit_yield_arg_push(a) = {
+  wat_emit("    (global.get $yield_args)\n")
   emit_expr(a)
-  // The record is a product and takes its widths: an 8-byte slot per
-  // argument, each stored at its own width, so a multi-shot op's wide
-  // argument crosses the driver as a value and never as a word.
-  match lane_of(r) {
-    NoLane => wat_emit("    (local.set $state_tmp)\n    (local.get $yargs_{int_to_str(h)})(local.get $state_tmp)(i32.store offset={int_to_str(8 * i)})\n"),
-    LaneAt(_) => wat_emit("    (local.set $f64_tmp)\n    (local.get $yargs_{int_to_str(h)})(local.get $f64_tmp)({repr_wat(r)}.store offset={int_to_str(8 * i)})\n"),
-    LaneFloor => emit_lane_floor(),
-  }
-  emit_yield_arg_stores(args, h, i + 1)
+}
+
+fn emit_yield_slot_store(slot) = match slot {
+  (i, a) => {
+    let r = tail_expr_repr(a)
+    match lane_of(r) {
+      NoLane => {
+        wat_emit("    (i32.store offset={int_to_str(8 * i)})\n")
+        // A pointer stored into the area — memory older than any open arena
+        // — is journaled with its leaf, as a state commit's is: the perform's
+        // arguments are a PUBLICATION of the extent the perform leaves, so an
+        // arena a dead continuation's unwind exits MOVES what they reach,
+        // never reclaims it from under the arm (the frontier's arena leg
+        // abort-exits read a reclaimed list before this note existed).
+        if arena_live() && evac_journals(lexpr_handle(a)) {
+          wat_emit("    (global.get $yield_args) (i32.const {int_to_str(8 * i)}) (i32.add) (i32.const {int_to_str(leaf_code(evac_leaf_at(lexpr_handle(a))))}) (call $arena_slot_note)\n")
+        } else {
+          ()
+        }
+      },
+      LaneAt(_) => wat_emit("    ({repr_wat(r)}.store offset={int_to_str(8 * i)})\n"),
+      LaneFloor => emit_lane_floor(),
+    }
+  },
 }
 
 // band B M1.4 — the driver's args push: one load per declared arm arg, read
@@ -3469,6 +3598,8 @@ fn emit_k_compose_pair() = {
   // bracket's set-from-record is right for the first instruction that runs;
   // $__k_compose re-sets at the fk transition.
   wat_emit("  (func $__k_extend (param $fk i32) (local $nk i32)\n")
+  // A dead continuation composes nothing: nothing resumes it (AN-2).
+  wat_emit("    (if (i32.eqz (global.get $yield_k)) (then (return)))\n")
   wat_emit("    (local.set $nk (call $alloc (i32.const 28)))\n")
   wat_emit("    (i32.store offset=0 (local.get $nk) (global.get $__k_compose_idx))\n")
   wat_emit("    (i32.store offset=4 (local.get $nk) (i32.const 2))\n")
@@ -4054,6 +4185,10 @@ fn emit_init_lets(value_lets) = if len(value_lets) > 0 {
 // The inits emit as `$__init_lets`' own body, so a static `<~` in one names
 // its ring global for that owner (`init_lets_lines`).
 fn emit_init_lets_body(ref value_lets) = {
+  // An init that abandons leaves `$__init_lets` by its return (what no
+  // handler serves the root gate refused; what one serves lands in its
+  // install's block inside the init).
+  unwind_frame(ToReturn(RI32))
   emit_init_lets_loop(value_lets, 0, len(value_lets))
   wat_collect()
 } ~> emit_site_named("__init_lets") ~> emit_memory_bump ~> wat_to_string
@@ -4270,6 +4405,8 @@ fn collect_call_vectors_expr(expr, acc) = match expr {
   LMakeContinuation(_h, LFn(_n, _a, _p, body, _f, _l), caps, _, _) => collect_call_vectors_list(body, collect_call_vectors_list(caps, acc)),
   LYield(_h, _op, args, k) => collect_call_vectors_expr(k, collect_call_vectors_list(args, acc)),
   LKExtend(_h, k) => collect_call_vectors_expr(k, acc),
+  LAbandon(_h, _op, args) => collect_call_vectors_list(args, acc),
+  LUnwind(_h) => acc,
   LDeclareFn(LFn(_n, _a, _p, body, _f, _l)) => collect_call_vectors_list(body, acc),
   LIf(_h, c, t, e) => collect_call_vectors_list(e, collect_call_vectors_list(t, collect_call_vectors_expr(c, acc))),
   LBlock(_h, stmts) => collect_call_vectors_list(stmts, acc),
@@ -4490,7 +4627,7 @@ fn emit_wasi_args_at_widths(args, preprs, i) = if i >= len(args) {
   emit_wasi_args_at_widths(args, preprs, i + 1)
 }
 
-fn emit_memory_decl(spawns, imports_image, wants_rmw) = {
+fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
   // The memory's OWNERSHIP follows the module's own proof, and there are
   // TWO proofs, because two different consumers need the host to hold the
   // image. This read used to be ONE — "does it spawn?" — with the import
@@ -4674,8 +4811,20 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw) = {
   // spawning module (Law 7 — thread-free modules are byte-identical).
   //
   if spawns {
-    wat_emit("  (func $spawn_task_impl (param $clo i32) (result i32)(local $t i32)(local.set $t (call $alloc (i32.const 16)))(i32.store offset=0 (local.get $t)(local.get $clo))(i32.store offset=4 (local.get $t)(i32.const 0))(i32.store offset=12 (local.get $t)(global.get $perform_world_g))(if (i32.lt_s (call $wasi_thread_spawn (local.get $t))(i32.const 0))(then (unreachable)))(local.get $t))\n")
-    wat_emit("  (func $join_task_impl (param $t i32) (result i32)(block $done (loop $wait (br_if $done (i32.eq (i32.atomic.load (i32.add (local.get $t)(i32.const 4)))(i32.const 1)))(drop (memory.atomic.wait32 (i32.add (local.get $t)(i32.const 4))(i32.const 0)(i64.const -1)))(br $wait)))(i32.load offset=8 (local.get $t)))\n")
+    if yield_slots > 0 {
+      // A branch that ABANDONS carries its yield out through the record —
+      // the op it abandoned with at +16 and its argument area at +20, both
+      // written by the thread entry — and the join RE-RAISES it in the
+      // joiner: the first abandoned branch in join order wins (a flag
+      // already raised keeps its op), the arguments copied into the
+      // joiner's own area, the continuation dead. The joiner's check after
+      // the join unwinds from there (AN-2).
+      wat_emit("  (func $spawn_task_impl (param $clo i32) (result i32)(local $t i32)(local.set $t (call $alloc (i32.const 24)))(i32.store offset=0 (local.get $t)(local.get $clo))(i32.store offset=4 (local.get $t)(i32.const 0))(i32.store offset=12 (local.get $t)(global.get $perform_world_g))(i32.store offset=16 (local.get $t)(i32.const 0))(i32.store offset=20 (local.get $t)(i32.const 0))(if (i32.lt_s (call $wasi_thread_spawn (local.get $t))(i32.const 0))(then (unreachable)))(local.get $t))\n")
+      wat_emit("  (func $join_task_impl (param $t i32) (result i32)(block $done (loop $wait (br_if $done (i32.eq (i32.atomic.load (i32.add (local.get $t)(i32.const 4)))(i32.const 1)))(drop (memory.atomic.wait32 (i32.add (local.get $t)(i32.const 4))(i32.const 0)(i64.const -1)))(br $wait)))(if (i32.load offset=16 (local.get $t))(then (if (i32.eqz (global.get $yield_flag))(then (global.set $yield_op (i32.load offset=16 (local.get $t)))(memory.copy (global.get $yield_args)(i32.load offset=20 (local.get $t))(i32.const {int_to_str(8 * yield_slots)}))(global.set $yield_k (i32.const 0))(global.set $yield_flag (i32.const 1))))))(i32.load offset=8 (local.get $t)))\n")
+    } else {
+      wat_emit("  (func $spawn_task_impl (param $clo i32) (result i32)(local $t i32)(local.set $t (call $alloc (i32.const 16)))(i32.store offset=0 (local.get $t)(local.get $clo))(i32.store offset=4 (local.get $t)(i32.const 0))(i32.store offset=12 (local.get $t)(global.get $perform_world_g))(if (i32.lt_s (call $wasi_thread_spawn (local.get $t))(i32.const 0))(then (unreachable)))(local.get $t))\n")
+      wat_emit("  (func $join_task_impl (param $t i32) (result i32)(block $done (loop $wait (br_if $done (i32.eq (i32.atomic.load (i32.add (local.get $t)(i32.const 4)))(i32.const 1)))(drop (memory.atomic.wait32 (i32.add (local.get $t)(i32.const 4))(i32.const 0)(i64.const -1)))(br $wait)))(i32.load offset=8 (local.get $t)))\n")
+    }
   }
   // The single-operand read-modify-write dispatch: a nullary RmwOp ctor
   // IS its tag word (the sentinel representation), and the declaration
@@ -4841,7 +4990,9 @@ fn emit_arena_runtime() = {
 // continuation in the same re-entry, so each resumption is its own instance
 // and every segment of a resumed chain runs inside the arenas that enclosed
 // it when it suspended, in the order they enclosed it. A dead continuation
-// (an abandoning yield's `$yield_k` = 0) is never wrapped: nothing resumes it.
+// (an abandoning yield's `$yield_k` = 0) is never wrapped: nothing resumes it,
+// and a chain that abandons inside a resumed segment exits this instance as
+// any body does, its region reclaimed (AN-2).
 fn emit_arena_reentry() = {
   wat_emit("  (func $__k_arena_extend (param $leaf i32) (local $nk i32)\n")
   wat_emit("    (if (i32.eqz (global.get $yield_k)) (then (return)))\n")
@@ -4859,7 +5010,7 @@ fn emit_arena_reentry() = {
   wat_emit("    (local.set $o (global.get $ar_mark)) (local.set $j (global.get $ar_jn)) (call $arena_enter) (local.set $m (global.get $ar_mark))\n")
   wat_emit("    (local.set $ik (i32.load offset=8 (local.get $__state)))\n")
   wat_emit("    (local.set $r (call_indirect (type $ft2) (local.get $ik) (local.get $v) (i32.load (local.get $ik))))\n")
-  wat_emit("    (if (global.get $yield_flag) (then (call $arena_suspend (local.get $j) (local.get $o)) (call $__k_arena_extend (i32.load offset=12 (local.get $__state))) (return (i32.const 0))))\n")
+  wat_emit("    (if (i32.and (global.get $yield_flag) (i32.ne (global.get $yield_k) (i32.const 0))) (then (call $arena_suspend (local.get $j) (local.get $o)) (call $__k_arena_extend (i32.load offset=12 (local.get $__state))) (return (i32.const 0))))\n")
   wat_emit("    (local.set $k (i32.load offset=12 (local.get $__state))) (local.set $mv (i32.gt_s (local.get $k) (i32.const 0)))\n")
   wat_emit("    (local.set $g (call $arena_sweep (local.get $m) (local.get $j))) (local.set $t (local.get $r))\n")
   wat_emit("    (if (local.get $g) (then (if (call $ar_young (local.get $r)) (then (if (local.get $mv) (then (local.set $t (call $ar_evac_by (local.get $k) (local.get $r)))) (else (if (i32.eqz (local.get $k)) (then (call $ar_opaque (local.get $r))))))))))\n")
@@ -4913,16 +5064,29 @@ fn number_leaf(acc, leaf) = match leaf {
 // and the unwinding continuation is wrapped in the arena's own re-entry
 // (`$__k_arena`), so each resumption runs the suspended rest inside a fresh
 // instance that exits where the body ends, around every segment the
-// continuation holds.
+// continuation holds. A body that ABANDONED reaches the exit through its
+// landing block with the flag raised and no continuation: the exit runs as
+// it would have — a dead continuation holds nothing of the region beyond
+// what the perform's arguments reach, journaled where they were stored and
+// moved by the sweep — and the arena's own boundary check unwinds on (AN-2).
 fn emit_arena(h, b) = {
   let hs = int_to_str(h)
   let t = evac_type_at(h)
   let ev = evac_of(t)
   wat_emit("    (local.set $__ar_o_{hs} (global.get $ar_mark))\n    (local.set $__ar_j_{hs} (global.get $ar_jn))\n    (call $arena_enter)\n    (local.set $__ar_m_{hs} (global.get $ar_mark))\n")
-  emit_expr(b)
+  if arena_suspends() {
+    let vr = repr_of(lookup_ty(h))
+    wat_emit("    (block $__aland_{hs} (result {repr_wat(vr)})\n")
+    unwind_push(ToBlock("__aland_{hs}", vr))
+    emit_expr(b)
+    unwind_pop()
+    wat_emit("    )\n")
+  } else {
+    emit_expr(b)
+  }
   wat_emit("    (local.set $__ar_v_{hs})\n")
   if arena_suspends() {
-    wat_emit("    (if (global.get $yield_flag) (then (call $arena_suspend (local.get $__ar_j_{hs}) (local.get $__ar_o_{hs})) (call $__k_arena_extend (i32.const {int_to_str(leaf_code(face_leaf(t)))}))) (else\n")
+    wat_emit("    (if (i32.and (global.get $yield_flag) (i32.ne (global.get $yield_k) (i32.const 0))) (then (call $arena_suspend (local.get $__ar_j_{hs}) (local.get $__ar_o_{hs})) (call $__k_arena_extend (i32.const {int_to_str(leaf_code(face_leaf(t)))}))) (else\n")
     emit_arena_exit(hs, t, ev)
     wat_emit("    ))\n")
   } else {
@@ -5482,6 +5646,8 @@ fn collect_fn_emit_records_expr(expr) = match expr {
   LMakeContinuation(_h, LFn(name, _arity, param_names, body, fence, _lines), captures, _, _) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body) ++ collect_fn_emit_records(captures),
   LYield(_h, _op, args, k) => collect_fn_emit_records(args) ++ collect_fn_emit_records_expr(k),
   LKExtend(_h, k) => collect_fn_emit_records_expr(k),
+  LAbandon(_h, _op, args) => collect_fn_emit_records(args),
+  LUnwind(_h) => [],
   LDeclareFn(LFn(name, _arity, param_names, body, fence, _lines)) => [(name, param_names, body, fence)] ++ collect_fn_emit_records(body),
   LLet(_h, _n, inner) => collect_fn_emit_records_expr(inner),
   LBinOp(_h, _op, l, r) => collect_fn_emit_records_expr(l) ++ collect_fn_emit_records_expr(r),
@@ -5551,6 +5717,9 @@ fn emit_fn_body(name, param_names, body, captures_count) = {
       wat_emit(" (result ")
       wat_emit(repr_wat(ret))
       wat_emit(")")
+      // The frame's own landing: a dead continuation's unwind that reaches
+      // no bracket inside this body leaves through its return, at its width.
+      unwind_frame(ToReturn(ret))
     },
   }
   wat_emit(" (local $state_tmp i32)")
@@ -5661,13 +5830,11 @@ fn walk_locals_expr(expr, acc) = match expr {
       ["__rk_wprev_{int_to_str(h)} i32"] ++ (["{local_wat_name("__rk_val_{int_to_str(h)}", r)} {repr_wat(r)}"] ++ acc)
     )
   },
-  LYield(h, _, args, k) => {
-    // k = the record boundary above. An args-bearing yield parks its
-    // transient record ptr in a per-site local — the only slot inner arg
-    // emissions (which clobber every shared scratch) cannot touch.
-    let base = walk_locals_expr(k, walk_locals_list(args, acc))
-    if len(args) == 0 { base } else { ["yargs_{int_to_str(h)} i32"] ++ base }
-  },
+  LYield(_, _, args, k) => // k = the record boundary above; the arguments cross in the instance's
+  // area through the operand stack, so a yield declares nothing of its own.
+  walk_locals_expr(k, walk_locals_list(args, acc)),
+  LAbandon(_, _, args) => walk_locals_list(args, acc),
+  LUnwind(_) => acc,
   LKExtend(_, k) => // same boundary rule; the extend's own emit is a call + a const
   walk_locals_expr(k, acc),
   LDeclareFn(_) => // module-level fn declaration — its body has its own locals
@@ -6150,7 +6317,11 @@ fn lexpr_leaves_value(e) = match e {
   _ => true,
 }
 
-fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, threaded, arena_on) = {
+// The slots the argument area holds: the widest perform's arity, and one
+// where every perform is argless, so the area is a record of its own.
+fn yield_area_slots(arity) = if arity > 1 { arity } else { 1 }
+
+fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, yield_slots, threaded, arena_on) = {
   // Top-level closures are static data; the static `<~` rings allocate
   // through $__init_lines and top-level VALUE lets initialize through
   // $__init_lets, run FIRST in program order — rings before lets, since an
@@ -6168,6 +6339,11 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, thre
   // The arenas' journal, before anything else is allocated
   // (`emit_arena_runtime`).
   if arena_on { wat_emit("    (global.set $ar_jb (call $alloc (i32.const 2097152)))\n") }
+  // The area a perform's arguments cross in, per instance, before anything
+  // that could perform (`emit_yield_arg_stores`).
+  if yield_slots > 0 {
+    wat_emit("    (global.set $yield_args (call $alloc (i32.const {int_to_str(8 * yield_slots)})))\n")
+  }
   if has_lines { wat_emit("    (call $__init_lines (i32.const 0))\n    (drop)\n") }
   if len(value_lets) > 0 { wat_emit("    (call $__init_lets (i32.const 0))\n    (drop)\n") }
   if ls_find_str_local(top_fn_names, "main", 0) >= 0 {
@@ -6201,14 +6377,14 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, thre
       ()
     }
     wat_emit(")\n")
-    // band B k1: the UNHANDLED-YIELD backstop — a MultiShot yield no install
-    // driver caught reaches the program boundary as an unhandled effect and
-    // traps LOUDLY, never exits with the dummy (the anonymous-install /
-    // driverless floor made unsilenceable). Gated: only a yielding module
-    // has the flag to read.
+    // band B k1: the UNHANDLED-YIELD backstop — a yield no install caught,
+    // resuming or abandoning, reaches the program boundary as an unhandled
+    // effect and traps LOUDLY, never exits with the dummy (the
+    // anonymous-install / driverless floor made unsilenceable). Gated: only
+    // a yielding module has the flag to read.
     if yield_seen > 0 {
       wat_emit("    (global.get $yield_flag)\n")
-      wat_emit("    (if (then unreachable)) ;; unhandled multishot yield — no install driver caught it\n")
+      wat_emit("    (if (then unreachable)) ;; unhandled yield — no install caught it\n")
     }
     wat_emit("    (call $proc_exit)\n")
   } else {
@@ -6220,13 +6396,14 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, thre
   wat_emit("  (export \"_start\" (func $_start))\n")
   // The thread entry exists only in a spawning module (Law 7 — a
   // thread-free module carries no entry, no import, no spawn substrate).
-  if threaded { emit_wasi_thread_start(len(value_lets) > 0, has_lines) }
+  if threaded { emit_wasi_thread_start(len(value_lets) > 0, has_lines, yield_slots) }
 }
 
 // emit_wasi_thread_start — the spawned instance's whole life. The host
 // calls $wasi_thread_start(tid, start_arg) on a fresh instance over the
 // SHARED image; start_arg is the task record $spawn_task_impl allocated
-// ([task closure@0][completion@4][result@8]). The body:
+// ([task closure@0][completion@4][result@8][world@12], and in a yielding
+// module [op@16][args@20], written for a branch that abandoned). The body:
 //   1. stamps the per-instance identity ($tid_g — the thread_id read);
 //   2. runs $__init_lets when the module has top-level value lets —
 //      globals are per-instance, so the spawned instance's let globals
@@ -6243,11 +6420,15 @@ fn emit_start(top_fn_names, value_lets, has_lines, main_params, yield_seen, thre
 //   5. releases the completion word (atomic store AFTER the plain result
 //      store — the flag's seq_cst publish orders the result before it)
 //      and notifies the joiner.
-fn emit_wasi_thread_start(has_lets, has_lines) = {
+fn emit_wasi_thread_start(has_lets, has_lines, yield_slots) = {
   wat_emit("  (func $wasi_thread_start (param $tid i32) (param $start_arg i32)\n")
   wat_emit("    (local $clo i32)\n")
   wat_emit("    (global.set $tid_g (local.get $tid))\n")
   wat_emit("    (global.set $world_g (i32.load offset=12 (local.get $start_arg)))\n")
+  // The instance's own argument area, as the root's (`emit_start`).
+  if yield_slots > 0 {
+    wat_emit("    (global.set $yield_args (call $alloc (i32.const {int_to_str(8 * yield_slots)})))\n")
+  }
   // The static rings are per instance, as the line globals were: a spawned
   // instance allocates its own set from the shared cell before it runs.
   if has_lines { wat_emit("    (call $__init_lines (i32.const 0))\n    (drop)\n") }
@@ -6258,6 +6439,13 @@ fn emit_wasi_thread_start(has_lets, has_lines) = {
   wat_emit("    (local.get $clo) (i32.load offset=0)\n")
   wat_emit("    (call_indirect (type $ft_task))\n")
   wat_emit("    (i32.store offset=8)\n")
+  // A branch that ABANDONED returns with the flag raised: the op and the
+  // argument area ride the record for the join to re-raise. A branch that
+  // yielded a LIVE continuation has nowhere to resume — no joiner can hold
+  // it — and traps loudly here, never silently joins its dummy.
+  if yield_slots > 0 {
+    wat_emit("    (if (global.get $yield_flag) (then (if (global.get $yield_k) (then (unreachable))) (i32.store offset=16 (local.get $start_arg) (global.get $yield_op)) (i32.store offset=20 (local.get $start_arg) (global.get $yield_args))))\n")
+  }
   wat_emit("    (i32.atomic.store offset=4 (local.get $start_arg) (i32.const 1))\n")
   wat_emit("    (drop (memory.atomic.notify offset=4 (local.get $start_arg) (i32.const -1)))\n")
   wat_emit("  )\n")
@@ -6642,7 +6830,22 @@ fn emit_install(h, body, hname, inits, arm_names, lanes) = {
     },
     arm_names
   )
-  emit_expr(body)
+  // THE LANDING — the body's block: a dead continuation unwinding out of
+  // the body lands here with the flag raised, so the driver below runs for
+  // it — an abandoned op of this handler dispatches its arm, a foreign one
+  // bubbles — and the world restore after the driver always runs. Only a
+  // yielding module has a flag to land on (Law 7).
+  let hs = int_to_str(h)
+  let answer = repr_of(lookup_ty(h))
+  if unwind_live() {
+    wat_emit("    (block $__land_{hs} (result {repr_wat(answer)})\n")
+    unwind_push(ToBlock("__land_{hs}", answer))
+    emit_expr(body)
+    unwind_pop()
+    wat_emit("    )\n")
+  } else {
+    emit_expr(body)
+  }
   // band B k1 — the yield DRIVER. Takes this install's record as its own
   // __state (the arm call carries it — no global re-read) and is a LOOP
   // (a re-yield of an owned op re-enters the SAME driver with the new
@@ -6669,8 +6872,6 @@ fn emit_install(h, body, hname, inits, arm_names, lanes) = {
     // The driver speaks the continuation face: a wide answer is parked, handed
     // to it in the lane and read back from the lane, which holds what was
     // handed when no arm ran and the last arm's answer when one did.
-    let hs = int_to_str(h)
-    let answer = repr_of(lookup_ty(h))
     wat_emit("    (local.set $__hres_{hs})\n")
     wat_emit("    (local.get ${local_name})(local.get $__hres_{hs})\n")
     emit_to_continuation(answer)
@@ -7066,46 +7267,55 @@ fn emit_expr(expr) = match expr {
     // Result: continuation pointer on stack.
     wat_emit("    (local.get ${rec_local})\n")
   },
-  LYield(h, op_name, args, k_expr) => // band B k1/M1.4 — the MultiShot unwind. The REAL form (k = the reified
-  // remainder record): park k in $yield_k, the op's args (if any) as the
-  // transient word-slot record in $yield_args, the interned op key in
-  // $yield_op, raise $yield_flag, and return a width-honest dummy through
-  // the frame's own result type (h = the REWRITTEN FRAME's tail node; a
-  // Float-tailed frame keeps its f64 ft — never the perform's width). An
-  // argless yield's bytes are unchanged (Ruling 3: strictly additive).
-  // The FLOOR form carries the EMPTY op name (off-spine resume perform /
-  // k2_floor_wrap's re-yield check) — the loud comment-marked refusal. M4:
-  // the discriminator is op == "", NEVER the k value: an ABANDON yield's k
-  // is also a bare LConst(0) (the dead continuation, stored in $yield_k and
-  // never read), but it carries the REAL op name and takes the real-yield
-  // path — the driver runs the arm, which returns without calling k, and
-  // the loop delivers the arm value flag-clear (abandon by construction).
+  LYield(h, op_name, args, k_expr) => // band B k1/M1.4 — the MultiShot yield, a LIVE continuation. The REAL
+  // form (k = the reified remainder record): the op's args into the
+  // instance's area (`emit_yield_arg_stores`), k into $yield_k, the interned
+  // op key into $yield_op, raise $yield_flag, and return a width-honest
+  // dummy through the frame's own result type (h = the REWRITTEN FRAME's
+  // tail node; a Float-tailed frame keeps its f64 ft — never the perform's
+  // width): the rest of this frame is the k's, and the frame's caller is a
+  // boundary that composes, or the driver. The args go FIRST — evaluating
+  // one may run a yield-and-resume cycle inside a callee, which moves
+  // $yield_k. The FLOOR form carries the EMPTY op name (an off-spine resume
+  // perform) — the loud comment-marked refusal, said at the settle point. A
+  // dead continuation never comes here: an abandoning perform is `LAbandon`.
   if op_name == "" {
-    wat_emit("    (unreachable) ;; multishot yield floor — off-spine perform / off-spine k2 boundary / arm-state / re-yield (k2/k3)\n")
+    wat_emit("    (unreachable) ;; multishot yield floor — off-spine perform / arm-state / re-yield (k2/k3)\n")
   } else {
+    emit_yield_arg_stores(args)
     emit_expr(k_expr)
     wat_emit("    (global.set $yield_k)\n")
-    if len(args) > 0 {
-      // The args record: [arg0][arg1]… at 8-byte slots, each argument at
-      // its own width (`emit_yield_arg_stores`), consumed once by the
-      // matching driver dispatch (k is durable; args are not). The record
-      // ptr parks in the per-site $yargs local — every shared scratch is
-      // clobberable by an inner arg emission; each arg VALUE parks in its
-      // width's scratch only after its own emission completes.
-      emit_alloc(8 * len(args), "state_tmp")
-      wat_emit("    (local.get $state_tmp)(local.set $yargs_")
-      wat_emit(int_to_str(h))
-      wat_emit(")\n")
-      emit_yield_arg_stores(args, h, 0)
-      wat_emit("    (local.get $yargs_")
-      wat_emit(int_to_str(h))
-      wat_emit(")(global.set $yield_args)\n")
-    }
     wat_emit("    (i32.const ")
     wat_emit(int_to_str(string_offset(op_name)))
     wat_emit(") (global.set $yield_op)\n")
     wat_emit("    (i32.const 1) (global.set $yield_flag)\n")
     emit_zero_at(repr_of(lookup_ty(h)))
+  },
+  LAbandon(_h, op_name, args) => // AN-2 — the DEAD continuation: the arm never resumes, so nothing of
+  // this frame after the perform runs and nothing is reified. The args into
+  // the instance's area, no continuation ($yield_k zero), the op key, the
+  // flag, and the frame leaves by its innermost landing — the install
+  // body's block (the driver runs the arm), the arena body's (the arena
+  // exits), or the function's return (`emit_unwind`). The branch is
+  // stack-polymorphic, so the position needs no dummy.
+  {
+    emit_yield_arg_stores(args)
+    wat_emit("    (i32.const 0) (global.set $yield_k)\n")
+    wat_emit("    (i32.const ")
+    wat_emit(int_to_str(string_offset(op_name)))
+    wat_emit(") (global.set $yield_op)\n")
+    wat_emit("    (i32.const 1) (global.set $yield_flag)\n")
+    emit_unwind()
+  },
+  LUnwind(_h) => // AN-2 — a boundary's raised flag: a dead continuation unwinds this
+  // frame to its landing; a live one is the floor — this frame holds no
+  // remainder for it (the k2 spine reified one only where a callee may
+  // yield LIVE on the spine), refused at the settle point where the
+  // callee's row proves the op (`settle_unwind`) and the runtime's loud
+  // floor otherwise.
+  {
+    wat_emit("    (if (global.get $yield_k) (then (unreachable))) ;; a live continuation past a boundary this frame cannot reify\n")
+    emit_unwind()
   },
   LKExtend(h, k_expr) => {
     // band B M1.3 — the k2 boundary's yield path: compose the frame's
@@ -7115,9 +7325,12 @@ fn emit_expr(expr) = match expr {
     // unwind continues as pure dataflow through the same value position the
     // fast path uses (h = the frame's tail node, the same width law
     // LYield's dummy follows; a return here would skip an install's driver
-    // bracket).
+    // bracket). A DEAD continuation composes nothing — the remainder is
+    // never built for it — and the dummy flows on to the boundary the
+    // frame's caller checks (AN-2).
+    wat_emit("    (if (global.get $yield_k) (then\n")
     emit_expr(k_expr)
-    wat_emit("    (call $__k_extend)\n")
+    wat_emit("    (call $__k_extend)))\n")
     emit_zero_at(repr_of(lookup_ty(h)))
   },
   LIf(_h, cond, then_body, else_body) => {
@@ -7477,6 +7690,16 @@ fn emit_expr(expr) = match expr {
         wat_emit("    (call $spawn_task_impl)\n")
       } else if import_name == "join_task" {
         wat_emit("    (call $join_task_impl)\n")
+        // A branch's abandon is re-raised by the join (`$join_task_impl`):
+        // the joiner's frame is done with it as a performer's is, and
+        // unwinds to its landing (AN-2).
+        if unwind_live() {
+          wat_emit("    (if (global.get $yield_flag) (then\n")
+          emit_unwind()
+          wat_emit("    ))\n")
+        } else {
+          ()
+        }
       } else if import_name == "thread_id" {
         // Per-instance identity: 0 on the root instance, the host thread id
         // on a spawned one (the thread entry stamps it).
@@ -8284,7 +8507,16 @@ fn fold_acc_evac_at(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty
 
 // A list slot's store moves the value it stores by the value's type.
 fn fold_acc_store(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, n: String, args) =
-  if n == "list_set" && len(args) == 3 { fold_acc_evac_at(acc, lexpr_handle(args[2])) } else { acc }
+  if n == "list_set" && len(args) == 3 { fold_acc_evac_expr(acc, args[2]) } else { acc }
+
+// An expression's value is moved by the type at its handle.
+fn fold_acc_evac_expr(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, x) =
+  fold_acc_evac_at(acc, lexpr_handle(x))
+
+// A perform's arguments cross in the area and are moved by their types at an
+// arena's exit (`emit_yield_slot_store`), so each demands its leaf.
+fn fold_acc_evac_args(acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}, args) =
+  fold(acc, fold_acc_evac_expr, args)
 
 fn fold_trigger_binop(op, lh, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty], show: [Ty]}) = match op {
   BEq => fold_acc_eq(acc, lh),
@@ -8326,8 +8558,12 @@ fn collect_fold_tys_expr(expr, acc: {cmp: [Ty], eq: [Ty], evac: [Ty], hash: [Ty]
   LReturn(_h, i) => collect_fold_tys_expr(i, acc),
   LMakeClosure(_h, LFn(_n, _a, _p, body, _f, _l), caps) => collect_fold_tys_list(body, collect_fold_tys_list(caps, acc)),
   LMakeContinuation(_h, LFn(_n, _a, _p, body, _f, _l), caps, _, _) => collect_fold_tys_list(body, collect_fold_tys_list(caps, acc)),
-  LYield(_h, _op, args, k) => collect_fold_tys_expr(k, collect_fold_tys_list(args, acc)),
+  LYield(_h, _op, args, k) => // the arguments stored into the area are moved by their types at an
+  // arena's exit, as a state commit's value is
+  collect_fold_tys_expr(k, collect_fold_tys_list(args, fold_acc_evac_args(acc, args))),
   LKExtend(_h, k) => collect_fold_tys_expr(k, acc),
+  LAbandon(_h, _op, args) => collect_fold_tys_list(args, fold_acc_evac_args(acc, args)),
+  LUnwind(_h) => acc,
   LDeclareFn(LFn(_n, _a, _p, body, _f, _l)) => collect_fold_tys_list(body, acc),
   LIf(_h, c, t, e) => collect_fold_tys_list(e, collect_fold_tys_list(t, collect_fold_tys_expr(c, acc))),
   LBlock(_h, stmts) => collect_fold_tys_list(stmts, acc),

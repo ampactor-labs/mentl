@@ -132,7 +132,15 @@ fn board_bounds() = [
   // of an arm's top pattern read one projection (`pat_tops`), and the two
   // accumulator lambdas that walked arms and alternations became references
   // (`arm_tags`, `top_tag`).
-  Bound({ceiling: 223, shape: CsEffectfulLambda}),
+  //
+  // 223 -> 222 (2026-10-03, AN-2): the landing minted three and the board
+  // refused 225 — two readers of an effect's ops each testing a discipline
+  // through a lambda, and the fold demanding each perform argument's leaf —
+  // and all three became references (`op_disc_holds` as a one-hole partial
+  // over `effect_op_names`, `fold_acc_evac_expr` by name, which the store's
+  // own demand reads too); the yield-record store the landing deleted took
+  // one with it, so the count fell one below the ceiling it entered under.
+  Bound({ceiling: 222, shape: CsEffectfulLambda}),
   // Drift mode 10 — the seven survivors are documented sentinels, not masked
   // cases. Every wildcard that is NOT one of them is a variant the author
   // declined to enumerate, and the medium cannot tell the difference, which
