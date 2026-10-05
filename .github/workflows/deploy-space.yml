@@ -25,8 +25,17 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Stage mentl space
+        run: |
+          mkdir -p _site/boot
+          cp -r ide/* _site/
+          cp boot/mentl.wasm _site/boot/
+          # The IDE also fetches lib/*.mn and src/types.mn for the tutorials
+          mkdir -p _site/lib _site/src
+          cp -r lib/tutorial _site/lib/
+          cp src/types.mn _site/src/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: ide
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
