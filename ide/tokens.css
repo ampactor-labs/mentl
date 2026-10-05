@@ -1,0 +1,67 @@
+/* ide/tokens.css — the design tokens, one home (docs/DESIGN_SYSTEM.md §4
+   points here). Color is a projection of the kernel: each accent means a
+   kernel role, and the accents are the Okabe–Ito set — colorblind-safe by
+   birth. Two grounds: obsidian (the editor's home) and parchment (light).
+   tools/contrast.py measures every text/ground pairing named below. */
+:root {
+  /* grounds — obsidian */
+  --abyss: #0A0809; --canvas: #0D0B0E; --raised1: #100E11; --raised2: #121013; --raised3: #171419;
+  --line: #15121688; --border: #2A2428; --border-lift: #3A3238;
+  /* text — the parchment ramp on obsidian */
+  --primary: #E8DCC8; --bright: #F5EDE0; --muted: #A3938A; --faint: #857A70;
+  --whisper: #766B60; --comment: #8E8378; --ghost: #5A5050;
+  /* accents — Okabe–Ito, each a kernel role */
+  --gold: #E69F00;   --gold-b: #F0B830;   /* types, contracts, the cursor, teach */
+  --sky: #56B4E9;    --sky-b: #7CC8EE;    /* the five verbs — topology */
+  --blue: #2A8FC2;   --blue-b: #5FB0DC;   /* structure, keywords — query (fg-tuned on dark) */
+  --green: #009E73;  --green-b: #33B893;  /* computation: functions, handlers — propose */
+  --verm: #D55E00;   --verm-b: #E87D44;   /* boundaries: literals, !, the ?? socket, refusals */
+  --mag: #CC79A7;    --mag-b: #D9A0C0;    /* discipline: own/ref, Pure, resume */
+  --wheat: #F0C674;                       /* string literals */
+  --selection: rgba(230,159,0,.22);
+  --glow-gold: 0 0 10px rgba(230,159,0,.35);
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --e-surface: cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* grounds — parchment, by the system's preference or the page's own toggle */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="obsidian"]) {
+    --abyss: #EDE2D0; --canvas: #F5EDE0; --raised1: #FBF6EC; --raised2: #FFFBF3; --raised3: #FFFFFF;
+    --line: #D8CBB688; --border: #D8CBB6; --border-lift: #C4B49C;
+    --primary: #1A1618; --bright: #000000; --muted: #5B534D; --faint: #6F665E;
+    --whisper: #7A7169; --comment: #6E655D; --ghost: #9A9088;
+    --gold: #9C6A00;  --gold-b: #7E5600;
+    --sky: #1F7FB2;   --sky-b: #166A96;
+    --blue: #0062A0;  --blue-b: #004F82;
+    --green: #007A58; --green-b: #00634A;
+    --verm: #C25400;  --verm-b: #A04500;
+    --mag: #A2528A;   --mag-b: #873F72;
+    --wheat: #7A5C00;
+    --selection: rgba(230,159,0,.30);
+    --glow-gold: 0 0 10px rgba(156,106,0,.25);
+  }
+}
+:root[data-theme="parchment"] {
+  --abyss: #EDE2D0; --canvas: #F5EDE0; --raised1: #FBF6EC; --raised2: #FFFBF3; --raised3: #FFFFFF;
+  --line: #D8CBB688; --border: #D8CBB6; --border-lift: #C4B49C;
+  --primary: #1A1618; --bright: #000000; --muted: #5B534D; --faint: #6F665E;
+  --whisper: #7A7169; --comment: #6E655D; --ghost: #9A9088;
+  --gold: #9C6A00;  --gold-b: #7E5600;
+  --sky: #1F7FB2;   --sky-b: #166A96;
+  --blue: #0062A0;  --blue-b: #004F82;
+  --green: #007A58; --green-b: #00634A;
+  --verm: #C25400;  --verm-b: #A04500;
+  --mag: #A2528A;   --mag-b: #873F72;
+  --wheat: #7A5C00;
+  --selection: rgba(230,159,0,.30);
+  --glow-gold: 0 0 10px rgba(156,106,0,.25);
+}
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Bold.woff2") format("woff2"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-BoldItalic.woff2") format("woff2"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/Inter-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/Inter-Italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/Inter-Medium.woff2") format("woff2"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; font-style: normal; font-display: swap; }

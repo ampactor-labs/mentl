@@ -14,8 +14,8 @@
 // just says hello.
 //
 // Run it:   mentl run  lib/tutorial/00-hello.mn
-// Edit it:  mentl space   →   http://localhost:7378/ide/
-// Read it:  mentl lib/tutorial/00-hello.mn:32   ← ask at the pipe into print_string; the medium answers
+// Edit it:  Mentl Space — the page in ide/, live at https://space.ampactor.dev/ (this lesson is in its program list)
+// Read it:  mentl lib/tutorial/00-hello.mn:29:77   ← ask at the pipe into print_string; the medium answers
 import io
 
 // greet builds a line and flows it into print_string with `|>`, the

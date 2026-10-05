@@ -71,6 +71,25 @@ reach the network unseen (`!Network` is checkable) and cannot lie about what it
 touches. VS
 Code's extension market is a trust problem; mentl edit's is a theorem.
 
+**And the form that makes the sentence literal (decided 2026-10-05, PLAN §11
+the Space pivot): THE VIEW IS A PROJECTION — the page is a host, the wheel
+renders the IDE.** One resident session per page (`ide/wheel-worker.js`'s
+session role over a shared-memory channel, `ide/session-client.js`). Each
+input event — the caret moved, the text changed, an accept, the Teach knob —
+goes to the session as one line, and the answer is the VIEW: a structured
+tree carrying the ring's eight facets with their spans and provenance, the
+Lens (the ranked teaching step and the diagnostics with their addresses), the
+Ledger's bands, the map, the gutter cells, the token spans and the verb
+geometry — computed in `src/space.mn` from the reads that exist (`CursorView`,
+the diag bank, `audit`, `where`, `query`, `why`, `verify`). The JavaScript
+that remains is a host: the WASI shim, the channel, the textarea and ONE
+generic painter keyed by element id. The CLI's stdio session and the LSP are
+the other two transports of the same projections, so a facet the wheel grows
+reaches the page by construction and every regular expression that parses the
+wheel's prose in the page deletes. Today (L-B) the page parses the address
+projection's lines; L-C moves the Ring, the Lens and the Ledger into the
+wheel's answer first, and every intermediate ships.
+
 ---
 
 ## 1 · The essence — a lens you look through
@@ -585,86 +604,89 @@ buggy compiler self-reproduces to a *wrong* fixpoint, and the seal claims both.
 
 ---
 
-## 8 · The build order — today's substrate, and the named next
+## 8 · The build order — what the page serves today, and the named next
 
 Ground rule 7: design the ultimate form first, then let the seed catch up; never
 lower the target. Everything above is written at ultimate form. This section is
-the honest scope: which surfaces the *current* substrate serves (wire these
-first, they are rendering work over live reads), and which need named substrate
-work, each in positive form with its exact `src/` seam. RED-first where testable:
-any change under `ide/` must still serve via `mentl space`.
+the honest scope, measured on the built page (`ide/`, 2026-10-05): which
+surfaces the current substrate serves and the page renders, and which need
+named work, each in positive form with its seam. RED-first where testable: any
+change under `ide/` must pass the IDE gate on the STAGED site
+(`tools/ide-gate.sh` — the node twin over the worker, then the browser driver
+over the page's console wire, with the product legs: render fidelity, no
+`undefined` in the chrome, every facet on a real ring row, the Lens clean).
 
-### Wire now — the substrate already serves these
+### Served now — the loop the page runs
 
-The live reads exist; the work is projection and render, no new kernel.
-
-- **The Aspect ring**: `cursor.mn`'s `cursor_view_of` (the eight-arm `<|` fan)
-  is live, and `main.mn`'s `address_resolve` → `cursor_at_handle` → `render_at`
-  already answers a position query (`mentl voice.mn:9`). Wire the ring to the
-  real `CursorView` instead of the page's surface tokenizer.
-- **The Why button**: `cursor.mn`'s `why` arm (`teach_why`) and `voice.mn`'s
-  `render_why_arm` render the Reason chain today. Draw the walk.
-- **The Ledger, three of four bands**: declared and inferred rows, `V_Pending`
-  debt (`verify.mn`'s `verify_debt`), and the armed refusals (`types.mn`'s
-  `diag_refuses`) are all live reads. Render them as ambient chrome.
-- **The cursor neighborhood and the effect-row flow overlay**: `graph.mn`'s
-  chase and `effects.mn`'s `absorb_row` give the structure and the row math;
-  the views are rendering.
-- **The felt loop and accept-as-patch**: `cursor_transport.mn`'s
-  `cursor_session` / `cursor_step` is the `<~` loop; `apply_suggestion` →
-  `PatchWrite` (`patch_to_file` → `splice_span`) is accept-as-edge. Wire the
-  transport to the browser surface.
-- **The fixpoint seal and the five-verb cards**: portraits of a real artifact
-  (`tools/march.sh`'s fixed point; SYNTAX's layout canon). Build the SVGs.
+- **The Aspect ring** reads the compiler's address projection (`mentl
+  main.mn:L:C` → `render_at`, src/main.mn) through the resident session: a
+  caret move is a read of the graph the session holds (~20 ms), an edit sends
+  the changed text with the caret's address and the session re-judges the
+  moved cone, answering the facets AND the program's diagnostics in one reply
+  (~100 ms). All eight rows are real since E4; `SURFACE` only before the first
+  read.
+- **The Why facet** renders the Reason chain as a row and as the Wavefront's
+  line. The walk's ink along the canvas is L-D.
+- **Accept is a graph edge** (C4): Tab at a `??` whose Propose facet returned
+  one proven survivor runs `mentl accept main.mn:L:C` in the session; the reply
+  carries the rewritten file, and the next read's Why says `accepted`. A tie
+  never proposes — the page renders the computed question.
+- **The session keeps its graph** (E2): one worker instance for the page's
+  life, blocking in the wheel's own read between requests over a
+  SharedArrayBuffer; a refusal answers cold with its exit code.
+- **The Ledger, in part**: the authored rows, the proof surface and the open
+  obligations at the caret. Its bands (`audit`, `query performs`, `where`) are
+  L-E.
+- **The Lens** ranks the diagnostics to one teaching step and jumps to the
+  address; telemetry (`heap:`, `arena:`, `session:`) is cost on the trail at
+  high Teach, never a diagnostic.
+- **The Module** renders the emitted WebAssembly text on demand (a cold
+  `mentl compile` over the page's tree), downloadable as `.wat`.
 
 ### Named next — the substrate work each surface needs, in positive form
 
-Each names its `src/` seam and the peer that closes it.
-
-- **The Canvas as the formatter's projection** needs render totality:
-  `format.mn`'s `render_body_tokens` / `render_stmt_tokens` / `render_pat_tokens`
-  still carry `<expr>` / `<stmt>` / `<pat>` surrender-fallbacks (lines 349 / 358
-  / 365). Make the render total, then the `fmt` verb and the canvas projection
-  are honest. Peer: `Hβ.format.render-totality-before-fmt`. The candidate render
-  is the same formatter (`cursor_transport.mn`'s `render_candidate_source`,
-  `Hβ.felt.candidate-render-is-format`), so this one seam serves both the canvas
-  and the socket's ghost text.
-- **The socket's proven fan** needs the float-position call convention:
-  `cursor.mn`'s `propose_at` is live, but the first float enumeration dispatches
-  an f64-argument candidate through an all-i32 `$ft` and traps
-  (`Hβ.emit.float-evidence-ft`). The teaching tie-break is the intent ranker
-  reading local intent, `Hβ.felt.intent-ranker-gradient-plus-teaching` (PLAN
-  §1/§5).
+- **The view rendered by the wheel** (L-C): `src/space.mn` + the `space`
+  verb's event→view answer over the session; the Ring, the Lens and the Ledger
+  move first and their JavaScript deletes; the page compiles through the
+  session's living check instead of a cold worker per edit
+  (`Hβ.session.edit-pays-for-the-program`).
+- **The Canvas as the formatter's projection** (L-D): the wheel's own tokens
+  and spans (the page's tokenizer deletes — a second lexer is the
+  Carried-Truth violation, and it is where the lost-space bug bred), `mentl
+  fmt` on idle, the verb spines from the Topology facet's `VerbFrame` rather
+  than from leading glyphs, the aspect strip and the ambient-world glyphs in
+  the gutter, obligation marks (✓ ◌ ✗) at their sites, the ownership trace,
+  drafts persisted, the trail as undo.
+- **The map and the ledger** (L-E): the Severance Map with the three-colour
+  law and its "not yet provable" count on the board
+  (`Hβ.viz.severance-map`, PLAN §11 Arc G), the ambient-world gutter
+  (`Hβ.viz.ambient-world-gutter`), the cursor neighborhood overlay, the Ledger's
+  bands, the Why walk with trivial hops elided
+  (`Hβ.viz.why-walk-elides-trivial-hops`).
+- **Running the program in the page** (L-F): the assembler in the wheel
+  (`Hβ.felt.ide-run-in-page`), the worker's run role for user programs, WABT
+  out of every gate, the fixpoint seal in motion on the page.
 - **Fill-and-resume, reality scrubbing, the fork tree** need band B (the
-  multi-shot producer landed through the fixpoint; the re-execution driver and
-  the fused search over it are the reach) and in-page execution:
-  `Hβ.felt.ide-run-in-page` over the wheel's binary emit (band N). Until then the
-  Wavefront draws these as honest dormant gates, never a canned branch.
-- **Session-as-image and bug-report-as-image** need persist-equals-memcpy over
-  the image-map fold: `Hβ.persist.module-image-cache` and
-  `Hβ.emit.image-map-fold` (band B + D).
-- **Millisecond re-projection (the IC feel)** needs the cached, epoch-keyed
-  cursor. `cursor.mn`'s `ic_fixpoint_handler` is authored; the session loop still
-  re-instantiates per compile, and the multi-generation weave dissolves with
-  `Hβ.cursor.session-weave-epoch-scope`.
-- **The Ledger's transitive absence proofs** need the crown:
-  `Hβ.effects.sound-neg-under-poly` (the by-name gate landed; the hop-by-hop
-  projection and the modal world-index are the remainder, band A).
-- **The LSP transport** (external editors get the same projections) is authored
-  in `lsp.mn` (`handle_hover` / `handle_completion` / `handle_definition` /
-  `handle_references`); it needs the transport to run the frontend so hover reads
-  a populated graph: `Hβ.lsp.transport-runs-frontend` and `Hβ.lsp.session-reinfer`.
-- **The living `mentl edit` runtime** (the canonical IDE as a running
-  keystroke→parse→format→render loop) is `Hβ.felt.mentl-edit-runtime`;
-  IC-riding reactivity is `Hβ.felt.reactivity-typed-demand-driven`; time-travel
-  over the trail is `Hβ.felt.time-travel-debug-forked-cursor`.
+  re-execution driver and the fused search over the multi-shot producer).
+  Until then the Wavefront draws them as honest dormant gates, never a canned
+  branch.
+- **Session-as-image**: `persist = memcpy` is built (PLAN §7); the page's face
+  — an accept outliving the process, a session reopened as a value — is
+  `Hβ.felt.accept-outlives-the-process`.
+- **The LSP transport** (external editors get the same projections):
+  `Hβ.lsp.transport-runs-frontend`, `Hβ.lsp.session-reinfer`.
+- **The living runtime** — the canonical IDE as the keystroke→parse→format→
+  render loop — is `Hβ.felt.mentl-edit-runtime`; IC-riding reactivity is
+  `Hβ.felt.reactivity-typed-demand-driven`; time-travel over the trail is
+  `Hβ.felt.time-travel-debug-forked-cursor`.
 
-The honest reading: the *middle* of the experience (the ring, the Why walk, the
-verb lines, the Ledger's live bands, the socket on today's Synth) is buildable
-against the current graph, and it is rendering work. The *magic*
-(fill-and-resume, realities, image sessions) is gated on band B, which is why the
-multi-shot producer is the dig that unlocks the most in the whole project: it is
-simultaneously the kernel's TIME axis and the IDE's soul.
+The honest reading: the middle of the experience — the ring, the Why, the
+session, accept-as-edge, the Lens — is served and rendered; what remains of
+the middle (the canvas as a projection, the map) is rendering work over live
+reads plus one representation move (the view computed in the wheel). The
+magic (fill-and-resume, realities, image sessions) is gated on band B, which
+is why the multi-shot producer is the dig that unlocks the most in the whole
+project: it is simultaneously the kernel's TIME axis and the IDE's soul.
 
 ---
 

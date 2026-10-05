@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'ide/**'
+      - 'boot/**'
+      - 'lib/**'
+      - 'src/types.mn'
+      - 'tools/space-stage.sh'
       - '.github/workflows/deploy-space.yml'
   workflow_dispatch:
 
@@ -26,16 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Stage mentl space
-        run: |
-          mkdir -p _site/boot
-          cp -r ide/* _site/
-          cp boot/mentl.wasm _site/boot/
-          # The IDE also fetches lib/*.mn and src/types.mn for the tutorials
-          mkdir -p _site/lib _site/src
-          cp -r lib/tutorial _site/lib/
-          cp src/types.mn _site/src/
+        # ide/space.manifest is the one home of what the site is; the IDE
+        # gate serves this same staged directory, so a file the page needs
+        # and the deploy lacks is a red gate, never a 404 found live.
+        run: bash tools/space-stage.sh .build/space
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: .build/space
       - id: deployment
         uses: actions/deploy-pages@v4

@@ -37,45 +37,74 @@ find_browser() {
 }
 browser=$(find_browser)
 
-if [ -n "$browser" ] && command -v mentl >/dev/null 2>&1; then
-  echo "── ide gate · leg 2: the browser (mentl space + headless chrome) ──"
+if [ -n "$browser" ]; then
+  echo "── ide gate · leg 2: the browser (the STAGED site + headless chrome) ──"
+  # The site the gate drives is the site the deploy ships: ide/space.manifest
+  # staged by tools/space-stage.sh and served with the two isolation headers
+  # by tools/space-serve.py — never the repo root, so a file the page needs
+  # and the manifest lacks is red here before it is a 404 in production.
   port="${MENTL_IDE_GATE_PORT:-7397}"
-  MENTL_SPACE_PORT="$port" mentl space >/dev/null 2>&1 &
+  stage=".build/space"
+  bash tools/space-stage.sh "$stage" >/dev/null || { echo "  staging FAILED"; fail=1; }
+  python3 tools/space-serve.py "$stage" "$port" &
   sp=$!
-  sleep 2
+  sleep 1
   echo "  browser: $browser"
-  lines=$(timeout 150 "$browser" --headless=new --disable-gpu --no-sandbox \
-    --enable-logging=stderr "http://127.0.0.1:$port/ide/?smoke" 2>&1 | grep -m2 -oE 'SMOKE[^"]*')
+  # ide/browser-leg.mjs drives the browser over its debugging pipe: it loads
+  # ?smoke, prints the page's SMOKE lines as the console wire carries them,
+  # captures .build/space.png once the product leg has run and
+  # .build/space-parchment.png once the other ground says SPACE-READY. (A
+  # --screenshot with a virtual-time budget never returns on this page — the
+  # session's worker blocks inside the wheel's own read — and without one it
+  # captures the load event, before the wheel has booted.)
+  lines=$(timeout 240 node ide/browser-leg.mjs "$browser" "http://127.0.0.1:$port/" .build 2>&1 | grep -E '^(SMOKE|SPACE-READY|PAGE-ERROR|BROWSER-LEG-ERROR)')
   kill "$sp" 2>/dev/null
   line=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE exit')
   sline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-SESSION')
+  pline=$(printf '%s\n' "$lines" | grep -m1 '^SMOKE-PRODUCT')
+  printf '%s\n' "$lines" | grep -E '^(PAGE-ERROR|BROWSER-LEG-ERROR|SMOKE-BOOT-FAIL|SMOKE-TIMEOUT)' | sed 's/^/  /'
   echo "  $line"
   echo "  $sline"
+  echo "  $pline"
   case "$line" in
     "SMOKE exit=0 "*)
       tasks=$(echo "$line" | grep -oE 'tasks=[0-9]+' | cut -d= -f2)
       watlines=$(echo "$line" | grep -oE 'watlines=[0-9]+' | cut -d= -f2)
-      # The WAT is the verdict; the task count is a measurement. "spawned
-      # nothing" was the stub era's shape when the judgment spawned per
-      # stmt; since pin 7c9dc538 it spawns nothing by design (judge once),
-      # and the 2026-09-25 tasks=259 measured the eight-week-old IDE copy.
+      # The WAT is the verdict; the task count is a measurement (the judgment
+      # spawns nothing by design since pin 7c9dc538 — judge once).
       if [ "${watlines:-0}" -gt 1 ]; then
-        echo "  browser leg: PASS — the boot compiled in the page ($watlines wat lines; ${tasks:-0} worker tasks, reported)"
+        echo "  browser leg: PASS — the first lesson compiled in the page ($watlines wat lines; ${tasks:-0} worker tasks, reported)"
       else
         echo "  browser leg: FAIL — exit 0 but no WAT came back (watlines=${watlines:-0})"; fail=1
       fi ;;
     *) echo "  browser leg: FAIL"; fail=1 ;;
   esac
   # The resident session in the browser itself (E2): the page's own client
-  # opens one instance and reads its graph twice — the second read must be
-  # answered by the session, not by a fresh instance, and must project.
+  # opens one instance and reads its graph; the read must be answered by
+  # the session, not by a fresh instance, and must project.
   case "$sline" in
     *"resident=true query=true"*)
       echo "  session leg: PASS — the page's session kept its graph (open $(echo "$sline" | grep -oE 'open=[0-9]+' | cut -d= -f2) ms, read $(echo "$sline" | grep -oE 'read=[0-9.]+' | cut -d= -f2) ms)" ;;
     *) echo "  session leg: FAIL — ${sline:-no SMOKE-SESSION line}"; fail=1 ;;
   esac
+  # The product — what the page RENDERS, measured in the browser: the
+  # projection shows every character the hand typed (a lost space was live
+  # in production for weeks), no \`undefined\` reaches the chrome, every
+  # facet line the compiler printed has a real ring row, and the Lens holds
+  # no telemetry dressed as a diagnostic.
+  case "$pline" in
+    *"fidelity=true undefined=false"*"lens-telemetry=false"*)
+      facets=$(echo "$pline" | grep -oE 'facets=[0-9]+' | cut -d= -f2)
+      ring=$(echo "$pline" | grep -oE 'ring-real=[0-9]+' | cut -d= -f2)
+      if [ "${facets:-0}" -gt 0 ] && [ "${ring:-0}" -ge 8 ]; then
+        echo "  product leg: PASS — fidelity, no undefined, $facets facet lines on 8 real rows, Lens clean; screenshots .build/space.png (obsidian, caret projected) and .build/space-parchment.png"
+      else
+        echo "  product leg: FAIL — facets=${facets:-0} ring-real=${ring:-0}"; fail=1
+      fi ;;
+    *) echo "  product leg: FAIL — ${pline:-no SMOKE-PRODUCT line}"; fail=1 ;;
+  esac
 else
-  echo "── ide gate · leg 2 SKIPPED (no browser found — set MENTL_CHROME — or the mentl shim missing) ──"
+  echo "── ide gate · leg 2 SKIPPED (no browser found — set MENTL_CHROME) ──"
 fi
 
 if [ $fail -eq 0 ]; then echo "ide gate: GREEN"; else echo "ide gate: RED"; fi

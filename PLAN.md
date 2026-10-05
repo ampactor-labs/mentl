@@ -3070,6 +3070,39 @@ form the whole time. The arcs, in order:
   neighbouring field (tests/repro-wf/open-row-interior-site.mn). Terminal:
   ide-gate green Node + headless Chrome, session alive across actions,
   eight-aspect projections at the caret.
+  **L-B LANDED 2026-10-05 — the Space pivot's first landing, no wheel
+  change: the page works in production and looks like the design.** The
+  live site had refused its own first lesson for weeks behind a green gate:
+  the deploy copied none of the runtime modules the page fetches, the page
+  swallowed each 404 as an empty file, and the gate's browser leg served the
+  REPO ROOT, where everything exists. What the site IS has one home now,
+  `ide/space.manifest`; `tools/space-stage.sh` stages exactly those files,
+  and BOTH the deploy workflow and the gate serve that staged artifact
+  (`tools/space-serve.py`, the two isolation headers), so an omission is a
+  red gate before it is a 404. `ide/isolate.js` isolates and caches the page
+  on any static host. Fixed at their roots: the page's tokenizer dropped
+  every space between tokens (the highlight slices the source now, and the
+  gate measures `hl.textContent == textarea.value`); the Lens rendered
+  `heap:`/`arena:` telemetry as diagnostics with `undefined` badges; the
+  ring's parser knew neither `Topology:` nor `Lede:` nor a multi-line
+  facet; the diagnostic address regex never matched the wheel's spans. The
+  palette, both grounds and the self-hosted fonts are restored per
+  `docs/DESIGN_SYSTEM.md`, trued the same day to the verdicts: no character
+  in the product, the octagon as the one geometry, no ligature font, no
+  cursor breath or topology resist; `tools/contrast.py` measures every
+  text/ground pairing in the gate. The browser leg is a CDP driver
+  (`ide/browser-leg.mjs`) reading the page's console wire and capturing the
+  LOADED page in both grounds — Chrome's own screenshot captures the load
+  event and never returns under a virtual-time budget here (the session's
+  worker blocks in the wheel's read). The lessons are the program list, each
+  fmt-canonical at zero self-diagnostics (`mentl tighten` authored three
+  clause deletions; the ownership lesson's `own` now transfers; every cited
+  address re-measured by the medium). Kills: `undefined=true` in the DOM was
+  the smoke's own census reading the page's `<script>` source; the local
+  server died under a re-stage because it had ENTERED the directory it
+  served. `docs/MENTL_EDIT.md` §0 carries the view-as-projection form and §8
+  what the page serves today. Next: L-H (no Rust — the stock engine hosts
+  the boot), then L-C (the view is a projection).
 - **Arc F · Proof faces on the page, repriced.** Flow refusals as sink
   preconditions over the influence walk (Phase 7 as re-scoped 2026-10-02 —
   no row element, the label lattice deleted) + Why-chain/refusal badges
