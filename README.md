@@ -6,12 +6,11 @@ A programming language and self-hosting compiler with an algebraic effect system
 
 ## Quick start
 
-The compiler is one WebAssembly module, `boot/mentl.wasm`, and it runs through a small Rust host in `tools/runner` that embeds the wasmtime engine, so the prerequisite is a Rust toolchain (https://rustup.rs).
+The compiler is one WebAssembly module, `boot/mentl.wasm` — it compiles Mentl, including its own source, and runs on any host that provides the WASI seam (WASI preview1, shared memory, `mentl_host`, thread-spawn, sockets). Two hosts ship in `tools/`: the reference Rust runner (`tools/runner`, embedding wasmtime — needs a Rust toolchain to build) and a Node host (`tools/host-node` — needs node ≥ 20, zero Rust). `tools/install.sh` uses the runner when it is built and falls back to the Node host otherwise.
 
 ```sh
 git clone https://github.com/ampactor-labs/mentl.git && cd mentl
-cargo build --release --manifest-path tools/runner/Cargo.toml
-bash tools/install.sh     # writes ~/.local/bin/mentl, a shim that runs boot/mentl.wasm through that host
+bash tools/install.sh     # writes ~/.local/bin/mentl, a live pointer to boot/mentl.wasm through the selected host
 mentl run lib/tutorial/00-hello.mn
 ```
 
@@ -113,7 +112,7 @@ Three things are not covered. The determinism probe (the same binary on the same
 
 ## Limitations
 
-The verifier is sound and incomplete: a claim it cannot decide is recorded as pending debt, reported at compile time, and the program still builds. The absence proof `!E` is keyed by effect name, its soundness under polymorphism is an open item (PLAN.md §4③), and on the compiler's own source an effect operation with no handler installed anywhere still compiled with zero diagnostics (PLAN.md §7). The compiler emits WebAssembly only and runs through the bundled Rust host; there is no published package, and no CI service runs the gates.
+The verifier is sound and incomplete: a claim it cannot decide is recorded as pending debt, reported at compile time, and the program still builds. The absence proof `!E` is keyed by effect name, its soundness under polymorphism is an open item (PLAN.md §4③), and on the compiler's own source an effect operation with no handler installed anywhere still compiled with zero diagnostics (PLAN.md §7). The compiler emits WebAssembly only and runs on any host providing the seam contract; two such hosts ship in `tools/` (the Rust runner and the Node host). There is no published package, and no CI service runs the gates.
 
 - Diagnostic classes are armed one at a time, each once the compiler's own source is clean of it; an unarmed class prints its diagnostic and the program is still emitted. Two cases are measured. A field access whose offset the graph cannot prove emits an `unreachable` instruction and traps at run time, reported as `T_FieldOffsetUnprovable`; the compiler's own source had four such sites when the class was added (PLAN.md §11). A comparison whose operand type is still unresolved at emit compares one machine word, which for a heap value compares addresses, reported as `T_EqTypeUnprovable`.
 - Memory is a monotone image: the allocator never frees, there is no runtime arena, and the module imports a 4 GB shared memory; the self-compile peaks at 978 MB (the head entry of `boot/PROVENANCE.md`). A warm start restores the analysed image and then re-derives the compile over it (PLAN.md §5.O).
