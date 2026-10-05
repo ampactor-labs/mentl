@@ -755,6 +755,46 @@ fn diff_row(ref a, ref b) with !Mutate = match a {
   },
 }
 
+// ─── Branch A of Hβ.infer.declared-row-vacuous-against-a-free-body-row ───
+// A declared row constrains its params' rows: the graph already holds
+// row(fn) ⊇ row(param), the declaration constrains row(fn), and solving
+// gives row(param) ⊆ declared. The vacuity was a DISCARDED constraint,
+// so this is less machinery, not more.
+//
+// The mask-edge mechanism (diff_row's, above): mint a fresh row cell
+// BOUND to the masked triple over the original tail vars, so the
+// constraint rides every union as one opaque edge instead of vanishing
+// at the first frame union. A later call unifying an effectful row into
+// the now-capped var refuses AT THE CALL SITE — where the mistake is and
+// where the Reason chain can name both spans.
+//
+// For `with Pure` the cap is the pure row itself: a pure-declared fn's
+// params may perform nothing.
+fn cap_row_for_declared(ref row, ref da, is_pure, reason) with Memory + Alloc + GraphWrite =
+  match row {
+    EfRow(rp, ra, EtOpen(vs)) => if len(vs) == 0 {
+      row
+    } else if is_pure {
+      let masked = graph_fresh_row(reason)
+      graph_bind_row(masked, ef_pure_row, reason)
+      ef_make([], [], EtOpen([masked]))
+    } else if len(da) == 0 {
+      row
+    } else {
+      let masked = graph_fresh_row(reason)
+      graph_bind_row(masked, EfRow([], name_set_union(ra, da), EtOpen(vs)), reason)
+      ef_make(rp, [], EtOpen([masked]))
+    },
+    _ => row,
+  }
+
+// Whether the row needs the declared cap at all: an open tail that is
+// genuinely free, under a declaration that forbids something (or pure).
+fn row_needs_declared_cap(ref row, ref da, is_pure) = match row {
+  EfRow(_, _, EtOpen(vs)) => len(vs) > 0 && (is_pure || len(da) > 0),
+  _ => false,
+}
+
 // Intersection (`&`): closed∩closed intersects presents; anything meeting
 // the pure-negation form (p=[], tail=All) is the difference; the
 // var-tailed general meet is the modal frontier — the LOUD refusal names
