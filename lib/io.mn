@@ -67,15 +67,6 @@ effect WASI {
   path_unlink_file(Int, Addr, Int) -> Int
   // (old_dirfd, old_path, old_len, new_dirfd, new_path, new_len)
   path_rename(Int, Addr, Int, Int, Addr, Int) -> Int
-  // The socket pair (2026-07-10, mentl serves natively): the host preopens
-  // the LISTENER (wasmtime -S tcplisten); sock_accept yields a connection fd
-  // the fd_* ops above already speak; poll_oneoff is the honest blocking
-  // wait both nonblocking ends demand (lib/net.mn wraps them).
-  //
-  // (fd, flags, accepted_fd)
-  sock_accept(Int, Int, Addr) -> Int
-  // (subscriptions, events, nsubscriptions, nevents)
-  poll_oneoff(Addr, Addr, Int, Addr) -> Int
   // (argc, argv_buf_size)
   args_sizes_get(Addr, Addr) -> Int
   // (argv, argv_buf)
@@ -84,21 +75,6 @@ effect WASI {
   // variable — any install an arm ending in it answers (SYNTAX
   // §«Unit return omission»). Its emit is `(call $proc_exit)(unreachable)`.
   proc_exit(Int) -> !
-}
-
-// Host — the medium's own host seam beside preview1, served by tools/runner
-// under the import module `mentl_host` (Hβ.ops.runner-is-the-process-handler).
-// WASI has no exec, so a compiled program could be emitted but never run
-// from inside the wheel; these two ops are the executor. The emitted WAT
-// STREAMS to the host through host_wat_write exactly as bytes stream to an
-// fd (the host holds the text — the guest's emit regions reset per fn, so
-// no in-image collecting sink is sound for a whole module), and host_exec
-// assembles, instantiates and runs the streamed module in its own instance
-// over its own memory, returning its exit as a value (a trap answers 134).
-// (address, len) pairs, the fd_write_bytes idiom; argv is NUL-joined.
-effect Host {
-  host_wat_write(Addr, Int)
-  host_exec(Addr, Int) -> Int
 }
 
 // wasi_args — the process argv as a [String], read live from the host at
@@ -337,12 +313,12 @@ fn read_line_loop(buf, offset, capacity) = match if offset + 1 > capacity {
 fn fs_path_view(s) = (str_payload(s), byte_len(s))
 
 // fs_dir_fd — the preopened DIRECTORY's fd, read live from the preopen
-// table: fd_prestat_get answers 0 with tag 0 (dir) for a dir preopen; a
-// tcplisten socket occupying a slot refuses. The table's ORDER is the
-// host invocation's business, never a baked constant — the listener
-// stole fd 3 the first time mentl served with both preopens (2026-07-10)
-// and every path syscall hit the socket. Scan exhausted = no dir
-// preopened: return the first slot so the syscall itself errors loudly.
+// table: fd_prestat_get answers 0 with tag 0 (dir) for a dir preopen; any
+// other kind of preopen occupying a slot refuses. The table's ORDER is the
+// host invocation's business, never a baked constant — a socket preopen
+// once stole fd 3 (2026-07-10) and every path syscall hit it. Scan
+// exhausted = no dir preopened: return the first slot so the syscall
+// itself errors loudly.
 fn fs_dir_fd() = fs_dir_fd_from(3)
 
 fn fs_dir_fd_from(fd) = if fd >= 16 {

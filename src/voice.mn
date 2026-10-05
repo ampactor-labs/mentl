@@ -545,7 +545,7 @@ fn topic_span_or_zero(topic) = match topic {
 }
 
 // render_query_arm — TentQuery's render. Per MV §2.7.3 form FFactual,
-// per AT1: `` `name` runs `Type`. Row. ``. Slots compose the
+// per AT1: `` `<name>` runs `<Type>`. Row. ``. Slots compose the
 // identifier from topic, the inferred type from row_at_topic context,
 // and the row itself. silence_predicate gated upstream — fires only
 // when reason_at_topic is Some (per MV §2.7.5 TentQuery arm).
@@ -568,7 +568,7 @@ fn render_query_arm(situation) = match situation {
 // render_propose_arm — TentPropose's render. Per MV §2.7.3 form
 // FOffering, per AT8 + AT10: hole completion / typo codeAction.
 // Topic discriminates: TopicHandle (hole at handle) → "Hole expects
-// `Type`"; TopicError (typo / missing) → "Did you mean ...?";
+// `<Type>`"; TopicError (typo / missing) → "Did you mean ...?";
 // TopicAsk (explicit ask) → echoes ask. silence_predicate gated.
 fn render_propose_arm(situation) = match situation {
   Situation(s) => match s.facts {

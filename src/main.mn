@@ -95,8 +95,6 @@ import ml/tensor
 
 import math
 
-import net
-
 import cli
 
 // The verb grammar — EntryVerb, the VerbSpec table, parse_cli_args and
@@ -162,7 +160,7 @@ fn dispatch_invocation(verb) = match verb {
   // tables crossed on the prior pin, so this generation's boot
   // lowers the call it is about to execute.)
   if stdin_is_tty() { welcome_run() } else { compile_stdin_run() },
-  VRun(target, args) => run_run(target, args),
+  VRun(target, _) => run_run(target),
   VCheck(target) => check_run(target),
   VAt(target, line, col) => at_run(target, line, col),
   VAccept(target, line, col) => accept_run(target, line, col),
@@ -247,143 +245,18 @@ fn mentl_edit_session(entry_module) = match driver_entry_with_ranges(entry_modul
 fn entry_start_caret(mh) =
   Caret(mh, Located(Span(1, 1, 1, 1), Inferred("mentl edit session start — at the entry")))
 
-// ─── space_run — the ide, served by the wheel (`mentl space`)
+// ─── space_run — the ide is the page (`mentl space`)
 //
-// The HTTP/1.1 file server that lived as ide/serve.mn, absorbed whole:
-// the accept loop is an evidence-threading tail call over the socket
-// substrate (lib/net.mn); every response carries the
-// cross-origin-isolation pair the IDE's shared-memory compiler requires.
-// The host preopens the repo dir and the listener
-// (-S tcplisten=127.0.0.1:7378 — the install shim's space seam);
-// find_listener reads the preopen table, so the fd never lives in source.
-fn space_mime_for(path: String) = if ends_with(path, ".html") {
-  "text/html; charset=utf-8"
-} else if ends_with(path, ".wasm") {
-  "application/wasm"
-} else if ends_with(path, ".js") {
-  "text/javascript"
-} else if ends_with(path, ".mjs") {
-  "text/javascript"
-} else if ends_with(path, ".css") {
-  "text/css"
-} else if ends_with(path, ".json") {
-  "application/json"
-} else if ends_with(path, ".svg") {
-  "image/svg+xml"
-} else if ends_with(path, ".png") {
-  "image/png"
-} else if ends_with(path, ".md") {
-  "text/markdown; charset=utf-8"
-} else if ends_with(path, ".mn") {
-  "text/plain; charset=utf-8"
-} else if ends_with(path, ".wat") {
-  "text/plain; charset=utf-8"
-} else {
-  "application/octet-stream"
-}
-
-// One read is the whole request for the GETs a static IDE makes. The bytes
-// materialize as a proper [count][tag][bytes@+8] String record (bytes_buf +
-// str_of_buf — io.mn's fd_read_all form).
-fn space_read_request(conn) = {
-  let cap = 65536
-  let buf = alloc(cap)
-  let n = sock_read(conn, buf, cap)
-  let got = if n < 0 { 0 } else { n }
-  let str = bytes_buf(got)
-  mem_copy(addr_at(str, 8), buf, got)
-  str_of_buf(str)
-}
-
-// The request line's path: bytes between the first two spaces, query
-// stripped. Empty on a malformed line (the caller 400s).
-fn space_request_path(req: String) = {
-  let n = byte_len(req)
-  let sp1 = find_char(req, n, 0, 32)
-  if sp1 < 0 {
-    ""
-  } else {
-    let sp2 = find_char(req, n, sp1 + 1, 32)
-    if sp2 < 0 {
-      ""
-    } else {
-      let raw = str_slice(req, sp1 + 1, sp2)
-      // '?'
-      let q = find_char(raw, byte_len(raw), 0, 63)
-      if q < 0 { raw } else { str_slice(raw, 0, q) }
-    }
-  }
-}
-
-// Routing: "/" and any directory path serve its index.html; the leading
-// slash strips (fs paths are preopen-relative); ".." refuses.
-fn space_route(path: String) = if path == "" || path == "/" {
-  "ide/index.html"
-} else {
-  let full = if ends_with(path, "/") { str_concat(path, "index.html") } else { path }
-  str_slice(full, 1, byte_len(full))
-}
-
-fn space_respond(conn, code_line: String, mime: String, body: String) = {
-  let len_s = int_to_str(byte_len(body))
-  // ONE line, escapes only — a string literal is CONTENT and the layout
-  // engine must never reflow inside the quotes: the fmt pass split this
-  // head across raw newlines and the serve answered a bare status line
-  // (raw-newline + \n read as end-of-headers; the frontier's serve leg
-  // was the one gate that could see it, and did —
-  // Hβ.format.string-literal-atomic-layout).
-  let head =
-    "HTTP/1.1 {code_line}\nContent-Type: {mime}\nContent-Length: {len_s}\nCross-Origin-Opener-Policy: same-origin\nCross-Origin-Embedder-Policy: require-corp\nCache-Control: no-store\nConnection: close\n\n"
-  sock_write_str(conn, head)
-  sock_write_str(conn, body)
-  ()
-}
-
-fn space_conn(conn) = {
-  let req = space_read_request(conn)
-  let path = space_request_path(req)
-  if byte_len(path) == 0 {
-    space_respond(conn, "400 Bad Request", "text/plain", "bad request\n")
-  } else if str_contains(path, "..") {
-    space_respond(conn, "403 Forbidden", "text/plain", "no traversal\n")
-  } else {
-    let file = space_route(path)
-    if fs_exists(file) {
-      space_respond(conn, "200 OK", space_mime_for(file), fs_read_file(file))
-      print_string("200 {file}\n")
-    } else {
-      space_respond(conn, "404 Not Found", "text/plain", "not found: {file}\n")
-      print_string("404 {file}\n")
-    }
-  }
-  fd_close(conn)
-  ()
-}
-
-// The accept loop — constant stack forever (the tail form carrying its
-// own server).
-fn space_loop(lfd) = {
-  space_conn(sock_accept_blocking(lfd))
-  space_loop(lfd)
-}
-
+// Mentl Space is static files: the page, the boot and the modules
+// ide/space.manifest names, served by any host that sets the two
+// cross-origin-isolation headers, or by the page's own service worker
+// where a host sets none. The wheel owns no listener — WASI p1 has no
+// bind/listen, and the medium carries no socket seam past it — so the verb
+// reached here says where the page is served from: the mentl command
+// stages the manifest and serves the staged directory.
 fn space_run() = {
-  let lfd = find_listener()
-  if lfd < 0 {
-    // drift-audit: ignore — the flagged keyword is inside the teaching string (a quoted shell invocation), not control flow
-    eprint_string("mentl space: no listener preopened — the install shim adds -S tcplisten=127.0.0.1:7378 for this verb; by hand from the repo root: wasmtime run <flags> --dir . -S tcplisten=127.0.0.1:7378 boot/mentl.wasm space\n")
-    1
-  } else {
-    print_string("mentl space -> http://localhost:7378/ide/\n")
-    // The accept loop runs UNDER the Filesystem handler, so the file server
-    // performs the ops instead of reaching past them to the impls. The loop
-    // never returns, which is exactly why this was left un-installed and the
-    // reads went to fs_*_impl; tests/micros/mn-handler-extent-tail-loop.mn
-    // measures the property it turns on — a handler's extent, and its state,
-    // survive a self-tail-calling loop.
-    space_loop(lfd) ~> wasi_filesystem
-    0
-  }
+  eprint_string("mentl space: the page is served by the mentl command — from the repo, `bash tools/space-stage.sh && python3 tools/space-serve.py`, then open http://127.0.0.1:7397/ (the deployed page is https://space.ampactor.dev/)\n")
+  2
 }
 
 // ─── march_run — the medium judges its own generation (`mentl march`)
@@ -396,8 +269,10 @@ fn space_run() = {
 // (.build/march/m2.wat, read before written). Never the keyed bash
 // cache: that cache equals this very emission whenever it is fresh — a
 // comparison that cannot fail. The self-application half (the next
-// generation reproducing itself, m3 == m4) needs the exec seam and
-// stays at tools/march.sh — the whole-world bash march's audit role.
+// generation reproducing itself, m3 == m4) needs the host to run the
+// generation this verb just emitted — a compiled module is run by the
+// mentl command, never by the compiler that reached it — and stays at
+// tools/march.sh, the whole-world bash march's audit role.
 fn march_run() = {
   let files = march_wheel_files()
   if len(files) == 0 {
@@ -910,46 +785,18 @@ fn compile_stdin_run() = {
   0
 }
 
-// Process — the execute-the-compiled-module effect. process_exec is the
-// ONE external-boundary op (the host process surface). run = compile then
-// ~> <a Process handler> catches the process_exec the run pipeline performs
-// over the SAME compile graph (no re-invoked toolchain). The op carries the
-// program's argv on the wire (NUL-joined, argv[0] first); the compiled
-// artifact has already streamed to the executor through the emit sink
-// (wat_to_host), so nothing is threaded out of compile — the handler swap
-// IS the difference between `compile` and `run`. A native mentl (band N)
-// performs the same op against its own executor.
-effect Process {
-  // exit code
-  process_exec(String) -> Int
+// ─── run_run — the host runs the module (`mentl run`)
+//
+// WASI has no exec, and the medium carries no seam past it: a compiled
+// module is run by the HOST. The mentl command compiles the program,
+// assembles the module and executes it in one step (tools/wt-env.sh, the
+// host's one home for that step); the browser's worker instantiates what
+// the page compiles. The compiler reached directly with `run` can only
+// emit, and says so — it never fabricates a program's exit.
+fn run_run(target) = {
+  eprint_string("mentl run: the host runs the module — the mentl command compiles {target}, assembles the module and executes it; the compiler reached directly can only emit (mentl compile {target})\n")
+  2
 }
-
-// The Process handler the runner serves: the arm performs the Host seam's
-// exec op (lib/io.mn) over the WAT the wat_to_host sink streamed, and the
-// program's exit comes back as a value — a trap answers 134, the status
-// the micro battery banks. WASI has no exec, so the seam is the runner's
-// (Hβ.ops.runner-is-the-process-handler): tools/runner assembles the
-// streamed text and runs it in its own Store, one process for compile and
-// run alike.
-handler process_host {
-  process_exec(argv) => resume(host_exec(str_payload(argv), byte_len(argv))),
-}
-
-// argv on the wire: NUL after every word, the executor splits on it.
-fn argv_wire(words) = words |> map(nul_terminated) |> str_concat_all
-
-fn nul_terminated(w: String) = "{w}\0"
-
-// run IS compile then process_exec ~> process_host — one handler swap
-// over the SAME compile graph: compile streams the module to the host,
-// process_exec runs it. The program's exit is this verb's value, and the
-// dispatch makes main's value the process exit — so `mentl run x` answers
-// exactly what x answered (a refused compile exits through the gate
-// before anything runs).
-fn run_run(target, args) = {
-  compile(target)
-  process_exec(argv_wire([target] ++ args))
-} ~> process_host ~> wat_to_host ~> wasi_filesystem ~> no_iter_context ~> diagnostics_handler ~> no_state_walked ~> graph_handler([], 0, []) ~> mutate_sink
 
 // ─── check_run — diagnostics; no emit
 //
@@ -2140,15 +1987,22 @@ fn show_want(want) = match want {
   WantAsk(arm) => "ask {arm}",
 }
 
+// What one micro's compile left behind: the gate withheld the module, the
+// artifact could not be opened (a host fault, never a verdict on the
+// program), or the module is on disk for the host to run.
+type BatteryEmit = BatteryRefused | BatteryUnwritable | BatteryWritten
+
+fn battery_wat_path(stem) = ".build/battery/{stem}.wat"
+
 // One micro, one fresh chain — the same chain compile_stdin drives, with
-// the emission STREAMED through wat_to_host to the executor (the module's
-// text is never held whole — the scope at wat_to_string's decl) and then
-// RUN there: the program's exit comes
-// back as a value through the Process seam, so the battery judges
-// `// expect: N` itself instead of printing a manifest for a bash loop
-// that spawned an assembler and a runtime per fixture. Returns
-// (gate-failed, error-count, banked classes, exit) — exit is -1 when the
-// gate refused and nothing ran.
+// the emission STREAMED through wat_to_file into the battery's artifact
+// directory (the module's text is never held whole — the scope at
+// wat_to_string's decl). The HOST runs it: for a run contract the battery
+// prints a RUN line naming the module and what it must answer, and the
+// command that invoked `mentl test` assembles each one, executes it and
+// judges the exit (tools/wt-env.sh, wt_battery) — the compiler reached
+// directly can only emit, in the battery exactly as at `mentl run`.
+// Returns (what the compile left, error-count, banked classes).
 fn battery_compile(src, stem) = compile_context(() => {
   let lowered =
     src |> infer_program_converged |> saturate_pass |> lower_program |> reachable_from_main
@@ -2158,25 +2012,30 @@ fn battery_compile(src, stem) = compile_context(() => {
   // contract; the battery must not be stricter than the medium (it FAILC'd
   // ev2 for an unarmed row mismatch the check verb tolerates). `gated_plan`
   // is the law's one home; this policy counts and continues where the CLI
-  // compile proc_exits. Returns (gate-failed, error-count, banked diagnostic
-  // lines) — the refuse contract judges the JUDGMENT through the collector's
-  // bank (mcp_diag_collector, the forwarder: every line still reaches
-  // stderr).
-  let exit = match gated_plan(lowered) {
-    Withheld(_, _) => -1,
+  // compile proc_exits. The refuse contract judges the JUDGMENT through the
+  // collector's bank (mcp_diag_collector, the forwarder: every line still
+  // reaches stderr).
+  let left = match gated_plan(lowered) {
+    Withheld(_, _) => BatteryRefused,
     Planned(plan) => {
-      {
-        emit_planned(plan)
-      } ~> wat_to_host
-      process_exec(argv_wire([stem]))
+      let fd = fs_create(battery_wat_path(stem))
+      if fd == 0 {
+        BatteryUnwritable
+      } else {
+        {
+          emit_planned(plan)
+        } ~> wat_to_file(fd)
+        fs_close(fd)
+        BatteryWritten
+      }
     },
   }
   // THE CLASSES, never the rendered lines: the refuse contract compares
   // names, so no substring scan over prose decides a verdict.
   let classes = gate_classes()
   let nerr = diag_errors()
-  (if exit < 0 { 1 } else { 0 }, nerr, classes, exit)
-} ~> process_host ~> mcp_diag_collector ~> wasi_filesystem)
+  (left, nerr, classes)
+} ~> mcp_diag_collector ~> wasi_filesystem)
 
 fn battery_run(dir, names) = {
   // The libs and the fixture names are flat before the first micro: each
@@ -2184,6 +2043,13 @@ fn battery_run(dir, names) = {
   // answers both in one step.
   let libs = str_concat("", battery_libs())
   let micros = list_to_flat(sort(filter(ends_with(??, ".mn"), names)))
+  // The artifact directory exists before the first module is written; a
+  // directory already there answers the same (EEXIST is absorbed). The op,
+  // never its impl: the row names what the battery does to the host.
+  {
+    fs_mkdir(".build")
+    fs_mkdir(".build/battery")
+  } ~> wasi_filesystem
   battery_loop(dir, libs, micros, 0, 0)
 }
 
@@ -2214,22 +2080,29 @@ fn battery_step(dir: String, libs, name: String) = {
       battery_propose_step(stem, path_to_module("{dir}/{name}"), line, col, want),
       ExpectTeach(line, want) => battery_teach_step(stem, path_to_module("{dir}/{name}"), line, want),
       ExpectRun(want) => match battery_compile(libs ++ src, stem) {
-        (failed, nerr, _, exit) => if failed > 0 {
-          print_string("FAILC {stem}\n")
-          1
-        } else if exit == want {
-          // The error COUNT rides the line: a fixture that runs true while
-          // reporting errors is the sound-incomplete contract at work, and a
-          // count nobody prints is a count nobody reads.
-          print_string("PASS {stem}: exit={int_to_str(exit)} (expected {int_to_str(want)}) diags={int_to_str(nerr)}\n")
-          0
-        } else {
-          print_string("FAIL(run) {stem}: exit={int_to_str(exit)} expected={int_to_str(want)} diags={int_to_str(nerr)}\n")
-          1
+        (left, nerr, _) => match left {
+          BatteryRefused => {
+            print_string("FAILC {stem}\n")
+            1
+          },
+          BatteryUnwritable => {
+            print_string("FAIL(write) {stem}: cannot open {battery_wat_path(stem)}\n")
+            1
+          },
+          BatteryWritten => // The verdict is the host's: the RUN line hands over the module,
+          // the exit it must answer and the error COUNT (a fixture that
+          // runs true while reporting errors is the sound-incomplete
+          // contract at work, and a count nobody prints is a count nobody
+          // reads); the command that invoked the battery runs the module
+          // and prints PASS or FAIL(run) in this line's place.
+          {
+            print_string("RUN {stem} {battery_wat_path(stem)} {int_to_str(want)} {int_to_str(nerr)}\n")
+            0
+          },
         },
       },
       ExpectRefuse(cls) => match battery_compile(libs ++ src, stem) {
-        (_, nerr, classes, _) => // The contract judges the JUDGMENT: the named class reported as an
+        (_, nerr, classes) => // The contract judges the JUDGMENT: the named class reported as an
         // error. Armed classes also withhold the artifact; unarmed ones
         // surface-and-emit — both are the medium's own law, and the
         // battery asserts exactly what the medium asserts.

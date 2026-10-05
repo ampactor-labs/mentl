@@ -6,11 +6,12 @@ A programming language and self-hosting compiler with an algebraic effect system
 
 ## Quick start
 
-The compiler is one WebAssembly module, `boot/mentl.wasm`. It compiles Mentl, including its own source, on any host that provides its seam: WASI preview1, a shared memory, and `mentl_host` (the exec seam that runs a compiled program). The browser is its first host — Mentl Space (`ide/`, served at https://space.ampactor.dev/ from GitHub Pages) runs the unmodified binary in a worker with no toolchain at all. In a terminal the host is `tools/runner`, a small embedding of the wasmtime engine built once with a Rust toolchain; nothing of Mentl is written in Rust, and the embedding is being replaced by the stock engine binary (PLAN.md §11, the Space pivot). `tools/install.sh` writes the `mentl` command as a pointer to the binary through that host.
+The compiler is one WebAssembly module, `boot/mentl.wasm`, and it imports WASI preview1 and nothing else, so any engine that speaks that one interface hosts it. The browser is its first host — Mentl Space (`ide/`, served at https://space.ampactor.dev/ from GitHub Pages) runs the unmodified binary in a worker with no toolchain at all. In a terminal the host is the stock `wasmtime` binary, pinned by version and digest and fetched by `bash tools/wasmtime-get.sh`; nothing of Mentl runs in any language but WebAssembly and its text form, and the repository contains no code in any other language than the shell scripts that drive the gates. `tools/install.sh` writes the `mentl` command as a pointer to the binary through that engine; three verbs are the command's own because each needs something a WASI module cannot create — `run` a process for the module the compiler emits, `space` a listening socket for the page, and a resident `session` the process's own stdin is.
 
 ```sh
 git clone https://github.com/ampactor-labs/mentl.git && cd mentl
-bash tools/install.sh     # writes ~/.local/bin/mentl, a live pointer to boot/mentl.wasm through the selected host
+bash tools/wasmtime-get.sh  # the pinned engine, into .build/wasmtime (or put a wasmtime 36 on your PATH)
+bash tools/install.sh       # writes ~/.local/bin/mentl, a live pointer to boot/mentl.wasm through that engine
 mentl run lib/tutorial/00-hello.mn
 ```
 
@@ -35,7 +36,7 @@ mentl compile <path>            emit WebAssembly text to stdout
 mentl <file>:<line>[:<col>]     project one position: type, effects, ownership, the Reason chain;
                                 at a ?? hole, the candidates that survived the proof
 mentl edit [path]               the cursor session in the terminal
-mentl space                     serve the browser IDE at http://localhost:7378/ide/
+mentl space                     stage and serve the browser IDE at http://127.0.0.1:7397/
 mentl fmt <path>                rewrite the file in canonical layout
 mentl audit <path>              the capability set, and the !E claims the file could add
 mentl query <path> <question>   why, type, effects, ownership, unreachable declarations, census
@@ -67,7 +68,7 @@ fn main() = {
 
 ## How it works
 
-Source goes through a lexer and a parser into one graph: every node of the syntax tree is a handle in it, and a comment is attached to the node it precedes as a Reason edge. Type inference is the graph's only writer. It infers types in the Hindley-Milner style, without annotations, and beside each type it writes the effect row, the ownership grade (whether a value is consumed or borrowed), the refinement obligations and a Reason for every binding. Everything else (a diagnostic, the position projection `mentl <file>:<line>`, the formatter, the IDE) is a read of that graph. Lowering and the WebAssembly text emitter (`src/backends/wasm.mn`) are reads too, and the host executes the emitted module (the browser's worker in Mentl Space, `tools/runner` in a terminal).
+Source goes through a lexer and a parser into one graph: every node of the syntax tree is a handle in it, and a comment is attached to the node it precedes as a Reason edge. Type inference is the graph's only writer. It infers types in the Hindley-Milner style, without annotations, and beside each type it writes the effect row, the ownership grade (whether a value is consumed or borrowed), the refinement obligations and a Reason for every binding. Everything else (a diagnostic, the position projection `mentl <file>:<line>`, the formatter, the IDE) is a read of that graph. Lowering and the WebAssembly text emitter (`src/backends/wasm.mn`) are reads too, and the host executes the emitted module (the browser's worker in Mentl Space, the wasmtime engine behind the `mentl` command in a terminal).
 
 Effects are algebraic: an `effect` declaration names operations, code calls them like functions, and a handler installed with `~>` over an expression gives them their meaning and subtracts them from the expression's row. A row is a set with a Boolean algebra (`+`, `-`, `&`, `!` and `Pure`), and a negated name is an obligation to prove that the operation is unreachable from the function, through every callee and through stored closures. A handler's state, its closure and a captured continuation share one heap record, which is why a paused computation can be saved by copying bytes (`lib/persist.mn`, `mentl resume`). Refinement types (`type Percent = Int where 0 <= self && self <= 100`) add predicates that the verifier discharges where it can decide them; the rest is reported as pending debt.
 
@@ -79,12 +80,13 @@ The essays that used to open this README are in [docs/READING.md](docs/READING.m
 
 ## Testing
 
-One GitHub Actions workflow runs here, `.github/workflows/deploy-space.yml`, and it only publishes the browser IDE to GitHub Pages. The gates run on the author's machine, and each re-pin of `boot/mentl.wasm` records their verdicts in the new `boot/PROVENANCE.md` entry. The head entry reads: crown green, proof-exactness green, effect-identity green, frontier 604 pass / 0 red / 1 expected-red, and the micro battery green through the wheel before the board. `tools/ci/run-board.sh` wraps the board for a self-hosted runner and nothing in the repository invokes it. The gates need the runner from Quick start plus WABT (`wat2wasm`, `wasm-validate`, `wasm-objdump`) to assemble each generation; the browser leg of the IDE gate needs Chrome and skips with a message without it.
+One GitHub Actions workflow runs here, `.github/workflows/deploy-space.yml`, and it only publishes the browser IDE to GitHub Pages. The gates run on the author's machine, and each re-pin of `boot/mentl.wasm` records their verdicts in the new `boot/PROVENANCE.md` entry. The head entry reads: crown green, proof-exactness green, effect-identity green, frontier 604 pass / 0 red / 1 expected-red, and the micro battery green through the wheel before the board. `tools/ci/run-board.sh` wraps the board for a self-hosted CI machine and nothing in the repository invokes it. The gates need the stock wasmtime engine from Quick start (`bash tools/wasmtime-get.sh`) plus WABT's `wat2wasm` to assemble each generation; the browser leg of the IDE gate needs Chrome and skips with a message without it.
 
 ```sh
 bash tools/state.sh                  # the board: verify, then every gate below, one scoreboard; --quick runs verify only
-bash tools/verify.sh                 # the programs in tests/micros (each states its expected exit code or refusal on
-                                     # its first line) through the pinned boot and again through the compiler this tree's
+bash tools/verify.sh                 # the programs in tests/micros (each states its expected exit code — below 126, or 134
+                                     # for a trap, the range the WASI host reports — or its refusal on its first line)
+                                     # through the pinned boot and again through the compiler this tree's
                                      # source produces; the form fixtures in tests/syntax; the floors and rows contracts;
                                      # the census ratchet (tools/verify-baseline.txt, counts the compiler's own source may
                                      # not raise); and doc-truth. Stamped, so an unchanged tree answers at once
@@ -108,11 +110,11 @@ bash tools/setup-git-hooks.sh        # installs .githooks/pre-commit: fmt on sta
                                      # source is staged, and the frontier stamp
 ```
 
-Three things are not covered. The determinism probe (the same binary on the same input emits the same bytes) runs only with `bash tools/march.sh --fixpoint`, and `tools/state.sh` reports when it has not run at the current boot. `tools/oracle-selftest.sh`, which runs the proposer over a corpus of holes, runs by hand and is off the board. The runner crate has no tests of its own.
+Three things are not covered. The determinism probe (the same binary on the same input emits the same bytes) runs only with `bash tools/march.sh --fixpoint`, and `tools/state.sh` reports when it has not run at the current boot. `tools/oracle-selftest.sh`, which runs the proposer over a corpus of holes, runs by hand and is off the board. The engine is an unmodified wasmtime release, pinned by version and digest in `tools/wasmtime-get.sh`, and nothing in the repository tests it.
 
 ## Limitations
 
-The verifier is sound for the claims it decides and incomplete: a claim it cannot decide is recorded as pending debt, reported at compile time, and the program still builds. The absence proof `!E` is keyed by effect name, and its soundness under polymorphism at every altitude — the modal world-index — is an open item (PLAN.md §4③); a reachable effect operation with no handler installed refuses the executable (`E_EffectUnhandled`, since 2026-09-27). The compiler emits WebAssembly text only and runs on any host providing the seam; the one host in `tools/` is the runner. There is no published package, and no CI service runs the gates.
+The verifier is sound for the claims it decides and incomplete: a claim it cannot decide is recorded as pending debt, reported at compile time, and the program still builds. The absence proof `!E` is keyed by effect name, and its soundness under polymorphism at every altitude — the modal world-index — is an open item (PLAN.md §4③); a reachable effect operation with no handler installed refuses the executable (`E_EffectUnhandled`, since 2026-09-27). The compiler emits WebAssembly text only and imports WASI preview1 alone, so any preview1 engine hosts it; the two hosts in the repository are the browser worker (`ide/wheel-worker.js`) and the `mentl` command over the stock wasmtime binary, and WABT's `wat2wasm` assembles what the compiler emits. There is no published package, and no CI service runs the gates.
 
 - Diagnostic classes are armed one at a time, each once the compiler's own source is clean of it; an unarmed class prints its diagnostic and the program is still emitted. `diag_refuses` in `src/types.mn` is the live list of armed classes, and PLAN.md §7 carries the audit of what still narrates.
 - Memory is one image: an extent's allocations are reclaimed at its exit by the arena (`(body) ~> arena`, since 2026-10-03) and nothing else frees; the module declares a 32-page minimum shared memory grown on demand, and the self-compile's peak is the cost line of the head entry of `boot/PROVENANCE.md`. A warm start restores the analysed image and then re-derives the compile over it (PLAN.md §5.O).

@@ -35,6 +35,93 @@
 
 ### The landing ledger (newest first; · pin = boot re-pinned)
 
+- 2026-10-05 · pin 2175e0152fd1266f (CLEAN m2 == m3) · NO RUST IN THE CODEBASE (L-H):
+  THE WHEEL ONLY EMITS, AND THE STOCK ENGINE IS THE TERMINAL'S HOST. Morgan's
+  constraint, "at all!": the CLI's host had been an 800-line embedding of the
+  wasmtime crate (tools/runner, 2026-09-17 → 2026-10-05), built because the
+  wheel performed two seams no stock engine defines — the exec seam
+  (`mentl_host.wat_write`/`.exec`: `mentl run` and `mentl test` executed the
+  module they had just emitted from inside the compiler) and the p1 socket
+  seam (`-S tcplisten=`: the resident session and `mentl space` listened).
+  THE FORM: both seams leave the wheel, and the wheel only emits. Outside the
+  browser the mentl command runs what it emits (compile → wat2wasm → the
+  engine, tools/install.sh), and `mentl test` writes each run fixture's
+  module under .build/battery and prints one `RUN <stem> <wat> <want> <nerr>`
+  line for it — the host assembles, runs and judges every RUN line,
+  nproc-wide (`wt_battery_host`, tools/wt-env.sh); inside the browser the
+  module is instantiated by the worker. The session serves on stdin alone
+  (E2's transport); `mentl space` is static files the command stages and
+  serves (tools/space-stage.sh, tools/space-serve.py). DELETED: `effect
+  Host`, `wat_to_host`, lib/net.mn, the session's socket loop, `space_run`'s
+  server, the shim's `/dev/tcp` try, `sock_accept`/`poll_oneoff` from `WASI`,
+  the emitter's host-import rows — its import table is preview1 alone, and a
+  module imports `env.memory` and `wasi.thread-spawn` exactly when it spawns
+  (`emit_memory_decl`, one proof), defining `(memory (export "memory") 32
+  65536 shared)` otherwise; tools/runner whole (nine tracked files, Cargo.lock
+  included) and `/target` from .gitignore. THE ENGINE: the unmodified
+  wasmtime 36.0.2 release, pinned by version and sha256 in
+  tools/wasmtime-get.sh (47 dropped `-S threads=y`, measured 2026-09-06),
+  resolved `MENTL_WASMTIME` → .build/wasmtime → PATH, a missing engine
+  refusing with the fetch command; the flags are UNIFORM (`-C cache=y -W
+  threads=y -W tail-call=y -S threads=y`): `-S threads=y` runs a module that
+  defines its memory exactly as one that imports it. MEASURED: the wheel
+  compiled through the candidate is byte-identical across the two engines
+  (549,192 lines on the first measurement, .build/lh/m3-stock.wat against
+  m3-runner.wat); the engine's compilation cache, on by default, pays the
+  3 MB boot's JIT once per pinned binary instead of once per process —
+  `mentl help` 0.06–0.08 s (three runs after the shim re-install; 0.05–0.07
+  on the first measurement) against the runner's 1.40–1.76 s, `check
+  lib/tutorial/00-hello.mn` 0.31–0.33 s against ~1.9 s, `mentl run` of the
+  first lesson 0.61 s wall end to end; the battery through the host loop
+  377/377 micros and 37/37 negation probes; the m3 leg 32.20 s / 385 MB
+  (395,132 KB) on the stock engine against 33.68 s / 469 MB (480,640 KB)
+  through the runner on the same source one march earlier. KILLS: (1) the
+  plan's two WAT preload shims (`env` exporting the memory, `mentl_host`
+  trapping) died at the measurement — a shim keeps a dead import in the
+  boot, where a seam that leaves the wheel leaves nothing to satisfy; (2)
+  the comment-ref ratchet refused the first march 0 → 2: two backticked
+  words in voice.mn's new hole-template prose resolved nowhere once the
+  socket code's string literals were gone (`Type` had resolved only through
+  a "Content-Type" literal — a reference true by accident), and they are
+  `<Type>`/`<name>` templates now; (3) the effect-seam ratchet refused 7 →
+  9: the battery's mkdir called the impl where the op under
+  `~> wasi_filesystem` is the form; (4) the second march blessed the boot
+  and was interrupted between the repin and the pin block — the unnarrated
+  head is what doc-truth refuses, so the gap was visible rather than
+  remembered, and the fourth march wrote the block; (5) the old boot cannot
+  run on the stock engine at all (`mentl_host::wat_write` unknown import),
+  so the first march had to run through the runner it was deleting; (6) one
+  micro, `mn-held-resume-called-fn-reyield`, expected exit 200 and went RED
+  through the stock engine — a program's exit is what the WASI host reports,
+  and wasmtime reports [0..126) ("exit with invalid exit status outside of
+  [0..126)" at exit 1, which reads as a trap) where the runner had passed any
+  status through; the fixture answers 50, the host loop refuses a want it
+  cannot report by name (`FAIL(contract)`), and the README states the range;
+  (7) the frontier's session-accept leg, rewritten in this landing from the
+  socket to stdin, counted ONE accepted Why across its three answers and
+  went RED at two — the accept verb answers with the projection of the
+  accepted position exactly as the cold `mentl accept` does, so its own
+  answer walks to the proposal before the third read does; the contract was
+  the leg's (the first read must be clean, the last must walk), never the
+  wheel's, and the march's board had dropped the leg's name through a grep
+  of the summary line, so the frontier ran once more with its output kept.
+  Trued: README (the engine, the testing block, the limitations, the `space`
+  port), AGENTS.md, docs/READING.md, PLAN §8, wt-env.sh's header, the
+  ide-gate, thread-gate and frontier-gate comments, docs/proposals;
+  `WT_ENGINE`, read by nothing, deleted. RESIDUE:
+  `Hβ.ops.runner-is-the-process-handler` and
+  `Hβ.ops.runner-owns-the-p1-socket` RETIRED;
+  `Hβ.cli.resident-session-over-fifos` named, verify's whole-wheel legs its
+  first consumer. `git ls-files | grep -E '\.rs$|Cargo'` is empty. The pin
+  took three marches on the stock engine (the third of the landing blessed
+  the boot but was interrupted before its block; the fourth refused at the
+  200-exit micro; the fifth wrote the block after the accept leg was trued):
+  micros 377/377 through the candidate, crown green, proof-exactness green,
+  effect-identity green, frontier 599 pass / 0 red / 1 expected-red (604
+  before: the socket session leg and the space legs are gone with the
+  listeners, the accept leg is one stdin leg). Two readings of the stock
+  m3 leg on one source: 32.20 s / 395,132 KB and 32.24 s / 395,088 KB.
+  m3 leg 32.24s wall · 385MB peak RSS (395088 KB).
 - 2026-10-03 · pin e7f6e2b946f44c04 (TRANSITION m3 == m4) · A NON-RESUMING ARM ABANDONS, AND A DEAD
   CONTINUATION UNWINDS FROM ANY POSITION (AN-2). The grade of an arm with no
   resume read the op's DECLARED RETURN: a bare variable or unit (`fail -> a`)

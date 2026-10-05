@@ -38,14 +38,18 @@ UNKNOWN, never green.**
 ## Toolchain — the gates need more than `mentl` does
 
 `bash tools/install.sh` puts `mentl` on the path and it needs only the
-runner, `cargo build --release --manifest-path tools/runner/Cargo.toml`
-(a wasmtime embedding; the wasmtime CLI is not used anywhere). The gates
-need:
+engine, `bash tools/wasmtime-get.sh` (the stock wasmtime binary, pinned by
+version and digest into `.build/wasmtime`; a `wasmtime` 36 on PATH also
+serves, and `MENTL_WASMTIME` names one explicitly). The repository holds no
+code in any language but Mentl, WAT, the page's JavaScript and the gates'
+shell and python. The gates need:
 
-- **tools/runner** — runs `boot/mentl.wasm`; every verb and every gate
-  leg. It owns what the CLI could not: wasi-threads' spawn, the exec seam
-  `mentl run`/`mentl test` execute through, and the listening socket
-  `session`/`space` serve on.
+- **wasmtime 36** — runs `boot/mentl.wasm` (WASI preview1 is its whole
+  import list; a program that spawns also asks for wasi-threads, which 36
+  serves and 47 dropped — the pin's reason, tools/wasmtime-get.sh). The
+  mentl command runs a compiled program (`mentl run`, and the battery's RUN
+  lines through `tools/wt-env.sh`) by assembling the module and handing it
+  to the engine; the wheel itself only emits.
 - **WABT** (`wat2wasm`, `wasm-validate`, `wasm-objdump`) — the march
   assembles each generation's WAT, so `tools/march.sh` cannot run without it.
 - **wasm-tools** — `validate --features all`, and `shrink` for minimal repros.

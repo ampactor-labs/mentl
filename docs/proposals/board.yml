@@ -22,12 +22,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: toolchain (WABT for the march, GNU time for the cost line)
         run: sudo apt-get update && sudo apt-get install -y wabt time
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: tools/runner
-      - name: runner (the wasmtime embedding; cached by Cargo.lock)
-        run: cargo build --release --manifest-path tools/runner/Cargo.toml
+      - name: engine (the pinned wasmtime binary, by version and digest)
+        run: bash tools/wasmtime-get.sh
       - name: mentl on PATH
         run: |
           bash tools/install.sh

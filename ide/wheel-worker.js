@@ -1,11 +1,15 @@
-/* wheel-worker.js — the wheel's execution host: the runner pattern at the
-   browser host (the browser leg of Hβ.ops.wasmtime-runner-migration).
+/* wheel-worker.js — the wheel's execution host in the browser: a WASI
+   preview1 shim around one instance per worker. The terminal's host is a
+   stock engine (wasmtime, tools/wt-env.sh); this file is the page's, and
+   the two satisfy the same imports.
 
-   The pinned boot imports the shared image (env.memory — a 32-page minimum
-   since 2026-09-27, grown on demand by its own allocator) and the exec seam;
-   a module that can spawn also imports wasi.thread-spawn, which the boot has
-   not since the judgment stopped spawning (judge once, pin 7c9dc538). Two
-   substrate facts force this file's shape:
+   The pinned boot imports WASI preview1 and nothing else, and DEFINES its
+   own memory (a 32-page minimum, grown on demand by its own allocator) —
+   since 2026-10-05, when the exec seam left the wheel and the memory's
+   ownership became one proof: a module imports the shared image
+   (env.memory) exactly when it spawns, beside wasi.thread-spawn, which the
+   boot has not since the judgment stopped spawning (judge once, pin
+   7c9dc538). Two substrate facts force this file's shape:
 
      - memory.atomic.wait32 (a task join, the session's own wait) is
        FORBIDDEN on the browser main thread, so ALL wheel execution lives in
@@ -87,8 +91,12 @@ const cat = (cs) => { const n = cs.reduce((a, c) => a + c.length, 0); const b = 
    SharedArrayBuffer-backed views, so every read COPIES (.slice) before
    decoding — the one shared-memory tax; writes (TypedArray.set into a
    shared view) are allowed. */
-function makeShim({ memory, argv, stdin, vfs, spawnFn, pull }) {
-  const dv = () => new DataView(memory.buffer), u8 = () => new Uint8Array(memory.buffer);
+function makeShim({ mem, argv, stdin, vfs, spawnFn, pull }) {
+  // `mem` is a holder: a module that DEFINES its memory (every module that
+  // does not spawn, the boot included) hands it over after instantiation
+  // through its "memory" export; a spawning module imports the memory the
+  // host made, so the holder is filled before. Every view reads it live.
+  const dv = () => new DataView(mem.memory.buffer), u8 = () => new Uint8Array(mem.memory.buffer);
   let out = [], err = [];
   let written = new Set();   // vfs files this instance wrote (the accept's projection)
   // stdin is a byte array served from srcPos; `pull`, when the host owns the
@@ -156,16 +164,6 @@ function makeShim({ memory, argv, stdin, vfs, spawnFn, pull }) {
     path_create_directory() { return 44; }, path_unlink_file() { return 44; }, path_rename() { return 44; },
   };
   const proxy = new Proxy(P, { get(t, k) { return k in t ? t[k] : () => 8; } });
-  // The exec seam (`mentl_host.wat_write` / `mentl_host.exec`, tools/runner)
-  // is what runs a COMPILED program — `mentl run`, the micro battery — and
-  // the page never asks for it. The boot imports the pair, and a browser
-  // refuses to instantiate a module whose import module is absent, so the
-  // seam is present here as the same thing wasmtime makes of an unknown
-  // import: a trap the moment it is reached, never a value. Running the
-  // compiled program in the page is `Hβ.felt.ide-run-in-page` (an in-page
-  // assembler); until it lands this is the honest socket, and it is loud.
-  const seam = (name) => () => { throw new Error(`mentl_host.${name}: the exec seam has no in-page assembler (Hβ.felt.ide-run-in-page)`); };
-  const mentl_host = { wat_write: seam("wat_write"), exec: seam("exec") };
   const writtenFiles = () => Object.fromEntries([...written].map((n) => [n, vfs[n]]));
   // What the instance said and wrote since the last take — one session
   // answer's stdout, stderr and files — and the slate cleared for the next.
@@ -174,7 +172,14 @@ function makeShim({ memory, argv, stdin, vfs, spawnFn, pull }) {
     out = []; err = []; written = new Set();
     return t;
   };
-  return { imports: { env: { memory }, wasi_snapshot_preview1: proxy, wasi: { "thread-spawn": spawnFn }, mentl_host },
+  // The imports are preview1, the thread-spawn a spawning module asks for,
+  // and the shared memory a spawning module imports; a module that defines
+  // its own memory ignores the `env` entry (WebAssembly links by import, so an
+  // unasked-for import is not an error). Running a COMPILED program in the
+  // page is `Hβ.felt.ide-run-in-page` (an in-page assembler).
+  const imports = { wasi_snapshot_preview1: proxy, wasi: { "thread-spawn": spawnFn } };
+  if (mem.memory) imports.env = { memory: mem.memory };
+  return { imports,
            get out() { return out; }, get err() { return err; }, writtenFiles, take };
 }
 
@@ -306,7 +311,7 @@ function makeFan(q, tids, pool) {
    {line, delta: {path: text}} or {close: true}; a reply {state, out, err,
    written: {path: text}, memoryBytes, exit?, trapped?}. */
 const CH_WORDS = 8, CH_DATA = 4 * CH_WORDS;
-function sessionServe({ module, memory, vfs, channel }) {
+function sessionServe({ module, mem, vfs, channel }) {
   const ctl = new Int32Array(channel, 0, CH_WORDS);
   const reqBytes = new Uint8Array(channel, CH_DATA, ctl[5]);
   const repBytes = new Uint8Array(channel, CH_DATA + ctl[5], ctl[6]);
@@ -315,10 +320,10 @@ function sessionServe({ module, memory, vfs, channel }) {
   const publish = (state, extra) => {
     const t = shim.take();
     let body = te.encode(JSON.stringify(Object.assign({ state, out: td.decode(t.out), err: td.decode(t.err),
-      written: asText(t.written), memoryBytes: memory.buffer.byteLength }, extra || {})));
+      written: asText(t.written), memoryBytes: mem.memory.buffer.byteLength }, extra || {})));
     if (body.length > repBytes.length) {
       // loud, never truncated text dressed as an answer
-      body = te.encode(JSON.stringify({ state, out: "", written: {}, memoryBytes: memory.buffer.byteLength, overflow: true,
+      body = te.encode(JSON.stringify({ state, out: "", written: {}, memoryBytes: mem.memory.buffer.byteLength, overflow: true,
         err: `the answer (${body.length} bytes) exceeds the session channel's reply region (${repBytes.length} bytes)\n` }));
     }
     repBytes.set(body);
@@ -336,12 +341,13 @@ function sessionServe({ module, memory, vfs, channel }) {
     for (const [p, text] of Object.entries(req.delta || {})) vfs[p] = te.encode(text);
     return req.close ? null : te.encode(req.line + "\n");
   };
-  shim = makeShim({ memory, argv: ["mentl", "session"], stdin: null, vfs, pull,
+  shim = makeShim({ mem, argv: ["mentl", "session"], stdin: null, vfs, pull,
     // the judgment spawns nothing (judge once, pin 7c9dc538), and a module that
     // cannot spawn does not import thread-spawn; a spawn reaching here is
     // refused loudly by the wheel, never served by a pool nobody armed
     spawnFn: () => -1 });
   return WebAssembly.instantiate(module, shim.imports).then((inst) => {
+    adopt(mem, inst);
     try { inst.exports._start(); publish(2, { exit: 0 }); }
     catch (e) {
       if (e && e.exitCode !== undefined) publish(2, { exit: e.exitCode });
@@ -355,17 +361,31 @@ function sessionServe({ module, memory, vfs, channel }) {
 // spawning — so a run arms a pool only for a module that could use it,
 // where it used to arm twelve nested workers for every run of every module.
 const spawns = (module) => WebAssembly.Module.imports(module).some((i) => i.module === "wasi" && i.name === "thread-spawn");
+// A module that spawns imports the shared memory the host makes (every
+// instance reads one image); a module that does not defines its own and
+// exports it. The ladder retries a smaller initial reservation on a host
+// that refuses the larger one; a defined memory starts at the module's own
+// minimum and grows on demand, so no reservation is made for it at all.
+const importsMemory = (module) => WebAssembly.Module.imports(module).some((i) => i.module === "env" && i.name === "memory");
+function makeMemory(module, memPages) {
+  if (!importsMemory(module)) return { memory: null };
+  let lastE = null;
+  for (const p of [memPages || 16384, 8192]) {
+    try { return { memory: new WebAssembly.Memory({ initial: p, maximum: 65536, shared: true }) }; }
+    catch (e) { lastE = e; }
+  }
+  throw lastE;
+}
+// After instantiation the holder reads the module's own memory where the module defined it.
+const adopt = (mem, inst) => { if (!mem.memory) mem.memory = inst.exports.memory; return mem; };
 
 HOST.listen(async (msg) => {
   if (msg.role === "session") {
     const { module, memPages, vfs, channel, dbg } = msg;
     DEBUG = !!dbg;
-    let memory = null, lastE = null;
-    for (const p of [memPages || 16384, 8192]) {
-      try { memory = new WebAssembly.Memory({ initial: p, maximum: 65536, shared: true }); break; }
-      catch (e) { lastE = e; }
-    }
-    if (!memory) {
+    let mem = null;
+    try { mem = makeMemory(module, memPages); }
+    catch (lastE) {
       // no memory, no instance: answer the open with the reason, on the channel
       const ctl = new Int32Array(channel, 0, CH_WORDS);
       const body = te.encode(JSON.stringify({ state: 2, exit: 1, out: "", written: {}, trapped: String((lastE && lastE.message) || lastE) }));
@@ -373,34 +393,28 @@ HOST.listen(async (msg) => {
       Atomics.store(ctl, 3, body.length); Atomics.store(ctl, 4, 2); Atomics.add(ctl, 2, 1); Atomics.notify(ctl, 2);
       return;
     }
-    await sessionServe({ module, memory, vfs: Object.assign({}, vfs || {}), channel });
+    await sessionServe({ module, mem, vfs: Object.assign({}, vfs || {}), channel });
   } else if (msg.role === "run") {
     const { module, memPages, argv, stdin, vfs, stubSpawn } = msg;
     DEBUG = !!msg.dbg;
-    let memory = null, trapped = null, exit = 0, fan = null, shim = null;
+    let mem = null, trapped = null, exit = 0, fan = null, shim = null;
     try {
-      // the binary declares min 8192 (512MB); provide more when the host
-      // allows — the ladder retries smaller on a reservation refusal.
-      let lastE = null;
-      for (const p of [memPages || 16384, 8192]) {
-        try { memory = new WebAssembly.Memory({ initial: p, maximum: 65536, shared: true }); break; }
-        catch (e) { lastE = e; }
-      }
-      if (!memory) throw lastE;
+      mem = makeMemory(module, memPages);
       const tids = new Int32Array(new SharedArrayBuffer(4));
       Atomics.store(tids, 0, 1);
       DBG("memory ok, arming pool");
       let q = null;
       if (!stubSpawn && spawns(module)) {
         q = qMake();
-        const pool = makePool(POOL_N, { role: "arm", module, memory, tids, q, vfs: vfs || null, dbg: DEBUG });
+        const pool = makePool(POOL_N, { role: "arm", module, memory: mem.memory, tids, q, vfs: vfs || null, dbg: DEBUG });
         await pool.ready;   // every pool worker LOADED + ARMED before _start can block
         DBG("pool armed");
         fan = makeFan(q, tids, pool);
       }
-      shim = makeShim({ memory, argv: argv || [], stdin: stdin || null, vfs: vfs || null,
+      shim = makeShim({ mem, argv: argv || [], stdin: stdin || null, vfs: vfs || null,
                         spawnFn: fan ? ((a) => { const t = fan.spawn(a); DBG("spawn tid=" + t); return t; }) : (() => -1) });
       const inst = await WebAssembly.instantiate(module, shim.imports);
+      adopt(mem, inst);
       DBG("instantiated, _start");
       try { inst.exports._start(); }
       catch (e) { if (e && e.exitCode !== undefined) exit = e.exitCode; else trapped = String((e && e.message) || e); }
@@ -432,7 +446,7 @@ HOST.listen(async (msg) => {
     DEBUG = !!msg.dbg;
     const runTask = async (tid, arg) => {
       DBG("task start tid=" + tid);
-      const shim = makeShim({ memory, argv: [], stdin: null, vfs: vfs || null,
+      const shim = makeShim({ mem: { memory }, argv: [], stdin: null, vfs: vfs || null,
         spawnFn: (a) => { const t = Atomics.add(tids, 0, 1); qPush(q, t, a); return t; } });
       let err0 = "";
       try {

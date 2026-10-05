@@ -2401,6 +2401,26 @@ and this is the STATE.
   says what a handler answers beside what it absorbs (`handler zero absorbs
   Ask, answers Int`; a variable, under the name a developer writes, when
   every arm resumes) and what each install answers.
+- **THE WHEEL ONLY EMITS, AND ANY WASI ENGINE HOSTS IT — CLOSED 2026-10-05
+  (L-H).** The CLI's host was an 800-line Rust embedding of the wasmtime
+  crate, because the wheel performed two seams no stock engine defines: the
+  exec seam (the compiler ran the module it emitted) and the p1 socket seam
+  (the session and `mentl space` listened). Both left the wheel: `mentl run`
+  and the battery's run contract are the mentl command's (compile →
+  wat2wasm → the engine; a `RUN` line per fixture the host assembles, runs
+  and judges), the browser's is the worker's instantiate, the session
+  serves on stdin, `mentl space` is static files; the emitter's import
+  table is preview1 alone and a module imports the shared image exactly
+  when it spawns. The boot imports WASI preview1, defines its memory, and
+  the unmodified wasmtime 36.0.2 release hosts it — pinned by digest
+  (tools/wasmtime-get.sh), the Rust deleted whole. Measured: the wheel
+  through the candidate byte-identical across engines; the engine's
+  compilation cache takes the per-process floor from the runner's
+  1.40–1.76 s to 0.06–0.08 s. What the host's exit range exposed: a
+  program's exit is [0..126) through WASI, so a fixture expecting 200 was
+  unobservable; the host loop refuses such a contract by name now. Open:
+  `Hβ.cli.resident-session-over-fifos`, and WABT's `wat2wasm` in the shim
+  and the gates until the wheel assembles its own output (L-F).
 
 Everything else requires the board that measured it. A skipped, stale, or
 interrupted gate is UNKNOWN, never green.
@@ -2421,7 +2441,7 @@ in `RESIDUE.md` does not exist. §11 names the peers each phase touches.
 # ── the BOOT ERA (post-first-light, 2026-07-10): boot/mentl.wasm IS the compiler ──
 bash tools/state.sh            # THE BOARD, ground FIRST: git → verify → march → frontier → proof-exactness → crown → effect-identity → instrument → threads → ide, one scoreboard; --quick = verify only
 mentl verify [path]            # THE BOARD, in the medium: the standing bounds on its own source, read off ONE judged graph (src/board.mn carries each bound WITH its justification); a breach REFUSES, an unread or unclean weave refuses rather than measuring less
-bash tools/verify.sh           # the floor the verb has not absorbed: micros through the exec seam, the sha chain, the world outside the graph — STAMPED green (unchanged tree answers in ms; FORCE_VERIFY=1 re-runs)
+bash tools/verify.sh           # the floor the verb has not absorbed: micros through the host (the compiler judges, the mentl command assembles and runs each RUN line's module), the sha chain, the world outside the graph — STAMPED green (unchanged tree answers in ms; FORCE_VERIFY=1 re-runs)
 bash tools/march-gate.sh --micros   # rungs + battery through boot's wheel-emitted m2 (reads the shared .build/m2cache)
 bash tools/march.sh            # THE RATCHET: boot→m2→m3, ASSERTS m2 == m3; on m2 ≠ m3 runs m4 ITSELF and rules TRANSITION (re-pin from m3) vs BROKEN
 bash tools/frontier-gate.sh    # scheduled matrix + ?? authoring workflows (--compiler fresh for the current wheel)
@@ -2430,7 +2450,7 @@ mentl test tests/teach         # THE TEACH BATTERY (D4): each fixture's first li
 bash tools/proof-exactness-gate.sh  # hole refuses · debt surfaces · suspension runs
 bash tools/ide-gate.sh         # the resident session: the node twin over ide/wheel-worker.js, then headless Chrome over `mentl space` (leg 2 skips loudly without chrome)
 bash tools/doc-truth.sh        # the docs' checkable claims vs the artifact: PROVENANCE sha == boot sha, ledger head pin, named commands exist (runs inside verify — prose gets a mechanical floor)
-mentl space                    # mentl edit in the browser (localhost:7378/ide/) — SERVED BY THE WHEEL (src/main.mn space_run; tools/runner owns the tcplisten seam)
+mentl space                    # the page in the browser (localhost:7397/) — the mentl command stages ide/space.manifest (tools/space-stage.sh) and serves the staged artifact with the isolation headers (tools/space-serve.py); the wheel serves no socket
 #   (the seed + --from-seed are deleted, 7401c4b; the cold ladder lives at tag first-light)
 python3 tools/emit-diff.py m2.wat m3.wat        # the divergence pinner — run FIRST on any m3 trap (CLAUDE.md ⟲)
 python3 tools/emit-diff.py m2.wat m3.wat --trap # m3-side unreachable bodies m2 lacks (filter to comment-marked floors — bare else-unreachable is benign, SYNTAX §exhaustiveness)
@@ -3103,6 +3123,57 @@ form the whole time. The arcs, in order:
   served. `docs/MENTL_EDIT.md` §0 carries the view-as-projection form and §8
   what the page serves today. Next: L-H (no Rust — the stock engine hosts
   the boot), then L-C (the view is a projection).
+  **L-H LANDED 2026-10-05 — no Rust in the codebase: the stock engine is
+  the terminal's host and the medium owns everything else (pin
+  2175e0152fd1266f, CLEAN m2 == m3).** The CLI's host was an 800-line Rust
+  embedding of the wasmtime crate (tools/runner, 2026-09-17 → 2026-10-05),
+  built because the wheel performed two seams no stock engine defines — the
+  exec seam (`mentl_host.wat_write`/`.exec`: `mentl run` and `mentl test`
+  executed the module they had just emitted from inside the compiler) and
+  the p1 socket seam (the resident session and `mentl space` listened).
+  Both left the wheel. The wheel only emits: outside the browser the mentl
+  command runs what it emits (compile → wat2wasm → the engine,
+  tools/install.sh) and the battery's run contract is a `RUN <stem> <wat>
+  <want> <nerr>` line the host assembles, runs and judges nproc-wide
+  (`wt_battery_host`); inside the browser the worker instantiates the
+  module; the session serves on stdin alone (E2's transport); `mentl space`
+  is static files the command stages and serves. `effect Host`,
+  `wat_to_host`, lib/net.mn, `space_run`'s server and the shim's `/dev/tcp`
+  try are deleted; the emitter's import table is preview1 alone and a
+  module imports the shared image exactly when it spawns
+  (`emit_memory_decl`, one proof) — so the boot imports WASI preview1,
+  defines its memory, and ANY preview1 engine hosts it. The one in the gates
+  is the unmodified wasmtime 36.0.2 release, pinned by version and digest
+  (`tools/wasmtime-get.sh`; 47 dropped `-S threads=y`), resolved
+  `MENTL_WASMTIME` → .build/wasmtime → PATH, a missing engine refusing with
+  the fetch command, the flags uniform for a defining and a spawning module
+  alike. Measured: the wheel compiled through the candidate is
+  BYTE-IDENTICAL across the two engines; the engine's compilation cache pays
+  the 3 MB boot's JIT once per pinned binary instead of once per process —
+  `mentl help` 0.06–0.08 s against the runner's 1.40–1.76 s, `check` of the
+  first lesson 0.31–0.33 s against ~1.9 s, the floor every gate that spawns
+  hundreds of processes was paying; the m3 leg 32.20 s / 385 MB on the
+  stock engine against 33.68 s / 469 MB through the runner on the same
+  source. The plan's two WAT preload shims died at the measurement: a shim
+  keeps a dead import in the boot, and a seam that leaves the wheel leaves
+  nothing to satisfy. Kills: the comment-ref ratchet refused the first
+  march (two backticked words in voice.mn's hole templates had resolved
+  only through string literals the socket code carried — `<Type>`/`<name>`
+  templates now), the effect-seam ratchet refused the battery's mkdir
+  calling the impl, the second march was interrupted between the repin and
+  the pin block (doc-truth's refusal of an unnarrated head is what made the
+  gap visible), and one micro expecting exit 200 went RED through the
+  stock engine — a program's exit is what the WASI host reports, [0..126),
+  and the host loop refuses a want it cannot report by name — and the
+  session-accept leg, rewritten from the socket to stdin, counted one
+  accepted Why where the accept's own answer makes two (the contract was the
+  leg's). `git ls-files
+  | grep -E '\.rs$|Cargo'` is empty. Named:
+  `Hβ.cli.resident-session-over-fifos` (the cold verb over the warm image
+  is the measured surface). Next: L-C (the view is a projection), with
+  Morgan's 2026-10-05 verdicts on the page folded in — the density knob and
+  the compiler telemetry go, the page opens a project, Pulse is the course
+  once L-F runs programs in the page.
 - **Arc F · Proof faces on the page, repriced.** Flow refusals as sink
   preconditions over the influence walk (Phase 7 as re-scoped 2026-10-02 —
   no row element, the label lattice deleted) + Why-chain/refusal badges

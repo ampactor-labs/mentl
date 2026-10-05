@@ -284,10 +284,12 @@ mentl help              the full projection
 A target is a module name or a file path, from any directory. A bare `mentl`
 reads where you are and offers each source's next keystroke.
 
-*(Note, 2026-09-27: the shim written by `tools/install.sh` now runs the
-compiler through the Rust host in `tools/runner`, built with `cargo build
---release --manifest-path tools/runner/Cargo.toml`; the wasmtime command-line
-tool is no longer used anywhere in the repository.)*
+*(Note, 2026-10-05: the shim written by `tools/install.sh` runs the
+compiler through the stock `wasmtime` binary — pinned by version and digest,
+fetched by `bash tools/wasmtime-get.sh` — and runs a compiled program by
+assembling the module and handing it to the engine. The Rust embedding that
+stood in for the engine from 2026-09-17 is deleted; the repository holds no
+Rust.)*
 
 ## The three documents
 

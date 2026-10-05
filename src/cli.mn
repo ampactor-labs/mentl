@@ -126,7 +126,7 @@ fn verb_specs() = [VerbSpec(
   "run",
   "<path> [args…]",
   run_verb_args,
-  "compile, prove, execute (a hole or refuted claim REFUSES)"
+  "compile, prove, execute — the mentl command runs the module (a hole or refuted claim REFUSES)"
 ), VerbSpec(
   "check",
   "<path>",
@@ -199,7 +199,7 @@ fn verb_specs() = [VerbSpec(
   "space",
   "",
   (a) => Invocation(VSpace),
-  "the ide, served — open http://localhost:7378/ide/"
+  "the ide — the mentl command stages the page (ide/space.manifest) and serves it"
 ), VerbSpec(
   "tighten",
   "[path]",

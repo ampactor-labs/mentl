@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# the IDE gate — the browser leg of the runner migration, held green.
+# the IDE gate — the browser host, held green.
 #
 # Leg 1: the node twin (ide/test-shim.mjs) drives ide/wheel-worker.js — the
 #   SAME execution host the page uses — through its faces: compile-stdin,

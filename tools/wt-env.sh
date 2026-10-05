@@ -1,10 +1,11 @@
 # tools/wt-env.sh — THE ONE HOME for the wasm toolchain invocation.
 #
-# Carried-Truth at the tooling layer: the wasmtime run-flags and the wat2wasm
+# Carried-Truth at the tooling layer: the engine's run-flags and the wat2wasm
 # assemble-flags are a FACT with exactly one home. Every script sources this;
 # nobody hand-types `-W threads=y …` again (the flag-split footgun that cost a
-# session). The instant `mentl run` / `mentl asm` exist as real subcommands,
-# this file dissolves — like every bootstrap-era scaffold.
+# session). The file dissolves with the native backend (PLAN §11, Phase 10),
+# where Mentl emits an executable that hosts itself and there is no engine —
+# like every bootstrap-era scaffold.
 #
 #   Usage (source, never execute):   source "$(dirname "$0")/wt-env.sh"
 #   Then:  wt_run <wasm> [args…]              # run with the canonical flags
@@ -15,44 +16,58 @@
 #          wt_wheel <src|lib> [src|lib] > f   # canonical wheel input (find-order)
 #
 # The four constants — WT, WT_RUN_FLAGS, W2W, WT_WABT — are the single source of
-# truth. Point WT at another build via MENTL_RUNNER. Nothing here re-derives;
+# truth. Point WT at another engine via MENTL_WASMTIME. Nothing here re-derives;
 # every helper is a projection of the four constants.
 
-# The threads/shared-memory/tail-call quartet is load-bearing: the wheel's
-# modules use wasi-threads shared memory (the wasi_thread_spawn substrate) and
-# return_call_indirect (opcode 0x13). Drop any one flag → the module refuses to
-# instantiate. This quartet is the invariant, proven across the whole toolchain.
-# The SPELLING is version-dependent: wasmtime 36 LTS folds shared-memory into
-# -W threads=y and rejects the separate flag; 43 requires it explicitly. Probe
-# once at source time so both run (validated 2026-07-23: wheel self-compile
-# byte-identical and battery 113/113 through BOTH binaries —
-# Hβ.ops.wasmtime-runner-migration step 1).
-# THE EMBEDDED RUNNER IS THE ENGINE — the only one. The wasmtime CLI was a
-# dead end twice over: measured 2026-09-06, the same spawning module answers
-# exit 60 through wasmtime 36's CLI and `Error: the -Sthreads flag is no
-# longer supported` through 47's; and since the wheel performs the exec seam
-# (2026-09-17) every Mentl module imports `mentl_host`, which no CLI defines
-# — 36's `-W unknown-imports-trap` is applied after its wasi-threads shim has
-# already instantiated, so the boot cannot even start there. tools/runner
-# registers wasi.thread-spawn itself, creates the shared memory, executes
-# the streamed WAT of `mentl run` and the battery, and owns the listening
-# socket (`-S tcplisten=`, the p1 socket protocol lib/net.mn speaks — the
-# CLI's legacy tcplisten, served by the runner; Hβ.ops.runner-owns-the-p1-socket).
-# There is no fallback engine to fall back to, so a missing runner REFUSES
-# here, loudly, with the build command — never a silent downgrade.
+# THE ENGINE IS THE STOCK WASMTIME BINARY, and nothing of Mentl is in it
+# (2026-10-05, L-H — Morgan: no Rust in the codebase, "at all!"). The boot
+# imports WASI preview1 and nothing else and defines its own memory, so any
+# preview1 engine hosts it; a program that spawns also asks for wasi-threads
+# (the `wasi.thread-spawn` import beside a shared `env.memory`), which is
+# where the PIN comes from: wasmtime 36 serves it through `-S threads=y` and
+# 47 dropped the flag ("the -Sthreads flag is no longer supported", measured
+# 2026-09-06), so 36.0.2 is pinned by version and digest in
+# tools/wasmtime-get.sh and resolved here MENTL_WASMTIME → .build/wasmtime →
+# PATH. A missing engine REFUSES, loudly, with the fetch command — never a
+# silent downgrade. The flags are UNIFORM: `-S threads=y` runs a module that
+# defines its memory exactly as one that imports it (measured on this
+# landing's m2: the wheel compiled through the candidate byte-identical to
+# the Rust runner it replaced, 549,192 lines, at 37.9 s / 492 MB), so no
+# import scan chooses flags per module. The threads/tail-call pair is
+# load-bearing — the wheel's modules use shared memory (atomics for the
+# task join) and return_call_indirect (opcode 0x13); drop either and the
+# module refuses to instantiate. `-C cache=y` is the engine's compilation
+# cache, on by default in the CLI and stated here because it is the fact
+# that makes the loop felt: the JIT of the 3 MB boot is paid once per pinned
+# binary, not once per process — a `mentl help` is 0.06 s against the
+# runner's 1.4–1.8 s, a `check` of the first lesson 0.35 s against ~1.9 s
+# (measured 2026-10-05), and every gate that spawns hundreds of processes
+# loses that floor.
 #
-# One capability the runner drops: `-D coredump=` is parsed and ignored, so a
-# trapped m3 leg writes no coredump for the autopsy. Named here rather than
-# discovered at the next trap.
-_wt_runner="${MENTL_RUNNER:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/runner/target/release/mentl-runner}"
-if [ ! -x "$_wt_runner" ]; then
-  echo "wt-env: no runner at $_wt_runner — build it: cargo build --release --manifest-path tools/runner/Cargo.toml" >&2
+# The Rust runner this replaced (2026-09-17 → 2026-10-05, tools/runner — an
+# 800-line wasmtime embedding) existed for two seams the wheel performed and
+# no stock engine defined: the exec seam (`mentl_host.wat_write`/`.exec`) and
+# the p1 socket seam (`-S tcplisten=`). Both left the wheel: a compiled
+# module is run by the mentl command (tools/install.sh) and by the battery's
+# host loop below, and the session serves on stdio. RESIDUE.md carries the
+# record under `Hβ.ops.runner-is-the-process-handler`.
+_wt_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+_wt_engine="${MENTL_WASMTIME:-}"
+if [ -z "$_wt_engine" ]; then
+  for _wt_cand in "$_wt_root"/.build/wasmtime/wasmtime-v36.0.2-*/wasmtime; do
+    [ -x "$_wt_cand" ] && _wt_engine="$_wt_cand" && break
+  done
+fi
+if [ -z "$_wt_engine" ] && command -v wasmtime >/dev/null 2>&1; then
+  _wt_engine="$(command -v wasmtime)"
+fi
+if [ -z "$_wt_engine" ] || [ ! -x "$_wt_engine" ]; then
+  echo "wt-env: no engine — bash tools/wasmtime-get.sh fetches the pinned wasmtime into .build/wasmtime (or set MENTL_WASMTIME, or put wasmtime 36 on PATH)" >&2
   return 2 2>/dev/null || exit 2
 fi
-WT="$_wt_runner"
-WT_RUN_FLAGS=(-W threads=y -W tail-call=y)
-WT_ENGINE="runner"
-# MENTL_WT_EXTRA — extra runner flags, word-split, appended to every wt_run and
+WT="$_wt_engine"
+WT_RUN_FLAGS=(-C cache=y -W threads=y -W tail-call=y -S threads=y)
+# MENTL_WT_EXTRA — extra engine flags, word-split, appended to every wt_run and
 # every shim invocation. It exists for ONE thing the canonical flags cannot
 # express and the shim therefore could not reach: attaching a profiler.
 # PLAN §8 names host `perf` with --profile=perfmap as THE instrument for the
@@ -78,16 +93,74 @@ MENTL_RT_LIBS=(lib/memory.mn lib/strings.mn lib/lists.mn lib/prelude.mn)
 # the WAT out exactly as before.
 wt_run() { "$WT" run "${WT_RUN_FLAGS[@]}" "$@"; }
 
+# wt_battery_host — the host's half of the battery. `mentl test` judges every
+# fixture in one process and, for a run contract, hands the module over
+# instead of running it: a RUN line names the fixture, the .wat the compiler
+# wrote under .build/battery, the exit the contract wants and the error
+# count it banked (the exec seam left the wheel 2026-10-05 — a compiled
+# module is run by the host, in the battery exactly as at `mentl run`). This
+# filter assembles and runs each one and writes PASS or FAIL(run) in the RUN
+# line's place, so the verdict stream reads as it always did; every other
+# line passes through. One process per run fixture again — the honest cost
+# of a host with no code of ours in it, paid until `mentl asm` + native —
+# measured at ~340 ms a fixture (wat2wasm + the engine's compile), so the
+# runs go nproc-wide: each verdict is one short line appended atomically, and
+# the verdicts come out sorted by fixture, so the stream is deterministic.
+wt_battery_run_one() {  # wt_battery_run_one <stem> <wat> <want> <nerr> — one RUN line's verdict
+  local stem="$1" path="$2" want="$3" nerr="$4" base exit
+  base="${path%.wat}"
+  # A program's exit is what the WASI host reports, and the stock engine
+  # reports [0..126) — `proc_exit(200)` is "exit with invalid exit status
+  # outside of [0..126)" at exit 1, which reads as a trap. A want the host
+  # cannot report is a contract that cannot be judged, refused by name here
+  # (measured 2026-10-05: one micro answered 200 through the Rust runner,
+  # which passed any status through, and went red the day the stock engine
+  # became the host). 134 is the trap's own exit and stays observable.
+  if [ "$want" -ge 126 ] && [ "$want" -ne 134 ]; then
+    echo "FAIL(contract) $stem: wants exit $want, which the WASI host cannot report (a program's exit is [0..126); a trap is 134) — answer below 126"
+    return 0
+  fi
+  if ! wt_asm "$path" "$base.wasm" 2> "$base.asm.err"; then
+    echo "FAIL(asm) $stem: the module did not assemble (see $base.asm.err)"
+    return 0
+  fi
+  timeout 300 "$WT" run "${WT_RUN_FLAGS[@]}" --dir . "$base.wasm" < /dev/null > "$base.out" 2> "$base.run.err"
+  exit=$?
+  if [ "$exit" -eq "$want" ]; then
+    echo "PASS $stem: exit=$exit (expected $want) diags=$nerr"
+  else
+    echo "FAIL(run) $stem: exit=$exit expected=$want diags=$nerr"
+  fi
+}
+wt_battery_host() {
+  local line stem path want nerr runs verdicts n max
+  runs=$(mktemp) && verdicts=$(mktemp)
+  while IFS= read -r line; do
+    case "$line" in
+      "RUN "*) printf '%s\n' "${line#RUN }" >> "$runs" ;;
+      *) printf '%s\n' "$line" ;;
+    esac
+  done
+  n=0; max=$(nproc 2>/dev/null || echo 2)
+  while read -r stem path want nerr; do
+    wt_battery_run_one "$stem" "$path" "$want" "$nerr" >> "$verdicts" &
+    n=$((n + 1))
+    if [ "$n" -ge "$max" ]; then wait -n; n=$((n - 1)); fi
+  done < "$runs"
+  wait
+  sort "$verdicts"
+  rm -f "$runs" "$verdicts"
+}
+
 # wt_battery <compiler.wasm> <fixture-dir> [label] — the fixture battery,
 # judged BY THE MEDIUM: `mentl test <dir>` compiles every fixture in one
-# process, runs each through the runner's exec seam, and prints one verdict
-# line per fixture (PASS / REFUSE / FAIL… / NOEXPECT). This helper reads the
+# process, judges each contract, and prints one verdict line per fixture
+# (PASS / REFUSE / FAIL… / NOEXPECT), with a run contract's module handed to
+# the host through a RUN line (wt_battery_host above). This helper reads the
 # verdict and holds the two halves of the contract a crashed verb cannot
 # print: the exit is 0 AND every fixture the directory holds was judged
 # (`mentl test` once died at fixture 118 of 149 and a gate that counted
-# FAIL lines said green). The tests/micros loop this replaced spawned an
-# assembler and a runtime per fixture (3N processes, ~71s); the medium's
-# own verdict takes ~12s. Dissolves with this file at `mentl verify`.
+# FAIL lines said green). Dissolves with this file at `mentl verify`.
 #
 # A battery's verdict is a function of the compiler BYTES, not of which name
 # the compiler goes by, so its memo key hashes the artifact and never the
@@ -104,6 +177,7 @@ wt_battery() {
     return 0
   fi
   out=$(wt_run --dir . "$compiler" test "$dir" 2>/dev/null); rc=$?
+  out=$(printf '%s\n' "$out" | wt_battery_host)
   seen=$(printf '%s\n' "$out" | grep -cE '^(PASS|REFUSE|FAIL[A-Za-z()]*|NOEXPECT) ' || true)
   bad=$(printf '%s\n' "$out" | grep -cE '^(FAIL[A-Za-z()]*|NOEXPECT) ' || true)
   if [ "$rc" -eq 0 ] && [ "$bad" -eq 0 ] && [ "$seen" -eq "$want" ]; then
@@ -308,6 +382,6 @@ wt_memo_put() {  # wt_memo_put <leg> <key> <verdict text>
 }
 
 # The key of a leg that RUNS a compiler: the standing inputs every such leg
-# shares (the runner binary, its flags, this file) plus the caller's own — the
+# shares (the engine binary, its flags, this file) plus the caller's own — the
 # compiler artifact and the fixtures it feeds it.
 wt_memo_key_run() { wt_memo_key "$WT" "=${WT_RUN_FLAGS[*]}" tools/wt-env.sh "$@"; }

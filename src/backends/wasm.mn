@@ -65,21 +65,6 @@ handler wat_to_file(fd) {
   },
 }
 
-// wat_to_host — the sink the EXECUTOR reads: each segment streams to the
-// host's own buffer through the Process seam (lib/io.mn's Host effect —
-// mentl_host.wat_write in tools/runner), exactly as wat_to_file hands bytes
-// to an fd before resuming, so the product leaves the process a segment at
-// a time and no emission arena ever holds it. The module is then assembled and run by
-// host_exec, which reads the whole streamed text — no wat2wasm, no file,
-// no in-image copy: `mentl run` and the in-process battery install this
-// sink and the program runs in the same process that compiled it.
-handler wat_to_host {
-  wat_emit(s) => {
-    host_wat_write(str_payload(s), byte_len(s))
-    resume()
-  },
-}
-
 // wat_to_string — buffer wat_emit calls into a flat String; wat_collect
 // materializes ONCE at the end via str_concat_all. Handles BOTH
 // WasmOut.wat_emit AND WatBuffer.wat_collect — one handler, two effects.
@@ -2432,18 +2417,10 @@ fn emit_planned(plan) = match plan {
     // self-contained defined memory, plain bump, no thread-spawn import.
     // The `<|`/`><` ownership discrimination at the module-image altitude.
     let spawns = ls_find_str_local(wasi_ops, "spawn_task", 0) >= 0
-    // The socket seam's own proof, read from the module's ops beside the
-    // spawn proof rather than inferred from it (see emit_memory_decl).
-    let socketed = ls_find_str_local(wasi_ops, "sock_accept", 0) >= 0
     // The per-instance area a perform's arguments cross in, sized by the
     // widest perform; a module that never yields has none (Law 7).
     let yield_slots = if yield_seen > 0 { yield_area_slots(yield_arity) } else { 0 }
-    emit_memory_decl(
-      spawns,
-      spawns || socketed,
-      ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0,
-      yield_slots
-    )
+    emit_memory_decl(spawns, ls_find_str_local(wasi_ops, "atomic_rmw", 0) >= 0, yield_slots)
     // A live arena's leaves are settled here, before any function is
     // written, because every barrier and every claim writes a leaf's index.
     set_arena_leaves(
@@ -4524,18 +4501,12 @@ fn emit_one_wasi_import(op) = match host_import(op) {
 }
 
 // The FFI boundary's one home: every host-served op with its import module,
-// field name and ABI widths. The preview1 rows ride wasi_import_reprs (field
-// = op name, the p1 convention); the medium's own seam is the `mentl_host`
-// module tools/runner serves (lib/io.mn's Host effect).
+// field name and ABI widths. The rows ride wasi_import_reprs (field = op
+// name, the p1 convention) — preview1 is the whole boundary, so any host
+// that serves it runs the module.
 fn host_import(op) = match wasi_import_reprs(op) {
   Some((preprs, res)) => Some(("wasi_snapshot_preview1", op, preprs, res)),
-  None => if op == "host_wat_write" {
-    Some(("mentl_host", "wat_write", [RI32, RI32], None))
-  } else if op == "host_exec" {
-    Some(("mentl_host", "exec", [RI32, RI32], Some(RI32)))
-  } else {
-    None
-  },
+  None => None,
 }
 
 // The WASI preview1 ABI signatures — the FFI boundary's external facts as
@@ -4569,16 +4540,6 @@ fn wasi_import_reprs(op) = if op == "proc_exit" {
   Some(([RI32, RI32, RI32, RI32, RI32, RI32], Some(RI32)))
 } else if op == "fd_readdir" {
   Some(([RI32, RI32, RI32, RI64, RI32], Some(RI32)))
-}
-// The socket pair (2026-07-10, mentl serves natively): sock_accept takes the
-// PREOPENED listener (wasmtime -S tcplisten) and yields a connection fd that
-// fd_read/fd_write/fd_close already speak; poll_oneoff is the preview1
-// blocking wait the nonblocking listener demands (accept without it spins
-// on EAGAIN=6). The probe that proved the contract: scratch sockprobe4.wat.
-else if op == "sock_accept" {
-  Some(([RI32, RI32, RI32], Some(RI32)))
-} else if op == "poll_oneoff" {
-  Some(([RI32, RI32, RI32, RI32], Some(RI32)))
 }
 // argv, read live at _start — (argc_ptr, buf_size_ptr) and (argv_ptr, buf_ptr),
 // both returning errno. This is what makes `mentl <verb>` reach a verb.
@@ -4627,29 +4588,22 @@ fn emit_wasi_args_at_widths(args, preprs, i) = if i >= len(args) {
   emit_wasi_args_at_widths(args, preprs, i + 1)
 }
 
-fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
-  // The memory's OWNERSHIP follows the module's own proof, and there are
-  // TWO proofs, because two different consumers need the host to hold the
-  // image. This read used to be ONE — "does it spawn?" — with the import
-  // decision proxied through it, and the proxy broke the moment the last
-  // spawn left the wheel: `mentl space` emitted a DEFINED memory and the
-  // runner refused it ("the socket seam needs a guest that imports its
-  // shared memory"), because a trampoline module cannot share a memory the
-  // guest defines.
-  //
-  //   SPAWNS       — the wasi-threads convention: the host creates one
-  //                  memory and links it into every instance, root and
-  //                  spawned alike (a DEFINED memory is per-instance, so a
-  //                  child of a defining module reads a fresh zeroed
-  //                  image). This is what needs the thread-spawn import.
-  //   SOCKET SEAM  — the runner builds a trampoline module over the SAME
-  //                  memory to serve the five socket-facing p1 entries, and
-  //                  it can only do that for a memory the host owns.
-  //
-  // Either proof imports the image and re-exports it for the preview1 ABI
-  // (the p1 host locates guest memory through the "memory" export). A
-  // module with neither owns a self-contained defined memory and ships no
-  // thread-spawn import — nothing to satisfy, any preview1 host runs it.
+fn emit_memory_decl(spawns, wants_rmw, yield_slots) = {
+  // The memory's OWNERSHIP follows the module's own proof, and the proof is
+  // ONE question: does the module spawn? The wasi-threads convention has the
+  // host create one memory and link it into every instance, root and
+  // spawned alike (a DEFINED memory is per-instance, so a child of a
+  // defining module would read a fresh zeroed image) — so a spawning module
+  // imports the image and re-exports it for the preview1 ABI (the p1 host
+  // locates guest memory through the "memory" export). Every other module
+  // owns a self-contained defined memory and ships no thread-spawn import:
+  // nothing to satisfy, any preview1 host runs it — the compiler itself
+  // among them, since the judgment spawns nothing. A second proof stood
+  // here until 2026-10-05, the socket seam: a Rust trampoline served five
+  // socket-facing p1 entries over a memory the host owned, so a module
+  // reaching the accept op imported the image too. The seam is deleted —
+  // the session serves on stdio and the page is static files — and with it
+  // the only host that was not a stock engine.
   //
   // Initial 32 pages (2MB: the string table below 1MB, the heap line at
   // 1MB), max 65536 (4GB, the wasm32 ceiling). THE ALLOCATOR GROWS THE
@@ -4668,10 +4622,6 @@ fn emit_memory_decl(spawns, imports_image, wants_rmw, yield_slots) = {
   // instance through the ONE grow path, which every instance sees.
   if spawns {
     wat_emit("  (import \"wasi\" \"thread-spawn\" (func $wasi_thread_spawn (param i32) (result i32)))\n")
-  } else {
-    ()
-  }
-  if imports_image {
     wat_emit("  (import \"env\" \"memory\" (memory 32 65536 shared))\n")
     wat_emit("  (export \"memory\" (memory 0))\n")
   } else {

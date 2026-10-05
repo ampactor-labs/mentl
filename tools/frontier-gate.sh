@@ -573,8 +573,26 @@ run_warm_start() {
   fi
 }
 
+# run_module <compiler> <project-dir> <module> <stdout-file> <stderr-file> —
+# the host's three steps for a program the compiler emits: compile the
+# module as a project (its imports resolved the way a developer's program
+# resolves them), assemble it, run it with the project mounted as its ".".
+# The program's exit is the answer; a module that did not compile answers
+# 199 and one that did not assemble 198, both above any exit a program
+# writes, so a leg's "want N" can never be met by a host fault. The exec
+# seam left the wheel 2026-10-05: `mentl run` is the mentl command's, and
+# here it is these three lines.
+run_module() {
+  local compiler="$1" pdir="$2" module="$3" out="$4" err="$5"
+  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" compile "$module" \
+    > "$pdir/$module.wat" 2> "$err" || { echo "run_module: $module did not compile" >> "$err"; return 199; }
+  wt_asm "$pdir/$module.wat" "$pdir/$module.wasm" 2>> "$err" \
+    || { echo "run_module: $module did not assemble" >> "$err"; return 198; }
+  wt_run --dir "$pdir::." "$pdir/$module.wasm" > "$out" 2>> "$err"
+}
+
 # The flagship program (Track G, Pulse scene 1): examples/pulse/render
-# rendered through the compiler under test by `mentl run`, and the WAV judged
+# rendered through the compiler under test (run_module), and the WAV judged
 # by an oracle that shares nothing with the medium
 # (tests/frontier/pulse-render/oracle.py: the header, both channels'
 # loudness, no full-scale sample, and each of the score's eight notes
@@ -596,8 +614,7 @@ run_pulse_render() {
   mkdir -p "$pdir"
   cp "$ROOT/examples/pulse/render/main.mn" "$pdir/main.mn"
   t0=$(date +%s%N)
-  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" run main \
-    > "$dir/$label.wav" 2> "$dir/$label.err"
+  run_module "$compiler" "$pdir" main "$dir/$label.wav" "$dir/$label.err"
   rc=$?
   t1=$(date +%s%N)
   if [ "$rc" -ne 0 ] || [ ! -s "$dir/$label.wav" ]; then
@@ -646,13 +663,9 @@ run_pulse_render() {
 # (the fixture is lambda-free, so handle numbering cannot leak into the
 # wat and byte-equality is the honest oracle at today's pin; the
 # deterministic handle partition generalizes it).
-# Two verbs, one file, two worlds: `run` persists its analyzed image under
-# the world its handlers built, and a `compile` after it must not restore
-# that image into its own output — the image is filed under world_key(), so
-# the compile finds none and derives, and the second verb's WAT is whole.
 # A program that links library modules by import runs as a project — the
-# `run` verb resolves its imports the way a developer's program does, where
-# a battery fixture is compiled over the runtime floor alone — and answers
+# compile resolves its imports the way a developer's program does, where a
+# battery fixture is compiled over the runtime floor alone — and answers
 # its expected exit.
 run_project() {
   local compiler="$1" dir="$2" label="$3" source="$4" expected="$5"
@@ -660,8 +673,7 @@ run_project() {
   rm -rf "$pdir"
   mkdir -p "$pdir"
   cp "$source" "$pdir/main.mn"
-  wt_run --dir "$pdir::." --dir "$ROOT::/mentl-home" "$compiler" run main \
-    > "$dir/$label.run.out" 2> "$dir/$label.run.err"
+  run_module "$compiler" "$pdir" main "$dir/$label.run.out" "$dir/$label.run.err"
   rc=$?
   if [ "$rc" -eq "$expected" ]; then
     pass "$label: runs to $expected"
@@ -670,14 +682,18 @@ run_project() {
   fi
 }
 
+# The warm world: a compile persists its analyzed image, and a second compile
+# of the same file restores it and must still emit the WHOLE module — the
+# contract that caught a restored image carrying a foreign world's output
+# routing (2026-09-28: `run` then `compile` printed nothing; the image is
+# filed under world_key() since). The program also runs, through the host.
 run_warm_world() {
   local compiler="$1" dir="$2" label="warm-world"
   local wdir="$dir/$label.proj" rc lines
   rm -rf "$wdir"
   mkdir -p "$wdir/.build"
   printf 'fn main() = 9\n' > "$wdir/main.mn"
-  wt_run --dir "$wdir::." --dir "$ROOT::/mentl-home" "$compiler" run main \
-    > "$dir/$label.run.out" 2> "$dir/$label.run.err"
+  run_module "$compiler" "$wdir" main "$dir/$label.run.out" "$dir/$label.run.err"
   rc=$?
   if [ "$rc" -ne 9 ]; then
     fail "$label: run exit=$rc, want 9 (see $dir/$label.run.err)"
@@ -688,9 +704,9 @@ run_warm_world() {
   rc=$?
   lines=$(wc -l < "$dir/$label.wat")
   if [ "$rc" -eq 0 ] && grep -q '(module' "$dir/$label.wat"; then
-    pass "$label: compile after run emits the module ($lines WAT lines)"
+    pass "$label: the warm compile after a compile emits the module ($lines WAT lines)"
   else
-    fail "$label: compile after run emitted $lines WAT lines (exit=$rc; see $dir/$label.err)"
+    fail "$label: the warm compile emitted $lines WAT lines (exit=$rc; see $dir/$label.err)"
   fi
 }
 
@@ -1894,7 +1910,7 @@ for i in "${!compilers[@]}"; do
     "$ROOT/tests/frontier/mn-generic-multitype.mn" 42 yes "$dir"
   # C5 — partiality is a row fact: the absorb rewrite x * 0 ≡ 0 keeps a
   # division whose precondition stays open (it carries `Trap`), so
-  # `(1 / n) * 0` TRAPS at n = 0 as written (exit 134 through the runner).
+  # `(1 / n) * 0` TRAPS at n = 0 as written (exit 134 through the engine).
   # The claim is OPEN by design — `n` is unbounded — so the compile
   # surfaces it as V_Pending, which the leg ASSERTS: an open claim is the
   # whole reason the operand survives. RED on boot 21f8e691: the shape-read
@@ -3026,71 +3042,16 @@ for i in "${!compilers[@]}"; do
   else
     fail "check-forward-order (exit=$fwd_rc mismatches=$fwd_count — the forward-ref seam is open)"
   fi
-  # ── mentl session — the resident graph as the CLI's default transport ──
-  # The living session behind the shim's tcplisten seam answers read
-  # verbs over a one-line wire speaking the CLI's own grammar; anything
-  # it does not serve answers the MISS sentinel and the shim falls back
-  # cold. RED on any pre-session boot: the verb is unrecognized, nothing
-  # listens, both probes fail. The oracle is the strongest available:
-  # the resident answer must BYTE-EQUAL the cold verb's.
-  sessdir="$dir/session-proj"
-  mkdir -p "$sessdir"
-  printf 'fn width(n) = n + 2\n\nfn main() = width(40)\n' > "$sessdir/main.mn"
-  sess_port=7391
-  # An orphan from a prior run holds the port and answers with ITS stale
-  # graph (measured: a leftover session served the REPO main's audit —
-  # the fresh session could never bind). Clear by the port's own
-  # fingerprint, and mount the project as guest "." so the wheel's
-  # relative "main.mn" probe resolves the FIXTURE, never falling through
-  # to /mentl-home (the space verb's own mount convention).
-  pkill -f "tcplisten=127.0.0.1:${sess_port}" 2>/dev/null
-  sleep 1
-  (cd "$sessdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" -S "tcplisten=127.0.0.1:${sess_port}" "$compiler" session >"$dir/session.log" 2>&1) &
-  sess_pid=$!
-  : > "$dir/session-resident.txt"
-  for _ in $(seq 1 60); do
-    # Direct redirect, never command substitution — $(...) strips the
-    # trailing newline and a one-byte "divergence" fails the byte oracle.
-    bash -c "exec 3<>/dev/tcp/127.0.0.1/${sess_port} 2>/dev/null && printf 'audit\tmain\t\n' >&3 && cat <&3" > "$dir/session-resident.txt" 2>/dev/null
-    [ -s "$dir/session-resident.txt" ] && break
-    sleep 1
-  done
-  (cd "$sessdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$sessdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" audit main 2>/dev/null) > "$dir/session-cold.txt"
-  if [ -s "$dir/session-resident.txt" ] && cmp -s "$dir/session-resident.txt" "$dir/session-cold.txt"; then
-    pass "session resident audit (byte-equal to the cold verb)"
-  else
-    fail "session resident audit (empty or diverged; see $dir/session-resident.txt vs session-cold.txt)"
-  fi
-  sess_miss=$(bash -c "exec 3<>/dev/tcp/127.0.0.1/${sess_port} 2>/dev/null && printf 'compile\tmain\t\n' >&3 && cat <&3" 2>/dev/null)
-  if printf '%s' "$sess_miss" | grep -q 'MENTL-SESSION-MISS'; then
-    pass "session MISS sentinel (cold-only verbs decline; the shim falls back)"
-  else
-    fail "session MISS sentinel (got: $sess_miss)"
-  fi
-  # A REFUSAL ANSWERS MISS (E2). A verb that refuses says why on stderr and
-  # gives its verdict as the exit code, and the wire carries neither — the
-  # socket's stderr is the server's terminal — so the session answers MISS
-  # and the cold route says the refusal whole. RED on boot 713745c6: the
-  # address past the end of the file answered nothing, as if it had
-  # succeeded, where the cold verb names the file's length and exits 1.
-  sess_ref=$(bash -c "exec 3<>/dev/tcp/127.0.0.1/${sess_port} 2>/dev/null && printf 'main.mn:999:1\n' >&3 && cat <&3" 2>/dev/null)
-  if [ "$sess_ref" = "MENTL-SESSION-MISS" ]; then
-    pass "session refusal answers MISS (the cold route says it whole)"
-  else
-    fail "session refusal answers MISS (got: [$sess_ref])"
-  fi
-  # Kill by the port fingerprint — the subshell pid is the wrapper, and
-  # killing it orphans the wasmtime grandchild (the stale-graph server
-  # this leg's first red was).
-  pkill -f "tcplisten=127.0.0.1:${sess_port}" 2>/dev/null
-  kill "$sess_pid" 2>/dev/null
-  wait "$sess_pid" 2>/dev/null
-  # ── the session on stdin (E2) ──────────────────────────────────────
-  # A host that preopens no listener owns the process's input instead — a
-  # browser worker, a pipe — and the session answers one line per verb, the
-  # answer written whole before the next line is read. The oracle is the
-  # cold verb byte for byte, then the refusal's MISS. RED on boot 713745c6:
-  # without a listener the verb refused.
+  # ── the session on stdin (E2) — the resident graph, ONE transport ────
+  # The host owns the process's input — a browser worker's channel, the
+  # mentl command's pipe — and the session answers one line per verb, the
+  # answer written whole before the next line is read; a verb it does not
+  # serve, and a verb that refuses (its reason is stderr, its verdict the
+  # exit code, and the wire carries neither), answers the MISS sentinel so
+  # the cold route says it whole. The oracle is the cold verb byte for
+  # byte, then the refusal's MISS. RED on boot 713745c6: without a listener
+  # the verb refused. The listener it once served (a socket the host
+  # preopened; `-S tcplisten=`) is gone with the socket seam, 2026-10-05.
   stdir="$dir/session-stdin"
   rm -rf "$stdir"
   mkdir -p "$stdir"
@@ -3105,71 +3066,37 @@ for i in "${!compilers[@]}"; do
     fail "session on stdin (diff $stdir/out.txt $stdir/want.txt; see $stdir/err.log)"
   fi
   # ── the accept's edge outlives the reply (E2) ──────────────────────
-  # Through the shim's own rule: ask the session, and on MISS run the verb
-  # cold. The session draws the accept into the graph it keeps, so the
-  # next read of the position walks to the proposal; a cold accept drew it
-  # in a process that ended with the reply. RED on boot 713745c6: the
-  # accept answered MISS, the cold accept wrote `1`, and the next resident
-  # read said "Why: int literal".
+  # One session, three lines on its stdin: a read of the hole, the accept,
+  # the same read again. The session draws the accept into the graph it
+  # keeps, so the next read of the position walks to the proposal — where a
+  # cold accept drew it in a process that ended with the reply. RED on boot
+  # 713745c6: the accept answered MISS, the cold accept wrote `1`, and the
+  # next read said "Why: int literal". The first read must NOT walk to a
+  # proposal (nothing has been accepted), so exactly one answer does.
   acdir="$dir/session-accept"
   rm -rf "$acdir"
   mkdir -p "$acdir"
   printf 'type Positive = Int where 0 < self\n\nfn choose() -> Positive = ??\n\nfn main() = choose()\n' > "$acdir/main.mn"
-  ac_port=7393
-  pkill -f "tcplisten=127.0.0.1:${ac_port}" 2>/dev/null
-  sleep 1
-  (cd "$acdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$acdir::." --dir /tmp --dir "$ROOT::/mentl-home" -S "tcplisten=127.0.0.1:${ac_port}" "$compiler" session >"$acdir/session.log" 2>&1) &
-  ac_pid=$!
-  ac_ask() { bash -c "exec 3<>/dev/tcp/127.0.0.1/${ac_port} 2>/dev/null && printf '%s\n' \"\$1\" >&3 && cat <&3" _ "$1" 2>/dev/null; }
-  : > "$acdir/before.txt"
-  for _ in $(seq 1 60); do
-    ac_ask 'main.mn:3:27' > "$acdir/before.txt"
-    [ -s "$acdir/before.txt" ] && break
-    sleep 1
-  done
-  if [ "$(ac_ask "$(printf 'accept\tmain.mn:3:27')")" = "MENTL-SESSION-MISS" ]; then
-    (cd "$acdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$acdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" accept main.mn:3:27 > "$acdir/cold-accept.txt" 2>&1)
-  fi
-  ac_ask 'main.mn:3:27' > "$acdir/later.txt"
-  if grep -q '^Why: accepted `1` — proposed' "$acdir/later.txt" && grep -q 'fn choose() -> Positive = 1$' "$acdir/main.mn"; then
+  printf 'main.mn:3:27\naccept\tmain.mn:3:27\nmain.mn:3:27\n' \
+    | (cd "$acdir" && "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$acdir::." --dir /tmp --dir "$ROOT::/mentl-home" "$compiler" session) \
+      > "$acdir/answers.txt" 2> "$acdir/session.log"
+  # Three answers, each opening with its Query line: the first read must not
+  # walk to a proposal, the accept answers with the projection of the
+  # accepted position exactly as the cold `mentl accept` does (its Why walks
+  # to the proposal already), and the third read walks to it again off the
+  # graph the session kept. RED on the first stock-engine march (2026-10-05):
+  # this leg counted ONE accepted Why across all three answers and the accept's
+  # own answer made it two — the contract was the leg's, not the wheel's.
+  if awk '/^Query:/{n++} n==1 && /^Why: accepted/{bad=1} n==3 && /^Why: accepted `1` — proposed/{ok=1} END{exit !(ok && !bad)}' "$acdir/answers.txt" \
+     && grep -q 'fn choose() -> Positive = 1$' "$acdir/main.mn"; then
     pass "session accept: the next read walks to the proposal"
   else
-    fail "session accept (see $acdir/later.txt)"
+    fail "session accept (see $acdir/answers.txt and $acdir/session.log)"
   fi
-  pkill -f "tcplisten=127.0.0.1:${ac_port}" 2>/dev/null
-  kill "$ac_pid" 2>/dev/null
-  wait "$ac_pid" 2>/dev/null
-  # ── mentl space — the ide served by the wheel ──────────────────────
-  # The verb absorbs ide/serve.mn whole: the accept loop lives in
-  # src/main.mn, the listener is the shim's tcplisten preopen seam (WASI
-  # p1 has no bind/listen). Leg 1: without a listener the verb refuses
-  # and TEACHES the seam. Leg 2: with one preopened it serves
-  # ide/index.html carrying the cross-origin-isolation pair the
-  # shared-memory compiler requires. Both seen RED on the pre-verb boot
-  # ("unrecognized or under-specified command: space").
-  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." "$compiler" space >"$dir/space-refuse.out" 2>&1
-  if [ $? -ne 0 ] && grep -q 'no listener preopened' "$dir/space-refuse.out"; then
-    pass "space refuses without a listener (and teaches the seam)"
-  else
-    fail "space no-listener refusal (see $dir/space-refuse.out)"
-  fi
-  space_port=7379
-  "$WT" run "${WT_RUN_FLAGS[@]}" --dir "$ROOT::." -S "tcplisten=127.0.0.1:${space_port}" "$compiler" space >"$dir/space-serve.log" 2>&1 &
-  space_pid=$!
-  space_hdr=""
-  for _ in $(seq 1 20); do
-    space_hdr=$(curl -s -D - -o "$dir/space-index.html" "http://127.0.0.1:${space_port}/ide/index.html" 2>/dev/null) && break
-    sleep 0.3
-  done
-  kill "$space_pid" 2>/dev/null
-  wait "$space_pid" 2>/dev/null
-  if printf '%s' "$space_hdr" | grep -q '200 OK' \
-     && printf '%s' "$space_hdr" | grep -qi 'Cross-Origin-Embedder-Policy: require-corp' \
-     && [ -s "$dir/space-index.html" ]; then
-    pass "space serves ide/index.html with the isolation pair"
-  else
-    fail "space live serve (status: $(printf '%s' "$space_hdr" | head -1); see $dir/space-serve.log)"
-  fi
+  # `mentl space` is the page — static files the mentl command stages and
+  # serves (tools/space-stage.sh, tools/space-serve.py) — and its gate is
+  # tools/ide-gate.sh's leg 2 over the staged artifact; the wheel serves no
+  # socket since 2026-10-05.
   # ── mentl mcp — the gate served over MCP stdio ─────────────────────
   # The Synth-gate as an agent-facing surface: newline-delimited JSON-RPC,
   # one tool (propose). One scripted session exercises the whole contract:

@@ -15,7 +15,7 @@ and `docs/SYNTAX.md` is the full authority on the language's form.
 ## Build, run, test
 
 ```
-cargo build --release --manifest-path tools/runner/Cargo.toml   # once: the wasmtime embedding
+bash tools/wasmtime-get.sh         # once: the pinned engine into .build/wasmtime
 bash tools/install.sh              # puts `mentl` on PATH (a pointer to boot/mentl.wasm)
 mentl run <file.mn>                # compile, prove, execute
 mentl check <file.mn>              # diagnostics only

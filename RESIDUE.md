@@ -11505,6 +11505,54 @@ vocabulary (verify's syntax/floors/rows legs and the effect-identity
 gate still read them) — they retire with `mentl verify`
 (`Hβ.ops.gates-are-contracts`), the landing that owns every remaining
 bash reader.
+▶ RETIRED 2026-10-05 (L-H, the Space pivot: no Rust in the codebase —
+Morgan, "at all!"). The form above moved the exec seam INTO the wheel and
+paid for it with a Rust host: `mentl_host.wat_write`/`.exec` were imports
+no stock engine defines, so the only thing that could run the compiler
+was an 800-line embedding of the wasmtime crate — the one lever to run
+the medium that was outside it, in another language. The measurement
+that decided it: the stock wasmtime 36.0.2 binary compiles the wheel
+through the candidate m2 BYTE-IDENTICAL to the runner (m3, 551,087 lines
+read on the first measurement; the same bytes on this landing's m2) at
+35.68 s / 396,824 KB against the runner's 36.92 s / 534,700 KB, and
+`-S threads=y` hosts a spawning program and a defining one alike. So
+the seam is the HOST'S again, and it is the same contract on both hosts:
+the wheel only emits; `mentl run` is the mentl command's (compile →
+wat2wasm → the engine, tools/install.sh), the battery's run contract is
+a RUN line the command assembles, runs and judges (`wt_battery_host`,
+tools/wt-env.sh), and in the browser it is `WebAssembly.instantiate`
+(`Hβ.felt.ide-run-in-page`, the assembler). `effect Host` and
+`wat_to_host` are deleted, `run_run` teaches the command, the emitter's
+import table is preview1 alone, and a module imports the shared image
+exactly when it spawns (`emit_memory_decl`, one proof) — so the boot
+imports WASI preview1 and defines its memory, and ANY preview1 engine
+hosts it. One process per run fixture again, the honest cost of a host
+with no code of ours in it, until `mentl asm` + native. The run cache
+this entry condemned stays deleted (the warm image is the cache).
+
+`Hβ.cli.resident-session-over-fifos` — NAMED 2026-10-05 (L-H), not built.
+The CLI runs every verb cold over the warm image since the socket seam
+left the wheel: the resident graph that answered a shell's `mentl audit
+main` in milliseconds lived behind the runner's `-S tcplisten=`, and a
+listener is a host resource a WASI module cannot create. The honest
+shape of a resident CLI session, if it is ever wanted, is TWO FIFOS the
+shim owns — the session's stdin and stdout, exactly the transport E2
+already serves (one line per verb, the answer whole before the next
+line) — with the shim's resident-first try writing the verb line into
+one and reading the answer from the other, MISS falling through to the
+cold exec as before. Nothing in the wheel moves: the page's worker
+holds the same session over a shared-memory channel today, and the LSP
+over a pipe tomorrow. It is not built because no felt walk has asked
+for it — the cold verb over the warm image is the measured surface, and
+a FIFO pair is bash the moment one does. The first consumer that would
+ask is the board itself: verify.sh judges the whole wheel more than once
+per pass (`mentl verify`, the islands' `query src/main.mn modules`, the
+comment-ref and census reads — each a cold process over 79k lines), and
+one resident session answering every one of those questions off ONE
+judgment is what the pair would buy; the per-process floor it does not
+buy is already paid by the engine's compilation cache (a `mentl help`
+0.05–0.07 s on the stock engine against the runner's 1.40–1.76 s, measured
+2026-10-05).
 
 `Hβ.voice.comment-mass-absorbs-into-projections` — the wheel is 38%
 prose, and almost none of it is the endpoint (Morgan's charge,
@@ -14977,6 +15025,22 @@ retired. Measured: a session on the runner answers `audit main` over
 its socket 2s after launch, and the frontier through the exec-seam boot
 on the runner reads 380 pass / 0 red / 1 expected-red — the three
 listening legs that were RED on the CLI, green.
+▶ BOTH RETIRED 2026-10-05 (L-H): the runner is deleted and the stock
+engine is the host again, pinned at 36.0.2 by version and digest
+(tools/wasmtime-get.sh; `MENTL_WASMTIME`, then .build/wasmtime, then
+PATH). The socket seam the runner existed for is gone with the wheel's
+listeners: `mentl session` serves on stdin alone (E2's transport, the
+page's worker and the mentl command both own the process's input),
+`mentl space` is static files the command stages and serves
+(tools/space-stage.sh, tools/space-serve.py), and lib/net.mn's p1 socket
+protocol, `space_run`'s server and the shim's `/dev/tcp` resident-first
+try are deleted. The LTS pin is a CEILING once more and the reason is
+stated in the fetch script: 36's `-S threads=y` hosts a spawning module
+and 47 dropped the flag. It is also the uniform flag now — measured on
+this landing's m2: `-S threads=y` runs a module that DEFINES its memory
+exactly as one that imports it — so no import scan chooses flags per
+module. The exit from the ceiling is not a newer CLI; it is the native
+backend (PLAN §11 Phase 10), where there is no engine at all.
 
 `Hβ.infer.live-cells-need-one-settled-signature` — RUNG 3'S REAL DEP.
 ▶ THE DEP IS BUILT (2026-09-07, the same day it was measured). The ABI now

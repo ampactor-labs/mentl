@@ -40,7 +40,7 @@ say() { printf '%s\n' "$*"; }
 fail=0
 
 [[ -f "$BASELINE" ]] || { say "verify: baseline missing: $BASELINE"; exit 2; }
-[[ "$PREFLIGHT_ONLY" -eq 1 || -x "${WT:-}" ]] || { say "verify: the runner is not built at ${WT:-tools/runner} (cargo build --release --manifest-path tools/runner/Cargo.toml)"; exit 2; }
+[[ "$PREFLIGHT_ONLY" -eq 1 || -x "${WT:-}" ]] || { say "verify: no engine at ${WT:-(unresolved)} — bash tools/wasmtime-get.sh fetches the pinned wasmtime (tools/wt-env.sh resolves MENTL_WASMTIME, then .build/wasmtime, then PATH)"; exit 2; }
 
 # ── THE TEXT LEGS — the ratchets that read only text (2026-09-26) ─────────
 # The quiet gate, the scaffold count and the sugar vocabulary need no compiler,
@@ -176,9 +176,10 @@ else
 fi
 
 # 2. Micro battery — the medium's own `test` verb against the pinned boot:
-#    every fixture compiled, run through the runner's exec seam and judged
-#    against its own `// expect:` contract in ONE process (wt_battery reads
-#    the verdict and holds the exit + every-fixture-judged contract). Under
+#    every fixture compiled and judged against its own `// expect:` contract
+#    in ONE process, each run contract's module assembled and run by the
+#    host (wt_battery_host reads the RUN lines; wt_battery holds the exit +
+#    every-fixture-judged contract). Under
 #    --wheel the contract battery below judges the same fixtures through the
 #    candidate, so this leg has nothing of its own to measure.
 if [[ "$WHEEL_ONLY" -eq 0 ]]; then
@@ -188,8 +189,8 @@ fi
 
 # 2b. The contract battery — the medium enforcing every fixture's own
 #     contract (run AND refuse grammars) in one process. A FAILC / FAILR /
-#     NOEXPECT line is a broken contract; the run-values above stay the
-#     exec-side check until the exec seam itself absorbs.
+#     NOEXPECT line is a broken contract, and a FAIL(run) / FAIL(asm) line
+#     is the host's verdict on a module the compiler handed it.
 #
 #     THE COMPILER IS THE ONE THIS GATE OWNS, never the installed pointer.
 #     The shim resolves MENTL_HOME to the repo it was installed from, so in

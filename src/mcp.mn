@@ -35,8 +35,6 @@ import driver
 
 import infer
 
-import net
-
 import query
 
 import pipeline
@@ -468,73 +466,41 @@ fn mcp_loop(ast, ranges, manifest, at_read, current) = {
 // dispatch it mirrors); a verb it does not serve answers the MISS
 // sentinel and the host falls back to the cold exec.
 //
-// TWO TRANSPORTS, ONE SESSION. A host that preopened a listener (the
-// install shim's -S tcplisten) gets one answer per connection. A host that
-// preopened none owns the process's input instead — a browser worker, a
-// pipe — and gets one answer per stdin line (session_line_loop). This
-// verb used to REFUSE without a listener, which is why the page re-ran
-// the whole compiler per projection: its worker had no socket to offer
-// and the session had no other door.
-fn session_run(answer) = {
-  let lfd = find_listener()
-  // THE GUARD IS INSIDE THE BRACKET, which is mcp_run's own lesson one verb
-  // over — "The artifact directory is made INSIDE the bracket, because that
-  // is..." — learned there and not here. `fs_exists` is a Filesystem op and
-  // dispatch_invocation installs env / graph / mutate / diagnostics and no
-  // Filesystem, so this guard ran in a world that cannot answer it. It
-  // worked only while a stateless singleton could be direct-called with no
-  // record at all; the uniform world bracket ended that, and the guard
-  // trapped at its own dispatch (ev_declaring_node, i32.const 100524 =
-  // Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
-  // cost nothing on the path that reports no project.
-  infer_context(() => {
-    if !fs_exists(driver_module_path("main")) {
-      eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
-      1
-    } else {
-      match driver_entry_with_ranges("main") {
-        (ast, ranges) => {
-          let entry = driver_module_ast(ast, "main")
-          let manifest = driver_manifest(ranges)
-          if lfd < 0 {
-            eprint_string("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
-            session_line_loop(entry, ranges, manifest, answer, session_current)
-          } else {
-            eprint_string("mentl session: graph resident on the listener the host preopened (fd {int_to_str(lfd)}) — read verbs answer live; every other verb falls back cold through the shim\n")
-            session_sock_loop(lfd, entry, ranges, manifest, answer, session_current)
-          }
-        },
-      }
-      0
-    }
-  } ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
-}
-
-// One connection = one verb line = one answer; the living check runs
-// per connection exactly as the mcp loop runs it per message, so an
-// edited tree re-derives into the resident world before the answer.
-// The accept loop is space_loop's shape — constant stack for the
-// session's life, the graph threading through as values.
-fn session_sock_loop(lfd, ast, ranges, manifest, answer, current) = {
-  let before = heap_mark()
-  let next = {
-    let conn = sock_accept_blocking(lfd)
-    let line = strip_cr(session_read_line(conn))
-    match current(ast, ranges, manifest) {
-      (a2, r2, m2) => match answer(line, a2, r2, m2) {
-        (text, held) => {
-          sock_write_str(conn, text)
-          fd_close(conn)
-          held
-        },
+// ONE TRANSPORT. The host owns the process's input — a browser worker over
+// its shared-memory channel, the mentl command over a pipe — and gets one
+// answer per stdin line (session_line_loop), the answer written whole
+// before the next line is read. The listener this verb once served (a
+// socket the host preopened) is gone with the socket seam: WASI p1 has no
+// bind/listen, and a resident session the CLI shares between invocations
+// is a pair of FIFOs the shim would own
+// (`Hβ.cli.resident-session-over-fifos`), never a socket in the wheel.
+//
+// THE GUARD IS INSIDE THE BRACKET, which is mcp_run's own lesson one verb
+// over — "The artifact directory is made INSIDE the bracket, because that
+// is..." — learned there and not here. `fs_exists` is a Filesystem op and
+// dispatch_invocation installs env / graph / mutate / diagnostics and no
+// Filesystem, so this guard ran in a world that cannot answer it. It
+// worked only while a stateless singleton could be direct-called with no
+// record at all; the uniform world bracket ended that, and the guard
+// trapped at its own dispatch (ev_declaring_node, i32.const 100524 =
+// Filesystem, slot 0, pinned at 0xafd83 in session_run). The installs
+// cost nothing on the path that reports no project.
+fn session_run(answer) = infer_context(() => {
+  if !fs_exists(driver_module_path("main")) {
+    eprint_string("mentl session: no resolvable main here — the session holds a project's living graph; run it in a project directory\n")
+    1
+  } else {
+    match driver_entry_with_ranges("main") {
+      (ast, ranges) => {
+        let entry = driver_module_ast(ast, "main")
+        let manifest = driver_manifest(ranges)
+        eprint_string("mentl session: graph resident on stdin — each line is a verb's argv, tab-joined; the answer is written before the next line is read\n")
+        session_line_loop(entry, ranges, manifest, answer, session_current)
       },
     }
-  } ~> arena
-  session_cost(before)
-  match next {
-    (a3, r3, m3) => session_sock_loop(lfd, a3, r3, m3, answer, current),
+    0
   }
-}
+} ~> wasi_filesystem ~> query_default ~> mentl_default ~> arm_state_ctx([], OneShot, "") ~> spec_registry ~> tighten_collector)
 
 // What an answer cost the image, on the session's log. Each answer is an
 // arena (lib/arena.mn), so this is what it PUBLISHED: the nodes a question
@@ -574,20 +540,6 @@ fn session_line_loop(ast, ranges, manifest, answer, current) = {
       session_line_loop(a3, r3, m3, answer, current)
     },
   }
-}
-
-// One read is enough for a verb line (the shim writes it whole and
-// shuts down its side); cut at the first newline.
-fn session_read_line(conn) = {
-  let cap = 65536
-  let buf = alloc(cap)
-  let n = sock_read(conn, buf, cap)
-  let got = if n < 0 { 0 } else { n }
-  let str = bytes_buf(got)
-  mem_copy(addr_at(str, 8), buf, got)
-  let s = str_of_buf(str)
-  let nl = find_char(s, byte_len(s), 0, 10)
-  if nl < 0 { s } else { str_slice(s, 0, nl) }
 }
 
 // The wire is tab-joined argv (quoting survives the shell boundary);

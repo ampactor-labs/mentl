@@ -25,7 +25,7 @@
 # medium already states exactly:
 #   · the ARTIFACT — a module imports `wasi.thread-spawn` exactly when its
 #     reached tree performs `spawn_task` (emit_planned, src/backends/wasm.mn),
-#     and the runner creates a guest thread only through that import;
+#     and the engine creates a guest thread only through that import;
 #   · the CLAIM — `main`'s inferred row carries `WasiThreads` exactly when
 #     the program performs a spawn, read by the medium's own `query` verb.
 # Both are exact, neither sees a thread the host makes for itself, and a
