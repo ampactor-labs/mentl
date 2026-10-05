@@ -52,7 +52,7 @@ mentl_wasm() {
     --dir "\$PWD" --dir /tmp --dir "\$MENTL_HOME::/mentl-home" "\${extra[@]}" \\
     "\$MENTL_HOME/boot/mentl.wasm" "\$@"
 }
-# `mentl run` is the WHEEL's verb: compile, stream the module to the runner
+# mentl run is the WHEEL's verb: compile, stream the module to the runner
 # through the Process seam, execute it there, answer the program's own exit
 # (src/main.mn run_run ~> process_host; tools/runner mentl_host.exec). The
 # shim owned this seam as compile → wat2wasm → wasmtime with a content-keyed
