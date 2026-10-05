@@ -3602,7 +3602,52 @@ non-local exit. Wasm's exception handling (`throw` / `try_table`) and a native
 backend's unwinder (PLAN §11 10.1) make the fast path free: an abandon THROWS,
 a landing CATCHES, and no boundary reads anything. The landings and the law
 are one home either way; the engine form replaces the emission of the checks,
-never the protocol.
+never the protocol. MEASURED 2026-10-05 (the engine-pin question): the
+exceptions proposal is hosted by wasmtime 49.0.2 (the probe's `try_table` /
+`throw` module answers 7 — `bash tools/wasmtime-get.sh probe`), by V8 (node
+22 validates the same bytes, and Chromium 141 is the page's host) and
+assembled by WABT 1.0.39 `--enable-exceptions`; the pinned 36 LTS fails to
+compile it. So the engine form is buildable as a BACKEND target — one
+emission per target (`~> Backend`, R6 of §5.R's critical path), never an
+engine-keyed fork of one module — once the wheel assembles its own output
+(L-F), and it is sequenced behind `Hβ.threads.terminal-host-horizon`: the only
+terminal host of a spawning module is the 36 line, which has no exceptions.
+
+`Hβ.threads.terminal-host-horizon` — NAMED 2026-10-05 (the engine-pin
+question — Morgan: the most capability-unlocking pin, or the least work?).
+The wheel's spawn is the wasi-threads convention — a `wasi.thread-spawn`
+import beside a shared `env.memory`, `wasi_thread_start` exported — and the
+convention is being deleted by its hosts: wasmtime removed `-S threads` at
+47, the 48 LTS line carries the removal, and 49's wat parser knows no
+`thread.spawn_ref` (the successor moved spawning into the component model's
+canonical built-ins — `-W component-model-threading`, the 🧵 section — a
+COMPONENT's facility a core module cannot call). The 36 LTS line is therefore
+the LAST stock engine that hosts a spawning Mentl program in the terminal,
+and it is supported 24 months from 2025-08 (wasmtime's policy: every twelfth
+release is an LTS, supported two years). The browser never had the problem:
+the page's worker IS the thread host (ide/wheel-worker.js answers
+`thread-spawn` from its pool), our code, on any browser with a
+SharedArrayBuffer. MEASURED 2026-10-05 with the probe that now decides the
+pin (`bash tools/wasmtime-get.sh probe [<engine>]`, one module per
+capability): 36.0.17 hosts preview1, tail calls, atomics, the spawn and
+memory64 and nothing newer; 49.0.2 hosts everything but the spawn and adds
+exceptions (7) and stack switching (37). THE FORMS, both inside the medium:
+(1) the native backend (PLAN §11, Phase 10) — the terminal's final host,
+where a spawn is the OS's and there is no engine; (2) before it, if the
+horizon arrives first, a COMPONENT envelope the wheel emits after L-F makes
+it write its own binary: the core module unchanged, wrapped in a component
+whose spawn built-in drives the module's `wasi_thread_start`-shaped entry, so
+the terminal runs the component under `-W component-model-threading` while
+the browser keeps the core module — one emission, two envelopes, the envelope
+a projection of the same import. What is NOT the form: a newer engine pin
+(49 turns every threaded gate — the thread gate, the frontier's 2× legs,
+every `~> parallel_compose` fixture — into a skipped one, and a skipped gate
+is never green), a JS or Node host in the terminal (no externals), or stack
+switching as the continuation's representation (an engine-owned stack the
+image cannot persist, fork or diff — §4④'s substrate is the record in linear
+memory, NATIVE.md keystone 1). Retirement: the thread gate and the frontier's
+threaded legs green on a stock engine newer than the 36 line, or on no
+engine at all.
 
 `Hβ.threads.join-performs-the-branch-row` — OPEN, BORN 2026-10-03 (AN-2). A
 thread's abandon is re-raised at the join BY NAME: `WasiThreads.join_task` is
@@ -15026,9 +15071,20 @@ its socket 2s after launch, and the frontier through the exec-seam boot
 on the runner reads 380 pass / 0 red / 1 expected-red — the three
 listening legs that were RED on the CLI, green.
 ▶ BOTH RETIRED 2026-10-05 (L-H): the runner is deleted and the stock
-engine is the host again, pinned at 36.0.2 by version and digest
-(tools/wasmtime-get.sh; `MENTL_WASMTIME`, then .build/wasmtime, then
-PATH). The socket seam the runner existed for is gone with the wheel's
+engine is the host again, pinned at the 36 LTS line's newest patch by
+version and digest (36.0.17 at the pin; tools/wasmtime-get.sh holds the
+version, wt-env.sh reads it; `MENTL_WASMTIME`, then .build/wasmtime, then
+PATH). Measured 2026-10-05 against the line's successors: 48.0.3 and 49.0.2
+refuse `-S threads` and `-S preview2=n` as "no longer supported", a module
+importing `wasi.thread-spawn` cannot instantiate on them, and a `shared`
+memory needs its own `-W shared-memory=y` there — the boot and a
+non-spawning program run, a spawning one cannot, so the line stays 36 until
+the terminal's host is the native backend. The reading is two-sided and the
+script's probe reproduces it (`bash tools/wasmtime-get.sh probe [<engine>]`):
+49 hosts exceptions and stack switching where 36 does not, and neither moves
+the pin — the first a backend target sequenced behind the thread host's move
+(`Hβ.emit.unwind-by-engine-exceptions`), the second an engine-owned stack the
+image cannot persist; the line's horizon is `Hβ.threads.terminal-host-horizon`. The socket seam the runner existed for is gone with the wheel's
 listeners: `mentl session` serves on stdin alone (E2's transport, the
 page's worker and the mentl command both own the process's input),
 `mentl space` is static files the command stages and serves

@@ -122,6 +122,27 @@
   listeners, the accept leg is one stdin leg). Two readings of the stock
   m3 leg on one source: 32.20 s / 395,132 KB and 32.24 s / 395,088 KB.
   m3 leg 32.24s wall · 385MB peak RSS (395088 KB).
+  ▸ THE SAME DAY the pin moved within the line (36.0.2 → 36.0.17, both
+  2026-10-02 builds) and Morgan asked whether the LINE was the
+  capability-unlocking choice or the least work. The first reading had been
+  one-sided — what the successors REMOVE — so both sides were measured and
+  the probe graduated into the script (`bash tools/wasmtime-get.sh probe
+  [<engine>]`, one module per capability, each answering its own exit): 49.0.2
+  runs the exceptions proposal (7) and stack switching (37) where 36 fails to
+  compile the one and panics on the other; both run memory64 (11); 49 and the
+  48 LTS removed wasi-threads, so a spawning module cannot instantiate there
+  at all, while the browser's worker hosts the spawn itself. Kills: (8)
+  "nothing newer is beneficial" — measured by subtraction only; (9) the
+  probe's first spawn module imported memory without exporting it (`missing
+  required memory export` at proc_exit on 36). VERDICT: the line stays, as
+  the last LTS hosting what the wheel emits (`Hβ.threads.terminal-host-
+  horizon`, with the component envelope and native as its two forms);
+  exceptions are a backend target behind that move
+  (`Hβ.emit.unwind-by-engine-exceptions`); stack switching is an engine-owned
+  stack the image cannot persist. The board re-ran whole on 36.0.17 — micros
+  377/377, negation probes 37/37, crown 134/0, PE 30/0, frontier 599/0/1,
+  thread gate and IDE green — and the pin did not move (m2 == m3 against the
+  same boot).
 - 2026-10-03 · pin e7f6e2b946f44c04 (TRANSITION m3 == m4) · A NON-RESUMING ARM ABANDONS, AND A DEAD
   CONTINUATION UNWINDS FROM ANY POSITION (AN-2). The grade of an arm with no
   resume read the op's DECLARED RETURN: a bare variable or unit (`fail -> a`)

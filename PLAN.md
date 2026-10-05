@@ -2412,8 +2412,20 @@ and this is the STATE.
   serves on stdin, `mentl space` is static files; the emitter's import
   table is preview1 alone and a module imports the shared image exactly
   when it spawns. The boot imports WASI preview1, defines its memory, and
-  the unmodified wasmtime 36.0.2 release hosts it — pinned by digest
-  (tools/wasmtime-get.sh), the Rust deleted whole. Measured: the wheel
+  the unmodified wasmtime release at the newest patch of the 36 LTS line
+  hosts it — 36.0.17 at the pin, by version and digest in
+  tools/wasmtime-get.sh, the version's one home; the Rust deleted whole. The
+  line is 36 by measurement (2026-10-05): 48.0.3 and 49.0.2 host the boot and
+  a plain program once a shared memory gets its own `-W shared-memory=y`, but
+  both removed the legacy preview1 host and wasi-threads, so no spawning
+  Mentl program instantiates on them, and the threaded legs, the thread gate
+  and every `~> parallel_compose` need the spawn. The reading is two-sided
+  and the script's probe reproduces it (`bash tools/wasmtime-get.sh probe`):
+  49 hosts the exceptions proposal and stack switching where 36 does not —
+  the first a backend target sequenced behind the thread host's move
+  (`Hβ.emit.unwind-by-engine-exceptions`), the second an engine-owned stack
+  the image cannot persist (§4④) — and 36 is the last LTS that hosts a
+  spawning program, its horizon named (`Hβ.threads.terminal-host-horizon`). Measured: the wheel
   through the candidate byte-identical across engines; the engine's
   compilation cache takes the per-process floor from the runner's
   1.40–1.76 s to 0.06–0.08 s. What the host's exit range exposed: a
@@ -3143,8 +3155,13 @@ form the whole time. The arcs, in order:
   module imports the shared image exactly when it spawns
   (`emit_memory_decl`, one proof) — so the boot imports WASI preview1,
   defines its memory, and ANY preview1 engine hosts it. The one in the gates
-  is the unmodified wasmtime 36.0.2 release, pinned by version and digest
-  (`tools/wasmtime-get.sh`; 47 dropped `-S threads=y`), resolved
+  is the unmodified wasmtime release at the 36 LTS line's newest patch
+  (36.0.17), pinned by version and digest (`tools/wasmtime-get.sh`; 47
+  dropped `-S threads=y`, and 48.0.3 and 49.0.2, measured the same day,
+  refuse it and the legacy preview1 host with it, so a spawning module
+  cannot instantiate there while the boot and a plain program run once a
+  shared memory gets its own `-W shared-memory=y`; the probe in that script
+  is the pin's reason, two-sided — `Hβ.threads.terminal-host-horizon`), resolved
   `MENTL_WASMTIME` → .build/wasmtime → PATH, a missing engine refusing with
   the fetch command, the flags uniform for a defining and a spawning module
   alike. Measured: the wheel compiled through the candidate is

@@ -46,7 +46,8 @@ shell and python. The gates need:
 
 - **wasmtime 36** — runs `boot/mentl.wasm` (WASI preview1 is its whole
   import list; a program that spawns also asks for wasi-threads, which 36
-  serves and 47 dropped — the pin's reason, tools/wasmtime-get.sh). The
+  serves and 47 dropped, the 48 LTS too — the pin's reason; `bash
+  tools/wasmtime-get.sh probe [<engine>]` prints what an engine hosts). The
   mentl command runs a compiled program (`mentl run`, and the battery's RUN
   lines through `tools/wt-env.sh`) by assembling the module and handing it
   to the engine; the wheel itself only emits.

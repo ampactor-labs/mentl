@@ -24,11 +24,16 @@
 # imports WASI preview1 and nothing else and defines its own memory, so any
 # preview1 engine hosts it; a program that spawns also asks for wasi-threads
 # (the `wasi.thread-spawn` import beside a shared `env.memory`), which is
-# where the PIN comes from: wasmtime 36 serves it through `-S threads=y` and
-# 47 dropped the flag ("the -Sthreads flag is no longer supported", measured
-# 2026-09-06), so 36.0.2 is pinned by version and digest in
-# tools/wasmtime-get.sh and resolved here MENTL_WASMTIME → .build/wasmtime →
-# PATH. A missing engine REFUSES, loudly, with the fetch command — never a
+# where the PIN comes from: wasmtime 36 serves it through `-S threads=y`,
+# and every line after 36 refuses the flag and the legacy preview1 host with
+# it (47 measured 2026-09-06; 48.0.3 and 49.0.2 measured 2026-10-05, where a
+# spawning module cannot instantiate at all), so the newest patch of the 36
+# LTS line is pinned by version and digest in tools/wasmtime-get.sh — the
+# version's one home, read here — and resolved MENTL_WASMTIME →
+# .build/wasmtime → PATH. The pin is decided by that script's probe, one
+# module per capability (`bash tools/wasmtime-get.sh probe [<engine>]`), and
+# the table in its header is the reason: what the successors add
+# (exceptions, stack switching) and why neither moves the pin. A missing engine REFUSES, loudly, with the fetch command — never a
 # silent downgrade. The flags are UNIFORM: `-S threads=y` runs a module that
 # defines its memory exactly as one that imports it (measured on this
 # landing's m2: the wheel compiled through the candidate byte-identical to
@@ -52,9 +57,13 @@
 # host loop below, and the session serves on stdio. RESIDUE.md carries the
 # record under `Hβ.ops.runner-is-the-process-handler`.
 _wt_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The pinned version has ONE home, the fetch script's `ver=` line; this file
+# reads it rather than repeating it (a second copy drifted the day the patch
+# moved).
+_wt_pin="$(sed -n 's/^ver=//p' "$_wt_root/tools/wasmtime-get.sh" | head -1)"
 _wt_engine="${MENTL_WASMTIME:-}"
 if [ -z "$_wt_engine" ]; then
-  for _wt_cand in "$_wt_root"/.build/wasmtime/wasmtime-v36.0.2-*/wasmtime; do
+  for _wt_cand in "$_wt_root"/.build/wasmtime/wasmtime-v"$_wt_pin"-*/wasmtime; do
     [ -x "$_wt_cand" ] && _wt_engine="$_wt_cand" && break
   done
 fi
@@ -62,7 +71,7 @@ if [ -z "$_wt_engine" ] && command -v wasmtime >/dev/null 2>&1; then
   _wt_engine="$(command -v wasmtime)"
 fi
 if [ -z "$_wt_engine" ] || [ ! -x "$_wt_engine" ]; then
-  echo "wt-env: no engine — bash tools/wasmtime-get.sh fetches the pinned wasmtime into .build/wasmtime (or set MENTL_WASMTIME, or put wasmtime 36 on PATH)" >&2
+  echo "wt-env: no engine — bash tools/wasmtime-get.sh fetches the pinned wasmtime ($_wt_pin) into .build/wasmtime (or set MENTL_WASMTIME, or put a wasmtime 36 on PATH)" >&2
   return 2 2>/dev/null || exit 2
 fi
 WT="$_wt_engine"
