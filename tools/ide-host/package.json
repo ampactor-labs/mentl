@@ -1,1 +1,0 @@
-{"description":"Static host for the Mentl IDE (mentl edit) with COOP/COEP headers for shared-memory WASM","engines":{"node":">=20"},"main":"server.mjs","name":"mentl-ide-host","scripts":{"start":"node server.mjs"},"type":"module","version":"1.0.0"}
